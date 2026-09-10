@@ -1,0 +1,95 @@
+# Changelog
+
+User-visible and operationally significant changes, newest first. Coarser than [`MEMORY-INDEX.md`](./MEMORY-INDEX.md); every entry links to a record or an ADR.
+
+Format loosely follows Keep a Changelog. Dates are absolute.
+
+---
+
+## Unreleased
+
+### Changed
+
+- **Repository restructured into a documented monorepo.** `docs/` now holds 135 as-built documents across ten categories, `MEMORY/` and `TASKS/` follow the wedding-saas layout, `deploy/` carries the compose stacks and Helm charts, and a Makefile drives development and deployment. Root markdown files were classified into `docs/` rather than deleted. — [record](./records/2026-09-10-monorepo-restructure-and-as-built-docs.md)
+- **`docs/` is now as-built.** Every document is grounded in `backend/src` and `frontend/src` and names its source files, replacing a specification that described a system built differently.
+- **`CLAUDE.md` and `AGENTS.md` rewritten.** The previous `CLAUDE.md` instructed engineers and agents to write strict TypeScript with no `any` — for a backend that is JavaScript.
+
+### Added
+
+- **ADR-029 through ADR-037** — nine decisions recording what was actually built: ORM-layer tenant isolation, the JavaScript backend, Socket.IO retained, compose-first deployment, password-primary authentication with OIDC both directions, database-backed sessions, the certificate 409, derived tenant `subdomain`, and the three-value tenant status.
+- `deploy/compose/` — a base stack plus dev, staging and production overlays, with an nginx configuration covering the four routes that fail confusingly when omitted.
+- `deploy/helm/callibrator/` — an umbrella chart with backend and frontend subcharts, and **render-time guards** that refuse a missing `image.tag` and refuse `cron.enabled` with more than one replica.
+- A `Makefile` whose `preflight` target **refuses** to deploy on `NODE_ENV != production`, `SEED_DEMO=true`, a wildcard CORS origin, a `:latest` tag, or an ACME URL still pointing at Let's Encrypt staging.
+- `MEMORY/templates/` — change record, feature spec and phase summary.
+- `docs/ARCHIVE/` — superseded root documents, kept for provenance and never authoritative.
+
+### Known open items
+
+- The backend unit-test coverage gate (100%) is **currently failing**.
+- The live E2E suite has **never passed in one uninterrupted run** — every fix verified individually.
+- `calibration_records` append-only is a **convention, not a constraint** (PR-2).
+- Swagger and the enforced Joi validators disagree for the GDPR endpoints.
+- The Helm charts render; **no cluster has been reachable** to validate them.
+
+---
+
+## 2026-07 — Full-stack integration audit
+
+Full account: [`../docs/ARCHIVE/2026-07-fullstack-integration-audit.md`](../docs/ARCHIVE/2026-07-fullstack-integration-audit.md). 51 route modules audited against a running server; 24 defects found, 15 fixed and re-verified live.
+
+### Fixed
+
+- **Authentication, platform-wide** — every token was rejected 15 minutes after login. `verifyAccessToken` passed `maxAge: "15m"` while tokens are signed `expiresIn=1d`.
+- **Certificates** — the list returned zero rows while rows existed. Four includes defaulted to INNER JOINs, and every draft has a null actor FK.
+- **Certificates** — approval was unreachable: no `submit` transition existed, and approving a draft threw a plain `Error` that surfaced as a 500. Added `POST /:id/submit` and mapped invalid states to **409**. — ADR-035
+- **Risks** — risks with no assignee were invisible: absent from lists, 404 on get, update and delete. Same INNER JOIN shape.
+- **QMS and SOP** — lists rendered empty because rows were returned inside `data` rather than `data` plus a top-level `meta`.
+- **QMS** — a bad enum on `PATCH /nc/:id` reached the database and 500ed; added a validator so it returns 400.
+- **Tenants** — every create returned a 500 `notNull` violation. `subdomain` is now derived from `code`. — ADR-036
+- **Tenant lifecycle** — suspend, resume and offboard all 500ed with `invalid enum value`. Status is three values; granular state moved to `tenant_settings`. — ADR-037
+- **Data retention** — the nightly purge failed **every night** with `column "tenantId" does not exist`; the `sessions` model attribute is `tenant_id`.
+- **Data retention** — legal hold always 500ed: a Joi schema was spread into a plain object, then `.validate` called on the result.
+- **Workflows** — create, update and submit-action all 500ed: `db` was destructured from the models barrel, which exports `sequelize`.
+- **Feature flags, tenant lifecycle, data retention** — several endpoints 400ed every request because path parameters were validated in the body.
+
+### Added
+
+- 51 live E2E specs at `backend/src/tests/e2e/modules/`, run against a running server.
+- 51 frontend contract tests, one per service, asserting the exact path, method, payload and envelope unwrap.
+- A flag-gated demo seeder (`SEED_DEMO=true`) — ~80 rows, idempotent, with teardown.
+
+### Note
+
+**3,863 tests passed while 13 endpoints were broken.** Frontend services had been written against endpoints that did not exist, with tests mocking the fabrication. That is why the live E2E layer exists.
+
+---
+
+## 2026-07 — Tenant isolation moved out of the database
+
+### Changed
+
+- **Row Level Security removed.** Isolation moved to global Sequelize hooks reading an `AsyncLocalStorage` context, **deny-by-default**, engine-agnostic. Migration `0012` added RLS; `0015` removed it. Both are kept. — ADR-029
+
+Two reasons: RLS is PostgreSQL-only and the platform must also run on MySQL, and the policy carried a fail-open branch — `app.current_tenant = ''` matched **every row**.
+
+### Changed
+
+- **Realtime stays on Socket.IO.** A plain-WebSocket hub was trialled and reverted by decision. — ADR-031
+
+---
+
+## 2026-07 — Pluggable object storage
+
+### Added
+
+- Object storage behind one port with three drivers — `local`, `s3`, `nfs` — selectable globally and **overridable per tenant**, with tenant credentials encrypted at rest. Verified live against MinIO. Migration `0016` added `attachments.storageKey`.
+
+Tenant-supplied S3 endpoints are SSRF-checked; operator-configured ones deliberately are not, because an internal host is a legitimate operator value.
+
+---
+
+## Earlier
+
+The platform reached 33 modules, 72 models, 53 route modules and 342 test files before this changelog existed. That history is reconstructable from `MEMORY/DECISIONS.md`, the migration sequence in `backend/src/migrations/`, and [`../docs/BACKEND/10-MODULE-REFERENCE.md`](../docs/BACKEND/10-MODULE-REFERENCE.md).
+
+**The gap is the point of the file.** Everything above had to be reconstructed by reading code and audit reports, which is exactly what a changelog exists to make unnecessary.

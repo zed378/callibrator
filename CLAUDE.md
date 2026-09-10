@@ -1,409 +1,213 @@
-# Claude — Operating Instructions for AI Agents
+# CLAUDE.md — Operating Instructions for AI Agents
 
-This document defines how Claude (and other AI agents) should work within this project.
-
----
-
-## Project Context
-
-**Hospital Device Calibration Platform** — Enterprise SaaS for multi-tenant hospital device calibration, maintenance, and lifecycle management.
-
-- **Repository:** Monorepo (backend, frontend, admin, shared packages)
-- **Stack:** Express.js + Next.js + PostgreSQL + Redis + RabbitMQ
-- **Scale:** Multi-tenant, compliance-focused (ISO 17025, KARS, SNARS)
-- **Phases:** 5-phase rollout from foundation to data lake analytics
+How Claude and other AI agents work in this repository.
 
 ---
+
+## Read This First
+
+**The previous version of this file was wrong in a way that produced confidently wrong work.**
+
+It instructed agents to write strict TypeScript with no `any` — for a backend that is **JavaScript, CommonJS**. It pointed at a task board listing foundation work as TODO that had shipped months earlier.
+
+That is recorded as PR-4 in [`docs/PLAN/18-RISK-REGISTER.md`](docs/PLAN/18-RISK-REGISTER.md), and it is the single most important thing to know about this project's history: **an instruction document that disagrees with the code produces confidently wrong work, and the confidence is the dangerous part.**
+
+Everything below is grounded in the code as of 2026-09-10. If you find a claim here that the code contradicts, **the code wins** — and correcting this file is part of the fix.
+
+## What This Is
+
+**Callibrator** — multi-tenant SaaS for hospital medical-device calibration, maintenance and lifecycle management.
+
+| | |
+|---|---|
+| Backend | **Express, JavaScript, CommonJS** — *not TypeScript* (ADR-030) |
+| Database | PostgreSQL **or MySQL** (ADR-029) |
+| Frontend | Next.js 16 · React 19 · TypeScript · Tailwind 4 · Zustand |
+| Realtime | Socket.IO, both ends (ADR-031) |
+| Infra | Redis · RabbitMQ · embedded MQTT · ClamAV · pgvector |
+| Scale | 33 modules · 53 route modules · 72 models · 342 test files |
+| Compliance | ISO 17025 · FDA 21 CFR Part 11 · ISO 13485 · GDPR · KARS · SNARS |
 
 ## Before You Start
 
-1. **Read these documents in order:**
-   - `CONTEXT.md` — Project PRD, architecture, ERD, deployment
-   - `MEMORY/DECISIONS.md` — All 28 architectural decision records
-   - `MEMORY/PROGRESS.md` — What's been built so far
-   - `TASKS/README.md` — Task list and blocking dependencies
-   - `TASKS/00-TASK-CONVENTIONS.md` — Working conventions
+1. **[`docs/README.md`](docs/README.md)** — the map.
+2. **[`docs/PLAN/00-PROJECT-OVERVIEW.md`](docs/PLAN/00-PROJECT-OVERVIEW.md)** — what this is and what it deliberately is not.
+3. **[`docs/SECURITY/05-MULTI-TENANCY-SECURITY.md`](docs/SECURITY/05-MULTI-TENANCY-SECURITY.md)** — **mandatory, no exceptions.**
+4. **[`MEMORY/DECISIONS.md`](MEMORY/DECISIONS.md) Part II** — nine ADRs recording what was built differently from what was planned. Read Part II before acting on Part I.
+5. **[`TASKS/PROGRESS.md`](TASKS/PROGRESS.md)** — what is actually shipped.
+6. **[`TASKS/00-TASK-CONVENTIONS.md`](TASKS/00-TASK-CONVENTIONS.md)** — the Definition of Done.
 
-2. **Understand the current phase:**
-   - Check `MEMORY/PROGRESS.md` for what's completed
-   - Look at `TASKS/PROGRESS.md` for next tasks
-   - Review blocking dependencies before starting
+## The Non-Negotiables
 
-3. **Know the constraints:**
-   - Every endpoint must enforce tenant isolation (ADR-001)
-   - Every data mutation must be audit logged (ADR-009)
-   - RBAC checks required on all routes (ADR-026)
-   - No breaking changes to API contracts (ADR-019)
+### Tenant isolation
 
----
+Enforced by global Sequelize hooks reading an `AsyncLocalStorage` context, **deny-by-default**. You do not opt in.
 
-## Your Role
-
-### When to Act
-
-- **Implement tasks** from `TASKS/README.md` when explicitly assigned
-- **Fix bugs** discovered during development or testing
-- **Research & analyze** codebase when asked questions
-- **Write documentation** in `docs/` when specs need updating
-- **Create task records** in `MEMORY/records/` when tasks complete
-
-### When NOT to Act
-
-- **Don't start tasks** that aren't explicitly assigned or next in queue
-- **Don't modify architecture** without updating `MEMORY/DECISIONS.md`
-- **Don't skip testing** or compliance checks
-- **Don't commit to main** directly — always PR and code review
-- **Don't make breaking API changes** without team discussion
-
----
-
-## Task Execution Workflow
-
-### Step 1: Understand the Spec
-
-Before coding:
-1. Read the task description in `TASKS/README.md`
-2. Find the spec documents it references in `docs/`
-3. Review related ADRs in `MEMORY/DECISIONS.md`
-4. Check for blocking dependencies
-5. Ask clarifying questions if needed
-
-### Step 2: Plan the Implementation
-
-Create a plan:
-- What files will be created/modified?
-- What database changes are needed?
-- What API endpoints are added/changed?
-- What tests are required?
-- What compliance checks must pass?
-
-### Step 3: Implement
-
-Follow the conventions:
-- Branch: `git checkout -b feat/{TASK_ID}-{description}`
-- Commits: Include task ID in subject line
-- Code style: Follow existing patterns in codebase
-- TypeScript: No `any` types, strict mode
-- Testing: Unit + integration tests required
-- Linting: Must pass `pnpm lint` and `pnpm typecheck`
-
-### Step 4: Verify
-
-Before PR:
-- `pnpm test` passes
-- `pnpm typecheck` passes
-- `pnpm lint` passes
-- `pnpm build` succeeds
-- Docker builds: `docker build -f backend/Dockerfile .`
-- Database migrations work on clean DB
-- No console.log or debugging code left
-
-### Step 5: Document
-
-Create task record:
-- Create: `MEMORY/records/{TASK_ID}.md`
-- Document: What was built, why, key decisions
-- Update: `MEMORY/PROGRESS.md` with completion status
-- Update: `TASKS/PROGRESS.md` task status
-
-### Step 6: Submit
-
-Create pull request:
-- Title: `{TASK_ID}: Brief description`
-- Description: Link to spec documents, testing performed, blockers
-- Tag: `@team` for review
-- Wait for approval before merge
-
----
-
-## Code Quality Standards
-
-### TypeScript
-
-```typescript
-// ✅ Good
-async function getUserById(userId: string): Promise<User> {
-  const user = await User.findByPk(userId);
-  if (!user) {
-    throw new NotFoundError('User not found');
-  }
-  return user;
-}
-
-// ❌ Bad
-async function getUserById(userId: any): Promise<any> {
-  const user = await User.findByPk(userId);
-  return user;
-}
-```
-
-### Error Handling
-
-```typescript
-// ✅ Good — specific error with context
-if (!user) {
-  throw new NotFoundError(`User ${userId} not found`);
-}
-
-// ❌ Bad — generic error
-if (!user) {
-  throw new Error('error');
-}
-```
-
-### Tenant Isolation
-
-```typescript
-// ✅ Good — tenant filter enforced
-const devices = await Device.findAll({
-  where: {
-    tenantId: req.tenant.id,
-  },
-});
-
-// ❌ Bad — no tenant filter (SECURITY BUG)
+```js
+// You write this:
 const devices = await Device.findAll();
+// The hooks add the tenant predicate. A principal with no resolvable
+// tenant matches NO_TENANT_UUID and sees NOTHING.
 ```
 
-### Audit Logging
+**Never** read `tenantId` from a request body. It is stamped from the context.
 
-```typescript
-// ✅ Good — log before/after state
-await AuditLog.create({
-  tenantId: req.tenant.id,
-  userId: req.user.id,
-  action: 'USER_CREATED',
-  before: null,
-  after: { id: user.id, email: user.email },
-  timestamp: new Date(),
-});
+**Raw SQL bypasses the hooks entirely.** Every `sequelize.query` carries the predicate explicitly, and every new one is a review item.
 
-// ❌ Bad — no audit trail
-user.update({ email: newEmail });
+### Cross-tenant returns 404, never 403
+
+A 403 says "this exists and you may not have it" — which turns id enumeration into a tenant-membership oracle. Non-existent, soft-deleted and not-yours must be **indistinguishable**.
+
+### Every route needs a permission gate
+
+```js
+router.post("/", auth, dynamicAccess("equipment", "write"), validate(schema), ctrl.create);
 ```
 
-### Testing
+**Nothing in the build enforces this.** A route without one works for everyone with a token. It is the single most likely authorization defect in the codebase, and the guard is P6-04.
 
-```typescript
-// ✅ Good — tests permission, tenant, and data
-describe('GET /devices/:id', () => {
-  it('returns device for authorized user in same tenant', async () => {
-    // ...
-  });
+### Every mutation writes an audit row, inside the transaction
 
-  it('forbids device access for user in different tenant', async () => {
-    // ...
-  });
+An audit row that survives a rolled-back action records something that did not happen. An action that commits without one is unattributable.
 
-  it('returns 404 for non-existent device', async () => {
-    // ...
-  });
-});
+### Every new `:id` route needs a two-tenant test asserting 404
 
-// ❌ Bad — only happy path
-describe('GET /devices/:id', () => {
-  it('returns device', async () => {
-    // ...
-  });
-});
+Not 403. Not 200. `createTwoTenants()` is a one-line fixture precisely so this gets written.
+
+## The Traps
+
+Every one of these has caused a production defect here. They are structural, not careless.
+
+| Trap | What happens |
+|---|---|
+| An optional include without **`required: false`** | INNER JOIN — the list silently returns **nothing** |
+| **`schema.validate`** passed to Express | **500 on every request** to that route |
+| A path parameter the validator never sees | **400 on every request** — merge `{ ...req.params, ...req.body }` |
+| **`db`** destructured from the models barrel | it exports `sequelize`; you get `undefined`, then a throw |
+| **`is_deleted`** written in code | silently does nothing — the attribute is `isDeleted` |
+| **`tenantId`** on the `sessions` model | `column "tenantId" does not exist` — it uses snake_case |
+| A new role without a **`ROLE_LEVELS`** entry | fails every privileged gate, **silently** |
+| A migration with a blanket **`try/catch`** | **recorded as applied while doing nothing** |
+| A **global** uniqueness constraint | a cross-tenant existence oracle |
+| Suspending the **default tenant** in a test | 403s every later request; recovery is a direct database update |
+
+The first one is the most repeated defect shape in this codebase. It has hit certificates and risks, and it is latent on `maintenance_work_orders`.
+
+## The Response Envelope
+
+```json
+{ "success": true, "status": 200, "message": "...", "data": [], "meta": { "total": 0 } }
 ```
 
----
+**Rows in `data`. Pagination in a top-level `meta`, a sibling of `data`.** Never `data.rows`, never `data.items`, never `data.meta`.
 
-## Compliance Checklist
+Violating it renders an empty list with **no error**. Three screens did exactly that for weeks.
 
-Every task must include:
+## Status Codes That Carry Meaning
 
-### Security
-- No hardcoded secrets
-- Input validation on all endpoints
-- SQL injection prevention (parameterized queries)
-- XSS prevention (HTML escaping, CSP headers)
-- CSRF tokens on state-changing operations
+| Code | Use |
+|---|---|
+| 400 | validation |
+| 403 | permission failure **inside the caller's own tenant** |
+| **404** | not found — **including belonging to another tenant** |
+| **409** | invalid state transition |
 
-### RBAC & Tenant Isolation
-- Permission checks on all routes
-- Tenant filter on all queries
-- Test: cross-tenant access blocked
-- Test: permission checks enforced
+A 409 surfaces as a **state explanation** — "this certificate is in `draft` and must be submitted first" — never a generic error. Reporting a conflict as a 500 hides a design gap behind a stack trace, which is exactly what made certificate approval unreachable.
 
-### Audit & Compliance
-- All mutations logged with before/after state
-- User attribution on all changes
-- Timestamps on all audit entries
-- Audit logs immutable (no deletes)
+## When to Act, and When Not To
 
-### Data Integrity
-- Foreign key constraints in place
-- Cascading deletes configured correctly
-- Transaction handling for atomic operations
-- Concurrent update conflicts prevented
+**Act on:** an assigned task, a bug found during work, a question about the codebase, documentation that disagrees with the code.
 
----
+**Do not:**
 
-## File Organization
+- start a task that is not assigned or next in the queue,
+- change architecture without an ADR,
+- **amend `docs/` quietly** — that is the deviation protocol, and it needs a record,
+- mark something done without its `MEMORY/records/` entry,
+- claim a test passed without **naming it**.
 
-### Backend Structure
+## The Deviation Protocol
 
-```
-backend/
-  src/
-    modules/
-      auth/              # OIDC, tokens, sessions
-      users/             # User CRUD
-      roles/             # Role management
-      devices/           # Device catalog
-      calibration/       # Calibration workflows
-      warehouse/         # Inventory management
-      maintenance/       # Maintenance tracking
-      audit/             # Audit logging
-    middleware/          # Auth, tenant, error handling
-    services/            # Business logic
-    repositories/        # Database queries
-    schemas/             # Request/response validation
-    config/              # Environment configuration
-    utils/               # Helpers and utilities
-```
+When implementation reveals `docs/` is wrong, incomplete, or contradictory:
 
-### Frontend Structure
+1. **Stop.** Do not quietly implement something different — that is how the specification drifted the first time.
+2. Write an **ADR** in `MEMORY/DECISIONS.md`: decision, rationale, **alternatives considered**, implications **including the bad ones**.
+3. Amend the `docs/` document, referencing the ADR.
+4. Note both in the change record.
 
-```
-frontend/
-  src/
-    app/                 # Next.js app directory
-      auth/              # Login/logout pages
-      dashboard/         # Main dashboard
-      devices/           # Device management
-      calibration/       # Calibration workflows
-      warehouse/         # Inventory management
-      admin/             # Admin settings
-    components/          # Reusable React components
-    hooks/               # Custom React hooks
-    services/            # API calls, business logic
-    types/               # TypeScript types
-    utils/               # Helpers
-```
+**A documented deviation is a decision. An undocumented one is a bug nobody has found yet.**
 
----
+If it needs a decision the owner has not made, it is an **Open Question** in `TASKS/BACKLOG.md`, not a judgement call.
 
-## Git Workflow
+## Evidence
 
-### Branch Naming
+> **An assertion that a test passed is not evidence. Name the test.**
+
+"IDOR tested, all good" with no test named is **worse than saying nothing**, because it stops anyone looking again.
+
+Three rules that catch a worthless test:
+
+- **Test database grants as the application role**, not the owner. As the owner it passes whether the grant exists or not.
+- **A test generated from the code it tests verifies consistency, never correctness.** A redaction test iterating the redactor's own key set cannot catch a key being deleted from it.
+- **A mock proves the client, not the contract.** 3,863 tests passed here while 13 endpoints were broken.
+
+## Distinguish "Renders" From "Works"
+
+Two claims currently live in this repository, and both are stated carefully on purpose:
+
+- The Helm charts **render**. No cluster has been reachable, so they are **not known to deploy**.
+- The E2E suite has been verified **fix by fix**. It has **never passed in one uninterrupted run**.
+
+Do not round these up. `TASKS/BACKLOG.md` § Unverified Claims lists all six of them.
+
+## Workflow
 
 ```
-feat/P1-05-tenant-context
-feat/P2-01-warehouse-models
-fix/P1-05-tenant-isolation-bug
-docs/P1-11-api-documentation
+1. read the task and every document in its Spec refs
+2. if "Spec required", write MEMORY/specs/<task-id>-<slug>.md FIRST
+3. branch:   feat/P6-04-route-permission-guard
+4. implement
+5. verify:   make verify      (lint · typecheck · test · build)
+             make test-e2e    (against a running server)
+6. record:   MEMORY/records/  + MEMORY-INDEX + CHANGELOG + ADR if a decision
+7. update:   TASKS/PROGRESS.md — in the SAME commit
+8. PR:       P6-04: <description>
 ```
 
-### Commit Messages
+`make verify` does **not** cover the live or browser suites. A green `verify` is not a green release.
 
-```
-P1-05: Implement tenant context middleware
-
-- Extract tenant from JWT claims
-- Attach to request object
-- Enforce in database queries
-- Add IDOR tests
-```
-
-### Before PR
+## Commands
 
 ```bash
-pnpm typecheck    # Type checking
-pnpm lint --fix   # Linting
-pnpm test         # Tests
-pnpm build        # Build
-git push -u origin feat/P1-05-tenant-context
+make help          # every target
+make dev           # local stack
+make verify        # the pre-push gate
+make test-e2e      # 51 live specs, running server required
+make migrate       # then: make migrate-verify — the log is not evidence
 ```
 
----
+## Code Style
 
-## Common Patterns
+Match the surrounding code. Both workspaces have standards documents:
 
-### Adding an API Endpoint
+- [`docs/BACKEND/00-BACKEND-STANDARDS.md`](docs/BACKEND/00-BACKEND-STANDARDS.md)
+- [`docs/FRONTEND/00-FRONTEND-STANDARDS.md`](docs/FRONTEND/00-FRONTEND-STANDARDS.md)
 
-1. Define schema in `packages/schema/` with Zod
-2. Add validation middleware
-3. Implement handler with permission check
-4. Add audit log on mutation
-5. Update OpenAPI spec
-6. Write tests (happy path, permission, edge cases)
-7. Generate client SDK
+JSDoc on exported backend functions — it is the only type information that codebase has.
 
-### Database Migration
+Do not disable React Compiler lint rules to make a build pass. The rule is usually right about the component.
 
-1. Create migration: `npm run migration:create --name add_field`
-2. Write up() migration
-3. Write down() rollback
-4. Test on empty database
-5. Test on database with existing data
-6. Document in task record
+## Two Things Currently Failing
 
-### Adding a New Role
+Stated here because an agent reading a green board and finding a red gate wastes an afternoon:
 
-1. Add to `RoleEnum` in `packages/schema`
-2. Add permissions to `PERMISSIONS` catalog in `docs/RBAC/`
-3. Create seeding script for default permissions
-4. Add UI role selector
-5. Test permission enforcement
-6. Update `MEMORY/DECISIONS.md` if architectural change
+| | |
+|---|---|
+| Backend unit coverage gate (100%) | **failing** → P6-01 |
+| Live E2E in one uninterrupted run | **never achieved** → P6-02 |
 
----
+## If You Are Unsure
 
-## Debugging
+Read the code. `docs/` names its source files precisely so you can check it rather than trust it.
 
-### Backend Issues
-
-```bash
-docker logs -f hospital-calibrator-api    # View logs
-npm run db:psql                           # Connect to database
-npm run migrate -- --verbose              # Migration debug
-cat .env                                  # Check environment
-```
-
-### Frontend Issues
-
-```bash
-rm -rf .next                              # Clear Next.js cache
-npm run dev -- --debug                    # Verbose logging
-```
-
-### Database Issues
-
-```bash
-psql postgresql://user:pass@localhost/calibrator   # Direct connection
-npm run migrate:status                              # Migration status
-npm run migrate:revert                              # Rollback last migration
-```
-
----
-
-## Success Criteria
-
-A task is complete when:
-
-1. ✅ Code implements the spec
-2. ✅ Tests pass (unit + integration)
-3. ✅ Types pass (`pnpm typecheck`)
-4. ✅ Linting passes (`pnpm lint`)
-5. ✅ Build succeeds (`pnpm build`)
-6. ✅ RBAC enforced (if applicable)
-7. ✅ Tenant isolation verified
-8. ✅ Audit logging in place
-9. ✅ Documentation updated
-10. ✅ Task record created
-11. ✅ PR approved by reviewer
-12. ✅ Merged to main
-
----
-
-## Resources
-
-- **Architecture:** `CONTEXT.md`
-- **Decisions:** `MEMORY/DECISIONS.md`
-- **Progress:** `MEMORY/PROGRESS.md` and `TASKS/PROGRESS.md`
-- **Specifications:** `docs/` directory
-- **Conventions:** `TASKS/00-TASK-CONVENTIONS.md`
-- **Task List:** `TASKS/README.md`
+If the code and this file disagree, **the code wins, and this file gets fixed** — in the same change, with a record.

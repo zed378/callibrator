@@ -1,244 +1,149 @@
-# Hospital Device Calibration Platform
+# Callibrator
 
-Enterprise-grade multi-tenant SaaS platform for hospital device calibration, maintenance, and lifecycle management.
+**Hospital Device Calibration Platform** — multi-tenant SaaS for medical-device calibration, maintenance and lifecycle management.
+
+Built for two sides of the same transaction: **healthcare facilities** that own devices and must prove they are calibrated, and **calibration providers** that perform the work and issue the certificates.
+
+Compliance targets: ISO 17025 · FDA 21 CFR Part 11 · ISO 13485 · GDPR · KARS · SNARS.
+
+---
+
+## The Idea
+
+A hospital that cannot prove a defibrillator was calibrated within its interval has, for audit purposes, an uncalibrated defibrillator. **The evidence is the compliance.**
+
+Callibrator makes that evidence a by-product of doing the work: every device has an interval, every calibration produces an append-only record naming who performed it, every certificate is signed and **publicly verifiable without a login**, and every mutation is audit-logged.
 
 ## Quick Start
 
-### Prerequisites
-
-- Node.js >= 20 LTS
-- pnpm >= 9.0
-- Docker and Docker Compose (for local development)
-- PostgreSQL (via Docker)
-- Redis (via Docker)
-
-### Local Development
-
 ```bash
-# Install dependencies (monorepo)
-pnpm install
-
-# Start local services (PostgreSQL, Redis)
-docker-compose -f backend/docker-compose.yaml up -d
-
-# Run migrations
-pnpm db:migrate
-
-# Start development servers
-pnpm dev
+make env          # create deploy/compose/.env
+make secrets      # generate the three REQUIRED secrets
+make dev          # bring the stack up
+make help         # every target
 ```
 
-Services will be available at:
-- Backend API: http://localhost:3000
-- Frontend: http://localhost:3001
-- Swagger UI: http://localhost:3000/api-docs
+Requires Docker with the compose plugin, Node 20+, pnpm, and `make`.
 
-### Running Tests
+The application **exits** without `CERT_SIGNING_SECRET`, `ENCRYPT_KEY` and `ATTACHMENT_URL_SECRET`. That is deliberate — starting without them produces certificates that cannot be verified, and the failure would appear days later in front of an auditor.
 
-```bash
-# Run all tests
-pnpm test
-
-# Run specific workspace tests
-pnpm test --filter backend
-
-# Run with coverage
-pnpm test:coverage
-
-# Watch mode
-pnpm test -- --watch
-```
-
-### Building
-
-```bash
-# Build all packages
-pnpm build
-
-# Build specific workspace
-pnpm build --filter frontend
-
-# Type checking
-pnpm typecheck
-
-# Linting
-pnpm lint
-
-# Format code
-pnpm format
-```
-
-## Project Structure
+## Layout
 
 ```
-.
-├── backend/                # Express.js REST API
-│   ├── src/
-│   │   ├── modules/       # Feature modules (auth, devices, calibration, etc.)
-│   │   ├── middleware/    # Express middleware
-│   │   ├── migrations/    # Database migrations
-│   │   └── ...
-│   ├── __tests__/         # Unit and integration tests
-│   └── Dockerfile
-│
-├── frontend/              # Next.js web application
-│   ├── src/
-│   │   ├── app/          # Next.js app directory
-│   │   ├── components/   # React components
-│   │   └── ...
-│   ├── __tests__/        # Tests
-│   └── Dockerfile
-│
-├── packages/             # Shared code
-│   ├── schema/          # Zod schemas and validation
-│   ├── ui/              # Shared UI components
-│   ├── api-client/      # Generated API client
-│   └── config/          # Shared configurations
-│
-├── docs/                # Specifications and architecture
-├── MEMORY/              # Project memory and decisions
-├── TASKS/               # Task definitions and tracking
-│
-├── CLAUDE.md            # Operating instructions for AI agents
-├── AGENTS.md            # Agent definitions and workflows
-├── pnpm-workspace.yaml  # Workspace configuration
-├── turbo.json          # Build cache configuration
-└── README.md           # This file
+docs/          135 as-built documents across 10 categories
+MEMORY/        decisions, change records, specs, templates
+TASKS/         the execution board
+deploy/        compose stacks and Helm charts
+backend/       Express · JavaScript · CommonJS
+frontend/      Next.js 16 · React 19 · TypeScript
+Makefile       development, gates, deployment
 ```
+
+## The Stack, Accurately
+
+| | |
+|---|---|
+| Backend | Express, **JavaScript, CommonJS** — *not TypeScript* (ADR-030) |
+| ORM | Sequelize |
+| Database | PostgreSQL **or MySQL** (ADR-029) |
+| Frontend | Next.js 16 · React 19 · TypeScript · Tailwind 4 · Zustand |
+| Realtime | Socket.IO both ends (ADR-031) |
+| Infrastructure | Redis · RabbitMQ · embedded MQTT (aedes) · ClamAV · pgvector |
+| Distribution | both halves compile to **standalone binaries** — no runtime in the production images |
+
+## Scale
+
+| | |
+|---|---|
+| Backend modules | 33 |
+| Mounted route modules | 53 |
+| Models | 72 |
+| Services / controllers / validators | 76 / 56 / 37 |
+| Backend test files | 342 |
+| Live E2E specs | 51 |
+| Frontend API services (each with a contract test) | 51 |
+| Dashboard surfaces | ~60 |
+| ADRs | 37 |
+
+## Where to Start Reading
+
+| You are | Read |
+|---|---|
+| New to the project | [`docs/PLAN/00-PROJECT-OVERVIEW.md`](docs/PLAN/00-PROJECT-OVERVIEW.md) |
+| **An engineer, any discipline** | [`docs/SECURITY/05-MULTI-TENANCY-SECURITY.md`](docs/SECURITY/05-MULTI-TENANCY-SECURITY.md) — **mandatory** |
+| Working on the backend | [`docs/BACKEND/00-BACKEND-STANDARDS.md`](docs/BACKEND/00-BACKEND-STANDARDS.md) |
+| Working on the frontend | [`docs/FRONTEND/00-FRONTEND-STANDARDS.md`](docs/FRONTEND/00-FRONTEND-STANDARDS.md) |
+| Deploying | [`deploy/README.md`](deploy/README.md) |
+| An AI agent | [`CLAUDE.md`](CLAUDE.md), then [`AGENTS.md`](AGENTS.md) |
+| Wondering why something is the way it is | [`MEMORY/DECISIONS.md`](MEMORY/DECISIONS.md) — **Part II first** |
 
 ## Documentation
 
-- **Architecture & Specifications:** See `docs/` directory
-- **Architectural Decisions:** `MEMORY/DECISIONS.md` (28 ADRs)
-- **Project Progress:** `MEMORY/PROGRESS.md`
-- **Task Execution:** `TASKS/README.md` and `TASKS/PROGRESS.md`
-- **Working Conventions:** `TASKS/00-TASK-CONVENTIONS.md`
-- **AI Agent Guide:** `CLAUDE.md`
-- **Agent Definitions:** `AGENTS.md`
+`docs/` describes the system **as it is actually built**. Every document names the source files it derives from, so you can check it rather than trust it.
 
-## Development Workflow
+| | | |
+|---|---|---|
+| [`PLAN/`](docs/PLAN/00-PROJECT-OVERVIEW.md) | 19 | product, business rules, roles, compliance, risks |
+| [`ARCHITECTURE/`](docs/ARCHITECTURE/00-SYSTEM-ARCHITECTURE.md) | 10 | system design |
+| [`API/`](docs/API/00-API-STANDARDS.md) | 14 | the contract across 53 route modules |
+| [`DATABASE/`](docs/DATABASE/00-DATA-MODEL.md) | 14 | 72 models by domain |
+| [`SECURITY/`](docs/SECURITY/00-SECURITY-REQUIREMENTS.md) | 13 | threat model through incident response |
+| [`UI-UX/`](docs/UI-UX/00-DESIGN-DIRECTION.md) | 20 | experience design and the design system |
+| [`FRONTEND/`](docs/FRONTEND/00-FRONTEND-STANDARDS.md) | 12 | frontend architecture |
+| [`BACKEND/`](docs/BACKEND/00-BACKEND-STANDARDS.md) | 12 | backend architecture and the 33-module reference |
+| [`DEVOPS/`](docs/DEVOPS/00-ENVIRONMENTS.md) | 12 | environments, deployment, observability |
+| [`TESTING/`](docs/TESTING/00-TEST-STRATEGY.md) | 8 | the strategy and every suite enforcing it |
 
-### One Task at a Time
-
-1. Pick next task from `TASKS/PROGRESS.md`
-2. Create feature branch: `git checkout -b feat/P1-02-task-name`
-3. Implement per spec in `docs/`
-4. Ensure all tests pass: `pnpm test`
-5. Create PR with task ID in title: `P1-02: Task name`
-6. Get code review and approval
-7. Merge to main
-8. Create task record in `MEMORY/records/`
-9. Update `MEMORY/PROGRESS.md` and `TASKS/PROGRESS.md`
-
-### Branch & Commit Convention
-
-```
-Branch: feat/P1-02-rbac-system
-Commit: P1-02: Implement RBAC system with role-permission assignments
-```
-
-See `TASKS/00-TASK-CONVENTIONS.md` for complete guidelines.
-
-## Core Technologies
-
-| Layer | Technology | Version |
-|-------|-----------|---------|
-| Backend | Express.js | 5.x |
-| Frontend | Next.js | 16.x |
-| Database | PostgreSQL | 14+ |
-| Cache | Redis | 7+ |
-| ORM | Sequelize | 6.x |
-| Validation | Zod | Latest |
-| Testing | Jest | 30.x |
-| Build | Turbo | 2.x |
-| Package Manager | pnpm | 9.x |
-
-## Compliance & Security
-
-- **Multi-tenant isolation** with application-level tenant context
-- **RBAC (Role-Based Access Control)** with 7 core roles
-- **OIDC Authentication** with session management
-- **Audit logging** on all data mutations (ISO 17025, KARS compliance)
-- **Row-level security** with encrypted credentials
-
-## Project Phases
-
-### Phase 1: Foundation (Current)
-- Multi-tenant setup, authentication, RBAC
-- Database schema, migrations, audit logging
-- Main dashboard and navigation
-- API documentation
-
-### Phase 2: Warehouse & Inventory
-- Warehouse and location models
-- Stock tracking and transfers
-- Stock opname (inventory counting)
-- Warehouse UI
-
-### Phase 3: Calibration & Devices
-- Device catalog
-- Calibration scheduling and work orders
-- Results recording and certificates
-- Device health scoring
-
-### Phase 4: Enterprise SSO & Advanced
-- SAML integration
-- Vault-based secrets management
-- Advanced analytics
-- Bulk operations
-
-### Phase 5: Analytics & Data Lake
-- Real-time dashboards
-- Predictive maintenance models
-- Data lake integration
-- Advanced compliance reporting
-
-## Getting Help
-
-### Questions About
-
-- **Architecture:** Read `CONTEXT.md` and `MEMORY/DECISIONS.md`
-- **APIs:** Check `docs/API/` and OpenAPI spec at `/api-docs`
-- **Database:** See `docs/DATABASE/` and ER diagram
-- **Security:** Review `docs/SECURITY/`
-- **Tasks:** Refer to `TASKS/README.md` and blocking dependencies
-
-### Common Commands
+## Commands
 
 ```bash
-# View logs
-docker logs -f hospital-calibrator-api
-docker logs -f hospital-calibrator-db
-
-# Connect to database
-pnpm db:psql
-
-# Check migrations status
-cd backend && npm run migrate:status
-
-# Clear all build artifacts
-pnpm clean
-
-# Run linting with auto-fix
-pnpm lint --fix
+make dev              # local stack, hot reload
+make verify           # lint · typecheck · test · build
+make test-e2e         # 51 live specs against a running server
+make migrate          # then: make migrate-verify — the log is not evidence
+make deploy ENV=prod TAG=<sha>
 ```
+
+`make verify` does **not** cover the live or browser suites. A green `verify` is not a green release.
+
+## Current State, Stated Honestly
+
+Phases 0–5 are shipped. Two gates are failing, and a status page that hides them is not a status page.
+
+| | |
+|---|---|
+| Backend unit coverage gate (100%) | 🔴 **failing** — [P6-01](TASKS/PHASE-6-CORRECTNESS-AND-COMPLIANCE.md) |
+| Live E2E in one uninterrupted run | 🔴 **never achieved** — verified fix by fix — [P6-02](TASKS/PHASE-6-CORRECTNESS-AND-COMPLIANCE.md) |
+| `calibration_records` append-only | 🟡 a **convention**, not a database constraint — [P6-03](TASKS/PHASE-6-CORRECTNESS-AND-COMPLIANCE.md) |
+| Helm charts | 🟡 **render**; no cluster has been reachable |
+| CI pipeline | ⚪ deferred — gates run in `pre-push` and `make verify` |
+
+Full board: [`TASKS/PROGRESS.md`](TASKS/PROGRESS.md). Everything unverified is listed in [`TASKS/BACKLOG.md`](TASKS/BACKLOG.md) § Unverified Claims.
+
+## The Rules That Matter Most
+
+**Tenant isolation is deny-by-default.** Global Sequelize hooks inject the predicate; you do not opt in. A principal with no resolvable tenant sees **nothing**.
+
+**Cross-tenant returns 404, never 403.** A 403 confirms the resource exists.
+
+**Every route needs a permission gate** — and nothing in the build enforces that yet.
+
+**Name the test.** An assertion that a test passed is not evidence. "IDOR tested, all good" with no test named is worse than silence, because it stops anyone looking again.
 
 ## Contributing
 
-1. Read working conventions in `TASKS/00-TASK-CONVENTIONS.md`
-2. Understand the current phase from `MEMORY/PROGRESS.md`
-3. Pick a task and create feature branch
-4. Implement with tests and documentation
-5. Submit PR for code review
-6. Merge when approved and all checks pass
+One task, one branch, one PR. `main` stays deployable.
 
-## License
+```
+feat/P6-04-route-permission-guard
+```
 
-MIT
+**Nothing is `DONE` without its record in `MEMORY/records/`.** Conventions: [`TASKS/00-TASK-CONVENTIONS.md`](TASKS/00-TASK-CONVENTIONS.md).
 
-## Support
+## A Note on This Repository's History
 
-For issues, refer to:
-- Architecture decisions: `MEMORY/DECISIONS.md`
-- Technical blockers: `MEMORY/BLOCKERS.md`
-- Project status: `MEMORY/PROGRESS.md`
+The previous `CLAUDE.md` instructed engineers and agents to write **strict TypeScript with no `any`** — for a backend that is JavaScript. The task board listed foundation work as TODO that had shipped months earlier.
+
+An instruction document that disagrees with the code produces confidently wrong work, **and the confidence is the dangerous part**.
+
+That is recorded as PR-4, and it is why `docs/` is now as-built, why Part II of `DECISIONS.md` exists, and why every document here names the file it derives from.

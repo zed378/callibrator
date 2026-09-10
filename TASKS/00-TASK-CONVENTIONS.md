@@ -1,428 +1,207 @@
-# Task Conventions & Working Guidelines
+# 00 — Task Conventions
 
-How to work effectively in this project. Read this before starting any task.
-
----
-
-## Branch & Commit Strategy
-
-### Branch Naming
-
-One branch per task, named with task ID:
-
-```
-feat/P1-02-rbac-system
-feat/P2-01-warehouse-models
-fix/P1-05-tenant-isolation-bug
-docs/P1-11-api-documentation
-```
-
-Format: `{type}/{task-id}-{kebab-case-description}`
-
-**Types:** `feat`, `fix`, `refactor`, `docs`, `chore`
-
-**Task ID:** From `TASKS/README.md` (e.g., `P1-02`)
-
-**Description:** Hyphenated, lowercase, 3-5 words
-
-### Commit Messages
-
-Commit subjects include task ID as join key:
-
-```
-P1-02: Implement RBAC system with role-permission assignments
-
-P2-01: Add warehouse models and location hierarchy
-
-P1-05: Fix tenant isolation query filters (bug fix)
-```
-
-Format: `{TASK_ID}: {concise description}`
-
-**Guidelines:**
-- First commit sets up the branch
-- Logical commits group related changes
-- One feature = one task = one branch = one PR
-
-### Main Branch Protection
-
-`main` stays clean and deployable:
-- All development happens on feature branches
-- PRs required for merge
-- Automated CI checks before merge
-- Task record created before merge
+How to work in this repository. Read before starting any task.
 
 ---
 
-## Task Definition of Done
+## Task IDs
 
-Every task must satisfy this checklist before merge:
+```
+P<phase>-<sequence>          P6-01, P7-03, P8-02
+```
 
-### Code Quality
-- [ ] Code written per spec in `docs/`
-- [ ] Follows project conventions and style
-- [ ] No console.log, debugger, or comments left behind
-- [ ] Error handling covers edge cases
-- [ ] Input validation on all endpoints
+Phases 0–5 are complete. Current work is P6 and beyond — see [`README.md`](./README.md).
 
-### Testing
-- [ ] Unit tests written for new functions
-- [ ] Integration tests for API endpoints
-- [ ] Permission checks tested (RBAC, tenant isolation)
-- [ ] All tests pass: `pnpm test`
-- [ ] Test coverage > 80% for new code
+## Statuses
 
-### Type Safety
-- [ ] TypeScript compiles without errors
-- [ ] No `any` types used
-- [ ] `pnpm typecheck` passes
-- [ ] API contracts match implementation
+| Status | Meaning |
+|---|---|
+| `TODO` | not started; dependencies may or may not be met |
+| `BLOCKED` | dependencies not met, or waiting on an owner decision |
+| `WIP` | in progress, on a branch |
+| `REVIEW` | PR open |
+| `DONE` | merged **and** its `MEMORY/records/` entry exists |
 
-### Linting & Formatting
-- [ ] ESLint passes: `pnpm lint`
-- [ ] Prettier formats code: `pnpm format`
-- [ ] No unused variables or imports
+**`DONE` requires the record.** A task without one is not done, however finished the code looks.
 
-### Build & Deployment
-- [ ] `pnpm build` succeeds
-- [ ] Docker builds successfully
-- [ ] No breaking changes to API contracts
-- [ ] Migrations tested on empty database
-
-### Documentation
-- [ ] `docs/` updated if architecture changes
-- [ ] API spec (OpenAPI/Swagger) updated
-- [ ] Inline code comments for complex logic
-- [ ] README updated if new setup steps
-
-### Compliance & Security
-- [ ] RBAC checks enforced on new endpoints
-- [ ] Tenant isolation verified (no cross-tenant leaks)
-- [ ] Audit logging on data mutations
-- [ ] Secrets not hardcoded or logged
-
-### Memory & Tracking
-- [ ] Task record created: `MEMORY/records/{TASK_ID}.md`
-- [ ] MEMORY record documents:
-  - What was implemented
-  - Why it was done that way
-  - Key decisions made
-  - Any known limitations
-- [ ] `MEMORY/PROGRESS.md` updated with completion
-- [ ] `TASKS/PROGRESS.md` marked as "Completed"
-
-### Git & PR
-- [ ] Branch merged to main with squashed commits (optional)
-- [ ] PR reviewed and approved
-- [ ] No unresolved conversations
-- [ ] Branch deleted after merge
-
----
-
-## Task Record Template
-
-Each completed task gets a record in `MEMORY/records/{TASK_ID}.md`:
+## Anatomy of a Task Card
 
 ```markdown
-# Task Record: {TASK_ID} — {Title}
+### P6-01 — Restore the backend coverage gate
 
-## What Was Implemented
+| | |
+|---|---|
+| **Status** | TODO |
+| **Depends on** | — |
+| **Spec refs** | docs/TESTING/01-UNIT-TESTING.md · docs/BACKEND/09-TESTING.md |
+| **Spec required** | no |
 
-Brief summary of what was built and why.
+**Why:** A gate that is currently failing is a gate nobody trusts.
 
-## Implementation Details
+**Definition of Done**
+- [ ] `npm run test:coverage` passes at the configured threshold
+- [ ] every uncovered branch is either tested or deliberately excluded with a recorded reason
 
-- **Files changed:** List key files
-- **Database migrations:** Any schema changes
-- **API endpoints:** New or modified endpoints
-- **Dependencies added:** Any new npm packages
-
-## Key Decisions
-
-1. **Decision 1** — Why chosen, alternatives considered
-2. **Decision 2** — Trade-offs and implications
-
-## Testing
-
-- Unit tests: X tests covering Y scenarios
-- Integration tests: API endpoint validation
-- Permission tests: RBAC and tenant isolation
-- Manual testing: Steps to verify manually
-
-## Known Limitations
-
-- Limitation 1 and its impact
-- Limitation 2 and mitigation plan
-
-## Future Work
-
-- Related tasks in next phase
-- Performance optimization opportunities
-- Feature extensions considered
-
-## Review Notes
-
-Comments from code review, approvals, or follow-ups.
+**Abuse cases**
+- Coverage restored by lowering the threshold rather than adding tests
 ```
 
----
+**Spec refs are mandatory.** A task with none is a task nobody can check.
 
-## Parallel Work Strategy
+**Abuse cases** state how the task could be satisfied dishonestly. They exist because most of them have happened somewhere.
 
-Multiple tasks can run in parallel if they have no blocking dependencies:
+## Branches
 
-### Phase 1 Parallelization
-After P1-01 (Monorepo) and P1-02 (Database), these can run in parallel:
-- P1-03 (OIDC Authentication)
-- P1-04 (RBAC System)
-- P1-05 (Tenant Context)
-- P1-06 (Session Management)
+```
+{type}/{task-id}-{kebab-description}
 
-### Phase 2 Parallelization
-After P2-01 (Warehouse Models), these can run in parallel:
-- P2-02 (Stock Tracking)
-- P2-03 (Stock Opname)
-- P2-04 (Warehouse UI)
+feat/P6-04-route-permission-guard
+fix/P6-02-e2e-clean-run
+docs/P7-01-ci-pipeline
+```
 
-**Key:** No two tasks modify the same files. Use different feature branches.
+Types: `feat`, `fix`, `refactor`, `docs`, `chore`, `test`.
 
----
+One task, one branch, one PR. `main` stays deployable.
 
-## Code Review Checklist
+## Commits
 
-Reviewers must verify:
+```
+P6-04: Add a build guard for routes without a permission gate
 
-### Functionality
-- [ ] Implements the spec correctly
-- [ ] No obvious bugs
-- [ ] Edge cases handled
-- [ ] Error messages are clear
+- Fails any diff adding a router call with no dynamicAccess or rbac
+- Tested both directions: a gated route passes, an ungated one fails
+- Closes the gap named in docs/SECURITY/04 § "The failure mode nothing prevents"
+```
 
-### Security & Compliance
-- [ ] RBAC checks present
-- [ ] Tenant isolation verified
-- [ ] Audit logging in place
-- [ ] No secrets in code
+Subject carries the task ID. Body explains **why**, not what — git has the what.
 
-### Performance
-- [ ] Database queries optimized
-- [ ] No N+1 queries
-- [ ] Reasonable pagination defaults
-- [ ] Caching used appropriately
+## The Global Definition of Done
 
-### Style & Maintainability
-- [ ] Follows project conventions
-- [ ] Code is readable and documented
-- [ ] No technical debt introduced
-- [ ] Tests are comprehensive
+Every task inherits this. A task-specific DoD **adds** to it.
+
+### Code
+
+- [ ] Implements the spec in `docs/`
+- [ ] Follows existing conventions ([`../docs/BACKEND/00-BACKEND-STANDARDS.md`](../docs/BACKEND/00-BACKEND-STANDARDS.md), [`../docs/FRONTEND/00-FRONTEND-STANDARDS.md`](../docs/FRONTEND/00-FRONTEND-STANDARDS.md))
+- [ ] No `console.log`, no commented-out code
+- [ ] Errors carry the right status — **404 cross-tenant, 409 invalid transition**
+
+### Security — unwaivable
+
+- [ ] **Every new route has a permission gate.** Nothing in the build enforces this.
+- [ ] **Every new `:id` route has a two-tenant test asserting 404** — not 403, not 200
+- [ ] No new `sequelize.query` without an explicit tenant predicate
+- [ ] No new `skipTenantScope` without a comment explaining why
+- [ ] No new `isSystemTask` spanning more than the operation needing it
+- [ ] Every new cache key includes the tenant id
+- [ ] No new uniqueness constraint spanning tenants
+- [ ] No secret reachable in a response, a log, or `audit_logs.changes`
+
+### Compliance
+
+- [ ] Every mutation writes an audit row, **inside the action's transaction**
+- [ ] A rolled-back action leaves **no** audit row
+- [ ] Anything touching evidence states whether its guarantee is a **constraint** or a **convention**
 
 ### Testing
-- [ ] Test coverage adequate
-- [ ] Happy path and edge cases tested
-- [ ] Permission-based tests present
-- [ ] Integration tests working
 
----
+- [ ] Unit tests for new functions, **including the error branches**
+- [ ] Negative authorization cases — the positive case alone proves nothing
+- [ ] A live E2E spec where an endpoint changed
+- [ ] Tests pass at the coverage gate
+- [ ] Where a test guards something load-bearing, a **mutation check**: break the thing, watch the right test fail
 
-## Debugging & Troubleshooting
+### Build
 
-### Local Development
+- [ ] `pnpm lint` — React Compiler rules included, not disabled
+- [ ] `pnpm typecheck` — frontend; the backend is JavaScript (ADR-030)
+- [ ] `pnpm build`
+- [ ] Migrations apply to a clean database **and** to production-shaped data
+- [ ] **Migration results verified by inspecting columns**, not by trusting the log
 
-```bash
-# Run everything
-pnpm install      # Install dependencies
-pnpm dev          # Start local dev (backend + frontend)
+### Documentation
 
-# Run individual checks
-pnpm typecheck    # TypeScript validation
-pnpm lint         # ESLint
-pnpm test         # Jest tests
-pnpm build        # Production build
-```
+- [ ] `docs/` amended **if and only if** reality changed — through the deviation protocol
+- [ ] An ADR if a decision was made or a `docs/` document deviated from
 
-### Database Issues
+### Record
 
-```bash
-# Reset database to clean state
-npm run db:reset  # (in backend)
+- [ ] `MEMORY/records/YYYY-MM-DD-<task-id>-<slug>.md` written
+- [ ] A line added to `MEMORY/MEMORY-INDEX.md`
+- [ ] A `MEMORY/CHANGELOG.md` entry if user-visible or operationally significant
+- [ ] `TASKS/PROGRESS.md` updated **in the same commit**
 
-# Run migrations
-npm run migrate   # (in backend)
+## What May Be Waived, and What May Not
 
-# Rollback last migration
-npm run migrate:revert
-```
+**A multi-tenancy finding is not waivable by anyone.** Not for a deadline, not for a demo, not with a follow-up ticket.
 
-### Viewing Logs
+Everything else is negotiable with a recorded decision **naming who agreed**, written into the change record.
 
-```bash
-# Backend logs
-docker logs -f hospital-calibrator-api
+## The Deviation Protocol
 
-# Frontend dev server logs
-pnpm dev          # Runs in terminal
+When implementation reveals `docs/` is wrong, incomplete, or contradictory:
 
-# Database logs
-docker logs -f hospital-calibrator-db
-```
+1. **Stop.** Do not quietly implement something different.
+2. Write an **ADR** in `MEMORY/DECISIONS.md` — decision, rationale, **alternatives considered**, implications **including the bad ones**.
+3. Amend the `docs/` document, referencing the ADR.
+4. Note both in the change record.
 
----
+**A documented deviation is a decision. An undocumented one is a bug nobody has found yet.**
 
-## Dependency Management
+If the deviation would need a decision the owner has not made, it is an Open Question in [`BACKLOG.md`](./BACKLOG.md), not a judgement call.
 
-### Adding New Packages
+## Evidence
 
-```bash
-# In root (affects all workspaces)
-pnpm add lodash -w
+> **An assertion that a test passed is not evidence. Name the test.**
 
-# In specific workspace
-pnpm add --filter backend lodash
+"IDOR tested, all good" with no test named is **worse than saying nothing**, because it stops anyone looking again.
 
-# Dev dependency
-pnpm add --filter backend @types/lodash -D
-```
+Two related rules, both learned here:
 
-### Version Pinning
+**Test database grants as the application role**, not the owner. As the owner the test passes whether the grant exists or not — a green tick for an absent control.
 
-- Use exact versions (no `^` or `~`)
-- Example: `"lodash": "4.17.21"` not `"^4.17.0"`
-- Rationale: Reproducible builds, compliance audit trail
+**A test generated from the code it tests verifies consistency, never correctness.** A redaction test iterating the redactor's own key set cannot catch a key being deleted from it.
 
-### Dependency Review
+## Distinguish "Renders" From "Works"
 
-Before adding:
-1. Check if package is necessary
-2. Review package health (active maintenance, security issues)
-3. Check for conflicts with existing packages
-4. Document in task record why added
+Two claims currently in this repository:
 
----
+- The Helm charts **render**. No cluster has been reachable, so they are **not known to deploy**.
+- The E2E suite has been verified **fix by fix**. It has **never passed in one uninterrupted run**.
 
-## Release Checklist
+Both distinctions belong in records and status updates. Rounding them up is how a board becomes untrustworthy.
 
-Before moving to next phase or releasing:
+## Traps Worth Checking Before You Finish
 
-### All Blocking Tasks Complete
-- [ ] P1-01 through P1-10 all in `main`
-- [ ] No open PRs blocking phase start
+Each has caused a production defect here, and each is structural rather than careless.
 
-### Testing Complete
-- [ ] All unit tests passing
-- [ ] All integration tests passing
-- [ ] Manual smoke tests passed
-- [ ] Staging environment validated
+| Trap | Consequence |
+|---|---|
+| An optional include without `required: false` | INNER JOIN — the list silently returns **nothing** |
+| `schema.validate` passed to Express | **500 on every request** to that route |
+| A path parameter the validator never sees | **400 on every request** |
+| `db` destructured from the models barrel | `undefined`, then a throw at `transaction()` |
+| `is_deleted` written in application code | silently does nothing — the attribute is `isDeleted` |
+| `tenantId` used on the `sessions` model | `column "tenantId" does not exist` |
+| A new role without a `ROLE_LEVELS` entry | fails every privileged gate, **silently** |
+| A migration with a blanket `try/catch` | **recorded as applied while doing nothing** |
+| A global uniqueness constraint | a cross-tenant existence oracle |
+| Suspending the default tenant in a test | 403s every subsequent request; recovery is a direct database update |
 
-### Documentation Complete
-- [ ] All docs in `docs/` updated
-- [ ] API spec (Swagger) current
-- [ ] MEMORY records complete for all tasks
-- [ ] README and setup guides current
-
-### Compliance & Security
-- [ ] No open security issues
-- [ ] Audit logging verified
-- [ ] RBAC and tenant isolation verified
-- [ ] No hardcoded secrets
-
-### Operational Readiness
-- [ ] Docker images built and tagged
-- [ ] Kubernetes manifests ready
-- [ ] Monitoring alerts configured
-- [ ] Runbooks reviewed
-
-### Team Handoff
-- [ ] Team trained on changes
-- [ ] Support docs written
-- [ ] On-call playbooks updated
-
----
-
-## Common Patterns & Examples
-
-### Adding a New API Endpoint
-
-1. Define schema in `packages/schema`
-2. Add Zod validation
-3. Update OpenAPI spec
-4. Implement endpoint in backend
-5. Add permission check middleware
-6. Add test with permission verification
-7. Update frontend client
-8. Add UI for endpoint
-
-### Database Migration
-
-1. Create migration file: `npm run migration:create`
-2. Write up/down migrations
-3. Add Sequelize model update
-4. Test on empty database
-5. Test on database with existing data
-6. Document in task record
-
-### Adding a New Role
-
-1. Add role enum value
-2. Create role seeding script
-3. Assign default permissions
-4. Add UI for role assignment
-5. Test permission enforcement
-6. Document in MEMORY
-
----
-
-## When Things Go Wrong
-
-### Merge Conflicts
+## Before Opening a PR
 
 ```bash
-# Update branch with main
-git fetch origin
-git rebase origin/main
-
-# Resolve conflicts in editor
-# Then continue
-git rebase --continue
+make verify        # lint + typecheck + test + build
+make test-e2e      # against a running server
 ```
 
-### Accidental Commits to Main
+`make verify` does **not** cover the live or browser suites. A green `verify` is not a green release.
 
-```bash
-# Revert the commit
-git revert <commit-hash>
-git push
+## PR
 
-# Or if not pushed yet
-git reset --soft HEAD~1
-```
+**Title:** `P6-04: Add a build guard for routes without a permission gate`
 
-### Database Migration Failed
+**Body:** spec refs, what changed and why, **named tests**, DoD checklist, anything waived and who agreed, anything **not determined**.
 
-1. Stop all services
-2. Restore from backup
-3. Debug migration locally
-4. Create new migration with fix
-5. Retry on staging
-
-### Test Suite Failing
-
-```bash
-# Run specific test file
-pnpm test -- src/auth/auth.spec.ts
-
-# Run with verbose output
-pnpm test -- --verbose
-
-# Clear test cache
-pnpm test -- --clearCache
-```
-
----
-
-## Questions?
-
-- Architecture decisions: See `MEMORY/DECISIONS.md`
-- API contracts: See `docs/API/`
-- Database schema: See `docs/DATABASE/`
-- Running tasks: See `TASKS/PROGRESS.md`
-- Project status: See `MEMORY/PROGRESS.md`
+The last item is not optional. A PR that omits what it could not verify is a PR that will be trusted more than it should be.

@@ -1,308 +1,86 @@
-# Execution Plan
+# TASKS/ — Execution Plan
 
-Central task board for 5-phase development roadmap. Each task names the documents it implements and how it is judged done.
+`docs/` describes **what** the system is and **why**. This folder describes **what to do next, in what order, and how to know it is finished**.
 
-## Task Organization
-
-Tasks are organized by phase and priority:
-- **Phase 1: Foundation** — Multi-tenant setup, auth, RBAC, base infrastructure
-- **Phase 2: Warehouse** — Inventory management and stock tracking
-- **Phase 3: Calibration** — Device catalog, work orders, results, certificates
-- **Phase 4: Enterprise SSO** — SAML, vault integration, advanced features
-- **Phase 5: Analytics** — Data lake, predictive maintenance, dashboards
-
-## Task ID Format
-
-`{Phase}{Priority}-{Sequence}`
-
-Example: `P1-01` = Phase 1, Priority 0 (critical), Task 01
-
-## Task Conventions
-
-Read `00-TASK-CONVENTIONS.md` for complete working guidelines:
-- One task per branch
-- Branch naming: `feat/P1-02-rbac-system`
-- Commit subjects: `P1-02: ...`
-- Task records in `MEMORY/records/`
-- Update `PROGRESS.md` when done
-
-## Current Progress
-
-See `PROGRESS.md` for live phase tracking and completion status.
-
-## Task List by Phase
-
-### Phase 1: Foundation (Current)
-
-**Critical Path (Must Complete First)**
-
-- [ ] **P1-01** Monorepo Setup
-  - Backend and frontend consolidated
-  - pnpm workspaces configured
-  - Turbo build cache enabled
-  - Root configuration files in place
-
-- [ ] **P1-02** Database Schema & Migrations
-  - PostgreSQL schema created
-  - Sequelize models defined
-  - Migration system working
-  - Audit tables configured
-
-- [ ] **P1-03** OIDC Authentication
-  - Auth0 or Keycloak configured
-  - Login/logout flows implemented
-  - Token refresh working
-  - Session middleware active
-
-- [ ] **P1-04** RBAC System
-  - User, Role, Permission tables created
-  - Menu structure defined
-  - Role-permission assignments working
-  - Permission middleware enforced
-
-- [ ] **P1-05** Tenant Context & Isolation
-  - Tenant middleware implemented
-  - Tenant ID injected into requests
-  - Data queries filtered by tenant
-  - Test: cross-tenant data leakage impossible
-
-- [ ] **P1-06** Session Management & Redis
-  - Redis configured for sessions
-  - Refresh token rotation working
-  - Session TTL enforced
-  - Fallback to database working
-
-- [ ] **P1-07** Audit Logging
-  - Audit tables created for all entities
-  - Before/after state logged
-  - User attribution working
-  - Audit queries working
-
-- [ ] **P1-08** User Management Endpoints
-  - User CRUD endpoints
-  - Password hashing with bcrypt
-  - Email verification working
-  - User search and filtering
-
-- [ ] **P1-09** Role & Permission Management
-  - Role CRUD endpoints
-  - Permission assignment endpoints
-  - Bulk role assignment
-  - Permission validation on queries
-
-- [ ] **P1-10** Dashboard & Main Layout
-  - Next.js app structure
-  - Main dashboard page
-  - Navigation menu system
-  - Auth guard on routes
-
-**Supporting Tasks**
-
-- [ ] **P1-11** API Documentation (OpenAPI)
-  - Swagger spec generated
-  - Endpoint contracts documented
-  - Client SDK generated
-  - Documentation CI check
-
-- [ ] **P1-12** Docker Setup
-  - Dockerfile for backend
-  - Dockerfile for frontend
-  - docker-compose for local dev
-  - .dockerignore configured
-
-- [ ] **P1-13** CI/CD Pipeline
-  - GitHub Actions workflows
-  - Build and test on PR
-  - Lint checks
-  - Type checking
+Nothing here invents architecture. Every task points back to the `docs/` document that already decided the design. **If a task would need a decision `docs/` does not contain, it is not a task** — it is an entry in [`BACKLOG.md`](./BACKLOG.md) under Open Questions, to be raised with the project owner.
 
 ---
 
-### Phase 2: Warehouse & Inventory
+## Read This First
 
-- [ ] **P2-01** Warehouse & Location Models
-  - Warehouse CRUD
-  - Location hierarchy (floor → section → bin → slot)
-  - Barcode schema
-  - Physical inventory tracking
+**This project is past the greenfield phase.**
 
-- [ ] **P2-02** Stock Tracking & Transfers
-  - Stock entity and queries
-  - Transfer workflow
-  - Stock reservation system
-  - Transfer audit logging
+The previous version of this file listed P1-01 through P1-07 as TODO — monorepo setup, database schema, authentication, RBAC, tenant isolation, sessions, audit logging. All of it had shipped months earlier. 33 modules, 53 route modules, 72 models and 342 test files were already running.
 
-- [ ] **P2-03** Stock Opname (Inventory Counting)
-  - Stock opname workflow
-  - Variance calculation
-  - Adjustment processing
-  - Historical tracking
+That is recorded as PR-4 in [`../docs/PLAN/18-RISK-REGISTER.md`](../docs/PLAN/18-RISK-REGISTER.md), and it is the reason this board now tracks **remaining** work rather than a plan.
 
-- [ ] **P2-04** Warehouse UI
-  - Warehouse list and detail views
-  - Location tree viewer
-  - Stock search and filtering
-  - Transfer interface
+## Files
 
-- [ ] **P2-05** Inventory Reports
-  - Stock level reports
-  - Transfer history
-  - Slow-moving inventory
-  - Warehouse utilization
+| File | Purpose |
+|---|---|
+| [`00-TASK-CONVENTIONS.md`](./00-TASK-CONVENTIONS.md) | Task IDs, statuses, the anatomy of a card, and the Definition of Done every task inherits |
+| [`PROGRESS.md`](./PROGRESS.md) | **The single status board.** What is shipped, what is not |
+| [`PHASE-0-FOUNDATION.md`](./PHASE-0-FOUNDATION.md) | ✅ Stack, scaffolding, schema, tenant scoping, audit, queue, storage — and three divergences |
+| [`PHASE-1-AUTH-AND-RBAC.md`](./PHASE-1-AUTH-AND-RBAC.md) | ✅ Auth, sessions, MFA, WebAuthn, RBAC, users, federation |
+| [`PHASE-2-WAREHOUSE.md`](./PHASE-2-WAREHOUSE.md) | ✅ Warehouses, stock, adjustments, transfers, opname |
+| [`PHASE-3-CALIBRATION.md`](./PHASE-3-CALIBRATION.md) | ✅ Devices, records, scheduling, certificates, e-signature |
+| [`PHASE-4-ENTERPRISE.md`](./PHASE-4-ENTERPRISE.md) | ✅ Tenant hierarchy and lifecycle, backup, custom domains, storage, developer API, GDPR |
+| [`PHASE-5-ANALYTICS.md`](./PHASE-5-ANALYTICS.md) | 🟡 Dashboard, IoT, predictive maintenance, RAG, QMS, workflow, Kanban, tickets — **no data lake, deliberately** |
+| [`PHASE-6-CORRECTNESS-AND-COMPLIANCE.md`](./PHASE-6-CORRECTNESS-AND-COMPLIANCE.md) | 🚧 The debt that blocks a defensible release |
+| [`PHASE-7-OPERATIONAL-MATURITY.md`](./PHASE-7-OPERATIONAL-MATURITY.md) | ⏳ CI, monitoring, alerting, disaster-recovery rehearsal |
+| [`PHASE-8-SCALE-AND-REACH.md`](./PHASE-8-SCALE-AND-REACH.md) | ⏳ Horizontal scaling, partitioning, read replicas — **trigger-driven** |
+| [`BACKLOG.md`](./BACKLOG.md) | Open questions, specification gaps, deliberate deferrals, unverified claims |
 
----
+**Phases 0–5 are written retrospectively.** They were executed before `TASKS/` was used as intended, so those files reconstruct what was actually built from the code, the migration sequence and the audit report — not from a plan that was followed.
 
-### Phase 3: Calibration & Devices
+They are worth reading anyway. Each one names the divergences from the original plan, the defects that were found, and what those defects taught — which is exactly the material that would otherwise have to be rediscovered.
 
-- [ ] **P3-01** Medical Device Catalog
-  - Device CRUD
-  - Category and model management
-  - Vendor tracking
-  - Document storage
+## How to Use This Folder
 
-- [ ] **P3-02** Calibration Scheduling
-  - Schedule creation and management
-  - Automatic work order generation
-  - Scheduler algorithm
-  - Timezone support
+1. **Open [`PROGRESS.md`](./PROGRESS.md)** and find the lowest-numbered task in the current phase that is `TODO` and whose dependencies are all `DONE`.
+2. **Read every document in the task's `Spec refs` row.** These are not decoration — they contain the decisions the task implements. `docs/` is as-built and names its source files; guessing at an endpoint shape or a column name is never necessary and never acceptable.
+3. **If the task is marked `Spec required`**, write the feature spec from [`../MEMORY/templates/FEATURE-SPEC-TEMPLATE.md`](../MEMORY/templates/FEATURE-SPEC-TEMPLATE.md) **before** writing code. Save it to `MEMORY/specs/<task-id>-<slug>.md`.
+4. **Implement**, satisfying every line of the task's Definition of Done plus the inherited global DoD in [`00-TASK-CONVENTIONS.md`](./00-TASK-CONVENTIONS.md).
+5. **Record the change** in [`../MEMORY/`](../MEMORY/README.md) — a change record, an index line, a changelog entry if user-visible, and an ADR if a decision was made or a `docs/` document deviated from.
+6. **Update `PROGRESS.md`** and tick the checkbox in the phase file, **in the same commit as the work**.
 
-- [ ] **P3-03** Calibration Work Orders
-  - Work order state machine
-  - Task creation and assignment
-  - Status transitions
-  - Supervisor approval workflow
+## The Phase Rule
 
-- [ ] **P3-04** Measurement Data Collection
-  - Measurement form builder
-  - Real-time data entry
-  - Validation rules
-  - Data integrity checks
+> **Never build a Phase N+1 feature while Phase N is incomplete.**
 
-- [ ] **P3-05** Calibration Results & Certificates
-  - Result recording
-  - Certificate generation with digital signatures
-  - PDF export
-  - Compliance validation
+It survives even though Phases 0–5 are complete, because it governs what remains. Concretely:
 
-- [ ] **P3-06** Device Calibration Records
-  - Immutable calibration history
-  - Trend analysis
-  - Device health score calculation
-  - Historical filtering and search
+- **Tenant isolation is Phase 0.** A new endpoint that opts out of scoping (`skipTenantScope`) is a Phase 0 regression, not a Phase 8 feature.
+- **Audit logging is Phase 0.** A new mutation without an audit row is a compliance regression, not a feature with a gap.
+- **The certificate state machine is Phase 3.** New transitions extend the machine and its 409 mapping; they do not bypass it.
 
-- [ ] **P3-07** Calibration UI
-  - Work order dashboard
-  - Editor for measurements
-  - Result review and approval
-  - Certificate download
+Phase 6 exists because there is correctness and compliance debt sitting under everything built in Phases 0–5, and building Phase 7 on top of it would compound.
 
-- [ ] **P3-08** Calibration Reports
-  - Device compliance status
-  - Overdue calibrations
-  - Certificate archive
-  - Trend analysis charts
+## Two Things Currently Failing
 
----
+Both are Phase 6, and both are stated here because a board that hides its failures is not a board.
 
-### Phase 4: Enterprise SSO & Advanced Features
+| | Status |
+|---|---|
+| Backend unit-test coverage gate (100%) | **failing** |
+| Live E2E suite in one uninterrupted run | **never achieved** — every fix verified individually |
 
-- [ ] **P4-01** SAML Integration
-  - SAML provider configuration
-  - Assertion parsing
-  - User attribute mapping
-  - SSO discovery
+A gate that is currently failing is a gate nobody trusts. A suite that has never passed as a suite has not passed.
 
-- [ ] **P4-02** Vault Integration
-  - HashiCorp Vault setup
-  - Secrets rotation
-  - Access audit logging
-  - K8s auth integration
+## The One Rule About Evidence
 
-- [ ] **P4-03** Advanced Analytics
-  - Device lifetime analysis
-  - Maintenance cost tracking
-  - Calibration compliance trending
-  - Custom report builder
+> **An assertion that a test passed is not evidence. Name the test.**
 
-- [ ] **P4-04** Bulk Operations
-  - Bulk device import (CSV)
-  - Bulk calibration scheduling
-  - Batch certificate generation
-  - Progress tracking
+A record that says "IDOR tested, all good" and names no test is **worse than one that says nothing**, because it stops anyone looking again.
 
----
+This applies to task completion, phase summaries, and release sign-off alike.
 
-### Phase 5: Analytics & Data Lake
+## Relationship to `docs/` and `MEMORY/`
 
-- [ ] **P5-01** Real-Time Dashboards
-  - Live device status
-  - Maintenance alerts
-  - Compliance metrics
-  - Performance metrics
+| Folder | Direction | Nature |
+|---|---|---|
+| `docs/` | Reference | What the system **is**, grounded in the code. Amended only through the deviation protocol. |
+| `TASKS/` | Forward | What will be built, in what order, and how it will be judged done. |
+| `MEMORY/` | Backward | What was built, what it cost, and what to watch. |
 
-- [ ] **P5-02** Predictive Maintenance Models
-  - ML model for failure prediction
-  - Risk scoring
-  - Maintenance recommendations
-  - Model retraining pipeline
-
-- [ ] **P5-03** Data Lake Integration
-  - ETL pipeline to data warehouse
-  - Historical data sync
-  - Real-time events stream
-  - Compliance reporting integration
-
-- [ ] **P5-04** Advanced Compliance Reporting
-  - KARS compliance report
-  - ISO 17025 audit trail
-  - Data integrity verification
-  - Export to regulatory bodies
-
----
-
-## Blocking Dependencies
-
-Tasks with blocking dependencies must complete in order:
-
-```
-P1-01 (Monorepo) → P1-02 (Database) → P1-03 (Auth) → [P1-04,05,06,07,08,09,10 in parallel]
-                                                        ↓
-                                                    P1-11,12,13
-                                                        ↓
-                                                    Phase 2 start
-```
-
-## Definition of Done (DoD) Checklist
-
-Each task must satisfy:
-
-- [ ] Code implemented and tested
-- [ ] Tests pass locally (`pnpm test`)
-- [ ] Type checking passes (`pnpm typecheck`)
-- [ ] Linting passes (`pnpm lint`)
-- [ ] Build succeeds (`pnpm build`)
-- [ ] API contract updated (if applicable)
-- [ ] Database migrations run cleanly
-- [ ] Documentation updated in `docs/`
-- [ ] MEMORY record created in `MEMORY/records/`
-- [ ] PROGRESS.md updated with completion
-- [ ] Branch merged to main with PR review
-
-## Starting a New Task
-
-1. Create feature branch: `git checkout -b feat/P1-02-rbac-system`
-2. Update `PROGRESS.md` to mark task as "In Progress"
-3. Implement the task per spec in `docs/`
-4. Update `MEMORY/PROGRESS.md` section
-5. Create task record in `MEMORY/records/{TASK_ID}.md`
-6. Create PR and get review
-7. Merge to main when DoD satisfied
-8. Update `PROGRESS.md` to mark as "Completed"
-
-## Quarterly Review
-
-Review and update this task list:
-- After each phase completion
-- Quarterly during active development
-- When scope changes
-- Before each major release
+`TASKS/` is forward-looking; `MEMORY/` is backward-looking. **They are updated in the same commit: a task is not `DONE` until its `MEMORY` record exists.**

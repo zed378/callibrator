@@ -1,500 +1,217 @@
-# AGENTS.md
+# AGENTS.md — Roles and Working Agreements
 
-Agent definitions and specialized workflows for this project.
-
----
-
-## Overview
-
-This document defines specialized agents and how they operate within the Hospital Device Calibration Platform monorepo.
+Agent definitions for this repository. Operating instructions common to all of them are in [`CLAUDE.md`](CLAUDE.md); read that first.
 
 ---
 
-## Agent: Backend Engineer
+## The Shared Contract
 
-**Scope:** Express.js API, database, migrations, server-side logic
+Every agent, regardless of role, is bound by these. They are not role-specific because violating them is not role-specific.
 
-**Capabilities:**
-- Implement REST endpoints with RBAC and tenant isolation
-- Write Sequelize models and migrations
-- Design database schemas following compliance requirements
-- Create audit logging mechanisms
-- Build background workers and queues
-- Write integration and unit tests for backend
+| | |
+|---|---|
+| **Tenant isolation** | deny-by-default, enforced by global hooks. Cross-tenant returns **404**, never 403. |
+| **Every route has a permission gate** | nothing in the build enforces this |
+| **Every mutation writes an audit row** | inside the transaction of the action |
+| **Every new `:id` route has a two-tenant test** | asserting **404** |
+| **Name the test** | an assertion that a test passed is not evidence |
+| **Deviations get an ADR** | a documented deviation is a decision; an undocumented one is a bug nobody has found yet |
+| **Nothing is `DONE` without its record** | `MEMORY/records/` |
 
-**Files They Own:**
-- `backend/src/` — Source code
-- `backend/__tests__/` — Test files
-- `backend/src/migrations/` — Database migrations
-- `backend/docker-compose.yaml` — Local dev database
-
-**Rules:**
-- Every endpoint must have permission checks
-- Every query must filter by tenant_id
-- Every mutation must be audit logged
-- No breaking API changes without discussion
-- Tests must cover happy path, edge cases, and permissions
-
-**Blocked By:**
-- P1-02: Database schema and migrations not ready
-
-**Unlocks:**
-- P1-03 through P1-10: All subsequent backend work
+**A multi-tenancy finding is not waivable by anyone.** Everything else is negotiable with a recorded decision naming who agreed.
 
 ---
 
-## Agent: Frontend Engineer
+## Backend Engineer
 
-**Scope:** Next.js app, React components, client-side logic
+**Owns:** `backend/` — 53 route modules, 76 services, 72 models.
 
-**Capabilities:**
-- Build React components and pages
-- Implement state management and hooks
-- Create forms with validation
-- Build dashboards and UI flows
-- Write integration tests for UI
-- Handle authentication UI and redirects
+**Knows before touching anything:**
 
-**Files They Own:**
-- `frontend/src/` — Source code
-- `frontend/src/app/` — Next.js app directory
-- `frontend/src/components/` — React components
-- `frontend/__tests__/` — Test files
+- The backend is **JavaScript, CommonJS**. There are no types to fix (ADR-030).
+- The models barrel exports **`sequelize`**, not `db`.
+- An optional include needs **`required: false`** — the most repeated defect shape here.
+- `validate(schema)`, never `schema.validate`.
+- Path parameters must reach the validator: `{ ...req.params, ...req.body }`.
+- Transactions open in the **service**, never a controller.
+- `sessions` uses **snake_case attributes**.
 
-**Rules:**
-- All API calls must use typed client from `packages/api-client`
-- Protected routes must check authentication
-- Forms must validate using schemas from `packages/schema`
-- No direct API calls (use generated client)
-- Tests must cover user flows and error states
+**Reads:** [`docs/BACKEND/00`](docs/BACKEND/00-BACKEND-STANDARDS.md) · [`docs/BACKEND/05`](docs/BACKEND/05-TENANT-SCOPING.md) · [`docs/BACKEND/10`](docs/BACKEND/10-MODULE-REFERENCE.md)
 
-**Blocked By:**
-- P1-03: Backend API endpoints not ready
-- P1-10: Main dashboard layout specification
-
-**Unlocks:**
-- Phase 2 and 3: Feature UI implementation
+**Does not:** add a route without a gate · write raw SQL without a tenant predicate · use `skipTenantScope` without a comment · set `isSystemTask` around a whole consumer loop.
 
 ---
 
-## Agent: DevOps Engineer
+## Frontend Engineer
 
-**Scope:** Docker, Kubernetes, CI/CD, infrastructure
+**Owns:** `frontend/` — ~60 dashboard surfaces, 51 API services.
 
-**Capabilities:**
-- Create and maintain Dockerfiles
-- Write Kubernetes manifests
-- Set up CI/CD pipelines (GitHub Actions)
-- Configure container registries
-- Set up monitoring and logging
-- Build and deployment automation
+**Knows before touching anything:**
 
-**Files They Own:**
-- `backend/Dockerfile` — Backend container image
-- `frontend/Dockerfile` — Frontend container image
-- `deploy/` — Kubernetes manifests and scripts
-- `.github/workflows/` — CI/CD pipelines
-- `.github/actions/` — Custom actions
+- **Rows are in `data`; pagination is in a top-level `meta`.** Violating it renders an empty list with **no error**.
+- Every list has **three** states — loading, empty, **failed**. `EmptyState` and `ErrorState` are separate components.
+- Authorization is **not** a frontend concern. The sidebar renders from the server-resolved menu tree; an unauthorised surface is **absent**, not hidden.
+- **`NEXT_PUBLIC_*` is inlined at build time.** A different API URL is a different image.
+- A store is for state that **outlives a page**. Filters belong in the **URL**.
+- React 19's compiler flags `setState` in effects and makes most manual memoisation unnecessary. Do not disable the rules.
 
-**Rules:**
-- All secrets passed via environment variables
-- Container images scanned for vulnerabilities
-- Database migrations run before app start
-- Health checks defined for all services
-- No hardcoded credentials in manifests
+**Reads:** [`docs/FRONTEND/00`](docs/FRONTEND/00-FRONTEND-STANDARDS.md) · [`docs/FRONTEND/03`](docs/FRONTEND/03-API-CLIENT.md) · [`docs/FRONTEND/08`](docs/FRONTEND/08-ERROR-BOUNDARIES.md)
 
-**Blocked By:**
-- P1-12: Docker setup task
-
-**Unlocks:**
-- P1-13: CI/CD pipeline setup
-- Phase 2+: Staging and production deployment
+**Never:** renders an empty list when a request failed. That is a lie about a compliance figure, and someone repeats it in a meeting.
 
 ---
 
-## Agent: Database Architect
+## Database Engineer
 
-**Scope:** Schema design, migrations, data integrity
+**Owns:** the schema, 18 migrations, indexes.
 
-**Capabilities:**
-- Design relational schemas
-- Create Sequelize models
-- Write reversible migrations
-- Optimize queries and indexes
-- Design audit logging schema
-- Performance tuning and capacity planning
+**Knows before touching anything:**
 
-**Files They Own:**
-- `backend/src/models/` — Sequelize models
-- `backend/src/migrations/` — Migration files
-- `docs/DATABASE/` — Schema documentation
+- The platform runs on PostgreSQL **or MySQL**. `CREATE EXTENSION`, `JSONB` and generated-column syntax are not portable.
+- **The Umzug context IS the QueryInterface.**
+- **A blanket `try/catch` marks a migration applied while doing nothing.**
+- Expand-and-contract for anything breaking. A rename in place breaks every running instance mid-deploy.
+- `down` must exist **and be tested**. An untested `down` is a comment.
 
-**Rules:**
-- All schemas documented in `docs/DATABASE/`
-- Migrations must be reversible
-- Foreign key constraints required
-- Indexes created for frequently-queried columns
-- Audit tables for all mutable entities
-- No raw SQL (use ORM)
+**After every migration:** verify the columns in `information_schema`. **The migration log is not evidence.**
 
-**Blocked By:**
-- None (start with P1-02)
-
-**Unlocks:**
-- P1-01: Backend and frontend initialization
+**Reads:** [`docs/DATABASE/13`](docs/DATABASE/13-MIGRATIONS.md) · [`docs/ARCHITECTURE/04`](docs/ARCHITECTURE/04-DATABASE-ARCHITECTURE.md)
 
 ---
 
-## Agent: Security Specialist
+## Security Engineer
 
-**Scope:** Authentication, authorization, compliance, audit
+**Owns:** the controls, and the honesty about which are mechanisms and which are conventions.
 
-**Capabilities:**
-- Design OIDC flows and session management
-- Implement RBAC systems
-- Create audit logging and compliance reports
-- Design security controls and policies
-- Perform security reviews
-- Create incident response procedures
+**The current gaps, all documented and all open:**
 
-**Files They Own:**
-- `backend/src/modules/auth/` — Authentication logic
-- `backend/src/modules/roles/` — RBAC logic
-- `backend/src/modules/audit/` — Audit logging
-- `docs/SECURITY/` — Security specifications
-- `MEMORY/DECISIONS.md` — Security-related ADRs
+| Gap | |
+|---|---|
+| `calibration_records` append-only is a **convention**, not a constraint | PR-2 → P6-03 |
+| MFA not enforced, including for `SUPERADMIN` — which has no second gate behind it | PR-3 → P6-07 |
+| No build guard fails a route missing a permission gate | → P6-04 |
+| `serialNumber` is globally unique — a weak cross-tenant oracle | → P6-06 |
+| Neither `CERT_SIGNING_SECRET` nor `ENCRYPT_KEY` is rotatable | → P6-10 |
 
-**Rules:**
-- All security decisions documented in ADRs
-- Every endpoint must enforce permissions
-- Every data mutation must be logged
-- No secrets in code or logs
-- Regular security audits (quarterly)
-- IDOR test coverage mandatory
+**Rules for testing a control:**
 
-**Blocked By:**
-- None (parallel with database architect)
+- **Test database grants as the application role.** As the owner the test passes whether the grant exists or not — a green tick for an absent control.
+- **A self-verifying test proves consistency, never correctness.**
+- **Mutation-check anything load-bearing:** break the thing, watch the right test fail. A test nobody has seen fail is a test nobody knows is connected.
 
-**Unlocks:**
-- P1-03 through P1-07: Auth and RBAC implementation
+**Reads:** all of [`docs/SECURITY/`](docs/SECURITY/00-SECURITY-REQUIREMENTS.md). [`05`](docs/SECURITY/05-MULTI-TENANCY-SECURITY.md) is mandatory for everyone.
 
 ---
 
-## Agent: QA & Testing
+## DevOps Engineer
 
-**Scope:** Test strategy, test automation, quality assurance
+**Owns:** `deploy/`, the Makefile, the images.
 
-**Capabilities:**
-- Design test strategies and coverage
-- Write unit, integration, and end-to-end tests
-- Set up test infrastructure (Jest, Cypress)
-- Test permission enforcement and tenant isolation
-- Performance testing and benchmarking
-- Create test data and fixtures
+**Knows before touching anything:**
 
-**Files They Own:**
-- `backend/__tests__/` — Backend tests
-- `frontend/__tests__/` — Frontend tests
-- `e2e/` — End-to-end tests
-- `scripts/test-*.js` — Test utilities
+- Both applications compile to **binaries**. Runtime assets — `swagger.json`, `src/templates`, `docs/` — must be copied explicitly, or the API starts fine and fails on the first PDF or email.
+- **Puppeteer needs a system Chromium**, and it fails at **first use, not startup**.
+- **`ACME_DIRECTORY_URL` defaults to Let's Encrypt staging** — certificates no browser trusts, failing in a browser rather than in any log.
+- **`/socket.io/*` needs upgrade headers**, or Socket.IO silently falls back to long-polling.
+- **`/oidc/*` is at the root**, not under `/api/v1`.
+- **Schedulers run once per replica.**
+- `.dockerignore` is read from the **build context root**, not from beside the Dockerfile.
 
-**Rules:**
-- Minimum 80% code coverage for new code
-- Every endpoint must have permission tests
-- Every public flow must have e2e test
-- Tests must be deterministic (no flakiness)
-- Performance baseline tests required
-- CI/CD blocks merge on test failure
+**Honest state:** the Helm charts **render**; no cluster has been reachable. The Makefile is **statically checked**; `make` was not available to run it.
 
-**Blocked By:**
-- P1-01: Base setup complete
-- P1-02: Database ready
-- P1-03: API endpoints ready
-
-**Unlocks:**
-- Continuous validation of all phases
+**Reads:** [`deploy/README.md`](deploy/README.md) · [`docs/DEVOPS/`](docs/DEVOPS/00-ENVIRONMENTS.md)
 
 ---
 
-## Agent: Documentation Writer
+## QA Engineer
 
-**Scope:** Specifications, API docs, guides
+**Owns:** 342 backend test files, 51 live E2E specs, 51 contract tests, 71 browser tests.
 
-**Capabilities:**
-- Write architectural specifications
-- Create API documentation (OpenAPI/Swagger)
-- Write operational guides and runbooks
-- Create user documentation
-- Maintain README files
-- Document decisions and trade-offs
+**The founding lesson:** **3,863 tests passed while 13 endpoints were broken.** Services had been written against endpoints that did not exist, with tests mocking the fabrication.
 
-**Files They Own:**
-- `docs/` — All specifications
-- `MEMORY/DECISIONS.md` — ADRs
-- `MEMORY/PROGRESS.md` — Progress tracking
-- `TASKS/` — Task definitions and status
-- `README.md` files in each package
+> A mock proves the code calls what the developer believed. Only a live call proves the endpoint exists and answers that way.
 
-**Rules:**
-- Specs are source of truth before implementation
-- API docs auto-generated from OpenAPI spec
-- Every decision has an ADR
-- Every task has a MEMORY record
-- Documentation updated before code merge
-- Links between related documents maintained
+**Two operational rules, both learned by breaking things:**
 
-**Blocked By:**
-- None (can start immediately)
+- **Never suspend the default tenant.** It suspends the super-admin living in it and 403s every later request; recovery is a direct database update.
+- **Watch the rate limiter.** Repeated runs exhaust even the non-production budget and produce failures unrelated to the code.
 
-**Unlocks:**
-- Implementation guidance for all teams
+**Currently failing:** the backend coverage gate, and the E2E suite has **never passed in one uninterrupted run**.
+
+**Never** makes a suite green by deleting the failing test. Two expected-failure markers are retained deliberately.
+
+**Reads:** [`docs/TESTING/`](docs/TESTING/00-TEST-STRATEGY.md)
 
 ---
 
-## Agent: Technical Lead / Architect
+## Documentation Writer
 
-**Scope:** Overall design, decisions, coordination
+**Owns:** `docs/` — 135 as-built documents.
 
-**Capabilities:**
-- Make architectural decisions
-- Review technical designs
-- Approve PRs and merges
-- Resolve cross-team conflicts
-- Manage scope and priorities
-- Maintain MEMORY and documentation
+**The rule that governs everything here:** **ground every claim in code, and name the file.** A sentence that cannot be traced is a guess, and guesses in reference material get copied into implementations.
 
-**Responsibilities:**
-- Maintain `MEMORY/DECISIONS.md` with approved ADRs
-- Update `MEMORY/PROGRESS.md` as phases complete
-- Review and approve all PRs before merge
-- Ensure compliance with established patterns
-- Manage task prioritization and dependencies
-- Escalate blockers and risks
+That is not a stylistic preference. `CLAUDE.md` once told agents to write TypeScript for a JavaScript backend, and it was believed.
 
-**Files They Own:**
-- `MEMORY/` — All memory documents
-- `TASKS/PROGRESS.md` — Phase status
-- `CONTEXT.md` — Project context
-- `CLAUDE.md` — This file
+**Also:**
 
-**Rules:**
-- One task at a time per team member
-- No task starts without PR and review
-- Main branch always deployable
-- Breaking changes discussed with team first
-- Monthly architecture reviews
-
-**Decision Authority:**
-- ADR approval
-- Scope changes
-- Priority adjustments
-- Risk escalation
+- **Record contradictions rather than smoothing them.** The surprise is the useful part.
+- **`docs/` changes only through the deviation protocol.** A change is an event with a record.
+- **Never claim a control the code does not have.** A named gap is better than a false claim, because a false claim stops anyone looking again.
 
 ---
 
-## Workflow: Task Assignment
+## Technical Lead
 
-### When a Task is Ready to Start
+**Owns:** architecture, ADRs, and the honesty of the board.
 
-1. **Lead** marks in `TASKS/PROGRESS.md` as "In Progress"
-2. **Lead** assigns to appropriate agent/person
-3. **Agent** creates feature branch: `feat/P1-02-...`
-4. **Agent** updates `MEMORY/PROGRESS.md`
-5. **Agent** implements the task per spec
-6. **Agent** creates task record in `MEMORY/records/`
-7. **Agent** creates PR with documentation
-8. **Lead** reviews and approves
-9. **Agent** merges to main
-10. **Lead** marks in `TASKS/PROGRESS.md` as "Completed"
+**Decides:** anything needing an ADR · what may be waived and who agreed · when a trigger has fired for Phase 8 · whether a divergence is a deviation or a defect.
+
+**The standing responsibility:** **watch for the specification drifting from the code again.** It happened once, silently, over months, and produced an instruction document that made confident work wrong.
+
+Signals: a `docs/` claim with no file reference · a divergence with no ADR · a "renders" reported as "works" · a status board that hides a failing gate.
 
 ---
 
-## Workflow: Handling Blockers
+## Working Agreements
 
-### When a Task is Blocked
+### Before starting
 
-1. **Agent** documents blocker in PR comment
-2. **Agent** updates `MEMORY/BLOCKERS.md`
-3. **Lead** reviews and assigns to blocking task owner
-4. **Blocking task** prioritized and moved to next sprint
-5. **Blocked task** marked "Waiting" in task board
-6. **Agent** can work on different task in parallel
+Read the task, and **every document in its Spec refs**. `docs/` is as-built and names its sources — guessing at an endpoint shape or a column name is never necessary and never acceptable.
 
-### Blocker Escalation
+If the task is `Spec required`, write the spec **first**.
 
-- **Technical blocker:** Escalate to Technical Lead
-- **Resource blocker:** Escalate to Project Manager
-- **Dependency blocker:** Track in `MEMORY/BLOCKERS.md`
+### While working
 
----
+Found a trap? Add it to the traps table in `CLAUDE.md` and to the spec template.
 
-## Workflow: Code Review
+Found a gap in `docs/`? **Stop.** That is the deviation protocol, not a judgement call.
 
-### Reviewer Checklist
+Found an open question? `TASKS/BACKLOG.md`, so it has a consequence rather than only a mention.
 
-- [ ] Implements spec from `docs/`
-- [ ] No obvious bugs or logic errors
-- [ ] Tenant isolation verified (no cross-tenant data access)
-- [ ] Permission checks present (ADR-026)
-- [ ] Audit logging in place (ADR-009)
-- [ ] Error handling covers edge cases
-- [ ] Tests cover happy path, permissions, and edge cases
-- [ ] No hardcoded secrets or credentials
-- [ ] Follows project code style and patterns
-- [ ] Database changes: migrations are reversible
-- [ ] Type checking passes
-- [ ] Linting passes
-- [ ] Build succeeds
-- [ ] Task record complete
+### Before a PR
 
-### Approval Process
-
-- Reviewer approves: "Looks good, approved for merge"
-- Author merges: "Merging to main"
-- Lead updates board: Move to "Completed"
-
----
-
-## Workflow: Release
-
-### Before Releasing a Phase
-
-- [ ] All phase tasks completed and merged
-- [ ] All tests passing (unit, integration, e2e)
-- [ ] All documentation updated
-- [ ] No open security issues
-- [ ] Compliance audit completed
-- [ ] Performance benchmarks met
-- [ ] Team trained on new features
-- [ ] Runbooks reviewed and tested
-- [ ] Docker images tagged with version
-- [ ] Kubernetes manifests validated
-
-### Release Steps
-
-1. Create release branch: `release/v1.0.0`
-2. Update version numbers
-3. Create release notes in `MEMORY/RELEASES/`
-4. Tag commit: `git tag v1.0.0`
-5. Push tag: `git push origin v1.0.0`
-6. Build and push Docker images
-7. Deploy to staging for final validation
-8. Deploy to production
-9. Monitor for errors and rollback if needed
-
----
-
-## Cross-Team Coordination
-
-### Daily Standup Topics
-
-- What was completed yesterday
-- What's being worked on today
-- Any blockers or risks
-- Any cross-team dependencies
-
-### Weekly Planning
-
-- Review `MEMORY/PROGRESS.md` and `TASKS/PROGRESS.md`
-- Prioritize next tasks
-- Identify and plan blockers
-- Capacity planning for next sprint
-
-### Monthly Architecture Review
-
-- Review new ADRs
-- Discuss technical debt
-- Plan Phase N+1 work
-- Compliance and security review
-
----
-
-## Common Tasks by Agent
-
-### Backend Engineer
-
-- **P1-03:** OIDC Authentication
-- **P1-04:** RBAC System
-- **P1-05:** Tenant Context & Isolation
-- **P1-06:** Session Management & Redis
-- **P1-07:** Audit Logging
-- **P1-08:** User Management Endpoints
-- **P1-09:** Role & Permission Management
-
-### Frontend Engineer
-
-- **P1-10:** Dashboard & Main Layout
-- **P2-04:** Warehouse UI
-- **P3-07:** Calibration UI
-- **Phase 5:** Real-time dashboards
-
-### DevOps Engineer
-
-- **P1-12:** Docker Setup
-- **P1-13:** CI/CD Pipeline
-- **Deploy:** Kubernetes manifests and deployment
-
-### Database Architect
-
-- **P1-02:** Database Schema & Migrations
-- **Phase 2-5:** Schema extensions and optimization
-
-### Security Specialist
-
-- **P1-03:** OIDC Authentication design
-- **P1-04:** RBAC design and implementation
-- **P1-05:** Tenant isolation verification
-- **P1-07:** Audit logging design
-
-### QA & Testing
-
-- **P1-01:** Test infrastructure setup
-- **Continuous:** Test coverage for all features
-- **Phase 5:** Performance testing and optimization
-
-### Documentation Writer
-
-- **P1-01:** Initial documentation structure
-- **Continuous:** Spec updates during implementation
-- **Phase completion:** Release notes and guides
-
-### Technical Lead
-
-- **Continuous:** ADR approval and architecture decisions
-- **Weekly:** Planning and prioritization
-- **Phase completion:** Release approval and deployment
-
----
-
-## Escalation Path
-
-```
-Individual Agent
-    ↓
-Team Lead (for cross-team issues)
-    ↓
-Technical Lead (for architectural decisions)
-    ↓
-Project Manager (for resource/timeline issues)
+```bash
+make verify        # lint · typecheck · test · build
+make test-e2e      # against a running server
 ```
 
+The PR body states: spec refs, what changed and why, **named tests**, the DoD checklist, anything **waived and who agreed**, and anything **not determined**.
+
+The last item is not optional. A PR that omits what it could not verify will be trusted more than it should be.
+
+### Handover
+
+Agents do not retain memory between sessions. **`MEMORY/` is the only continuity mechanism**, which is why writing to it is part of a task rather than a summary appended afterwards.
+
+A record written a week later is a reconstruction, and reconstructions quietly omit the parts that were confusing at the time — which are exactly the parts worth having.
+
 ---
 
-## Communication Channels
+## Escalation
 
-- **Daily:** Slack #development channel
-- **Weekly:** Architecture sync meeting
-- **Code Review:** GitHub PR comments
-- **Decisions:** `MEMORY/DECISIONS.md` ADRs
-- **Progress:** `MEMORY/PROGRESS.md` and `TASKS/PROGRESS.md`
-- **Issues:** `MEMORY/BLOCKERS.md`
-
----
-
-## Questions?
-
-Refer to:
-- `CLAUDE.md` — How to work in this codebase
-- `TASKS/00-TASK-CONVENTIONS.md` — Task conventions and guidelines
-- `MEMORY/DECISIONS.md` — Architectural decisions with rationale
-- `CONTEXT.md` — Project architecture and specifications
+| Situation | Action |
+|---|---|
+| A decision `docs/` does not contain | Open Question in `BACKLOG.md`, raise with the owner |
+| A suspected cross-tenant leak | **stop, treat as SEV-1**, snapshot before fixing |
+| A control that turns out to be a convention | record it plainly; do not describe it as a mechanism |
+| Something you could not verify | say so in the record — **do not round it up** |
