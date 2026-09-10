@@ -52,7 +52,8 @@ RUN set -eux; \
     apt-get install -y --no-install-recommends \
         openssl \
         chromium \
-        fonts-liberation; \
+        fonts-liberation \
+        wget; \
     rm -rf /var/lib/apt/lists/*
 
 # Create non-root user

@@ -30,6 +30,15 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
+# next-bun-compile is a devDependency whose postinstall shells out to `bun`
+# purely to create a symlink:
+#   sh -c bun -e "try{require(fs).symlinkSync(..,node_modules/next-bun-compile)}catch{}"
+# Without bun on PATH that exits 127 and `npm install` fails before the build
+# starts. The adapter itself is NOT used by this image (next.config.ts gates it
+# behind NEXT_COMPILE=true), but the package is still installed, so its
+# postinstall has to be able to run.
+COPY --from=oven/bun:1-alpine /usr/local/bin/bun /usr/local/bin/bun
+
 # No lockfile is committed, so this resolves fresh on every build. That is a
 # real reproducibility gap: a build today and a build next month can ship
 # different transitive versions. Committing a lockfile is the fix.
@@ -71,7 +80,13 @@ WORKDIR /app
 RUN apk add --no-cache wget \
     && addgroup -S app && adduser -S -G app app
 
+# HOSTNAME, not HOST. Next.js standalone server.js binds to
+# process.env.HOSTNAME, and Docker sets HOSTNAME to the container ID by
+# default - so the server listens on the container hostname only and
+# http://localhost:3000 is refused. The app still serves over the network,
+# which makes the healthcheck fail while everything else looks fine.
 ENV NODE_ENV=production \
+    HOSTNAME=0.0.0.0 \
     HOST=0.0.0.0 \
     PORT=3000 \
     NEXT_TELEMETRY_DISABLED=1

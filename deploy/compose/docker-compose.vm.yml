@@ -53,6 +53,12 @@ services:
     restart: unless-stopped
 
   frontend:
+    environment:
+      # Server-only, read at RUNTIME (no NEXT_PUBLIC_ prefix, so it is never
+      # inlined into the client bundle). The Next proxy routes use it to reach
+      # the backend directly; the browser keeps using the public URL for
+      # Socket.IO. See frontend/src/constants/index.ts.
+      BACKEND_INTERNAL_URL: ${BACKEND_INTERNAL_URL:-http://backend:3000}
     build:
       context: ../../frontend
       dockerfile: Dockerfile

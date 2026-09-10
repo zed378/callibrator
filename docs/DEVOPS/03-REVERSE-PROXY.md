@@ -8,14 +8,40 @@ nginx. Configuration: [`../../deploy/compose/nginx/`](../../deploy/compose/nginx
 
 | Path | Upstream | Note |
 |---|---|---|
-| `/api/*` | backend | |
+| **`/api/*`** | **frontend** | **not the backend — see below** |
 | `/socket.io/*` | backend | **needs the WebSocket upgrade headers** |
 | `/oidc/*` | backend | **at the root**, not under `/api/v1` |
 | `/.well-known/*` | backend | ACME HTTP-01 challenges |
 | `/uploads/*` | backend | preserve the security headers |
 | everything else | frontend | |
 
-Two of these are easy to miss and both fail confusingly.
+Three of these are easy to miss and all fail confusingly.
+
+## `/api/*` — routing it to the backend breaks authentication
+
+**This one was got wrong in a real deployment**, and the symptom pointed nowhere near the cause: the login page rendered, credentials were correct, the backend returned 200 — and the user still could not log in.
+
+Next.js **owns** `/api/v1/*` in this application:
+
+| Route | Does |
+|---|---|
+| `app/api/v1/auth/login/route.ts` | forwards to the backend, then sets the **httpOnly `auth_token` cookie** |
+| `app/api/v1/[...path]/route.ts` | catch-all proxy; injects `Authorization: Bearer` **from that cookie** on every later call |
+
+`frontend/src/api/client.ts` sets `baseURL: ""` precisely because of this — the browser talks to its own origin and Next does the rest.
+
+Routing `/api/` straight to the backend bypasses both handlers:
+
+- login returns a token in the JSON body that **nothing stores**, and no cookie is set;
+- every authenticated request afterwards arrives at the backend **with no credentials**.
+
+```nginx
+location /api/ {
+    proxy_pass http://frontend;   # NOT http://backend
+}
+```
+
+Next then reaches the backend server-side via **`BACKEND_INTERNAL_URL`** (e.g. `http://backend:3000`). That variable exists because `NEXT_PUBLIC_API_BASE_URL` is read from two places with different reachability needs — the server-side proxy and browser Socket.IO — and pointing the server-side hop at the public origin makes it **re-enter the proxy that called it and loop**.
 
 ## `/socket.io/*` — the silent failure
 
@@ -153,6 +179,8 @@ Two requirements on this layer:
 
 ## Checklist
 
+- [ ] **`/api/` proxies to the FRONTEND, not the backend**
+- [ ] `BACKEND_INTERNAL_URL` is set for the frontend container
 - [ ] `/socket.io/` has the upgrade headers and a long read timeout
 - [ ] `/oidc/` is routed at the **root**
 - [ ] `/.well-known/acme-challenge/` reaches the backend over HTTP
