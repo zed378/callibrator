@@ -5,7 +5,7 @@
 Two variables govern almost every target:
 
 ```
-ENV=dev|staging|prod      selects the compose overlay
+ENV=dev|staging|prod|vm   selects the compose overlay
 TAG=<image tag>           the image to run
 ```
 
@@ -16,12 +16,14 @@ TAG=<image tag>           the image to run
 | Target | Does |
 |---|---|
 | `make env` | copies `deploy/compose/.env.example` to `.env`, refusing to overwrite an existing one |
-| `make secrets` | generates the three required secrets plus the JWT pair |
+| `make secrets` | generates the **four** required secrets plus the JWT pair |
 | `make install` | `pnpm install` |
 
 `make secrets` prints values and a warning, because the warning matters more than the values:
 
-**`CERT_SIGNING_SECRET` and `ENCRYPT_KEY` must be backed up separately from the database.** Losing them produces a system that starts cleanly and is permanently broken — every issued certificate fails public verification, every wrapped credential is undecryptable. Neither is practically rotatable.
+**`CERT_SIGNING_SECRET`, `ENCRYPT_KEY` and `KMS_MASTER_KEY` must be backed up separately from the database.** Losing them produces a system that starts cleanly and is permanently broken — every issued certificate fails public verification, every wrapped credential is undecryptable. Neither is practically rotatable.
+
+`KMS_MASTER_KEY` is the fourth. It was **missing from this target until a deployment found it**, and the way it fails is the argument for checking it here: the container crash-loops with **nothing in `docker logs`**, because the throw happens after winston is configured and the message lands only in `log/activity/exception/<date>.log`. `make check-env` now refuses on it like the other three.
 
 ## Development
 

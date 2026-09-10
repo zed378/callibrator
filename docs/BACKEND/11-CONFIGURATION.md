@@ -12,7 +12,23 @@ Secrets treatment: [`../SECURITY/07-CRYPTOGRAPHY-AND-SECRETS.md`](../SECURITY/07
 CERT_SIGNING_SECRET      HMAC for certificate QR verification
 ENCRYPT_KEY              e-signature private keys and tenant storage credentials at rest
 ATTACHMENT_URL_SECRET    HMAC for signed attachment download URLs
+KMS_MASTER_KEY           wraps tenant storage credentials (64-char hex)
 ```
+
+**`KMS_MASTER_KEY` was missing from this document until a deployment found it.**
+`src/services/kms.service.js` throws at module load in production:
+
+> KMS_MASTER_KEY must be set in production (64-char hex / 32-byte key).
+> Refusing to start with the insecure development master key.
+
+The failure is easy to misread: the container crash-loops, `docker logs` shows
+**nothing**, and the error is written only to
+`log/activity/exception/<date>.log` — because winston is already configured by
+the time it throws. Anyone debugging a silent exit should read that file before
+anything else.
+
+Losing it has the same consequence as losing `ENCRYPT_KEY`: every wrapped
+tenant storage credential becomes undecryptable. Back it up with the others.
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
@@ -158,6 +174,40 @@ Unset means `/ai` and the GDPR export path return errors. That is an environment
 | `ACME_ACCOUNT_EMAIL` | |
 
 Forgetting to point `ACME_DIRECTORY_URL` at the production directory yields certificates no browser trusts, and the failure appears in a browser rather than in any log.
+
+## Bootstrap and Seeding
+
+**Seeding is not automatic on startup.** The database comes up with 72 tables and **zero rows** — no roles, no menu groups, no users — so there is no account to log in with, and `POST /auth/login` fails.
+
+| Variable | Purpose |
+|---|---|
+| `ALLOW_SEEDING` | permits `GET /api/v1/migration/seeding` **without authentication** |
+| `SEED_DEMO` | additionally permits `/migration/seed-demo` (~80 demo rows) |
+
+The seeding route is gated by `superAdminOrBootstrap`: it normally requires a super-admin token, which cannot exist before the first seed. `ALLOW_SEEDING=true` breaks that chicken-and-egg.
+
+```bash
+# first boot only
+ALLOW_SEEDING=true   → restart → GET /api/v1/migration/seeding → ALLOW_SEEDING=false → restart
+```
+
+A successful seed reports roles, menu groups with their permission count, and one user. The seeded super-admin is `sys` / `sys@mail.com`.
+
+**Turn it off again immediately.** While set, it is an unauthenticated endpoint that writes to the database. Verify afterwards that the endpoint returns 401.
+
+**`SEED_DEMO` must never be true in production** — a demo seeder against real data is a data-integrity incident.
+
+## Reverse-Proxy Deployments
+
+| Variable | Purpose |
+|---|---|
+| `BACKEND_INTERNAL_URL` | where the **Next.js server** reaches the backend |
+
+Server-only, deliberately without a `NEXT_PUBLIC_` prefix so it is never inlined into the client bundle.
+
+`NEXT_PUBLIC_API_BASE_URL` is read from **two places with different reachability needs**: server-side by the Next proxy routes in `app/api/v1/**`, and client-side by Socket.IO in `lib/socket.ts`. Behind a proxy those are not the same URL — a server-side hop to the public origin **re-enters the proxy that called it and loops**.
+
+Set this whenever `/api/` is routed to Next.js rather than straight to the backend. See [`../DEVOPS/03-REVERSE-PROXY.md`](../DEVOPS/03-REVERSE-PROXY.md).
 
 ## Schedulers
 

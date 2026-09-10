@@ -32,7 +32,19 @@ const nextConfig: NextConfig = {
   ...(isProd
     ? {
         output: "standalone",
-        adapterPath: import.meta.resolve("next-bun-compile"),
+        // The bun-compile adapter is OPT-IN via NEXT_COMPILE=true.
+        //
+        // It post-processes the build into a single binary and needs trace
+        // artefacts a plain Node build does not emit, so leaving it always-on
+        // breaks `next build` with:
+        //   ENOENT: no such file or directory, open .next/next-server.js.nft.json
+        //
+        // Standalone output is what the Docker image consumes, so the two are
+        // kept independent: the image builds without the adapter, and the
+        // binary path still works when explicitly requested.
+        ...(process.env.NEXT_COMPILE === "true"
+          ? { adapterPath: import.meta.resolve("next-bun-compile") }
+          : {}),
       }
     : {}),
   // Explicitly set root to silence multi-lockfile warning

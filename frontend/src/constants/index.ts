@@ -17,8 +17,27 @@ export const APP_NAME = "Hospital Device Callibrator";
 export const APP_VERSION = "1.0.0";
 
 // API Configuration
+// This one value is read from TWO places with DIFFERENT reachability needs:
+//
+//   - server-side, by the proxy route handlers in app/api/v1/** (which set the
+//     httpOnly auth cookie and inject Authorization on every later call)
+//   - client-side, by lib/socket.ts, which opens the Socket.IO connection
+//     straight from the browser
+//
+// Behind a reverse proxy those are not the same URL. The server-side hop must
+// go DIRECTLY to the backend container, or it re-enters the proxy that called
+// it and loops. The browser cannot resolve that internal name and needs the
+// public origin.
+//
+// BACKEND_INTERNAL_URL is a server-only variable (no NEXT_PUBLIC_ prefix), so
+// it is never inlined into the client bundle; the window check keeps the
+// browser on the public URL.
 export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
+  (typeof window === "undefined"
+    ? process.env.BACKEND_INTERNAL_URL
+    : undefined) ||
+  process.env.NEXT_PUBLIC_API_BASE_URL ||
+  "http://localhost:5000";
 export const API_VERSION = "/api/v1";
 export const API_TIMEOUT = 30000; // 30 seconds
 

@@ -34,8 +34,12 @@ else ifeq ($(ENV),staging)
 COMPOSE_FILES += -f $(COMPOSE_DIR)/docker-compose.staging.yml
 else ifeq ($(ENV),prod)
 COMPOSE_FILES += -f $(COMPOSE_DIR)/docker-compose.prod.yml
+else ifeq ($(ENV),vm)
+# Single host: images are BUILT here (no registry) and nginx serves plain HTTP
+# on a high port (no domain, no certificate). Ports live in the 19xxx block.
+COMPOSE_FILES += -f $(COMPOSE_DIR)/docker-compose.vm.yml
 else
-$(error ENV must be one of: dev, staging, prod  (got "$(ENV)"))
+$(error ENV must be one of: dev, staging, prod, vm  (got "$(ENV)"))
 endif
 
 DC := IMAGE_TAG=$(TAG) docker compose --env-file $(COMPOSE_DIR)/.env $(COMPOSE_FILES)
@@ -61,7 +65,7 @@ help: ## Show this help
 		/^[a-zA-Z0-9_-]+:.*?## / { printf "  $(C_BOLD)%-22s$(C_OFF) %s\n", $$1, $$2 } \
 		/^## / { printf "\n$(C_DIM)%s$(C_OFF)\n", substr($$0, 4) }' $(MAKEFILE_LIST)
 	@echo ""
-	@echo -e "$(C_DIM)  ENV=dev|staging|prod   TAG=<image tag>$(C_OFF)"
+	@echo -e "$(C_DIM)  ENV=dev|staging|prod|vm   TAG=<image tag>$(C_OFF)"
 	@echo ""
 
 # =============================================================================
@@ -76,22 +80,24 @@ env: ## Create deploy/compose/.env from the example
 		cp $(COMPOSE_DIR)/.env.example $(COMPOSE_DIR)/.env
 		echo -e "$(C_OK)Created $(COMPOSE_DIR)/.env$(C_OFF)"
 		echo ""
-		echo "Now generate the three REQUIRED secrets — the application exits without them:"
+		echo "Now generate the four REQUIRED secrets — the application exits without them:"
 		echo "  make secrets"
 	fi
 
 .PHONY: secrets
-secrets: ## Generate the three required secrets
+secrets: ## Generate the four required secrets
 	@echo ""
 	@echo -e "$(C_BOLD)Paste these into $(COMPOSE_DIR)/.env$(C_OFF)"
 	@echo ""
 	@echo "CERT_SIGNING_SECRET=$$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")"
 	@echo "ENCRYPT_KEY=$$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")"
 	@echo "ATTACHMENT_URL_SECRET=$$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")"
+	@echo "KMS_MASTER_KEY=$$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")"
 	@echo "JWT_ACCESS_SECRET=$$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")"
 	@echo "JWT_REFRESH_SECRET=$$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")"
 	@echo ""
-	@echo -e "$(C_WARN)BACK UP CERT_SIGNING_SECRET AND ENCRYPT_KEY SEPARATELY FROM THE DATABASE.$(C_OFF)"
+	@echo -e "$(C_WARN)BACK UP CERT_SIGNING_SECRET, ENCRYPT_KEY AND KMS_MASTER_KEY SEPARATELY$(C_OFF)"
+	@echo -e "$(C_WARN)FROM THE DATABASE.$(C_OFF)"
 	@echo -e "$(C_DIM)A restore that recovers the data and loses them produces a system that starts$(C_OFF)"
 	@echo -e "$(C_DIM)cleanly and is permanently broken: every issued certificate fails public$(C_OFF)"
 	@echo -e "$(C_DIM)verification, and every wrapped credential is undecryptable. Neither is$(C_OFF)"
@@ -205,8 +211,8 @@ backup: ## Dump the database to ./backups
 		-d $$(grep '^DB_NAME=' $(COMPOSE_DIR)/.env | cut -d= -f2) > backups/db-$$(date +%F-%H%M).dump
 	@echo -e "$(C_OK)Dump written.$(C_OFF)"
 	@echo -e "$(C_WARN)A database dump is not a backup on its own.$(C_OFF)"
-	@echo -e "$(C_DIM)Back up CERT_SIGNING_SECRET and ENCRYPT_KEY separately, and the object store$(C_OFF)"
-	@echo -e "$(C_DIM)too. See docs/DEVOPS/04-DATABASE-BACKUP.md.$(C_OFF)"
+	@echo -e "$(C_DIM)Back up CERT_SIGNING_SECRET, ENCRYPT_KEY and KMS_MASTER_KEY separately, and$(C_OFF)"
+	@echo -e "$(C_DIM)the object store too. See docs/DEVOPS/04-DATABASE-BACKUP.md.$(C_OFF)"
 
 # =============================================================================
 ## Quality gates
@@ -337,13 +343,15 @@ check-env: ## Verify .env exists and carries the required secrets
 		exit 1
 	fi
 	@missing=""
-	@for v in CERT_SIGNING_SECRET ENCRYPT_KEY ATTACHMENT_URL_SECRET; do
+	@for v in CERT_SIGNING_SECRET ENCRYPT_KEY ATTACHMENT_URL_SECRET KMS_MASTER_KEY; do
 		val=$$(grep "^$$v=" $(COMPOSE_DIR)/.env | cut -d= -f2-)
 		if [ -z "$$val" ] || [ "$$val" = "CHANGE_ME_64_HEX" ]; then missing="$$missing $$v"; fi
 	done
 	@if [ -n "$$missing" ]; then
 		echo -e "$(C_ERR)Required secrets not set:$$missing$(C_OFF)"
 		echo -e "$(C_DIM)The application exits without them, by design. Run: make secrets$(C_OFF)"
+		echo -e "$(C_DIM)KMS_MASTER_KEY fails LOUDLY nowhere: the container crash-loops with an$(C_OFF)"
+		echo -e "$(C_DIM)empty docker-logs output, and the error lands in log/activity/exception/.$(C_OFF)"
 		exit 1
 	fi
 
