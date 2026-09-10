@@ -22,11 +22,15 @@
     "db:psql": "cd backend && npm run db:psql"
   },
   "devDependencies": {
+    "eslint-plugin-react": "^7.37.5",
     "prettier": "^3.0.0",
     "turbo": "^2.0.0"
   },
   "engines": {
     "node": ">=20.0.0",
     "npm": ">=10.0.0"
+  },
+  "overrides": {
+    "eslint": "9.22.0"
   }
 }
