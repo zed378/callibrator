@@ -1,0 +1,107 @@
+{{- if .Values.ingress.enabled }}
+{{- include "callibrator.guards" . -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "callibrator.fullname" . }}
+  labels:
+    {{- include "callibrator.labels" . | nindent 4 }}
+  annotations:
+    {{- toYaml .Values.ingress.annotations | nindent 4 }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host | quote }}
+      secretName: {{ .Values.ingress.tls.secretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          # ----------------------------------------------------------------
+          # API
+          # ----------------------------------------------------------------
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "callibrator.fullname" . }}-backend
+                port:
+                  number: {{ .Values.backend.service.port }}
+
+          # ----------------------------------------------------------------
+          # Socket.IO
+          #
+          # Needs WebSocket support and a long read timeout (set in
+          # ingress.annotations). WITHOUT them Socket.IO SILENTLY falls back to
+          # long-polling: it works, notifications arrive, nothing errors, and
+          # nobody notices until connection counts matter.
+          #
+          # This is the deployment mistake most likely to go undetected.
+          # ----------------------------------------------------------------
+          - path: /socket.io
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "callibrator.fullname" . }}-backend
+                port:
+                  number: {{ .Values.backend.service.port }}
+
+          # ----------------------------------------------------------------
+          # OIDC — at the ROOT, not under /api/v1.
+          #
+          # The discovery document advertises its endpoints at
+          # <issuer>/oidc/..., where the issuer is the host root, so relying
+          # parties fetch them there. The backend mounts the OIDC router twice
+          # for exactly this reason. Routing only /api produces a discovery
+          # document nobody can follow.
+          # ----------------------------------------------------------------
+          - path: /oidc
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "callibrator.fullname" . }}-backend
+                port:
+                  number: {{ .Values.backend.service.port }}
+
+          # ----------------------------------------------------------------
+          # ACME HTTP-01 challenges. Written at runtime and served from the
+          # writable storage root. Intercepting this path produces domain
+          # verification failures that look like DNS problems.
+          # ----------------------------------------------------------------
+          - path: /.well-known
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "callibrator.fullname" . }}-backend
+                port:
+                  number: {{ .Values.backend.service.port }}
+
+          # ----------------------------------------------------------------
+          # Uploads. The backend sets X-Content-Type-Options: nosniff and
+          # Content-Disposition: inline on every response — the ingress must
+          # not strip or override them.
+          # ----------------------------------------------------------------
+          - path: /uploads
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "callibrator.fullname" . }}-backend
+                port:
+                  number: {{ .Values.backend.service.port }}
+
+          # ----------------------------------------------------------------
+          # Everything else, including the PUBLIC certificate verification
+          # page at /verify/<certificateNumber>, which must work without a
+          # session, on an unknown device.
+          # ----------------------------------------------------------------
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "callibrator.fullname" . }}-frontend
+                port:
+                  number: {{ .Values.frontend.service.port }}
+{{- end }}

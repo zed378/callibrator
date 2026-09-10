@@ -1,0 +1,73 @@
+# Callibrator — staging overlay
+#
+#   make up ENV=staging
+#
+# Production-shaped, with sandbox external services and anonymised data.
+#
+# The one rule that matters here: a LIVE provider key in staging passes every
+# per-field check — valid string, right shape, right length — and will charge a
+# real card from a test. Only a cross-field rule comparing the key's
+# environment marker against NODE_ENV catches it.
+# See docs/SECURITY/07-CRYPTOGRAPHY-AND-SECRETS.md.
+
+services:
+  backend:
+    image: ${BACKEND_IMAGE:-callibrator/backend}:${IMAGE_TAG:?IMAGE_TAG is required}
+    environment:
+      NODE_ENV: production
+      FORCE_HTTPS: "true"
+      # Explicit origins. A wildcard is never honoured: this CORS policy runs
+      # with credentials:true, and reflecting an arbitrary origin would let any
+      # site make authenticated cross-origin requests.
+      CORS_ORIGIN: ${CORS_ORIGIN:?CORS_ORIGIN is required}
+      # Unset in staging and production — inline mode makes a batch job
+      # synchronous with whatever triggered it, reintroducing the 30s timeout
+      # it exists to avoid.
+      BATCH_JOBS_INLINE: ""
+      # Never true outside development.
+      SEED_DEMO: ""
+      # Fail-closed on a scanner error (the default) is deliberate.
+      VIRUS_SCAN_PROVIDER: clamav
+      VIRUS_SCAN_FAIL_OPEN: "false"
+      # ACME_DIRECTORY_URL defaults to the Let's Encrypt STAGING directory,
+      # which is correct here and wrong in production.
+      ACME_DIRECTORY_URL: ${ACME_DIRECTORY_URL:-https://acme-staging-v02.api.letsencrypt.org/directory}
+    deploy:
+      resources:
+        limits:
+          # Chromium (certificate PDFs) is bursty. A limit sized for the steady
+          # state will OOM-kill the container on the first certificate.
+          memory: 2G
+        reservations:
+          memory: 512M
+
+  frontend:
+    image: ${FRONTEND_IMAGE:-callibrator/frontend}:${IMAGE_TAG:?IMAGE_TAG is required}
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  postgres:
+    # Not published. Reach it through the host, not the internet.
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+  redis:
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+  rabbitmq:
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  nginx:
+    ports:
+      - "80:80"
+      - "443:443"

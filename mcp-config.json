@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "mcp-toolkit": {
+      "command": "docker",
+      "args": [
+        "mcp",
+        "gateway",
+        "run",
+        "--profile",
+        "ai_coding",
+        "--transport",
+        "sse",
+        "--port",
+        "3100"
+      ]
+    }
+  }
+}

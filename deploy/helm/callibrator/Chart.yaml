@@ -1,0 +1,44 @@
+apiVersion: v2
+name: callibrator
+description: >-
+  Hospital Device Calibration Platform — umbrella chart. Deploys the backend
+  API and the frontend. Stateful dependencies (PostgreSQL with pgvector, Redis,
+  RabbitMQ) are expected to be provided externally; running a database from an
+  application chart couples the two lifecycles, and a `helm uninstall` that
+  takes the database with it is a class of accident worth designing out.
+type: application
+
+# Chart version — bump on any chart change.
+version: 0.1.0
+# The application version this chart targets.
+appVersion: "0.1.0"
+
+keywords:
+  - calibration
+  - healthcare
+  - multi-tenant
+  - iso17025
+
+home: https://github.com/zed378/callibrator
+sources:
+  - https://github.com/zed378/callibrator
+
+maintainers:
+  - name: Callibrator Team
+
+dependencies:
+  - name: backend
+    version: 0.1.0
+    repository: "file://charts/backend"
+    condition: backend.enabled
+  - name: frontend
+    version: 0.1.0
+    repository: "file://charts/frontend"
+    condition: frontend.enabled
+
+annotations:
+  # Honest status: these manifests are known to RENDER. They are not known to
+  # be accepted by a cluster — no cluster has been reachable to validate
+  # against. `helm lint` and `helm template` pass; `kubectl apply
+  # --dry-run=server` has not been run.
+  callibrator.io/validation-status: "renders-only"

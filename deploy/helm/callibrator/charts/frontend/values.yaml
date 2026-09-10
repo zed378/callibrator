@@ -1,0 +1,39 @@
+# Frontend subchart defaults.
+
+replicaCount: 2
+
+image:
+  repository: callibrator/frontend
+  # Required. The umbrella chart refuses to render without it.
+  #
+  # Remember: NEXT_PUBLIC_* values are inlined at build time. A different API
+  # URL, or a tenant-pinned build, is a different image. The tag is the only
+  # lever this chart has.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+service:
+  type: ClusterIP
+  port: 3000
+
+# Both probes hit / — no database dependency here. A frontend that is healthy
+# while the API is down is correct: it renders error states.
+probes:
+  liveness:
+    path: /
+    initialDelaySeconds: 15
+    periodSeconds: 20
+  readiness:
+    path: /
+    initialDelaySeconds: 5
+    periodSeconds: 10
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi

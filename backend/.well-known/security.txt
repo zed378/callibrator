@@ -1,0 +1,41 @@
+# Security Policy
+
+## Supported Versions
+
+| Version | Supported |
+|---------|-----------|
+| 1.x     | ✅        |
+
+## Reporting a Vulnerability
+
+We take security vulnerabilities seriously. If you discover a security vulnerability in Callibrator, please report it responsibly.
+
+**Do NOT open a public GitHub issue.**
+
+### How to Report
+
+1. **Email:** security@callibrator.app
+2. **Include:**
+   - Description of the vulnerability
+   - Steps to reproduce
+   - Potential impact
+   - Suggested fix (if any)
+
+### What to Expect
+
+- **Acknowledgment:** Within 48 hours
+- **Initial Assessment:** Within 1 week
+- **Resolution Timeline:** 30 days (varies by severity)
+- **Disclosure:** We coordinate responsible disclosure with the reporter
+
+### Security Best Practices
+
+- Keep all dependencies up to date
+- Use strong, unique passwords for all accounts
+- Enable MFA wherever available
+- Rotate API keys and secrets regularly
+- Follow the principle of least privilege for user roles
+
+### Bug Bounty
+
+We may offer bug bounties for critical vulnerabilities. Contact us to inquire about eligibility.

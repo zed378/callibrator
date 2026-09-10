@@ -1,0 +1,127 @@
+<svg id="illus-24-user-permission-resolution" xmlns="http://www.w3.org/2000/svg" width="100%" style="max-width: 880px;" viewBox="0 0 880 890" role="graphics-document document" aria-roledescription="flowchart-v2">
+  <style>
+    #illus-24-user-permission-resolution{font-family:'trebuchet ms',verdana,arial,sans-serif;font-size:16px;fill:#333;}
+    #illus-24-user-permission-resolution text{font-family:'trebuchet ms',verdana,arial,sans-serif;fill:#333;}
+    #illus-24-user-permission-resolution .node{fill:#ECECFF;stroke:#9370DB;stroke-width:1px;}
+    #illus-24-user-permission-resolution .edge{stroke:#333333;stroke-width:2px;fill:none;}
+    #illus-24-user-permission-resolution .dash{stroke:#aaaa33;stroke-width:1px;stroke-dasharray:5;fill:none;}
+    #illus-24-user-permission-resolution .note{fill:#fff5ad;stroke:#aaaa33;stroke-width:1px;}
+    #illus-24-user-permission-resolution .lbl{font-size:15px;text-anchor:middle;}
+    #illus-24-user-permission-resolution .small{font-size:12.5px;text-anchor:middle;}
+    #illus-24-user-permission-resolution .elbl{font-size:13px;text-anchor:middle;}
+    #illus-24-user-permission-resolution .ebg{fill:#e8e8e8;opacity:0.8;}
+    #illus-24-user-permission-resolution .title{font-size:18px;font-weight:bold;text-anchor:middle;}
+    #illus-24-user-permission-resolution .sub{font-size:13px;text-anchor:middle;opacity:0.75;}
+  </style>
+  <defs>
+    <marker id="arrow-24" viewBox="0 0 10 10" refX="6" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#333333" stroke="#333333"/>
+    </marker>
+  </defs>
+
+  <text class="title" x="440" y="34">User Permission Resolution</text>
+  <text class="sub" x="440" y="56">dynamicAccess middleware &#183; role matrix + per-user overrides</text>
+
+  <!-- Start -->
+  <rect class="node" x="340" y="74" width="200" height="34" rx="17" ry="17"/>
+  <text class="lbl" x="440" y="96">Incoming API Request</text>
+  <path class="edge" d="M440,108 L440,132" marker-end="url(#arrow-24)"/>
+
+  <!-- JWT auth -->
+  <rect class="node" x="300" y="136" width="280" height="46"/>
+  <text class="lbl" x="440" y="155">JWT Auth Middleware</text>
+  <text class="small" x="440" y="173">verify token &#8594; user id + role</text>
+  <path class="edge" d="M440,182 L440,208" marker-end="url(#arrow-24)"/>
+
+  <!-- dynamicAccess -->
+  <rect class="node" x="325" y="212" width="230" height="34"/>
+  <text class="lbl" x="440" y="234">dynamicAccess Middleware</text>
+  <path class="edge" d="M440,246 L440,270" marker-end="url(#arrow-24)"/>
+
+  <!-- Diamond: superadmin -->
+  <polygon class="node" points="440,274 555,318 440,362 325,318"/>
+  <text class="lbl" x="440" y="323">SUPERADMIN role?</text>
+
+  <!-- Yes: bypass -->
+  <path class="edge" d="M555,318 L626,318" marker-end="url(#arrow-24)"/>
+  <rect class="ebg" x="570" y="306" width="32" height="18"/>
+  <text class="elbl" x="586" y="319">Yes</text>
+  <rect class="node" x="630" y="301" width="220" height="34" rx="17" ry="17"/>
+  <text class="lbl" x="740" y="323">Allow (200) &#183; bypass</text>
+
+  <!-- No -->
+  <path class="edge" d="M440,362 L440,386" marker-end="url(#arrow-24)"/>
+  <rect class="ebg" x="448" y="364" width="26" height="18"/>
+  <text class="elbl" x="461" y="377">No</text>
+
+  <!-- Role matrix -->
+  <rect class="node" x="315" y="390" width="250" height="46"/>
+  <text class="lbl" x="440" y="409">Role Permission Matrix</text>
+  <text class="small" x="440" y="427">menu permissions defined per role</text>
+  <rect class="note" x="30" y="390" width="250" height="46"/>
+  <text class="small" x="155" y="409">Redis cache</text>
+  <text class="small" x="155" y="427">permissions:role:{roleId}</text>
+  <path class="dash" d="M280,413 L315,413"/>
+  <path class="edge" d="M440,436 L440,462" marker-end="url(#arrow-24)"/>
+
+  <!-- Per-user override lookup -->
+  <rect class="node" x="300" y="466" width="280" height="46"/>
+  <text class="lbl" x="440" y="485">Per-user override lookup</text>
+  <text class="small" x="440" y="503">user_menu_permissions</text>
+  <rect class="note" x="610" y="466" width="240" height="46"/>
+  <text class="small" x="730" y="485">Redis cache</text>
+  <text class="small" x="730" y="503">permissions:user:{userId}</text>
+  <path class="dash" d="M580,489 L610,489"/>
+  <path class="edge" d="M440,512 L440,532" marker-end="url(#arrow-24)"/>
+
+  <!-- Diamond: override exists -->
+  <polygon class="node" points="440,536 560,584 440,632 320,584"/>
+  <text class="lbl" x="440" y="589">Override exists?</text>
+
+  <!-- three override outcomes -->
+  <path class="edge" d="M320,584 L180,630 L180,654" marker-end="url(#arrow-24)"/>
+  <rect class="ebg" x="196" y="596" width="86" height="18"/>
+  <text class="elbl" x="239" y="609">read / write</text>
+
+  <path class="edge" d="M440,632 L440,654" marker-end="url(#arrow-24)"/>
+  <rect class="ebg" x="448" y="634" width="78" height="18"/>
+  <text class="elbl" x="487" y="647">no override</text>
+
+  <path class="edge" d="M560,584 L700,630 L700,654" marker-end="url(#arrow-24)"/>
+  <rect class="ebg" x="604" y="596" width="44" height="18"/>
+  <text class="elbl" x="626" y="609">none</text>
+
+  <rect class="node" x="70" y="658" width="220" height="46"/>
+  <text class="lbl" x="180" y="677">Override REPLACES</text>
+  <text class="small" x="180" y="695">role permission</text>
+
+  <rect class="node" x="340" y="658" width="200" height="46"/>
+  <text class="lbl" x="440" y="677">Role permission</text>
+  <text class="small" x="440" y="695">applies</text>
+
+  <rect class="node" x="600" y="658" width="200" height="46"/>
+  <text class="lbl" x="700" y="677">DENY</text>
+  <text class="small" x="700" y="695">explicit "none" override</text>
+
+  <!-- converge to evaluation -->
+  <path class="edge" d="M180,704 L180,728 L250,745" marker-end="url(#arrow-24)"/>
+  <path class="edge" d="M440,704 L440,728 L372,745" marker-end="url(#arrow-24)"/>
+  <rect class="node" x="160" y="748" width="300" height="34"/>
+  <text class="lbl" x="310" y="770">Permission covers requested action?</text>
+
+  <!-- outcomes -->
+  <path class="edge" d="M250,782 L205,812" marker-end="url(#arrow-24)"/>
+  <rect class="ebg" x="200" y="786" width="30" height="18"/>
+  <text class="elbl" x="215" y="799">Yes</text>
+  <path class="edge" d="M370,782 L455,812" marker-end="url(#arrow-24)"/>
+  <rect class="ebg" x="412" y="786" width="26" height="18"/>
+  <text class="elbl" x="425" y="799">No</text>
+
+  <rect class="node" x="120" y="816" width="170" height="34" rx="17" ry="17"/>
+  <text class="lbl" x="205" y="838">Allow (200)</text>
+  <rect class="node" x="395" y="816" width="170" height="34" rx="17" ry="17"/>
+  <text class="lbl" x="480" y="838">Deny (403)</text>
+
+  <!-- explicit none straight to deny -->
+  <path class="edge" d="M700,704 L700,829 L572,829" marker-end="url(#arrow-24)"/>
+</svg>

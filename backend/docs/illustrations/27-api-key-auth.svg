@@ -1,0 +1,90 @@
+<svg id="illus-27-api-key-auth" xmlns="http://www.w3.org/2000/svg" width="100%" style="max-width: 900px;" viewBox="0 0 900 620" role="graphics-document document" aria-roledescription="flowchart-v2">
+  <style>
+    #illus-27-api-key-auth{font-family:'trebuchet ms',verdana,arial,sans-serif;font-size:16px;fill:#333;}
+    #illus-27-api-key-auth text{font-family:'trebuchet ms',verdana,arial,sans-serif;fill:#333;}
+    #illus-27-api-key-auth .node{fill:#ECECFF;stroke:#9370DB;stroke-width:1px;}
+    #illus-27-api-key-auth .edge{stroke:#333333;stroke-width:2px;fill:none;}
+    #illus-27-api-key-auth .dash{stroke:#aaaa33;stroke-width:1px;stroke-dasharray:5;fill:none;}
+    #illus-27-api-key-auth .note{fill:#fff5ad;stroke:#aaaa33;stroke-width:1px;}
+    #illus-27-api-key-auth .cluster{fill:#ffffde;stroke:#aaaa33;stroke-width:1px;}
+    #illus-27-api-key-auth .lbl{font-size:15px;text-anchor:middle;}
+    #illus-27-api-key-auth .small{font-size:12.5px;text-anchor:middle;}
+    #illus-27-api-key-auth .elbl{font-size:13px;text-anchor:middle;}
+    #illus-27-api-key-auth .ebg{fill:#e8e8e8;opacity:0.8;}
+    #illus-27-api-key-auth .title{font-size:18px;font-weight:bold;text-anchor:middle;}
+    #illus-27-api-key-auth .sub{font-size:13px;text-anchor:middle;opacity:0.75;}
+    #illus-27-api-key-auth .clbl{font-size:13px;font-weight:bold;}
+  </style>
+  <defs>
+    <marker id="arrow-27" viewBox="0 0 10 10" refX="6" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#333333" stroke="#333333"/>
+    </marker>
+  </defs>
+
+  <text class="title" x="450" y="34">API Key Authentication &amp; Scopes</text>
+  <text class="sub" x="450" y="56">cbk_ keys &#183; SHA-256 lookup &#183; resource scopes</text>
+
+  <!-- Cluster: create -->
+  <rect class="cluster" x="30" y="80" width="400" height="300"/>
+  <text class="clbl" x="50" y="100">1 &#183; Create key (JWT session only)</text>
+
+  <rect class="node" x="105" y="116" width="250" height="34" rx="17" ry="17"/>
+  <text class="lbl" x="230" y="138">POST /api/v1/api-keys</text>
+  <path class="edge" d="M230,150 L230,176" marker-end="url(#arrow-27)"/>
+
+  <rect class="node" x="85" y="180" width="290" height="34"/>
+  <text class="lbl" x="230" y="202">Generate key: cbk_ + 56 hex chars</text>
+  <path class="edge" d="M230,214 L230,240" marker-end="url(#arrow-27)"/>
+
+  <rect class="node" x="85" y="244" width="290" height="46"/>
+  <text class="lbl" x="230" y="263">Store keyPrefix (12 chars)</text>
+  <text class="small" x="230" y="281">+ SHA-256 keyHash only</text>
+  <path class="edge" d="M230,290 L230,316" marker-end="url(#arrow-27)"/>
+
+  <rect class="note" x="70" y="320" width="320" height="46"/>
+  <text class="small" x="230" y="339">Raw key returned ONCE in the response &#8212;</text>
+  <text class="small" x="230" y="357">never stored, cannot be retrieved again</text>
+
+  <!-- Cluster: authenticate -->
+  <rect class="cluster" x="470" y="80" width="400" height="420"/>
+  <text class="clbl" x="490" y="100">2 &#183; Authenticate request</text>
+
+  <rect class="node" x="515" y="116" width="310" height="34" rx="17" ry="17"/>
+  <text class="lbl" x="670" y="138">Authorization: Bearer cbk_...</text>
+  <path class="edge" d="M670,150 L670,176" marker-end="url(#arrow-27)"/>
+
+  <rect class="node" x="520" y="180" width="300" height="34"/>
+  <text class="lbl" x="670" y="202">auth middleware detects cbk_ prefix</text>
+  <path class="edge" d="M670,214 L670,240" marker-end="url(#arrow-27)"/>
+
+  <rect class="node" x="525" y="244" width="290" height="34"/>
+  <text class="lbl" x="670" y="266">Lookup API key by SHA-256 hash</text>
+  <path class="edge" d="M670,278 L670,304" marker-end="url(#arrow-27)"/>
+
+  <rect class="node" x="525" y="308" width="290" height="34"/>
+  <text class="lbl" x="670" y="330">Check isActive + expiresAt</text>
+  <path class="edge" d="M670,342 L670,368" marker-end="url(#arrow-27)"/>
+
+  <rect class="node" x="505" y="372" width="330" height="46"/>
+  <text class="lbl" x="670" y="391">Scope check: &lt;Resource&gt;:&lt;read|write|*&gt;</text>
+  <text class="small" x="670" y="409">write implies read &#183; "*" = wildcard</text>
+
+  <path class="edge" d="M600,418 L575,448" marker-end="url(#arrow-27)"/>
+  <rect class="ebg" x="512" y="424" width="62" height="18"/>
+  <text class="elbl" x="543" y="437">in scope</text>
+  <path class="edge" d="M740,418 L765,448" marker-end="url(#arrow-27)"/>
+  <rect class="ebg" x="760" y="424" width="90" height="18"/>
+  <text class="elbl" x="805" y="437">not in scope</text>
+
+  <rect class="node" x="495" y="452" width="160" height="34" rx="17" ry="17"/>
+  <text class="lbl" x="575" y="474">Allow (200)</text>
+  <rect class="node" x="685" y="452" width="170" height="34" rx="17" ry="17"/>
+  <text class="lbl" x="770" y="474">Deny (401/403)</text>
+
+  <!-- restriction note -->
+  <path class="dash" d="M230,380 L230,536"/>
+  <path class="dash" d="M670,500 L670,536"/>
+  <rect class="note" x="180" y="540" width="540" height="46"/>
+  <text class="small" x="450" y="559">API keys cannot manage API keys:</text>
+  <text class="small" x="450" y="577">/api-keys routes use denyApiKey (JWT session required)</text>
+</svg>

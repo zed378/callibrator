@@ -1,0 +1,122 @@
+<svg id="illus-26-webhook-delivery" xmlns="http://www.w3.org/2000/svg" width="100%" style="max-width: 880px;" viewBox="0 0 880 960" role="graphics-document document" aria-roledescription="flowchart-v2">
+  <style>
+    #illus-26-webhook-delivery{font-family:'trebuchet ms',verdana,arial,sans-serif;font-size:16px;fill:#333;}
+    #illus-26-webhook-delivery text{font-family:'trebuchet ms',verdana,arial,sans-serif;fill:#333;}
+    #illus-26-webhook-delivery .node{fill:#ECECFF;stroke:#9370DB;stroke-width:1px;}
+    #illus-26-webhook-delivery .state{fill:#ECECFF;stroke:#9370DB;stroke-width:1px;}
+    #illus-26-webhook-delivery .edge{stroke:#333333;stroke-width:2px;fill:none;}
+    #illus-26-webhook-delivery .dash{stroke:#aaaa33;stroke-width:1px;stroke-dasharray:5;fill:none;}
+    #illus-26-webhook-delivery .note{fill:#fff5ad;stroke:#aaaa33;stroke-width:1px;}
+    #illus-26-webhook-delivery .cluster{fill:#ffffde;stroke:#aaaa33;stroke-width:1px;}
+    #illus-26-webhook-delivery .lbl{font-size:15px;text-anchor:middle;}
+    #illus-26-webhook-delivery .small{font-size:12.5px;text-anchor:middle;}
+    #illus-26-webhook-delivery .elbl{font-size:13px;text-anchor:middle;}
+    #illus-26-webhook-delivery .ebg{fill:#e8e8e8;opacity:0.8;}
+    #illus-26-webhook-delivery .title{font-size:18px;font-weight:bold;text-anchor:middle;}
+    #illus-26-webhook-delivery .sub{font-size:13px;text-anchor:middle;opacity:0.75;}
+    #illus-26-webhook-delivery .clbl{font-size:13px;font-weight:bold;}
+  </style>
+  <defs>
+    <marker id="arrow-26" viewBox="0 0 10 10" refX="6" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#333333" stroke="#333333"/>
+    </marker>
+  </defs>
+
+  <text class="title" x="440" y="34">Webhook Delivery Pipeline</text>
+  <text class="sub" x="440" y="56">HMAC-signed POST &#183; exponential backoff retries</text>
+
+  <!-- Domain event -->
+  <rect class="node" x="230" y="76" width="260" height="34" rx="17" ry="17"/>
+  <text class="lbl" x="360" y="98">Domain event emitted</text>
+  <rect class="note" x="600" y="69" width="250" height="48"/>
+  <text class="small" x="725" y="88">device.calibration_due</text>
+  <text class="small" x="725" y="105">device.overdue &#183; webhook.test</text>
+  <path class="dash" d="M490,93 L600,93"/>
+  <path class="edge" d="M360,110 L360,136" marker-end="url(#arrow-26)"/>
+
+  <!-- emitEvent -->
+  <rect class="node" x="225" y="140" width="270" height="46"/>
+  <text class="lbl" x="360" y="159">webhook.service</text>
+  <text class="small" x="360" y="177">emitEvent(tenantId, event, payload)</text>
+  <path class="edge" d="M360,186 L360,212" marker-end="url(#arrow-26)"/>
+
+  <!-- match -->
+  <rect class="node" x="210" y="216" width="300" height="46"/>
+  <text class="lbl" x="360" y="235">Match active webhooks</text>
+  <text class="small" x="360" y="253">events array contains event or "*"</text>
+  <path class="edge" d="M360,262 L360,288" marker-end="url(#arrow-26)"/>
+
+  <!-- create delivery -->
+  <rect class="node" x="190" y="292" width="340" height="34"/>
+  <text class="lbl" x="360" y="314">Create WebhookDelivery (status: pending)</text>
+  <path class="edge" d="M360,326 L360,352" marker-end="url(#arrow-26)"/>
+
+  <!-- sign -->
+  <rect class="node" x="200" y="356" width="320" height="34"/>
+  <text class="lbl" x="360" y="378">Sign body &#183; HMAC-SHA256 with secret</text>
+  <path class="edge" d="M360,390 L360,416" marker-end="url(#arrow-26)"/>
+
+  <!-- POST -->
+  <rect class="node" x="175" y="420" width="370" height="46"/>
+  <text class="lbl" x="360" y="439">POST to webhook URL (timeout 8s)</text>
+  <text class="small" x="360" y="457">X-Webhook-Event &#183; -Id &#183; -Delivery &#183; -Signature</text>
+  <path class="edge" d="M360,466 L360,492" marker-end="url(#arrow-26)"/>
+
+  <!-- diamond -->
+  <polygon class="node" points="360,496 470,548 360,600 250,548"/>
+  <text class="lbl" x="360" y="553">2xx response?</text>
+
+  <!-- success branch -->
+  <path class="edge" d="M250,548 L170,600 L170,626" marker-end="url(#arrow-26)"/>
+  <rect class="ebg" x="196" y="566" width="30" height="18"/>
+  <text class="elbl" x="211" y="579">Yes</text>
+  <rect class="node" x="60" y="630" width="220" height="46"/>
+  <text class="lbl" x="170" y="649">status: success</text>
+  <text class="small" x="170" y="667">deliveredAt set</text>
+  <path class="edge" d="M170,676 L170,702" marker-end="url(#arrow-26)"/>
+  <rect class="node" x="95" y="706" width="150" height="34" rx="17" ry="17"/>
+  <text class="lbl" x="170" y="728">Delivered</text>
+
+  <!-- failure branch -->
+  <path class="edge" d="M470,548 L560,600 L560,626" marker-end="url(#arrow-26)"/>
+  <rect class="ebg" x="516" y="566" width="26" height="18"/>
+  <text class="elbl" x="529" y="579">No</text>
+  <rect class="node" x="440" y="630" width="240" height="46"/>
+  <text class="lbl" x="560" y="649">status: failed</text>
+  <text class="small" x="560" y="667">retry in 2^attempt &#215; 500 ms</text>
+
+  <!-- retry loop -->
+  <path class="edge" d="M680,653 L760,653 L760,443 L549,443" marker-end="url(#arrow-26)"/>
+  <rect class="ebg" x="700" y="530" width="86" height="18"/>
+  <text class="elbl" x="743" y="543">attempt &lt; 5</text>
+
+  <!-- exhausted -->
+  <path class="edge" d="M560,676 L560,702" marker-end="url(#arrow-26)"/>
+  <rect class="ebg" x="568" y="680" width="112" height="18"/>
+  <text class="elbl" x="624" y="693">5 attempts failed</text>
+  <rect class="node" x="460" y="706" width="200" height="34"/>
+  <text class="lbl" x="560" y="728">status: exhausted</text>
+
+  <!-- lifecycle -->
+  <rect class="cluster" x="60" y="780" width="760" height="150"/>
+  <text class="clbl" x="80" y="800">Delivery status lifecycle</text>
+
+  <rect class="state" x="110" y="840" width="120" height="30" rx="5" ry="5"/>
+  <text class="elbl" x="170" y="860">pending</text>
+  <rect class="state" x="350" y="812" width="120" height="30" rx="5" ry="5"/>
+  <text class="elbl" x="410" y="832">success</text>
+  <rect class="state" x="350" y="868" width="120" height="30" rx="5" ry="5"/>
+  <text class="elbl" x="410" y="888">failed</text>
+  <rect class="state" x="590" y="868" width="130" height="30" rx="5" ry="5"/>
+  <text class="elbl" x="655" y="888">exhausted</text>
+
+  <path class="edge" d="M230,847 L346,829" marker-end="url(#arrow-26)"/>
+  <rect class="ebg" x="268" y="824" width="36" height="18"/>
+  <text class="elbl" x="286" y="837">2xx</text>
+  <path class="edge" d="M230,863 L346,881" marker-end="url(#arrow-26)"/>
+  <rect class="ebg" x="242" y="880" width="100" height="18"/>
+  <text class="elbl" x="292" y="893">error / timeout</text>
+  <path class="edge" d="M470,883 L586,883" marker-end="url(#arrow-26)"/>
+  <rect class="ebg" x="490" y="862" width="80" height="18"/>
+  <text class="elbl" x="530" y="875">max retries</text>
+</svg>

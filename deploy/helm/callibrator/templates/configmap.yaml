@@ -1,0 +1,104 @@
+{{- include "callibrator.guards" . -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "callibrator.configMapName" . }}
+  labels:
+    {{- include "callibrator.labels" . | nindent 4 }}
+data:
+  # ------------------------------------------------------------------------
+  # Application
+  # ------------------------------------------------------------------------
+  NODE_ENV: {{ .Values.backend.env.NODE_ENV | quote }}
+  APP_STORAGE_PATH: {{ .Values.backend.env.APP_STORAGE_PATH | quote }}
+  # The compiled binary cannot use puppeteer's bundled Chromium. Wrong or
+  # unset, PDF rendering fails at FIRST USE rather than at startup — a late
+  # failure in a compliance-critical path.
+  PUPPETEER_EXECUTABLE_PATH: {{ .Values.backend.env.PUPPETEER_EXECUTABLE_PATH | quote }}
+  FORCE_HTTPS: {{ .Values.backend.env.FORCE_HTTPS | quote }}
+  # Explicit, comma-separated. A wildcard is never honoured.
+  CORS_ORIGIN: {{ .Values.global.corsOrigin | quote }}
+  HOST_URL: {{ printf "https://%s" .Values.ingress.host | quote }}
+
+  # Empty outside development. Inline mode makes a batch job synchronous with
+  # whatever triggered it, reintroducing the 30s timeout it exists to avoid.
+  BATCH_JOBS_INLINE: {{ .Values.backend.env.BATCH_JOBS_INLINE | quote }}
+  # A demo seeder against real data is a data-integrity incident.
+  SEED_DEMO: {{ .Values.backend.env.SEED_DEMO | quote }}
+
+  # ------------------------------------------------------------------------
+  # Database — provided externally. PostgreSQL must have pgvector: migration
+  # 0018 runs `CREATE EXTENSION vector` and plain Postgres fails it.
+  # ------------------------------------------------------------------------
+  DB_HOST: {{ .Values.backend.database.host | quote }}
+  DB_PORT: {{ .Values.backend.database.port | quote }}
+  DB_NAME: {{ .Values.backend.database.name | quote }}
+  DB_USER: {{ .Values.backend.database.user | quote }}
+  DB_DIALECT: {{ .Values.backend.database.dialect | quote }}
+  DB_SSL: {{ .Values.backend.database.ssl | quote }}
+
+  REDIS_URL: {{ .Values.backend.redis.url | quote }}
+  RABBITMQ_URL: {{ .Values.backend.rabbitmq.url | quote }}
+
+  # ------------------------------------------------------------------------
+  # Object storage
+  #
+  # `local` is INCOMPATIBLE with replicaCount > 1: replica A writes an
+  # attachment, replica B cannot serve it. This chart does not guard that.
+  # ------------------------------------------------------------------------
+  STORAGE_DRIVER: {{ .Values.backend.storage.driver | quote }}
+  {{- if eq .Values.backend.storage.driver "s3" }}
+  STORAGE_S3_BUCKET: {{ .Values.backend.storage.s3.bucket | quote }}
+  STORAGE_S3_REGION: {{ .Values.backend.storage.s3.region | quote }}
+  {{- if .Values.backend.storage.s3.endpoint }}
+  # Operator-configured endpoints are deliberately NOT SSRF-checked — an
+  # internal host is a legitimate value here. Tenant-supplied endpoints ARE
+  # checked, and that asymmetry must survive any refactor.
+  STORAGE_S3_ENDPOINT: {{ .Values.backend.storage.s3.endpoint | quote }}
+  {{- end }}
+  # Required by MinIO and most non-AWS providers.
+  STORAGE_S3_FORCE_PATH_STYLE: {{ .Values.backend.storage.s3.forcePathStyle | quote }}
+  {{- end }}
+
+  # ------------------------------------------------------------------------
+  # Attachments
+  #
+  # Fail-closed on a scanner error is the default and it is deliberate: the
+  # alternative silently disables scanning at the moment it is not working.
+  # ------------------------------------------------------------------------
+  VIRUS_SCAN_PROVIDER: {{ .Values.backend.env.VIRUS_SCAN_PROVIDER | quote }}
+  VIRUS_SCAN_FAIL_OPEN: {{ .Values.backend.env.VIRUS_SCAN_FAIL_OPEN | quote }}
+
+  # ------------------------------------------------------------------------
+  # Certificates
+  # ------------------------------------------------------------------------
+  {{- if .Values.certificates.verifyBaseUrl }}
+  CERT_VERIFY_BASE_URL: {{ .Values.certificates.verifyBaseUrl | quote }}
+  {{- else }}
+  CERT_VERIFY_BASE_URL: {{ printf "https://%s/verify" .Values.ingress.host | quote }}
+  {{- end }}
+
+  {{- if .Values.certificates.acme.enabled }}
+  CUSTOM_DOMAINS_ENABLED: "true"
+  TLS_AUTO_PROVISION: "true"
+  # DEFAULTS TO THE LET'S ENCRYPT STAGING DIRECTORY. Forgetting to point this
+  # at production yields certificates no browser trusts, and the failure
+  # appears in a browser rather than in any log.
+  ACME_DIRECTORY_URL: {{ .Values.certificates.acme.directoryUrl | quote }}
+  ACME_ACCOUNT_EMAIL: {{ .Values.certificates.acme.accountEmail | quote }}
+  {{- end }}
+
+  # ------------------------------------------------------------------------
+  # Schedulers
+  #
+  # Present only when cron.enabled. They run ONCE PER REPLICA, which is why the
+  # chart refuses to render cron.enabled with replicaCount > 1.
+  # ------------------------------------------------------------------------
+  {{- if .Values.backend.cron.enabled }}
+  SESSION_CLEANUP_SCHEDULER: {{ .Values.backend.cron.sessionCleanup | quote }}
+  BACKUP_SCHEDULER: {{ .Values.backend.cron.backup | quote }}
+  RETENTION_SCHEDULER: {{ .Values.backend.cron.retention | quote }}
+  {{- else }}
+  # Explicitly disabled: this replica is an API pod, not the scheduler.
+  RETENTION_SCHEDULER: "disabled"
+  {{- end }}

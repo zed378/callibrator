@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body {
+        font-family: "Segoe UI", Arial, sans-serif;
+        color: #1f2937;
+        font-size: 12px;
+        line-height: 1.5;
+      }
+      .page { padding: 48px 56px; position: relative; }
+      .watermark {
+        position: fixed;
+        top: 42%;
+        left: 0;
+        right: 0;
+        text-align: center;
+        font-size: 96px;
+        font-weight: 800;
+        letter-spacing: 12px;
+        color: rgba(220, 38, 38, 0.10);
+        transform: rotate(-24deg);
+        text-transform: uppercase;
+        pointer-events: none;
+      }
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        border-bottom: 3px solid {{accentColor}};
+        padding-bottom: 18px;
+      }
+      .org { font-size: 22px; font-weight: 800; color: {{accentColor}}; }
+      .org small { display: block; font-size: 11px; font-weight: 500; color: #6b7280; letter-spacing: 1px; }
+      .doc-title { text-align: right; }
+      .doc-title h1 { font-size: 18px; text-transform: uppercase; letter-spacing: 2px; color: #111827; }
+      .badge {
+        display: inline-block;
+        margin-top: 6px;
+        padding: 3px 12px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: #fff;
+        background: {{statusColor}};
+      }
+      .cert-no { margin-top: 20px; font-size: 13px; }
+      .cert-no strong { color: {{accentColor}}; letter-spacing: 1px; }
+      .grid { display: flex; gap: 32px; margin-top: 22px; }
+      .col { flex: 1; }
+      .section-title {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        color: #6b7280;
+        border-bottom: 1px solid #e5e7eb;
+        padding-bottom: 4px;
+        margin-bottom: 8px;
+        font-weight: 700;
+      }
+      .row { display: flex; margin-bottom: 5px; }
+      .row .label { width: 120px; color: #6b7280; }
+      .row .value { flex: 1; font-weight: 600; color: #111827; }
+      .block { margin-top: 20px; }
+      .block p { color: #374151; white-space: pre-wrap; }
+      .signatures { display: flex; gap: 40px; margin-top: 40px; }
+      .sig { flex: 1; text-align: center; }
+      .sig .line { border-top: 1px solid #9ca3af; margin-top: 34px; padding-top: 6px; }
+      .sig .name { font-weight: 700; }
+      .sig .role { font-size: 10px; color: #6b7280; text-transform: uppercase; letter-spacing: 1px; }
+      .footer {
+        margin-top: 36px;
+        border-top: 1px solid #e5e7eb;
+        padding-top: 14px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .verify { font-size: 10px; color: #6b7280; max-width: 380px; }
+      .verify .hash { font-family: "Courier New", monospace; word-break: break-all; color: #374151; }
+      .qr { text-align: center; }
+      .qr img { width: 96px; height: 96px; }
+      .qr span { display: block; font-size: 9px; color: #6b7280; margin-top: 2px; }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      {{watermarkBlock}}
+      <div class="header">
+        <div class="org">
+          {{tenantName}}
+          <small>CALIBRATION MANAGEMENT SYSTEM</small>
+        </div>
+        <div class="doc-title">
+          <h1>{{typeLabel}} Certificate</h1>
+          <span class="badge">{{statusLabel}}</span>
+        </div>
+      </div>
+
+      <div class="cert-no">
+        Certificate No: <strong>{{certificateNumber}}</strong>
+      </div>
+
+      <div class="grid">
+        <div class="col">
+          <div class="section-title">Instrument</div>
+          <div class="row"><div class="label">Name</div><div class="value">{{deviceName}}</div></div>
+          <div class="row"><div class="label">Serial No.</div><div class="value">{{deviceSerial}}</div></div>
+          <div class="row"><div class="label">Manufacturer</div><div class="value">{{deviceManufacturer}}</div></div>
+          <div class="row"><div class="label">Model</div><div class="value">{{deviceModel}}</div></div>
+        </div>
+        <div class="col">
+          <div class="section-title">Certificate</div>
+          <div class="row"><div class="label">Standard</div><div class="value">{{standard}}</div></div>
+          <div class="row"><div class="label">Issue Date</div><div class="value">{{issueDate}}</div></div>
+          <div class="row"><div class="label">Valid Until</div><div class="value">{{validUntil}}</div></div>
+          <div class="row"><div class="label">Type</div><div class="value">{{typeLabel}}</div></div>
+        </div>
+      </div>
+
+      <div class="block">
+        <div class="section-title">Summary</div>
+        <p>{{summary}}</p>
+      </div>
+
+      <div class="block">
+        <div class="section-title">Conditions &amp; Notes</div>
+        <p>{{conditions}}</p>
+        <p>{{notes}}</p>
+      </div>
+
+      <div class="signatures">
+        <div class="sig">
+          <div class="line"></div>
+          <div class="name">{{calibratedBy}}</div>
+          <div class="role">Calibrated By</div>
+        </div>
+        <div class="sig">
+          <div class="line"></div>
+          <div class="name">{{approvedBy}}</div>
+          <div class="role">Approved By</div>
+        </div>
+        <div class="sig">
+          <div class="line"></div>
+          <div class="name">{{signedBy}}</div>
+          <div class="role">Digitally Signed{{signedAtLabel}}</div>
+        </div>
+      </div>
+
+      <div class="footer">
+        <div class="verify">
+          Verify the authenticity of this certificate at:<br />
+          <strong>{{verifyUrl}}</strong><br />
+          Integrity hash (SHA-256):<br />
+          <span class="hash">{{integrityHash}}</span>
+        </div>
+        <div class="qr">
+          <img src="{{qrDataUri}}" alt="Verification QR code" />
+          <span>Scan to verify</span>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

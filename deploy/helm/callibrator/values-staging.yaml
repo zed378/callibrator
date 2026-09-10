@@ -1,0 +1,97 @@
+# Callibrator — staging values
+#
+#   make helm-deploy ENV=staging TAG=<sha>
+#
+# Production-shaped, with SANDBOX external services and anonymised data.
+
+global:
+  corsOrigin: "https://staging.callibrator.example.com"
+
+backend:
+  image:
+    tag: ""
+  replicaCount: 1
+  cron:
+    enabled: true
+    sessionCleanup: "0 2 * * *"
+    backup: "0 3 * * 0"
+    retention: "0 2 * * *"
+
+  env:
+    NODE_ENV: production
+    APP_STORAGE_PATH: /app
+    PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
+    FORCE_HTTPS: "true"
+    BATCH_JOBS_INLINE: ""
+    SEED_DEMO: ""
+    VIRUS_SCAN_PROVIDER: clamav
+    VIRUS_SCAN_FAIL_OPEN: "false"
+
+  storage:
+    driver: s3
+    s3:
+      bucket: callibrator-staging
+      region: ap-southeast-1
+      forcePathStyle: false
+
+  database:
+    host: postgres.staging.svc.cluster.local
+    port: 5432
+    name: callibrator
+    user: callibrator
+    dialect: postgres
+    ssl: true
+
+  redis:
+    url: redis://redis.staging.svc.cluster.local:6379
+  rabbitmq:
+    url: amqp://rabbitmq.staging.svc.cluster.local:5672
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+
+frontend:
+  image:
+    tag: ""
+  replicaCount: 1
+
+ingress:
+  enabled: true
+  className: nginx
+  host: staging.callibrator.example.com
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    cert-manager.io/cluster-issuer: letsencrypt-staging
+  tls:
+    enabled: true
+    secretName: callibrator-staging-tls
+
+secrets:
+  external:
+    enabled: true
+    secretName: callibrator-staging-secrets
+
+certificates:
+  verifyBaseUrl: "https://staging.callibrator.example.com/verify"
+  acme:
+    enabled: true
+    # The STAGING directory is correct here. It is wrong in production, where
+    # it yields certificates no browser trusts.
+    directoryUrl: "https://acme-staging-v02.api.letsencrypt.org/directory"
+    accountEmail: "ops@example.com"
+
+# ────────────────────────────────────────────────────────────────────────────
+# A reminder that belongs beside the staging config, not in a runbook:
+#
+# A LIVE provider key in staging passes every per-field check — valid string,
+# right shape, right length — and WILL CHARGE A REAL CARD from a test. Only a
+# cross-field rule comparing the key's environment marker against NODE_ENV
+# catches it. Use sandbox keys here, always.
+# ────────────────────────────────────────────────────────────────────────────

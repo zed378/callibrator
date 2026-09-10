@@ -1,0 +1,1799 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Callibrator Backend - Architecture & Documentation</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      line-height: 1.6;
+      color: #1a1a2e;
+      background: #f5f5fa;
+      padding: 2rem;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: white;
+      padding: 3rem;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    h1 { font-size: 2.2rem; margin-bottom: 1rem; color: #16213e; border-bottom: 3px solid #0f3460; padding-bottom: 0.5rem; }
+    h2 { font-size: 1.7rem; margin-top: 2.5rem; margin-bottom: 1rem; color: #0f3460; }
+    h3 { font-size: 1.3rem; margin-top: 1.5rem; margin-bottom: 0.75rem; color: #1a1a5e; }
+    p { margin-bottom: 1rem; }
+    table { width: 100%; border-collapse: collapse; margin: 1.5rem 0; }
+    th, td { border: 1px solid #ddd; padding: 10px 14px; text-align: left; }
+    thead { background: #16213e; color: white; }
+    tbody tr:nth-child(even) { background: #f8f9fa; }
+    tbody tr:hover { background: #e9ecef; }
+    pre {
+      background: #1a1a2e;
+      color: #e0e0e0;
+      padding: 1.5rem;
+      border-radius: 6px;
+      overflow-x: auto;
+      margin: 1.5rem 0;
+      font-size: 0.9rem;
+      line-height: 1.5;
+    }
+    code {
+      font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+    }
+    ul, ol { margin: 1rem 0 1rem 2rem; }
+    li { margin-bottom: 0.4rem; }
+    hr { border: none; border-top: 2px solid #e0e0e0; margin: 2rem 0; }
+    a { color: #0f3460; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    strong { color: #16213e; }
+    @media (max-width: 768px) {
+      body { padding: 1rem; }
+      .container { padding: 1.5rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Callibrator Backend — Architecture &amp; Documentation</h1>
+<h2>Table of Contents</h2>
+<ol>
+  <li><a href="#overview">Overview</a></li>
+  <li><a href="#technology-stack">Technology Stack</a></li>
+  <li><a href="#system-architecture">System Architecture</a></li>
+  <li><a href="#project-structure">Project Structure</a></li>
+  <li><a href="#database-architecture">Database Architecture</a></li>
+  <li><a href="#api-architecture">API Architecture</a></li>
+  <li><a href="#authentication--authorization">Authentication &amp; Authorization</a></li>
+  <li><a href="#multi-tenancy">Multi-Tenancy</a></li>
+  <li><a href="#security-features">Security Features</a></li>
+  <li><a href="#caching--performance">Caching &amp; Performance</a></li>
+  <li><a href="#queue--email-system">Queue &amp; Email System</a></li>
+  <li><a href="#backup--restore">Backup &amp; Restore</a></li>
+  <li><a href="#session-management">Session Management</a></li>
+  <li><a href="#calibration-system">Calibration System</a></li>
+  <li><a href="#stock--warehouse-management">Stock &amp; Warehouse Management</a></li>
+  <li><a href="#additional-modules">Additional Modules</a></li>
+  <li><a href="#api-response-format">API Response Format</a></li>
+  <li><a href="#middleware-pipeline">Middleware Pipeline</a></li>
+  <li><a href="#error-handling">Error Handling</a></li>
+  <li><a href="#logging">Logging</a></li>
+  <li><a href="#testing">Testing</a></li>
+  <li><a href="#deployment">Deployment</a></li>
+</ol>
+<hr />
+<h2>Overview</h2>
+<p>Callibrator Backend is a production-ready, enterprise-grade REST API built with Express.js, PostgreSQL, Redis, and RabbitMQ. It is designed as a multi-tenant SaaS platform for hospital device calibration management with full RBAC (Role-Based Access Control), dynamic permissions, and tenant isolation.</p>
+<h3>Key Capabilities</h3>
+<ul>
+  <li><strong>Multi-Tenant SaaS</strong>: Full data isolation with per-tenant feature flags and settings</li>
+  <li><strong>RBAC with Permission Matrix</strong>: Dynamic role-permission system with menu-level read/write access</li>
+  <li><strong>Per-User Permission Overrides</strong>: User-level read/write/none overrides on top of role inheritance</li>
+  <li><strong>JWT Authentication</strong>: Short-lived access tokens (15 min) + refresh token rotation (7 days)</li>
+  <li><strong>API Key Authentication</strong>: Scoped API keys (<code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">cbk_...</code>) as an alternative to JWT for integrations</li>
+  <li><strong>Session Management</strong>: Multi-device session tracking with automatic cleanup</li>
+  <li><strong>Dashboard Metrics</strong>: Aggregated tenant-scoped KPIs with 6-month trends (global view for SUPERADMIN)</li>
+  <li><strong>Calibration System</strong>: Device calibration tracking, records, and digital certificate management</li>
+  <li><strong>Calibration Scheduler</strong>: Automated due-date scanning that creates preventative work orders</li>
+  <li><strong>Stock &amp; Warehouse</strong>: Inventory management with transfers, adjustments, and opname counting</li>
+  <li><strong>Vendor &amp; Maintenance</strong>: CMMS tracking for devices and third-party supplier management</li>
+  <li><strong>Realtime Notifications</strong>: In-app notification center with socket.io push delivery</li>
+  <li><strong>Billing &amp; Subscription</strong>: Tenant billing, invoices, Stripe webhooks, and multi-tier plans</li>
+  <li><strong>Quota &amp; Plan Enforcement</strong>: Feature gating, seat limits, and storage quotas per plan tier</li>
+  <li><strong>Webhooks</strong>: HMAC-signed outbound event delivery with retries and delivery history</li>
+  <li><strong>Reports</strong>: Compliance, workload, overdue, and inventory reports with CSV export</li>
+  <li><strong>Global Search</strong>: Postgres full-text search across devices, stocks, and certificates</li>
+  <li><strong>Attachments</strong>: Virus-scanned file uploads with signed, expiring download URLs</li>
+  <li><strong>Audit &amp; Compliance</strong>: Immutable FDA 21 CFR Part 11 and ISO 17025 compliant audit trails</li>
+  <li><strong>Tenant Backups</strong>: Per-tenant PostgreSQL dump/restore with status tracking</li>
+  <li><strong>Email System</strong>: Async email queue via RabbitMQ with retry and DLQ</li>
+  <li><strong>Audit Trail</strong>: Activity logging and audit trails for compliance</li>
+</ul>
+<hr />
+<h2>Technology Stack</h2>
+<table>
+<tbody>
+<thead>
+<tr>
+<tr>
+  <th> Category           </th>
+  <th> Technology         </th>
+  <th> Version </th>
+  <th> Purpose                                   </th>
+</tr>
+</thead>
+<tr>
+  <td> <strong>Runtime</strong>        </td>
+  <td> Node.js            </td>
+  <td> 18+     </td>
+  <td> JavaScript runtime                        </td>
+</tr>
+<tr>
+  <td> <strong>Framework</strong>      </td>
+  <td> Express.js         </td>
+  <td> 5.x     </td>
+  <td> Web framework                             </td>
+</tr>
+<tr>
+  <td> <strong>Database</strong>       </td>
+  <td> PostgreSQL         </td>
+  <td> 14+     </td>
+  <td> Primary data store                        </td>
+</tr>
+<tr>
+  <td> <strong>ORM</strong>            </td>
+  <td> Sequelize          </td>
+  <td> 6.x     </td>
+  <td> Database ORM with pooling                 </td>
+</tr>
+<tr>
+  <td> <strong>Cache</strong>          </td>
+  <td> Redis              </td>
+  <td> 7+      </td>
+  <td> RBAC matrix, session cache, rate limiting </td>
+</tr>
+<tr>
+  <td> <strong>Queue</strong>          </td>
+  <td> RabbitMQ           </td>
+  <td> 3.13+   </td>
+  <td> Async email processing                    </td>
+</tr>
+<tr>
+  <td> <strong>Realtime</strong>       </td>
+  <td> Socket.io          </td>
+  <td> 4.x     </td>
+  <td> Realtime notification push (WebSocket)    </td>
+</tr>
+<tr>
+  <td> <strong>Billing</strong>        </td>
+  <td> Stripe             </td>
+  <td> —       </td>
+  <td> Subscription billing webhooks             </td>
+</tr>
+<tr>
+  <td> <strong>Authentication</strong> </td>
+  <td> JWT (jsonwebtoken) </td>
+  <td> —       </td>
+  <td> Access + refresh tokens                   </td>
+</tr>
+<tr>
+  <td> <strong>Validation</strong>     </td>
+  <td> Joi                </td>
+  <td> —       </td>
+  <td> Request schema validation                 </td>
+</tr>
+<tr>
+  <td> <strong>Security</strong>       </td>
+  <td> Helmet, CORS, HPP  </td>
+  <td> —       </td>
+  <td> HTTP security headers                     </td>
+</tr>
+<tr>
+  <td> <strong>Logging</strong>        </td>
+  <td> Winston            </td>
+  <td> —       </td>
+  <td> Structured logging with rotation          </td>
+</tr>
+<tr>
+  <td> <strong>File Upload</strong>    </td>
+  <td> Multer             </td>
+  <td> —       </td>
+  <td> Multipart form data (avatars, logos, attachments) </td>
+</tr>
+<tr>
+  <td> <strong>Testing</strong>        </td>
+  <td> Jest               </td>
+  <td> —       </td>
+  <td> Unit and integration tests                </td>
+</tr>
+<tr>
+  <td> <strong>API Docs</strong>       </td>
+  <td> Swagger/OpenAPI    </td>
+  <td> 3.0     </td>
+  <td> Auto-generated API documentation          </td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>Project Structure</h2>
+<pre class="language-"><code class="language-">backend/
+├── index.js                     # Application entry point
+├── package.json                 # Dependencies and scripts
+├── Dockerfile                   # Container build definition
+├── docker-compose.yaml          # Docker services orchestration
+├── .env                         # Environment variables (gitignored)
+├── local.env                    # Local development env example
+│
+├── src/
+│   ├── config/                  # Database, Redis, app configuration
+│   │   ├── index.js             # Sequelize instance, Redis connection
+│   │   ├── migrate.js           # Database migration runner
+│   │   └── socket.js            # Socket.io server (JWT handshake, tenant/user rooms)
+│   │
+│   ├── constants/               # Centralized constants
+│   │   ├── index.js             # Re-exports all constants
+│   │   ├── appConstants.js      # App-level constants (roles, statuses)
+│   │   ├── permissionConstants.js  # Permission definitions
+│   │   └── roleConstants.js     # Role definitions
+│   │
+│   ├── controllers/             # Request handlers (routes → controllers)
+│   │   ├── auth.controller.js         # Authentication endpoints
+│   │   ├── user.controller.js         # User CRUD
+│   │   ├── roles.controller.js        # Role CRUD
+│   │   ├── tenant.controller.js       # Tenant CRUD + features
+│   │   ├── session.controller.js      # Session management
+│   │   ├── tenantBackup.controller.js # Backup/restore
+│   │   ├── calibrationDevices.controller.js  # Device CRUD
+│   │   ├── calibrationRecords.controller.js  # Record CRUD
+│   │   ├── calibrationScheduler.controller.js # Due scan + scheduler run
+│   │   ├── certificate.controller.js  # Certificate lifecycle
+│   │   ├── stock.controller.js        # Inventory operations
+│   │   ├── warehouse.controller.js    # Warehouse + locations
+│   │   ├── migration.controller.js    # Internal migration endpoints
+│   │   ├── dashboard.controller.js    # Aggregated dashboard metrics
+│   │   ├── userPermission.controller.js # Per-user permission overrides
+│   │   ├── menuGroup.controller.js    # Menu group management
+│   │   ├── vendor.controller.js       # Vendor CRUD
+│   │   ├── maintenance.controller.js  # Maintenance work orders
+│   │   ├── notification.controller.js # Notification center
+│   │   ├── billing.controller.js      # Subscription, invoices, Stripe webhook
+│   │   ├── quota.controller.js        # Plan/quota usage summary
+│   │   ├── audit.controller.js        # Audit log queries
+│   │   ├── apiKey.controller.js       # API key management
+│   │   ├── webhook.controller.js      # Webhook CRUD + deliveries + test
+│   │   ├── reporting.controller.js    # Reports (summary, compliance, etc.)
+│   │   ├── search.controller.js       # Global search
+│   │   └── attachment.controller.js   # File attachments
+│   │
+│   ├── routes/                  # API route definitions
+│   │   ├── api/                 # Public API routes (v1)
+│   │   │   ├── auth.js          # Authentication routes (incl. socket-token)
+│   │   │   ├── user.js          # User routes
+│   │   │   ├── roles.js         # Role routes
+│   │   │   ├── tenant.js        # Tenant routes
+│   │   │   ├── tenantBackup.js  # Backup routes
+│   │   │   ├── session.js       # Session routes
+│   │   │   ├── calibrationDevices.js  # Device routes
+│   │   │   ├── calibrationRecords.js  # Record routes
+│   │   │   ├── calibrationScheduler.js # Scheduler routes
+│   │   │   ├── certificates.js  # Certificate routes
+│   │   │   ├── stock.js         # Stock routes
+│   │   │   ├── warehouse.js     # Warehouse routes
+│   │   │   ├── dashboard.js     # Dashboard metrics routes
+│   │   │   ├── userPermissions.js # Per-user override routes
+│   │   │   ├── menuGroups.js    # Menu group routes
+│   │   │   ├── vendor.js        # Vendor routes
+│   │   │   ├── maintenance.js   # Maintenance routes
+│   │   │   ├── notifications.js # Notification routes
+│   │   │   ├── billing.js       # Billing routes
+│   │   │   ├── quota.js         # Quota routes
+│   │   │   ├── audit.js         # Audit log routes
+│   │   │   ├── apiKeys.js       # API key routes
+│   │   │   ├── webhooks.js      # Webhook routes
+│   │   │   ├── reports.js       # Report routes
+│   │   │   ├── search.js        # Global search routes
+│   │   │   └── attachments.js   # Attachment routes
+│   │   └── internal/            # Internal/dev-only routes
+│   │       └── migration.js     # Migration + seeding
+│   │
+│   ├── services/                # Business logic layer
+│   │   ├── auth.service.js              # Registration, login, OTP, password
+│   │   ├── user.service.js              # User operations
+│   │   ├── roles.service.js             # Role operations
+│   │   ├── tenant.service.js            # Tenant operations
+│   │   ├── tenantBackup.service.js      # Backup/restore logic
+│   │   ├── tenantUpload.service.js      # Logo upload processing
+│   │   ├── session.service.js           # Session management
+│   │   ├── rateLimiter.service.js       # Token bucket rate limiter
+│   │   ├── redis.service.js             # Redis operations
+│   │   ├── email.service.js             # Email templating
+│   │   ├── emailQueue.service.js        # RabbitMQ queue worker
+│   │   ├── calibrationDevices.service.js # Device business logic
+│   │   ├── calibrationRecords.service.js # Record business logic
+│   │   ├── calibrationScheduler.service.js # Due scan + work order creation
+│   │   ├── certificate.service.js       # Certificate lifecycle
+│   │   ├── stock.service.js             # Inventory operations
+│   │   ├── warehouse.service.js         # Warehouse operations
+│   │   ├── migration.service.js         # Migration logic
+│   │   ├── dashboard.service.js         # Metric aggregation + trends
+│   │   ├── userPermission.service.js    # Per-user override resolution
+│   │   ├── menuGroup.service.js         # Menu group operations
+│   │   ├── vendor.service.js            # Vendor operations
+│   │   ├── maintenance.service.js       # Work order operations
+│   │   ├── notification.service.js      # Notification center + realtime emit
+│   │   ├── billing.service.js           # Subscription + invoices
+│   │   ├── stripeWebhook.service.js     # Stripe signature verification
+│   │   ├── quota.service.js             # Plan features, seat/storage quotas
+│   │   ├── audit.service.js             # Immutable audit log queries
+│   │   ├── apiKey.service.js            # API key hashing + scope checks
+│   │   ├── webhook.service.js           # HMAC signing + retry delivery
+│   │   ├── reporting.service.js         # Report generation + CSV export
+│   │   ├── search.service.js            # Postgres FTS global search
+│   │   ├── attachment.service.js        # Upload, checksum, signed URLs
+│   │   └── virusScan.service.js         # Attachment virus scanning
+│   │
+│   ├── models/                  # Sequelize models (1 file = 1 model)
+│   │   ├── index.js             # Dynamic model loader + associations
+│   │   ├── Tenant.js            # Organizations/tenants
+│   │   ├── User.js              # Individual users
+│   │   ├── Role.js              # RBAC roles
+│   │   ├── MenuGroup.js         # Navigation menu groups
+│   │   ├── RoleMenuPermission.js  # Role↔Menu permission mapping
+│   │   ├── UserMenuPermission.js  # Per-user permission overrides
+│   │   ├── Session.js           # Authentication sessions
+│   │   ├── Warehouse.js         # Physical warehouses
+│   │   ├── StorageLocation.js   # Locations within warehouses
+│   │   ├── Stock.js             # Inventory levels
+│   │   ├── StockTransfer.js     # Inter-warehouse transfers
+│   │   ├── StockAdjustment.js   # Manual adjustments
+│   │   ├── StockOpname.js       # Periodic counting
+│   │   ├── CalibrationDevice.js # Calibration devices
+│   │   ├── CalibrationRecord.js # Calibration history
+│   │   ├── Certificate.js       # Digital certificates
+│   │   ├── TenantBackup.js      # Backup records
+│   │   ├── TenantSettings.js    # Per-tenant config
+│   │   ├── Vendor.js            # Calibration labs and suppliers
+│   │   ├── MaintenanceWorkOrder.js # CMMS work orders
+│   │   ├── Notification.js      # User notifications
+│   │   ├── Subscription.js      # Tenant subscription plans
+│   │   ├── Invoice.js           # Billing invoices
+│   │   ├── AuditLog.js          # Immutable audit trail
+│   │   ├── ApiKey.js            # Hashed API keys with scopes
+│   │   ├── Webhook.js           # Outbound webhook endpoints
+│   │   ├── WebhookDelivery.js   # Webhook delivery attempts
+│   │   └── Attachment.js        # Polymorphic file attachments
+│   │
+│   ├── middlewares/             # Express middleware chain
+│   │   ├── auth.js              # JWT validation + user loading
+│   │   ├── rbac.js              # Role-based access control
+│   │   ├── abac.js              # Attribute-based access control
+│   │   ├── dynamicAccess.js     # Dynamic permission matrix + user overrides
+│   │   ├── enforceQuota.js      # Plan feature gating + storage quota
+│   │   ├── calibrationScheduler.js # Scheduler integration
+│   │   ├── errorHandlers.js     # Global error handling
+│   │   ├── globalSanitizer.js   # XSS input sanitization
+│   │   ├── inputValidation.js   # Joi schema validation
+│   │   ├── validateUuid.js      # UUID parameter validation
+│   │   ├── tokenRateLimiter.js  # Token bucket rate limiting
+│   │   ├── sessionCleanup.js    # Session cleanup cron integration
+│   │   ├── accessLog.js         # Access logging
+│   │   ├── activityLog.js       # User activity tracking
+│   │   ├── auditLog.js          # Audit trail logging
+│   │   ├── backup.js            # Backup-related middleware
+│   │   ├── createFolder.js      # Upload folder creation
+│   │   ├── notFound.js          # 404 handler
+│   │   └── upload.js            # Multer configuration
+│   │
+│   ├── validators/              # Joi validation schemas
+│   │   ├── auth.validator.js
+│   │   ├── user.validator.js
+│   │   ├── tenant.validator.js
+│   │   ├── calibrationDevices.validator.js
+│   │   ├── calibrationRecords.validator.js
+│   │   ├── certificate.validator.js
+│   │   ├── stock.validator.js
+│   │   ├── warehouse.validator.js
+│   │   ├── vendor.validator.js
+│   │   ├── maintenance.validator.js
+│   │   ├── notification.validator.js
+│   │   ├── billing.validator.js
+│   │   └── audit.validator.js
+│   │
+│   ├── utils/                   # Utility functions
+│   │   ├── appError.js          # Custom error class
+│   │   ├── appPath.js           # Path resolution
+│   │   ├── controllerWrapper.js # Controller async wrapper
+│   │   ├── dbReady.js           # Database readiness check
+│   │   ├── env.js               # Environment variable parser
+│   │   ├── jwt.js               # JWT sign/verify helpers
+│   │   ├── otp.js               # OTP generation/verification
+│   │   ├── password.js          # Password hashing (bcrypt)
+│   │   ├── response.js          # Standard API response formatter
+│   │   ├── storagePath.js       # Storage path helpers
+│   │   ├── upload.js            # File upload helpers
+│   │   ├── generateSwagger.js   # Swagger generation utility
+│   │   ├── seedMenuGroups.js    # Menu group seeding
+│   │   └── session.js           # Session utilities
+│   │
+│   ├── templates/               # Email HTML templates
+│   │   ├── account.html
+│   │   ├── otp.html
+│   │   └── template.html
+│   │
+│   ├── docs/                    # Swagger/OpenAPI configuration
+│   │   ├── swagger.js           # Swagger specification builder
+│   │   ├── components.js        # OpenAPI components/schemas
+│   │   └── tags.js              # API tag definitions
+│   │
+│   └── tests/                   # Jest test suites
+│       ├── controllers/
+│       ├── middlewares/
+│       ├── services/
+│       ├── utils/
+│       ├── validators/
+│       └── test.utils.js
+│
+├── docs/                        # Markdown documentation (this directory)
+├── uploads/                     # Uploaded files (gitignored)
+├── public/                      # Static assets
+└── scripts/                     # Build/utility scripts
+</pre>
+<hr />
+<h2>Database Architecture</h2>
+<h3>Entity Relationship Overview</h3>
+<p>!<a href="illustrations/04-database-schema.svg">Database Schema ER Diagram</a></p>
+<h3>Model Descriptions</h3>
+<table>
+<tbody>
+<thead>
+<tr>
+<tr>
+  <th> Model                     </th>
+  <th> Table                     </th>
+  <th> Description               </th>
+  <th> Key Fields                                                                                 </th>
+</tr>
+</thead>
+<tr>
+  <td> <strong>Tenant</strong>                </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">tenants</code>                 </td>
+  <td> Organizations/tenants     </td>
+  <td> name, subdomain, plan, status, settings(JSON)                                              </td>
+</tr>
+<tr>
+  <td> <strong>User</strong>                  </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">users</code>                   </td>
+  <td> Individual users          </td>
+  <td> tenantId, username, email, passwordHash, roleId, status, virtual attributes (picture, first_name, last_name) </td>
+</tr>
+<tr>
+  <td> <strong>Role</strong>                  </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">roles</code>                   </td>
+  <td> RBAC roles                </td>
+  <td> tenantId, name (SUPERADMIN, HEALTHCARE ADMIN, etc.), description                           </td>
+</tr>
+<tr>
+  <td> <strong>MenuGroup</strong>             </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">menu_groups</code>             </td>
+  <td> Navigation groups         </td>
+  <td> name (User Management, Role Management, etc.), path                                        </td>
+</tr>
+<tr>
+  <td> <strong>RoleMenuPermission</strong>    </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">role_menu_permissions</code>   </td>
+  <td> Role↔Menu read/write      </td>
+  <td> roleId, menuGroupId, roleType (read/write)                                                 </td>
+</tr>
+<tr>
+  <td> <strong>UserMenuPermission</strong>    </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">user_menu_permissions</code>   </td>
+  <td> Per-user overrides        </td>
+  <td> userId, menuGroupId, permissionType (read/write/none — &quot;none&quot; is explicit deny)            </td>
+</tr>
+<tr>
+  <td> <strong>Session</strong>               </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">sessions</code>                </td>
+  <td> Auth sessions             </td>
+  <td> userId, refreshTokenHash, expiresAt, userAgent, ip                                         </td>
+</tr>
+<tr>
+  <td> <strong>Warehouse</strong>             </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">warehouses</code>              </td>
+  <td> Physical warehouses       </td>
+  <td> tenantId, name, code, address                                                              </td>
+</tr>
+<tr>
+  <td> <strong>StorageLocation</strong>       </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">storage_locations</code>       </td>
+  <td> Location within warehouse </td>
+  <td> warehouseId, name, code, capacity                                                          </td>
+</tr>
+<tr>
+  <td> <strong>Stock</strong>                 </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">stocks</code>                  </td>
+  <td> Inventory per location    </td>
+  <td> warehouseId, locationId, sku, quantity                                                     </td>
+</tr>
+<tr>
+  <td> <strong>StockTransfer</strong>         </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">stock_transfers</code>         </td>
+  <td> Inter-warehouse transfers </td>
+  <td> fromWarehouseId, toWarehouseId, status, items(JSON)                                        </td>
+</tr>
+<tr>
+  <td> <strong>StockAdjustment</strong>       </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">stock_adjustments</code>       </td>
+  <td> Manual adjustments        </td>
+  <td> warehouseId, type (add/remove), items(JSON)                                                </td>
+</tr>
+<tr>
+  <td> <strong>StockOpname</strong>           </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">stock_opnames</code>           </td>
+  <td> Periodic counting         </td>
+  <td> warehouseId, status, results(JSON)                                                         </td>
+</tr>
+<tr>
+  <td> <strong>CalibrationDevice</strong>     </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">calibration_devices</code>     </td>
+  <td> Devices to calibrate      </td>
+  <td> tenantId, name, serialNumber, manufacturer, model, status, nextCalibrationDate             </td>
+</tr>
+<tr>
+  <td> <strong>CalibrationRecord</strong>     </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">calibration_records</code>     </td>
+  <td> Calibration history       </td>
+  <td> deviceId, performedBy, calibrationDate, dueDate, standard, results(JSON), isCompliant      </td>
+</tr>
+<tr>
+  <td> <strong>Certificate</strong>           </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">certificates</code>            </td>
+  <td> Digital certificates      </td>
+  <td> deviceId, calibrationRecordId, certificateNumber, type, status, signedAt, digitalSignature </td>
+</tr>
+<tr>
+  <td> <strong>TenantBackup</strong>          </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">tenant_backups</code>          </td>
+  <td> Backup operations         </td>
+  <td> tenantId, status, filePath, createdAt                                                      </td>
+</tr>
+<tr>
+  <td> <strong>TenantSettings</strong>        </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">tenant_settings</code>         </td>
+  <td> Per-tenant config         </td>
+  <td> tenantId, key, value(JSON)                                                                 </td>
+</tr>
+<tr>
+  <td> <strong>Vendor</strong>                </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">vendors</code>                 </td>
+  <td> Labs and suppliers        </td>
+  <td> tenantId, name, type (CalibrationLab/PartsSupplier/Other), rating, status                  </td>
+</tr>
+<tr>
+  <td> <strong>MaintenanceWorkOrder</strong>  </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">maintenance_work_orders</code> </td>
+  <td> CMMS work orders          </td>
+  <td> tenantId, deviceId, vendorId, assigneeId, type (Preventative/Breakdown/Repair), status (Open/InProgress/Completed/Cancelled), priority (Low→Critical) </td>
+</tr>
+<tr>
+  <td> <strong>Notification</strong>          </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">notifications</code>           </td>
+  <td> User notifications        </td>
+  <td> tenantId, userId, type (SYSTEM/CALIBRATION/INVENTORY/MAINTENANCE), title, message, isRead  </td>
+</tr>
+<tr>
+  <td> <strong>Subscription</strong>          </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">subscriptions</code>           </td>
+  <td> Tenant subscription       </td>
+  <td> tenantId, planId, billingCycle (Monthly/Annually), status                                  </td>
+</tr>
+<tr>
+  <td> <strong>Invoice</strong>               </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">invoices</code>                </td>
+  <td> Billing invoices          </td>
+  <td> tenantId, subscriptionId, amount, status, issuedAt                                         </td>
+</tr>
+<tr>
+  <td> <strong>AuditLog</strong>              </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">audit_logs</code>              </td>
+  <td> Immutable audit trail     </td>
+  <td> tenantId, userId, action (CREATE/UPDATE/DELETE/LOGIN/APPROVE/EXPORT), resourceType, changes(JSONB before/after) </td>
+</tr>
+<tr>
+  <td> <strong>ApiKey</strong>                </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">api_keys</code>                </td>
+  <td> Scoped API keys           </td>
+  <td> tenantId, name, keyHash (sha256), keyPrefix (12 chars), scopes, lastUsedAt                 </td>
+</tr>
+<tr>
+  <td> <strong>Webhook</strong>               </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">webhooks</code>                </td>
+  <td> Outbound endpoints        </td>
+  <td> tenantId, url, secret (HMAC), events, isActive                                             </td>
+</tr>
+<tr>
+  <td> <strong>WebhookDelivery</strong>       </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">webhook_deliveries</code>      </td>
+  <td> Delivery attempts         </td>
+  <td> webhookId, event, status (pending/success/failed/exhausted), attempts, responseStatus      </td>
+</tr>
+<tr>
+  <td> <strong>Attachment</strong>            </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">attachments</code>             </td>
+  <td> Polymorphic files         </td>
+  <td> tenantId, resourceType, resourceId, fileName, mimeType, sizeBytes, checksum (sha256)       </td>
+</tr>
+</tbody>
+</table>
+<h3>Tenant Isolation</h3>
+<p>All tenant-scoped tables include a <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">tenantId</code> foreign key. Every query automatically scopes to the authenticated user&#39;s tenant via the <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">auth</code> middleware, which extracts <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">tenantId</code> from the JWT payload.</p>
+<h3>Safe User Attributes</h3>
+<p>When serializing user data for authentication, profile updates, or user creation/editing endpoints, the system returns a standardized set of &quot;safe&quot; attributes to the client. This ensures that sensitive information is omitted and that consistent camelCase and snake_case representations are provided:</p>
+<ul>
+  <li><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">username</code> (string): The unique login username.</li>
+  <li><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">email</code> (string): The user&#39;s primary email address.</li>
+  <li><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">first_name</code> (string): The user&#39;s first name (snake_case alias).</li>
+  <li><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">last_name</code> (string): The user&#39;s last name (snake_case alias).</li>
+  <li><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">firstName</code> (string): The user&#39;s first name (camelCase).</li>
+  <li><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">lastName</code> (string): The user&#39;s last name (camelCase).</li>
+  <li><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">picture</code> (string): Full URL to the user&#39;s avatar picture, dynamically resolved using <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">process.env.HOST_URL</code> and the profile upload directory.</li>
+  <li><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">avatarUrl</code> (string): Duplicate representation of the avatar URL for compatibility.</li>
+</ul>
+<hr />
+<h2>API Architecture</h2>
+<h3>Route Organization</h3>
+<table>
+<tbody>
+<thead>
+<tr>
+<tr>
+  <th> Module                  </th>
+  <th> Base Path                            </th>
+  <th> File                                  </th>
+  <th> Controller                            </th>
+</tr>
+</thead>
+<tr>
+  <td> <strong>Auth</strong>                </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/auth/*</code>                     </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">routes/api/auth.js</code>                  </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">auth.controller.js</code>                  </td>
+</tr>
+<tr>
+  <td> <strong>Users</strong>               </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/users/*</code>                    </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">routes/api/user.js</code>                  </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">user.controller.js</code>                  </td>
+</tr>
+<tr>
+  <td> <strong>Roles</strong>               </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/roles/*</code>                    </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">routes/api/roles.js</code>                 </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">roles.controller.js</code>                 </td>
+</tr>
+<tr>
+  <td> <strong>Tenants</strong>             </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/tenants/*</code>                  </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">routes/api/tenant.js</code>                </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">tenant.controller.js</code>                </td>
+</tr>
+<tr>
+  <td> <strong>Sessions</strong>            </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/sessions/*</code>                 </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">routes/api/session.js</code>               </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">session.controller.js</code>               </td>
+</tr>
+<tr>
+  <td> <strong>TenantBackup</strong>        </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/tenants/:id/backups/*</code>      </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">routes/api/tenantBackup.js</code>          </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">tenantBackup.controller.js</code>          </td>
+</tr>
+<tr>
+  <td> <strong>CalibrationDevices</strong>  </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/calibration-devices/*</code>      </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">routes/api/calibrationDevices.js</code>    </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">calibrationDevices.controller.js</code>    </td>
+</tr>
+<tr>
+  <td> <strong>CalibrationRecords</strong>  </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/calibration-records/*</code>      </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">routes/api/calibrationRecords.js</code>    </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">calibrationRecords.controller.js</code>    </td>
+</tr>
+<tr>
+  <td> <strong>CalibrationScheduler</strong></td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/calibration-scheduler/*</code>    </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">routes/api/calibrationScheduler.js</code>  </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">calibrationScheduler.controller.js</code>  </td>
+</tr>
+<tr>
+  <td> <strong>Certificates</strong>        </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/certificates/*</code>             </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">routes/api/certificates.js</code>          </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">certificate.controller.js</code>           </td>
+</tr>
+<tr>
+  <td> <strong>Stock</strong>               </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/stock/*</code>                    </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">routes/api/stock.js</code>                 </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">stock.controller.js</code>                 </td>
+</tr>
+<tr>
+  <td> <strong>Warehouse</strong>           </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/warehouse/*</code>                </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">routes/api/warehouse.js</code>             </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">warehouse.controller.js</code>             </td>
+</tr>
+<tr>
+  <td> <strong>Dashboard</strong>           </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/dashboard/*</code>                </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">routes/api/dashboard.js</code>             </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">dashboard.controller.js</code>             </td>
+</tr>
+<tr>
+  <td> <strong>UserPermissions</strong>     </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/user-permissions/*</code>         </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">routes/api/userPermissions.js</code>       </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">userPermission.controller.js</code>        </td>
+</tr>
+<tr>
+  <td> <strong>MenuGroups</strong>          </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/menu-groups/*</code>              </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">routes/api/menuGroups.js</code>            </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">menuGroup.controller.js</code>             </td>
+</tr>
+<tr>
+  <td> <strong>Vendors</strong>             </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/vendors/*</code>                  </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">routes/api/vendor.js</code>                </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">vendor.controller.js</code>                </td>
+</tr>
+<tr>
+  <td> <strong>Maintenance</strong>         </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/maintenance/*</code>              </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">routes/api/maintenance.js</code>           </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">maintenance.controller.js</code>           </td>
+</tr>
+<tr>
+  <td> <strong>Notifications</strong>       </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/notifications/*</code>            </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">routes/api/notifications.js</code>         </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">notification.controller.js</code>          </td>
+</tr>
+<tr>
+  <td> <strong>Billing</strong>             </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/billing/*</code>                  </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">routes/api/billing.js</code>               </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">billing.controller.js</code>               </td>
+</tr>
+<tr>
+  <td> <strong>Quota</strong>               </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/quota/*</code>                    </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">routes/api/quota.js</code>                 </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">quota.controller.js</code>                 </td>
+</tr>
+<tr>
+  <td> <strong>Audit</strong>               </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/audit/*</code>                    </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">routes/api/audit.js</code>                 </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">audit.controller.js</code>                 </td>
+</tr>
+<tr>
+  <td> <strong>ApiKeys</strong>             </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/api-keys/*</code>                 </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">routes/api/apiKeys.js</code>               </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">apiKey.controller.js</code>                </td>
+</tr>
+<tr>
+  <td> <strong>Webhooks</strong>            </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/webhooks/*</code>                 </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">routes/api/webhooks.js</code>              </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">webhook.controller.js</code>               </td>
+</tr>
+<tr>
+  <td> <strong>Reports</strong>             </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/reports/*</code>                  </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">routes/api/reports.js</code>               </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">reporting.controller.js</code>             </td>
+</tr>
+<tr>
+  <td> <strong>Search</strong>              </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/search</code>                     </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">routes/api/search.js</code>                </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">search.controller.js</code>                </td>
+</tr>
+<tr>
+  <td> <strong>Attachments</strong>         </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/attachments/*</code>              </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">routes/api/attachments.js</code>           </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">attachment.controller.js</code>            </td>
+</tr>
+<tr>
+  <td> <strong>Migration</strong>           </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/migration/*</code>                </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">routes/internal/migration.js</code>        </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">migration.controller.js</code>             </td>
+</tr>
+</tbody>
+</table>
+<h3>Health Check Endpoints</h3>
+<table>
+<tbody>
+<thead>
+<tr>
+<tr>
+  <th> Endpoint      </th>
+  <th> Description                 </th>
+</tr>
+</thead>
+<tr>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">GET /</code>       </td>
+  <td> API status check            </td>
+</tr>
+<tr>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">GET /health</code> </td>
+  <td> Database connectivity check </td>
+</tr>
+<tr>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">GET /ready</code>  </td>
+  <td> Kubernetes readiness probe  </td>
+</tr>
+<tr>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">GET /live</code>   </td>
+  <td> Kubernetes liveness probe   </td>
+</tr>
+</tbody>
+</table>
+<h3>Documentation Endpoints</h3>
+<table>
+<tbody>
+<thead>
+<tr>
+<tr>
+  <th> Endpoint         </th>
+  <th> Description                          </th>
+</tr>
+</thead>
+<tr>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/docs</code>          </td>
+  <td> Swagger UI interactive documentation </td>
+</tr>
+<tr>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/documentation</code> </td>
+  <td> HTML documentation                   </td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>Authentication &amp; Authorization</h2>
+<h3>JWT Token Flow</h3>
+<p>!<a href="illustrations/02-authentication-flow.svg">Authentication Flow</a></p>
+<h3>System Architecture Overview</h3>
+<p>!<a href="illustrations/01-system-architecture.svg">System Architecture</a></p>
+<h3>RBAC &amp; ABAC Authorization</h3>
+<p>!<a href="illustrations/03-rbac-abac.svg">RBAC &amp; ABAC Authorization</a></p>
+<h3>Database Schema (ER Diagram)</h3>
+<p>!<a href="illustrations/04-database-schema.svg">Database Schema</a></p>
+<h3>Middleware Pipeline</h3>
+<p>!<a href="illustrations/05-middleware-pipeline.svg">Middleware Pipeline</a></p>
+<h3>API Endpoints Reference</h3>
+<p>!<a href="illustrations/06-api-endpoints.svg">API Endpoints</a></p>
+<h3>Multi-Tenancy Architecture</h3>
+<p>!<a href="illustrations/07-multi-tenancy.svg">Multi-Tenancy</a></p>
+<h3>Backup &amp; Logging System</h3>
+<p>!<a href="illustrations/08-backup-logging.svg">Backup &amp; Logging</a></p>
+<h3>Security Layers</h3>
+<p>!<a href="illustrations/09-security-layers.svg">Security Layers</a></p>
+<h3>Project Structure</h3>
+<p>!<a href="illustrations/10-project-structure.svg">Project Structure</a></p>
+<h3>Docker Architecture</h3>
+<p>!<a href="illustrations/11-docker-architecture.svg">Docker Architecture</a></p>
+<h3>Menu Group Architecture</h3>
+<p>!<a href="illustrations/15-menu-group-architecture.svg">Menu Group Architecture</a></p>
+<h3>User Menu Resolution Flow</h3>
+<p>!<a href="illustrations/16-user-menu-resolution.svg">User Menu Resolution</a></p>
+<h3>Kanban Architecture</h3>
+<p>!<a href="illustrations/32-kanban-architecture.svg">Kanban Architecture</a></p>
+<p>!<a href="illustrations/33-kanban-card-lifecycle.svg">Kanban Card Lifecycle</a></p>
+<h3>Authorization Layers</h3>
+<p>Authorization is resolved in four layers, evaluated in order:</p>
+<ol>
+  <li><strong>JWT Authentication</strong> (<code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">auth.js</code>): Validates access token, loads user + session context.</li>
+  <li><strong>RBAC</strong> (<code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">rbac.js</code>): Checks user&#39;s static role against required permissions.</li>
+  <li><strong>Dynamic RBAC &amp; Tenant Isolation</strong> (<code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">dynamicAccess.js</code>): Enforces role-based menu permissions using the <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">RoleMenuPermission</code> mapping and a cached permission matrix. It also handles tenant isolation checks dynamically (attribute-based scoping).</li>
+  <li><strong>Per-User Overrides</strong> (<code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">dynamicAccess.js</code> + <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">UserMenuPermission</code>): User-specific overrides are applied on top of role inheritance. A <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">permissionType</code> of <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">read</code> or <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">write</code> grants that access even if the role lacks it; <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">none</code> is an <strong>explicit deny</strong> that revokes access the role would otherwise grant. When both exist, the <strong>user override always wins over the role permission</strong>. Resolved overrides are cached per user in Redis under <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">permissions:user:{id}</code>.</li>
+</ol>
+<p>#### User Permission Resolution</p>
+<p>!<a href="illustrations/24-user-permission-resolution.svg">User Permission Resolution</a></p>
+<h3>API Key Authentication</h3>
+<p>As an alternative to JWT, requests can authenticate with a scoped API key (see <a href="#api-keys">API Keys</a>). The raw key (<code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">cbk_...</code>) is presented by the client, matched by its 12-character prefix, verified against its sha256 hash, and its scopes (<code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">&lt;Resource&gt;:&lt;read|write|<em>&gt;</code> or <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;"></em></code>) are checked against the requested route at request time. API key management endpoints themselves are JWT-only.</p>
+<h3>Permission Format</h3>
+<p>Permissions use <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">module:action</code> format:</p>
+<ul>
+  <li><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">User:read</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">User:create</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">User:update</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">User:delete</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">User:role-update</code></li>
+  <li><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">Role:read</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">Role:create</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">Role:update</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">Role:delete</code></li>
+  <li><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">Tenant:read</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">Tenant:create</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">Tenant:update</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">Tenant:delete</code></li>
+  <li><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">Session:read</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">Session:revoke</code></li>
+  <li><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">CalibrationDevice:read</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">CalibrationDevice:create</code>, etc.</li>
+  <li><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">Stock:read</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">Stock:create</code>, etc.</li>
+</ul>
+<hr />
+<h2>Multi-Tenancy</h2>
+<h3>Tenant Model</h3>
+<p>Each tenant represents an organization with:</p>
+<ul>
+  <li><strong>Plan tier</strong> (free, professional, business, enterprise)</li>
+  <li><strong>Feature flags</strong> per plan level</li>
+  <li><strong>Custom branding</strong> (logo upload)</li>
+  <li><strong>Settings</strong> (key-value store via <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">TenantSettings</code>)</li>
+</ul>
+<h3>Data Isolation</h3>
+<ul>
+  <li>All queries automatically scope by <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">tenantId</code></li>
+  <li>Middleware extracts tenant from JWT and binds to request context</li>
+  <li>No cross-tenant data access possible</li>
+</ul>
+<h3>Feature Flags</h3>
+<p>Tenants have features enabled/disabled based on their plan:</p>
+<pre class="language-javascript"><code class="language-javascript">{
+  tenant: true,
+  backup: true,
+  stock: true,
+  warehouse: true,
+  calibration: true,
+}
+</pre>
+<p>Plan-tier features (reports, webhooks, api_keys, sso, search, etc.) are additionally enforced at request time by the quota middleware — see <a href="#billing--quota">Billing &amp; Quota</a>.</p>
+<hr />
+<h2>Security Features</h2>
+<table>
+<tbody>
+<thead>
+<tr>
+<tr>
+  <th> Feature                </th>
+  <th> Implementation                                        </th>
+</tr>
+</thead>
+<tr>
+  <td> <strong>Password Hashing</strong>   </td>
+  <td> bcrypt with configurable salt rounds                  </td>
+</tr>
+<tr>
+  <td> <strong>JWT Secrets</strong>        </td>
+  <td> Separate access and refresh secrets (required in env) </td>
+</tr>
+<tr>
+  <td> <strong>API Key Storage</strong>    </td>
+  <td> sha256 hash + 12-char prefix; raw key shown once      </td>
+</tr>
+<tr>
+  <td> <strong>Webhook Signing</strong>    </td>
+  <td> HMAC-SHA256 payload signatures                        </td>
+</tr>
+<tr>
+  <td> <strong>XSS Protection</strong>     </td>
+  <td> Global sanitizer strips HTML tags from input          </td>
+</tr>
+<tr>
+  <td> <strong>HPP</strong>                </td>
+  <td> Horizontal Request Pagination protection              </td>
+</tr>
+<tr>
+  <td> <strong>CORS</strong>               </td>
+  <td> Configurable allowed origins                          </td>
+</tr>
+<tr>
+  <td> <strong>Helmet</strong>             </td>
+  <td> Secure HTTP headers                                   </td>
+</tr>
+<tr>
+  <td> <strong>Rate Limiting</strong>      </td>
+  <td> Token bucket algorithm (Redis-backed)                 </td>
+</tr>
+<tr>
+  <td> <strong>Account Lockout</strong>    </td>
+  <td> 15-minute lock after failed login attempts            </td>
+</tr>
+<tr>
+  <td> <strong>Session Revocation</strong> </td>
+  <td> Forced logout on security events                      </td>
+</tr>
+<tr>
+  <td> <strong>UUID Validation</strong>    </td>
+  <td> All UUID parameters validated before controller       </td>
+</tr>
+<tr>
+  <td> <strong>Virus Scanning</strong>     </td>
+  <td> Attachment uploads scanned before storage             </td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>Caching &amp; Performance</h2>
+<h3>Redis Caching Strategy</h3>
+<table>
+<tbody>
+<thead>
+<tr>
+<tr>
+  <th> Cache Key Pattern            </th>
+  <th> TTL              </th>
+  <th> Purpose                          </th>
+</tr>
+</thead>
+<tr>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">tenant:{subdomain}</code>         </td>
+  <td> 24 hours         </td>
+  <td> Tenant data (reduces DB queries) </td>
+</tr>
+<tr>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">user:{id}</code>                  </td>
+  <td> 24 hours         </td>
+  <td> User data                        </td>
+</tr>
+<tr>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">user:by-email:{email}</code>      </td>
+  <td> 24 hours         </td>
+  <td> Email lookup                     </td>
+</tr>
+<tr>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">permission_matrix:{userId}</code> </td>
+  <td> 5 minutes        </td>
+  <td> RBAC permission matrix           </td>
+</tr>
+<tr>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">permissions:user:{id}</code>      </td>
+  <td> 5 minutes        </td>
+  <td> Per-user permission overrides    </td>
+</tr>
+<tr>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">token_bucket:{ip}:{route}</code>  </td>
+  <td> Sliding window   </td>
+  <td> Rate limiting                    </td>
+</tr>
+<tr>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">session:cache:{sessionId}</code>  </td>
+  <td> Session lifetime </td>
+  <td> Session data                     </td>
+</tr>
+</tbody>
+</table>
+<h3>Database Optimization</h3>
+<ul>
+  <li><strong>Connection Pooling</strong>: Sequelize configured with pool size from env</li>
+  <li><strong>SSL</strong>: Production databases use SSL/TLS</li>
+  <li><strong>Retries</strong>: Automatic query retry on connection failure</li>
+  <li><strong>Timezone</strong>: UTC storage with proper timezone configuration</li>
+</ul>
+<hr />
+<h2>Queue &amp; Email System</h2>
+<h3>RabbitMQ Email Queue</h3>
+<pre class="language-"><code class="language-">┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
+│  Server   │────▶│  Rabbit  │────▶│  Worker  │────▶│  SMTP    │
+│  (API)    │     │  MQ      │     │  Service │     │  Server  │
+└──────────┘     └──────────┘     └──────────┘     └──────────┘
+                     │
+                     ├── Retry (exponential backoff)
+                     └── DLQ on max retries
+</pre>
+<h3>Email Types</h3>
+<ul>
+  <li><strong>Account Activation</strong>: Sent on user registration</li>
+  <li><strong>OTP Verification</strong>: Sent for password reset</li>
+  <li><strong>Custom Templates</strong>: Extensible for other email types</li>
+</ul>
+<hr />
+<h2>Backup &amp; Restore</h2>
+<h3>Tenant Backup Flow</h3>
+<pre class="language-"><code class="language-">┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
+│  Request │────▶│  Validate│────▶│  pg_dump │────▶│  Store   │
+│  Backup  │     │  Tenant  │     │  (SQL)   │     │  (S3/fs) │
+└──────────┘     └──────────┘     └──────────┘     └──────────┘
+                                              │
+                                      ┌───────┴───────┐
+                                      │  Update       │
+                                      │  TenantBackup │
+                                      │  status=done  │
+                                      └───────────────┘
+</pre>
+<h3>Backup Features</h3>
+<ul>
+  <li><strong>Per-tenant</strong>: Isolated backup per tenant</li>
+  <li><strong>Status tracking</strong>: pending → running → done/error</li>
+  <li><strong>Restore</strong>: Full tenant restore from backup</li>
+  <li><strong>Download</strong>: Backup file download</li>
+  <li><strong>Statistics</strong>: Backup count and size stats</li>
+</ul>
+<hr />
+<h2>Session Management</h2>
+<h3>Session Model</h3>
+<p>Each session tracks:</p>
+<ul>
+  <li>User ID, device info (userAgent), IP address</li>
+  <li>Hashed refresh token (never stored plain)</li>
+  <li>Expiration time, revoked status</li>
+  <li>Active/inactive status</li>
+</ul>
+<h3>Session Operations</h3>
+<ul>
+  <li><strong>Login</strong>: Creates new session record</li>
+  <li><strong>Logout</strong>: Revokes single session</li>
+  <li><strong>Logout All</strong>: Revokes all user sessions</li>
+  <li><strong>Session List</strong>: Admin can view/revoke sessions</li>
+  <li><strong>Auto-cleanup</strong>: Cron job removes expired sessions</li>
+</ul>
+<hr />
+<h2>Calibration System</h2>
+<h3>Device Lifecycle</h3>
+<p>The calibration system follows a complete lifecycle from device registration through calibration,</p>
+<p>certificate generation, and record archiving. Devices are tracked with their serial numbers,</p>
+<p>manufacturers, models, and next calibration dates.</p>
+<p>#### Calibration Lifecycle Flow</p>
+<p>!<a href="illustrations/21-calibration-lifecycle.svg">Calibration Lifecycle Flow</a></p>
+<h3>Certificate Types</h3>
+<ul>
+  <li><strong>calibration</strong>: Standard calibration certificate</li>
+  <li><strong>maintenance</strong>: Maintenance completion certificate</li>
+  <li><strong>verification</strong>: Verification/inspection certificate</li>
+</ul>
+<p>#### Certificate Lifecycle Flow</p>
+<p>!<a href="illustrations/23-certificate-lifecycle.svg">Certificate Lifecycle Flow</a></p>
+<hr />
+<h2>Stock &amp; Warehouse Management</h2>
+<h3>Warehouse Structure</h3>
+<p>Warehouses contain storage locations, which hold inventory items. Stock transfers move items</p>
+<p>between warehouses, while stock adjustments allow manual corrections and periodic stock opname</p>
+<p>counting ensures physical inventory matches records.</p>
+<p>#### Stock Transfer Workflow</p>
+<p>!<a href="illustrations/22-stock-transfer-flow.svg">Stock Transfer Workflow</a></p>
+<h3>Stock Operations</h3>
+<table>
+<tbody>
+<thead>
+<tr>
+<tr>
+  <th> Operation            </th>
+  <th> Description                    </th>
+</tr>
+</thead>
+<tr>
+  <td> <strong>Stock Add</strong>        </td>
+  <td> Increase stock at a location   </td>
+</tr>
+<tr>
+  <td> <strong>Stock Remove</strong>     </td>
+  <td> Decrease stock at a location   </td>
+</tr>
+<tr>
+  <td> <strong>Stock Transfer</strong>   </td>
+  <td> Move stock between warehouses  </td>
+</tr>
+<tr>
+  <td> <strong>Stock Adjustment</strong> </td>
+  <td> Manual correction (add/remove) </td>
+</tr>
+<tr>
+  <td> <strong>Stock Opname</strong>     </td>
+  <td> Periodic physical counting     </td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>Additional Modules</h2>
+<h3>Dashboard Metrics</h3>
+<p><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">GET /api/v1/dashboard/metrics</code> (<code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">src/services/dashboard.service.js</code>) returns aggregated, tenant-scoped metrics in a single call:</p>
+<ul>
+  <li><strong>Users</strong>: total and active user counts</li>
+  <li><strong>Devices</strong>: total, due soon, and overdue calibration counts</li>
+  <li><strong>Compliance</strong>: calibration compliance rate</li>
+  <li><strong>Certificates</strong>: issued/active certificate counts</li>
+  <li><strong>Inventory</strong>: stock totals</li>
+  <li><strong>Maintenance</strong>: open work order backlog</li>
+  <li><strong>Trends</strong>: 6-month historical series for charting</li>
+</ul>
+<p>SUPERADMIN receives a <strong>global view</strong> across all tenants plus a per-tenant breakdown; all other roles see only their own tenant.</p>
+<h3>User Permission Overrides</h3>
+<p>Per-user permission overrides (<code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">user_menu_permissions</code> table, model <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">UserMenuPermission</code>) sit on top of role inheritance:</p>
+<ul>
+  <li><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">permissionType</code> is one of <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">read</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">write</code>, or <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">none</code> — where <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">none</code> is an explicit deny</li>
+  <li>Resolution order: <strong>user override wins over role permission</strong></li>
+  <li>Enforced inside the <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">dynamicAccess</code> middleware, with a per-user Redis cache (<code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">permissions:user:{id}</code>)</li>
+</ul>
+<table>
+<tbody>
+<thead>
+<tr>
+<tr>
+  <th> Method </th>
+  <th> Endpoint                                          </th>
+  <th> Access     </th>
+</tr>
+</thead>
+<tr>
+  <td> GET    </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/user-permissions/:userId</code>                </td>
+  <td> SUPERADMIN </td>
+</tr>
+<tr>
+  <td> POST   </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/user-permissions/:userId</code>                </td>
+  <td> SUPERADMIN </td>
+</tr>
+<tr>
+  <td> DELETE </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/user-permissions/:userId/:menuGroupId</code>   </td>
+  <td> SUPERADMIN </td>
+</tr>
+</tbody>
+</table>
+<p>See <a href="#authorization-layers">Authorization Layers</a> for the full 4-layer resolution flow.</p>
+<h3>Vendors</h3>
+<p><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/vendors</code> provides CRUD for third-party vendors (model <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">Vendor</code>):</p>
+<ul>
+  <li><strong>Type</strong>: <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">CalibrationLab</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">PartsSupplier</code>, or <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">Other</code></li>
+  <li><strong>Rating</strong> and <strong>status</strong> tracking for supplier quality management</li>
+  <li>Vendors are linked to maintenance work orders for outsourced work</li>
+</ul>
+<h3>Maintenance (CMMS)</h3>
+<p><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/maintenance</code> provides work order CRUD (model <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">MaintenanceWorkOrder</code>):</p>
+<table>
+<tbody>
+<thead>
+<tr>
+<tr>
+  <th> Attribute    </th>
+  <th> Values                                        </th>
+</tr>
+</thead>
+<tr>
+  <td> <strong>Type</strong>     </td>
+  <td> Preventative, Breakdown, Repair               </td>
+</tr>
+<tr>
+  <td> <strong>Status</strong>   </td>
+  <td> Open, InProgress, Completed, Cancelled        </td>
+</tr>
+<tr>
+  <td> <strong>Priority</strong> </td>
+  <td> Low, Medium, High, Critical                   </td>
+</tr>
+</tbody>
+</table>
+<p>Work orders relate to a calibration device, an optional vendor, and an optional assignee (user).</p>
+<p>!<a href="illustrations/29-maintenance-work-order.svg">Maintenance Work Order Flow</a></p>
+<h3>Calibration Scheduler</h3>
+<p><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/calibration-scheduler</code> automates preventative maintenance from calibration due dates:</p>
+<ul>
+  <li><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">GET /due</code> — lists devices due for calibration within a configurable <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">leadDays</code> window</li>
+  <li><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">POST /run</code> — runs an <strong>idempotent</strong> scan that creates <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">Preventative</code> maintenance work orders for due devices, emits notifications, and publishes webhook events (e.g. <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">device.calibration_due</code>). A device that already has an Open/InProgress preventative work order is skipped. SUPERADMIN can run the scan cross-tenant.</li>
+</ul>
+<p>!<a href="illustrations/29-calibration-scheduler.svg">Calibration Scheduler Flow</a></p>
+<h3>Notifications &amp; Realtime</h3>
+<p><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/notifications</code> is the in-app notification center:</p>
+<ul>
+  <li>List notifications (with unread count in <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">meta</code>), mark one read, mark all read, delete</li>
+  <li>Notification types: <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">SYSTEM</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">CALIBRATION</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">INVENTORY</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">MAINTENANCE</code></li>
+</ul>
+<p>Realtime delivery uses <strong>socket.io</strong> (<code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">src/config/socket.js</code>):</p>
+<ul>
+  <li>Default namespace; handshake authenticates with a <strong>short-lived socket JWT</strong> obtained from <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">POST /api/v1/auth/socket-token</code> (5-minute TTL). This exists because the app JWT lives in an httpOnly cookie, which browser JavaScript cannot read.</li>
+  <li>On connect, the socket joins rooms <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">tenant_{id}</code> and <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">user_{id}</code></li>
+  <li>New notifications are pushed as the <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">new_notification</code> event</li>
+</ul>
+<p>!<a href="illustrations/25-realtime-notifications.svg">Realtime Notifications</a></p>
+<h3>Billing &amp; Quota</h3>
+<p><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/billing</code> manages the tenant subscription:</p>
+<ul>
+  <li><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">GET</code>/<code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">PATCH</code> subscription — <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">planId</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">billingCycle</code> (<code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">Monthly</code>/<code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">Annually</code>), <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">status</code></li>
+  <li><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">GET</code> invoices — billing history</li>
+  <li><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">POST /webhook</code> — Stripe webhook endpoint with signature verification (<code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">stripeWebhook.service.js</code>)</li>
+</ul>
+<p><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/quota</code> reports usage against the plan:</p>
+<ul>
+  <li><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">GET</code> usage summary — current plan, features unlocked by plan tier (<code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">free</code> → <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">professional</code> → <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">business</code> → <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">enterprise</code>), seats used/limit, storage usedMb/limitMb</li>
+</ul>
+<p>Quota is enforced by middleware (<code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">enforceQuota.js</code>):</p>
+<ul>
+  <li><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">requireFeature</code> — returns <strong>402 Payment Required</strong> when the plan lacks a feature</li>
+  <li><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">enforceStorageQuota</code> — returns <strong>413 Payload Too Large</strong> when an upload would exceed the storage quota</li>
+</ul>
+<p>!<a href="illustrations/28-billing-quota.svg">Billing &amp; Quota</a></p>
+<p>!<a href="illustrations/30-billing-subscription.svg">Billing Subscription Lifecycle</a></p>
+<h3>Audit Logs</h3>
+<p><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">GET /api/v1/audit</code> exposes the <strong>immutable</strong> audit trail (FDA 21 CFR Part 11 compliant):</p>
+<ul>
+  <li>Filters: <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">userId</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">action</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">resourceType</code>, and date range</li>
+  <li>Actions: <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">CREATE</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">UPDATE</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">DELETE</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">LOGIN</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">APPROVE</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">EXPORT</code></li>
+  <li>Each entry stores <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">changes</code> as JSONB with before/after snapshots</li>
+</ul>
+<p>Audit entries can never be updated or deleted through the API.</p>
+<p>!<a href="illustrations/31-audit-trail-logging.svg">Audit Trail &amp; Compliance Logging</a></p>
+<h3>API Keys</h3>
+<p><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/api-keys</code> manages scoped API keys for machine-to-machine access:</p>
+<ul>
+  <li>Management endpoints are <strong>JWT-only</strong> (an API key cannot manage API keys)</li>
+  <li>The raw key (<code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">cbk_...</code>) is returned <strong>once</strong> on creation; only a sha256 hash and a 12-character prefix are stored</li>
+  <li>Scopes use the format <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">&lt;Resource&gt;:&lt;read|write|<em>&gt;</code> or <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;"></em></code> for full access</li>
+  <li>Scopes are checked against the requested route at request time</li>
+</ul>
+<p>!<a href="illustrations/27-api-key-auth.svg">API Key Authentication</a></p>
+<h3>Webhooks</h3>
+<p><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/webhooks</code> provides outbound event delivery:</p>
+<ul>
+  <li>CRUD for webhook endpoints, plus <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">GET /:id/deliveries</code> (delivery history) and <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">POST /:id/test</code></li>
+  <li>Payloads are signed with <strong>HMAC-SHA256</strong> and sent with the <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">X-Webhook-Signature</code> header</li>
+  <li>Delivery retries with exponential backoff — up to 5 attempts, 8-second request timeout</li>
+  <li>Delivery statuses: <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">pending</code> → <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">success</code> / <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">failed</code> / <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">exhausted</code></li>
+  <li>Event subscriptions, e.g. <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">device.calibration_due</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">device.overdue</code>, or <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">*</code> for all events</li>
+</ul>
+<p>!<a href="illustrations/26-webhook-delivery.svg">Webhook Delivery</a></p>
+<h3>Reports</h3>
+<p><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">GET /api/v1/reports/*</code> generates operational and compliance reports:</p>
+<table>
+<tbody>
+<thead>
+<tr>
+<tr>
+  <th> Endpoint                            </th>
+  <th> Report                              </th>
+  <th> CSV Export </th>
+</tr>
+</thead>
+<tr>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/reports/summary</code>                  </td>
+  <td> Overall tenant summary              </td>
+  <td> —          </td>
+</tr>
+<tr>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/reports/compliance</code>               </td>
+  <td> Calibration compliance              </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">?format=csv</code> </td>
+</tr>
+<tr>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/reports/calibration-workload</code>     </td>
+  <td> Upcoming calibration workload       </td>
+  <td> —          </td>
+</tr>
+<tr>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/reports/overdue-devices</code>          </td>
+  <td> Devices overdue for calibration     </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">?format=csv</code> </td>
+</tr>
+<tr>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/reports/inventory</code>                </td>
+  <td> Inventory levels                    </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">?format=csv</code> </td>
+</tr>
+</tbody>
+</table>
+<h3>Global Search</h3>
+<p><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">GET /api/v1/search?q=&amp;types=&amp;limit=</code> performs a ranked global search:</p>
+<ul>
+  <li>Backed by Postgres full-text search (<code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">search_vector</code> columns with GIN indexes), with an ILIKE fallback</li>
+  <li>Searches devices, stocks, and certificates; <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">types</code> filters the resource types</li>
+  <li>Results are relevance-ranked</li>
+</ul>
+<h3>Attachments</h3>
+<p><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/attachments</code> handles file attachments for any resource:</p>
+<ul>
+  <li><strong>Upload</strong>: multipart, 25 MB limit, virus-scanned, sha256 checksum computed on ingest</li>
+  <li><strong>Polymorphic</strong>: attached via <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">resourceType</code>/<code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">resourceId</code> (devices, work orders, etc.)</li>
+  <li><strong>Download</strong>: signed URLs using an HMAC token with a 300-second TTL</li>
+  <li><strong>Quota</strong>: uploads count against the tenant storage quota (413 when exceeded)</li>
+</ul>
+<h3>Kanban Project Tracker</h3>
+<p><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/kanban</code> is a tenant-scoped project tracker where <strong>one project === one Kanban board</strong> — each with its own configurable columns, cards, labels, sprints, and per-project membership (<code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">owner</code>/<code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">editor</code>/<code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">viewer</code>, grantable by user <strong>or</strong> role). Real-time collaboration is delivered over Socket.IO (room <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">board_&lt;projectId&gt;</code>), with assignee/tag notifications, image attachments, and a KPI analytics dashboard. See <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">src/routes/api/kanban.route.js</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">src/services/kanban.service.js</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">src/controllers/kanban.controller.js</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">src/validators/kanban.validator.js</code>, and <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">src/models/kanban*.model.js</code>.</p>
+<table>
+<tbody>
+<thead>
+<tr>
+<tr>
+  <th> Method </th>
+  <th> Endpoint                                       </th>
+  <th> Description                                        </th>
+</tr>
+</thead>
+<tr>
+  <td> GET    </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/kanban/projects</code>                      </td>
+  <td> List boards the user can access                    </td>
+</tr>
+<tr>
+  <td> POST   </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/kanban/projects</code>                      </td>
+  <td> Create a board (seeds columns incl. permanent Done)</td>
+</tr>
+<tr>
+  <td> GET    </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/kanban/projects/:id</code>                  </td>
+  <td> Board detail (columns, cards, labels, members)     </td>
+</tr>
+<tr>
+  <td> PATCH  </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/kanban/projects/:id</code>                  </td>
+  <td> Update board                                       </td>
+</tr>
+<tr>
+  <td> DELETE </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/kanban/projects/:id</code>                  </td>
+  <td> Delete board                                       </td>
+</tr>
+<tr>
+  <td> GET    </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/kanban/projects/:id/members</code>          </td>
+  <td> List members                                       </td>
+</tr>
+<tr>
+  <td> POST   </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/kanban/projects/:id/members</code>          </td>
+  <td> Grant membership by user or role                   </td>
+</tr>
+<tr>
+  <td> POST   </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/kanban/projects/:id/columns</code>          </td>
+  <td> Add a column (Done stays undeletable and last)     </td>
+</tr>
+<tr>
+  <td> POST   </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/kanban/projects/:id/columns/reorder</code>  </td>
+  <td> Reorder columns (Done forced last)                 </td>
+</tr>
+<tr>
+  <td> PATCH  </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/kanban/projects/:id/columns/:columnId</code></td>
+  <td> Rename a column                                    </td>
+</tr>
+<tr>
+  <td> DELETE </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/kanban/projects/:id/columns/:columnId</code></td>
+  <td> Delete a column (except Done)                      </td>
+</tr>
+<tr>
+  <td> POST   </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/kanban/projects/:id/cards</code>            </td>
+  <td> Create a card (auto card key, e.g. <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">MGT-1</code>)        </td>
+</tr>
+<tr>
+  <td> PATCH  </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/kanban/projects/:id/cards/:cardId</code>    </td>
+  <td> Update card (priority, due date, sprint, etc.)     </td>
+</tr>
+<tr>
+  <td> PATCH  </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/kanban/projects/:id/cards/:cardId/move</code></td>
+  <td> Move a card between columns/positions             </td>
+</tr>
+<tr>
+  <td> DELETE </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/kanban/projects/:id/cards/:cardId</code>    </td>
+  <td> Delete a card                                       </td>
+</tr>
+<tr>
+  <td> POST   </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/kanban/projects/:id/cards/:cardId/relations</code> </td>
+  <td> Link cards (parent/child, blocks, relates)  </td>
+</tr>
+<tr>
+  <td> POST   </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/kanban/projects/:id/labels</code>           </td>
+  <td> Manage labels                                      </td>
+</tr>
+<tr>
+  <td> POST   </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/kanban/projects/:id/sprints</code>          </td>
+  <td> Manage sprints (board loads one sprint at a time)  </td>
+</tr>
+<tr>
+  <td> POST   </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/kanban/projects/:id/sprints/migrate</code>  </td>
+  <td> Migrate cards (selected or all-not-Done) to sprint </td>
+</tr>
+<tr>
+  <td> GET    </td>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">/api/v1/kanban/projects/:id/metrics</code>          </td>
+  <td> KPI analytics dashboard aggregates                 </td>
+</tr>
+</tbody>
+</table>
+<p><strong>Tables (9):</strong></p>
+<ul>
+  <li><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">kanban_projects</code> — board metadata, unique <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">code</code> prefix + <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">card_seq</code> counter</li>
+  <li><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">kanban_project_members</code> — per-project <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">owner</code>/<code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">editor</code>/<code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">viewer</code>, granted by user or role</li>
+  <li><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">kanban_columns</code> — dynamic per-tenant columns, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">is_done</code> flag for the permanent Done column</li>
+  <li><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">kanban_cards</code> — <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">sprint_id</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">number</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">card_key</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">priority</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">due_date</code></li>
+  <li><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">kanban_labels</code> — board labels</li>
+  <li><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">kanban_card_assignees</code> — card ↔ user assignments</li>
+  <li><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">kanban_card_labels</code> — card ↔ label mapping</li>
+  <li><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">kanban_sprints</code> — board sprints</li>
+  <li><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">kanban_card_relations</code> — <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">parent_of</code>/<code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">child_of</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">blocks</code>/<code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">blocked_by</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">relates_to</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">duplicates</code> (stored in both directions)</li>
+</ul>
+<p><strong>Key features:</strong></p>
+<ul>
+  <li><strong>Dynamic columns</strong>: per-tenant configurable columns, with a permanent <strong>Done</strong> column that is undeletable and always rendered last</li>
+  <li><strong>Card keys</strong>: incremental, human-readable keys built from the project <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">code</code> prefix + <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">card_seq</code> (e.g. <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">MGT-1</code>)</li>
+  <li><strong>Sprints</strong>: the board loads one sprint at a time; <strong>migrate</strong> moves selected cards, or all cards not in Done, into a target sprint</li>
+  <li><strong>Relations</strong>: <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">parent_of</code>/<code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">child_of</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">blocks</code>/<code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">blocked_by</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">relates_to</code>, and <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">duplicates</code>, persisted in both directions</li>
+  <li><strong>Collaboration</strong>: assignees, labels, and image attachments, with assignee/tag notifications</li>
+</ul>
+<p><strong>Realtime events</strong> (Socket.IO, room <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">board_&lt;projectId&gt;</code>):</p>
+<ul>
+  <li><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">kanban:card:created</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">kanban:card:updated</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">kanban:card:moved</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">kanban:card:deleted</code></li>
+  <li><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">kanban:column:*</code> (created/updated/deleted/reordered)</li>
+  <li><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">kanban:sprint:*</code> (created/updated/deleted)</li>
+  <li><code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">kanban:cards:migrated</code></li>
+</ul>
+<p><strong>Analytics:</strong> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">GET /api/v1/kanban/projects/:id/metrics</code> returns a KPI dashboard payload — a <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">summary</code> block plus <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">byColumn</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">byPriority</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">byAssignee</code>, <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">byLabel</code>, and <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">bySprint</code> breakdowns.</p>
+<p>!<a href="illustrations/32-kanban-architecture.svg">Kanban Architecture</a></p>
+<p>!<a href="illustrations/33-kanban-card-lifecycle.svg">Kanban Card Lifecycle</a></p>
+<hr />
+<h2>API Response Format</h2>
+<h3>Success Response</h3>
+<pre class="language-json"><code class="language-json">{
+  &quot;success&quot;: true,
+  &quot;status&quot;: 200,
+  &quot;message&quot;: &quot;Operation successful&quot;,
+  &quot;data&quot;: { ... }
+}
+</pre>
+<h3>Paginated Response</h3>
+<pre class="language-json"><code class="language-json">{
+  &quot;success&quot;: true,
+  &quot;status&quot;: 200,
+  &quot;message&quot;: &quot;Success&quot;,
+  &quot;data&quot;: [ ... ],
+  &quot;meta&quot;: {
+    &quot;total&quot;: 100,
+    &quot;page&quot;: 1,
+    &quot;limit&quot;: 20,
+    &quot;totalPages&quot;: 5
+  }
+}
+</pre>
+<h3>Error Response</h3>
+<pre class="language-json"><code class="language-json">{
+  &quot;success&quot;: false,
+  &quot;status&quot;: 400,
+  &quot;message&quot;: &quot;Error description&quot;,
+  &quot;errors&quot;: [ ... ]
+}
+</pre>
+<hr />
+<h2>Middleware Pipeline</h2>
+<h3>Request Processing Order</h3>
+<pre class="language-"><code class="language-">Incoming Request
+    │
+    ├── globalSanitizer     → XSS protection
+    ├── tokenRateLimiter    → Rate limiting
+    ├── auth                → JWT validation (or API key + scope check)
+    ├── dynamicAccess       → Permission check (role matrix + user overrides)
+    ├── enforceQuota        → Plan feature / storage quota enforcement
+    ├── inputValidation     → Joi schema validation
+    ├── upload              → File upload handling
+    │
+    ├── [Controller]        → Business logic
+    │
+    ├── activityLog         → Activity tracking
+    ├── auditLog            → Audit trail
+    │
+    └── errorHandlers       → Error handling
+</pre>
+<hr />
+<h2>Error Handling</h2>
+<h3>Custom Error Class</h3>
+<pre class="language-javascript"><code class="language-javascript">class AppError {
+  constructor(message, statusCode) {
+    this.statusCode = statusCode;
+    this.success = false;
+  }
+}
+</pre>
+<h3>Error Types</h3>
+<table>
+<tbody>
+<thead>
+<tr>
+<tr>
+  <th> Error                </th>
+  <th> Status       </th>
+  <th> Description                    </th>
+</tr>
+</thead>
+<tr>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">AppError</code>           </td>
+  <td> Configurable </td>
+  <td> Base application error         </td>
+</tr>
+<tr>
+  <td> Sequelize Validation </td>
+  <td> 400          </td>
+  <td> Database constraint violations </td>
+</tr>
+<tr>
+  <td> JWT Error            </td>
+  <td> 401          </td>
+  <td> Invalid/expired tokens         </td>
+</tr>
+<tr>
+  <td> Payment Required     </td>
+  <td> 402          </td>
+  <td> Plan lacks the required feature </td>
+</tr>
+<tr>
+  <td> Not Found            </td>
+  <td> 404          </td>
+  <td> Resource not found             </td>
+</tr>
+<tr>
+  <td> Payload Too Large    </td>
+  <td> 413          </td>
+  <td> Storage quota exceeded         </td>
+</tr>
+<tr>
+  <td> Generic Error        </td>
+  <td> 500          </td>
+  <td> Internal server error          </td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>Logging</h2>
+<h3>Winston Configuration</h3>
+<ul>
+  <li><strong>Transport</strong>: File-based with daily rotation</li>
+  <li><strong>Format</strong>: JSON structured logging</li>
+  <li><strong>Levels</strong>: error, warn, info, http, debug</li>
+  <li><strong>Rotation</strong>: Daily with retention policy</li>
+</ul>
+<h3>Log Categories</h3>
+<ul>
+  <li><strong>HTTP</strong>: Request/response logging</li>
+  <li><strong>Error</strong>: Application errors with stack traces</li>
+  <li><strong>Database</strong>: Query timing and errors</li>
+  <li><strong>Security</strong>: Auth failures, rate limit events</li>
+  <li><strong>Activity</strong>: User activity tracking</li>
+</ul>
+<hr />
+<h2>Testing</h2>
+<h3>Test Structure</h3>
+<pre class="language-"><code class="language-">tests/
+├── controllers/     # Controller unit tests
+├── middlewares/     # Middleware tests
+├── services/        # Service layer tests
+├── utils/           # Utility function tests
+├── validators/      # Validator tests
+└── test.utils.js    # Test utilities
+</pre>
+<h3>Running Tests</h3>
+<pre class="language-bash"><code class="language-bash">npm test
+</pre>
+<hr />
+<h2>Deployment</h2>
+<h3>Docker Deployment</h3>
+<pre class="language-bash"><code class="language-bash"># Build and run with Docker Compose
+docker-compose up -d
+
+# Services started:
+# - PostgreSQL (port 5432)
+# - Redis (port 6379)
+# - RabbitMQ (port 5672, 15672)
+# - Backend API (port 5000)
+</pre>
+<h3>Required Environment Variables</h3>
+<table>
+<tbody>
+<thead>
+<tr>
+<tr>
+  <th> Variable             </th>
+  <th> Description                  </th>
+  <th> Required </th>
+</tr>
+</thead>
+<tr>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">JWT_ACCESS_SECRET</code>  </td>
+  <td> Access token signing secret  </td>
+  <td> <strong>Yes</strong>  </td>
+</tr>
+<tr>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">JWT_REFRESH_SECRET</code> </td>
+  <td> Refresh token signing secret </td>
+  <td> <strong>Yes</strong>  </td>
+</tr>
+<tr>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">DB_HOST</code>            </td>
+  <td> PostgreSQL host              </td>
+  <td> Yes      </td>
+</tr>
+<tr>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">DB_PORT</code>            </td>
+  <td> PostgreSQL port              </td>
+  <td> Yes      </td>
+</tr>
+<tr>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">DB_NAME</code>            </td>
+  <td> Database name                </td>
+  <td> Yes      </td>
+</tr>
+<tr>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">DB_USER</code>            </td>
+  <td> Database user                </td>
+  <td> Yes      </td>
+</tr>
+<tr>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">DB_PASS</code>            </td>
+  <td> Database password            </td>
+  <td> Yes      </td>
+</tr>
+<tr>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">REDIS_URL</code>          </td>
+  <td> Redis connection URL         </td>
+  <td> Yes      </td>
+</tr>
+<tr>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">AMQP_URL</code>           </td>
+  <td> RabbitMQ connection URL      </td>
+  <td> Optional </td>
+</tr>
+<tr>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">ACCESS_LOG_PATH</code>    </td>
+  <td> Log file path                </td>
+  <td> Yes      </td>
+</tr>
+<tr>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">ERROR_LOG_PATH</code>     </td>
+  <td> Error log file path          </td>
+  <td> Yes      </td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>Development</h2>
+<h3>Local Development</h3>
+<pre class="language-bash"><code class="language-bash">npm run dev
+</pre>
+<h3>Available Scripts</h3>
+<table>
+<tbody>
+<thead>
+<tr>
+<tr>
+  <th> Command                    </th>
+  <th> Description                     </th>
+</tr>
+</thead>
+<tr>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">npm run dev</code>              </td>
+  <td> Development server with nodemon </td>
+</tr>
+<tr>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">npm start</code>                </td>
+  <td> Production server               </td>
+</tr>
+<tr>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">npm test</code>                 </td>
+  <td> Jest test suite                 </td>
+</tr>
+<tr>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">npm run swagger:generate</code> </td>
+  <td> Generate swagger.json           </td>
+</tr>
+<tr>
+  <td> <code style="background:#f0f0f0;padding:2px 4px;border-radius:3px;">npm run build</code>            </td>
+  <td> Package executable (Bun)        </td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>License</h2>
+<p>MIT</p>
+
+    <hr />
+    <p style="text-align:center;color:#888;font-size:0.9rem;">
+      Generated on 2026-07-18 &mdash; Callibrator Backend Documentation
+    </p>
+  </div>
+</body>
+</html>

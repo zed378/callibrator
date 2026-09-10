@@ -1,0 +1,104 @@
+# Callibrator — development overlay
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#   make up ENV=dev
+#
+# Publishes every port, adds pgadmin and MinIO, and relaxes the settings that
+# make development painful. NOTHING HERE IS SAFE FOR PRODUCTION.
+
+services:
+  backend:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    environment:
+      NODE_ENV: development
+      # No broker needed locally — jobs run in-process.
+      BATCH_JOBS_INLINE: "true"
+      # Uploads unscanned. Set to "clamav" to exercise the real path.
+      VIRUS_SCAN_PROVIDER: none
+      # Demo data: ~80 rows across every business module, idempotent.
+      # MUST NEVER be true in production.
+      SEED_DEMO: "true"
+      # MinIO, for exercising the s3 driver locally.
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
+      STORAGE_S3_ENDPOINT: http://minio:9000
+      STORAGE_S3_FORCE_PATH_STYLE: "true"
+      STORAGE_S3_BUCKET: ${STORAGE_S3_BUCKET:-callibrator}
+      STORAGE_S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      STORAGE_S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "${BACKEND_PORT:-3000}:3000"
+      # Embedded aedes MQTT broker for IoT telemetry ingest.
+      - "${MQTT_PORT:-1883}:1883"
+
+  frontend:
+    build:
+      context: ../../frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: http://localhost:${BACKEND_PORT:-3000}
+    ports:
+      # 3001 rather than 3000: on Windows, port 3000 falls in the WinNAT
+      # reserved range and binds with EACCES — which is NOT a port-in-use
+      # problem and cannot be diagnosed by hunting for the holder.
+      - "${FRONTEND_PORT:-3001}:3000"
+
+  postgres:
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+
+  redis:
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+
+  rabbitmq:
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MGMT_PORT:-15672}:15672"
+
+  clamav:
+    ports:
+      - "${CLAMAV_PORT:-3310}:3310"
+
+  nginx:
+    ports:
+      - "${HTTP_PORT:-8080}:80"
+
+  # --------------------------------------------------------------------------
+  # Development-only services
+  # --------------------------------------------------------------------------
+
+  pgadmin:
+    image: dpage/pgadmin4:8.14
+    restart: unless-stopped
+    ports:
+      - "${PGADMIN_PORT:-8888}:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-pgadmin@local.dev}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-pgadmin}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    volumes:
+      - ./volumes/pgadmin:/var/lib/pgadmin
+    depends_on:
+      - postgres
+
+  minio:
+    # S3-compatible storage, for exercising STORAGE_DRIVER=s3 locally.
+    # Note STORAGE_S3_FORCE_PATH_STYLE must be true for MinIO.
+    image: minio/minio:RELEASE.2024-11-07T00-52-20Z
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    volumes:
+      - ./volumes/minio:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

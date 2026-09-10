@@ -1,0 +1,127 @@
+# Callibrator — production values
+#
+#   helm upgrade --install callibrator deploy/helm/callibrator \
+#     -f deploy/helm/callibrator/values-prod.yaml \
+#     --set backend.image.tag=$TAG --set frontend.image.tag=$TAG
+#
+#   or: make helm-deploy ENV=prod TAG=<sha>
+
+global:
+  # Explicit, comma-separated. A wildcard is never honoured: the CORS policy
+  # runs with credentials:true.
+  corsOrigin: "https://callibrator.example.com"
+
+backend:
+  # Tags are supplied on the command line, per release. The chart refuses to
+  # render without them.
+  image:
+    tag: ""
+
+  # ────────────────────────────────────────────────────────────────────────
+  # The scheduler instance.
+  #
+  # Scheduled jobs run ONCE PER REPLICA, so this deployment stays at one and
+  # the chart enforces it. Scale the API separately with cron.enabled=false.
+  # ────────────────────────────────────────────────────────────────────────
+  replicaCount: 1
+  cron:
+    enabled: true
+    sessionCleanup: "0 2 * * *"
+    backup: "0 3 * * 0"
+    retention: "0 2 * * *"
+
+  env:
+    NODE_ENV: production
+    APP_STORAGE_PATH: /app
+    PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
+    FORCE_HTTPS: "true"
+    # Empty: inline mode makes a batch job synchronous with whatever triggered
+    # it, reintroducing the 30s timeout it exists to avoid.
+    BATCH_JOBS_INLINE: ""
+    # A demo seeder against real data is a data-integrity incident.
+    SEED_DEMO: ""
+    VIRUS_SCAN_PROVIDER: clamav
+    VIRUS_SCAN_FAIL_OPEN: "false"
+
+  # s3 rather than local — required before replicaCount goes above one, and
+  # good practice regardless.
+  storage:
+    driver: s3
+    s3:
+      bucket: callibrator-prod
+      region: ap-southeast-1
+      forcePathStyle: false
+      # Left unset: use the ambient credential chain via a service account
+      # (IRSA / Workload Identity). Static keys in a Secret are strictly worse.
+      accessKeyId: ""
+      secretAccessKey: ""
+
+  # Provided externally. PostgreSQL must have pgvector — migration 0018 runs
+  # `CREATE EXTENSION vector`.
+  database:
+    host: postgres.production.svc.cluster.local
+    port: 5432
+    name: callibrator
+    user: callibrator
+    dialect: postgres
+    ssl: true
+
+  redis:
+    url: redis://redis.production.svc.cluster.local:6379
+  rabbitmq:
+    url: amqp://rabbitmq.production.svc.cluster.local:5672
+
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: "4"
+      memory: 4Gi
+
+frontend:
+  image:
+    tag: ""
+  replicaCount: 3
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+ingress:
+  enabled: true
+  className: nginx
+  host: callibrator.example.com
+  annotations:
+    # Socket.IO needs WebSocket support and a long read timeout. Without them
+    # it silently falls back to long-polling — which works until connection
+    # counts matter.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  tls:
+    enabled: true
+    secretName: callibrator-tls
+
+secrets:
+  # Production uses an external secrets operator. CERT_SIGNING_SECRET and
+  # ENCRYPT_KEY must ALSO be backed up outside the cluster and outside the
+  # database — a rebuild that recreates everything except them produces a
+  # system that starts cleanly and is permanently broken.
+  external:
+    enabled: true
+    secretName: callibrator-secrets
+
+certificates:
+  verifyBaseUrl: "https://callibrator.example.com/verify"
+  acme:
+    enabled: true
+    # THE PRODUCTION DIRECTORY. The default is Let's Encrypt STAGING, which
+    # issues certificates no browser trusts — and the failure appears in a
+    # browser rather than in any log.
+    directoryUrl: "https://acme-v02.api.letsencrypt.org/directory"
+    accountEmail: "ops@example.com"

@@ -1,0 +1,173 @@
+# Callibrator — base compose stack
+#
+# This file alone is not deployable: it has no port publishing and no
+# environment-specific settings. Always combine it with an overlay:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Or use the Makefile, which does that for you: `make up ENV=dev`.
+
+name: callibrator
+
+services:
+  # ==========================================================================
+  # APPLICATION
+  # ==========================================================================
+
+  backend:
+    image: ${BACKEND_IMAGE:-callibrator/backend}:${IMAGE_TAG:-latest}
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      APP_STORAGE_PATH: /app
+      # The compiled binary cannot use puppeteer's bundled Chromium; the
+      # runtime image installs a system one.
+      PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
+    volumes:
+      - ./volumes/uploads:/app/uploads
+      - ./volumes/backup:/app/backup
+      - ./volumes/log:/app/log
+    # Wait for the datastores to be READY, not merely started. The backend runs
+    # db.sync() + migrations against Postgres at boot and connects to Redis and
+    # RabbitMQ, so starting early produces a crash loop that looks like a code
+    # fault. ClamAV's first-run freshclam takes minutes and scanning is
+    # optional, so only require it started.
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      clamav:
+        condition: service_started
+    healthcheck:
+      # /health calls db.authenticate() and returns 503 when the database is
+      # unreachable — a genuine readiness check, not a liveness ping.
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  frontend:
+    image: ${FRONTEND_IMAGE:-callibrator/frontend}:${IMAGE_TAG:-latest}
+    build:
+      context: ../../frontend
+      dockerfile: Dockerfile
+      args:
+        # NEXT_PUBLIC_* values are INLINED AT BUILD TIME. Setting them in the
+        # container environment does nothing — a different API URL, or a
+        # tenant-pinned build, requires a different image.
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:3000}
+        NEXT_PUBLIC_API_VERSION: ${NEXT_PUBLIC_API_VERSION:-v1}
+        NEXT_PUBLIC_TENANT_ID: ${NEXT_PUBLIC_TENANT_ID:-}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      HOST: 0.0.0.0
+      PORT: 3000
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  # ==========================================================================
+  # DATA
+  # ==========================================================================
+
+  postgres:
+    # pgvector-enabled Postgres. The AI/RAG module stores embeddings in a
+    # vector(1536) column and migration 0018 runs `CREATE EXTENSION vector`.
+    # Plain postgres:17-alpine lacks the extension and that migration fails.
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASS}
+      PGDATA: /var/lib/postgresql/data/pgdata
+      TZ: ${TZ:-Asia/Jakarta}
+      PGTZ: ${TZ:-Asia/Jakarta}
+    volumes:
+      - ./volumes/postgres:/var/lib/postgresql/data
+    healthcheck:
+      # pg_isready reports success only when the server is ACCEPTING
+      # connections. Poll fast so the backend starts promptly once ready; the
+      # generous start_period tolerates first-boot data-dir initialisation.
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  redis:
+    # NOT just a cache. Redis holds rate-limit counters, WebAuthn challenges
+    # and worker idempotency claims. An outage weakens brute-force protection
+    # and permits duplicate side effects — see docs/ARCHITECTURE/06.
+    image: redis:8.6-alpine
+    restart: unless-stopped
+    volumes:
+      - ./volumes/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-guest}
+    volumes:
+      - ./volumes/rabbitmq:/var/lib/rabbitmq
+    healthcheck:
+      # `ping` only proves the Erlang node is up. check_port_connectivity
+      # proves the AMQP listener on 5672 is accepting connections, which is
+      # what the backend actually needs.
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 10s
+      timeout: 10s
+      retries: 15
+      start_period: 60s
+
+  clamav:
+    # Attachment virus scanning. VIRUS_SCAN_FAIL_OPEN defaults to false, so a
+    # scanner error REJECTS the upload. Fail-closed is inconvenient when ClamAV
+    # is down and correct anyway: the alternative silently disables scanning at
+    # exactly the moment it is not working.
+    image: clamav/clamav:1.4
+    restart: unless-stopped
+    volumes:
+      - ./volumes/clamav:/var/lib/clamav
+    healthcheck:
+      # First boot downloads the signature database, which takes minutes.
+      test: ["CMD", "clamdcheck.sh"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 120s
+
+  # ==========================================================================
+  # EDGE
+  # ==========================================================================
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./volumes/certs:/etc/nginx/certs:ro
+    depends_on:
+      - backend
+      - frontend

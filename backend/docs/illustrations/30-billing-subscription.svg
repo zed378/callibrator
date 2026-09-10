@@ -1,0 +1,45 @@
+<svg width="800" height="500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500">
+  <defs>
+    <style>
+      .bg { fill: #0f172a; }
+      .text { fill: #f8fafc; font-family: -apple-system, system-ui, sans-serif; }
+      .box { fill: #1e293b; stroke: #10b981; stroke-width: 2; rx: 8; }
+      .title { font-size: 24px; font-weight: bold; }
+      .subtitle { font-size: 14px; fill: #94a3b8; }
+      .line { stroke: #94a3b8; stroke-width: 2; marker-end: url(#arrow); fill: none; }
+      .label { font-size: 12px; fill: #34d399; }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+  <rect width="100%" height="100%" class="bg"/>
+  <text x="400" y="40" text-anchor="middle" class="text title">Billing &amp; Subscription Lifecycle</text>
+  
+  <rect x="50" y="100" width="150" height="60" class="box"/>
+  <text x="125" y="135" text-anchor="middle" class="text">Tenant Registration</text>
+  
+  <path d="M 200 130 L 300 130" class="line"/>
+  <text x="250" y="120" text-anchor="middle" class="label">Select Plan</text>
+  
+  <rect x="300" y="100" width="150" height="60" class="box"/>
+  <text x="375" y="135" text-anchor="middle" class="text">Stripe Checkout</text>
+
+  <path d="M 450 130 L 550 130" class="line"/>
+  <text x="500" y="120" text-anchor="middle" class="label">Webhook Event</text>
+  
+  <rect x="550" y="100" width="150" height="60" class="box"/>
+  <text x="625" y="135" text-anchor="middle" class="text">Quota Engine</text>
+
+  <path d="M 625 160 L 625 250" class="line"/>
+  <text x="635" y="210" class="label">Unlock Features</text>
+  
+  <rect x="550" y="250" width="150" height="60" class="box"/>
+  <text x="625" y="285" text-anchor="middle" class="text">Active Subscription</text>
+
+  <path d="M 550 280 L 450 280" class="line"/>
+  <text x="500" y="270" text-anchor="middle" class="label">Renewal Fails</text>
+  
+  <rect x="300" y="250" width="150" height="60" class="box"/>
+  <text x="375" y="285" text-anchor="middle" class="text">Grace Period</text>
+</svg>

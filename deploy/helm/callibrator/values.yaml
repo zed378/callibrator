@@ -1,0 +1,225 @@
+# Callibrator — default values
+#
+# Overridden per environment by values-staging.yaml and values-prod.yaml.
+#
+# Two configurations this chart REFUSES to render (see templates/guards.tpl):
+#   1. a missing image.tag
+#   2. cron.enabled with replicaCount > 1
+
+global:
+  # Explicit, comma-separated. A wildcard is never honoured: the CORS policy
+  # runs with credentials:true, and reflecting an arbitrary origin would let
+  # any site make authenticated cross-origin requests.
+  corsOrigin: ""
+  imagePullSecrets: []
+
+# ============================================================================
+# BACKEND
+# ============================================================================
+backend:
+  enabled: true
+
+  image:
+    repository: callibrator/backend
+    # REQUIRED. The chart fails to render without it — `:latest` in a cluster
+    # means nobody can say what is running, and a rollback has nothing to roll
+    # back to.
+    tag: ""
+    pullPolicy: IfNotPresent
+
+  replicaCount: 1
+
+  # Scheduled jobs: session cleanup, tenant backup, data-retention purge, the
+  # calibration sweep.
+  #
+  # A cron job installed in every replica RUNS ONCE PER REPLICA. Two replicas
+  # means every backup runs twice and every purge runs twice. The chart
+  # refuses to render cron.enabled with replicaCount > 1.
+  #
+  # The intended shape: one single-replica deployment with cron.enabled true,
+  # and the API deployment scaled with cron.enabled false.
+  cron:
+    enabled: true
+    sessionCleanup: "0 2 * * *"
+    backup: "0 3 * * 0"
+    retention: "0 2 * * *"
+
+  service:
+    type: ClusterIP
+    port: 3000
+
+  # Liveness gets /, readiness gets /health.
+  #
+  # /health calls db.authenticate() and returns 503 when the database is
+  # unreachable. Using it as a LIVENESS probe would restart a healthy process
+  # during a database blip, turning a brief outage into a crash loop.
+  probes:
+    liveness:
+      path: /
+      initialDelaySeconds: 20
+      periodSeconds: 20
+    readiness:
+      path: /health
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      failureThreshold: 3
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      # Chromium (certificate PDFs) is memory-hungry and bursty. A limit sized
+      # for the steady state will OOM-kill the pod on the first certificate.
+      memory: 4Gi
+
+  env:
+    NODE_ENV: production
+    APP_STORAGE_PATH: /app
+    PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
+    FORCE_HTTPS: "true"
+    # Must be empty outside development.
+    BATCH_JOBS_INLINE: ""
+    SEED_DEMO: ""
+    VIRUS_SCAN_PROVIDER: clamav
+    VIRUS_SCAN_FAIL_OPEN: "false"
+
+  # local storage is INCOMPATIBLE with replicaCount > 1 — replica A writes an
+  # attachment, replica B cannot serve it. The chart does NOT guard this.
+  storage:
+    driver: local
+    s3:
+      bucket: ""
+      region: ""
+      endpoint: ""
+      forcePathStyle: true
+      # Leave the key pair unset to use the ambient credential chain (IAM
+      # role via a service account), which beats static keys in a Secret.
+      accessKeyId: ""
+      secretAccessKey: ""
+
+  # Provided externally. Running a database from this chart couples lifecycles.
+  database:
+    host: ""
+    port: 5432
+    name: callibrator
+    user: callibrator
+    dialect: postgres
+    ssl: false
+    # PostgreSQL must have pgvector: migration 0018 runs
+    # `CREATE EXTENSION vector` and plain Postgres fails it.
+
+  redis:
+    url: ""
+
+  rabbitmq:
+    url: ""
+
+  persistence:
+    # Only meaningful with storage.driver=local, which is single-replica only.
+    enabled: false
+    size: 20Gi
+    storageClass: ""
+
+# ============================================================================
+# FRONTEND
+# ============================================================================
+frontend:
+  enabled: true
+
+  image:
+    repository: callibrator/frontend
+    # REQUIRED, same rule as the backend.
+    #
+    # Note: NEXT_PUBLIC_* values are INLINED AT BUILD TIME. A different API
+    # URL, or a tenant-pinned build, requires a DIFFERENT IMAGE. This chart
+    # cannot configure them at runtime.
+    tag: ""
+    pullPolicy: IfNotPresent
+
+  replicaCount: 2
+
+  service:
+    type: ClusterIP
+    port: 3000
+
+  probes:
+    liveness:
+      path: /
+      initialDelaySeconds: 15
+      periodSeconds: 20
+    readiness:
+      path: /
+      initialDelaySeconds: 5
+      periodSeconds: 10
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+# ============================================================================
+# INGRESS
+# ============================================================================
+ingress:
+  enabled: true
+  className: nginx
+  host: callibrator.example.com
+
+  annotations:
+    # Socket.IO needs WebSocket support. Without it, it SILENTLY falls back to
+    # long-polling — which works until connection counts matter.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    # Match the application's 10 MB body limit.
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+
+  tls:
+    enabled: true
+    secretName: callibrator-tls
+
+# ============================================================================
+# SECRETS
+# ============================================================================
+# The three below are REQUIRED — the application EXITS without them.
+#
+# BACK THEM UP SEPARATELY FROM THE CLUSTER AND FROM THE DATABASE. A rebuild
+# that recreates everything except these produces a system that starts cleanly
+# and is permanently broken: every issued certificate fails public
+# verification, and every wrapped credential is undecryptable.
+secrets:
+  # Prefer an external secrets operator over inline values.
+  external:
+    enabled: false
+    secretName: callibrator-secrets
+
+  # Inline values are for development only. Never commit real ones.
+  certSigningSecret: ""
+  encryptKey: ""
+  attachmentUrlSecret: ""
+  jwtAccessSecret: ""
+  # MUST differ from jwtAccessSecret — equal secrets mean an access token can
+  # be presented as a refresh token.
+  jwtRefreshSecret: ""
+  dbPassword: ""
+  mailPassword: ""
+  stripeSecretKey: ""
+  stripeWebhookSecret: ""
+  openaiApiKey: ""
+
+# ============================================================================
+# CERTIFICATES / ACME
+# ============================================================================
+certificates:
+  verifyBaseUrl: ""
+  acme:
+    enabled: false
+    # DEFAULTS TO THE LET'S ENCRYPT STAGING DIRECTORY. Forgetting to point this
+    # at production yields certificates no browser trusts, and the failure
+    # appears in a browser rather than in any log.
+    directoryUrl: "https://acme-staging-v02.api.letsencrypt.org/directory"
+    accountEmail: ""

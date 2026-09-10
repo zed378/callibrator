@@ -1,0 +1,125 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-callibrator-backend
+  labels:
+    app.kubernetes.io/name: callibrator-backend
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: api
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: callibrator-backend
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: callibrator-backend
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        app.kubernetes.io/component: api
+      annotations:
+        # Restart on configuration change — otherwise a ConfigMap edit takes
+        # effect at some unpredictable future restart.
+        checksum/config: {{ .Values.configChecksum | default "" | quote }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        # The image creates a non-root `app` user and chowns its persistent
+        # directories at build, because a non-root container cannot create
+        # them at runtime.
+        runAsNonRoot: true
+        fsGroup: 1000
+      containers:
+        - name: backend
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 3000
+            {{- if .Values.mqtt.enabled }}
+            - name: mqtt
+              # Embedded aedes broker for IoT telemetry ingest. Embedded so an
+              # on-premise hospital deployment does not need a separate broker,
+              # where every additional service is a procurement conversation.
+              containerPort: 1883
+            {{- end }}
+          envFrom:
+            - configMapRef:
+                name: {{ .Release.Name }}-callibrator-config
+            - secretRef:
+                name: {{ .Values.secretName }}
+
+          # ------------------------------------------------------------------
+          # Liveness gets /. Readiness gets /health.
+          #
+          # /health calls db.authenticate() and returns 503 when the database
+          # is unreachable. Using it as a LIVENESS probe would restart a
+          # healthy process during a database blip, turning a brief outage into
+          # a crash loop. A pod failing readiness is correctly kept out of
+          # rotation instead.
+          # ------------------------------------------------------------------
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.probes.liveness.path }}
+              port: http
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.probes.readiness.path }}
+              port: http
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
+          # The application runs migrations at boot; give it room before the
+          # liveness probe starts counting.
+          startupProbe:
+            httpGet:
+              path: {{ .Values.probes.readiness.path }}
+              port: http
+            failureThreshold: 30
+            periodSeconds: 10
+
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+
+          volumeMounts:
+            {{- if .Values.persistence.enabled }}
+            - name: storage
+              mountPath: /app/uploads
+            {{- end }}
+            - name: logs
+              mountPath: /app/log
+            # ACME HTTP-01 challenge files are WRITTEN AT RUNTIME and served
+            # from the writable storage root. A read-only path here produces
+            # domain verification failures that look like DNS problems.
+            - name: wellknown
+              mountPath: /app/.well-known
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            # NOT read-only: the app writes uploads, logs, ACME challenges and
+            # tenant backups. Chromium also needs a writable temp directory.
+            readOnlyRootFilesystem: false
+
+      volumes:
+        {{- if .Values.persistence.enabled }}
+        - name: storage
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-callibrator-storage
+        {{- end }}
+        - name: logs
+          emptyDir: {}
+        - name: wellknown
+          emptyDir: {}

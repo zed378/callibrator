@@ -1,0 +1,53 @@
+# Dependencies
+node_modules/
+
+# Environment
+.env
+
+# Build
+dist/
+
+# Storage & uploads
+storage/
+uploads/
+
+# Logs
+log/
+logs/
+*.log
+npm-debug.log*
+
+# Coverage
+coverage/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test
+coverage/
+
+# Backup
+backup/
+
+# db state
+data
+
+# agents
+agents
+memory
+docs/openclaw
+.openclaw
+AGENTS.md
+HEARTBEAT.md
+IDENTITY.md
+SOUL.md
+TOOLS.md
+USER.md

@@ -1,0 +1,12 @@
+workspace:
+  packages:
+    - 'backend'
+    - 'frontend'
+    - 'packages/*'
+
+  # Exclude node_modules and build directories from workspace
+  ignore:
+    - '**/.git'
+    - '**/.next'
+    - '**/dist'
+    - '**/build'

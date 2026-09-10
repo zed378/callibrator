@@ -1,0 +1,83 @@
+const js = require("@eslint/js");
+const prettier = require("eslint-config-prettier");
+
+module.exports = [
+  js.configs.recommended,
+  prettier,
+  {
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "module",
+      globals: {
+        // Node.js / CommonJS globals
+        module: "readonly",
+        exports: "readonly",
+        require: "readonly",
+        __dirname: "readonly",
+        __filename: "readonly",
+        Buffer: "readonly",
+        process: "readonly",
+        console: "readonly",
+        setTimeout: "readonly",
+        setInterval: "readonly",
+        clearTimeout: "readonly",
+        clearInterval: "readonly",
+        setImmediate: "readonly",
+        URL: "readonly",
+        URLSearchParams: "readonly",
+        // Jest globals
+        describe: "readonly",
+        it: "readonly",
+        expect: "readonly",
+        beforeAll: "readonly",
+        beforeEach: "readonly",
+        afterAll: "readonly",
+        afterEach: "readonly",
+        jest: "readonly",
+      },
+    },
+    rules: {
+      // Allow unused vars with _ prefix in production; be lenient in tests
+      "no-unused-vars": [
+        "warn",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_", vars: "all" },
+      ],
+      "no-console": "warn",
+      "no-dupe-keys": "error",
+      "no-empty": ["error", { allowEmptyCatch: true }],
+      "no-fallthrough": "error",
+      "no-redeclare": "error",
+      "no-this-before-super": "error",
+      "no-undef": "error",
+      "no-unreachable": "error",
+      "no-unused-expressions": ["error", { allowShortCircuit: true }],
+      "no-var": "error",
+      "prefer-const": "error",
+      "prefer-arrow-callback": "warn",
+      eqeqeq: ["error", "always"],
+      curly: ["error", "all"],
+      "no-multiple-empty-lines": ["error", { max: 1, maxEOF: 0 }],
+      semi: ["error", "always"],
+      quotes: ["error", "double", { avoidEscape: true }],
+      indent: ["error", 2, { SwitchCase: 1 }],
+      "comma-dangle": ["error", "always-multiline"],
+      "object-curly-spacing": ["error", "always"],
+      "array-bracket-spacing": ["error", "never"],
+      "keyword-spacing": "error",
+      "space-infix-ops": "error",
+      "no-trailing-spaces": "error",
+      "eol-last": ["error", "always"],
+      "no-prototype-builtins": "off",
+      // Constant conditions are common in middleware (always-true guards)
+      "no-constant-condition": "warn",
+    },
+    ignores: [
+      "node_modules/",
+      "dist/",
+      "coverage/",
+      "*.config.js",
+      "docs/",
+      "build/",
+    ],
+  },
+];

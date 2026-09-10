@@ -1,0 +1,122 @@
+<svg id="illus-28-billing-quota" xmlns="http://www.w3.org/2000/svg" width="100%" style="max-width: 920px;" viewBox="0 0 920 710" role="graphics-document document" aria-roledescription="flowchart-v2">
+  <style>
+    #illus-28-billing-quota{font-family:'trebuchet ms',verdana,arial,sans-serif;font-size:16px;fill:#333;}
+    #illus-28-billing-quota text{font-family:'trebuchet ms',verdana,arial,sans-serif;fill:#333;}
+    #illus-28-billing-quota .node{fill:#ECECFF;stroke:#9370DB;stroke-width:1px;}
+    #illus-28-billing-quota .edge{stroke:#333333;stroke-width:2px;fill:none;}
+    #illus-28-billing-quota .dash{stroke:#aaaa33;stroke-width:1px;stroke-dasharray:5;fill:none;}
+    #illus-28-billing-quota .note{fill:#fff5ad;stroke:#aaaa33;stroke-width:1px;}
+    #illus-28-billing-quota .cluster{fill:#ffffde;stroke:#aaaa33;stroke-width:1px;}
+    #illus-28-billing-quota .lbl{font-size:15px;text-anchor:middle;}
+    #illus-28-billing-quota .lblB{font-size:15px;font-weight:bold;text-anchor:middle;}
+    #illus-28-billing-quota .small{font-size:12.5px;text-anchor:middle;}
+    #illus-28-billing-quota .elbl{font-size:13px;text-anchor:middle;}
+    #illus-28-billing-quota .ebg{fill:#e8e8e8;opacity:0.8;}
+    #illus-28-billing-quota .title{font-size:18px;font-weight:bold;text-anchor:middle;}
+    #illus-28-billing-quota .sub{font-size:13px;text-anchor:middle;opacity:0.75;}
+    #illus-28-billing-quota .clbl{font-size:13px;font-weight:bold;}
+  </style>
+  <defs>
+    <marker id="arrow-28" viewBox="0 0 10 10" refX="6" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#333333" stroke="#333333"/>
+    </marker>
+  </defs>
+
+  <text class="title" x="460" y="34">Billing, Plans &amp; Quota</text>
+  <text class="sub" x="460" y="56">plan tiers &#183; Stripe sync &#183; seat / storage enforcement</text>
+
+  <!-- Cluster A: plan tiers -->
+  <rect class="cluster" x="30" y="76" width="860" height="146"/>
+  <text class="clbl" x="50" y="96">Plan tiers &amp; feature unlocks</text>
+
+  <rect class="node" x="55" y="112" width="190" height="96"/>
+  <text class="lblB" x="150" y="134">FREE</text>
+  <text class="small" x="150" y="158">core features</text>
+
+  <rect class="node" x="265" y="112" width="190" height="96"/>
+  <text class="lblB" x="360" y="134">PROFESSIONAL</text>
+  <text class="small" x="360" y="158">+ reports</text>
+  <text class="small" x="360" y="174">+ webhooks</text>
+
+  <rect class="node" x="475" y="112" width="190" height="96"/>
+  <text class="lblB" x="570" y="134">BUSINESS</text>
+  <text class="small" x="570" y="158">+ api_keys &#183; sso</text>
+  <text class="small" x="570" y="174">+ search</text>
+
+  <rect class="node" x="685" y="112" width="190" height="96"/>
+  <text class="lblB" x="780" y="134">ENTERPRISE</text>
+  <text class="small" x="780" y="158">+ audit_export</text>
+  <text class="small" x="780" y="174">+ custom_branding</text>
+
+  <path class="edge" d="M245,160 L261,160" marker-end="url(#arrow-28)"/>
+  <path class="edge" d="M455,160 L471,160" marker-end="url(#arrow-28)"/>
+  <path class="edge" d="M665,160 L681,160" marker-end="url(#arrow-28)"/>
+
+  <!-- bridge A -> B -->
+  <path class="edge" d="M460,222 L460,256" marker-end="url(#arrow-28)"/>
+  <rect class="ebg" x="402" y="228" width="118" height="18"/>
+  <text class="elbl" x="461" y="241">tenant subscribes</text>
+
+  <!-- Cluster B: subscription + stripe -->
+  <rect class="cluster" x="30" y="260" width="860" height="198"/>
+  <text class="clbl" x="50" y="280">Subscription &amp; Stripe sync</text>
+
+  <rect class="node" x="70" y="300" width="280" height="76"/>
+  <text class="lblB" x="210" y="320">Subscription</text>
+  <text class="small" x="210" y="340">planId &#183; billingCycle (Monthly/Annually)</text>
+  <text class="small" x="210" y="358">status &#183; currentPeriodStart/End</text>
+
+  <path class="edge" d="M210,376 L210,406" marker-end="url(#arrow-28)"/>
+  <rect class="node" x="120" y="410" width="180" height="34"/>
+  <text class="lbl" x="210" y="432">Invoices</text>
+
+  <rect class="node" x="560" y="296" width="220" height="34" rx="17" ry="17"/>
+  <text class="lbl" x="670" y="318">Stripe webhook</text>
+  <path class="edge" d="M670,330 L670,348" marker-end="url(#arrow-28)"/>
+
+  <rect class="node" x="530" y="352" width="280" height="62"/>
+  <text class="small" x="670" y="372">invoice.paid</text>
+  <text class="small" x="670" y="388">invoice.payment_failed</text>
+  <text class="small" x="670" y="404">customer.subscription.updated</text>
+
+  <path class="edge" d="M530,372 L354,346" marker-end="url(#arrow-28)"/>
+  <rect class="ebg" x="392" y="344" width="106" height="18"/>
+  <text class="elbl" x="445" y="357">update records</text>
+  <path class="edge" d="M530,402 L304,427" marker-end="url(#arrow-28)"/>
+
+  <!-- bridge B -> C -->
+  <path class="edge" d="M460,458 L460,492" marker-end="url(#arrow-28)"/>
+  <rect class="ebg" x="422" y="464" width="76" height="18"/>
+  <text class="elbl" x="460" y="477">plan limits</text>
+
+  <!-- Cluster C: enforcement -->
+  <rect class="cluster" x="30" y="496" width="860" height="166"/>
+  <text class="clbl" x="50" y="516">Quota &amp; feature enforcement</text>
+
+  <rect class="node" x="80" y="536" width="220" height="46"/>
+  <text class="lbl" x="190" y="555">requireFeature(feature)</text>
+  <text class="small" x="190" y="573">plan lacks the feature?</text>
+  <path class="edge" d="M190,582 L190,610" marker-end="url(#arrow-28)"/>
+  <rect class="ebg" x="198" y="586" width="58" height="18"/>
+  <text class="elbl" x="227" y="599">missing</text>
+  <rect class="node" x="85" y="614" width="210" height="34" rx="17" ry="17"/>
+  <text class="elbl" x="190" y="636">402 Payment Required</text>
+
+  <rect class="node" x="350" y="536" width="220" height="46"/>
+  <text class="lbl" x="460" y="555">Seat quota</text>
+  <text class="small" x="460" y="573">active users vs limitSeats</text>
+  <path class="edge" d="M460,582 L460,610" marker-end="url(#arrow-28)"/>
+  <rect class="ebg" x="468" y="586" width="66" height="18"/>
+  <text class="elbl" x="501" y="599">exceeded</text>
+  <rect class="node" x="355" y="614" width="210" height="34" rx="17" ry="17"/>
+  <text class="elbl" x="460" y="636">402 &#183; seat limit reached</text>
+
+  <rect class="node" x="620" y="536" width="220" height="46"/>
+  <text class="lbl" x="730" y="555">enforceStorageQuota</text>
+  <text class="small" x="730" y="573">attachment MB vs limitStorageMb</text>
+  <path class="edge" d="M730,582 L730,610" marker-end="url(#arrow-28)"/>
+  <rect class="ebg" x="738" y="586" width="66" height="18"/>
+  <text class="elbl" x="771" y="599">exceeded</text>
+  <rect class="node" x="625" y="614" width="210" height="34" rx="17" ry="17"/>
+  <text class="elbl" x="730" y="636">413 storage quota exceeded</text>
+</svg>

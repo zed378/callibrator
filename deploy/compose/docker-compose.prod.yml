@@ -1,0 +1,113 @@
+# Callibrator — production overlay
+#
+#   make up ENV=prod
+#
+# Database ports are NOT published. Images are pinned by tag — `:latest` in
+# production means nobody can say what is running, and a rollback has nothing
+# to roll back to.
+
+services:
+  backend:
+    image: ${BACKEND_IMAGE:-callibrator/backend}:${IMAGE_TAG:?IMAGE_TAG is required in production}
+    # No build section: production runs a promoted image, never a local build.
+    build: !reset null
+    environment:
+      NODE_ENV: production
+      FORCE_HTTPS: "true"
+      # Explicit, comma-separated. Never a wildcard — this policy runs with
+      # credentials:true.
+      CORS_ORIGIN: ${CORS_ORIGIN:?CORS_ORIGIN is required in production}
+      # Must be unset. Inline mode makes a batch job synchronous with whatever
+      # triggered it, reintroducing the 30s timeout it exists to avoid.
+      BATCH_JOBS_INLINE: ""
+      # A demo seeder running against real data is a data-integrity incident.
+      SEED_DEMO: ""
+      # Fail-closed: a scanner error rejects the upload.
+      VIRUS_SCAN_PROVIDER: clamav
+      VIRUS_SCAN_FAIL_OPEN: "false"
+      # ACME_DIRECTORY_URL DEFAULTS TO THE LET'S ENCRYPT STAGING DIRECTORY.
+      # Forgetting to point it at production yields certificates no browser
+      # trusts, and the failure appears in a browser rather than in any log.
+      ACME_DIRECTORY_URL: ${ACME_DIRECTORY_URL:?point this at the LE PRODUCTION directory}
+      # local storage is incompatible with more than one backend replica:
+      # replica A writes an attachment, replica B cannot serve it.
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
+      # Schedulers run once PER REPLICA. Exactly one instance must run them, or
+      # every backup and every retention purge runs twice.
+      SESSION_CLEANUP_SCHEDULER: ${SESSION_CLEANUP_SCHEDULER:-0 2 * * *}
+      BACKUP_SCHEDULER: ${BACKUP_SCHEDULER:-0 3 * * 0}
+      RETENTION_SCHEDULER: ${RETENTION_SCHEDULER:-0 2 * * *}
+    restart: always
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+    deploy:
+      resources:
+        limits:
+          # Chromium (certificate PDFs) is memory-hungry and bursty.
+          memory: 4G
+        reservations:
+          memory: 1G
+
+  frontend:
+    image: ${FRONTEND_IMAGE:-callibrator/frontend}:${IMAGE_TAG:?IMAGE_TAG is required in production}
+    build: !reset null
+    restart: always
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  postgres:
+    # Deliberately no `ports:` — the database is not reachable from outside the
+    # deployment network.
+    restart: always
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+        reservations:
+          memory: 2G
+
+  redis:
+    # Persistence matters here beyond caching: losing ./volumes/redis discards
+    # in-flight worker idempotency claims and reopens the duplicate window.
+    restart: always
+    command: ["redis-server", "--appendonly", "yes"]
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  rabbitmq:
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+  clamav:
+    restart: always
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+
+  nginx:
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    logging:
+      driver: json-file
+      options: { max-size: "50m", max-file: "5" }

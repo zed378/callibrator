@@ -1,0 +1,80 @@
+{{- include "callibrator.guards" . -}}
+Callibrator {{ .Chart.AppVersion }} deployed as {{ .Release.Name }}.
+
+  URL          https://{{ .Values.ingress.host }}
+  Verify page  https://{{ .Values.ingress.host }}/verify/<certificateNumber>   (public, no login)
+  Backend      {{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}   x{{ .Values.backend.replicaCount }}
+  Frontend     {{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag }}   x{{ .Values.frontend.replicaCount }}
+  Schedulers   {{ if .Values.backend.cron.enabled }}ENABLED on this release{{ else }}disabled{{ end }}
+  Storage      {{ .Values.backend.storage.driver }}
+
+VERIFY THE DEPLOYMENT
+
+  kubectl -n {{ .Release.Namespace }} rollout status deploy/{{ include "callibrator.fullname" . }}-backend
+  kubectl -n {{ .Release.Namespace }} exec deploy/{{ include "callibrator.fullname" . }}-backend -- wget -qO- localhost:3000/health
+
+  /health returns 503 when the database is unreachable — it is a READINESS
+  check, which is why liveness uses / instead. A liveness probe on /health
+  would restart a healthy process during a database blip.
+
+{{ if gt (int .Values.backend.replicaCount) 1 }}
+────────────────────────────────────────────────────────────────────────────
+  MORE THAN ONE BACKEND REPLICA
+────────────────────────────────────────────────────────────────────────────
+  Three prerequisites, all hard. The chart guards only the second.
+
+  1. STORAGE_DRIVER must be s3 or nfs.
+     Currently: {{ .Values.backend.storage.driver }}
+     {{- if eq .Values.backend.storage.driver "local" }}
+     ⚠  `local` is INCOMPATIBLE with more than one replica: replica A writes
+        an attachment, replica B cannot serve it.
+     {{- end }}
+
+  2. Exactly one replica runs schedulers.
+     ✓  Guarded — cron.enabled with replicaCount > 1 refuses to render.
+
+  3. Socket.IO needs the Redis adapter, or a notification reaches only the
+     replica holding that client's connection.
+
+  Also: the backend runs migrations at boot. Two replicas starting together
+  will both attempt them — use an init container, or advisory-lock.
+{{ end }}
+{{- if eq .Values.certificates.acme.directoryUrl "https://acme-staging-v02.api.letsencrypt.org/directory" }}
+────────────────────────────────────────────────────────────────────────────
+  ⚠  ACME_DIRECTORY_URL POINTS AT LET'S ENCRYPT STAGING
+────────────────────────────────────────────────────────────────────────────
+  Certificates issued from the staging directory are trusted by no browser,
+  and the failure appears in a browser rather than in any log.
+
+  Production:
+    --set certificates.acme.directoryUrl=https://acme-v02.api.letsencrypt.org/directory
+{{ end }}
+{{- if .Values.backend.env.SEED_DEMO }}
+────────────────────────────────────────────────────────────────────────────
+  ⚠  SEED_DEMO IS SET
+────────────────────────────────────────────────────────────────────────────
+  A demo seeder running against real data is a data-integrity incident.
+  Unset it outside development.
+{{ end }}
+────────────────────────────────────────────────────────────────────────────
+  SECRETS — back these up separately from the cluster AND the database
+────────────────────────────────────────────────────────────────────────────
+  CERT_SIGNING_SECRET   losing it: EVERY issued certificate permanently fails
+                        public verification; the key cannot be re-derived
+  ENCRYPT_KEY           losing it: every tenant private key and every stored
+                        storage credential becomes undecryptable
+
+  A restore that recovers the database and loses these produces a system that
+  starts cleanly and is permanently broken. Neither is practically rotatable.
+
+  The recovery drill must assert that a PRE-INCIDENT CERTIFICATE STILL
+  VERIFIES — that is the check which catches a lost-secrets restore before
+  weeks pass. See docs/ARCHITECTURE/09-DISASTER-RECOVERY.md.
+
+────────────────────────────────────────────────────────────────────────────
+  CHART STATUS
+────────────────────────────────────────────────────────────────────────────
+  These manifests are known to RENDER. They are not known to be accepted by a
+  cluster — no cluster has been reachable to validate against. If this is the
+  first real deployment, treat it as a validation exercise and record the
+  result in MEMORY/records/.

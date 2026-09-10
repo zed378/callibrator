@@ -1,0 +1,9 @@
+apiVersion: v2
+name: backend
+description: >-
+  Callibrator API — Express (JavaScript, CommonJS) compiled to a standalone
+  binary. Runs migrations at boot, embeds a Socket.IO server and an aedes MQTT
+  broker, and renders certificate PDFs with a system Chromium.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

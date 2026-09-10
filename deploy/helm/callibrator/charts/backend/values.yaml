@@ -1,0 +1,61 @@
+# Backend subchart defaults.
+#
+# The umbrella chart passes most of these down from its own values.yaml.
+# Overriding them here directly is possible and usually not what you want.
+
+replicaCount: 1
+
+image:
+  repository: callibrator/backend
+  # Required. The umbrella chart refuses to render without it.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+# Name of the Secret carrying CERT_SIGNING_SECRET, ENCRYPT_KEY,
+# ATTACHMENT_URL_SECRET, the JWT secrets and provider keys. Supplied by the
+# umbrella chart.
+secretName: callibrator-secrets
+
+service:
+  type: ClusterIP
+  port: 3000
+
+# Embedded aedes MQTT broker for IoT telemetry ingest. Disable where devices
+# submit over HTTP only (POST /api/v1/iot/ingest).
+mqtt:
+  enabled: false
+
+probes:
+  # Liveness on /, readiness on /health — /health returns 503 when the
+  # database is unreachable, and restarting on that turns a blip into a crash
+  # loop.
+  liveness:
+    path: /
+    initialDelaySeconds: 20
+    periodSeconds: 20
+  readiness:
+    path: /health
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    failureThreshold: 3
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: "2"
+    # Chromium (certificate PDFs) is memory-hungry and bursty. A limit sized
+    # for the steady state OOM-kills the pod on the first certificate.
+    memory: 4Gi
+
+persistence:
+  # Only meaningful with STORAGE_DRIVER=local, which is single-replica only.
+  enabled: false
+  size: 20Gi
+  storageClass: ""
+
+# Set by the umbrella chart to force a rollout when the ConfigMap changes.
+configChecksum: ""

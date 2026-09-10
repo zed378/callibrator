@@ -1,0 +1,739 @@
+@import "tailwindcss";
+
+/* Dark mode is class-based: `.dark` is toggled on <html> by ThemeContext. */
+@variant dark (&:is(.dark *));
+
+/* ==========================================================================
+   THEME TOKENS (Tailwind v4, CSS-first)
+   Semantic color tokens map (inline) to CSS variables that flip between light
+   and dark under `.dark`. Components use `bg-card`, `text-foreground`,
+   `border-border`, `bg-primary`, `text-muted-foreground`, etc. — never raw
+   palette classes and never `dark:` color variants. `--primary` can be
+   overridden at runtime for per-tenant brand color (TenantBrandingProvider).
+   ========================================================================== */
+@theme inline {
+  --font-sans: var(--font-inter), "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-jetbrains), "JetBrains Mono", ui-monospace, monospace;
+  /* Display face for headings — Space Grotesk lends a precise, technical
+     character (Clinical Precision direction). Falls back to Inter. Exposed as
+     the `font-display` utility. */
+  --font-display: var(--font-space-grotesk), "Space Grotesk", var(--font-inter),
+    "Inter", system-ui, sans-serif;
+
+  /* Surfaces & text */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+
+  /* Lines & focus */
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Brand */
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+
+  /* Semantic states */
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+}
+
+/* ==========================================================================
+   MOTION TOKENS (immersive layer — FRONTEND.md Part I)
+   Shared easings / durations / stagger for GSAP, Framer, and CSS. Reduced
+   motion collapses the durations to 0 so every animation degrades to a static
+   end-state. Keep new visuals deriving from --primary/--accent so tenant
+   branding (TenantBrandingProvider) still recolors them.
+   ========================================================================== */
+:root {
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out-quart: cubic-bezier(0.76, 0, 0.24, 1);
+  --dur-fast: 220ms;
+  --dur-base: 480ms;
+  --dur-slow: 900ms;
+  --stagger: 60ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur-base: 0ms;
+    --dur-slow: 0ms;
+  }
+}
+
+:root {
+  /* Light theme */
+  --background: #f8fafc; /* slate-50 */
+  --foreground: #0f172a; /* slate-900 */
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --popover: #ffffff;
+  --popover-foreground: #0f172a;
+  --muted: #f1f5f9; /* slate-100 */
+  --muted-foreground: #64748b; /* slate-500 */
+  --border: #e2e8f0; /* slate-200 */
+  --input: #e2e8f0;
+
+  --primary: #2563eb; /* blue-600 — trust blue (tenant-overridable) */
+  --primary-foreground: #ffffff;
+  --secondary: #f1f5f9; /* slate-100 */
+  --secondary-foreground: #1e293b; /* slate-800 */
+  --accent: #0e7490; /* cyan-700 — clinical teal (safe 4.5:1 as text/solid) */
+  --accent-foreground: #ffffff;
+
+  --success: #059669; /* emerald-600 — health green */
+  --success-foreground: #ffffff;
+  --warning: #d97706; /* amber-600 */
+  --warning-foreground: #ffffff;
+  --destructive: #e11d48; /* rose-600 */
+  --destructive-foreground: #ffffff;
+  --info: #0284c7; /* sky-600 */
+  --info-foreground: #ffffff;
+
+  --ring: var(--primary);
+}
+
+.dark {
+  /* Dark theme */
+  --background: #0f172a; /* slate-900 */
+  --foreground: #e2e8f0; /* slate-200 */
+  --card: #1e293b; /* slate-800 */
+  --card-foreground: #f1f5f9; /* slate-100 */
+  --popover: #1e293b;
+  --popover-foreground: #f1f5f9;
+  --muted: #1e293b; /* slate-800 */
+  --muted-foreground: #94a3b8; /* slate-400 */
+  --border: #334155; /* slate-700 */
+  --input: #334155;
+
+  --primary: #3b82f6; /* blue-500 — trust blue, brighter on dark */
+  --primary-foreground: #ffffff;
+  --secondary: #334155; /* slate-700 */
+  --secondary-foreground: #f1f5f9;
+  --accent: #22d3ee; /* cyan-400 — clinical teal, bright on dark */
+  --accent-foreground: #062a30; /* deep cyan for contrast on the bright accent */
+
+  --success: #10b981; /* emerald-500 */
+  --success-foreground: #052e16;
+  --warning: #f59e0b; /* amber-500 */
+  --warning-foreground: #1c1207;
+  --destructive: #f43f5e; /* rose-500 */
+  --destructive-foreground: #ffffff;
+  --info: #38bdf8; /* sky-400 */
+  --info-foreground: #082f49;
+
+  --ring: var(--primary);
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 80px;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  -webkit-font-smoothing: antialiased;
+  -moz-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--primary) 30%, transparent);
+  color: var(--foreground);
+}
+
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.text-balance {
+  text-wrap: balance;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes fadeInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(6px);
+  }
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes gradientShift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes orbFloat1 {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  25% {
+    transform: translate(100px, -50px) scale(1.1);
+  }
+  50% {
+    transform: translate(50px, 100px) scale(0.9);
+  }
+  75% {
+    transform: translate(-50px, 50px) scale(1.05);
+  }
+}
+
+@keyframes orbFloat2 {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  25% {
+    transform: translate(-80px, 60px) scale(0.95);
+  }
+  50% {
+    transform: translate(-120px, -40px) scale(1.1);
+  }
+  75% {
+    transform: translate(40px, -80px) scale(1);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.5s ease-out forwards;
+}
+.animate-fade-in-up {
+  animation: fadeInUp 0.6s ease-out forwards;
+}
+.animate-fade-in-down {
+  animation: fadeInDown 0.5s ease-out forwards;
+}
+.animate-fade-in-left {
+  animation: fadeInLeft 0.6s ease-out forwards;
+}
+.animate-fade-in-right {
+  animation: fadeInRight 0.6s ease-out forwards;
+}
+.animate-scale-in {
+  animation: scaleIn 0.4s ease-out forwards;
+}
+.animate-slide-up {
+  animation: slideUp 0.4s ease-out forwards;
+}
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+.animate-float-reverse {
+  animation: float 6s ease-in-out infinite reverse;
+}
+.animate-bounce {
+  animation: bounce 1s ease-in-out infinite;
+}
+.animate-gradient {
+  background-size: 200% 200%;
+  animation: gradientShift 8s ease infinite;
+}
+.animate-orb-float-1 {
+  animation: orbFloat1 30s ease-in-out infinite;
+}
+.animate-orb-float-2 {
+  animation: orbFloat2 35s ease-in-out infinite;
+}
+.animate-orb-float-1-reverse {
+  animation: orbFloat1 30s ease-in-out infinite reverse;
+}
+.animate-orb-float-2-reverse {
+  animation: orbFloat2 35s ease-in-out infinite reverse;
+}
+
+.delay-100 {
+  animation-delay: 100ms;
+}
+.delay-200 {
+  animation-delay: 200ms;
+}
+.delay-300 {
+  animation-delay: 300ms;
+}
+.delay-400 {
+  animation-delay: 400ms;
+}
+.delay-500 {
+  animation-delay: 500ms;
+}
+.delay-600 {
+  animation-delay: 600ms;
+}
+
+/* ==========================================================================
+   Scroll-reveal entrance animations
+   Gated behind BOTH prefers-reduced-motion:no-preference AND a `.reveal-ready`
+   class added by <ScrollReveal> after hydration — so content is fully visible
+   if JS never runs or the user prefers reduced motion.
+   ========================================================================== */
+@media (prefers-reduced-motion: no-preference) {
+  .reveal-ready [data-reveal] {
+    opacity: 0;
+    transform: translateY(24px);
+    transition:
+      opacity 0.6s ease-out,
+      transform 0.6s ease-out;
+    transition-delay: var(--reveal-delay, 0ms);
+    will-change: opacity, transform;
+  }
+  .reveal-ready [data-reveal="left"] {
+    transform: translateX(-24px);
+  }
+  .reveal-ready [data-reveal="right"] {
+    transform: translateX(24px);
+  }
+  .reveal-ready [data-reveal="scale"] {
+    transform: scale(0.97);
+  }
+  .reveal-ready [data-reveal].is-visible {
+    opacity: 1;
+    transform: none;
+  }
+
+  /* Hand-drawn <Underline> draws itself on when its revealed ancestor enters.
+     Scoped to [data-reveal] so an underline outside a reveal target (e.g. the
+     above-the-fold hero) renders solid instead of staying hidden. */
+  .reveal-ready [data-reveal] .reveal-underline {
+    /* 1 2 ensures the gap is larger than the path to hide the round linecap dot completely */
+    stroke-dasharray: 1 2;
+    stroke-dashoffset: 1;
+    transition: stroke-dashoffset 0.7s ease-out;
+  }
+  .reveal-ready [data-reveal].is-visible .reveal-underline {
+    stroke-dashoffset: 0;
+    transition-delay: 0.25s;
+  }
+}
+
+/* ==========================================================================
+   Reduced motion: stop ambient loops (reveals are already opt-in above).
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  .animate-orb-float-1,
+  .animate-orb-float-2,
+  .animate-orb-float-1-reverse,
+  .animate-orb-float-2-reverse,
+  .animate-float,
+  .animate-float-reverse,
+  .animate-gradient,
+  .animate-pulse,
+  .animate-bounce {
+    animation: none !important;
+  }
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+/* ==========================================================================
+   IMMERSIVE LAYER helpers (FRONTEND.md Part I)
+   Small CSS primitives consumed by src/components/motion/* and the revamped
+   sections. All derive from tokens; all degrade under reduced motion.
+   ========================================================================== */
+
+/* GSAP SplitText line wrappers — clip words so a yPercent reveal reads as a
+   mask wipe. Applied via SplitHeading's `linesClass`. */
+.split-line {
+  overflow: hidden;
+  padding-bottom: 0.08em; /* room for descenders while clipping */
+}
+
+/* Infinite logo/word marquee (Trust strip). Track holds two identical groups
+   and slides by -50%, so the loop is seamless. */
+.marquee-mask {
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 8%,
+    #000 92%,
+    transparent
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 8%,
+    #000 92%,
+    transparent
+  );
+}
+.marquee-track {
+  display: flex;
+  width: max-content;
+  animation: marquee var(--marquee-duration, 32s) linear infinite;
+}
+.marquee-group {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+}
+.marquee-mask:hover .marquee-track {
+  animation-play-state: paused;
+}
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+/* Cursor spotlight for the Features bento grid. Position is fed via the
+   --spot-x / --spot-y custom properties from a pointer handler. */
+.spotlight {
+  position: relative;
+}
+.spotlight::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: var(--spot-opacity, 0);
+  transition: opacity var(--dur-base) var(--ease-out-expo);
+  background: radial-gradient(
+    360px circle at var(--spot-x, 50%) var(--spot-y, 50%),
+    color-mix(in oklab, var(--primary) 14%, transparent),
+    transparent 60%
+  );
+  z-index: 0;
+}
+
+/* Slow Ken-Burns for the auth branding photo. */
+@keyframes kenburns {
+  0% {
+    transform: scale(1) translate3d(0, 0, 0);
+  }
+  100% {
+    transform: scale(1.08) translate3d(-1.5%, -1.5%, 0);
+  }
+}
+.animate-kenburns {
+  animation: kenburns 22s var(--ease-in-out-quart) infinite alternate;
+}
+
+/* Diagonal gradient sheen sweep (CTA band). */
+@keyframes sheen {
+  0% {
+    transform: translateX(-120%) skewX(-12deg);
+  }
+  100% {
+    transform: translateX(220%) skewX(-12deg);
+  }
+}
+.animate-sheen {
+  animation: sheen 6s var(--ease-in-out-quart) infinite;
+}
+
+/* How-It-Works scroll story: step numbers light up as they activate; the
+   left rail fills as you scroll (GSAP scrub). Defaults are the "complete"
+   state so reduced-motion / no-JS shows a sensible static result. */
+.hiw-num {
+  transition:
+    color 0.4s var(--ease-out-expo),
+    transform 0.4s var(--ease-out-expo);
+}
+.hiw-num.is-active {
+  color: var(--primary);
+  transform: scale(1.06);
+}
+.hiw-rail-fill {
+  transform-origin: top;
+  transform: scaleY(1);
+}
+
+/* SVG stroke draw-on (compliance check-draw, success check). Pair with
+   pathLength={1} on the path; toggle `.is-drawn` to draw. */
+.draw-path {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  transition: stroke-dashoffset 0.7s var(--ease-out-expo);
+}
+.draw-path.is-drawn {
+  stroke-dashoffset: 0;
+}
+
+/* CSS-only draw-on for the register success check (no JS required). */
+@keyframes drawCheck {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.animate-draw-check {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: drawCheck 0.7s var(--ease-out-expo) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marquee-track,
+  .animate-kenburns,
+  .animate-sheen {
+    animation: none !important;
+  }
+  .marquee-track {
+    transform: none !important;
+  }
+  .draw-path {
+    stroke-dashoffset: 0;
+    transition: none;
+  }
+  .animate-draw-check {
+    animation: none !important;
+    stroke-dashoffset: 0;
+  }
+}
+
+/* ==========================================================================
+   ARTICLE PROSE — typography for WYSIWYG content (public blog/news bodies +
+   the dashboard rich-text editor). Semantic tokens only; no typography plugin.
+   ========================================================================== */
+.article-prose {
+  color: var(--foreground);
+  font-size: 1.05rem;
+  line-height: 1.75;
+}
+.article-prose > :first-child {
+  margin-top: 0;
+}
+.article-prose h1 {
+  font-size: 1.9rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  margin: 2rem 0 0.75rem;
+}
+.article-prose h2 {
+  font-size: 1.55rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.2;
+  margin: 1.85rem 0 0.7rem;
+}
+.article-prose h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 1.5rem 0 0.6rem;
+}
+.article-prose p {
+  margin: 0 0 1.1rem;
+}
+.article-prose a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.article-prose a:hover {
+  opacity: 0.85;
+}
+.article-prose ul,
+.article-prose ol {
+  margin: 0 0 1.1rem;
+  padding-left: 1.5rem;
+}
+.article-prose ul {
+  list-style: disc;
+}
+.article-prose ol {
+  list-style: decimal;
+}
+.article-prose li {
+  margin: 0.3rem 0;
+}
+.article-prose blockquote {
+  margin: 1.5rem 0;
+  padding: 0.25rem 0 0.25rem 1.25rem;
+  border-left: 3px solid var(--primary);
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+.article-prose img {
+  border-radius: 0.75rem;
+  margin: 1.5rem 0;
+  max-width: 100%;
+  height: auto;
+}
+.article-prose figure {
+  margin: 1.5rem 0;
+}
+.article-prose figcaption {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--muted-foreground);
+  text-align: center;
+}
+.article-prose strong {
+  font-weight: 700;
+  color: var(--foreground);
+}
+.article-prose code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: var(--muted);
+  padding: 0.15em 0.4em;
+  border-radius: 0.35rem;
+}
+.article-prose pre {
+  background: var(--muted);
+  padding: 1rem;
+  border-radius: 0.75rem;
+  overflow-x: auto;
+  margin: 1.5rem 0;
+}
+.article-prose pre code {
+  background: none;
+  padding: 0;
+}
+.article-prose hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 2rem 0;
+}
+/* TipTap empty-editor placeholder */
+.article-prose p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--muted-foreground);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
