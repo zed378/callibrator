@@ -37,7 +37,7 @@ required action satisfied?   write implies read
 
 `permissionType` is `read` or `write`. There is no separate create / update / delete granularity.
 
-That is deliberate. A permission model with five verbs per surface across 31 surfaces is 155 switches, and a model nobody configures correctly is not a security control — it is a configuration surface that ships with whatever the defaults happened to be.
+That is deliberate. A permission model with five verbs per surface across 58 surfaces is 290 switches, and a model nobody configures correctly is not a security control — it is a configuration surface that ships with whatever the defaults happened to be.
 
 ## Role Level Is Numeric
 

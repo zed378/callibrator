@@ -125,7 +125,7 @@ Every agent, regardless of role, is bound by these. They are not role-specific b
 
 ## QA Engineer
 
-**Owns:** 342 backend test files, 51 live E2E specs, 51 contract tests, 71 browser tests.
+**Owns:** 342 backend test files, 53 live E2E specs, 51 contract tests, and a Playwright suite that is **not in this repository** (see U-07).
 
 **The founding lesson:** **3,863 tests passed while 13 endpoints were broken.** Services had been written against endpoints that did not exist, with tests mocking the fabrication.
 

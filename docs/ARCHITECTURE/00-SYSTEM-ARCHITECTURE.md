@@ -36,7 +36,7 @@ Socket.IO runs on the same Express server and shares its port.
 
 ### It is a modular monolith, not microservices
 
-One Express process serving 53 mounted route modules across 33 functional domains.
+One Express process serving 54 route modules across 33 functional domains, mounted 56 times — `oidc` and `menu-groups` are each mounted twice.
 
 This is the right shape here for a specific reason: **tenant isolation is a cross-cutting invariant, and cross-cutting invariants are cheap in one process and expensive across many.** The isolation mechanism is a set of global Sequelize hooks reading an `AsyncLocalStorage` context. In a microservice architecture the same guarantee needs every service to independently implement it correctly, and the failure of any one is a data breach.
 

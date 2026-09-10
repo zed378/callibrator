@@ -10,6 +10,7 @@ Add a line here as part of writing the record — **an unindexed record is a rec
 
 | Date | Task | Record | Hook |
 |---|---|---|---|
+| 2026-09-10 | — | [First production deployment](./records/2026-09-10-first-production-deployment.md) | Nine defects, **none reachable from a test**: an unanchored `storage/` in `.gitignore` excluded six committed source files from every clean clone; a fourth required secret nothing named crash-looped the container with an empty `docker logs`; and a proxy rule sending `/api/` to the backend broke browser login while the backend answered 200 throughout. A clean-clone build in CI would have caught four of them (P7-01) |
 | 2026-09-10 | — | [Monorepo restructure and as-built documentation](./records/2026-09-10-monorepo-restructure-and-as-built-docs.md) | `CLAUDE.md` told engineers and agents to write strict TypeScript with no `any` for a backend that is **JavaScript**, and `TASKS/` listed foundation work as TODO that had shipped months earlier. 135 documents rewritten from the code rather than from the plan; nine ADRs record what actually happened; `deploy/` and a Makefile added with guards that **refuse to render** rather than deploying something that misbehaves quietly |
 
 ---

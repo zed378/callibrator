@@ -64,9 +64,11 @@ The reason: most tenants — particularly smaller facilities — have no identit
 | **Status** | ✅ DONE |
 | **Spec refs** | `docs/PLAN/03-USER-ROLES.md` · `docs/DATABASE/04-RBAC-TABLES.md` · `docs/SECURITY/04-AUTHORIZATION-RBAC.md` |
 
-**What shipped:** 11 seeded roles, 31 menu groups, `role_menu_permissions`, `user_menu_permissions`, and three gates — `dynamicAccess(resource, action)`, `rbac([roles])`, `abac`.
+**What shipped:** 11 seeded roles, **58 menu groups** (three levels deep, seeded from `backend/src/utils/seedMenuGroups.util.js`), `role_menu_permissions`, `user_menu_permissions`, and three gates — `dynamicAccess(resource, action)`, `rbac([roles])`, `abac`.
 
-**Two levels, not five.** `read` or `write`; `write` implies `read`. A model with five verbs across 31 surfaces is 155 switches, and a model nobody configures correctly is not a security control.
+**Two levels, not five.** `read` or `write`; `write` implies `read`. A model with five verbs across 58 surfaces is 290 switches, and a model nobody configures correctly is not a security control.
+
+A first seed reports the shape concretely: **11 roles, 58 menu groups, 129 role permissions, one super-admin.**
 
 **`TENANT_ADMIN` is a role that is not in the database.** It sits in `ROLE_LEVELS` at level 8 so one `rbac()` gate covers both `HEALTHCARE ADMIN` and `CALIBRATOR ADMIN`. Looking for it in `roles` and not finding it is the expected outcome, and nothing said so until now.
 
@@ -75,6 +77,12 @@ The reason: most tenants — particularly smaller facilities — have no identit
 **The silent failure mode:** a role absent from `ROLE_LEVELS` resolves to the lowest privilege. It fails closed — correct — but **silently**, with nothing explaining why every privileged gate refuses.
 
 **⚠ Open gap.** **Nothing prevents a new route being merged with no permission gate.** It would work for everyone with a token. → P6-04.
+
+**⚠ A defect found in production, fixed 2026-09.** `GET /menu-groups/menu-groups/admin` answered **500** with `Cannot read properties of undefined (reading 'roleId')`. `filterMenuGroups` serves both a POST and two GET routes and read `req.body.roleId` unguarded — and **Express 5 no longer defaults an absent body to `{}`**. On a GET with no body, `req.body` is `undefined`.
+
+The sidebar was unaffected, which is why it survived: the menu tree comes from `getRoleMenuAssignments`, a different handler, so only `/dashboard/menu-groups` broke. A defect confined to the screen that configures permissions is easy to leave standing.
+
+The remaining unguarded `req.body.x` reads are on POST and PATCH handlers, where a bodyless request is already a client error — but it answers 500 rather than 400. → **M-10** in `BACKLOG.md`.
 
 ---
 
@@ -153,6 +161,10 @@ Every mutation writes an `audit_logs` row **inside the transaction of the action
 **The sidebar is rendered from the server-resolved menu tree.** There is no client-side permission array, no `can()` helper, no `<IfPermitted>` wrapper.
 
 **An unauthorised surface is absent, not hidden.** A hidden element is still in the DOM, and its route is still reachable by typing the URL.
+
+**Next.js owns `/api/v1/*`, and that is an architectural decision, not plumbing.** `app/api/v1/auth/login/route.ts` forwards to the backend and then sets `auth_token` and `auth_session` as **httpOnly** cookies plus a non-httpOnly `auth_logged_in` marker for client code that only needs to know whether someone is signed in; `app/api/v1/[...path]/route.ts` injects `Authorization: Bearer` from that cookie on every later call. `api/client.ts` sets `baseURL: ""` for exactly this reason — the browser talks to its own origin.
+
+The consequence surfaced in deployment: a reverse proxy that routes `/api/` **to the backend** bypasses both handlers. Login returns a token in a JSON body that nothing stores, no cookie is set, and every authenticated request afterwards arrives with no credentials — while the backend answers 200 throughout. The token never reaches the browser as a token, so no amount of correct backend behaviour makes it work. See `docs/DEVOPS/03-REVERSE-PROXY.md`.
 
 **Tenant branding is fetched before sign-in** for a pinned build (`NEXT_PUBLIC_TENANT_ID`), from the unauthenticated `GET /tenants/public` — which must therefore expose **branding only**.
 

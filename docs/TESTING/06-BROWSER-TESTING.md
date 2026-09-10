@@ -2,6 +2,8 @@
 
 Playwright. `automate/`, 71 tests.
 
+> **⚠ The `automate/` directory is not in this repository.** It is untracked by git and absent from disk; the 71-test result is from the 2026-07 audit and **nothing here can currently reproduce it**. `make test-browser` will not find a suite to run. Recorded as **U-07** in [`../../TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md). Everything below describes the suite as it was, and is kept because it is the specification for restoring it.
+
 ```bash
 npx playwright test
 make test-browser

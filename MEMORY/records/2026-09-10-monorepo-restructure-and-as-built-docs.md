@@ -52,7 +52,7 @@ Nine added — **ADR-029 to ADR-037**, in a new Part II. Each names the earlier 
 
 Because the specification and the code had diverged far enough that the specification was actively harmful.
 
-The concrete cost of that divergence, measured: an agent or engineer reading `CLAUDE.md` would have spent effort adding TypeScript types to a JavaScript codebase, or "completed" P1-04 RBAC — which has been running in production, with 11 seeded roles and 31 menu groups, for months.
+The concrete cost of that divergence, measured: an agent or engineer reading `CLAUDE.md` would have spent effort adding TypeScript types to a JavaScript codebase, or "completed" P1-04 RBAC — which has been running in production, with 11 seeded roles and 58 menu groups, for months.
 
 Rewriting `docs/` from the code makes the reference material checkable. Every document names the file it derives from, so a reader can verify rather than trust.
 

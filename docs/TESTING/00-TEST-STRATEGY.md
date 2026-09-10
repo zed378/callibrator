@@ -21,7 +21,7 @@ Everything below follows from that.
 | Contract (mock) | `frontend/src/api/services/*.test.ts` | 51 | the client sends the right request |
 | **Live E2E** | `backend/src/tests/e2e/modules/` | **51** | **the endpoint exists and answers that way** |
 | Component | `frontend/**/__tests__/` | — | a screen renders correctly |
-| Browser | `automate/` | 71 | the whole flow works |
+| Browser | `automate/` | 71 | the whole flow works — **but the directory is absent from this repository; see U-07** |
 
 The bolded row is the one that was missing.
 
@@ -155,7 +155,7 @@ Defect #15 — the certificate list returning zero rows because four includes we
 
 ```bash
 make verify         # lint + typecheck + test + build
-make test-e2e       # 51 live specs against a running server
+make test-e2e       # 53 live specs against a running server
 make test-browser   # Playwright
 ```
 
