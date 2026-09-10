@@ -1,3 +1,28 @@
 {
-  "extends": ["config/tsconfig.base.json"]
+  // Root TypeScript configuration.
+  //
+  // NOTE: this file previously extended "config/tsconfig.base.json", which does
+  // not exist — the root tsconfig was broken.
+  //
+  // TypeScript is meaningful only in frontend/. The backend is JavaScript,
+  // CommonJS (ADR-030); there is nothing to type-check there, and `pnpm
+  // typecheck` runs against the frontend alone.
+  //
+  // frontend/tsconfig.json is authoritative for the frontend build. This file
+  // exists so editors opening the repository root resolve something valid.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true
+  },
+  "include": [],
+  "exclude": ["node_modules", "backend", "frontend/.next", "**/dist"]
 }

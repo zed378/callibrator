@@ -81,3 +81,22 @@ public/uploads/
 
 # Git
 .git/
+
+# ==========================================================================
+# Deployment
+# ==========================================================================
+# Runtime data for the compose stack. deploy/compose/volumes/redis in
+# particular holds in-flight worker idempotency claims — losing it reopens the
+# duplicate window (docs/ARCHITECTURE/07).
+deploy/compose/volumes/
+deploy/compose/.env
+deploy/compose/nginx/certs/
+
+# Database dumps from `make backup`. A dump is not a backup on its own: without
+# CERT_SIGNING_SECRET and ENCRYPT_KEY, restoring it produces a system that
+# starts cleanly and cannot verify a single certificate.
+backups/
+
+# Helm
+deploy/helm/**/charts/*.tgz
+deploy/helm/**/Chart.lock

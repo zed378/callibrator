@@ -11,7 +11,7 @@
 >
 > **This document has two parts.** **Part I (§1–§10)** is the immersive Landing/Login/Register revamp.
 > **Part II (§11–§22)** plans two new public pages — **Blog** and **News** — built near-term on **static
-> TypeScript data files**, with a backend-CMS migration path (catalogued in [`MODULES.md`](MODULES.md) §7.3.M
+> TypeScript data files**, with a backend-CMS migration path (catalogued in [`MODULES.md`](../BACKEND/10-MODULE-REFERENCE.md) §7.3.M
 > / §6.2 `content-cms`).
 >
 > **Product:** **HDC — Hospital Device Callibrator**, a multi-tenant medical-device calibration & compliance
@@ -462,7 +462,7 @@ existing `prefers-reduced-motion` discipline._
 >
 > **Content source (near-term):** **static TypeScript data files** (`src/data/blog.ts`, `src/data/news.ts`),
 > mirroring the existing `src/data/landing.ts`. **No backend/CMS is built in this near-term phase.** The
-> eventual **Backend CMS module** is catalogued in [`MODULES.md`](MODULES.md) §7.3.M (`content-cms`); §21
+> eventual **Backend CMS module** is catalogued in [`MODULES.md`](../BACKEND/10-MODULE-REFERENCE.md) §7.3.M (`content-cms`); §21
 > below documents the static → CMS migration path so both states stay consistent.
 
 ---
@@ -785,7 +785,7 @@ honest._
 
 ## 21. Backend CMS migration path (static → `content-cms`)
 
-The static data files are designed so the future CMS ([`MODULES.md`](MODULES.md) §7.3.M / §6.2 `content-cms`)
+The static data files are designed so the future CMS ([`MODULES.md`](../BACKEND/10-MODULE-REFERENCE.md) §7.3.M / §6.2 `content-cms`)
 is a drop-in swap, not a rewrite:
 
 - **One seam:** only the **access helpers** (`getPostBySlug`, `getPostsByCategory`, `getAllPostSlugs`, …)

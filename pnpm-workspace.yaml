@@ -1,12 +1,13 @@
-workspace:
-  packages:
-    - 'backend'
-    - 'frontend'
-    - 'packages/*'
+# pnpm workspace members.
+#
+# NOTE: this file previously nested everything under a top-level `workspace:`
+# key, which pnpm does not read — the workspace was silently not configured.
+# pnpm expects `packages:` at the top level.
+#
+# `packages/*` is deliberately absent: there is no shared package, because a
+# CommonJS JavaScript backend (ADR-030) and a TypeScript frontend share no
+# code. Add the glob back when there is something to put in it.
 
-  # Exclude node_modules and build directories from workspace
-  ignore:
-    - '**/.git'
-    - '**/.next'
-    - '**/dist'
-    - '**/build'
+packages:
+  - "backend"
+  - "frontend"
