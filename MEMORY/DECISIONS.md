@@ -644,3 +644,254 @@ Each ADR follows this pattern:
 **Status:** Accepted
 
 ---
+
+---
+
+# Part II — Decisions Recorded After Implementation
+
+ADR-001 through ADR-028 were written **before** the system was built. Several of them describe a system that was then built differently.
+
+The ADRs below record what actually happened. Where one supersedes an earlier decision, it says so, and the earlier ADR is left in place rather than edited — an ADR is a record of what was decided at a moment, and rewriting it destroys the evidence that the decision changed.
+
+**Read Part II before acting on Part I.**
+
+---
+
+## ADR-029: Tenant Isolation in the ORM Layer, Not Row Level Security
+
+**Supersedes the RLS recommendation in ADR-001. Supersedes ADR-018 in mechanism.**
+
+**Decision:** Enforce tenant isolation with global Sequelize hooks reading an `AsyncLocalStorage` context, **deny-by-default**. Remove PostgreSQL Row Level Security.
+
+Migration `0012` added RLS. Migration `0015` removed it. Both are kept.
+
+**Rationale:**
+
+1. **RLS is PostgreSQL-only.** The platform must also run on MySQL (ADR-030 records why). An isolation mechanism that exists on one engine is not an isolation mechanism.
+2. **The RLS policy carried a fail-open branch.** `app.current_tenant = ''` matched **every row**. A request arriving without the session variable set saw everything.
+3. **Cost.** Setting and resetting the GUC cost two round-trips and a wrapping transaction on every authenticated request.
+
+**Implementation:** `backend/src/utils/tenantScope.util.js`, installed by `models/index.js`.
+
+```
+options.skipTenantScope  → skip    explicit, greppable opt-out
+no CLS context           → skip    pre-auth, public, migrations, schedulers
+context.isSystemTask     → skip    background work spanning tenants
+context.isSuperAdmin     → skip    cross-tenant operator
+context.tenantId         → filter
+otherwise                → DENY
+```
+
+The deny branch resolves to `tenantId = '00000000-0000-0000-0000-000000000000'` — a valid UUID no tenant will ever own, chosen over a sentinel string because tenant columns are UUID-typed and a non-UUID literal makes PostgreSQL raise a **type error**, turning a denial into a 500. A 500 is something people fix by removing the check.
+
+**Alternatives considered:**
+
+- **Keep RLS, add an application-layer fallback for MySQL.** Two mechanisms for one invariant, diverging over time. Rejected.
+- **Per-tenant databases.** Revisits ADR-001 entirely; operationally far heavier at this scale.
+- **Per-query filters by convention.** This is the mechanism that was replaced. A control requiring someone to remember will eventually not be remembered.
+
+**Implications:**
+
+- Raw SQL bypasses the hooks. Every `sequelize.query` must carry the predicate explicitly, and every new one is a review item.
+- Vector similarity search on `document_chunks` does not scope itself — the highest-risk instance in the system.
+- Cache keys must include the tenant id, or a leak persists after the bug is fixed until the key expires.
+- `tenantKeyOf()` checks both `tenantId` and `tenant_id`, because `sessions` uses snake_case attributes.
+
+**The rule to carry forward:** an isolation mechanism whose "no context" branch **permits** rather than denies is not an isolation mechanism.
+
+**Status:** Accepted
+
+---
+
+## ADR-030: The Backend Is JavaScript, Not TypeScript
+
+**Supersedes the TypeScript premise in ADR-002 and ADR-013.**
+
+**Decision:** The backend is JavaScript, CommonJS, `"type": "commonjs"`, Node 24. The frontend remains TypeScript.
+
+**Rationale:**
+
+The backend originated from an Express boilerplate in JavaScript and grew to 76 services, 56 controllers, 72 models and 342 test files before the question was revisited. At that point a migration would have been a multi-month rewrite of working, tested, compliance-critical code, with the defect risk concentrated in exactly the paths that must not break.
+
+The type-safety argument is real and was weighed against that. It lost on cost, not on merit.
+
+**Alternatives considered:**
+
+- **Migrate incrementally with `allowJs`.** Produces a codebase that is neither, for a long time, with two sets of conventions.
+- **Rewrite.** Rejected on risk.
+- **JSDoc with `checkJs`.** Genuinely attractive and still open — it buys editor-level checking without a rewrite. Not adopted; recorded here as the live option.
+
+**Implications:**
+
+- **`CLAUDE.md` instructed agents and engineers to write strict TypeScript with no `any` for a codebase that has no types.** That is corrected, and it is the clearest instance of the stale-specification risk (PR-4).
+- `pnpm typecheck` runs meaningfully only in `frontend/`.
+- There is no shared `packages/` workspace. The glob matches nothing, because a CommonJS backend and a TypeScript frontend share no code.
+- Frontend API types are **hand-written** — a belief about the API, not a guarantee. Contract tests and the live suite are what keep them honest.
+- JSDoc on exported functions is the only type information the backend has, which raises its value.
+
+**Status:** Accepted
+
+---
+
+## ADR-031: Socket.IO Stays; the Plain-WebSocket Migration Was Reverted
+
+**Decision:** Realtime uses Socket.IO on both ends — `socket.io` server-side, `socket.io-client` in the frontend.
+
+A plain-WebSocket hub was trialled and **reverted by decision**.
+
+**Rationale:** Socket.IO's reconnection, room semantics and transport fallback are the parts actually being used. Re-implementing them was work with no product benefit, and the fallback behaviour matters on hospital networks where a proxy may not pass upgrades.
+
+**Alternatives considered:** the plain-WebSocket hub — built, evaluated, reverted. Recorded so nobody rebuilds it from an old note describing it as the direction.
+
+**Implications:**
+
+- The reverse proxy **must** pass WebSocket upgrade headers for `/socket.io/*`. Without them Socket.IO silently falls back to long-polling — it works, and nobody notices until connection counts matter. This is the deployment mistake most likely to go undetected.
+- More than one backend replica requires the **Redis adapter**, or a notification reaches only the replica holding that connection.
+- Authentication uses a short-lived socket token (`POST /auth/socket-token`), not the access token — a long-lived credential should not be handed to a transport that holds it for the life of a connection.
+- **The room join takes a raw id, not a prefixed room name.** A prefixed string joins a room nobody publishes to, and the symptom is silence rather than an error.
+
+**Status:** Accepted
+
+---
+
+## ADR-032: Docker Compose Is the Primary Deployment Path
+
+**Supersedes ADR-004.**
+
+**Decision:** Docker Compose on a single host is the primary deployment. Helm charts exist as the alternative.
+
+**Rationale:** Most deployments are installations inside a hospital network where Kubernetes is not present and would not be welcome. Every additional runtime and control plane is a procurement conversation. A compose stack plus a reverse proxy is something a hospital IT department will accept.
+
+This is also why both applications compile to **standalone binaries** — the production images carry no language runtime.
+
+**Alternatives considered:**
+
+- **Kubernetes-first** (ADR-004). Correct for a pure-SaaS product; wrong for the on-premise reality.
+- **Compose only.** Leaves no escape route from the single-host risk.
+
+**Implications:**
+
+- Single host, single failure domain (PR-12), accepted.
+- Helm charts are written and maintained, with render-time guards.
+- **Their honest status: the manifests render; they are not known to be accepted by a cluster**, because no cluster has been reachable. `helm lint` and `helm template` pass; `kubectl apply --dry-run=server` has not been run. That distinction should not be smoothed over.
+- Horizontal scaling has three hard prerequisites — object storage off local disk, exactly one scheduler replica, and the Socket.IO Redis adapter — plus the migration race, since migrations run at boot.
+
+**Status:** Accepted
+
+---
+
+## ADR-033: Password Authentication Is Primary; OIDC Is Both Directions
+
+**Amends ADR-005.**
+
+**Decision:** Password login with a JWT plus a database-backed session is the primary path. OIDC and SAML are supported as a **relying party**, and the platform is additionally an OIDC **provider**.
+
+**Rationale:** ADR-005 assumed an external identity provider. Most tenants — particularly smaller facilities — have none. Requiring one would have made onboarding depend on a procurement exercise.
+
+Being a provider as well emerged from enterprise tenants wanting Callibrator identities in their own tooling.
+
+**Implications:**
+
+- The OIDC router is mounted **twice**: `/api/v1/oidc` and `/oidc` at the host root, because discovery advertises `<issuer>/oidc/...` and relying parties fetch it there. Serving it only under the API prefix produces a discovery document nobody can follow.
+- Per-tenant SSO callbacks (`/sso/callback/:tenantCode`) exist because each tenant may federate with its own IdP and a shared callback cannot tell which one an assertion came from.
+- MFA and WebAuthn are available and **not enforced** — including for `SUPERADMIN`, which bypasses every permission check and every tenant predicate with no second gate behind it. That is PR-3, and it is open.
+
+**Status:** Accepted
+
+---
+
+## ADR-034: Sessions Live in the Database
+
+**Amends ADR-014.**
+
+**Decision:** `sessions` is a database table. Redis may cache lookups; the table is the source of truth.
+
+**Rationale:** A session here is an **audit record**, not a performance optimisation. It answers "revoke this person now" and "which sessions were live on 14 March", and both need durability a cache does not offer.
+
+**Implications:**
+
+- Only `token_hash` is stored — a database read cannot recover a token.
+- Sessions carry `ip_address`, `user_agent` and `device`. Strict IP binding breaks users on mobile networks; the balance struck in `sessionSecurity.middleware.js` is a product decision and should be stated rather than emergent.
+- **`sessions` uses snake_case attribute names** — `tenant_id`, not `tenantId`. `Session.destroy({ where: { tenantId } })` fails with `column "tenantId" does not exist`, which broke the nightly retention purge. This is recorded as a real inconsistency (PR-14), not a convention.
+
+**Status:** Accepted
+
+---
+
+## ADR-035: An Invalid Certificate Transition Returns 409, and Submit Exists
+
+**Decision:** The certificate state machine gained an explicit `submit` transition, and invalid transitions map to **409 Conflict**.
+
+```
+draft --submit--> pending_approval --approve--> approved --sign--> signed --revoke--> revoked
+```
+
+**The defect this fixed:** approving a `draft` threw a plain `Error` and surfaced as a **500** — and there was **no submit transition at all**, so approval was unreachable in practice. The 500 hid the design gap.
+
+**Rationale:** A conflict with the current state is neither a validation failure (the request was well-formed) nor a server error (nothing broke). Reporting it as a 500 hides a design gap behind a stack trace, and a 500 is what makes people stop investigating.
+
+**Implications:**
+
+- `submitForApproval()` is a model method; the model owns which transitions are legal.
+- The UI must present **submit as a real step**, not hide it behind approve.
+- A 409 surfaces as a state explanation — "this certificate is in `draft` and must be submitted first" — never as a generic error.
+- The three actor columns (`calibratedBy`, `approvedBy`, `signedBy`) stay separate: collapsing them destroys the separation-of-duties evidence that is the reason there are three transitions.
+
+**Status:** Accepted
+
+---
+
+## ADR-036: Tenant `subdomain` Is Derived From `code`
+
+**Decision:** `tenants.subdomain` is derived from `code` when not supplied. `email` falls back when absent.
+
+**The defect this fixed:** the model required both; the creation form collected neither reliably. Every tenant create returned a 500 `notNull` violation.
+
+**Rationale:** Asking an operator for a subdomain they do not care about, at the moment they are creating a tenant, is friction for no benefit. Deriving it is deterministic and reversible.
+
+**Implications:**
+
+- **`subdomain` may not resemble anything a user typed.** The UI should display it as derived, not present it as a choice.
+- A `code` collision produces a `subdomain` collision. That constraint is inherited and should be surfaced at the `code` field.
+
+**Status:** Accepted
+
+---
+
+## ADR-037: Tenant Status Has Three Values; Granular Lifecycle Lives in `tenant_settings`
+
+**Decision:** `tenants.status` is exactly `active`, `suspended`, `deleted`. Granular lifecycle state — `offboarded`, grace periods — lives in `tenant_settings` under `lifecycle_status`.
+
+**The defect this fixed:** the service wrote uppercase values such as `SUSPENDED` and a state `offboarded` that the ENUM did not contain, producing `invalid enum value` 500s on every suspend, resume and offboard.
+
+**Rationale:** `status` is load-bearing — `auth.middleware.js` rejects every request from a suspended tenant. Keeping it to three values a middleware can compare cheaply, and putting the richer product lifecycle beside it, separates the security check from the business state.
+
+**Implications:**
+
+- Two places describe tenant state. Anything reading lifecycle must read both.
+- Path parameters must be **merged into validation** (`{ ...req.params, ...req.body }`) — these endpoints validated `tenantId` in the body when it only ever arrives in the path, and 400ed every request. The same shape recurred across feature flags and data retention.
+- **The suspension trap:** suspending the default tenant suspends the super-admin who lives in it, including the request that would reverse it. Recovery required a direct database update. Any script or test that suspends must create a **disposable** tenant first.
+
+**Status:** Accepted
+
+---
+
+## Open Decisions
+
+Recorded so a future reader can tell whether their idea was evaluated and rejected, or genuinely never considered.
+
+| Question | State |
+|---|---|
+| `REVOKE UPDATE, DELETE` on `calibration_records` | **should happen** — the append-only rule is currently a convention, not a constraint (PR-2) |
+| A composite unique on `(tenant_id, serial_number)` | should happen — the current global unique is a weak cross-tenant oracle |
+| Mandatory MFA for role level 10 | should happen (PR-3) |
+| A build guard failing any route without a permission gate | should happen — the most likely authorization defect has no mechanism against it |
+| Post-migration column verification | should happen — a blanket-catch migration is recorded as applied while doing nothing |
+| JSDoc with `checkJs` on the backend | open — buys editor-level checking without a rewrite (ADR-030) |
+| Partitioning `iot_readings` and `audit_logs` | deferred until retention alone stops being enough |
+| A read replica for reporting | deferred until reporting measurably affects operational p95 |
+| A rotation procedure for `CERT_SIGNING_SECRET` and `ENCRYPT_KEY` | **open, and cheap to design in advance** — neither is practically rotatable today, so "rotate the key" is not currently an available incident response |
+
+---
+
+End of ADRs. Update this document as new decisions are made, and record a deviation as an ADR rather than editing a `docs/` document quietly.
