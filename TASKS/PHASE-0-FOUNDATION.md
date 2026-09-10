@@ -49,7 +49,9 @@ It originated from an Express boilerplate in JavaScript and reached 76 services,
 | **Status** | ✅ DONE |
 | **Spec refs** | `docs/ARCHITECTURE/03-BACKEND-ARCHITECTURE.md` · `docs/BACKEND/04-MIDDLEWARE-PIPELINE.md` |
 
-**What shipped:** the composition root in `backend/index.js` — security headers, HPP, CORS, rate limiting, body parsing with the Stripe raw-body hook, a 30s timeout, request correlation, logging, static serving, global sanitisation, swagger, 53 mounted routers, health, and central error handling.
+**What shipped:** the composition root in `backend/index.js` — security headers, HPP, CORS, rate limiting, body parsing with the Stripe raw-body hook, a 30s timeout, request correlation, logging, static serving, global sanitisation, swagger, **56 router mounts**, health, and central error handling.
+
+Fifty-six mounts, **54 route modules**: `oidc` is mounted twice on purpose — at `/api/v1/oidc` and at `/oidc`, because the discovery document advertises its endpoints at the host root — and `menu-groups` is mounted twice as well.
 
 **The order is behaviour, not style.** Four dependencies are load-bearing and documented in `docs/BACKEND/04`.
 
@@ -61,7 +63,7 @@ It originated from an Express boilerplate in JavaScript and reached 76 services,
 |---|---|
 | **Status** | ✅ DONE — **rebuilt 2026-09** as `deploy/compose/` |
 
-**What shipped:** a compose stack with Postgres (pgvector), Redis, RabbitMQ, ClamAV, pgadmin and MinIO.
+**What shipped:** a compose stack with Postgres (pgvector), Redis, RabbitMQ, ClamAV, pgadmin and MinIO, plus `dev`, `staging`, `prod` and `vm` overlays over a base file that is **not deployable alone**.
 
 **Two details that are not incidental:**
 
@@ -78,6 +80,8 @@ It originated from an Express boilerplate in JavaScript and reached 76 services,
 | **Spec refs** | `docs/DATABASE/13-MIGRATIONS.md` |
 
 **What shipped:** Umzug, 18 migrations, `migrate` / `migrate:undo` / `migrate:status`.
+
+**Migrations create the schema; nothing populates it.** A first boot yields 72 tables and **zero rows** — no roles, no menu groups, no user — so `POST /auth/login` returns a 500 that reads like a code fault. Seeding is a deliberate, gated step: `GET /api/v1/migration/seeding` needs a super-admin token that cannot exist yet, and `ALLOW_SEEDING=true` breaks that chicken-and-egg for one boot. **Found by deploying**, and documented afterwards in `deploy/README.md` and `docs/BACKEND/11`.
 
 **Two traps found and documented:**
 
@@ -194,7 +198,11 @@ Isolation now lives in global Sequelize hooks reading an `AsyncLocalStorage` con
 |---|---|
 | **Status** | ✅ DONE — with a **currently failing** gate |
 
-**What shipped:** three required secrets that make the application **exit** rather than start (`CERT_SIGNING_SECRET`, `ENCRYPT_KEY`, `ATTACHMENT_URL_SECRET`), and a Jest harness reaching 342 test files against a 100% coverage gate.
+**What shipped:** **four** required secrets that make the application **exit** rather than start (`CERT_SIGNING_SECRET`, `ENCRYPT_KEY`, `ATTACHMENT_URL_SECRET`, `KMS_MASTER_KEY`), and a Jest harness reaching 342 test files against a 100% coverage gate.
+
+**The fourth was found by deploying, not by reading.** `KMS_MASTER_KEY` was absent from `.env.example`, from `docs/BACKEND/11` and from `make secrets`, and its failure mode defeats the usual first move: the container crash-loops with **an empty `docker logs`**, because the throw happens after winston is configured and the message goes only to `log/activity/exception/<date>.log`.
+
+Fail-fast is only as good as the list of things it fails on. A required secret that no tooling generates and no document names is a **fail-fast that fires in production**, which is the one place it was designed to avoid.
 
 **The cross-field lesson:** a **live provider key in staging passes every per-field check** — valid string, right shape, right length — and will charge a real card from a test. Only a rule comparing the key's environment against `NODE_ENV` catches it.
 
@@ -221,5 +229,21 @@ Isolation now lives in global Sequelize hooks reading an `AsyncLocalStorage` con
 **What failed:** the record-keeping. Every technical decision above was sound and defensible; **none of them was written down at the time**, so `CLAUDE.md` and `TASKS/` went on describing a system that no longer existed.
 
 That is PR-4, and it is why Part II of `DECISIONS.md` exists.
+
+**What the first real deployment found (2026-09):** nine defects, none of which any test could have caught, because every one of them lives in the gap between the code and the thing that runs it.
+
+| Found | Kind |
+|---|---|
+| `backend/.gitignore` excluded `src/services/storage/` | **an unanchored `storage/` pattern matched at any depth** — a clean clone crashed on `Cannot find module './storage'` while every working tree was fine |
+| `KMS_MASTER_KEY` undocumented and ungenerated | a required secret nothing told you about |
+| nginx routed `/api/` to the backend | **broke browser login** while the backend returned 200 |
+| `HOSTNAME` unset for Next standalone | bound to the container ID; "connection refused" from a healthy process |
+| the bun adapter always-on | `next build` failed on a missing `.nft.json` |
+| `bun` absent from the builder | `npm install` exit 127 |
+| `wget` absent from the backend image | its own HEALTHCHECK could not run |
+| bind mounts owned by root | `EACCES: mkdir '/app/log/activity/'` against a UID-997 image |
+| the database was never seeded | login 500 on an empty database |
+
+The `.gitignore` one is the sharpest: **the repository was missing six committed source files and no local checkout could tell.** Tests passed, the app ran, and the fault appeared only where nobody had ever cloned it.
 
 **What to watch:** any document making a claim with no file reference. That is the shape of the problem.

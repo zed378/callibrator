@@ -56,6 +56,7 @@ The highest-value entries here. Each is a control currently held together by con
 | M-07 | **IP allowlist validated against the caller's current address** | an administrator can lock themselves out with no in-product recovery (T31) | — |
 | M-08 | **Alerting on scheduled-job outcomes** | a nightly compliance job can fail silently, and has | **P7-02** |
 | M-09 | **A `REVOKE` test run as the application role** | as the owner it passes whether the grant exists or not — a green tick for an absent control | P6-03 |
+| M-10 | **A middleware defaulting `req.body` to `{}`** | Express 5 leaves an absent body `undefined`; every unguarded `req.body.x` is a 500 waiting for a bodyless request. One shipped (`/menu-groups/admin`) and reached production | — |
 
 ---
 
@@ -91,6 +92,7 @@ Documented so nobody spends an afternoon rediscovering them, and so nobody "fixe
 | W-07 | An expired token reports **"Invalid token"** rather than a distinct message | changing it churns a fully-covered suite for no security or usability gain |
 | W-08 | Schedulers live in `middlewares/` | they are installed at app assembly; the directory name misleads |
 | W-09 | The API CSP allows `'unsafe-inline'` for bundled swagger-ui | → P7-08; the reasoning does **not** transfer to the content-rendering origin |
+| W-10 | Several controllers read `req.body.x` **unguarded** | on Express 5 an absent body is `undefined`, not `{}` — see M-10; the remaining sites are all POST/PATCH, where a bodyless request is already a client error, but it answers **500** instead of 400 |
 
 ---
 
@@ -101,11 +103,13 @@ Things this repository currently asserts that **have not been demonstrated**. Ke
 | # | Claim | Actual state |
 |---|---|---|
 | U-01 | The Helm charts deploy | **they render.** `helm lint` and `helm template` pass and both guards fire; **no cluster has been reachable** → P7-06 |
+| U-01a | ~~The compose stack deploys~~ | **RESOLVED 2026-09.** Running on a single host behind a Cloudflare tunnel: seven services healthy, browser login working, certificate verification reachable. Nine defects were found doing it — recorded in the Phase 0 retrospective |
 | U-02 | The E2E suite passes | **every fix verified individually.** It has **never passed in one uninterrupted run** → P6-02 |
-| U-03 | The Makefile works | **statically checked** — 85 targets, correct tab indentation. **`make` was not available to execute it** |
+| U-03 | The Makefile works | **statically checked** — 85 targets, correct tab indentation. **`make` was not available to execute it.** The first real deployment ran `docker compose` directly, so the targets are still unexercised |
 | U-04 | RTO is 4 hours | **a guess.** No restore drill has ever been performed → P7-04 |
 | U-05 | Backups are good | **assumed, not known.** No scheduled restore verification exists |
 | U-06 | Performance targets are met | **design intentions.** No load testing has been performed; no baseline exists → P8-07 |
+| U-07 | The `automate/` Playwright suite runs 71 browser tests | **the directory is not in this repository.** It is untracked by git and absent from disk, while six documents describe it and `make test-browser` invokes it. The 71-test result comes from the 2026-07 audit; nothing here can reproduce it. Either the suite is restored to the repo or the claim is withdrawn |
 
 ---
 

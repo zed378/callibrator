@@ -18,7 +18,11 @@ const validate = (data, schema) => {
 // FILTER/GET ALL MENU GROUPS
 // ==========================================
 exports.filterMenuGroups = asyncHandlerWithMapping(async (req, res) => {
-  const roleId = req.query.roleId || req.body.roleId;
+  // req.body?.roleId, not req.body.roleId. Express 5 no longer defaults an
+  // absent body to {}, and this handler serves two GET routes — so the
+  // unguarded read threw "Cannot read properties of undefined (reading
+  // 'roleId')" and surfaced as a 500 on /menu-groups and /menu-groups/admin.
+  const roleId = req.query.roleId || req.body?.roleId;
   const data = await menuGroupService.listMenuGroups(roleId);
   return success(res, data, null, "Menu groups fetched successfully", 200);
 }, {});
@@ -80,7 +84,7 @@ exports.deleteMenuGroup = asyncHandlerWithMapping(async (req, res) => {
 // ASSIGN MENU TO ROLE (GROUP OR ITEM)
 // ==========================================
 exports.assignMenuGroupToRole = asyncHandlerWithMapping(async (req, res) => {
-  const isItem = !!req.body.menuItemId;
+  const isItem = !!req.body?.menuItemId;
   const schema = isItem
     ? schemas.assignMenuItemSchema
     : schemas.assignMenuGroupSchema;
@@ -96,7 +100,7 @@ exports.assignMenuGroupToRole = asyncHandlerWithMapping(async (req, res) => {
 // REVOKE MENU FROM ROLE (GROUP OR ITEM)
 // ==========================================
 exports.revokeMenuGroupFromRole = asyncHandlerWithMapping(async (req, res) => {
-  const isItem = !!req.body.menuItemId;
+  const isItem = !!req.body?.menuItemId;
   const schema = isItem
     ? schemas.revokeMenuItemSchema
     : schemas.revokeMenuGroupSchema;

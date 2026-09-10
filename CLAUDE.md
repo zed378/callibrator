@@ -182,7 +182,7 @@ Do not round these up. `TASKS/BACKLOG.md` § Unverified Claims lists all six of 
 make help          # every target
 make dev           # local stack
 make verify        # the pre-push gate
-make test-e2e      # 51 live specs, running server required
+make test-e2e      # 53 live specs, running server required
 make migrate       # then: make migrate-verify — the log is not evidence
 ```
 

@@ -241,6 +241,34 @@ describe("MenuGroup Controller Tests", () => {
         expect(lastCallData[0].path).toBe(item.path);
       }
     });
+
+    // Regression: this handler serves two GET routes, and Express 5 no longer
+    // defaults an absent body to {}. Reading req.body.roleId unguarded threw
+    // "Cannot read properties of undefined (reading 'roleId')" and reached
+    // production as a 500 on /menu-groups/menu-groups/admin. Every other test
+    // here sets body: {}, which is exactly why none of them caught it.
+    it("should not throw when req.body is undefined (GET with no body)", async () => {
+      req.body = undefined;
+      MenuGroup.findAll.mockResolvedValue([]);
+
+      await expect(filterMenuGroups(req, res)).resolves.not.toThrow();
+
+      expect(RoleMenuPermission.findAll).not.toHaveBeenCalled();
+      expect(success).toHaveBeenCalled();
+    });
+
+    it("should still read roleId from the query string when req.body is undefined", async () => {
+      req.body = undefined;
+      req.query = { roleId: "role-1" };
+      RoleMenuPermission.findAll.mockResolvedValue([{ menuGroupId: "parent-1" }]);
+      MenuGroup.findAll.mockResolvedValue([]);
+
+      await filterMenuGroups(req, res);
+
+      expect(RoleMenuPermission.findAll).toHaveBeenCalledWith({
+        where: { roleId: "role-1" },
+      });
+    });
   });
 
   describe("getRoleMenuAssignments", () => {

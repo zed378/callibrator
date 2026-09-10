@@ -1,6 +1,6 @@
 # 01 — Domain Modules
 
-33 functional modules, 53 mounted route modules. The per-module 24-point reference is [`10-MODULE-REFERENCE.md`](./10-MODULE-REFERENCE.md); this document is the map and the conventions that hold across all of them.
+33 functional modules; 53 route modules under `routes/api/` plus one internal, mounted 56 times (`oidc` and `menu-groups` twice each). The per-module 24-point reference is [`10-MODULE-REFERENCE.md`](./10-MODULE-REFERENCE.md); this document is the map and the conventions that hold across all of them.
 
 ---
 

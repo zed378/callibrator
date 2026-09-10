@@ -41,7 +41,7 @@ Brings up Postgres (pgvector), Redis, RabbitMQ, ClamAV, MinIO, pgadmin, and runs
 | Local disk storage | `STORAGE_DRIVER=local` |
 | Demo data | `SEED_DEMO=true` |
 
-The three required secrets are still required — the application exits without `CERT_SIGNING_SECRET`, `ENCRYPT_KEY` and `ATTACHMENT_URL_SECRET`. Use throwaway values locally; never the production ones.
+The four required secrets are still required — the application exits without `CERT_SIGNING_SECRET`, `ENCRYPT_KEY`, `ATTACHMENT_URL_SECRET` and `KMS_MASTER_KEY`. Use throwaway values locally; never the production ones.
 
 ### Windows: the `EACCES` trap
 

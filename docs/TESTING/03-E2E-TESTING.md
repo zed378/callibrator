@@ -1,6 +1,6 @@
 # 03 — Live E2E Testing
 
-51 specs at `backend/src/tests/e2e/modules/<module>.e2e.test.js`, run **against a running server with a real database**.
+53 specs, run **against a running server with a real database**: 50 at `backend/src/tests/e2e/modules/<module>.e2e.test.js`, plus `auth`, `authz` and `http` one level up at `backend/src/tests/e2e/`.
 
 ```bash
 npm run test:e2e        # jest.e2e.config.js, --runInBand, --forceExit

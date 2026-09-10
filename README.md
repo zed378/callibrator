@@ -18,7 +18,7 @@ Callibrator makes that evidence a by-product of doing the work: every device has
 
 ```bash
 make env          # create deploy/compose/.env
-make secrets      # generate the three REQUIRED secrets
+make secrets      # generate the four REQUIRED secrets
 make dev          # bring the stack up
 make help         # every target
 ```
@@ -60,7 +60,7 @@ Makefile       development, gates, deployment
 | Models | 72 |
 | Services / controllers / validators | 76 / 56 / 37 |
 | Backend test files | 342 |
-| Live E2E specs | 51 |
+| Live E2E specs | 53 |
 | Frontend API services (each with a contract test) | 51 |
 | Dashboard surfaces | ~60 |
 | ADRs | 37 |
@@ -99,7 +99,7 @@ Makefile       development, gates, deployment
 ```bash
 make dev              # local stack, hot reload
 make verify           # lint · typecheck · test · build
-make test-e2e         # 51 live specs against a running server
+make test-e2e         # 53 live specs against a running server
 make migrate          # then: make migrate-verify — the log is not evidence
 make deploy ENV=prod TAG=<sha>
 ```

@@ -2,7 +2,7 @@
 
 ---
 
-## The Three Required Secrets
+## The Four Required Secrets
 
 The application **exits rather than starting** without these:
 
@@ -11,12 +11,24 @@ The application **exits rather than starting** without these:
 | `CERT_SIGNING_SECRET` | HMAC for certificate QR verification | **every issued certificate fails public verification, permanently** — the old key cannot be re-derived |
 | `ENCRYPT_KEY` | e-signature private keys and tenant storage credentials at rest | **every stored private key and credential becomes undecryptable** |
 | `ATTACHMENT_URL_SECRET` | HMAC for signed attachment download URLs | existing signed URLs stop validating |
+| `KMS_MASTER_KEY` | wraps tenant storage credentials (`src/services/kms.service.js`) | **every wrapped credential becomes undecryptable** — the same consequence as losing `ENCRYPT_KEY` |
 
 Generate each with:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
+
+### The fourth one was found by deploying
+
+`KMS_MASTER_KEY` was missing from this table, from `.env.example` and from `make secrets` until a production deployment hit it. It refuses the insecure development key in production:
+
+> KMS_MASTER_KEY must be set in production (64-char hex / 32-byte key).
+> Refusing to start with the insecure development master key.
+
+That refusal is right. What was wrong is that **nothing named the variable**, and its failure mode defeats the obvious diagnosis: the container crash-loops with an **empty `docker logs`**, because winston is already configured by the time it throws and the message lands only in `log/activity/exception/<date>.log`.
+
+A fail-fast list is a document as much as it is code. One is worth nothing without the other.
 
 ### Failing fast is the right behaviour
 
@@ -30,6 +42,8 @@ An application that refuses to start names the problem at the moment it can stil
 
 - every certificate fails verification,
 - every encrypted private key and storage credential is unreadable.
+
+`ATTACHMENT_URL_SECRET` is the one exception: rotating it invalidates outstanding signed URLs, which is an inconvenience rather than a permanent loss.
 
 A backup strategy that captures the data and loses the keys has captured ciphertext. See [`../ARCHITECTURE/09-DISASTER-RECOVERY.md`](../ARCHITECTURE/09-DISASTER-RECOVERY.md), where the restore drill explicitly asserts that a pre-incident certificate still verifies — the check that catches this.
 
