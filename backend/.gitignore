@@ -7,12 +7,18 @@ node_modules/
 # Build
 dist/
 
-# Storage & uploads
-storage/
-uploads/
+# Storage & uploads (RUNTIME DATA AT THE BACKEND ROOT ONLY).
+#
+# These patterns MUST stay anchored with a leading slash. Unanchored, 'storage/'
+# matches ANY directory named storage at any depth — which silently excluded
+# backend/src/services/storage/ (the entire pluggable object-storage module,
+# 6 files) from the repository. A clean clone then crashed at boot with
+# "Cannot find module './storage'", because the code requiring it IS tracked.
+/storage/
+/uploads/
 
 # Logs
-log/
+/log/
 logs/
 *.log
 npm-debug.log*
