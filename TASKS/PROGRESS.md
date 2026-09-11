@@ -13,7 +13,7 @@ Phases 0–5 are **shipped**. The previous version of this board listed foundati
 | | Count |
 |---|---|
 | Backend modules | **33** |
-| Route modules / mounts | **54** / **56** |
+| Route modules | **53** under `routes/api/` + 1 internal, **56** mounts |
 | Sequelize models | **72** |
 | Services / controllers / validators | 76 / 56 / 37 |
 | Backend test files | 342 |

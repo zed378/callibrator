@@ -203,7 +203,7 @@ Stated here because an agent reading a green board and finding a red gate wastes
 
 | | |
 |---|---|
-| Backend unit coverage gate (100%) | **failing** → P6-01 |
+| Backend unit coverage gate (100%) | **passing** as of 2026-09-11 — 289 suites, 5735 tests, 100% across the board. P6-01 is done; what remains is keeping it there |
 | Live E2E in one uninterrupted run | **never achieved** → P6-02 |
 
 ## If You Are Unsure

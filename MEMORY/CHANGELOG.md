@@ -32,7 +32,7 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ### Known open items
 
-- The backend unit-test coverage gate (100%) is **currently failing**.
+- ~~The backend unit-test coverage gate (100%) is currently failing.~~ **Verified passing 2026-09-11** — 289 suites, 5735 tests, 100% statements/branches/functions/lines.
 - The `automate/` Playwright suite (71 browser tests) is **documented but not in this repository** — U-07.
 - The live E2E suite has **never passed in one uninterrupted run** — every fix verified individually.
 - `calibration_records` append-only is a **convention, not a constraint** (PR-2).

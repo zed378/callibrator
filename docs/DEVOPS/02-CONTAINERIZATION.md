@@ -71,29 +71,42 @@ A dedicated `app` user with `/usr/sbin/nologin`. Persistent directories are crea
 ## Frontend Image
 
 ```dockerfile
-FROM oven/bun:1-alpine AS builder
+FROM node:22-alpine AS builder
 WORKDIR /app
-COPY package.json bun.lock ./
-RUN bun install --frozen-lockfile
+# next-bun-compile's postinstall shells out to `bun` to create a symlink.
+# Without it on PATH, `npm install` exits 127 with "sh: bun: not found".
+COPY --from=oven/bun:1-alpine /usr/local/bin/bun /usr/local/bin/bun
+COPY package.json ./
+RUN npm install --no-audit --no-fund
 COPY . .
-RUN bun run build:docker
-RUN ls -lah /app/server            # fail loudly if compilation produced nothing
+RUN npm run build
+RUN test -f .next/standalone/server.js || (echo "ERROR: no standalone output" && exit 1)
 
-FROM alpine:3.22 AS runner
+FROM node:22-alpine AS runner
 WORKDIR /app
-RUN apk add --no-cache libstdc++ libc6-compat wget
-COPY --from=builder /app/server ./server
-RUN chmod +x ./server
-ENV NODE_ENV=production HOST=0.0.0.0 PORT=3000
+RUN apk add --no-cache wget && addgroup -S app && adduser -S -G app app
+ENV NODE_ENV=production HOSTNAME=0.0.0.0 HOST=0.0.0.0 PORT=3000
+COPY --from=builder --chown=app:app /app/.next/standalone ./
+COPY --from=builder --chown=app:app /app/.next/static ./.next/static
+COPY --from=builder --chown=app:app /app/public ./public
+USER app
 EXPOSE 3000
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:3000 || exit 1
-CMD ["./server"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3   CMD wget --no-verbose --tries=1 --spider http://localhost:3000 || exit 1
+CMD ["node", "server.js"]
 ```
 
-**`--frozen-lockfile`.** A build that silently resolves a different dependency version than the one tested ships something nobody tested.
+**This replaced a Dockerfile that could not build.** The previous version — which is what this document described until 2026-09 — copied a `bun.lock` that is not committed and ran a `build:docker` script that does not exist in `package.json`. The image was never producible from a clean checkout. The compiled-binary path in [`../FRONTEND/11-BUILD-AND-BINARY.md`](../FRONTEND/11-BUILD-AND-BINARY.md) remains the intended on-premise distribution format; restoring it needs a committed lockfile and a real build script.
 
-**The `ls -lah /app/server` line.** It fails the build loudly if compilation produced nothing. Without it the next stage copies a missing file and the failure surfaces at container start — the same class of problem as a stale build artefact reporting success and emitting nothing.
+**`HOSTNAME`, not `HOST`.** Next.js standalone `server.js` binds `process.env.HOSTNAME`, and **Docker sets `HOSTNAME` to the container ID**. Unset, the server listens on an address nothing can reach — the healthcheck reports "connection refused" while the process is perfectly healthy. This cost a deployment.
+
+**No lockfile is copied, because none is committed.** `.gitignore` excludes `pnpm-lock.yaml`, `package-lock.json` and `bun.lock`, so every build resolves transitive versions fresh. **A build today and a build next month can ship different dependencies** — the exact failure `--frozen-lockfile` existed to prevent. Committing a lockfile is the fix; until then this is a known reproducibility gap, recorded as W-11.
+
+**The `test -f .next/standalone/server.js` line.** It fails the build loudly if the build produced no standalone output. Without it the runner stage copies nothing and the failure surfaces at container start — the same class of problem as a build artefact reporting success and emitting nothing.
+
+**`output: "standalone"` is production-only in `next.config.ts`**, alongside a `next-bun-compile` adapter that is **opt-in behind `NEXT_COMPILE=true`**. Left always-on it breaks `next build` with `ENOENT: .next/next-server.js.nft.json`.
+
+**Overrides are evaluated against the package being installed.** `frontend/package.json` overrode `eslint` to an exact version while also declaring it a direct devDependency. At the workspace root that is fine — the root has no direct `eslint` — so `npm install` succeeded locally and **only the container build failed**, with `EOVERRIDE: Override for eslint@^9.22.0 conflicts with direct dependency`. The override now uses npm's `"$eslint"` reference, which resolves to the direct dependency's version.
+
 
 **Only `libstdc++`, `libc6-compat` and `wget`.** The Bun-compiled binary needs the first two; there is no Node in the final image. Anything else added should be justified.
 

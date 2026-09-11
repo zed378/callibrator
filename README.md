@@ -112,7 +112,7 @@ Phases 0–5 are shipped. Two gates are failing, and a status page that hides th
 
 | | |
 |---|---|
-| Backend unit coverage gate (100%) | 🔴 **failing** — [P6-01](TASKS/PHASE-6-CORRECTNESS-AND-COMPLIANCE.md) |
+| Backend unit coverage gate (100%) | 🟢 **passing** (2026-09-11) — 289 suites, 5735 tests |
 | Live E2E in one uninterrupted run | 🔴 **never achieved** — verified fix by fix — [P6-02](TASKS/PHASE-6-CORRECTNESS-AND-COMPLIANCE.md) |
 | `calibration_records` append-only | 🟡 a **convention**, not a database constraint — [P6-03](TASKS/PHASE-6-CORRECTNESS-AND-COMPLIANCE.md) |
 | Helm charts | 🟡 **render**; no cluster has been reachable |

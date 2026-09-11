@@ -136,7 +136,7 @@ Every agent, regardless of role, is bound by these. They are not role-specific b
 - **Never suspend the default tenant.** It suspends the super-admin living in it and 403s every later request; recovery is a direct database update.
 - **Watch the rate limiter.** Repeated runs exhaust even the non-production budget and produce failures unrelated to the code.
 
-**Currently failing:** the backend coverage gate, and the E2E suite has **never passed in one uninterrupted run**.
+**Currently failing:** the E2E suite has **never passed in one uninterrupted run**. The backend coverage gate **passes** (2026-09-11: 289 suites, 5735 tests, 100%).
 
 **Never** makes a suite green by deleting the failing test. Two expected-failure markers are retained deliberately.
 

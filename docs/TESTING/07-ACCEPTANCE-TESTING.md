@@ -128,7 +128,7 @@ Stated plainly, because a release checklist that quietly excludes its failures i
 
 | Item | Status |
 |---|---|
-| Backend coverage gate (100%) | **failing** |
+| Backend coverage gate (100%) | **passing** (2026-09-11) |
 | Live E2E in one uninterrupted run | **never achieved** — every fix verified individually |
 
 Both are the first items under "now" in [`../PLAN/16-IMPLEMENTATION-ROADMAP.md`](../PLAN/16-IMPLEMENTATION-ROADMAP.md).

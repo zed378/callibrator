@@ -5,6 +5,10 @@
  * Users have roles for RBAC and belong to tenants.
  */
 
+const {
+  DEFAULT_UPLOAD_PLACEHOLDER,
+} = require("../constants/appConstants");
+
 /**
  * Define the User model.
  * @param {import("sequelize").Sequelize} db - The Sequelize instance
@@ -131,7 +135,15 @@ const defineModel = (db, DataTypes) => {
         picture() {
           const avatar = this.getDataValue("avatarUrl");
           const baseUrl = process.env.HOST_URL || "";
-          return avatar ? `${baseUrl}/uploads/profile/${avatar}` : null;
+          // DEFAULT_UPLOAD_PLACEHOLDER means "no avatar uploaded". Building a
+          // URL from it yields /uploads/profile/default.svg, which 404s —
+          // nothing ships that file, and /app/uploads is a volume that would
+          // shadow it anyway. Returning null lets the UI render its initials
+          // block, which is the intended appearance for a user with no photo.
+          if (!avatar || avatar === DEFAULT_UPLOAD_PLACEHOLDER) {
+            return null;
+          }
+          return `${baseUrl}/uploads/profile/${avatar}`;
         },
         first_name() {
           return this.getDataValue("firstName");
