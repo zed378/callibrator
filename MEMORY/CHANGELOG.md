@@ -28,6 +28,9 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ### Fixed
 
+- **Avatars and tenant logos rendered as broken images.** `users.avatar_url` and `tenants.logo` default to `"default.svg"`, a sentinel the service layer already honours in six places — but the four URL builders did not, so they produced `/uploads/profile/default.svg`, which 404s: nothing ships that file, `backend/uploads/` is gitignored, and `/app/uploads` is a bind mount that would shadow it anyway. Now single-sourced as `DEFAULT_UPLOAD_PLACEHOLDER`; a user with no photo gets the initials block the UI already had. The public branding endpoint was affected too, so the broken logo showed **before sign-in**.
+- **The frontend image could not be built.** `frontend/package.json` overrode `eslint` to an exact version while also declaring it a direct devDependency — fine at the workspace root, `EOVERRIDE` inside the container, so `npm install` succeeded locally and only the image build failed. Now npm's `"$eslint"` reference.
+- **`npm test` did not run.** The backend scripts invoked `node node_modules/jest/bin/jest.js`, a hardcoded path that stops resolving once a workspace install hoists jest to the repo root; it failed with `MODULE_NOT_FOUND`, which looks nothing like a test failure and made `make verify` unusable. This is what had been hiding the true state of the coverage gate.
 - `GET /menu-groups/menu-groups/admin` answered **500**. Express 5 leaves an absent body `undefined` rather than `{}`, and the handler — which serves two GET routes — read `req.body.roleId` unguarded. The sidebar was unaffected, so only the permissions-configuration screen was broken.
 
 ### Known open items
