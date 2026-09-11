@@ -33,6 +33,11 @@ const attestationCredential = () =>
     id: "cred-id",
     rawId: bytes(1, 2, 3),
     type: "public-key",
+    // A real PublicKeyCredential always has this, and serializeCredential
+    // calls it because @simplewebauthn/server rejects a payload without
+    // clientExtensionResults. Leaving it off the stand-in made every test
+    // that serializes a credential throw "is not a function".
+    getClientExtensionResults: () => ({}),
     response: {
       clientDataJSON: bytes(4, 5),
       attestationObject: bytes(6, 7),
@@ -45,6 +50,7 @@ const assertionCredential = () =>
     id: "cred-id",
     rawId: bytes(1, 2, 3),
     type: "public-key",
+    getClientExtensionResults: () => ({}),
     response: {
       clientDataJSON: bytes(4, 5),
       authenticatorData: bytes(8, 9),
@@ -113,6 +119,10 @@ describe("webauthnService", () => {
         id: "cred-id",
         rawId: "AQID",
         type: "public-key",
+        // Both are part of the WebAuthn *ResponseJSON shape the server
+        // verifies against; serializeCredential sends them deliberately.
+        clientExtensionResults: {},
+        authenticatorAttachment: undefined,
         response: {
           clientDataJSON: "BAU",
           attestationObject: "Bgc",
@@ -128,11 +138,15 @@ describe("webauthnService", () => {
         id: "cred-id",
         rawId: "AQID",
         type: "public-key",
+        clientExtensionResults: {},
+        authenticatorAttachment: undefined,
         response: {
           clientDataJSON: "BAU",
           authenticatorData: "CAk",
+          // No userHandle: the mock's is null, and serializeCredential omits
+          // it when absent because it is optional per the spec. The old
+          // expectation asserted a shape the implementation never produced.
           signature: "Cgs",
-          userHandle: null,
         },
       });
     });

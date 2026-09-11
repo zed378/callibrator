@@ -29,4 +29,55 @@ export const toSameOriginUpload = (src: string): string => {
   return src;
 };
 
+/**
+ * The placeholder shown for a user who has never uploaded a photo.
+ *
+ * It lives in `frontend/public/`, NOT in the backend's uploads directory, and
+ * that placement is the whole point. The backend stores the sentinel filename
+ * `default.svg` in `users.avatar_url`, but nothing serves it: `/uploads` is a
+ * runtime volume, `backend/uploads/` is gitignored so the file is not even in
+ * a clean clone, and a bind mount would shadow it regardless. Every avatar in
+ * the product was a broken image because of it.
+ *
+ * A placeholder is a UI concern. The backend reports "no avatar" as `null`;
+ * the frontend decides what that looks like, and serves it same-origin from
+ * its own static assets, where it cannot go missing.
+ */
+export const DEFAULT_AVATAR_SRC = "/default-avatar.svg";
+
+/**
+ * Resolve a user's avatar to something always renderable.
+ *
+ * @param picture - the `picture` field from the API, null when none was uploaded
+ * @returns a same-origin URL — the uploaded image, or the default avatar
+ */
+export const avatarSrc = (picture?: string | null): string =>
+  picture ? toSameOriginUpload(picture) : DEFAULT_AVATAR_SRC;
+
+/**
+ * `next/image` props for a user avatar.
+ *
+ * The `unoptimized` flag is load-bearing, and it was found by testing the
+ * built image rather than by reasoning about it. next/image routes every src
+ * through `/_next/image`, and that endpoint **rejects SVG with a 400** unless
+ * `images.dangerouslyAllowSVG` is set:
+ *
+ *   GET /default-avatar.svg                    -> 200 image/svg+xml
+ *   GET /_next/image?url=%2Fdefault-avatar.svg -> 400
+ *
+ * So the placeholder renders as a broken image — the exact bug it was added to
+ * fix. Enabling `dangerouslyAllowSVG` globally would fix it and is the wrong
+ * trade: uploaded avatars are user-supplied, and an SVG can carry script. This
+ * bypasses the optimizer for OUR asset only and leaves uploaded SVGs blocked.
+ *
+ * @param picture - the `picture` field from the API, null when none was uploaded
+ * @returns `src` plus `unoptimized`, set only for the placeholder
+ */
+export const avatarImageProps = (
+  picture?: string | null,
+): { src: string; unoptimized: boolean } => {
+  const src = avatarSrc(picture);
+  return { src, unoptimized: src === DEFAULT_AVATAR_SRC };
+};
+
 export default toSameOriginUpload;

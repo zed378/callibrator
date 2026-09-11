@@ -9,7 +9,7 @@ import { Shield, ChevronDown, X } from "lucide-react";
 import { MenuGroupType, MenuItemType } from "./menuHelpers";
 import { LogOut } from "lucide-react";
 import Image from "next/image";
-import { toSameOriginUpload } from "@/lib/uploadUrl";
+import { avatarImageProps } from "@/lib/uploadUrl";
 
 interface SidebarProps {
   pathname: string;
@@ -116,7 +116,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       ? `${user.first_name || user.firstName} ${user.last_name || user.lastName}`
       : user?.username || "User";
 
-  const avatarLetter = (displayName || "U").charAt(0).toUpperCase();
 
   return (
     <>
@@ -249,19 +248,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* User Profile */}
         <div className="border-t border-border p-3">
           <div className="flex items-center gap-3 p-2.5 rounded-xl bg-muted">
-            {user?.picture || avatarUrl ? (
-              <Image
-                src={toSameOriginUpload(user?.picture || avatarUrl)}
-                alt={displayName}
-                width={36}
-                height={36}
-                className="w-9 h-9 rounded-lg object-cover flex-shrink-0"
-              />
-            ) : (
-              <div className="w-9 h-9 rounded-lg bg-linear-to-br from-primary to-accent flex items-center justify-center text-primary-foreground text-sm font-bold flex-shrink-0">
-                {avatarLetter}
-              </div>
-            )}
+            <Image
+              {...avatarImageProps(user?.picture || avatarUrl)}
+              alt={displayName}
+              width={36}
+              height={36}
+              className="w-9 h-9 rounded-lg object-cover flex-shrink-0"
+            />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-foreground truncate">
                 {displayName}

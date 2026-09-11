@@ -8,7 +8,7 @@ import ThemeToggle from "@/components/ThemeToggle";
 import Image from "next/image";
 import GlobalSearch from "./GlobalSearch";
 import NotificationBell from "./NotificationBell";
-import { toSameOriginUpload } from "@/lib/uploadUrl";
+import { avatarImageProps } from "@/lib/uploadUrl";
 
 interface TopBarProps {
   onToggleSidebar: () => void;
@@ -57,19 +57,13 @@ export const TopBar: React.FC<TopBarProps> = ({
 
         {/* User Avatar */}
         <div className="flex items-center gap-2.5 ml-1">
-          {user?.picture ? (
-            <Image
-              src={toSameOriginUpload(user.picture)}
-              alt={user.username || "User"}
-              width={32}
-              height={32}
-              className="w-8 h-8 rounded-lg object-cover"
-            />
-          ) : (
-            <div className="w-8 h-8 rounded-lg bg-linear-to-br from-primary to-accent flex items-center justify-center text-foreground text-xs font-bold">
-              {(user?.username || "U").charAt(0).toUpperCase()}
-            </div>
-          )}
+          <Image
+            {...avatarImageProps(user?.picture)}
+            alt={user?.username || "User"}
+            width={32}
+            height={32}
+            className="w-8 h-8 rounded-lg object-cover"
+          />
         </div>
       </div>
     </header>
