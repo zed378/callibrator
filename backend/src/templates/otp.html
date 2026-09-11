@@ -12,7 +12,7 @@
     <meta content="telephone=no" name="format-detection" />
     <link
       rel="shortcut icon"
-      href="https://fullfind.co/logo.png"
+      href="{{{logoUrl}}}"
       type="image/x-icon"
     />
     <title>OTP</title>
@@ -39,10 +39,6 @@
       </xml>
     <![endif]-->
     <!--[if !mso]><!-- -->
-    <link
-      href="https://fonts.googleapis.com/css?family=Lato:400,400i,700,700i"
-      rel="stylesheet"
-    />
     <!--<![endif]-->
     <style type="text/css">
       #outlook a {
@@ -339,7 +335,7 @@
                   height="0"
                 >
                   <img
-                    src="https://fullfind.co/logo.png"
+                    src="{{{logoUrl}}}"
                     style="
                       display: block;
                       border: 0;
@@ -452,12 +448,12 @@
                                     "
                                   >
                                     <a
-                                      href="https://fullfind.co"
+                                      href="{{{appUrl}}}"
                                       target="_blank"
                                       rel="noopener noreferrer"
                                     >
                                       <img
-                                        src="https://fullfind.co/logo.png"
+                                        src="{{{logoUrl}}}"
                                         alt
                                         style="
                                           display: block;
@@ -788,46 +784,14 @@
                                       padding-bottom: 40px;
                                     "
                                   >
-                                    <!--[if mso
-                                      ]><a
-                                        href="https://viewstripo.email/"
-                                        target="_blank"
-                                        hidden
-                                      >
-                                        <v:roundrect
-                                          xmlns:v="urn:schemas-microsoft-com:vml"
-                                          xmlns:w="urn:schemas-microsoft-com:office:word"
-                                          esdevVmlButton
-                                          href="https://viewstripo.email/"
-                                          style="
-                                            height: 54px;
-                                            v-text-anchor: middle;
-                                            width: 216px;
-                                          "
-                                          arcsize="4%"
-                                          strokecolor="#669ae9"
-                                          strokeweight="1px"
-                                          fillcolor="#669ae9"
-                                        >
-                                          <w:anchorlock></w:anchorlock>
-                                          <center
-                                            style="
-                                              color: #ffffff;
-                                              font-family:
-                                                helvetica,
-                                                &quot;helvetica neue&quot;,
-                                                arial, verdana, sans-serif;
-                                              font-size: 20px;
-                                              font-weight: 400;
-                                              line-height: 20px;
-                                              mso-text-raise: 1px;
-                                            "
-                                          >
-                                            Reset Password
-                                          </center>
-                                        </v:roundrect></a
-                                      > <!
-                                    [endif]--><!--[if !mso]><!-- --><span
+                                    <!--[if mso]>
+                                    <!-- Outlook strips the styled span
+                                         below, and the vendor template put a
+                                         "Reset Password" button here linking
+                                         to its OWN site - so Outlook readers
+                                         never saw their code. Render it. -->
+                                    <p style="font-family: helvetica, arial, sans-serif; font-size: 2rem; font-weight: 700; color: #669ae9; margin: 0; padding: 5px 25px;">{{otp}}</p>
+                                    <![endif]--><!--[if !mso]><!-- --><span
                                       class="es-button-border msohide"
                                       style="
                                         border-style: solid;
@@ -990,7 +954,7 @@
                                   >
                                     <a
                                       target="_blank"
-                                      href="mailto:contact@fullfind.co"
+                                      href="mailto:{{supportEmail}}"
                                       style="
                                         -webkit-text-size-adjust: none;
                                         -ms-text-size-adjust: none;
@@ -1238,7 +1202,7 @@
                                   >
                                     <a
                                       target="_blank"
-                                      href="https://fullfind.co"
+                                      href="{{{appUrl}}}"
                                       style="
                                         -webkit-text-size-adjust: none;
                                         -ms-text-size-adjust: none;
@@ -1249,7 +1213,7 @@
                                       "
                                     >
                                       <img
-                                        src="https://fullfind.co/logo.png"
+                                        src="{{{logoUrl}}}"
                                         alt
                                         width="35"
                                         style="
@@ -1260,7 +1224,7 @@
                                           -ms-interpolation-mode: bicubic;
                                         "
                                       />
-                                      <p style="color: #666666">FullFind</p>
+                                      <p style="color: #666666">{{appName}}</p>
                                     </a>
                                   </td>
                                 </tr>

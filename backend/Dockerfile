@@ -73,6 +73,10 @@ COPY --from=builder /app/backend ./backend
 COPY --from=builder /app/swagger.json ./swagger.json
 COPY --from=builder /app/src/templates ./src/templates
 COPY --from=builder /app/docs ./docs
+# index.js mounts express.static(appPath("public")) at /public, and this COPY
+# was missing — so every request under /public answered 404 in every container
+# while working fine from a source checkout.
+COPY --from=builder /app/public ./public
 
 # Environment
 ENV NODE_ENV=production
