@@ -1,12 +1,11 @@
 import React from "react";
-import { Shield } from "lucide-react";
+import { BrandIcon } from "@/components/brand/BrandIcon";
 
 const BOX = { sm: "h-10 w-10", md: "h-12 w-12", lg: "h-16 w-16" } as const;
-const ICON = { sm: "h-5 w-5", md: "h-6 w-6", lg: "h-8 w-8" } as const;
 
 /**
  * The auth brand mark: renders a deploy-provided tenant logo when present, else
- * the default Shield-in-gradient. The tenant logo can be any host/format (a
+ * the product mark. The tenant logo can be any host/format (a
  * deploy asset), so it's a plain <img> — this intentionally sidesteps the
  * next/image `remotePatterns` restriction with no config change.
  */
@@ -29,12 +28,14 @@ export function BrandMark({
       />
     );
   }
+  // No tenant logo: fall back to the product's own mark rather than a generic
+  // glyph. This renders on the login page before sign-in, so it must not
+  // depend on anything fetched.
   return (
-    <div
-      className={`${BOX[size]} flex items-center justify-center rounded-2xl bg-linear-to-br from-primary to-accent shadow-lg shadow-primary/25`}
-    >
-      <Shield className={`${ICON[size]} text-white`} />
-    </div>
+    <BrandIcon
+      className={`${BOX[size]} text-[#001250] dark:text-white`}
+      title={name}
+    />
   );
 }
 

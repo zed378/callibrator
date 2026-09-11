@@ -5,11 +5,12 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/stores/authStore";
-import { Shield, ChevronDown, X } from "lucide-react";
+import { ChevronDown, X } from "lucide-react";
 import { MenuGroupType, MenuItemType } from "./menuHelpers";
 import { LogOut } from "lucide-react";
 import Image from "next/image";
 import { avatarImageProps } from "@/lib/uploadUrl";
+import { BrandIcon } from "@/components/brand/BrandIcon";
 
 interface SidebarProps {
   pathname: string;
@@ -136,9 +137,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Logo */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-border">
           <Link href="/dashboard" className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-linear-to-br from-primary to-accent rounded-xl flex items-center justify-center shadow-lg shadow-primary/20">
-              <Shield className="w-5 h-5 text-white" />
-            </div>
+            <BrandIcon className="w-10 h-10 shrink-0 text-[#001250] dark:text-white" />
             <div>
               <h1 className="text-lg font-bold text-foreground tracking-tight">
                 HDC

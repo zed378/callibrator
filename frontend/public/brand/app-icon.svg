@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="51534.92 31965.37 15156.56 15156.56" role="img" aria-label="Device Calibrator">
+  <title>Device Calibrator</title>
+  <style type="text/css"><![CDATA[
+    .navy  { fill: #001250 }
+    .teal  { fill: #00DAB4 }
+    .white { fill: #FEFEFE }
+    .ink   { fill: #2A2A2A }
+  ]]></style>
+<g>
+    <rect class="ink" x="51534.92" y="31965.37" width="15156.56" height="15156.56" rx="3543.09" ry="2506.08"/>
+    <g>
+     <rect class="white" x="54184.43" y="34580.49" width="1234.83" height="1322.54" rx="300.11" ry="382.66"/>
+     <rect class="white" x="54184.43" y="34580.49" width="1234.83" height="1322.54" rx="300.11" ry="382.66"/>
+     <rect class="white" x="55827.89" y="34580.5" width="396.28" height="1322.52"/>
+     <rect class="white" x="56654.61" y="34580.5" width="396.28" height="1322.52"/>
+     <rect class="white" x="57481.33" y="34580.5" width="396.28" height="1322.52"/>
+     <rect class="white" x="58308.05" y="34580.5" width="396.28" height="1322.52"/>
+     <rect class="white" transform="matrix(2.44447E-14 -0.985549 0.922976 2.61017E-14 54185.4 36828.6)" width="402.09" height="1341.91"/>
+     <rect class="white" transform="matrix(2.44447E-14 -0.985549 0.922976 2.61017E-14 54185.4 37714.3)" width="402.09" height="1341.91"/>
+     <rect class="white" transform="matrix(2.44447E-14 -0.985549 0.922976 2.61017E-14 54185.4 38600.1)" width="402.09" height="1341.91"/>
+     <rect class="white" transform="matrix(2.44447E-14 -0.985549 0.922976 2.61017E-14 54185.4 39485.9)" width="402.09" height="1341.91"/>
+     <rect class="white" transform="matrix(2.44447E-14 -0.985549 0.922976 2.61017E-14 54185.4 40371.6)" width="402.09" height="1341.91"/>
+     <rect class="white" transform="matrix(2.44447E-14 -0.985549 0.922976 2.61017E-14 54185.4 41257.4)" width="402.09" height="1341.91"/>
+     <path class="white" d="M61552.57 39269.83l0 -1681.74c0,-331.68 -271.37,-602.18 -603.03,-603.03 -551.12,-1.41 -1102.15,-15.53 -1653.23,-3.68 -82.59,1.85 -142.87,-73.54 -142.87,-152.98l0 -2244.52 2579.78 0 2308.74 2448.89 0 2237.06 -2489.4 0z"/>
+     <path class="white" d="M59153.45 41821.45l1796.1 0c331.66,0 603.03,-271.36 603.03,-603.03l0 -1494.54 2489.4 0 0 2225.38 -2411.18 2557.55 -2477.35 0 0 -2685.35z"/>
+     <polygon class="white" points="56989.41,41821.45 57452.86,41821.45 58699.39,41821.45 58699.39,44506.81 56605.27,44506.81 54189.68,41944.58 54189.68,41821.45 "/>
+    </g>
+   </g>
+</svg>
