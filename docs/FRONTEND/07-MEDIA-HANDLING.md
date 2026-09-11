@@ -58,6 +58,33 @@ Uploaded images are served from `/uploads` with `X-Content-Type-Options: nosniff
 
 `crossOriginResourcePolicy` is `cross-origin` on the API so the separate-origin frontend can load them — which is precisely why those two headers are not optional.
 
+### The default avatar, and why it is a frontend asset
+
+`users.avatar_url` and `tenants.logo` store the sentinel **`default.svg`** when nothing has been uploaded. **That is a marker, not a file.** Building a URL from it produced `/uploads/profile/default.svg`, which 404s — so every seeded user rendered a broken image.
+
+There is a `default.svg` in `backend/uploads/profile/`, and it still does not help:
+
+| Check | Result |
+|---|---|
+| `git ls-files backend/uploads/` | **nothing** — `backend/.gitignore` has `/uploads/` |
+| the directory on a deployed host | **does not exist** |
+| `/app/uploads/profile/` in the container | **empty** — the compose bind mount shadows whatever the image holds |
+
+So the backend reports "no avatar" as **`null`**, and the placeholder lives at **`frontend/public/default-avatar.svg`**: committed, served same-origin by Next, immune to the volume. A placeholder is a UI concern.
+
+### `next/image` rejects SVG
+
+`next/image` routes every `src` through `/_next/image`, and that endpoint answers **400 for SVG** unless `images.dangerouslyAllowSVG` is set:
+
+```
+GET /default-avatar.svg                     ->  200 image/svg+xml
+GET /_next/image?url=%2Fdefault-avatar.svg  ->  400
+```
+
+An SVG placeholder therefore renders as a broken image — the very thing it was added to fix, and invisible until you load the built app.
+
+The fix is **`unoptimized` on the placeholder only**, centralised in `avatarImageProps()` in `src/lib/uploadUrl.ts`. Setting `dangerouslyAllowSVG: true` globally would also work and is the **wrong trade**: uploaded avatars are user-supplied, an SVG can carry script, and they must keep going through the optimizer.
+
 ## Tenant Logo
 
 `tenants.logo`, fetched from the **unauthenticated** `GET /api/v1/tenants/public` for builds pinned with `NEXT_PUBLIC_TENANT_ID`.
