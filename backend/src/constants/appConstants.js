@@ -22,6 +22,19 @@ const HTTP_STATUS = {
 };
 
 // =============================================================================
+// UPLOAD PLACEHOLDER
+// =============================================================================
+// The filename stored in users.avatar_url and tenants.logo when no file has
+// been uploaded. It is a SENTINEL, not a file: nothing ships a default.svg,
+// and `uploads/` is runtime volume data, so any URL built from it 404s.
+//
+// The service layer already treats it as "not a real upload" — the avatar and
+// logo replace paths refuse to unlink it. The URL builders did not, which is
+// why every seeded user rendered a broken image instead of the initials
+// fallback the UI already has.
+const DEFAULT_UPLOAD_PLACEHOLDER = "default.svg";
+
+// =============================================================================
 // DEFAULT PAGINATION SETTINGS
 // =============================================================================
 const DEFAULT_PAGE = 1;
@@ -132,6 +145,9 @@ module.exports = {
 
   // HTTP Status codes
   HTTP_STATUS,
+
+  // Uploads
+  DEFAULT_UPLOAD_PLACEHOLDER,
 
   // Pagination
   DEFAULT_PAGE,

@@ -79,12 +79,14 @@ Two operational rules for whatever runs it:
 
 ```
 backend:  npm run swagger:generate  →  pkg  →  dist/backend
-frontend: bun install --frozen-lockfile  →  build  →  compile  →  server binary
+frontend: npm install  →  next build  →  .next/standalone
 ```
 
 **The backend build regenerates the OpenAPI spec first.** A build that skips it ships a spec describing the previous version, which is worse than shipping none.
 
-**`--frozen-lockfile` on the frontend.** A build that silently resolves a different dependency version than the one tested is a build that ships something nobody tested.
+**There is no `--frozen-lockfile`, because no lockfile is committed.** `.gitignore` excludes `pnpm-lock.yaml`, `package-lock.json` and `bun.lock`, so every build resolves transitive versions fresh — a build that silently resolves a different dependency version than the one tested is a build that ships something nobody tested, and that is the current state rather than a guarded-against one. Recorded as **W-11**; committing a lockfile is the fix.
+
+**The frontend ships Next.js standalone output on Node**, not a Bun-compiled binary. The compiled-binary path is still the intended on-premise format — see [`02-CONTAINERIZATION.md`](./02-CONTAINERIZATION.md).
 
 ## Turbo
 

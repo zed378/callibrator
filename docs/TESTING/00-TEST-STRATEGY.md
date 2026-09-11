@@ -123,7 +123,7 @@ Both learned by breaking things.
 
 | | |
 |---|---|
-| Backend coverage gate | **failing** |
+| Backend coverage gate | **passing** (2026-09-11) |
 | Live E2E | every fix verified **individually**; **no clean full-suite pass in one uninterrupted run** |
 | Browser suite | passing, with two deliberately retained expected-failure markers |
 | CI | **deferred** — gates run in `pre-push` and `make verify` |

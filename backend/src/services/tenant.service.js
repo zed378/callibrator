@@ -37,8 +37,25 @@ const safeTenantAttributes = {
 };
 
 const { TenantSettings } = require("../models");
+const { DEFAULT_UPLOAD_PLACEHOLDER } = require("../constants/appConstants");
 
 const TENANT_LOGO_BASE_URL = `${process.env.HOST_URL || "http://localhost:5000"}/uploads/tenant`;
+
+/**
+ * Build the public URL for a tenant logo.
+ *
+ * DEFAULT_UPLOAD_PLACEHOLDER means "no logo uploaded" — the same sentinel the
+ * replace paths below already refuse to unlink. Building a URL from it yields
+ * /uploads/tenant/default.svg, which 404s: nothing ships that file, and
+ * /app/uploads is a volume that would shadow it. Null lets the UI fall back.
+ *
+ * @param {string|null|undefined} logo - the stored filename
+ * @returns {string|null} the public URL, or null when there is no real logo
+ */
+const logoUrl = (logo) =>
+  !logo || logo === DEFAULT_UPLOAD_PLACEHOLDER
+    ? null
+    : `${TENANT_LOGO_BASE_URL}/${logo}`;
 
 /**
  * Transform tenant instance to plain object with logo baseUrl
@@ -48,7 +65,7 @@ const TENANT_LOGO_BASE_URL = `${process.env.HOST_URL || "http://localhost:5000"}
 const transformTenant = (tenant) => {
   if (!tenant) {return null;}
   const data = tenant.toJSON ? tenant.toJSON() : { ...tenant };
-  data.logoBaseUrl = data.logo ? `${TENANT_LOGO_BASE_URL}/${data.logo}` : null;
+  data.logoBaseUrl = logoUrl(data.logo);
   return data;
 };
 
@@ -142,9 +159,7 @@ exports.fetchTenants = async ({ find, page = 1, limit = DEFAULT_LIMIT }) => {
     // Transform tenants to include logoBaseUrl and user count
     const transformedRows = tenantRows.map((tenant) => {
       const data = tenant.toJSON ? tenant.toJSON() : { ...tenant };
-      data.logoBaseUrl = data.logo
-        ? `${TENANT_LOGO_BASE_URL}/${data.logo}`
-        : null;
+      data.logoBaseUrl = logoUrl(data.logo);
       data.userCount = countMap[data.id] || 0;
       return data;
     });
@@ -305,7 +320,7 @@ exports.getPublicBranding = async (tenantId) => {
     name: data.name,
     code: data.code,
     primaryColor: data.primaryColor || null,
-    logoBaseUrl: data.logo ? `${TENANT_LOGO_BASE_URL}/${data.logo}` : null,
+    logoBaseUrl: logoUrl(data.logo),
   };
 
   await set(cacheKey, branding, 300);

@@ -92,6 +92,7 @@ Documented so nobody spends an afternoon rediscovering them, and so nobody "fixe
 | W-07 | An expired token reports **"Invalid token"** rather than a distinct message | changing it churns a fully-covered suite for no security or usability gain |
 | W-08 | Schedulers live in `middlewares/` | they are installed at app assembly; the directory name misleads |
 | W-09 | The API CSP allows `'unsafe-inline'` for bundled swagger-ui | → P7-08; the reasoning does **not** transfer to the content-rendering origin |
+| W-11 | **No lockfile is committed** — `.gitignore` excludes `pnpm-lock.yaml`, `package-lock.json` and `bun.lock` | every install and every image build resolves transitive versions fresh, so a build today and a build next month can ship different dependencies. The frontend Dockerfile documents it in place; the fix is to commit one |
 | W-10 | Several controllers read `req.body.x` **unguarded** | on Express 5 an absent body is `undefined`, not `{}` — see M-10; the remaining sites are all POST/PATCH, where a bodyless request is already a client error, but it answers **500** instead of 400 |
 
 ---

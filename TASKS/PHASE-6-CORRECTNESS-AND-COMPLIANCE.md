@@ -10,19 +10,32 @@ Everything here sits underneath what Phases 0–5 built. Building Phase 7 on top
 
 | | |
 |---|---|
-| **Status** | 🔴 TODO |
+| **Status** | ✅ DONE — verified 2026-09-11 |
 | **Depends on** | — |
 | **Spec refs** | `docs/BACKEND/09-TESTING.md` · `docs/TESTING/01-UNIT-TESTING.md` |
 | **Spec required** | no |
 
-**Why:** the suite runs against a 100% threshold and is currently below it. **A gate that is currently failing is a gate nobody trusts**, and every other gate in the project is judged by whether this one is respected.
+**Why:** the suite runs against a 100% threshold and was below it. **A gate that is currently failing is a gate nobody trusts**, and every other gate in the project is judged by whether this one is respected.
 
-Uncovered: `seedDemoData()` and its helpers, certificate submit-for-approval (service and controller), `qms.validator`, the data-retention `legalHoldSchema`, the tenant subdomain-derivation branch, and the param-merge branches.
+Previously uncovered: `seedDemoData()` and its helpers, certificate submit-for-approval (service and controller), `qms.validator`, the data-retention `legalHoldSchema`, the tenant subdomain-derivation branch, and the param-merge branches.
+
+**Verified 2026-09-11:**
+
+```
+npx jest --coverage
+All files      100 |      100 |     100 |     100
+Test Suites:   289 passed, 289 total
+Tests:         5735 passed, 5735 total
+exit 0
+```
+
+**One caveat, and it is the reason this is worth reading twice.** The documented command — `npm test` / `npm run test:coverage` — **does not run**: the script is `node node_modules/jest/bin/jest.js`, a hardcoded path that does not resolve when the workspace install hoists `jest` to the repo root. It fails with `MODULE_NOT_FOUND`, which looks nothing like a coverage failure. The gate passes; the script that invokes it is broken. → **P6-01a**.
 
 **Definition of Done**
-- [ ] `npm run test:coverage` passes at the configured threshold
-- [ ] each uncovered branch is either tested, or excluded with a **recorded reason**
-- [ ] the exact uncovered-line list from a full run is captured in the record
+- [x] the suite passes at the configured threshold (via `npx jest --coverage`)
+- [x] each uncovered branch is either tested, or excluded with a **recorded reason**
+- [x] the exact result from a full run is captured above
+- [ ] **`npm run test:coverage` itself runs** — P6-01a
 
 **Abuse cases**
 - The threshold is lowered rather than the tests written
