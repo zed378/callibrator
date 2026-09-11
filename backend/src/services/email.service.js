@@ -25,6 +25,33 @@ const otpTemplate = fs.readFileSync(
 );
 
 // ==========================================
+// BRANDING
+// ==========================================
+
+// Every template used to hard-code https://fullfind.co/logo.png — the logo of
+// an unrelated company, inherited from the boilerplate this project started
+// from. That is three separate problems: every outbound email carried someone
+// else's branding, the images broke the moment that domain changed anything,
+// and each recipient's mail client fetched an asset from a third party, which
+// leaks open events to them.
+//
+// These now resolve against this deployment. The logo is served from the
+// public web origin rather than the backend's own /public mount, because that
+// is the origin nginx exposes and an emailed URL has to be reachable from
+// outside the network.
+const brandContext = () => {
+  const appUrl = (process.env.HOST_URL || "").replace(/\/+$/, "");
+  return {
+    appUrl,
+    // The footer carried the boilerplate company's NAME as readable text, not
+    // just its URLs — a case-sensitive grep for the domain missed it entirely.
+    appName: process.env.APP_NAME || "Device Calibrator",
+    logoUrl: `${appUrl}/brand/logo-email.png`,
+    supportEmail: process.env.MAIL_FROM || "",
+  };
+};
+
+// ==========================================
 // TRANSPORTER
 // ==========================================
 
@@ -61,6 +88,7 @@ const sendActivationEmail = async ({
   activationLink,
 }) => {
   const html = mustache.render(activationTemplate, {
+    ...brandContext(),
     firstName,
     lastName,
     link: activationLink,
@@ -79,6 +107,7 @@ const sendActivationEmail = async ({
 
 const sendOtpEmail = async ({ email, firstName, lastName, otp }) => {
   const html = mustache.render(otpTemplate, {
+    ...brandContext(),
     firstName,
     lastName,
     otp,

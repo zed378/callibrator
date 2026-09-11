@@ -120,6 +120,24 @@ Redis is **not optional**: it holds rate-limit counters, WebAuthn challenges and
 
 Templates live in `src/templates` and are read from disk **next to the binary**. The Dockerfile copies them explicitly; omitting that produces an API that starts fine and fails on the first email.
 
+### Email branding depends on `HOST_URL` and `MAIL_FROM`
+
+The templates render three values from `brandContext()` in `email.service.js`:
+
+| Placeholder | From |
+|---|---|
+| `{{logoUrl}}` | `${HOST_URL}/brand/logo-email.png` |
+| `{{appUrl}}` | `HOST_URL` |
+| `{{supportEmail}}` | `MAIL_FROM` |
+
+**These were hard-coded to `https://fullfind.co` until 2026-09** — the logo and contact address of an unrelated company, inherited from the boilerplate. Twenty-one references across three templates. Three separate problems, and the third is the one that is easy to miss:
+
+1. every outbound email carried someone else's branding;
+2. the images broke whenever that domain changed anything;
+3. **each recipient's mail client fetched an asset from a third party**, which hands them the open events for every account activation and password reset this platform sends.
+
+The logo is served from the **public web origin**, not the backend's `/public` mount, because that is the origin the proxy exposes and an emailed URL must be reachable from outside the network. With `HOST_URL` unset the images simply do not render — no third party is contacted.
+
 ## Certificates
 
 | Variable | Notes |

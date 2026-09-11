@@ -71,6 +71,12 @@ describe("email.service", () => {
       expect(require("mustache").render).toHaveBeenCalledWith(
         "Mock Activation Template: {{firstName}} {{link}}",
         {
+          // Branding resolved from this deployment, never a hard-coded third
+          // party. The templates used to point at another company's logo.
+          appUrl: "http://localhost:5000",
+          appName: "Device Calibrator",
+          logoUrl: "http://localhost:5000/brand/logo-email.png",
+          supportEmail: "noreply@example.com",
           firstName: "John",
           lastName: "Doe",
           link: "http://activate.test/123",
@@ -85,6 +91,42 @@ describe("email.service", () => {
         }),
       );
       expect(result).toEqual({ messageId: "123" });
+    });
+  });
+
+  // brandContext() reads process.env at call time, so clearing the variables
+  // exercises the fallbacks without re-requiring the module. The behaviour
+  // matters: with no HOST_URL the images simply do not render, and crucially
+  // NO third party is contacted — which is the whole point of replacing the
+  // hard-coded fullfind.co URLs.
+  describe("branding with no HOST_URL or MAIL_FROM", () => {
+    const saved = {};
+    beforeEach(() => {
+      saved.host = process.env.HOST_URL;
+      saved.from = process.env.MAIL_FROM;
+      delete process.env.HOST_URL;
+      delete process.env.MAIL_FROM;
+    });
+    afterEach(() => {
+      if (saved.host === undefined) {delete process.env.HOST_URL;}
+      else {process.env.HOST_URL = saved.host;}
+      if (saved.from === undefined) {delete process.env.MAIL_FROM;}
+      else {process.env.MAIL_FROM = saved.from;}
+    });
+
+    it("falls back to empty branding rather than an external host", async () => {
+      await sendActivationEmail({
+        email: "a@test.com",
+        firstName: "A",
+        lastName: "B",
+        activationLink: "http://activate.test/1",
+      });
+
+      const ctx = require("mustache").render.mock.calls[0][1];
+      expect(ctx.appUrl).toBe("");
+      expect(ctx.supportEmail).toBe("");
+      expect(ctx.logoUrl).toBe("/brand/logo-email.png");
+      expect(ctx.logoUrl).not.toContain("fullfind");
     });
   });
 
@@ -103,6 +145,10 @@ describe("email.service", () => {
       expect(require("mustache").render).toHaveBeenCalledWith(
         "Mock OTP Template: {{firstName}} {{otp}}",
         {
+          appUrl: "http://localhost:5000",
+          appName: "Device Calibrator",
+          logoUrl: "http://localhost:5000/brand/logo-email.png",
+          supportEmail: "noreply@example.com",
           firstName: "Jane",
           lastName: "Smith",
           otp: "123456",
