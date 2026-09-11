@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { userService } from "@/api/services/user.service";
+import { DEFAULT_AVATAR_SRC } from "@/lib/uploadUrl";
 import { User as UserType } from "@/types";
 import { Button, Avatar } from "@/components/ui";
 import { useToastStore } from "@/stores/toastStore";
@@ -132,7 +133,7 @@ const AvatarUpload: React.FC<{
         }}
       >
         <Avatar
-          src={preview}
+          src={preview || DEFAULT_AVATAR_SRC}
           alt={user.username || user.firstName || "User"}
           fallback={letter}
           size="lg"

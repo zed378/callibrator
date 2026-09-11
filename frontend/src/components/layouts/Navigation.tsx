@@ -11,7 +11,7 @@ import { Menu, X, Shield, LogOut } from "lucide-react";
 import UserDropdown from "./UserDropdown";
 import MagneticButton from "@/components/motion/MagneticButton";
 import Image from "next/image";
-import { toSameOriginUpload } from "@/lib/uploadUrl";
+import { avatarImageProps } from "@/lib/uploadUrl";
 
 export function Navigation() {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -137,19 +137,13 @@ export function Navigation() {
               {isLoggedIn && (
                 <div className="px-4 py-4 rounded-xl shadow-sm mb-2 bg-muted/30">
                   <div className="flex items-center gap-3 mb-3">
-                    {user?.picture ? (
-                      <Image
-                        src={toSameOriginUpload(user.picture)}
-                        alt={user.username || "User"}
-                        width={48}
-                        height={48}
-                        className="w-12 h-12 rounded-xl object-cover border-2 border-primary/50"
-                      />
-                    ) : (
-                      <div className="w-12 h-12 rounded-xl bg-linear-to-br from-primary to-accent flex items-center justify-center text-primary-foreground font-bold">
-                        {(user?.username || "U").charAt(0).toUpperCase()}
-                      </div>
-                    )}
+                    <Image
+                      {...avatarImageProps(user?.picture)}
+                      alt={user?.username || "User"}
+                      width={48}
+                      height={48}
+                      className="w-12 h-12 rounded-xl object-cover border-2 border-primary/50"
+                    />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold truncate text-foreground">
                         {user?.firstName && user?.lastName

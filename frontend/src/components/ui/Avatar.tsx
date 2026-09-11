@@ -1,6 +1,6 @@
 import React from "react";
 import Image from "next/image";
-import { toSameOriginUpload } from "@/lib/uploadUrl";
+import { toSameOriginUpload, DEFAULT_AVATAR_SRC } from "@/lib/uploadUrl";
 
 interface AvatarProps {
   src?: string;
@@ -47,6 +47,11 @@ export const Avatar: React.FC<AvatarProps> = ({
           alt={alt}
           width={100}
           height={100}
+          // next/image's optimizer returns 400 for SVG unless
+          // dangerouslyAllowSVG is set, so our own SVG placeholder has to skip
+          // it. Uploaded avatars still go through the optimizer, which is what
+          // keeps a user-supplied SVG from being served as active content.
+          unoptimized={src === DEFAULT_AVATAR_SRC}
           className="h-full w-full rounded-full object-cover"
           onError={() => setHasError(true)}
         />

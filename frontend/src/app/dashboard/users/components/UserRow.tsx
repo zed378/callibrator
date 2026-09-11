@@ -7,7 +7,7 @@ import type { User } from "@/types";
 import { Badge } from "@/components/ui";
 import { Button } from "@/components/ui";
 import { Edit2, Trash2, UserCog } from "lucide-react";
-import { toSameOriginUpload } from "@/lib/uploadUrl";
+import { avatarImageProps } from "@/lib/uploadUrl";
 import { useAuthStore } from "@/stores/authStore";
 import { useToastStore } from "@/stores/toastStore";
 
@@ -83,9 +83,9 @@ export const UserRow: React.FC<UserRowProps> = ({
           {/* shrink-0 keeps the avatar at a fixed size — without it a long
               email in this fixed-width column squeezes the circle to zero. */}
           <div className="w-10 h-10 shrink-0 rounded-full bg-linear-to-br from-primary to-accent flex items-center justify-center text-primary-foreground font-bold shadow-lg shadow-primary/20 overflow-hidden">
-            {user.picture && !imgFailed ? (
+            {!imgFailed ? (
               <Img
-                src={toSameOriginUpload(user.picture)}
+                {...avatarImageProps(user.picture)}
                 width={48}
                 height={48}
                 alt={user.username || "User"}
