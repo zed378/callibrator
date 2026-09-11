@@ -7,11 +7,12 @@ import { useRouter, usePathname } from "next/navigation";
 import { motion, useScroll, useSpring } from "motion/react";
 import { useAuthStore } from "@/stores/authStore";
 import ThemeToggle from "@/components/ThemeToggle";
-import { Menu, X, Shield, LogOut } from "lucide-react";
+import { Menu, X, LogOut } from "lucide-react";
 import UserDropdown from "./UserDropdown";
 import MagneticButton from "@/components/motion/MagneticButton";
 import Image from "next/image";
 import { avatarImageProps } from "@/lib/uploadUrl";
+import { BrandIcon } from "@/components/brand/BrandIcon";
 
 export function Navigation() {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -77,9 +78,7 @@ export function Navigation() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-20">
           <Link href="/" className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-linear-to-br from-primary to-accent rounded-xl flex items-center justify-center shadow-lg shadow-primary/20">
-              <Shield className="w-5 h-5 text-white" />
-            </div>
+            <BrandIcon className="w-10 h-10 shrink-0 text-[#001250] dark:text-white" />
             <span className="text-lg font-bold tracking-tight text-foreground">
               HDC
             </span>

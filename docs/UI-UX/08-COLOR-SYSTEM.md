@@ -111,6 +111,23 @@ Certificates are rendered by puppeteer using a separate stylesheet.
 
 **Assume no colour at all.** The artefact will be printed, photocopied and scanned. Every distinction that matters on a certificate must survive greyscale, which means text and layout carry it.
 
+## The Product's Own Brand
+
+| | Hex | Used for |
+|---|---|---|
+| Navy | **`#001250`** | the mark's body and the wordmark on light surfaces |
+| Teal | **`#00DAB4`** | the fixed accent, on every surface |
+| Ink | `#2A2A2A` | the app icon panel and the monochrome lockup |
+
+Assets live in [`../../frontend/public/brand/`](../../frontend/public/brand/): `mark.svg`, `mark-dark.svg`, `app-icon.svg`, and three lockups (`lockup-light`, `lockup-dark`, `lockup-mono`). They were cut from the supplied `icon.svg` brand sheet, which held all four variants on one CorelDRAW artboard.
+
+In the application the mark is **not** loaded as a file. `components/brand/BrandIcon.tsx` inlines it, for two reasons:
+
+1. `next/image` answers **400 for SVG** unless `dangerouslyAllowSVG` is set — see [`../FRONTEND/07-MEDIA-HANDLING.md`](../FRONTEND/07-MEDIA-HANDLING.md);
+2. the mark must work on both themes, so its body is **`currentColor`** and the caller sets `text-[#001250] dark:text-white`. The teal accent stays fixed, because it is the brand.
+
+**This is the product's identity, not a tenant's.** It is what shows when a tenant has supplied no logo, and it is deliberately separate from `tenants.primaryColor` below — a tenant brand colour never recolours the mark.
+
 ## Tenant Branding in Practice
 
 | Element | Branded |

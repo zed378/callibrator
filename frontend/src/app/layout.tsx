@@ -38,8 +38,15 @@ const themeInitScript = `(function(){try{var t=localStorage.getItem('hdc-theme-p
 export const metadata: Metadata = {
   title: "Hospital Device Callibrator",
   description: "Medical device calibration management system",
+  // Served from frontend/public/. The Next starter's favicon.ico used to sit
+  // in this directory and won on the app-dir file convention, so /favicon.ico
+  // returned the default icon no matter what this said; apple-touch-icon.png
+  // was declared here and 404'd because nothing shipped it.
   icons: {
-    icon: "/favicon.ico",
+    icon: [
+      { url: "/favicon.ico", sizes: "16x16 32x32 48x48" },
+      { url: "/brand/app-icon.svg", type: "image/svg+xml" },
+    ],
     apple: "/apple-touch-icon.png",
   },
 };

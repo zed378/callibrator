@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="4885.00 7540.00 11700.00 11700.00" role="img" aria-label="Device Calibrator">
+  <title>Device Calibrator</title>
+  <style type="text/css"><![CDATA[
+    .navy  { fill: #FEFEFE }
+    .teal  { fill: #00DAB4 }
+    .white { fill: #FEFEFE }
+    .ink   { fill: #2A2A2A }
+  ]]></style>
+<g>
+     <rect class="navy" x="5806.89" y="8426.51" width="1234.83" height="1322.54" rx="300.11" ry="382.66"/>
+     <rect class="navy" x="5806.89" y="8426.51" width="1234.83" height="1322.54" rx="300.11" ry="382.66"/>
+     <rect class="navy" x="7450.35" y="8426.52" width="396.28" height="1322.52"/>
+     <rect class="navy" x="8277.07" y="8426.52" width="396.28" height="1322.52"/>
+     <rect class="navy" x="9103.79" y="8426.52" width="396.28" height="1322.52"/>
+     <rect class="navy" x="9930.51" y="8426.52" width="396.28" height="1322.52"/>
+     <rect class="navy" transform="matrix(2.44447E-14 -0.985549 0.922976 2.61017E-14 5807.82 10674.6)" width="402.09" height="1341.91"/>
+     <rect class="navy" transform="matrix(2.44447E-14 -0.985549 0.922976 2.61017E-14 5807.82 11560.3)" width="402.09" height="1341.91"/>
+     <rect class="navy" transform="matrix(2.44447E-14 -0.985549 0.922976 2.61017E-14 5807.82 12446.1)" width="402.09" height="1341.91"/>
+     <rect class="teal" transform="matrix(2.44447E-14 -0.985549 0.922976 2.61017E-14 5807.82 13331.9)" width="402.09" height="1341.91"/>
+     <rect class="teal" transform="matrix(2.44447E-14 -0.985549 0.922976 2.61017E-14 5807.82 14217.7)" width="402.09" height="1341.91"/>
+     <rect class="teal" transform="matrix(2.44447E-14 -0.985549 0.922976 2.61017E-14 5807.82 15103.4)" width="402.09" height="1341.91"/>
+     <path class="navy" d="M13175.03 13115.84l0 -1681.74c0,-331.68 -271.37,-602.18 -603.03,-603.03 -551.12,-1.41 -1102.15,-15.53 -1653.23,-3.68 -82.59,1.85 -142.87,-73.54 -142.87,-152.98l0 -2244.52 2579.78 0 2308.74 2448.89 0 2237.06 -2489.4 0z"/>
+     <path class="teal" d="M10775.91 15667.47l1796.1 0c331.66,0 603.03,-271.36 603.03,-603.03l0 -1494.54 2489.4 0 0 2225.38 -2411.18 2557.55 -2477.35 0 0 -2685.35z"/>
+     <polygon class="navy" points="8611.87,15667.47 9075.33,15667.47 10321.85,15667.47 10321.85,18352.82 8227.73,18352.82 5812.14,15790.6 5812.14,15667.47 "/>
+    </g>
+</svg>
