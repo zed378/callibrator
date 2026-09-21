@@ -124,6 +124,35 @@ QMS (non-conformances, CAPA, SOP) · risk register · vendor scorecards · workf
 
 ---
 
+## Audit 2026-09 Remediation 🔴 — do wave 0 first
+
+[`AUDIT-2026-09-REMEDIATION.md`](./AUDIT-2026-09-REMEDIATION.md). 23 findings; evidence in [`../MEMORY/records/2026-09-21-backend-audit.md`](../MEMORY/records/2026-09-21-backend-audit.md).
+
+| Wave | Tasks | Rule |
+|---|---|---|
+| **0 — security** | A-01 **cross-tenant write on `tenant-hierarchy`** · A-02 tenant config open to every user · A-03 API-key scope bypass · A-04 search permission bypass · A-05 Socket.IO · A-06 `/health` disclosure · A-13 raw errors in production · A-17 MQTT exposure | **now, in JavaScript**, before Phase 9 |
+| 1 — correctness | A-07 · A-09 · A-10 · A-11 · A-12 · A-14 · A-15 · A-16 | before or alongside the Phase 9 stage for that module |
+| 2 — hygiene | A-18 … A-23 | freely |
+| done | **A-08** metered billing read every tenant's usage as zero — fixed 2026-09-21 | |
+
+---
+
+## Phase 9 — Backend TypeScript Migration 🔴
+
+[`PHASE-9-TYPESCRIPT-MIGRATION.md`](./PHASE-9-TYPESCRIPT-MIGRATION.md) · ADR-038. **The backend is JavaScript until this closes**; backend documents state TypeScript as the target.
+
+| Stage | Tasks | Scope |
+|---|---|---|
+| A — foundations | P9-00 … P9-07 | baseline, toolchain, lint, tests, ratchet, shared types, typed config, bind-only SQL helper |
+| B — leaf layers | P9-08 … P9-11 | constants, utils, 72 models, 37 validators (Joi → Zod) |
+| C — services | P9-12 … P9-18 | 76 services in seven domain waves |
+| D — HTTP layer | P9-19 … P9-21 | middlewares, controllers, routes, `index` |
+| E — close-out | P9-22 … P9-24 | shared contracts package, frozen migration names, `allowJs: false` |
+
+Ratchet: **370 `.js` source files** today. It only goes down.
+
+---
+
 ## Live Health
 
 | Gate | State |

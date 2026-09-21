@@ -41,6 +41,10 @@ Places where `docs/` is silent, contradictory, or where the code and the contrac
 
 ---
 
+## Audit 2026-09
+
+Every finding from the 2026-09-21 audit is a task in [`AUDIT-2026-09-REMEDIATION.md`](./AUDIT-2026-09-REMEDIATION.md), not an entry here. Items below that the audit touched point at their `A-nn` task.
+
 ## Mechanisms That Should Exist and Do Not
 
 The highest-value entries here. Each is a control currently held together by convention.
