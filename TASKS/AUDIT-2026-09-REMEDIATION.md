@@ -43,6 +43,7 @@ Task ids are `A-nn`. They are referenced from [`PHASE-9-TYPESCRIPT-MIGRATION.md`
 | A-21 | no lockfile is committed | medium | 2 | TODO |
 | A-22 | one React Compiler lint error in `GlobalSearch.tsx` | low | 2 | TODO |
 | A-23 | search runs one query per type, sequentially, and logs a warning per call | low | 2 | TODO |
+| A-24 | every `redis.service` helper was a no-op: **registration, passkeys and the OIDC provider broken** | **high** | — | **DONE** 2026-09-21 |
 
 ---
 
@@ -371,6 +372,7 @@ Task ids are `A-nn`. They are referenced from [`PHASE-9-TYPESCRIPT-MIGRATION.md`
 | Id | What | Where |
 |---|---|---|
 | A-08 | metered billing zero usage — `$1` placeholders passed as `replacements` | commit `9745f01`, ADR-039 |
+| A-24 | `redis.service` guarded every helper on `client.connected`, a property ioredis does not have — registration answered 429 to everyone, passkeys 503, the OIDC provider could not complete an authorisation; the test mock fabricated `connected`, so the suite was green | this commit |
 | A-09 (part) | `/menu-groups/menu-groups/admin` 500 | commit `f3d323e` |
 | — | avatar and tenant-logo broken images; email templates carrying another company's branding and a broken Outlook CTA | commits `78028b0`, `582e24b`, `6621722` |
 | — | `npm test` could not run under a hoisted workspace install | commit `78028b0` |

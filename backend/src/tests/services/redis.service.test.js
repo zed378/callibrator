@@ -2,7 +2,7 @@
  * Tests for redis.service.js
  */
 
-let mockConnected = true;
+
 let mockStatus = "ready";
 let mockOnErrorCallback = null;
 
@@ -33,9 +33,9 @@ jest.mock("ioredis", () => {
     quit: mockQuit,
     on: mockOn,
     once: mockOnce,
-    get connected() {
-      return mockConnected;
-    },
+    // No `connected` getter: real ioredis has none (verified against 5.11.1).
+    // This mock used to fabricate one, so every test passed while every
+    // helper in production returned early. Readiness is `status` only.
     get status() {
       return mockStatus;
     },
@@ -56,7 +56,6 @@ describe("redis.service", () => {
   beforeEach(() => {
     jest.resetModules();
     jest.clearAllMocks();
-    mockConnected = true;
     mockStatus = "ready";
     mockOnErrorCallback = null;
     mockGet.mockResolvedValue(null);
@@ -71,22 +70,24 @@ describe("redis.service", () => {
   });
 
   describe("initRedis", () => {
-    it("should initialize Redis connection successfully when not already connected", async () => {
-      mockConnected = false;
+    it("should connect from the lazy 'wait' state and resolve once ready", async () => {
+      mockStatus = "wait";
+      mockConnect.mockImplementation(async () => {
+        mockStatus = "ready";
+      });
       const client = await redisService.initRedis();
       expect(client).toBeDefined();
       expect(mockConnect).toHaveBeenCalled();
     });
 
-    it("should return client immediately if already connected", async () => {
-      mockConnected = true;
+    it("should return client immediately if already ready", async () => {
+      mockStatus = "ready";
       const client = await redisService.initRedis();
       expect(client).toBeDefined();
       expect(mockConnect).not.toHaveBeenCalled();
     });
 
-    it("should resolve when client status is connecting and triggers ready event", async () => {
-      mockConnected = false;
+    it("should wait for 'ready' without calling connect() while already connecting", async () => {
       mockStatus = "connecting";
       
       let readyCallback;
@@ -106,10 +107,12 @@ describe("redis.service", () => {
 
       const client = await initPromise;
       expect(client).toBeDefined();
+      // connect() while connecting throws "already connecting" in ioredis
+      expect(mockConnect).not.toHaveBeenCalled();
     });
 
     it("should log error and return null when connect throws", async () => {
-      mockConnected = false;
+      mockStatus = "wait";
       mockConnect.mockRejectedValue(new Error("Connect failed"));
 
       const client = await redisService.initRedis();
@@ -162,8 +165,8 @@ describe("redis.service", () => {
   });
 
   describe("get", () => {
-    it("should return null if client is not connected", async () => {
-      mockConnected = false;
+    it("should return null if the client is not ready", async () => {
+      mockStatus = "reconnecting";
       const result = await redisService.get("key");
       expect(result).toBeNull();
     });
@@ -195,8 +198,8 @@ describe("redis.service", () => {
   });
 
   describe("set", () => {
-    it("should return false if client is not connected", async () => {
-      mockConnected = false;
+    it("should return false if the client is not ready", async () => {
+      mockStatus = "reconnecting";
       const result = await redisService.set("key", "value");
       expect(result).toBe(false);
     });
@@ -228,8 +231,8 @@ describe("redis.service", () => {
   });
 
   describe("del", () => {
-    it("should return false if client is not connected", async () => {
-      mockConnected = false;
+    it("should return false if the client is not ready", async () => {
+      mockStatus = "reconnecting";
       const result = await redisService.del("key");
       expect(result).toBe(false);
     });
@@ -255,8 +258,8 @@ describe("redis.service", () => {
   });
 
   describe("delPattern", () => {
-    it("should return 0 if client is not connected", async () => {
-      mockConnected = false;
+    it("should return 0 if the client is not ready", async () => {
+      mockStatus = "reconnecting";
       const result = await redisService.delPattern("pattern:*");
       expect(result).toBe(0);
     });
@@ -288,8 +291,8 @@ describe("redis.service", () => {
   });
 
   describe("acquireLock", () => {
-    it("should return null if client is not connected", async () => {
-      mockConnected = false;
+    it("should return null if the client is not ready", async () => {
+      mockStatus = "reconnecting";
       const result = await redisService.acquireLock("lockKey");
       expect(result).toBeNull();
     });
@@ -329,8 +332,8 @@ describe("redis.service", () => {
   });
 
   describe("releaseLock", () => {
-    it("should return false if client is not connected", async () => {
-      mockConnected = false;
+    it("should return false if the client is not ready", async () => {
+      mockStatus = "reconnecting";
       const result = await redisService.releaseLock("lockKey", "id-123");
       expect(result).toBe(false);
     });
