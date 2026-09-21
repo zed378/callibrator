@@ -3,7 +3,7 @@
 #
 #   make help          list every target
 #   make dev           bring the local stack up
-#   make verify        the full pre-push gate
+#   make verify        the full gate (manual — no hook or CI runs it)
 #   make deploy ENV=prod TAG=<sha>
 #
 # Reference: docs/DEVOPS/11-MAKEFILE-REFERENCE.md
@@ -252,7 +252,7 @@ build: ## Build both workspaces
 	pnpm build
 
 .PHONY: verify
-verify: lint typecheck test build ## The full pre-push gate
+verify: lint typecheck test build ## The full gate (run by hand; nothing runs it automatically)
 	@echo ""
 	@echo -e "$(C_OK)Gates passed.$(C_OFF)"
 	@echo -e "$(C_DIM)Not covered here: the live E2E suite (make test-e2e) and the browser suite.$(C_OFF)"
@@ -351,7 +351,7 @@ check-env: ## Verify .env exists and carries the required secrets
 		echo -e "$(C_ERR)Required secrets not set:$$missing$(C_OFF)"
 		echo -e "$(C_DIM)The application exits without them, by design. Run: make secrets$(C_OFF)"
 		echo -e "$(C_DIM)KMS_MASTER_KEY fails LOUDLY nowhere: the container crash-loops with an$(C_OFF)"
-		echo -e "$(C_DIM)empty docker-logs output, and the error lands in log/activity/exception/.$(C_OFF)"
+		echo -e "$(C_DIM)empty docker-logs output: production writes nothing to stdout. Read log/activity/exception/.$(C_OFF)"
 		exit 1
 	fi
 

@@ -21,11 +21,10 @@ KMS_MASTER_KEY           wraps tenant storage credentials (64-char hex)
 > KMS_MASTER_KEY must be set in production (64-char hex / 32-byte key).
 > Refusing to start with the insecure development master key.
 
-The failure is easy to misread: the container crash-loops, `docker logs` shows
-**nothing**, and the error is written only to
-`log/activity/exception/<date>.log` — because winston is already configured by
-the time it throws. Anyone debugging a silent exit should read that file before
-anything else.
+The failure is easy to misread: the container crash-loops and `docker logs` shows
+**nothing**, because **in production the application writes nothing to stdout at all**: `activityLog.middleware.js` adds winston's Console transport only when `NODE_ENV !== "production"`, and winston's `exceptionHandlers` catch the throw and write it to `log/activity/exception/<date>.log`. That is true of **every** production
+failure, not just this one — see [`../OBSERVABILITY/01-LOGGING.md`](../OBSERVABILITY/01-LOGGING.md).
+Anyone debugging a silent exit should read that file before anything else.
 
 Losing it has the same consequence as losing `ENCRYPT_KEY`: every wrapped
 tenant storage credential becomes undecryptable. Back it up with the others.
@@ -43,7 +42,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 | Variable | Default | Notes |
 |---|---|---|
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASS` | — | |
-| `DB_DIALECT` | `postgres` | **`mysql` is supported** (ADR-029) |
+| `DB_DIALECT` | `postgres` | **optional**; any other value refuses to start. PostgreSQL is the only supported database (ADR-039) |
 | `DB_SSL`, `DB_SSL_CA`, `DB_SSL_REJECT_UNAUTHORIZED` | | |
 | `DB_POOL_MAX` | 10 dev / 20 prod | |
 | `DB_POOL_MIN` | 2 | |
@@ -52,7 +51,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 The acquire timeout matching the 30-second request timeout means a request waiting for a connection fails at roughly the moment the request itself gives up, rather than acquiring a connection nobody is waiting for.
 
-**pgvector is PostgreSQL-only.** On MySQL the AI/RAG module is unavailable rather than differently implemented.
+**pgvector is required.** pgvector is required: `document_chunks.embedding` is `vector(1536)` and retrieval is a tenant-scoped cosine-distance search. The former non-PostgreSQL branch — which returned the five most *recent* chunks as "context" regardless of relevance — was removed with MySQL support (ADR-039).
 
 ## Application
 
@@ -94,7 +93,7 @@ If the two secrets are equal, an access token can be presented as a refresh toke
 |---|---|
 | `REDIS_URL`, or `REDIS_HOST` + `REDIS_PORT` | `redis://localhost:6379` |
 | `RABBITMQ_URL` | `amqp://localhost:5672` |
-| `MQTT_HOST`, `MQTT_PORT` | embedded aedes broker |
+| `MQTT_HOST`, `MQTT_PORT` | an **external** broker the backend connects to as a client; MQTT is off unless **both** are set |
 
 Redis is **not optional**: it holds rate-limit counters, WebAuthn challenges and worker idempotency claims. An outage weakens brute-force protection and permits duplicate side effects.
 

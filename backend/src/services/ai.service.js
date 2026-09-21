@@ -187,7 +187,6 @@ class AiService {
 
     const { db } = require("../config");
     const { DocumentChunk } = require("../models");
-    const dialect = db.getDialect();
 
     // Replace any prior chunks for this source (idempotent re-ingest).
     await DocumentChunk.destroy({ where: { tenantId, sourceType, sourceId } });
@@ -202,23 +201,14 @@ class AiService {
         continue;
       }
 
-      if (dialect === "postgres") {
-        // pgvector column is not an ORM attribute; insert via raw SQL.
-        await db.query(
-          `INSERT INTO document_chunks
-             (id, tenant_id, source_type, source_id, chunk_index, content, embedding, created_at, updated_at)
-           VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6::vector, now(), now())`,
-          { bind: [tenantId, sourceType, sourceId, i, chunks[i], JSON.stringify(embedding)] },
-        );
-      } else {
-        await DocumentChunk.create({
-          tenantId,
-          sourceType,
-          sourceId,
-          chunkIndex: i,
-          content: chunks[i],
-        });
-      }
+      // pgvector column is not an ORM attribute; insert via raw SQL. The
+      // tenant predicate is explicit because raw SQL bypasses the scoping hooks.
+      await db.query(
+        `INSERT INTO document_chunks
+           (id, tenant_id, source_type, source_id, chunk_index, content, embedding, created_at, updated_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6::vector, now(), now())`,
+        { bind: [tenantId, sourceType, sourceId, i, chunks[i], JSON.stringify(embedding)] },
+      );
       stored += 1;
     }
 
@@ -227,9 +217,11 @@ class AiService {
   }
 
   /**
-   * Retrieve the most relevant chunks for a query embedding. On Postgres this is
-   * a real pgvector cosine-distance search; on other engines it degrades to a
-   * recency fallback (no semantic ranking) so the feature still functions.
+   * Retrieve the most relevant chunks for a query embedding: a pgvector
+   * cosine-distance search, scoped to the tenant explicitly (raw SQL bypasses
+   * the tenant hooks). PostgreSQL only (ADR-039) — the former non-pgvector
+   * branch returned the five most RECENT chunks as "context" regardless of
+   * relevance, which produced confident answers from the wrong documents.
    *
    * @param {string} tenantId
    * @param {number[]} queryVector
@@ -238,31 +230,18 @@ class AiService {
    */
   async retrieveContext(tenantId, queryVector, limit = 5) {
     const { db } = require("../config");
-    const dialect = db.getDialect();
-
-    if (dialect === "postgres") {
-      const rows = await db.query(
-        `SELECT content, 1 - (embedding <=> $1::vector) AS similarity
-           FROM document_chunks
-          WHERE tenant_id = $2 AND embedding IS NOT NULL
-          ORDER BY embedding <=> $1::vector
-          LIMIT $3`,
-        {
-          bind: [JSON.stringify(queryVector), tenantId, limit],
-          type: db.QueryTypes.SELECT,
-        },
-      );
-      return rows.map((r) => ({ content: r.content, similarity: Number(r.similarity) }));
-    }
-
-    // Non-pgvector engines: return the most recent chunks (best-effort).
-    const { DocumentChunk } = require("../models");
-    const rows = await DocumentChunk.findAll({
-      where: { tenantId },
-      order: [["createdAt", "DESC"]],
-      limit,
-    });
-    return rows.map((r) => ({ content: r.content, similarity: null }));
+    const rows = await db.query(
+      `SELECT content, 1 - (embedding <=> $1::vector) AS similarity
+         FROM document_chunks
+        WHERE tenant_id = $2 AND embedding IS NOT NULL
+        ORDER BY embedding <=> $1::vector
+        LIMIT $3`,
+      {
+        bind: [JSON.stringify(queryVector), tenantId, limit],
+        type: db.QueryTypes.SELECT,
+      },
+    );
+    return rows.map((r) => ({ content: r.content, similarity: Number(r.similarity) }));
   }
 
   /**

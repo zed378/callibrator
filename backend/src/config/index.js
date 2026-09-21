@@ -11,7 +11,10 @@ const dbName = process.env.DB_NAME;
 const user = process.env.DB_USER;
 const pass = process.env.DB_PASS;
 const port = process.env.DB_PORT;
-const dialect = process.env.DB_DIALECT;
+// PostgreSQL is the only supported database (ADR-039). DB_DIALECT is no
+// longer required; if it is set to anything else we refuse to start rather
+// than connect with a dialect the codebase does not support.
+const dialect = "postgres";
 const nodeEnv = process.env.NODE_ENV || "development";
 
 // ------------------------------------------------------------------
@@ -24,7 +27,6 @@ const validateConfig = () => {
     { key: "DB_USER", label: "DB_USER" },
     { key: "DB_PASS", label: "DB_PASS" },
     { key: "DB_PORT", label: "DB_PORT" },
-    { key: "DB_DIALECT", label: "DB_DIALECT (must be 'postgres' or 'mysql')" },
   ];
 
   const missing = [];
@@ -40,8 +42,13 @@ const validateConfig = () => {
     throw new Error(msg);
   }
 
-  if (!["postgres", "mysql"].includes(dialect)) {
-    const msg = `Invalid DB_DIALECT: "${dialect}". Must be "postgres" or "mysql".`;
+  const requestedDialect = (process.env.DB_DIALECT || "postgres").trim();
+  if (requestedDialect !== "postgres") {
+    const msg =
+      `Unsupported DB_DIALECT: "${requestedDialect}". PostgreSQL is the only ` +
+      "supported database (ADR-039) — MySQL support was removed because it " +
+      "never worked: the mysql2 driver was not a dependency, and full-text " +
+      "search, webhooks and RAG all use PostgreSQL-only SQL.";
     logger.error(`CONFIG_VALIDATION_FAILURE: ${msg}`);
     throw new Error(msg);
   }
@@ -82,18 +89,6 @@ const baseConfig = {
   },
 };
 
-// MySQL Configuration
-const mysqlConfig = {
-  ...baseConfig,
-
-  database: dbName,
-
-  define: {
-    charset: "utf8mb4",
-    collate: "utf8mb4_unicode_ci",
-  },
-};
-
 // PostgreSQL Configuration
 const pgConfig = {
   ...baseConfig,
@@ -107,8 +102,8 @@ const pgConfig = {
   supportsSearchPath: false,
 };
 
-// Final Configuration
-const config = dialect === "mysql" ? mysqlConfig : pgConfig;
+// Final Configuration — PostgreSQL only (ADR-039).
+const config = pgConfig;
 
 // Main Sequelize Instance (v6 accepts full config object)
 const db = new Sequelize(config);
@@ -119,60 +114,13 @@ const db = new Sequelize(config);
 
 /**
  * Create Database If Not Exists
- * Uses Sequelize v6 built-in database creation for PostgreSQL/MySQL.
+ * PostgreSQL only: connects to the "postgres" maintenance database to create
+ * the target database when it does not exist.
  */
 async function createDatabaseIfNotExists() {
-  if (dialect === "postgres") {
-    // PostgreSQL: Need to connect to 'postgres' database to create a new database
-    const bootstrapDb = new Sequelize({
-      database: "postgres",
-      username: user,
-      password: pass,
-      host,
-      port,
-      dialect,
-      logging: false,
-    });
-
-    try {
-      await bootstrapDb.authenticate();
-
-      const results = await bootstrapDb.query(
-        "SELECT 1 FROM pg_database WHERE datname = ?;",
-        {
-          replacements: [dbName],
-          type: QueryTypes.SELECT,
-        },
-      );
-
-      if (results.length === 0) {
-        await bootstrapDb.query(`CREATE DATABASE "${dbName}";`);
-        logger.info(`Database "${dbName}" created (PostgreSQL).`);
-      } else {
-        logger.info(`Database "${dbName}" already exists (PostgreSQL).`);
-      }
-
-      try {
-        await bootstrapDb.close();
-      } catch {
-        // Ignore close errors
-      }
-      return true;
-    } catch (error) {
-      logger.warn(`Database creation failed: ${error.message}`);
-      try {
-        await bootstrapDb.close();
-      } catch {
-        // Ignore close errors
-      }
-      // Continue anyway - the main connection will handle errors
-      return true;
-    }
-  }
-
-  // For MySQL, create database if not exists
+  // PostgreSQL: Need to connect to 'postgres' database to create a new database
   const bootstrapDb = new Sequelize({
-    database: dbName,
+    database: "postgres",
     username: user,
     password: pass,
     host,
@@ -183,10 +131,21 @@ async function createDatabaseIfNotExists() {
 
   try {
     await bootstrapDb.authenticate();
-    await bootstrapDb.query(
-      `CREATE DATABASE IF NOT EXISTS \`${dbName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;`,
+
+    const results = await bootstrapDb.query(
+      "SELECT 1 FROM pg_database WHERE datname = ?;",
+      {
+        replacements: [dbName],
+        type: QueryTypes.SELECT,
+      },
     );
-    logger.info(`Database "${dbName}" created or already exists (MySQL).`);
+
+    if (results.length === 0) {
+      await bootstrapDb.query(`CREATE DATABASE "${dbName}";`);
+      logger.info(`Database "${dbName}" created (PostgreSQL).`);
+    } else {
+      logger.info(`Database "${dbName}" already exists (PostgreSQL).`);
+    }
 
     try {
       await bootstrapDb.close();
@@ -201,6 +160,7 @@ async function createDatabaseIfNotExists() {
     } catch {
       // Ignore close errors
     }
+    // Continue anyway - the main connection will handle errors
     return true;
   }
 }

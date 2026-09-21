@@ -105,7 +105,7 @@ Contrast `audit_logs`, protected by having no delete path at all. Under 21 CFR P
 
 **Definition of Done**
 - [ ] a script failing any diff that adds a `router.<verb>` call with no permission gate
-- [ ] wired into `pre-push` and `make verify`
+- [ ] wired into `make verify` **and** a real hook or pipeline — no `pre-push` hook exists yet, whatever older documents say
 - [ ] **tested both directions**: a gated route passes, an ungated one fails
 - [ ] documented exemptions for the public endpoints, listed explicitly
 

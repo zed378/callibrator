@@ -14,7 +14,7 @@ Almost everything here is currently **absent rather than incomplete**. Saying so
 | **Depends on** | **P6-01** — do not build a pipeline around a failing gate |
 | **Spec refs** | `docs/DEVOPS/01-CI-CD.md` |
 
-**Why:** the gates currently run in `pre-push` and `make verify`. A local hook can be bypassed with `--no-verify`; a pipeline cannot.
+**Why:** there is no automatic gate at all. **⚠ Corrected 2026-09-21 — there is no `pre-push` hook.** The repository has no `.husky/`, no `lefthook`, no `simple-git-hooks`, no `core.hooksPath`, and `.git/hooks/` holds only git's samples. The IDOR enforcement script this card referred to does not exist either: `backend/scripts/` contains only documentation generators. The only gate runner is `make verify`, which a developer must remember to type — and which could not run on the Windows workstation where this repository is developed, because `make` is not installed there.
 
 The risk of deferring CI was recorded and is real: skipping it would have silently returned the zero-tolerance IDOR rule to being a sentence in a document — **its enforcement script had no caller other than a pipeline that did not exist.**
 

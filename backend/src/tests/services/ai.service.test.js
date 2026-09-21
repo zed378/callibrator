@@ -307,10 +307,10 @@ describe("ai.service", () => {
     it("joins retrieved chunks into the context", async () => {
       const settings = [{ key: "ai_api_key", value: "sk-key" }];
       TenantSettings.findAll.mockResolvedValue(settings);
-      db.getDialect.mockReturnValue("sqlite");
-      DocumentChunk.findAll.mockResolvedValue([
-        { content: "chunk A" },
-        { content: "chunk B" },
+      // PostgreSQL only (ADR-039): retrieval is always the pgvector search.
+      db.query.mockResolvedValue([
+        { content: "chunk A", similarity: "0.9" },
+        { content: "chunk B", similarity: "0.8" },
       ]);
       axios.post
         .mockResolvedValueOnce({ data: { data: [{ embedding: [0.1] }] } })
@@ -363,8 +363,7 @@ describe("ai.service", () => {
       expect(DocumentChunk.destroy).not.toHaveBeenCalled();
     });
 
-    it("replaces prior chunks and stores embeddings on postgres via raw SQL", async () => {
-      db.getDialect.mockReturnValue("postgres");
+    it("replaces prior chunks and stores embeddings via raw SQL", async () => {
       TenantSettings.findAll.mockResolvedValue([{ key: "ai_api_key", value: "sk-key" }]);
       axios.post.mockResolvedValue({ data: { data: [{ embedding: [0.1, 0.2] }] } });
 
@@ -382,21 +381,6 @@ describe("ai.service", () => {
       expect(result.chunks).toBe(1);
     });
 
-    it("uses the ORM on non-postgres engines", async () => {
-      db.getDialect.mockReturnValue("sqlite");
-      TenantSettings.findAll.mockResolvedValue([{ key: "ai_api_key", value: "sk-key" }]);
-      axios.post.mockResolvedValue({ data: { data: [{ embedding: [0.1] }] } });
-
-      const result = await aiService.ingestDocument("t1", {
-        sourceType: "Sop",
-        sourceId: "s1",
-        content: "hello world",
-      });
-
-      expect(DocumentChunk.create).toHaveBeenCalled();
-      expect(result.chunks).toBe(1);
-    });
-
     it("skips chunks whose embedding cannot be generated", async () => {
       TenantSettings.findAll.mockResolvedValue([]); // no API key => embedding null
       const result = await aiService.ingestDocument("t1", {
@@ -411,8 +395,7 @@ describe("ai.service", () => {
 
   // ================================================================
   describe("retrieveContext", () => {
-    it("runs a pgvector similarity search on postgres", async () => {
-      db.getDialect.mockReturnValue("postgres");
+    it("runs a tenant-scoped pgvector similarity search", async () => {
       db.query.mockResolvedValue([
         { content: "a", similarity: "0.9" },
         { content: "b", similarity: "0.5" },
@@ -421,19 +404,15 @@ describe("ai.service", () => {
       const rows = await aiService.retrieveContext("t1", [0.1, 0.2], 3);
 
       expect(db.query.mock.calls[0][0]).toContain("embedding <=> $1::vector");
+      // Raw SQL bypasses the tenant hooks, so the predicate must be explicit
+      // and bound — this is the highest-risk isolation surface in the system.
+      expect(db.query.mock.calls[0][0]).toContain("tenant_id = $2");
+      expect(db.query.mock.calls[0][1].bind).toEqual([JSON.stringify([0.1, 0.2]), "t1", 3]);
       expect(rows).toEqual([
         { content: "a", similarity: 0.9 },
         { content: "b", similarity: 0.5 },
       ]);
     });
 
-    it("falls back to recent chunks on non-postgres engines", async () => {
-      db.getDialect.mockReturnValue("sqlite");
-      DocumentChunk.findAll.mockResolvedValue([{ content: "x" }]);
-
-      const rows = await aiService.retrieveContext("t1", [0.1]);
-
-      expect(rows).toEqual([{ content: "x", similarity: null }]);
-    });
   });
 });

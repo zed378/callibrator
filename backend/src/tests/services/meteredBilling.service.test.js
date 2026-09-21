@@ -76,10 +76,15 @@ describe("meteredBillingService", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     clearCache();
-    // jest.config has clearMocks:true / resetMocks:false, so mockReturnValue
-    // survives between tests. Pin the dialect back to the non-postgres default
-    // here so a test that opts into "postgres" cannot leak into the next one.
-    db.getDialect.mockReturnValue("sqlite");
+    // PostgreSQL only (ADR-039): getUsage reads persisted usage through a raw
+    // SQL aggregate, so db.query is the single source of it. Default to "no
+    // persisted usage"; tests that need usage feed rows here.
+    db.query.mockResolvedValue([]);
+    // generateUsageReport probes the table with UsageMetric.findAll before it
+    // aggregates. resetMocks is false, so a mockRejectedValue set by an earlier
+    // test would otherwise leak into every later one and send the report down
+    // its "table unreachable" early return.
+    UsageMetric.findAll.mockResolvedValue([]);
     process.env.USAGE_ENABLED = "true";
     process.env.USAGE_TTL_DAYS = "90";
     process.env.USAGE_AGGREGATION_HOURS = "1";
@@ -161,7 +166,7 @@ describe("meteredBillingService", () => {
     });
 
     it("should handle database errors gracefully", async () => {
-      UsageMetric.findAll.mockRejectedValue(new Error("DB connection failed"));
+      db.query.mockRejectedValue(new Error("DB connection failed"));
 
       const result = await getUsage("tenant-1", "api_calls");
 
@@ -194,7 +199,7 @@ describe("meteredBillingService", () => {
 
   describe("checkQuota", () => {
     it("should return quota status when under limit", async () => {
-      UsageMetric.findAll.mockResolvedValue([]);
+      db.query.mockResolvedValue([]);
 
       const result = await checkQuota("tenant-1", "api_calls", 10000);
 
@@ -206,12 +211,8 @@ describe("meteredBillingService", () => {
     });
 
     it("should return quota exceeded when over limit", async () => {
-      // Mock usage that exceeds the limit
-      const mockRecord = {
-        count: 15000,
-        periodStart: new Date(),
-      };
-      UsageMetric.findAll.mockResolvedValue([mockRecord]);
+      // Persisted usage that exceeds the limit
+      db.query.mockResolvedValue([{ period: "2024-03-01", total: "15000" }]);
 
       const result = await checkQuota("tenant-1", "api_calls", 10000);
 
@@ -222,7 +223,7 @@ describe("meteredBillingService", () => {
     });
 
     it("should handle zero limit gracefully", async () => {
-      UsageMetric.findAll.mockResolvedValue([]);
+      db.query.mockResolvedValue([]);
 
       const result = await checkQuota("tenant-1", "api_calls", 0);
 
@@ -498,11 +499,7 @@ describe("meteredBillingService", () => {
   // COVERAGE — getUsage
   // ==========================================
 
-  describe("getUsage — postgres dialect", () => {
-    beforeEach(() => {
-      db.getDialect.mockReturnValue("postgres");
-    });
-
+  describe("getUsage — PostgreSQL aggregate", () => {
     it("should aggregate the raw SQL results", async () => {
       db.query.mockResolvedValue([
         { period: "2024-01-02", total: "30" },
@@ -511,8 +508,12 @@ describe("meteredBillingService", () => {
 
       const result = await getUsage("tenant-1", "api_calls", { days: 7 });
 
+      // Regression: this used to assert `replacements`, which locked in the
+      // bug. `$1`-style placeholders are BIND parameters; passed as
+      // replacements, real PostgreSQL answers "there is no parameter $1" and
+      // getUsage silently returned zero usage for every tenant.
       expect(db.query).toHaveBeenCalledWith(expect.stringContaining("UsageMetrics"), {
-        replacements: ["tenant-1", "api_calls", 7],
+        bind: ["tenant-1", "api_calls", 7],
         type: "SELECT",
       });
       expect(result.total).toBe(42);
@@ -537,7 +538,7 @@ describe("meteredBillingService", () => {
 
       await getUsage("tenant-1", "api_calls");
 
-      expect(db.query.mock.calls[0][1].replacements).toEqual([
+      expect(db.query.mock.calls[0][1].bind).toEqual([
         "tenant-1",
         "api_calls",
         30,
@@ -564,33 +565,6 @@ describe("meteredBillingService", () => {
     });
   });
 
-  describe("getUsage — non-postgres dialect", () => {
-    it("should sum record counts and format periods as ISO dates", async () => {
-      UsageMetric.findAll.mockResolvedValue([
-        { count: 10, periodStart: new Date("2024-03-02T05:00:00.000Z") },
-        { count: 5, periodStart: new Date("2024-03-01T05:00:00.000Z") },
-      ]);
-
-      const result = await getUsage("tenant-1", "api_calls", { days: 7 });
-
-      expect(result.total).toBe(15);
-      expect(result.history).toEqual([
-        { period: "2024-03-02", count: 10 },
-        { period: "2024-03-01", count: 5 },
-      ]);
-    });
-
-    it("should treat a record with no count as zero", async () => {
-      UsageMetric.findAll.mockResolvedValue([
-        { count: null, periodStart: new Date("2024-03-01T05:00:00.000Z") },
-      ]);
-
-      const result = await getUsage("tenant-1", "api_calls");
-
-      expect(result.total).toBe(0);
-    });
-  });
-
   // ==========================================
   // COVERAGE — quota enforcement / overage
   // ==========================================
@@ -599,9 +573,7 @@ describe("meteredBillingService", () => {
     const { logger } = require("../../middlewares/activityLog.middleware");
 
     const exceedingUsage = () =>
-      UsageMetric.findAll.mockResolvedValue([
-        { count: 500, periodStart: new Date("2024-03-01T00:00:00.000Z") },
-      ]);
+      db.query.mockResolvedValue([{ period: "2024-03-01", total: "500" }]);
 
     it("should suspend a free-tier tenant that blows its quota", async () => {
       PlanQuota.findAll.mockResolvedValue([{ metric: "api_calls", limit: 100 }]);
@@ -666,9 +638,7 @@ describe("meteredBillingService", () => {
 
     it("should not touch the tenant when every quota is respected", async () => {
       PlanQuota.findAll.mockResolvedValue([{ metric: "api_calls", limit: 10000 }]);
-      UsageMetric.findAll.mockResolvedValue([
-        { count: 5, periodStart: new Date("2024-03-01T00:00:00.000Z") },
-      ]);
+      db.query.mockResolvedValue([{ period: "2024-03-01", total: "5" }]);
 
       const result = await enforceQuotas("tenant-1");
 
@@ -679,9 +649,7 @@ describe("meteredBillingService", () => {
 
   describe("checkQuota — percentage", () => {
     it("should cap the reported percentage at 100", async () => {
-      UsageMetric.findAll.mockResolvedValue([
-        { count: 500, periodStart: new Date("2024-03-01T00:00:00.000Z") },
-      ]);
+      db.query.mockResolvedValue([{ period: "2024-03-01", total: "500" }]);
 
       const result = await checkQuota("tenant-1", "api_calls", 100);
 
@@ -690,9 +658,7 @@ describe("meteredBillingService", () => {
     });
 
     it("should report a partial percentage under the limit", async () => {
-      UsageMetric.findAll.mockResolvedValue([
-        { count: 25, periodStart: new Date("2024-03-01T00:00:00.000Z") },
-      ]);
+      db.query.mockResolvedValue([{ period: "2024-03-01", total: "25" }]);
 
       const result = await checkQuota("tenant-1", "api_calls", 100);
 
@@ -706,7 +672,7 @@ describe("meteredBillingService", () => {
     });
 
     it("should add the in-memory counter to the persisted total", async () => {
-      UsageMetric.findAll.mockResolvedValue([]);
+      db.query.mockResolvedValue([]);
       UsageMetric.findOrCreate.mockResolvedValue([{ save: jest.fn() }, true]);
       await trackUsage("tenant-1", "api_calls", 7);
 
@@ -722,10 +688,7 @@ describe("meteredBillingService", () => {
 
   describe("generateUsageReport — populated metrics", () => {
     it("should build trends and roll up the summary", async () => {
-      UsageMetric.findAll.mockResolvedValue([
-        { count: 11, periodStart: new Date("2024-03-02T00:00:00.000Z") },
-        { count: 22, periodStart: new Date("2024-03-01T00:00:00.000Z") },
-      ]);
+      db.query.mockResolvedValue([{ period: "2024-03-02", total: "11" }, { period: "2024-03-01", total: "22" }]);
 
       const report = await generateUsageReport("tenant-1", 30);
 
@@ -742,10 +705,10 @@ describe("meteredBillingService", () => {
     });
 
     it("should keep only the last 7 points of the trend", async () => {
-      UsageMetric.findAll.mockResolvedValue(
+      db.query.mockResolvedValue(
         Array.from({ length: 10 }, (_, i) => ({
-          count: i,
-          periodStart: new Date(`2024-03-${String(i + 1).padStart(2, "0")}T00:00:00.000Z`),
+          period: `2024-03-${String(i + 1).padStart(2, "0")}`,
+          total: String(i),
         })),
       );
 
@@ -755,7 +718,7 @@ describe("meteredBillingService", () => {
     });
 
     it("should default to a 30-day window", async () => {
-      UsageMetric.findAll.mockResolvedValue([]);
+      db.query.mockResolvedValue([]);
 
       const report = await generateUsageReport("tenant-1");
 
@@ -794,32 +757,20 @@ describe("meteredBillingService", () => {
   // COVERAGE — resetUsage
   // ==========================================
 
-  describe("resetUsage — dialects", () => {
-    it("should clear the in-memory counter and the ORM rows on non-postgres", async () => {
-      db.getDialect.mockReturnValue("sqlite");
+  describe("resetUsage — PostgreSQL", () => {
+    it("clears the in-memory counter and deletes the rows with bind parameters", async () => {
       UsageMetric.findOrCreate.mockResolvedValue([{ save: jest.fn() }, true]);
-      UsageMetric.destroy.mockResolvedValue(1);
       await trackUsage("tenant-1", "api_calls", 5);
 
       await resetUsage("tenant-1", "api_calls");
 
-      expect(UsageMetric.destroy).toHaveBeenCalledWith({
-        where: { tenantId: "tenant-1", metric: "api_calls" },
-      });
-      expect(getStatus().storeSize).toBe(0);
-    });
-
-    it("should issue a DELETE statement on postgres", async () => {
-      db.getDialect.mockReturnValue("postgres");
-      db.query.mockResolvedValue([]);
-
-      await resetUsage("tenant-1", "api_calls");
-
+      // `bind`, not `replacements` — see the getUsage regression note.
       expect(db.query).toHaveBeenCalledWith(
         expect.stringContaining('DELETE FROM "UsageMetrics"'),
-        { replacements: ["tenant-1", "api_calls"] },
+        { bind: ["tenant-1", "api_calls"] },
       );
       expect(UsageMetric.destroy).not.toHaveBeenCalled();
+      expect(getStatus().storeSize).toBe(0);
     });
   });
 });

@@ -699,7 +699,7 @@ The deny branch resolves to `tenantId = '00000000-0000-0000-0000-000000000000'` 
 
 **The rule to carry forward:** an isolation mechanism whose "no context" branch **permits** rather than denies is not an isolation mechanism.
 
-**Status:** Accepted
+**Status:** Accepted — **the isolation mechanism stands**; the engine-agnostic premise ("the platform must also run on MySQL") is **superseded by ADR-039**. MySQL was reason 1 of 3 for removing RLS; reasons 2 and 3 still hold.
 
 ---
 
@@ -729,7 +729,7 @@ The type-safety argument is real and was weighed against that. It lost on cost, 
 - Frontend API types are **hand-written** — a belief about the API, not a guarantee. Contract tests and the live suite are what keep them honest.
 - JSDoc on exported functions is the only type information the backend has, which raises its value.
 
-**Status:** Accepted
+**Status:** **Superseded by ADR-038** (2026-09-21). Kept verbatim: it records why the migration was rejected once, and ADR-038 answers each of those reasons rather than ignoring them.
 
 ---
 
@@ -876,6 +876,163 @@ draft --submit--> pending_approval --approve--> approved --sign--> signed --revo
 
 ---
 
+## ADR-038: The Backend Moves to TypeScript, Strict, Incrementally
+
+**Supersedes ADR-030.** Date: 2026-09-21. Decided by the project owner.
+
+**Decision:** The backend is migrated from JavaScript/CommonJS to **TypeScript with the strictest practical compiler and lint settings**, incrementally, leaf-first, on a ratchet that only moves one way. The work is planned in [`../TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`](../TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md).
+
+**Until the migration completes, the code is still JavaScript.** Every backend document states its TypeScript content as the **target standard** and names current behaviour as as-built. Writing the target as if it were already true is PR-4 — the exact failure ADR-030 was written to correct — and is not permitted.
+
+### Why now, when ADR-030 rejected it on cost
+
+ADR-030's reasoning was sound for the question it answered. The 2026-09 audit changed the inputs:
+
+| ADR-030 said | What the audit found since |
+|---|---|
+| type safety lost on **cost, not merit** | the defects found this month are overwhelmingly the kind a type checker rejects: `req.body.roleId` on an `undefined` body, `db` destructured from a barrel that exports `sequelize`, `res.query` read where `req.query` was meant, `$1` placeholders passed as `replacements` |
+| the codebase is **working, tested** | 5,746 tests passed while those defects shipped, and one test asserted the `replacements` bug as correct behaviour. Mocked tests prove the client, not the contract |
+| incremental `allowJs` produces a codebase that is **neither, for a long time** | true, and accepted with three mitigations: a strict order, a ratchet, and a rule that conversion never changes behaviour |
+
+### The compiler settings
+
+`strict: true`, and on top of it:
+
+```jsonc
+{
+  "noUncheckedIndexedAccess": true,       // arr[i] is T | undefined
+  "exactOptionalPropertyTypes": true,     // { a?: string } does not accept a: undefined
+  "noImplicitOverride": true,
+  "noImplicitReturns": true,
+  "noFallthroughCasesInSwitch": true,
+  "noPropertyAccessFromIndexSignature": true,
+  "noUnusedLocals": true,
+  "noUnusedParameters": true,
+  "isolatedModules": true,
+  "forceConsistentCasingInFileNames": true,
+  "allowJs": true,                        // removed when Phase 9 closes
+  "checkJs": false
+}
+```
+
+`useUnknownInCatchVariables` comes with `strict`: every `catch (e)` is `unknown` and must be narrowed.
+
+**`verbatimModuleSyntax` is deliberately off during the migration.** It is incompatible with emitting CommonJS from `import` syntax, and emitting CommonJS is required (below). The `consistent-type-imports` lint rule provides most of its value. Revisit with the ESM decision.
+
+### The lint rules that make "strict" mean something
+
+`typescript-eslint` `strictTypeChecked` + `stylisticTypeChecked`, with these as **errors**:
+
+| Rule | Why it is non-negotiable here |
+|---|---|
+| `no-explicit-any` | `any` switches the checker off silently, which is worse than no checker because it looks like one |
+| `no-unsafe-assignment`, `-member-access`, `-call`, `-return`, `-argument` | contain the `any` that arrives from untyped dependencies |
+| `no-floating-promises`, `no-misused-promises` | an un-awaited audit write, or an async Express handler whose rejection nobody catches |
+| `switch-exhaustiveness-check` | certificate, transfer and CAPA state machines: a new state must fail compilation everywhere it is not handled |
+| `no-non-null-assertion` | `!` is a runtime crash the author promised would not happen |
+| `ban-ts-comment` | `@ts-ignore` banned; `@ts-expect-error` only with a written reason |
+| `consistent-type-assertions` (`objectLiteralTypeAssertions: never`) | `{...} as User` builds an object the checker never verified |
+| `explicit-module-boundary-types` | exported functions declare their return types — the types are the documentation JSDoc used to be |
+| `no-restricted-properties` on `process.env` outside `src/config/` | configuration is parsed and validated once, not read raw in 40 places |
+
+### Decisions inside the decision
+
+| Area | Choice | Alternative rejected, and why |
+|---|---|---|
+| Module output | **CommonJS** emitted from `import` syntax (`"module": "Node16"`, package stays `"type": "commonjs"`) | ESM now: two migrations at once, and `@yao-pkg/pkg` packages CommonJS reliably. ESM is a later, separate ADR |
+| Runtime validation | **Zod**, replacing Joi module by module; the schema is the single source of the runtime check **and** the request type | keep Joi: its types do not flow into handlers, so `req.body` stays unchecked at compile time |
+| Models | Sequelize 6 native typing — `Model<InferAttributes<M>, InferCreationAttributes<M>>` with `declare` fields | `sequelize-typescript` decorators: `experimentalDecorators`, a second model DSL, and 72 models to rewrite rather than annotate |
+| Express types | `@types/express` 5; `req.user`, `req.tenantId`, `req.requestId` added by declaration merging in `src/types/express.d.ts` | casting `req as AuthedRequest` per handler — what `consistent-type-assertions` exists to stop |
+| Raw SQL | a typed `sql()` helper that accepts **only** `bind` parameters and a result row type | free-form `db.query`: the `replacements`/`$1` mismatch is exactly what an untyped options bag lets through |
+| Tests | **Jest 30 stays**, transformed by `@swc/jest`; the 100% coverage gate stays | Vitest: a second migration alongside the first, across 342 test files |
+| Dev runtime | `tsx` for `dev` and scripts | `ts-node`: slower, and its module handling is the part most likely to fight `allowJs` |
+| Build | `tsc -p tsconfig.build.json` → `dist/`, then `pkg dist/index.js` | `bun build --compile`: already a second, unmaintained build path (`build:bun`); it is removed |
+| Shared contracts | a `packages/contracts` workspace holding the Zod schemas, consumed by the frontend | hand-written frontend API types: ADR-030 called them "a belief about the API, not a guarantee" |
+
+### Three rules that keep the dual state survivable
+
+1. **Order.** Leaf-first: `types` and `constants` → `utils` → `config` → `models` → `validators` → `services` → `middlewares` → `controllers` → `routes` → `index`. A file is converted only when everything it imports already is, so a `.ts` file never depends on an untyped `.js` one.
+2. **Ratchet.** `scripts/ts-ratchet` counts `.js` files under `backend/src` and fails if the count rises. New backend code is TypeScript from the day this ADR is accepted. The count only goes down.
+3. **Conversion never changes behaviour.** A conversion PR changes types, syntax and imports — nothing else. When the checker exposes a bug, the bug is fixed in its **own** PR against an audit task (`TASKS/AUDIT-2026-09-REMEDIATION.md`). A conversion that also fixes three bugs cannot be reviewed as either.
+
+### Alternatives considered
+
+- **Stay on JavaScript; adopt JSDoc with `checkJs` (ADR-030's open option).** Cheaper, and it catches a meaningful share of the same defects. Rejected by the owner: JSDoc cannot express much of what strict TypeScript enforces — exhaustiveness, `noUncheckedIndexedAccess`, branded types — and keeps `any` one missing annotation away.
+- **Big-bang rewrite.** Rejected on risk, as in ADR-030.
+- **Port to a different language.** A Go port was explored in a separate checkout; none of it is in this repository. Rejected: it discards tested domain logic rather than typing it.
+- **ESM and TypeScript together.** Rejected; see module output above.
+
+### Implications, including the bad ones
+
+- **A long dual state.** Roughly 300 source files and 342 test files. Two conventions coexist until the ratchet reaches zero, and reviewers must know which rules apply to which file.
+- **Security fixes do not wait for types.** The cross-tenant write on `tenant-hierarchy` and the unguarded configuration routes found in the audit are fixed **in JavaScript, first** (`AUDIT-2026-09`, wave 0). A months-long migration is not a reason to leave a live hole open.
+- **The build gets a step.** `tsc` before `pkg`, and the Dockerfile changes. A broken type build now blocks a release — which is the point.
+- **Tests get slower** by the transform cost; `@swc/jest` keeps it small.
+- **Coverage must not dip.** Each conversion runs the full suite, not just its own tests.
+- **Every backend document carries a target-vs-current banner** until Phase 9 closes. Removing a banner is part of finishing the module it describes.
+
+**Status:** Accepted
+
+---
+
+## ADR-039: PostgreSQL Is the Only Supported Database
+
+**Supersedes the engine-agnostic premise of ADR-029.** The ORM-layer, deny-by-default tenant isolation of ADR-029 stands unchanged. Date: 2026-09-21. Decided by the project owner.
+
+**Decision:** PostgreSQL 17 with the `pgvector` extension is the only supported database. MySQL support is removed from code, configuration and documentation. `DB_DIALECT` is no longer required; any value other than `postgres` refuses to start.
+
+### Why
+
+MySQL support was a claim, not a capability. The 2026-09 audit found:
+
+| Evidence | Consequence on MySQL |
+|---|---|
+| `mysql2` is **not a dependency** of the backend | Sequelize cannot load the dialect at all — the stack never starts |
+| `search.service.js` uses `tsvector`, `plainto_tsquery`, `ILIKE` and double-quoted identifiers | search fails, falls back, fails again, and **returns an empty list with no error** |
+| `webhooks.events` is `JSONB` matched with `Op.contains` | webhook fan-out cannot run |
+| `ai.service.js#retrieveContext` had a non-pgvector branch | it returned the five most **recent** chunks as "context" — confident answers from the wrong documents |
+| `meteredBilling.service.js` had one branch per engine | the PostgreSQL branch was the broken one (`$1` passed as `replacements`), so production silently read every tenant's usage as **zero** while the MySQL branch — which never ran — was correct |
+
+That last row is the real cost of a phantom second engine: each feature is written twice, only one copy runs, and the tests exercise whichever copy their mock happened to pick.
+
+### What changed in the code
+
+| File | Change |
+|---|---|
+| `src/config/index.js` | dialect fixed to `postgres`; `DB_DIALECT` optional and validated; MySQL config and bootstrap branch removed |
+| `src/services/meteredBilling.service.js` | single PostgreSQL path, placeholders passed as **`bind`** — fixes the zero-usage defect |
+| `src/services/ai.service.js` | single pgvector path; the recency fallback is gone |
+| `src/services/gdpr.service.js` | a dialect ternary with identical branches removed |
+
+Deliberately **not** changed:
+
+- **Applied migrations** (`0012`, `0015`, `0018`) keep their dialect guards. A migration that has run is history; rewriting it changes nothing on existing databases and invites divergence on new ones.
+- **`sessionSecurity.middleware.js`** still contains dialect branches because it is **dead code** — imported by nothing, and its SQL targets a `"Sessions"` table that does not exist. It is scheduled for deletion or correct wiring in the audit remediation, not edited in place.
+
+### What PostgreSQL-only now permits
+
+These were avoided, or worked around, to stay engine-agnostic. They are now ordinary tools — each still needs its own decision:
+
+- recursive CTEs (the materialised path in `tenant_hierarchies` was chosen because "CTE support differs");
+- partial and expression indexes, `JSONB` operators, generated columns, `tsvector` search as a first-class feature;
+- `REVOKE UPDATE, DELETE` on `calibration_records` and `audit_logs` — the append-only guarantee as a grant, not a convention (PR-2);
+- **Row Level Security as defence in depth.** ADR-029 removed RLS for three reasons: MySQL, a fail-open policy branch, and per-request cost. Only the first is gone. RLS is therefore an **open decision**, not an automatic return.
+
+### Alternatives considered
+
+- **Make MySQL genuinely work** — add `mysql2`, port search to `MATCH ... AGAINST`, replace `JSONB`/`Op.contains`, find a vector store. Rejected: significant work for a deployment target no customer has asked for, and a permanent tax of two implementations per feature.
+- **Keep the claim, document it as unsupported.** Rejected: a documented-but-false capability is what PR-4 warns about.
+
+### Implications
+
+- **One engine to test against.** The live E2E suite and any future CI run against `pgvector/pgvector:pg17`, and PostgreSQL-specific SQL no longer needs a fallback.
+- **Raw SQL remains the isolation risk it always was** (ADR-029): every `db.query` carries its tenant predicate explicitly, bound as a parameter.
+- **Existing deployments are unaffected** — they are all PostgreSQL.
+
+**Status:** Accepted
+
+---
+
 ## Open Decisions
 
 Recorded so a future reader can tell whether their idea was evaluated and rejected, or genuinely never considered.
@@ -887,7 +1044,9 @@ Recorded so a future reader can tell whether their idea was evaluated and reject
 | Mandatory MFA for role level 10 | should happen (PR-3) |
 | A build guard failing any route without a permission gate | should happen — the most likely authorization defect has no mechanism against it |
 | Post-migration column verification | should happen — a blanket-catch migration is recorded as applied while doing nothing |
-| JSDoc with `checkJs` on the backend | open — buys editor-level checking without a rewrite (ADR-030) |
+| JSDoc with `checkJs` on the backend | **closed** — superseded by strict TypeScript (ADR-038) |
+| ESM for the backend | open — deliberately deferred until the TypeScript migration completes (ADR-038) |
+| Row Level Security as defence in depth | **open** — PostgreSQL-only (ADR-039) removes one of ADR-029's three reasons against it; the fail-open risk and per-request cost remain |
 | Partitioning `iot_readings` and `audit_logs` | deferred until retention alone stops being enough |
 | A read replica for reporting | deferred until reporting measurably affects operational p95 |
 | A rotation procedure for `CERT_SIGNING_SECRET` and `ENCRYPT_KEY` | **open, and cheap to design in advance** — neither is practically rotatable today, so "rotate the key" is not currently an available incident response |

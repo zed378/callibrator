@@ -153,7 +153,7 @@ async function exportTenantData(exportDir, tenantId, userId) {
       const Model = require("../models")[table];
       if (Model) {
         const records = await Model.findAll({
-          where: db.getDialect() === "postgres" ? { tenantId } : { tenantId },
+          where: { tenantId },
           limit: 1000,
           raw: true,
         });

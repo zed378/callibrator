@@ -46,10 +46,10 @@ ARCHIVE/        — superseded documents, kept for provenance, never authoritati
 | Dimension | Reality |
 |---|---|
 | Backend | Express.js (**JavaScript, CommonJS** — not TypeScript) + Sequelize ORM |
-| Database | PostgreSQL **or** MySQL — engine-agnostic by design (see ADR-029) |
+| Database | PostgreSQL 17 + pgvector, only (ADR-039). The engine-agnostic premise of ADR-029 was dropped; its tenant-isolation mechanism stands |
 | Frontend | Next.js 16 · React 19 · TypeScript · Tailwind CSS 4 · Zustand |
 | Realtime | Socket.IO both ends (see ADR-031) |
-| Infrastructure | Redis · RabbitMQ · MQTT (aedes) · ClamAV · pgvector |
+| Infrastructure | Redis · RabbitMQ · MQTT (client, external broker) · ClamAV · pgvector |
 | Modules | 33 functional backend modules, 53 mounted route modules |
 | Scale of code | 72 models · 76 services · 56 controllers · 37 validators · 21 middlewares |
 | Compliance | ISO 17025 · FDA 21 CFR Part 11 · ISO 13485 · GDPR · KARS · SNARS |

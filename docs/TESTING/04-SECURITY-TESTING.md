@@ -166,12 +166,11 @@ remove a permission gate        → the authorization test fails
 
 | Moment | Runs |
 |---|---|
-| `pre-push` | secret scan, IDOR enforcement script |
-| `make verify` | the same, plus lint, types, unit, build |
+| `pre-push` | **nothing — no hook exists**, and neither does a secret scanner or an IDOR enforcement script |
+| `make verify` | lint, types, unit, build — run by hand |
 | `make test-e2e` | the live IDOR sweep and authorization negatives |
 | Before a release | everything, plus the unwaivable set **named** in the release record |
 
-The secret scanner works: on its first run it flagged the project's own JWT test fixture.
 
 ## Not Yet Done
 

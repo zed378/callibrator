@@ -266,7 +266,7 @@ npm run dev
 | `DB_NAME`            | Database name        | `callibrator`            |
 | `DB_USER`            | Database user        | `callibrator`            |
 | `DB_PASS`            | Database password    | -                        |
-| `DB_DIALECT`         | PostgreSQL/MySQL     | `postgres`               |
+| `DB_DIALECT`         | optional, `postgres` only (ADR-039) | `postgres` |
 | `DB_SSL`             | Enable SSL           | `false`                  |
 | `REDIS_URL`          | Redis connection     | `redis://localhost:6379` |
 | `JWT_ACCESS_SECRET`  | Access token secret  | **required**             |

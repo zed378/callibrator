@@ -124,7 +124,7 @@ Two defects fixed here that generalise:
 | DELETE | `/:tenantId/parent` | detach |
 | GET | `/cross-tenant-roles` | roles spanning tenants |
 
-Backed by `tenant_hierarchies` with a materialised `path` and `depth`, so ancestor and descendant queries are a prefix match rather than recursion — required because the platform must also run on MySQL.
+Backed by `tenant_hierarchies` with a materialised `path` and `depth`, so ancestor and descendant queries are a prefix match rather than recursion — chosen when the platform had to run on MySQL. *(Chosen while MySQL was a target. PostgreSQL-only (ADR-039) now permits recursive CTEs; the materialised path stands until a decision changes it.)*
 
 **Hierarchy does not grant visibility.** A parent tenant does not automatically see child data; the tenant predicate is still exact-match. Cross-tenant visibility needs an explicit, audited path.
 

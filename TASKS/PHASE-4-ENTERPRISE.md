@@ -25,7 +25,7 @@ SAML and OIDC as a relying party with per-tenant callbacks, an OIDC **provider**
 
 **What shipped:** `tenants.parentId` (migration `0013`) plus `tenant_hierarchies` materialising `path` and `depth`.
 
-**A materialised path rather than recursive CTEs**, because the platform must also run on MySQL and CTE support differs. Ancestor and descendant queries become prefix matches.
+**A materialised path rather than recursive CTEs**, because the platform then had to run on MySQL and CTE support differs. Ancestor and descendant queries become prefix matches. *(Chosen while MySQL was a target. PostgreSQL-only (ADR-039) now permits recursive CTEs; the materialised path stands until a decision changes it.)*
 
 **Hierarchy does not grant visibility.** A parent tenant does **not** automatically see child data — the tenant predicate is still exact-match on `tenantId`. Cross-tenant visibility for a group needs an explicit, audited path; it is not a side effect of the hierarchy.
 

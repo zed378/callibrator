@@ -6,19 +6,15 @@ Table-by-table detail is in [`../DATABASE/`](../DATABASE/00-DATA-MODEL.md). This
 
 ## Engine-Agnostic by Constraint
 
-The platform runs on **PostgreSQL or MySQL** (`DB_DIALECT`). That is not a nice-to-have; it is a customer requirement from on-premise hospital deployments that already run a MySQL estate and will not add a second engine.
+**PostgreSQL 17 with `pgvector` is the only supported database (ADR-039).** This section previously said the platform ran on PostgreSQL or MySQL as a customer requirement. It could not: `mysql2` was never a dependency, so a MySQL deployment could not even start, and search, webhooks and RAG were PostgreSQL-only in SQL.
 
-ADR-029 records it, and it is the reason for several decisions that look strange in isolation:
-
-| Consequence | Why |
+| Designed around MySQL | Status now |
 |---|---|
-| Tenant isolation lives in the ORM, not in Row Level Security | RLS is PostgreSQL-only |
-| `tenant_hierarchies` materialises `path` and `depth` | recursive CTE support and syntax differ |
-| Sequelize rather than a query builder or raw SQL | dialect abstraction is the point |
-| No `GENERATED ALWAYS AS` columns — `rpn` and `overallScore` are Sequelize `VIRTUAL` | computed-column syntax differs |
-| pgvector features **degrade** rather than differ | MySQL has no equivalent |
+| materialised path in `tenant_hierarchies` instead of a recursive CTE | stands; recursive CTEs now allowed |
+| `VIRTUAL` columns (`risks.rpn`, `supplier_scorecards.overallScore`) instead of generated columns | stands; generated columns now allowed |
+| ORM-layer tenant isolation instead of RLS (ADR-029) | **stands** — MySQL was one of three reasons; the fail-open policy and per-request cost remain. RLS as defence in depth is an open decision |
 
-pgvector is the honest exception. `document_chunks.embedding` is `vector(1536)` and migration `0018` runs `CREATE EXTENSION vector`. On MySQL the AI/RAG module is unavailable. That is a documented capability difference, not a portability claim.
+pgvector is required: `document_chunks.embedding` is `vector(1536)` and retrieval is a tenant-scoped cosine-distance search. The former non-PostgreSQL branch — which returned the five most *recent* chunks as "context" regardless of relevance — was removed with MySQL support (ADR-039).
 
 The compose stack therefore uses `pgvector/pgvector:pg17`, not `postgres:17-alpine` — plain Postgres lacks the extension and migration `0018` fails.
 

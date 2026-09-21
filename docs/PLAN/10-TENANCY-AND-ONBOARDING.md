@@ -32,7 +32,7 @@ A hospital group with member hospitals is modelled as a parent tenant with child
 | `path` | materialised ancestor path, indexed |
 | `depth` | distance from root |
 
-A materialised path rather than recursive CTEs, because the platform must run on MySQL as well as PostgreSQL (ADR-029) and recursive CTE support differs.
+A materialised path rather than recursive CTEs, because the platform had to run on MySQL as well as PostgreSQL (ADR-029) and recursive CTE support differs. *(Chosen while MySQL was a target. PostgreSQL-only (ADR-039) now permits recursive CTEs; the materialised path stands until a decision changes it.)*
 
 **Isolation is not inherited.** A parent tenant does not automatically see child tenant data; the tenant predicate is still exact-match on `tenantId`. Cross-tenant visibility for a group requires an explicit, audited path — it is not a side effect of the hierarchy.
 

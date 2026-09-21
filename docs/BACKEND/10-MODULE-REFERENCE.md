@@ -1,7 +1,7 @@
 # Hospital Device Calibration (HDC) — Backend Module Documentation
 
 > **Product:** Enterprise multi-tenant hospital medical-device calibration platform
-> **Stack:** Express.js · Sequelize ORM · PostgreSQL **or** MySQL · Redis · RabbitMQ · Socket.IO
+> **Stack:** Express.js · Sequelize ORM · PostgreSQL (only — ADR-039) · Redis · RabbitMQ · Socket.IO
 > **Compliance targets:** ISO 17025, FDA 21 CFR Part 11, ISO 13485, GDPR
 > **API base:** `/api/v1/*` · **Docs:** Swagger UI (`/api-docs`), OpenAPI (`swagger.json`)
 > **Generated:** 2026-07-15 — from direct static analysis of `backend/src`

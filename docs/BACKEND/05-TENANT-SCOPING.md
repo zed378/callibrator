@@ -97,7 +97,7 @@ RLS was implemented (migration `0012`) and removed (migration `0015`, ADR-029). 
 
 | Reason | |
 |---|---|
-| **Engine lock-in** | RLS is PostgreSQL-only; the platform must also run on MySQL. An isolation mechanism existing on one engine is not an isolation mechanism. |
+| **Engine lock-in** | RLS is PostgreSQL-only, and the platform then had to run on MySQL. *(Dropped by ADR-039 — PostgreSQL is now the only engine, so this reason no longer applies; the two below still do.)* |
 | **Fail-open policy** | `app.current_tenant = ''` matched every row |
 | **Cost** | two round-trips and a wrapping transaction per authenticated request |
 

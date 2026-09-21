@@ -16,7 +16,7 @@ These cannot be waived by anyone. A release that fails one of them does not ship
 | AC-2 | An authenticated principal with no resolvable tenant sees zero rows | Direct test of the deny branch in `tenantScope.util.js`, including the `NO_TENANT_UUID` predicate |
 | AC-3 | Every mutation writes an audit row with actor, before and after | Sweep asserting an `audit_logs` row per mutating endpoint |
 | AC-4 | Non-existent, soft-deleted and not-yours all return the same status | Otherwise the status code leaks existence across the tenant boundary |
-| AC-5 | No secret appears in the repository, in logs, or in an error response | Secret scanner in the pre-push gate; log redaction test |
+| AC-5 | No secret appears in the repository, in logs, or in an error response | **No mechanism yet** — no secret scanner or hook exists; log redaction test |
 | AC-6 | Rate limiting is active on auth, OTP and global paths | Live assertion of 429 with `X-RateLimit-*` headers |
 | AC-7 | Uploads are rejected when the scanner errors, unless `VIRUS_SCAN_FAIL_OPEN` is explicitly set | Test with ClamAV unreachable |
 | AC-8 | A suspended tenant cannot make any authenticated request | Test using a **disposable** tenant, never the default |

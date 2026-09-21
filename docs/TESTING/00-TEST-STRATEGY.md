@@ -126,7 +126,7 @@ Both learned by breaking things.
 | Backend coverage gate | **passing** (2026-09-11) |
 | Live E2E | every fix verified **individually**; **no clean full-suite pass in one uninterrupted run** |
 | Browser suite | passing, with two deliberately retained expected-failure markers |
-| CI | **deferred** — gates run in `pre-push` and `make verify` |
+| CI | **deferred** — no `pre-push` hook exists either; `make verify` is manual |
 
 A suite that has never passed as a suite has not passed. Saying so is more useful than a status report that rounds up.
 
