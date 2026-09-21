@@ -15,6 +15,7 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ### Fixed
 
+- **Self-registration, passkeys and the OIDC provider were broken in production.** Every helper in `redis.service.js` guarded on `client.connected` — a node-redis v3 property that **ioredis does not have** — so each returned early while Redis was up and healthy: no cache write, no lock, no WebAuthn challenge, no OIDC authorization request ever stored. Verified live before the fix: `POST /auth/register` answered **429 "Registration in progress"** even for a duplicate, and `POST /webauthn/registration-options` answered **503**. The unit test's ioredis mock fabricated a `connected` getter, so the suite stayed green; the getter is gone. Readiness is now `client.status === "ready"`. (A-24)
 - **Metered billing read every tenant's usage as zero in production.** `getUsage` and `resetUsage` passed `$1`-style placeholders as Sequelize `replacements`, which only substitutes `?` / `:name`. PostgreSQL answered `there is no parameter $1` on every call — proven against a real PostgreSQL 17 — and `getUsage`'s `catch` turned that into `{ total: 0 }`. The MySQL branch beside it was correct and never ran; the test for the PostgreSQL branch asserted `replacements` as correct behaviour. Now `bind`.
 - **RAG no longer answers from the wrong documents on a non-pgvector engine** — the recency fallback is removed with MySQL.
 

@@ -38,6 +38,23 @@ const getRedisConnection = () => {
   return redis;
 };
 
+/**
+ * Whether the shared client can serve commands right now.
+ *
+ * ioredis exposes readiness as `client.status === "ready"`. It has NO
+ * `connected` property — that was node-redis v3. Every helper below used to
+ * guard on that missing property, which is always `undefined` on ioredis, so
+ * each one returned early: nothing was ever cached, no lock was ever acquired,
+ * and no WebAuthn challenge or OIDC authorization request was ever stored. On
+ * production that surfaced as registration answering 429 "Registration in
+ * progress" to everyone, passkeys answering 503, and the OIDC provider's
+ * authorization flow failing — all while Redis was up and healthy.
+ *
+ * @param {import("ioredis").Redis | null} client
+ * @returns {boolean}
+ */
+const isReady = (client) => Boolean(client) && client.status === "ready";
+
 // ==========================================
 // INITIALIZE REDIS
 // ==========================================
@@ -45,8 +62,12 @@ const getRedisConnection = () => {
 const initRedis = async () => {
   try {
     const client = getRedisConnection();
-    if (!client.connected) {
-      await client.connect();
+    if (!isReady(client)) {
+      // lazyConnect: true leaves the client in "wait"; connect() from any other
+      // state (connecting/reconnecting) throws "already connecting".
+      if (client.status === "wait" || client.status === "end") {
+        await client.connect();
+      }
       // Wait for ready state
       await new Promise((resolve) => {
         if (client.status === "ready") {
@@ -80,7 +101,7 @@ const initRedis = async () => {
 const get = async (key) => {
   try {
     const client = getRedisConnection();
-    if (!client || !client.connected) {return null;}
+    if (!isReady(client)) {return null;}
 
     const value = await client.get(key);
     if (!value) {return null;}
@@ -106,7 +127,7 @@ const get = async (key) => {
 const set = async (key, value, ttl = 300) => {
   try {
     const client = getRedisConnection();
-    if (!client || !client.connected) {return false;}
+    if (!isReady(client)) {return false;}
 
     const serialized =
       typeof value === "string" ? value : JSON.stringify(value);
@@ -126,7 +147,7 @@ const set = async (key, value, ttl = 300) => {
 const del = async (key) => {
   try {
     const client = getRedisConnection();
-    if (!client || !client.connected) {return false;}
+    if (!isReady(client)) {return false;}
 
     await client.del(key);
     return true;
@@ -144,7 +165,7 @@ const del = async (key) => {
 const delPattern = async (pattern) => {
   try {
     const client = getRedisConnection();
-    if (!client || !client.connected) {return 0;}
+    if (!isReady(client)) {return 0;}
 
     let deleted = 0;
     let cursor = "0";
@@ -184,7 +205,7 @@ const delPattern = async (pattern) => {
 const acquireLock = async (key, ttl = 5000) => {
   try {
     const client = getRedisConnection();
-    if (!client || !client.connected) {return null;}
+    if (!isReady(client)) {return null;}
 
     const lockKey = `lock:${key}`;
     const lockId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -217,7 +238,7 @@ const acquireLock = async (key, ttl = 5000) => {
 const releaseLock = async (key, lockId) => {
   try {
     const client = getRedisConnection();
-    if (!client || !client.connected) {return false;}
+    if (!isReady(client)) {return false;}
 
     const lockKey = `lock:${key}`;
     const script = `
