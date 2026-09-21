@@ -168,46 +168,32 @@ exports.getUsage = async (tenantId, metric, options = {}) => {
     let total;
     let history = [];
 
-    if (db.getDialect() === "postgres") {
-      const query = `
-        SELECT 
-          TO_CHAR("periodStart", 'YYYY-MM-DD') as period,
-          SUM(count) as total
-        FROM "UsageMetrics"
-        WHERE "tenantId" = $1 AND metric = $2
-        AND "periodStart" >= NOW() - ($3 || ' days')::interval
-        GROUP BY "periodStart"
-        ORDER BY "periodStart" DESC
-      `;
-      const results = await db.query(query, {
-        replacements: [tenantId, metric, days],
-        type: db.QueryTypes.SELECT,
-      });
+    // PostgreSQL only (ADR-039). `bind`, not `replacements`: `$1`-style
+    // placeholders are bind parameters, and Sequelize's `replacements` only
+    // substitutes `?` / `:name`. Passed as replacements, PostgreSQL answered
+    // "there is no parameter $1" on every call — and the catch below turned
+    // that into { total: 0 }, so every tenant's usage read as ZERO in
+    // production with nothing but a log line to show for it.
+    const query = `
+      SELECT
+        TO_CHAR("periodStart", 'YYYY-MM-DD') as period,
+        SUM(count) as total
+      FROM "UsageMetrics"
+      WHERE "tenantId" = $1 AND metric = $2
+      AND "periodStart" >= NOW() - ($3 || ' days')::interval
+      GROUP BY "periodStart"
+      ORDER BY "periodStart" DESC
+    `;
+    const results = await db.query(query, {
+      bind: [tenantId, metric, days],
+      type: db.QueryTypes.SELECT,
+    });
 
-      total = results.reduce((sum, r) => sum + parseInt(r.total || 0), 0);
-      history = results.map((r) => ({
-        period: r.period,
-        count: parseInt(r.total || 0),
-      }));
-    } else {
-      const { UsageMetric } = require("../models");
-      const records = await UsageMetric.findAll({
-        where: {
-          tenantId,
-          metric,
-          periodStart: {
-            [db.Sequelize.Op.gte]: new Date(Date.now() - days * 86400000),
-          },
-        },
-        order: [["periodStart", "DESC"]],
-      });
-
-      total = records.reduce((sum, r) => sum + (r.count || 0), 0);
-      history = records.map((r) => ({
-        period: r.periodStart.toISOString().split("T")[0],
-        count: r.count,
-      }));
-    }
+    total = results.reduce((sum, r) => sum + parseInt(r.total || 0), 0);
+    history = results.map((r) => ({
+      period: r.period,
+      count: parseInt(r.total || 0),
+    }));
 
     // Add in-memory counter
     const current = usageStore.get(tenantId, metric);
@@ -665,17 +651,11 @@ exports.getAnalytics = async (tenantId, period = "30d") => {
 exports.resetUsage = async (tenantId, metric) => {
   usageStore.reset(tenantId, metric);
 
-  if (db.getDialect() === "postgres") {
-    await db.query(
-      `DELETE FROM "UsageMetrics" WHERE "tenantId" = $1 AND metric = $2`,
-      { replacements: [tenantId, metric] },
-    );
-  } else {
-    const { UsageMetric } = require("../models");
-    await UsageMetric.destroy({
-      where: { tenantId, metric },
-    });
-  }
+  // PostgreSQL only (ADR-039); `bind` for `$n` placeholders — see getUsage.
+  await db.query(
+    `DELETE FROM "UsageMetrics" WHERE "tenantId" = $1 AND metric = $2`,
+    { bind: [tenantId, metric] },
+  );
 
   logger.info("Usage counters reset", { tenantId, metric });
 };

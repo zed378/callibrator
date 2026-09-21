@@ -24,7 +24,7 @@
         ▼          ▼          ▼                ▼          ▼          ▼
   ┌──────────┐ ┌───────┐ ┌──────────┐  ┌────────────┐ ┌───────┐ ┌────────┐
   │ Postgres │ │ Redis │ │ RabbitMQ │  │ Object     │ │ MQTT  │ │ ClamAV │
-  │ or MySQL │ │       │ │          │  │ storage    │ │aedes  │ │        │
+  │ pgvector │ │       │ │          │  │ storage    │ │mqtt   │ │        │
   │ +pgvector│ │       │ │          │  │ local|s3|  │ │(embed)│ │        │
   │          │ │       │ │          │  │ nfs        │ │       │ │        │
   └──────────┘ └───────┘ └──────────┘  └────────────┘ └───────┘ └────────┘
@@ -44,28 +44,9 @@ The cost is a single deployable and a single failure domain, both accepted (PR-1
 
 ### The database engine is not assumed
 
-The platform runs on PostgreSQL **or** MySQL (ADR-029). That single constraint explains several decisions that otherwise look odd:
+**PostgreSQL is the only supported database (ADR-039).** The platform was designed for PostgreSQL *or* MySQL (ADR-029), and several schema choices still show it — a materialised path instead of recursive CTEs, `VIRTUAL` columns instead of generated ones. Those designs stand until a decision changes them; they are no longer required.
 
-| Decision | Why |
-|---|---|
-| Tenant isolation in the ORM, not RLS | RLS is Postgres-only |
-| Materialised `path` in `tenant_hierarchies`, not recursive CTEs | CTE support and syntax differ |
-| Sequelize rather than raw SQL | dialect abstraction |
-| pgvector features degrade rather than fail | MySQL has no equivalent |
-
-pgvector is the honest exception: the AI/RAG module needs it, so on MySQL that module is unavailable rather than differently-implemented.
-
-### Both halves compile to binaries
-
-| Surface | Toolchain | Output |
-|---|---|---|
-| Backend | `@yao-pkg/pkg`, Node 24 | single Linux/Windows executable |
-| Frontend | `bun build --compile` via `next-bun-compile` | single Linux executable |
-
-Distribution to on-premise hospital environments where a Node toolchain is not welcome. It has two consequences that reach into the code:
-
-1. **Assets are read from disk next to the binary, not from the embedded snapshot.** `swagger.json`, `src/templates`, and `docs/` must be copied into the runtime image explicitly, or the API runs and then fails on first PDF or first email.
-2. **Puppeteer cannot use its bundled Chromium.** `PUPPETEER_EXECUTABLE_PATH` must point at a system browser.
+The MySQL claim was never a capability: `mysql2` was not a dependency, and search, webhooks and RAG used PostgreSQL-only SQL. pgvector is required: `document_chunks.embedding` is `vector(1536)` and retrieval is a tenant-scoped cosine-distance search. The former non-PostgreSQL branch — which returned the five most *recent* chunks as "context" regardless of relevance — was removed with MySQL support (ADR-039). Full-text search is [`../SEARCH/02-FULL-TEXT.md`](../SEARCH/02-FULL-TEXT.md); webhook fan-out is [`../WEBHOOK/00-WEBHOOK-ARCHITECTURE.md`](../WEBHOOK/00-WEBHOOK-ARCHITECTURE.md).
 
 ## Request Pipeline
 

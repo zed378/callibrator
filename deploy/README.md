@@ -49,7 +49,7 @@ The base compose file is **not deployable on its own** — it has no port publis
 CERT_SIGNING_SECRET   ENCRYPT_KEY   ATTACHMENT_URL_SECRET   KMS_MASTER_KEY
 ```
 
-**`KMS_MASTER_KEY` was found by deploying**, not by reading anything: it was absent from `.env.example` and from the configuration document. `src/services/kms.service.js` throws at module load in production, and the failure is easy to misread — the container crash-loops and `docker logs` shows **nothing**, because winston is already configured by the time it throws and the error goes only to `log/activity/exception/<date>.log`.
+**`KMS_MASTER_KEY` was found by deploying**, not by reading anything: it was absent from `.env.example` and from the configuration document. `src/services/kms.service.js` throws at module load in production, and the failure is easy to misread — the container crash-loops and `docker logs` shows **nothing**, because **in production the application writes nothing to stdout at all**: `activityLog.middleware.js` adds winston's Console transport only when `NODE_ENV !== "production"`, and winston's `exceptionHandlers` catch the throw and write it to `log/activity/exception/<date>.log`. (An earlier version of this document blamed the timing of winston's initialisation. The real cause is general, not specific to this secret — see [`../docs/OBSERVABILITY/01-LOGGING.md`](../docs/OBSERVABILITY/01-LOGGING.md).)
 
 Read that file first when a container exits silently.
 

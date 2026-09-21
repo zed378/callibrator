@@ -105,7 +105,7 @@ This table is the personnel-competence evidence that ISO 17025 and ISO 13485 bot
 | `identifiedBy`, `assignedTo` | `UUID` | both **nullable** |
 | `dueDate` | `DATE` | |
 
-`rpn` is `VIRTUAL` rather than a generated column because generated-column syntax differs between PostgreSQL and MySQL.
+`rpn` is `VIRTUAL` rather than a generated column because generated-column syntax differs between PostgreSQL and MySQL. *(Chosen while MySQL was a target. PostgreSQL-only (ADR-039) now permits `GENERATED ALWAYS AS ... STORED`; `VIRTUAL` stands until a decision changes it — and it has the merit of never disagreeing with its inputs.)*
 
 Storing it would allow it to disagree with its own inputs after an edit, and there would then be no way to tell which is right.
 

@@ -60,7 +60,7 @@ RLS was implemented (migration `0012`) and removed (migration `0015`, ADR-029). 
 
 | Reason | Detail |
 |---|---|
-| **Engine lock-in** | RLS is PostgreSQL-only. The platform must also run on MySQL. An isolation mechanism that exists on one engine is not an isolation mechanism. |
+| **Engine lock-in** | RLS is PostgreSQL-only, and the platform then had to run on MySQL. *(Dropped by ADR-039. With one engine, RLS as **defence in depth** beneath the ORM hooks is an open decision — the fail-open and cost reasons below still apply.)* |
 | **Fail-open policy** | `app.current_tenant = ''` matched **every row**. A request arriving without the session variable set saw everything. |
 | **Cost** | Two round-trips and a wrapping transaction per authenticated request, to set and reset the GUC. |
 

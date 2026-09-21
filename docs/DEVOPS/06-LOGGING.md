@@ -9,8 +9,10 @@
 | `accessLog` | `accessLog.middleware.js` | every request |
 | `activityLog` | `activityLog.middleware.js` | user activity |
 | **`audit_logs`** | `auditLog.middleware.js` | the **compliance trail** — a database table |
-| stdout | the application | operational logs |
-| `./log` volume | file output | |
+| stdout | **nothing in production** | winston's Console transport is added only when `NODE_ENV !== "production"` |
+| `./log` volume | every log the application writes | `log/access/` (morgan) and `log/activity/{combined,error,exception,rejection}/` (winston) |
+
+**In production `docker logs` is empty by design of the code, not by accident of the deployment.** Every log line goes to files. See [`../OBSERVABILITY/01-LOGGING.md`](../OBSERVABILITY/01-LOGGING.md) for what that costs and what is lost.
 
 ## `audit_logs` Is Not a Log
 
@@ -138,17 +140,17 @@ Log the **full** error server-side. Return the safe one.
 
 ## Rotation
 
-The `./log` volume needs rotation. An unrotated log fills the disk, and a full disk stops writes — including `audit_logs`, which is the one thing that must never fail to write.
+Rotation is built in: winston uses `winston-daily-rotate-file` (20 MB per file, 30 days, gzipped) and the access log uses `rotating-file-stream` (daily, 30 days, gzip). Rotation bounds file count, not disk: the volume still needs monitoring, because a full disk stops writes — including `audit_logs`, which is the one thing that must never fail to write.
 
-| Log | Retention |
+| Log | Retention (as coded) |
 |---|---|
-| Access | 30 days |
-| Application | 30 days |
-| Activity | 90 days |
+| Access (`log/access/`) | 30 days |
+| Activity combined / error (`log/activity/`) | 30 days |
+| Exception / rejection | **no `maxFiles` — unbounded** |
 | **`audit_logs`** | **indefinite — a compliance decision, not an ops one** |
 
 ## Aggregation
 
-Not currently in place. Logs live in container stdout and the `./log` volume.
+Not currently in place. Logs live **only** in the `./log` volume — not stdout — so a collector that reads container output collects nothing.
 
-Structured JSON logging and shipping is in [`../../TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md). Whatever ships them must not undo the redaction — an aggregator with its own parsing can re-expose a field the application redacted, and a leak into a third-party log store is a leak.
+The winston logs are already JSON. Shipping them is in [`../../TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md). Whatever ships them must not undo the redaction — an aggregator with its own parsing can re-expose a field the application redacted, and a leak into a third-party log store is a leak.

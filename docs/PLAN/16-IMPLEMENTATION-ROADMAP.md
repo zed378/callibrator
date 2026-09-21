@@ -26,7 +26,7 @@ Each of these is an ADR in [`../../MEMORY/DECISIONS.md`](../../MEMORY/DECISIONS.
 | Planned | Actual | ADR |
 |---|---|---|
 | TypeScript backend, strict mode | **JavaScript, CommonJS** | ADR-030 |
-| PostgreSQL only | PostgreSQL **or** MySQL | ADR-029 |
+| PostgreSQL only | PostgreSQL **or** MySQL, then back to **PostgreSQL only** | ADR-029, ADR-039 |
 | Row Level Security for tenant isolation | ORM-layer scoping, deny-by-default | ADR-029 |
 | Kubernetes-first deployment | Docker Compose first, Helm charts available | ADR-032 |
 | OIDC as the only auth | password + JWT primary; OIDC as RP **and** OP | ADR-033 |

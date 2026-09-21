@@ -26,7 +26,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 > KMS_MASTER_KEY must be set in production (64-char hex / 32-byte key).
 > Refusing to start with the insecure development master key.
 
-That refusal is right. What was wrong is that **nothing named the variable**, and its failure mode defeats the obvious diagnosis: the container crash-loops with an **empty `docker logs`**, because winston is already configured by the time it throws and the message lands only in `log/activity/exception/<date>.log`.
+That refusal is right. What was wrong is that **nothing named the variable**, and its failure mode defeats the obvious diagnosis: the container crash-loops with an **empty `docker logs`**, because **in production the application writes nothing to stdout at all**: `activityLog.middleware.js` adds winston's Console transport only when `NODE_ENV !== "production"`, and winston's `exceptionHandlers` catch the throw and write it to `log/activity/exception/<date>.log`.
 
 A fail-fast list is a document as much as it is code. One is worth nothing without the other.
 
@@ -159,4 +159,4 @@ The last two are the ones to think about before an incident rather than during o
 | Compose | `env_file`, or the shell environment |
 | Kubernetes | Secrets, optionally external via a secrets operator |
 
-`.gitignore` covers `.env`, `*.pem`, `*.key`, `*.cert`. A secret scanner in the pre-push gate is the mechanical backstop — and on its first run it flagged the project's own JWT test fixture, which is the kind of finding that proves the scanner works.
+`.gitignore` covers `.env`, `*.pem`, `*.key`, `*.cert`. **There is no secret scanner.** An earlier version of this document described one running in a `pre-push` gate and flagging a JWT fixture; neither the scanner nor the hook exists. `.gitignore` is currently the only control, and it only helps with files named as expected. Adding gitleaks (or equivalent) to a real hook and to CI is recorded in `TASKS/BACKLOG.md`.

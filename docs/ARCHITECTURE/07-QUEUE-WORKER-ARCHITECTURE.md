@@ -147,8 +147,6 @@ Management UI on 15672.
 
 ## MQTT Is Separate
 
-IoT telemetry ingest uses an **embedded** `aedes` MQTT broker inside the Express process (`MQTT_HOST`, `MQTT_PORT`), not RabbitMQ.
+IoT telemetry is not on RabbitMQ. **The backend is an MQTT *client*, not a broker.** When both `MQTT_HOST` and `MQTT_PORT` are set, `src/services/iot.service.js` connects to an **external** broker and subscribes to `device/#`; with either unset it logs `IoT MQTT Broker not configured` and MQTT ingest is off. `aedes` and `aedes-server-factory` sit in `package.json` and are referenced by no code — earlier documentation described an embedded broker that was never built.
 
-Embedding it means a hospital deployment does not need a separate broker to accept device telemetry — which matters in an on-premise install where every additional service is a procurement conversation.
-
-The trade-off: the MQTT broker scales with the API process and does not survive its restart. For telemetry, where a dropped reading is a gap in a trend rather than lost evidence, that is acceptable. It would not be acceptable for anything on the calibration path.
+A hospital that wants MQTT therefore has to run its own broker; the HTTP ingest path (`POST /api/v1/iot/ingest`) needs nothing extra. For telemetry, where a dropped reading is a gap in a trend rather than lost evidence, a disconnected client is acceptable. It would not be acceptable for anything on the calibration path.

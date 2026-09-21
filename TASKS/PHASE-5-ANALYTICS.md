@@ -29,11 +29,13 @@ Large exports run as **batch jobs**. Export is itself audited — `audit_logs.ac
 |---|---|
 | **Status** | ✅ DONE |
 
-**What shipped:** `iot_readings` (migration `0010`), ingest over HTTP **and over an embedded `aedes` MQTT broker inside the Express process**.
+**What shipped:** `iot_readings` (migration `0010`), ingest over HTTP, and optional MQTT ingest.
 
-**Embedding the broker is unusual and deliberate.** A hospital deployment does not need a separate broker to accept device telemetry, which matters where every additional service is a procurement conversation.
+**⚠ Corrected 2026-09-21 — there is no embedded broker.** This card previously said the backend embedded an `aedes` MQTT broker inside the Express process. It does not. **The backend is an MQTT *client*, not a broker.** When both `MQTT_HOST` and `MQTT_PORT` are set, `src/services/iot.service.js` connects to an **external** broker and subscribes to `device/#`; with either unset it logs `IoT MQTT Broker not configured` and MQTT ingest is off. `aedes` and `aedes-server-factory` sit in `package.json` and are referenced by no code — earlier documentation described an embedded broker that was never built.
 
-The trade-off: it scales with the API process and does not survive its restart. For telemetry — where a dropped reading is a gap in a trend, not lost evidence — that is acceptable. It would not be acceptable on the calibration path.
+On the reference deployment MQTT is **off** (`MQTT_PORT` set, `MQTT_HOST` not), while the compose overlay still publishes `0.0.0.0:19883` on the backend container — a public port with nothing behind it.
+
+For telemetry — where a dropped reading is a gap in a trend, not lost evidence — a disconnected client is acceptable. It would not be acceptable on the calibration path.
 
 **`isAnomaly` is computed at ingest**, against `calibration_devices.readingTolerance`. Anomaly detection that runs at query time cannot alert, which defeats the purpose.
 
@@ -71,7 +73,9 @@ The trade-off: it scales with the API process and does not survive its restart. 
 
 **This is why compose uses `pgvector/pgvector:pg17`** rather than plain `postgres:17-alpine`.
 
-**It is the honest exception to engine-agnosticism.** On MySQL the module is **unavailable** rather than differently implemented — a documented capability difference, not a portability claim.
+**⚠ Corrected 2026-09-21.** This card said that on MySQL the module is unavailable. It was not — a non-pgvector branch returned the five most recent chunks as context, regardless of relevance. That branch was removed with MySQL support (ADR-039); RAG is PostgreSQL + pgvector only.
+
+The docstring on `chunkText` also promises "overlapping chunks"; the implementation packs whole paragraphs up to 1,000 characters and hard-splits oversized ones, with **no overlap**.
 
 **⚠ The highest-risk isolation surface in the system.** Vector similarity search does **not** scope itself. A retrieval omitting the tenant predicate returns another hospital's documents as context and paraphrases them into an answer — **with no error, and nothing in the response marking where the content came from**.
 
@@ -167,7 +171,7 @@ Building a warehouse now would be infrastructure to maintain, a second copy of t
 
 ## Phase 5 — Retrospective
 
-**What shipped beyond plan:** the entire quality-management surface, the workflow engine, Kanban, the support desk, pgvector RAG, and an embedded MQTT broker.
+**What shipped beyond plan:** the entire quality-management surface, the workflow engine, Kanban, the support desk, pgvector RAG, and optional MQTT ingest as a client of an external broker.
 
 **What did not ship, deliberately:** the data lake.
 

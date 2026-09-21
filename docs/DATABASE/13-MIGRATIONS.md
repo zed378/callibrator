@@ -41,7 +41,7 @@ Row Level Security was added and then removed three migrations later.
 
 Why it was removed (ADR-029):
 
-1. **RLS is PostgreSQL-only.** The platform must also run on MySQL, and an isolation mechanism that exists on one engine is not an isolation mechanism.
+1. **RLS is PostgreSQL-only.** The platform then had to run on MySQL, and an isolation mechanism that exists on one engine is not an isolation mechanism. *(That requirement was dropped by ADR-039; the other two reasons stand.)*
 2. **The policy had a fail-open branch.** `app.current_tenant = ''` matched **every row**. A request arriving without the session variable set saw everything.
 3. It cost two round-trips and a wrapping transaction per authenticated request, to set and reset the GUC.
 
@@ -96,7 +96,7 @@ A post-migration assertion step comparing expected columns against `information_
 3. **Expand and contract for anything breaking.** Add the new column, backfill, switch the code, then drop the old column in a later migration. One migration that renames a column in place breaks every running instance during the deploy.
 4. **Test on an empty database and on a copy of production data.** The two fail differently: empty catches ordering, populated catches constraint violations against real values.
 5. **Verify the resulting columns.** See above.
-6. **Consider MySQL.** `CREATE EXTENSION`, `JSONB` and generated-column syntax are not portable. `0018` is PostgreSQL-only by necessity; anything else that is should be a deliberate decision with an ADR.
+6. **PostgreSQL only (ADR-039).** `CREATE EXTENSION`, `JSONB`, generated columns and `tsvector` are all fair game — no portability shim, no dialect branch. **Never edit an applied migration** to remove its old dialect guard; write a new one if behaviour must change. (Formerly: "consider MySQL". Anything PostgreSQL-only used to need a deliberate decision with an ADR.
 
 ## Running Migrations in a Deployed Container
 

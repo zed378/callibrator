@@ -67,7 +67,7 @@ Every agent, regardless of role, is bound by these. They are not role-specific b
 
 **Knows before touching anything:**
 
-- The platform runs on PostgreSQL **or MySQL**. `CREATE EXTENSION`, `JSONB` and generated-column syntax are not portable.
+- The platform runs on **PostgreSQL only** (ADR-039). PostgreSQL features — `JSONB`, `tsvector`, generated columns, recursive CTEs, `CREATE EXTENSION` — are allowed, but raw SQL still carries its tenant predicate explicitly, as a **bound** parameter (`bind`, never `replacements` for `$n`).
 - **The Umzug context IS the QueryInterface.**
 - **A blanket `try/catch` marks a migration applied while doing nothing.**
 - Expand-and-contract for anything breaking. A rename in place breaks every running instance mid-deploy.

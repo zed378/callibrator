@@ -108,7 +108,7 @@ The abstraction already exists — this is a configuration change plus a migrati
 - [ ] partitioned by date
 - [ ] `(device_id, timestamp)` queries still use an index — the pair is how every query reads it
 - [ ] retention drops partitions rather than deleting rows
-- [ ] MySQL behaviour considered, or the divergence recorded
+- [ ] PostgreSQL-native (ADR-039) — no MySQL consideration needed
 
 ---
 

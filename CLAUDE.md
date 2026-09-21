@@ -21,10 +21,10 @@ Everything below is grounded in the code as of 2026-09-10. If you find a claim h
 | | |
 |---|---|
 | Backend | **Express, JavaScript, CommonJS** — *not TypeScript* (ADR-030) |
-| Database | PostgreSQL **or MySQL** (ADR-029) |
+| Database | **PostgreSQL 17 + pgvector, only** (ADR-039) — MySQL support was removed |
 | Frontend | Next.js 16 · React 19 · TypeScript · Tailwind 4 · Zustand |
 | Realtime | Socket.IO, both ends (ADR-031) |
-| Infra | Redis · RabbitMQ · embedded MQTT · ClamAV · pgvector |
+| Infra | Redis · RabbitMQ · MQTT client (external broker, optional) · ClamAV · pgvector |
 | Scale | 33 modules · 53 route modules · 72 models · 342 test files |
 | Compliance | ISO 17025 · FDA 21 CFR Part 11 · ISO 13485 · GDPR · KARS · SNARS |
 
@@ -181,7 +181,7 @@ Do not round these up. `TASKS/BACKLOG.md` § Unverified Claims lists all six of 
 ```bash
 make help          # every target
 make dev           # local stack
-make verify        # the pre-push gate
+make verify        # the gate — manual; no hook or CI runs it
 make test-e2e      # 53 live specs, running server required
 make migrate       # then: make migrate-verify — the log is not evidence
 ```

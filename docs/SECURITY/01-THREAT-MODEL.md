@@ -86,7 +86,7 @@ The **malicious tenant administrator** is the most under-considered. They are tr
 | T26 | Request flooding | global limiter, 30s timeout, 10 MB bodies | **the non-production limit is 100,000/15 min and must never reach production** |
 | T27 | Expensive report queries | batch jobs for large exports | reporting runs on the operational database (PR-10) |
 | T28 | Upload exhaustion | quota enforced pre-handler | |
-| T29 | IoT ingest flood | embedded broker shares the API process | a telemetry flood degrades the API |
+| T29 | IoT ingest flood | HTTP ingest and the MQTT client both run in the API process | a telemetry flood degrades the API |
 | T30 | Redis loss disabling brute-force protection | Redis is a required dependency with a health check | **the outage window permits duplicates and unthrottled attempts** |
 | T31 | Self-inflicted lockout via IP allowlist | — | **open**: no in-product recovery; confirm against the caller's address before applying |
 

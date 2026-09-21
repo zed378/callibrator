@@ -45,7 +45,7 @@ Export is an audited action in its own right — `audit_logs.action` includes `E
 
 `iot_readings`: `deviceId`, `timestamp`, `metrics` (JSONB), `isAnomaly`. Indexed on `(device_id, timestamp)` as a pair, because every query is "this device, this window".
 
-Ingest is over MQTT — the backend embeds an `aedes` broker (`MQTT_HOST`, `MQTT_PORT`) — and over `/api/v1/iot`. Devices authenticate with `calibration_devices.iotDeviceToken`, gated by `iotEnabled` (migration `0010`).
+Ingest is over `/api/v1/iot`, and optionally over MQTT, where the backend is a **client** of an external broker (`MQTT_HOST`, `MQTT_PORT`) — no broker is embedded. Devices authenticate with `calibration_devices.iotDeviceToken`, gated by `iotEnabled` (migration `0010`).
 
 `isAnomaly` is computed against `calibration_devices.readingTolerance` (JSONB) at ingest, not at query time. Anomaly detection that runs at read time cannot alert.
 

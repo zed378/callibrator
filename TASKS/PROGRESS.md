@@ -53,7 +53,7 @@ Each has a phase file written **retrospectively**, naming the divergences, the d
 
 ### Shipped beyond the original plan
 
-QMS (non-conformances, CAPA, SOP) · risk register · vendor scorecards · workflow engine · GDPR and retention · IoT telemetry with an embedded MQTT broker · feature flags · network security · metered billing · batch jobs · Kanban tracker · support desk · pluggable object storage.
+QMS (non-conformances, CAPA, SOP) · risk register · vendor scorecards · workflow engine · GDPR and retention · IoT telemetry over HTTP and optional MQTT (client of an external broker) · feature flags · network security · metered billing · batch jobs · Kanban tracker · support desk · pluggable object storage.
 
 ---
 
@@ -135,7 +135,7 @@ QMS (non-conformances, CAPA, SOP) · risk register · vendor scorecards · workf
 | `pnpm build` | ✅ |
 | Live E2E, one uninterrupted run | 🔴 **never achieved** |
 | Browser suite | ✅ with two deliberately retained expected-failure markers |
-| CI pipeline | ⚪ **deferred** — gates run in `pre-push` and `make verify` |
+| CI pipeline | ⚪ **deferred** — and there is **no `pre-push` hook** either, despite earlier claims; `make verify` is the only runner and must be invoked by hand |
 | Helm charts | 🟡 **render; not cluster-validated** |
 | Compose stacks | ✅ all three overlays validate |
 | Makefile | 🟡 **static checks only** — `make` unavailable on the authoring machine |

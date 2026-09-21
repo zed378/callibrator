@@ -109,7 +109,7 @@ The rule from [`../PLAN/08-DOMAIN-MODEL.md`](../PLAN/08-DOMAIN-MODEL.md): **gove
 | `audit_logs.resourceId` | `STRING`, not `UUID` | some audited resources are not UUID-keyed |
 | `audit_logs.changes` | `JSONB` | before and after |
 
-`VIRTUAL` rather than a generated column because generated-column syntax differs between PostgreSQL and MySQL.
+`VIRTUAL` rather than a generated column because generated-column syntax differs between PostgreSQL and MySQL. *(Chosen while MySQL was a target. PostgreSQL-only (ADR-039) now permits `GENERATED ALWAYS AS ... STORED`; `VIRTUAL` stands until a decision changes it — and it has the merit of never disagreeing with its inputs.)*
 
 ## Two Sequelize Traps
 

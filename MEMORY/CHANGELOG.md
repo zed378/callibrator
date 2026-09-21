@@ -8,6 +8,26 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### Decided
+
+- **ADR-039 — PostgreSQL is the only supported database.** MySQL support was a claim, never a capability: `mysql2` was not a dependency, and search, webhooks and RAG used PostgreSQL-only SQL. The dialect is now fixed in `src/config/index.js`; any other `DB_DIALECT` refuses to start. ADR-029's tenant-isolation mechanism stands.
+- **ADR-038 — the backend moves to TypeScript, strict, incrementally.** Supersedes ADR-030. Plan: `TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`. Until it completes the backend is still JavaScript, and backend documents state TypeScript as the target, never as fact.
+
+### Fixed
+
+- **Metered billing read every tenant's usage as zero in production.** `getUsage` and `resetUsage` passed `$1`-style placeholders as Sequelize `replacements`, which only substitutes `?` / `:name`. PostgreSQL answered `there is no parameter $1` on every call — proven against a real PostgreSQL 17 — and `getUsage`'s `catch` turned that into `{ total: 0 }`. The MySQL branch beside it was correct and never ran; the test for the PostgreSQL branch asserted `replacements` as correct behaviour. Now `bind`.
+- **RAG no longer answers from the wrong documents on a non-pgvector engine** — the recency fallback is removed with MySQL.
+
+### Corrected documentation
+
+Claims found false in the 2026-09-21 audit, each corrected where it was made:
+
+- there is **no embedded `aedes` MQTT broker** — the backend is an MQTT client of an external broker, off unless `MQTT_HOST` and `MQTT_PORT` are both set; `aedes` is an unused dependency;
+- `docker logs` is empty in production because **the application writes nothing to stdout** there (winston's Console transport is development-only), not because of initialisation timing; per-request `logger.http` lines are also dropped in production by level;
+- there is **no `pre-push` hook, no secret scanner, no IDOR enforcement script and no `scripts/verify.sh`** — documented as mitigations for deferred CI, none of them exist;
+- RAG on a non-pgvector engine did not become "unavailable"; it silently returned the most recent chunks.
+
+
 ### Changed
 
 - **Repository restructured into a documented monorepo.** `docs/` now holds 135 as-built documents across ten categories, `MEMORY/` and `TASKS/` follow the wedding-saas layout, `deploy/` carries the compose stacks and Helm charts, and a Makefile drives development and deployment. Root markdown files were classified into `docs/` rather than deleted. — [record](./records/2026-09-10-monorepo-restructure-and-as-built-docs.md)

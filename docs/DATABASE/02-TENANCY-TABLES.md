@@ -45,7 +45,7 @@ Indexes: `status`, `subdomain`, `domain`, `email`, `code`, `is_deleted`.
 | `path` | `STRING` | **materialised** ancestor path, indexed |
 | `depth` | `INTEGER` | distance from root |
 
-A materialised path rather than recursive CTEs, because the platform must also run on MySQL and CTE support differs. Ancestor and descendant queries become prefix matches.
+A materialised path rather than recursive CTEs, because the platform had to run on MySQL and CTE support differs. Ancestor and descendant queries become prefix matches. *(Chosen while MySQL was a target. PostgreSQL-only (ADR-039) now permits recursive CTEs; the materialised path stands until a decision changes it.)*
 
 **Hierarchy does not grant visibility.** A parent tenant does not automatically see child data — the tenant predicate is still exact-match on `tenantId`.
 

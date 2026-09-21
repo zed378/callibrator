@@ -12,26 +12,28 @@ Skipping CI would have silently returned the **zero-tolerance IDOR rule to being
 
 That is the general failure mode of deferred CI. A gate with no runner is not a gate; it is a file.
 
-The mitigation is that the gates were moved into `pre-push` rather than left orphaned, and `make verify` runs the same set. The residual risk is that a local hook can be bypassed with `--no-verify`, and a pipeline cannot.
+**⚠ Corrected 2026-09-21 — there is no `pre-push` hook.** The repository has no `.husky/`, no `lefthook`, no `simple-git-hooks`, no `core.hooksPath`, and `.git/hooks/` holds only git's samples. The IDOR enforcement script this card referred to does not exist either: `backend/scripts/` contains only documentation generators. The only gate runner is `make verify`, which a developer must remember to type — and which could not run on the Windows workstation where this repository is developed, because `make` is not installed there.
+
+This document previously said the gates had been moved into `pre-push`. They were not. **There is currently no automatic gate of any kind** between a commit and `main`.
 
 ## The Gates
 
-Whatever runs them, these are the gates:
+Whatever eventually runs them, these are the gates. **The "Exists" column is the point** — most are aspirations, and this table previously did not say so:
 
-| Gate | Command |
-|---|---|
-| Lint | `pnpm lint` — including the React Compiler rules, not disabled |
-| Types | `pnpm typecheck` — frontend only; the backend is JavaScript (ADR-030) |
-| Format | `prettier --check` |
-| Unit tests | `pnpm test` at the coverage thresholds |
-| Build | `pnpm build` |
-| **Secret scan** | on the diff |
-| **IDOR enforcement** | every new `:id` route has a two-tenant test |
-| **Route-gate check** | every new route has a permission gate |
-| Docker build | both images |
-| Migrations | apply to a clean database **and verify the columns** |
-| E2E | 51 live specs against a running server |
-| Browser | Playwright, 71 tests |
+| Gate | Command | Exists? |
+|---|---|---|
+| Lint | `pnpm lint` — including the React Compiler rules, not disabled | yes (one pre-existing error in `GlobalSearch.tsx`) |
+| Types | `pnpm typecheck` — frontend only; the backend is JavaScript (ADR-030) | yes |
+| Format | `prettier --check` | config yes, no runner |
+| Unit tests | `npm run test:coverage` at the 100% thresholds | **yes, passing** (backend 290 suites; frontend 70) |
+| Build | `pnpm build` | yes |
+| **Secret scan** | on the diff | **no** |
+| **IDOR enforcement** | every new `:id` route has a two-tenant test | **no** — no script exists |
+| **Route-gate check** | every new route has a permission gate | **no** — P6-04 |
+| Docker build | both images | manual; both build |
+| Migrations | apply to a clean database **and verify the columns** | apply yes, verify **no** |
+| E2E | 53 live specs against a running server | yes, never green in one run |
+| Browser | Playwright, 71 tests | **no — `automate/` is not in the repo** (U-07) |
 
 ### Two gates that do not exist yet, and should
 
@@ -41,20 +43,21 @@ Whatever runs them, these are the gates:
 
 Both are in [`../../TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md).
 
-### The secret scanner works
+## Local Hooks — None Exist
 
-On its first run it flagged the project's own JWT test fixture — which is exactly the kind of finding that proves a scanner is connected.
+**This section previously described a `pre-commit` hook, a `pre-push` hook running an IDOR enforcement script, and a `scripts/verify.sh`. None of them exists in this repository.** There is no hook tooling in any `package.json`, no `core.hooksPath`, no root `scripts/` directory, and no secret scanner. The text appears to have been carried over from a reference project's structure without being checked against this one — exactly the failure `CLAUDE.md` names as PR-4.
 
-## Local Hooks
-
-| Hook | Runs |
+| Gate | Exists? |
 |---|---|
-| `pre-commit` | format and lint on staged files |
-| **`pre-push`** | the full gate set, including the IDOR enforcement script |
+| `pre-commit` hook | **no** |
+| `pre-push` hook | **no** |
+| IDOR enforcement script | **no** |
+| Secret scanner (gitleaks or similar) | **no** |
+| `scripts/verify.sh` | **no** |
+| `make verify` | yes — manual, and `make` is not installed on the Windows development workstation |
+| CI pipeline | **no** — P7-01 |
 
-`scripts/verify.sh` runs the same thing on demand. On its first run it caught a formatting break that had **already been merged**.
-
-`--no-verify` bypasses hooks. That is the gap a pipeline closes and a hook cannot.
+The honest summary: **nothing automatic stands between a commit and `main`.**
 
 ## The Coverage Gate Is Currently Failing
 

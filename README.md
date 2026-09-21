@@ -45,10 +45,10 @@ Makefile       development, gates, deployment
 |---|---|
 | Backend | Express, **JavaScript, CommonJS** — *not TypeScript* (ADR-030) |
 | ORM | Sequelize |
-| Database | PostgreSQL **or MySQL** (ADR-029) |
+| Database | PostgreSQL 17 + pgvector, only (ADR-039) |
 | Frontend | Next.js 16 · React 19 · TypeScript · Tailwind 4 · Zustand |
 | Realtime | Socket.IO both ends (ADR-031) |
-| Infrastructure | Redis · RabbitMQ · embedded MQTT (aedes) · ClamAV · pgvector |
+| Infrastructure | Redis · RabbitMQ · MQTT client (external broker) · ClamAV · pgvector |
 | Distribution | both halves compile to **standalone binaries** — no runtime in the production images |
 
 ## Scale
@@ -116,7 +116,7 @@ Phases 0–5 are shipped. Two gates are failing, and a status page that hides th
 | Live E2E in one uninterrupted run | 🔴 **never achieved** — verified fix by fix — [P6-02](TASKS/PHASE-6-CORRECTNESS-AND-COMPLIANCE.md) |
 | `calibration_records` append-only | 🟡 a **convention**, not a database constraint — [P6-03](TASKS/PHASE-6-CORRECTNESS-AND-COMPLIANCE.md) |
 | Helm charts | 🟡 **render**; no cluster has been reachable |
-| CI pipeline | ⚪ deferred — gates run in `pre-push` and `make verify` |
+| CI pipeline | ⚪ deferred — no hook exists either; `make verify` is manual |
 
 Full board: [`TASKS/PROGRESS.md`](TASKS/PROGRESS.md). Everything unverified is listed in [`TASKS/BACKLOG.md`](TASKS/BACKLOG.md) § Unverified Claims.
 

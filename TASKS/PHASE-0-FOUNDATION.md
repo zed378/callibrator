@@ -15,7 +15,7 @@ Where the plan and the build differ, the divergence is named and pointed at its 
 | **Status** | ✅ DONE |
 | **Spec refs** | `docs/ARCHITECTURE/00-SYSTEM-ARCHITECTURE.md` · `docs/ARCHITECTURE/01-APPLICATION-ARCHITECTURE.md` |
 
-**What shipped:** Express modular monolith · Sequelize · PostgreSQL **or** MySQL · Redis · RabbitMQ · Socket.IO · Next.js 16 · React 19 · Tailwind 4 · Zustand.
+**What shipped:** Express modular monolith · Sequelize · PostgreSQL (MySQL was claimed, never runnable — dropped by ADR-039) · Redis · RabbitMQ · Socket.IO · Next.js 16 · React 19 · Tailwind 4 · Zustand.
 
 **⚠ Divergence — ADR-030.** The plan specified a **TypeScript** backend (ADR-002, ADR-013). The backend is **JavaScript, CommonJS**.
 
@@ -23,7 +23,7 @@ It originated from an Express boilerplate in JavaScript and reached 76 services,
 
 **This divergence went unrecorded for months**, and `CLAUDE.md` continued instructing engineers and agents to write strict TypeScript with no `any`. That is PR-4, and it is the single largest lesson in this repository.
 
-**Also divergent:** the platform must run on **MySQL as well as PostgreSQL**, which is the constraint that drove ADR-029 and several schema decisions that look odd in isolation.
+**Also divergent:** the platform was specified to run on **MySQL as well as PostgreSQL**, which drove ADR-029 and several schema decisions that look odd in isolation. **It never could** — `mysql2` was not a dependency — and ADR-039 (2026-09-21) made PostgreSQL the only engine.
 
 ---
 
@@ -126,7 +126,7 @@ Fifty-six mounts, **54 route modules**: `oidc` is mounted twice on purpose — a
 
 Removed for three reasons:
 
-1. **RLS is PostgreSQL-only**, and the platform must also run on MySQL.
+1. **RLS is PostgreSQL-only**, and the platform then had to run on MySQL. *(Dropped by ADR-039.)*
 2. **The policy carried a fail-open branch** — `app.current_tenant = ''` matched **every row**.
 3. It cost two round-trips and a wrapping transaction per authenticated request.
 
@@ -186,9 +186,11 @@ Isolation now lives in global Sequelize hooks reading an `AsyncLocalStorage` con
 | **Status** | ⚪ **DEFERRED, not done** |
 | **Follow-up** | P7-01 |
 
-**⚠ Divergence.** CI was deferred; the gates run in `pre-push` and `make verify`.
+**⚠ Divergence.** CI was deferred.
 
-**The recorded risk is real:** skipping CI would have silently returned the zero-tolerance IDOR rule to being a sentence in a document — **its enforcement script had no caller other than a pipeline that did not exist.** Moving it into `pre-push` is the mitigation; the residual gap is that a hook can be bypassed with `--no-verify` and a pipeline cannot.
+**⚠ Corrected 2026-09-21 — there is no `pre-push` hook.** The repository has no `.husky/`, no `lefthook`, no `simple-git-hooks`, no `core.hooksPath`, and `.git/hooks/` holds only git's samples. The IDOR enforcement script this card referred to does not exist either: `backend/scripts/` contains only documentation generators. The only gate runner is `make verify`, which a developer must remember to type — and which could not run on the Windows workstation where this repository is developed, because `make` is not installed there.
+
+**So the recorded risk is not mitigated — it has fully materialised.** Deferring CI returned the zero-tolerance IDOR rule to being a sentence in a document, which is precisely what this card warned about, while claiming a mitigation that was never built. The first real deployment then found nine defects a clean-clone build would have caught four of.
 
 ---
 
@@ -200,15 +202,15 @@ Isolation now lives in global Sequelize hooks reading an `AsyncLocalStorage` con
 
 **What shipped:** **four** required secrets that make the application **exit** rather than start (`CERT_SIGNING_SECRET`, `ENCRYPT_KEY`, `ATTACHMENT_URL_SECRET`, `KMS_MASTER_KEY`), and a Jest harness reaching 342 test files against a 100% coverage gate.
 
-**The fourth was found by deploying, not by reading.** `KMS_MASTER_KEY` was absent from `.env.example`, from `docs/BACKEND/11` and from `make secrets`, and its failure mode defeats the usual first move: the container crash-loops with **an empty `docker logs`**, because the throw happens after winston is configured and the message goes only to `log/activity/exception/<date>.log`.
+**The fourth was found by deploying, not by reading.** `KMS_MASTER_KEY` was absent from `.env.example`, from `docs/BACKEND/11` and from `make secrets`, and its failure mode defeats the usual first move: the container crash-loops with **an empty `docker logs`**, because **in production the application writes nothing to stdout at all**: `activityLog.middleware.js` adds winston's Console transport only when `NODE_ENV !== "production"`, and winston's `exceptionHandlers` catch the throw and write it to `log/activity/exception/<date>.log` — a property of every production failure, not of this secret.
 
 Fail-fast is only as good as the list of things it fails on. A required secret that no tooling generates and no document names is a **fail-fast that fires in production**, which is the one place it was designed to avoid.
 
 **The cross-field lesson:** a **live provider key in staging passes every per-field check** — valid string, right shape, right length — and will charge a real card from a test. Only a rule comparing the key's environment against `NODE_ENV` catches it.
 
-**The secret scanner works:** on its first run it flagged the project's own JWT test fixture.
+**⚠ Corrected 2026-09-21 — there is no secret scanner.** This card claimed one had run and flagged a JWT test fixture. No scanner, config or script for one exists in the repository.
 
-**Follow-up:** the coverage gate is **currently failing** — P6-01.
+**Follow-up:** the coverage gate now **passes** at 100% (verified 2026-09-11) — P6-01 done.
 
 ---
 
@@ -221,7 +223,7 @@ Fail-fast is only as good as the list of things it fails on. A required secret t
 | Planned | Actual | ADR |
 |---|---|---|
 | TypeScript backend | JavaScript, CommonJS | ADR-030 |
-| PostgreSQL only | PostgreSQL **or** MySQL | ADR-029 |
+| PostgreSQL only | PostgreSQL **or** MySQL — reverted to PostgreSQL only | ADR-029, ADR-039 |
 | Row Level Security | ORM-layer, deny-by-default | ADR-029 |
 | Kubernetes-first | Compose-first | ADR-032 |
 | CI in Phase 0 | deferred | — |

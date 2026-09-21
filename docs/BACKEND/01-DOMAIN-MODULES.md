@@ -112,7 +112,7 @@ Deliberate: a developer must be able to run the platform with Postgres and nothi
 | **SCIM** | its own response envelope — SCIM clients parse nothing else |
 | **OIDC** | mounted twice; discovery and JWKS are public |
 | **Billing** | one endpoint needs the **unparsed** request body for Stripe signature verification |
-| **IoT** | ingest over an **embedded aedes MQTT broker** as well as HTTP |
+| **IoT** | ingest over HTTP, and optionally as an MQTT **client** of an external broker — there is no embedded broker |
 | **AI** | PostgreSQL-only — `vector(1536)` via pgvector |
 | **Content** | **not tenant-scoped** — platform marketing, not tenant data |
 | **Migration** | under `routes/internal/`; runs schema operations over HTTP because the binary has no shell |

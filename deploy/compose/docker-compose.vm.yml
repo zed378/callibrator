@@ -16,7 +16,7 @@
 #   127.0.0.1:19000 backend      direct access for debugging
 #   127.0.0.1:19432 postgres     psql for debugging
 #   127.0.0.1:19673 rabbitmq     management UI
-#   0.0.0.0:19883   mqtt         IoT telemetry ingest
+#   0.0.0.0:19883   mqtt         NOTHING LISTENS HERE — see the note below
 #
 # Everything else stays on the compose network with no host binding.
 
@@ -49,6 +49,9 @@ services:
       RETENTION_SCHEDULER: "0 2 * * *"
     ports:
       - "127.0.0.1:${BACKEND_PORT:-19000}:3000"
+      # The backend is an MQTT CLIENT of an external broker, not a broker, so
+      # nothing listens on 1883 in this container. This publishes a public port
+      # with nothing behind it; drop it unless a sidecar broker is added.
       - "0.0.0.0:${MQTT_PORT:-19883}:1883"
     restart: unless-stopped
 
