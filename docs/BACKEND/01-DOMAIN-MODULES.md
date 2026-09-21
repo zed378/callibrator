@@ -1,5 +1,7 @@
 # 01 — Domain Modules
 
+> **Language status — target: TypeScript, strict (ADR-038).** The backend is **JavaScript/CommonJS today**; the migration is [`TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`](../../TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md). Behaviour described here is **as-built** unless marked *target*. New backend code follows [`docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md`](../../docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md). Remove this banner only when every module this document describes is converted.
+
 33 functional modules; 53 route modules under `routes/api/` plus one internal, mounted 56 times (`oidc` and `menu-groups` twice each). The per-module 24-point reference is [`10-MODULE-REFERENCE.md`](./10-MODULE-REFERENCE.md); this document is the map and the conventions that hold across all of them.
 
 ---

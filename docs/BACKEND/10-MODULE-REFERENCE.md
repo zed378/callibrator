@@ -1,5 +1,7 @@
 # Hospital Device Calibration (HDC) — Backend Module Documentation
 
+> **Language status — target: TypeScript, strict (ADR-038).** The backend is **JavaScript/CommonJS today**; the migration is [`TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`](../../TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md). Behaviour described here is **as-built** unless marked *target*. New backend code follows [`docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md`](../../docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md). Remove this banner only when every module this document describes is converted.
+
 > **Product:** Enterprise multi-tenant hospital medical-device calibration platform
 > **Stack:** Express.js · Sequelize ORM · PostgreSQL (only — ADR-039) · Redis · RabbitMQ · Socket.IO
 > **Compliance targets:** ISO 17025, FDA 21 CFR Part 11, ISO 13485, GDPR

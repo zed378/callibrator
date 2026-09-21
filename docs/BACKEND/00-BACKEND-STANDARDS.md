@@ -1,8 +1,13 @@
 # 00 — Backend Standards
 
-**The backend is JavaScript (CommonJS), not TypeScript** (ADR-030).
+> **Language status — target: TypeScript, strict (ADR-038).** The backend is **JavaScript/CommonJS today**; the migration is [`TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`](../../TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md). Behaviour described here is **as-built** unless marked *target*. New backend code follows [`docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md`](../../docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md). Remove this banner only when every module this document describes is converted.
 
-`"type": "commonjs"`, entry `index.js`, Node 24. Anyone acting on an instruction to "remove the `any` types" or "enable strict mode" here is working from a stale premise — there are no types to remove.
+**As-built: the backend is JavaScript (CommonJS)** — `"type": "commonjs"`, entry `index.js`, Node 24. **Target: strict TypeScript** (ADR-038, superseding ADR-030), converted module by module under Phase 9.
+
+Two instructions follow from that, and both matter:
+
+- **new** backend files are TypeScript, held to `docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md` from the first line;
+- an **existing** `.js` file keeps its JavaScript shape when edited. Half-converting it — a few types here, an `import` there — produces a file that is neither, and conversion is a separate, behaviour-neutral PR.
 
 Architecture: [`../ARCHITECTURE/03-BACKEND-ARCHITECTURE.md`](../ARCHITECTURE/03-BACKEND-ARCHITECTURE.md).
 
@@ -194,7 +199,7 @@ Excluded by `defaultScope`. A query bypassing the scope must exclude them explic
 
 ESLint plus Prettier. `npm run lint`, `npm run lint:fix`, `npm run prettier:fix`.
 
-JSDoc on exported functions — it is the only type information this codebase has.
+JSDoc on the exports of unconverted `.js` files — until conversion, it is the only type information they have. Converted files declare types in TypeScript instead, and explicit return types on exports are mandatory.
 
 ## Before a PR
 

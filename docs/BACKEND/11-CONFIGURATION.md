@@ -1,5 +1,7 @@
 # 11 — Configuration
 
+> **Language status — target: TypeScript, strict (ADR-038).** The backend is **JavaScript/CommonJS today**; the migration is [`TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`](../../TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md). Behaviour described here is **as-built** unless marked *target*. New backend code follows [`docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md`](../../docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md). Remove this banner only when every module this document describes is converted.
+
 Every environment variable the backend reads. Source of truth: `backend/.env.example`, which documents shapes with no values.
 
 Secrets treatment: [`../SECURITY/07-CRYPTOGRAPHY-AND-SECRETS.md`](../SECURITY/07-CRYPTOGRAPHY-AND-SECRETS.md).
@@ -95,7 +97,7 @@ If the two secrets are equal, an access token can be presented as a refresh toke
 | `RABBITMQ_URL` | `amqp://localhost:5672` |
 | `MQTT_HOST`, `MQTT_PORT` | an **external** broker the backend connects to as a client; MQTT is off unless **both** are set |
 
-Redis is **not optional**: it holds rate-limit counters, WebAuthn challenges and worker idempotency claims. An outage weakens brute-force protection and permits duplicate side effects.
+Redis is **not optional**: it holds rate-limit counters (with an in-memory fallback), WebAuthn challenges, OIDC authorisation state, the registration lock, and caches — **not** worker idempotency claims, which do not exist. Without it passkeys and the OIDC provider fail and registration answers 429; brute-force limits fall back to per-replica memory.
 
 ## Object Storage
 

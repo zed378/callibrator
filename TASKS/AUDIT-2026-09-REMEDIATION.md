@@ -44,6 +44,8 @@ Task ids are `A-nn`. They are referenced from [`PHASE-9-TYPESCRIPT-MIGRATION.md`
 | A-22 | one React Compiler lint error in `GlobalSearch.tsx` | low | 2 | TODO |
 | A-23 | search runs one query per type, sequentially, and logs a warning per call | low | 2 | TODO |
 | A-24 | every `redis.service` helper was a no-op: **registration, passkeys and the OIDC provider broken** | **high** | — | **DONE** 2026-09-21 |
+| A-25 | Stripe `upsertInvoice` never updates: an invoice that failed and was later paid stays **Open** | medium | 1 | TODO |
+| A-26 | no consumer deduplicates: a redelivered email is sent twice (documented "idempotency claims" do not exist) | medium | 1 | TODO |
 
 ---
 
@@ -319,6 +321,33 @@ Task ids are `A-nn`. They are referenced from [`PHASE-9-TYPESCRIPT-MIGRATION.md`
 **Definition of Done**
 - [ ] **verify**: sign in through the public domain and compare the stored session and audit IP with the client's real address
 - [ ] if wrong: derive the client IP from a trusted header set explicitly by the edge, configured per deployment, and never from a header a client can send directly to nginx on `:19080`
+
+### A-25 — Stripe invoices that were paid after a failure stay "Open"
+
+| | |
+|---|---|
+| **Status** | TODO |
+| **Severity** | medium — billing records wrong, money correct |
+| **Evidence** | `stripeWebhook.service.js#upsertInvoice` uses `Invoice.findOrCreate({ where: { stripeInvoiceId } })` with the status in `defaults` — it **never updates** an existing row. Stripe's usual retry path is `invoice.payment_failed` (row created as `Open`) then `invoice.paid` (row found, not changed). The subscription moves to `Active`; the invoice stays `Open` with `amountPaid: 0`. |
+| **Spec refs** | `docs/API/11-BILLING-FINANCE-API.md` · `docs/DATABASE/11-BILLING-TABLES.md` |
+
+**Definition of Done**
+- [ ] a real upsert that updates status and amounts on an existing invoice
+- [ ] a monotonic rule: `Paid` is never downgraded by a late `payment_failed` — Stripe does not guarantee event order
+- [ ] tests for failed-then-paid, paid-then-late-failed, and a duplicated `invoice.paid`
+
+### A-26 — Nothing deduplicates at-least-once delivery
+
+| | |
+|---|---|
+| **Status** | TODO |
+| **Severity** | medium |
+| **Evidence** | Documentation across ARCHITECTURE, DEVOPS and SECURITY described Redis-held "worker idempotency claims". None exists: the only `SET NX` is the registration lock. `emailQueue.service.js` re-sends a redelivered message; webhook retries have no receiver-side idempotency key. |
+
+**Definition of Done**
+- [ ] each consumer claims a message id with `SET NX` before acting and releases the claim on failure
+- [ ] outbound webhooks carry a stable `X-Webhook-Delivery` id receivers are told to deduplicate on (the header exists; the guidance does not)
+- [ ] a test delivers the same message twice and asserts one effect
 
 ---
 

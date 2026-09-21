@@ -20,7 +20,7 @@ Everything below is grounded in the code as of 2026-09-10. If you find a claim h
 
 | | |
 |---|---|
-| Backend | **Express, JavaScript, CommonJS** — *not TypeScript* (ADR-030) |
+| Backend | Express. **JavaScript/CommonJS today; migrating to strict TypeScript** (ADR-038, `TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`). New backend files are TypeScript; unconverted files keep their as-built JavaScript shape |
 | Database | **PostgreSQL 17 + pgvector, only** (ADR-039) — MySQL support was removed |
 | Frontend | Next.js 16 · React 19 · TypeScript · Tailwind 4 · Zustand |
 | Realtime | Socket.IO, both ends (ADR-031) |
@@ -193,7 +193,9 @@ Match the surrounding code. Both workspaces have standards documents:
 - [`docs/BACKEND/00-BACKEND-STANDARDS.md`](docs/BACKEND/00-BACKEND-STANDARDS.md)
 - [`docs/FRONTEND/00-FRONTEND-STANDARDS.md`](docs/FRONTEND/00-FRONTEND-STANDARDS.md)
 
-JSDoc on exported backend functions — it is the only type information that codebase has.
+**New backend code is TypeScript, held to [`docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md`](docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md)** — `strict` plus the ADR-038 flags, no `any`. Do not half-convert an existing `.js` file while editing it; conversion is module by module under Phase 9, and a conversion never changes behaviour. Until a file is converted, JSDoc on its exports is the only type information it has.
+
+**Do not describe the backend as TypeScript in a document until the module it describes is converted.** Backend documents state TypeScript as the *target* and label current behaviour *as-built* — writing the target as fact is PR-4, the failure this file opens with.
 
 Do not disable React Compiler lint rules to make a build pass. The rule is usually right about the component.
 

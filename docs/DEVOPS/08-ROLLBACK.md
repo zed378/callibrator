@@ -124,7 +124,7 @@ Keep previous images. A rebuild is not a rollback.
 
 The certificate check is the one that catches a configuration rollback that lost a secret.
 
-The last one matters if Redis was restarted: idempotency claims live there, and an outage window is a window in which duplicate emails, webhook deliveries and job side effects were possible.
+The last one matters if Redis was restarted: passkey challenges and OIDC authorisations in progress are lost and users must retry. No idempotency claims live there — an earlier version of this line said so, wrongly.
 
 ## Blast Radius Reduction
 

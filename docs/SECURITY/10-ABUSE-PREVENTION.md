@@ -123,7 +123,7 @@ The release is not optional. Without it, "retry three times" becomes "try once, 
 
 ### The Redis outage window
 
-Redis holds the idempotency claims. An outage window is a window in which duplicate emails, duplicate webhook deliveries and duplicate job side effects were possible.
+A Redis outage means passkey sign-in and the OIDC provider fail, registration answers 429, caching stops, and rate limiting drops to per-replica memory. It does **not** open a duplicate window: there are no idempotency claims to lose. Duplicate side effects — a redelivered email sent twice, a webhook retried — are possible **regardless** of Redis, because nothing deduplicates them (see `docs/ENGINEERING/08-CACHE-QUEUE-STANDARDS.md`).
 
 **Redis coming back is not the end of that incident.** The window needs reviewing, not assuming.
 

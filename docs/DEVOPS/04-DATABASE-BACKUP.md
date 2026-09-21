@@ -160,7 +160,7 @@ A backup document listing only its strengths is a marketing document. The first 
 ./backup           tenant backups
 ```
 
-`./data/redis` matters more than it looks: losing it discards in-flight idempotency claims and **reopens the duplicate window** for anything mid-flight.
+`./data/redis` does not need backing up: it holds passkey challenges, OIDC authorisation state, lockout counters and caches, all short-lived. Losing it interrupts sign-ins in progress. (An earlier version said it held worker idempotency claims and that losing it reopened a duplicate window; no such claims exist.)
 
 ## Backup Failures Must Alert
 

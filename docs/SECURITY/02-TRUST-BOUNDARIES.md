@@ -100,7 +100,7 @@ Not a cache-only boundary. Redis holds **state**:
 |---|---|
 | Rate-limit and brute-force counters | protection weakens — **security** |
 | WebAuthn challenges | ceremonies fail |
-| Worker idempotency claims | **duplicates become possible** |
+| WebAuthn challenges, OIDC authorisation state | passkey sign-in and the OIDC provider fail (worker idempotency claims were listed here; none exists) |
 | Read cache | slower, correct |
 
 An outage window is a window in which duplicate emails, duplicate webhook deliveries and unthrottled login attempts were possible. Redis coming back is not the end of that incident.

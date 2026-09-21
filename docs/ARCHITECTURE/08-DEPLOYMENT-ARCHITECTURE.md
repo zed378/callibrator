@@ -139,14 +139,14 @@ None is optional and none is difficult. They simply have to happen before replic
 | Volume | Holds |
 |---|---|
 | `./data/postgres` | the database |
-| `./data/redis` | rate-limit counters and idempotency claims |
+| `./data/redis` | rate-limit counters, WebAuthn challenges, OIDC state, the registration lock, caches |
 | `./data/rabbitmq` | queued messages |
 | `./data/clamav` | virus signature database |
 | `./uploads` | attachments, when `STORAGE_DRIVER=local` |
 | `./backup` | tenant backups |
 | `./log` | application logs |
 
-`./data/redis` matters more than it looks: losing it on restart discards in-flight idempotency claims and reopens the duplicate window.
+Losing `./data/redis` interrupts sign-ins in progress (passkey challenges, OIDC authorisations) and resets lockout counters. Earlier versions of this document said it also held worker idempotency claims; none exists.
 
 ## Secrets
 

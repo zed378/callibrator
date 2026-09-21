@@ -59,7 +59,7 @@ If only one thing gets alerting first, make it this category.
 | ClamAV down | **uploads are being rejected** — fail-closed by default |
 | Object storage unreachable | uploads and downloads failing |
 
-The Redis alert must say what it means. "Redis is down" reads as a caching problem; the actual consequence is that idempotency claims are unavailable and the outage window will need reviewing for duplicates.
+The Redis alert must say what it means. "Redis is down" reads as a caching problem; the real consequences are that **passkey sign-in and the OIDC provider stop working and registration answers 429**, and brute-force limits drop to per-replica memory. (This line previously cited lost idempotency claims; there are none.)
 
 ### Errors and abuse
 

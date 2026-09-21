@@ -50,13 +50,11 @@ A WebAuthn ceremony issues a challenge, and the response must be verified agains
 
 Short TTL, single use. A challenge that can be replayed is not a challenge.
 
-## Idempotency Claims
+## Idempotency Claims — Not Implemented
 
-The worker uses Redis to make "has this job already been handled" a single atomic operation.
+**This section previously said the worker uses Redis for idempotency claims. It does not.** The only `SET NX` in the codebase is the registration lock in `auth.service.js`. No worker, and not the email queue, claims a message before acting on it.
 
-**Check-then-mark is racy.** Two consumers can both pass the check before either marks, and a payment gets credited twice or an email sent twice. The correct primitive is `SET NX` — claim and check in one operation.
-
-Equally important: **a failed attempt must release its claim.** Otherwise "retry three times" silently becomes "try once, no-op twice", and the logs look identical to three successful attempts.
+**Check-then-mark is racy** — two consumers can both pass the check before either marks — and the correct primitive, when one is added, is `SET NX`, with a failed attempt **releasing** its claim so that three retries are not one attempt and two no-ops. The design stands; the implementation is missing. See `docs/ENGINEERING/08-CACHE-QUEUE-STANDARDS.md` for what does and does not deduplicate today.
 
 ## Session Storage
 

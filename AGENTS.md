@@ -28,7 +28,7 @@ Every agent, regardless of role, is bound by these. They are not role-specific b
 
 **Knows before touching anything:**
 
-- The backend is **JavaScript, CommonJS**. There are no types to fix (ADR-030).
+- The backend is **JavaScript, CommonJS, migrating to strict TypeScript** (ADR-038). New files are TypeScript under `docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md`; do not half-convert a `.js` file you are editing — conversion happens module by module in `TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`, and never changes behaviour.
 - The models barrel exports **`sequelize`**, not `db`.
 - An optional include needs **`required: false`** — the most repeated defect shape here.
 - `validate(schema)`, never `schema.validate`.

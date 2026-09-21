@@ -173,7 +173,7 @@ Isolation now lives in global Sequelize hooks reading an `AsyncLocalStorage` con
 
 **What shipped:** RabbitMQ with a worker, `BATCH_JOBS_INLINE` for development, and pluggable object storage (`local` | `s3` | `nfs`, global and per tenant, credentials encrypted at rest), MinIO-verified.
 
-**The idempotency lesson:** "check then mark" is **racy** — two consumers can both pass the check before either marks, which credits a payment twice. `SET NX` makes it one operation, and **a failed attempt must release its claim** or "retry three times" becomes "try once, no-op twice" with logs identical to three successes.
+**The idempotency lesson — recorded, not implemented.** "Check then mark" is **racy**: two consumers can both pass the check before either marks. `SET NX` makes it one operation, and a failed attempt must release its claim. **⚠ Corrected 2026-09-21:** this card implied the worker does this. It does not — the only `SET NX` in the codebase is the registration lock, and no consumer deduplicates (see ENGINEERING/08).
 
 **The SSRF asymmetry:** tenant-supplied S3 endpoints are checked; operator-configured ones deliberately are not, because `http://minio:9000` is a legitimate operator value.
 

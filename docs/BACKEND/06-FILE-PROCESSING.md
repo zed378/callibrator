@@ -1,5 +1,7 @@
 # 06 — File Processing
 
+> **Language status — target: TypeScript, strict (ADR-038).** The backend is **JavaScript/CommonJS today**; the migration is [`TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`](../../TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md). Behaviour described here is **as-built** unless marked *target*. New backend code follows [`docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md`](../../docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md). Remove this banner only when every module this document describes is converted.
+
 Modules `HDC-ATT` (21) and `HDC-STORAGE` (33). Security treatment: [`../SECURITY/06-FILE-UPLOAD-SECURITY.md`](../SECURITY/06-FILE-UPLOAD-SECURITY.md).
 
 ---

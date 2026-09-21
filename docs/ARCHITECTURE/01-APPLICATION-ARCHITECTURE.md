@@ -1,5 +1,7 @@
 # 01 — Application Architecture
 
+> **Language status — target: TypeScript, strict (ADR-038).** The backend is **JavaScript/CommonJS today**; the migration is [`TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`](../../TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md). Behaviour described here is **as-built** unless marked *target*. New backend code follows [`docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md`](../../docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md). Remove this banner only when every module this document describes is converted.
+
 The monorepo, its workspaces, and how the two applications relate.
 
 ---
@@ -22,7 +24,7 @@ Callibrator/
 ├── TASKS/                 execution plan
 ├── deploy/                compose stacks and Helm charts
 │
-├── backend/               Express · JavaScript · CommonJS
+├── backend/               Express · JavaScript → TypeScript (ADR-038)
 │   ├── index.js           app assembly, middleware order, route mounting
 │   ├── src/
 │   │   ├── routes/api/    53 route modules
@@ -65,7 +67,7 @@ The root declares workspaces in **two** places, which is a real inconsistency wo
 - `package.json` has an npm-style `"workspaces": ["backend", "frontend", "packages/*"]`
 - `pnpm-workspace.yaml` declares the same members
 
-`packages/*` matches nothing. There is no shared package, because there is nothing to share between a CommonJS JavaScript backend and a TypeScript frontend — no shared types, no shared validation. The glob is aspirational.
+`packages/*` matches nothing **today**. There is no shared package yet, because a JavaScript backend and a TypeScript frontend had no types to share. ADR-038 changes that: `packages/contracts` (P9-22) will hold the Zod schemas both ends import. Until then there are no shared types, no shared validation. The glob is aspirational.
 
 Turbo drives the task graph:
 
