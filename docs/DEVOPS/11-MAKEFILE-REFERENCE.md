@@ -49,7 +49,7 @@ On failure it prints the last 50 backend log lines and a reminder that a 503 fro
 
 Not "are you sure". Typing `prod` to destroy production is a different act from pressing `y`.
 
-It deletes `deploy/compose/volumes` — the database, uploads, backups, and Redis **including in-flight worker idempotency claims**.
+It deletes `deploy/compose/volumes` — the database, uploads, backups, and Redis (passkey challenges, OIDC state, lockout counters, caches — all short-lived).
 
 ## Database
 

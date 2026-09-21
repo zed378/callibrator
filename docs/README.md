@@ -45,7 +45,7 @@ ARCHIVE/        — superseded documents, kept for provenance, never authoritati
 
 | Dimension | Reality |
 |---|---|
-| Backend | Express.js (**JavaScript, CommonJS** — not TypeScript) + Sequelize ORM |
+| Backend | Express.js + Sequelize — **JavaScript/CommonJS today, strict TypeScript is the target** (ADR-038; plan in `TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`) |
 | Database | PostgreSQL 17 + pgvector, only (ADR-039). The engine-agnostic premise of ADR-029 was dropped; its tenant-isolation mechanism stands |
 | Frontend | Next.js 16 · React 19 · TypeScript · Tailwind CSS 4 · Zustand |
 | Realtime | Socket.IO both ends (see ADR-031) |

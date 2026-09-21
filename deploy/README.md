@@ -155,7 +155,7 @@ All five fail confusingly. See [`../docs/DEVOPS/03-REVERSE-PROXY.md`](../docs/DE
 | Volume | Losing it means |
 |---|---|
 | `volumes/postgres` | everything |
-| `volumes/redis` | **in-flight worker idempotency claims** — the duplicate window reopens |
+| `volumes/redis` | WebAuthn challenges, OIDC authorisation state, rate-limit counters and caches — sign-ins in progress fail; no data is lost |
 | `volumes/rabbitmq` | queued work |
 | `volumes/uploads` | attachments, when `STORAGE_DRIVER=local` |
 | `volumes/backup` | tenant backups |
@@ -230,6 +230,7 @@ A successful seed reports the roles, the menu groups with their permission count
 - [ ] `/health` returns 200 with `database: "connected"`
 - [ ] a user can log in **in a browser** — a 200 from `curl` against the backend proves nothing about the cookie
 - [ ] `ALLOW_SEEDING` is unset and `/migration/seeding` returns **401**
+- [ ] `WEBAUTHN_RP_ID` and `WEBAUTHN_ORIGIN` match the public domain — unset, the server issues passkey challenges for `rp.id: "localhost"`, which every browser on the real domain rejects. The reference deployment ran that way until 2026-09-21, masked by a separate bug that made passkeys fail even earlier (A-24)
 - [ ] a tenant-scoped list returns that tenant's rows **and no others**
 - [ ] **a certificate issued before the deploy still verifies at its public URL**
 - [ ] an attachment uploaded before the deploy still downloads

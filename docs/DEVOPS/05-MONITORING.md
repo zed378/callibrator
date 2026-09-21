@@ -99,7 +99,7 @@ The retention purge failed **every night** with `column "tenantId" does not exis
 
 ### Duplicate side effects
 
-Redis holds worker idempotency claims. **A Redis outage window is a window in which duplicates were possible** — duplicate emails, duplicate webhook deliveries, duplicate job side effects.
+A Redis outage means passkey sign-in and the OIDC provider fail, registration answers 429, caching stops, and rate limiting drops to per-replica memory. It does **not** open a duplicate window: there are no idempotency claims to lose. Duplicate side effects — a redelivered email sent twice, a webhook retried — are possible **regardless** of Redis, because nothing deduplicates them (see `docs/ENGINEERING/08-CACHE-QUEUE-STANDARDS.md`).
 
 Redis coming back is not the end of the incident. Alert on the outage, and review the window.
 

@@ -51,7 +51,7 @@ Does **not** answer: "restore just this tenant" — that is a full restore into 
 |---|---|---|---|
 | Backend process crash | `/health` 503, container restart policy | automatic restart | none |
 | Database unreachable | `/health` 503 with `database: "disconnected"` | investigate; the app fails closed rather than serving stale data | none |
-| Redis down | rate limiting and idempotency degrade | restart; **review for duplicate side effects during the window** | in-flight idempotency claims |
+| Redis down | passkeys and OIDC fail, registration 429s, rate limiting falls back to per-replica memory | restart | in-progress sign-ins |
 | RabbitMQ down | jobs queue up in `PENDING` | restart; queued messages persist on the volume | none if the volume survives |
 | Disk full | writes fail | expand; check `./data` and `./log` | none |
 | Host lost | external monitoring | rebuild from images, restore database, restore object store | up to RPO |
@@ -59,7 +59,7 @@ Does **not** answer: "restore just this tenant" — that is a full restore into 
 | Database corruption | integrity checks, query errors | point-in-time recovery | up to RPO |
 | Ransomware | monitoring, anomalous access | restore to a clean host from offline backups | up to RPO |
 
-The Redis row is the one most likely to be mishandled. Redis coming back is not the end of the incident — the window during which idempotency claims were unavailable is a window in which duplicate emails, duplicate webhook deliveries and duplicate job side effects were possible. That window needs reviewing, not assuming.
+The Redis row used to say an outage opened a window for duplicate side effects, because Redis held idempotency claims. **It never did** — no claims exist. A Redis outage means passkey sign-in and the OIDC provider fail, registration answers 429, caching stops, and rate limiting drops to per-replica memory. It does **not** open a duplicate window: there are no idempotency claims to lose. Duplicate side effects — a redelivered email sent twice, a webhook retried — are possible **regardless** of Redis, because nothing deduplicates them (see `docs/ENGINEERING/08-CACHE-QUEUE-STANDARDS.md`).
 
 ## Restore Order
 

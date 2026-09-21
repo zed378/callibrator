@@ -136,7 +136,7 @@ Redis coming back is **not** the end of the incident.
 | During the window | Consequence |
 |---|---|
 | brute-force counters unavailable | login attempts were unthrottled |
-| idempotency claims unavailable | duplicate emails, webhook deliveries and job side effects were possible |
+| passkey and OIDC state unavailable | passkey sign-in and OIDC authorisations failed; registration answered 429 — no duplicate-side-effect window, because no idempotency claims exist |
 | WebAuthn challenges unavailable | ceremonies failed |
 
 The window needs **reviewing**, not assuming: check for duplicate webhook deliveries, duplicate notifications, and repeated failed logins that would normally have locked an account.

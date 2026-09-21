@@ -34,7 +34,7 @@ docs/          135 as-built documents across 10 categories
 MEMORY/        decisions, change records, specs, templates
 TASKS/         the execution board
 deploy/        compose stacks and Helm charts
-backend/       Express · JavaScript · CommonJS
+backend/       Express · JavaScript → TypeScript (ADR-038, in progress)
 frontend/      Next.js 16 · React 19 · TypeScript
 Makefile       development, gates, deployment
 ```
@@ -43,7 +43,7 @@ Makefile       development, gates, deployment
 
 | | |
 |---|---|
-| Backend | Express, **JavaScript, CommonJS** — *not TypeScript* (ADR-030) |
+| Backend | Express — **JavaScript today, migrating to strict TypeScript** (ADR-038) |
 | ORM | Sequelize |
 | Database | PostgreSQL 17 + pgvector, only (ADR-039) |
 | Frontend | Next.js 16 · React 19 · TypeScript · Tailwind 4 · Zustand |

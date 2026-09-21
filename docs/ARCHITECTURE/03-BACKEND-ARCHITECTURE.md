@@ -1,12 +1,14 @@
 # 03 — Backend Architecture
 
+> **Language status — target: TypeScript, strict (ADR-038).** The backend is **JavaScript/CommonJS today**; the migration is [`TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`](../../TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md). Behaviour described here is **as-built** unless marked *target*. New backend code follows [`docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md`](../../docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md). Remove this banner only when every module this document describes is converted.
+
 Coding standards are in [`../BACKEND/00-BACKEND-STANDARDS.md`](../BACKEND/00-BACKEND-STANDARDS.md). The per-module deep reference is [`../BACKEND/10-MODULE-REFERENCE.md`](../BACKEND/10-MODULE-REFERENCE.md). This document is the structure.
 
 ---
 
 ## What It Is
 
-An Express modular monolith in **JavaScript (CommonJS)**, not TypeScript (ADR-030). `"type": "commonjs"`, entry `index.js`, Node 24.
+An Express modular monolith, **as-built in JavaScript (CommonJS)** and migrating to strict TypeScript (ADR-038, superseding ADR-030). `"type": "commonjs"`, entry `index.js`, Node 24.
 
 Anyone acting on an instruction to "remove the `any` types" or "enable strict mode" in `backend/` is working from a stale premise. There are no types to remove.
 
@@ -166,7 +168,7 @@ Cron-style work runs through `node-cron`:
 | `BACKUP_SCHEDULER` | — | tenant backups |
 | `RETENTION_SCHEDULER` | — | data-retention purge (`disabled` turns it off) |
 
-Idempotency is not optional in the worker. "Check then mark" is racy — two consumers can both pass the check before either marks. Use an atomic `SET NX`, and make sure a failed attempt **releases** its claim, or three retries become one attempt and two no-ops with identical logs.
+Idempotency **should** be a property of every consumer, and as-built it is not: no worker takes a claim before acting, so a redelivered message repeats its effect (a second email, for one). The primitive when one is added is an atomic `SET NX` claim that a failed attempt **releases** — otherwise three retries become one attempt and two no-ops with identical logs. Earlier versions of this document described that claim as implemented; it was not.
 
 ## Embedded Services
 

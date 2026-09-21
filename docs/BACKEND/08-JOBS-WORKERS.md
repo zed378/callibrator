@@ -1,5 +1,7 @@
 # 08 — Jobs, Workers and Schedulers
 
+> **Language status — target: TypeScript, strict (ADR-038).** The backend is **JavaScript/CommonJS today**; the migration is [`TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`](../../TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md). Behaviour described here is **as-built** unless marked *target*. New backend code follows [`docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md`](../../docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md). Remove this banner only when every module this document describes is converted.
+
 RabbitMQ (`RABBITMQ_URL`). Worker: `backend/src/workers/`. Architecture: [`../ARCHITECTURE/07-QUEUE-WORKER-ARCHITECTURE.md`](../ARCHITECTURE/07-QUEUE-WORKER-ARCHITECTURE.md).
 
 ---

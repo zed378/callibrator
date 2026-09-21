@@ -131,7 +131,7 @@ down: ## Stop the stack (volumes preserved)
 .PHONY: destroy
 destroy: ## Stop the stack AND DELETE ALL DATA
 	@echo -e "$(C_ERR)This deletes deploy/compose/volumes — the database, uploads, backups and"
-	@echo -e "Redis (including in-flight worker idempotency claims).$(C_OFF)"
+	@echo -e "Redis (passkey challenges, OIDC state, lockout counters, caches).$(C_OFF)"
 	@read -p "Type the environment name to confirm [$(ENV)]: " c; [ "$$c" = "$(ENV)" ] || { echo "Aborted."; exit 1; }
 	$(DC) down -v
 	rm -rf $(COMPOSE_DIR)/volumes

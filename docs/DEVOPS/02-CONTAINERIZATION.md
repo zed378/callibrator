@@ -154,7 +154,7 @@ Two `:latest` tags are a supply-chain risk (T42). Pinning them is in [`../../TAS
 | Volume | Holds | Losing it means |
 |---|---|---|
 | `./data/postgres` | the database | everything |
-| `./data/redis` | rate-limit counters, **idempotency claims** | duplicate side effects for anything in flight |
+| `./data/redis` | rate-limit counters, WebAuthn challenges, OIDC state, caches | sign-ins in progress fail; lockout counters reset |
 | `./data/rabbitmq` | queued messages | queued work |
 | `./data/clamav` | signature database | a slow first boot |
 | `./uploads` | attachments when `STORAGE_DRIVER=local` | files |
