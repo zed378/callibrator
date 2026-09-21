@@ -29,6 +29,8 @@ That is recorded as PR-4 in [`../docs/PLAN/18-RISK-REGISTER.md`](../docs/PLAN/18
 | [`PHASE-6-CORRECTNESS-AND-COMPLIANCE.md`](./PHASE-6-CORRECTNESS-AND-COMPLIANCE.md) | 🚧 The debt that blocks a defensible release |
 | [`PHASE-7-OPERATIONAL-MATURITY.md`](./PHASE-7-OPERATIONAL-MATURITY.md) | ⏳ CI, monitoring, alerting, disaster-recovery rehearsal |
 | [`PHASE-8-SCALE-AND-REACH.md`](./PHASE-8-SCALE-AND-REACH.md) | ⏳ Horizontal scaling, partitioning, read replicas — **trigger-driven** |
+| [`AUDIT-2026-09-REMEDIATION.md`](./AUDIT-2026-09-REMEDIATION.md) | 🔴 **23 findings from the 2026-09-21 audit.** Wave 0 is live security holes — including a **cross-tenant write** — and goes **before everything else** |
+| [`PHASE-9-TYPESCRIPT-MIGRATION.md`](./PHASE-9-TYPESCRIPT-MIGRATION.md) | 🔴 Backend JavaScript → strict TypeScript (ADR-038). Not started; blocked on audit wave 0 |
 | [`BACKLOG.md`](./BACKLOG.md) | Open questions, specification gaps, deliberate deferrals, unverified claims |
 
 **Phases 0–5 are written retrospectively.** They were executed before `TASKS/` was used as intended, so those files reconstruct what was actually built from the code, the migration sequence and the audit report — not from a plan that was followed.
