@@ -11,6 +11,7 @@ const {
   SIGNATURE_STATUS,
   WORKFLOW_STATUS,
 } = require("../../services/eSignature.service");
+const { generateTestKeyPair } = require("../utils/esignatureKey.utils");
 
 describe("eSignature.service", () => {
   beforeEach(() => {
@@ -175,7 +176,13 @@ describe("eSignature.service", () => {
         }),
       };
       const mockAuditLog = { create: jest.fn().mockResolvedValue(true) };
+      // Signing loads and decrypts the tenant's real key pair (ADR-040).
+      const keyPair = generateTestKeyPair({ keyId: "key-svc-1" });
       const mockModels = {
+        TenantKey: {
+          unscoped: () => ({ findOne: jest.fn().mockResolvedValue(keyPair) }),
+          findOne: jest.fn(),
+        },
         SignatureWorkflowStep: mockStep,
         SignatureWorkflow: mockWorkflow,
         SignatureRecord: mockSigRecord,

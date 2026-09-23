@@ -148,7 +148,7 @@ All five fail confusingly. See [`../docs/DEVOPS/03-REVERSE-PROXY.md`](../docs/DE
 | `/socket.io/*` **with upgrade headers** | Socket.IO **silently** falls back to long-polling — works until connection counts matter |
 | `/oidc/*` **at the root** | discovery advertises `<issuer>/oidc/...`; relying parties cannot follow it |
 | `/.well-known/*` | ACME verification fails in a way that looks like DNS |
-| `X-Forwarded-For` | session binding meaningless, rate limiting one bucket, and `e_signature_records.ipAddress` records the **proxy** — a compliance defect |
+| `X-Forwarded-For` | rate limiting collapses to one bucket, `sessions.ip_address` and `audit_logs.ipAddress` record the proxy, and `e_signature_records.ipAddress` records the **proxy** — a compliance defect |
 
 ## Volumes
 

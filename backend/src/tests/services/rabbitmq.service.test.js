@@ -13,33 +13,79 @@ const { logger } = require("../../middlewares/activityLog.middleware");
 
 // Build a fresh mock channel/connection pair and a freshly-required module so the
 // module-level connection/channel cache does not leak between tests.
-function setup({ connectionOpen = true, channelOpen = true } = {}) {
-  jest.resetModules();
-
-  const channel = {
-    isOpen: channelOpen,
+//
+// The mocks expose ONLY what amqplib actually exposes. In particular there is
+// no `isOpen`: amqplib 2.0.1 defines no such property (`grep -rn isOpen
+// node_modules/amqplib` returns nothing), and the previous mock inventing one
+// is what kept a dead connection cache green for the whole life of this file.
+// Both the connection (ChannelModel) and the channel are EventEmitters that
+// emit "close" and "error"; that is the liveness signal the service now uses.
+function makeChannel() {
+  const handlers = {};
+  return {
     assertQueue: jest.fn().mockResolvedValue({}),
     sendToQueue: jest.fn().mockReturnValue(true),
     prefetch: jest.fn(),
     consume: jest.fn().mockResolvedValue({}),
     close: jest.fn().mockResolvedValue(),
+    on: jest.fn((evt, cb) => {
+      handlers[evt] = cb;
+    }),
+    emit: (evt, arg) => handlers[evt] && handlers[evt](arg),
+    handlers,
   };
+}
+
+// A reconnect must hand back a DIFFERENT object, exactly as amqplib does —
+// otherwise a test cannot tell a reused cache from a fresh connection, and the
+// stale-event guard cannot be exercised at all.
+function makeConnection() {
   const handlers = {};
-  const connection = {
-    isOpen: connectionOpen,
-    createChannel: jest.fn().mockResolvedValue(channel),
+  const channels = [makeChannel()];
+  let next = 0;
+  return {
+    createChannel: jest.fn(async () => {
+      if (next >= channels.length) {
+        channels.push(makeChannel());
+      }
+      return channels[next++];
+    }),
     on: jest.fn((evt, cb) => {
       handlers[evt] = cb;
     }),
     close: jest.fn().mockResolvedValue(),
+    emit: (evt, arg) => handlers[evt] && handlers[evt](arg),
+    handlers,
+    channels,
   };
+}
 
-  jest.doMock("amqplib", () => ({ connect: jest.fn().mockResolvedValue(connection) }));
+function setup() {
+  jest.resetModules();
+
+  const connections = [makeConnection()];
+  let next = 0;
+  const connect = jest.fn(async () => {
+    if (next >= connections.length) {
+      connections.push(makeConnection());
+    }
+    return connections[next++];
+  });
+
+  jest.doMock("amqplib", () => ({ connect }));
   jest.doMock("../../middlewares/activityLog.middleware", () => ({ logger }));
 
   const svc = require("../../services/rabbitmq.service");
   const amqp = require("amqplib");
-  return { svc, amqp, connection, channel, handlers };
+  const connection = connections[0];
+  return {
+    svc,
+    amqp,
+    connection,
+    channel: connection.channels[0],
+    handlers: connection.handlers,
+    connections,
+  };
 }
 
 describe("rabbitmq.service", () => {
@@ -89,6 +135,100 @@ describe("rabbitmq.service", () => {
     // After close the cache is cleared, so the next call reconnects.
     await svc.getConnection();
     expect(amqp.connect).toHaveBeenCalledTimes(2);
+  });
+
+  it("reuses one connection across calls instead of opening a new one each time", async () => {
+    const { svc, amqp, connection } = setup();
+
+    const c1 = await svc.getConnection();
+    const c2 = await svc.getConnection();
+    await svc.getChannel();
+    await svc.getChannel();
+
+    // The regression this guards: `connection.isOpen` does not exist on
+    // amqplib, so the old cache guard was always false and every call dialled
+    // the broker again, leaking a connection per call.
+    expect(amqp.connect).toHaveBeenCalledTimes(1);
+    expect(connection.createChannel).toHaveBeenCalledTimes(1);
+    expect(c1).toBe(c2);
+  });
+
+  it("reconnects after the connection emits close", async () => {
+    const { svc, amqp, handlers } = setup();
+
+    await svc.getConnection();
+    expect(amqp.connect).toHaveBeenCalledTimes(1);
+
+    handlers.close(); // broker went away
+
+    await svc.getConnection();
+    expect(amqp.connect).toHaveBeenCalledTimes(2);
+  });
+
+  it("reconnects after the connection emits error", async () => {
+    const { svc, amqp, handlers } = setup();
+
+    await svc.getConnection();
+    handlers.error(new Error("socket reset"));
+
+    await svc.getConnection();
+    expect(amqp.connect).toHaveBeenCalledTimes(2);
+  });
+
+  it("a close from a superseded connection does not evict the live one", async () => {
+    const { svc, amqp, handlers } = setup();
+
+    await svc.getConnection();
+    const staleClose = handlers.close;
+    staleClose(); // the first connection dies
+    await svc.getConnection(); // a second connection is established
+    expect(amqp.connect).toHaveBeenCalledTimes(2);
+
+    staleClose(); // late event from the DEAD connection
+
+    await svc.getConnection();
+    expect(amqp.connect).toHaveBeenCalledTimes(2); // still cached
+  });
+
+  it("reopens the channel after it emits close, keeping the connection", async () => {
+    const { svc, amqp, connection, channel } = setup();
+
+    await svc.getChannel();
+    channel.emit("close");
+
+    await svc.getChannel();
+
+    expect(connection.createChannel).toHaveBeenCalledTimes(2);
+    expect(amqp.connect).toHaveBeenCalledTimes(1); // connection untouched
+  });
+
+  it("reopens the channel after it emits error and logs it", async () => {
+    const { svc, connection, channel } = setup();
+
+    await svc.getChannel();
+    channel.emit("error", new Error("channel closed by server"));
+
+    await svc.getChannel();
+
+    expect(logger.error).toHaveBeenCalledWith(
+      "RabbitMQ channel error",
+      expect.objectContaining({ error: "channel closed by server" }),
+    );
+    expect(connection.createChannel).toHaveBeenCalledTimes(2);
+  });
+
+  it("a close from a superseded channel does not evict the live one", async () => {
+    const { svc, connection, channel } = setup();
+
+    await svc.getChannel();
+    channel.emit("close"); // the first channel dies
+    await svc.getChannel(); // a second channel is created
+    expect(connection.createChannel).toHaveBeenCalledTimes(2);
+
+    channel.emit("close"); // late event from the FIRST channel
+
+    await svc.getChannel();
+    expect(connection.createChannel).toHaveBeenCalledTimes(2); // still cached
   });
 
   it("caches the channel and reuses it", async () => {
@@ -189,25 +329,6 @@ describe("rabbitmq.service", () => {
 
     expect(channel.close).not.toHaveBeenCalled();
     expect(connection.close).not.toHaveBeenCalled();
-  });
-
-  it("reconnects when the cached connection is closed", async () => {
-    const { svc, amqp } = setup({ connectionOpen: false });
-
-    await svc.getConnection();
-    await svc.getConnection();
-
-    // isOpen=false means the cache is not reused.
-    expect(amqp.connect).toHaveBeenCalledTimes(2);
-  });
-
-  it("recreates the channel when the cached one is closed", async () => {
-    const { svc, connection } = setup({ channelOpen: false });
-
-    await svc.getChannel();
-    await svc.getChannel();
-
-    expect(connection.createChannel).toHaveBeenCalledTimes(2);
   });
 
   it("rejects when the connection times out", async () => {

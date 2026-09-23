@@ -7,9 +7,14 @@ const baseUrlOf = (req) => `${req.protocol}://${req.get("host")}`;
 
 // POST /api/v1/attachments (multipart: file + resourceType/resourceId)
 exports.upload = asyncHandler(async (req, res) => {
+  // A-09: multer only populates req.body for a multipart request; a POST with
+  // no body at all leaves it `undefined` under Express 5, and reading
+  // `.resourceType` off it threw a TypeError (500) instead of reaching the
+  // service's own 400.
+  const { resourceType, resourceId } = req.body || {};
   const data = await attachmentService.createAttachment(req.user.tenantId, req.file, {
-    resourceType: req.body.resourceType,
-    resourceId: req.body.resourceId,
+    resourceType,
+    resourceId,
     uploadedBy: req.user.id,
   });
   success(res, data, null, "Attachment uploaded", 201);
@@ -61,7 +66,13 @@ exports.downloadSigned = asyncHandler(async (req, res) => {
 });
 
 // DELETE /api/v1/attachments/:id
+// A-28: the actor is carried into the service so the audit row written inside
+// the delete transaction is attributable.
 exports.remove = asyncHandler(async (req, res) => {
-  const data = await attachmentService.deleteAttachment(req.user.tenantId, req.params.id);
+  const data = await attachmentService.deleteAttachment(req.user.tenantId, req.params.id, {
+    userId: req.user.id,
+    ipAddress: req.ip,
+    userAgent: req.get("user-agent"),
+  });
   success(res, data, null, "Attachment deleted", 200);
 });

@@ -97,7 +97,7 @@ describe("jwt utility", () => {
       const token = jwtUtils.generateAccessToken("user-123");
       expect(token).toBe("mock-token");
       expect(mockSign).toHaveBeenCalledWith(
-        { id: "user-123" },
+        { id: "user-123", typ: "access" },
         expect.any(String),
         expect.any(Object)
       );
@@ -195,20 +195,39 @@ describe("jwt utility", () => {
   });
 
   describe("verifyRefreshToken", () => {
-    it("should verify token with active key", () => {
-      mockVerify.mockReturnValueOnce({ userId: 123 });
-      const result = jwtUtils.verifyRefreshToken("valid-refresh-token");
-      expect(result).toEqual({ userId: 123 });
+    // A-31: one secret, one algorithm, no fallback. Verifying a refresh token
+    // against the access-key registry is what made the two token types
+    // interchangeable — the registry holds ACCESS_SECRET.
+    it("verifies against the refresh secret alone, with HS256 pinned", () => {
+      mockVerify.mockReturnValueOnce({ userId: 123, typ: "refresh" });
+      const result = jwtUtils.verifyRefreshToken("refresh-token");
+      expect(result).toEqual({ userId: 123, typ: "refresh" });
+      expect(mockVerify).toHaveBeenCalledTimes(1);
+      expect(mockVerify).toHaveBeenCalledWith("refresh-token", "test-refresh-secret", {
+        algorithms: ["HS256"],
+      });
     });
 
-    it("should try multiple active keys", () => {
-      mockVerify
-        .mockImplementationOnce(() => {
-          throw new Error("invalid");
-        })
-        .mockReturnValueOnce({ userId: 456 });
-      const result = jwtUtils.verifyRefreshToken("valid-token");
-      expect(result).toEqual({ userId: 456 });
+    it("does not fall back to the access secret", () => {
+      mockVerify.mockImplementation(() => {
+        throw new Error("invalid");
+      });
+      expect(() => jwtUtils.verifyRefreshToken("token-signed-with-access-secret")).toThrow(
+        "Invalid or expired refresh token",
+      );
+      expect(mockVerify).toHaveBeenCalledTimes(1);
+      expect(mockVerify).not.toHaveBeenCalledWith(
+        expect.anything(),
+        "test-access-secret",
+        expect.anything(),
+      );
+    });
+
+    it("refuses a token whose type claim says access", () => {
+      mockVerify.mockReturnValueOnce({ userId: 123, typ: "access" });
+      expect(() => jwtUtils.verifyRefreshToken("an-access-token")).toThrow(
+        "Invalid or expired refresh token",
+      );
     });
 
     it("should throw TokenExpiredError immediately", () => {
@@ -219,27 +238,7 @@ describe("jwt utility", () => {
       });
       expect(() => jwtUtils.verifyRefreshToken("expired-token")).toThrow(err);
     });
-
-    it("should fall back to default secret", () => {
-      mockVerify
-        .mockImplementationOnce(() => {
-          throw new Error("invalid");
-        })
-        .mockReturnValueOnce({ userId: 123 });
-      const result = jwtUtils.verifyRefreshToken("fallback-token");
-      expect(result).toEqual({ userId: 123 });
-    });
-
-    it("should throw for invalid token after fallback fails", () => {
-      mockVerify.mockImplementation(() => {
-        throw new Error("invalid");
-      });
-      expect(() => jwtUtils.verifyRefreshToken("invalid-token")).toThrow(
-        "Invalid or expired refresh token"
-      );
-    });
   });
-
   describe("decodeToken", () => {
     it("should decode token without verification", () => {
       const mockPayload = { userId: 123, exp: 9999999999 };
@@ -445,53 +444,29 @@ describe("jwt utility", () => {
       );
     });
 
-    it("verifyRefreshToken uses RS256 public key", () => {
-      // Rotate to RS256
+    it("verifies a refresh token against the refresh secret even after the access key rotates to RS256", () => {
       jwtUtils.rotateKeys("RS256");
-      expect(process.env.JWT_PUBLIC_KEY).toBeDefined();
+      mockVerify.mockReturnValueOnce({ userId: 123, typ: "refresh" });
 
-      // First call (for HS256 key) fails, second call (for RS256 key) succeeds
-      mockVerify
-        .mockImplementationOnce(() => {
-          throw new Error("invalid");
-        })
-        .mockReturnValueOnce({ userId: 123 });
-      const result = jwtUtils.verifyRefreshToken("valid-refresh-token");
-      expect(result).toEqual({ userId: 123 });
-      expect(mockVerify).toHaveBeenNthCalledWith(
-        2,
-        "valid-refresh-token",
-        process.env.JWT_PUBLIC_KEY,
-        expect.any(Object)
-      );
+      expect(jwtUtils.verifyRefreshToken("refresh-token")).toEqual({ userId: 123, typ: "refresh" });
+      expect(mockVerify).toHaveBeenCalledTimes(1);
+      expect(mockVerify).toHaveBeenCalledWith("refresh-token", "test-refresh-secret", {
+        algorithms: ["HS256"],
+      });
     });
 
-    it("verifyRefreshToken RS256 key throws invalid token", () => {
-      // Rotate to RS256
+    // A-31: refresh tokens no longer follow the access key registry, so
+    // rotating it to RS256 must not change how a refresh token is signed.
+    it("signs a refresh token with the refresh secret even after the access key rotates to RS256", () => {
       jwtUtils.rotateKeys("RS256");
-      expect(process.env.JWT_PUBLIC_KEY).toBeDefined();
+      expect(process.env.JWT_PRIVATE_KEY).toBeDefined();
 
-      // First call (for HS256 key) fails, second call (for RS256 key) throws invalid token
-      mockVerify
-        .mockImplementationOnce(() => {
-          throw new Error("invalid");
-        })
-        .mockImplementationOnce(() => {
-          throw new Error("invalid token");
-        });
-      expect(() => jwtUtils.verifyRefreshToken("invalid-token")).toThrow(
-        "Invalid or expired refresh token"
-      );
-    });
-
-    it("generateRefreshToken RS256 throws when private key missing", () => {
-      // Rotate to RS256 (sets JWT_PRIVATE_KEY), then delete it
-      jwtUtils.rotateKeys("RS256");
-      delete process.env.JWT_PRIVATE_KEY;
-      expect(process.env.JWT_PRIVATE_KEY).toBeUndefined();
-
-      expect(() => jwtUtils.generateRefreshToken({ userId: 1 })).toThrow(
-        "requires JWT_PRIVATE_KEY environment variable"
+      const token = jwtUtils.generateRefreshToken({ userId: 1 });
+      expect(token).toBe("mock-token");
+      expect(mockSign).toHaveBeenCalledWith(
+        { userId: 1, typ: "refresh" },
+        "test-refresh-secret",
+        expect.objectContaining({ algorithm: "HS256" }),
       );
     });
 
@@ -621,13 +596,13 @@ it("generateAccessToken RS256 uses JWT_ACCESS_EXPIRED env var", () => {
   jwtUtils.rotateKeys("HS256");
 });
 
-it("generateRefreshToken RS256 uses JWT_REFRESH_EXPIRED env var", () => {
+it("generateRefreshToken uses JWT_REFRESH_EXPIRED env var, whatever the access key is", () => {
   jwtUtils.rotateKeys("RS256");
   process.env.JWT_REFRESH_EXPIRED = "60d";
   jwtUtils.generateRefreshToken({ userId: 1 });
   expect(mockSign).toHaveBeenCalledWith(
     expect.any(Object),
-    process.env.JWT_PRIVATE_KEY,
+    "test-refresh-secret",
     expect.objectContaining({ expiresIn: "60d" })
   );
   delete process.env.JWT_REFRESH_EXPIRED;
@@ -660,17 +635,19 @@ it("generateAccessToken HS256 uses default fallback 15m", () => {
   process.env.JWT_ACCESS_EXPIRED = orig;
 });
 
-it("generateRefreshToken RS256 uses default fallback 7d", () => {
+it("generateRefreshToken falls back to 7d", () => {
   jwtUtils.rotateKeys("RS256");
   const orig = process.env.JWT_REFRESH_EXPIRED;
   delete process.env.JWT_REFRESH_EXPIRED;
   jwtUtils.generateRefreshToken({ userId: 1 });
   expect(mockSign).toHaveBeenCalledWith(
     expect.any(Object),
-    process.env.JWT_PRIVATE_KEY,
+    "test-refresh-secret",
     expect.objectContaining({ expiresIn: "7d" })
   );
-  process.env.JWT_REFRESH_EXPIRED = orig;
+  if (orig !== undefined) {
+    process.env.JWT_REFRESH_EXPIRED = orig;
+  }
   jwtUtils.rotateKeys("HS256");
 });
 

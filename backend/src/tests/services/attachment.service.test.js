@@ -12,6 +12,22 @@ jest.mock("../../models", () => ({
     create: jest.fn(),
     findOne: jest.fn(),
   },
+  // A-28: the delete now reads the parent certificate's state and writes an
+  // audit row inside a transaction.
+  Certificate: {
+    findOne: jest.fn(),
+  },
+  AuditLog: {
+    create: jest.fn(),
+  },
+}));
+
+// The transaction is run for real in the sense that the callback executes; the
+// handle is a sentinel so the assertions can prove BOTH writes carry it.
+jest.mock("../../config", () => ({
+  db: {
+    transaction: jest.fn(async (cb) => cb("TX")),
+  },
 }));
 
 jest.mock(
@@ -72,7 +88,7 @@ jest.mock("fs", () => ({
 }));
 
 const attachmentService = require("../../services/attachment.service");
-const { Attachment } = require("../../models");
+const { Attachment, Certificate, AuditLog } = require("../../models");
 const virusScan = require("../../services/virusScan.service");
 
 describe("attachment.service", () => {
@@ -255,20 +271,58 @@ describe("attachment.service", () => {
 
   // ================================================================
   describe("deleteAttachment", () => {
-    it("should soft-delete the attachment", async () => {
-      const mockAtt = {
-        id: "a-1",
-        softDelete: jest.fn().mockResolvedValue({}),
-      };
-      Attachment.findOne.mockResolvedValueOnce(mockAtt);
-
-      const result = await attachmentService.deleteAttachment("t-1", "a-1");
-
-      expect(result.id).toBe("a-1");
-      expect(mockAtt.softDelete).toHaveBeenCalled();
+    const attachmentRow = (overrides = {}) => ({
+      id: "a-1",
+      originalName: "evidence.pdf",
+      checksum: "abc",
+      resourceType: "generic",
+      resourceId: null,
+      isDeleted: false,
+      save: jest.fn().mockResolvedValue({}),
+      ...overrides,
     });
 
-    it("should throw 404 when not found", async () => {
+    it("soft-deletes via isDeleted and writes the audit row in the same transaction", async () => {
+      const mockAtt = attachmentRow();
+      Attachment.findOne.mockResolvedValueOnce(mockAtt);
+
+      const result = await attachmentService.deleteAttachment("t-1", "a-1", {
+        userId: "u-1",
+        ipAddress: "10.0.0.1",
+        userAgent: "jest",
+      });
+
+      expect(result.id).toBe("a-1");
+      // The attribute is isDeleted. `is_deleted` would silently do nothing.
+      expect(mockAtt.isDeleted).toBe(true);
+      expect(mockAtt.save).toHaveBeenCalledWith({ hooks: false, transaction: "TX" });
+      expect(AuditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: "t-1",
+          userId: "u-1",
+          action: "DELETE",
+          resourceType: "Attachment",
+          resourceId: "a-1",
+          ipAddress: "10.0.0.1",
+          userAgent: "jest",
+        }),
+        { transaction: "TX" },
+      );
+    });
+
+    it("records an unattributed audit row when no actor is supplied", async () => {
+      const mockAtt = attachmentRow({ id: "a-2" });
+      Attachment.findOne.mockResolvedValueOnce(mockAtt);
+
+      await attachmentService.deleteAttachment("t-1", "a-2");
+
+      expect(AuditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: null, ipAddress: null, userAgent: null }),
+        { transaction: "TX" },
+      );
+    });
+
+    it("throws 404 when not found", async () => {
       Attachment.findOne.mockResolvedValueOnce(null);
 
       await expect(
@@ -277,6 +331,78 @@ describe("attachment.service", () => {
         status: 404,
         message: "Attachment not found",
       });
+    });
+
+    // ---- A-28: evidence bound to a released certificate ----
+    it.each(["approved", "signed"])(
+      "refuses with 409 when the parent certificate is %s, and leaves the row untouched",
+      async (status) => {
+        const mockAtt = attachmentRow({
+          resourceType: "Certificate",
+          resourceId: "c-1",
+        });
+        Attachment.findOne.mockResolvedValueOnce(mockAtt);
+        Certificate.findOne.mockResolvedValueOnce({
+          id: "c-1",
+          status,
+          certificateNumber: "CERT-0001",
+        });
+
+        // 409 carrying a state explanation, not a generic error or a 500.
+        await expect(
+          attachmentService.deleteAttachment("t-1", "a-1", { userId: "u-1" }),
+        ).rejects.toMatchObject({
+          status: 409,
+          message: expect.stringContaining(`CERT-0001, which is ${status}`),
+        });
+
+        expect(mockAtt.isDeleted).toBe(false);
+        expect(mockAtt.save).not.toHaveBeenCalled();
+        expect(AuditLog.create).not.toHaveBeenCalled();
+      },
+    );
+
+    it("allows the delete when the parent certificate is still a draft", async () => {
+      const mockAtt = attachmentRow({
+        resourceType: "certificate",
+        resourceId: "c-2",
+      });
+      Attachment.findOne.mockResolvedValueOnce(mockAtt);
+      Certificate.findOne.mockResolvedValueOnce({
+        id: "c-2",
+        status: "draft",
+        certificateNumber: "CERT-0002",
+      });
+
+      await attachmentService.deleteAttachment("t-1", "a-1", { userId: "u-1" });
+
+      expect(mockAtt.isDeleted).toBe(true);
+    });
+
+    it("allows the delete when the named parent certificate no longer exists", async () => {
+      const mockAtt = attachmentRow({
+        resourceType: "Certificate",
+        resourceId: "c-3",
+      });
+      Attachment.findOne.mockResolvedValueOnce(mockAtt);
+      Certificate.findOne.mockResolvedValueOnce(null);
+
+      await attachmentService.deleteAttachment("t-1", "a-1", { userId: "u-1" });
+
+      expect(mockAtt.isDeleted).toBe(true);
+    });
+
+    it("does not look up a certificate for a standalone certificate-typed row", async () => {
+      const mockAtt = attachmentRow({
+        resourceType: "Certificate",
+        resourceId: null,
+      });
+      Attachment.findOne.mockResolvedValueOnce(mockAtt);
+
+      await attachmentService.deleteAttachment("t-1", "a-1", { userId: "u-1" });
+
+      expect(Certificate.findOne).not.toHaveBeenCalled();
+      expect(mockAtt.isDeleted).toBe(true);
     });
   });
 

@@ -72,7 +72,7 @@ exports.updateMenuGroup = asyncHandlerWithMapping(async (req, res) => {
 // DELETE MENU GROUP
 // ==========================================
 exports.deleteMenuGroup = asyncHandlerWithMapping(async (req, res) => {
-  const { menuGroupId } = req.body;
+  const { menuGroupId } = req.body || {};
   if (!menuGroupId) {
     throw new AppError(400, "menuGroupId is required");
   }

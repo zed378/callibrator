@@ -39,7 +39,7 @@ exports.ssoLogin = asyncHandler(async (req, res) => {
  * Handle SAML ACS Callback
  */
 exports.ssoCallback = asyncHandler(async (req, res) => {
-  const { SAMLResponse, RelayState } = req.body;
+  const { SAMLResponse, RelayState } = req.body || {};
   const tenantCode = req.params.tenantCode || RelayState;
 
   if (!tenantCode) {
@@ -146,7 +146,7 @@ exports.oidcLogin = asyncHandler(async (req, res) => {
  * Handle OIDC Callback
  */
 exports.oidcCallback = asyncHandler(async (req, res) => {
-  const { code, state } = req.body;
+  const { code, state } = req.body || {};
   const tenantCode = req.params.tenantCode || (state ? state.split('_')[1] : null);
 
   if (!tenantCode || !code) {

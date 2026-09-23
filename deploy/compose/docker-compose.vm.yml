@@ -49,10 +49,11 @@ services:
       RETENTION_SCHEDULER: "0 2 * * *"
     ports:
       - "127.0.0.1:${BACKEND_PORT:-19000}:3000"
-      # The backend is an MQTT CLIENT of an external broker, not a broker, so
-      # nothing listens on 1883 in this container. This publishes a public port
-      # with nothing behind it; drop it unless a sidecar broker is added.
-      - "0.0.0.0:${MQTT_PORT:-19883}:1883"
+      # A-17: the 0.0.0.0:19883 -> 1883 mapping was removed on 2026-09-23. The
+      # backend is an MQTT CLIENT of an external broker, so nothing listened
+      # there: it published a port on the public interface with nothing behind
+      # it. If a sidecar broker is ever added, publish ITS port, and bind it to
+      # 127.0.0.1 unless devices really must reach it from outside.
     restart: unless-stopped
 
   frontend:

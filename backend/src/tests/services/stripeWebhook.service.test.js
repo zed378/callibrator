@@ -1,6 +1,6 @@
 jest.mock("../../models", () => ({
   Subscription: { findOne: jest.fn() },
-  Invoice: { findOrCreate: jest.fn() },
+  Invoice: { findOne: jest.fn(), create: jest.fn() },
   Tenant: { update: jest.fn() },
 }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
@@ -13,7 +13,8 @@ const { Subscription, Invoice, Tenant } = require("../../models");
 describe("stripeWebhook.service", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    Invoice.findOrCreate.mockResolvedValue([{}, true]);
+    Invoice.findOne.mockResolvedValue(null);
+    Invoice.create.mockResolvedValue({});
   });
 
   describe("constructEvent (dev bypass, no signing secret)", () => {

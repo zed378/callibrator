@@ -4,7 +4,7 @@ const { asyncHandlerWithMapping } = require("../utils/controllerWrapper.util");
 
 exports.createRisk = asyncHandlerWithMapping(
   async (req, res) => {
-    const data = await riskService.createRisk(req.user.tenantId, req.body, req.user.id);
+    const data = await riskService.createRisk(req.user.tenantId, req.body || {}, req.user.id);
     success(res, data, null, "Risk created successfully", 201);
   },
   {}
@@ -38,7 +38,7 @@ exports.getRiskById = asyncHandlerWithMapping(
 
 exports.updateRisk = asyncHandlerWithMapping(
   async (req, res) => {
-    const data = await riskService.updateRisk(req.user.tenantId, req.params.id, req.body);
+    const data = await riskService.updateRisk(req.user.tenantId, req.params.id, req.body || {});
     success(res, data, null, "Risk updated successfully", 200);
   },
   {

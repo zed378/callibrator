@@ -118,6 +118,6 @@ router.post("/settings/test", ...storageAdmin, storageController.testConnection)
  *     responses:
  *       200: { description: Usage retrieved }
  */
-router.get("/usage", auth, storageController.getUsage);
+router.get("/usage", ...storageAdmin, storageController.getUsage);
 
 module.exports = router;

@@ -1,5 +1,6 @@
 // src/services/emailQueue.service.js
 const amqplib = require("amqplib");
+const { claimMessage } = require("./rabbitmq.service");
 const {
   sendOtpEmail,
   sendActivationEmail,
@@ -14,8 +15,33 @@ const { logger } = require("../middlewares/activityLog.middleware");
 let connection = null;
 let channel = null;
 
+/**
+ * Liveness is tracked through amqplib's "close"/"error" events, NOT through an
+ * `isOpen` property: amqplib (2.0.1 here) defines none, on the connection or
+ * the channel. The old guards `connection && connection.isOpen` /
+ * `channel && channel.isOpen` were therefore always false, so the cache never
+ * hit and every queued email opened a NEW connection and channel that nothing
+ * ever closed — a connection leak against the broker for the life of the
+ * process. It stayed invisible because the test mock invented `isOpen`.
+ *
+ * The identity check stops a late event from a superseded connection evicting
+ * its replacement.
+ */
+const forgetConnection = (conn) => {
+  if (connection === conn) {
+    connection = null;
+    channel = null;
+  }
+};
+
+const forgetChannel = (ch) => {
+  if (channel === ch) {
+    channel = null;
+  }
+};
+
 const getRabbitMQConnection = async () => {
-  if (connection && connection.isOpen) {
+  if (connection) {
     return connection;
   }
 
@@ -31,32 +57,43 @@ const getRabbitMQConnection = async () => {
     );
   });
 
-  connection = await Promise.race([connectPromise, timeoutPromise]).catch((err) => {
+  const conn = await Promise.race([connectPromise, timeoutPromise]).catch((err) => {
     logger.error("RabbitMQ connection failed", { error: err.message });
     throw err;
   });
 
-  connection.on("error", (err) => {
+  conn.on("error", (err) => {
     logger.error("RabbitMQ connection error", { error: err.message });
+    forgetConnection(conn);
   });
 
-  connection.on("close", () => {
+  conn.on("close", () => {
     logger.warn("RabbitMQ connection closed");
-    connection = null;
-    channel = null;
+    forgetConnection(conn);
   });
 
+  connection = conn;
   return connection;
 };
 
 const createChannel = async () => {
-  if (channel && channel.isOpen) {
+  if (channel) {
     return channel;
   }
 
   const conn = await getRabbitMQConnection();
-  channel = await conn.createChannel();
+  const ch = await conn.createChannel();
 
+  ch.on("error", (err) => {
+    logger.error("RabbitMQ channel error", { error: err.message });
+    forgetChannel(ch);
+  });
+
+  ch.on("close", () => {
+    forgetChannel(ch);
+  });
+
+  channel = ch;
   return channel;
 };
 
@@ -123,6 +160,9 @@ const addEmailJob = async (job) => {
 
     ch.sendToQueue(EMAIL_QUEUE, Buffer.from(JSON.stringify(jobData)), {
       persistent: true,
+      // Same value the consumer deduplicates on (jobData.id). Carried in the
+      // AMQP properties so it is visible in the management UI and the DLQ.
+      messageId: jobData.id,
     });
 
     logger.info("Email job added to queue", {
@@ -230,6 +270,29 @@ const processEmailQueue = async () => {
       return;
     }
 
+    // DEDUPLICATION (A-26). `job.id` is minted once in addEmailJob and lives in
+    // the persisted message body, so every redelivery of this message — an
+    // unacked message returned after a channel or connection loss, or a
+    // requeue — carries the same value. The AMQP delivery tag does NOT: it is
+    // per-channel and changes on redelivery, which is why the identity is read
+    // from the payload rather than from `msg.fields`.
+    let claim = null;
+    if (job.id) {
+      claim = await claimMessage(`email:${job.id}`);
+      if (!claim.claimed) {
+        // Already sent. ACK it: nacking would redeliver or dead-letter a
+        // message whose work is done.
+        logger.info("Duplicate email job ignored", {
+          jobId: job.id,
+          type: job.type,
+        });
+        ch.ack(msg);
+        return;
+      }
+    } else {
+      logger.warn("Email job has no id; processing without deduplication");
+    }
+
     try {
       let success = false;
 
@@ -263,6 +326,12 @@ const processEmailQueue = async () => {
         retries: job.retries,
       });
 
+      // The retry below re-publishes the SAME job.id, so the claim has to go
+      // back or the retry would be read as a duplicate and dropped.
+      if (claim) {
+        await claim.release();
+      }
+
       // Check if we should retry
       if (job.retries < (job.maxRetries || 3)) {
         job.retries += 1;
@@ -277,6 +346,7 @@ const processEmailQueue = async () => {
         setTimeout(() => {
           ch.sendToQueue(EMAIL_QUEUE, Buffer.from(JSON.stringify(job)), {
             persistent: true,
+            messageId: job.id,
           });
         }, delay);
       }
@@ -400,6 +470,11 @@ const closeRabbitMQ = async () => {
     logger.info("RabbitMQ connection closed");
   } catch (error) {
     logger.error("Error closing RabbitMQ connection", { error: error.message });
+  } finally {
+    // Now that the cache actually hits, it has to be dropped here too — a
+    // closed handle must not be handed to the next caller.
+    channel = null;
+    connection = null;
   }
 };
 

@@ -36,9 +36,11 @@ Under 21 CFR Part 11, originality of the record is not optional, and a control t
 
 `SUPERADMIN` bypasses every permission check and every tenant predicate. There is no second gate.
 
-**Mitigation in place:** MFA and WebAuthn available; sessions bound to IP and user agent; failed-login lockout; all actions audited.
+**Mitigation in place:** MFA and WebAuthn available; failed-login lockout; all actions audited.
 
-**Residual risk:** MFA is available, not enforced. A super-admin account without a second factor is one credential away from total compromise.
+This read "sessions bound to IP and user agent" until **2026-09-23**. That binding does not exist — the middleware claiming it was imported by nothing and was deleted under audit finding A-12.
+
+**Residual risk:** MFA is available, not enforced. A super-admin account without a second factor is one credential away from total compromise. Nothing binds a stolen super-admin session to where it was issued, and `auth` does not consult the `sessions` table, so revoking one takes effect only when the access token expires.
 
 **Mitigation to add:** mandatory MFA for level 10, enforced at login rather than requested at onboarding.
 

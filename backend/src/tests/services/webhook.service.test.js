@@ -291,6 +291,37 @@ describe("webhook.service", () => {
       );
     });
 
+    // Node's fetch follows redirects by default, and the SSRF check validates
+    // only the REGISTERED url — so a host that passed both SSRF layers could
+    // answer 302 Location: http://169.254.169.254/... and this process would
+    // fetch cloud metadata from inside the deployment.
+    it("does not follow a redirect, and records it as a delivery failure", async () => {
+      Webhook.findAll.mockResolvedValue([{ id: "w1", url: "https://x.com", secret: "s" }]);
+      const mockUpdate = jest.fn();
+      WebhookDelivery.create.mockResolvedValue({
+        id: "d1",
+        event: "test",
+        payload: {},
+        update: mockUpdate,
+      });
+
+      global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 302 });
+
+      await webhookService.emitEvent("t1", "test");
+      await new Promise((r) => setImmediate(r));
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        "https://x.com",
+        expect.objectContaining({ redirect: "manual" }),
+      );
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          responseStatus: 302,
+          lastError: expect.stringContaining("Redirect (302) not followed"),
+        }),
+      );
+    });
+
     it("retries up to max attempts (5) and marks as exhausted on fetch status failure", async () => {
       Webhook.findAll.mockResolvedValue([{ id: "w1", url: "https://x.com", secret: "s" }]);
       const mockUpdate = jest.fn();

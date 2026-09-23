@@ -51,6 +51,12 @@ describe("emailQueue.service", () => {
 
     const eventHandlers = {};
 
+    // The mock exposes ONLY what amqplib exposes. There is no `isOpen` on an
+    // amqplib channel or connection (2.0.1: `grep -rn isOpen node_modules/amqplib`
+    // returns nothing); the mock used to invent one, which is precisely why a
+    // connection cache that never hit stayed green here. Liveness comes from
+    // the "close"/"error" events an amqplib channel really emits.
+    const channelHandlers = {};
     mockChannel = {
       assertQueue: jest.fn().mockResolvedValue(true),
       sendToQueue: jest.fn().mockReturnValue(true),
@@ -61,7 +67,10 @@ describe("emailQueue.service", () => {
       checkQueue: jest.fn().mockResolvedValue({ messageCount: 5 }),
       purgeQueue: jest.fn().mockResolvedValue(true),
       close: jest.fn().mockResolvedValue(true),
-      isOpen: true,
+      on: jest.fn((event, handler) => {
+        channelHandlers[event] = handler;
+      }),
+      emit: (event, arg) => channelHandlers[event] && channelHandlers[event](arg),
     };
 
     mockConnection = {
@@ -72,7 +81,6 @@ describe("emailQueue.service", () => {
       close: jest.fn().mockImplementation(async () => {
         if (eventHandlers["close"]) {eventHandlers["close"]();}
       }),
-      isOpen: true,
       _triggerError: (err) => {
         if (eventHandlers["error"]) {eventHandlers["error"](err);}
       },
@@ -131,12 +139,81 @@ describe("emailQueue.service", () => {
       expect(amqplib.connect).toHaveBeenCalledTimes(1);
 
       // Channel dropped, connection still healthy: the cached connection must be
-      // reused and only a fresh channel opened.
-      mockChannel.isOpen = false;
+      // reused and only a fresh channel opened. The signal is the channel's own
+      // "close" event, not a property amqplib does not have.
+      mockChannel.emit("close");
 
       await emailQueueService.queueActivationEmail({ email: "test@mail.com" });
 
       expect(amqplib.connect).toHaveBeenCalledTimes(1);
+      expect(mockConnection.createChannel).toHaveBeenCalledTimes(2);
+    });
+
+    it("should reopen the channel after it emits error, and log it", async () => {
+      await emailQueueService.processEmailQueue();
+
+      mockChannel.emit("error", new Error("channel closed by server"));
+
+      await emailQueueService.queueActivationEmail({ email: "test@mail.com" });
+
+      expect(logger.error).toHaveBeenCalledWith(
+        "RabbitMQ channel error",
+        expect.objectContaining({ error: "channel closed by server" }),
+      );
+      expect(amqplib.connect).toHaveBeenCalledTimes(1);
+      expect(mockConnection.createChannel).toHaveBeenCalledTimes(2);
+    });
+
+    it("should open exactly ONE connection and channel across many queued emails", async () => {
+      // The leak this guards: with the old `connection.isOpen` guard the cache
+      // never hit, so every queued email dialled the broker again and nothing
+      // closed the previous connection.
+      await emailQueueService.queueActivationEmail({ email: "a@mail.com" });
+      await emailQueueService.queueOtpEmail({ email: "b@mail.com" });
+      await emailQueueService.queueNotificationEmail({ email: "c@mail.com" });
+
+      expect(amqplib.connect).toHaveBeenCalledTimes(1);
+      expect(mockConnection.createChannel).toHaveBeenCalledTimes(1);
+    });
+
+    it("ignores a close from a connection that has already been replaced", async () => {
+      await emailQueueService.processEmailQueue();
+      // The handler the FIRST connection registered, captured before it is
+      // superseded.
+      const staleClose = mockConnection.on.mock.calls.find(
+        ([event]) => event === "close",
+      )[1];
+
+      staleClose(); // first connection dies
+
+      amqplib.connect.mockResolvedValueOnce({
+        createChannel: jest.fn().mockResolvedValue(mockChannel),
+        on: jest.fn(),
+        close: jest.fn().mockResolvedValue(true),
+      });
+      await emailQueueService.queueActivationEmail({ email: "a@mail.com" });
+      expect(amqplib.connect).toHaveBeenCalledTimes(2);
+
+      staleClose(); // late event from the DEAD connection
+
+      await emailQueueService.queueActivationEmail({ email: "b@mail.com" });
+      expect(amqplib.connect).toHaveBeenCalledTimes(2); // replacement kept
+    });
+
+    it("ignores a close from a channel that has already been replaced", async () => {
+      await emailQueueService.processEmailQueue();
+
+      mockChannel.emit("close"); // first channel dies
+      mockConnection.createChannel.mockResolvedValueOnce({
+        ...mockChannel,
+        on: jest.fn(),
+      });
+      await emailQueueService.queueActivationEmail({ email: "a@mail.com" });
+      expect(mockConnection.createChannel).toHaveBeenCalledTimes(2);
+
+      mockChannel.emit("close"); // late event from the FIRST channel
+
+      await emailQueueService.queueActivationEmail({ email: "b@mail.com" });
       expect(mockConnection.createChannel).toHaveBeenCalledTimes(2);
     });
 

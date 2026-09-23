@@ -39,6 +39,81 @@ if (!ENCRYPT_KEY_RAW) {
 const ENCRYPT_KEY = crypto.createHash("sha256").update(ENCRYPT_KEY_RAW).digest();
 
 // ==========================================
+// SIGNATURE SCHEME
+// ==========================================
+
+/**
+ * Identifier stored on every record produced by the current scheme: an
+ * RSA-SHA256 signature, made with the signing tenant's private key, over the
+ * canonical payload built by canonicalizeSignaturePayload().
+ *
+ * Records written before this scheme existed carry NULL (see LEGACY_*), were
+ * "verified" by recomputing a SHA-256 of a payload containing Date.now(), and
+ * therefore could never verify. They are reported as unverifiable, NOT as
+ * forgeries and NOT as valid.
+ */
+const SIGNATURE_SCHEME_V2 = "esig-v2-rsa-sha256";
+
+const LEGACY_VERIFICATION_REASON =
+  "This signature predates the cryptographic signing fix (ADR-040): it was " +
+  "recorded as a timestamp hash with no key material, so it can neither be " +
+  "cryptographically verified nor shown to be a forgery.";
+
+/**
+ * The exact fields bound by a signature, in the exact order they are
+ * serialized. The order lives here, in one array, so the bytes cannot change
+ * because an object literal was reordered or because a JSON implementation
+ * ordered keys differently.
+ */
+const CANONICAL_FIELDS = [
+  "scheme",
+  "algorithm",
+  "tenantId",
+  "documentId",
+  "workflowId",
+  "workflowStepId",
+  "signerUserId",
+  "signedAt",
+  "authenticationMethod",
+  "reason",
+];
+
+/**
+ * Serialize the signed payload deterministically.
+ *
+ * Emits a JSON array of [name, value] pairs — an array, so ordering is defined
+ * by CANONICAL_FIELDS rather than by object key-insertion order — with every
+ * value coerced to a string and null/undefined collapsed to "". The same inputs
+ * always produce byte-identical output, on any Node version, in any process.
+ *
+ * @param {Object} fields - values keyed by CANONICAL_FIELDS
+ * @returns {string} canonical UTF-8 payload
+ */
+function canonicalizeSignaturePayload(fields) {
+  return JSON.stringify(
+    CANONICAL_FIELDS.map((name) => [
+      name,
+      fields[name] === null || fields[name] === undefined
+        ? ""
+        : String(fields[name]),
+    ]),
+  );
+}
+
+/**
+ * Normalize a signing timestamp to a fixed, millisecond-precision ISO-8601
+ * string. Verification reconstructs it from the STORED signedAt, so it must
+ * render identically whether the driver hands back a Date or a string.
+ *
+ * @param {Date|string|number} value
+ * @returns {string}
+ */
+function canonicalTimestamp(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  return date.toISOString();
+}
+
+// ==========================================
 // KEY PAIR MANAGEMENT
 // ==========================================
 
@@ -110,11 +185,8 @@ function encryptPrivateKey(privateKey) {
 }
 
 /**
- * Decrypt private key for use
+ * Decrypt private key for use. Called by loadSigningKey() on every signature.
  */
-/* istanbul ignore next -- unreachable: decryptPrivateKey is not exported and is
-   never called anywhere in the codebase (only its counterpart
-   encryptPrivateKey is used), so no test can invoke it. */
 function decryptPrivateKey(encryptedKey) {
   const [ivHex, encrypted] = encryptedKey.split(":");
   const iv = Buffer.from(ivHex, "hex");
@@ -124,6 +196,72 @@ function decryptPrivateKey(encryptedKey) {
   decrypted += decipher.final("utf8");
 
   return decrypted;
+}
+
+/**
+ * Load the tenant's current e-signature signing key and return its decrypted
+ * PEM. The private key is excluded by the model's default scope, so this reads
+ * through `.unscoped()`.
+ *
+ * @param {string} tenantId
+ * @returns {Promise<{keyId: string, privateKeyPem: string}>}
+ * @throws {AppError} 409 when the tenant has no key pair provisioned — signing
+ *   is not a server fault, it is an unmet precondition the caller can fix by
+ *   generating a key pair.
+ */
+async function loadSigningKey(tenantId) {
+  const { TenantKey } = require("../models");
+
+  const key = await TenantKey.unscoped().findOne({
+    where: { tenantId, keyType: "esignature" },
+    order: [["createdAt", "DESC"]],
+  });
+
+  if (!key) {
+    throw new AppError(
+      409,
+      "No e-signature key pair is provisioned for this tenant. Generate one " +
+        "(POST /api/v1/esignature/keys) before signing.",
+    );
+  }
+
+  let privateKeyPem;
+  try {
+    privateKeyPem = decryptPrivateKey(key.privateKey);
+  } catch (err) {
+    logger.error("Signing key could not be decrypted", {
+      tenantId,
+      keyId: key.keyId,
+      error: err.message,
+    });
+    throw new AppError(
+      500,
+      "The tenant signing key could not be decrypted (wrong ENCRYPT_KEY?)",
+    );
+  }
+
+  return { keyId: key.keyId, privateKeyPem };
+}
+
+/**
+ * Load the key a signature was made with, for verification.
+ *
+ * `paranoid: false` is deliberate and load-bearing: TenantKey is paranoid, and
+ * deleting a key must not retroactively turn every signature it ever made into
+ * an unverifiable record. Only the public key is needed, so the default scope
+ * (which excludes the private key) is left in place.
+ *
+ * @param {string} tenantId
+ * @param {string} keyId
+ * @returns {Promise<Object|null>}
+ */
+async function loadVerificationKey(tenantId, keyId) {
+  const { TenantKey } = require("../models");
+
+  return TenantKey.findOne({
+    where: { tenantId, keyId },
+    paranoid: false,
+  });
 }
 
 /**
@@ -304,11 +442,18 @@ async function sendSignatureRequest(email, workflow, step) {
 // ==========================================
 
 /**
- * Sign a document
+ * Sign a document.
+ *
+ * Produces an RSA-SHA256 signature, made with the tenant's private key, over a
+ * canonical payload binding the document, workflow step, signer, tenant, the
+ * signing timestamp as stored, the authentication method and the signature's
+ * meaning. Requires a provisioned tenant key pair (409 without one).
+ *
  * @param {string} stepId - Workflow step ID
  * @param {string} userId - User ID
  * @param {Object} signatureData - Signature data
- * @returns {Promise<{signatureId: string, certificate: string}>}
+ * @param {string} [signatureData.reason] - meaning of the signature (21 CFR 11.50)
+ * @returns {Promise<{signatureId: string, certificate: Object}>}
  */
 exports.signDocument = async (stepId, userId, signatureData) => {
   const { polygon, biometricData, authenticationMethod } = signatureData;
@@ -359,12 +504,40 @@ exports.signDocument = async (stepId, userId, signatureData) => {
       throw new AppError(404, "Workflow not found");
     }
 
-    // Generate signature hash
-    const signatureHash = generateSignatureHash(
-      workflow.documentId,
-      userId,
-      step.tenantId,
-    );
+    // Everything the signature binds is fixed HERE, before anything is signed,
+    // and the same values are what gets persisted. signedAt in particular is
+    // computed once: verification reconstructs the payload from the stored
+    // column, so a second `new Date()` would make every signature unverifiable
+    // (that was the original defect, with Date.now() inside the payload).
+    const signedAt = new Date();
+    const method = authenticationMethod || "password";
+    const reason = signatureData.reason || null;
+
+    const { keyId, privateKeyPem } = await loadSigningKey(step.tenantId);
+
+    const canonicalPayload = canonicalizeSignaturePayload({
+      scheme: SIGNATURE_SCHEME_V2,
+      algorithm: SIGNATURE_ALGORITHM,
+      tenantId: step.tenantId,
+      documentId: workflow.documentId,
+      workflowId: workflow.id,
+      workflowStepId: step.id,
+      signerUserId: userId,
+      signedAt: canonicalTimestamp(signedAt),
+      authenticationMethod: method,
+      reason,
+    });
+
+    const payloadBuffer = Buffer.from(canonicalPayload, "utf8");
+    const signatureValue = crypto
+      .sign("sha256", payloadBuffer, privateKeyPem)
+      .toString("base64");
+    // Kept for the NOT NULL column and for human comparison: the digest of the
+    // bytes that were actually signed, not a hash of a timestamp.
+    const signatureHash = crypto
+      .createHash("sha256")
+      .update(payloadBuffer)
+      .digest("hex");
 
     // Create signature record
     const signature = await SignatureRecord.create({
@@ -373,11 +546,15 @@ exports.signDocument = async (stepId, userId, signatureData) => {
       userId,
       tenantId: step.tenantId,
       signatureHash,
+      signatureValue,
+      signingKeyId: keyId,
+      signatureScheme: SIGNATURE_SCHEME_V2,
+      signatureReason: reason,
       signatureAlgorithm: SIGNATURE_ALGORITHM,
       polygon: polygon || null,
       biometricData: biometricData || null,
-      authenticationMethod: authenticationMethod || "password",
-      signedAt: new Date(),
+      authenticationMethod: method,
+      signedAt,
       ipAddress: signatureData.ipAddress || null,
       userAgent: signatureData.userAgent || null,
       status: "signed",
@@ -400,6 +577,8 @@ exports.signDocument = async (stepId, userId, signatureData) => {
       after: {
         signatureId: signature.id,
         signatureHash,
+        signingKeyId: keyId,
+        signatureScheme: SIGNATURE_SCHEME_V2,
         signedAt: signature.signedAt,
       },
     });
@@ -445,14 +624,6 @@ exports.signDocument = async (stepId, userId, signatureData) => {
 };
 
 /**
- * Generate signature hash (document binding)
- */
-function generateSignatureHash(documentId, userId, tenantId) {
-  const payload = `${documentId}:${userId}:${tenantId}:${Date.now()}`;
-  return crypto.createHash("sha256").update(payload).digest("hex");
-}
-
-/**
  * Generate signature certificate
  */
 function generateSignatureCertificate(signature, workflow) {
@@ -463,6 +634,9 @@ function generateSignatureCertificate(signature, workflow) {
     signerId: signature.userId,
     signedAt: signature.signedAt.toISOString(),
     signatureHash: signature.signatureHash,
+    signatureValue: signature.signatureValue,
+    signingKeyId: signature.signingKeyId,
+    signatureScheme: signature.signatureScheme,
     algorithm: signature.signatureAlgorithm,
     ipAddress: signature.ipAddress,
     userAgent: signature.userAgent,
@@ -510,9 +684,43 @@ async function completeWorkflow(workflowId) {
 // ==========================================
 
 /**
- * Verify a signature
+ * The shared, non-cryptographic part of a verification result.
+ */
+function buildVerificationDetails(signature, workflow) {
+  return {
+    signatureId: signature.id,
+    workflowId: signature.workflowId,
+    documentId: workflow ? workflow.documentId : null,
+    signerId: signature.userId,
+    signedAt: signature.signedAt,
+    algorithm: signature.signatureAlgorithm,
+    scheme: signature.signatureScheme || null,
+    signingKeyId: signature.signingKeyId || null,
+    reason: signature.signatureReason || null,
+    ipAddress: signature.ipAddress,
+    userAgent: signature.userAgent,
+    authenticationMethod: signature.authenticationMethod,
+    polygon: signature.polygon,
+    biometricData: signature.biometricData,
+  };
+}
+
+/**
+ * Verify a signature.
+ *
+ * Reconstructs the canonical payload from the STORED fields (document, signer,
+ * tenant, step, signing timestamp, authentication method, meaning) and checks
+ * the stored RSA-SHA256 signature against the tenant public key it was made
+ * with. Nothing is recomputed from the current clock, so a genuine signature
+ * verifies for as long as the key is readable.
+ *
+ * `verificationStatus` is the field to branch on; `valid` stays a strict
+ * boolean and is true ONLY for a cryptographically verified signature:
+ *   valid | invalid | revoked | not_found | workflow_missing |
+ *   unverifiable_legacy | unverifiable_key_missing | error
+ *
  * @param {string} signatureId - Signature ID
- * @returns {Promise<{valid: boolean, details: Object}>}
+ * @returns {Promise<{valid: boolean, verificationStatus: string, reason: string, details?: Object}>}
  */
 exports.verifySignature = async (signatureId) => {
   try {
@@ -520,47 +728,105 @@ exports.verifySignature = async (signatureId) => {
 
     const signature = await SignatureRecord.findByPk(signatureId);
     if (!signature) {
-      return { valid: false, reason: "Signature not found" };
+      return {
+        valid: false,
+        verificationStatus: "not_found",
+        reason: "Signature not found",
+      };
     }
 
-    const workflow = await SignatureWorkflow.findByPk(signature.workflowId);
+    // paranoid: false — a soft-deleted workflow must not erase the evidence of
+    // the signatures made against it.
+    const workflow = await SignatureWorkflow.findByPk(signature.workflowId, {
+      paranoid: false,
+    });
+
+    const details = buildVerificationDetails(signature, workflow);
 
     // Verify signature hasn't been revoked
     if (signature.status === "revoked") {
-      return { valid: false, reason: "Signature has been revoked" };
+      return {
+        valid: false,
+        verificationStatus: "revoked",
+        reason: "Signature has been revoked",
+        details,
+      };
     }
 
-    // Verify document hasn't been tampered with
-    const currentHash = generateSignatureHash(
-      workflow.documentId,
-      signature.userId,
-      signature.tenantId,
-    );
+    // Records written before ADR-040 carry no signature value and no scheme.
+    // They are neither valid nor forged — they are unverifiable, and they say so.
+    if (
+      signature.signatureScheme !== SIGNATURE_SCHEME_V2 ||
+      !signature.signatureValue
+    ) {
+      return {
+        valid: false,
+        verificationStatus: "unverifiable_legacy",
+        reason: LEGACY_VERIFICATION_REASON,
+        details,
+      };
+    }
 
-    const valid = currentHash === signature.signatureHash;
+    if (!workflow) {
+      return {
+        valid: false,
+        verificationStatus: "workflow_missing",
+        reason:
+          "The signed workflow no longer exists, so the signed document " +
+          "identity cannot be reconstructed.",
+        details,
+      };
+    }
+
+    const key = await loadVerificationKey(
+      signature.tenantId,
+      signature.signingKeyId,
+    );
+    if (!key) {
+      return {
+        valid: false,
+        verificationStatus: "unverifiable_key_missing",
+        reason: `Signing key ${signature.signingKeyId} is no longer present, so this signature cannot be verified.`,
+        details,
+      };
+    }
+
+    details.signingKeyDeletedAt = key.deletedAt || null;
+
+    const canonicalPayload = canonicalizeSignaturePayload({
+      scheme: SIGNATURE_SCHEME_V2,
+      algorithm: signature.signatureAlgorithm,
+      tenantId: signature.tenantId,
+      documentId: workflow.documentId,
+      workflowId: signature.workflowId,
+      workflowStepId: signature.workflowStepId,
+      signerUserId: signature.userId,
+      signedAt: canonicalTimestamp(signature.signedAt),
+      authenticationMethod: signature.authenticationMethod,
+      reason: signature.signatureReason,
+    });
+
+    const valid = crypto.verify(
+      "sha256",
+      Buffer.from(canonicalPayload, "utf8"),
+      key.publicKey,
+      Buffer.from(signature.signatureValue, "base64"),
+    );
 
     return {
       valid,
-      details: {
-        signatureId: signature.id,
-        workflowId: signature.workflowId,
-        documentId: workflow.documentId,
-        signerId: signature.userId,
-        signedAt: signature.signedAt,
-        algorithm: signature.signatureAlgorithm,
-        ipAddress: signature.ipAddress,
-        userAgent: signature.userAgent,
-        authenticationMethod: signature.authenticationMethod,
-        polygon: signature.polygon,
-        biometricData: signature.biometricData,
-      },
+      verificationStatus: valid ? "valid" : "invalid",
+      reason: valid
+        ? `Signature verified against tenant key ${key.keyId}.`
+        : "Signature does not match the record: the document, signer, tenant, step, signing time, authentication method or meaning has changed since it was signed.",
+      details,
     };
   } catch (err) {
     logger.error("Signature verification failed", {
       signatureId,
       error: err.message,
     });
-    return { valid: false, reason: err.message };
+    return { valid: false, verificationStatus: "error", reason: err.message };
   }
 };
 

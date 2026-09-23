@@ -17,11 +17,61 @@ if (!REFRESH_SECRET) {
   throw new Error("JWT_REFRESH_SECRET environment variable is required");
 }
 
+// A-31. Two secrets that are equal are one secret: whether a refresh token is
+// accepted as an access token then depends only on claim checks, not on
+// cryptography. The configuration document said "the config should reject that
+// rather than trusting whoever wrote the .env" — it did not. Now it does.
+if (ACCESS_SECRET === REFRESH_SECRET) {
+  throw new Error(
+    "JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must differ: equal secrets make the two token types interchangeable",
+  );
+}
+
 // ==========================================
 // ENV
 // ==========================================
 
+// The verification algorithm list is pinned in code. Reading it from the
+// environment unchecked lets whoever writes the .env choose how tokens are
+// verified, which is not a deployment decision (A-31).
+const SUPPORTED_ALGORITHMS = [
+  "HS256",
+  "HS384",
+  "HS512",
+  "RS256",
+  "RS384",
+  "RS512",
+  "ES256",
+  "ES384",
+  "ES512",
+];
+
 const JWT_ALGORITHM = process.env.JWT_ALGORITHM || "HS256";
+
+if (!SUPPORTED_ALGORITHMS.includes(JWT_ALGORITHM)) {
+  throw new Error(
+    `JWT_ALGORITHM "${JWT_ALGORITHM}" is not supported. Use one of: ${SUPPORTED_ALGORITHMS.join(", ")}`,
+  );
+}
+
+// Token type claim. Without it the two token types are distinguished only by
+// which secret signed them — and until 2026-09-23 the legacy JWT refresh token
+// was signed with the ACCESS secret (the key registry holds only that one), so
+// `verifyAccessToken` would have accepted it.
+//
+// A token with NO `typ` is still accepted: nothing in this codebase issues one
+// any more (every refresh token in use is opaque, see generateOpaqueRefreshToken),
+// and refusing them would invalidate every access token in flight at deploy
+// time. A token whose `typ` names the OTHER type is refused outright.
+const TOKEN_TYPE_ACCESS = "access";
+const TOKEN_TYPE_REFRESH = "refresh";
+
+const assertTokenType = (decoded, expected) => {
+  if (decoded && typeof decoded === "object" && decoded.typ && decoded.typ !== expected) {
+    throw new Error(`Expected a ${expected} token`);
+  }
+  return decoded;
+};
 const JWT_KEY_VERSION = process.env.JWT_KEY_VERSION || "1";
 const JWT_ROTATION_INTERVAL_HOURS =
   parseInt(process.env.JWT_ROTATION_INTERVAL) || 720; // 30 days default
@@ -133,8 +183,9 @@ const keyRegistry = new JwtKeyRegistry();
 // ==========================================
 
 const generateAccessToken = (payload, options = {}) => {
-  const signPayload =
+  const basePayload =
     typeof payload === "object" && payload !== null ? payload : { id: payload };
+  const signPayload = { ...basePayload, typ: TOKEN_TYPE_ACCESS };
   const key = keyRegistry.getCurrentKey();
   const algorithm = options.algorithm || key.algorithm;
 
@@ -174,29 +225,19 @@ const generateOpaqueRefreshToken = () => {
 // ==========================================
 
 const generateRefreshToken = (payload) => {
-  const signPayload =
+  const basePayload =
     typeof payload === "object" && payload !== null ? payload : { id: payload };
-  const key = keyRegistry.getCurrentKey();
-  const algorithm = key.algorithm;
 
-  if (algorithm.startsWith("RS") || algorithm.startsWith("ES")) {
-    const privateKey = process.env.JWT_PRIVATE_KEY;
-    if (!privateKey) {
-      throw new Error(
-        `Algorithm ${algorithm} requires JWT_PRIVATE_KEY environment variable`,
-      );
-    }
-    return jwt.sign(signPayload, privateKey, {
-      expiresIn: process.env.JWT_REFRESH_EXPIRED || "7d",
-      algorithm,
-      keyid: keyRegistry._currentKeyId,
-    });
-  }
-
-  return jwt.sign(signPayload, key.secret, {
+  // The legacy JWT refresh token is symmetric and signed with REFRESH_SECRET,
+  // whatever JWT_ALGORITHM says. Asymmetric algorithms and key rotation apply
+  // to ACCESS tokens: the key registry holds ACCESS_SECRET, and signing refresh
+  // tokens from it is what made the two interchangeable (A-31).
+  //
+  // Note that nothing in the login flow calls this — every refresh token this
+  // application issues is opaque (generateOpaqueRefreshToken) and stored.
+  return jwt.sign({ ...basePayload, typ: TOKEN_TYPE_REFRESH }, REFRESH_SECRET, {
     expiresIn: process.env.JWT_REFRESH_EXPIRED || "7d",
-    algorithm,
-    keyid: keyRegistry._currentKeyId,
+    algorithm: "HS256",
   });
 };
 
@@ -222,14 +263,20 @@ const verifyAccessToken = (token) => {
         // expiresIn = JWT_ACCESS_EXPIRED (1d by default). jwt.verify already
         // enforces the token's own `exp`; a hardcoded maxAge:"15m" silently
         // rejected every token 15 min after issuance regardless of exp.
-        return jwt.verify(token, publicKey, {
-          algorithms: [algorithm],
-        });
+        return assertTokenType(
+          jwt.verify(token, publicKey, {
+            algorithms: [algorithm],
+          }),
+          TOKEN_TYPE_ACCESS,
+        );
       }
 
-      return jwt.verify(token, keyInfo.secret, {
-        algorithms: [algorithm],
-      });
+      return assertTokenType(
+        jwt.verify(token, keyInfo.secret, {
+          algorithms: [algorithm],
+        }),
+        TOKEN_TYPE_ACCESS,
+      );
     } catch (err) {
       // Try next key
       if (err.name === "TokenExpiredError") {
@@ -241,9 +288,12 @@ const verifyAccessToken = (token) => {
 
   // If no active keys matched, try the default secret as fallback (backward compat)
   try {
-    return jwt.verify(token, ACCESS_SECRET, {
-      algorithms: ["HS256"],
-    });
+    return assertTokenType(
+      jwt.verify(token, ACCESS_SECRET, {
+        algorithms: ["HS256"],
+      }),
+      TOKEN_TYPE_ACCESS,
+    );
   } catch {
     throw new Error("Invalid or expired access token");
   }
@@ -254,39 +304,21 @@ const verifyAccessToken = (token) => {
 // ==========================================
 
 const verifyRefreshToken = (token) => {
-  const activeKeys = keyRegistry.getActiveKeys();
-
-  const lastError = null;
-  for (const keyInfo of activeKeys) {
-    try {
-      const algorithm = keyInfo.algorithm;
-
-      if (algorithm.startsWith("RS") || algorithm.startsWith("ES")) {
-        const publicKey = process.env.JWT_PUBLIC_KEY;
-        if (!publicKey) {
-          continue;
-        }
-        return jwt.verify(token, publicKey, {
-          algorithms: [algorithm],
-        });
-      }
-
-      return jwt.verify(token, keyInfo.secret, {
-        algorithms: [algorithm],
-      });
-    } catch (err) {
-      if (err.name === "TokenExpiredError") {
-        throw err;
-      }
-    }
-  }
-
-  // Fallback to default secret
+  // Refresh tokens are verified against REFRESH_SECRET alone. They are not part
+  // of the access-key rotation registry — that registry holds ACCESS_SECRET, and
+  // verifying a refresh token against it is what made the two interchangeable
+  // (A-31). Note that every refresh token this application actually issues is
+  // OPAQUE (generateOpaqueRefreshToken); this path exists for the legacy JWT
+  // flavour and for callers outside the login flow.
   try {
-    return jwt.verify(token, REFRESH_SECRET, {
+    const decoded = jwt.verify(token, REFRESH_SECRET, {
       algorithms: ["HS256"],
     });
-  } catch {
+    return assertTokenType(decoded, TOKEN_TYPE_REFRESH);
+  } catch (err) {
+    if (err.name === "TokenExpiredError") {
+      throw err;
+    }
     throw new Error("Invalid or expired refresh token");
   }
 };

@@ -20,7 +20,7 @@ exports.getUserPermissions = asyncHandler(async (req, res) => {
 /** POST /api/v1/user-permissions/:userId */
 exports.setUserPermission = asyncHandler(async (req, res) => {
   const { userId } = req.params;
-  const { menuGroupId, permissionType, notes } = req.body;
+  const { menuGroupId, permissionType, notes } = req.body || {};
 
   if (!menuGroupId || !permissionType) {
     return res.status(400).json({

@@ -82,9 +82,13 @@ Runs **before** the handler (BR-15), so a rejected request never performs a part
 
 Writes the `audit_logs` row — **inside the transaction of the action it describes**. An audit row surviving a rolled-back action records something that did not happen.
 
-### `sessionSecurity`
+### Session security — **not implemented**
 
-Session binding checks against `ip_address` and `user_agent`. Strict IP binding breaks users on mobile networks that rotate addresses; the balance struck here is a product decision and should be stated rather than emergent.
+This section described a `sessionSecurity` middleware performing "session binding checks against `ip_address` and `user_agent`" until **2026-09-23**. **No such middleware runs.** A `sessionSecurity.middleware.js` existed, but nothing imported it, and its raw SQL targeted a `"Sessions"` table with camelCase columns against a `sessions` table with snake_case ones — every query in it would have thrown had it ever been wired in. It was deleted under audit finding A-12; its tests were deleted with it, because a passing test over an uninstalled control is a green tick for nothing.
+
+So: **session fixation protection, a concurrent-session limit and IP/user-agent binding do not exist.** `ip_address` and `user_agent` are recorded on the session row and are never compared against the request. `auth.middleware.js` says so in as many words — *"RBAC Only - No Session Validation"* — and does not consult the `sessions` table at all, which is also why a revoked session stays usable until its access token expires ([`../SECURITY/03-AUTHENTICATION-SECURITY.md`](../SECURITY/03-AUTHENTICATION-SECURITY.md)).
+
+Whether these controls **should** exist is a product decision, not a technical one — strict IP binding logs users out when a mobile network rotates an address, and a concurrent-session cap has to decide whose session is evicted. It is Q-08 in [`../../TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md), not something to implement on judgement.
 
 ## The Middlewares That Are Not Middleware
 

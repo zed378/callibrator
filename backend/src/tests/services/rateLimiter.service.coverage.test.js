@@ -34,6 +34,16 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
   },
 }));
 
+// This suite is the in-memory FALLBACK's tests, so the shared client is parked
+// in "wait" — the honest shape of a lazyConnect ioredis client in a process
+// that has not run initRedis(). Readiness is `status === "ready"` and nothing
+// else; ioredis has no `connected` property and this mock does not invent one.
+// The Redis path has its own suites: rateLimiter.redis.path.test.js (mocked
+// client) and rateLimiter.redis.live.test.js (a real server).
+jest.mock("../../services/redis.service", () => ({
+  getRedisConnection: jest.fn(() => ({ status: "wait" })),
+}));
+
 jest.mock("../../models", () => {
   mockSessions = {
     update: jest.fn().mockResolvedValue([1]),

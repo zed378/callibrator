@@ -17,6 +17,29 @@
 
 const ESIGN_PATH = "../../services/eSignature.service";
 
+const { generateTestKeyPair } = require("../utils/esignatureKey.utils");
+
+/**
+ * Signing now needs a real tenant key pair (ADR-040): signDocument loads the
+ * tenant's key, decrypts it and produces an RSA-SHA256 signature, and 409s when
+ * no key is provisioned. These guard/error-branch tests are not about the
+ * crypto — that contract lives in esignature.signing.test.js — so a single real
+ * key pair is injected by default and individual tests override it when the
+ * key itself is what is under test.
+ */
+let sharedKeyPair;
+const defaultTenantKeyModel = () => {
+  sharedKeyPair = sharedKeyPair || generateTestKeyPair({ keyId: "key-cov-1" });
+  return {
+    unscoped: () => ({ findOne: jest.fn().mockResolvedValue(sharedKeyPair) }),
+    findOne: jest.fn().mockResolvedValue({
+      keyId: sharedKeyPair.keyId,
+      publicKey: sharedKeyPair.publicKey,
+      deletedAt: null,
+    }),
+  };
+};
+
 const mockLogger = {
   info: jest.fn(),
   warn: jest.fn(),
@@ -38,7 +61,8 @@ const loadService = ({ models = {}, env = {} } = {}) => {
       process.env[key] = value;
     }
   }
-  jest.doMock("../../models", () => models);
+  const withKeys = { TenantKey: defaultTenantKeyModel(), ...models };
+  jest.doMock("../../models", () => withKeys);
   jest.doMock("../../middlewares/activityLog.middleware", () => ({
     logger: mockLogger,
   }));
@@ -543,9 +567,10 @@ describe("eSignature.service (facade guard/error branches)", () => {
 
   // ================================================================
   describe("verifySignature", () => {
-    it("recomputes the hash for a live signature and reports the comparison", async () => {
-      // NOTE: generateSignatureHash mixes Date.now() into the payload, so the
-      // recomputed hash can never equal the stored one — see the report.
+    it("reports a pre-ADR-040 record as unverifiable rather than valid or forged", async () => {
+      // This row is shaped like the ones already in the database: a bare
+      // signature_hash, no signature_value, no scheme. It can never verify, and
+      // saying "invalid" about it would accuse a genuine signer of forgery.
       const signedAt = new Date();
       const svc = loadService({
         models: {
@@ -575,6 +600,7 @@ describe("eSignature.service (facade guard/error branches)", () => {
       const result = await svc.verifySignature("sig-1");
 
       expect(result.valid).toBe(false);
+      expect(result.verificationStatus).toBe("unverifiable_legacy");
       expect(result.details).toMatchObject({
         signatureId: "sig-1",
         workflowId: "wf-1",
@@ -597,7 +623,11 @@ describe("eSignature.service (facade guard/error branches)", () => {
 
       const result = await svc.verifySignature("sig-1");
 
-      expect(result).toEqual({ valid: false, reason: "db offline" });
+      expect(result).toEqual({
+        valid: false,
+        verificationStatus: "error",
+        reason: "db offline",
+      });
       expect(mockLogger.error).toHaveBeenCalledWith(
         "Signature verification failed",
         { signatureId: "sig-1", error: "db offline" },

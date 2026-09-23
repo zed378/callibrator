@@ -260,8 +260,8 @@ Base: `/api/v1/auth`, `/api/v1/sessions`, `/api/v1/webauthn` — see [auth.route
 | `JWT_ALGORITHM` | `HS256` | Signing algorithm (HS/RS/ES) |
 | `JWT_ACCESS_EXPIRED` / `JWT_REFRESH_EXPIRED` | `15m` / `7d` | Token lifetimes |
 | `JWT_KEY_VERSION` / `JWT_ROTATION_INTERVAL` / `JWT_KEY_ID` | `1` / `720h` / `default` | Key rotation registry |
-| `MAX_CONCURRENT_SESSIONS` | `5` | Concurrent session cap (sessionSecurity) |
-| `SESSION_INACTIVITY_TIMEOUT` / `SESSION_ABSOLUTE_TIMEOUT` | `1800000` / `43200000` ms | Idle / absolute timeouts |
+| ~~`MAX_CONCURRENT_SESSIONS`~~ | — | **Read by nothing** since 2026-09-23. It configured the deleted `sessionSecurity.middleware.js`; there is no concurrent-session cap |
+| ~~`SESSION_INACTIVITY_TIMEOUT`~~ / ~~`SESSION_ABSOLUTE_TIMEOUT`~~ | — | **Read by nothing** since 2026-09-23. Same file. Token `exp` is the only session lifetime the backend enforces |
 | `WEBAUTHN_RP_ID` | `localhost` | Relying-party ID |
 | `REDIS_URL` | `redis://localhost:6379` | Rate limiter backend |
 | `HOST_URL` | `""` | Avatar/absolute URL base |
@@ -287,7 +287,8 @@ Base: `/api/v1/auth`, `/api/v1/sessions`, `/api/v1/webauthn` — see [auth.route
 *   **Broken single logout:** `logout` controller calls `logoutSession()` with no argument — non-functional as wired.
 *   **Duplicate MFA controller definitions:** later `mfaService`-based overrides win; `/mfa/login` resolves to a handler that throws `501 MFA login flow not fully implemented`, contradicting the working `authService.loginMfa`.
 *   **WebAuthn is effectively stubbed:** attestation verification stores a randomly generated key; challenge store is in-process (not multi-instance safe); several `webauthn*` columns referenced but not defined on the model.
-*   **`mfa.service.js` references a non-existent `mfaSecretTemp` column;** `sessionSecurity.middleware.js` uses a wrong table/column casing and is not wired to any route.
+*   **`mfa.service.js` references a non-existent `mfaSecretTemp` column.**
+*   **No session security middleware: session fixation protection, a concurrent-session limit and IP/user-agent binding are not implemented.** `sessionSecurity.middleware.js` claimed all three, but nothing imported it and its SQL used the wrong table and column casing; it was deleted **2026-09-23** under audit finding A-12. Whether these controls should exist is Q-08 in [`../../TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md).
 *   Session is created *before* MFA completes, persisting a full 7-day session on a 202 response.
 
 ### 24. Change Log

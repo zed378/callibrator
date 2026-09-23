@@ -72,7 +72,6 @@ The order is behaviour, not style. Four consequences worth stating:
 | `auditLog` | writes the `audit_logs` row |
 | `accessLog`, `activityLog` | request and activity logging |
 | `enforceQuota` | quota check **before** the handler |
-| `sessionSecurity` | session binding checks |
 | `sessionCleanup` | expired-session sweep |
 | `retentionScheduler` | data-retention cron |
 | `calibrationScheduler` | calibration due sweep |
@@ -82,6 +81,8 @@ The order is behaviour, not style. Four consequences worth stating:
 | `notFound` | 404 terminator |
 
 `sessionCleanup`, `retentionScheduler`, `calibrationScheduler` and `backup` are scheduling concerns living in `middlewares/` because they are installed at app assembly time. They are not per-request middleware, and the directory name misleads.
+
+**There is no session-security middleware.** This table listed a `sessionSecurity` entry — "session binding checks" — until **2026-09-23**. The file existed but was imported by nothing, and its raw SQL targeted a `"Sessions"` table with camelCase columns that the database does not have, so it could not have run even if it had been installed. It was deleted under audit finding A-12. Session fixation protection, a concurrent-session limit and IP binding are **not implemented** anywhere in the request pipeline; whether they should be is Q-08 in [`../../TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md).
 
 ## Tenant Isolation
 

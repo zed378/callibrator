@@ -38,6 +38,23 @@ const startBatchJobWorker = async () => {
           return channelNack(msg);
         }
 
+        // DEDUPLICATION (A-26). `payload.jobId` is the BatchJob row's UUID,
+        // written once when the job was created and carried in the persisted
+        // message body, so a redelivery presents the same value. Running a
+        // batch job twice re-does its side effects, which is the defect.
+        let claim = null;
+        if (payload.jobId) {
+          claim = await rabbitmq.claimMessage(`batch:${payload.jobId}`);
+          if (!claim.claimed) {
+            logger.info("Duplicate batch job message ignored", {
+              jobId: payload.jobId,
+            });
+            return ackMsg(msg); // done already — ack, do not redeliver
+          }
+        } else {
+          logger.warn("Batch job message has no jobId; not deduplicated");
+        }
+
         try {
           await batchJobService.runJob(payload.jobId);
           ackMsg(msg);
@@ -46,6 +63,10 @@ const startBatchJobWorker = async () => {
             jobId: payload.jobId,
             error: err.message,
           });
+          // Give the claim back so a DLQ replay of this job can run.
+          if (claim) {
+            await claim.release();
+          }
           channelNack(msg); // route to DLQ
         }
       },

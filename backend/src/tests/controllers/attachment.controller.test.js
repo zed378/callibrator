@@ -263,7 +263,12 @@ describe("attachment Controller", () => {
 
       await attachmentController.remove(req, res, next);
 
-      expect(attachmentService.deleteAttachment).toHaveBeenCalledWith(VALID_TENANT_ID, VALID_ATTACHMENT_ID);
+      // A-28: the actor travels to the service so the audit row is attributable.
+      expect(attachmentService.deleteAttachment).toHaveBeenCalledWith(
+        VALID_TENANT_ID,
+        VALID_ATTACHMENT_ID,
+        { userId: VALID_USER_ID, ipAddress: req.ip, userAgent: "localhost:3000" },
+      );
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({

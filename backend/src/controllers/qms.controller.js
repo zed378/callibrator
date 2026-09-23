@@ -2,7 +2,7 @@ const qmsService = require("../services/qms.service");
 const { asyncHandlerWithMapping } = require("../utils/controllerWrapper.util");
 
 exports.createNC = asyncHandlerWithMapping(async (req, res) => {
-  const result = await qmsService.createNC(req.user.tenantId, req.user.id, req.body);
+  const result = await qmsService.createNC(req.user.tenantId, req.user.id, req.body || {});
   return {
     success: true,
     status: 201,
@@ -40,7 +40,7 @@ exports.updateNC = asyncHandlerWithMapping(async (req, res) => {
 });
 
 exports.createCapa = asyncHandlerWithMapping(async (req, res) => {
-  const result = await qmsService.createCapa(req.user.tenantId, req.body);
+  const result = await qmsService.createCapa(req.user.tenantId, req.body || {});
   return {
     success: true,
     status: 201,

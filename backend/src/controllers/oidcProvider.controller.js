@@ -37,7 +37,7 @@ exports.getAuthRequest = asyncHandler(async (req, res) => {
 
 // The authenticated user's Approve/Deny decision → returns the redirect target.
 exports.decision = asyncHandler(async (req, res) => {
-  const { request, approve } = req.body;
+  const { request, approve } = req.body || {};
   const result = await oidcProviderService.decideAuthorization(
     request,
     req.user,

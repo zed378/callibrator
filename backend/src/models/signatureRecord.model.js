@@ -42,6 +42,32 @@ const defineModel = (db, DataTypes) => {
       signatureHash: {
         type: DataTypes.STRING(255),
         allowNull: false,
+        comment:
+          "SHA-256 of the canonical signed payload (the bytes signatureValue covers)",
+      },
+      signatureValue: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        comment:
+          "Base64 RSA-SHA256 signature over the canonical payload. NULL on " +
+          "records written before ADR-040, which are unverifiable by design.",
+      },
+      signingKeyId: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: "TenantKey.keyId whose public half verifies signatureValue",
+      },
+      signatureScheme: {
+        type: DataTypes.STRING(30),
+        allowNull: true,
+        comment:
+          "Signing scheme ('esig-v2-rsa-sha256'); NULL marks a pre-ADR-040 record",
+      },
+      signatureReason: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+        comment:
+          "Meaning of the signature (21 CFR 11.50(a)(3)); bound into the payload",
       },
       signatureAlgorithm: {
         type: DataTypes.STRING(20),

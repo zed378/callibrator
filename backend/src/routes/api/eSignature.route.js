@@ -34,6 +34,25 @@ const { validateUuid } = require("../../middlewares/validateUuid.middleware");
 // (req, res, next) — it threw and 500'd every write route. `validate(schema)`
 // is the router-facing factory.
 const { validate } = require("../../middlewares/validation.middleware");
+const { dynamicAccess } = require("../../middlewares/dynamicAccess.middleware");
+const { MENU_SLUGS } = require("../../constants");
+
+// A-28 — authorization.
+//
+// Until 2026-09-23 key-pair and workflow management carried `auth` and nothing
+// else, and the service checked tenant only: any role could delete the
+// tenant's signing keys or a workflow mid-signature, and DELETE /key-pairs was
+// reachable by any API key while POST /key-pairs was already `denyApiKey`.
+//
+// The signing keys and the workflows that bind them are quality-system
+// records, so they are gated on `qms` (MENU_SLUGS.QMS — read for listing,
+// write for mutation). `qms:write` is held by SUPERADMIN, HEALTHCARE ADMIN and
+// CALIBRATOR ADMIN; ENGINEERING MANAGER holds read.
+//
+// Deliberately NOT changed here: POST /sign, POST /verify and GET /history.
+// A signer is whoever the workflow names — commonly a TECHNICIAN with no `qms`
+// menu — so gating /sign on `qms:write` would make the workflows unsignable.
+// Those three are A-28-adjacent and remain on `auth` (+ `denyApiKey` on /sign).
 
 /**
  * @swagger
@@ -73,7 +92,7 @@ const { validate } = require("../../middlewares/validation.middleware");
  *       401:
  *         description: Unauthorized
  */
-router.get("/key-pairs", auth, getKeyPairs);
+router.get("/key-pairs", auth, dynamicAccess(MENU_SLUGS.QMS, "read"), getKeyPairs);
 
 /**
  * @swagger
@@ -122,7 +141,14 @@ router.get("/key-pairs", auth, getKeyPairs);
  *       401:
  *         description: Unauthorized
  */
-router.post("/key-pairs", auth, denyApiKey, validate(createKeyPairValidator), createKeyPair);
+router.post(
+  "/key-pairs",
+  auth,
+  denyApiKey,
+  dynamicAccess(MENU_SLUGS.QMS, "write"),
+  validate(createKeyPairValidator),
+  createKeyPair,
+);
 
 /**
  * @swagger
@@ -151,6 +177,8 @@ router.post("/key-pairs", auth, denyApiKey, validate(createKeyPairValidator), cr
 router.delete(
   "/key-pairs/:keyPairId",
   auth,
+  denyApiKey,
+  dynamicAccess(MENU_SLUGS.QMS, "write"),
   validateUuid("keyPairId"),
   deleteKeyPair,
 );
@@ -185,7 +213,7 @@ router.delete(
  *       401:
  *         description: Unauthorized
  */
-router.get("/workflows", auth, getWorkflows);
+router.get("/workflows", auth, dynamicAccess(MENU_SLUGS.QMS, "read"), getWorkflows);
 
 /**
  * @swagger
@@ -249,7 +277,14 @@ router.get("/workflows", auth, getWorkflows);
  *       401:
  *         description: Unauthorized
  */
-router.post("/workflows", auth, validate(createWorkflowValidator), createWorkflow);
+router.post(
+  "/workflows",
+  auth,
+  denyApiKey,
+  dynamicAccess(MENU_SLUGS.QMS, "write"),
+  validate(createWorkflowValidator),
+  createWorkflow,
+);
 
 /**
  * @swagger
@@ -295,6 +330,7 @@ router.post("/workflows", auth, validate(createWorkflowValidator), createWorkflo
 router.get(
   "/workflows/:workflowId",
   auth,
+  dynamicAccess(MENU_SLUGS.QMS, "read"),
   validateUuid("workflowId"),
   getWorkflow,
 );
@@ -342,6 +378,8 @@ router.get(
 router.put(
   "/workflows/:workflowId",
   auth,
+  denyApiKey,
+  dynamicAccess(MENU_SLUGS.QMS, "write"),
   validateUuid("workflowId"),
   updateWorkflow,
 );
@@ -373,6 +411,8 @@ router.put(
 router.delete(
   "/workflows/:workflowId",
   auth,
+  denyApiKey,
+  dynamicAccess(MENU_SLUGS.QMS, "write"),
   validateUuid("workflowId"),
   deleteWorkflow,
 );

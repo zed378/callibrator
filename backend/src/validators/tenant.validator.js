@@ -121,12 +121,17 @@ exports.tenantIdSchema = Joi.object({
  * @param {Object} schema - Joi schema
  * @returns {Object} - { error, value }
  */
+// A-09 — Express 5 leaves `req.body` undefined when no body is sent. Joi
+// treats `undefined` as valid against a non-required object schema and returns
+// `{ value: undefined }` with no error, so the controller's `validated.x` then
+// threw a TypeError — a 500 where a 400 was owed. `?? {}` makes the
+// required-field rules fire instead.
 exports.validate = (body, schema) => {
   // Returns the validated value (not Joi's { value, error }); throws a 400 on
   // failure. Controllers consume the return value directly (e.g.
   // `validate(...).tenantId`), so returning the raw Joi result here silently
   // yielded `undefined` for every field.
-  const { error, value } = schema.validate(body, {
+  const { error, value } = schema.validate(body ?? {}, {
     abortEarly: false,
     stripUnknown: true,
   });

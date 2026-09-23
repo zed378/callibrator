@@ -29,11 +29,10 @@ services:
       STORAGE_S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
     ports:
       - "${BACKEND_PORT:-3000}:3000"
-      # NOTHING listens on 1883 in this container. The backend is an MQTT
-      # CLIENT of an external broker (MQTT_HOST + MQTT_PORT); no broker is
-      # embedded. Kept only so a sidecar broker can be added without a
-      # port-plan change — remove it if you do not run one.
-      - "${MQTT_PORT:-1883}:1883"
+      # A-17: the 1883 mapping was removed on 2026-09-23 — nothing listened on
+      # it. The backend is an MQTT CLIENT of an external broker
+      # (MQTT_HOST + MQTT_PORT); no broker is embedded. Publish a sidecar
+      # broker's own port here if one is ever added.
 
   frontend:
     build:

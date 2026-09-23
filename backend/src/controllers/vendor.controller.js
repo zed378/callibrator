@@ -54,7 +54,7 @@ exports.deleteVendor = asyncHandler(async (req, res) => {
 exports.qualifyVendor = asyncHandler(async (req, res) => {
   const { tenantId } = req.user;
   const { vendorId } = req.params;
-  const { approvalStatus, scorecard, lastAuditDate, nextAuditDate } = req.body;
+  const { approvalStatus, scorecard, lastAuditDate, nextAuditDate } = req.body || {};
 
   const result = await vendorService.qualifyVendor({
     tenantId,

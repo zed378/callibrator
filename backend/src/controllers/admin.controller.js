@@ -13,7 +13,7 @@ exports.getAllTenants = asyncHandlerWithMapping(async (req, res) => {
 }, {});
 
 exports.updateTenantStatus = asyncHandlerWithMapping(async (req, res) => {
-  const { status } = req.body;
+  const { status } = req.body || {};
   const result = await adminService.updateTenantStatus(req.params.id, status);
   return {
     success: true,
@@ -27,7 +27,7 @@ exports.updateTenantStatus = asyncHandlerWithMapping(async (req, res) => {
 });
 
 exports.updateTenantFlags = asyncHandlerWithMapping(async (req, res) => {
-  const { flags } = req.body;
+  const { flags } = req.body || {};
   const result = await adminService.updateTenantFlags(req.params.id, flags);
   return {
     success: true,

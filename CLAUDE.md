@@ -72,7 +72,13 @@ An audit row that survives a rolled-back action records something that did not h
 
 ### Every new `:id` route needs a two-tenant test asserting 404
 
-Not 403. Not 200. `createTwoTenants()` is a one-line fixture precisely so this gets written.
+Not 403. Not 200.
+
+**`createTwoTenants()` does not exist.** This file said it was "a one-line fixture precisely so
+this gets written"; it appears here and in eight `docs/` files and in **zero** code files (checked
+2026-09-23, A-55). So the thing that was supposed to make the test cheap is itself unwritten, and
+the test this section calls mandatory exists for almost no route. Write the fixture first, then the
+test — and correct this paragraph when it exists.
 
 ## The Traps
 

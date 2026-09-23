@@ -37,6 +37,12 @@ It is the only thing tying a client-side symptom to a server-side line, and the 
 
 ## Redaction
 
+> **As-built, 2026-09-23: there is no redactor.** Nothing in `backend/src` implements the walk
+> described below — the only `redact`-shaped code is GDPR anonymisation, retention masking and
+> per-response secret hiding. This section states the **target**. It matters because
+> `auditLog.middleware.js#auditAction` logs full request and response bodies unredacted; it has no
+> caller today, which is the only reason it is not an active leak (A-43).
+
 **Redaction is a key-name walk at any depth, not a fixed path list.**
 
 A path list only covers the shapes someone thought of. A nested object under an innocuous key is exactly where a secret hides, and it must also scrub bearer tokens appearing as **values** under unremarkable key names.
@@ -140,7 +146,12 @@ Log the **full** error server-side. Return the safe one.
 
 ## Rotation
 
-Rotation is built in: winston uses `winston-daily-rotate-file` (20 MB per file, 30 days, gzipped) and the access log uses `rotating-file-stream` (daily, 30 days, gzip). Rotation bounds file count, not disk: the volume still needs monitoring, because a full disk stops writes — including `audit_logs`, which is the one thing that must never fail to write.
+Rotation is built in: winston uses `winston-daily-rotate-file` (20 MB per file, 30 days, gzipped) and the access log uses `rotating-file-stream` (daily, 30 files, gzip).
+
+> Corrected 2026-09-23. The access log was **not** pruned at all until then: the option passed was
+> `history: "30d"`, and in `rotating-file-stream` `history` names the rotation-history *file* —
+> retention is `maxFiles`/`maxSize`. It now passes `maxFiles: 30`. Note also that the exception and
+> rejection transports still have **no** `maxSize`, `maxFiles` or `zippedArchive` at all (A-14). Rotation bounds file count, not disk: the volume still needs monitoring, because a full disk stops writes — including `audit_logs`, which is the one thing that must never fail to write.
 
 | Log | Retention (as coded) |
 |---|---|

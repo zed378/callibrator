@@ -2,7 +2,14 @@ const { error } = require("../utils/response.util");
 
 exports.validate = (schema) => {
   return (req, res, next) => {
-    const { error: validationError, value } = schema.validate(req.body, {
+    // A-09 — Express 5 leaves `req.body` undefined when no body is sent (Express 4
+    // gave `{}`). Joi treats `undefined` as valid against a non-required object
+    // schema, so `schema.validate(undefined)` returns `{ value: undefined }` with
+    // NO error: the gate opened and `req.body` was then set to `undefined`, and the
+    // first `req.body.x` in the controller threw a TypeError — a 500 on a request
+    // that should have been a 400. Defaulting to `{}` makes the required-field
+    // rules fire, which is the 400 the caller deserves.
+    const { error: validationError, value } = schema.validate(req.body ?? {}, {
       abortEarly: false,
       stripUnknown: true,
     });

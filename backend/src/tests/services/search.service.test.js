@@ -82,7 +82,7 @@ describe("search.service", () => {
     expect(db.query.mock.calls[0][1].replacements.limit).toBe(10);
   });
 
-  it("ignores unknown types and searches all types when the filter is empty", async () => {
+  it("ignores unknown types and searches all types only when none are given", async () => {
     db.query.mockResolvedValue([]);
 
     await search.search("t1", { q: "a", types: ["nope"] });
@@ -91,7 +91,14 @@ describe("search.service", () => {
 
     db.query.mockClear();
     await search.search("t1", { q: "a", types: [] });
-    // An empty filter means "every type".
+    // A-04: an EXPLICIT empty list is an empty allow-list, not "everything".
+    // The caller filters the list by permission, so reading [] as "every
+    // type" would hand a principal permitted nothing the entire tenant.
+    expect(db.query).not.toHaveBeenCalled();
+
+    db.query.mockClear();
+    await search.search("t1", { q: "a" });
+    // No list at all still means "every type".
     expect(db.query.mock.calls.length).toBeGreaterThan(1);
   });
 

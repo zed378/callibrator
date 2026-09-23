@@ -3,11 +3,14 @@
  *
  * Single canonical rate limiter for the application.
  * Supports both auth brute-force protection (with lockout) and API request quotas.
- * Falls back to in-memory Map if Redis is unavailable (single-instance deployments).
+ *
+ * Storage is the SHARED ioredis client from `redis.service` whenever it is
+ * ready; the in-process Map is a fallback for a Redis outage only. Read the
+ * fallback-policy note below before changing either arm.
  */
 
-const { Redis } = require("ioredis");
 const { logger } = require("../middlewares/activityLog.middleware");
+const { getRedisConnection } = require("./redis.service");
 const {
   AUTH_ENDPOINTS,
   API_ENDPOINTS,
@@ -20,48 +23,81 @@ const { verifyAccessToken } = require("../utils/jwt.util");
 const { Users } = require("../models");
 
 // ============================================================
-// REDIS CLIENT (lazy initialization)
+// REDIS CLIENT — the shared one, never a second one
 // ============================================================
 
-let redis = null;
-let redisReady = false;
-let redisInitPromise = null;
-
-/* istanbul ignore next -- unreachable: getRedis() is not exported and has no
-   call site anywhere in the codebase (verified by grep), so `redis` is never
-   constructed and `redisReady` never becomes true. See the note above the
-   storeGet/storeSet/storeDel/storeIncr helpers. */
-function getRedis() {
-  if (redis) {return redis;}
-  if (!redisInitPromise) {
-    redisInitPromise = (async () => {
-      try {
-        redis = new Redis(process.env.REDIS_URL || "redis://localhost:6379", {
-          maxRetriesPerRequest: 3,
-          retryStrategy: (times) => (times > 3 ? null : Math.min(times * 200, 2000)),
-          lazyConnect: true,
-        });
-        redis.on("error", (err) => {
-          logger.warn(`Rate limiter Redis error: ${err.message}`);
-          redisReady = false;
-        });
-        redis.on("connect", () => {
-          redisReady = true;
-        });
-        await redis.connect();
-        redisReady = true;
-        logger.info("Rate limiter Redis connected");
-      } catch (err) {
-        logger.warn(`Rate limiter Redis unavailable, using in-memory fallback: ${err.message}`);
-        redisReady = false;
-      }
-    })();
+/**
+ * The shared ioredis client when it can serve commands, otherwise null.
+ *
+ * A-30: this service used to build its own client inside a `getRedis()` that
+ * was neither exported nor called, so `redisReady` was never true and every
+ * counter lived in the in-process Map — lockouts reset on every deploy and
+ * each replica enforced its own copy of the limit. It now follows the one
+ * client `index.js` connects at startup through `initRedis()`.
+ *
+ * Readiness is `client.status === "ready"`. ioredis has NO `connected`
+ * property — that was node-redis v3, and guarding on it is exactly what made
+ * every redis.service helper a silent no-op until 2026-09-21. Do not
+ * reintroduce it.
+ *
+ * Commands are never issued from a non-ready client: the shared client is
+ * created with `lazyConnect`, so a command would dial out from whichever
+ * process happened to touch the limiter first.
+ *
+ * @returns {import("ioredis").Redis | null}
+ */
+function readyRedis() {
+  try {
+    const client = getRedisConnection();
+    return client && client.status === "ready" ? client : null;
+  } catch (err) {
+    logger.warn(`Rate limiter could not reach the shared Redis client: ${err.message}`);
+    return null;
   }
-  return redis;
 }
 
 // ============================================================
-// IN-MEMORY FALLBACK (for single-instance / Redis down)
+// KEY DESIGN, AND WHAT HAPPENS WHEN REDIS IS DOWN
+// ============================================================
+
+// KEYS — `makeKey()` yields `ratelimit:<type>:<endpoint>:<identifier>`, where
+// the identifier is a user id, a token hash or a client IP. There is no
+// process, host or replica component, which is the point: every replica
+// increments the same key. The window is the key's TTL, written atomically by
+// the same script that increments the counter, and — exactly as the in-memory
+// fallback has always done — each increment refreshes it, so the window is
+// sliding: a counter only clears after a full quiet window. `firstAttempt` is
+// preserved across increments, so the lockout end a caller reports stays
+// anchored to the first failure rather than to the latest one.
+//
+// A-16 CAVEAT: the IP identifier is `req.ip`. Whether that is the real client
+// through this deployment's proxy chain (Cloudflare -> nginx -> Next.js ->
+// backend) is a separate, unverified finding (A-16), and the trust-proxy
+// configuration is deliberately untouched here. If `req.ip` is a proxy
+// address then every user shares one IP bucket — so the correctness of the
+// per-IP keys depends on A-16. The per-user and per-token keys do not.
+//
+// OUTAGE POLICY — fail over to memory, never fail open. If Redis is not ready,
+// or a command throws mid-flight, the counter is kept in this process's Map
+// instead. A request is therefore never silently un-rate-limited because Redis
+// blinked: it is still counted, just no longer counted globally.
+//
+// What that costs during an outage: counters are per process again, so with N
+// replicas the effective limit is N x the configured one, and counts taken
+// while Redis was down are not merged back when it returns. We take that over
+// the alternatives. Failing CLOSED on a read — treating "Redis said nothing"
+// as "locked" — turns a cache hiccup into a total authentication outage for
+// every tenant. Failing OPEN — skipping the limit — hands an attacker the
+// whole point of the control, since brute force then only requires waiting for
+// a Redis blip. Degraded-but-counting is the only one of the three that is
+// wrong in a bounded way.
+//
+// The single remaining fail-open is `endpointRateLimiter`'s outer catch, which
+// calls next(). Every store operation now handles its own Redis failure, so
+// that catch only sees programming errors — and it logs them.
+
+// ============================================================
+// IN-MEMORY FALLBACK (Redis outage only)
 // ============================================================
 
 const memoryStore = new Map();
@@ -84,59 +120,142 @@ function memoryDel(key) {
   memoryStore.delete(key);
 }
 
-function memoryIncr(key, ttlMs) {
-  const entry = memoryGet(key);
-  const count = (entry?.count || 0) + 1;
-  memorySet(key, { count }, ttlMs);
-  return count;
-}
-
 // ============================================================
 // UNIFIED STORAGE INTERFACE
 // ============================================================
 
-// NOTE: the `redisReady && redis` guards below are unreachable — nothing ever
-// calls getRedis(), so `redis` is permanently null and every store operation
-// takes the in-memory branch. The Redis arms are ignored for coverage rather
-// than tested; the in-memory arms remain fully covered.
+/**
+ * Atomic counter increment, as ONE round trip.
+ *
+ * Read-then-write across two commands loses increments whenever two replicas
+ * (or two requests on one replica) interleave, which is precisely the case the
+ * limiter exists for. INCR + a separate PEXPIRE is atomic per command but not
+ * as a pair: a process that dies between them leaves a counter with no TTL,
+ * i.e. a lockout that never expires. The script does both under Redis's single
+ * execution thread.
+ *
+ * It writes the same shape the memory store writes — `{ count, firstAttempt,
+ * expiresAt }` — so callers that read `entry.expiresAt` (isTokenBlocked,
+ * isUserLockedOut, getRateLimitStatus) behave identically on either backend.
+ * KEYS[1] = key, ARGV[1] = ttl in ms, ARGV[2] = now in ms.
+ * Returns the PREVIOUS raw value ("" when the key was absent) so the caller
+ * can see flags such as `revoked` exactly as the read-then-write did.
+ */
+const INCR_ENTRY_SCRIPT = `
+local raw = redis.call('GET', KEYS[1])
+local ttl = tonumber(ARGV[1])
+local now = tonumber(ARGV[2])
+local count = 1
+local firstAttempt = now
+if raw then
+  local ok, previous = pcall(cjson.decode, raw)
+  if ok and type(previous) == 'table' then
+    count = (previous.count or 0) + 1
+    firstAttempt = previous.firstAttempt or now
+  else
+    -- Something that is not one of our entries is sitting on this key. Treat
+    -- it as absent and take it over: raising here would make this key fail
+    -- every request back to the per-process Map, silently and forever.
+    raw = false
+  end
+end
+redis.call('SET', KEYS[1],
+  cjson.encode({ count = count, firstAttempt = firstAttempt, expiresAt = now + ttl }),
+  'PX', ttl)
+return raw or ''
+`;
 
 async function storeGet(key) {
-  // istanbul ignore if -- unreachable: redis is never initialised (see getRedis)
-  if (/* istanbul ignore next */ redisReady && redis) {
-    const data = await redis.get(key);
-    return data ? JSON.parse(data) : null;
+  const client = readyRedis();
+  if (client) {
+    try {
+      const data = await client.get(key);
+      return data ? JSON.parse(data) : null;
+    } catch (err) {
+      logger.warn(`Rate limiter Redis GET failed, reading the memory fallback: ${err.message}`);
+    }
   }
   return memoryGet(key);
 }
 
 async function storeSet(key, value, ttlMs) {
-  // istanbul ignore if -- unreachable: redis is never initialised (see getRedis)
-  if (/* istanbul ignore next */ redisReady && redis) {
-    await redis.set(key, JSON.stringify(value), "PX", ttlMs);
-  } else {
-    memorySet(key, value, ttlMs);
+  const entry = { ...value, expiresAt: Date.now() + ttlMs };
+  const client = readyRedis();
+  if (client) {
+    try {
+      await client.set(key, JSON.stringify(entry), "PX", ttlMs);
+      return;
+    } catch (err) {
+      logger.warn(`Rate limiter Redis SET failed, counting in memory: ${err.message}`);
+    }
   }
+  memorySet(key, value, ttlMs);
 }
 
 async function storeDel(key) {
-  // istanbul ignore if -- unreachable: redis is never initialised (see getRedis)
-  if (/* istanbul ignore next */ redisReady && redis) {
-    await redis.del(key);
-  } else {
-    memoryDel(key);
+  const client = readyRedis();
+  if (client) {
+    try {
+      await client.del(key);
+    } catch (err) {
+      logger.warn(`Rate limiter Redis DEL failed: ${err.message}`);
+    }
   }
+  // Always clear the local copy too: a counter may have been recorded here
+  // while Redis was down, and a reset that leaves it behind keeps a user
+  // locked out of their own account after a successful login.
+  memoryDel(key);
+}
+
+/**
+ * Increment the counter at `key` and return the entry as it was BEFORE the
+ * increment, together with the new count.
+ *
+ * @param {string} key
+ * @param {number} ttlMs
+ * @param {number} now
+ * @returns {Promise<{ previous: object|null, count: number }>}
+ */
+async function storeIncrEntry(key, ttlMs, now = Date.now()) {
+  const client = readyRedis();
+  if (client) {
+    try {
+      const raw = await client.eval(INCR_ENTRY_SCRIPT, 1, key, String(ttlMs), String(now));
+      const previous = raw ? JSON.parse(raw) : null;
+      return { previous, count: (previous?.count || 0) + 1 };
+    } catch (err) {
+      logger.warn(`Rate limiter Redis INCR failed, counting in memory: ${err.message}`);
+    }
+  }
+  const previous = memoryGet(key);
+  const count = (previous?.count || 0) + 1;
+  memorySet(key, { count, firstAttempt: previous?.firstAttempt || now }, ttlMs);
+  return { previous, count };
 }
 
 async function storeIncr(key, ttlMs) {
-  // istanbul ignore if -- unreachable: redis is never initialised (see getRedis)
-  if (/* istanbul ignore next */ redisReady && redis) {
-    const count = await redis.incr(key);
-    if (count === 1) {
-      await redis.pexpire(key, ttlMs);
+  const { count } = await storeIncrEntry(key, ttlMs);
+  return count;
+}
+
+/**
+ * Milliseconds left on a key's window, for the Retry-After hint.
+ * Redis answers -1 (no TTL) or -2 (no key) rather than throwing; both mean we
+ * have nothing better to offer than the configured window.
+ */
+async function storeTtl(key, fallbackMs) {
+  const client = readyRedis();
+  if (client) {
+    try {
+      const ttl = await client.pttl(key);
+      return ttl > 0 ? ttl : fallbackMs;
+    } catch (err) {
+      logger.warn(`Rate limiter Redis PTTL failed: ${err.message}`);
     }
-    return count;
   }
-  return memoryIncr(key, ttlMs);
+  // The memory fallback refreshes the window on every increment, so the
+  // configured window IS the time left on the counter we just wrote.
+  return fallbackMs;
 }
 
 /**
@@ -176,11 +295,11 @@ async function recordAuthFailure({ userId = null, tokenHash = null, ip = null, e
   // ---- USER-BASED TRACKING ----
   if (userId) {
     const userKey = makeKey("auth", endpoint, `user:${userId}`);
-    const entry = await storeGet(userKey);
-    const count = (entry?.count || 0) + 1;
     const ttlMs = config.windowMs;
-
-    await storeSet(userKey, { count, firstAttempt: entry?.firstAttempt || now }, ttlMs);
+    // One atomic round trip: two replicas failing the same account at the same
+    // moment used to read the same count and each write count+1, losing a
+    // failure and pushing the lockout out by one attempt per collision.
+    const { count } = await storeIncrEntry(userKey, ttlMs, now);
     results.remainingAttempts = Math.max(0, config.maxAttempts - count);
 
     if (count >= config.maxAttempts) {
@@ -192,7 +311,7 @@ async function recordAuthFailure({ userId = null, tokenHash = null, ip = null, e
       try {
         await Users.update(
           { failedLoginAttempts: count, lockedUntil: results.lockoutUntil },
-          { where: { id: userId } }
+          { where: { id: userId } },
         );
       } catch (err) {
         logger.error(`Failed to persist user lockout: ${err.message}`);
@@ -200,23 +319,23 @@ async function recordAuthFailure({ userId = null, tokenHash = null, ip = null, e
     }
   }
 
-// ---- TOKEN-BASED TRACKING (revokes token on brute force) ----
+  // ---- TOKEN-BASED TRACKING (revokes token on brute force) ----
   if (tokenHash) {
     const tokenKey = makeKey("auth", endpoint, `token:${tokenHash}`);
-    const entry = await storeGet(tokenKey);
-    const count = (entry?.count || 0) + 1;
     const ttlMs = config.windowMs;
 
-    await storeSet(tokenKey, { count, firstAttempt: entry?.firstAttempt || now }, ttlMs);
+    const { previous: entry, count } = await storeIncrEntry(tokenKey, ttlMs, now);
+    // Resolved once, here, where `entry` really can be absent — the later
+    // writes reuse it instead of repeating a `|| now` fallback that can never
+    // be taken (count >= 3 implies a prior entry) and so could never be tested.
+    const firstAttempt = entry?.firstAttempt || now;
 
     // Track remaining attempts for token
     results.remainingAttempts = Math.max(0, config.maxAttempts - count);
 
     // Revoke token after 3 failures with same token (on 3rd failure)
     if (count >= 3 && !entry?.revoked) {
-      // `|| now` is unreachable here: reaching count >= 3 means a prior entry
-      // exists and every write above stores a truthy Date.now() firstAttempt.
-      await storeSet(tokenKey, { count, revoked: true, firstAttempt: /* istanbul ignore next */ entry?.firstAttempt || now }, ttlMs);
+      await storeSet(tokenKey, { count, revoked: true, firstAttempt }, ttlMs);
       logger.warn(`Token revoked due to brute force on ${endpoint}`, { tokenHash });
     }
 
@@ -228,9 +347,7 @@ async function recordAuthFailure({ userId = null, tokenHash = null, ip = null, e
     // Hard block after 2x maxAttempts
     if (count >= config.maxAttempts * 2) {
       const blockUntil = now + 24 * 60 * 60 * 1000; // 24h
-      // `|| now` is unreachable here for the same reason as above: count >= 2x
-      // maxAttempts implies a prior entry with a truthy firstAttempt.
-      await storeSet(tokenKey, { count, blocked: true, blockUntil, firstAttempt: /* istanbul ignore next */ entry?.firstAttempt || now }, ttlMs);
+      await storeSet(tokenKey, { count, blocked: true, blockUntil, firstAttempt }, ttlMs);
       results.allowed = false;
       results.lockoutUntil = new Date(blockUntil);
       results.lockoutReason = "Token blocked due to excessive failed attempts";
@@ -347,17 +464,13 @@ function endpointRateLimiter(endpointKey, options = {}) {
 
       // Check all keys; if ANY exceeds limit, reject
       for (const key of keys) {
+        // storeIncr writes the counter and its TTL in one atomic operation;
+        // the "first request in window, set TTL" follow-up write this used to
+        // do was the non-atomic half of the pair and is gone.
         const count = await storeIncr(key, effectiveWindowMs);
-        if (count === 1) {
-          // First request in window, set TTL
-          await storeSet(key, { count: 1 }, effectiveWindowMs);
-        }
 
         if (count > effectiveMaxRequests) {
-          // istanbul ignore next -- the `redisReady && redis` arm is unreachable:
-          // redis is never initialised (see getRedis), so this always yields
-          // effectiveWindowMs. Asserted indirectly by the retryAfter tests.
-          const ttl = redisReady && redis ? await redis.pttl(key) : effectiveWindowMs;
+          const ttl = await storeTtl(key, effectiveWindowMs);
           return res.status(429).json({
             success: false,
             status: 429,
