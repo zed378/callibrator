@@ -20,9 +20,9 @@ Task ids are `A-nn`. They are referenced from [`PHASE-9-TYPESCRIPT-MIGRATION.md`
 
 | Id | Finding | Severity | Wave | Status |
 |---|---|---|---|---|
-| A-01 | `tenant-hierarchy` lets any authenticated principal write **other tenants** | **critical** | 0 | TODO |
-| A-02 | webhook, storage-settings and custom-domain routes are guarded only by `auth` | **high** | 0 | TODO |
-| A-03 | API keys ignore their scopes on every route without `dynamicAccess` | **high** | 0 | TODO |
+| A-01 | `tenant-hierarchy` lets any authenticated principal write **other tenants** | **critical** | 0 | **DONE** 2026-09-23 |
+| A-02 | webhook, storage-settings and custom-domain routes are guarded only by `auth` | **high** | 0 | **DONE** 2026-09-23 |
+| A-03 | API keys ignore their scopes on every route without `dynamicAccess` | **high** | 0 | **DONE** 2026-09-23 |
 | A-04 | `/search` returns records the caller's role cannot list | medium | 0 | TODO |
 | A-05 | Socket.IO: `origin: "*"`, token in the query string, no status or suspension check | medium | 0 | TODO |
 | A-06 | public `/health` discloses Node version, pid and memory | low | 0 | TODO |
@@ -46,6 +46,13 @@ Task ids are `A-nn`. They are referenced from [`PHASE-9-TYPESCRIPT-MIGRATION.md`
 | A-24 | every `redis.service` helper was a no-op: **registration, passkeys and the OIDC provider broken** | **high** | — | **DONE** 2026-09-21 |
 | A-25 | Stripe `upsertInvoice` never updates: an invoice that failed and was later paid stays **Open** | medium | 1 | TODO |
 | A-26 | no consumer deduplicates: a redelivered email is sent twice (documented "idempotency claims" do not exist) | medium | 1 | TODO |
+| A-27 | **any account could mint a `*` API key and have SCIM make it SUPERADMIN** | **critical** | 0 | **DONE** 2026-09-23 |
+| A-28 | evidence and controlled documents mutable by any role (attachments, signing keys, SOP, risks) | **high** | 0 | TODO |
+| A-29 | IoT ingest cannot be provisioned; its token would leak in list responses | medium | 1 | TODO |
+| A-30 | the rate limiter never uses Redis — lockouts reset on every deploy | **high** | 0 | TODO |
+| A-31 | nothing stops JWT access and refresh secrets being equal | low | 1 | TODO |
+| A-32 | the 100% coverage figure includes 58 `istanbul ignore` exclusions | low | 2 | TODO |
+| A-33 | SCIM PATCH ignores `path`: a standards-compliant deprovision returns 200 and does nothing | medium | 1 | TODO |
 
 ---
 
@@ -55,7 +62,7 @@ Task ids are `A-nn`. They are referenced from [`PHASE-9-TYPESCRIPT-MIGRATION.md`
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-23 |
 | **Severity** | **critical** |
 | **Evidence** | `backend/src/routes/api/tenantHierarchy.route.js`: `router.post("/:parentId/children", auth, addChildTenant)`, `router.put("/:tenantId/parent", auth, …)`, `router.delete("/:tenantId/parent", auth, …)` — no role, scope or ownership gate. `tenantHierarchy.controller.js#updateTenantParent` calls `Tenant.findByPk(tenantId)` and `Tenant.update({ parentId }, { where: { id: tenantId } })`. The `Tenant` model has no `tenantId` attribute, so the global scoping hooks **do not apply to it**. |
 | **Spec refs** | `docs/SECURITY/05-MULTI-TENANCY-SECURITY.md` · `docs/MULTI-TENANCY/08-CROSS-TENANT-PROTECTION.md` · `roleConstants.js` `ROLE_MENU_ASSIGNMENTS` (tenant-hierarchy: **write = SUPERADMIN only**) |
@@ -75,11 +82,29 @@ Task ids are `A-nn`. They are referenced from [`PHASE-9-TYPESCRIPT-MIGRATION.md`
 
 ---
 
+**What was changed (2026-09-23)** — `routes/api/tenantHierarchy.route.js`
+
+| Route | Gate |
+|---|---|
+| `GET /:tenantId/children`, `/parent`, `/descendants`, `/ancestors` | `ownTenantGuard` — the id must be the caller's own tenant, or the caller is SUPERADMIN. A cross-tenant id is **404**, not 403 |
+| `POST /:parentId/children`, `PUT` and `DELETE /:tenantId/parent`, `GET /cross-tenant-roles` | `[auth, denyApiKey, superAdminOnly]` — re-parenting a tenant is a platform operation, and `cross-tenant-roles` reads role assignments for an arbitrary user id |
+
+The handlers themselves are unchanged: they call `Tenant.findByPk` / `Tenant.update`, which the
+global hooks do not scope because the `Tenant` model has no `tenantId` attribute. The gate is what
+constrains them.
+
+**Verification** — `npx jest src/tests/routes/tenantHierarchy` → 23 tests, including
+`tenantHierarchy.guards.test.js` "answers 404 for another tenant" (one per read route) and
+"requires auth, denies API keys and requires SUPERADMIN" (one per mutation). Still open: a live
+two-tenant reproduction against a running server.
+
+---
+
 ### A-02 — Tenant configuration guarded only by `auth`
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-23 |
 | **Severity** | **high** |
 | **Evidence** | `webhooks.route.js` (7 routes: `auth` + `requireFeature("webhooks")`); `storage.route.js` (`PUT/DELETE /settings`, `POST /settings/test`: `auth` only); `customDomains.route.js` (7 routes: `auth` only). Their controllers contain no role or API-key check. |
 | **Spec refs** | `docs/SECURITY/04-AUTHORIZATION-RBAC.md` · `docs/WEBHOOK/03-WEBHOOK-SECURITY.md` · `docs/STORAGE/04-TENANT-STORAGE.md` |
@@ -100,11 +125,24 @@ Task ids are `A-nn`. They are referenced from [`PHASE-9-TYPESCRIPT-MIGRATION.md`
 
 ---
 
+**What was changed (2026-09-23)**
+
+| Router | Gate |
+|---|---|
+| `webhooks.route.js` (7 routes) | `[auth, denyApiKey, rbac([ROLE_NAMES.TENANT_ADMIN])]` — a webhook decides where the tenant's events are POSTed and its secret signs them |
+| `storage.route.js` `/settings*` (4 routes) | `[auth, denyApiKey, rbac([ROLE_NAMES.TENANT_ADMIN])]` — these hold the tenant's object-storage credentials. `GET /object` is deliberately left out: it is the read path for stored files |
+| `customDomains.route.js` (7 routes) | `dynamicAccess(MENU_SLUGS.CUSTOM_DOMAINS, read\|write)`, plus `denyApiKey` on writes. The slug already exists with WRITE for the admin roles and READ below them |
+
+**Verification** — `npx jest src/tests/routes/routeGuards.a02` → 21 tests, one per route, plus
+"leaves no route on auth alone" for the webhook and custom-domain routers.
+
+---
+
 ### A-03 — API keys ignore their scopes on ungated routes
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-23 |
 | **Severity** | **high** |
 | **Evidence** | `auth.middleware.js#tryApiKeyAuth` admits the key; scopes are enforced **only** in `dynamicAccess` (`checkApiKeyScope`). 16 of 53 route files use `dynamicAccess`; 31 use neither it nor `rbac`; only 4 (`apiKeys`, `eSignature`, `qms`, `supplierScorecard`) use `denyApiKey`. A key scoped `warehouse:read` therefore reaches every route in those 31 files. Header verified to traverse Cloudflare → nginx → Next.js → backend (an invalid key returns `Invalid or expired API key`). |
 | **Spec refs** | `docs/DEVELOPER/02-AUTHENTICATION.md` · `docs/API/13-INTEGRATION-API.md` |
@@ -119,6 +157,32 @@ Task ids are `A-nn`. They are referenced from [`PHASE-9-TYPESCRIPT-MIGRATION.md`
 
 **Abuse cases**
 - Adding `denyApiKey` to the routes someone happened to think of
+
+---
+
+**What was changed (2026-09-23)** — authorization for API keys is now deny-by-default.
+
+| Piece | File |
+|---|---|
+| a gate that has read the key's scopes and allowed it sets `req.apiKeyAuthorized` | `middlewares/dynamicAccess.middleware.js` |
+| `allowApiKey` — the explicit opt-in for endpoints meant for service accounts | `middlewares/auth.middleware.js` |
+| SCIM opts in inside `requireApiKeyOrAdmin` (it authorizes the key itself rather than by scope) | `routes/api/scim.route.js` |
+| the chokepoint: an API-key principal that reaches a wrapped controller without that flag gets **403** | `utils/controllerWrapper.util.js` (`asyncHandler`, `asyncHandlerWithMapping`) |
+
+**Why the controller wrapper.** Express has no hook that runs after the middleware chain but
+before the handler, and the gate is not always in the route's own stack (several routers apply
+`auth` with `router.use`). Every controller but two is wrapped, so the wrapper is the one place
+that sees every request after every gate has run.
+
+**Residual risk — named, not hidden:** `iot.controller.js` and `predictiveMaintenance.controller.js`
+do not use the wrapper. IoT ingest authenticates by device token, not API key; predictive
+maintenance is behind `dynamicAccess`, which sets the flag. Any new controller written without the
+wrapper is outside this guard — folded into A-07's sweep.
+
+**Verification** — `npx jest src/tests/utils/controllerWrapper.apiKey` → 7 tests
+("refuses an API key that no gate authorized", "runs the controller when a gate authorized the
+key", plus the ordinary-user, unauthenticated and no-request cases) and
+`src/tests/middlewares/auth.test.js` § "allowApiKey (A-03)".
 
 ---
 
@@ -200,6 +264,199 @@ Task ids are `A-nn`. They are referenced from [`PHASE-9-TYPESCRIPT-MIGRATION.md`
 **Definition of Done**
 - [ ] the port mapping removed from the vm and dev overlays unless a broker sidecar is added
 - [ ] `docs/DEVELOPER/07-IOT-INGEST.md` states the broker ACL requirement plainly: a publisher allowed on `device/#` can post readings for any device whose id and tenant id it knows
+
+---
+
+### A-27 — Any account could mint an unrestricted API key, and SCIM would make it SUPERADMIN
+
+| | |
+|---|---|
+| **Status** | **DONE** 2026-09-23 |
+| **Severity** | **critical — full platform takeover by the lowest-privilege account** |
+| **Verified** | from code, 2026-09-21; **corrected 2026-09-23** (see below). **Not exploited**: doing so on the reference deployment would change real privileges |
+| **Spec refs** | `docs/API/13-INTEGRATION-API.md` § SCIM · `docs/DEVELOPER/09-SCIM-PROVISIONING.md` · `docs/SECURITY/04-AUTHORIZATION-RBAC.md` |
+
+> **Correction to the 2026-09-21 write-up.** It said every SCIM route is guarded by `auth` alone.
+> That is wrong: `scim.route.js:38–45` also applies `requireApiKeyOrAdmin`, so a plain user JWT
+> gets 403. The escalation was real, but it ran **through API-key issuance**, which was open to
+> every authenticated user. The original text is kept below the line so the correction is visible.
+
+**Root cause — four facts that combined**
+
+| # | Fact | Where |
+|---|---|---|
+| 1 | `POST /api/v1/api-keys` was guarded by `auth` + `denyApiKey` only — **any** authenticated user, of any role, could mint a key | `routes/api/apiKeys.route.js` |
+| 2 | the key's scopes were whatever the caller sent: `Array.isArray(scopes) ? scopes : []`, no allow-list — `["*"]` was accepted | `services/apiKey.service.js#createApiKey` |
+| 3 | SCIM accepts **any** API key as a service account (`req.user.isApiKey`), regardless of its scopes | `routes/api/scim.route.js:38–45` |
+| 4 | SCIM wrote a caller-chosen `roleId`, and the SUPERADMIN role id is a **committed constant** — `ROLE_IDS.SUPER_ADMIN = "9be20605-cc6a-4d91-8246-9756b4a1754b"` — which skips every permission gate and every tenant predicate | `services/scim.service.js` `createUser` / `updateUser` / `patchUser` · `constants/roleConstants.js` · `utils/tenantScope.util.js` |
+
+**Reproduction** — on a **disposable local stack only**:
+
+```http
+POST /api/v1/auth/login                          # as any user, e.g. role USER
+POST /api/v1/api-keys                            # step 1: mint an unrestricted key
+Authorization: Bearer <that user's access token>
+{ "name": "x", "scopes": ["*"] }
+
+POST /api/v1/scim/v2/Users                       # step 2: provision a platform operator
+X-API-Key: <the key from step 1>
+{ "userName": "me@evil.test", "roleId": "9be20605-cc6a-4d91-8246-9756b4a1754b" }
+```
+
+Before the fix: 201, and that account is SUPERADMIN. Note the SCIM **PATCH** form — `patchUser`
+reads `op.value` as an object and **ignores `op.path`** (A-33), so the escalating patch is
+`{ "op": "replace", "value": { "roleId": "<id>" } }`, not the path-based form the 2026-09-21
+write-up showed.
+
+**Three more paths through the same module**
+
+| Path | Effect |
+|---|---|
+| `PATCH /Groups/<SUPERADMIN id>` with `op: add, members: [<own id>]` | `Users.update({ roleId: groupId })` — the same escalation via membership |
+| `PUT` / `PATCH /Groups/<any role id>` with a new `displayName` | renames a **global** role, including system roles; code that compares role **names** (`ROLE_LEVELS`, `role.name === "SUPERADMIN"`) then misbehaves for **every tenant** |
+| `DELETE /Groups/<any role id>` | `role.destroy()` with no `isSystem` check — deletes a global role out from under every tenant |
+
+**Impact:** any authenticated principal — a room user, a warehouse clerk — could become platform
+operator, read and modify every hospital's data, and delete or rename the roles every tenant
+depends on.
+
+**What was changed (2026-09-23)**
+
+| Change | File |
+|---|---|
+| API-key management is `TENANT_ADMIN`-only (`const adminOnly = [auth, denyApiKey, rbac([ROLE_NAMES.TENANT_ADMIN])]`), applied to all four routes | `routes/api/apiKeys.route.js` |
+| `assertScopes()` — scopes must be a non-empty list of `<menu slug>:<read\|write>`; `*` in either position, unknown resources and unknown actions are 400; stored lower-cased | `services/apiKey.service.js` |
+| `assertAssignableRole()` — refuses `ROLE_IDS.SUPER_ADMIN`, any role named SUPERADMIN, and unknown role ids (400). Called at all five sites that assign a role: `createUser`, `updateUser`, the two `patchUser` branches, and group membership | `services/scim.service.js` |
+| `assertMutableGroup()` — `isSystem` roles cannot be renamed, patched or deleted through SCIM | `services/scim.service.js` |
+
+**Verification** — `npx jest src/tests/services/scim src/tests/services/apiKey src/tests/routes/scim src/tests/routes/apiKey` → 6 suites, 166 tests, all passing. The new cases are in
+`src/tests/services/scim.service.test.js` § "scim.service — privileged role guards (A-27)"
+(7 tests: create/update/patch into SUPERADMIN, unknown roleId, rename/delete/patch a system role)
+and `src/tests/services/apiKey.service.test.js` (wildcard scopes, unknown resource, unknown action,
+empty list, non-array, lower-casing).
+
+**Not covered by this fix — still open**
+- [ ] SCIM mutations write no audit row attributed to the IdP credential (folded into A-33)
+- [ ] roles are **global**, not per-tenant; SCIM group management therefore edits rows every tenant shares. That is a data-model question, not a guard — Open Question in `TASKS/BACKLOG.md`
+- [ ] a live two-account reproduction on a disposable stack (unit tests only so far)
+
+**Abuse cases covered by the tests**
+- Blocking the role id while `members` still assigns it — membership goes through the same guard
+- Filtering the constant but not a renamed SUPERADMIN row — the guard checks `role.name` too
+
+---
+
+### A-28 — Evidence and controlled documents can be changed by any role
+
+| | |
+|---|---|
+| **Status** | TODO |
+| **Severity** | **high — compliance** (ISO 13485 document control, 21 CFR Part 11 records) |
+| **Verified** | from code, 2026-09-21 |
+
+**Root cause:** the routes below carry `auth` and nothing else, and their services check tenant only — never role or ownership.
+
+| Route | Service | What any role can do |
+|---|---|---|
+| `DELETE /api/v1/attachments/:id` (`attachments.route.js:204`) | `attachment.service.js#deleteAttachment` (`:172`) — `(tenantId, id)` only | delete any attachment in the tenant, including calibration evidence and certificate support files |
+| `DELETE /api/v1/esignature/key-pairs/:keyPairId` | `eSignature.service.js#deleteKeyPair` (`:161`) — `where: { id, tenantId }` | delete the tenant's signing keys. **Creating** a key pair is `denyApiKey` (`:125`); **deleting** one is not, so any API key can |
+| `POST / PUT / DELETE /api/v1/esignature/workflows` | workflow CRUD | create, change or delete multi-party signing workflows, including in-flight ones |
+| `POST /api/v1/sop`, `PATCH /api/v1/sop/:id/publish` (`sop.route.js:56`, `:104`) | `sop.service.js#publishDocument` (`:46`) — sets `PUBLISHED`, no approver | author **and publish** a controlled procedure with no review. The service comment reads "in a real app, this might be filtered by role" |
+| `POST / PUT / DELETE /api/v1/risks` (`risk.route.js:56`, `:170`, `:195`) | `risk.service.js` — tenant only | create, rescore or delete entries in the risk register |
+
+**Impact:** an auditor asks who approved SOP rev 3, or why a calibration's evidence file is missing. Today the honest answer is "any account could have". Deletion of signing keys may also make past signatures unverifiable, depending on where public keys are kept — verify before assuming either way.
+
+**Fix direction:** gate each with `dynamicAccess` on its menu slug (`attachments`, `qms`, `sop`, `risk` exist in `MENU_SLUGS`) and `denyApiKey` for key and workflow management; SOP publish requires a role distinct from the author (separation of duties); deletion of evidence-bearing attachments becomes a soft delete with an audit row, or is refused once the parent record is signed.
+
+**Verification (DoD)**
+- [ ] per route: a `USER` gets 403 and the row is unchanged
+- [ ] an API key cannot delete a key pair
+- [ ] SOP publish by its author is refused; by a second authorised role succeeds and is audited
+- [ ] a decision recorded on whether deleting a key pair breaks verification of existing signatures
+
+---
+
+### A-29 — IoT ingest cannot be provisioned, and its credential would leak if it could
+
+| | |
+|---|---|
+| **Status** | TODO |
+| **Severity** | medium — a shipped feature that cannot receive data; a latent credential leak |
+| **Verified** | from code and the reference database (`0` devices with `iot_enabled`, `0` with a token) |
+
+**Root cause**
+- Nothing sets `iotEnabled` or `iotDeviceToken`: no service assigns them, no validator accepts them (`calibrationDevices.validator.js` has no IoT field), no frontend surface shows them. The only reference is the lookup in `iot.controller.js:21`.
+- `POST /api/v1/iot/ingest` therefore returns 401 for every device unless a token is written into the database by hand. MQTT ingest (off on the reference deployment) authenticates by topic and needs the same flag.
+- Predictive maintenance, documented as deriving risk "from IoT readings", has no readings to derive from.
+- `calibrationDevice.model.js` `defaultScope` excludes nothing: once a token exists it is returned in every device list and detail response — the leak `PHASE-3` P3-01 warns about ("a token in the device register is a leak to everyone who can read it").
+
+**Documentation impact:** `PHASE-5` marks P5-02 IoT telemetry "✅ DONE". Built, tested with mocks, and **unreachable**.
+
+**Fix direction:** an admin-only endpoint that issues a random token (≥ 32 bytes, stored **hashed**, shown once — as API keys already are) and toggles `iotEnabled`; the token excluded from default attributes; a UI surface; a rate limit on `/iot/ingest`.
+
+**Verification (DoD)**
+- [ ] a device can be provisioned end to end through the API and ingest succeeds
+- [ ] no device response contains the token
+- [ ] tokens are hashed at rest
+
+---
+
+### A-30 — The rate limiter never uses Redis
+
+| | |
+|---|---|
+| **Status** | TODO |
+| **Severity** | **high** — brute-force protection resets on every deploy |
+| **Verified** | from code |
+
+**Root cause:** `rateLimiter.redis.service.js` constructs its Redis client inside `getRedis()` (`:34`), which is **not exported and never called**. `redisReady` is never true, so every counter lives in the in-process `Map`. Twelve `istanbul ignore` comments in the file mark the Redis branches as unreachable — the dead path was excluded from coverage rather than wired in or deleted.
+
+**Consequences**
+
+| | |
+|---|---|
+| counters reset on **every restart and deploy** | an attacker waits for the next deploy — or triggers a crash — and the 5-attempt login lockout starts again |
+| per replica | with N replicas the effective limit is N × the configured one |
+| keyed by `req.ip` (`:344`, `:544`) | if `req.ip` is a proxy address rather than the client (A-16, unverified), **every user shares one bucket**: one attacker's five failures lock everyone out |
+
+**Documentation impact:** ARCHITECTURE/06 ("Redis-backed endpoint limiters"), ENGINEERING/08 and several SECURITY documents describe Redis-backed limiting. Corrected alongside this card.
+
+**Fix direction:** initialise the client at startup (or reuse the shared, now-working `redis.service` client), keep the memory fallback for outages only, and resolve A-16 before trusting any per-IP key.
+
+**Verification (DoD)**
+- [ ] a lockout survives a backend restart
+- [ ] two replicas share one counter
+- [ ] the `istanbul ignore` markers on the Redis path removed and the path covered
+
+---
+
+### A-31 — Nothing stops access and refresh tokens sharing a secret
+
+| | |
+|---|---|
+| **Status** | TODO |
+| **Severity** | low–medium |
+| **Evidence** | `utils/jwt.util.js:8–17` requires both secrets to exist but never compares them. `docs/BACKEND/11-CONFIGURATION.md` says "the config should reject that rather than trusting whoever wrote the `.env`" — it does not. `JWT_ALGORITHM` is also read from the environment (`:24`). |
+
+**Why it matters:** with equal secrets, whether a refresh token is accepted as an access token depends only on claim checks in the verifier, not on cryptography.
+
+**Fix direction:** refuse to start when the secrets are equal; pin the verification algorithm list in code rather than in the environment.
+
+**Verification (DoD):** [ ] startup fails with equal secrets · [ ] a refresh token presented as a bearer token is rejected, with a test
+
+---
+
+### A-32 — The 100% coverage figure includes 58 exclusions
+
+| | |
+|---|---|
+| **Status** | TODO |
+| **Severity** | low — a trust problem with the gate, not a runtime defect |
+| **Evidence** | 58 `istanbul ignore` directives in `backend/src` (non-test), **31 with no reason**. Concentrated in `migration.service.js` (15) and `rateLimiter.redis.service.js` (12). Several mark code as "unreachable" — `transformTenants is never referenced`, `decryptPrivateKey is not exported`, `getRedis() is not exported and has no caller` — i.e. **dead code kept and hidden** rather than deleted, and in one case a whole feature (A-30). |
+
+**Fix direction:** every directive carries a reason; dead code is deleted, not ignored; a reviewer treats a new `istanbul ignore` like a new `eslint-disable`.
+
+**Verification (DoD):** [ ] zero unexplained directives · [ ] no directive on code described as unreachable
 
 ---
 
@@ -406,3 +663,43 @@ Task ids are `A-nn`. They are referenced from [`PHASE-9-TYPESCRIPT-MIGRATION.md`
 | — | avatar and tenant-logo broken images; email templates carrying another company's branding and a broken Outlook CTA | commits `78028b0`, `582e24b`, `6621722` |
 | — | `npm test` could not run under a hoisted workspace install | commit `78028b0` |
 | — | MySQL support removed — it never worked | ADR-039 |
+
+---
+
+### A-33 — SCIM PATCH ignores `path`: standard IdP patches silently do nothing
+
+| | |
+|---|---|
+| **Status** | TODO |
+| **Severity** | medium — a shipped integration that no standards-compliant IdP can drive |
+| **Verified** | from code, 2026-09-23, while fixing A-27 |
+
+**Root cause:** `scim.service.js#patchUser` handles an operation by iterating
+`Object.entries(op.value)` — it reads `op.path` only in the `remove` branch, and there it treats
+it as an **array of keys**. RFC 7644 § 3.5.2 defines `path` as a **string** attribute path, and
+the normal form of a patch is `{ "op": "replace", "path": "active", "value": false }`.
+
+Given that operation, the code evaluates `Object.entries(op.value || {})` where `op.value` is the
+scalar `false` — `Object.entries(false)` is `[]`, so the loop body never runs. The operation is
+silently dropped and the endpoint returns **200 with the user unchanged**.
+
+Only the non-standard shape `{ "op": "replace", "value": { "active": false } }` works.
+
+**Impact:** Okta, Entra ID and OneLogin all send path-based operations for the common cases
+(deactivate a user, change a group membership). Against this endpoint they get 200 and nothing
+happens — deprovisioning appears to succeed while the account stays active. That is the worst
+failure mode available: a silent no-op on the operation that removes access.
+
+**Also missing:** no SCIM mutation writes an audit row, so there is no record of what the IdP
+changed (carried over from A-27).
+
+**Fix direction:** parse `path` per RFC 7644 (at minimum the simple `attr` and `attr.sub` forms)
+and route it through the same assignment code — including `assertAssignableRole` — as the value
+form; reject an operation whose `path` is present but unparseable with 400 rather than ignoring
+it; write an audit row per mutation, attributed to the API key.
+
+**Verification (DoD)**
+- [ ] `{ "op": "replace", "path": "active", "value": false }` deactivates the user
+- [ ] `{ "op": "replace", "path": "roleId", "value": "<superadmin id>" }` returns 403, not 200
+- [ ] an unparseable `path` returns 400 and changes nothing
+- [ ] an audit row exists for every accepted SCIM mutation

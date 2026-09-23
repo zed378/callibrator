@@ -8,7 +8,7 @@
 const express = require("express");
 const router = express.Router();
 
-const { auth } = require("../../middlewares/auth.middleware");
+const { auth, superAdminOnly, denyApiKey } = require("../../middlewares/auth.middleware");
 const {
   getTenantTree,
   getTenantChildren,
@@ -24,6 +24,36 @@ const {
   addChild: addChildValidator,
 } = require("../../validators/tenantHierarchy.validator");
 const { validateUuid } = require("../../middlewares/validateUuid.middleware");
+const { ROLE_NAMES } = require("../../constants");
+
+// ---------------------------------------------------------------------------
+// A-01. The Tenant model has no `tenantId` attribute, so the global tenant
+// hooks do NOT scope it: `Tenant.findByPk(req.params.tenantId)` reads, and
+// `Tenant.update(..., { where: { id } })` WRITES, any tenant in the platform.
+// Until 2026-09-23 every route here carried `auth` and nothing else, so any
+// authenticated user could re-parent another hospital's tenant.
+//
+// Reads of a named tenant are limited to the caller's own tenant; a
+// cross-tenant id is 404, never 403 — a 403 would confirm the tenant exists.
+// Re-parenting is a platform operation: SUPERADMIN, and never an API key.
+const ownTenantOnly = (param) =>
+  function ownTenantGuard(req, res, next) {
+    if (req.user?.role?.name === ROLE_NAMES.SUPER_ADMIN) {
+      return next();
+    }
+    if (req.params[param] !== req.user?.tenantId) {
+      return res.status(404).json({
+        success: false,
+        status: 404,
+        message: "Tenant not found",
+        data: null,
+      });
+    }
+    return next();
+  };
+
+const platformOnly = [auth, denyApiKey, superAdminOnly];
+
 
 /**
  * @swagger
@@ -118,6 +148,7 @@ router.get(
   "/:tenantId/children",
   auth,
   validateUuid("tenantId"),
+  ownTenantOnly("tenantId"),
   getTenantChildren,
 );
 
@@ -164,6 +195,7 @@ router.get(
   "/:tenantId/parent",
   auth,
   validateUuid("tenantId"),
+  ownTenantOnly("tenantId"),
   getTenantParent,
 );
 
@@ -211,6 +243,7 @@ router.get(
   "/:tenantId/descendants",
   auth,
   validateUuid("tenantId"),
+  ownTenantOnly("tenantId"),
   getTenantDescendants,
 );
 
@@ -251,6 +284,7 @@ router.get(
   "/:tenantId/ancestors",
   auth,
   validateUuid("tenantId"),
+  ownTenantOnly("tenantId"),
   getTenantAncestors,
 );
 
@@ -320,7 +354,7 @@ router.get(
 // (value, options) method — passing it as middleware called it with
 // (req, res, next), which threw and 500'd every request. The body is now
 // validated inside addChildTenant against that same schema.
-router.post("/:parentId/children", auth, addChildTenant);
+router.post("/:parentId/children", ...platformOnly, addChildTenant);
 
 /**
  * @swagger
@@ -374,7 +408,7 @@ router.post("/:parentId/children", auth, addChildTenant);
  */
 router.put(
   "/:tenantId/parent",
-  auth,
+  ...platformOnly,
   validateUuid("tenantId"),
   updateTenantParent,
 );
@@ -416,7 +450,7 @@ router.put(
  */
 router.delete(
   "/:tenantId/parent",
-  auth,
+  ...platformOnly,
   validateUuid("tenantId"),
   removeTenantParent,
 );
@@ -462,6 +496,6 @@ router.delete(
  *       401:
  *         description: Unauthorized
  */
-router.get("/cross-tenant-roles", auth, getCrossTenantRoles);
+router.get("/cross-tenant-roles", ...platformOnly, getCrossTenantRoles);
 
 module.exports = router;

@@ -12,6 +12,8 @@ const scimUserSchema = Joi.object({
     primary: Joi.boolean().optional(),
   })).optional(),
   active: Joi.boolean().optional(),
+  // roleId is accepted but constrained in the service: SCIM may never assign
+  // SUPERADMIN or any system role (A-27).
   roleId: Joi.string().uuid().optional(),
 });
 

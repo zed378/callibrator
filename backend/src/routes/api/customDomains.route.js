@@ -8,7 +8,9 @@
 const express = require("express");
 const router = express.Router();
 
-const { auth } = require("../../middlewares/auth.middleware");
+const { auth, denyApiKey } = require("../../middlewares/auth.middleware");
+const { dynamicAccess } = require("../../middlewares/dynamicAccess.middleware");
+const { MENU_SLUGS, PERMISSION_TYPES } = require("../../constants");
 const {
   getCustomDomains,
   addCustomDomain,
@@ -25,6 +27,13 @@ const { validateUuid } = require("../../middlewares/validateUuid.middleware");
 // — it threw and 500'd POST /domains. `validate(schema)` is the router-facing
 // factory.
 const { validate } = require("../../middlewares/validation.middleware");
+
+// A-02. A custom domain decides which hostname serves this tenant, and
+// verification issues a TLS certificate for it. Until 2026-09-23 these routes
+// carried `auth` alone. `custom-domains` is already a menu slug with WRITE for
+// the admin roles and READ below them, so the gate is the standard one.
+const domainRead = [auth, dynamicAccess(MENU_SLUGS.CUSTOM_DOMAINS, PERMISSION_TYPES.READ)];
+const domainWrite = [auth, denyApiKey, dynamicAccess(MENU_SLUGS.CUSTOM_DOMAINS, PERMISSION_TYPES.WRITE)];
 
 /**
  * @swagger
@@ -59,7 +68,7 @@ const { validate } = require("../../middlewares/validation.middleware");
  *       401:
  *         description: Unauthorized
  */
-router.get("/domains", auth, getCustomDomains);
+router.get("/domains", ...domainRead, getCustomDomains);
 
 /**
  * @swagger
@@ -107,7 +116,7 @@ router.get("/domains", auth, getCustomDomains);
  *       401:
  *         description: Unauthorized
  */
-router.post("/domains", auth, validate(addDomain), addCustomDomain);
+router.post("/domains", ...domainWrite, validate(addDomain), addCustomDomain);
 
 /**
  * @swagger
@@ -145,7 +154,7 @@ router.post("/domains", auth, validate(addDomain), addCustomDomain);
  */
 router.post(
   "/domains/:domainId/verify",
-  auth,
+  ...domainWrite,
   validateUuid("domainId"),
   verifyDomain,
 );
@@ -176,7 +185,7 @@ router.post(
  */
 router.delete(
   "/domains/:domainId",
-  auth,
+  ...domainWrite,
   validateUuid("domainId"),
   removeCustomDomain,
 );
@@ -217,7 +226,7 @@ router.delete(
  */
 router.get(
   "/domains/:domainId/status",
-  auth,
+  ...domainRead,
   validateUuid("domainId"),
   getDomainStatus,
 );
@@ -248,7 +257,7 @@ router.get(
  */
 router.post(
   "/domains/:domainId/default",
-  auth,
+  ...domainWrite,
   validateUuid("domainId"),
   setDefaultDomain,
 );
@@ -295,7 +304,7 @@ router.post(
  */
 router.get(
   "/domains/:domainId/dns",
-  auth,
+  ...domainRead,
   validateUuid("domainId"),
   getDnsRecords,
 );

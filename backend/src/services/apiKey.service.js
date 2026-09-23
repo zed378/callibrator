@@ -6,6 +6,7 @@
 
 const crypto = require("crypto");
 const { ApiKey, Tenant } = require("../models");
+const { MENU_SLUGS } = require("../constants");
 const { AppError } = require("../utils/appError.util");
 const { DEFAULT_LIMIT, MAX_LIMIT } = require("../constants");
 
@@ -31,11 +32,36 @@ const publicKey = (k) => ({
 // ------------------------------------------------------------------
 // CRUD
 // ------------------------------------------------------------------
+// Scopes are "<menu slug>:<read|write>". A wildcard resource ("*") is refused:
+// a key that matches every resource is indistinguishable from an administrator,
+// and SCIM treats any API key as a service account (A-27).
+const VALID_ACTIONS = new Set(["read", "write"]);
+const ALLOWED_RESOURCES = new Set(Object.values(MENU_SLUGS).map((s) => String(s).toLowerCase()));
+
+const assertScopes = (scopes) => {
+  if (!Array.isArray(scopes) || scopes.length === 0) {
+    throw new AppError(400, "scopes must be a non-empty array of \"<resource>:<read|write>\"");
+  }
+  for (const raw of scopes) {
+    const [resource, action = "write"] = String(raw).toLowerCase().split(":");
+    if (resource === "*" || action === "*") {
+      throw new AppError(400, "Wildcard scopes are not allowed; name each resource explicitly");
+    }
+    if (!ALLOWED_RESOURCES.has(resource)) {
+      throw new AppError(400, `Unknown scope resource: "${resource}"`);
+    }
+    if (!VALID_ACTIONS.has(action)) {
+      throw new AppError(400, `Unknown scope action: "${action}" (use read or write)`);
+    }
+  }
+};
+
 exports.createApiKey = async (tenantId, { name, scopes, expiresAt, createdBy }) => {
   if (!name) {
     throw new AppError(400, "name is required");
   }
-  const scopeArr = Array.isArray(scopes) ? scopes : [];
+  assertScopes(scopes);
+  const scopeArr = scopes.map((s) => String(s).toLowerCase());
   const raw = generateRawKey();
   const key = await ApiKey.create({
     tenantId,

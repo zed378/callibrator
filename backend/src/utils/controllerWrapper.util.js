@@ -14,6 +14,26 @@
 const { error: sendError } = require("./response.util");
 const { AppError } = require("./appError.util");
 
+// A-03. Deny-by-default for API-key principals.
+//
+// Only `dynamicAccess` reads an API key's scopes. On a route gated some other
+// way — or gated by `auth` alone — the key used to pass as an ordinary
+// authenticated principal, so a key scoped to `warehouse:read` could reach any
+// such handler. There is no Express hook that runs after the middleware chain
+// but before the controller, so the check lives here: every controller but two
+// is wrapped, and a key that arrives without a gate having authorized it is
+// refused.
+//
+// A route that is deliberately open to service accounts opts in with
+// `allowApiKey` from auth.middleware.
+const apiKeyBlocked = (req, res) => {
+  if (!req || !req.user || !req.user.isApiKey || req.apiKeyAuthorized) {
+    return false;
+  }
+  sendError(res, "This API key is not authorized for this endpoint", 403);
+  return true;
+};
+
 /**
  * Wraps an async controller function to handle errors centrally
  * @param {Function} fn - Async controller function
@@ -21,6 +41,9 @@ const { AppError } = require("./appError.util");
  */
 const asyncHandler = (fn) => {
   return (req, res, next) => {
+    if (apiKeyBlocked(req, res)) {
+      return undefined;
+    }
     return Promise.resolve(fn(req, res, next)).catch((error) => {
       // Ensure status and message are resolved
       const status = error.status || error.statusCode || 500;
@@ -61,6 +84,9 @@ const asyncHandler = (fn) => {
  */
 const asyncHandlerWithMapping = (fn, errorMap = {}) => {
   return (req, res, next) => {
+    if (apiKeyBlocked(req, res)) {
+      return undefined;
+    }
     return Promise.resolve(fn(req, res, next))
       .then((result) => {
         // Only the error path used to be handled here. Controllers that

@@ -34,6 +34,9 @@ describe("scim.service", () => {
   beforeEach(() => jest.clearAllMocks());
 
   describe("getUsers", () => {
+    // assertAssignableRole (A-27) looks the role up; default to an ordinary,
+    // non-system role so existing cases exercise the happy path.
+    Role.findOne.mockResolvedValue({ id: "r-user", name: "USER", isSystem: false });
     it("returns paginated list with default pagination and filter=null", async () => {
       Users.findAndCountAll.mockResolvedValue({
         count: 1,
@@ -721,5 +724,86 @@ describe("scim.service", () => {
         await expect(scim.deleteGroup("t1", "g1")).rejects.toThrow("Group not found");
       });
     });
+  });
+});
+
+// ==========================================================================
+// A-27 — SCIM must never hand out privileged roles, and must not touch system
+// roles. Before 2026-09-23 a caller could name the committed SUPERADMIN role id
+// and take over the platform.
+// ==========================================================================
+describe("scim.service — privileged role guards (A-27)", () => {
+  const SUPERADMIN_ID = "9be20605-cc6a-4d91-8246-9756b4a1754b";
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    Role.findOne.mockResolvedValue({ id: "r-user", name: "USER", isSystem: false });
+  });
+
+  it("refuses to create a user with the SUPERADMIN role", async () => {
+    Users.findOne.mockResolvedValue(null);
+    await expect(
+      scim.createUser("t1", { userName: "a@b.c", roleId: SUPERADMIN_ID }),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(Users.create).not.toHaveBeenCalled();
+  });
+
+  it("refuses to update a user into the SUPERADMIN role", async () => {
+    Users.findOne.mockResolvedValue({ id: "u1", update: jest.fn() });
+    await expect(
+      scim.updateUser("t1", "u1", { roleId: SUPERADMIN_ID }),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+
+  it("refuses to patch a user into the SUPERADMIN role", async () => {
+    const update = jest.fn();
+    Users.findOne.mockResolvedValue({ id: "u1", update });
+    await expect(
+      // NOTE the shape: patchUser reads op.value as an OBJECT and ignores
+      // op.path entirely (A-34), so this — not the SCIM-standard
+      // { op, path: "roleId", value: "<id>" } — is the form that assigns a role.
+      scim.patchUser("t1", "u1", [{ op: "replace", value: { roleId: SUPERADMIN_ID } }]),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  // The constant is not the only way to name the platform role: a row that is
+  // flagged isSystem and named SUPERADMIN is refused whatever its id.
+  it("refuses a system role named SUPERADMIN under a different id", async () => {
+    Users.findOne.mockResolvedValue(null);
+    Role.findOne.mockResolvedValue({ id: "r-other", name: "superadmin", isSystem: true });
+    await expect(
+      scim.createUser("t1", { userName: "a@b.c", roleId: "22222222-2222-2222-2222-222222222222" }),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(Users.create).not.toHaveBeenCalled();
+  });
+
+  it("refuses an unknown roleId", async () => {
+    Users.findOne.mockResolvedValue(null);
+    Role.findOne.mockResolvedValue(null);
+    await expect(
+      scim.createUser("t1", { userName: "a@b.c", roleId: "11111111-1111-1111-1111-111111111111" }),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it("refuses to rename a system role", async () => {
+    Role.findOne.mockResolvedValue({ id: "r-sys", name: "HEALTHCARE ADMIN", isSystem: true, update: jest.fn() });
+    await expect(
+      scim.updateGroup("t1", "r-sys", { displayName: "anything" }),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+
+  it("refuses to delete a system role", async () => {
+    const destroy = jest.fn();
+    Role.findOne.mockResolvedValue({ id: "r-sys", name: "SUPERADMIN", isSystem: true, destroy });
+    await expect(scim.deleteGroup("t1", "r-sys")).rejects.toMatchObject({ status: 403 });
+    expect(destroy).not.toHaveBeenCalled();
+  });
+
+  it("refuses to patch a system role", async () => {
+    Role.findOne.mockResolvedValue({ id: "r-sys", name: "USER", isSystem: true, update: jest.fn() });
+    await expect(
+      scim.patchGroup("t1", "r-sys", [{ op: "replace", value: { displayName: "x" } }]),
+    ).rejects.toMatchObject({ status: 403 });
   });
 });
