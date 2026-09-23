@@ -217,6 +217,21 @@ exports.denyApiKey = (req, res, next) => {
   next();
 };
 
+// A-03. An API key is a scoped credential, but only `dynamicAccess` ever read
+// its scopes — on a route without one the key was simply "an authenticated
+// principal" and got everything the handler offered. Authorization for API
+// keys is therefore deny-by-default: a gate that has actually authorized the
+// key sets `req.apiKeyAuthorized`, and a key that reaches a controller without
+// it is refused (see utils/controllerWrapper.util.js).
+//
+// This middleware is the explicit opt-in, for the few endpoints that are meant
+// for service accounts and authorize them some other way (SCIM, which requires
+// an API key and checks the target separately).
+exports.allowApiKey = (req, res, next) => {
+  req.apiKeyAuthorized = true;
+  next();
+};
+
 /**
  * Super admin only middleware
  */

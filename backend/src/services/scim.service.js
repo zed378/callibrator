@@ -1,7 +1,37 @@
 const { Op } = require("sequelize");
 const { Users, Role } = require("../models");
 const { AppError } = require("../utils/appError.util");
+
 const { ROLE_IDS } = require("../constants");
+
+// SCIM provisions ordinary tenant members. It may never hand out SUPERADMIN or
+// any system role: the endpoints accept any API key as a service account, and
+// until 2026-09-23 a caller could name ROLE_IDS.SUPER_ADMIN — a constant
+// committed to this repository — and take over the platform (A-27).
+const assertAssignableRole = async (roleId) => {
+  if (!roleId) {
+    return;
+  }
+  if (roleId === ROLE_IDS.SUPER_ADMIN) {
+    throw new AppError(403, "SCIM may not assign the SUPERADMIN role");
+  }
+  const role = await Role.findOne({ where: { id: roleId } });
+  if (!role) {
+    throw new AppError(400, "Unknown roleId");
+  }
+  if (role.isSystem && String(role.name).toUpperCase() === "SUPERADMIN") {
+    throw new AppError(403, "SCIM may not assign the SUPERADMIN role");
+  }
+  return role;
+};
+
+// Renaming or deleting a system role changes behaviour for EVERY tenant: roles
+// are global here, and authorization compares role names.
+const assertMutableGroup = (role) => {
+  if (role.isSystem) {
+    throw new AppError(403, "System roles cannot be renamed or deleted through SCIM");
+  }
+};
 
 const SCIM_USER_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:User";
 const SCIM_GROUP_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:Group";
@@ -116,6 +146,8 @@ exports.createUser = async (tenantId, scimData) => {
     throw new AppError(409, "User already exists in the system");
   }
 
+  await assertAssignableRole(scimData.roleId);
+
   const randomPassword = require("crypto").randomBytes(16).toString("hex");
   const hashedPassword = await require("../utils/password.util").hashPassword(randomPassword);
 
@@ -149,6 +181,7 @@ exports.updateUser = async (tenantId, userId, scimData) => {
     updates.lastName = scimData.name.familyName;
   }
   if (scimData.roleId) {
+    await assertAssignableRole(scimData.roleId);
     updates.roleId = scimData.roleId;
   }
   if (typeof scimData.active === "boolean") {
@@ -182,12 +215,14 @@ exports.patchUser = async (tenantId, userId, patchOps) => {
           updates.isActive = value;
           updates.status = value ? "ACTIVE" : "SUSPENDED";
         } else if (key === "roleId") {
+          await assertAssignableRole(value);
           updates.roleId = value;
         }
       }
     } else if (op.op === "add") {
       for (const [key, value] of Object.entries(op.value || {})) {
         if (key === "roleId") {
+          await assertAssignableRole(value);
           updates.roleId = value;
         }
       }
@@ -318,6 +353,7 @@ exports.updateGroup = async (tenantId, groupId, scimData) => {
   if (!role) {
     throw new AppError(404, "Group not found");
   }
+  assertMutableGroup(role);
 
   const updates = {};
   if (scimData.displayName) {
@@ -331,7 +367,8 @@ exports.updateGroup = async (tenantId, groupId, scimData) => {
 
   if (scimData.members) {
     const memberIds = scimData.members.map((m) => (typeof m === "string" ? m : m.value));
-    await Users.update(
+    await assertAssignableRole(groupId);
+await Users.update(
       { roleId: groupId },
       { where: { id: { [Op.in]: memberIds }, tenantId } },
     );
@@ -350,6 +387,7 @@ exports.patchGroup = async (tenantId, groupId, patchOps) => {
   if (!role) {
     throw new AppError(404, "Group not found");
   }
+  assertMutableGroup(role);
 
   for (const op of patchOps) {
     if (op.op === "replace" && op.value?.displayName) {
@@ -382,6 +420,7 @@ exports.deleteGroup = async (tenantId, groupId) => {
   if (!role) {
     throw new AppError(404, "Group not found");
   }
+  assertMutableGroup(role);
   await role.destroy();
   return { status: 204 };
 };

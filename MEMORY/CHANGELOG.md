@@ -15,9 +15,18 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ### Fixed
 
+- **Any account could mint an unrestricted API key and have SCIM make it SUPERADMIN.** API-key issuance was open to every authenticated user, scopes were whatever the caller sent (`["*"]` accepted), SCIM accepts any API key as a service account, and the SUPERADMIN role id is a constant committed to this repository. Issuance is now `TENANT_ADMIN`-only, scopes must name a real menu slug and action, and SCIM refuses to assign SUPERADMIN or an unknown role and refuses to rename, patch or delete a system role. The 2026-09-21 write-up said SCIM was `auth`-only — it is not; see the record for the correction. (A-27)
+- **Any authenticated principal could re-parent another hospital's tenant.** The `Tenant` model has no `tenantId` attribute, so the global scoping hooks never applied to it, and three `tenant-hierarchy` mutations carried `auth` alone. Reads of a named tenant are now the caller's own tenant or **404**; re-parenting and `cross-tenant-roles` are SUPERADMIN-only and refuse API keys. (A-01)
+- **Webhooks, storage settings and custom domains were open to every role** — the lowest role could point the tenant's uploads at a bucket it owned, or its event stream at a host it controlled. Now tenant-admin (webhooks, storage) and the `custom-domains` menu gate (domains), with API keys refused on writes. (A-02)
+- **API-key scopes were read only by `dynamicAccess`**, so on any route gated another way — or by `auth` alone — a key scoped `warehouse:read` was simply an authenticated principal. Authorization for API keys is now deny-by-default, refused at the controller boundary unless a gate authorized the key. (A-03)
+
 - **Self-registration, passkeys and the OIDC provider were broken in production.** Every helper in `redis.service.js` guarded on `client.connected` — a node-redis v3 property that **ioredis does not have** — so each returned early while Redis was up and healthy: no cache write, no lock, no WebAuthn challenge, no OIDC authorization request ever stored. Verified live before the fix: `POST /auth/register` answered **429 "Registration in progress"** even for a duplicate, and `POST /webauthn/registration-options` answered **503**. The unit test's ioredis mock fabricated a `connected` getter, so the suite stayed green; the getter is gone. Readiness is now `client.status === "ready"`. (A-24)
 - **Metered billing read every tenant's usage as zero in production.** `getUsage` and `resetUsage` passed `$1`-style placeholders as Sequelize `replacements`, which only substitutes `?` / `:name`. PostgreSQL answered `there is no parameter $1` on every call — proven against a real PostgreSQL 17 — and `getUsage`'s `catch` turned that into `{ total: 0 }`. The MySQL branch beside it was correct and never ran; the test for the PostgreSQL branch asserted `replacements` as correct behaviour. Now `bind`.
 - **RAG no longer answers from the wrong documents on a non-pgvector engine** — the recency fallback is removed with MySQL.
+
+### Found, not yet fixed
+
+- **SCIM PATCH ignores `path`.** `patchUser` reads `op.value` as an object only, so the RFC 7644 form every major IdP sends — `{ "op": "replace", "path": "active", "value": false }` — is silently dropped and the endpoint answers **200 with the user unchanged**. Deprovisioning appears to succeed while the account stays active. (A-33)
 
 ### Corrected documentation
 

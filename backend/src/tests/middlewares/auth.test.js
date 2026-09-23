@@ -721,3 +721,19 @@ describe("auth middleware", () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// A-03 — the explicit opt-in for endpoints meant for service accounts.
+// ---------------------------------------------------------------------------
+describe("allowApiKey (A-03)", () => {
+  it("marks the request as authorized for an API-key principal and continues", () => {
+    const { allowApiKey } = require("../../middlewares/auth.middleware");
+    const req = {};
+    const next = jest.fn();
+
+    allowApiKey(req, {}, next);
+
+    expect(req.apiKeyAuthorized).toBe(true);
+    expect(next).toHaveBeenCalled();
+  });
+});

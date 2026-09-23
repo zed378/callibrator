@@ -37,6 +37,9 @@ router.use(auth);
 // or has super admin privileges, not just a random user.
 const requireApiKeyOrAdmin = (req, res, next) => {
   if (req.user?.isApiKey || req.user?.role?.name === "SUPER_ADMIN" || req.user?.role?.name === "SUPERADMIN") {
+    // A-03: SCIM is one of the few endpoints meant for a service account. It
+    // authorizes the key here rather than by scope, so it opts in explicitly.
+    req.apiKeyAuthorized = true;
     return next();
   }
   return res.status(403).json({ schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"], detail: "SCIM endpoints require an API Key", status: "403" });

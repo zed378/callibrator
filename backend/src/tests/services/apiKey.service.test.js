@@ -56,7 +56,7 @@ describe("apiKey.service", () => {
   describe("createApiKey", () => {
     it("returns the raw key once and persists only a hash + prefix", async () => {
       ApiKey.create.mockImplementation(async (v) => ({ ...v, id: "k1", createdAt: new Date() }));
-      const res = await apiKeyService.createApiKey("t1", { name: "n", scopes: ["*"], createdBy: "u1" });
+      const res = await apiKeyService.createApiKey("t1", { name: "n", scopes: ["warehouse:read"], createdBy: "u1" });
       expect(res.key).toMatch(/^cbk_/);
       expect(res.keyPrefix).toMatch(/^cbk_/);
       const created = ApiKey.create.mock.calls[0][0];
@@ -64,7 +64,7 @@ describe("apiKey.service", () => {
       expect(created.keyHash).not.toContain(res.key);
     });
     it("throws 400 without a name", async () => {
-      await expect(apiKeyService.createApiKey("t1", { scopes: ["*"] })).rejects.toMatchObject({ status: 400 });
+      await expect(apiKeyService.createApiKey("t1", { scopes: ["warehouse:read"] })).rejects.toMatchObject({ status: 400 });
     });
   });
 
@@ -150,16 +150,45 @@ describe("apiKey.service", () => {
   });
 
   describe("createApiKey", () => {
-    it("coerces a non-array scopes value to an empty array", async () => {
-      ApiKey.create.mockImplementation(async (v) => ({ ...v, id: "k1" }));
-      const res = await apiKeyService.createApiKey("t1", { name: "n", scopes: "not-an-array" });
-      expect(ApiKey.create.mock.calls[0][0].scopes).toEqual([]);
-      expect(res.scopes).toEqual([]);
+    it("refuses a non-array scopes value", async () => {
+      await expect(apiKeyService.createApiKey("t1", { name: "n", scopes: "not-an-array" })).rejects.toMatchObject({
+        status: 400,
+      });
+      expect(ApiKey.create).not.toHaveBeenCalled();
+    });
+
+    // A-27: a "*" key is indistinguishable from an administrator, and SCIM
+    // accepts ANY api key as a service account.
+    it("refuses wildcard scopes", async () => {
+      await expect(apiKeyService.createApiKey("t1", { name: "n", scopes: ["*"] })).rejects.toMatchObject({ status: 400 });
+      await expect(apiKeyService.createApiKey("t1", { name: "n", scopes: ["warehouse:*"] })).rejects.toMatchObject({
+        status: 400,
+      });
+      expect(ApiKey.create).not.toHaveBeenCalled();
+    });
+
+    it("refuses an unknown resource or action", async () => {
+      await expect(apiKeyService.createApiKey("t1", { name: "n", scopes: ["nope:read"] })).rejects.toMatchObject({
+        status: 400,
+      });
+      await expect(apiKeyService.createApiKey("t1", { name: "n", scopes: ["warehouse:delete"] })).rejects.toMatchObject({
+        status: 400,
+      });
+    });
+
+    it("refuses an empty scope list", async () => {
+      await expect(apiKeyService.createApiKey("t1", { name: "n", scopes: [] })).rejects.toMatchObject({ status: 400 });
+    });
+
+    it("lower-cases the stored scopes", async () => {
+      ApiKey.create.mockResolvedValue({ id: "k1", scopes: ["warehouse:read"] });
+      await apiKeyService.createApiKey("t1", { name: "n", scopes: ["Warehouse:READ"] });
+      expect(ApiKey.create.mock.calls[0][0].scopes).toEqual(["warehouse:read"]);
     });
 
     it("defaults expiresAt and createdBy to null", async () => {
       ApiKey.create.mockImplementation(async (v) => ({ ...v, id: "k1" }));
-      await apiKeyService.createApiKey("t1", { name: "n" });
+      await apiKeyService.createApiKey("t1", { name: "n", scopes: ["warehouse:read"] });
       expect(ApiKey.create).toHaveBeenCalledWith(
         expect.objectContaining({ expiresAt: null, createdBy: null }),
       );
@@ -168,7 +197,7 @@ describe("apiKey.service", () => {
     it("persists the supplied expiresAt and createdBy", async () => {
       ApiKey.create.mockImplementation(async (v) => ({ ...v, id: "k1" }));
       const expiresAt = new Date("2030-01-01");
-      await apiKeyService.createApiKey("t1", { name: "n", expiresAt, createdBy: "u1" });
+      await apiKeyService.createApiKey("t1", { name: "n", scopes: ["warehouse:read"], expiresAt, createdBy: "u1" });
       expect(ApiKey.create).toHaveBeenCalledWith(
         expect.objectContaining({ expiresAt, createdBy: "u1" }),
       );

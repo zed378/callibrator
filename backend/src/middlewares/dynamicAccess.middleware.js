@@ -176,6 +176,12 @@ exports.dynamicAccess = (menuGroup, permissionType, options = {}) => {
         });
       }
 
+      // A-03: this gate has read the key's scopes and allowed it, so the
+      // request is authorized for an API-key principal.
+      if (user.isApiKey) {
+        req.apiKeyAuthorized = true;
+      }
+
       // Attach permission context to request for controller use
       const allowedResult = results.find((r) => r.allowed);
       req.dynamicAccessContext = {

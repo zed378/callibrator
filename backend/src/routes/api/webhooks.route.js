@@ -1,8 +1,18 @@
 const express = require("express");
 const router = express.Router();
-const { auth } = require("../../middlewares/auth.middleware");
+const { auth, denyApiKey } = require("../../middlewares/auth.middleware");
+const { rbac } = require("../../middlewares/rbac.middleware");
+const { ROLE_NAMES } = require("../../constants");
 const { validateUuid } = require("../../middlewares/validateUuid.middleware");
 const { requireFeature } = require("../../middlewares/enforceQuota.middleware");
+
+// A-02. A webhook is an outbound channel out of the tenant: its target URL
+// decides where this tenant's data is POSTed, and its secret signs it. Until
+// 2026-09-23 every route here was `auth` alone, so any role — a room user —
+// could point a webhook at a host it controls and read the tenant's events.
+// Managing them is tenant-admin work, and never an API key's (a scoped key
+// could otherwise widen its own reach into an exfiltration channel).
+const webhookAdmin = [auth, denyApiKey, rbac([ROLE_NAMES.TENANT_ADMIN])];
 const webhookController = require("../../controllers/webhook.controller");
 
 /**
@@ -37,7 +47,7 @@ const webhookController = require("../../controllers/webhook.controller");
  *       201: { description: Webhook created (secret returned once) }
  *       402: { description: Feature not available on the current plan }
  */
-router.post("/", auth, requireFeature("webhooks"), webhookController.create);
+router.post("/", ...webhookAdmin, requireFeature("webhooks"), webhookController.create);
 
 /**
  * @swagger
@@ -56,7 +66,7 @@ router.post("/", auth, requireFeature("webhooks"), webhookController.create);
  *     responses:
  *       200: { description: Webhooks retrieved }
  */
-router.get("/", auth, webhookController.list);
+router.get("/", ...webhookAdmin, webhookController.list);
 
 /**
  * @swagger
@@ -74,7 +84,7 @@ router.get("/", auth, webhookController.list);
  *       200: { description: Webhook retrieved }
  *       404: { description: Webhook not found }
  */
-router.get("/:id", auth, validateUuid("id"), webhookController.getOne);
+router.get("/:id", ...webhookAdmin, validateUuid("id"), webhookController.getOne);
 
 /**
  * @swagger
@@ -104,7 +114,7 @@ router.get("/:id", auth, validateUuid("id"), webhookController.getOne);
  *       200: { description: Webhook updated }
  *       404: { description: Webhook not found }
  */
-router.patch("/:id", auth, validateUuid("id"), webhookController.update);
+router.patch("/:id", ...webhookAdmin, validateUuid("id"), webhookController.update);
 
 /**
  * @swagger
@@ -122,7 +132,7 @@ router.patch("/:id", auth, validateUuid("id"), webhookController.update);
  *       200: { description: Webhook deleted }
  *       404: { description: Webhook not found }
  */
-router.delete("/:id", auth, validateUuid("id"), webhookController.remove);
+router.delete("/:id", ...webhookAdmin, validateUuid("id"), webhookController.remove);
 
 /**
  * @swagger
@@ -139,7 +149,7 @@ router.delete("/:id", auth, validateUuid("id"), webhookController.remove);
  *     responses:
  *       200: { description: Deliveries retrieved }
  */
-router.get("/:id/deliveries", auth, validateUuid("id"), webhookController.deliveries);
+router.get("/:id/deliveries", ...webhookAdmin, validateUuid("id"), webhookController.deliveries);
 
 /**
  * @swagger
@@ -156,6 +166,6 @@ router.get("/:id/deliveries", auth, validateUuid("id"), webhookController.delive
  *     responses:
  *       200: { description: Test delivery attempted }
  */
-router.post("/:id/test", auth, validateUuid("id"), webhookController.test);
+router.post("/:id/test", ...webhookAdmin, validateUuid("id"), webhookController.test);
 
 module.exports = router;

@@ -1,12 +1,20 @@
 const express = require("express");
 const router = express.Router();
 const { auth, denyApiKey } = require("../../middlewares/auth.middleware");
+const { rbac } = require("../../middlewares/rbac.middleware");
+const { ROLE_NAMES } = require("../../constants");
 const { validateUuid } = require("../../middlewares/validateUuid.middleware");
 const { requireFeature } = require("../../middlewares/enforceQuota.middleware");
 const apiKeyController = require("../../controllers/apiKey.controller");
 
 // Managing API keys is JWT-only (denyApiKey) so a scoped service account can
 // never mint or revoke keys — that would be a privilege-escalation path.
+//
+// It is also TENANT_ADMIN-only (A-27). Until 2026-09-23 any authenticated
+// user could mint a key with any scopes it named, and SCIM accepts any API
+// key as a service account — so the lowest-privilege account could issue
+// itself a "*" key and provision a SUPERADMIN user with it.
+const adminOnly = [auth, denyApiKey, rbac([ROLE_NAMES.TENANT_ADMIN])];
 
 /**
  * @swagger
@@ -39,7 +47,7 @@ const apiKeyController = require("../../controllers/apiKey.controller");
  *       201: { description: API key created (key returned once) }
  *       402: { description: Feature not available on the current plan }
  */
-router.post("/", auth, denyApiKey, requireFeature("api_keys"), apiKeyController.create);
+router.post("/", ...adminOnly, requireFeature("api_keys"), apiKeyController.create);
 
 /**
  * @swagger
@@ -58,7 +66,7 @@ router.post("/", auth, denyApiKey, requireFeature("api_keys"), apiKeyController.
  *     responses:
  *       200: { description: API keys retrieved }
  */
-router.get("/", auth, denyApiKey, apiKeyController.list);
+router.get("/", ...adminOnly, apiKeyController.list);
 
 /**
  * @swagger
@@ -76,7 +84,7 @@ router.get("/", auth, denyApiKey, apiKeyController.list);
  *       200: { description: API key retrieved }
  *       404: { description: API key not found }
  */
-router.get("/:id", auth, denyApiKey, validateUuid("id"), apiKeyController.getOne);
+router.get("/:id", ...adminOnly, validateUuid("id"), apiKeyController.getOne);
 
 /**
  * @swagger
@@ -94,6 +102,6 @@ router.get("/:id", auth, denyApiKey, validateUuid("id"), apiKeyController.getOne
  *       200: { description: API key revoked }
  *       404: { description: API key not found }
  */
-router.delete("/:id", auth, denyApiKey, validateUuid("id"), apiKeyController.revoke);
+router.delete("/:id", ...adminOnly, validateUuid("id"), apiKeyController.revoke);
 
 module.exports = router;

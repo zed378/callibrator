@@ -1,7 +1,16 @@
 const express = require("express");
 const router = express.Router();
-const { auth } = require("../../middlewares/auth.middleware");
+const { auth, denyApiKey } = require("../../middlewares/auth.middleware");
+const { rbac } = require("../../middlewares/rbac.middleware");
+const { ROLE_NAMES } = require("../../constants");
 const { validate } = require("../../middlewares/validation.middleware");
+
+// A-02. These settings hold the tenant's object-storage credentials (S3 keys,
+// NFS paths) and decide where every uploaded file is written. Until 2026-09-23
+// they were `auth` alone: any role could read the tenant's bucket credentials
+// or repoint storage at a bucket it owned. Tenant-admin only, and never an API
+// key — a key must not be able to redirect storage.
+const storageAdmin = [auth, denyApiKey, rbac([ROLE_NAMES.TENANT_ADMIN])];
 const storageController = require("../../controllers/storage.controller");
 const {
   updateStorageSettingsSchema,
@@ -78,14 +87,14 @@ router.get("/object", storageController.getObject);
  *     responses:
  *       200: { description: Reverted to platform default }
  */
-router.get("/settings", auth, storageController.getSettings);
+router.get("/settings", ...storageAdmin, storageController.getSettings);
 router.put(
   "/settings",
-  auth,
+  ...storageAdmin,
   validate(updateStorageSettingsSchema),
   storageController.updateSettings,
 );
-router.delete("/settings", auth, storageController.clearSettings);
+router.delete("/settings", ...storageAdmin, storageController.clearSettings);
 
 /**
  * @swagger
@@ -97,7 +106,7 @@ router.delete("/settings", auth, storageController.clearSettings);
  *     responses:
  *       200: { description: Connection test result }
  */
-router.post("/settings/test", auth, storageController.testConnection);
+router.post("/settings/test", ...storageAdmin, storageController.testConnection);
 
 /**
  * @swagger
