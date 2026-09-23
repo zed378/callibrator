@@ -76,6 +76,8 @@ Task ids are `A-nn`. They are referenced from [`PHASE-9-TYPESCRIPT-MIGRATION.md`
 | A-54 | no Socket.IO adapter — a second replica splits the fan-out | medium | 2 | TODO |
 | A-55 | `createTwoTenants()` does not exist. `CLAUDE.md` and eight documents cite it as the fixture that makes the 404 test one line | medium | 0 | **corrected** 2026-09-23 |
 | A-56 | search swallows every query error into an empty list | low | 1 | TODO |
+| A-57 | the **public** verification endpoint returns the PDF path of a `draft` certificate | **high** | 0 | TODO |
+| A-58 | five workflow routes gate on `"workflow"`; the slug is `"workflows"` — they deny everyone but SUPERADMIN | **high** | 0 | TODO |
 
 ---
 
@@ -1158,7 +1160,9 @@ runs it either (there is no CI gate — A-19).
 | `eqeqeq` now `{ null: "ignore" }` — `x == null` is the deliberate "null or undefined" idiom in `kanban.service.js`; requiring `===` would have changed behaviour for `undefined` | `backend/eslint.config.js` |
 | `no-redeclare` now `{ builtinGlobals: false }` — `webhook.service.js` declares `/* global fetch, AbortController */` for readers | `backend/eslint.config.js` |
 
-**What is left:** 1,319 errors and 346 warnings, of which 1,333 are auto-fixable
+**What is left:** **1,297 errors and 340 warnings** as re-measured on 2026-09-23 after the day's
+commits (the first measurement, earlier the same day, was 1,319 and 346 — the drop is the
+remediation work, not a fix to the lint debt). Of these, roughly 1,300 are auto-fixable
 (`indent` 392, `quotes` 296, `comma-dangle` 266, `curly` 243, `no-trailing-spaces` 87,
 `eol-last` 19). None of them is a logic defect — the three that looked like one
 (`eqeqeq` ×2, `no-redeclare` ×2) were the linter being wrong about deliberate code, which is why
@@ -1835,3 +1839,92 @@ silently returns nothing. The fallback itself is reasonable; swallowing the seco
 
 **Fix direction:** keep the FTS → ILIKE fallback, but let a second failure surface as a 500 with the
 request id, and log both causes.
+
+---
+
+### A-57 — The public verification endpoint publishes a draft certificate's PDF
+
+| | |
+|---|---|
+| **Status** | TODO |
+| **Severity** | **high** |
+| **Verified** | from code, 2026-09-23, during the file-serving debate |
+| **Decision** | [ADR-042](../MEMORY/DECISIONS.md) |
+
+`GET /certificates/verify/:certificateNumber` is deliberately unauthenticated — a third party
+scanning a QR code must be able to check a certificate without an account. That is correct, and it
+is the point of third-party-verifiable evidence.
+
+But `certificatePdf.service.js` computes the verdict at `:286`:
+
+```js
+const valid = signed && !revoked && !expired;
+```
+
+and then, twenty-five lines later, returns the document regardless:
+
+```js
+documentUrl: cert.filePath || null,
+```
+
+So an **unissued draft** — and a **revoked** certificate — has its PDF path published to anyone who
+walks the certificate number, which is a sequential counter
+(`CERT-<YYYYMMDD>-<tenantCode>-<sequence>`). Combined with the unauthenticated `/uploads` mount
+(S-01), the document itself is then fetchable.
+
+A draft is a calibration result that has not been approved. Publishing it is worse than publishing
+a finished one: it is evidence the tenant has explicitly not stood behind yet.
+
+**Fix direction:** return `documentUrl` only when the certificate is in a state whose document is
+meant to be public, and decide deliberately what a revoked certificate returns — a revoked
+certificate's document arguably *should* remain fetchable so a holder can see it was revoked, but
+that is a decision to record, not to infer. The status gate already exists one line above.
+
+**Definition of Done**
+- [ ] a `draft` certificate returns `documentUrl: null` from the public endpoint, proven by a named test
+- [ ] the behaviour for `revoked` is decided and recorded, not left implicit
+- [ ] the response for a nonexistent and an unissued number are indistinguishable beyond `found`
+
+---
+
+### A-58 — Five workflow routes gate on a slug that does not exist
+
+| | |
+|---|---|
+| **Status** | TODO |
+| **Severity** | **high — a live lockout, and the proof that A-07 is not theoretical** |
+| **Verified** | 2026-09-23, by executing the constant rather than reading it |
+| **Decision** | [ADR-043](../MEMORY/DECISIONS.md) |
+
+`workflows.route.js` lines 149, 215, 252, 316 and 354 gate on:
+
+```js
+dynamicAccess("workflow", "read")   // and "write"
+```
+
+**singular.** The slug in `MENU_SLUGS` is `workflows`, and the seeded menu row
+(`seedMenuGroups.util.js:277`) is `workflows`. Checked by running the constant:
+
+```
+workflow  -> false
+workflows -> true
+```
+
+A `dynamicAccess` name that matches no menu group grants nobody. So those five routes — the
+approval-workflow engine — have been **SUPERADMIN-only**, silently, despite
+`roleConstants.js:254` granting the permission to the admin roles. Nobody saw a misconfiguration;
+they saw a 403 and assumed a permission decision.
+
+This is finding A-07 with a concrete instance attached, and it is the evidence behind ADR-043's
+central point: the defect is **unvalidated authorization data**, not the choice between `rbac` and
+`dynamicAccess`. One character.
+
+**Fix direction:** correct the five call sites, and — more importantly — add the startup assertion
+ADR-043 step 5 describes, so that a `dynamicAccess` name matching no seeded slug refuses to boot
+and names itself. Correcting these five without the assertion leaves the next typo to be found the
+same way.
+
+**Definition of Done**
+- [ ] the five routes use `workflows`, and a named test proves an admin role reaches them
+- [ ] a startup assertion fails, naming the offender, when any `dynamicAccess` name matches no seeded slug
+- [ ] the assertion is proven by temporarily reintroducing the typo — a check nobody has watched fail is not a check

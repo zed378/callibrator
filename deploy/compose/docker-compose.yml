@@ -84,8 +84,8 @@ services:
   postgres:
     # pgvector-enabled Postgres. The AI/RAG module stores embeddings in a
     # vector(1536) column and migration 0018 runs `CREATE EXTENSION vector`.
-    # Plain postgres:17-alpine lacks the extension and that migration fails.
-    image: pgvector/pgvector:pg17
+    # Plain postgres:18-alpine lacks the extension and that migration fails.
+    image: pgvector/pgvector:pg18
     restart: unless-stopped
     env_file:
       - .env

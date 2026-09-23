@@ -981,7 +981,8 @@ ADR-030's reasoning was sound for the question it answered. The 2026-09 audit ch
 
 **Supersedes the engine-agnostic premise of ADR-029.** The ORM-layer, deny-by-default tenant isolation of ADR-029 stands unchanged. Date: 2026-09-21. Decided by the project owner.
 
-**Decision:** PostgreSQL 17 with the `pgvector` extension is the only supported database. MySQL support is removed from code, configuration and documentation. `DB_DIALECT` is no longer required; any value other than `postgres` refuses to start.
+**Decision:** PostgreSQL with the `pgvector` extension is the only supported database.
+(The version was 17 when this was written; **ADR-041 moves the baseline to 18** — the engine decision below is unaffected.) MySQL support is removed from code, configuration and documentation. `DB_DIALECT` is no longer required; any value other than `postgres` refuses to start.
 
 ### Why
 
@@ -1151,6 +1152,280 @@ machine that wrote it. It is written to fail loudly rather than no-op silently, 
 be confirmed in `psql` after `make migrate`.
 
 **Status:** Accepted
+
+---
+
+## ADR-041: PostgreSQL 18 Is the Baseline
+
+**Date:** 2026-09-23 · **Amends:** ADR-039 (which fixed *PostgreSQL only*; that stands — this
+changes the **version**, not the engine)
+
+**Context**
+
+ADR-039 removed MySQL and fixed PostgreSQL 17 with `pgvector` as the only supported database. The
+owner has asked for **PostgreSQL 18**. PostgreSQL 18 is the current major release and `pgvector`
+publishes an image for it; both `pgvector/pgvector:pg18` and `postgres:18-alpine` were confirmed to
+exist before this ADR was written, rather than assumed.
+
+**Decision**
+
+1. **PostgreSQL 18 with `pgvector` is the supported database.** The compose stacks pin
+   `pgvector/pgvector:pg18` — still the pgvector image, not `postgres:18-alpine`, because migration
+   `0018` runs `CREATE EXTENSION vector` and plain Postgres fails it. That reason is unchanged from
+   ADR-039; only the number moved.
+2. Every document that stated "PostgreSQL 17" now states 18, and each says it is a **target the
+   deployment has not yet reached** until the running instance is actually upgraded.
+3. The running deployment is **not** upgraded by this decision. It runs 17.11 today, and moving it
+   is a separate, scheduled operation with a runbook — see below and
+   [`../TASKS/RUNBOOK-POSTGRES-18-UPGRADE.md`](../TASKS/RUNBOOK-POSTGRES-18-UPGRADE.md).
+
+**Rationale**
+
+Nothing in this codebase depends on a version-specific behaviour of 17: access is through Sequelize
+6, the only extension is `pgvector`, and the raw SQL is ordinary. The cost of the move is therefore
+not in the code — it is entirely in the data directory, and that cost is the same whenever it is
+paid. Paying it while the deployment holds one tenant and a small dataset is cheaper than paying it
+later.
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| Stay on 17 | supported until November 2029, so there is no forced date. Rejected because the owner asked for 18 and the migration only gets more expensive as the dataset grows |
+| Move to 18 in development, keep 17 in production | the configuration drift is the risk: this project's worst incidents come from an environment differing from what documents claim. Two engines in two places is that shape |
+| Change the image tag and restart | **this does not work**, and believing it does is the trap this ADR exists to prevent. See the implications |
+
+**Implications — including the bad ones**
+
+- **A PostgreSQL data directory cannot be read by a different major version.** The volume on the
+  reference VM was initialised by 17.11. Starting `pgvector/pgvector:pg18` against it fails at
+  boot with *"The data directory was initialized by PostgreSQL version 17, which is not compatible
+  with this version 18"*. The container will crash-loop. This is the entire cost of the decision
+  and it is not optional: the move requires **`pg_dump` → fresh volume → restore**, or
+  `pg_upgrade` with both binaries present.
+- **`initdb` in 18 enables data checksums by default**, where 17 did not. For a dump-and-restore
+  path this does not matter. For `pg_upgrade` it does — both clusters must agree, and a mismatch
+  aborts the upgrade. Check `SHOW data_checksums` on the old cluster before choosing the path.
+- **The `vector` extension is versioned separately from the server.** After a restore, run
+  `ALTER EXTENSION vector UPDATE` and confirm `document_chunks` still has its index; a vector index
+  built under one extension version is not guaranteed to be read by another.
+- **Downtime is real.** Dump, restore and verify against the live dataset. It is small today — one
+  tenant — which is the argument for doing it now rather than later.
+- **Rollback is the old volume.** Keep it, do not delete it, and do not reuse the volume name. If
+  the restore is wrong, the way back is to re-point compose at the 17 image and the untouched
+  volume.
+- **Nothing tests this.** There is no CI (A-19), the live E2E suite has never completed an
+  uninterrupted run (P6-02), and no load test exists (U-06). So "the application works on 18" is a
+  claim that will rest on a manual pass after the upgrade — not on a gate. Do not write it as fact
+  in any document before that pass happens.
+- **Two compose files pin the image** — `deploy/compose/docker-compose.yml` and
+  `backend/docker-compose.yaml`. They were both changed; a future third would drift silently,
+  because nothing checks that they agree.
+
+**Status:** Accepted — **the repository targets 18; the deployment still runs 17.11.** That
+distinction is the point, and it is stated in every document this ADR touches.
+
+---
+
+## ADR-042: File Serving — One Public Class, Everything Else Behind a Capability
+
+**Date:** 2026-09-23 · **Findings:** S-01, A-57 · **Debate:**
+[`../TASKS/DEBATE-file-serving-A-lockdown.md`](../TASKS/DEBATE-file-serving-A-lockdown.md) ·
+[`../TASKS/DEBATE-file-serving-B-static.md`](../TASKS/DEBATE-file-serving-B-static.md)
+
+**Context**
+
+This codebase serves files two incompatible ways at once, and has since before either design was
+finished.
+
+| | |
+|---|---|
+| A **capability** design | `services/storage/signing.js`, `GET /api/v1/storage/object`, `GET /api/v1/attachments/:id/signed` — HMAC-signed paths, 300-second TTL, pluggable drivers, per-tenant prefixes |
+| A **static mount** | `index.js:339-349` serves `/uploads` through `express.static` with no authentication, and both nginx configs proxy it |
+
+Certificate PDFs are written into that mount as `CERT-<YYYYMMDD>-<tenantCode>-<sequence>.pdf`
+(`certificatePdf.service.js:199-205`, `certificate.model.js:183-215`) — a counter, not a secret.
+
+Two agents were asked to argue the question from opposite sides, and both papers were then checked
+against the code rather than taken at their word. That check changed the outcome, so it is recorded
+here.
+
+**What the check found**
+
+1. **The capability path already revokes; the static mount is what defeats it.** The lockdown paper
+   assumed revocation was a benefit it still had to build; the static paper asserted that
+   revocation "works identically under both designs". **Both were wrong.**
+   `attachment.model.js:96-98` sets `defaultScope: { where: { is_deleted: false } }`, and
+   `getSignedDownload` reads through `Attachment.findByPk` — so a soft-deleted attachment returns
+   **404 on the capability path**, today, with no further work. `express.static` has no such
+   notion and keeps serving the file. The delete that A-28 made auditable is honoured by one path
+   and silently ignored by the other.
+2. **The capability path cannot serve what the product renders.** `storage.controller.js:46-68`
+   sets `Content-Type`, `Content-Length` and a hardcoded `Content-Disposition: attachment`, and
+   emits **no `ETag`, no `Last-Modified`, no `Accept-Ranges`**, ignoring `Range` entirely. It
+   cannot back an `<img>` or the `<iframe>` on the public verification page, and it cannot be
+   seeked. "Move everything behind the capability" is therefore not a decision anyone can execute
+   this week — it is blocked on that controller.
+3. **The public verification endpoint publishes the PDF path of a `draft` certificate.**
+   `certificatePdf.service.js:286` computes `valid` from signed/revoked/expired, and `:313` then
+   returns `documentUrl: cert.filePath || null` **unconditionally** (A-57). The status gate exists
+   one line above the leak.
+
+**Decision**
+
+Neither "delete the mount" nor "keep the mount" — **split the classes, and fix the filename first.**
+
+1. **The certificate filename stops being the certificate number.** `safeFileName` emits a random
+   token; the number stays the identifier, the filename becomes unguessable. This kills enumeration
+   without touching the architecture, and it is the first thing to ship.
+2. **`documentUrl` is gated on issued status.** A `draft` or `revoked` certificate returns `null`,
+   not a path.
+3. **One deliberately public class**, in its own directory `uploads/public/`, reached by a
+   permissioned, audited action: avatars, tenant logos, published CMS images. These keep the static
+   mount, keep CDN and `next/image` caching, and carry a strict per-type `Content-Type`
+   allowlist — `image/svg+xml` is allowed today (`tenant.route.js:377-390`) against the upload
+   utility's own warning, held shut only by a magic-byte check.
+4. **Everything else leaves `/uploads`**: certificates, attachments, exports, backups. They are
+   reached through the already-gated routes, which already respect the soft delete.
+5. **Before (4) can happen**, `storage.controller.js#getObject` gains conditional requests, range
+   support and a content-type-driven disposition. This is the sequencing constraint the static
+   paper is right about, and it is a precondition, not an objection.
+6. **Deleting an attachment unlinks the object** inside the same transaction as the audit row.
+   Both designs need this; neither has it.
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| Delete the static mount now, serve everything through the API | breaks the verification `<iframe>` and every avatar immediately, per finding 2. The right end state, the wrong first step |
+| Keep `/uploads` as is, only randomise filenames | leaves evidence on permanent unauthenticated URLs that survive deletion — and the delete path is exactly what A-28 made auditable |
+| Put a CDN in front and sign at the edge | no CDN exists in front of this deployment today; a design that needs infrastructure nobody has is not a decision, it is a wish |
+| Keep both paths and document which is which | this is the status quo, and it is how one path came to honour deletion while the other did not |
+
+**Implications — including the bad ones**
+
+- **Avatar-heavy screens lose CDN caching** for anything that moves behind the gate. The public
+  class exists precisely to keep that cost where it is felt; if a later measurement shows it is
+  still too slow, that is an argument about which class a file belongs to, not about the split.
+- **On this deployment, `/api/` is served by the frontend**, whose proxy buffers whole requests and
+  responses into an `arrayBuffer` (F-16). Streaming a 25 MB attachment through it would double-buffer
+  in the Next heap. That must be fixed or bypassed before large files move — a second precondition,
+  and it is unverified because nothing has been measured.
+- **Existing URLs break** when files move. There are **zero** certificates and **zero** attachments
+  on the reference deployment today (checked 2026-09-23), so the migration cost is zero now and
+  permanently non-zero after the first certificate is issued.
+- **The storage façade is mock-tested only.** Moving evidence onto a path this project has never
+  exercised against a real bucket is a risk the plan takes deliberately by using the already-gated
+  legacy routes first.
+
+**Status:** Accepted — step 1 and step 2 are immediate; steps 3–6 are sequenced behind the
+`getObject` work.
+
+---
+
+## ADR-043: Authorization — Fix the Data, Then Retire the Ladder
+
+**Date:** 2026-09-23 · **Findings:** V-01, A-07, A-58 · **Debate:**
+[`../TASKS/DEBATE-tenant-admin-A-fix-the-principal.md`](../TASKS/DEBATE-tenant-admin-A-fix-the-principal.md) ·
+[`../TASKS/DEBATE-tenant-admin-B-retire-the-ladder.md`](../TASKS/DEBATE-tenant-admin-B-retire-the-ladder.md)
+
+**Context**
+
+Every route gated `rbac([ROLE_NAMES.TENANT_ADMIN])` refuses every tenant administrator. Four
+routers are affected — `apiKeys`, `webhooks`, `storage` (gated 2026-09-23 under A-02/A-27) and
+`tenantBackup` (older, so it has been SUPERADMIN-only for longer than anyone noticed). A hospital's
+own admin cannot issue an API key or configure storage in their own tenant.
+
+Three facts, each verified in the code:
+
+1. `rbac.middleware.js:38-39` decides by `role_level`, and **no loader selects it** —
+   `auth.service.js:174`, `:410`, `:451` project `["id","name"]` / `["id","name","description"]`.
+2. Even if it were projected, **nothing writes it**. `role.model.js:36-39` defaults `roleLevel` to
+   `1`, and neither seed array in `migration.service.js` sets it. Every seeded role is level 1.
+3. `ROLE_NAMES.TENANT_ADMIN` is a logical tier, not a seeded role, so the name check cannot match
+   either.
+
+Two agents argued opposite positions. The debate converged, which is worth recording: the paper
+arguing to retire the ladder concedes the other's fix "ships today and mine does not, and is
+necessary independently of mine"; the paper arguing to keep the tier concedes the direction and
+hands over `metered-billing` outright.
+
+**The finding that decided it**
+
+Both mechanisms fail the same way, and it is not about levels.
+
+The retirement paper's own check found that **none of the four slugs needed to convert those
+routers exists in both places**: `api-keys` and `webhooks` are seeded menu rows but are absent from
+`MENU_SLUGS`; `storage` and `tenant-backups` exist in neither. And the tier paper found that
+converting `metered-billing` — the one slug that does exist everywhere — **reproduces the identical
+lockout**, because `HEALTHCARE ADMIN` holds only `READ` there and `CALIBRATOR ADMIN` has no row at
+all.
+
+This is not hypothetical. `workflows.route.js` gates five routes on `dynamicAccess("workflow", …)`
+— **singular** — while `MENU_SLUGS` and the seed both say `workflows`. Those five routes deny
+everyone but SUPERADMIN today (A-58), through the mechanism that was supposed to be the safe one.
+
+So: **the defect is unvalidated authorization data, in whichever mechanism holds it.** A constant
+that describes something the database does not have is the same failure as `connected` on ioredis
+and `isOpen` on amqplib — the third instance this month, and the first one inside the
+authorization layer.
+
+**Decision**
+
+1. **Ship the principal fix in full, now.** Add `roleLevel` to the four Role projections *and* the
+   hand-built role literal in `verifyUserSession`; set `roleLevel` in both seed arrays; add
+   migration `0020` to backfill already-seeded databases, because `seedDefaultRoles` skips existing
+   roles so a seed edit alone changes nothing. Cap tenant-created roles below the SUPERADMIN tier.
+   This is necessary under either future and it unblocks four routers today.
+2. **Convert `metered-billing` to `dynamicAccess` in the same change**, and close its grant gap —
+   its slug exists in the constant, the seed and the assignments, and it is a menu, not a privilege
+   floor.
+3. **Do not convert the other four routers yet.** Converting before the slug, seed and assignment
+   work would replace a named denial with a silent one, which is strictly worse. The slug work is
+   its own task, sequenced behind the high-severity board.
+4. **Fix `"workflow"` → `"workflows"`** (A-58), and treat it as the proof that this class of error
+   is live rather than theoretical.
+5. **The real deliverable is the assertion, not the choice.** The system refuses to start when a
+   `dynamicAccess` resource name matches no seeded slug, or when a `ROLE_NAMES` key has no
+   `ROLE_LEVELS` entry, or when the `roles` table disagrees with the constants — naming the offender.
+   `config/index.js` and `jwt.util.js` already establish that pattern. Without it, both mechanisms
+   keep failing silently and the next instance is found by a customer.
+6. **Direction: `rbac` retires.** 37 of its 68 routes are name-matched `SUPERADMIN` and are a
+   rename to the existing `superAdminOnly`; the remaining 31 are tier-gated and all currently
+   denying. `dynamicAccess` stays the default. `tenant-backups` **restore** is a genuine privilege
+   floor and keeps a named guard rather than a menu row.
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| Add the column and stop | leaves two authorization systems, one of which has no data model and has been decorative its entire life |
+| Convert all four routers to `dynamicAccess` now | none of the four slugs exists in both the constant and the seed. It converts a visible 403 into an invisible one — A-07, which is already live five times over in `workflows.route.js` |
+| Enumerate real role names in the gates | works today, and bars every runtime-created custom role from ever holding admin privilege. It also restates one requirement at eleven call sites |
+| Leave it: the gates are "dormant and fail-closed" | a 403 to an administrator becomes a support ticket, and the fastest fix to hand is a SUPERADMIN account — which bypasses both the gate and tenant scoping |
+
+**Implications — including the bad ones**
+
+- **Backfilling wakes eleven gates at once** on five high-consequence surfaces. They have never run
+  against a real principal, so their first real exercise happens in production unless the
+  integration test below lands with them.
+- **The ladder becomes load-bearing** for as long as it takes to retire it, which is the opposite
+  of the direction. Accepted deliberately: a live lockout outranks an architectural preference.
+- **A numeric scalar cannot express "administers storage but not billing."** The moment a customer
+  asks for that, the tier is the wrong answer and the conversion work must already be underway.
+  The engineer who wrote `rbac(["TENANT_ADMIN","BILLING_ADMIN"])` — a role name that exists in no
+  constants file and no seed — was reaching for exactly that.
+- **Widening `MENU_SLUGS` widens API-key scope issuance**, because `apiKey.service.js` validates
+  scopes against it. The two vocabularies need splitting before the slug work, or issuing a key
+  becomes a way to reach a surface the gate was meant to restrict.
+- **`dynamicAccess` is not clean either** — AZ-04 (403 where the rule says 404), a 500 carrying
+  `error.message`, and an override lookup that fails **open**. Retiring `rbac` in its favour
+  inherits those, and they are open findings.
+- **Nothing in either paper was tested against a running server.** The first action under this ADR
+  is to log in as `HEALTHCARE ADMIN` and `POST /api/v1/webhooks` — fail before, pass after, named
+  in the record.
+
+**Status:** Accepted — steps 1, 2 and 4 immediate; steps 3, 5 and 6 sequenced.
 
 ---
 

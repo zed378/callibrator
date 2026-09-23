@@ -10,16 +10,33 @@ Almost everything here is currently **absent rather than incomplete**. Saying so
 
 | | |
 |---|---|
-| **Status** | ⏳ TODO |
-| **Depends on** | **P6-01** — do not build a pipeline around a failing gate |
-| **Spec refs** | `docs/DEVOPS/01-CI-CD.md` |
+| **Status** | ⏳ **NOT DONE — premise changed (2026-09-23)** |
+| **Depends on** | **P6-01** · **P9-02a** (lint) · **P9-01a** (typecheck) · **P6-14** (coverage scope) — do not build a pipeline around a failing gate |
+| **Spec refs** | `docs/DEVOPS/01-CI-CD.md` · [`AUDIT-2026-09-REMEDIATION.md`](./AUDIT-2026-09-REMEDIATION.md) A-19, A-21, A-34 |
+
+> **What changed (2026-09-23).** This card's dependency — *"do not build a pipeline around a
+> failing gate"* — now bites on two of the four stages it wanted to run **first**.
+>
+> | Stage | State 2026-09-23 |
+> |---|---|
+> | **lint** | A-34: the backend lint gate had **never run**; a version mismatch crashed ESLint and the crash looked like success. It runs again now and reports **1,297 errors and 340 warnings**. `make verify` therefore **cannot pass today** — it is `lint typecheck test build`, and `lint` exits non-zero → P9-02a |
+> | **typecheck** | `make typecheck` → `pnpm typecheck` → `turbo run typecheck`, and **`backend/package.json` has no `typecheck` script**. Turbo skips a package that does not declare the task and exits 0. The backend has never been type-checked and will not start being so merely because a `tsconfig.json` appears → P9-01a |
+> | **format** | two conflicting Prettier configs still govern `backend/` (`backend/.prettierrc`: double quotes, width 80; root `.prettierrc.js`: single quotes, width 100), and a legacy `backend/.eslintrc.js` sits beside `eslint.config.js` → P9-02 |
+> | **secret scan / hook** | unchanged and still absent (A-19) |
+> | **reproducible install** | **A-21 is still open**: `.gitignore` excludes `package-lock.json`, `pnpm-lock.yaml` **and** `bun.lock`. All three exist in the working tree and none is tracked. A pipeline built on this resolves dependencies fresh on every run, so a green pipeline is not a reproducible one |
+>
+> The card is not wrong. It is **blocked in a way it did not know about**, and building it before
+> P9-02a and P9-01a land produces a pipeline whose first two stages are red on day one — which is
+> how `continue-on-error` gets added.
 
 **Why:** there is no automatic gate at all. **⚠ Corrected 2026-09-21 — there is no `pre-push` hook.** The repository has no `.husky/`, no `lefthook`, no `simple-git-hooks`, no `core.hooksPath`, and `.git/hooks/` holds only git's samples. The IDOR enforcement script this card referred to does not exist either: `backend/scripts/` contains only documentation generators. The only gate runner is `make verify`, which a developer must remember to type — and which could not run on the Windows workstation where this repository is developed, because `make` is not installed there.
 
 The risk of deferring CI was recorded and is real: skipping it would have silently returned the zero-tolerance IDOR rule to being a sentence in a document — **its enforcement script had no caller other than a pipeline that did not exist.**
 
 **Definition of Done**
-- [ ] cheapest signal first: lint, format, typecheck → unit + coverage → secret scan → IDOR enforcement → **route-gate check (P6-04)** → images → migrations **with column verification (P6-05)** → E2E → browser
+- [ ] a lockfile is committed and the install uses the frozen-lockfile flag (A-21) — without it every stage below runs against a different dependency tree
+- [ ] cheapest signal first: lint, format, typecheck → unit + coverage → secret scan → IDOR enforcement → **route-gate check (P6-04)** → **`ts-ratchet` (P9-04)** → images → migrations **with column verification (P6-05)** → E2E → browser
+- [ ] **each stage is proved in the failing direction before the pipeline is trusted** — break the thing, watch that stage go red. A-34 and the turbo `typecheck` skip are both gates that reported green having run nothing; a pipeline inherits that failure mode unless each stage is seen to fail once
 - [ ] the E2E stage gets rate-limit headroom
 - [ ] images pushed only from a green run
 - [ ] the same **image** promoted across environments — except the frontend, where `NEXT_PUBLIC_*` forces a rebuild per environment by design
@@ -27,6 +44,7 @@ The risk of deferring CI was recorded and is real: skipping it would have silent
 **Abuse cases**
 - A stage is marked `continue-on-error` to unblock a release
 - The secret scan is allowlisted into uselessness
+- A stage is added that cannot fail — the version of this that has already happened twice here
 
 ---
 
@@ -58,8 +76,22 @@ If only one thing in this phase gets built, it is this one.
 
 | | |
 |---|---|
-| **Status** | ⏳ TODO |
-| **Spec refs** | `docs/DEVOPS/06-LOGGING.md` |
+| **Status** | ⏳ TODO — **NEEDS EDIT (2026-09-23)** |
+| **Spec refs** | `docs/DEVOPS/06-LOGGING.md` · `docs/ENGINEERING/12-LOGGING-CONVENTIONS.md` · [`AUDIT-2026-09-REMEDIATION.md`](./AUDIT-2026-09-REMEDIATION.md) A-14, A-42, A-44 |
+
+> **What changed (2026-09-23):** this card said logs "live in container stdout and a volume". A-42
+> found that **production writes no stdout at all** — the winston Console transport is
+> development-only — and that there are **25 `console.*` call sites in runtime backend code**
+> whose output therefore goes to a stream nothing collects. `docs/ENGINEERING/12` claimed
+> `config/socket.js` was "the only application output that reaches stdout in production"; that was
+> corrected on 2026-09-23.
+>
+> The consequence is not cosmetic. **`audit.service.js#logAction` catches a failed insert, calls
+> `console.error("Failed to write audit log (CRITICAL):", error)` and returns `null`.** A
+> compliance record that fails to write therefore fails silently and durably — and P6-11 (A-41)
+> cannot be signed off while that is true. A-44 (the access log was never pruned — `history` was
+> read as a filename, not a retention period) is **`DONE`**; the rotation checkbox below should be
+> verified against the fix rather than assumed.
 
 **Why:** logs live in container stdout and a volume. Correlating a client symptom with a server line means finding the host first.
 
@@ -67,11 +99,14 @@ If only one thing in this phase gets built, it is this one.
 - [ ] structured JSON output
 - [ ] `X-Request-Id` on every line
 - [ ] shipped to an aggregator
+- [ ] **A-42 closed**: the failed-audit-write path goes through winston at `error` level so it lands in the file sinks and the aggregator, and the other 24 `console.*` sites are swept. This is the checkbox **P6-11 depends on** — an audit failure nobody can see is the same as no audit
+- [ ] A-14 closed: per-request lines are not dropped, and the file sinks are bounded
 - [ ] **redaction verified after shipping** — an aggregator with its own parsing can re-expose a field the application redacted, and a leak into a third-party store is a leak
-- [ ] rotation confirmed; a full disk stops writes, including `audit_logs`
+- [ ] rotation confirmed **against the A-44 fix**, not against the setting it replaced; a full disk stops writes, including `audit_logs`
 
 **Abuse cases**
 - Debug logging is left on in production, which is where redaction discipline slips
+- The `console.*` sweep is done with `--fix` on the lint rule, which silences the line rather than routing it
 
 ---
 
@@ -187,6 +222,7 @@ Turning "renders" into "works" is the whole task.
 
 - [ ] every task `DONE` with a record
 - [ ] a failing scheduled job **wakes somebody**
+- [ ] **a failed audit write wakes somebody too** (A-42, via P7-03) — it is the one log line in this system that is itself the compliance record
 - [ ] a restore has been **performed**, and the RTO is measured rather than assumed
 - [ ] the Helm charts are known to deploy, not only to render
 - [ ] a phase summary exists, naming what failed during the drills

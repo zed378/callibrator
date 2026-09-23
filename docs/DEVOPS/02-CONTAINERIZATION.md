@@ -141,7 +141,7 @@ A frontend that is healthy while the API is down is correct: it renders error st
 
 | Service | Image | Why not the obvious one |
 |---|---|---|
-| postgres | **`pgvector/pgvector:pg17`** | plain `postgres:17-alpine` lacks the `vector` extension; migration `0018` fails |
+| postgres | **`pgvector/pgvector:pg18`** | plain `postgres:18-alpine` lacks the `vector` extension; migration `0018` fails |
 | redis | `redis:8.6-alpine` | |
 | rabbitmq | `rabbitmq:3.13-management-alpine` | the management UI is worth the size on-premise |
 | clamav | `clamav/clamav:latest` | **unpinned** — see below |

@@ -78,7 +78,7 @@ query ──embed──▶ nearest-neighbour search (pgvector, tenant-scoped)
                           top chunks + question → LLM → answer
 ```
 
-`document_chunks` carries `tenantId`, `sourceType`, `sourceId`, `chunkIndex`, `content` and the embedding. Migration `0018` runs `CREATE EXTENSION vector`, which is why the compose stack uses `pgvector/pgvector:pg17` rather than plain `postgres:17-alpine`.
+`document_chunks` carries `tenantId`, `sourceType`, `sourceId`, `chunkIndex`, `content` and the embedding. Migration `0018` runs `CREATE EXTENSION vector`, which is why the compose stack uses `pgvector/pgvector:pg18` rather than plain `postgres:18-alpine`.
 
 Configuration is OpenAI-compatible (`OPENAI_API_KEY`, `OPENAI_BASE_URL`), and per-tenant keys override the platform default — a tenant whose policy forbids sending data to a shared account can point at its own endpoint.
 

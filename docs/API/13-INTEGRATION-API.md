@@ -134,7 +134,7 @@ Swagger bodies for these endpoints diverge from the enforced Joi validators. Doc
 | POST | `/ocr` | extract text from an image or PDF |
 | POST | `/query` | RAG question answering |
 
-Backed by `document_chunks` with a `vector(1536)` embedding (migration `0018`, requires `CREATE EXTENSION vector` — hence `pgvector/pgvector:pg17` in compose).
+Backed by `document_chunks` with a `vector(1536)` embedding (migration `0018`, requires `CREATE EXTENSION vector` — hence `pgvector/pgvector:pg18` in compose).
 
 Configuration is OpenAI-compatible: `OPENAI_API_KEY`, `OPENAI_BASE_URL`, with per-tenant keys overriding the platform default.
 

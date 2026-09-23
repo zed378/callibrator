@@ -6,7 +6,7 @@ Table-by-table detail is in [`../DATABASE/`](../DATABASE/00-DATA-MODEL.md). This
 
 ## Engine-Agnostic by Constraint
 
-**PostgreSQL 17 with `pgvector` is the only supported database (ADR-039).** This section previously said the platform ran on PostgreSQL or MySQL as a customer requirement. It could not: `mysql2` was never a dependency, so a MySQL deployment could not even start, and search, webhooks and RAG were PostgreSQL-only in SQL.
+**PostgreSQL 18 with `pgvector` is the only supported database (ADR-039).** This section previously said the platform ran on PostgreSQL or MySQL as a customer requirement. It could not: `mysql2` was never a dependency, so a MySQL deployment could not even start, and search, webhooks and RAG were PostgreSQL-only in SQL.
 
 | Designed around MySQL | Status now |
 |---|---|
@@ -16,7 +16,7 @@ Table-by-table detail is in [`../DATABASE/`](../DATABASE/00-DATA-MODEL.md). This
 
 pgvector is required: `document_chunks.embedding` is `vector(1536)` and retrieval is a tenant-scoped cosine-distance search. The former non-PostgreSQL branch — which returned the five most *recent* chunks as "context" regardless of relevance — was removed with MySQL support (ADR-039).
 
-The compose stack therefore uses `pgvector/pgvector:pg17`, not `postgres:17-alpine` — plain Postgres lacks the extension and migration `0018` fails.
+The compose stack therefore uses `pgvector/pgvector:pg18`, not `postgres:18-alpine` — plain Postgres lacks the extension and migration `0018` fails.
 
 ## Connection Pool
 

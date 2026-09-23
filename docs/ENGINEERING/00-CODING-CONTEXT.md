@@ -21,7 +21,7 @@ The two things that must never break:
 |---|---|---|
 | Backend language | JavaScript, CommonJS | **TypeScript, strict**, emitted as CommonJS (ADR-038) |
 | HTTP | Express 5 | same |
-| Database | **PostgreSQL 17 + pgvector, only** (ADR-039) | same |
+| Database | **PostgreSQL 18 + pgvector, only** (ADR-039) | same |
 | ORM | Sequelize 6, global tenant-scoping hooks (ADR-029) | same, typed with `InferAttributes` |
 | Validation | Joi | **Zod** — the schema is the type |
 | Tests | Jest 30, 100% coverage gate | Jest 30 + `@swc/jest`, gate unchanged |

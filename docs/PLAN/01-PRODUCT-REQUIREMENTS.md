@@ -111,5 +111,5 @@ Every requirement below is **implemented**; the "Where" column names the code th
 | N3 | Requests time out at 30s and return **408** rather than hanging | `express-timeout-handler` |
 | N4 | Bodies are capped at 10 MB; the Stripe webhook path preserves the raw body for signature verification | `backend/index.js` |
 | N5 | Input is globally sanitised before any handler sees it | `globalSanitizer.middleware.js` |
-| N6 | The system runs on **PostgreSQL 17 + pgvector**; tenant isolation lives in the ORM layer, deny-by-default. *(Was: "PostgreSQL or MySQL" — dropped by ADR-039; it never worked)* | ADR-029, ADR-039 |
+| N6 | The system runs on **PostgreSQL 18 + pgvector**; tenant isolation lives in the ORM layer, deny-by-default. *(Was: "PostgreSQL or MySQL" — dropped by ADR-039; it never worked)* | ADR-029, ADR-039 |
 | N7 | Both backend and frontend compile to standalone binaries for distribution | pkg and `bun build --compile` |

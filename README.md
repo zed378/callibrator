@@ -45,7 +45,7 @@ Makefile       development, gates, deployment
 |---|---|
 | Backend | Express — **JavaScript today, migrating to strict TypeScript** (ADR-038) |
 | ORM | Sequelize |
-| Database | PostgreSQL 17 + pgvector, only (ADR-039) |
+| Database | PostgreSQL 18 + pgvector, only (ADR-039) |
 | Frontend | Next.js 16 · React 19 · TypeScript · Tailwind 4 · Zustand |
 | Realtime | Socket.IO both ends (ADR-031) |
 | Infrastructure | Redis · RabbitMQ · MQTT client (external broker) · ClamAV · pgvector |

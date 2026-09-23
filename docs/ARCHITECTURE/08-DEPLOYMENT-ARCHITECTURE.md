@@ -63,7 +63,7 @@ Requiring ClamAV to be *healthy* would block the entire stack on an optional com
 
 | Service | Image | Why not the obvious one |
 |---|---|---|
-| postgres | `pgvector/pgvector:pg17` | plain `postgres:17-alpine` lacks the `vector` extension; migration `0018` fails |
+| postgres | `pgvector/pgvector:pg18` | plain `postgres:18-alpine` lacks the `vector` extension; migration `0018` fails |
 | rabbitmq | `3.13-management-alpine` | the management UI is worth the size in an on-premise install with no other observability |
 | redis | `8.6-alpine` | — |
 | clamav | `clamav/clamav:latest` | — |

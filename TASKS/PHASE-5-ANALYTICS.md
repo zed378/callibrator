@@ -71,7 +71,7 @@ For telemetry — where a dropped reading is a gap in a trend, not lost evidence
 
 **What shipped:** `document_chunks` with a `vector(1536)` embedding (migration `0018`, which runs `CREATE EXTENSION vector`), OCR, and retrieval-augmented question answering.
 
-**This is why compose uses `pgvector/pgvector:pg17`** rather than plain `postgres:17-alpine`.
+**This is why compose uses `pgvector/pgvector:pg18`** rather than plain `postgres:18-alpine`.
 
 **⚠ Corrected 2026-09-21.** This card said that on MySQL the module is unavailable. It was not — a non-pgvector branch returned the five most recent chunks as context, regardless of relevance. That branch was removed with MySQL support (ADR-039); RAG is PostgreSQL + pgvector only.
 
