@@ -9,7 +9,10 @@ const express = require("express");
 const router = express.Router();
 
 const { auth } = require("../../middlewares/auth.middleware");
-const { rbac } = require("../../middlewares/rbac.middleware");
+const {
+  dynamicAccess,
+} = require("../../middlewares/dynamicAccess.middleware");
+const { MENU_SLUGS } = require("../../constants");
 const {
   getUsageMetrics,
   getBillingHistory,
@@ -29,8 +32,19 @@ const {
 } = meteredValidator;
 const { validateUuid } = require("../../middlewares/validateUuid.middleware");
 
-// All routes require authentication and billing permissions
-const billingGuard = [auth, rbac(["TENANT_ADMIN", "BILLING_ADMIN"])];
+// ADR-043. This was `rbac(["TENANT_ADMIN", "BILLING_ADMIN"])`, which denied
+// everyone but the SUPERADMIN: "BILLING_ADMIN" is a role name that exists in no
+// constants file and no seed, so rbac dropped it, and "TENANT_ADMIN" is a
+// logical tier no seeded role is named after — leaving a level bar of 8 that no
+// principal could clear, because no loader projected a level.
+//
+// Metered billing is a menu with a read/write distinction, not a privilege
+// floor, and `metered-billing` is the one slug of the five affected surfaces
+// that exists in MENU_SLUGS, the menu-group seed AND ROLE_MENU_ASSIGNMENTS — so
+// it is the one that can convert today. Reading usage is `read`; creating or
+// deleting a usage alert is `write` (write implicitly satisfies read).
+const billingRead = [auth, dynamicAccess(MENU_SLUGS.METERED_BILLING, "read")];
+const billingWrite = [auth, dynamicAccess(MENU_SLUGS.METERED_BILLING, "write")];
 
 /**
  * @swagger
@@ -63,7 +77,7 @@ const billingGuard = [auth, rbac(["TENANT_ADMIN", "BILLING_ADMIN"])];
  *       401:
  *         description: Unauthorized
  */
-router.get("/usage", ...billingGuard, getUsageMetrics);
+router.get("/usage", ...billingRead, getUsageMetrics);
 
 /**
  * @swagger
@@ -103,7 +117,7 @@ router.get("/usage", ...billingGuard, getUsageMetrics);
  */
 router.get(
   "/history",
-  ...billingGuard,
+  ...billingRead,
   meteredValidator.validateQuery(billingHistoryValidator),
   getBillingHistory,
 );
@@ -155,7 +169,7 @@ router.get(
  */
 router.post(
   "/estimate",
-  ...billingGuard,
+  ...billingRead,
   meteredValidator.validateBody(estimateCostValidator),
   estimateCost,
 );
@@ -186,7 +200,7 @@ router.post(
  *       401:
  *         description: Unauthorized
  */
-router.get("/plan", ...billingGuard, getPlanDetails);
+router.get("/plan", ...billingRead, getPlanDetails);
 
 /**
  * @swagger
@@ -212,7 +226,7 @@ router.get("/plan", ...billingGuard, getPlanDetails);
  *       401:
  *         description: Unauthorized
  */
-router.get("/alerts", ...billingGuard, getUsageAlerts);
+router.get("/alerts", ...billingRead, getUsageAlerts);
 
 /**
  * @swagger
@@ -263,7 +277,7 @@ router.get("/alerts", ...billingGuard, getUsageAlerts);
  */
 router.post(
   "/alerts",
-  ...billingGuard,
+  ...billingWrite,
   meteredValidator.validateBody(createAlertValidator),
   createUsageAlert,
 );
@@ -294,7 +308,7 @@ router.post(
  */
 router.delete(
   "/alerts/:alertId",
-  ...billingGuard,
+  ...billingWrite,
   validateUuid("alertId"),
   deleteUsageAlert,
 );
@@ -338,7 +352,7 @@ router.delete(
  */
 router.get(
   "/analytics",
-  ...billingGuard,
+  ...billingRead,
   meteredValidator.validateQuery(getAnalyticsValidator),
   getAnalytics,
 );

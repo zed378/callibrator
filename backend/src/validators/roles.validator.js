@@ -1,8 +1,15 @@
 const Joi = require("joi");
 
+// ADR-043 — `roleLevel` is the value every rbac() gate compares against, so a
+// role created without one fails every privileged gate silently (the trap in
+// CLAUDE.md, from the far end). The bound is `max(8)`, never 10: the
+// SUPER_ADMIN tier bypasses rbac() AND tenant scoping, and must not be
+// reachable through a tenant-facing create call. RolesService.createRole clamps
+// again, so the cap holds for callers that never reach this schema.
 exports.createRoleSchema = Joi.object({
   name: Joi.string().trim().min(2).max(100).required(),
   description: Joi.string().trim().max(500).allow(null, ""),
+  roleLevel: Joi.number().integer().min(1).max(8),
 });
 
 exports.updateRoleSchema = Joi.object({

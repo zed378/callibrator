@@ -4,13 +4,16 @@
 // verification QR code, computes a tamper-evident SHA-256 integrity hash + an
 // HMAC signature, and powers the public verification endpoint.
 //
-// The PDF is written under uploads/certificates/<number>.pdf (served statically
+// The PDF is written under uploads/certificates/<random>.pdf (served statically
 // at /uploads/...), and the certificate row's filePath/fileSize are updated.
+// The file name is deliberately NOT the certificate number — see
+// randomPdfFileName below (ADR-042 step 1, finding S-01).
 
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const QRCode = require("qrcode");
+const { v4: uuidv4 } = require("uuid");
 const {
   Certificate,
   CalibrationDevice,
@@ -57,7 +60,25 @@ const escapeHtml = (v) => {
 
 const fmtDate = (d) => (d ? new Date(d).toISOString().slice(0, 10) : "—");
 
-const safeFileName = (certificateNumber) =>
+// ADR-042 step 1 / S-01. The PDF used to be written as <certificateNumber>.pdf,
+// and the certificate number is `CERT-<YYYYMMDD>-<tenantCode>-<sequence>` — a
+// per-tenant, per-day counter, not a secret. /uploads is an unauthenticated
+// express.static mount, so that name made every tenant's certificates walkable
+// from the open internet. The name is now a random token; the certificate
+// NUMBER is unchanged and remains the identifier printed on the document and
+// carried by the QR code.
+//
+// The shape is the one utils/upload.util.js already uses for uploads
+// (timestamp + small counter + uuid v4) rather than a second scheme. The
+// timestamp and counter are only there for that consistency — the 122 random
+// bits of the uuid are what make the name unguessable.
+const randomPdfFileName = () =>
+  `${Date.now()}-${Math.floor(Math.random() * 10000)}-${uuidv4()}.pdf`;
+
+// The name a browser should save a download as. This is a Content-Disposition
+// label only — it is never used as a path, and the file on disk keeps the
+// random name above.
+const downloadFileName = (certificateNumber) =>
   `${String(certificateNumber).replace(/[^a-zA-Z0-9._-]/g, "_")}.pdf`;
 
 const userName = (u) =>
@@ -196,14 +217,39 @@ const generateCertificatePdf = async (tenantId, certificateId, { baseUrl } = {})
     await browser.close();
   }
 
+  const previousFilePath = cert.filePath;
+
   const dir = storagePath("uploads", "certificates");
   fs.mkdirSync(dir, { recursive: true });
-  const fileName = safeFileName(cert.certificateNumber);
+  const fileName = randomPdfFileName();
   const absPath = path.join(dir, fileName);
   fs.writeFileSync(absPath, pdfBuffer);
 
   const relPath = `/uploads/certificates/${fileName}`;
   await cert.update({ filePath: relPath, fileSize: pdfBuffer.length });
+
+  // Regenerating supersedes the previous document, and unlinking it is the only
+  // revocation the static mount has: express.static serves whatever is on disk,
+  // so a superseded file left behind stays publicly fetchable at its old URL
+  // forever. Done after the row is updated, so a failure here can never leave
+  // the row pointing at a file that was deleted. basename() keeps the unlink
+  // inside the certificates directory whatever the stored value says.
+  if (previousFilePath) {
+    const supersededAbsPath = path.join(dir, path.basename(previousFilePath));
+    try {
+      fs.unlinkSync(supersededAbsPath);
+    } catch (err) {
+      // Already gone, or not removable. The new file is written and the row is
+      // committed either way, so this is not worth failing the generation over
+      // — but it is worth a log line, because a file that survives here is a
+      // document still being served from an unauthenticated path.
+      logger.warn("Superseded certificate PDF could not be removed", {
+        certificateId: cert.id,
+        path: supersededAbsPath,
+        error: err.message,
+      });
+    }
+  }
 
   logger.info("Certificate PDF generated", {
     certificateId: cert.id,
@@ -233,16 +279,27 @@ const getOrCreatePdf = async (tenantId, certificateId, opts = {}) => {
     return { success: false, status: 404, message: "Certificate not found" };
   }
   if (cert.filePath) {
-    const fileName = path.basename(cert.filePath);
-    const absPath = storagePath("uploads", "certificates", fileName);
+    const absPath = storagePath(
+      "uploads",
+      "certificates",
+      path.basename(cert.filePath),
+    );
     if (fs.existsSync(absPath)) {
       return {
         success: true,
         status: 200,
-        data: { absPath, fileName, fileSize: cert.fileSize },
+        data: {
+          absPath,
+          // The on-disk name is random; the saved-as name stays readable.
+          fileName: downloadFileName(cert.certificateNumber),
+          fileSize: cert.fileSize,
+        },
       };
     }
   }
+  // A missing file self-heals here: generateCertificatePdf writes a fresh
+  // random name and updates cert.filePath, so a stale row never 404s the
+  // authenticated download.
   const gen = await generateCertificatePdf(tenantId, certificateId, opts);
   if (!gen.success) {
     return gen;
@@ -252,7 +309,7 @@ const getOrCreatePdf = async (tenantId, certificateId, opts = {}) => {
     status: 200,
     data: {
       absPath: gen.data.absPath,
-      fileName: path.basename(gen.data.filePath),
+      fileName: downloadFileName(cert.certificateNumber),
       fileSize: gen.data.fileSize,
     },
   };
@@ -308,9 +365,32 @@ const verifyByCertificateNumber = async (certificateNumber, { baseUrl } = {}) =>
       signedAt: cert.signedAt,
       integrityHash,
       verifyUrl: resolveVerifyUrl(cert.certificateNumber, baseUrl),
-      // Relative path to the signed PDF (served from /uploads). The public
-      // verification page prefixes it with the API origin to display the doc.
-      documentUrl: cert.filePath || null,
+      // ADR-042 step 2 / A-57. This endpoint is deliberately unauthenticated,
+      // so whatever it returns here is published to anyone who walks the
+      // certificate number. Only an ISSUED certificate's document is published:
+      // `signed` is the only status that means the tenant has stood behind the
+      // result. A draft, a pending approval or an approved-but-unsigned
+      // certificate is a calibration result the issuer has explicitly not
+      // stood behind yet, and publishing it is worse than publishing a
+      // finished one.
+      //
+      // DECISION — a REVOKED certificate returns null. The argument for
+      // publishing it is real: a holder who scanned the QR would see the
+      // document and the renderer stamps a REVOKED watermark on it. It loses
+      // to two facts in this codebase. (1) The stored PDF is whatever was
+      // rendered when it was generated — a certificate signed and then revoked
+      // still has its SIGNED, unwatermarked PDF on disk, because nothing
+      // re-renders on revocation and getOrCreatePdf serves the cached file. So
+      // publishing it hands an unauthenticated caller a document that asserts
+      // the opposite of the verdict beside it. (2) The revocation is already
+      // reported here, in `status`, `revoked` and `valid`, which is what a
+      // third party actually needs; the holder can still fetch the document
+      // through the authenticated download route. If revocation is ever made
+      // to re-render the PDF, this is worth revisiting.
+      //
+      // `expired` is NOT part of the gate: an expired certificate was properly
+      // issued and its document is real history, so it stays published.
+      documentUrl: signed ? cert.filePath || null : null,
     },
   };
 };

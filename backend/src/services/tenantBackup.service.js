@@ -5,13 +5,18 @@ const JSZip = require("jszip");
 const moment = require("moment");
 
 // Simplified tenant backup service - removed deprecated models (TenantSettings, TenantRoles, TenantFeatures, TenantAuditLog, UserPermissions)
-const { TenantBackup, Tenant, Users } = require("../models");
+const { TenantBackup, Tenant, Users, AuditLog } = require("../models");
 // Sequelize helpers come from the package directly (not the models barrel) so
 // they are available even when `../models` is mocked in unit tests.
 const Sequelize = require("sequelize");
 const { Op } = Sequelize;
 const { logger } = require("../middlewares/activityLog.middleware");
-const { AppError, InternalServerError } = require("../utils/appError.util");
+const {
+  AppError,
+  ConflictError,
+  InternalServerError,
+} = require("../utils/appError.util");
+const { USER_STATUS } = require("../constants");
 const storagePath = require("../utils/storagePath.util");
 
 /**
@@ -288,8 +293,261 @@ async function downloadBackup(backupId, models) {
   };
 }
 
+/* ------------------------------------------------------------------ */
+/* RESTORE                                                            */
+/* ------------------------------------------------------------------ */
+
 /**
- * Restore a backup for a tenant (simplified)
+ * The fields a restore may take from a backup archive when it CREATES an
+ * account.
+ *
+ * A backup file is caller-supplied data (D-02): the previous implementation
+ * spread the payload row straight into `bulkCreate`, so a crafted archive could
+ * set `password`, `mfaSecret`, `webauthn*`, `isDeleted` — or `tenantId`, which
+ * is how it wrote authenticating rows into a tenant it named itself. Nothing
+ * outside this list is ever read from the file; `tenantId` is stamped
+ * server-side from the backup row, and the credential fields are set by this
+ * service, never by the archive.
+ */
+const RESTORE_CREATE_FIELDS = [
+  "username",
+  "email",
+  "firstName",
+  "lastName",
+  "phone",
+  "avatarUrl",
+  "roleId",
+];
+
+/**
+ * The fields a restore may write onto an account that ALREADY EXISTS.
+ *
+ * Narrower than the create list on purpose. `username` and `email` are the
+ * natural key the row was matched on, so rewriting them is meaningless.
+ * `roleId`, `isActive` and `status` are privilege state: a file that could
+ * raise the role of a live, active account would be a privilege-escalation
+ * primitive, which is the abuse D-02 describes. A restore updates the profile;
+ * it does not re-grant access.
+ */
+const RESTORE_UPDATE_FIELDS = ["firstName", "lastName", "phone", "avatarUrl"];
+
+/** Columns a backed-up user row must carry before it can be written at all. */
+const REQUIRED_BACKUP_USER_FIELDS = [
+  "username",
+  "email",
+  "firstName",
+  "lastName",
+];
+
+/**
+ * Copy only the named fields out of an untrusted object.
+ * A field that is absent or null is left out so the model default applies.
+ */
+function pickFields(source, fields) {
+  const picked = {};
+  for (const field of fields) {
+    if (source[field] !== undefined && source[field] !== null) {
+      picked[field] = source[field];
+    }
+  }
+  return picked;
+}
+
+/**
+ * A credential no password can satisfy.
+ *
+ * `users.password` is NOT NULL, and the export deliberately omits the hash
+ * (`exportTenantData` excludes it), so a restore has no hash to write. It must
+ * therefore write something that cannot be logged in with: this value is not a
+ * bcrypt hash, so `bcrypt.compare` returns false for every candidate. Combined
+ * with `isActive: false` the account exists, is visible to an administrator,
+ * and can only be entered after an administrator sets a real password — it is
+ * never left with a guessable credential, and never left absent altogether.
+ */
+function unusableCredential() {
+  return `!restore-reset-required:${crypto.randomBytes(24).toString("hex")}`;
+}
+
+/**
+ * Decide whether this archive may be restored into this tenant at all.
+ *
+ * Every refusal here is a 409 carrying a state explanation that names the
+ * problem, per the status-code table: the request is well formed and the caller
+ * is permitted, but the backup and the target tenant are in states that cannot
+ * be reconciled. Reporting these as a 500 would hide a design gap behind a
+ * stack trace. None of these refusals touches a row, and none of them marks the
+ * backup FAILED, because nothing was attempted.
+ *
+ * @param {object} args - the restore being validated
+ * @param {string} args.backupId - the backup being restored
+ * @param {object} args.backup - the backup row (server-side truth)
+ * @param {object} args.data - the parsed archive payload (untrusted)
+ * @param {string|null} args.targetTenantId - the tenant that owns the backup row
+ * @returns {void}
+ */
+function assertRestorable({ backupId, backup, data, targetTenantId }) {
+  if (!targetTenantId) {
+    throw new ConflictError(
+      `Backup ${backupId} has no owning tenant recorded, so there is no tenant to restore it into. ` +
+        "A restore always targets the tenant that owns the backup row; the tenant named inside the archive is never used.",
+    );
+  }
+
+  if (!data.metadata || !data.tenant) {
+    throw new ConflictError(
+      `Backup ${backupId} cannot be restored: its archive is missing the ` +
+        `${!data.metadata ? "metadata" : "tenant"} section, so there is nothing to reconcile against.`,
+    );
+  }
+
+  // The archive names a tenant. So does the backup row. When they disagree the
+  // archive is the one that must be refused — the alternative is writing rows
+  // into whatever tenant a file names, which is exactly D-02.
+  if (data.tenant.id !== targetTenantId) {
+    throw new ConflictError(
+      `Backup ${backupId} belongs to tenant ${targetTenantId}, but its archive was taken from tenant ${data.tenant.id}. ` +
+        "A backup can only be restored into the tenant that owns it; nothing has been written.",
+    );
+  }
+
+  if (data.users !== undefined && !Array.isArray(data.users)) {
+    throw new ConflictError(
+      `Backup ${backupId} cannot be restored: its archive has a "users" section that is not a list.`,
+    );
+  }
+
+  const backupType = data.metadata.backupType || backup.backupType;
+  if (
+    backupType === TenantBackup.BACKUP_TYPES.FULL &&
+    !Array.isArray(data.users)
+  ) {
+    throw new ConflictError(
+      `Backup ${backupId} is recorded as a "full" backup but its archive carries no "users" section. ` +
+        'A "full" tenant backup contains the tenant row and its user accounts and nothing else — ' +
+        "no devices, calibrations, certificates, attachments or stock — so with the users missing there is nothing left in it to restore.",
+    );
+  }
+
+  for (const [index, user] of (data.users || []).entries()) {
+    const missing = REQUIRED_BACKUP_USER_FIELDS.filter((field) => !user[field]);
+    if (missing.length > 0) {
+      throw new ConflictError(
+        `Backup ${backupId} cannot be restored: user entry ${index} is missing ${missing.join(", ")}. ` +
+          "A user row is matched and written by these fields, so an entry without them cannot be reconciled; nothing has been written.",
+      );
+    }
+  }
+}
+
+/**
+ * Reconcile the backed-up users into the target tenant. Additive by design.
+ *
+ * WHAT A RESTORE MEANS FOR A USER PRESENT IN BOTH the archive and the tenant:
+ *   - `mergeData: false` (the default, "restore"): the live row is KEPT and its
+ *     profile fields are updated from the backup. Its credential, its role and
+ *     its active/suspended state are left exactly as they are.
+ *   - `mergeData: true` ("merge"): the live row is left completely untouched. A
+ *     merge only adds accounts the tenant does not have.
+ *
+ * WHAT NEVER HAPPENS, in either mode:
+ *   - No account is deleted. An account created after the backup was taken —
+ *     the case that made this path destructive (S-02) — is not in the archive,
+ *     is therefore never matched, and survives untouched. It is counted as
+ *     `retained` so the operator can see what was not restored over.
+ *   - No live password is overwritten. The export has no hashes to restore.
+ *   - A soft-deleted account matching a backed-up natural key is NOT revived.
+ *     Reviving an account an administrator deleted is a grant of access and an
+ *     owner decision, not a side effect of a restore. It is counted as
+ *     `skippedDeleted`. (It also still holds the globally unique
+ *     `username`/`email`, so creating alongside it would fail the constraint.)
+ *
+ * @param {object} args - the reconciliation inputs
+ * @param {Array<object>} args.users - the backed-up user rows (untrusted)
+ * @param {string} args.targetTenantId - the tenant every row is stamped with
+ * @param {boolean} args.mergeData - true to add only, false to also update profiles
+ * @param {object} args.transaction - the enclosing transaction
+ * @returns {Promise<{created: number, updated: number, unchanged: number, skippedDeleted: number}>} per-account outcome counts
+ */
+async function reconcileUsers({
+  users,
+  targetTenantId,
+  mergeData,
+  transaction,
+}) {
+  const outcome = { created: 0, updated: 0, unchanged: 0, skippedDeleted: 0 };
+
+  for (const user of users) {
+    // The natural key. `Op` here is the STATIC operator set from the sequelize
+    // package (imported at the top of this file). The previous merge branch
+    // read `sequelize.Op.or` off a Sequelize INSTANCE, where `.Op` is
+    // undefined, so it threw a TypeError before touching a row — the merge path
+    // had never run.
+    //
+    // Unscoped and non-paranoid on purpose: the default scope hides `isDeleted`
+    // rows and paranoid hides `deletedAt` rows, and both still hold the
+    // globally unique username/email. They have to be seen in order to be
+    // skipped.
+    const live = await Users.unscoped().findOne({
+      where: {
+        tenantId: targetTenantId,
+        [Op.or]: [{ username: user.username }, { email: user.email }],
+      },
+      paranoid: false,
+      transaction,
+    });
+
+    if (!live) {
+      await Users.create(
+        {
+          ...pickFields(user, RESTORE_CREATE_FIELDS),
+          // Stamped server-side from the backup row. Whatever tenant the
+          // archive names is irrelevant (D-02).
+          tenantId: targetTenantId,
+          // The archive has no hash, so the account is created in a state that
+          // forces an administrator reset rather than in one anyone can
+          // authenticate into.
+          password: unusableCredential(),
+          isActive: false,
+          status: USER_STATUS.INACTIVE,
+          isEmailVerified: false,
+          isDeleted: false,
+        },
+        { transaction },
+      );
+      outcome.created += 1;
+      continue;
+    }
+
+    if (live.isDeleted || live.deletedAt) {
+      outcome.skippedDeleted += 1;
+      continue;
+    }
+
+    if (mergeData) {
+      outcome.unchanged += 1;
+      continue;
+    }
+
+    await live.update(pickFields(user, RESTORE_UPDATE_FIELDS), { transaction });
+    outcome.updated += 1;
+  }
+
+  return outcome;
+}
+
+/**
+ * Restore a backup into the tenant that owns it.
+ *
+ * This is a non-destructive reconciliation, not a replace. See
+ * `reconcileUsers` for what a restore means for each account, and
+ * `assertRestorable` for the states that are refused with a 409.
+ *
+ * @param {object} args - the restore request
+ * @param {string} args.backupId - the backup to restore
+ * @param {string} args.restoredById - the acting user, for the audit row
+ * @param {boolean} [args.mergeData] - true to add only, false to also update profiles
+ * @param {object} args.models - the request-scoped models bag
+ * @returns {Promise<object>} the response envelope
  */
 async function restoreBackup({
   backupId,
@@ -302,6 +560,7 @@ async function restoreBackup({
       {
         model: models.Tenants,
         as: "tenant",
+        required: false,
       },
     ],
   });
@@ -318,15 +577,11 @@ async function restoreBackup({
     throw new AppError(404, "Backup file not found on storage");
   }
 
-  // Update backup status to restoring
-  await TenantBackup.updateStatus(
-    backupId,
-    {
-      status: TenantBackup.STATUS.RESTORING,
-    },
-    models,
-  );
+  // Server-side truth for where this restore may write: the tenant that owns
+  // the backup row, never `data.tenant.id` from the archive.
+  const targetTenantId = backup.tenantId || backup.tenant?.id || null;
 
+  let data;
   try {
     // Extract and read the ZIP file
     const zip = new JSZip();
@@ -339,19 +594,52 @@ async function restoreBackup({
     );
 
     if (!dataFile) {
-      throw new Error("Invalid backup file: no tenant data found");
+      throw new ConflictError(
+        `Backup ${backupId} cannot be restored: its archive contains no tenant data file. Nothing has been written.`,
+      );
     }
 
     const dataStr = await extracted.files[dataFile].async("string");
-    const data = JSON.parse(dataStr);
+    data = JSON.parse(dataStr);
 
-    // Validate data structure
-    if (!data.metadata || !data.tenant) {
-      throw new Error("Invalid backup data structure");
+    assertRestorable({ backupId, backup, data, targetTenantId });
+  } catch (error) {
+    // A refusal is a state explanation about the backup, not a failure of this
+    // restore: the backup row stays COMPLETED and the caller gets the 409
+    // unchanged. Anything else really is a failure to read the archive.
+    if (error instanceof AppError) {
+      throw error;
     }
 
-    const targetTenantId = data.tenant.id;
-    let recordsProcessed = 0;
+    await TenantBackup.updateStatus(
+      backupId,
+      {
+        status: TenantBackup.STATUS.FAILED,
+        errorMessage: error.message,
+      },
+      models,
+    );
+
+    logger.error("Tenant backup restore failed", {
+      backupId,
+      error: error.message,
+    });
+
+    throw new InternalServerError("Failed to restore backup: " + error.message);
+  }
+
+  // Update backup status to restoring — only now, once the archive is known to
+  // be restorable into this tenant.
+  await TenantBackup.updateStatus(
+    backupId,
+    {
+      status: TenantBackup.STATUS.RESTORING,
+    },
+    models,
+  );
+
+  try {
+    const backedUpUsers = data.users || [];
 
     // Get the transaction from models parameter for consistency
     const sequelize = models.sequelize || require("../models").sequelize;
@@ -360,38 +648,43 @@ async function restoreBackup({
     const transaction = await sequelize.transaction();
 
     try {
-      // Restore users (simplified - no more settings/roles/features)
-      if (data.users?.length > 0) {
-        if (mergeData) {
-          for (const user of data.users) {
-            await Users.findOrCreate({
-              where: {
-                tenantId: targetTenantId,
-                [sequelize.Op.or]: [
-                  { username: user.username },
-                  { email: user.email },
-                ],
-              },
-              defaults: { ...user, id: undefined },
-              transaction,
-            });
-          }
-        } else {
-          await Users.destroy({
-            where: { tenantId: targetTenantId },
-            transaction,
-          });
-          // Preserve password hashes from backup for non-merge restores
-          await Users.bulkCreate(
-            data.users.map((u) => ({
-              ...u,
-              id: undefined,
-            })),
-            { transaction },
-          );
-        }
-        recordsProcessed += data.users.length;
-      }
+      const outcome = await reconcileUsers({
+        users: backedUpUsers,
+        targetTenantId,
+        mergeData,
+        transaction,
+      });
+
+      // Accounts the tenant has that the archive does not. They are left alone;
+      // the count is reported so a restore cannot silently look like a replace.
+      const liveUserCount = await Users.count({
+        where: { tenantId: targetTenantId },
+        transaction,
+      });
+      const retained = Math.max(
+        liveUserCount - (outcome.created + outcome.updated + outcome.unchanged),
+        0,
+      );
+
+      const recordsProcessed = backedUpUsers.length;
+
+      // Every mutation writes an audit row, inside the same transaction.
+      await AuditLog.create(
+        {
+          tenantId: targetTenantId,
+          userId: restoredById || null,
+          action: "RESTORE",
+          resourceType: "TenantBackup",
+          resourceId: backupId,
+          changes: {
+            mergeData,
+            recordsProcessed,
+            ...outcome,
+            retained,
+          },
+        },
+        { transaction },
+      );
 
       // Commit transaction
       await transaction.commit();
@@ -406,6 +699,8 @@ async function restoreBackup({
             restoredAt: new Date().toISOString(),
             restoredById,
             recordsProcessed,
+            ...outcome,
+            retained,
           },
         },
         models,
@@ -416,6 +711,8 @@ async function restoreBackup({
         targetTenantId,
         recordsProcessed,
         restoredById,
+        ...outcome,
+        retained,
       });
 
       return {
@@ -425,6 +722,8 @@ async function restoreBackup({
         data: {
           tenantId: targetTenantId,
           recordsProcessed,
+          ...outcome,
+          retained,
           restoredAt: new Date().toISOString(),
         },
       };

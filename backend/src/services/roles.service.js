@@ -11,16 +11,44 @@ const { Op } = require("sequelize");
  * - All roles are global (not tenant-scoped)
  */
 const { get, set, del, delPattern, cacheKeys } = require("./redis.service");
+const { ROLE_LEVELS } = require("../constants");
+
+/**
+ * The highest level a tenant-created role may hold (ADR-043).
+ *
+ * `rbac()` compares role levels, so a role created through this API is a
+ * privilege grant. Capping at the TENANT_ADMIN tier (8) means no role minted at
+ * runtime can ever reach the SUPER_ADMIN tier (10) — which bypasses both rbac()
+ * and tenant scoping — no matter what a caller asks for.
+ */
+const MAX_TENANT_ROLE_LEVEL = ROLE_LEVELS.TENANT_ADMIN;
 
 class RolesService {
   /**
    * Create a new role
+   *
+   * `roleLevel` is what every rbac() gate compares against, so it is persisted
+   * here rather than left at the model default of 1 — a role with no level
+   * fails every privileged gate silently. It is clamped to
+   * [1, MAX_TENANT_ROLE_LEVEL]; a caller asking for the SUPER_ADMIN tier gets
+   * the tenant-admin tier instead.
+   *
+   * @param {object} input - role fields
+   * @param {string} input.name - role name
+   * @param {string} [input.description] - description
+   * @param {boolean} [input.is_system] - system role flag
+   * @param {number} [input.roleLevel] - requested privilege level (1–8)
+   * @returns {Promise<object>} the created role
    */
-  static async createRole({ name, description, is_system = false }) {
+  static async createRole({ name, description, is_system = false, roleLevel }) {
+    const requested = Number.isInteger(roleLevel) ? roleLevel : 1;
+    const level = Math.min(Math.max(requested, 1), MAX_TENANT_ROLE_LEVEL);
+
     const role = await Role.create({
       name: name.trim(),
       description: description?.trim(),
       is_system,
+      roleLevel: level,
       status: "active",
     });
     return role;

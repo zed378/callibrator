@@ -48,11 +48,12 @@ describe("RolesService", () => {
   describe("createRole", () => {
     it("should create a new role", async () => {
       mockRole.create.mockResolvedValue({ id: "role1", name: "Admin" });
-      const result = await RolesService.createRole({ name: " Admin ", description: " Desc ", is_system: true });
+      const result = await RolesService.createRole({ name: " Admin ", description: " Desc ", is_system: true, roleLevel: 6 });
       expect(mockRole.create).toHaveBeenCalledWith({
         name: "Admin",
         description: "Desc",
         is_system: true,
+        roleLevel: 6,
         status: "active",
       });
       expect(result.id).toBe("role1");
@@ -65,8 +66,38 @@ describe("RolesService", () => {
         name: "Viewer",
         description: undefined,
         is_system: false,
+        // ADR-043: a role with no level fails every privileged gate silently,
+        // so an unspecified level is persisted as the model default, not left out.
+        roleLevel: 1,
         status: "active",
       });
+    });
+
+    // ADR-043 — the cap is the reason this parameter exists. Level 10 is the
+    // SUPER_ADMIN tier, which bypasses rbac() AND tenant scoping; a role minted
+    // through a tenant-facing API must never reach it.
+    it("caps a tenant-created role at the TENANT_ADMIN tier, never SUPER_ADMIN", async () => {
+      mockRole.create.mockResolvedValue({ id: "role3" });
+      await RolesService.createRole({ name: "Sneaky", roleLevel: 10 });
+      expect(mockRole.create).toHaveBeenCalledWith(
+        expect.objectContaining({ roleLevel: 8 }),
+      );
+    });
+
+    it("floors a level below 1", async () => {
+      mockRole.create.mockResolvedValue({ id: "role4" });
+      await RolesService.createRole({ name: "Negative", roleLevel: -3 });
+      expect(mockRole.create).toHaveBeenCalledWith(
+        expect.objectContaining({ roleLevel: 1 }),
+      );
+    });
+
+    it("ignores a non-integer level", async () => {
+      mockRole.create.mockResolvedValue({ id: "role5" });
+      await RolesService.createRole({ name: "Fuzzy", roleLevel: "8" });
+      expect(mockRole.create).toHaveBeenCalledWith(
+        expect.objectContaining({ roleLevel: 1 }),
+      );
     });
   });
 

@@ -59,6 +59,8 @@ const migrationModules = [
   ["0017-add-signature-workflows.js", require("../migrations/0017-add-signature-workflows")],
   ["0018-add-document-chunks.js", require("../migrations/0018-add-document-chunks")],
   ["0019-add-signature-crypto-fields.js", require("../migrations/0019-add-signature-crypto-fields")],
+  ["0020-backfill-role-levels.js", require("../migrations/0020-backfill-role-levels")],
+  ["0021-metered-billing-grants.js", require("../migrations/0021-metered-billing-grants")],
 ];
 
 const migrator = new Umzug({

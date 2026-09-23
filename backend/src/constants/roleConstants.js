@@ -253,7 +253,12 @@ const ROLE_MENU_ASSIGNMENTS = [
       [MENU_SLUGS.SOP]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.WORKFLOWS]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.FINANCE]: PERMISSION_TYPES.READ,
-      [MENU_SLUGS.METERED_BILLING]: PERMISSION_TYPES.READ,
+      // ADR-043: metered-billing moved from rbac([TENANT_ADMIN]) to
+      // dynamicAccess("metered-billing", …). READ here would have turned one
+      // silent lockout into another — a tenant admin could see usage but never
+      // set a usage alert. Managing the tenant's own billing alerts is
+      // tenant-admin work, which is what the rbac gate meant.
+      [MENU_SLUGS.METERED_BILLING]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.GDPR]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.CUSTOM_DOMAINS]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.BATCH_JOBS]: PERMISSION_TYPES.READ,
@@ -284,6 +289,10 @@ const ROLE_MENU_ASSIGNMENTS = [
       [MENU_SLUGS.SOP]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.WORKFLOWS]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.FINANCE]: PERMISSION_TYPES.READ,
+      // ADR-043: CALIBRATOR ADMIN had no metered-billing row at all, so it was
+      // denied the whole surface once the gate became dynamicAccess. Same tier
+      // as HEALTHCARE ADMIN, same grant.
+      [MENU_SLUGS.METERED_BILLING]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.BATCH_JOBS]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.KANBAN]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.TICKETS_RAISE]: PERMISSION_TYPES.WRITE,
