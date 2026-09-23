@@ -1429,6 +1429,71 @@ authorization layer.
 
 ---
 
+## ADR-044: npm Is the Package Manager, and Its Lockfile Is Committed
+
+**Date:** 2026-09-23 · **Finding:** A-21 · **Phase:** 0 (foundation)
+
+**Context**
+
+`.gitignore` excluded **all three** lockfiles — `package-lock.json`, `pnpm-lock.yaml` and
+`bun.lock` — so a clean clone resolved every floating range afresh. The repository also declared
+its workspaces twice: an npm-style `workspaces` array in `package.json` and a
+`pnpm-workspace.yaml`. The `Makefile` — the documented entry point — called `pnpm` for install and
+for every gate, while calling `npm` for migrations and the E2E suite.
+
+This is not theoretical debt. It has already cost a gate: the backend asked for `eslint ^10.10.0`
+while the root pinned `9.22.0`, hoisting resolved to 9.22.0 with `@eslint/js` 10.0.1, and
+`js.configs.recommended` from 10.x enables a rule 9.22 does not have. **ESLint crashed before
+linting a single file**, and because `make verify` runs lint first, that gate could never have
+passed on any machine (A-34). A floating tree produced a broken gate that looked like a config
+error.
+
+**Decision**
+
+1. **npm is the package manager.** `package-lock.json` is committed.
+2. Every `Makefile` target uses `npm`; `make install` is **`npm ci`**, not `npm install`, so the
+   committed lockfile is honoured rather than updated in place.
+3. `pnpm-lock.yaml` and `bun.lock` stay ignored, and so do nested `backend/package-lock.json` and
+   `frontend/package-lock.json` — a lockfile inside a workspace silently produces a different tree
+   from the hoisted root one, which is the same failure mode again one level down. A stale one
+   dated 2026-07-28 was found in `backend/` during this work.
+
+**Rationale**
+
+npm wins on evidence, not preference: the committed tree is the one the suite is actually proven
+against. **6,128 tests and the lint gate run green against this `node_modules`**, installed by npm.
+`pnpm`'s strict, non-hoisted layout is defensible and arguably better, but nothing in this
+repository has ever been verified under it, and this is a compliance-critical codebase with a
+packaged binary build (`@yao-pkg/pkg`), Puppeteer and native dependencies — the exact set most
+sensitive to layout. Choosing the unverified option to gain strictness would be trading a known
+tree for an unknown one on a day when four gates are already red.
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| pnpm, matching `pnpm-workspace.yaml` and the Makefile | nothing has been tested under pnpm's layout. It may well be the better end state; it is not a change to make blind, and it belongs with the CI work (P7-01) where it can be proven |
+| Commit all three lockfiles | three answers to one question. The next person resolves the ambiguity by guessing |
+| Leave them ignored and pin exact versions in `package.json` | pins the direct dependencies and leaves every transitive one floating — which is where the ESLint break actually came from |
+
+**Implications — including the bad ones**
+
+- **`pnpm-workspace.yaml` still exists and now contradicts this ADR.** Deleting it is the tidy
+  follow-through, and it is deliberately **not** done here: nothing depends on it today, and a file
+  removal is easier to review on its own than buried in a foundation change. It is an Open Question
+  in `TASKS/BACKLOG.md`, not a loose end.
+- **`npm ci` fails outright when `package.json` and the lockfile disagree.** That is the point, and
+  it will be a nuisance the first time someone edits a dependency without refreshing the lock.
+- A committed lockfile makes dependency changes visible in review, which is a 700 KB diff nobody
+  reads. Accepted: the alternative is the change being invisible.
+- This does **not** by itself make `make verify` pass. Lint is still red at 1,297 errors (A-34) and
+  the backend still has no `typecheck` task at all (P9-01a) — `turbo` exits 0 on a package that
+  does not define one, so a green typecheck currently means nothing was compiled.
+
+**Status:** Accepted
+
+---
+
 ## Open Decisions
 
 Recorded so a future reader can tell whether their idea was evaluated and rejected, or genuinely never considered.
