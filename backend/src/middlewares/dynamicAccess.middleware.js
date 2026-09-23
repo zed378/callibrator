@@ -2,6 +2,56 @@ const { User, Tenants } = require("../models");
 const RolesService = require("../services/roles.service");
 const { scopeAllows } = require("../services/apiKey.service");
 const { logger } = require("./activityLog.middleware");
+const { error: sendError } = require("../utils/response.util");
+
+/**
+ * AZ-04. The single status used for EVERY tenant-isolation refusal in this
+ * middleware, and the two messages it can carry.
+ *
+ * `CLAUDE.md`: "Cross-tenant returns 404, never 403. [...] Non-existent,
+ * soft-deleted and not-yours must be indistinguishable."
+ *
+ * Both tenant branches used to answer 404 for an id that matched nothing and
+ * 403 "Access denied: resource belongs to a different tenant" for one that
+ * matched another tenant's row — a tenant-membership oracle on the 50 routes
+ * that pass `checkTenant: true`. Every branch now goes through
+ * `denyTenantIsolation`, so a given branch has exactly ONE body and the
+ * "missing" and "foreign" cases cannot drift apart.
+ *
+ * The messages differ only by WHICH lookup ran (tenant id vs resource owner
+ * id), which the caller already knows from the request it sent; within either
+ * branch the two outcomes are byte-identical.
+ */
+const TENANT_REFUSAL_STATUS = 404;
+const TENANT_NOT_FOUND_MESSAGE = "Tenant not found";
+const RESOURCE_NOT_FOUND_MESSAGE = "Resource not found";
+
+/**
+ * Refuse a tenant-isolation failure without telling the caller which kind it
+ * was. The reason is logged against the request id; the response carries
+ * nothing that separates "does not exist" from "not yours".
+ *
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ * @param {string} message - one of the two *_NOT_FOUND_MESSAGE constants
+ * @param {Object} context - log-only detail, including `reason`
+ */
+const denyTenantIsolation = (req, res, message, context) => {
+  // Guarded the same way as every other logging call in this file: the
+  // activityLog module's `logger` export is absent in some test harnesses,
+  // and a refusal must still be produced rather than a TypeError.
+  if (typeof logger !== "undefined") {
+    logger.warn("dynamicAccess: tenant isolation refusal", {
+      requestId: req.requestId || "unknown",
+      userId: req.user.id,
+      method: req.method,
+      url: req.originalUrl,
+      ...context,
+    });
+  }
+
+  return sendError(res, message, TENANT_REFUSAL_STATUS);
+};
 
 /**
  * Dynamic RBAC Middleware
@@ -42,10 +92,7 @@ exports.dynamicAccess = (menuGroup, permissionType, options = {}) => {
       const user = req.user;
 
       if (!user || !user.role) {
-        return res.status(401).json({
-          success: false,
-          message: "Unauthorized: No user context found",
-        });
+        return sendError(res, "Unauthorized: No user context found", 401);
       }
 
       // SUPER_ADMIN bypass - has access to everything (no tenant check)
@@ -93,18 +140,20 @@ exports.dynamicAccess = (menuGroup, permissionType, options = {}) => {
             attributes: ["id"],
           });
 
+          // AZ-04: "no such tenant" and "someone else's tenant" answer with
+          // the same status and the same body. Only the log says which.
           if (!tenant) {
-            return res.status(404).json({
-              success: false,
-              message: "Tenant not found",
+            return denyTenantIsolation(req, res, TENANT_NOT_FOUND_MESSAGE, {
+              reason: "no-such-tenant",
+              resourceTenantId: String(resourceTenantId),
             });
           }
 
           const userTenantId = user.tenantId || (user.tenant && user.tenant.id);
           if (String(tenant.id) !== String(userTenantId)) {
-            return res.status(403).json({
-              success: false,
-              message: "Access denied: resource belongs to a different tenant",
+            return denyTenantIsolation(req, res, TENANT_NOT_FOUND_MESSAGE, {
+              reason: "cross-tenant",
+              resourceTenantId: String(resourceTenantId),
             });
           }
         } else {
@@ -117,20 +166,22 @@ exports.dynamicAccess = (menuGroup, permissionType, options = {}) => {
               attributes: ["tenantId"],
             });
 
+            // AZ-04: same status, same body, whether the owner does not
+            // exist or belongs to another tenant.
             if (!owner) {
-              return res.status(404).json({
-                success: false,
-                message: "Resource not found",
+              return denyTenantIsolation(req, res, RESOURCE_NOT_FOUND_MESSAGE, {
+                reason: "no-such-owner",
+                resourceOwnerId: String(resourceOwnerId),
               });
             }
 
             const userTenantId =
               user.tenantId || (user.tenant && user.tenant.id);
             if (String(owner.tenantId) !== String(userTenantId)) {
-              return res.status(403).json({
-                success: false,
-                message:
-                  "Access denied: resource belongs to a different tenant",
+              return denyTenantIsolation(req, res, RESOURCE_NOT_FOUND_MESSAGE, {
+                reason: "cross-tenant-owner",
+                resourceOwnerId: String(resourceOwnerId),
+                ownerTenantId: String(owner.tenantId),
               });
             }
           }
@@ -168,12 +219,24 @@ exports.dynamicAccess = (menuGroup, permissionType, options = {}) => {
           // which is still truthy).
           .flatMap((r) => /* istanbul ignore next */ r.deniedTypes || []);
 
-        return res.status(403).json({
-          success: false,
-          message: "Forbidden: Insufficient permissions",
-          required: deniedTypes.length > 0 ? deniedTypes : permTypes,
-          menuGroups,
-        });
+        // 403 is CORRECT here and must NOT be flattened to 404: this is a
+        // permission failure INSIDE the caller's own tenant and discloses
+        // nothing about any other tenant. What was denied goes to the log —
+        // the body keeps the house envelope ({ success, status, message,
+        // data }) instead of the ad-hoc `required` / `menuGroups` keys.
+        if (typeof logger !== "undefined") {
+          logger.warn("dynamicAccess: permission refusal", {
+            requestId: req.requestId || "unknown",
+            userId: user.id,
+            roleId: user.role.id,
+            required: deniedTypes.length > 0 ? deniedTypes : permTypes,
+            menuGroups,
+            method: req.method,
+            url: req.originalUrl,
+          });
+        }
+
+        return sendError(res, "Forbidden: Insufficient permissions", 403);
       }
 
       // A-03: this gate has read the key's scopes and allowed it, so the

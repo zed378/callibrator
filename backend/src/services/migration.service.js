@@ -59,6 +59,7 @@ const { seedMenuGroups } = require("../utils/seedMenuGroups.util");
 const {
   ROLE_NAMES,
   ROLE_IDS,
+  ROLE_LEVELS,
   PASSWORD_SALT_ROUNDS,
   ROLE_MENU_ASSIGNMENTS,
   MENU_SLUGS,
@@ -78,6 +79,7 @@ const { logger } = require("../middlewares/activityLog.middleware");
 const DEFAULT_ROLES = [
   {
     id: ROLE_IDS.SUPER_ADMIN,
+    roleLevel: ROLE_LEVELS.SUPER_ADMIN,
     name: "SUPERADMIN",
     description: "System Super Administrator",
     nameToShow: "Super Admin",
@@ -87,6 +89,7 @@ const DEFAULT_ROLES = [
   },
   {
     id: ROLE_IDS.HEALTCARE_ADMIN,
+    roleLevel: ROLE_LEVELS.HEALTCARE_ADMIN,
     name: "HEALTHCARE ADMIN",
     description: "Healthcare Administrator",
     nameToShow: "Admin Faskes",
@@ -96,6 +99,7 @@ const DEFAULT_ROLES = [
   },
   {
     id: ROLE_IDS.CALIBRATOR_ADMIN,
+    roleLevel: ROLE_LEVELS.CALIBRATOR_ADMIN,
     name: "CALIBRATOR ADMIN",
     description: "Calibrator Administrator",
     nameToShow: "Admin Kalibrator",
@@ -105,6 +109,7 @@ const DEFAULT_ROLES = [
   },
   {
     id: ROLE_IDS.USER,
+    roleLevel: ROLE_LEVELS.USER,
     name: "USER",
     description: "Authenticated User",
     nameToShow: "Normal User",
@@ -121,6 +126,7 @@ const DEFAULT_ROLES = [
 const APPLICATION_ROLES = [
   {
     id: ROLE_IDS.TECHNICIAN,
+    roleLevel: ROLE_LEVELS.TECHNICIAN,
     name: "TECHNICIAN",
     description: "Technician",
     nameToShow: "Teknisi",
@@ -130,6 +136,7 @@ const APPLICATION_ROLES = [
   },
   {
     id: ROLE_IDS.SUPERVISOR,
+    roleLevel: ROLE_LEVELS.SUPERVISOR,
     name: "SUPERVISOR",
     description: "Supervisor",
     nameToShow: "Penyelia",
@@ -139,6 +146,7 @@ const APPLICATION_ROLES = [
   },
   {
     id: ROLE_IDS.ENGINEERING_MANAGER,
+    roleLevel: ROLE_LEVELS.ENGINEERING_MANAGER,
     name: "ENGINEERING MANAGER",
     description: "Enginnering Manager",
     nameToShow: "Manajer Teknik",
@@ -148,6 +156,7 @@ const APPLICATION_ROLES = [
   },
   {
     id: ROLE_IDS.HEALTHCARE_TECHNICIAN,
+    roleLevel: ROLE_LEVELS.HEALTHCARE_TECHNICIAN,
     name: "HEALTHCARE TECHNICIAN",
     description: "Healthcare Technician",
     nameToShow: "Teknisi Faskes",
@@ -157,6 +166,7 @@ const APPLICATION_ROLES = [
   },
   {
     id: ROLE_IDS.FACILITY_MAINTENANCE,
+    roleLevel: ROLE_LEVELS.FACILITY_MAINTENANCE,
     name: "FACILITY MAINTENANCE",
     description: "Facility Maintainance",
     nameToShow: "IPSRS",
@@ -166,6 +176,7 @@ const APPLICATION_ROLES = [
   },
   {
     id: ROLE_IDS.WAREHOUSE_STAFF,
+    roleLevel: ROLE_LEVELS.WAREHOUSE_STAFF,
     name: "WAREHOUSE STAFF",
     description: "Warehouse Staff",
     nameToShow: "Gudang",
@@ -175,6 +186,7 @@ const APPLICATION_ROLES = [
   },
   {
     id: ROLE_IDS.ROOM_USER,
+    roleLevel: ROLE_LEVELS.ROOM_USER,
     name: "ROOM USER",
     description: "Room User",
     nameToShow: "User Ruangan",

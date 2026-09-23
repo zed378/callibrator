@@ -171,7 +171,11 @@ exports.loginUser = async (input) => {
       {
         model: Role,
         as: "role",
-        attributes: ["id", "name"],
+        // ADR-043: `roleLevel` is what rbac() compares against. The model is
+        // `underscored: true`, so the JS attribute is `roleLevel` and the
+        // column is `role_level`; projecting the snake_case name selects
+        // nothing. Omitting it leaves every rbac([TENANT_ADMIN]) gate reading 0.
+        attributes: ["id", "name", "roleLevel"],
         required: false,
       },
     ],
@@ -254,6 +258,7 @@ exports.loginUser = async (input) => {
     ? {
         id: dbUser.role.id,
         name: dbUser.role.name,
+        roleLevel: dbUser.role.roleLevel,
       }
     : null;
 
@@ -407,7 +412,8 @@ exports.verifyUserSession = async (userId, _session) => {
       {
         model: Role,
         as: "role",
-        attributes: ["id", "name"],
+        // ADR-043 — see loginUser. The reshaped literal below carries it too.
+        attributes: ["id", "name", "roleLevel"],
         required: false,
       },
     ],
@@ -432,7 +438,13 @@ exports.verifyUserSession = async (userId, _session) => {
       last_name: user.last_name,
       picture: user.picture,
       roleId: user.roleId,
-      role: user.role ? { id: user.role.id, name: user.role.name } : null,
+      role: user.role
+        ? {
+            id: user.role.id,
+            name: user.role.name,
+            roleLevel: user.role.roleLevel,
+          }
+        : null,
       tenantId: user.tenantId,
     },
   };
@@ -448,7 +460,10 @@ exports.getAuthUserWithTenant = async (userId) => {
       {
         model: Roles,
         as: "role",
-        attributes: ["id", "name", "description"],
+        // ADR-043 — this loader builds req.user on EVERY authenticated
+        // request (auth.middleware.js), so this is the projection that decides
+        // whether rbac() sees a level at all.
+        attributes: ["id", "name", "description", "roleLevel"],
         required: false,
       },
       {
@@ -623,7 +638,8 @@ exports.loginMfa = async (userId, tokenCode, inputIp, inputUserAgent) => {
       {
         model: Role,
         as: "role",
-        attributes: ["id", "name"],
+        // ADR-043 — see loginUser.
+        attributes: ["id", "name", "roleLevel"],
       },
     ],
   });
@@ -656,7 +672,13 @@ exports.loginMfa = async (userId, tokenCode, inputIp, inputUserAgent) => {
     expiredAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
   });
 
-  const role = dbUser.role ? { id: dbUser.role.id, name: dbUser.role.name } : null;
+  const role = dbUser.role
+    ? {
+        id: dbUser.role.id,
+        name: dbUser.role.name,
+        roleLevel: dbUser.role.roleLevel,
+      }
+    : null;
 
   return {
     success: true,

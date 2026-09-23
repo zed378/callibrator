@@ -1,5 +1,7 @@
 const tenantService = require("../services/tenant.service");
 const RolesService = require("../services/roles.service");
+const { logger } = require("./activityLog.middleware");
+const { error: sendError } = require("../utils/response.util");
 
 /**
  * Menu group that governs tenant administration (the "Tenants" node lives
@@ -7,6 +9,49 @@ const RolesService = require("../services/roles.service");
  * this menu in the role-permission matrix.
  */
 const TENANT_ADMIN_MENU = "management";
+
+/**
+ * AZ-04. The single status and message used for EVERY tenant-isolation
+ * refusal in this middleware.
+ *
+ * `CLAUDE.md`: "Cross-tenant returns 404, never 403. [...] Non-existent,
+ * soft-deleted and not-yours must be indistinguishable."
+ *
+ * This middleware used to answer 404 "Tenant not found" for an id that
+ * matched no tenant and 403 "Access denied: resource belongs to a different
+ * tenant" for one that matched somebody else. That pair is a tenant
+ * membership oracle: on the 50 routes that pass `checkTenant: true` a caller
+ * could enumerate tenant ids and learn which exist. Both branches now go
+ * through `denyTenantIsolation` below, so there is exactly ONE place that can
+ * produce the body and the two cases cannot drift apart.
+ */
+const TENANT_REFUSAL_STATUS = 404;
+const TENANT_REFUSAL_MESSAGE = "Tenant not found";
+
+/**
+ * Refuse a tenant-isolation failure without telling the caller which kind it
+ * was. The reason goes to the log, keyed by request id (the same key the
+ * global error handler and the activity logger use); the response carries
+ * nothing that separates "no such tenant" from "not your tenant".
+ *
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ * @param {string} reason - log-only discriminator ("no-such-tenant" | "cross-tenant")
+ * @param {string} resourceTenantId - the id the caller asked for
+ */
+const denyTenantIsolation = (req, res, reason, resourceTenantId) => {
+  logger.warn("abac: tenant isolation refusal", {
+    requestId: req.requestId || "unknown",
+    reason,
+    resourceTenantId: String(resourceTenantId),
+    callerTenantId: req.user ? req.user.tenantId : undefined,
+    userId: req.user ? req.user.id : undefined,
+    method: req.method,
+    url: req.originalUrl,
+  });
+
+  return sendError(res, TENANT_REFUSAL_MESSAGE, TENANT_REFUSAL_STATUS);
+};
 
 /**
  * Map ABAC permission strings (e.g. "tenant:read", "tenant:update") to the
@@ -47,10 +92,7 @@ exports.abac = (permissions, options = {}) => {
       const user = req.user;
 
       if (!user || !user.role) {
-        return res.status(401).json({
-          success: false,
-          message: "Unauthorized: No user context found",
-        });
+        return sendError(res, "Unauthorized: No user context found", 401);
       }
 
       // SUPER_ADMIN bypass — has all permissions
@@ -69,21 +111,27 @@ exports.abac = (permissions, options = {}) => {
           req.params?.tenantId || req.body?.tenantId || req.query?.tenantId;
 
         if (resourceTenantId) {
-          const tenant = await tenantService.getTenantByIdForMiddleware(resourceTenantId);
+          const tenant =
+            await tenantService.getTenantByIdForMiddleware(resourceTenantId);
 
+          // AZ-04: "does not exist" and "belongs to someone else" answer with
+          // the same status and the same body. Only the log says which.
           if (!tenant) {
-            return res.status(404).json({
-              success: false,
-              message: "Tenant not found",
-            });
+            return denyTenantIsolation(
+              req,
+              res,
+              "no-such-tenant",
+              resourceTenantId,
+            );
           }
 
           if (String(tenant.id) !== String(user.tenantId)) {
-            return res.status(403).json({
-              success: false,
-              message:
-                "Access denied: resource belongs to a different tenant",
-            });
+            return denyTenantIsolation(
+              req,
+              res,
+              "cross-tenant",
+              resourceTenantId,
+            );
           }
         }
       }
@@ -123,11 +171,21 @@ exports.abac = (permissions, options = {}) => {
         (requiredAction === "read" && menuPerms.includes("write"));
 
       if (!hasPermission) {
-        return res.status(403).json({
-          success: false,
-          message: "Forbidden: Insufficient permissions",
-          required: permissions,
+        // 403 is CORRECT here and must NOT be flattened to 404: this is a
+        // permission failure INSIDE the caller's own tenant, and it discloses
+        // nothing about any other tenant. The required capability goes to the
+        // log rather than into the body, so the response keeps the house
+        // envelope ({ success, status, message, data }).
+        logger.warn("abac: permission refusal", {
+          requestId: req.requestId || "unknown",
+          required: Array.isArray(permissions) ? permissions : [permissions],
+          requiredAction,
+          userId: user.id,
+          roleId: user.role.id,
+          method: req.method,
+          url: req.originalUrl,
         });
+        return sendError(res, "Forbidden: Insufficient permissions", 403);
       }
 
       // Attach context to request
@@ -139,10 +197,11 @@ exports.abac = (permissions, options = {}) => {
 
       next();
     } catch (error) {
-      return res.status(500).json({
-        success: false,
-        message: error.message || "Internal Server Error",
-      });
+      // A-13: do not hand-roll a 500 carrying `error.message`. Hand the error
+      // to the global error handler (index.js -> errorHandlers.middleware),
+      // which logs it against the request id and sanitizes the message in
+      // production — the same path every wrapped controller takes.
+      return next(error);
     }
   };
 };

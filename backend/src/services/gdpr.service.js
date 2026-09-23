@@ -766,7 +766,9 @@ exports.enforceDataRetention = async () => {
  *
  * Deletes rows of the policy's entity type older than its retention window for
  * the policy's tenant, honoring an active legal hold. Entity types with no known
- * backing model are logged and skipped (return 0) rather than throwing.
+ * backing model are logged and skipped (return 0) rather than throwing, and so
+ * is a policy with no tenant — the delete only ever runs with an explicit tenant
+ * predicate (D-03).
  */
 async function purgeExpiredData(policy) {
   const models = require("../models");
@@ -774,18 +776,20 @@ async function purgeExpiredData(policy) {
   const dataRetention = require("./dataRetention.service");
 
   // Map a policy's entityType (either the snake_case retention key or the model
-  // name) to its Sequelize model.
+  // name) to its Sequelize model and to the attribute that model names its
+  // tenant key with. Session declares snake_case attributes, so `tenantId` on it
+  // throws `column "tenantId" does not exist` (CLAUDE.md, The Traps).
   const ENTITY_MODEL = {
-    audit_logs: models.AuditLog,
-    AuditLog: models.AuditLog,
-    notifications: models.Notification,
-    Notification: models.Notification,
-    sessions: models.Session,
-    Session: models.Session,
+    audit_logs: { model: models.AuditLog, tenantKey: "tenantId" },
+    AuditLog: { model: models.AuditLog, tenantKey: "tenantId" },
+    notifications: { model: models.Notification, tenantKey: "tenantId" },
+    Notification: { model: models.Notification, tenantKey: "tenantId" },
+    sessions: { model: models.Session, tenantKey: "tenant_id" },
+    Session: { model: models.Session, tenantKey: "tenant_id" },
   };
 
-  const model = ENTITY_MODEL[policy.entityType];
-  if (!model) {
+  const entity = ENTITY_MODEL[policy.entityType];
+  if (!entity) {
     logger.debug("No purge handler for entity type; skipping", {
       policyId: policy.id,
       entityType: policy.entityType,
@@ -793,8 +797,24 @@ async function purgeExpiredData(policy) {
     return 0;
   }
 
+  // D-03: `data_retention_policies.tenantId` is nullable — "null = global
+  // default policy". Nothing else would confine such a policy: this runs from a
+  // scheduler, with no AsyncLocalStorage context, and tenantScope resolves that
+  // to { mode: "skip" }, adding no predicate. A global policy naming AuditLog
+  // would therefore hard-delete EVERY tenant's audit rows from one row of
+  // configuration. The purge never runs without an explicit tenant predicate;
+  // whether a platform-wide policy should exist at all is an open question for
+  // the owner (TASKS/BACKLOG.md), not something to infer here.
+  if (!policy.tenantId) {
+    logger.warn("Purge skipped: retention policy has no tenant", {
+      policyId: policy.id,
+      entityType: policy.entityType,
+    });
+    return 0;
+  }
+
   // Never purge a tenant under legal hold.
-  if (policy.tenantId && (await dataRetention.isOnLegalHold(policy.tenantId))) {
+  if (await dataRetention.isOnLegalHold(policy.tenantId)) {
     logger.info("Purge skipped: legal hold active", {
       tenantId: policy.tenantId,
       entityType: policy.entityType,
@@ -805,12 +825,12 @@ async function purgeExpiredData(policy) {
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - (policy.retentionDays || 0));
 
-  const where = { createdAt: { [Op.lt]: cutoff } };
-  if (policy.tenantId) {
-    where.tenantId = policy.tenantId;
-  }
+  const where = {
+    createdAt: { [Op.lt]: cutoff },
+    [entity.tenantKey]: policy.tenantId,
+  };
 
-  const deleted = await model.destroy({ where });
+  const deleted = await entity.model.destroy({ where });
 
   logger.info("Purged expired data", {
     policyId: policy.id,

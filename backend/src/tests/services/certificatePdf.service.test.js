@@ -29,6 +29,7 @@ jest.mock("fs", () => ({
   mkdirSync: jest.fn(),
   writeFileSync: jest.fn(),
   existsSync: jest.fn().mockReturnValue(false),
+  unlinkSync: jest.fn(),
 }));
 
 jest.mock("../../utils/storagePath.util", () => (...parts) => `C:/uploads/${parts.join("/")}`);
@@ -78,6 +79,7 @@ const {
 } = require("../../services/certificatePdf.service");
 
 const puppeteer = require("puppeteer");
+const { logger } = require("../../middlewares/activityLog.middleware");
 
 describe("certificatePdf.service", () => {
   const ORIGINAL_ENV = { ...process.env };
@@ -89,6 +91,7 @@ describe("certificatePdf.service", () => {
     Certificate.findOne.mockReset();
     fs.existsSync.mockReset();
     fs.existsSync.mockReturnValue(false);
+    fs.unlinkSync.mockReset();
     delete process.env.CERT_VERIFY_BASE_URL;
     delete process.env.PUPPETEER_EXECUTABLE_PATH;
   });
@@ -201,10 +204,13 @@ describe("certificatePdf.service", () => {
       expect(Certificate.findOne).toHaveBeenCalledWith(
         expect.objectContaining({ where: { id: "c-1" } }),
       );
+      // A null certificate number used to become "null.pdf". The file name is
+      // now random and owes nothing to the number.
       expect(fs.writeFileSync).toHaveBeenCalledWith(
-        path.join("C:/uploads/uploads/certificates", "null.pdf"),
+        expect.stringContaining(path.join("C:/uploads/uploads/certificates", "")),
         expect.any(Buffer),
       );
+      expect(fs.writeFileSync.mock.calls[0][0]).not.toContain("null.pdf");
     });
 
     it("should fall back to the neutral status colour for an unrecognised status", async () => {
@@ -247,10 +253,7 @@ describe("certificatePdf.service", () => {
       const result = await generateCertificatePdf("t-1", "c-1");
 
       expect(result.success).toBe(true);
-      expect(fs.writeFileSync).toHaveBeenCalledWith(
-        path.join("C:/uploads/uploads/certificates", "CERT-SIGNED.pdf"),
-        expect.any(Buffer),
-      );
+      expect(fs.writeFileSync.mock.calls[0][0]).not.toContain("CERT-SIGNED");
     });
 
     it("should render a revoked certificate", async () => {
@@ -268,7 +271,7 @@ describe("certificatePdf.service", () => {
       expect(result.success).toBe(true);
     });
 
-    it("should sanitise the certificate number when building the file name", async () => {
+    it("should not let the certificate number influence the file name at all", async () => {
       const mockCert = {
         id: "c-1",
         certificateNumber: "../../etc/passwd",
@@ -279,7 +282,10 @@ describe("certificatePdf.service", () => {
 
       const result = await generateCertificatePdf("t-1", "c-1");
 
-      expect(result.data.filePath).toBe("/uploads/certificates/.._.._etc_passwd.pdf");
+      // Sanitising the number was never enough: the sanitised form was still a
+      // counter. The name is now random, so traversal is not even expressible.
+      expect(result.data.filePath).not.toContain("passwd");
+      expect(result.data.filePath).not.toContain("..");
       expect(fs.writeFileSync.mock.calls[0][0]).not.toContain("/etc/passwd");
     });
 
@@ -586,6 +592,242 @@ describe("certificatePdf.service", () => {
       const result = await verifyByCertificateNumber("CERT-007", { baseUrl: "https://x.test" });
 
       expect(result.data.verifyUrl).toBe("https://x.test/api/v1/certificates/verify/CERT-007");
+    });
+  });
+
+  // ================================================================
+  // ADR-042 step 1 — S-01: the file name is not the certificate number
+  // ================================================================
+  describe("PDF file naming (ADR-042 step 1 / S-01)", () => {
+    const CERT_DIR = "C:/uploads/uploads/certificates";
+    const UUID_RE = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+    const RANDOM_NAME = new RegExp(`^\\d+-\\d+-${UUID_RE}\\.pdf$`);
+
+    const certFixture = (over = {}) => ({
+      id: "c-1",
+      certificateNumber: "CERT-20260923-ACME-0001",
+      tenantId: "t-1",
+      status: "signed",
+      tenant: { name: "Acme" },
+      update: jest.fn().mockResolvedValue({}),
+      ...over,
+    });
+
+    it("writes the PDF under a random, unguessable name, not the certificate number", async () => {
+      const mockCert = certFixture();
+      Certificate.findOne.mockResolvedValueOnce(mockCert);
+
+      const result = await generateCertificatePdf("t-1", "c-1");
+
+      const written = fs.writeFileSync.mock.calls[0][0];
+      const fileName = path.basename(written);
+      expect(fileName).toMatch(RANDOM_NAME);
+      expect(fileName).not.toContain("CERT-20260923-ACME-0001");
+      expect(fileName).not.toContain("CERT");
+      expect(result.data.filePath).toBe(`/uploads/certificates/${fileName}`);
+      expect(mockCert.update).toHaveBeenCalledWith({
+        filePath: result.data.filePath,
+        fileSize: expect.any(Number),
+      });
+    });
+
+    it("gives two certificates issued in sequence unrelated file names", async () => {
+      // The certificate numbers differ by one. The file names must not.
+      const first = certFixture({ certificateNumber: "CERT-20260923-ACME-0001" });
+      const second = certFixture({ id: "c-2", certificateNumber: "CERT-20260923-ACME-0002" });
+
+      Certificate.findOne.mockResolvedValueOnce(first);
+      const r1 = await generateCertificatePdf("t-1", "c-1");
+      Certificate.findOne.mockResolvedValueOnce(second);
+      const r2 = await generateCertificatePdf("t-1", "c-2");
+
+      const n1 = path.basename(r1.data.filePath);
+      const n2 = path.basename(r2.data.filePath);
+
+      expect(n1).toMatch(RANDOM_NAME);
+      expect(n2).toMatch(RANDOM_NAME);
+      expect(n1).not.toBe(n2);
+      // Not derivable: neither name carries the number, its sanitised form, or
+      // the per-tenant prefix a walker would enumerate from.
+      for (const n of [n1, n2]) {
+        expect(n).not.toContain("CERT-20260923-ACME-0001");
+        expect(n).not.toContain("CERT-20260923-ACME-0002");
+        expect(n).not.toContain("CERT_20260923_ACME_0001");
+        expect(n).not.toContain("ACME");
+      }
+      // The unguessable segment really differs between the two — not just the
+      // timestamp prefix, which two certificates issued in the same millisecond
+      // would share.
+      const uuidOf = (n) => n.match(new RegExp(UUID_RE))[0];
+      expect(uuidOf(n1)).not.toBe(uuidOf(n2));
+    });
+
+    it("unlinks the superseded file when a certificate is regenerated", async () => {
+      const mockCert = certFixture({ filePath: "/uploads/certificates/old-random-name.pdf" });
+      Certificate.findOne.mockResolvedValueOnce(mockCert);
+
+      const result = await generateCertificatePdf("t-1", "c-1");
+
+      expect(fs.unlinkSync).toHaveBeenCalledWith(
+        path.join(CERT_DIR, "old-random-name.pdf"),
+      );
+      // The new name differs, so the old URL 404s instead of serving a
+      // superseded document from the unauthenticated mount forever.
+      expect(result.data.filePath).not.toContain("old-random-name");
+      // Unlinked only after the row points at the new file.
+      expect(mockCert.update.mock.invocationCallOrder[0]).toBeLessThan(
+        fs.unlinkSync.mock.invocationCallOrder[0],
+      );
+    });
+
+    it("does not unlink anything when the certificate had no previous file", async () => {
+      Certificate.findOne.mockResolvedValueOnce(certFixture({ filePath: null }));
+
+      await generateCertificatePdf("t-1", "c-1");
+
+      expect(fs.unlinkSync).not.toHaveBeenCalled();
+    });
+
+    it("still succeeds when the superseded file is already gone", async () => {
+      fs.unlinkSync.mockImplementationOnce(() => {
+        const err = new Error("ENOENT: no such file or directory");
+        err.code = "ENOENT";
+        throw err;
+      });
+      Certificate.findOne.mockResolvedValueOnce(
+        certFixture({ filePath: "/uploads/certificates/already-gone.pdf" }),
+      );
+
+      const result = await generateCertificatePdf("t-1", "c-1");
+
+      expect(result.success).toBe(true);
+      expect(logger.warn).toHaveBeenCalledWith(
+        "Superseded certificate PDF could not be removed",
+        expect.objectContaining({ certificateId: "c-1" }),
+      );
+    });
+
+    it("confines the unlink to the certificates directory", async () => {
+      Certificate.findOne.mockResolvedValueOnce(
+        certFixture({ filePath: "/uploads/certificates/../../../etc/passwd" }),
+      );
+
+      await generateCertificatePdf("t-1", "c-1");
+
+      expect(fs.unlinkSync).toHaveBeenCalledWith(path.join(CERT_DIR, "passwd"));
+    });
+
+    it("keeps the download name readable while the file on disk stays random", async () => {
+      // res.download(absPath, fileName): the disk path is the random one, the
+      // saved-as name is still the certificate number.
+      fs.existsSync.mockReturnValueOnce(true);
+      Certificate.findOne.mockResolvedValueOnce({
+        id: "c-1",
+        certificateNumber: "CERT-20260923-ACME-0001",
+        filePath:
+          "/uploads/certificates/1758600000000-4242-11111111-2222-3333-4444-555555555555.pdf",
+        fileSize: 4096,
+      });
+
+      const result = await getOrCreatePdf("t-1", "c-1");
+
+      expect(result.data.fileName).toBe("CERT-20260923-ACME-0001.pdf");
+      expect(result.data.absPath).toContain("1758600000000-4242-");
+      expect(result.data.absPath).not.toContain("CERT-20260923");
+    });
+  });
+
+  // ================================================================
+  // ADR-042 step 2 — A-57: the public endpoint does not publish an
+  // unissued or revoked document
+  // ================================================================
+  describe("verifyByCertificateNumber documentUrl gate (ADR-042 step 2 / A-57)", () => {
+    const withFile = (over) => ({
+      id: "c-1",
+      certificateNumber: "CERT-20260923-ACME-0001",
+      type: "calibration",
+      tenant: { name: "Acme" },
+      filePath:
+        "/uploads/certificates/1758600000000-4242-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.pdf",
+      ...over,
+    });
+
+    it("does not publish the document of a draft certificate", async () => {
+      Certificate.findOne.mockResolvedValueOnce(withFile({ status: "draft" }));
+
+      const result = await verifyByCertificateNumber("CERT-20260923-ACME-0001");
+
+      expect(result.data.found).toBe(true);
+      expect(result.data.valid).toBe(false);
+      expect(result.data.status).toBe("draft");
+      expect(result.data.documentUrl).toBeNull();
+    });
+
+    it("does not publish the document of a certificate awaiting approval", async () => {
+      Certificate.findOne.mockResolvedValueOnce(withFile({ status: "pending_approval" }));
+
+      const result = await verifyByCertificateNumber("CERT-20260923-ACME-0001");
+
+      expect(result.data.documentUrl).toBeNull();
+    });
+
+    it("publishes a working API-relative path for an issued certificate", async () => {
+      const cert = withFile({ status: "signed", validUntil: new Date("2099-01-01") });
+      Certificate.findOne.mockResolvedValueOnce(cert);
+
+      const result = await verifyByCertificateNumber("CERT-20260923-ACME-0001");
+
+      expect(result.data.valid).toBe(true);
+      expect(result.data.documentUrl).toBe(cert.filePath);
+      // API-origin-relative: the verify page renders `${API_BASE_URL}${documentUrl}`.
+      expect(result.data.documentUrl.startsWith("/uploads/certificates/")).toBe(true);
+    });
+
+    it("does not publish the document of a revoked certificate", async () => {
+      // DECISION (ADR-042 step 2): revoked returns null. The reasoning is on the
+      // gate in certificatePdf.service.js.
+      Certificate.findOne.mockResolvedValueOnce(withFile({ status: "revoked" }));
+
+      const result = await verifyByCertificateNumber("CERT-20260923-ACME-0001");
+
+      expect(result.data.revoked).toBe(true);
+      expect(result.data.status).toBe("revoked");
+      expect(result.data.documentUrl).toBeNull();
+    });
+
+    it("still publishes the document of an expired but properly issued certificate", async () => {
+      // Expiry is not un-issuance: the document was signed and is real history.
+      const cert = withFile({ status: "signed", validUntil: new Date("2020-01-01") });
+      Certificate.findOne.mockResolvedValueOnce(cert);
+
+      const result = await verifyByCertificateNumber("CERT-20260923-ACME-0001");
+
+      expect(result.data.expired).toBe(true);
+      expect(result.data.valid).toBe(false);
+      expect(result.data.documentUrl).toBe(cert.filePath);
+    });
+
+    it("returns null rather than undefined when an issued certificate has no file yet", async () => {
+      Certificate.findOne.mockResolvedValueOnce(withFile({ status: "signed", filePath: null }));
+
+      const result = await verifyByCertificateNumber("CERT-20260923-ACME-0001");
+
+      expect(result.data.documentUrl).toBeNull();
+    });
+
+    it("adds no new distinguisher between a nonexistent and an unissued certificate", async () => {
+      Certificate.findOne.mockResolvedValueOnce(null);
+      const missing = await verifyByCertificateNumber("CERT-20260923-ACME-9999");
+      Certificate.findOne.mockResolvedValueOnce(withFile({ status: "draft" }));
+      const unissued = await verifyByCertificateNumber("CERT-20260923-ACME-0001");
+
+      // Both withhold the document, so the gate introduces no oracle of its own.
+      // (The pre-existing disclosure of tenant/device/date fields for a found
+      // certificate is wider than this and is untouched here — see the report.)
+      expect(missing.data.documentUrl ?? null).toBeNull();
+      expect(unissued.data.documentUrl).toBeNull();
+      expect(missing.data.found).toBe(false);
+      expect(unissued.data.found).toBe(true);
     });
   });
 });
