@@ -40,7 +40,7 @@ Task ids are `A-nn`. They are referenced from [`PHASE-9-TYPESCRIPT-MIGRATION.md`
 | A-18 | dead code and unused dependencies | low | 2 | TODO |
 | A-19 | no secret scanner, no hook, no gate of any kind | medium | 2 | TODO |
 | A-20 | the `automate/` Playwright suite is not in the repository | medium | 2 | TODO |
-| A-21 | no lockfile is committed | medium | 2 | TODO |
+| A-21 | no lockfile is committed | medium | 2 | **DONE** 2026-09-23 (ADR-044) |
 | A-22 | one React Compiler lint error in `GlobalSearch.tsx` | low | 2 | TODO |
 | A-23 | search runs one query per type, sequentially, and logs a warning per call | low | 2 | TODO |
 | A-24 | every `redis.service` helper was a no-op: **registration, passkeys and the OIDC provider broken** | **high** | — | **DONE** 2026-09-21 |
@@ -1022,6 +1022,30 @@ so a caller can tell; a duplicate email is recoverable, a silently dropped one i
 
 **Evidence:** `.gitignore` excludes `pnpm-lock.yaml`, `package-lock.json` and `bun.lock` (BACKLOG W-11). Every build resolves dependencies fresh.
 **Definition of Done:** one package manager chosen; its lockfile committed; images install with the frozen-lockfile flag.
+
+**What was changed (2026-09-23)**
+
+`package-lock.json` is committed, `make install` is now `npm ci`, and every `Makefile` target uses
+one package manager instead of two. `pnpm-lock.yaml`, `bun.lock` and nested workspace lockfiles
+stay ignored — a lockfile inside `backend/` produces a different tree from the hoisted root one,
+and a stale one dated 2026-07-28 was sitting there.
+
+**npm was chosen on evidence rather than preference:** the committed tree is the one **6,128 tests
+and the lint gate are actually proven against**. Nothing in this repository has ever been verified
+under pnpm's non-hoisted layout, and this is a codebase with a packaged binary build, Puppeteer and
+native dependencies — the set most sensitive to it. The pnpm question is not closed, it is
+sequenced: it belongs with P7-01, where CI can prove it.
+
+**This finding had already cost a gate.** A-34 — ESLint crashing before it linted a file — was a
+floating-tree defect: the backend asked for `eslint ^10`, the root pinned `9.22.0`, and hoisting
+produced a combination where the recommended config enabled a rule the installed core did not have.
+That is what "no lockfile" costs, and it is why this is a Phase 0 card rather than a Wave 2 one.
+
+**Still open, deliberately:** `pnpm-workspace.yaml` remains and now contradicts ADR-044. Removing it
+is a one-line change that reviews better on its own — Open Question in `BACKLOG.md`.
+
+
+---
 
 ### A-22 — React Compiler error in `GlobalSearch.tsx`
 

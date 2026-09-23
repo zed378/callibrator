@@ -105,8 +105,8 @@ secrets: ## Generate the four required secrets
 	@echo ""
 
 .PHONY: install
-install: ## Install workspace dependencies
-	pnpm install
+install: ## Install workspace dependencies (npm — ADR-044; the lockfile in git is package-lock.json)
+	npm ci
 
 # =============================================================================
 ## Development
@@ -220,18 +220,18 @@ backup: ## Dump the database to ./backups
 
 .PHONY: lint
 lint: ## Lint both workspaces
-	pnpm lint
+	npm run lint
 
 .PHONY: typecheck
-typecheck: ## Type-check (frontend only — the backend is JavaScript, ADR-030)
-	pnpm typecheck
+typecheck: ## Type-check (frontend only today — the backend has no tsconfig yet, ADR-038/P9-01a)
+	npm run typecheck
 
 .PHONY: test
 test: ## Unit and integration tests
-	pnpm test
+	npm test
 
 .PHONY: test-e2e
-test-e2e: ## 51 live E2E specs against a RUNNING server
+test-e2e: ## 53 live E2E specs against a RUNNING server
 	@echo -e "$(C_WARN)Two rules for this suite:$(C_OFF)"
 	@echo -e "$(C_DIM)  1. Never suspend the default tenant — it suspends the super-admin living in$(C_OFF)"
 	@echo -e "$(C_DIM)     it and 403s every later request. Create a disposable tenant.$(C_OFF)"
@@ -249,7 +249,7 @@ test-browser: ## Playwright browser suite
 
 .PHONY: build
 build: ## Build both workspaces
-	pnpm build
+	npm run build
 
 .PHONY: verify
 verify: lint typecheck test build ## The full gate (run by hand; nothing runs it automatically)
@@ -405,10 +405,10 @@ postdeploy: ## Post-deployment verification
 
 .PHONY: clean
 clean: ## Remove build artefacts and node_modules
-	pnpm clean || true
+	npm run clean || true
 	rm -rf backend/dist frontend/.next frontend/dist
 	find . -name node_modules -type d -prune -exec rm -rf {} + 2>/dev/null || true
 
 .PHONY: format
 format: ## Format the workspace
-	pnpm format
+	npm run format

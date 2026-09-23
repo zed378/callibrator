@@ -2,9 +2,18 @@
 
 # Dependencies
 node_modules/
+
+# Lockfiles: package-lock.json IS committed (A-21, ADR-044). It is the tree the
+# test suite and the lint gate are actually proven against. The other two are
+# ignored deliberately — three lockfiles is three answers to one question, and
+# the ESLint 9-vs-10 hoist that made `make verify` impossible (A-34) is what a
+# floating tree costs.
 pnpm-lock.yaml
-package-lock.json
 bun.lock
+# A nested lockfile in a workspace silently produces a different tree than the
+# hoisted root one. That is how A-34 happened.
+backend/package-lock.json
+frontend/package-lock.json
 
 # Build outputs
 dist/
