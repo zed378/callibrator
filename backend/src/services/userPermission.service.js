@@ -196,8 +196,18 @@ exports.removeUserPermission = async (userId, menuGroupId) => {
 
 /**
  * Cached override matrix for request-time checks:
- *   { [menuName]: "read" | "write" | "none" }
+ *   { [menuName]: "read" | "write" | "none", [menuSlug]: same }
  * Used by the dynamicAccess middleware.
+ *
+ * A-35. This used to be keyed by menu NAME only — `matrix[p.menu.name]`, e.g.
+ * "Warehouse" — while `dynamicAccess` looks the override up by whatever the
+ * route passed, which is always a lowercase SLUG ("warehouse"). The lookup
+ * therefore never matched and every per-user override silently did nothing,
+ * including a `none` override, which is a REVOCATION: an administrator who
+ * revoked a user's access to a menu was told it worked, and it did not.
+ *
+ * roles.service.js#getRolePermissionsMatrix already indexes by both name and
+ * slug; this now does the same, so either key resolves.
  */
 exports.getUserOverrideMatrix = async (userId) => {
   const cacheKey = cacheKeys.userPermissions(userId);
@@ -208,13 +218,16 @@ exports.getUserOverrideMatrix = async (userId) => {
 
   const overrides = await UserMenuPermission.findAll({
     where: { userId },
-    include: [{ model: MenuGroup, as: "menu", attributes: ["name"] }],
+    include: [{ model: MenuGroup, as: "menu", attributes: ["name", "slug"] }],
   });
 
   const matrix = {};
   for (const p of overrides) {
     if (p.menu?.name) {
       matrix[p.menu.name] = p.permissionType;
+    }
+    if (p.menu?.slug) {
+      matrix[p.menu.slug] = p.permissionType;
     }
   }
 

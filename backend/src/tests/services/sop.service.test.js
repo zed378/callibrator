@@ -1,5 +1,3 @@
-const { AppError } = require("../../utils/appError.util");
-
 const mockSopDocument = {
   count: jest.fn(),
   create: jest.fn(),
@@ -16,13 +14,24 @@ const mockUser = {
   findAll: jest.fn(),
 };
 
+const mockAuditLog = {
+  create: jest.fn(),
+};
+
 const mockModels = {
   SopDocument: mockSopDocument,
   SopTrainingAcknowledgment: mockSopTrainingAcknowledgment,
   User: mockUser,
+  AuditLog: mockAuditLog,
 };
 
 jest.mock("../../models", () => mockModels);
+
+// A-28: the release, its training fan-out and its audit row share one
+// transaction. The sentinel handle lets the assertions prove all three carry it.
+jest.mock("../../config", () => ({
+  db: { transaction: jest.fn(async (cb) => cb("TX")) },
+}));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: {
     info: jest.fn(),
@@ -161,9 +170,15 @@ describe("sop.service", () => {
   });
 
   describe("publishDocument", () => {
+    const AUTHOR = "user-author";
+    const PUBLISHER = "user-publisher";
+
     it("should publish SOP and create bulk training acknowledgments if required", async () => {
       const mockDoc = {
         id: "sop-1",
+        documentNumber: "SOP-0001",
+        version: "1.0",
+        authorId: AUTHOR,
         requiresTraining: true,
         status: "DRAFT",
         save: jest.fn().mockResolvedValue(true),
@@ -174,37 +189,58 @@ describe("sop.service", () => {
         { id: "user-2" },
       ]);
 
-      const result = await sopService.publishDocument("tenant-1", "sop-1");
+      const result = await sopService.publishDocument("tenant-1", "sop-1", PUBLISHER);
 
       expect(mockSopDocument.findOne).toHaveBeenCalledWith({
         where: { id: "sop-1", tenantId: "tenant-1" },
       });
       expect(mockDoc.status).toBe("PUBLISHED");
       expect(mockDoc.publishedDate).toBeDefined();
-      expect(mockDoc.save).toHaveBeenCalled();
+      expect(mockDoc.save).toHaveBeenCalledWith({ transaction: "TX" });
       expect(mockUser.findAll).toHaveBeenCalledWith({
         where: { tenantId: "tenant-1" },
+        transaction: "TX",
       });
-      expect(mockSopTrainingAcknowledgment.bulkCreate).toHaveBeenCalledWith([
-        { tenantId: "tenant-1", documentId: "sop-1", userId: "user-1", status: "PENDING" },
-        { tenantId: "tenant-1", documentId: "sop-1", userId: "user-2", status: "PENDING" },
-      ]);
+      expect(mockSopTrainingAcknowledgment.bulkCreate).toHaveBeenCalledWith(
+        [
+          { tenantId: "tenant-1", documentId: "sop-1", userId: "user-1", status: "PENDING" },
+          { tenantId: "tenant-1", documentId: "sop-1", userId: "user-2", status: "PENDING" },
+        ],
+        { transaction: "TX" },
+      );
+      // The release is attributable: who published, and who had authored it.
+      expect(mockAuditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: "tenant-1",
+          userId: PUBLISHER,
+          action: "APPROVE",
+          resourceType: "SopDocument",
+          resourceId: "sop-1",
+          changes: expect.objectContaining({
+            before: { status: "DRAFT" },
+            authorId: AUTHOR,
+          }),
+        }),
+        { transaction: "TX" },
+      );
       expect(result.id).toBe("sop-1");
     });
 
     it("should publish without assigning training when it is not required", async () => {
       const mockDoc = {
         id: "sop-9",
+        documentNumber: "SOP-0009",
+        authorId: AUTHOR,
         requiresTraining: false,
-        status: "DRAFT",
+        status: "UNDER_REVIEW",
         save: jest.fn().mockResolvedValue(true),
       };
       mockSopDocument.findOne.mockResolvedValue(mockDoc);
 
-      const result = await sopService.publishDocument("tenant-1", "sop-9");
+      const result = await sopService.publishDocument("tenant-1", "sop-9", PUBLISHER);
 
       expect(mockDoc.status).toBe("PUBLISHED");
-      expect(mockDoc.save).toHaveBeenCalled();
+      expect(mockDoc.save).toHaveBeenCalledWith({ transaction: "TX" });
       // No fan-out when the document needs no training.
       expect(mockUser.findAll).not.toHaveBeenCalled();
       expect(mockSopTrainingAcknowledgment.bulkCreate).not.toHaveBeenCalled();
@@ -215,9 +251,59 @@ describe("sop.service", () => {
       mockSopDocument.findOne.mockResolvedValue(null);
 
       await expect(
-        sopService.publishDocument("tenant-1", "sop-1"),
+        sopService.publishDocument("tenant-1", "sop-1", PUBLISHER),
       ).rejects.toThrow("Document not found");
     });
+
+    // ---- A-28: separation of duties ----
+    it("refuses with 409 when the publisher is the author, and changes nothing", async () => {
+      const mockDoc = {
+        id: "sop-2",
+        documentNumber: "SOP-0002",
+        authorId: AUTHOR,
+        requiresTraining: true,
+        status: "DRAFT",
+        save: jest.fn(),
+      };
+      mockSopDocument.findOne.mockResolvedValue(mockDoc);
+
+      await expect(
+        sopService.publishDocument("tenant-1", "sop-2", AUTHOR),
+      ).rejects.toMatchObject({
+        status: 409,
+        message: expect.stringContaining("SOP-0002 was authored by you"),
+      });
+
+      expect(mockDoc.status).toBe("DRAFT");
+      expect(mockDoc.save).not.toHaveBeenCalled();
+      expect(mockSopTrainingAcknowledgment.bulkCreate).not.toHaveBeenCalled();
+      expect(mockAuditLog.create).not.toHaveBeenCalled();
+    });
+
+    it.each(["PUBLISHED", "ARCHIVED"])(
+      "refuses with a 409 state explanation when the SOP is already %s",
+      async (status) => {
+        const mockDoc = {
+          id: "sop-3",
+          documentNumber: "SOP-0003",
+          authorId: AUTHOR,
+          requiresTraining: true,
+          status,
+          save: jest.fn(),
+        };
+        mockSopDocument.findOne.mockResolvedValue(mockDoc);
+
+        await expect(
+          sopService.publishDocument("tenant-1", "sop-3", PUBLISHER),
+        ).rejects.toMatchObject({
+          status: 409,
+          message: expect.stringContaining(`SOP-0003 is ${status} and cannot be published`),
+        });
+
+        expect(mockDoc.save).not.toHaveBeenCalled();
+        expect(mockAuditLog.create).not.toHaveBeenCalled();
+      },
+    );
   });
 
   describe("acknowledgeTraining", () => {

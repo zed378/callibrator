@@ -109,13 +109,13 @@ proxy_set_header X-Forwarded-Proto $scheme;
 
 | Consumer | Uses it for |
 |---|---|
-| `sessions.ip_address` | session binding |
+| `sessions.ip_address` | forensics — where a session was used from. **Not** binding: it is recorded and never compared (corrected 2026-09-23) |
 | `audit_logs.ipAddress` | attribution |
 | `e_signature_records.ipAddress` | **21 CFR Part 11 evidence** |
 | `consent_records.ipAddress` | GDPR |
 | Rate limiters | per-source counting |
 
-**Without it every request appears to come from the proxy.** Session binding becomes meaningless, per-source rate limiting collapses into one bucket, and the signature evidence records the wrong address — which is a compliance defect, not an operational one.
+**Without it every request appears to come from the proxy.** Per-source rate limiting collapses into one bucket, the session and audit rows record the proxy instead of the client, and the signature evidence records the wrong address — which is a compliance defect, not an operational one.
 
 Express must be configured to trust the proxy for `req.ip` to reflect the real client.
 

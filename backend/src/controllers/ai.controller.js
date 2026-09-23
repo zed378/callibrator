@@ -23,7 +23,7 @@ exports.processOcr = asyncHandlerWithMapping(
 
 exports.queryRAG = asyncHandlerWithMapping(
   async (req, res) => {
-    const { question } = req.body;
+    const { question } = req.body || {};
     if (!question) {
       throw new AppError(400, "Question is required");
     }

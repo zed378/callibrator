@@ -92,7 +92,11 @@ A session here is an audit record, not a cache entry (ADR-034). It answers "whic
 
 ### Binding
 
-`ip_address` and `user_agent` are recorded and checked. Strict IP binding breaks legitimate users on mobile networks that rotate addresses; the trade-off between security and usability here is a product decision, and `sessionSecurity.middleware.js` is where it is made.
+`ip_address` and `user_agent` are **recorded, and never checked**. They are forensic columns: they answer "where was this session used from" after the fact, and nothing in the request path compares them against the incoming request.
+
+This section said "recorded and checked" until **2026-09-23**, pointing at `sessionSecurity.middleware.js`. That file was imported by nothing and its SQL targeted a `"Sessions"` table with camelCase columns, so it never ran; it was deleted under audit finding A-12. **Binding is not implemented.**
+
+Whether it should be is a product decision — strict IP binding breaks legitimate users on mobile networks that rotate addresses — and is Q-08 in [`../../TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md).
 
 ## `consent_records`
 

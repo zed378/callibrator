@@ -7,7 +7,11 @@
 
 const crypto = require("crypto");
 const fs = require("fs");
-const { Attachment } = require("../models");
+const { Attachment, Certificate, AuditLog } = require("../models");
+// NOT `db` from the models barrel — that export is the models registry's
+// sequelize handle under a different name; the config module is the one that
+// exports the Sequelize instance.
+const { db } = require("../config");
 const storagePath = require("../utils/storagePath.util");
 const { AppError } = require("../utils/appError.util");
 const { getUploadUrl } = require("../utils/upload.util");
@@ -169,9 +173,74 @@ exports.getDownload = async (tenantId, id) => {
 // ------------------------------------------------------------------
 // DELETE (soft — removes it from listings + storage-quota accounting)
 // ------------------------------------------------------------------
-exports.deleteAttachment = async (tenantId, id) => {
+// A-28. Two compliance properties the previous two-line implementation did not
+// have:
+//
+//  1. Evidence attached to a certificate that is already APPROVED or SIGNED is
+//     part of a released record (ISO 17025 §7.8, 21 CFR 11.10(e)). It is
+//     refused with a 409 that explains the state, not a generic error — revoke
+//     the certificate first if the file genuinely must go.
+//  2. The soft delete and its audit row are written in ONE transaction. An
+//     audit row that survives a rolled-back delete records something that did
+//     not happen; a delete that commits without one is unattributable.
+//
+// The soft-delete flag is `isDeleted`. Writing `is_deleted` here would set a
+// property Sequelize does not map and silently do nothing.
+const CERTIFICATE_RESOURCE = "certificate";
+const LOCKED_CERTIFICATE_STATES = ["approved", "signed"];
+
+exports.deleteAttachment = async (tenantId, id, actor = {}) => {
   const attachment = await loadOwned(tenantId, id);
-  await attachment.softDelete();
+
+  if (
+    String(attachment.resourceType).toLowerCase() === CERTIFICATE_RESOURCE &&
+    attachment.resourceId
+  ) {
+    const parent = await Certificate.findOne({
+      where: { id: attachment.resourceId, tenantId },
+      attributes: ["id", "status", "certificateNumber"],
+    });
+    if (parent && LOCKED_CERTIFICATE_STATES.includes(parent.status)) {
+      throw new AppError(
+        409,
+        `This file is evidence for certificate ${parent.certificateNumber}, which is ${parent.status}. Evidence for an approved or signed certificate cannot be deleted — revoke the certificate first.`,
+      );
+    }
+  }
+
+  await db.transaction(async (transaction) => {
+    attachment.isDeleted = true;
+    await attachment.save({ hooks: false, transaction });
+    await AuditLog.create(
+      {
+        tenantId,
+        userId: actor.userId || null,
+        action: "DELETE",
+        resourceType: "Attachment",
+        resourceId: attachment.id,
+        changes: {
+          before: { isDeleted: false },
+          after: { isDeleted: true },
+          originalName: attachment.originalName,
+          checksum: attachment.checksum,
+          resource: {
+            type: attachment.resourceType,
+            id: attachment.resourceId,
+          },
+        },
+        ipAddress: actor.ipAddress || null,
+        userAgent: actor.userAgent || null,
+      },
+      { transaction },
+    );
+  });
+
+  logger.info("Attachment soft-deleted", {
+    attachmentId: attachment.id,
+    tenantId,
+    deletedBy: actor.userId || null,
+  });
+
   return { id };
 };
 

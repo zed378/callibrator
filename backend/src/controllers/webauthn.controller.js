@@ -17,7 +17,7 @@ exports.verifyRegistration = asyncHandler(async (req, res) => {
   const result = await webauthnService.verifyRegistration(
     req.user?.tenantId,
     req.user?.id,
-    req.body,
+    req.body || {},
   );
   success(res, result, null, "WebAuthn registration verified");
 });
@@ -31,7 +31,7 @@ exports.verifyLogin = asyncHandler(async (req, res) => {
   const result = await webauthnService.verifyLogin(
     req.user?.tenantId,
     req.user?.id,
-    req.body,
+    req.body || {},
   );
   success(res, result, null, "WebAuthn login verified");
 });

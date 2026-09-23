@@ -2,7 +2,7 @@
 
 **The single status board.** History lives in [`../MEMORY/`](../MEMORY/README.md); this is state.
 
-Last updated: 2026-09-10
+Last updated: 2026-09-23
 
 ---
 
@@ -63,7 +63,7 @@ QMS (non-conformances, CAPA, SOP) · risk register · vendor scorecards · workf
 
 | Task | Title | Status | Blocks |
 |---|---|---|---|
-| **P6-01** | Restore the backend coverage gate | 🔴 **TODO** | trust in every other gate |
+| **P6-01** | Restore the backend coverage gate | ✅ **DONE** 2026-09-11 | trust in every other gate |
 | **P6-02** | One clean full E2E pass, uninterrupted | 🔴 **TODO** | release sign-off |
 | **P6-03** | `REVOKE UPDATE, DELETE` on `calibration_records` | 🔴 **TODO** | 21 CFR Part 11 defensibility (PR-2) |
 | **P6-04** | Build guard: no route without a permission gate | ⏳ TODO | the likeliest authorization defect |
@@ -74,14 +74,56 @@ QMS (non-conformances, CAPA, SOP) · risk register · vendor scorecards · workf
 | **P6-09** | Reason required on every stock quantity change | ⏳ TODO | an unexplained quantity change |
 | **P6-10** | Rotation procedure for the two unrotatable secrets | ⏳ TODO | "rotate the key" is not currently available |
 
-### Two things are currently failing
+### The state of the gates
+
+| Gate | State |
+|---|---|
+| Backend unit coverage (100%) | ✅ **passing** — 305 suites, 6,039 tests, 100% statements, branches, functions and lines as of 2026-09-23 |
+| Backend lint | 🔴 **red, and it had never run at all** — a version mismatch crashed ESLint before it linted a file (A-34). It runs now and reports 1,319 errors, all formatting, none logic |
+| Live E2E in one uninterrupted run | 🔴 **never achieved** — every fix verified individually; the rate-limit window kept resetting |
+
+`make verify` runs lint first, so it has **never** passed on any machine. That is not a new
+regression; it is a gate nobody could have been running.
+
+**A gate that is currently failing is a gate nobody trusts. A suite that has never passed as a suite has not passed.**
+
+---
+
+## Audit Remediation — 2026-09 🚧
+
+**Board:** [`AUDIT-2026-09-REMEDIATION.md`](./AUDIT-2026-09-REMEDIATION.md) · **Records:**
+[`2026-09-21-backend-audit`](../MEMORY/records/2026-09-21-backend-audit.md),
+[`2026-09-23-wave0-authorisation-fixes`](../MEMORY/records/2026-09-23-wave0-authorisation-fixes.md),
+[`2026-09-23-wave0-parallel-remediation`](../MEMORY/records/2026-09-23-wave0-parallel-remediation.md)
+
+Started as a documentation task on 2026-09-21 and turned into an audit. The board has grown from
+32 findings to 47, because **fourteen of the new ones were found while fixing or documenting
+something else** — which is the only way defects of this shape are found.
+
+| | Count |
+|---|---|
+| Findings recorded | **56** |
+| Fixed and verified by test | **27** (two of them — A-08, A-24 — on 2026-09-21) |
+| Partly done | 1 — A-34 (the lint gate runs; its 1,319 findings are not fixed) |
+| Open | 26, plus A-55 half-closed (the claim is corrected; the fixture is still unwritten) |
+| Wave 0 (security) remaining | A-37, A-41, A-42, A-48, A-51 |
+
+### The three that matter most, still open
 
 | | |
 |---|---|
-| Backend unit coverage gate (100%) | **failing** — the demo seeder and the audit fixes added uncovered branches |
-| Live E2E in one uninterrupted run | **never achieved** — every fix verified individually; the rate-limit window kept resetting |
+| **A-41** | audit rows are written on `res.on("finish")` — after the response, outside the transaction. `CLAUDE.md` calls that rule non-negotiable |
+| **A-42** | a failed audit write is announced only to `console.error`, and production writes nothing to stdout — so a compliance record that fails to persist fails **silently and durably** |
+| **A-48** | **revocation does not revoke.** Nothing in the request path reads `sessions`, and the deployed `JWT_ACCESS_EXPIRED` is **1d**, not the documented 15m — so a revoked session keeps working for up to a day |
+| **A-37** | SCIM user creation is a cross-tenant existence oracle: globally unique email, tenant-scoped duplicate check |
 
-**A gate that is currently failing is a gate nobody trusts. A suite that has never passed as a suite has not passed.**
+### One shape, three times
+
+`client.connected` (ioredis), `connection.isOpen` (amqplib) and a `redisReady` flag set only
+inside a function nothing called — three liveness guards on things that did not exist, each with
+passing tests, two of them kept green by **mocks that invented the missing property**. Redis
+helpers were no-ops, every broker call leaked a connection, and the rate limiter never used Redis
+at all. See A-24, A-36, A-30.
 
 ---
 

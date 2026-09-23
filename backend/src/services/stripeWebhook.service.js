@@ -71,20 +71,66 @@ const maybeUpdateTenantPlan = async (tenantId, plan) => {
   }
 };
 
+/**
+ * Insert or UPDATE the local row for a Stripe invoice, keyed on
+ * `stripeInvoiceId`.
+ *
+ * This used to be `Invoice.findOrCreate` with the status in `defaults`, which
+ * only ever inserted: Stripe's normal dunning path is `invoice.payment_failed`
+ * (row created `Open`) then `invoice.paid` (row found, nothing written), so an
+ * invoice that was paid after a failure stayed `Open` with `amountPaid: 0`
+ * forever while the subscription moved to `Active` (A-25).
+ *
+ * Two rules the plain upsert does not give you:
+ *
+ *  - **`Paid` is terminal.** Stripe does not guarantee event order, so a
+ *    `payment_failed` for an earlier attempt can arrive after the `paid` that
+ *    settled the invoice. A later non-`Paid` status does not downgrade the row.
+ *  - **`amountPaid` never goes down.** The late `payment_failed` carries
+ *    `amount_paid: 0`; taking it literally would erase a recorded payment.
+ *
+ * The lookup is deliberately NOT `.unscoped()`: `invoices` has no soft-delete
+ * column at all (no `isDeleted`, no `deletedAt`, no `paranoid`) and the models
+ * barrel registers no default scope, so there is no soft-deleted row to miss.
+ * Tenant isolation is applied by the global hooks, not by a scope, so
+ * `.unscoped()` would not have affected it either way.
+ */
 const upsertInvoice = async (sub, obj, status) => {
-  await Invoice.findOrCreate({
-    where: { stripeInvoiceId: obj.id },
-    defaults: {
+  const stripeInvoiceId = obj.id;
+  const amountDue = (obj.amount_due || 0) / 100;
+  const amountPaid = (obj.amount_paid || 0) / 100;
+  const currency = (obj.currency || "usd").toUpperCase();
+  const invoiceUrl = obj.hosted_invoice_url || null;
+
+  const existing = await Invoice.findOne({ where: { stripeInvoiceId } });
+
+  if (!existing) {
+    return Invoice.create({
       tenantId: sub.tenantId,
       subscriptionId: sub.id,
-      amountDue: (obj.amount_due || 0) / 100,
-      amountPaid: (obj.amount_paid || 0) / 100,
-      currency: (obj.currency || "usd").toUpperCase(),
+      amountDue,
+      amountPaid,
+      currency,
       status,
-      invoiceUrl: obj.hosted_invoice_url || null,
-      stripeInvoiceId: obj.id,
-    },
+      invoiceUrl,
+      stripeInvoiceId,
+    });
+  }
+
+  // DECIMAL comes back from pg as a string; Number() it before comparing.
+  const storedPaid = Number(existing.amountPaid) || 0;
+  const settled = existing.status === "Paid" && status !== "Paid";
+
+  await existing.update({
+    amountDue,
+    amountPaid: Math.max(storedPaid, amountPaid),
+    currency,
+    status: settled ? "Paid" : status,
+    // A later event without a hosted url must not erase the one we have.
+    invoiceUrl: invoiceUrl || existing.invoiceUrl,
   });
+
+  return existing;
 };
 
 // ------------------------------------------------------------------

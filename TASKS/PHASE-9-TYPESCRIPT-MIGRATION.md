@@ -346,7 +346,7 @@ One card per domain. Each follows the same Definition of Done, stated once here:
 
 **Definition of Done**
 - [ ] 21 files typed against the P9-05 `Request` augmentation
-- [ ] `sessionSecurity.middleware.js` is **not converted**: it is dead (imported by nothing; its SQL targets a nonexistent `"Sessions"` table). AUDIT task A-12 deletes it or wires it correctly first
+- [x] `sessionSecurity.middleware.js` is not in scope: **deleted 2026-09-23** under AUDIT task A-12 as dead code (imported by nothing; its SQL targeted a nonexistent `"Sessions"` table). Nothing to convert
 - [ ] `dynamicAccess` resource names typed as the menu-slug union, so `dynamicAccess("AuditLogs", …)` — a slug that does not exist — is a compile error (see AUDIT A-07)
 
 ### P9-20 — `controllers/`

@@ -13,7 +13,9 @@ logger.info("Certificate signed", { requestId: req.requestId, certificateId, ten
 logger.error("Webhook delivery exhausted", { deliveryId, url: redactUrl(webhook.url) });
 ```
 
-winston, JSON format, timestamped. **No `console.*` in application code** — as-built, `config/socket.js` still uses `console.log` for connect and disconnect, which is the only application output that reaches stdout in production.
+winston, JSON format, timestamped. **No `console.*` in application code** — as-built, there are **25 `console.*` call sites** in runtime backend code (`config/socket.js`, `index.js`'s startup and CORS paths, `notification.service.js`, `sso.service.js`, `checkMenu.util.js`, `audit.service.js` and others). All of them write to stdout/stderr and to no file, so in production they reach `docker logs` and nothing else.
+
+> Corrected 2026-09-23. This sentence used to say `config/socket.js` was the only such output. The material one is `audit.service.js`, which announces a **failed audit write** — a compliance record that did not persist — to `console.error` alone (A-42).
 
 ## Levels
 

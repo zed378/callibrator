@@ -4,7 +4,7 @@ const { asyncHandlerWithMapping } = require("../utils/controllerWrapper.util");
 
 exports.createScorecard = asyncHandlerWithMapping(
   async (req, res) => {
-    const data = await scorecardService.createScorecard(req.user.tenantId, req.body, req.user.id);
+    const data = await scorecardService.createScorecard(req.user.tenantId, req.body || {}, req.user.id);
     success(res, data, null, "Scorecard created successfully", 201);
   },
   {
@@ -39,7 +39,7 @@ exports.getScorecardById = asyncHandlerWithMapping(
 
 exports.updateScorecard = asyncHandlerWithMapping(
   async (req, res) => {
-    const data = await scorecardService.updateScorecard(req.user.tenantId, req.params.id, req.body);
+    const data = await scorecardService.updateScorecard(req.user.tenantId, req.params.id, req.body || {});
     success(res, data, null, "Scorecard updated successfully", 200);
   },
   {

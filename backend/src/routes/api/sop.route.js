@@ -7,7 +7,9 @@
 
 const express = require("express");
 const router = express.Router();
-const { auth } = require("../../middlewares/auth.middleware");
+const { auth, denyApiKey } = require("../../middlewares/auth.middleware");
+const { dynamicAccess } = require("../../middlewares/dynamicAccess.middleware");
+const { MENU_SLUGS } = require("../../constants");
 const {
   createDocument,
   getDocuments,
@@ -15,6 +17,22 @@ const {
   acknowledgeTraining,
 } = require("../../controllers/sop.controller");
 
+// A-28 — authorization.
+//
+// Until 2026-09-23 every route here carried `auth` alone, so any role could
+// author AND publish a controlled procedure with no review at all.
+//
+// Authoring and publishing are now gated on `sop` (MENU_SLUGS.SOP): write is
+// held by SUPERADMIN, HEALTHCARE ADMIN and CALIBRATOR ADMIN; ENGINEERING
+// MANAGER holds read. Publishing additionally requires a signer distinct from
+// the author — separation of duties, enforced in sop.service#publishDocument
+// and refused with a 409 state explanation, not a generic error.
+//
+// POST /:id/acknowledge is deliberately left on `auth`: acknowledging training
+// is a self-service act on the caller's OWN acknowledgment row (the service
+// filters by req.user.id), and the roles that must acknowledge an SOP —
+// technicians, warehouse, room users — hold no `sop` menu at all. Gating it
+// would make assigned training impossible to complete.
 router.use(auth);
 
 // Document Routes
@@ -53,7 +71,7 @@ router.use(auth);
  *       401:
  *         description: Unauthorized
  */
-router.post("/", createDocument);
+router.post("/", dynamicAccess(MENU_SLUGS.SOP, "write"), createDocument);
 /**
  * @swagger
  * /api/v1/sop:
@@ -75,7 +93,7 @@ router.post("/", createDocument);
  *       401:
  *         description: Unauthorized
  */
-router.get("/", getDocuments);
+router.get("/", dynamicAccess(MENU_SLUGS.SOP, "read"), getDocuments);
 /**
  * @swagger
  * /api/v1/sop/{id}/publish:
@@ -98,10 +116,23 @@ router.get("/", getDocuments);
  *         description: SOP published
  *       401:
  *         description: Unauthorized
+ *       403:
+ *         description: Insufficient permission
  *       404:
  *         description: SOP document not found
+ *       409:
+ *         description: >-
+ *           Separation of duties — the caller authored this SOP, or the SOP is
+ *           already published or archived
  */
-router.patch("/:id/publish", publishDocument);
+// Releasing a controlled procedure is a human act (21 CFR 11.10(d)), so no
+// API key may perform it, and the publisher may not be the author.
+router.patch(
+  "/:id/publish",
+  denyApiKey,
+  dynamicAccess(MENU_SLUGS.SOP, "write"),
+  publishDocument,
+);
 
 // Training Routes
 /**

@@ -36,6 +36,180 @@ const assertMutableGroup = (role) => {
 const SCIM_USER_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:User";
 const SCIM_GROUP_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:Group";
 
+const SCIM_OPS = ["add", "remove", "replace"];
+
+// ---------------------------------------------------------------------------
+// RFC 7644 § 3.5.2 patch paths (A-33)
+//
+// Until 2026-09-23 patchUser and patchGroup read only `op.value`, as an object,
+// and never looked at `op.path`. The normal form every IdP sends —
+//   { "op": "replace", "path": "active", "value": false }
+// — made `Object.entries(false)` === `[]`, so the operation was dropped and the
+// endpoint answered 200 with the user unchanged. A silent no-op on the
+// operation that removes access is the worst failure mode available.
+//
+// Both forms now funnel through the SAME assignment code below, so every roleId
+// write — path form or value form — still passes assertAssignableRole(). An
+// operation whose `path` is present but unparseable is a 400, never a no-op.
+// ---------------------------------------------------------------------------
+
+const SCIM_USER_URN_PREFIX = "urn:ietf:params:scim:schemas:core:2.0:user:";
+const SCIM_GROUP_URN_PREFIX = "urn:ietf:params:scim:schemas:core:2.0:group:";
+
+// Entra ID prefixes core attributes with the schema URN. RFC 7644 § 3.10 makes
+// that equivalent to the bare attribute name.
+const stripSchemaUrn = (path) => {
+  const trimmed = path.trim();
+  const lower = trimmed.toLowerCase();
+  if (lower.startsWith(SCIM_USER_URN_PREFIX)) {
+    return trimmed.slice(SCIM_USER_URN_PREFIX.length);
+  }
+  if (lower.startsWith(SCIM_GROUP_URN_PREFIX)) {
+    return trimmed.slice(SCIM_GROUP_URN_PREFIX.length);
+  }
+  return trimmed;
+};
+
+// RFC 7643 § 2.1: attribute names are case-insensitive.
+const USER_PATH_ATTRIBUTES = {
+  active: "active",
+  username: "userName",
+  "name.givenname": "name.givenName",
+  "name.familyname": "name.familyName",
+  roleid: "roleId",
+};
+
+const GROUP_PATH_ATTRIBUTES = {
+  displayname: "displayName",
+  members: "members",
+};
+
+// Okta removes a single member with a value filter rather than a value body.
+const MEMBER_VALUE_FILTER = /^members\[\s*value\s+eq\s+"([^"]+)"\s*\]$/i;
+
+const assertOp = (op) => {
+  const operation = String(op.op || "").toLowerCase();
+  if (!SCIM_OPS.includes(operation)) {
+    throw new AppError(400, `Unsupported SCIM op: ${op.op}`);
+  }
+  return operation;
+};
+
+const resolveUserPath = (rawPath) => {
+  if (typeof rawPath !== "string") {
+    throw new AppError(400, "SCIM path must be a string");
+  }
+  const attribute = USER_PATH_ATTRIBUTES[stripSchemaUrn(rawPath).toLowerCase()];
+  if (!attribute) {
+    throw new AppError(400, `Unsupported SCIM path: ${rawPath}`);
+  }
+  return attribute;
+};
+
+const resolveGroupPath = (rawPath) => {
+  if (typeof rawPath !== "string") {
+    throw new AppError(400, "SCIM path must be a string");
+  }
+  const path = stripSchemaUrn(rawPath);
+  const filtered = path.match(MEMBER_VALUE_FILTER);
+  if (filtered) {
+    return { attribute: "members", memberIds: [filtered[1]] };
+  }
+  const attribute = GROUP_PATH_ATTRIBUTES[path.toLowerCase()];
+  if (!attribute) {
+    throw new AppError(400, `Unsupported SCIM path: ${rawPath}`);
+  }
+  return { attribute, memberIds: null };
+};
+
+// Okta sends a JSON boolean, Entra ID has been observed sending "True"/"False".
+const toScimBoolean = (value, attribute) => {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    const normalised = value.trim().toLowerCase();
+    if (normalised === "true") {
+      return true;
+    }
+    if (normalised === "false") {
+      return false;
+    }
+  }
+  throw new AppError(400, `SCIM ${attribute} must be a boolean`);
+};
+
+const toScimString = (value, attribute) => {
+  if (typeof value === "string" && value.trim() !== "") {
+    return value.trim();
+  }
+  throw new AppError(400, `SCIM ${attribute} must be a non-empty string`);
+};
+
+const toMemberIds = (value) => {
+  const list = Array.isArray(value) ? value : [value];
+  const ids = list
+    .map((member) => (typeof member === "string" ? member : member?.value))
+    .filter(Boolean);
+  if (ids.length === 0) {
+    throw new AppError(400, "SCIM members value must name at least one member");
+  }
+  return ids;
+};
+
+// The single assignment point for a user attribute. Both patch forms and
+// nothing else reach it, which is what keeps assertAssignableRole unavoidable.
+const applyUserAttribute = async (updates, attribute, value) => {
+  switch (attribute) {
+    case "active": {
+      const active = toScimBoolean(value, "active");
+      updates.isActive = active;
+      updates.status = active ? "ACTIVE" : "SUSPENDED";
+      break;
+    }
+    case "userName": {
+      // createUser writes the email to both columns; keep them in step.
+      const email = toScimString(value, "userName");
+      updates.email = email;
+      updates.username = email;
+      break;
+    }
+    case "name.givenName":
+      updates.firstName = toScimString(value, "name.givenName");
+      break;
+    case "name.familyName":
+      updates.lastName = toScimString(value, "name.familyName");
+      break;
+    case "roleId":
+      await assertAssignableRole(value);
+      updates.roleId = value;
+      break;
+    /* istanbul ignore next -- unreachable: callers resolve attributes through the maps above */
+    default:
+      throw new AppError(400, `Unsupported SCIM attribute: ${attribute}`);
+  }
+};
+
+// The pre-A-33, non-standard shape: { "op": "replace", "value": { … } }. Kept
+// working because it is what the existing integration tests and any in-house
+// client send. Unknown keys are ignored here, as they always were.
+const applyUserValueObject = async (updates, value) => {
+  for (const [key, entry] of Object.entries(value)) {
+    if (key === "name") {
+      if (entry?.givenName) {
+        await applyUserAttribute(updates, "name.givenName", entry.givenName);
+      }
+      if (entry?.familyName) {
+        await applyUserAttribute(updates, "name.familyName", entry.familyName);
+      }
+    } else if (key === "active" || key === "userName" || key === "roleId") {
+      await applyUserAttribute(updates, key, entry);
+    }
+  }
+};
+
+const isPlainObject = (value) => Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
 const formatScimUser = (user) => ({
   schemas: [SCIM_USER_SCHEMA],
   id: user.id,
@@ -74,22 +248,38 @@ const formatScimGroup = (group, members = []) => ({
   },
 });
 
+// RFC 7644 § 3.4.2.2: a filter the service cannot honour is an `invalidFilter`
+// 400. Before 2026-09-23 an unrecognised filter — including the `userName eq`
+// that Okta and Entra ID send to test for an existing user — was dropped, and
+// the caller got the WHOLE tenant back in answer to "does this one user exist?"
+const USER_FILTER_EMAIL = /^(?:userName|email|emails\.value)\s+eq\s+"([^"]*)"$/i;
+const USER_FILTER_ACTIVE = /^active\s+eq\s+"?(true|false)"?$/i;
+
+const parseUserFilter = (filter) => {
+  const where = {};
+  for (const term of filter.split(/\s+and\s+/i)) {
+    const trimmed = term.trim();
+    const emailMatch = trimmed.match(USER_FILTER_EMAIL);
+    if (emailMatch) {
+      where.email = emailMatch[1];
+      continue;
+    }
+    const activeMatch = trimmed.match(USER_FILTER_ACTIVE);
+    if (activeMatch) {
+      const active = activeMatch[1].toLowerCase() === "true";
+      where.isActive = active;
+      where.status = active ? "ACTIVE" : "SUSPENDED";
+      continue;
+    }
+    throw new AppError(400, `Unsupported SCIM filter: ${filter}`);
+  }
+  return where;
+};
+
 exports.getUsers = async (tenantId, startIndex = 1, count = 100, filter = null) => {
   const offset = Math.max(0, startIndex - 1);
   const limit = Math.max(1, count);
-  const where = { tenantId };
-
-  if (filter) {
-    const emailMatch = filter.match(/email eq "([^"]+)"/);
-    const activeMatch = filter.match(/active eq (true|false)/);
-    if (emailMatch) {
-      where.email = emailMatch[1];
-    }
-    if (activeMatch) {
-      where.isActive = activeMatch[1] === "true";
-      where.status = activeMatch[1] === "true" ? "ACTIVE" : "SUSPENDED";
-    }
-  }
+  const where = { tenantId, ...(filter ? parseUserFilter(String(filter)) : {}) };
 
   const { count: total, rows } = await Users.findAndCountAll({
     where,
@@ -202,36 +392,26 @@ exports.patchUser = async (tenantId, userId, patchOps) => {
   const updates = {};
 
   for (const op of patchOps) {
-    if (op.op === "replace") {
-      for (const [key, value] of Object.entries(op.value || {})) {
-        if (key === "name") {
-          if (value.givenName) {
-            updates.firstName = value.givenName;
-          }
-          if (value.familyName) {
-            updates.lastName = value.familyName;
-          }
-        } else if (key === "active") {
-          updates.isActive = value;
-          updates.status = value ? "ACTIVE" : "SUSPENDED";
-        } else if (key === "roleId") {
-          await assertAssignableRole(value);
-          updates.roleId = value;
-        }
+    const operation = assertOp(op);
+
+    if (operation === "remove") {
+      // RFC 7644 § 3.5.2 makes `path` REQUIRED on a remove. The pre-A-33 code
+      // iterated `op.path` as an array of keys while the validator declared it
+      // a string, so this branch could not fire at all.
+      if (!op.path) {
+        throw new AppError(400, "SCIM remove operations require a path");
       }
-    } else if (op.op === "add") {
-      for (const [key, value] of Object.entries(op.value || {})) {
-        if (key === "roleId") {
-          await assertAssignableRole(value);
-          updates.roleId = value;
-        }
+      const attribute = resolveUserPath(op.path);
+      if (attribute !== "roleId") {
+        throw new AppError(400, `SCIM cannot remove ${attribute}`);
       }
-    } else if (op.op === "remove") {
-      for (const key of op.path || []) {
-        if (key === "roleId") {
-          updates.roleId = ROLE_IDS.USER;
-        }
-      }
+      updates.roleId = ROLE_IDS.USER;
+    } else if (op.path) {
+      await applyUserAttribute(updates, resolveUserPath(op.path), op.value);
+    } else if (isPlainObject(op.value)) {
+      await applyUserValueObject(updates, op.value);
+    } else {
+      throw new AppError(400, "SCIM operation requires a path or an object value");
     }
   }
 
@@ -368,7 +548,7 @@ exports.updateGroup = async (tenantId, groupId, scimData) => {
   if (scimData.members) {
     const memberIds = scimData.members.map((m) => (typeof m === "string" ? m : m.value));
     await assertAssignableRole(groupId);
-await Users.update(
+    await Users.update(
       { roleId: groupId },
       { where: { id: { [Op.in]: memberIds }, tenantId } },
     );
@@ -390,19 +570,54 @@ exports.patchGroup = async (tenantId, groupId, patchOps) => {
   assertMutableGroup(role);
 
   for (const op of patchOps) {
-    if (op.op === "replace" && op.value?.displayName) {
-      await role.update({ name: op.value.displayName.toUpperCase(), nameToShow: op.value.displayName });
-    } else if (op.op === "add" && op.value?.members) {
-      const memberIds = op.value.members.map((m) => (typeof m === "string" ? m : m.value));
-      await Users.update(
-        { roleId: groupId },
-        { where: { id: { [Op.in]: memberIds }, tenantId } },
-      );
-    } else if (op.op === "remove" && op.value?.members) {
-      const memberIds = op.value.members.map((m) => (typeof m === "string" ? m : m.value));
+    const operation = assertOp(op);
+
+    let attribute;
+    let memberIds = null;
+    let value;
+
+    if (op.path) {
+      ({ attribute, memberIds } = resolveGroupPath(op.path));
+      value = op.value;
+    } else if (isPlainObject(op.value)) {
+      // The pre-A-33, non-standard shape: { "op": "add", "value": { members: [] } }.
+      if (op.value.displayName !== undefined) {
+        attribute = "displayName";
+      } else if (op.value.members !== undefined) {
+        attribute = "members";
+      } else {
+        throw new AppError(400, "SCIM operation names no supported attribute");
+      }
+      value = op.value[attribute];
+    } else {
+      throw new AppError(400, "SCIM operation requires a path or an object value");
+    }
+
+    if (attribute === "displayName") {
+      if (operation === "remove") {
+        throw new AppError(400, "SCIM cannot remove displayName");
+      }
+      const displayName = toScimString(value, "displayName");
+      await role.update({ name: displayName.toUpperCase(), nameToShow: displayName });
+    } else if (operation === "remove") {
+      // `remove` on `members` with no value clears the whole attribute
+      // (RFC 7644 § 3.5.2), i.e. demotes every member this tenant can see.
+      const ids = memberIds || (value === undefined || value === null ? null : toMemberIds(value));
       await Users.update(
         { roleId: ROLE_IDS.USER },
-        { where: { id: { [Op.in]: memberIds }, tenantId } },
+        { where: ids ? { id: { [Op.in]: ids }, tenantId } : { roleId: groupId, tenantId } },
+      );
+    } else {
+      const ids = memberIds || toMemberIds(value);
+      // A-27 parity with updateGroup. patchGroup used to assign members with no
+      // role guard at all; the only thing standing in the way was
+      // assertMutableGroup firing first, which is a coincidence, not a control.
+      // `replace` is deliberately additive here, as updateGroup's member
+      // handling is: it does not demote members the IdP omitted.
+      await assertAssignableRole(groupId);
+      await Users.update(
+        { roleId: groupId },
+        { where: { id: { [Op.in]: ids }, tenantId } },
       );
     }
   }

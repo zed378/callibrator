@@ -294,7 +294,7 @@ describe("scim.service", () => {
       const patchOps = [
         { op: "replace", value: { name: { givenName: "X", familyName: "Y" }, active: false, roleId: 3 } },
         { op: "add", value: { roleId: 4 } },
-        { op: "remove", path: ["roleId"] },
+        { op: "remove", path: "roleId" },
       ];
 
       await scim.patchUser("t1", "u1", patchOps);
@@ -302,7 +302,7 @@ describe("scim.service", () => {
       expect(mockUpdate).toHaveBeenCalled();
     });
 
-    it("handles partial name replacements and empty operations", async () => {
+    it("handles partial name replacements in the value-object form", async () => {
       const mockUpdate = jest.fn();
       Users.findOne.mockResolvedValue({
         id: "u1",
@@ -312,9 +312,6 @@ describe("scim.service", () => {
       await scim.patchUser("t1", "u1", [
         { op: "replace", value: { name: { givenName: "X" } } },
         { op: "replace", value: { name: { familyName: "Y" } } },
-        { op: "replace", value: null },
-        { op: "add", value: null },
-        { op: "remove", path: null },
       ]);
 
       expect(mockUpdate).toHaveBeenCalledTimes(1);
@@ -338,15 +335,13 @@ describe("scim.service", () => {
       expect(mockUpdate).toHaveBeenCalledWith({ isActive: true, status: "ACTIVE" });
     });
 
-    it("ignores unknown keys and unknown ops", async () => {
+    it("ignores unknown keys inside the value-object form", async () => {
       const mockUpdate = jest.fn();
       Users.findOne.mockResolvedValue({ id: "u1", update: mockUpdate });
 
       await scim.patchUser("t1", "u1", [
         { op: "replace", value: { unknownKey: "x" } },
         { op: "add", value: { unknownKey: "x" } },
-        { op: "remove", path: ["unknownKey"] },
-        { op: "noSuchOp", value: { roleId: "r9" } },
       ]);
 
       expect(mockUpdate).toHaveBeenCalledWith({});
@@ -356,7 +351,7 @@ describe("scim.service", () => {
       const mockUpdate = jest.fn();
       Users.findOne.mockResolvedValue({ id: "u1", update: mockUpdate });
 
-      await scim.patchUser("t1", "u1", [{ op: "remove", path: ["roleId"] }]);
+      await scim.patchUser("t1", "u1", [{ op: "remove", path: "roleId" }]);
 
       expect(mockUpdate).toHaveBeenCalledWith({ roleId: ROLE_IDS.USER });
     });
@@ -688,18 +683,18 @@ describe("scim.service", () => {
         );
       });
 
-      it("ignores ops with no matching value payload", async () => {
+      // A-33: an operation that names nothing this module can apply used to be
+      // dropped with a 200. Every one of these shapes is now a 400.
+      it.each([
+        ["an empty value object", { op: "replace", value: {} }],
+        ["no value and no path", { op: "replace" }],
+        ["an unknown op", { op: "unknown", value: { displayName: "X" } }],
+      ])("rejects %s with 400 instead of a silent 200", async (_label, operation) => {
         const update = jest.fn();
         Role.findOne.mockResolvedValue({ id: "g1", update });
         Users.findAll.mockResolvedValue([]);
 
-        await scim.patchGroup("t1", "g1", [
-          { op: "replace", value: {} },
-          { op: "add", value: {} },
-          { op: "remove", value: {} },
-          { op: "replace" },
-          { op: "unknown", value: { displayName: "X" } },
-        ]);
+        await expect(scim.patchGroup("t1", "g1", [operation])).rejects.toMatchObject({ status: 400 });
 
         expect(update).not.toHaveBeenCalled();
         expect(Users.update).not.toHaveBeenCalled();
@@ -759,9 +754,8 @@ describe("scim.service — privileged role guards (A-27)", () => {
     const update = jest.fn();
     Users.findOne.mockResolvedValue({ id: "u1", update });
     await expect(
-      // NOTE the shape: patchUser reads op.value as an OBJECT and ignores
-      // op.path entirely (A-34), so this — not the SCIM-standard
-      // { op, path: "roleId", value: "<id>" } — is the form that assigns a role.
+      // The legacy value-object form. The SCIM-standard path form is covered
+      // by the A-33 block below and is refused the same way.
       scim.patchUser("t1", "u1", [{ op: "replace", value: { roleId: SUPERADMIN_ID } }]),
     ).rejects.toMatchObject({ status: 403 });
     expect(update).not.toHaveBeenCalled();
@@ -805,5 +799,402 @@ describe("scim.service — privileged role guards (A-27)", () => {
     await expect(
       scim.patchGroup("t1", "r-sys", [{ op: "replace", value: { displayName: "x" } }]),
     ).rejects.toMatchObject({ status: 403 });
+  });
+});
+
+// ==========================================================================
+// A-33 — RFC 7644 § 3.5.2 `path` handling, and RFC 7644 § 3.4.2.2 filters.
+//
+// Before 2026-09-23 both patch handlers read only `op.value`, as an object, and
+// never looked at `op.path`. `{ "op": "replace", "path": "active", "value":
+// false }` — the form Okta, Entra ID and OneLogin all send to deprovision —
+// made `Object.entries(false)` === [], so the endpoint answered 200 with the
+// user unchanged. GET /Users dropped a `userName eq` filter the same way and
+// returned the whole tenant.
+//
+// These cases assert BEHAVIOUR (what the row becomes, what comes back), not the
+// shape of the implementation.
+// ==========================================================================
+describe("scim.service — RFC 7644 patch paths and filters (A-33)", () => {
+  const SUPERADMIN_ID = ROLE_IDS.SUPER_ADMIN;
+
+  let update;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    update = jest.fn();
+    Users.findOne.mockResolvedValue({ id: "u1", update });
+    Users.findAll.mockResolvedValue([]);
+    Users.update.mockResolvedValue([1]);
+    Role.findOne.mockResolvedValue({ id: "r-user", name: "USER", isSystem: false });
+  });
+
+  describe("patchUser — path form", () => {
+    it("deactivates the user given the standard IdP deprovision operation", async () => {
+      await scim.patchUser("t1", "u1", [{ op: "replace", path: "active", value: false }]);
+
+      expect(update).toHaveBeenCalledWith({ isActive: false, status: "SUSPENDED" });
+    });
+
+    it("reactivates the user given path active=true", async () => {
+      await scim.patchUser("t1", "u1", [{ op: "replace", path: "active", value: true }]);
+
+      expect(update).toHaveBeenCalledWith({ isActive: true, status: "ACTIVE" });
+    });
+
+    it("accepts the string booleans Entra ID sends", async () => {
+      await scim.patchUser("t1", "u1", [{ op: "replace", path: "active", value: "False" }]);
+
+      expect(update).toHaveBeenCalledWith({ isActive: false, status: "SUSPENDED" });
+    });
+
+    it("accepts the string \"true\" as a reactivation", async () => {
+      await scim.patchUser("t1", "u1", [{ op: "replace", path: "active", value: "True" }]);
+
+      expect(update).toHaveBeenCalledWith({ isActive: true, status: "ACTIVE" });
+    });
+
+    it.each([
+      ["an unrecognised string", "maybe"],
+      ["a number", 1],
+    ])("rejects %s as an active value with 400", async (_label, value) => {
+      await expect(
+        scim.patchUser("t1", "u1", [{ op: "replace", path: "active", value }]),
+      ).rejects.toMatchObject({ status: 400 });
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it("resolves a path carrying the core User schema URN", async () => {
+      await scim.patchUser("t1", "u1", [
+        { op: "replace", path: "urn:ietf:params:scim:schemas:core:2.0:User:active", value: false },
+      ]);
+
+      expect(update).toHaveBeenCalledWith({ isActive: false, status: "SUSPENDED" });
+    });
+
+    it("matches attribute names case-insensitively, as RFC 7643 requires", async () => {
+      await scim.patchUser("t1", "u1", [{ op: "replace", path: "Name.GivenName", value: "Ada" }]);
+
+      expect(update).toHaveBeenCalledWith({ firstName: "Ada" });
+    });
+
+    it("renames via name.familyName", async () => {
+      await scim.patchUser("t1", "u1", [{ op: "replace", path: "name.familyName", value: "Lovelace" }]);
+
+      expect(update).toHaveBeenCalledWith({ lastName: "Lovelace" });
+    });
+
+    it("writes userName to both email and username, as createUser does", async () => {
+      await scim.patchUser("t1", "u1", [{ op: "replace", path: "userName", value: " new@b.com " }]);
+
+      expect(update).toHaveBeenCalledWith({ email: "new@b.com", username: "new@b.com" });
+    });
+
+    it("rejects an empty string value with 400", async () => {
+      await expect(
+        scim.patchUser("t1", "u1", [{ op: "replace", path: "userName", value: "   " }]),
+      ).rejects.toMatchObject({ status: 400 });
+    });
+
+    it("rejects a non-string value where a string is required with 400", async () => {
+      await expect(
+        scim.patchUser("t1", "u1", [{ op: "replace", path: "name.givenName", value: 7 }]),
+      ).rejects.toMatchObject({ status: 400 });
+    });
+
+    it("assigns a role via the path form", async () => {
+      await scim.patchUser("t1", "u1", [{ op: "add", path: "roleId", value: "r7" }]);
+
+      expect(update).toHaveBeenCalledWith({ roleId: "r7" });
+    });
+
+    // The point of the whole exercise: the new code path must not be a second
+    // way into a privileged role.
+    it("refuses a path-form roleId naming SUPERADMIN with 403 and writes nothing", async () => {
+      await expect(
+        scim.patchUser("t1", "u1", [{ op: "replace", path: "roleId", value: SUPERADMIN_ID }]),
+      ).rejects.toMatchObject({ status: 403 });
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it("refuses a path-form roleId naming a system role called SUPERADMIN under another id", async () => {
+      Role.findOne.mockResolvedValue({ id: "r-other", name: "superadmin", isSystem: true });
+
+      await expect(
+        scim.patchUser("t1", "u1", [{ op: "add", path: "roleId", value: "r-other" }]),
+      ).rejects.toMatchObject({ status: 403 });
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it("refuses a path-form roleId that names no role with 400", async () => {
+      Role.findOne.mockResolvedValue(null);
+
+      await expect(
+        scim.patchUser("t1", "u1", [{ op: "replace", path: "roleId", value: "nope" }]),
+      ).rejects.toMatchObject({ status: 400 });
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it("rejects an unsupported path with 400 rather than ignoring it", async () => {
+      await expect(
+        scim.patchUser("t1", "u1", [
+          { op: "replace", path: 'emails[type eq "work"].value', value: "x@y.z" },
+        ]),
+      ).rejects.toMatchObject({ status: 400 });
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it("rejects a non-string path with 400", async () => {
+      await expect(
+        scim.patchUser("t1", "u1", [{ op: "replace", path: ["roleId"], value: "r7" }]),
+      ).rejects.toMatchObject({ status: 400 });
+    });
+
+    it("rejects an operation with neither a path nor an object value", async () => {
+      await expect(
+        scim.patchUser("t1", "u1", [{ op: "replace", value: false }]),
+      ).rejects.toMatchObject({ status: 400 });
+    });
+
+    it("rejects an array value with no path", async () => {
+      await expect(
+        scim.patchUser("t1", "u1", [{ op: "add", value: ["x"] }]),
+      ).rejects.toMatchObject({ status: 400 });
+    });
+
+    it("rejects an unrecognised op with 400", async () => {
+      await expect(
+        scim.patchUser("t1", "u1", [{ value: { active: false } }]),
+      ).rejects.toMatchObject({ status: 400 });
+    });
+  });
+
+  describe("patchUser — remove", () => {
+    it("requires a path, because RFC 7644 does", async () => {
+      await expect(
+        scim.patchUser("t1", "u1", [{ op: "remove" }]),
+      ).rejects.toMatchObject({ status: 400 });
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it("rejects removing an attribute it cannot clear, rather than pretending to", async () => {
+      await expect(
+        scim.patchUser("t1", "u1", [{ op: "remove", path: "active" }]),
+      ).rejects.toMatchObject({ status: 400 });
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it("rejects removing an unsupported path with 400", async () => {
+      await expect(
+        scim.patchUser("t1", "u1", [{ op: "remove", path: "emails" }]),
+      ).rejects.toMatchObject({ status: 400 });
+    });
+  });
+
+  describe("patchGroup — path form", () => {
+    beforeEach(() => {
+      Role.findOne.mockResolvedValue({ id: "g1", name: "ENGINEERS", isSystem: false, update });
+    });
+
+    it("adds members given the standard IdP membership operation", async () => {
+      await scim.patchGroup("t1", "g1", [
+        { op: "add", path: "members", value: [{ value: "u1" }, { value: "u2" }] },
+      ]);
+
+      expect(Users.update).toHaveBeenCalledWith(
+        { roleId: "g1" },
+        { where: { id: { [Op.in]: ["u1", "u2"] }, tenantId: "t1" } },
+      );
+    });
+
+    it("resolves a members path carrying the core Group schema URN", async () => {
+      await scim.patchGroup("t1", "g1", [
+        { op: "add", path: "urn:ietf:params:scim:schemas:core:2.0:Group:members", value: ["u1"] },
+      ]);
+
+      expect(Users.update).toHaveBeenCalledWith(
+        { roleId: "g1" },
+        { where: { id: { [Op.in]: ["u1"] }, tenantId: "t1" } },
+      );
+    });
+
+    it("treats a replace on members as an assignment, like PUT does", async () => {
+      await scim.patchGroup("t1", "g1", [{ op: "replace", path: "members", value: "u3" }]);
+
+      expect(Users.update).toHaveBeenCalledWith(
+        { roleId: "g1" },
+        { where: { id: { [Op.in]: ["u3"] }, tenantId: "t1" } },
+      );
+    });
+
+    it("renames the group given path displayName", async () => {
+      await scim.patchGroup("t1", "g1", [
+        { op: "replace", path: "displayName", value: "Platform Team" },
+      ]);
+
+      expect(update).toHaveBeenCalledWith({ name: "PLATFORM TEAM", nameToShow: "Platform Team" });
+    });
+
+    it("removes the single member named by an Okta value filter", async () => {
+      await scim.patchGroup("t1", "g1", [{ op: "remove", path: 'members[value eq "u9"]' }]);
+
+      expect(Users.update).toHaveBeenCalledWith(
+        { roleId: ROLE_IDS.USER },
+        { where: { id: { [Op.in]: ["u9"] }, tenantId: "t1" } },
+      );
+    });
+
+    it("removes the members named in the value", async () => {
+      await scim.patchGroup("t1", "g1", [
+        { op: "remove", path: "members", value: [{ value: "u1" }] },
+      ]);
+
+      expect(Users.update).toHaveBeenCalledWith(
+        { roleId: ROLE_IDS.USER },
+        { where: { id: { [Op.in]: ["u1"] }, tenantId: "t1" } },
+      );
+    });
+
+    it("empties the group, tenant-scoped, when remove members carries no value", async () => {
+      await scim.patchGroup("t1", "g1", [{ op: "remove", path: "members" }]);
+
+      expect(Users.update).toHaveBeenCalledWith(
+        { roleId: ROLE_IDS.USER },
+        { where: { roleId: "g1", tenantId: "t1" } },
+      );
+    });
+
+    it("rejects an empty members value with 400", async () => {
+      await expect(
+        scim.patchGroup("t1", "g1", [{ op: "add", path: "members", value: [] }]),
+      ).rejects.toMatchObject({ status: 400 });
+      expect(Users.update).not.toHaveBeenCalled();
+    });
+
+    it("rejects removing displayName with 400", async () => {
+      await expect(
+        scim.patchGroup("t1", "g1", [{ op: "remove", path: "displayName" }]),
+      ).rejects.toMatchObject({ status: 400 });
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it("rejects a non-string displayName with 400", async () => {
+      await expect(
+        scim.patchGroup("t1", "g1", [{ op: "replace", path: "displayName", value: { x: 1 } }]),
+      ).rejects.toMatchObject({ status: 400 });
+    });
+
+    it("rejects an unsupported group path with 400", async () => {
+      await expect(
+        scim.patchGroup("t1", "g1", [{ op: "add", path: "externalId", value: "x" }]),
+      ).rejects.toMatchObject({ status: 400 });
+    });
+
+    it("rejects a non-string group path with 400", async () => {
+      await expect(
+        scim.patchGroup("t1", "g1", [{ op: "add", path: ["members"], value: ["u1"] }]),
+      ).rejects.toMatchObject({ status: 400 });
+    });
+
+    it("rejects a group operation with neither a path nor an object value", async () => {
+      await expect(
+        scim.patchGroup("t1", "g1", [{ op: "add", value: ["u1"] }]),
+      ).rejects.toMatchObject({ status: 400 });
+    });
+
+    // The asymmetry docs/DEVELOPER/09-SCIM-PROVISIONING.md flagged: updateGroup
+    // guarded member assignment, patchGroup did not.
+    it("runs a path-form member add through the A-27 role guard", async () => {
+      Role.findOne.mockResolvedValue({ id: SUPERADMIN_ID, name: "SUPERADMIN", isSystem: false, update });
+
+      await expect(
+        scim.patchGroup("t1", SUPERADMIN_ID, [{ op: "add", path: "members", value: ["u1"] }]),
+      ).rejects.toMatchObject({ status: 403 });
+      expect(Users.update).not.toHaveBeenCalled();
+    });
+
+    it("runs a value-form member add through the A-27 role guard too", async () => {
+      Role.findOne.mockResolvedValue({ id: SUPERADMIN_ID, name: "SUPERADMIN", isSystem: false, update });
+
+      await expect(
+        scim.patchGroup("t1", SUPERADMIN_ID, [{ op: "add", value: { members: ["u1"] } }]),
+      ).rejects.toMatchObject({ status: 403 });
+      expect(Users.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("getUsers — filter", () => {
+    beforeEach(() => {
+      Users.findAndCountAll.mockResolvedValue({
+        count: 1,
+        rows: [
+          {
+            id: "u1",
+            email: "ada@b.com",
+            firstName: "Ada",
+            lastName: "L",
+            isActive: true,
+            status: "ACTIVE",
+          },
+        ],
+      });
+    });
+
+    // The Okta/Entra "does this user already exist?" probe. It used to return
+    // the whole tenant.
+    it("narrows to one user on a userName eq filter", async () => {
+      const result = await scim.getUsers("t1", 1, 100, 'userName eq "ada@b.com"');
+
+      expect(Users.findAndCountAll).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { tenantId: "t1", email: "ada@b.com" } }),
+      );
+      expect(result.totalResults).toBe(1);
+      expect(result.Resources).toHaveLength(1);
+      expect(result.Resources[0].userName).toBe("ada@b.com");
+    });
+
+    it("accepts the emails.value spelling", async () => {
+      await scim.getUsers("t1", 1, 100, 'emails.value eq "ada@b.com"');
+
+      expect(Users.findAndCountAll).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { tenantId: "t1", email: "ada@b.com" } }),
+      );
+    });
+
+    it("accepts a quoted active value", async () => {
+      await scim.getUsers("t1", 1, 100, 'active eq "false"');
+
+      expect(Users.findAndCountAll).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { tenantId: "t1", isActive: false, status: "SUSPENDED" },
+        }),
+      );
+    });
+
+    it("combines terms joined by and", async () => {
+      await scim.getUsers("t1", 1, 100, 'userName eq "ada@b.com" and active eq true');
+
+      expect(Users.findAndCountAll).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { tenantId: "t1", email: "ada@b.com", isActive: true, status: "ACTIVE" },
+        }),
+      );
+    });
+
+    // Returning everything to a client that asked a narrow question is the bug;
+    // RFC 7644 § 3.4.2.2 calls for an invalidFilter 400.
+    it("rejects an unsupported filter with 400 instead of returning the tenant", async () => {
+      await expect(
+        scim.getUsers("t1", 1, 100, 'userName sw "ada"'),
+      ).rejects.toMatchObject({ status: 400 });
+      expect(Users.findAndCountAll).not.toHaveBeenCalled();
+    });
+
+    it("rejects an unsupported term inside an and-filter", async () => {
+      await expect(
+        scim.getUsers("t1", 1, 100, 'userName eq "ada@b.com" and title eq "x"'),
+      ).rejects.toMatchObject({ status: 400 });
+      expect(Users.findAndCountAll).not.toHaveBeenCalled();
+    });
   });
 });

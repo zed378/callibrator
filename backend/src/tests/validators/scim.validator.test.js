@@ -278,5 +278,35 @@ describe("SCIM Validators", () => {
         validate({}, scimPatchSchema),
       ).toThrow();
     });
+
+    // A-33: the canonical Okta/Entra deprovision payload carries a JSON
+    // boolean. The alternatives used to list only object/array/string, so this
+    // was a 400 from the validator before the service was ever reached.
+    it("accepts the boolean value an IdP sends to deactivate a user", () => {
+      const value = validate(
+        { Operations: [{ op: "replace", path: "active", value: false }] },
+        scimPatchSchema,
+      );
+
+      expect(value.Operations[0]).toEqual({ op: "replace", path: "active", value: false });
+    });
+
+    it("accepts a numeric value", () => {
+      const value = validate(
+        { Operations: [{ op: "replace", path: "roleId", value: 3 }] },
+        scimPatchSchema,
+      );
+
+      expect(value.Operations[0].value).toBe(3);
+    });
+
+    it("accepts an Okta members value filter as a path", () => {
+      const value = validate(
+        { Operations: [{ op: "remove", path: 'members[value eq "abc"]' }] },
+        scimPatchSchema,
+      );
+
+      expect(value.Operations[0].path).toBe('members[value eq "abc"]');
+    });
   });
 });

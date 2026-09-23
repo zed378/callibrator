@@ -116,7 +116,7 @@ The `/socket.io/*` and `/oidc/*` entries are the two most likely to be omitted, 
 - without WebSocket support, Socket.IO **silently falls back to long-polling** — it works, until connection counts matter;
 - without `/oidc/*` at the root, discovery returns a document nobody can follow, because the issuer advertises `<issuer>/oidc/...`.
 
-`X-Forwarded-For` must reach the application. Without it, session binding is meaningless, per-source rate limiting collapses into one bucket, and `e_signature_records.ipAddress` records the proxy — which is a compliance defect ([`03-REVERSE-PROXY.md`](./03-REVERSE-PROXY.md)).
+`X-Forwarded-For` must reach the application. Without it, per-source rate limiting collapses into one bucket, `sessions.ip_address` and `audit_logs.ipAddress` record the proxy rather than the client, and `e_signature_records.ipAddress` records the proxy — which is a compliance defect ([`03-REVERSE-PROXY.md`](./03-REVERSE-PROXY.md)).
 
 ## Stateful Dependencies
 

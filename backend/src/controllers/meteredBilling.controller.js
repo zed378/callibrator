@@ -46,7 +46,7 @@ exports.getBillingHistory = asyncHandler(async (req, res) => {
  */
 exports.estimateCost = asyncHandler(async (req, res) => {
   const { tenantId } = req.user;
-  const { metrics, quantity } = req.body;
+  const { metrics, quantity } = req.body || {};
 
   const estimate = await meteredBillingService.estimateCost(
     tenantId,
@@ -84,7 +84,7 @@ exports.getUsageAlerts = asyncHandler(async (req, res) => {
  */
 exports.createUsageAlert = asyncHandler(async (req, res) => {
   const { tenantId } = req.user;
-  const alertData = req.body;
+  const alertData = req.body || {};
 
   const alert = await meteredBillingService.createUsageAlert(
     tenantId,

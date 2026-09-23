@@ -25,7 +25,7 @@ exports.getOne = asyncHandler(async (req, res) => {
 });
 
 exports.update = asyncHandler(async (req, res) => {
-  const data = await webhookService.updateWebhook(req.user.tenantId, req.params.id, req.body);
+  const data = await webhookService.updateWebhook(req.user.tenantId, req.params.id, req.body || {});
   success(res, data, null, "Webhook updated", 200);
 });
 

@@ -162,6 +162,14 @@ const attemptDelivery = async (webhook, delivery) => {
   try {
     const res = await fetch(webhook.url, {
       method: "POST",
+      // `redirect: "manual"` is the point of this call, not a detail. Node's
+      // fetch follows redirects by default, and assertResolvedHostIsPublic
+      // above validates only the REGISTERED url — so a host that passes both
+      // SSRF layers could answer `302 Location: http://169.254.169.254/...`
+      // and this process would fetch it from inside the deployment. A 3xx is
+      // treated as a delivery failure below; a receiver that wants to move
+      // must be re-registered at its new url.
+      redirect: "manual",
       headers: {
         "Content-Type": "application/json",
         "X-Webhook-Event": delivery.event,
@@ -172,6 +180,13 @@ const attemptDelivery = async (webhook, delivery) => {
       body,
       signal: controller.signal,
     });
+    if (res.status >= 300 && res.status < 400) {
+      return {
+        ok: false,
+        status: res.status,
+        error: `Redirect (${res.status}) not followed: re-register the webhook at its new url`,
+      };
+    }
     return { ok: res.ok, status: res.status };
   } finally {
     clearTimeout(timer);
@@ -198,7 +213,7 @@ const deliverWithRetry = async (webhook, delivery) => {
         status: attempt >= MAX_ATTEMPTS ? "exhausted" : "failed",
         attempts: attempt,
         responseStatus: result.status,
-        lastError: `HTTP ${result.status}`,
+        lastError: result.error || `HTTP ${result.status}`,
       });
     } catch (err) {
       await delivery.update({

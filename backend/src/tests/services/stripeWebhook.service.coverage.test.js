@@ -15,7 +15,7 @@ const mockStripeFactory = jest.fn(() => ({
 jest.mock("stripe", () => mockStripeFactory);
 jest.mock("../../models", () => ({
   Subscription: { findOne: jest.fn() },
-  Invoice: { findOrCreate: jest.fn() },
+  Invoice: { findOne: jest.fn(), create: jest.fn() },
   Tenant: { update: jest.fn() },
 }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
@@ -60,7 +60,8 @@ const loadWith = (env) => {
 describe("stripeWebhook.service (coverage)", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    Invoice.findOrCreate.mockResolvedValue([{}, true]);
+    Invoice.findOne.mockResolvedValue(null);
+    Invoice.create.mockResolvedValue({});
     Tenant.update.mockResolvedValue([1]);
   });
 
@@ -181,18 +182,18 @@ describe("stripeWebhook.service (coverage)", () => {
         data: { object: { id: "in_bare", subscription: "sub_x" } },
       });
 
-      expect(Invoice.findOrCreate).toHaveBeenCalledWith({
+      expect(Invoice.findOne).toHaveBeenCalledWith({
         where: { stripeInvoiceId: "in_bare" },
-        defaults: {
-          tenantId: "t1",
-          subscriptionId: "sub1",
-          amountDue: 0,
-          amountPaid: 0,
-          currency: "USD",
-          status: "Paid",
-          invoiceUrl: null,
-          stripeInvoiceId: "in_bare",
-        },
+      });
+      expect(Invoice.create).toHaveBeenCalledWith({
+        tenantId: "t1",
+        subscriptionId: "sub1",
+        amountDue: 0,
+        amountPaid: 0,
+        currency: "USD",
+        status: "Paid",
+        invoiceUrl: null,
+        stripeInvoiceId: "in_bare",
       });
     });
 
@@ -214,14 +215,12 @@ describe("stripeWebhook.service (coverage)", () => {
         },
       });
 
-      expect(Invoice.findOrCreate).toHaveBeenCalledWith(
+      expect(Invoice.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          defaults: expect.objectContaining({
-            amountDue: 123.45,
-            amountPaid: 123.45,
-            currency: "EUR",
-            invoiceUrl: "https://stripe.test/i/1",
-          }),
+          amountDue: 123.45,
+          amountPaid: 123.45,
+          currency: "EUR",
+          invoiceUrl: "https://stripe.test/i/1",
         }),
       );
     });
@@ -270,10 +269,8 @@ describe("stripeWebhook.service (coverage)", () => {
 
       expect(r).toEqual({ handled: true, subscriptionId: "sub1", suspended: false });
       expect(Tenant.update).not.toHaveBeenCalled();
-      expect(Invoice.findOrCreate).toHaveBeenCalledWith(
-        expect.objectContaining({
-          defaults: expect.objectContaining({ status: "Open" }),
-        }),
+      expect(Invoice.create).toHaveBeenCalledWith(
+        expect.objectContaining({ status: "Open" }),
       );
     });
 
@@ -299,7 +296,8 @@ describe("stripeWebhook.service (coverage)", () => {
       });
 
       expect(r).toEqual({ handled: false, reason: "subscription not found" });
-      expect(Invoice.findOrCreate).not.toHaveBeenCalled();
+      expect(Invoice.findOne).not.toHaveBeenCalled();
+      expect(Invoice.create).not.toHaveBeenCalled();
     });
   });
 

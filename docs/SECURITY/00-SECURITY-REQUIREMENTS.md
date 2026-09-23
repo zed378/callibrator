@@ -27,13 +27,16 @@ These cannot be waived by anyone, for any deadline.
 | S8 | Failed logins counted; the account locks | `failedLoginAttempts`, `lockedUntil` |
 | S9 | Auth endpoints rate-limited independently of the global limit | 20/15 min at Express; 5/15 min with lockout at Redis |
 | S10 | OTP requests throttled separately and expire | 5/hour; `otpExpiredAt` |
-| S11 | Sessions persisted, revocable individually and in bulk, bound to IP and user agent | `sessions`, `sessionSecurity.middleware.js` |
+| S11 | Sessions persisted, revocable individually and in bulk | `sessions`, `session.service.js` |
+| S11b | **Target, not implemented.** Sessions bound to IP and user agent | nowhere — `sessions.ip_address` and `sessions.user_agent` are recorded and never compared |
 | S12 | Only the token **hash** is stored | `sessions.token_hash` |
 | S13 | MFA (TOTP) and WebAuthn available | `users.mfaSecret`, `webauthn*` |
 | S14 | WebAuthn sign count checked, not merely stored | `users.webauthnSignCount` |
 | S15 | `/send-otp` returns the same response whether or not the address exists | account-existence oracle |
 
 **Known gap:** MFA is available, not enforced — including for `SUPERADMIN`, which bypasses every permission check and every tenant predicate. Mandatory MFA at role level 10 is in [`../../TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md) and named as PR-3.
+
+**Known gap (S11b), corrected 2026-09-23:** S11 read "bound to IP and user agent" and cited `sessionSecurity.middleware.js` as where that happened. That file was imported by nothing and its raw SQL targeted a `"Sessions"` table with camelCase columns that does not exist, so no binding check has ever run; it was deleted under audit finding A-12. Session fixation protection and a concurrent-session limit, which the same file claimed, are likewise **not implemented**. `auth.middleware.js` states its own scope plainly — *"RBAC Only - No Session Validation"*. Whether these controls should exist, and how they should behave, is Q-08 in [`../../TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md).
 
 ## Authorization
 

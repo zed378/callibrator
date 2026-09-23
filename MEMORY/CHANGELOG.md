@@ -10,10 +10,32 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ### Decided
 
+- **ADR-040 — electronic signatures are RSA-signed over a canonical payload, and verification verifies.** Until 2026-09-23 the "signature" was a SHA-256 of `documentId:userId:tenantId:Date.now()`, recomputed at verification — so **no genuine signature could ever verify** — and the per-tenant RSA key pairs signed nothing at all. Signing now uses the tenant's private key over a deterministic payload binding the document, signer, timestamp, authentication method and the signature's meaning; a soft-deleted key still verifies its past signatures; records signed under the old scheme are reported `unverifiable_legacy` rather than as valid or as forgeries. Signing without a provisioned key pair is now a 409. The reference deployment has **no** signatures (0 rows), so nothing in the archive is affected.
+
 - **ADR-039 — PostgreSQL is the only supported database.** MySQL support was a claim, never a capability: `mysql2` was not a dependency, and search, webhooks and RAG used PostgreSQL-only SQL. The dialect is now fixed in `src/config/index.js`; any other `DB_DIALECT` refuses to start. ADR-029's tenant-isolation mechanism stands.
 - **ADR-038 — the backend moves to TypeScript, strict, incrementally.** Supersedes ADR-030. Plan: `TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`. Until it completes the backend is still JavaScript, and backend documents state TypeScript as the target, never as fact.
 
 ### Fixed
+
+- **A bodyless request was a 500, and the validator was part of the problem.** Express 5 leaves `req.body` undefined where Express 4 gave `{}`, and Joi treats `undefined` as **valid** against a non-required object schema — so `validate(schema)` let an absent body straight through and the handler's first read threw. A request middleware now fills only an absent body, all 31 validator helpers coerce it, and 69 reads on unvalidated routes are guarded, so a bodyless request gets the 400 it is owed. (A-09)
+- **Webhook deliveries followed redirects**, so a registered host that passed both SSRF layers could answer `302 Location: http://169.254.169.254/...` and this process would fetch cloud metadata from inside the deployment. Redirects are no longer followed; a 3xx is a delivery failure. (A-50)
+- **Dead session-security middleware deleted.** It was imported by nothing and its SQL targeted a table that does not exist, so session fixation protection, a concurrent-session limit and IP binding were never in place — while eleven documents and four ADRs described them as real. Whether they should exist is now an Open Question instead of an assumption. (A-12)
+
+- **`/search` returned rows the caller's role cannot list.** Each type is now filtered by running the same gate its own list route runs, so search cannot surface a record that resource would refuse. A principal with none of the searchable menus now gets 403 rather than a list. (A-04)
+- **Socket.IO accepted any origin, took the token from the query string, and checked nothing at connect.** CORS now uses the same allow-list as HTTP, the token comes from `handshake.auth`, and a suspended tenant or inactive user is refused — as it is over HTTP. It also turned out `kanban:join` ran its access check with **no tenant context**, which the scope resolver reads as "skip the tenant predicate"; socket handlers now run inside the tenant context. (A-05)
+- **`/health` published Node version, pid and memory to anyone, and checked only the database.** The public endpoint answers a verdict and nothing else; a per-dependency breakdown is super-admin-only; Redis and RabbitMQ are actually probed, and an unconfigured dependency reports "not configured" rather than healthy. (A-06, A-15)
+- **A public `0.0.0.0:19883` port with nothing behind it**, removed from the VM and dev overlays. The backend is an MQTT client, not a broker. (A-17)
+- **Stripe invoices never updated.** `upsertInvoice` only ever inserted, so an invoice that failed and was later paid stayed `Open` forever. `Paid` is now terminal and `amountPaid` never decreases, because Stripe does not guarantee event order and a late `payment_failed` carries `amount_paid: 0`. (A-25)
+- **Redelivered queue messages did the work twice** — a duplicate email, a batch job run again. Consumers now claim a stable identity from the message body before acting. This is at-least-once with a claim, not exactly-once, and the code says so. (A-26)
+- **Calibration evidence, signing keys, controlled SOPs and the risk register were mutable by any role.** All gated; publishing an SOP you authored is now a 409 with a state explanation; deleting an attachment is a soft delete with an audit row, refused outright once the parent certificate is approved or signed. (A-28)
+- **The rate limiter never used Redis.** Its client was built inside a function nothing called, so every counter lived in process memory: lockouts reset on each deploy and each replica had its own. Now on the shared client, with an atomic Lua increment; on a Redis outage it falls back to memory rather than failing open. Verified against a real Redis — and against a dead one, to prove the tests can fail. (A-30)
+- **`JWT_REFRESH_SECRET` signed nothing.** The key registry holds the access secret, and refresh tokens were signed from it. Tokens now carry a type claim, refresh tokens use the refresh secret alone, the algorithm list is pinned in code, and the backend **refuses to start** if the two secrets are equal or the algorithm is unsupported. (A-31)
+- **SCIM PATCH ignored `path`**, the form every major IdP sends, so a deprovision returned 200 and left the account active. Paths are honoured now, an unsupported one is a 400 rather than a silent success, and `userName eq` filters return one user instead of the whole tenant. A missing role guard on group membership was closed at the same time. (A-33)
+- **Every per-user permission override silently did nothing** — including `none`, which is a revocation. The matrix was keyed by menu name while every route looks it up by slug. (A-35)
+- **Every RabbitMQ call opened a new connection and nothing closed it.** The cache guarded on `connection.isOpen`, which amqplib does not define — the same shape as the ioredis `.connected` bug, kept green by a mock that invented the property. Liveness now comes from the events amqplib really emits. (A-36)
+- **The access log was never pruned.** `history: "30d"` names a *file* in `rotating-file-stream`, not a retention period, so the log grew without bound and a file literally named `30d` was created. (A-44)
+- **A decommissioned IoT device kept ingesting, and one bad MQTT message shut the server down.** The unscoped lookup dropped the soft-delete predicate; the message handler's rejection was unawaited and uncaught, so it reached the process-level handler that calls `shutdown()`. (A-45)
+- **The backend lint gate had never run.** A version mismatch crashed ESLint before it linted a file, and `make verify` runs lint first. It runs now; its 1,319 findings are formatting and are their own commit. (A-34)
 
 - **Any account could mint an unrestricted API key and have SCIM make it SUPERADMIN.** API-key issuance was open to every authenticated user, scopes were whatever the caller sent (`["*"]` accepted), SCIM accepts any API key as a service account, and the SUPERADMIN role id is a constant committed to this repository. Issuance is now `TENANT_ADMIN`-only, scopes must name a real menu slug and action, and SCIM refuses to assign SUPERADMIN or an unknown role and refuses to rename, patch or delete a system role. The 2026-09-21 write-up said SCIM was `auth`-only — it is not; see the record for the correction. (A-27)
 - **Any authenticated principal could re-parent another hospital's tenant.** The `Tenant` model has no `tenantId` attribute, so the global scoping hooks never applied to it, and three `tenant-hierarchy` mutations carried `auth` alone. Reads of a named tenant are now the caller's own tenant or **404**; re-parenting and `cross-tenant-roles` are SUPERADMIN-only and refuse API keys. (A-01)
@@ -26,9 +48,22 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ### Found, not yet fixed
 
+- **Audit rows are written after the response, outside the transaction**, on `res.on("finish")`. A rolled-back action can leave a row saying it happened; a committed one can leave none. (A-41)
+- **A failed audit write is announced only to `console.error`**, and production writes nothing to stdout — so a compliance record that fails to persist fails silently and durably. (A-42)
+- **Revocation does not revoke.** Nothing in the request path reads `sessions`, and the deployed `JWT_ACCESS_EXPIRED` is `1d` where the documentation says `15m`: a revoked session keeps working for up to a day. (A-48)
+- **SCIM user creation is a cross-tenant existence oracle** — globally unique email, tenant-scoped duplicate check. (A-37)
+
 - **SCIM PATCH ignores `path`.** `patchUser` reads `op.value` as an object only, so the RFC 7644 form every major IdP sends — `{ "op": "replace", "path": "active", "value": false }` — is silently dropped and the endpoint answers **200 with the user unchanged**. Deprovisioning appears to succeed while the account stays active. (A-33)
 
 ### Corrected documentation
+
+More claims found false on 2026-09-23, each corrected where it was made:
+
+- **ADR-017 "User Sessions Bound to IP and User Agent" was never implemented.** The decision was recorded, propagated into six `docs/` files as fact, and the only code that claimed to enforce it was imported by nothing and queried a table that does not exist. Deleted; eleven documents and four ADRs corrected; whether the controls should exist is now an Open Question rather than an assumed feature. (A-12)
+- `docs/ENGINEERING/12-LOGGING-CONVENTIONS.md` said `config/socket.js` was the only stdout output in production. There are **25** `console.*` sites, and the one that matters announces a failed audit write.
+- `docs/DEVOPS/06-LOGGING.md` described a log redactor as as-built. **There is none**, and it recorded access-log retention that did not exist.
+- `docs/API/13-INTEGRATION-API.md`: SCIM responses are wrapped in the platform envelope (no compliant client can parse them), `DELETE /Users` calls `destroy()` rather than deactivating, and credentials are encrypted with `KMS_MASTER_KEY`, not the `ENCRYPT_KEY` it named.
+- A-29 said nothing sets `iotEnabled`; the demo seeder does. The conclusion stands, the premise was too broad.
 
 Claims found false in the 2026-09-21 audit, each corrected where it was made:
 

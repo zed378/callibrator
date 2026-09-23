@@ -533,3 +533,37 @@ describe("userPermission.service", () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// A-35: the matrix used to be keyed by menu NAME only, while dynamicAccess
+// looks an override up by the SLUG every route passes. Nothing matched, so no
+// override ever applied — including a "none", which is a revocation.
+// ---------------------------------------------------------------------------
+describe("getUserOverrideMatrix — indexed by name AND slug (A-35)", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("indexes an override under both its menu name and its slug", async () => {
+    const { UserMenuPermission } = require("../../models");
+    UserMenuPermission.findAll.mockResolvedValue([
+      { permissionType: "none", menu: { name: "Warehouse", slug: "warehouse" } },
+    ]);
+
+    const matrix = await getUserOverrideMatrix("u-a35");
+
+    // "warehouse" is the key every route actually passes to dynamicAccess.
+    expect(matrix).toEqual({ Warehouse: "none", warehouse: "none" });
+  });
+
+  it("still indexes a menu that carries no slug", async () => {
+    const { UserMenuPermission } = require("../../models");
+    UserMenuPermission.findAll.mockResolvedValue([
+      { permissionType: "read", menu: { name: "Legacy Menu" } },
+    ]);
+
+    const matrix = await getUserOverrideMatrix("u-a35b");
+
+    expect(matrix).toEqual({ "Legacy Menu": "read" });
+  });
+});

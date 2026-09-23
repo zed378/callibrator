@@ -4,10 +4,14 @@ const { asyncHandler } = require("../utils/controllerWrapper.util");
 const { success } = require("../utils/response.util");
 
 exports.create = asyncHandler(async (req, res) => {
+  // A-09: Express 5 gives `undefined`, not `{}`, when no body was sent, so
+  // `req.body.name` threw a TypeError — a 500 where the service already owes a
+  // 400 ("name is required").
+  const { name, scopes, expiresAt } = req.body || {};
   const data = await apiKeyService.createApiKey(req.user.tenantId, {
-    name: req.body.name,
-    scopes: req.body.scopes,
-    expiresAt: req.body.expiresAt,
+    name,
+    scopes,
+    expiresAt,
     createdBy: req.user.id,
   });
   success(

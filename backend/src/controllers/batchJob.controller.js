@@ -2,7 +2,7 @@ const batchJobService = require("../services/batchJob.service");
 const { asyncHandlerWithMapping } = require("../utils/controllerWrapper.util");
 
 exports.createTestJob = asyncHandlerWithMapping(async (req, res) => {
-  const { type, totalItems } = req.body;
+  const { type, totalItems } = req.body || {};
   const result = await batchJobService.createJob(req.user.tenantId, req.user.id, type || "EXPORT_CSV", totalItems || 10);
   return {
     success: true,

@@ -121,7 +121,7 @@ Each ADR follows this pattern:
 **Implications:**
 - Requires OIDC provider configuration (Auth0, Keycloak, etc.)
 - Refresh token rotation mandatory
-- Session binding to IP/user agent for anomaly detection
+- Session binding to IP/user agent for anomaly detection — **never implemented**, see ADR-017 and Q-08 (noted 2026-09-23)
 
 **Status:** Accepted
 
@@ -392,7 +392,9 @@ Each ADR follows this pattern:
 - VPN users may experience re-auth on path changes
 - Geolocation data used only for anomaly detection
 
-**Status:** Accepted
+**Status:** Accepted — **never implemented.** Recorded 2026-09-23.
+
+Nothing in the request path has ever compared a session's `ip_address` or `user_agent` against the incoming request. The only code that claimed to, `sessionSecurity.middleware.js`, was imported by nothing and its SQL targeted a `"Sessions"` table with camelCase columns that does not exist; it was deleted under audit finding A-12. This ADR is the origin of a claim that reached six `docs/` files as fact, which is the PR-4 failure shape. It stands as the decision that was taken; the controls it describes are a **target**, and whether they should be built — and how they behave on a changed IP — is Q-08 in [`../TASKS/BACKLOG.md`](../TASKS/BACKLOG.md).
 
 ---
 
@@ -811,7 +813,7 @@ Being a provider as well emerged from enterprise tenants wanting Callibrator ide
 **Implications:**
 
 - Only `token_hash` is stored — a database read cannot recover a token.
-- Sessions carry `ip_address`, `user_agent` and `device`. Strict IP binding breaks users on mobile networks; the balance struck in `sessionSecurity.middleware.js` is a product decision and should be stated rather than emergent.
+- Sessions carry `ip_address`, `user_agent` and `device`. They are **recorded and never checked** — corrected 2026-09-23. `sessionSecurity.middleware.js`, named here as where the balance was struck, was dead code and was deleted under A-12. Strict IP binding breaks users on mobile networks, so the balance is a product decision; it is Q-08 in [`../TASKS/BACKLOG.md`](../TASKS/BACKLOG.md), not something the code currently expresses.
 - **`sessions` uses snake_case attribute names** — `tenant_id`, not `tenantId`. `Session.destroy({ where: { tenantId } })` fails with `column "tenantId" does not exist`, which broke the nightly retention purge. This is recorded as a real inconsistency (PR-14), not a convention.
 
 **Status:** Accepted
@@ -1007,7 +1009,7 @@ That last row is the real cost of a phantom second engine: each feature is writt
 Deliberately **not** changed:
 
 - **Applied migrations** (`0012`, `0015`, `0018`) keep their dialect guards. A migration that has run is history; rewriting it changes nothing on existing databases and invites divergence on new ones.
-- **`sessionSecurity.middleware.js`** still contains dialect branches because it is **dead code** — imported by nothing, and its SQL targets a `"Sessions"` table that does not exist. It is scheduled for deletion or correct wiring in the audit remediation, not edited in place.
+- **`sessionSecurity.middleware.js`** kept its dialect branches because it was **dead code** — imported by nothing, and its SQL targeted a `"Sessions"` table that does not exist. Resolved **2026-09-23**: deleted under audit finding A-12, with its tests. Wiring it in would have changed authentication behaviour on a decision nobody had made, so that became Q-08 instead.
 
 ### What PostgreSQL-only now permits
 
@@ -1033,6 +1035,125 @@ These were avoided, or worked around, to stay engine-agnostic. They are now ordi
 
 ---
 
+## ADR-040: Electronic Signatures Are RSA-Signed Over a Canonical Payload, and Verification Verifies
+
+**Date:** 2026-09-23 · **Finding:** A-47 · **Supersedes:** nothing — this is the first working version of the control
+
+**Context**
+
+`eSignature.service.js#generateSignatureHash(documentId, userId, tenantId)` built
+`${documentId}:${userId}:${tenantId}:${Date.now()}` and SHA-256'd it. `verifySignature` called that
+same function again and compared the result to the stored hash. Because `Date.now()` was inside the
+payload, the recomputed value could never equal the stored one: **`verifySignature` returned
+`valid: false` for every genuine signature ever made.**
+
+And there was nothing behind it. The per-tenant RSA key pairs — created, listed and deleted through
+the API, private half encrypted at rest — were **never used to sign or verify anything**;
+`verifySignature` read no key at all. The "electronic signature" was a SHA-256 of a timestamp. It
+bound no document, no signer and no tenant, it could not be verified, and it could not distinguish
+a genuine record from a fabricated one. This system claims FDA 21 CFR Part 11 and ISO 13485
+conformance, and this is the artefact those claims rest on.
+
+**Decision**
+
+1. Signing produces an **RSA-SHA256 signature with the signing tenant's private key**
+   (`crypto.sign`) over a canonical payload binding: scheme, algorithm, `tenantId`, `documentId`,
+   `workflowId`, `workflowStepId`, signer `userId`, `signedAt`, `authenticationMethod` and the
+   signature's `reason` (its *meaning*, per § 11.50(a)(3)).
+2. The payload is serialized as a JSON **array of `[name, value]` pairs** in an order fixed by one
+   module constant, every value stringified, `null` and `undefined` collapsed to `""`. Key order
+   cannot drift, and a NULL column and an empty string cannot produce two different payloads for
+   the same record.
+3. `signedAt` is computed **once**, before signing, and is the value stored. Verification
+   reconstructs it from the stored column at fixed millisecond ISO-8601 precision. **No value in
+   the payload is ever derived from the verification-time clock** — that was the defect.
+4. `signature_records` gains `signature_value`, `signing_key_id`, `signature_scheme` and
+   `signature_reason` (migration `0019-add-signature-crypto-fields.js`, all nullable, **no
+   backfill**).
+5. Verification loads the key by `signing_key_id` with **`paranoid: false`**, so a soft-deleted key
+   still verifies its past signatures; the parent workflow is read the same way, so soft-deleting a
+   workflow does not erase the evidence of signatures made against it. Verification uses the public
+   key only.
+6. `verifySignature` returns a `verificationStatus` enum —
+   `valid | invalid | revoked | not_found | workflow_missing | unverifiable_legacy | unverifiable_key_missing | error`
+   — alongside the `valid` boolean, which is `true` only for a cryptographically verified signature.
+7. Signing with no provisioned key pair is **409**, not 500: an unmet precondition with a stated
+   remedy is not a server fault.
+8. Records written before this ADR carry `signature_scheme IS NULL` and are reported
+   `unverifiable_legacy` — **never `valid`, never `invalid`**.
+
+**Rationale**
+
+§ 11.70 requires the signature to be *linked to its record* so it cannot be excised, copied or
+transferred; § 11.50 requires the signer, the timestamp and the meaning to be part of the signed
+manifest. A keyed signature over a canonical payload containing exactly those fields is the minimum
+that satisfies this, and the only construction that lets an auditor check a record without trusting
+the application. Determinism is not a nicety: a payload that serializes differently on a different
+Node version silently turns the whole archive invalid.
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| Keep the hash, just remove `Date.now()` | a SHA-256 over public, guessable fields proves only that someone who knows the fields can recompute it. It cannot tell a signature from a forgery, and it leaves the key pairs dead code |
+| HMAC with a tenant secret | symmetric: anyone who can verify can forge, so the record has no evidentiary weight **against the operator** — which is the party an audit is checking |
+| Per-signer keys instead of per-tenant | the stronger construction and the right eventual target, but no per-user key material or enrolment flow exists. Deferred deliberately; the consequence is recorded below |
+| Detached JWS or PKCS#7/CAdES | premature — a dependency and a format decision for a module with no external-verifier requirement yet. The canonical payload can be re-wrapped as JWS later without changing what is bound |
+| Backfill old rows with a scheme marker, or re-sign them now | **refused.** Signing an old record today asserts a property that never existed and dates it wrongly. That is falsifying a Part 11 record |
+| `JSON.stringify` of an object with sorted keys | still depends on the implementation's key handling, and on nobody adding a nested object later. An explicit ordered array does not |
+
+**Implications, including the bad ones**
+
+- Every signature made before this change **cannot be verified and never will be**. They are
+  flagged `unverifiable_legacy`. Where such a record backed a regulated approval, that reliance has
+  no cryptographic backing and needs a QA assessment. *On the reference deployment this is moot:
+  `signature_records` is **empty** (checked 2026-09-23, 0 rows, 0 workflows, 0 tenant keys) — the
+  feature was never used in anger, which is the only reason this is a bug fix rather than an
+  archive recovery.*
+- Signing now **fails with 409 for any tenant with no key pair**. Nobody is blocked today (there
+  are none, and nobody signs), but generating a key pair becomes a prerequisite step before the
+  first signature — an operational step that did not exist.
+- The private key is protected by `ENCRYPT_KEY` (AES-256-CBC) in `eSignature.service.js`, **not**
+  by `kms.service.js`, which protects every other tenant secret. This ADR deliberately does not
+  change that — re-wrapping existing keys is its own change — so it is now the weakest link in the
+  chain and should be the next one addressed.
+- `signature_reason` is bound but **not yet populated**: the controller and validator do not accept
+  a `reason`, so signatures currently bind an empty meaning. A residual § 11.50(a)(3) gap, and a
+  two-line follow-up.
+- A hard `DELETE` on `tenant_keys` — or a GDPR purge, or a tenant cascade — permanently makes every
+  signature that key made unverifiable (`unverifiable_key_missing`). Honest, and unrecoverable.
+  Public keys arguably belong in a separate, never-deleted archive.
+- These are **per-tenant** keys held by the service, so a verified signature proves *the service
+  signed for that user at that time*. It is not non-repudiation against the operator; § 11.200's
+  "sole use by their genuine owner" is met administratively, not cryptographically.
+- There is **no trusted timestamp**. `signedAt` is the application's clock, bound but unattested. A
+  skewed or malicious server can date a signature freely. Long-term archival would need RFC 3161.
+- Key rotation remains **undesigned**: `generateKeyPair` inserts another row and signing picks the
+  newest. Old signatures keep verifying against their own `signing_key_id`, which is the part that
+  matters, but there is no ceremony, no overlap policy and no way to tell a rotation from an
+  accident.
+- Signing now costs an RSA operation and an AES decryption. Negligible here, but it is no longer a
+  pure hash.
+
+**Verification**
+
+`npx jest src/tests/services/esignature src/tests/controllers/eSignature src/tests/routes/eSignature`
+→ 6 suites, 116 tests, 100 % on `eSignature.service.js`. The new
+`services/esignature.signing.test.js` uses a **real** 2048-bit RSA key and the real at-rest
+wrapper, not a mocked signer — a mocked signer is the class of test that let this defect live.
+Named: "verifies as valid — the case that could never pass before ADR-040"; "verifies as INVALID
+when the signing timestamp is changed after signing"; "still verifies a signature whose key has
+been soft-deleted"; "is reported as unverifiable_legacy — neither valid nor a forgery"; "fails with
+409 and an actionable message when no key pair is provisioned".
+
+**Not known to work:** migration `0019` has **not been run** — no database was reachable from the
+machine that wrote it. It is written to fail loudly rather than no-op silently, and the columns must
+be confirmed in `psql` after `make migrate`.
+
+**Status:** Accepted
+
+---
+
 ## Open Decisions
 
 Recorded so a future reader can tell whether their idea was evaluated and rejected, or genuinely never considered.
@@ -1049,6 +1170,9 @@ Recorded so a future reader can tell whether their idea was evaluated and reject
 | Row Level Security as defence in depth | **open** — PostgreSQL-only (ADR-039) removes one of ADR-029's three reasons against it; the fail-open risk and per-request cost remain |
 | Partitioning `iot_readings` and `audit_logs` | deferred until retention alone stops being enough |
 | A read replica for reporting | deferred until reporting measurably affects operational p95 |
+| Per-signer signing keys instead of per-tenant | **open** — ADR-040 signs with a tenant key held by the service, which proves the service signed for that user, not that the user did. Non-repudiation against the operator needs per-user key material and an enrolment flow |
+| Moving the e-signature private keys under `kms.service.js` | **open** — they are the only tenant secret still wrapped with `ENCRYPT_KEY` directly (ADR-040); the change needs a re-wrap of existing keys |
+| A trusted timestamp (RFC 3161) on signatures | **open** — `signedAt` is the application's own clock, bound into the payload but attested by nothing |
 | A rotation procedure for `CERT_SIGNING_SECRET` and `ENCRYPT_KEY` | **open, and cheap to design in advance** — neither is practically rotatable today, so "rotate the key" is not currently an available incident response |
 
 ---

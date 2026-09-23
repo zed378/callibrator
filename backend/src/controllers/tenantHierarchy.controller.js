@@ -19,7 +19,7 @@ const { logger } = require("../middlewares/activityLog.middleware");
  */
 exports.createSubOrganization = asyncHandler(async (req, res) => {
   const { parentTenantId } = req.params;
-  const { name } = req.body;
+  const { name } = req.body || {};
 
   const result = await tenantHierarchyService.createSubOrganization(
     parentTenantId,
@@ -83,7 +83,7 @@ exports.getDataVisibilityScope = asyncHandler(async (req, res) => {
  */
 exports.assignRoleAcrossHierarchy = asyncHandler(async (req, res) => {
   const { userId } = req.params;
-  const { roleId, scope = "subtree" } = req.body;
+  const { roleId, scope = "subtree" } = req.body || {};
 
   const result = await tenantHierarchyService.assignRoleToUserAcrossHierarchy(
     userId,
@@ -177,7 +177,10 @@ exports.addChildTenant = asyncHandler(async (req, res) => {
   // Validated here rather than as route middleware: the exported `addChild`
   // is a Joi schema, and passing its `.validate` to express threw on every
   // request. stripUnknown/abortEarly come from the schema's own options.
-  const { error, value } = addChildValidator.validate(req.body);
+  // A-09: Joi treats `undefined` as valid against a non-required object
+  // schema, so a bodyless POST passed this gate with `value === undefined` and
+  // the service then threw. `|| {}` makes the required-field rules fire.
+  const { error, value } = addChildValidator.validate(req.body || {});
   if (error) {
     throw new AppError(400, formatErrors(error.details) || "Validation failed");
   }
@@ -197,7 +200,7 @@ exports.addChildTenant = asyncHandler(async (req, res) => {
  */
 exports.updateTenantParent = asyncHandler(async (req, res) => {
   const { tenantId } = req.params;
-  const { newParentId } = req.body;
+  const { newParentId } = req.body || {};
 
   const { Tenant, TenantHierarchy } = require("../models");
 

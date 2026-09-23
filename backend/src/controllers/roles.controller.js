@@ -94,13 +94,13 @@ exports.getMenuById = asyncHandler(async (req, res) => {
 });
 
 exports.createMenu = asyncHandler(async (req, res) => {
-  const menu = await rolesService.createMenu(req.body);
+  const menu = await rolesService.createMenu(req.body || {});
   return res.status(201).json({ success: true, data: menu });
 });
 
 exports.updateMenu = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const menu = await rolesService.updateMenu(id, req.body);
+  const menu = await rolesService.updateMenu(id, req.body || {});
   return res.status(200).json({ success: true, data: menu });
 });
 
@@ -115,7 +115,7 @@ exports.deleteMenu = asyncHandler(async (req, res) => {
 // ==========================================
 
 exports.assignRoleToUser = asyncHandler(async (req, res) => {
-  const { userId, roleId } = req.body;
+  const { userId, roleId } = req.body || {};
   const user = await rolesService.assignRoleToUser(userId, roleId);
   return res.status(200).json({ success: true, data: user });
 });
@@ -132,7 +132,7 @@ exports.removeRoleFromUser = asyncHandler(async (req, res) => {
 
 exports.assignPermissionToRole = asyncHandler(async (req, res) => {
   const { roleId } = req.params;
-  const { menuGroupId, permissionType } = req.body;
+  const { menuGroupId, permissionType } = req.body || {};
   const permission = await rolesService.assignMenuToRole(
     roleId,
     menuGroupId,

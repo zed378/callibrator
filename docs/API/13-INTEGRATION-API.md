@@ -57,9 +57,13 @@ SCIM 2.0, with SCIM-cased paths.
 
 Capital `U` and `G` are required by the SCIM specification; a lowercase path is not SCIM.
 
-SCIM responses have their **own** envelope (`schemas`, `totalResults`, `Resources`) and their own error format. They do **not** use the platform envelope from [`00-API-STANDARDS.md`](./00-API-STANDARDS.md). That is correct — a SCIM client will not parse anything else.
+SCIM responses *should* have their **own** envelope (`schemas`, `totalResults`, `Resources`) and their own error format, because a SCIM client will not parse anything else.
 
-`DELETE /Users/:id` deprovisions. Given that a user is never hard-deleted (calibration attribution depends on them), this must deactivate, not erase.
+> **As-built, 2026-09-23: they do not.** Every handler in `scim.controller.js` wraps the SCIM body in the platform `success()` envelope, so the SCIM payload arrives nested under `data`; errors come back in the platform error shape as well. The one exception is the 403 from `requireApiKeyOrAdmin` in `scim.route.js`, which is SCIM-shaped. No compliant SCIM client can consume this as written. Tracked with the other SCIM defects around A-33.
+
+`DELETE /Users/:id` deprovisions. Given that a user is never hard-deleted (calibration attribution depends on them), this **must** deactivate, not erase.
+
+> **As-built, 2026-09-23:** `scim.service.js` calls `user.destroy()`. The model is `paranoid: true`, so the row survives with `deleted_at` set — but the user is neither deactivated nor marked `isDeleted`, and the intent above is not what the code does.
 
 ## `/api/v1/storage` — 6 endpoints
 
@@ -74,7 +78,7 @@ SCIM responses have their **own** envelope (`schemas`, `totalResults`, `Resource
 
 `POST /settings/test` before `PUT /settings` is the right order: saving a configuration that does not work leaves the tenant unable to upload and unable to see why.
 
-Credentials are encrypted at rest with `ENCRYPT_KEY` and must never be returned by `GET /settings`.
+Credentials are encrypted at rest with **`KMS_MASTER_KEY`** (`services/kms.service.js`, via the `SENSITIVE_KEYS` list on `tenantSettings.model.js`) and must never be returned by `GET /settings`. Earlier revisions of this document named `ENCRYPT_KEY`; no such variable exists.
 
 **Tenant-supplied S3 endpoints are SSRF-checked; operator-configured ones are not.** The operator is allowed to name an internal host (`http://minio:9000`); a tenant is not. Any refactor that unifies the two paths must keep the tenant side checked.
 

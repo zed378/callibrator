@@ -39,7 +39,12 @@ const accessLogStream = rfs.createStream(
     interval: "1d",
     path: logDir,
     compress: "gzip",
-    history: "30d",
+    // `history` is the name of rotating-file-stream's HISTORY FILE, not a
+    // retention period (see its README § history: "Specifies the history
+    // filename"). `history: "30d"` therefore set no retention at all and
+    // created a bookkeeping file literally named `30d`; the access log grew
+    // without bound. Retention is maxFiles/maxSize.
+    maxFiles: 30,
   },
 );
 

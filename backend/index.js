@@ -20,6 +20,8 @@ const {
   globalSanitizer,
 } = require("./src/middlewares/globalSanitizer.middleware");
 
+const { bodyDefault } = require("./src/middlewares/bodyDefault.middleware");
+
 const {
   ensureFolderExisted,
 } = require("./src/middlewares/createFolder.middleware");
@@ -273,6 +275,15 @@ app.use(
   }),
 );
 
+// A-09 — Express 5 leaves req.body undefined when no body was sent (Express 4
+// gave {}). Every downstream `const { x } = req.body` then throws a TypeError
+// that surfaces as a 500 instead of the 400 (or the 2xx, where the body is
+// optional) the caller is owed. This runs after the parsers and before the
+// sanitizer, the routers and every route validator, so no handler ever sees
+// an absent body. It fills only an ABSENT body — a parsed object, array,
+// string or Buffer is left untouched.
+app.use(bodyDefault);
+
 // ======================================================
 // REQUEST TIMEOUT
 // ======================================================
@@ -355,6 +366,10 @@ swaggerDocs(app);
 // ROUTES
 // ======================================================
 const migrationRoutes = require("./src/routes/internal/migration.route");
+const {
+  publicHealthRoutes,
+  internalHealthRoutes,
+} = require("./src/routes/internal/health.route");
 const authRoutes = require("./src/routes/api/auth.route");
 const userRoutes = require("./src/routes/api/user.route");
 const tenantRoutes = require("./src/routes/api/tenant.route");
@@ -479,32 +494,27 @@ app.use("/api/v1/tenant-hierarchy", tenantHierarchyRoutes);
 app.use("/api/v1/esignature", eSignatureRoutes);
 app.use("/api/v1/kanban", kanbanRoutes);
 app.use("/api/v1/tickets", ticketRoutes);
+// Per-dependency readiness detail. Gated (auth + denyApiKey + superAdminOnly)
+// because it names every dependency and why it is failing — A-06.
+app.use("/api/v1/health", internalHealthRoutes);
 
 // ======================================================
-// HEALTHCHECK
+// HEALTHCHECK / LIVENESS / READINESS
 // ======================================================
-
-app.get("/health", async (req, res) => {
-  try {
-    await db.authenticate();
-
-    return res.status(200).json({
-      status: "OK",
-      uptime: process.uptime(),
-      timestamp: new Date(),
-      memory: process.memoryUsage(),
-      pid: process.pid,
-      node: process.version,
-      database: "connected",
-    });
-  } catch (error) {
-    return res.status(503).json({
-      status: "ERROR",
-      database: "disconnected",
-      message: error.message,
-    });
-  }
-});
+//
+// A-06 + A-15. These three public paths (/health, /live, /ready) now live in
+// routes/internal/health.route.js:
+//
+//   * /live   stays dependency-free.
+//   * /health and /ready answer an AGGREGATE verdict over every required
+//     dependency — PostgreSQL, Redis AND RabbitMQ, not the database alone —
+//     with 503 when one is down, so the compose healthcheck and the Helm
+//     readiness/startup probes that already point at /health keep working and
+//     now mean something.
+//   * neither discloses the Node version, pid, memory, hostname or the
+//     per-dependency breakdown. That breakdown is at GET /api/v1/health,
+//     behind auth + denyApiKey + superAdminOnly.
+app.use(publicHealthRoutes);
 
 // ======================================================
 // ROOT
@@ -515,28 +525,6 @@ app.get("/", (req, res) => {
     status: "Success",
     message: "Your API is running",
   });
-});
-
-// ======================================================
-// LIVENESS
-// ======================================================
-
-app.get("/live", (req, res) => {
-  return res.status(200).send("OK");
-});
-
-// ======================================================
-// READINESS
-// ======================================================
-
-app.get("/ready", async (req, res) => {
-  try {
-    await db.authenticate();
-
-    return res.status(200).send("READY");
-  } catch {
-    return res.status(503).send("NOT READY");
-  }
 });
 
 // ======================================================

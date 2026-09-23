@@ -2,7 +2,19 @@ const express = require("express");
 const router = express.Router();
 const riskController = require("../../controllers/risk.controller");
 const { auth } = require("../../middlewares/auth.middleware");
+const { dynamicAccess } = require("../../middlewares/dynamicAccess.middleware");
+const { MENU_SLUGS } = require("../../constants");
 
+// A-28 — authorization.
+//
+// Until 2026-09-23 every route here carried `auth` alone and risk.service
+// checked tenant only, so any role could create, rescore or delete entries in
+// the risk register (ISO 14971 / ISO 13485 risk management file).
+//
+// `risk` is a real MENU_SLUGS entry: write is held by SUPERADMIN, HEALTHCARE
+// ADMIN and CALIBRATOR ADMIN; ENGINEERING MANAGER holds read. No other seeded
+// role holds the menu at all, so a TECHNICIAN or USER now gets 403 on every
+// route here — including the reads, which is what the menu matrix says.
 router.use(auth);
 
 /**
@@ -53,7 +65,7 @@ router.use(auth);
  *       401:
  *         description: Unauthorized
  */
-router.post("/", riskController.createRisk);
+router.post("/", dynamicAccess(MENU_SLUGS.RISK, "write"), riskController.createRisk);
 /**
  * @swagger
  * /api/v1/risk:
@@ -86,7 +98,7 @@ router.post("/", riskController.createRisk);
  *       401:
  *         description: Unauthorized
  */
-router.get("/", riskController.getRisks);
+router.get("/", dynamicAccess(MENU_SLUGS.RISK, "read"), riskController.getRisks);
 /**
  * @swagger
  * /api/v1/risk/{id}:
@@ -111,7 +123,7 @@ router.get("/", riskController.getRisks);
  *       404:
  *         description: Risk not found
  */
-router.get("/:id", riskController.getRiskById);
+router.get("/:id", dynamicAccess(MENU_SLUGS.RISK, "read"), riskController.getRiskById);
 /**
  * @swagger
  * /api/v1/risk/{id}:
@@ -167,7 +179,7 @@ router.get("/:id", riskController.getRiskById);
  *       404:
  *         description: Risk not found
  */
-router.put("/:id", riskController.updateRisk);
+router.put("/:id", dynamicAccess(MENU_SLUGS.RISK, "write"), riskController.updateRisk);
 /**
  * @swagger
  * /api/v1/risk/{id}:
@@ -192,6 +204,6 @@ router.put("/:id", riskController.updateRisk);
  *       404:
  *         description: Risk not found
  */
-router.delete("/:id", riskController.deleteRisk);
+router.delete("/:id", dynamicAccess(MENU_SLUGS.RISK, "write"), riskController.deleteRisk);
 
 module.exports = router;

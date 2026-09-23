@@ -67,7 +67,19 @@ class IotService {
           const tenantId = parts[2] || null;
 
           if (deviceId && tenantId) {
-            this.ingestReading(tenantId, deviceId, payloadJson);
+            // Unawaited AND uncaught, this rejection reached the process-level
+            // `unhandledRejection` handler in index.js, which calls shutdown():
+            // one stale retained message for an unknown or disabled device shut
+            // the server down. The failure belongs in the log, not in the exit
+            // code.
+            this.ingestReading(tenantId, deviceId, payloadJson).catch((error) => {
+              logger.error("MQTT ingest failed", {
+                error: error.message,
+                topic,
+                deviceId,
+                tenantId,
+              });
+            });
           }
         } catch (error) {
           logger.error("MQTT Message Parse Error", { error: error.message, topic });
@@ -117,8 +129,10 @@ class IotService {
   }
 
   async ingestReading(tenantId, deviceId, payload) {
+    // See iot.controller.js: `.unscoped()` drops the soft-delete predicate, so
+    // it is carried explicitly. A decommissioned device must not ingest.
     const device = await CalibrationDevice.unscoped().findOne({
-      where: { id: deviceId, tenantId, iotEnabled: true },
+      where: { id: deviceId, tenantId, iotEnabled: true, isDeleted: false },
       attributes: ["id", "name", "readingTolerance"]
     });
 

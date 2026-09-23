@@ -121,6 +121,45 @@ describe("validation middleware", () => {
       expect(res.status).toHaveBeenCalledWith(400);
     });
 
+    // A-09. Express 5 leaves req.body undefined when no body was sent, and Joi
+    // treats `undefined` as VALID against a non-required object schema — so
+    // this gate used to call next() with req.body === undefined and the
+    // controller's first `req.body.x` threw a TypeError, reported as a 500.
+    it("should return 400, not pass through, when the body is absent entirely (A-09)", () => {
+      const schema = Joi.object({
+        name: Joi.string().required(),
+      });
+
+      req.body = undefined;
+
+      const middleware = validate(schema);
+      middleware(req, res, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(400);
+      const jsonCall = res.json.mock.calls[0][0];
+      expect(jsonCall.details.map((d) => d.field)).toContain("name");
+    });
+
+    it("should call next() with a real object body when the body is absent and every field is optional (A-09)", () => {
+      const schema = Joi.object({
+        note: Joi.string().optional(),
+      });
+
+      req.body = undefined;
+
+      const middleware = validate(schema);
+      middleware(req, res, next);
+
+      expect(next).toHaveBeenCalled();
+      // The handler downstream must be able to destructure it.
+      expect(req.body).toEqual({});
+      expect(() => {
+        const { note } = req.body;
+        return note;
+      }).not.toThrow();
+    });
+
     it("should handle empty body", () => {
       const schema = Joi.object({
         name: Joi.string().optional(),

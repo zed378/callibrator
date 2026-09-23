@@ -17,6 +17,12 @@ jest.mock("../../models", () => ({
     create: jest.fn(),
     findOne: jest.fn(),
   },
+  Certificate: { findOne: jest.fn() },
+  AuditLog: { create: jest.fn() },
+}));
+
+jest.mock("../../config", () => ({
+  db: { transaction: jest.fn(async (cb) => cb("TX")) },
 }));
 
 jest.mock("../../utils/upload.util", () => ({

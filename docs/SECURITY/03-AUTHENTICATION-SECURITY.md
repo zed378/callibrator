@@ -66,15 +66,17 @@ If the access and refresh secrets are the same value, an access token can be pre
 | Property | Detail |
 |---|---|
 | Storage | **hash only** (`token_hash`) — a database read cannot recover a token |
-| Binding | `ip_address`, `user_agent`, `device` |
+| Binding | **none** — `ip_address`, `user_agent` and `device` are recorded and never compared |
 | Revocation | individually, per user in bulk, or by expiry sweep |
 | Attributes | **snake_case** — `tenant_id`, not `tenantId` |
 
-### IP binding is a trade-off
+### IP binding is a trade-off — and it is not implemented
 
-Strict IP binding breaks legitimate users on mobile networks that rotate addresses, and hospital wifi that hands out a different address per floor. Loose binding weakens the control.
+Corrected **2026-09-23**. This section said `sessionSecurity.middleware.js` was "where the balance is struck". It was not. That file was imported by nothing, and its raw SQL targeted a `"Sessions"` table with camelCase columns (`"isRevoked"`, `"userId"`) against a `sessions` table with snake_case ones, passing `$1` placeholders as `replacements` — Sequelize substitutes those only for `?` and `:name`, so every query in it would have thrown the moment it ran. It was deleted under audit finding A-12, and its tests with it: a passing test over an uninstalled control is a green tick for nothing.
 
-`sessionSecurity.middleware.js` is where the balance is struck, and it is a product decision, not a purely technical one. Whatever it is, it should be stated rather than emergent.
+**What is actually true:** there is no IP binding, no user-agent binding, no session fixation protection and no concurrent-session limit. `auth.middleware.js` verifies the JWT and resolves the role, and says so — *"RBAC Only - No Session Validation"*. It does not read the `sessions` table, which is also the mechanism behind the revocation gap below.
+
+**The trade-off is still real, and still undecided.** Strict IP binding breaks legitimate users on mobile networks that rotate addresses, and hospital wifi that hands out a different address per floor. Loose binding weakens the control. A concurrent-session limit has to decide whose session is evicted. These are product decisions, not technical ones, and they are Q-08 in [`../../TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md) — to be answered, not guessed at in an implementation.
 
 ## MFA
 

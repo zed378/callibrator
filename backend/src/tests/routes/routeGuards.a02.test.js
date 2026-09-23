@@ -81,6 +81,9 @@ describe("A-02 — storage settings are tenant-admin only", () => {
     ["/settings", "put"],
     ["/settings", "delete"],
     ["/settings/test", "post"],
+    // /usage reports this tenant's stored bytes and object count. It was missed
+    // in the first pass of A-02 and found by the documentation sweep.
+    ["/usage", "get"],
   ];
 
   it.each(routes)("%s %s carries auth, denyApiKey and a TENANT_ADMIN gate", (path, method) => {
@@ -95,6 +98,17 @@ describe("A-02 — storage settings are tenant-admin only", () => {
   it("does not gate GET /object as a settings route", () => {
     const handlers = chain(storage, "/object", "get");
     expect(roleGate(handlers)).toBeUndefined();
+  });
+
+  // The webhook and custom-domain routers have this sweep; storage did not, so
+  // GET /usage stayed on auth alone without failing anything.
+  it("leaves no route but /object on auth alone", () => {
+    for (const layer of storage.stack.filter((l) => l.route)) {
+      if (layer.route.path === "/object") {
+        continue;
+      }
+      expect(roleGate(layer.route.stack.map((h) => h.handle))).toBeDefined();
+    }
   });
 });
 

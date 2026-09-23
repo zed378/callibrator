@@ -137,7 +137,7 @@ exports.socketToken = asyncHandlerWithMapping(async (req, res) => {
 
 exports.justUpdatePassword = asyncHandlerWithMapping(async (req, res) => {
   const { id: userId } = req.user;
-  const { newPassword, currentPassword } = req.body;
+  const { newPassword, currentPassword } = req.body || {};
   const result = await authService.justUpdatePassword(
     userId,
     newPassword,
@@ -148,7 +148,7 @@ exports.justUpdatePassword = asyncHandlerWithMapping(async (req, res) => {
 
 exports.passIsValid = asyncHandlerWithMapping(async (req, res) => {
   const { id: userId } = req.user;
-  const { password } = req.body;
+  const { password } = req.body || {};
   const result = await authService.passIsValid(userId, password);
   success(res, result.data, null, result.message, 200);
 }, {});
@@ -163,7 +163,7 @@ exports.setupMfa = asyncHandlerWithMapping(async (req, res) => {
 }, {});
 
 exports.verifyMfaSetup = asyncHandlerWithMapping(async (req, res) => {
-  const { code } = req.body;
+  const { code } = req.body || {};
   if (!code) {
     throw new AppError(400, "MFA code is required");
   }
@@ -174,7 +174,7 @@ exports.verifyMfaSetup = asyncHandlerWithMapping(async (req, res) => {
 });
 
 exports.loginMfa = asyncHandlerWithMapping(async (req, res) => {
-  const { code, token } = req.body;
+  const { code, token } = req.body || {};
   if (!code || !token) {
     throw new AppError(400, "MFA code and temporary token are required");
   }
@@ -209,7 +209,7 @@ exports.loginMfa = asyncHandlerWithMapping(async (req, res) => {
 // ------------------------------------------------------------------
 
 exports.impersonateUser = asyncHandlerWithMapping(async (req, res) => {
-  const { tenantId, userId } = req.body;
+  const { tenantId, userId } = req.body || {};
   if (!tenantId || !userId) {
     throw new AppError(400, "tenantId and userId are required");
   }
@@ -230,7 +230,7 @@ exports.impersonateUser = asyncHandlerWithMapping(async (req, res) => {
 });
 
 exports.refresh = asyncHandlerWithMapping(async (req, res) => {
-  const { refreshToken, sessionId } = req.body;
+  const { refreshToken, sessionId } = req.body || {};
   if (!refreshToken) {
     throw new AppError(400, "Refresh token is required");
   }

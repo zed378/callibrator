@@ -58,6 +58,7 @@ const migrationModules = [
   ["0016-add-attachment-storage-key.js", require("../migrations/0016-add-attachment-storage-key")],
   ["0017-add-signature-workflows.js", require("../migrations/0017-add-signature-workflows")],
   ["0018-add-document-chunks.js", require("../migrations/0018-add-document-chunks")],
+  ["0019-add-signature-crypto-fields.js", require("../migrations/0019-add-signature-crypto-fields")],
 ];
 
 const migrator = new Umzug({

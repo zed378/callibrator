@@ -93,10 +93,13 @@ exports.updateWorkflow = asyncHandler(async (req, res) => {
   const { workflowId } = req.params;
   const { tenantId } = req.user;
 
+  // A-09: PUT /workflows/:workflowId carries no body validator, so an absent
+  // body reached the service as `undefined` and its destructure threw — a 500
+  // where the caller was owed a 400.
   const result = await eSignatureService.updateWorkflow(
     workflowId,
     tenantId,
-    req.body,
+    req.body || {},
   );
 
   return success(res, result, "Workflow updated");
@@ -192,7 +195,7 @@ exports.revokeSignature = asyncHandler(async (req, res) => {
   const { signatureId } = req.params;
   // req.user exposes `id`, not `userId`.
   const { id: userId, tenantId } = req.user;
-  const { reason } = req.body;
+  const { reason } = req.body || {};
 
   await eSignatureService.revokeSignature(
     signatureId,

@@ -39,7 +39,7 @@ The **malicious tenant administrator** is the most under-considered. They are tr
 | ID | Threat | Control | Residual |
 |---|---|---|---|
 | T1 | Credential stuffing | lockout at 5 attempts, rate limits, MFA available | **MFA not enforced, including for `SUPERADMIN`** (PR-3) |
-| T2 | Session token theft | hash-only storage, IP and UA binding, revocation | strict IP binding breaks mobile users; the balance is a product decision |
+| T2 | Session token theft | hash-only storage, revocation | **open**: there is no IP or UA binding — corrected 2026-09-23, the middleware that claimed it was dead code (A-12). `auth` never reads `sessions`, so a stolen token works until its `exp`. Whether to build binding is Q-08 |
 | T3 | Cloned WebAuthn authenticator | `webauthnSignCount` | must be **checked**, not merely stored |
 | T4 | Account-existence enumeration via `/send-otp` | identical response either way | uniqueness violations still leak — see T5 |
 | T5 | Tenant-membership oracle via `serialNumber` | — | **open**: the unique constraint is global, so a collision reveals another tenant holds that serial |

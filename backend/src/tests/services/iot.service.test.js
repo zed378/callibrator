@@ -292,11 +292,38 @@ describe("iot.service", () => {
         await new Promise(setImmediate);
 
         expect(findOne).toHaveBeenCalledWith({
-          where: { id: "dev1", tenantId: "t1", iotEnabled: true },
+          // isDeleted: a decommissioned device must not ingest. `.unscoped()`
+          // drops the defaultScope that would otherwise exclude it.
+          where: { id: "dev1", tenantId: "t1", iotEnabled: true, isDeleted: false },
           attributes: ["id", "name", "readingTolerance"],
         });
         expect(IotReading.create).toHaveBeenCalledWith(
           expect.objectContaining({ tenantId: "t1", deviceId: "dev1", metrics: { temperature: 22 } })
+        );
+      });
+
+      // One stale retained message for an unknown or disabled device used to
+      // reject unawaited and uncaught, which reached the process-level
+      // unhandledRejection handler in index.js and shut the server down.
+      it("logs a failed ingest instead of taking the process down", async () => {
+        const handler = await connectWithMessageHandler();
+        const findOne = jest.fn().mockResolvedValue(null);
+        CalibrationDevice.unscoped.mockReturnValue({ findOne });
+
+        const onUnhandled = jest.fn();
+        process.on("unhandledRejection", onUnhandled);
+        try {
+          handler("device/ghost/t1", Buffer.from(JSON.stringify({ temperature: 22 })));
+          await new Promise(setImmediate);
+          await new Promise(setImmediate);
+        } finally {
+          process.off("unhandledRejection", onUnhandled);
+        }
+
+        expect(onUnhandled).not.toHaveBeenCalled();
+        expect(logger.error).toHaveBeenCalledWith(
+          "MQTT ingest failed",
+          expect.objectContaining({ deviceId: "ghost", tenantId: "t1" }),
         );
       });
 
@@ -532,5 +559,29 @@ describe("iot.service", () => {
       iot.disconnect(); // should not throw
       expect(iot.client).toBeNull();
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A soft-deleted device must not ingest. `.unscoped()` is needed to cross
+// tenants (ingest arrives with a device token, not a session) but it also drops
+// the defaultScope that excludes soft-deleted rows.
+// ---------------------------------------------------------------------------
+describe("iot.service — decommissioned devices", () => {
+  it("carries the soft-delete predicate explicitly on the unscoped lookup", async () => {
+    const { CalibrationDevice } = require("../../models");
+    const findOne = jest.fn().mockResolvedValue(null);
+    CalibrationDevice.unscoped = jest.fn(() => ({ findOne }));
+
+    const iotService = require("../../services/iot.service");
+    await expect(iotService.ingestReading("t1", "dev1", { temp: 1 })).rejects.toThrow(
+      "Device not found or IoT disabled",
+    );
+
+    expect(findOne).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ isDeleted: false }),
+      }),
+    );
   });
 });

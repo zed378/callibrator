@@ -22,7 +22,8 @@ Every requirement below is **implemented**; the "Where" column names the code th
 | ID | Requirement | Where |
 |---|---|---|
 | R7 | Password login issues a JWT access token plus a persisted, revocable session row | `routes/api/auth.route.js`, `sessions` |
-| R8 | Sessions are bound to IP and user agent, carry a hashed token, and can be revoked individually or in bulk | `models/session.model.js`, `session.route.js` |
+| R8 | Sessions carry a hashed token and can be revoked individually or in bulk | `models/session.model.js`, `session.route.js` |
+| R8b | **Target, not implemented** (corrected 2026-09-23). Sessions bound to IP and user agent | nowhere — `ip_address` and `user_agent` are recorded and never compared. See Q-08 in [`../../TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md) |
 | R9 | Failed logins are counted and lock the account; OTP requests are separately throttled | `users.failedLoginAttempts`, `users.lockedUntil`, `constants/rateLimitConstants.js` |
 | R10 | TOTP MFA and WebAuthn passkeys are both supported as second factors | `users.mfaSecret`, `users.webauthnCredentialId`, `webauthn.route.js` |
 | R11 | The platform is both an OIDC **relying party** and an OIDC **provider**, publishing discovery and JWKS at the issuer root | `routes/api/oidc.route.js`, mounted at `/oidc` **and** `/api/v1/oidc` |

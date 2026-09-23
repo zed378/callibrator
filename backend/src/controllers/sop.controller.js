@@ -2,7 +2,7 @@ const sopService = require("../services/sop.service");
 const { asyncHandlerWithMapping } = require("../utils/controllerWrapper.util");
 
 exports.createDocument = asyncHandlerWithMapping(async (req, res) => {
-  const result = await sopService.createDocument(req.user.tenantId, req.user.id, req.body);
+  const result = await sopService.createDocument(req.user.tenantId, req.user.id, req.body || {});
   return {
     success: true,
     status: 201,
@@ -25,8 +25,14 @@ exports.getDocuments = asyncHandlerWithMapping(async (req, res) => {
   };
 }, {});
 
+// A-28: the publisher's identity is required — the service refuses to publish
+// an SOP whose author is the caller (separation of duties).
 exports.publishDocument = asyncHandlerWithMapping(async (req, res) => {
-  const result = await sopService.publishDocument(req.user.tenantId, req.params.id);
+  const result = await sopService.publishDocument(
+    req.user.tenantId,
+    req.params.id,
+    req.user.id,
+  );
   return {
     success: true,
     status: 200,

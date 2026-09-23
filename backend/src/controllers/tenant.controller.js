@@ -207,7 +207,7 @@ exports.getTenantSettings = asyncHandler(async (req, res) => {
 
 exports.updateTenantSettings = asyncHandler(async (req, res) => {
   const validated = validate({ ...req.body, ...req.params }, tenantIdSchema);
-  const settingsData = req.body;
+  const settingsData = req.body || {};
   const updatedBy = req.user?.id;
 
   const result = await tenantService.updateTenantSettings(

@@ -36,10 +36,19 @@ SECURITY/      13 files — threat model through incident response
 UI-UX/         20 files — experience design & the design system
 FRONTEND/      12 files — frontend architecture & standards
 BACKEND/       12 files — backend architecture, standards, and the module reference
+ENGINEERING/   16 files — how code is written here: standards, templates, review
 DEVOPS/        12 files — environments, CI/CD, deployment, observability
 TESTING/        8 files — the test strategy and every suite that enforces it
-ARCHIVE/        — superseded documents, kept for provenance, never authoritative
+DEVELOPER/      3 files — integrator-facing: authentication, IoT ingest, SCIM
+OBSERVABILITY/  2 files — what this system actually logs, and where it goes
+STORAGE/        1 file  — pluggable object storage, per tenant
+ARCHIVE/        9 files — superseded documents, kept for provenance, never authoritative
 ```
+
+The last four categories are new as of 2026-09-23 and are **incomplete**: several
+documents elsewhere link to files in them that have not been written yet
+(`MULTI-TENANCY/`, `SEARCH/`, `WEBHOOK/` do not exist at all). Those links are broken today.
+The files that do exist are as-built and name their source.
 
 ## What This Documents
 
