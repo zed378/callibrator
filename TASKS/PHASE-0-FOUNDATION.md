@@ -67,7 +67,7 @@ Fifty-six mounts, **54 route modules**: `oidc` is mounted twice on purpose — a
 
 **Two details that are not incidental:**
 
-- **`pgvector/pgvector:pg17`, not `postgres:17-alpine`.** Plain Postgres lacks the `vector` extension and migration `0018` fails.
+- **`pgvector/pgvector:pg18`, not `postgres:18-alpine`.** Plain Postgres lacks the `vector` extension and migration `0018` fails.
 - **`depends_on` uses conditions, not bare names.** The backend runs `db.sync()` and migrations at boot; `service_started` on Postgres produces a crash loop that looks like a code fault. ClamAV is `service_started` deliberately — its first-run `freshclam` takes minutes and waiting for healthy would block the whole stack on an optional component.
 
 ---

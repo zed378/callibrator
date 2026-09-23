@@ -1,6 +1,6 @@
 # 07 — Database Access Standards
 
-PostgreSQL 17 with pgvector, **only** (ADR-039). Sequelize 6 with global tenant-scoping hooks (ADR-029).
+PostgreSQL 18 with pgvector, **only** (ADR-039). Sequelize 6 with global tenant-scoping hooks (ADR-029).
 
 ---
 

@@ -83,9 +83,9 @@ services:
   postgres:
     # pgvector-enabled Postgres: the AI RAG module stores document embeddings in
     # a `vector(1536)` column and migration 0018 runs `CREATE EXTENSION vector`.
-    # Plain postgres:17-alpine lacks the extension, so use the official pgvector
+    # Plain postgres:18-alpine lacks the extension, so use the official pgvector
     # image (PG 17 + pgvector preinstalled).
-    image: pgvector/pgvector:pg17
+    image: pgvector/pgvector:pg18
     container_name: postgres
     restart: unless-stopped
     env_file:

@@ -18,17 +18,25 @@ The Helm chart guards one of the four (schedulers). The other three fail **quiet
 
 | | |
 |---|---|
-| **Status** | ⏳ TODO |
+| **Status** | ⏳ TODO — **NEEDS EDIT (2026-09-23)** |
 | **Trigger** | before `replicaCount > 1` |
-| **Spec refs** | `docs/ARCHITECTURE/05-STORAGE-ARCHITECTURE.md` |
+| **Spec refs** | `docs/ARCHITECTURE/05-STORAGE-ARCHITECTURE.md` · [`AUDIT-2026-09-REMEDIATION.md`](./AUDIT-2026-09-REMEDIATION.md) A-40 |
+
+> **What changed (2026-09-23):** **A-40** found two things that land inside this card's
+> assumptions. The storage driver cache is **per process**, so a driver change does not propagate
+> across replicas — the very configuration this card performs. And the migration tool reports a
+> copy as `migrated` **without verifying it** when the checksum is null, so "existing objects
+> migrated with `npm run migrate:storage`" is currently a claim the tool makes rather than one it
+> proves.
 
 **Why:** `STORAGE_DRIVER=local` and more than one replica are **incompatible**. Replica A writes an attachment, replica B serves the download, and the object is not there.
 
 The abstraction already exists — this is a configuration change plus a migration of existing objects, not new code.
 
 **Definition of Done**
+- [ ] A-40 closed first: the driver cache is not per process, and a null-checksum copy is **verified**, not reported
 - [ ] `STORAGE_DRIVER=s3` or `nfs` in the target environment
-- [ ] existing objects migrated with `npm run migrate:storage`
+- [ ] existing objects migrated with `npm run migrate:storage`, **and the count of objects verified at the destination** rather than read from the tool's own report
 - [ ] S3 credentials from the **ambient chain** (IAM role / service account), not static keys in a Secret
 - [ ] a test: an attachment written by one instance downloads through another
 - [ ] `STORAGE_S3_PREFIX` understood as a convenience, **not an isolation boundary**
@@ -39,18 +47,40 @@ The abstraction already exists — this is a configuration change plus a migrati
 
 | | |
 |---|---|
-| **Status** | ⏳ TODO |
+| **Status** | ⏳ TODO — **NEEDS EDIT (2026-09-23)**, now confirmed from the code |
 | **Trigger** | before `replicaCount > 1` |
-| **Spec refs** | `docs/FRONTEND/06-REALTIME.md` |
+| **Spec refs** | `docs/FRONTEND/06-REALTIME.md` · ADR-031 · [`AUDIT-2026-09-REMEDIATION.md`](./AUDIT-2026-09-REMEDIATION.md) A-54, A-53, A-52, A-05 |
+
+> **What changed (2026-09-23):** the audit verified this card from the code and the Helm values
+> (**A-54**). The server is constructed with the **default in-memory adapter**; neither
+> `@socket.io/redis-adapter` nor `socket.io-redis` is a dependency. That is consistent with
+> `backend.replicaCount: 1`, and it is a **hard blocker on ever raising it** — sticky sessions do
+> not help, because the emit happens server-side, not per client.
+>
+> Worth recording next to it: **A-30 made the rate limiter replica-safe** (it never used Redis
+> before, so lockouts reset on every deploy). The limiter is ready for more than one replica now
+> and the realtime layer is not, which makes this card the remaining one of the three
+> prerequisites that is a code change rather than configuration.
+>
+> `config/socket.js` was substantially rewritten on 2026-09-23 under A-05 (`origin: "*"`, the token
+> in the query string, no status or suspension check). **Two findings remain open against it** and
+> both touch this card's Definition of Done: **A-53** — a reconnected socket never re-joins its
+> board rooms, so live updates stop silently — and **A-52** — the socket token's `purpose: "socket"`
+> claim is read nowhere, so it is an ordinary access token. A fan-out test written before A-53 is
+> fixed can pass on the first connection and be wrong on every reconnect.
 
 **Why:** without it, a notification reaches **only the replica holding that client's connection**. Which users hear about an event becomes a function of load balancing.
 
 **Definition of Done**
-- [ ] the Redis adapter wired in
+- [ ] the Redis adapter wired in (A-54)
 - [ ] a test: an event emitted on instance A reaches a client connected to instance B
+- [ ] **the same test after a reconnect** — A-53 fixed first, or the test proves only the happy path
 - [ ] the reverse proxy still passes upgrade headers — verified by a **live notification**, not by reading the annotation
+- [ ] connect-time checks are not the only checks: a session revoked mid-connection disconnects the socket (P6-12 / A-48, Q-08)
 
 **Abuse case:** long-polling fallback masks the problem in testing. Socket.IO falls back silently, and a test that only checks the notification arrives will pass over a broken WebSocket path.
+
+**Abuse case:** the fan-out test connects once and never reconnects, so A-53 stays invisible behind a passing test.
 
 ---
 
@@ -64,10 +94,17 @@ The abstraction already exists — this is a configuration change plus a migrati
 
 **Why:** **the backend runs `db.sync()` and migrations at boot.** Two replicas starting together will both attempt them.
 
+**Premise re-confirmed 2026-09-23** — unchanged by the remediation. `backend/index.js` still calls
+`await db.sync()` and then `migrator.up()` during startup, and `src/config/migrator.js` now
+registers **19** migrations from its static manifest (it was 18; `0019-add-signature-crypto-fields.js`
+landed under ADR-040). More migrations means a longer window for two replicas to collide in, not a
+smaller one.
+
 **Definition of Done**
 - [ ] either an init container running migrations once, or a PostgreSQL advisory lock around the migration step
 - [ ] a test: two instances starting simultaneously produce one migration run
 - [ ] the losing instance waits rather than starting against a half-migrated schema
+- [ ] the run is verified by **inspecting columns** (P6-05), not by the migration log — a blanket `try/catch` records a migration as applied while doing nothing, which is how 0008, 0013 and 0014 came to be marked done with their columns absent
 
 ---
 

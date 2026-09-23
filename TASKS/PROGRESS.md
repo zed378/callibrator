@@ -2,7 +2,7 @@
 
 **The single status board.** History lives in [`../MEMORY/`](../MEMORY/README.md); this is state.
 
-Last updated: 2026-09-23
+Last updated: 2026-09-23 (counts re-derived from the code the same day)
 
 ---
 
@@ -14,15 +14,15 @@ Phases 0–5 are **shipped**. The previous version of this board listed foundati
 |---|---|
 | Backend modules | **33** |
 | Route modules | **53** under `routes/api/` + 1 internal, **56** mounts |
-| Sequelize models | **72** |
-| Services / controllers / validators | 76 / 56 / 37 |
-| Backend test files | 342 |
+| Sequelize models | **71** — the old count of 72 included `models/index.js`, which is the barrel, not a model |
+| Services / controllers / validators | **71** / **57** / 37 — 77 service files counting the storage drivers in `services/storage/` |
+| Backend test files | **359** (`*.test.js`; 363 files under `src/tests` counting fixtures) |
 | Live E2E specs | 53 |
 | Frontend API services (each with a contract test) | 51 |
 | Browser tests | 71 |
 | Dashboard surfaces | ~60 |
-| Migrations | 18 |
-| ADRs | 37 |
+| Migrations | **19** — 0019 adds the signature crypto columns and **has never been run** |
+| ADRs | **40** |
 
 ---
 
@@ -124,6 +124,24 @@ inside a function nothing called — three liveness guards on things that did no
 passing tests, two of them kept green by **mocks that invented the missing property**. Redis
 helpers were no-ops, every broker call leaked a connection, and the rate limiter never used Redis
 at all. See A-24, A-36, A-30.
+
+---
+
+## PostgreSQL 18 — repository moved, deployment has not 🚧
+
+**Decision:** [ADR-041](../MEMORY/DECISIONS.md) · **Runbook:** [`RUNBOOK-POSTGRES-18-UPGRADE.md`](./RUNBOOK-POSTGRES-18-UPGRADE.md)
+
+The compose pins and all eighteen documents now say **PostgreSQL 18** (`pgvector/pgvector:pg18`).
+The VM still runs **17.11**, and that is deliberate: a data directory written by 17 will not start
+under 18, so `docker compose pull && up -d` on the VM would crash-loop the database. The move is a
+dump, a fresh volume and a restore, with the old volume kept as the rollback.
+
+| | |
+|---|---|
+| Repository | ✅ on 18 |
+| Deployment | 🔴 **17.11** — not started |
+| Application changes needed | none; access is through Sequelize 6 and the only extension is `pgvector` |
+| Evidence it works on 18 | **none yet.** No CI (A-19), and the E2E suite has never passed in one run (P6-02). The runbook's manual pass is the evidence |
 
 ---
 

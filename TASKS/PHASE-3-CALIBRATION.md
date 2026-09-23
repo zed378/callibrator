@@ -95,7 +95,11 @@ Fixed by adding `submitForApproval()`, `POST /:id/submit`, and mapping invalid t
 |---|---|
 | **Status** | ✅ DONE |
 
-**What shipped:** detached signatures from per-tenant keys (`tenant_keys`, private keys encrypted with `ENCRYPT_KEY`), `e_signature_records` carrying the 21 CFR Part 11 quartet, PDF rendering with a QR code, and a **public, unauthenticated** verification endpoint.
+**What shipped:** `e_signature_records` carrying the 21 CFR Part 11 quartet, PDF rendering with a QR code, a **public, unauthenticated** verification endpoint — and per-tenant key pairs (`tenant_keys`, private keys encrypted with `ENCRYPT_KEY`) that, until 2026-09-23, signed nothing.
+
+**⚠ The defect — A-47 / ADR-040, found 2026-09-23.** This card said "detached signatures from per-tenant keys". That was not true of the code. `generateSignatureHash` built `${documentId}:${userId}:${tenantId}:${Date.now()}` and SHA-256'd it; `verifySignature` called the **same function again** and compared. With the clock inside the payload the two values could never match, so **`verifySignature` returned `valid: false` for every genuine signature** — and it read no key at all, so the RSA key pairs were generated, stored and deleted through the API while signing nothing. The "signature" was a hash of a timestamp: it bound no document and could not be told apart from a fabrication.
+
+Fixed by ADR-040: RSA-SHA256 with the tenant's private key over a deterministic canonical payload, `signedAt` fixed once and read back from the stored column, soft-deleted keys still verifying, and pre-fix rows reported `unverifiable_legacy` rather than as valid or as forged. Migration `0019` adds the columns and **has not been run**. The reference deployment holds **zero** signature rows, which is the only reason this was a bug fix rather than an archive recovery.
 
 **The Part 11 quartet** — `meaning`, `authMethod`, `documentHash`, plus actor, IP, user agent and timestamp. `documentHash` is the load-bearing one: without it the record proves someone signed *something*.
 
@@ -118,6 +122,8 @@ Fixed by adding `submitForApproval()`, `POST /:id/submit`, and mapping invalid t
 **Four step states, not three.** `waiting` means the step is not yet reachable; `pending` means it is this signer's turn. Collapsing them loses the difference between "not yet asked" and "asked and not done" — which is the difference between a workflow that is progressing and one stuck on a person.
 
 **External signers** are supported: `signerEmail` and `signerName` alongside a null `signerId`, for a vendor technician or an external assessor with no account.
+
+**⚠ Carries the same defect.** Every signature these workflows collected before 2026-09-23 was made under the broken scheme above (A-47) and is now reported `unverifiable_legacy`. The workflow machinery — states, ordering, external signers — was sound; what it produced was not verifiable. `signature_reason` is bound into the new payload but the controller and validator still do not accept a `reason`, so the signature's **meaning** is currently empty: a residual § 11.50(a)(3) gap, tracked with A-47.
 
 **`polygon` and `biometricData` are personal data** — biometric capture characteristics are a special category under GDPR. They belong in the DSAR and retention paths, not treated as inert blobs.
 

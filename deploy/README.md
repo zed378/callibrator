@@ -120,7 +120,7 @@ Plus: the backend runs **migrations at boot**, so two replicas starting together
 
 | Service | Image | Why not the obvious one |
 |---|---|---|
-| postgres | **`pgvector/pgvector:pg17`** | plain `postgres:17-alpine` lacks the `vector` extension; migration `0018` fails |
+| postgres | **`pgvector/pgvector:pg18`** | plain `postgres:18-alpine` lacks the `vector` extension; migration `0018` fails |
 | rabbitmq | `3.13-management-alpine` | the management UI earns its size on-premise |
 | backend runtime | **`debian:bookworm-slim`** | needs Chromium for certificate PDFs; Alpine Chromium against a glibc pkg binary is a fight not worth having |
 | frontend runtime | **`node:22-alpine`** | Next.js **standalone** output; see below |

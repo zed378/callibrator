@@ -95,7 +95,7 @@ Erasure checks legal hold **first** (BR-16), and anonymises rather than deletes.
 
 Indexed on `tenant_id` and `(source_type, source_id)`.
 
-**PostgreSQL only.** pgvector is required: `document_chunks.embedding` is `vector(1536)` and retrieval is a tenant-scoped cosine-distance search. The former non-PostgreSQL branch — which returned the five most *recent* chunks as "context" regardless of relevance — was removed with MySQL support (ADR-039). This is why the compose stack uses `pgvector/pgvector:pg17` rather than plain `postgres:17-alpine`.
+**PostgreSQL only.** pgvector is required: `document_chunks.embedding` is `vector(1536)` and retrieval is a tenant-scoped cosine-distance search. The former non-PostgreSQL branch — which returned the five most *recent* chunks as "context" regardless of relevance — was removed with MySQL support (ADR-039). This is why the compose stack uses `pgvector/pgvector:pg18` rather than plain `postgres:18-alpine`.
 
 **Vector similarity search does not respect tenancy unless the query says so.** A retrieval omitting the tenant predicate will return another hospital's documents as context and paraphrase them into an answer, with no error and nothing in the response marking where the content came from. This is the module where a security review should look hardest.
 

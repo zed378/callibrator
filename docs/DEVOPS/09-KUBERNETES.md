@@ -124,7 +124,7 @@ The charts assume Postgres, Redis and RabbitMQ are provided **externally** — a
 
 Running a database from an application chart couples the two lifecycles: a `helm uninstall` that takes the database with it is a class of accident worth designing out.
 
-**Postgres must have pgvector.** Migration `0018` runs `CREATE EXTENSION vector`, and plain Postgres fails it. Compose uses `pgvector/pgvector:pg17` for this reason; a managed service must have the extension available.
+**Postgres must have pgvector.** Migration `0018` runs `CREATE EXTENSION vector`, and plain Postgres fails it. Compose uses `pgvector/pgvector:pg18` for this reason; a managed service must have the extension available.
 
 ## Resources
 
