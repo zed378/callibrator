@@ -53,6 +53,7 @@ Task ids are `A-nn`. They are referenced from [`PHASE-9-TYPESCRIPT-MIGRATION.md`
 | A-31 | nothing stops JWT access and refresh secrets being equal | low | 1 | TODO |
 | A-32 | the 100% coverage figure includes 58 `istanbul ignore` exclusions | low | 2 | TODO |
 | A-33 | SCIM PATCH ignores `path`: a standards-compliant deprovision returns 200 and does nothing | medium | 1 | TODO |
+| A-34 | **the backend lint gate has never run** — a version mismatch crashed ESLint; behind it, 1,319 errors | medium | 0 | partly DONE 2026-09-23 |
 
 ---
 
@@ -703,3 +704,51 @@ it; write an audit row per mutation, attributed to the API key.
 - [ ] `{ "op": "replace", "path": "roleId", "value": "<superadmin id>" }` returns 403, not 200
 - [ ] an unparseable `path` returns 400 and changes nothing
 - [ ] an audit row exists for every accepted SCIM mutation
+
+---
+
+### A-34 — The backend lint gate has never run
+
+| | |
+|---|---|
+| **Status** | **partly DONE** 2026-09-23 — ESLint runs again; the 1,319 findings behind it are not yet fixed |
+| **Severity** | medium — a gate in `make verify` that could not have passed |
+| **Verified** | 2026-09-23, by running it |
+
+**Root cause:** `backend/package.json` asked for `eslint ^10.10.0` and `@eslint/js ^10.0.1`, while
+the workspace root pins `eslint 9.22.0`. npm hoisting gave the backend **ESLint 9.22.0 with
+`@eslint/js` 10.0.1**, and `js.configs.recommended` from 10.x enables `no-unassigned-vars`, a rule
+9.22 does not have. Every invocation died before linting a single file:
+
+```
+TypeError: Key "rules": Key "no-unassigned-vars": Could not find "no-unassigned-vars" in plugin "@".
+```
+
+`make verify` runs lint first. It has therefore never passed on this machine, and nothing in CI
+runs it either (there is no CI gate — A-19).
+
+**What was changed**
+
+| Change | File |
+|---|---|
+| backend pinned to the same ESLint the workspace root pins (`9.22.0`, both packages) | `backend/package.json` |
+| `test`, `fetch`, `AbortController`, `AbortSignal`, `global`, `TextEncoder`, `TextDecoder`, `structuredClone` added to `globals` — the missing `test` alone produced **385** `no-undef` errors | `backend/eslint.config.js` |
+| `eqeqeq` now `{ null: "ignore" }` — `x == null` is the deliberate "null or undefined" idiom in `kanban.service.js`; requiring `===` would have changed behaviour for `undefined` | `backend/eslint.config.js` |
+| `no-redeclare` now `{ builtinGlobals: false }` — `webhook.service.js` declares `/* global fetch, AbortController */` for readers | `backend/eslint.config.js` |
+
+**What is left:** 1,319 errors and 346 warnings, of which 1,333 are auto-fixable
+(`indent` 392, `quotes` 296, `comma-dangle` 266, `curly` 243, `no-trailing-spaces` 87,
+`eol-last` 19). None of them is a logic defect — the three that looked like one
+(`eqeqeq` ×2, `no-redeclare` ×2) were the linter being wrong about deliberate code, which is why
+they are config changes above rather than code changes. The remaining `no-unused-vars` (303) and
+`no-console` (24) warnings need reading one by one; an unused variable is occasionally a real bug.
+
+**Why the fix is not "run `--fix` and commit":** it rewrites nearly every file in `backend/src`,
+which would collide with the authorization work in flight and bury it in a 1,300-line diff. It is
+its own commit, taken once the security waves land, with the full suite as the check.
+
+**Verification (DoD)**
+- [x] `npx eslint src/ --ext .js` runs to completion
+- [ ] zero errors
+- [ ] `make verify` reaches the typecheck step
+- [ ] a CI job runs it (A-19)

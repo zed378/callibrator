@@ -25,9 +25,19 @@ module.exports = [
         setImmediate: "readonly",
         URL: "readonly",
         URLSearchParams: "readonly",
-        // Jest globals
+        // Web/Node globals used by this codebase
+        fetch: "readonly",
+        AbortSignal: "readonly",
+        AbortController: "readonly",
+        global: "readonly",
+        TextEncoder: "readonly",
+        TextDecoder: "readonly",
+        structuredClone: "readonly",
+        // Jest globals. `test` was missing, which produced 385 no-undef errors
+        // — enough to bury every real finding in the output.
         describe: "readonly",
         it: "readonly",
+        test: "readonly",
         expect: "readonly",
         beforeAll: "readonly",
         beforeEach: "readonly",
@@ -46,7 +56,9 @@ module.exports = [
       "no-dupe-keys": "error",
       "no-empty": ["error", { allowEmptyCatch: true }],
       "no-fallthrough": "error",
-      "no-redeclare": "error",
+      // `builtinGlobals: false`: webhook.service.js declares `/* global fetch,
+      // AbortController */` for readers, and those are also declared above.
+      "no-redeclare": ["error", { builtinGlobals: false }],
       "no-this-before-super": "error",
       "no-undef": "error",
       "no-unreachable": "error",
@@ -54,7 +66,10 @@ module.exports = [
       "no-var": "error",
       "prefer-const": "error",
       "prefer-arrow-callback": "warn",
-      eqeqeq: ["error", "always"],
+      // `null: "ignore"`: `x == null` is the deliberate idiom for "null or
+      // undefined" and is used that way here (kanban.service.js wipLimit and
+      // sprintId). Requiring `===` there would change behaviour for undefined.
+      eqeqeq: ["error", "always", { null: "ignore" }],
       curly: ["error", "all"],
       "no-multiple-empty-lines": ["error", { max: 1, maxEOF: 0 }],
       semi: ["error", "always"],
