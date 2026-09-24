@@ -60,7 +60,7 @@ See docs/DEVOPS/09-KUBERNETES.md.
 {{- fail "\n\nsecrets.attachmentUrlSecret is required (or set global.secrets.external.enabled=true).\n" -}}
 {{- end -}}
 {{- if not .Values.secrets.kmsMasterKey -}}
-{{- fail "\n\nsecrets.kmsMasterKey is required (or set global.secrets.external.enabled=true).\n\nKMS_MASTER_KEY wraps every tenant secret (SSO certificates, OIDC, Stripe and\nwebhook secrets). In production the backend THROWS AT STARTUP without it, and\nbecause production writes nothing to stdout the pod crash-loops with EMPTY\nlogs (S-05). Generate one with: openssl rand -hex 32\n\nBACK IT UP SEPARATELY FROM THE DATABASE.\n" -}}
+{{- fail "\n\nsecrets.kmsMasterKey is required (or set global.secrets.external.enabled=true).\n\nKMS_MASTER_KEY wraps every tenant secret (SSO certificates, OIDC, Stripe and\nwebhook secrets). In production the backend THROWS AT STARTUP without it and the pod\ncrash-loops (S-05). Generate one with: openssl rand -hex 32\n\nBACK IT UP SEPARATELY FROM THE DATABASE.\n" -}}
 {{- end -}}
 {{- if and .Values.secrets.jwtAccessSecret (eq .Values.secrets.jwtAccessSecret .Values.secrets.jwtRefreshSecret) -}}
 {{- fail "\n\nsecrets.jwtAccessSecret and secrets.jwtRefreshSecret are identical.\n\nEqual secrets mean an access token can be presented as a refresh token.\n" -}}

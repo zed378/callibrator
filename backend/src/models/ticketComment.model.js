@@ -1,3 +1,5 @@
+// D-17 — NO tenant column, so the global tenant hooks never scope this model: belongs to a tenant THROUGH its Ticket (scoped, loaded by loadTicket). Every query names ticketId (one reviewed exception).
+// Held by tests/models/unscopedModels.d17.test.js.
 /**
  * Ticket Comment
  *

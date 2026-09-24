@@ -1,351 +1,478 @@
 /**
- * Tests for the shared RabbitMQ service.
+ * rabbitmq.service — the one connection (W-18), the publishing channel, and
+ * supervised consumers (W-06, W-07, W-31).
+ *
+ * Runs against tests/fixtures/fakeAmqp.js: an in-memory broker that keeps
+ * queue state and enforces the amqplib 2.0.1 behaviour the service depends on
+ * (a connection close closes and emits "close" on every channel; settling on a
+ * closed channel throws; an unknown delivery tag closes the channel; unacked
+ * messages are redelivered). It is still a fake — no broker was available —
+ * and says so: a live broker run is the thing that settles W-06 for good.
  */
-
 jest.mock("amqplib", () => ({ connect: jest.fn() }));
-
+jest.mock("../../services/redis.service", () => ({
+  getRedisConnection: jest.fn(() => null),
+  del: jest.fn(),
+}));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));
 
-const amqplib = require("amqplib");
-const { logger } = require("../../middlewares/activityLog.middleware");
+const { createBroker, settle } = require("../fixtures/fakeAmqp");
 
-// Build a fresh mock channel/connection pair and a freshly-required module so the
-// module-level connection/channel cache does not leak between tests.
-//
-// The mocks expose ONLY what amqplib actually exposes. In particular there is
-// no `isOpen`: amqplib 2.0.1 defines no such property (`grep -rn isOpen
-// node_modules/amqplib` returns nothing), and the previous mock inventing one
-// is what kept a dead connection cache green for the whole life of this file.
-// Both the connection (ChannelModel) and the channel are EventEmitters that
-// emit "close" and "error"; that is the liveness signal the service now uses.
-function makeChannel() {
-  const handlers = {};
-  return {
-    assertQueue: jest.fn().mockResolvedValue({}),
-    sendToQueue: jest.fn().mockReturnValue(true),
-    prefetch: jest.fn(),
-    consume: jest.fn().mockResolvedValue({}),
-    close: jest.fn().mockResolvedValue(),
-    on: jest.fn((evt, cb) => {
-      handlers[evt] = cb;
-    }),
-    emit: (evt, arg) => handlers[evt] && handlers[evt](arg),
-    handlers,
-  };
-}
+const ENV = { ...process.env };
+let broker;
+let amqplib;
+let svc;
+let logger;
 
-// A reconnect must hand back a DIFFERENT object, exactly as amqplib does —
-// otherwise a test cannot tell a reused cache from a fresh connection, and the
-// stale-event guard cannot be exercised at all.
-function makeConnection() {
-  const handlers = {};
-  const channels = [makeChannel()];
-  let next = 0;
-  return {
-    createChannel: jest.fn(async () => {
-      if (next >= channels.length) {
-        channels.push(makeChannel());
-      }
-      return channels[next++];
-    }),
-    on: jest.fn((evt, cb) => {
-      handlers[evt] = cb;
-    }),
-    close: jest.fn().mockResolvedValue(),
-    emit: (evt, arg) => handlers[evt] && handlers[evt](arg),
-    handlers,
-    channels,
-  };
-}
-
-function setup() {
+const load = (env = {}) => {
   jest.resetModules();
-
-  const connections = [makeConnection()];
-  let next = 0;
-  const connect = jest.fn(async () => {
-    if (next >= connections.length) {
-      connections.push(makeConnection());
+  process.env = { ...ENV, RABBITMQ_URL: "amqp://broker.test:5672", RABBITMQ_RECONNECT_BASE_MS: "5", RABBITMQ_RECONNECT_MAX_MS: "20", RABBITMQ_DRAIN_TIMEOUT_MS: "50", ...env };
+  for (const [k, v] of Object.entries(env)) {
+    if (v === undefined) {
+      delete process.env[k];
     }
-    return connections[next++];
-  });
+  }
+  amqplib = require("amqplib");
+  broker = createBroker();
+  amqplib.connect.mockImplementation(broker.connect);
+  logger = require("../../middlewares/activityLog.middleware").logger;
+  svc = require("../../services/rabbitmq.service");
+};
 
-  jest.doMock("amqplib", () => ({ connect }));
-  jest.doMock("../../middlewares/activityLog.middleware", () => ({ logger }));
+const waitFor = async (predicate, ms = 1000) => {
+  const until = Date.now() + ms;
+  while (!predicate()) {
+    if (Date.now() > until) {
+      throw new Error("condition not met in time");
+    }
+    await new Promise((r) => setTimeout(r, 2));
+  }
+};
 
-  const svc = require("../../services/rabbitmq.service");
-  const amqp = require("amqplib");
-  const connection = connections[0];
-  return {
-    svc,
-    amqp,
-    connection,
-    channel: connection.channels[0],
-    handlers: connection.handlers,
-    connections,
-  };
-}
+beforeEach(() => load());
+afterEach(async () => {
+  await svc.closeRabbitMQ();
+  broker.dispose();
+  process.env = { ...ENV };
+});
 
-describe("rabbitmq.service", () => {
-  beforeEach(() => jest.clearAllMocks());
-
-  it("connects using RABBITMQ_URL and caches the connection", async () => {
-    const { svc, amqp, connection } = setup();
-    process.env.RABBITMQ_URL = "amqp://custom:5672";
-
-    const c1 = await svc.getConnection();
-    const c2 = await svc.getConnection();
-
-    expect(c1).toBe(connection);
-    expect(c2).toBe(connection); // cached, not reconnected
-    expect(amqp.connect).toHaveBeenCalledTimes(1);
-    expect(amqp.connect).toHaveBeenCalledWith("amqp://custom:5672");
-
-    delete process.env.RABBITMQ_URL;
-  });
-
-  it("builds the URL from host/port when RABBITMQ_URL is unset", async () => {
-    const { svc, amqp } = setup();
-    delete process.env.RABBITMQ_URL;
-    process.env.RABBITMQ_HOST = "rabbit";
-    process.env.RABBITMQ_PORT = "5673";
-
+describe("connection and publishing channel (W-18)", () => {
+  it("connects with RABBITMQ_URL, and builds host:port (or localhost:5672) without it", async () => {
     await svc.getConnection();
+    expect(amqplib.connect).toHaveBeenCalledWith("amqp://broker.test:5672");
 
-    expect(amqp.connect).toHaveBeenCalledWith("amqp://rabbit:5673");
-
-    delete process.env.RABBITMQ_HOST;
-    delete process.env.RABBITMQ_PORT;
-  });
-
-  it("registers error/close handlers that reset the cache", async () => {
-    const { svc, amqp, handlers } = setup();
-
+    await svc.closeRabbitMQ();
+    load({ RABBITMQ_URL: undefined, RABBITMQ_HOST: "rabbit.internal", RABBITMQ_PORT: "5673" });
     await svc.getConnection();
-    // Fire the registered listeners.
-    handlers.error(new Error("link down"));
-    handlers.close();
+    expect(amqplib.connect).toHaveBeenCalledWith("amqp://rabbit.internal:5673");
 
-    expect(logger.error).toHaveBeenCalledWith(
-      "RabbitMQ connection error",
-      expect.objectContaining({ error: "link down" }),
-    );
-    // After close the cache is cleared, so the next call reconnects.
+    await svc.closeRabbitMQ();
+    load({ RABBITMQ_URL: undefined, RABBITMQ_HOST: undefined, RABBITMQ_PORT: undefined });
     await svc.getConnection();
-    expect(amqp.connect).toHaveBeenCalledTimes(2);
+    expect(amqplib.connect).toHaveBeenCalledWith("amqp://localhost:5672");
   });
 
-  it("reuses one connection across calls instead of opening a new one each time", async () => {
-    const { svc, amqp, connection } = setup();
-
-    const c1 = await svc.getConnection();
-    const c2 = await svc.getConnection();
-    await svc.getChannel();
-    await svc.getChannel();
-
-    // The regression this guards: `connection.isOpen` does not exist on
-    // amqplib, so the old cache guard was always false and every call dialled
-    // the broker again, leaking a connection per call.
-    expect(amqp.connect).toHaveBeenCalledTimes(1);
-    expect(connection.createChannel).toHaveBeenCalledTimes(1);
-    expect(c1).toBe(c2);
+  it("ten concurrent getConnection() calls dial ONCE", async () => {
+    const conns = await Promise.all(Array.from({ length: 10 }, () => svc.getConnection()));
+    expect(broker.connectCount).toBe(1);
+    expect(new Set(conns).size).toBe(1);
   });
 
-  it("reconnects after the connection emits close", async () => {
-    const { svc, amqp, handlers } = setup();
-
-    await svc.getConnection();
-    expect(amqp.connect).toHaveBeenCalledTimes(1);
-
-    handlers.close(); // broker went away
-
-    await svc.getConnection();
-    expect(amqp.connect).toHaveBeenCalledTimes(2);
+  it("ten concurrent first callers share ONE connection and ONE channel", async () => {
+    const channels = await Promise.all(Array.from({ length: 10 }, () => svc.getChannel()));
+    expect(broker.connectCount).toBe(1);
+    expect(new Set(channels).size).toBe(1);
+    expect(broker.openConnections()).toBe(1);
   });
 
-  it("reconnects after the connection emits error", async () => {
-    const { svc, amqp, handlers } = setup();
-
-    await svc.getConnection();
-    handlers.error(new Error("socket reset"));
-
-    await svc.getConnection();
-    expect(amqp.connect).toHaveBeenCalledTimes(2);
+  it("a failed connect is not cached: the next call dials again", async () => {
+    broker.refuseConnections(true);
+    await expect(svc.getConnection()).rejects.toThrow("ECONNREFUSED");
+    broker.refuseConnections(false);
+    await expect(svc.getConnection()).resolves.toBeTruthy();
+    expect(broker.connectCount).toBe(2);
   });
 
-  it("a close from a superseded connection does not evict the live one", async () => {
-    const { svc, amqp, handlers } = setup();
-
-    await svc.getConnection();
-    const staleClose = handlers.close;
-    staleClose(); // the first connection dies
-    await svc.getConnection(); // a second connection is established
-    expect(amqp.connect).toHaveBeenCalledTimes(2);
-
-    staleClose(); // late event from the DEAD connection
-
-    await svc.getConnection();
-    expect(amqp.connect).toHaveBeenCalledTimes(2); // still cached
+  it("rejects when the connect times out", async () => {
+    load({ RABBITMQ_CONNECT_TIMEOUT: "5" });
+    amqplib.connect.mockImplementationOnce(() => new Promise(() => {}));
+    await expect(svc.getConnection()).rejects.toThrow("RabbitMQ connection timed out after 5ms");
   });
 
-  it("reopens the channel after it emits close, keeping the connection", async () => {
-    const { svc, amqp, connection, channel } = setup();
-
-    await svc.getChannel();
-    channel.emit("close");
-
-    await svc.getChannel();
-
-    expect(connection.createChannel).toHaveBeenCalledTimes(2);
-    expect(amqp.connect).toHaveBeenCalledTimes(1); // connection untouched
+  it("forgets a connection that closed or errored, and reconnects on the next call", async () => {
+    const first = await svc.getConnection();
+    first.emit("error", new Error("boom"));
+    expect(logger.error).toHaveBeenCalledWith("RabbitMQ connection error", { error: "boom" });
+    const second = await svc.getConnection();
+    expect(second).not.toBe(first);
+    broker.restart();
+    const third = await svc.getConnection();
+    expect(third).not.toBe(second);
+    expect(broker.connectCount).toBe(3);
   });
 
-  it("reopens the channel after it emits error and logs it", async () => {
-    const { svc, connection, channel } = setup();
-
-    await svc.getChannel();
-    channel.emit("error", new Error("channel closed by server"));
-
-    await svc.getChannel();
-
-    expect(logger.error).toHaveBeenCalledWith(
-      "RabbitMQ channel error",
-      expect.objectContaining({ error: "channel closed by server" }),
-    );
-    expect(connection.createChannel).toHaveBeenCalledTimes(2);
+  it("a late close from a superseded connection does not evict the live one", async () => {
+    const first = await svc.getConnection();
+    first.emit("close");
+    const second = await svc.getConnection();
+    first.emit("close");
+    expect(await svc.getConnection()).toBe(second);
   });
 
-  it("a close from a superseded channel does not evict the live one", async () => {
-    const { svc, connection, channel } = setup();
-
-    await svc.getChannel();
-    channel.emit("close"); // the first channel dies
-    await svc.getChannel(); // a second channel is created
-    expect(connection.createChannel).toHaveBeenCalledTimes(2);
-
-    channel.emit("close"); // late event from the FIRST channel
-
-    await svc.getChannel();
-    expect(connection.createChannel).toHaveBeenCalledTimes(2); // still cached
-  });
-
-  it("caches the channel and reuses it", async () => {
-    const { svc, connection, channel } = setup();
-
+  it("reopens the channel after it closes or errors; a late event from the old one changes nothing", async () => {
     const ch1 = await svc.getChannel();
+    ch1.emit("error", new Error("channel closed by server"));
+    expect(logger.error).toHaveBeenCalledWith("RabbitMQ channel error", { error: "channel closed by server" });
     const ch2 = await svc.getChannel();
-
-    expect(ch1).toBe(channel);
-    expect(ch2).toBe(channel);
-    expect(connection.createChannel).toHaveBeenCalledTimes(1);
+    expect(ch2).not.toBe(ch1);
+    ch1.emit("close");
+    expect(await svc.getChannel()).toBe(ch2);
+    ch2.emit("close");
+    expect(await svc.getChannel()).not.toBe(ch2);
+    expect(broker.connectCount).toBe(1);
   });
 
-  it("asserts a queue with a dead-letter queue", async () => {
-    const { svc, channel } = setup();
+  it("asserts a queue with a dead-letter queue, or a plain durable one", async () => {
+    await svc.assertQueue("work", "work_dlq");
+    expect(broker.queueArgs("work")).toEqual({ "x-dead-letter-exchange": "", "x-dead-letter-routing-key": "work_dlq" });
+    await svc.assertQueue("plain");
+    expect(broker.queueArgs("plain")).toEqual({});
+  });
 
-    await svc.assertQueue("q", "q_dlq");
+  it("publishes persistent JSON, with extra properties", async () => {
+    await svc.publish("work", { a: 1 }, { messageId: "m1" });
+    expect(broker.messages("work")).toEqual([
+      expect.objectContaining({ body: { a: 1 }, properties: { persistent: true, messageId: "m1" } }),
+    ]);
+    await svc.publish("work", { b: 2 });
+    expect(broker.messages("work")[1].properties).toEqual({ persistent: true });
+  });
+});
 
-    expect(channel.assertQueue).toHaveBeenCalledWith("q_dlq", { durable: true });
-    expect(channel.assertQueue).toHaveBeenCalledWith("q", {
-      durable: true,
-      arguments: {
-        "x-dead-letter-exchange": "",
-        "x-dead-letter-routing-key": "q_dlq",
-      },
+describe("supervised consumers (W-06)", () => {
+  const collect = () => {
+    const seen = [];
+    const handler = jest.fn(async (msg, ch) => {
+      seen.push(JSON.parse(msg.content.toString()));
+      svc.ack(ch, msg);
     });
+    return { seen, handler };
+  };
+
+  it("registers on its own channel, runs setup and prefetch, and delivers", async () => {
+    const { seen, handler } = collect();
+    const setup = jest.fn((ch) => svc.assertQueue("work", "work_dlq", ch));
+    await expect(svc.startConsumer("work", handler, { prefetch: 3, setup })).resolves.toBe(true);
+    expect(setup).toHaveBeenCalledTimes(1);
+    expect(await svc.getChannel()).not.toBe(setup.mock.calls[0][0]);
+
+    broker.publish("work", { n: 1 });
+    await waitFor(() => seen.length === 1);
+    expect(seen).toEqual([{ n: 1 }]);
+    expect(svc.consumerStatus()).toEqual([{ queue: "work", registered: true, attempt: 0 }]);
   });
 
-  it("asserts a plain durable queue without a DLQ", async () => {
-    const { svc, channel } = setup();
-
-    await svc.assertQueue("q");
-
-    expect(channel.assertQueue).toHaveBeenCalledWith("q", { durable: true });
-    expect(channel.assertQueue).toHaveBeenCalledTimes(1);
+  it("starting the same queue twice registers ONE consumer", async () => {
+    const { handler } = collect();
+    await Promise.all([svc.startConsumer("work", handler), svc.startConsumer("work", handler)]);
+    await settle();
+    expect(broker.consumerCount("work")).toBe(1);
   });
 
-  it("publishes a persistent JSON message", async () => {
-    const { svc, channel } = setup();
+  it("a message published AFTER a broker restart is consumed — the consumer re-registered itself", async () => {
+    const { seen, handler } = collect();
+    await svc.startConsumer("work", handler, { setup: (ch) => svc.assertQueue("work", undefined, ch) });
 
-    const ok = await svc.publish("q", { a: 1 });
+    broker.restart();
+    await svc.publish("work", { after: "restart" });
 
-    expect(ok).toBe(true);
-    const [queue, buf, opts] = channel.sendToQueue.mock.calls[0];
-    expect(queue).toBe("q");
-    expect(JSON.parse(buf.toString())).toEqual({ a: 1 });
-    expect(opts).toEqual({ persistent: true });
+    await waitFor(() => seen.length === 1);
+    expect(seen).toEqual([{ after: "restart" }]);
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('consumer for "work" is not registered (its channel closed); retry 1'));
+    expect(logger.info).toHaveBeenCalledWith('RabbitMQ consumer for "work" re-registered after 1 attempt(s)');
   });
 
-  it("consumes with an optional prefetch", async () => {
-    const { svc, channel } = setup();
-    const handler = jest.fn();
+  it("a broker that is down at boot is retried, one log line per attempt, until it is up", async () => {
+    broker.refuseConnections(true);
+    const { seen, handler } = collect();
+    await expect(svc.startConsumer("work", handler)).resolves.toBe(false);
+    await waitFor(() => broker.connectCount >= 3);
+    const retryLines = logger.warn.mock.calls.filter(([line]) => /consumer for "work" is not registered/.test(line));
+    // One line per failed attempt — not one per second, not one per poll.
+    expect(retryLines.length).toBeGreaterThanOrEqual(2);
+    expect(retryLines.length).toBeLessThanOrEqual(broker.connectCount);
+    expect(retryLines[0][0]).toMatch(/ECONNREFUSED 127.0.0.1:5672\); retry 1 in 5ms/);
+    expect(retryLines[1][0]).toMatch(/retry 2 in 10ms/);
 
-    await svc.consume("q", handler, 7);
-
-    expect(channel.prefetch).toHaveBeenCalledWith(7);
-    expect(channel.consume).toHaveBeenCalledWith("q", handler);
+    broker.refuseConnections(false);
+    await waitFor(() => svc.consumerStatus()[0].registered);
+    broker.publish("work", { n: 1 });
+    await waitFor(() => seen.length === 1);
   });
 
-  it("consumes without prefetch when not provided", async () => {
-    const { svc, channel } = setup();
-    const handler = jest.fn();
-
-    await svc.consume("q", handler);
-
-    expect(channel.prefetch).not.toHaveBeenCalled();
-    expect(channel.consume).toHaveBeenCalledWith("q", handler);
+  it("the backoff is capped", async () => {
+    broker.refuseConnections(true);
+    await svc.startConsumer("work", jest.fn());
+    await waitFor(() => broker.connectCount >= 5, 2000);
+    const delays = logger.warn.mock.calls
+      .map(([line]) => /retry \d+ in (\d+)ms/.exec(line))
+      .filter(Boolean)
+      .map((m) => Number(m[1]));
+    expect(delays.slice(0, 4)).toEqual([5, 10, 20, 20]);
   });
 
-  it("closes the channel and connection", async () => {
-    const { svc, connection, channel } = setup();
-    await svc.getChannel(); // populate cache
-
-    await svc.closeRabbitMQ();
-
-    expect(channel.close).toHaveBeenCalled();
-    expect(connection.close).toHaveBeenCalled();
-    expect(logger.info).toHaveBeenCalledWith("RabbitMQ connection closed");
+  it("exactly ONE consumer per queue after ten forced reconnects", async () => {
+    const { seen, handler } = collect();
+    await svc.startConsumer("work", handler);
+    for (let i = 0; i < 10; i += 1) {
+      broker.restart();
+      await waitFor(() => svc.consumerStatus()[0].registered);
+    }
+    expect(broker.consumerCount("work")).toBe(1);
+    broker.publish("work", { n: "once" });
+    await waitFor(() => seen.length === 1);
+    await settle();
+    expect(seen).toEqual([{ n: "once" }]);
   });
 
-  it("logs and swallows a close error", async () => {
-    const { svc, channel } = setup();
+  it("a message unacked when the channel died is redelivered to the re-registered consumer", async () => {
+    let calls = 0;
+    const seen = [];
+    await svc.startConsumer("work", async (msg, ch) => {
+      calls += 1;
+      if (calls === 1) {
+        broker.restart(); // dies mid-message, before the ack
+        return;
+      }
+      seen.push(msg.fields.redelivered);
+      svc.ack(ch, msg);
+    });
+    broker.publish("work", { n: 1 });
+    await waitFor(() => seen.length === 1);
+    expect(seen).toEqual([true]);
+  });
+
+  it("a registration whose setup fails closes its channel and retries", async () => {
+    const setup = jest.fn().mockRejectedValueOnce(new Error("PRECONDITION_FAILED")).mockResolvedValue(undefined);
+    await expect(svc.startConsumer("work", jest.fn(), { setup })).resolves.toBe(false);
+    await waitFor(() => svc.consumerStatus()[0].registered);
+    expect(setup).toHaveBeenCalledTimes(2);
+  });
+
+  it("a channel that closes during registration is not kept", async () => {
+    let first = true;
+    const setup = jest.fn(async (ch) => {
+      if (first) {
+        first = false;
+        ch.toClosed(new Error("closed while registering"));
+      }
+    });
+    await expect(svc.startConsumer("work", jest.fn(), { setup })).resolves.toBe(false);
+    await waitFor(() => svc.consumerStatus()[0].registered);
+    expect(broker.consumerCount("work")).toBe(1);
+  });
+
+  it("a channel that closes between consume-ok and bookkeeping is detected and replaced", async () => {
+    const realCreate = broker.connect;
+    let sabotage = true;
+    amqplib.connect.mockImplementation(async (...args) => {
+      const conn = await realCreate(...args);
+      const createChannel = conn.createChannel.bind(conn);
+      conn.createChannel = async () => {
+        const ch = await createChannel();
+        const consume = ch.consume.bind(ch);
+        ch.consume = async (...a) => {
+          const r = await consume(...a);
+          if (sabotage) {
+            sabotage = false;
+            ch.toClosed(null);
+          }
+          return r;
+        };
+        return ch;
+      };
+      return conn;
+    });
+    await expect(svc.startConsumer("work", jest.fn())).resolves.toBe(false);
+    await waitFor(() => svc.consumerStatus()[0].registered);
+    expect(broker.consumerCount("work")).toBe(1);
+  });
+
+  it("a broker-side cancel (null delivery) re-registers the consumer", async () => {
+    let deliver;
+    const realConnect = broker.connect;
+    amqplib.connect.mockImplementation(async (...args) => {
+      const conn = await realConnect(...args);
+      const createChannel = conn.createChannel.bind(conn);
+      conn.createChannel = async () => {
+        const ch = await createChannel();
+        const consume = ch.consume.bind(ch);
+        ch.consume = async (q, cb) => {
+          deliver = cb;
+          return consume(q, cb);
+        };
+        return ch;
+      };
+      return conn;
+    });
+    await svc.startConsumer("work", jest.fn());
+    const before = deliver;
+    before(null);
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("consumer cancelled by the broker"));
+    await waitFor(() => svc.consumerStatus()[0].registered && deliver !== before);
+    before(null); // a late cancel for the replaced channel changes nothing
+    expect(svc.consumerStatus()[0].registered).toBe(true);
+  });
+
+  it("a handler that throws (or rejects with a non-Error) is logged and cannot reach the process handlers", async () => {
+    const unhandled = jest.fn();
+    process.on("unhandledRejection", unhandled);
+    let n = 0;
+    await svc.startConsumer("work", async () => {
+      n += 1;
+      if (n === 1) {
+        throw new Error("handler exploded");
+      }
+      throw "a string"; // eslint-disable-line no-throw-literal
+    });
+    broker.publish("work", { n: 1 });
+    broker.publish("work", { n: 2 });
+    await waitFor(() => logger.error.mock.calls.length >= 2);
+    await settle();
+    process.off("unhandledRejection", unhandled);
+    expect(unhandled).not.toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledWith('RabbitMQ consumer for "work" failed on a message', { error: "handler exploded" });
+    expect(logger.error).toHaveBeenCalledWith('RabbitMQ consumer for "work" failed on a message', { error: "a string" });
+  });
+});
+
+describe("settling on the arrival channel (W-31)", () => {
+  it("ack/nack on the channel the message came on; a closed channel is logged, not thrown", async () => {
+    const got = [];
+    await svc.startConsumer("work", async (msg, ch) => {
+      got.push({ msg, ch });
+    });
+    broker.publish("work", { n: 1 });
+    broker.publish("work", { n: 2 });
+    await waitFor(() => got.length === 2);
+
+    expect(svc.ack(got[0].ch, got[0].msg)).toBe(true);
+    expect(svc.nack(got[1].ch, got[1].msg)).toBe(true);
+
+    got[0].ch.toClosed(null);
+    expect(svc.ack(got[0].ch, got[0].msg)).toBe(false);
+    expect(svc.nack(got[0].ch, got[0].msg)).toBe(false);
+    expect(logger.warn).toHaveBeenCalledWith("RabbitMQ ack not sent (Channel closed); the broker redelivers the message");
+  });
+
+  it("acking on the PUBLISHING channel (what the batch worker did) closes that channel", async () => {
+    let delivered;
+    await svc.startConsumer("work", async (msg) => {
+      delivered = msg;
+    });
+    broker.publish("work", { n: 1 });
+    await waitFor(() => delivered);
+    const publishing = await svc.getChannel();
+    publishing.ack(delivered);
+    await settle();
+    expect(publishing.closed).toBe(true);
+  });
+});
+
+describe("draining and closing (W-07, W-18)", () => {
+  it("stopConsumers cancels, then waits for in-flight handlers", async () => {
+    let finish;
+    const started = jest.fn();
+    await svc.startConsumer("work", async (msg, ch) => {
+      started();
+      await new Promise((r) => {
+        finish = r;
+      });
+      svc.ack(ch, msg);
+    });
+    broker.publish("work", { n: 1 });
+    await waitFor(() => started.mock.calls.length === 1);
+
+    const stopping = svc.stopConsumers({ timeoutMs: 1000 });
+    await settle();
+    expect(broker.consumerCount("work")).toBe(0);
+    broker.publish("work", { n: 2 }); // not delivered: consuming has stopped
+    finish();
+    await expect(stopping).resolves.toEqual({ drained: true, pending: 0 });
+    expect(started).toHaveBeenCalledTimes(1);
+  });
+
+  it("stopConsumers gives up after the timeout and says how many are still running", async () => {
+    await svc.startConsumer("work", () => new Promise(() => {}));
+    broker.publish("work", { n: 1 });
+    await settle();
+    await expect(svc.stopConsumers({ timeoutMs: 5 })).resolves.toEqual({ drained: false, pending: 1 });
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("1 RabbitMQ message handler(s) still running after 5ms"));
+  });
+
+  it("stopConsumers with nothing in flight returns at once, even with a pending retry and a dead channel", async () => {
+    broker.refuseConnections(true);
+    await svc.startConsumer("down", jest.fn());
+    broker.refuseConnections(false);
+    await svc.startConsumer("up", jest.fn());
+    // The consumer channel dies without the service noticing yet.
+    const status = svc.consumerStatus();
+    expect(status.find((s) => s.queue === "down").registered).toBe(false);
+    await expect(svc.stopConsumers()).resolves.toEqual({ drained: true, pending: 0 });
+  });
+
+  it("a cancel on a channel that is already gone is ignored", async () => {
+    await svc.startConsumer("work", jest.fn());
+    const conn = await svc.getConnection();
+    // Break cancel without firing close: the service still holds the channel.
+    for (const ch of conn.channels) {
+      ch.cancel = async () => {
+        throw new Error("Channel closed");
+      };
+    }
+    await expect(svc.stopConsumers()).resolves.toEqual({ drained: true, pending: 0 });
+  });
+
+  it("no consumer re-registers once shutdown has begun", async () => {
+    await svc.startConsumer("work", jest.fn());
+    await svc.stopConsumers();
+    broker.restart();
+    await settle(10);
+    expect(broker.consumerCount("work")).toBe(0);
+    expect(broker.connectCount).toBe(1);
+  });
+
+  it("closeRabbitMQ closes the consumer channels, the publishing channel and the ONE connection", async () => {
+    await svc.startConsumer("work", jest.fn());
     await svc.getChannel();
-    channel.close.mockRejectedValue(new Error("close fail"));
-
+    expect(broker.openConnections()).toBe(1);
     await svc.closeRabbitMQ();
-
-    expect(logger.error).toHaveBeenCalledWith(
-      "Error closing RabbitMQ connection",
-      expect.objectContaining({ error: "close fail" }),
-    );
+    expect(broker.openConnections()).toBe(0);
+    expect(logger.info).toHaveBeenCalledWith("RabbitMQ connection closed");
+    expect(svc.consumerStatus()).toEqual([]);
   });
 
-  it("closeRabbitMQ is a no-op when nothing is open", async () => {
-    const { svc, connection, channel } = setup();
-
+  it("closeRabbitMQ logs and swallows a close error, and is a no-op when nothing is open", async () => {
     await svc.closeRabbitMQ();
-
-    expect(channel.close).not.toHaveBeenCalled();
-    expect(connection.close).not.toHaveBeenCalled();
+    const ch = await svc.getChannel();
+    ch.close = async () => {
+      throw new Error("close failed");
+    };
+    await svc.closeRabbitMQ();
+    expect(logger.error).toHaveBeenCalledWith("Error closing RabbitMQ connection", { error: "close failed" });
   });
 
-  it("rejects when the connection times out", async () => {
-    jest.useFakeTimers();
-    jest.resetModules();
-    // A connect that never settles, so only the timeout can resolve the race.
-    jest.doMock("amqplib", () => ({
-      connect: jest.fn().mockReturnValue(new Promise(() => {})),
-    }));
-    jest.doMock("../../middlewares/activityLog.middleware", () => ({ logger }));
-    const svc = require("../../services/rabbitmq.service");
-
-    const p = svc.getConnection();
-    const assertion = expect(p).rejects.toThrow(/timed out/);
-    jest.advanceTimersByTime(10000);
-    await assertion;
-
-    jest.useRealTimers();
+  it("closeRabbitMQ tolerates a consumer channel that is already closed", async () => {
+    await svc.startConsumer("work", jest.fn());
+    const conn = await svc.getConnection();
+    for (const ch of conn.channels) {
+      ch.close = async () => {
+        throw new Error("Channel closed");
+      };
+    }
+    await svc.closeRabbitMQ();
+    expect(logger.error).not.toHaveBeenCalledWith("Error closing RabbitMQ connection", expect.anything());
   });
 });

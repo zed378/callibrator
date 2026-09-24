@@ -45,6 +45,72 @@ const auditMenuChange = (transaction, actor, { action, resourceId, changes }) =>
     { transaction },
   );
 
+/**
+ * A-226 — refuse a parent that would put a menu group inside its own subtree.
+ *
+ * `updateMenuGroup` (and roles.service#updateMenu, A-271) accepted any
+ * `parentId`: the group itself, or one of its descendants. Either makes a
+ * cycle — the group and its subtree fall out of the tree the sidebar builds
+ * from the top-level groups (they are reachable from no root), and the grant
+ * inheritance in roles.service#getRolePermissionsMatrix walks a loop. A
+ * parent that does not exist was a foreign-key violation, reported as a 500.
+ *
+ * Walks up from the proposed parent through `parentId`, inside the caller's
+ * transaction:
+ *  - the proposed parent missing  -> 404, named;
+ *  - reaching `menuId` on the way -> 409, the state explained;
+ *  - a loop that does not pass through `menuId` (already in the data) stops
+ *    the walk — this change does not make it worse, and refusing every edit
+ *    under it would leave no way to repair it.
+ *
+ * `menuId` is null for a group being created (it has no subtree yet): only
+ * the parent's existence is checked. A null or undefined `parentId` (top
+ * level, or unchanged) needs no check.
+ *
+ * Two concurrent moves could each pass and together form a loop — the
+ * read-then-write window ADR-056 accepts for menu edits, which are
+ * SUPERADMIN-only.
+ *
+ * @param {string|null} menuId - the group being moved, or null when creating
+ * @param {string|null|undefined} parentId - the proposed parent
+ * @param {object} [transaction]
+ * @throws {AppError} 404 when the parent does not exist; 409 on a cycle
+ */
+const assertMenuParentAllowed = async (menuId, parentId, transaction) => {
+  if (parentId === undefined || parentId === null) {
+    return;
+  }
+  if (menuId && parentId === menuId) {
+    throw new AppError(409, "A menu group cannot be its own parent. Choose another parent, or none for a top-level group.");
+  }
+  const parent = await MenuGroup.findByPk(parentId, { attributes: ["id", "name", "parentId"], transaction });
+  if (!parent) {
+    throw new AppError(404, "Parent menu group not found");
+  }
+  if (!menuId) {
+    return;
+  }
+  const visited = new Set([parent.id]);
+  let cursor = parent.parentId;
+  while (cursor && !visited.has(cursor)) {
+    if (cursor === menuId) {
+      throw new AppError(
+        409,
+        `The menu group "${parent.name}" is inside the group being moved, so it cannot become its parent: ` +
+          "that would make a loop. Move it out first, or choose a parent outside this group.",
+      );
+    }
+    visited.add(cursor);
+    const node = await MenuGroup.findByPk(cursor, { attributes: ["id", "parentId"], transaction });
+    if (!node) {
+      return; // a dangling ancestor ends the chain
+    }
+    cursor = node.parentId;
+  }
+};
+
+exports.assertMenuParentAllowed = assertMenuParentAllowed;
+
 // The menu-group fields an update may change, as the audit row records them.
 const MENU_GROUP_FIELDS = ["name", "slug", "icon", "parentId", "sortOrder", "isActive"];
 
@@ -244,6 +310,8 @@ exports.getAvailableRoles = () =>
 // ------------------------------------------------------------------
 exports.createMenuGroup = async (value, actor = {}) => {
   const group = await db.transaction(async (transaction) => {
+    // A-226: a parent that does not exist is 404, not a foreign-key 500.
+    await assertMenuParentAllowed(null, value.parentId, transaction);
     const created = await MenuGroup.create(
       {
         name: value.name,
@@ -297,6 +365,8 @@ exports.updateMenuGroup = async (value, actor = {}) => {
   const after = Object.fromEntries(sent.map((key) => [key, value[key]]));
 
   await db.transaction(async (transaction) => {
+    // A-226: never itself or one of its descendants.
+    await assertMenuParentAllowed(group.id, value.parentId, transaction);
     await group.update(
       {
         name: value.name !== undefined ? value.name : group.name,

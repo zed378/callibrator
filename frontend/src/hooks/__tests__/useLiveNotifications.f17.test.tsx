@@ -5,8 +5,7 @@
  * page set it from `meta.unread`; a push that landed while the page's fetch
  * was in flight was counted twice, and a reconnect did not refetch.
  */
-import React from "react";
-import { act, render } from "@testing-library/react";
+import { act, renderHook } from "@testing-library/react";
 
 type Handler = (...args: unknown[]) => void;
 const handlers = new Map<string, Handler>();
@@ -33,11 +32,12 @@ const flush = () => act(async () => {
   await Promise.resolve();
 });
 
-let latest: ReturnType<typeof useLiveNotifications> | null = null;
-function Probe() {
-  latest = useLiveNotifications();
-  return null;
-}
+let hook: { current: ReturnType<typeof useLiveNotifications> };
+const mount = () => {
+  const r = renderHook(() => useLiveNotifications());
+  hook = r.result;
+  return r;
+};
 
 beforeEach(() => {
   handlers.clear();
@@ -49,17 +49,17 @@ beforeEach(() => {
 describe("notification badge (F-17)", () => {
   it("mount reads the server count", async () => {
     mockGetAll.mockResolvedValue(serverUnread(4));
-    render(<Probe />);
+    mount();
     await flush();
     expect(useNotificationStore.getState().unreadCount).toBe(4);
-    expect(latest?.connected).toBe(true);
+    expect(hook.current.connected).toBe(true);
   });
 
   it("a push re-reads the server count instead of incrementing — no double count", async () => {
     // The initial fetch ran after n5 was created, so the server's 5 already
     // includes it; the push for n5 then arrives. Old code: 5 + 1 = 6.
     mockGetAll.mockResolvedValue(serverUnread(5));
-    render(<Probe />);
+    mount();
     await flush();
 
     await act(async () => {
@@ -68,29 +68,29 @@ describe("notification badge (F-17)", () => {
     await flush();
 
     expect(useNotificationStore.getState().unreadCount).toBe(5);
-    expect(latest?.latest).toMatchObject({ id: "n5" });
+    expect(hook.current.latest).toMatchObject({ id: "n5" });
     expect(useToastStore.getState().toasts[0]).toMatchObject({ title: "Due" });
   });
 
   it("a reconnect refetches the count (pushes missed while disconnected are not lost)", async () => {
     mockGetAll.mockResolvedValue(serverUnread(1));
-    render(<Probe />);
+    mount();
     await flush();
 
     await act(async () => handlers.get("disconnect")?.());
-    expect(latest?.connected).toBe(false);
+    expect(hook.current.connected).toBe(false);
 
     mockGetAll.mockResolvedValue(serverUnread(7));
     await act(async () => handlers.get("connect")?.());
     await flush();
 
-    expect(latest?.connected).toBe(true);
+    expect(hook.current.connected).toBe(true);
     expect(useNotificationStore.getState().unreadCount).toBe(7);
   });
 
   it("unmount removes only this hook's listeners", async () => {
     mockGetAll.mockResolvedValue(serverUnread(0));
-    const { unmount } = render(<Probe />);
+    const { unmount } = mount();
     await flush();
     unmount();
     expect(fakeSocket.off).toHaveBeenCalledWith("new_notification", expect.any(Function));

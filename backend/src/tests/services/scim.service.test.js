@@ -147,6 +147,21 @@ describe("scim.service", () => {
       ).rejects.toThrow("User already exists in the system");
     });
 
+    it("D-06: stores the address lowercased and trimmed, and checks for it lowercased", async () => {
+      Users.findOne.mockResolvedValue(null);
+      Users.create.mockImplementation(async (v) => ({ ...v, id: "u1" }));
+
+      await scim.createUser("t1", { emails: [{ value: "  Ada.Lovelace@Hospital-B.ORG " }] });
+
+      expect(Users.findOne).toHaveBeenCalledWith({ where: { email: "ada.lovelace@hospital-b.org" } });
+      expect(Users.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          email: "ada.lovelace@hospital-b.org",
+          username: "ada.lovelace@hospital-b.org",
+        }),
+      );
+    });
+
     it("prefers the primary emails[0].value over userName", async () => {
       Users.findOne.mockResolvedValue(null);
       Users.create.mockImplementation(async (v) => ({ ...v, id: "u1" }));
@@ -528,6 +543,12 @@ describe("scim.service — RFC 7644 patch paths and filters (A-33)", () => {
       expect(update).toHaveBeenCalledWith({ lastName: "Lovelace" });
     });
 
+    it("D-06: a userName patch is stored lowercased in both columns", async () => {
+      await scim.patchUser("t1", "u1", [{ op: "replace", path: "userName", value: "New@B.COM" }]);
+
+      expect(update).toHaveBeenCalledWith({ email: "new@b.com", username: "new@b.com" });
+    });
+
     it("writes userName to both email and username, as createUser does", async () => {
       await scim.patchUser("t1", "u1", [{ op: "replace", path: "userName", value: " new@b.com " }]);
 
@@ -667,6 +688,20 @@ describe("scim.service — RFC 7644 patch paths and filters (A-33)", () => {
       expect(result.totalResults).toBe(1);
       expect(result.Resources).toHaveLength(1);
       expect(result.Resources[0].userName).toBe("ada@b.com");
+    });
+
+    it("D-06: an email filter matches the stored (lowercased) address whatever case the IdP sends", async () => {
+      await scim.getUsers("t1", 1, 100, 'emails.value eq "Ada@B.com"');
+      expect(Users.findAndCountAll).toHaveBeenLastCalledWith(
+        expect.objectContaining({ where: { tenantId: "t1", email: "ada@b.com" } }),
+      );
+
+      await scim.getUsers("t1", 1, 100, 'userName eq "Ada@B.com"');
+      expect(Users.findAndCountAll).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          where: { tenantId: "t1", [Op.or]: [{ email: "ada@b.com" }, { username: "Ada@B.com" }] },
+        }),
+      );
     });
 
     it("accepts the emails.value spelling", async () => {

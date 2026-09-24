@@ -387,7 +387,7 @@ exports.createUser = async (tenantId, scimData) => {
   // identical address — two accounts for one mailbox. Migration 0063 makes the
   // database refuse that; this keeps SCIM from attempting it.
   const rawEmail = (scimData.emails && scimData.emails[0]?.value) || scimData.userName;
-  const email = typeof rawEmail === "string" ? rawEmail.trim().toLowerCase() : rawEmail;
+  const email = rawEmail ? String(rawEmail).trim().toLowerCase() : rawEmail;
   const firstName = scimData.name?.givenName || "SCIM";
   const lastName = scimData.name?.familyName || "User";
 

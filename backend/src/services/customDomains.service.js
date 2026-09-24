@@ -1,15 +1,24 @@
 /**
  * Custom Domains Service
  *
- * Manages per-tenant custom domains (vanity subdomains, CNAME records, TLS
- * certificates). Backed by the CustomDomain model. Domain-management operations
- * are keyed by the domain record id (matching the controller contract); tenant
- * resolution is by hostname.
+ * Manages per-tenant custom domains (vanity subdomains and CNAME records) and
+ * their DNS ownership verification. Backed by the CustomDomain model.
+ * Domain-management operations are keyed by the domain record id (matching the
+ * controller contract).
+ *
+ * NOT IMPLEMENTED (A-256, ADR-PENDING-misc): serving the application ON a
+ * custom domain. Nothing resolves a tenant from the request's Host, and no TLS
+ * certificate is issued for a domain. `resolveTenantByDomain` and
+ * `provisionTLSCertificate` had no caller anywhere and were removed rather than
+ * left for the next route to inherit: selecting a tenant from a Host header is
+ * a tenant-isolation decision (which principal may act where, what a spoofed
+ * Host selects) that needs its own design, and the ACME stub wrote challenge
+ * files and created CA accounts with no caller, no persistence of what it
+ * issued and no renewal. A verified domain is, today, a verified CLAIM.
  *
  * Usage:
  *   const svc = require('./services/customDomains.service');
  *   await svc.addDomain(tenantId, { domain: 'app.example.com', type: 'subdomain' });
- *   const tenant = await svc.resolveTenantByDomain('app.example.com');
  */
 
 const crypto = require("crypto");
@@ -17,7 +26,6 @@ const dns = require("dns").promises;
 const { logger } = require("../middlewares/activityLog.middleware");
 const { AppError } = require("../utils/appError.util");
 const { db } = require("../config");
-const storagePath = require("../utils/storagePath.util");
 const auditService = require("./audit.service");
 const { ROLE_NAMES } = require("../constants/roleConstants");
 
@@ -29,7 +37,6 @@ const CUSTOM_DOMAINS_ENABLED = () =>
   process.env.CUSTOM_DOMAINS_ENABLED === "true";
 const DEFAULT_SUBDOMAIN = () => process.env.DEFAULT_SUBDOMAIN || "app";
 const DNS_CHECK_INTERVAL = () => parseInt(process.env.DNS_CHECK_INTERVAL) || 300;
-const TLS_AUTO_PROVISION = () => process.env.TLS_AUTO_PROVISION === "true";
 
 const DOMAIN_STATUS = {
   PENDING_VERIFICATION: "pending_verification",
@@ -94,11 +101,69 @@ function getDnsVerificationInstructions(domain, token) {
       "1. Add the TXT record to verify domain ownership",
       "2. Add the CNAME record to point traffic to Callibrator",
       "3. Click 'Verify' after DNS propagates (up to 48 hours)",
-      TLS_AUTO_PROVISION()
-        ? "4. TLS certificate will be auto-provisioned via Let's Encrypt"
-        : "4. Contact support to enable TLS for your domain",
+      // A-256: no certificate is ever issued automatically (the ACME stub had
+      // no caller); promising one misled the tenant.
+      "4. Contact support to enable TLS for your domain",
     ],
   };
+}
+
+/** A-223 — the one answer to "this domain cannot be claimed". */
+const DOMAIN_TAKEN =
+  "This domain is already registered and verified by an organisation on this platform. " +
+  "It can be added here once that registration is removed.";
+
+/**
+ * A-223 — whether another tenant holds `domain` ACTIVE (verified). Global on
+ * purpose (skipTenantScope): the question is platform-wide, as the partial
+ * unique index `custom_domains_domain_active_uq` (migration 0070) is. Only the
+ * yes/no leaves this function — never whose it is.
+ *
+ * @param {string} tenantId
+ * @param {string} domain - lower-case
+ * @returns {Promise<boolean>}
+ */
+async function activeClaimElsewhere(tenantId, domain) {
+  const { CustomDomain } = require("../models");
+  const holder = await CustomDomain.findOne({
+    where: {
+      domain,
+      status: DOMAIN_STATUS.ACTIVE,
+      tenantId: { [db.Sequelize.Op.ne]: tenantId },
+    },
+    attributes: ["id"],
+    skipTenantScope: true,
+  });
+  return Boolean(holder);
+}
+
+/**
+ * A-223 — refuse an add that cannot succeed, BEFORE writing (409, never the
+ * unique index's 500):
+ *  - this tenant already has the domain, not removed -> 409;
+ *  - another tenant holds it ACTIVE -> 409 (DOMAIN_TAKEN).
+ * A REMOVED domain no longer blocks anyone: removal is a soft delete
+ * (status `deleted`, kept for the audit trail), and uniqueness now covers
+ * only rows that are not deleted. A PENDING claim in another tenant does not
+ * block either — ownership is proven by the DNS record, and the first to
+ * verify holds the domain; a pending claim held a domain against its real
+ * owner forever when uniqueness was global.
+ *
+ * @param {string} tenantId
+ * @param {string} domain - lower-case
+ */
+async function assertDomainClaimable(tenantId, domain) {
+  const { CustomDomain } = require("../models");
+  const own = await CustomDomain.findOne({
+    where: { tenantId, domain, status: { [db.Sequelize.Op.ne]: DOMAIN_STATUS.DELETED } },
+    attributes: ["id", "status"],
+  });
+  if (own) {
+    throw new AppError(409, `This domain is already registered for your organisation (status: ${own.status}).`);
+  }
+  if (await activeClaimElsewhere(tenantId, domain)) {
+    throw new AppError(409, DOMAIN_TAKEN);
+  }
 }
 
 /** Load a tenant-owned domain record by id (404 if absent). */
@@ -317,11 +382,10 @@ exports.addDomain = async (tenantId, domainInput, typeArg = "subdomain", actor =
   if (!isValidDomain(domain)) {
     throw new AppError(400, "Invalid domain format");
   }
+  // A-223: DNS names are case-insensitive; one spelling is stored.
+  domain = domain.toLowerCase();
 
-  const existing = await exports.getDomainByDomain(domain);
-  if (existing) {
-    throw new AppError(409, "Domain already assigned to another tenant");
-  }
+  await assertDomainClaimable(tenantId, domain);
 
   try {
     const { CustomDomain } = require("../models");
@@ -368,6 +432,11 @@ exports.addDomain = async (tenantId, domainInput, typeArg = "subdomain", actor =
     if (err instanceof AppError) {
       throw err;
     }
+    // A-223: a concurrent add of the same domain that passed the check above
+    // lost the race on the unique index — the same conflict, not a 500.
+    if (err && err.name === "SequelizeUniqueConstraintError") {
+      throw new AppError(409, DOMAIN_TAKEN);
+    }
     logger.error("Failed to add domain", {
       tenantId,
       domain,
@@ -395,13 +464,23 @@ exports.verifyDomain = async (tenantId, domainId, actor = {}) => {
   }
 
   const record = await loadOwned(tenantId, domainId);
+  if (record.status === DOMAIN_STATUS.DELETED) {
+    throw new AppError(409, "This domain was removed and cannot be verified. Add it again to start a new verification.");
+  }
   const token = record.verificationToken || generateVerificationToken();
 
   // Real DNS ownership check; both outcomes are reachable. Never throws.
   const verified = await checkDnsTxtRecord(record.domain, token);
   const before = { status: record.status };
 
-  await db.transaction(async (transaction) => {
+  // A-223: a domain is ACTIVE for one organisation at a time (the partial
+  // unique index of migration 0070). Another organisation's active claim
+  // stands until it removes it; its DNS record is not ours to overrule here.
+  if (verified && record.status !== DOMAIN_STATUS.ACTIVE && (await activeClaimElsewhere(tenantId, record.domain))) {
+    throw new AppError(409, DOMAIN_TAKEN);
+  }
+
+  const persist = db.transaction(async (transaction) => {
     await record.update(
       {
         status: verified ? DOMAIN_STATUS.ACTIVE : DOMAIN_STATUS.VERIFICATION_FAILED,
@@ -424,6 +503,16 @@ exports.verifyDomain = async (tenantId, domainId, actor = {}) => {
       },
     });
   });
+  try {
+    await persist;
+  } catch (err) {
+    // A-223: another organisation verified the same domain between the check
+    // above and this commit, and won the unique index — the same conflict.
+    if (err && err.name === "SequelizeUniqueConstraintError") {
+      throw new AppError(409, DOMAIN_TAKEN);
+    }
+    throw err;
+  }
 
   return {
     verified,
@@ -533,148 +622,6 @@ exports.getDnsRecords = async (tenantId, domainId) => {
   return getDnsVerificationInstructions(record.domain, record.verificationToken);
 };
 
-/**
- * Find an active domain by its domain name (used for dedupe + resolution).
- */
-exports.getDomainByDomain = async (domain) => {
-  try {
-    const { CustomDomain } = require("../models");
-    return await CustomDomain.findOne({
-      where: {
-        domain,
-        status: { [db.Sequelize.Op.ne]: DOMAIN_STATUS.DELETED },
-      },
-    });
-  } catch (err) {
-    logger.error("Failed to get domain", { domain, error: err.message });
-    return null;
-  }
-};
-
-// ==========================================
-// TENANT RESOLUTION
-// ==========================================
-
-/**
- * Resolve a tenant by request hostname. Runs pre-auth (no tenant context) so it
- * matches across all tenants.
- */
-exports.resolveTenantByDomain = async (hostname) => {
-  if (!CUSTOM_DOMAINS_ENABLED()) {
-    return null;
-  }
-
-  try {
-    const { CustomDomain } = require("../models");
-    const domainRecord = await CustomDomain.findOne({
-      where: { domain: hostname, status: DOMAIN_STATUS.ACTIVE },
-    });
-
-    if (domainRecord) {
-      logger.debug("Tenant resolved by custom domain", {
-        hostname,
-        tenantId: domainRecord.tenantId,
-      });
-      return {
-        tenantId: domainRecord.tenantId,
-        domain: domainRecord.domain,
-      };
-    }
-  } catch (err) {
-    logger.error("Domain resolution failed", {
-      hostname,
-      error: err.message,
-    });
-  }
-
-  return null;
-};
-
-// ==========================================
-// TLS CERTIFICATE MANAGEMENT
-// ==========================================
-
-/**
- * Provision a TLS certificate for a domain via ACME (Let's Encrypt) using the
- * HTTP-01 challenge. The challenge token is written under the served
- * `.well-known/acme-challenge/` directory; the domain must already resolve to
- * this server for issuance to succeed. The issued private key is encrypted at
- * rest with the tenant KMS envelope (never returned or logged in plaintext).
- *
- * Defaults to the Let's Encrypt STAGING directory; set ACME_DIRECTORY_URL to the
- * production directory for real certificates. Guarded by TLS_AUTO_PROVISION.
- *
- * @param {string} domain
- * @param {string} [tenantId] used to encrypt the private key via kms.service
- */
-exports.provisionTLSCertificate = async (domain, tenantId) => {
-  if (!TLS_AUTO_PROVISION()) {
-    return { success: false, reason: "TLS auto-provisioning disabled" };
-  }
-
-  try {
-    const acme = require("acme-client");
-    const fs = require("fs");
-    const path = require("path");
-
-    const directoryUrl =
-      process.env.ACME_DIRECTORY_URL || acme.directory.letsencrypt.staging;
-    const challengeDir =
-      process.env.ACME_CHALLENGE_DIR ||
-      storagePath(".well-known", "acme-challenge");
-
-    const accountKey = await acme.crypto.createPrivateKey();
-    const client = new acme.Client({ directoryUrl, accountKey });
-
-    const [certKey, csr] = await acme.crypto.createCsr({ commonName: domain });
-
-    const certificate = await client.auto({
-      csr,
-      email: process.env.ACME_ACCOUNT_EMAIL || `admin@${domain}`,
-      termsOfServiceAgreed: true,
-      challengePriority: ["http-01"],
-      challengeCreateFn: async (authz, challenge, keyAuthorization) => {
-        if (challenge.type !== "http-01") {
-          return;
-        }
-        await fs.promises.mkdir(challengeDir, { recursive: true });
-        await fs.promises.writeFile(
-          path.join(challengeDir, challenge.token),
-          keyAuthorization,
-        );
-      },
-      challengeRemoveFn: async (authz, challenge) => {
-        if (challenge.type !== "http-01") {
-          return;
-        }
-        await fs.promises
-          .unlink(path.join(challengeDir, challenge.token))
-          .catch(() => {});
-      },
-    });
-
-    // Encrypt the certificate private key at rest with the tenant KMS envelope.
-    const encryptedPrivateKey = tenantId
-      ? require("./kms.service").encryptData(tenantId, certKey.toString())
-      : null;
-
-    logger.info("TLS certificate provisioned via ACME", { domain });
-    return {
-      success: true,
-      certificate: {
-        domain,
-        certificate: certificate.toString(),
-        encryptedPrivateKey,
-        issuedAt: new Date().toISOString(),
-        issuer: "Let's Encrypt",
-      },
-    };
-  } catch (err) {
-    logger.error("TLS provisioning failed", { domain, error: err.message });
-    return { success: false, reason: err.message };
-  }
-};
-
 // ==========================================
 // UTILITIES
 // ==========================================
@@ -683,7 +630,9 @@ exports.getStatus = () => ({
   enabled: CUSTOM_DOMAINS_ENABLED(),
   defaultSubdomain: DEFAULT_SUBDOMAIN(),
   dnsCheckInterval: DNS_CHECK_INTERVAL(),
-  tlsAutoProvision: TLS_AUTO_PROVISION(),
+  // A-256: kept in the answer's shape, and true to what exists: no
+  // certificate is provisioned, whatever TLS_AUTO_PROVISION says.
+  tlsAutoProvision: false,
 });
 
 exports.DOMAIN_STATUS = DOMAIN_STATUS;

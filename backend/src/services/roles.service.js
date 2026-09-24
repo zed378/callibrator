@@ -759,6 +759,8 @@ class RolesService {
    */
   static async createMenu(data, actor = {}) {
     const menu = await db.transaction(async (transaction) => {
+      // A-271: a parent that does not exist is 404, not a foreign-key 500.
+      await require("./menuGroup.service").assertMenuParentAllowed(null, data.parent_id, transaction);
       const created = await MenuGroup.create(
         {
           name: data.name.trim(),
@@ -832,6 +834,9 @@ class RolesService {
     const before = Object.fromEntries(Object.keys(updates).map((key) => [key, menu[key] ?? null]));
 
     await db.transaction(async (transaction) => {
+      // A-271 (A-226's twin): never itself or one of its descendants; a
+      // parent that does not exist is 404, not a foreign-key 500.
+      await require("./menuGroup.service").assertMenuParentAllowed(menu.id, updates.parentId, transaction);
       await menu.update(updates, { transaction });
       await auditAccessChange(transaction, actor, {
         tenantId: PLATFORM_TENANT_ID, // A-165: a global menu is a platform operation

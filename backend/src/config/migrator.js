@@ -96,6 +96,7 @@ const migrationModules = [
   ["0063-user-identity-case-insensitive.js", require("../migrations/0063-user-identity-case-insensitive")],
   ["0066-signature-records-step-restrict.js", require("../migrations/0066-signature-records-step-restrict")],
   ["0067-foreign-key-and-tenant-indexes.js", require("../migrations/0067-foreign-key-and-tenant-indexes")],
+  ["0070-custom-domain-partial-uniqueness.js", require("../migrations/0070-custom-domain-partial-uniqueness")],
 ];
 
 const migrator = new Umzug({

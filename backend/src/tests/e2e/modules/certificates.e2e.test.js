@@ -55,7 +55,8 @@ describe("E2E Certificates (HTTP)", () => {
   afterAll(async () => {
     if (certId) await httpDelete(`/certificates/${certId}`, authHeader(token));
     if (recordId) {
-      await httpDelete(`/calibration-records/${recordId}`, authHeader(token));
+      // P6-03: calibration records cannot be deleted; teardown voids it.
+      await httpPost(`/calibration-records/${recordId}/void`, { reason: "e2e teardown" }, authHeader(token));
     }
     if (deviceId) {
       await httpDelete(`/calibration-devices/${deviceId}`, authHeader(token));

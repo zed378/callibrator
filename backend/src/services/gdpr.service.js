@@ -421,11 +421,26 @@ function generateExportId() {
 // ==========================================
 
 /**
- * Erase user data for GDPR Article 17 (Right to Erasure)
- * Performs soft delete with anonymization where required
+ * Erase user data for GDPR Article 17 (Right to Erasure).
+ *
+ * D-11 (ADR-PENDING-dbA): an erasure PSEUDONYMISES the account in place — it
+ * never removes the row. The row's id is what calibration records, signatures,
+ * certificates and the audit trail point at (ON DELETE RESTRICT, ADR-051
+ * Q-16), and those are records the platform must retain (21 CFR Part 11,
+ * ISO 17025; GDPR Art. 17(3)(b)). What identifies or authenticates the person
+ * is destroyed; the id that keeps the retained records attributable stays.
+ *
+ * There is no physical delete. `hardDelete: true` used to select a function
+ * named hardDeleteUser that ran a paranoid (soft) destroy — every column,
+ * password hash included, stayed readable — and reported `hard_deleted`. It
+ * is now refused (400) rather than honoured with something else.
+ *
  * @param {string} tenantId - Tenant ID
  * @param {string} userId - User ID to erase
  * @param {Object} options - Erasure options
+ * @param {boolean} [options.anonymize=true] - false = soft delete only (the
+ *   account is closed, NOTHING is erased; reported as `soft_deleted`)
+ * @param {boolean} [options.hardDelete] - refused: not offered (D-11)
  * @param {string} options.requestedBy - A-124: the user who requested the
  *   erasure; the audit row's actor. Refused (400) when absent — an erasure is
  *   never recorded without one.
@@ -438,9 +453,17 @@ exports.eraseUserData = async (tenantId, userId, options = {}) => {
     throw new AppError(400, "An erasure must name the user who requested it");
   }
 
-  const hardDelete = options.hardDelete === true;
+  if (options.hardDelete === true) {
+    throw new AppError(
+      400,
+      "A physical delete of an account is not offered: the account is referenced by calibration, " +
+        "signature and audit records that must be retained (21 CFR Part 11, ISO 17025). An erasure " +
+        "pseudonymises the account in place instead — its name, contact details, credentials and " +
+        "second factors are destroyed. Omit hardDelete to erase.",
+    );
+  }
   const anonymize = options.anonymize !== false;
-  const method = anonymize ? "anonymized" : hardDelete ? "hard_deleted" : "soft_deleted";
+  const method = anonymize ? "anonymized" : "soft_deleted";
   let avatarFile = null;
 
   try {
@@ -461,8 +484,6 @@ exports.eraseUserData = async (tenantId, userId, options = {}) => {
       let sessionsRevoked = 0;
       if (anonymize) {
         ({ avatarFile, sessionsRevoked } = await anonymizeUser(tenantId, user, transaction));
-      } else if (hardDelete) {
-        await hardDeleteUser(tenantId, userId, transaction);
       } else {
         await softDeleteUser(tenantId, userId, transaction);
       }
@@ -515,8 +536,7 @@ exports.eraseUserData = async (tenantId, userId, options = {}) => {
   logger.info("User data erased", {
     tenantId,
     userId,
-    hardDelete,
-    anonymize,
+    method,
   });
 
   return {
@@ -542,6 +562,32 @@ const AUTHENTICATORS_CLEARED = Object.freeze({
   webauthnSignCount: 0,
   otpCode: null,
   otpExpiredAt: null,
+});
+
+/**
+ * The password column of an erased account (D-11). Not a bcrypt hash, so it
+ * matches no password (`bcrypt.compare` answers false for it), and it replaces
+ * the hash an erasure used to leave behind: a hash of the person's password is
+ * their data too, and crackable offline.
+ */
+const ERASED_PASSWORD = "!erased";
+
+/**
+ * Sign-in history and credential state an erasure resets (D-11): when the
+ * person last signed in, their lockout and one-time-code counters, and the
+ * password bookkeeping. None of it is needed to keep a retained record
+ * attributable, and all of it describes the person.
+ */
+const SIGN_IN_STATE_CLEARED = Object.freeze({
+  password: ERASED_PASSWORD,
+  passwordChangedAt: null,
+  mustChangePassword: false,
+  lastLoginAt: null,
+  failedLoginAttempts: 0,
+  lockedUntil: null,
+  otpRequestCount: 0,
+  otpLastRequestedAt: null,
+  isEmailVerified: false,
 });
 
 /**
@@ -581,6 +627,7 @@ async function anonymizeUser(tenantId, user, transaction) {
       isActive: false,
       ...MFA_CLEARED,
       ...AUTHENTICATORS_CLEARED,
+      ...SIGN_IN_STATE_CLEARED,
     },
     { where: { id: userId, tenantId }, transaction },
   );
@@ -605,15 +652,6 @@ async function softDeleteUser(tenantId, userId, transaction) {
     },
     { where: { id: userId, tenantId }, transaction },
   );
-}
-
-/**
- * Hard delete user
- */
-async function hardDeleteUser(tenantId, userId, transaction) {
-  const { User } = require("../models");
-
-  await User.destroy({ where: { id: userId, tenantId }, transaction });
 }
 
 // ==========================================

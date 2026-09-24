@@ -57,10 +57,10 @@ const { startWatchdog: initJobWatchdog } = require("./src/services/jobMonitor.se
 
 const { initRedis, closeRedis } = require("./src/services/redis.service");
 
-const {
-  processEmailQueue,
-  closeRabbitMQ,
-} = require("./src/services/emailQueue.service");
+const { processEmailQueue } = require("./src/services/emailQueue.service");
+// W-18: the process's ONE AMQP connection, and its one close.
+const { closeRabbitMQ } = require("./src/services/rabbitmq.service");
+const { stopBatchJobWorker } = require("./src/workers/batchJob.worker");
 
 const { accessLog } = require("./src/middlewares/accessLog.middleware");
 
@@ -653,7 +653,7 @@ async function startServer() {
     require("./src/workers/batchJob.worker")
       .startBatchJobWorker()
       .catch((err) =>
-        console.error("Failed to start batch job worker:", err.message),
+        logger.error("Failed to start batch job worker", { error: err.message }),
       );
 
     // Start Email Queue Worker (background processing) - fire and forget
@@ -720,6 +720,12 @@ async function shutdown(signal) {
         });
       });
     }
+
+    // W-07: stop consuming and let in-flight queue work finish BEFORE the
+    // database closes under it; batch jobs still running at the deadline are
+    // marked FAILED ("interrupted"), not left PROCESSING forever.
+    const drain = await stopBatchJobWorker();
+    logger.info("Queue consumers stopped", drain);
 
     await db.close();
 

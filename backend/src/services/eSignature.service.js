@@ -268,7 +268,6 @@ exports.generateKeyPair = async (tenantId) => {
   }
 };
 
-
 /**
  * Load the tenant's current e-signature signing key and return its decrypted
  * PEM. The private key is excluded by the model's default scope, so this reads

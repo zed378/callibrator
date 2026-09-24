@@ -108,6 +108,11 @@ live("Phase 6 data integrity — live PostgreSQL (P6-03, P6-05, P6-06)", () => {
     await g.db.sync({ force: true });
     const qi = g.db.getQueryInterface();
     await g.m0026.up({ context: qi });
+    // As migration 0012 left five tables (A-242): RLS on and forced, no policy.
+    for (const t of ["categories", "posts", "post_categories", "workflow_steps", "workflow_actions"]) {
+      await g.db.query(`ALTER TABLE ${t} ENABLE ROW LEVEL SECURITY`);
+      await g.db.query(`ALTER TABLE ${t} FORCE ROW LEVEL SECURITY`);
+    }
     await g.m0057.up({ context: qi });
     // 0059 against a table shaped as it was BEFORE P6-09: a legacy adjustment
     // with no reason, and none of the new columns — the migration must add
@@ -556,6 +561,34 @@ live("Phase 6 data integrity — live PostgreSQL (P6-03, P6-05, P6-06)", () => {
   // P6-05 — the schema verifier
   // ------------------------------------------------------------------
   describe("P6-05 — verifySchema against information_schema", () => {
+    it("A-242: 0057 switched off the policy-less RLS 0012 left behind; the verifier would name it", async () => {
+      const [[{ n }]] = await g.db.query(
+        "SELECT count(*)::int AS n FROM pg_class c JOIN pg_namespace ns ON ns.oid = c.relnamespace WHERE ns.nspname = current_schema() AND c.relrowsecurity",
+      );
+      expect(n).toBe(0);
+      await g.db
+        .transaction(async () => {
+          await g.db.query("ALTER TABLE workflow_steps ENABLE ROW LEVEL SECURITY");
+          await g.db.query("ALTER TABLE workflow_steps FORCE ROW LEVEL SECURITY");
+          expect((await g.schemaVerify.verifySchema(g.db)).problems).toEqual([
+            expect.stringMatching(/^row level security is enabled on workflow_steps/),
+          ]);
+          // And why it matters: as the application role, the table is empty and unwritable.
+          await g.db.query(`SET LOCAL ROLE ${APP_ROLE}`);
+          await expect(
+            g.db.query(
+              "INSERT INTO workflow_steps (id, workflow_id, step_order, role_id, required_approvals, created_at, updated_at) VALUES (gen_random_uuid(), gen_random_uuid(), 1, gen_random_uuid(), 1, now(), now())",
+            ),
+          ).rejects.toThrow(/row-level security/);
+          throw new Error("rollback");
+        })
+        .catch((err) => {
+          if (err.message !== "rollback") {
+            throw err;
+          }
+        });
+    });
+
     it("a synced and migrated database matches the models", async () => {
       const result = await g.schemaVerify.verifySchema(g.db);
       expect(result.problems).toEqual([]);

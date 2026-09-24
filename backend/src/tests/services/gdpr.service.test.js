@@ -340,14 +340,20 @@ describe("gdprService", () => {
       expect(result.method).toBe("soft_deleted");
     });
 
-    it("should hard delete when hardDelete is true", async () => {
-      const result = await gdprService.eraseUserData("tenant-1", "user-1", {
-        hardDelete: true,
-        anonymize: false,
-        requestedBy: "user-1",
+    // D-11: there is no physical delete. The flag used to run a paranoid
+    // (soft) destroy that left every column readable and report "hard_deleted".
+    it.each([
+      [{ hardDelete: true, anonymize: false }],
+      [{ hardDelete: true }],
+    ])("D-11: refuses hardDelete (%j) with a 400 that says what an erasure does instead, and touches nothing", async (flags) => {
+      await expect(
+        gdprService.eraseUserData("tenant-1", "user-1", { ...flags, requestedBy: "user-1" }),
+      ).rejects.toMatchObject({
+        status: 400,
+        message: expect.stringMatching(/^A physical delete of an account is not offered: .*pseudonymises the account in place/),
       });
-
-      expect(result.method).toBe("hard_deleted");
+      expect(User.update).not.toHaveBeenCalled();
+      expect(User.destroy).not.toHaveBeenCalled();
     });
 
     it("should throw AppError on database exception during erasure", async () => {

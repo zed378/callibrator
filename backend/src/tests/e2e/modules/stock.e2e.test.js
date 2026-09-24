@@ -112,13 +112,21 @@ describe("E2E Stock Module (HTTP)", () => {
     expect(body.data.id).toBe(ids.stock);
   });
 
-  test("PATCH /stocks/:id — 200 update quantity", async () => {
-    const { status } = await httpPatch(
-      `/stocks/${ids.stock}`,
-      { quantity: 120 },
+  // P6-09: a quantity changes only through an adjustment/transfer/opname.
+  test("PATCH /stocks/:id — 400 when it would change the quantity; 200 for other fields", async () => {
+    const refused = await httpPatch(`/stocks/${ids.stock}`, { quantity: 120 }, auth);
+    expect(refused.status).toBe(400);
+    const { status } = await httpPatch(`/stocks/${ids.stock}`, { description: "e2e edited" }, auth);
+    expect(status).toBe(200);
+  });
+
+  test("POST /stocks/adjustment — 400 with a blank reason", async () => {
+    const { status } = await httpPost(
+      "/stocks/adjustment",
+      { stockId: ids.stock, type: "addition", quantity: 10, reason: "   " },
       auth,
     );
-    expect(status).toBe(200);
+    expect(status).toBe(400);
   });
 
   test("POST /stocks/adjustment — 201", async () => {

@@ -25,15 +25,33 @@ Restoring one tenant from an infrastructure backup means a full restore into a s
 | `cronExpression` | scheduled |
 | `retentionDays`, `expiresAt` | lifecycle |
 | `recordCount` | what was captured |
-| `status` | `pending`, `in_progress`, `completed`, `failed`, `deleted` |
-| `restoredAt` | when last restored |
+| `status` | `pending`, `in_progress`, `completed`, `failed`, `deleted` — **exactly the column's ENUM** |
+| `restoredAt` | when last restored — a restored backup is `completed` **with `restoredAt` set**, and cannot be restored again |
 | `errorMessage` | why it failed |
 
-Scheduled by `BACKUP_SCHEDULER`.
+**The state machine (S-32, 2026-09-24).** The service used to write `restoring`, `restored` and `deleting`, which the `status` ENUM does not have: on PostgreSQL **every restore and every HTTP delete failed** with `invalid input value for enum enum_tenant_backups_status` (reproduced on PG16 against the real model). Now, with ENUM members only:
+
+| Operation | Transition |
+|---|---|
+| take | `pending` → `in_progress` → `completed` (with `expiresAt` and, for a user, its `CREATE` audit row, in one transaction) or `failed` |
+| restore | `completed` (no `restoredAt`) → **`in_progress`, claimed conditionally** (of two concurrent restores exactly one proceeds; the other gets 409) → `completed` + `restoredAt` |
+| delete | `completed`/`failed` → `deleted` + soft delete + `DELETE` audit row in **one transaction**; the file is unlinked after the commit. `in_progress` is a 409 |
+
+Every transition a user makes is audited — take (`CREATE`), restore (`UPDATE`, operation `RESTORE`), delete (`DELETE`); the scheduled job's are audited under the system actor `system:scheduled-backup`. Before S-32 an HTTP backup and an HTTP delete wrote **no** audit row, and an HTTP backup never set `expiresAt`.
+
+`filePath` (VARCHAR 500) is the path of record. `backupPath` (VARCHAR 255) is **legacy and no longer written** — the service copied the path into it, and a path longer than 255 characters (a long `APP_STORAGE_PATH`) failed the whole `completed` update with "value too long". Readers fall back to it for rows written before S-32. `fileSize`/`size` remain a duplicated pair.
+
+### Scheduled tenant backup (S-03, S-14, S-33)
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `BACKUP_SCHEDULER` | `0 0 * * *` (compose `.env.example` and Helm: `0 3 * * 0`) | cron; **`disabled`/`off` turns it off**; an invalid expression is refused at boot and alerted (P7-02) |
+| `BACKUP_RETENTION_DAYS` | `30` | retention a scheduled backup is created with (`expiresAt`) |
+| `BACKUP_KEEP_MIN` | `3` | the newest completed backups of every tenant that pruning **never** removes, whatever their age |
+
+Each run backs up every tenant that is not offboarded, then prunes expired backups (row-driven: `expiresAt`, else `createdAt + retentionDays`; a file is deleted only when it resolves inside the backup directory). It writes its outcome to **`<backup root>/last-scheduled-backup.json`** (`ok`, per-tenant successes and failures, prune counts) and — since P7-02 — a failed run is an **alert** (`job.scheduled-backup.failed`), a run that did not happen is `job.scheduled-backup.missed`, and on more than one replica only the one that claims the minute in Redis runs it (S-33). [`07-ALERTING.md`](./07-ALERTING.md).
 
 **Restore is destructive** and must be audited with both the backup id and the actor.
-
-`filePath`/`backupPath` and `fileSize`/`size` are duplicated column pairs — a migration artefact. Check which the service actually writes before relying on either.
 
 ## Layer 2 — Infrastructure Backup
 
@@ -153,17 +171,20 @@ A backup document listing only its strengths is a marketing document. The first 
 ## Compose Volumes
 
 ```
-./data/postgres    the database
-./data/redis       rate-limit counters and IDEMPOTENCY CLAIMS
-./data/rabbitmq    queued messages
-./uploads          attachments when STORAGE_DRIVER=local
-./backup           tenant backups
+./volumes/postgres    the database
+./volumes/redis       rate-limit counters, passkey/OIDC state, caches
+./volumes/rabbitmq    queued messages
+./volumes/uploads     attachments (always local disk) and the upload quarantine
+./volumes/storage     the `local` storage driver's objects (S-40)
+./volumes/backup      tenant backups + last-scheduled-backup.json
 ```
 
-`./data/redis` does not need backing up: it holds passkey challenges, OIDC authorisation state, lockout counters and caches, all short-lived. Losing it interrupts sign-ins in progress. (An earlier version said it held worker idempotency claims and that losing it reopened a duplicate window; no such claims exist.)
+In Kubernetes, `/app/backup` is its own claim (`<base>-backup`, S-18) — before S-18 it had no volume at all.
+
+`./volumes/redis` does not need backing up: it holds passkey challenges, OIDC authorisation state, lockout counters and caches, all short-lived. Losing it interrupts sign-ins in progress. (An earlier version said it held worker idempotency claims and that losing it reopened a duplicate window; no such claims exist.)
 
 ## Backup Failures Must Alert
 
 A backup job that fails **silently** every night is worse than one that never ran, because everyone believes it did.
 
-The retention purge did exactly this — failing nightly with `column "tenantId" does not exist` — until someone looked. Scheduled outcomes need alerting, not just logging ([`07-ALERTING.md`](./07-ALERTING.md)).
+The retention purge did exactly this — failing nightly with `column "tenantId" does not exist` — until someone looked. Scheduled outcomes need alerting, not just logging — **in place since P7-02 for the tenant backup** ([`07-ALERTING.md`](./07-ALERTING.md)). The **infrastructure** backup (host `pg_dump`/WAL) runs outside the application and must alert on its own exit status; nothing in this repository does that for it yet.

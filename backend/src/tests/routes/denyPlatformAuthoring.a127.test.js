@@ -379,9 +379,9 @@ const candidates = () => {
 //  - workflow instance action: an approval or rejection; the final approval
 //    stamps the certificate / transfer / work order as approved by the caller.
 const GUARDED = [
-  "calibrationRecords.route.js DELETE /:calibrationRecordId",
   "calibrationRecords.route.js POST /",
-  "calibrationRecords.route.js PUT /:calibrationRecordId",
+  "calibrationRecords.route.js POST /:calibrationRecordId/corrections", // P6-03
+  "calibrationRecords.route.js POST /:calibrationRecordId/void", // P6-03
   "certificates.route.js DELETE /:certificateId",
   "certificates.route.js POST /",
   "certificates.route.js POST /:certificateId/approve",

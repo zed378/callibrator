@@ -1,6 +1,24 @@
 // src/services/emailQueue.service.js
-const amqplib = require("amqplib");
-const { claimMessage } = require("./rabbitmq.service");
+//
+// The email queue: a producer (addEmailJob) and a supervised consumer
+// (processEmailQueue), both on the process's ONE AMQP connection in
+// rabbitmq.service (W-18). This module used to keep a private connection and
+// channel of its own — two connections per process, and shutdown closed one.
+//
+// RETRIES LIVE IN THE BROKER (W-09). A failed send used to be re-published
+// from an in-process setTimeout AND nacked to the dead-letter queue, so:
+//  - the DLQ received a copy of EVERY failed attempt, not the exhausted job;
+//  - a restart inside the backoff window lost the retry (the original was
+//    already dead-lettered, and nothing replays the DLQ);
+//  - the timer captured the channel, and a send on a channel that closed in
+//    the meantime threw INSIDE the timer — an uncaughtException, which calls
+//    shutdown(). One failed email during a broker blip stopped the server.
+// Now a failed attempt with retries left is published to a delay queue —
+// `email_retry_<ms>`, whose `x-message-ttl` dead-letters it back onto
+// email_queue when the delay has passed — and the original is ACKED. Only the
+// last failure is nacked, so the DLQ holds exactly one message per exhausted
+// job, and a restart loses nothing: the delay lives in a durable queue.
+const rabbitmq = require("./rabbitmq.service");
 const {
   sendOtpEmail,
   sendActivationEmail,
@@ -8,129 +26,58 @@ const {
 } = require("./email.service");
 const { logger } = require("../middlewares/activityLog.middleware");
 
-// ==========================================
-// RABBITMQ CONNECTION
-// ==========================================
-
-let connection = null;
-let channel = null;
-
-/**
- * Liveness is tracked through amqplib's "close"/"error" events, NOT through an
- * `isOpen` property: amqplib (2.0.1 here) defines none, on the connection or
- * the channel. The old guards `connection && connection.isOpen` /
- * `channel && channel.isOpen` were therefore always false, so the cache never
- * hit and every queued email opened a NEW connection and channel that nothing
- * ever closed — a connection leak against the broker for the life of the
- * process. It stayed invisible because the test mock invented `isOpen`.
- *
- * The identity check stops a late event from a superseded connection evicting
- * its replacement.
- */
-const forgetConnection = (conn) => {
-  if (connection === conn) {
-    connection = null;
-    channel = null;
-  }
-};
-
-const forgetChannel = (ch) => {
-  if (channel === ch) {
-    channel = null;
-  }
-};
-
-const getRabbitMQConnection = async () => {
-  if (connection) {
-    return connection;
-  }
-
-  const rabbitUrl =
-    process.env.RABBITMQ_URL ||
-    `amqp://${process.env.RABBITMQ_HOST || "localhost"}:${process.env.RABBITMQ_PORT || 5672}`;
-
-  const connectPromise = amqplib.connect(rabbitUrl);
-  const timeoutPromise = new Promise((_, reject) => {
-    setTimeout(
-      () => reject(new Error(`RabbitMQ connection timed out after ${RABBITMQ_CONNECT_TIMEOUT}ms`)),
-      RABBITMQ_CONNECT_TIMEOUT,
-    );
-  });
-
-  const conn = await Promise.race([connectPromise, timeoutPromise]).catch((err) => {
-    logger.error("RabbitMQ connection failed", { error: err.message });
-    throw err;
-  });
-
-  conn.on("error", (err) => {
-    logger.error("RabbitMQ connection error", { error: err.message });
-    forgetConnection(conn);
-  });
-
-  conn.on("close", () => {
-    logger.warn("RabbitMQ connection closed");
-    forgetConnection(conn);
-  });
-
-  connection = conn;
-  return connection;
-};
-
-const createChannel = async () => {
-  if (channel) {
-    return channel;
-  }
-
-  const conn = await getRabbitMQConnection();
-  const ch = await conn.createChannel();
-
-  ch.on("error", (err) => {
-    logger.error("RabbitMQ channel error", { error: err.message });
-    forgetChannel(ch);
-  });
-
-  ch.on("close", () => {
-    forgetChannel(ch);
-  });
-
-  channel = ch;
-  return channel;
-};
+const { claimMessage } = rabbitmq;
 
 // ==========================================
-// QUEUE INITIALIZATION
+// QUEUE DECLARATION
 // ==========================================
 
 const EMAIL_QUEUE = "email_queue";
 const EMAIL_DLQ = "email_dlq";
 
-// Connection and consumer timeouts (in milliseconds)
-const RABBITMQ_CONNECT_TIMEOUT = parseInt(process.env.RABBITMQ_CONNECT_TIMEOUT) || 10000;
-const RABBITMQ_CONSUMER_TIMEOUT = parseInt(process.env.RABBITMQ_CONSUMER_TIMEOUT) || 30000;
 const RABBITMQ_PREFETCH_COUNT = parseInt(process.env.RABBITMQ_PREFETCH_COUNT) || 10;
+/** Retry n waits EMAIL_RETRY_BASE_MS * 2^n: 2 s, 4 s, 8 s by default. */
+const EMAIL_RETRY_BASE_MS = parseInt(process.env.EMAIL_RETRY_BASE_MS, 10) || 1000;
+/** Retry tiers declared; a job asking for more retries reuses the last tier. */
+const RETRY_TIERS = 3;
 
-const initEmailQueue = async () => {
-  try {
-    const ch = await createChannel();
+/** The delay before retry `n` (1-based), in ms. */
+const retryDelayMs = (n) => EMAIL_RETRY_BASE_MS * 2 ** Math.min(Math.max(n, 1), RETRY_TIERS);
 
-    // Declare dead letter queue first
-    await ch.assertQueue(EMAIL_DLQ, { durable: true });
+/** The delay queue a retry waits in. */
+const retryQueueOf = (n) => `email_retry_${retryDelayMs(n)}`;
 
-    // Declare email queue with dead letter exchange
-    await ch.assertQueue(EMAIL_QUEUE, {
+/**
+ * Declare the email queue, its DLQ and its retry (delay) queues on `ch`.
+ * Idempotent, and re-run on every consumer (re-)registration, so a broker
+ * that lost its non-mirrored state gets them back.
+ * @param {object} ch
+ */
+const declareEmailQueues = async (ch) => {
+  await rabbitmq.assertQueue(EMAIL_QUEUE, EMAIL_DLQ, ch);
+  for (let n = 1; n <= RETRY_TIERS; n += 1) {
+    await ch.assertQueue(retryQueueOf(n), {
       durable: true,
       arguments: {
+        "x-message-ttl": retryDelayMs(n),
         "x-dead-letter-exchange": "",
-        "x-dead-letter-routing-key": EMAIL_DLQ,
+        "x-dead-letter-routing-key": EMAIL_QUEUE,
       },
     });
-
-    logger.info("Email queue initialized");
-    return true;
-  } catch (error) {
-    logger.error("Failed to initialize email queue", { error: error.message });
-    return false;
   }
+};
+
+// Channels the queues have been declared on, so a publish declares them once
+// per channel rather than once per email.
+const declaredOn = new WeakSet();
+
+const publishingChannel = async () => {
+  const ch = await rabbitmq.getChannel();
+  if (!declaredOn.has(ch)) {
+    await declareEmailQueues(ch);
+    declaredOn.add(ch);
+  }
+  return ch;
 };
 
 // ==========================================
@@ -159,7 +106,7 @@ const recipientDomain = (email) => {
  */
 const addEmailJob = async (job) => {
   try {
-    const ch = await createChannel();
+    const ch = await publishingChannel();
 
     const jobData = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -246,142 +193,135 @@ const sendEmailDirectly = async (job) => {
 };
 
 /**
- * Process email queue jobs
- * Runs in background worker
- * @returns {Promise<void>}
+ * Handle one email job delivered on `ch`. Never throws: every failure is a
+ * settlement on `ch` (or none, when `ch` has closed and the broker will
+ * redeliver) plus a log line.
+ *
+ * @param {object} msg
+ * @param {object} ch - the channel the message arrived on; the only one that may settle it
  */
-const processEmailQueue = async () => {
+const processJob = async (msg, ch) => {
+  let job;
   try {
-    const initialized = await initEmailQueue();
-    if (!initialized) {
-      throw new Error("Initialization failed");
-    }
-  } catch (error) {
-    logger.warn(
-      "Failed to initialize RabbitMQ, email queue worker not started",
-      {
-        error: error.message,
-      },
-    );
+    job = JSON.parse(msg.content.toString());
+  } catch {
+    logger.error("Invalid email job data");
+    rabbitmq.nack(ch, msg); // Drop invalid message (to the DLQ)
     return;
   }
 
-  logger.info("Email queue worker started (RabbitMQ)");
+  // DEDUPLICATION (A-26). `job.id` is minted once in addEmailJob and lives in
+  // the persisted message body, so every redelivery of this message — an
+  // unacked message returned after a channel or connection loss, a retry
+  // coming back from its delay queue — carries the same value. The AMQP
+  // delivery tag does NOT: it is per-channel and changes on redelivery.
+  let claim = null;
+  if (job.id) {
+    claim = await claimMessage(`email:${job.id}`);
+    if (!claim.claimed) {
+      // Already sent. ACK it: nacking would redeliver or dead-letter a
+      // message whose work is done.
+      logger.info("Duplicate email job ignored", {
+        jobId: job.id,
+        type: job.type,
+      });
+      rabbitmq.ack(ch, msg);
+      return;
+    }
+  } else {
+    logger.warn("Email job has no id; processing without deduplication");
+  }
 
-  const ch = await createChannel();
+  try {
+    let success = false;
 
-  // Ack mode - manual acknowledgment with configurable prefetch
-  ch.prefetch(RABBITMQ_PREFETCH_COUNT);
+    switch (job.type) {
+      case "activation":
+        success = await sendActivationEmail(job.data);
+        break;
+      case "otp":
+        success = await sendOtpEmail(job.data);
+        break;
+      case "notification":
+        success = await sendNotificationEmail(job.data);
+        break;
+      default:
+        logger.warn("Unknown email job type", { type: job.type });
+    }
 
-  // Consumer timeout to prevent hung workers
-  const consumerTimeout = setTimeout(() => {
-    logger.warn("Email queue consumer timeout reached");
-  }, RABBITMQ_CONSUMER_TIMEOUT);
-  consumerTimeout.unref(); // Don't prevent process exit
+    if (!success) {
+      throw new Error("Email sending returned false");
+    }
+    rabbitmq.ack(ch, msg);
+    logger.info("Email sent successfully", {
+      jobId: job.id,
+      type: job.type,
+      recipientDomain: recipientDomain(job.data && job.data.email),
+    });
+  } catch (error) {
+    logger.error("Error processing email job", {
+      error: error.message,
+      jobId: job.id,
+      retries: job.retries,
+    });
 
-  const processJob = async (msg) => {
-    if (!msg) {return;}
+    // The retry carries the SAME job.id, so the claim has to go back or the
+    // retry would be read as a duplicate and dropped.
+    if (claim) {
+      await claim.release();
+    }
 
-    let job;
-    try {
-      job = JSON.parse(msg.content.toString());
-    } catch {
-      logger.error("Invalid email job data");
-      ch.nack(msg, false, false); // Drop invalid message
+    const retries = Number(job.retries) || 0;
+    const maxRetries = Number(job.maxRetries) || 3;
+    if (retries >= maxRetries) {
+      // Exhausted: dead-letter it — the ONE DLQ message for this job.
+      logger.warn(`Email job exhausted its ${maxRetries} retries; dead-lettered`, { jobId: job.id });
+      rabbitmq.nack(ch, msg);
       return;
     }
 
-    // DEDUPLICATION (A-26). `job.id` is minted once in addEmailJob and lives in
-    // the persisted message body, so every redelivery of this message — an
-    // unacked message returned after a channel or connection loss, or a
-    // requeue — carries the same value. The AMQP delivery tag does NOT: it is
-    // per-channel and changes on redelivery, which is why the identity is read
-    // from the payload rather than from `msg.fields`.
-    let claim = null;
-    if (job.id) {
-      claim = await claimMessage(`email:${job.id}`);
-      if (!claim.claimed) {
-        // Already sent. ACK it: nacking would redeliver or dead-letter a
-        // message whose work is done.
-        logger.info("Duplicate email job ignored", {
-          jobId: job.id,
-          type: job.type,
-        });
-        ch.ack(msg);
-        return;
-      }
-    } else {
-      logger.warn("Email job has no id; processing without deduplication");
-    }
-
+    const retry = { ...job, retries: retries + 1 };
     try {
-      let success = false;
-
-      switch (job.type) {
-        case "activation":
-          success = await sendActivationEmail(job.data);
-          break;
-        case "otp":
-          success = await sendOtpEmail(job.data);
-          break;
-        case "notification":
-          success = await sendNotificationEmail(job.data);
-          break;
-        default:
-          logger.warn("Unknown email job type", { type: job.type });
-      }
-
-      if (success) {
-        ch.ack(msg);
-        logger.info("Email sent successfully", {
-          jobId: job.id,
-          type: job.type,
-          recipientDomain: recipientDomain(job.data.email),
-        });
-      } else {
-        throw new Error("Email sending returned false");
-      }
-    } catch (error) {
-      logger.error("Error processing email job", {
-        error: error.message,
-        jobId: job.id,
-        retries: job.retries,
+      // On the channel the message came on, BEFORE acking it: if this send
+      // fails the original is left unacked and the broker redelivers it.
+      ch.sendToQueue(retryQueueOf(retry.retries), Buffer.from(JSON.stringify(retry)), {
+        persistent: true,
+        messageId: job.id,
       });
-
-      // The retry below re-publishes the SAME job.id, so the claim has to go
-      // back or the retry would be read as a duplicate and dropped.
-      if (claim) {
-        await claim.release();
-      }
-
-      // Check if we should retry
-      if (job.retries < (job.maxRetries || 3)) {
-        job.retries += 1;
-        const delay = Math.pow(2, job.retries) * 1000; // Exponential backoff
-
-        logger.info(
-          `Retrying email job ${job.retries}/${job.maxRetries} after ${delay}ms`,
-          { jobId: job.id },
-        );
-
-        // Re-send with delay
-        setTimeout(() => {
-          ch.sendToQueue(EMAIL_QUEUE, Buffer.from(JSON.stringify(job)), {
-            persistent: true,
-            messageId: job.id,
-          });
-        }, delay);
-      }
-
-      // Nack without requeue (will go to DLQ after max retries)
-      ch.nack(msg, false, false);
+    } catch (sendError) {
+      logger.warn("Email retry not scheduled (channel closed); the broker redelivers the job", {
+        jobId: job.id,
+        error: sendError.message,
+      });
+      return;
     }
-  };
+    logger.info(
+      `Retrying email job ${retry.retries}/${maxRetries} after ${retryDelayMs(retry.retries)}ms`,
+      { jobId: job.id },
+    );
+    rabbitmq.ack(ch, msg);
+  }
+};
 
-  // Start consuming
-  ch.consume(EMAIL_QUEUE, processJob);
-
-  logger.info("Email queue consumer started");
+/**
+ * Start the email queue consumer — supervised (W-06): a broker that is down
+ * at boot, restarts, or drops the connection is retried with backoff and the
+ * consumer re-registered, instead of the worker silently never (re)starting.
+ *
+ * @returns {Promise<boolean>} whether the first registration attempt succeeded;
+ *   never rejects (a failure is retried in the background)
+ */
+const processEmailQueue = async () => {
+  const registered = await rabbitmq.startConsumer(EMAIL_QUEUE, processJob, {
+    prefetch: RABBITMQ_PREFETCH_COUNT,
+    setup: declareEmailQueues,
+  });
+  logger.info(
+    registered
+      ? "Email queue worker started (RabbitMQ)"
+      : "Email queue worker not registered yet; retrying in the background",
+  );
+  return registered;
 };
 
 /**
@@ -390,7 +330,7 @@ const processEmailQueue = async () => {
  */
 const getQueueStats = async () => {
   try {
-    const ch = await createChannel();
+    const ch = await rabbitmq.getChannel();
 
     const emailQueue = await ch.checkQueue(EMAIL_QUEUE);
     const dlq = await ch.checkQueue(EMAIL_DLQ);
@@ -413,7 +353,7 @@ const getQueueStats = async () => {
  */
 const clearQueue = async () => {
   try {
-    const ch = await createChannel();
+    const ch = await rabbitmq.getChannel();
     await ch.purgeQueue(EMAIL_QUEUE);
     logger.info("Email queue cleared");
     return true;
@@ -478,27 +418,10 @@ const queueNotificationEmail = async ({
 };
 
 /**
- * Close RabbitMQ connection
- * @returns {Promise<void>}
+ * Close the process's AMQP connection. Kept for callers that imported it from
+ * here; there is ONE connection and ONE close, in rabbitmq.service (W-18).
  */
-const closeRabbitMQ = async () => {
-  try {
-    if (channel) {
-      await channel.close();
-    }
-    if (connection) {
-      await connection.close();
-    }
-    logger.info("RabbitMQ connection closed");
-  } catch (error) {
-    logger.error("Error closing RabbitMQ connection", { error: error.message });
-  } finally {
-    // Now that the cache actually hits, it has to be dropped here too — a
-    // closed handle must not be handed to the next caller.
-    channel = null;
-    connection = null;
-  }
-};
+const closeRabbitMQ = () => rabbitmq.closeRabbitMQ();
 
 module.exports = {
   processEmailQueue,
@@ -508,4 +431,10 @@ module.exports = {
   getQueueStats,
   clearQueue,
   closeRabbitMQ,
+  // For tests and the retry-queue documentation.
+  processJob,
+  retryQueueOf,
+  retryDelayMs,
+  EMAIL_QUEUE,
+  EMAIL_DLQ,
 };

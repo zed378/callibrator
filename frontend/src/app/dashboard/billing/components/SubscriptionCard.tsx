@@ -9,6 +9,7 @@ import {
   Select,
   Button,
   Skeleton,
+  Input,
 } from "@/components/ui";
 import { Subscription } from "@/api/services/billing.service";
 import { SubscriptionForm } from "../hooks/useBilling";
@@ -182,6 +183,18 @@ export const SubscriptionCard: React.FC<SubscriptionCardProps> = ({
                 />
               </div>
             </div>
+            {subscription && form.status !== subscription.status && (
+              <div className="mt-4">
+                <Input
+                  label="Reason for the status change"
+                  helperText="Required: a status set by hand records a payment event that happened outside the system (for example the invoice or bank reference)."
+                  value={form.reason}
+                  onChange={(e) =>
+                    setForm((prev) => ({ ...prev, reason: e.target.value }))
+                  }
+                />
+              </div>
+            )}
             <div className="mt-4 flex justify-end">
               <Button onClick={onSave} isLoading={isSaving}>
                 Save

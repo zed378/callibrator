@@ -147,13 +147,14 @@ Per-tenant breakdowns matter: one tenant with a broken integration generating ha
 
 There is no metrics stack wired up. Signals available today:
 
-- `/health`, polled by compose and Kubernetes
+- `/health`, polled by compose and Kubernetes; `GET /api/v1/health` (super admin) for the per-dependency breakdown
+- **scheduled-job state** (P7-02, 2026-09-24): `GET /api/v1/health/jobs` (super admin; 503 when a job failed or is overdue) and **`GET /api/v1/health/metrics`** — Prometheus text, bearer `METRICS_TOKEN`, off (404) until the token is set. The only Prometheus endpoint the application has; it covers scheduled jobs only
 - container health checks
-- `accessLog` and `activityLog`
+- JSON logs on stdout (A-14), `request completed` per request with `requestId` and a numeric `durationMs`; the morgan access log on disk
 - `audit_logs`, queryable at `/api/v1/audit`
 - RabbitMQ management UI on 15672
 
-**Structured log shipping and alerting are not in place.** They are in [`../PLAN/16-IMPLEMENTATION-ROADMAP.md`](../PLAN/16-IMPLEMENTATION-ROADMAP.md) under operational maturity, and in [`../../TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md).
+**Alerting exists for scheduled jobs only** ([`07-ALERTING.md`](./07-ALERTING.md) § Current State). **Log shipping is configured but not deployed** — a Vector template in `deploy/observability/` ([`06-LOGGING.md`](./06-LOGGING.md) § Shipping). Everything else in this document is design.
 
 Stating that plainly is more useful than describing a monitoring setup that does not exist.
 

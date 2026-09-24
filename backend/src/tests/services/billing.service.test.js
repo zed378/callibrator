@@ -170,122 +170,8 @@ describe("billing.service", () => {
   });
 
   // ================================================================
-  describe("updateSubscription", () => {
-    it("should update the subscription plan successfully", async () => {
-      const mockSub = {
-        id: "sub-1",
-        tenantId: "t-1",
-        planId: "basic",
-        billingCycle: "Monthly",
-        status: "Active",
-        update: jest.fn().mockResolvedValue({}),
-        toJSON: () => ({
-          id: "sub-1",
-          tenantId: "t-1",
-          planId: "pro",
-          billingCycle: "Monthly",
-          status: "Active",
-        }),
-      };
-      Subscription.findOne.mockResolvedValueOnce(mockSub);
+  // updateSubscription (A-225) is covered by billing.subscriptionOverride.a225.test.js.
 
-      const result = await billingService.updateSubscription("t-1", { planId: "pro" });
-
-      expect(result.success).toBe(true);
-      expect(result.status).toBe(200);
-      expect(result.message).toBe("Subscription updated successfully");
-      expect(result.data.planId).toBe("pro");
-      expect(mockSub.update).toHaveBeenCalledWith({ planId: "pro" });
-    });
-
-    it("should update billing cycle when provided", async () => {
-      const mockSub = {
-        id: "sub-1",
-        tenantId: "t-1",
-        planId: "basic",
-        billingCycle: "Monthly",
-        status: "Active",
-        update: jest.fn().mockResolvedValue({}),
-        toJSON: () => ({
-          id: "sub-1",
-          tenantId: "t-1",
-          planId: "basic",
-          billingCycle: "Yearly",
-        }),
-      };
-      Subscription.findOne.mockResolvedValueOnce(mockSub);
-
-      const result = await billingService.updateSubscription("t-1", { billingCycle: "Yearly" });
-
-      expect(result.data.billingCycle).toBe("Yearly");
-      expect(mockSub.update).toHaveBeenCalledWith({ billingCycle: "Yearly" });
-    });
-
-    it("should update status when provided", async () => {
-      const mockSub = {
-        id: "sub-1",
-        tenantId: "t-1",
-        planId: "basic",
-        billingCycle: "Monthly",
-        status: "Active",
-        update: jest.fn().mockResolvedValue({}),
-        toJSON: () => ({
-          id: "sub-1",
-          tenantId: "t-1",
-          planId: "basic",
-          status: "Inactive",
-        }),
-      };
-      Subscription.findOne.mockResolvedValueOnce(mockSub);
-
-      const result = await billingService.updateSubscription("t-1", { status: "Inactive" });
-
-      expect(result.data.status).toBe("Inactive");
-      expect(mockSub.update).toHaveBeenCalledWith({ status: "Inactive" });
-    });
-
-    it("should ignore unknown fields in update payload", async () => {
-      const mockSub = {
-        id: "sub-1",
-        tenantId: "t-1",
-        planId: "basic",
-        billingCycle: "Monthly",
-        status: "Active",
-        update: jest.fn().mockResolvedValue({}),
-        toJSON: () => ({
-          id: "sub-1",
-          tenantId: "t-1",
-          planId: "pro",
-          unknownField: "ignored",
-        }),
-      };
-      Subscription.findOne.mockResolvedValueOnce(mockSub);
-
-      await billingService.updateSubscription("t-1", { planId: "pro", unknownField: "ignored" });
-
-      // Should only update allowed fields (planId, billingCycle, status)
-      const updateCall = mockSub.update.mock.calls[0][0];
-      expect(Object.keys(updateCall)).toEqual(["planId"]);
-    });
-
-    it("should throw 404 when subscription not found", async () => {
-      Subscription.findOne.mockResolvedValueOnce(null);
-
-      await expect(
-        billingService.updateSubscription("t-1", { planId: "pro" }),
-      ).rejects.toMatchObject({ status: 404, message: "Subscription not found for this tenant" });
-    });
-
-    it("should throw 500 on database error", async () => {
-      Subscription.findOne.mockRejectedValueOnce(new Error("DB down"));
-
-      await expect(
-        billingService.updateSubscription("t-1", { planId: "pro" }),
-      ).rejects.toMatchObject({ status: 500, message: "DB down" });
-    });
-  });
-
-  // ================================================================
   describe("fetchInvoices", () => {
     it("should fetch invoices with pagination", async () => {
       const mockInvoice = {
@@ -517,35 +403,6 @@ describe("billing.service", () => {
       await expect(billingService.getSubscription("t-1")).rejects.toEqual({
         status: 503,
         message: "DB offline",
-      });
-    });
-  });
-
-  describe("updateSubscription error defaults", () => {
-    it("defaults to 500 and a generic message when the error has neither", async () => {
-      Subscription.findOne.mockRejectedValueOnce({});
-
-      await expect(billingService.updateSubscription("t-1", {})).rejects.toEqual({
-        status: 500,
-        message: "Failed to update subscription",
-      });
-    });
-
-    it("passes an empty payload through when no updatable field is supplied", async () => {
-      const update = jest.fn().mockResolvedValue(undefined);
-      Subscription.findOne.mockResolvedValueOnce({ id: "sub-1", update });
-
-      await billingService.updateSubscription("t-1", {});
-
-      expect(update).toHaveBeenCalledWith({});
-    });
-
-    it("surfaces the 404 AppError as status 404", async () => {
-      Subscription.findOne.mockResolvedValueOnce(null);
-
-      await expect(billingService.updateSubscription("t-1", { planId: "pro" })).rejects.toEqual({
-        status: 404,
-        message: "Subscription not found for this tenant",
       });
     });
   });

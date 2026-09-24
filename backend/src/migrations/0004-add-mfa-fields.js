@@ -4,12 +4,9 @@ const TABLE = "users";
 
 module.exports = {
   up: async ({ context }) => {
-    let desc;
-    try {
-      desc = await context.describeTable(TABLE);
-    } catch {
-      return; // table not present yet
-    }
+    // D-14: no catch. db.sync() runs before migrations, so the table exists;
+    // the only error a catch here could swallow is a real one.
+    const desc = await context.describeTable(TABLE);
     const DataTypes = context.sequelize.Sequelize.DataTypes;
     
     if (!desc.mfa_enabled) {
@@ -29,12 +26,9 @@ module.exports = {
   },
 
   down: async ({ context }) => {
-    let desc;
-    try {
-      desc = await context.describeTable(TABLE);
-    } catch {
-      return;
-    }
+    // D-14: no catch. db.sync() runs before migrations, so the table exists;
+    // the only error a catch here could swallow is a real one.
+    const desc = await context.describeTable(TABLE);
     
     if (desc.mfa_enabled) {
       await context.removeColumn(TABLE, "mfa_enabled");

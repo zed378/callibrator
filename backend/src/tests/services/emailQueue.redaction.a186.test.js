@@ -18,9 +18,36 @@ jest.mock("../../services/email.service", () => ({
   sendActivationEmail: jest.fn(),
   sendNotificationEmail: jest.fn(),
 }));
-jest.mock("../../services/rabbitmq.service", () => ({
-  claimMessage: jest.fn(async () => ({ claimed: true, release: jest.fn(async () => undefined) })),
-}));
+// W-18: the email queue now uses rabbitmq.service's one connection. This
+// stand-in routes it to the amqplib mock below, so the paths under test (queued,
+// queue down, consumed) are the same as before.
+jest.mock("../../services/rabbitmq.service", () => {
+  const amqp = require("amqplib");
+  let ch = null;
+  const getChannel = async () => {
+    if (!ch) {
+      const conn = await amqp.connect("amqp://test");
+      ch = await conn.createChannel();
+    }
+    return ch;
+  };
+  return {
+    claimMessage: jest.fn(async () => ({ claimed: true, release: jest.fn(async () => undefined) })),
+    getChannel,
+    assertQueue: async (queue, dlq, target) => target || getChannel(),
+    startConsumer: async (queue, handler, { setup }) => {
+      const c = await getChannel();
+      await setup(c);
+      await c.consume(queue, (msg) => handler(msg, c));
+      return true;
+    },
+    ack: (c, msg) => c.ack(msg),
+    nack: (c, msg) => c.nack(msg, false, false),
+    closeRabbitMQ: async () => {
+      ch = null;
+    },
+  };
+});
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));

@@ -1,3 +1,5 @@
+// D-17 — NO tenant column, so the global tenant hooks never scope this model: roles are GLOBAL by decision (D-16, ADR-PENDING-dbB): `name` is unique platform-wide and every write route is SUPERADMIN-only, so no tenant principal can create, rename or probe one.
+// Held by tests/models/unscopedModels.d17.test.js.
 /**
  * Role Model
  *

@@ -16,7 +16,7 @@ TAG=<image tag>           the image to run
 | Target | Does |
 |---|---|
 | `make env` | copies `deploy/compose/.env.example` to `.env`, refusing to overwrite an existing one |
-| `make secrets` | generates the **four** required secrets plus the JWT pair |
+| `make secrets` | generates the **four** required secrets plus the JWT pair, a matching RabbitMQ password/URL pair and `REDIS_PASSWORD` (S-09) |
 | `make install` | `pnpm install` |
 
 `make secrets` prints values and a warning, because the warning matters more than the values:
@@ -89,7 +89,10 @@ A demo seeder running against real data is a data-integrity incident. The guard 
 | `make test-e2e` | 51 live specs against a **running** server |
 | `make test-browser` | Playwright |
 | `make build` | both workspaces |
-| `make verify` | lint + typecheck + test + build |
+| `make verify` | lint + typecheck + test + build — CI runs the same stages (`.github/workflows/ci.yml`, [`01-CI-CD.md`](./01-CI-CD.md)) |
+| `make lint-ratchet` | the backend ESLint ratchet CI runs: fails when the error count rises above `backend/.eslint-baseline.json` |
+| `make secret-scan` | gitleaks over the whole git history, as CI does (needs `gitleaks` installed) |
+| `make hooks` / `make hooks-off` | opt in / out of `scripts/git-hooks/pre-push` (secret scan of the pushed commits, lint ratchet, frontend typecheck) |
 
 ### `make test-e2e` prints two rules first
 
