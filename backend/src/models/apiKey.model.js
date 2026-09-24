@@ -88,7 +88,7 @@ const defineModel = (db, DataTypes) => {
   };
 
   ApiKey.associate = (models) => {
-    ApiKey.belongsTo(models.Tenant, { foreignKey: "tenant_id", as: "tenant" });
+    ApiKey.belongsTo(models.Tenant, { foreignKey: "tenantId", as: "tenant", onDelete: "CASCADE" });
   };
 
   return ApiKey;

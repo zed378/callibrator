@@ -237,7 +237,7 @@ describe("eSignature.service (facade guard/error branches)", () => {
 
   // ================================================================
   describe("signDocument", () => {
-    const activeUser = { findByPk: jest.fn().mockResolvedValue({ id: "u-1", status: "active" }) };
+    const activeUser = { findByPk: jest.fn().mockResolvedValue({ id: "u-1", status: "ACTIVE", isActive: true }) };
 
     it("404s when the step does not exist", async () => {
       const svc = loadService({
@@ -506,7 +506,7 @@ describe("eSignature.service (facade guard/error branches)", () => {
   // is driven here through signDocument.
   // ================================================================
   describe("completeWorkflow (via signDocument)", () => {
-    const activeUser = { findByPk: jest.fn().mockResolvedValue({ id: "u-1", status: "active" }) };
+    const activeUser = { findByPk: jest.fn().mockResolvedValue({ id: "u-1", status: "ACTIVE", isActive: true }) };
 
     const buildModels = ({ workflowOnComplete, owner }) => {
       const workflow = {
@@ -674,19 +674,18 @@ describe("eSignature.service (facade guard/error branches)", () => {
 
   // ================================================================
   describe("getWorkflow", () => {
-    it("returns null and logs when the lookup throws", async () => {
+    // A-105 — a database failure used to be logged and answered as `null`,
+    // which the controller reported as a 404. It now propagates (→ 500).
+    it("lets a database failure propagate instead of reporting it as not-found", async () => {
+      const boom = new Error("boom");
       const svc = loadService({
         models: {
-          SignatureWorkflow: { findByPk: jest.fn().mockRejectedValue(new Error("boom")) },
+          SignatureWorkflow: { findOne: jest.fn().mockRejectedValue(boom) },
           SignatureWorkflowStep: {},
         },
       });
 
-      await expect(svc.getWorkflow("wf-1")).resolves.toBeNull();
-      expect(mockLogger.error).toHaveBeenCalledWith(
-        "Failed to get workflow",
-        { workflowId: "wf-1", error: "boom" },
-      );
+      await expect(svc.getWorkflow("wf-1", "tenant-1")).rejects.toBe(boom);
     });
   });
 

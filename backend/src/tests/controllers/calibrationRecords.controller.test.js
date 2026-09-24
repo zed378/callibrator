@@ -13,6 +13,7 @@ jest.mock("../../services/calibrationRecords.service", () => ({
 jest.mock("../../utils/response.util", () => ({
   success: jest.fn(),
   error: jest.fn(),
+  sendResult: jest.fn(),
 }));
 
 jest.mock("../../validators/calibrationRecords.validator", () => {
@@ -38,7 +39,7 @@ jest.mock("../../validators/calibrationRecords.validator", () => {
 
 const calibrationRecordsController = require("../../controllers/calibrationRecords.controller");
 const calibrationRecordsService = require("../../services/calibrationRecords.service");
-const { success, error } = require("../../utils/response.util");
+const { success, error, sendResult } = require("../../utils/response.util");
 
 describe("calibrationRecordsController", () => {
   let req;
@@ -68,6 +69,14 @@ describe("calibrationRecordsController", () => {
     error.mockImplementation((response, message, status) => {
       response.status(status || 500).json({ success: false, message });
     });
+    // A-112: the real routing rule is pinned against the real response.util in
+    // envelope.a112.test.js; here it routes onto the doubles above so these
+    // tests can keep asserting on success/error.
+    sendResult.mockImplementation((response, result, meta = null) =>
+      result.status >= 400 || result.success === false
+        ? error(response, result.message || "Request failed", result.status >= 400 ? result.status : 500)
+        : success(response, result.data, meta, result.message, result.status),
+    );
   });
 
   describe("getAllCalibrationRecords", () => {

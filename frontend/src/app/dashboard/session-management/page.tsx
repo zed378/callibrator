@@ -43,17 +43,16 @@ export default function SessionManagementPage() {
     setIsLoading(true);
     try {
       const statusMap: Record<string, "active" | "expired" | "revoked" | undefined> = { all: undefined, active: "active", expired: "expired", revoked: "revoked" };
-      const response = await sessionService.getAll(page, LIMIT, searchQuery || undefined, statusMap[filterStatus]);
+      const { sessions: apiSessions, meta } = await sessionService.getAll(page, LIMIT, searchQuery || undefined, statusMap[filterStatus]);
       const currentUserId = user.id;
-      const sessionsWithFlags = response.data.sessions.map((s: ApiServiceSession) => ({
+      const sessionsWithFlags = apiSessions.map((s: ApiServiceSession) => ({
         ...s, isCurrentSession: s.userId === currentUserId && s.status === "active",
       }));
       setSessions(sessionsWithFlags);
-      setTotalPages(response.data.meta.totalPages);
-      setTotalSessions(response.data.meta.total);
-      const apiSessions = response.data.sessions;
+      setTotalPages(meta.totalPages);
+      setTotalSessions(meta.total);
       setStats({
-        total: response.data.meta.total,
+        total: meta.total,
         active: apiSessions.filter((s: ApiServiceSession) => s.status === "active").length,
         expired: apiSessions.filter((s: ApiServiceSession) => s.status === "expired").length,
         revoked: apiSessions.filter((s: ApiServiceSession) => s.status === "revoked").length,

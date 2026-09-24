@@ -22,6 +22,7 @@ jest.mock("../../services/tenantUpload.service", () => ({
 jest.mock("../../utils/response.util", () => ({
   success: jest.fn(),
   error: jest.fn(),
+  sendResult: jest.fn(),
 }));
 
 jest.mock("../../utils/upload.util", () => ({
@@ -31,7 +32,7 @@ jest.mock("../../utils/upload.util", () => ({
 const tenantService = require("../../services/tenant.service");
 const tenantUploadService = require("../../services/tenantUpload.service");
 const tenantController = require("../../controllers/tenant.controller");
-const { success } = require("../../utils/response.util");
+const { success, error, sendResult } = require("../../utils/response.util");
 
 const VALID_TENANT_ID = "550e8400-e29b-41d4-a716-446655440001";
 const VALID_USER_ID = "550e8400-e29b-41d4-a716-446655440000";
@@ -45,7 +46,6 @@ describe("tenant Controller", () => {
       res.status(status || 200).json({ success: true, data, message });
     });
     // error mock: actually call res.status().json() so validation errors work
-    const { error } = require("../../utils/response.util");
     error.mockImplementation((res, message, statusCode, details) => {
       res.status(statusCode).json({
         success: false,
@@ -55,6 +55,14 @@ describe("tenant Controller", () => {
         ...(details ? { details } : {}),
       });
     });
+    // A-112: the real routing rule is pinned against the real response.util in
+    // envelope.a112.test.js; here it routes onto the doubles above so these
+    // tests can keep asserting on success/error.
+    sendResult.mockImplementation((response, result, meta = null) =>
+      result.status >= 400 || result.success === false
+        ? error(response, result.message || "Request failed", result.status >= 400 ? result.status : 500)
+        : success(response, result.data, meta, result.message, result.status),
+    );
     req = {
       query: {},
       params: {},
@@ -304,6 +312,8 @@ describe("tenant Controller", () => {
           code: "test",
         }),
         VALID_USER_ID,
+        // A-95: the audit actor, from req.user.
+        expect.objectContaining({ userId: VALID_USER_ID }),
       );
       expect(success).toHaveBeenCalled();
     });
@@ -332,6 +342,7 @@ describe("tenant Controller", () => {
           logo: "logo-uploaded.png",
         }),
         VALID_USER_ID,
+        expect.objectContaining({ userId: VALID_USER_ID }),
       );
     });
 
@@ -517,9 +528,11 @@ describe("tenant Controller", () => {
 
       await tenantController.deleteTenant(req, res, next);
 
+      // A-95: the actor is req.user — a body `deletedBy` never reaches the
+      // service (the body here names the same id, so this asserts the shape).
       expect(tenantService.deleteTenant).toHaveBeenCalledWith(
         VALID_TENANT_ID,
-        VALID_USER_ID,
+        expect.objectContaining({ userId: VALID_USER_ID }),
       );
       expect(success).toHaveBeenCalled();
     });
@@ -617,6 +630,8 @@ describe("tenant Controller", () => {
         VALID_TENANT_ID,
         { theme: "dark", language: "en" },
         VALID_USER_ID,
+        // A-117: the authenticated actor, for the audit row.
+        expect.objectContaining({ userId: VALID_USER_ID }),
       );
       expect(success).toHaveBeenCalled();
     });
@@ -729,6 +744,7 @@ describe("tenant Controller", () => {
         VALID_TENANT_ID,
         "logo-uploaded.png",
         VALID_USER_ID,
+        expect.objectContaining({ userId: VALID_USER_ID, actorIsSuperAdmin: false }),
       );
       expect(success).toHaveBeenCalled();
     });
@@ -762,6 +778,7 @@ describe("tenant Controller", () => {
       expect(tenantUploadService.removeTenantLogo).toHaveBeenCalledWith(
         VALID_TENANT_ID,
         VALID_USER_ID,
+        expect.objectContaining({ userId: VALID_USER_ID, actorIsSuperAdmin: false }),
       );
       expect(success).toHaveBeenCalled();
     });
@@ -911,6 +928,7 @@ describe("tenant Controller", () => {
         VALID_TENANT_ID,
         "logo-123.png",
         VALID_USER_ID,
+        expect.objectContaining({ userId: VALID_USER_ID }),
       );
       expect(success).toHaveBeenCalledWith(
         res,

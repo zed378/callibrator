@@ -4,7 +4,7 @@ const { NC_STATUSES, NC_SEVERITIES } = require("../constants/qmsConstants");
 module.exports = (sequelize, DataTypes) => {
   class NonConformance extends Model {
     static associate(models) {
-      NonConformance.belongsTo(models.Tenant, { foreignKey: "tenant_id", as: "tenant" });
+      NonConformance.belongsTo(models.Tenant, { foreignKey: "tenantId", as: "tenant", onDelete: "RESTRICT" });
       NonConformance.belongsTo(models.User, { foreignKey: "reported_by", as: "reporter" });
       NonConformance.belongsTo(models.CalibrationDevice, { foreignKey: "device_id", as: "device" });
       NonConformance.hasMany(models.Capa, { foreignKey: "nc_id", as: "capas" });
@@ -22,6 +22,8 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.UUID,
         field: "tenant_id",
         allowNull: false,
+        references: { model: "tenants", key: "id" },
+        onDelete: "RESTRICT",
       },
       ncNumber: {
         type: DataTypes.STRING(100),

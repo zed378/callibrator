@@ -58,7 +58,7 @@ const defineModel = (db, DataTypes) => {
   );
 
   UsageAlert.associate = (models) => {
-    UsageAlert.belongsTo(models.Tenant, { foreignKey: "tenant_id", as: "tenant" });
+    UsageAlert.belongsTo(models.Tenant, { foreignKey: "tenantId", as: "tenant", onDelete: "CASCADE" });
   };
 
   return UsageAlert;

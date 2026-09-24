@@ -23,7 +23,7 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.UUID,
         allowNull: false,
         references: { model: "tenants", key: "id" },
-        onDelete: "CASCADE",
+        onDelete: "RESTRICT",
       },
       warehouseId: {
         type: DataTypes.UUID,
@@ -75,8 +75,9 @@ const defineModel = (db, DataTypes) => {
   StockAdjustment.associate = (models) => {
     // StockAdjustment -> Tenant
     StockAdjustment.belongsTo(models.Tenant, {
-      foreignKey: "tenant_id",
+      foreignKey: "tenantId",
       as: "tenant",
+      onDelete: "RESTRICT",
     });
     // StockAdjustment -> Warehouse
     StockAdjustment.belongsTo(models.Warehouse, {

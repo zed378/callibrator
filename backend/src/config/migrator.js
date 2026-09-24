@@ -67,6 +67,9 @@ const migrationModules = [
   ["0025-esignature-menu-grants.js", require("../migrations/0025-esignature-menu-grants")],
   ["0026-calibration-device-serial-per-tenant.js", require("../migrations/0026-calibration-device-serial-per-tenant")],
   ["0027-profile-page-grants.js", require("../migrations/0027-profile-page-grants")],
+  ["0028-user-mfa-pending-and-replay.js", require("../migrations/0028-user-mfa-pending-and-replay")],
+  ["0029-audit-log-impersonator.js", require("../migrations/0029-audit-log-impersonator")],
+  ["0030-tenant-foreign-keys-restrict.js", require("../migrations/0030-tenant-foreign-keys-restrict")],
 ];
 
 const migrator = new Umzug({

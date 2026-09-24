@@ -34,7 +34,18 @@ export interface AuditLog {
   ipAddress?: string | null;
   userAgent?: string | null;
   createdAt: string;
+  /**
+   * `null` while `userId` is set means the reference is outside the reader's
+   * tenant — a platform operator (ADR-051 Q-17), or an account since removed.
+   */
   user?: AuditLogUser | null;
+  /**
+   * F-8: the super admin who acted through an impersonation token. The id is
+   * always present on such a row; the object is `null` for a tenant reader,
+   * because the operator is not a member of the tenant.
+   */
+  impersonatorId?: string | null;
+  impersonator?: AuditLogUser | null;
 }
 
 export interface AuditMeta {

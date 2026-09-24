@@ -10,11 +10,12 @@
  * mfaLoginPreCheck and the limiter (rateLimiter.redis.service on its
  * in-process fallback — no Redis client is ready in a unit run), the auth
  * controller and its outcome recording, auth.service.loginMfa and the MFA
- * purpose token (jwt.util). What is faked: the TOTP check — jest.config maps
- * `otplib` to __mocks__/otplib.js, whose check() accepts every code, so this
- * file installs one that accepts only GOOD_CODE — the user row
- * (`Users.findByPk` is spied) and the lock write (`Users.update` is spied);
- * there is no database.
+ * purpose token (jwt.util), and the TOTP check — the real otplib (A-99: it
+ * used to be a mock, behind which MFA login threw a TypeError in production).
+ * goodCode() is the code the secret yields NOW, so "even the right code is
+ * refused" is a claim about a code the service would otherwise accept. What is
+ * faked: the user row (`Users.findByPk` is spied) and the lock write
+ * (`Users.update` is spied); there is no database.
  *
  * What it does not prove: the per-IP key against real client addresses —
  * `req.ip` is set directly here (A-16 is the deployment half).
@@ -25,11 +26,11 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));
 
-const GOOD_CODE = "424242";
-const SECRET = "JBSWY3DPEHPK3PXP";
-jest.mock("otplib", () => ({
-  authenticator: { check: (code, secret) => code === "424242" && secret === "JBSWY3DPEHPK3PXP" },
-}));
+const { generateSync } = require("otplib");
+
+const SECRET = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
+/** The code an authenticator app shows for SECRET now. */
+const goodCode = () => generateSync({ secret: SECRET });
 
 const authRouter = require("../../routes/api/auth.route");
 const { Users } = require("../../models");
@@ -90,8 +91,16 @@ const mfaToken = (id) => {
   );
 };
 
-/** A six-digit code the TOTP check refuses. */
-const wrongCode = () => "000000";
+/** A six-digit code the TOTP check refuses: none of the three the ±1 window accepts. */
+const wrongCode = () => {
+  const now = Math.floor(Date.now() / 1000);
+  const accepted = new Set([-30, 0, 30].map((d) => generateSync({ secret: SECRET, epoch: now + d })));
+  let n = 0;
+  while (accepted.has(String(n).padStart(6, "0"))) {
+    n += 1;
+  }
+  return String(n).padStart(6, "0");
+};
 
 const mfaUser = (id) => ({
   id,
@@ -141,7 +150,7 @@ describe("A-81: wrong TOTP codes are counted and lock", () => {
     // Locked: even the RIGHT code, on yet another fresh token, is refused
     // before the handler looks at it.
     const locked = await drive(
-      { token: mfaToken(user), code: GOOD_CODE },
+      { token: mfaToken(user), code: goodCode() },
       "198.51.100.41",
     );
     expect(locked.status).toBe(429);
@@ -168,7 +177,7 @@ describe("A-81: wrong TOTP codes are counted and lock", () => {
       expect((await drive({ token, code: wrongCode() }, "198.51.100.42")).status).toBe(401);
     }
 
-    const refused = await drive({ token, code: GOOD_CODE }, "198.51.100.42");
+    const refused = await drive({ token, code: goodCode() }, "198.51.100.42");
     expect(refused.status).toBe(429);
     expect(refused.body.message).toBe("Token revoked");
   });
@@ -182,6 +191,18 @@ describe("A-81: wrong TOTP codes are counted and lock", () => {
       expect(res.body.message).toBe("Invalid or expired login token");
     }
     expect((await drive({ token: forged, code: "123456" }, "198.51.100.43")).status).toBe(429);
+    expect(Users.findByPk).not.toHaveBeenCalled();
+  });
+
+  it("an MFA token that names no user is counted against the token alone", async () => {
+    const token = generatePurposeToken({ mfaRequired: true, nonce: "no-id" }, "mfa");
+
+    for (let i = 0; i < 3; i += 1) {
+      const res = await drive({ token, code: goodCode() }, "198.51.100.45");
+      expect(res.status).toBe(401);
+      expect(res.body.message).toBe("Invalid token payload");
+    }
+    expect((await drive({ token, code: goodCode() }, "198.51.100.45")).status).toBe(429);
     expect(Users.findByPk).not.toHaveBeenCalled();
   });
 
@@ -219,5 +240,23 @@ describe("A-81: wrong TOTP codes are counted and lock", () => {
       const res = await drive({ token: mfaToken(userId(200 + i)), code: wrongCode() }, ip);
       expect(res.status).toBe(401);
     }
+  });
+});
+
+describe("A-81: mfaLoginPreCheck faults", () => {
+  it("a limiter fault is logged and passes to the handler, as authPreCheck does", async () => {
+    const { mfaLoginPreCheck } = require("../../services/rateLimiter.redis.service");
+    const { logger } = require("../../middlewares/activityLog.middleware");
+    const req = {
+      get body() {
+        throw new Error("body unreadable");
+      },
+    };
+    const next = jest.fn();
+
+    await mfaLoginPreCheck()(req, {}, next);
+
+    expect(next).toHaveBeenCalledWith();
+    expect(logger.error).toHaveBeenCalledWith("MFA login pre-check error: body unreadable");
   });
 });

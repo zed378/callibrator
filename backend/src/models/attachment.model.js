@@ -19,7 +19,7 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.UUID,
         allowNull: false,
         references: { model: "tenants", key: "id" },
-        onDelete: "CASCADE",
+        onDelete: "RESTRICT",
       },
       // Polymorphic link to the owning resource (nullable = standalone upload).
       resourceType: {
@@ -110,8 +110,9 @@ const defineModel = (db, DataTypes) => {
 
   Attachment.associate = (models) => {
     Attachment.belongsTo(models.Tenant, {
-      foreignKey: "tenant_id",
+      foreignKey: "tenantId",
       as: "tenant",
+      onDelete: "RESTRICT",
     });
     Attachment.belongsTo(models.User, {
       foreignKey: "uploaded_by",

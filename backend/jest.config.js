@@ -83,9 +83,24 @@ module.exports = {
   },
   transform: {},
   transformIgnorePatterns: ["/node_modules/"],
+  // A-99: otplib is NOT mapped to a mock any more. __mocks__/otplib.js invented
+  // an `authenticator` export otplib 13 does not have, and accepted every
+  // code, so MFA was broken in production behind a green suite. Note that a
+  // file in <rootDir>/__mocks__/ named after a package mocks it for EVERY test
+  // even without an entry here — deleting the entry alone changes nothing.
+  //
+  // otplib 13's CommonJS build requires ESM-only packages (@scure/base,
+  // @noble/hashes). Jest loads them only with --experimental-vm-modules, which
+  // the package.json test scripts pass; a bare `npx jest` on a suite that runs
+  // the real otplib fails with "Must use import to load ES Module".
+  //
+  // uuid is still mapped. Our code's use (`v4()` returning a string) matches
+  // the mock's shape, but the mapping also replaces the uuid@8 that Sequelize
+  // requires internally (v1 and v4 for UUIDV1/UUIDV4 defaults): every
+  // Sequelize-generated UUIDV4 in a unit run is the same constant, and v1 is
+  // undefined.
   moduleNameMapper: {
     "^uuid$": "<rootDir>/__mocks__/uuid.js",
-    "^otplib$": "<rootDir>/__mocks__/otplib.js",
   },
   moduleFileExtensions: ["js", "json"],
   testTimeout: 10000,

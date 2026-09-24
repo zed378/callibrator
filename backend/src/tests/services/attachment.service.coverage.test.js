@@ -47,7 +47,7 @@ const EventEmitter = require("events");
 const path = require("path");
 const fs = require("fs");
 const attachmentService = require("../../services/attachment.service");
-const { Attachment } = require("../../models");
+const { Attachment, Certificate } = require("../../models");
 const { getUploadUrl } = require("../../utils/upload.util");
 const virusScan = require("../../services/virusScan.service");
 const { logger } = require("../../middlewares/activityLog.middleware");
@@ -116,6 +116,7 @@ describe("attachment.service (coverage)", () => {
           uploadedBy: null,
           folder: "uploads/attachments",
         }),
+        { transaction: "TX" }, // A-117: with its audit row
       );
       expect(result.resourceType).toBe("generic");
       expect(logger.info).toHaveBeenCalledWith(
@@ -125,6 +126,8 @@ describe("attachment.service (coverage)", () => {
     });
 
     it("passes the supplied meta through to the model", async () => {
+      // A-97: a linked resourceId must be a record of the caller's tenant.
+      Certificate.findOne.mockResolvedValue({ id: "11111111-1111-4111-8111-111111111111" });
       Attachment.create.mockResolvedValue({
         id: "att-2",
         resourceType: "certificate",
@@ -135,15 +138,20 @@ describe("attachment.service (coverage)", () => {
       await attachmentService.createAttachment(
         "t-1",
         { path: "/tmp/a", filename: "a", originalname: "A", mimetype: "text/plain", size: 1 },
-        { resourceType: "certificate", resourceId: "c-1", uploadedBy: "u-1" },
+        {
+          resourceType: "certificate",
+          resourceId: "11111111-1111-4111-8111-111111111111",
+          uploadedBy: "u-1",
+        },
       );
 
       expect(Attachment.create).toHaveBeenCalledWith(
         expect.objectContaining({
           resourceType: "certificate",
-          resourceId: "c-1",
+          resourceId: "11111111-1111-4111-8111-111111111111",
           uploadedBy: "u-1",
         }),
+        { transaction: "TX" }, // A-117: with its audit row
       );
     });
 
@@ -168,6 +176,7 @@ describe("attachment.service (coverage)", () => {
           checksum:
             "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
         }),
+        { transaction: "TX" }, // A-117: with its audit row
       );
       expect(fs.createReadStream).toHaveBeenCalledWith("/tmp/f");
     });

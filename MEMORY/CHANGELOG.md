@@ -10,6 +10,8 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ### Decided
 
+- **ADR-051: the owner questions Q-09 to Q-19**, decided by two agents debating opposite positions. Audit rows are never purged; regulated records are protected from cascading deletes; a restore never re-creates a missing account; operators may not author Part 11 records inside a tenant. ADR-052 extends that to super admins in their home tenant. ADR-050: the client IP is resolved once, at the edge.
+
 - **ADR-046 — the backend image builds from the repository root, and `/api/` belongs to the frontend** in every manifest. Makes `npm ci` against the committed lockfile possible. ([record](./records/2026-09-24-phase0-batch2.md))
 - **ADR-045 — tenant lifecycle is a real feature.** It gets the schema it was written against (migration `0023`).
 
@@ -19,6 +21,13 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 - **ADR-038 — the backend moves to TypeScript, strict, incrementally.** Supersedes ADR-030. Plan: `TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`. Until it completes the backend is still JavaScript, and backend documents state TypeScript as the target, never as fact.
 
 ### Fixed
+
+- **MFA did not work at all** on the installed otplib 13; a global test mock that accepted any code hid it. Rotation now requires re-authentication, and codes cannot be replayed. (A-99, A-114, A-115)
+- **`GET /users` returned every user's TOTP secret.** (A-138)
+- **Audit rows could be purged, or deleted with their tenant.** Both are now impossible, proven on PostgreSQL 18. Hard-deleting a user no longer erases their calibrations. (A-121, A-122)
+- **Tenant backup failed on every call.** (A-108) **Workflow signing refused every real user.** (A-119)
+- **Production leaked database internals in 500s**, while hiding every 4xx explanation. (A-132)
+- **Tenant admins could create, list and delete tenants.** (A-76)
 
 - **Tenant isolation did not reach includes.** A tenant's list could return another tenant's device name and user email through a join. Fixed for every include without changing any join type. (A-87, ADR-048)
 - **Any authenticated user could edit or suspend any tenant.** (A-63) **A certificate could be approved or signed by a plain edit.** (A-64) **Anyone in a tenant could sign someone else's step**, and signing now always re-authenticates. (A-65, ADR-047)

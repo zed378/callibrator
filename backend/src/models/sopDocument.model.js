@@ -3,8 +3,8 @@ const { Model } = require("sequelize");
 module.exports = (sequelize, DataTypes) => {
   class SopDocument extends Model {
     static associate(models) {
-      SopDocument.belongsTo(models.Tenant, { foreignKey: "tenant_id", as: "tenant" });
-      SopDocument.belongsTo(models.User, { foreignKey: "author_id", as: "author" });
+      SopDocument.belongsTo(models.Tenant, { foreignKey: "tenantId", as: "tenant", onDelete: "RESTRICT" });
+      SopDocument.belongsTo(models.User, { foreignKey: "authorId", as: "author", onDelete: "RESTRICT" });
       SopDocument.hasMany(models.SopTrainingAcknowledgment, { foreignKey: "document_id", as: "acknowledgments" });
     }
   }
@@ -20,6 +20,8 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.UUID,
         field: "tenant_id",
         allowNull: false,
+        references: { model: "tenants", key: "id" },
+        onDelete: "RESTRICT",
       },
       documentNumber: {
         type: DataTypes.STRING(100),

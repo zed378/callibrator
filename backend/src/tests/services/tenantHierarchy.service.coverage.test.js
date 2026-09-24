@@ -473,10 +473,10 @@ describe("tenantHierarchy.service (coverage)", () => {
 
   // ================================================================
   describe("getUserRolesAcrossTenants", () => {
-    it("leaves tenant name/code undefined when the association is not loaded", async () => {
+    it("reads a missing tenant and role (LEFT JOIN, A-110) as null", async () => {
       const User = {
         findAll: jest.fn().mockResolvedValue([
-          { tenantId: "tenant-1", Tenant: null, Role: null },
+          { tenantId: "tenant-1", tenant: null, role: null },
         ]),
       };
       const svc = loadService({}, { User, Role: {}, Tenant: {} });
@@ -486,8 +486,8 @@ describe("tenantHierarchy.service (coverage)", () => {
       expect(result).toEqual([
         {
           tenantId: "tenant-1",
-          tenantName: undefined,
-          tenantCode: undefined,
+          tenantName: null,
+          tenantCode: null,
           role: null,
         },
       ]);

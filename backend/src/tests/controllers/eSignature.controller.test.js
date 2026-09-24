@@ -254,30 +254,34 @@ describe("eSignature Controller", () => {
   // List endpoints normalise a null/undefined service result to an empty array
   // so the client always receives a list.
   describe("empty-list normalisation", () => {
-    it("returns an empty keyPairs array when the service returns null", async () => {
+    // A-113 — rows are `data` itself, the count in a top-level `meta`; it
+    // used to be `data.keyPairs`.
+    it("returns an empty key-pair list as data: [] with meta.total 0 when the service returns null", async () => {
       eSignatureService.getKeyPairs.mockResolvedValue(null);
 
       await eSignatureController.getKeyPairs(req, res, next);
 
       expect(eSignatureService.getKeyPairs).toHaveBeenCalledWith("tenant-1");
-      expect(success).toHaveBeenCalledWith(res, { keyPairs: [] }, "Key pairs retrieved");
-      expect(res.json).toHaveBeenCalledWith(
-        expect.objectContaining({ data: { keyPairs: [] } }),
-      );
+      // The wire shape is pinned against the real response.util in
+      // eSignature.a113.test.js.
+      expect(success).toHaveBeenCalledWith(res, [], { total: 0 }, "Key pairs retrieved");
     });
 
-    it("returns an empty workflows array when the service returns undefined", async () => {
-      eSignatureService.getWorkflows.mockResolvedValue(undefined);
+    // A-106 — rows are `data` itself with the count in a top-level meta; the
+    // wire shape is pinned against the real response.util in
+    // eSignature.envelope.a106.test.js.
+    it("sends the workflow rows as data with meta.total beside them", async () => {
+      eSignatureService.getWorkflows.mockResolvedValue([]);
       req.query = { status: "pending" };
 
       await eSignatureController.getWorkflows(req, res, next);
 
       expect(eSignatureService.getWorkflows).toHaveBeenCalledWith("tenant-1", { status: "pending" });
-      expect(success).toHaveBeenCalledWith(res, { workflows: [] }, "Workflows retrieved");
+      expect(success).toHaveBeenCalledWith(res, [], { total: 0 }, "Workflows retrieved");
     });
 
-    it("returns an empty signatures array when the history service returns null", async () => {
-      eSignatureService.getSignatureHistory.mockResolvedValue(null);
+    it("sends the signature history rows as data with meta.total beside them", async () => {
+      eSignatureService.getSignatureHistory.mockResolvedValue([]);
       req.query = { userId: "user-9", startDate: "2026-01-01", endDate: "2026-06-30" };
 
       await eSignatureController.getSignatureHistory(req, res, next);
@@ -287,7 +291,7 @@ describe("eSignature Controller", () => {
         startDate: "2026-01-01",
         endDate: "2026-06-30",
       });
-      expect(success).toHaveBeenCalledWith(res, { signatures: [] }, "Signature history retrieved");
+      expect(success).toHaveBeenCalledWith(res, [], { total: 0 }, "Signature history retrieved");
     });
 
     it("passes the signature history through when the service returns rows", async () => {
@@ -298,7 +302,8 @@ describe("eSignature Controller", () => {
 
       expect(success).toHaveBeenCalledWith(
         res,
-        { signatures: [{ id: "sig-1" }] },
+        [{ id: "sig-1" }],
+        { total: 1 },
         "Signature history retrieved",
       );
     });

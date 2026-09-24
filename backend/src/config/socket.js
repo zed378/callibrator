@@ -143,6 +143,12 @@ const authenticateHandshake = async (socket, next) => {
     }
 
     if (user.tenantId) {
+      // A-101: a soft-deleted or destroyed tenant is hidden by the Tenant
+      // default scope and paranoid, so the include comes back null. That is a
+      // deleted tenant, not "no tenant" — refuse it, as sign-in does (A-83).
+      if (!user.tenant) {
+        return deny(next, `tenant ${user.tenantId} is deleted`);
+      }
       const tenantStatus = String(
         (user.tenant && user.tenant.status) || "",
       ).toLowerCase();

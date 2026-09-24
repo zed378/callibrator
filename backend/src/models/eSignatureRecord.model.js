@@ -18,7 +18,7 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.UUID,
         allowNull: false,
         references: { model: "tenants", key: "id" },
-        onDelete: "CASCADE",
+        onDelete: "RESTRICT",
       },
       entityType: {
         type: DataTypes.STRING(100),
@@ -34,6 +34,7 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.UUID,
         allowNull: false,
         references: { model: "users", key: "id" },
+        onDelete: "RESTRICT", // the signer of a Part 11 record (ADR-051 Q-16)
       },
       action: {
         type: DataTypes.ENUM("approve", "sign", "revoke"),
@@ -81,13 +82,15 @@ const defineModel = (db, DataTypes) => {
 
   ESignatureRecord.associate = (models) => {
     ESignatureRecord.belongsTo(models.Tenant, {
-      foreignKey: "tenant_id",
+      foreignKey: "tenantId",
       as: "tenant",
+      onDelete: "RESTRICT",
     });
     // Removed Certificate association since it's now polymorphic
     ESignatureRecord.belongsTo(models.User, {
-      foreignKey: "user_id",
+      foreignKey: "userId",
       as: "user",
+      onDelete: "RESTRICT",
     });
   };
 

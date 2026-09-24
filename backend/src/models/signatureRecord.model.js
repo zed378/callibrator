@@ -20,7 +20,7 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.UUID,
         allowNull: false,
         references: { model: "tenants", key: "id" },
-        onDelete: "CASCADE",
+        onDelete: "RESTRICT",
       },
       workflowId: {
         type: DataTypes.UUID,
@@ -38,6 +38,7 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.UUID,
         allowNull: false,
         references: { model: "users", key: "id" },
+        onDelete: "RESTRICT", // the signer of a Part 11 record (ADR-051 Q-16)
       },
       signatureHash: {
         type: DataTypes.STRING(255),
@@ -136,16 +137,18 @@ const defineModel = (db, DataTypes) => {
 
   SignatureRecord.associate = (models) => {
     SignatureRecord.belongsTo(models.Tenant, {
-      foreignKey: "tenant_id",
+      foreignKey: "tenantId",
       as: "tenant",
+      onDelete: "RESTRICT",
     });
     SignatureRecord.belongsTo(models.SignatureWorkflow, {
       foreignKey: "workflow_id",
       as: "workflow",
     });
     SignatureRecord.belongsTo(models.User, {
-      foreignKey: "user_id",
+      foreignKey: "userId",
       as: "signer",
+      onDelete: "RESTRICT",
     });
   };
 

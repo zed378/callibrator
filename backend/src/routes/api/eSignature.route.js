@@ -37,6 +37,7 @@ const { validateUuid } = require("../../middlewares/validateUuid.middleware");
 // is the router-facing factory.
 const { validate } = require("../../middlewares/validation.middleware");
 const { dynamicAccess } = require("../../middlewares/dynamicAccess.middleware");
+const { denyPlatformAuthoring } = require("../../middlewares/denyPlatformAuthoring.middleware"); // A-127, ADR-051 Q-17
 const { MENU_SLUGS } = require("../../constants");
 
 // A-28 — authorization.
@@ -73,7 +74,12 @@ const { MENU_SLUGS } = require("../../constants");
  *             schema:
  *               type: object
  *               properties:
- *                 keyPairs:
+ *                 meta:
+ *                   type: object
+ *                   properties:
+ *                     total:
+ *                       type: integer
+ *                 data:
  *                   type: array
  *                   items:
  *                     type: object
@@ -202,16 +208,23 @@ router.delete(
  *           enum: [draft, pending, completed, rejected, expired]
  *     responses:
  *       200:
- *         description: Workflows retrieved successfully
+ *         description: >-
+ *           Workflows retrieved successfully. Rows are `data` itself, the count
+ *           in a top-level `meta.total` (A-106; formerly `data.workflows`).
  *         content:
  *           application/json:
  *             schema:
  *               type: object
  *               properties:
- *                 workflows:
+ *                 data:
  *                   type: array
  *                   items:
  *                     type: object
+ *                 meta:
+ *                   type: object
+ *                   properties:
+ *                     total:
+ *                       type: integer
  *       401:
  *         description: Unauthorized
  */
@@ -391,7 +404,7 @@ router.put(
  * /api/v1/e-signature/workflows/{workflowId}:
  *   delete:
  *     summary: Delete workflow
- *     description: Deletes a workflow (only if in draft status). Requires write access to ESignature.
+ *     description: Soft-deletes a workflow. A completed (fully signed) workflow cannot be deleted (409). Requires write access to QMS.
  *     tags: [ESignature]
  *     security:
  *       - bearerAuth: []
@@ -407,6 +420,8 @@ router.put(
  *         description: Workflow deleted successfully
  *       404:
  *         description: Workflow not found
+ *       409:
+ *         description: The workflow is completed; its signatures cover it
  *       401:
  *         description: Unauthorized
  */
@@ -580,6 +595,7 @@ router.post(
   auth,
   denyApiKey,
   dynamicAccess(MENU_SLUGS.ESIGNATURE, "write"),
+  denyPlatformAuthoring,
   validate(signDocumentValidator),
   signDocument,
 );
@@ -661,13 +677,21 @@ router.post(
  *           format: date
  *     responses:
  *       200:
- *         description: Signature history retrieved successfully
+ *         description: >-
+ *           Signature history retrieved successfully. Rows are `data` itself,
+ *           the count in a top-level `meta.total` (A-106; formerly
+ *           `data.signatures`).
  *         content:
  *           application/json:
  *             schema:
  *               type: object
  *               properties:
- *                 signatures:
+ *                 meta:
+ *                   type: object
+ *                   properties:
+ *                     total:
+ *                       type: integer
+ *                 data:
  *                   type: array
  *                   items:
  *                     type: object

@@ -2974,7 +2974,7 @@ Base: `/api/v1/gdpr`, `/api/v1/tenants/:tenantId` (data retention).
 | --- | --- | --- |
 | `GDPR_ENABLED` | on | Feature flag |
 | `EXPORT_RETENTION_HOURS` | 168 | Export link lifetime |
-| `AUDIT_LOG_RETENTION_DAYS` / `NOTIFICATION_RETENTION_DAYS` / `SESSION_RETENTION_DAYS` | 365 / 90 / 30 | Retention defaults |
+| `NOTIFICATION_RETENTION_DAYS` / `SESSION_RETENTION_DAYS` | 90 / 30 | Retention defaults, floored at 30 / 30 days. `AUDIT_LOG_RETENTION_DAYS` **no longer has any effect** — audit rows are never purged (ADR-051, A-121) |
 
 ### 19. Dependency
 `archiver`, `joi`, `sequelize`, Node `fs`/`path`/`crypto`.

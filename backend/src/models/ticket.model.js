@@ -18,7 +18,7 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.UUID,
         allowNull: false,
         references: { model: "tenants", key: "id" },
-        onDelete: "CASCADE",
+        onDelete: "RESTRICT",
       },
       // Per-tenant sequence number and its rendered key (e.g. 1 / "TKT-1").
       number: {
@@ -93,8 +93,9 @@ const defineModel = (db, DataTypes) => {
 
   Ticket.associate = (models) => {
     Ticket.belongsTo(models.Tenant, {
-      foreignKey: "tenant_id",
+      foreignKey: "tenantId",
       as: "tenant",
+      onDelete: "RESTRICT",
     });
     Ticket.belongsTo(models.User, {
       foreignKey: "created_by",

@@ -57,8 +57,9 @@ const defineModel = (db, DataTypes) => {
 
   DocumentChunk.associate = (models) => {
     DocumentChunk.belongsTo(models.Tenant, {
-      foreignKey: "tenant_id",
+      foreignKey: "tenantId",
       as: "tenant",
+      onDelete: "CASCADE",
     });
   };
 

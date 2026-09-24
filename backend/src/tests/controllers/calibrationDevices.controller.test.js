@@ -49,6 +49,8 @@ const { validate: validatorValidate } = require("../../validators/calibrationDev
 describe("calibrationDevicesController", () => {
   let req;
   let res;
+  // A-133: the actor the service writes into the device's audit row.
+  const ACTOR = { userId: "user-1", tenantId: "tenant-1", ipAddress: null, userAgent: null };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -135,6 +137,7 @@ describe("calibrationDevicesController", () => {
       expect(calibrationDevicesService.createCalibrationDevice).toHaveBeenCalledWith(
         "tenant-1",
         { name: "New Device" },
+        ACTOR,
       );
       expect(success).toHaveBeenCalled();
     });
@@ -157,6 +160,7 @@ describe("calibrationDevicesController", () => {
         "tenant-1",
         "dev-1",
         { name: "Updated Device" },
+        ACTOR,
       );
       expect(success).toHaveBeenCalled();
     });
@@ -177,6 +181,7 @@ describe("calibrationDevicesController", () => {
       expect(calibrationDevicesService.deleteCalibrationDevice).toHaveBeenCalledWith(
         "tenant-1",
         "dev-1",
+        ACTOR,
       );
       expect(success).toHaveBeenCalled();
     });
@@ -207,6 +212,7 @@ describe("calibrationDevicesController", () => {
       expect(calibrationDevicesService.bulkImportCalibrationDevices).toHaveBeenCalledWith(
         "tenant-1",
         "temp-path/import.csv",
+        ACTOR,
       );
       expect(success).toHaveBeenCalledWith(
         res,

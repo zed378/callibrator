@@ -55,16 +55,16 @@ describe("dataRetention.service", () => {
     it("returns defaults when no overrides exist", async () => {
       TenantSettings.findAll.mockResolvedValue([]);
       const result = await dataRetention.getRetentionPolicy("t1");
-      expect(result.audit_logs).toBe(365);
-      expect(result.notifications).toBe(90);
+      // A-121: audit_logs is not a purgeable entity.
+      expect(result).toEqual({ notifications: 90, sessions: 30 });
     });
 
     it("returns custom policies when overrides exist", async () => {
       TenantSettings.findAll.mockResolvedValue([
-        { key: "retention_policy_audit_logs", value: "180" },
+        { key: "retention_policy_notifications", value: "180" },
       ]);
       const result = await dataRetention.getRetentionPolicy("t1");
-      expect(result.audit_logs).toBe(180);
+      expect(result.notifications).toBe(180);
     });
   });
 
@@ -72,11 +72,11 @@ describe("dataRetention.service", () => {
     it("updates retention days for a policy", async () => {
       TenantSettings.upsert.mockResolvedValue({});
 
-      const result = await dataRetention.setRetentionPolicy("t1", "audit_logs", 180);
+      const result = await dataRetention.setRetentionPolicy("t1", "notifications", 180);
 
       expect(TenantSettings.upsert).toHaveBeenCalledWith({
         tenantId: "t1",
-        key: "retention_policy_audit_logs",
+        key: "retention_policy_notifications",
         value: "180",
       });
       expect(result.days).toBe(180);
@@ -87,7 +87,7 @@ describe("dataRetention.service", () => {
     });
 
     it("rejects negative retention days", async () => {
-      await expect(dataRetention.setRetentionPolicy("t1", "audit_logs", -5)).rejects.toThrow();
+      await expect(dataRetention.setRetentionPolicy("t1", "sessions", -5)).rejects.toThrow();
     });
   });
 
@@ -137,9 +137,35 @@ describe("dataRetention.service", () => {
 
       const result = await dataRetention.purgeExpiredRecords("t1");
 
-      expect(result.purged.audit_logs).toBe(5);
-      expect(result.purged.notifications).toBe(3);
-      expect(result.purged.sessions).toBe(10);
+      expect(result.purged).toEqual({ notifications: 3, sessions: 10 });
+      expect(AuditLog.destroy).not.toHaveBeenCalled();
+    });
+
+    it("never purges sooner than an entity's floor, whatever is stored", async () => {
+      TenantSettings.findOne.mockResolvedValue(null);
+      TenantSettings.findAll.mockResolvedValue([
+        { key: "retention_policy_notifications", value: "1" },
+      ]);
+      Notification.destroy.mockResolvedValue(0);
+      Session.destroy.mockResolvedValue(0);
+
+      await dataRetention.purgeExpiredRecords("t1");
+
+      const cutoff = Notification.destroy.mock.calls[0][0].where.createdAt[Op.lt];
+      const ageDays = (Date.now() - cutoff.getTime()) / 86400000;
+      expect(Math.round(ageDays)).toBe(30);
+    });
+
+    it("keeps an entity whose stored period does not parse", async () => {
+      TenantSettings.findOne.mockResolvedValue(null);
+      TenantSettings.findAll.mockResolvedValue([
+        { key: "retention_policy_sessions", value: "forever" },
+      ]);
+      Notification.destroy.mockResolvedValue(0);
+
+      await dataRetention.purgeExpiredRecords("t1");
+
+      expect(Session.destroy).not.toHaveBeenCalled();
     });
 
     it("skips purge when legal hold is active", async () => {
@@ -165,12 +191,13 @@ describe("dataRetention.service", () => {
     it("skips purge for an entity if retention days <= 0", async () => {
       TenantSettings.findOne.mockResolvedValue(null);
       TenantSettings.findAll.mockResolvedValue([
-        { key: "retention_policy_audit_logs", value: "0" },
+        { key: "retention_policy_sessions", value: "0" },
       ]);
-      AuditLog.destroy.mockResolvedValue(0);
+      Notification.destroy.mockResolvedValue(0);
 
       const result = await dataRetention.purgeExpiredRecords("t1");
-      expect(result.purged.audit_logs).toBeUndefined();
+      expect(Session.destroy).not.toHaveBeenCalled();
+      expect(result.purged.sessions).toBeUndefined();
     });
   });
 
@@ -278,7 +305,7 @@ describe("dataRetention.service", () => {
       Tenant.findAll.mockResolvedValue([{ id: "t1" }, { id: "t2" }]);
       const spy = jest
         .spyOn(dataRetention, "purgeExpiredRecords")
-        .mockResolvedValueOnce({ purged: { audit_logs: 5, sessions: 2 }, skipped: false })
+        .mockResolvedValueOnce({ purged: { notifications: 5, sessions: 2 }, skipped: false })
         .mockResolvedValueOnce({ skipped: true, reason: "legal_hold" });
 
       const summary = await dataRetention.runRetentionSweep();

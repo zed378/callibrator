@@ -14,7 +14,7 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.UUID,
         allowNull: false,
         references: { model: "tenants", key: "id" },
-        onDelete: "CASCADE",
+        onDelete: "RESTRICT",
       },
       title: {
         type: DataTypes.STRING(255),
@@ -80,8 +80,9 @@ const defineModel = (db, DataTypes) => {
 
   Risk.associate = (models) => {
     Risk.belongsTo(models.Tenant, {
-      foreignKey: "tenant_id",
+      foreignKey: "tenantId",
       as: "tenant",
+      onDelete: "RESTRICT",
     });
     Risk.belongsTo(models.User, {
       foreignKey: "identified_by",

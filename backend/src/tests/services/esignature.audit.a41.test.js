@@ -48,7 +48,7 @@ jest.mock("../../models", () => ({
   },
   AuditLog: { create: (...args) => mockRef.ledger.AuditLog.create(...args) },
   User: {
-    findByPk: async () => ({ id: "u-1", status: "active" }),
+    findByPk: async () => ({ id: "u-1", status: "ACTIVE", isActive: true }),
     findOne: async () => null,
   },
 }));

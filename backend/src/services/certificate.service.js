@@ -150,7 +150,9 @@ const verifySignerCredentials = async (userId, authMethod, authPayload) => {
   if (!user || !user.mfaEnabled || !user.mfaSecret) {
     throw new AppError(400, "MFA is not enabled for this account; sign with your password.");
   }
-  if (!mfaService.verifyLogin(user, authPayload)) {
+  // A-115: verifyLogin consumes the code — a code that signed once cannot
+  // sign (or sign in) again inside its window.
+  if (!(await mfaService.verifyLogin(user, authPayload))) {
     throw new AppError(401, "Invalid MFA code for e-signature.");
   }
 };
@@ -916,6 +918,11 @@ exports.getCertificateStats = async (tenantId) => {
         {
           association: "device",
           attributes: ["id", "name", "serialNumber"],
+          // A-109: LEFT. CalibrationDevice's defaultScope made this an
+          // implicit INNER JOIN, so when the newest certificate's device was
+          // soft-deleted (or foreign), "latest certificate" silently became
+          // an older one — or null.
+          required: false,
         },
       ],
     });

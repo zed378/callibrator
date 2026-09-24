@@ -497,8 +497,9 @@ describe("tenantHierarchy.service", () => {
         findAll: jest.fn().mockResolvedValue([
           {
             tenantId: "tenant-1",
-            Tenant: { name: "Tenant 1", code: "T1" },
-            Role: { id: "role-1", name: "Admin", level: 3 },
+            // the association aliases are `tenant` and `role` (A-110)
+            tenant: { name: "Tenant 1", code: "T1" },
+            role: { id: "role-1", name: "Admin", level: 3 },
           },
         ]),
       };
@@ -520,7 +521,7 @@ describe("tenantHierarchy.service", () => {
       expect(result[0].role.name).toBe("Admin");
     });
 
-    it("should return empty array on error", async () => {
+    it("A-110: logs and answers 500 on error instead of an empty list", async () => {
       const mockUser = {
         findAll: jest.fn().mockRejectedValue(new Error("DB error")),
       };
@@ -534,10 +535,9 @@ describe("tenantHierarchy.service", () => {
       jest.resetModules();
       tenantHierarchyService = require("../../services/tenantHierarchy.service");
 
-      const result =
-        await tenantHierarchyService.getUserRolesAcrossTenants("user-1");
-
-      expect(result).toEqual([]);
+      await expect(
+        tenantHierarchyService.getUserRolesAcrossTenants("user-1"),
+      ).rejects.toMatchObject({ status: 500, message: "Failed to get user roles" });
     });
   });
 

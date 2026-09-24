@@ -4,10 +4,10 @@ const { CAPA_STATUSES } = require("../constants/qmsConstants");
 module.exports = (sequelize, DataTypes) => {
   class Capa extends Model {
     static associate(models) {
-      Capa.belongsTo(models.Tenant, { foreignKey: "tenant_id", as: "tenant" });
+      Capa.belongsTo(models.Tenant, { foreignKey: "tenantId", as: "tenant", onDelete: "RESTRICT" });
       Capa.belongsTo(models.NonConformance, { foreignKey: "nc_id", as: "nonConformance" });
       Capa.belongsTo(models.User, { foreignKey: "assigned_to", as: "assignee" });
-      Capa.belongsTo(models.User, { foreignKey: "approved_by", as: "approver" });
+      Capa.belongsTo(models.User, { foreignKey: "approvedBy", as: "approver", onDelete: "RESTRICT" });
     }
   }
   
@@ -22,6 +22,8 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.UUID,
         field: "tenant_id",
         allowNull: false,
+        references: { model: "tenants", key: "id" },
+        onDelete: "RESTRICT",
       },
       capaNumber: {
         type: DataTypes.STRING(100),

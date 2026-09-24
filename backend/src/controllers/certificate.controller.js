@@ -6,7 +6,11 @@
 
 const certificateService = require("../services/certificate.service");
 const { asyncHandler } = require("../utils/controllerWrapper.util");
-const { success } = require("../utils/response.util");
+// A-103 — every handler here forwards a service result envelope. Services
+// RETURN their 404/409 outcomes; sendResult sends those down the error path
+// (`success: false`), where `success(res, …, result.status)` sent them with
+// `success: true`.
+const { sendResult } = require("../utils/response.util");
 // Who did it, from where — for the audit row the service writes inside its
 // transaction (A-41).
 const { auditActor } = require("../utils/auditActor.util");
@@ -42,13 +46,9 @@ exports.getAllCertificates = asyncHandler(async (req, res) => {
     sortOrder: validated.sortOrder,
   });
 
-  success(
-    res,
-    result.data.rows,
-    result.data.meta,
-    result.message,
-    result.status,
-  );
+  // The list result nests rows and meta inside `data`; the envelope puts rows
+  // in `data` and meta beside it.
+  sendResult(res, { ...result, data: result.data.rows }, result.data.meta);
 });
 
 /**
@@ -63,7 +63,7 @@ exports.getSpecificCertificate = asyncHandler(async (req, res) => {
     certificateId,
   );
 
-  success(res, result.data, null, result.message, result.status);
+  sendResult(res, result);
 });
 
 /**
@@ -81,7 +81,7 @@ exports.createCertificate = asyncHandler(async (req, res) => {
     auditActor(req),
   );
 
-  success(res, result.data, null, result.message, result.status);
+  sendResult(res, result);
 });
 
 /**
@@ -99,7 +99,7 @@ exports.updateCertificate = asyncHandler(async (req, res) => {
     auditActor(req),
   );
 
-  success(res, result.data, null, result.message, result.status);
+  sendResult(res, result);
 });
 
 /**
@@ -115,7 +115,7 @@ exports.deleteCertificate = asyncHandler(async (req, res) => {
     auditActor(req),
   );
 
-  success(res, result.data, null, result.message, result.status);
+  sendResult(res, result);
 });
 
 /**
@@ -142,7 +142,7 @@ exports.approveCertificate = asyncHandler(async (req, res) => {
     }
   );
 
-  success(res, result.data, null, result.message, result.status);
+  sendResult(res, result);
 });
 
 /**
@@ -157,7 +157,7 @@ exports.submitCertificate = asyncHandler(async (req, res) => {
     certificateId,
     auditActor(req),
   );
-  success(res, result.data, null, result.message, result.status);
+  sendResult(res, result);
 });
 
 exports.signCertificate = asyncHandler(async (req, res) => {
@@ -179,7 +179,7 @@ exports.signCertificate = asyncHandler(async (req, res) => {
     }
   );
 
-  success(res, result.data, null, result.message, result.status);
+  sendResult(res, result);
 });
 
 /**
@@ -204,7 +204,7 @@ exports.revokeCertificate = asyncHandler(async (req, res) => {
     }
   );
 
-  success(res, result.data, null, result.message, result.status);
+  sendResult(res, result);
 });
 
 /**
@@ -215,5 +215,5 @@ exports.getCertificateStats = asyncHandler(async (req, res) => {
   const tenantId = req.user.tenantId;
   const result = await certificateService.getCertificateStats(tenantId);
 
-  success(res, result.data, null, result.message, result.status);
+  sendResult(res, result);
 });

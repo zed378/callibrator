@@ -19,6 +19,9 @@ export default function MfaPage() {
   const [secret, setSecret] = useState("");
   const [qrCodeUrl, setQrCodeUrl] = useState("");
   const [code, setCode] = useState("");
+  // A-114: re-authentication for replacing an authenticator that is already on.
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [currentCode, setCurrentCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -29,10 +32,16 @@ export default function MfaPage() {
   const beginSetup = async () => {
     setBusy(true);
     try {
-      const { secret: s, qrCodeUrl: qr } = await authService.mfaSetup();
+      const { secret: s, qrCodeUrl: qr } = await authService.mfaSetup(
+        alreadyEnabled
+          ? { currentPassword, code: currentCode.trim() }
+          : undefined,
+      );
       setSecret(s);
       setQrCodeUrl(qr);
       setCode("");
+      setCurrentPassword("");
+      setCurrentCode("");
       setStep("enrolling");
     } catch (err) {
       addToast({
@@ -118,10 +127,58 @@ export default function MfaPage() {
             </div>
 
             {step === "idle" && (
-              <div className="mt-6 border-t border-border pt-4">
+              <div className="mt-6 space-y-4 border-t border-border pt-4">
+                {alreadyEnabled && (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <p className="text-sm text-muted-foreground sm:col-span-2">
+                      To replace your authenticator, confirm your password and a
+                      code from the authenticator you use now. It keeps working
+                      until the new one is verified.
+                    </p>
+                    <div>
+                      <label
+                        htmlFor="mfa-current-password"
+                        className="mb-1.5 block text-sm font-medium"
+                      >
+                        Current password
+                      </label>
+                      <input
+                        id="mfa-current-password"
+                        type="password"
+                        autoComplete="current-password"
+                        value={currentPassword}
+                        onChange={(e) => setCurrentPassword(e.target.value)}
+                        className="w-full rounded-xl bg-muted px-4 py-2.5 text-foreground ring-1 ring-border ring-inset focus:ring-2 focus:ring-ring/50"
+                      />
+                    </div>
+                    <div>
+                      <label
+                        htmlFor="mfa-current-code"
+                        className="mb-1.5 block text-sm font-medium"
+                      >
+                        Current 6-digit code
+                      </label>
+                      <input
+                        id="mfa-current-code"
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        value={currentCode}
+                        onChange={(e) =>
+                          setCurrentCode(e.target.value.replace(/\D/g, "").slice(0, 6))
+                        }
+                        className="w-full rounded-xl bg-muted px-4 py-2.5 font-mono tracking-[0.3em] text-foreground ring-1 ring-border ring-inset focus:ring-2 focus:ring-ring/50"
+                        placeholder="000000"
+                      />
+                    </div>
+                  </div>
+                )}
                 <Button
                   onClick={beginSetup}
                   isLoading={busy}
+                  disabled={
+                    alreadyEnabled && (!currentPassword || currentCode.length < 6)
+                  }
                   leftIcon={<KeyRound className="h-4 w-4" />}
                 >
                   {alreadyEnabled ? "Re-enroll Authenticator" : "Set Up Authenticator"}

@@ -9,7 +9,12 @@ import {
   TableSkeleton,
 } from "@/components/ui";
 import { ChevronDown, ChevronRight, FileSearch } from "lucide-react";
-import { AuditAction, AuditLog, AuditMeta } from "@/api/services/audit.service";
+import {
+  AuditAction,
+  AuditLog,
+  AuditLogUser,
+  AuditMeta,
+} from "@/api/services/audit.service";
 
 interface AuditTableProps {
   logs: AuditLog[];
@@ -36,6 +41,57 @@ const COLUMN_COUNT = 6;
 function truncateId(id: string, length = 8): string {
   return id.length > length ? `${id.slice(0, length)}…` : id;
 }
+
+/** The label for a user reference that came back null although it was set. */
+export const PLATFORM_OPERATOR = "Platform operator";
+
+function displayName(user: AuditLogUser): string {
+  return user.username || user.email;
+}
+
+/**
+ * Who acted. ADR-051 Q-17: a reference to a user outside the reader's tenant
+ * comes back `null` (tenant-scoped include, A-87) — that is a platform
+ * operator, shown as such rather than as "System". An impersonated row (F-8)
+ * names the operator behind the hospital user.
+ */
+export const AuditActor: React.FC<{ log: AuditLog }> = ({ log }) => {
+  const impersonated = log.impersonatorId
+    ? `impersonated by ${log.impersonator ? displayName(log.impersonator) : PLATFORM_OPERATOR}`
+    : null;
+
+  let who: React.ReactNode;
+  if (log.user) {
+    who = (
+      <>
+        <div className="font-semibold text-foreground">{log.user.username}</div>
+        <div className="text-xs text-muted-foreground">{log.user.email}</div>
+      </>
+    );
+  } else if (log.userId) {
+    who = (
+      <div
+        className="font-semibold text-foreground"
+        title={`Not a member of this tenant (user ${log.userId}) — a platform operator, or an account that has since been removed`}
+      >
+        {PLATFORM_OPERATOR}
+      </div>
+    );
+  } else {
+    who = <span className="text-muted-foreground italic">System</span>;
+  }
+
+  return (
+    <div>
+      {who}
+      {impersonated && (
+        <div className="text-xs font-medium text-warning" data-testid="audit-impersonator">
+          {impersonated}
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const AuditTable: React.FC<AuditTableProps> = ({
   logs,
@@ -138,20 +194,7 @@ export const AuditTable: React.FC<AuditTableProps> = ({
                         {new Date(log.createdAt).toLocaleString()}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        {log.user ? (
-                          <div>
-                            <div className="font-semibold text-foreground">
-                              {log.user.username}
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              {log.user.email}
-                            </div>
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground italic">
-                            System
-                          </span>
-                        )}
+                        <AuditActor log={log} />
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
                         <Badge variant={badge.variant} size="sm">

@@ -18,7 +18,7 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.UUID,
         allowNull: false,
         references: { model: "tenants", key: "id" },
-        onDelete: "CASCADE",
+        onDelete: "RESTRICT",
       },
       userId: {
         type: DataTypes.UUID,
@@ -69,8 +69,9 @@ const defineModel = (db, DataTypes) => {
 
   ConsentRecord.associate = (models) => {
     ConsentRecord.belongsTo(models.Tenant, {
-      foreignKey: "tenant_id",
+      foreignKey: "tenantId",
       as: "tenant",
+      onDelete: "RESTRICT",
     });
     ConsentRecord.belongsTo(models.User, {
       foreignKey: "user_id",

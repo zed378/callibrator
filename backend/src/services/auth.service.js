@@ -43,6 +43,9 @@ const {
 } = require("../services/session.service");
 const { PASSWORD_MIN_LENGTH, ROLE_IDS } = require("../constants");
 const auditService = require("./audit.service");
+// A-99: the one place TOTP is done, on the otplib 13 API. `authenticator`,
+// which this file used to take from otplib, does not exist in otplib 13.
+const mfaService = require("./mfa.service");
 
 // User statuses auth.middleware refuses on every request (and config/socket.js
 // at the handshake). A login is refused for the same set, so no session or
@@ -61,8 +64,8 @@ const REFUSED_STATUSES = ["INACTIVE", "SUSPENDED"];
 // A user whose tenantId names no tenant the include can see is refused as
 // deleted: the Tenant model's default scope hides a soft-deleted tenant
 // (isDeleted) and paranoid hides a destroyed one, so that is what "not found"
-// means here. (auth.middleware treats the same case as no tenant at all and
-// lets the request through — reported separately, not changed here.)
+// means here. auth.middleware (auth, optionalAuth) and the Socket.IO handshake
+// apply the same rule to every request since A-101.
 // ------------------------------------------------------------------
 
 const REFUSED_TENANT_STATUSES = ["suspended", "deleted"];
@@ -800,8 +803,6 @@ exports.logoutAllUserSessions = async (userId) => {
 // MFA LOGIN
 // ------------------------------------------------------------------
 exports.loginMfa = async (userId, tokenCode, inputIp, inputUserAgent) => {
-  const { authenticator } = require("otplib");
-  
   const dbUser = await Users.findByPk(userId, {
     include: [
       {
@@ -809,6 +810,13 @@ exports.loginMfa = async (userId, tokenCode, inputIp, inputUserAgent) => {
         as: "role",
         // ADR-043 — see loginUser.
         attributes: ["id", "name", "roleLevel"],
+        // A-109: LEFT, as in loginUser. As an implicit INNER JOIN a user
+        // without a live role passed the password step (202, MFA required)
+        // and was then told here that MFA "is not enabled" — a half-login
+        // with a false reason. Whether a role-less user may sign in at all is
+        // decided in one place, the password step; this step only checks the
+        // second factor. The role reads as null and rbac() grants nothing.
+        required: false,
       },
       tenantInclude(),
     ],
@@ -839,7 +847,10 @@ exports.loginMfa = async (userId, tokenCode, inputIp, inputUserAgent) => {
     throw new AppError(403, refusal);
   }
 
-  const isValid = authenticator.check(tokenCode, dbUser.mfaSecret);
+  // A-115: consumeCode, not checkCode — the code is accepted once. A replay
+  // inside its ~90-second window is the same 401 as a wrong code (and counts
+  // against the caller the same way, A-81).
+  const isValid = await mfaService.consumeCode(dbUser, tokenCode);
   if (!isValid) {
     throw new AppError(401, "Invalid MFA code");
   }
@@ -897,10 +908,52 @@ exports.loginMfa = async (userId, tokenCode, inputIp, inputUserAgent) => {
 };
 
 // ------------------------------------------------------------------
-// SETUP MFA
+// SETUP / ROTATE MFA  (A-114)
+//
+// setupMfa used to write the new secret straight into `mfaSecret`. On an
+// account that already had MFA that REPLACED the live second factor at once,
+// with no re-authentication: anyone holding the session (a stolen cookie, an
+// unlocked workstation) could swap the victim's authenticator for their own,
+// and the victim's next sign-in would fail.
+//
+// Now:
+//  - the new secret is PENDING (`mfaPendingSecret`, migration 0028). Nothing
+//    signs in or signs with it; the live `mfaSecret` keeps working until
+//    verifyMfaSetup accepts a code from the pending one and promotes it;
+//  - on an account with MFA enabled, starting a rotation needs the current
+//    password AND a current code from the live authenticator. Without them it
+//    is a 409 that says what is needed. A wrong password or a wrong code is
+//    one combined 400 — the endpoint does not tell a session thief which of
+//    the two they got right. (400, not 401: the frontend client treats a 401
+//    as an expired session and signs the user out, and this is the same
+//    choice justUpdatePassword makes for a wrong current password);
+//  - a pending secret expires after MFA_PENDING_TTL_MS;
+//  - enabling and rotating are audited (UPDATE on User, `changes.operation`
+//    MFA_ENABLE / MFA_ROTATE) in the SAME transaction as the promotion.
+//
+// There is no MFA-disable endpoint (none existed before A-114 either), so
+// there is no disable to audit.
 // ------------------------------------------------------------------
-exports.setupMfa = async (userId) => {
-  const { authenticator } = require("otplib");
+
+const MFA_PENDING_TTL_MS = 15 * 60 * 1000;
+const MFA_ALREADY_ENABLED =
+  "MFA is already enabled; disable or rotate with your current code";
+const MFA_REAUTH_FAILED = "Current password or MFA code is incorrect";
+
+exports.MFA_PENDING_TTL_MS = MFA_PENDING_TTL_MS;
+
+/**
+ * Start MFA enrolment, or a rotation on an account that already has MFA.
+ *
+ * @param {string} userId - the authenticated caller
+ * @param {object} [reauth] - required when MFA is already enabled
+ * @param {string} [reauth.currentPassword]
+ * @param {string} [reauth.code] - a code from the CURRENT authenticator
+ * @returns {Promise<{ secret: string, qrCodeUrl: string, rotation: boolean }>}
+ * @throws {AppError} 404 no user; 409 MFA enabled and no re-authentication
+ *   given; 400 the re-authentication is wrong
+ */
+exports.setupMfa = async (userId, { currentPassword, code } = {}) => {
   const qrcode = require("qrcode");
 
   const dbUser = await Users.findByPk(userId);
@@ -908,49 +961,116 @@ exports.setupMfa = async (userId) => {
     throw new AppError(404, "User not found");
   }
 
-  // Generate a new secret
-  const secret = authenticator.generateSecret();
-  
-  // Create otpauth url
-  const otpauth = authenticator.keyuri(dbUser.email, "Callibrator", secret);
-  
-  // Generate QR Code data URL
+  const rotation = Boolean(dbUser.mfaEnabled);
+  if (rotation) {
+    if (!currentPassword || !code) {
+      throw new AppError(409, MFA_ALREADY_ENABLED);
+    }
+    // The password first: a wrong password must not burn the current code.
+    const passwordOk = await comparePassword(currentPassword, dbUser.password);
+    if (!passwordOk || !(await mfaService.consumeCode(dbUser, code))) {
+      logger.warn("MFA rotation refused: re-authentication failed", {
+        userId: dbUser.id,
+        reason: passwordOk ? "code" : "password",
+      });
+      throw new AppError(400, MFA_REAUTH_FAILED);
+    }
+  }
+
+  const secret = mfaService.createSecret();
+  const otpauth = mfaService.buildOtpauthUri(dbUser.email, secret);
   const qrCodeUrl = await qrcode.toDataURL(otpauth);
-  
-  // Save secret temporarily (we will only enable it if verified)
-  await dbUser.update({ mfaSecret: secret });
+
+  // PENDING only. `mfaSecret` — the live factor — is not touched here.
+  // Date.now(), the clock verifyMfaSetup measures the TTL with.
+  await dbUser.update({ mfaPendingSecret: secret, mfaPendingCreatedAt: new Date(Date.now()) });
 
   return {
     secret,
-    qrCodeUrl
+    qrCodeUrl,
+    rotation,
   };
 };
 
 // ------------------------------------------------------------------
 // VERIFY MFA SETUP
 // ------------------------------------------------------------------
-exports.verifyMfaSetup = async (userId, tokenCode) => {
-  const { authenticator } = require("otplib");
-  
+/**
+ * Confirm the pending secret with a code from it, and make it the live one.
+ *
+ * @param {string} userId - the authenticated caller
+ * @param {unknown} tokenCode - a code from the NEW authenticator
+ * @param {object} [context]
+ * @param {string|null} [context.ipAddress]
+ * @param {string|null} [context.userAgent]
+ * @returns {Promise<{ success: true, message: string }>}
+ */
+exports.verifyMfaSetup = async (userId, tokenCode, { ipAddress = null, userAgent = null } = {}) => {
   const dbUser = await Users.findByPk(userId);
   if (!dbUser) {
     throw new AppError(404, "User not found");
   }
-  
-  if (!dbUser.mfaSecret) {
+
+  const pending = dbUser.mfaPendingSecret;
+  if (!pending) {
     throw new AppError(400, "MFA setup has not been initiated");
   }
-
-  const isValid = authenticator.check(tokenCode, dbUser.mfaSecret);
-  if (!isValid) {
-    throw new AppError(400, "Invalid MFA code");
+  const issuedAt = dbUser.mfaPendingCreatedAt ? new Date(dbUser.mfaPendingCreatedAt).getTime() : 0;
+  if (Date.now() - issuedAt > MFA_PENDING_TTL_MS) {
+    await dbUser.update({ mfaPendingSecret: null, mfaPendingCreatedAt: null });
+    throw new AppError(400, "MFA setup has expired; start it again");
   }
 
-  await dbUser.update({ mfaEnabled: true });
+  const rotation = Boolean(dbUser.mfaEnabled);
+
+  await db.transaction(async (transaction) => {
+    // Consumed in the transaction: a rolled-back promotion does not burn it.
+    const isValid = await mfaService.consumeCode(dbUser, tokenCode, {
+      secret: pending,
+      transaction,
+    });
+    if (!isValid) {
+      throw new AppError(400, "Invalid MFA code");
+    }
+
+    await dbUser.update(
+      {
+        mfaSecret: pending,
+        mfaEnabled: true,
+        mfaPendingSecret: null,
+        mfaPendingCreatedAt: null,
+      },
+      { transaction },
+    );
+
+    if (!dbUser.tenantId) {
+      // audit_logs.tenant_id is NOT NULL; a tenantless principal (the
+      // platform super admin) has no trail to write into — as openLoginSession.
+      logger.error("MFA change not audited: the user has no tenant", {
+        userId: dbUser.id,
+        operation: rotation ? "MFA_ROTATE" : "MFA_ENABLE",
+      });
+      return;
+    }
+    await auditService.logAction(
+      {
+        tenantId: dbUser.tenantId,
+        userId: dbUser.id,
+        action: "UPDATE",
+        resourceType: "User",
+        resourceId: dbUser.id,
+        // Never the secret: audit_logs is permanent.
+        changes: { operation: rotation ? "MFA_ROTATE" : "MFA_ENABLE" },
+        ipAddress,
+        userAgent,
+      },
+      { transaction },
+    );
+  });
 
   return {
     success: true,
-    message: "MFA enabled successfully"
+    message: rotation ? "MFA authenticator replaced successfully" : "MFA enabled successfully",
   };
 };
 
@@ -959,8 +1079,10 @@ exports.verifyMfaSetup = async (userId, tokenCode) => {
 // ------------------------------------------------------------------
 exports.impersonateUser = async (superAdminId, targetTenantId, targetUserId, inputIp, inputUserAgent) => {
   // Validate caller is Super Admin
+  // A-109: LEFT. A caller whose role is gone is refused by the role-name
+  // check below (role null), not by a row that silently vanished.
   const superAdmin = await Users.findByPk(superAdminId, {
-    include: [{ model: Role, as: "role" }],
+    include: [{ model: Role, as: "role", required: false }],
   });
 
   if (!superAdmin || superAdmin.role?.name !== "SUPER_ADMIN" && superAdmin.role?.name !== "SUPERADMIN") {
@@ -970,7 +1092,10 @@ exports.impersonateUser = async (superAdminId, targetTenantId, targetUserId, inp
   // Find target user
   const targetUser = await Users.findOne({
     where: { id: targetUserId, tenantId: targetTenantId },
-    include: [{ model: Role, as: "role" }],
+    // A-109: LEFT. As an implicit INNER JOIN a user without a live role was
+    // "not found" — exactly the user support most needs to see as they see
+    // the app. The response's `role` is already null-safe.
+    include: [{ model: Role, as: "role", required: false }],
   });
 
   if (!targetUser) {

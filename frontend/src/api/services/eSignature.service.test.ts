@@ -26,17 +26,25 @@ describe("eSignatureService", () => {
   beforeEach(() => jest.clearAllMocks());
 
   describe("key pairs", () => {
-    it("unwraps data.keyPairs", async () => {
-      mockedApi.get.mockResolvedValueOnce(
-        envelope({ keyPairs: [{ id: "k1", label: "Signing key" }] }),
-      );
+    // A-113: the backend (eSignature.controller#getKeyPairs) answers
+    // success(res, rows, { total }, msg) — rows ARE `data`, `meta` a sibling.
+    it("reads the rows from data, with meta as a top-level sibling", async () => {
+      mockedApi.get.mockResolvedValueOnce({
+        ...envelope([{ id: "k1", label: "Signing key" }]),
+        meta: { total: 1 },
+      });
       const res = await eSignatureService.getKeyPairs();
       expect(mockedApi.get).toHaveBeenCalledWith(`${BASE}/key-pairs`);
-      expect(res).toHaveLength(1);
+      expect(res).toEqual([{ id: "k1", label: "Signing key" }]);
     });
 
     it("returns [] when the tenant has no key pairs", async () => {
-      mockedApi.get.mockResolvedValueOnce(envelope({ keyPairs: null }));
+      mockedApi.get.mockResolvedValueOnce({ ...envelope([]), meta: { total: 0 } });
+      await expect(eSignatureService.getKeyPairs()).resolves.toEqual([]);
+    });
+
+    it("returns [] when data is null", async () => {
+      mockedApi.get.mockResolvedValueOnce(envelope(null));
       await expect(eSignatureService.getKeyPairs()).resolves.toEqual([]);
     });
 
@@ -64,20 +72,64 @@ describe("eSignatureService", () => {
     });
   });
 
+  // A-91 — the signer view. The backend (eSignature.controller
+  // #getSignerWorkflows) answers success(res, rows, { total }, msg): rows ARE
+  // `data`, and `meta` is a top-level sibling — no wrapper key.
+  describe("signer view (A-91)", () => {
+    it("lists the caller's workflows from data itself", async () => {
+      mockedApi.get.mockResolvedValueOnce({
+        ...envelope([{ id: "w1", documentId: "d1", steps: [] }]),
+        meta: { total: 1 },
+      });
+      const res = await eSignatureService.getMyWorkflows();
+      expect(mockedApi.get).toHaveBeenCalledWith(`${BASE}/my-workflows`, { params: {} });
+      expect(res.map((w) => w.id)).toEqual(["w1"]);
+    });
+
+    it("passes stepStatus", async () => {
+      mockedApi.get.mockResolvedValueOnce({ ...envelope([]), meta: { total: 0 } });
+      await eSignatureService.getMyWorkflows("pending");
+      expect(mockedApi.get).toHaveBeenCalledWith(`${BASE}/my-workflows`, {
+        params: { stepStatus: "pending" },
+      });
+    });
+
+    it("an absent data is an empty list", async () => {
+      mockedApi.get.mockResolvedValueOnce(envelope(null));
+      expect(await eSignatureService.getMyWorkflows()).toEqual([]);
+    });
+
+    it("gets one workflow through the signer route", async () => {
+      mockedApi.get.mockResolvedValueOnce(envelope({ id: "w1", steps: [] }));
+      const wf = await eSignatureService.getMyWorkflow("w1");
+      expect(mockedApi.get).toHaveBeenCalledWith(`${BASE}/my-workflows/w1`);
+      expect(wf.id).toBe("w1");
+    });
+  });
+
   describe("workflows", () => {
-    it("unwraps data.workflows", async () => {
-      mockedApi.get.mockResolvedValueOnce(
-        envelope({ workflows: [{ id: "w1", documentId: "d1" }] }),
-      );
+    // A-106 — the backend's shape (eSignature.controller#getWorkflows,
+    // pinned in backend eSignature.envelope.a105a106.test.js): rows ARE
+    // `data`, the count in a top-level `meta`.
+    it("reads the rows from data, meta beside it", async () => {
+      mockedApi.get.mockResolvedValueOnce({
+        ...envelope([{ id: "w1", documentId: "d1" }]),
+        meta: { total: 1 },
+      });
       const res = await eSignatureService.getWorkflows();
       expect(mockedApi.get).toHaveBeenCalledWith(`${BASE}/workflows`, {
         params: {},
       });
-      expect(res[0].id).toBe("w1");
+      expect(res).toEqual([{ id: "w1", documentId: "d1" }]);
+    });
+
+    it("returns [] for an empty list", async () => {
+      mockedApi.get.mockResolvedValueOnce({ ...envelope([]), meta: { total: 0 } });
+      await expect(eSignatureService.getWorkflows()).resolves.toEqual([]);
     });
 
     it("passes a status filter", async () => {
-      mockedApi.get.mockResolvedValueOnce(envelope({ workflows: [] }));
+      mockedApi.get.mockResolvedValueOnce({ ...envelope([]), meta: { total: 0 } });
       await eSignatureService.getWorkflows("PENDING");
       expect(mockedApi.get).toHaveBeenCalledWith(`${BASE}/workflows`, {
         params: { status: "PENDING" },
@@ -165,10 +217,12 @@ describe("eSignatureService", () => {
   });
 
   describe("history", () => {
-    it("unwraps data.signatures and passes the backend's own filters", async () => {
-      mockedApi.get.mockResolvedValueOnce(
-        envelope({ signatures: [{ id: "s1" }] }),
-      );
+    // A-106 — rows ARE `data`, the count in a top-level `meta`.
+    it("reads the rows from data and passes the backend's own filters", async () => {
+      mockedApi.get.mockResolvedValueOnce({
+        ...envelope([{ id: "s1" }]),
+        meta: { total: 1 },
+      });
       const res = await eSignatureService.getSignatureHistory({
         userId: "u1",
         startDate: "2026-01-01",
@@ -176,11 +230,11 @@ describe("eSignatureService", () => {
       expect(mockedApi.get).toHaveBeenCalledWith(`${BASE}/history`, {
         params: { userId: "u1", startDate: "2026-01-01" },
       });
-      expect(res).toHaveLength(1);
+      expect(res).toEqual([{ id: "s1" }]);
     });
 
     it("returns [] when there is no history", async () => {
-      mockedApi.get.mockResolvedValueOnce(envelope({ signatures: null }));
+      mockedApi.get.mockResolvedValueOnce({ ...envelope([]), meta: { total: 0 } });
       await expect(eSignatureService.getSignatureHistory()).resolves.toEqual([]);
     });
   });

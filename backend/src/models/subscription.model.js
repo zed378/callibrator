@@ -6,7 +6,7 @@ module.exports = (sequelize) => {
       Subscription.belongsTo(models.Tenant, {
         foreignKey: "tenantId",
         as: "tenant",
-        onDelete: "CASCADE",
+        onDelete: "RESTRICT",
       });
       Subscription.hasMany(models.Invoice, {
         foreignKey: "subscriptionId",
@@ -30,6 +30,7 @@ module.exports = (sequelize) => {
           model: "tenants",
           key: "id",
         },
+        onDelete: "RESTRICT",
       },
       planId: {
         type: DataTypes.STRING,

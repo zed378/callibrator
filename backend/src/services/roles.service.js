@@ -14,6 +14,9 @@ const { get, set, del, delPattern, cacheKeys } = require("./redis.service");
 const { ROLE_LEVELS } = require("../constants");
 const auditService = require("./audit.service");
 const { db } = require("../config");
+// A-132: status-carrying errors are AppErrors, so production shows their
+// message (fileValidation.util#isExposableError). `statusCode` is kept too.
+const { AppError } = require("../utils/appError.util");
 
 /**
  * A-41 — a role or grant change decides who may do what, so each one writes
@@ -185,13 +188,13 @@ class RolesService {
   static async updateRole(id, { name, description, status }, actor = {}) {
     const role = await Role.findByPk(id);
     if (!role) {
-      const error = new Error("Role not found");
+      const error = new AppError(404, "Role not found");
       error.statusCode = 404;
       throw error;
     }
 
     if (role.is_system && status === "deleted") {
-      const error = new Error("System roles cannot be deleted");
+      const error = new AppError(403, "System roles cannot be deleted");
       error.statusCode = 403;
       throw error;
     }
@@ -228,7 +231,7 @@ class RolesService {
   static async deleteRole(id, actor = {}) {
     const role = await Role.findByPk(id);
     if (!role) {
-      const error = new Error("Role not found");
+      const error = new AppError(404, "Role not found");
       error.statusCode = 404;
       throw error;
     }
@@ -286,14 +289,14 @@ class RolesService {
   static async assignMenuToRole(roleId, menuGroupId, permissionType = "read", actor = {}) {
     const role = await Role.findByPk(roleId);
     if (!role) {
-      const error = new Error("Role not found");
+      const error = new AppError(404, "Role not found");
       error.statusCode = 404;
       throw error;
     }
 
     const menu = await MenuGroup.findByPk(menuGroupId);
     if (!menu) {
-      const error = new Error("Menu group not found");
+      const error = new AppError(404, "Menu group not found");
       error.statusCode = 404;
       throw error;
     }
@@ -588,20 +591,20 @@ class RolesService {
   static async assignRoleToUser(userId, roleId, actor = {}) {
     const user = await User.findByPk(userId);
     if (!user) {
-      const error = new Error("User not found");
+      const error = new AppError(404, "User not found");
       error.statusCode = 404;
       throw error;
     }
 
     const role = await Role.findByPk(roleId);
     if (!role) {
-      const error = new Error("Role not found");
+      const error = new AppError(404, "Role not found");
       error.statusCode = 404;
       throw error;
     }
 
     if (role.status !== "active") {
-      const error = new Error("Cannot assign inactive role");
+      const error = new AppError(400, "Cannot assign inactive role");
       error.statusCode = 400;
       throw error;
     }
@@ -632,7 +635,7 @@ class RolesService {
   static async removeRoleFromUser(userId, actor = {}) {
     const user = await User.findByPk(userId);
     if (!user) {
-      const error = new Error("User not found");
+      const error = new AppError(404, "User not found");
       error.statusCode = 404;
       throw error;
     }
@@ -754,7 +757,7 @@ class RolesService {
   static async updateMenu(id, data) {
     const menu = await MenuGroup.findByPk(id);
     if (!menu) {
-      const error = new Error("Menu group not found");
+      const error = new AppError(404, "Menu group not found");
       error.statusCode = 404;
       throw error;
     }
@@ -784,7 +787,7 @@ class RolesService {
   static async deleteMenu(id) {
     const menu = await MenuGroup.findByPk(id);
     if (!menu) {
-      const error = new Error("Menu group not found");
+      const error = new AppError(404, "Menu group not found");
       error.statusCode = 404;
       throw error;
     }

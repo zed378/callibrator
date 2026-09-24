@@ -91,7 +91,6 @@ const { logger } = require("../../middlewares/activityLog.middleware");
 const { hashPassword } = require("../../utils/password.util");
 const { deleteUpload } = require("../../utils/upload.util");
 const { validate: validateInput } = require("../../validators/user.validator");
-const { AppError } = require("../../utils/appError.util");
 
 const {
   fetchUsers,
@@ -100,8 +99,6 @@ const {
   userRoleUpdate,
   userCreate,
   editUser,
-  updateUserAvatar,
-  removeUserAvatar,
   deleteUser,
 } = require("../../services/user.service");
 
@@ -235,7 +232,11 @@ describe("user.service - branch & error coverage", () => {
 
       const where = Users.findAndCountAll.mock.calls[0][0].where;
       expect(where.tenantId).toBe("t1");
-      expect(where.roleId).toEqual({ [Op.notIn]: ["super-admin-uuid"] });
+      // A-109: a user with NO role is kept — `role_id NOT IN (...)` alone is
+      // NULL for them and dropped them from the list.
+      expect(where[Op.and]).toContainEqual({
+        [Op.or]: [{ roleId: null }, { roleId: { [Op.notIn]: ["super-admin-uuid"] } }],
+      });
     });
 
     it("should resolve a role passed as a string via Roles.findOne", async () => {
@@ -309,8 +310,10 @@ describe("user.service - branch & error coverage", () => {
       await fetchUsers({ tenantId: "t1", roleFilter: "super-admin-uuid" });
 
       // The notIn guard stays in place rather than being replaced by the filter
-      expect(Users.findAndCountAll.mock.calls[0][0].where.roleId).toEqual({
-        [Op.notIn]: ["super-admin-uuid"],
+      const where = Users.findAndCountAll.mock.calls[0][0].where;
+      expect(where.roleId).toBeUndefined();
+      expect(where[Op.and]).toContainEqual({
+        [Op.or]: [{ roleId: null }, { roleId: { [Op.notIn]: ["super-admin-uuid"] } }],
       });
     });
 
@@ -321,6 +324,8 @@ describe("user.service - branch & error coverage", () => {
       await fetchUsers({ tenantId: "t1" });
 
       expect(Users.findAndCountAll.mock.calls[0][0].where[Op.and]).toEqual([
+        // A-109: the super-admin guard, NULL-safe.
+        { [Op.or]: [{ roleId: null }, { roleId: { [Op.notIn]: ["super-admin-uuid"] } }] },
         { username: { [Op.ne]: "sys" } },
         { email: { [Op.ne]: "sys@mail.com" } },
       ]);
@@ -332,7 +337,10 @@ describe("user.service - branch & error coverage", () => {
 
       await fetchUsers({ tenantId: "t1", includeSystemAccount: true });
 
-      expect(Users.findAndCountAll.mock.calls[0][0].where[Op.and]).toBeUndefined();
+      // Only the super-admin guard (A-109) — no system-account exclusion.
+      expect(Users.findAndCountAll.mock.calls[0][0].where[Op.and]).toEqual([
+        { [Op.or]: [{ roleId: null }, { roleId: { [Op.notIn]: ["super-admin-uuid"] } }] },
+      ]);
     });
 
     it("should clamp limit to MAX_LIMIT and floor page at 1", async () => {
@@ -751,7 +759,7 @@ describe("user.service - branch & error coverage", () => {
           password: "$2b$hashed",
           role_id: "role-1",
           status: "ACTIVE", // defaulted
-          is_email_verified: true,
+          isEmailVerified: true, // the attribute; `is_email_verified` was silently dropped
         }),
       );
     });
@@ -965,118 +973,9 @@ describe("user.service - branch & error coverage", () => {
     });
   });
 
-  // ==============================================================
-  // updateUserAvatar / removeUserAvatar
-  // ==============================================================
-  describe("updateUserAvatar", () => {
-    it("should rethrow the 404 AppError untouched when the user is missing", async () => {
-      Users.findByPk.mockResolvedValue(null);
-
-      const err = await catchErr(updateUserAvatar("nope", "a.png", "admin"));
-
-      expect(err).toBeInstanceOf(AppError);
-      expect(err.status).toBe(404);
-      expect(err.message).toBe("User not found");
-    });
-
-    it("should not delete the shared default avatar", async () => {
-      Users.findByPk.mockResolvedValue({
-        picture: "/uploads/profile/default.svg",
-        update: jest.fn().mockResolvedValue({}),
-      });
-
-      await updateUserAvatar("u1", "new.png", "admin");
-
-      expect(deleteUpload).not.toHaveBeenCalled();
-    });
-
-    it("should wrap an unexpected failure in a 500 AppError", async () => {
-      Users.findByPk.mockRejectedValue(new Error("db down"));
-
-      const err = await catchErr(updateUserAvatar("u1", "a.png", "admin"));
-
-      expect(err).toBeInstanceOf(AppError);
-      expect(err.status).toBe(500);
-      expect(err.message).toBe("Failed to update user avatar");
-      expect(logger.error).toHaveBeenCalledWith("Error updating user avatar", {
-        error: "db down",
-      });
-    });
-
-    it("should rethrow a plain error that already carries a status", async () => {
-      Users.findByPk.mockRejectedValue({ status: 409, message: "conflict" });
-
-      const err = await catchErr(updateUserAvatar("u1", "a.png", "admin"));
-
-      expect(err).toEqual({ status: 409, message: "conflict" });
-    });
-  });
-
-  describe("removeUserAvatar", () => {
-    it("should rethrow the 404 AppError untouched when the user is missing", async () => {
-      Users.findByPk.mockResolvedValue(null);
-
-      const err = await catchErr(removeUserAvatar("nope", "admin"));
-
-      expect(err).toBeInstanceOf(AppError);
-      expect(err.status).toBe(404);
-    });
-
-    it("should still reset the picture when deleting the old file fails", async () => {
-      const user = {
-        picture: "/uploads/profile/old.png",
-        update: jest.fn().mockResolvedValue({}),
-      };
-      Users.findByPk.mockResolvedValue(user);
-      deleteUpload.mockRejectedValue(new Error("ENOENT"));
-
-      const result = await removeUserAvatar("u1", "admin");
-
-      expect(logger.warn).toHaveBeenCalledWith(
-        "Failed to delete avatar file: old.png",
-        expect.any(Error),
-      );
-      expect(user.update).toHaveBeenCalledWith(
-        { avatarUrl: "default.svg" },
-        { silent: true },
-      );
-      expect(result.data).toEqual({ avatar: "default.svg" });
-    });
-
-    it("should not delete the shared default avatar but still reset it", async () => {
-      const user = {
-        picture: "default.svg",
-        update: jest.fn().mockResolvedValue({}),
-      };
-      Users.findByPk.mockResolvedValue(user);
-
-      await removeUserAvatar("u1", "admin");
-
-      expect(deleteUpload).not.toHaveBeenCalled();
-      expect(user.update).toHaveBeenCalledWith(
-        { avatarUrl: "default.svg" },
-        { silent: true },
-      );
-    });
-
-    it("should wrap an unexpected failure in a 500 AppError", async () => {
-      Users.findByPk.mockRejectedValue(new Error("db down"));
-
-      const err = await catchErr(removeUserAvatar("u1", "admin"));
-
-      expect(err).toBeInstanceOf(AppError);
-      expect(err.status).toBe(500);
-      expect(err.message).toBe("Failed to remove user avatar");
-    });
-
-    it("should rethrow a plain error that already carries a status", async () => {
-      Users.findByPk.mockRejectedValue({ status: 400, message: "bad" });
-
-      const err = await catchErr(removeUserAvatar("u1", "admin"));
-
-      expect(err).toEqual({ status: 400, message: "bad" });
-    });
-  });
+  // updateUserAvatar / removeUserAvatar: A-96 rewrote both (audit row inside
+  // the transaction, old file deleted after the commit). Their tests are in
+  // user.avatar.a96.test.js; the ones here asserted the pre-A-96 order.
 
   // ==============================================================
   // deleteUser

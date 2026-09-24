@@ -6,7 +6,7 @@ module.exports = (sequelize) => {
       MaintenanceWorkOrder.belongsTo(models.Tenant, {
         foreignKey: "tenantId",
         as: "tenant",
-        onDelete: "CASCADE",
+        onDelete: "RESTRICT",
       });
       MaintenanceWorkOrder.belongsTo(models.CalibrationDevice, {
         foreignKey: "deviceId",
@@ -40,6 +40,7 @@ module.exports = (sequelize) => {
           model: "tenants",
           key: "id",
         },
+        onDelete: "RESTRICT",
       },
       deviceId: {
         type: DataTypes.UUID,

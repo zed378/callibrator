@@ -76,6 +76,9 @@ describe("attachment Controller", () => {
           resourceType: "device",
           resourceId: "device-123",
           uploadedBy: VALID_USER_ID,
+          // A-117: for the CREATE audit row (req.get is a stub here).
+          ipAddress: req.ip,
+          userAgent: req.get("user-agent"),
         },
       );
       expect(res.status).toHaveBeenCalledWith(201);
@@ -100,6 +103,9 @@ describe("attachment Controller", () => {
           resourceType: undefined,
           resourceId: undefined,
           uploadedBy: VALID_USER_ID,
+          // A-117: for the CREATE audit row (req.get is a stub here).
+          ipAddress: req.ip,
+          userAgent: req.get("user-agent"),
         },
       );
     });

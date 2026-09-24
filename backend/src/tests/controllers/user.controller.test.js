@@ -301,10 +301,13 @@ describe("user Controller", () => {
 
       await userController.uploadUserAvatar(req, res, next);
 
+      // A-96: the service gets the authenticated actor for its audit row
+      // and its own tenant check.
       expect(userService.updateUserAvatar).toHaveBeenCalledWith(
         VALID_USER_ID,
         "avatar-123.jpg",
         VALID_USER_ID,
+        expect.objectContaining({ actorTenantId: VALID_TENANT_ID, actorIsSuperAdmin: false }),
       );
       expect(success).toHaveBeenCalled();
     });
@@ -331,6 +334,7 @@ describe("user Controller", () => {
       expect(userService.removeUserAvatar).toHaveBeenCalledWith(
         VALID_USER_ID,
         VALID_USER_ID,
+        expect.objectContaining({ actorTenantId: VALID_TENANT_ID, actorIsSuperAdmin: false }),
       );
       expect(success).toHaveBeenCalled();
     });

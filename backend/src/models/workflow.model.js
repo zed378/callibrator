@@ -6,7 +6,7 @@ module.exports = (sequelize) => {
       Workflow.belongsTo(models.Tenant, {
         foreignKey: "tenantId",
         as: "tenant",
-        onDelete: "CASCADE",
+        onDelete: "RESTRICT",
       });
       Workflow.hasMany(models.WorkflowStep, {
         foreignKey: "workflowId",
@@ -35,6 +35,7 @@ module.exports = (sequelize) => {
           model: "tenants",
           key: "id",
         },
+        onDelete: "RESTRICT",
       },
       name: {
         type: DataTypes.STRING,

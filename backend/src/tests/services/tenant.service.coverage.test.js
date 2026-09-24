@@ -596,9 +596,9 @@ describe("tenant.service - branch & error coverage", () => {
     });
 
     it("should surface an error rather than cache a null tenant when the insert yields no row", async () => {
-      // transformTenant() tolerates a falsy tenant (returns null), but the
-      // caching step immediately dereferences tenant.id -- and the commit has
-      // already happened by the time that surfaces.
+      // A-95: the audit row (inside the transaction) dereferences tenant.id,
+      // so a null row now surfaces BEFORE the commit and rolls back — it used
+      // to surface in the caching step, after the commit.
       const tx = mockTransaction();
       db.transaction.mockResolvedValue(tx);
       Tenants.create.mockResolvedValue(null);
@@ -608,8 +608,8 @@ describe("tenant.service - branch & error coverage", () => {
       );
 
       expect(err).toBeInstanceOf(TypeError);
-      expect(tx.commit).toHaveBeenCalled();
-      expect(tx.rollback).not.toHaveBeenCalled();
+      expect(tx.commit).not.toHaveBeenCalled();
+      expect(tx.rollback).toHaveBeenCalled();
       expect(set).not.toHaveBeenCalled();
       expect(delPattern).not.toHaveBeenCalled();
     });
@@ -1063,6 +1063,56 @@ describe("tenant.service - branch & error coverage", () => {
   // ==============================================================
   // deleteTenant
   // ==============================================================
+  // A-95: a caller that passes no actor (a script, a job) still writes a row —
+  // with a null actor, never undefined. A null tenant fails the NOT NULL
+  // insert and rolls the change back, which is the fail-closed intent.
+  describe("A-95 — audit rows without an actor", () => {
+    it("createTenant with no createdBy and no actor audits userId/tenantId null", async () => {
+      await tenantService.createTenant({ name: "New", code: "NEW" });
+
+      expect(auditService.logAction).toHaveBeenCalledWith(
+        expect.objectContaining({ action: "CREATE", userId: null, tenantId: null }),
+        expect.objectContaining({ transaction: expect.any(Object) }),
+      );
+    });
+
+    it("deleteTenant with no actor audits userId/tenantId null", async () => {
+      Tenants.findByPk.mockResolvedValue(makeTenant());
+
+      await tenantService.deleteTenant("t-1");
+
+      expect(auditService.logAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "DELETE",
+          resourceId: "t-1",
+          userId: null,
+          tenantId: null,
+          ipAddress: null,
+          userAgent: null,
+        }),
+        expect.objectContaining({ transaction: expect.any(Object) }),
+      );
+    });
+
+    it("deleteTenant carries the actor's IP and user agent into the row", async () => {
+      Tenants.findByPk.mockResolvedValue(makeTenant());
+
+      await tenantService.deleteTenant("t-1", {
+        userId: "u-1",
+        tenantId: "home-1",
+        ipAddress: "10.1.1.1",
+        userAgent: "ua",
+      });
+
+      expect(auditService.logAction.mock.calls[0][0]).toMatchObject({
+        userId: "u-1",
+        tenantId: "home-1",
+        ipAddress: "10.1.1.1",
+        userAgent: "ua",
+      });
+    });
+  });
+
   describe("deleteTenant", () => {
     it("should throw a 404 AppError and roll back when the tenant is missing", async () => {
       const tx = mockTransaction();

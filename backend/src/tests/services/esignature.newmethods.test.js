@@ -5,8 +5,16 @@
  * getSignatureHistory.
  */
 
+// A-104 — updateWorkflow/deleteWorkflow run in a transaction and write an
+// audit row through audit.service, which reads AuditLog from the models
+// barrel. The transaction is a pass-through here; the commit/rollback
+// contract is pinned against the auditLedger fixture in
+// esignature.workflowAudit.a104.test.js.
+const mockAuditCreate = jest.fn(async (values) => ({ id: "audit-1", ...values }));
+
 const load = (models) => {
-  jest.doMock("../../models", () => models);
+  jest.doMock("../../models", () => ({ AuditLog: { create: mockAuditCreate }, ...models }));
+  jest.doMock("../../config", () => ({ db: { transaction: async (cb) => cb("TX") } }));
   jest.resetModules();
   return require("../../services/eSignature.service");
 };
@@ -155,10 +163,18 @@ describe("eSignature.service — implemented workflow/key methods", () => {
         documentId: "evil", // must be ignored
       });
 
-      expect(update).toHaveBeenCalledWith({
-        subject: "New subject",
-        message: "hi",
-        expiresAt: "2026-12-31",
+      expect(update).toHaveBeenCalledWith(
+        {
+          subject: "New subject",
+          message: "hi",
+          expiresAt: "2026-12-31",
+        },
+        { transaction: "TX" },
+      );
+      expect(findOne).toHaveBeenCalledWith({
+        where: { id: "wf-1", tenantId: "tenant-1" },
+        transaction: "TX",
+        lock: true,
       });
     });
 
@@ -172,14 +188,17 @@ describe("eSignature.service — implemented workflow/key methods", () => {
       expect(result).toBe(workflow);
     });
 
-    it("defaults to an empty patch when updates are omitted", async () => {
+    // A-104 — nothing to change is nothing written: no update, no audit row.
+    it("writes nothing, audit row included, when updates are omitted", async () => {
       const update = jest.fn().mockResolvedValue(true);
-      const findOne = jest.fn().mockResolvedValue({ status: "pending", update });
+      const workflow = { status: "pending", update };
+      const findOne = jest.fn().mockResolvedValue(workflow);
       const { updateWorkflow } = load({ SignatureWorkflow: { findOne } });
 
-      await updateWorkflow("wf-1", "tenant-1");
+      await expect(updateWorkflow("wf-1", "tenant-1")).resolves.toBe(workflow);
 
-      expect(update).toHaveBeenCalledWith({});
+      expect(update).not.toHaveBeenCalled();
+      expect(mockAuditCreate).not.toHaveBeenCalled();
     });
 
     it("throws 404 when the workflow is absent", async () => {
@@ -228,7 +247,7 @@ describe("eSignature.service — implemented workflow/key methods", () => {
 
       const result = await deleteWorkflow("wf-1", "tenant-1");
 
-      expect(destroy).toHaveBeenCalled();
+      expect(destroy).toHaveBeenCalledWith({ transaction: "TX" });
       expect(result).toEqual({ success: true });
     });
 

@@ -12,6 +12,7 @@ const {
   forbidden,
   paginated,
   login,
+  sendResult,
 } = require("../../utils/response.util");
 
 describe("response utils", () => {
@@ -310,6 +311,49 @@ describe("response utils", () => {
       expect(result.page).toBe(1);
       expect(result.limit).toBe(10);
       expect(result.total).toBe(3);
+    });
+  });
+  // A-103 — a service result goes down the path its status belongs on.
+  describe("sendResult", () => {
+    it("sends a 2xx result as a success envelope at its own status", () => {
+      sendResult(res, { success: true, status: 201, message: "Created", data: { id: "1" } });
+
+      expect(res.status).toHaveBeenCalledWith(201);
+      expect(jsonCalls[0]).toEqual({ success: true, status: 201, message: "Created", data: { id: "1" } });
+    });
+
+    it("puts meta beside data, top level", () => {
+      sendResult(res, { success: true, status: 200, message: "ok", data: [1] }, { total: 1 });
+
+      expect(jsonCalls[0]).toEqual({ success: true, status: 200, message: "ok", data: [1], meta: { total: 1 } });
+    });
+
+    it("defaults a result with no status or message to 200 / 'success'", () => {
+      sendResult(res, { data: null });
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(jsonCalls[0]).toMatchObject({ success: true, status: 200, message: "success" });
+    });
+
+    it("sends a 404 result as an error envelope — success: false, data: null", () => {
+      sendResult(res, { success: false, status: 404, message: "Certificate not found", data: { leaked: true } }, { total: 9 });
+
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(jsonCalls[0]).toEqual({ success: false, status: 404, message: "Certificate not found", data: null });
+    });
+
+    it("sends a 4xx even when the service mislabels it success: true (tenant.service does)", () => {
+      sendResult(res, { success: true, status: 404, message: "Tenant not found", data: null });
+
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(jsonCalls[0].success).toBe(false);
+    });
+
+    it("answers a contradictory success: false with a 2xx status as a 500", () => {
+      sendResult(res, { success: false, status: 200, data: null });
+
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(jsonCalls[0]).toMatchObject({ success: false, status: 500, message: "Request failed" });
     });
   });
 });

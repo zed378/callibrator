@@ -448,34 +448,56 @@ exports.getUserRolesAcrossTenants = async (userId) => {
   const { User, Role, Tenant } = require("../models");
 
   try {
+    // A-110: the associations are `role` and `tenant` (user.model.js). The
+    // former "Role"/"Tenant" aliases made every call throw an eager-loading
+    // error, which the catch below turned into [] — the endpoint answered
+    // "no roles" for every user and nothing ever reported why.
+    //
+    // LEFT JOINs (A-90): Role and Tenant have a defaultScope `where`, so an
+    // include without `required: false` is INNER and drops the user whose role
+    // or tenant was soft-deleted. The mapping reads a missing one as null.
+    //
+    // The Role attribute is `roleLevel` (column role_level): "level" is not a
+    // column, and asking for it would fail in PostgreSQL the moment the alias
+    // fix let the query run. The answer keeps its `level` key.
+    //
+    // Only the columns the answer needs: the default selected every user
+    // column, password hash and MFA secret included.
     const users = await User.findAll({
       where: { id: userId },
+      attributes: ["id", "tenantId"],
       include: [
         {
           model: Role,
-          as: "Role",
-          attributes: ["id", "name", "level"],
+          as: "role",
+          attributes: ["id", "name", "roleLevel"],
+          required: false,
         },
         {
           model: Tenant,
-          as: "Tenant",
+          as: "tenant",
           attributes: ["id", "name", "code"],
+          required: false,
         },
       ],
     });
 
     return users.map((u) => ({
       tenantId: u.tenantId,
-      tenantName: u.Tenant?.name,
-      tenantCode: u.Tenant?.code,
-      role: u.Role,
+      tenantName: u.tenant?.name ?? null,
+      tenantCode: u.tenant?.code ?? null,
+      role: u.role
+        ? { id: u.role.id, name: u.role.name, level: u.role.roleLevel }
+        : null,
     }));
   } catch (err) {
+    // A failure is a failure, not an empty result: log it and answer 500, as
+    // this file's other role operations do (assignRoleToUserAcrossHierarchy).
     logger.error("Failed to get user roles", {
       userId,
       error: err.message,
     });
-    return [];
+    throw new AppError(500, "Failed to get user roles");
   }
 };
 

@@ -6,6 +6,43 @@ const { CalibrationDevice } = require("../models");
 const { logger } = require("../middlewares/activityLog.middleware");
 const { AppError } = require("../utils/appError.util");
 const { DEFAULT_LIMIT } = require("../constants");
+const auditService = require("./audit.service");
+const { db } = require("../config");
+
+/**
+ * A-133 — a device register entry is the anchor of every calibration record
+ * and certificate (ISO 17025 §6.4.13). Create, update, delete and bulk import
+ * write their audit row inside the SAME transaction as the change (the A-41
+ * rule, MEMORY/specs/A-41-audit-inside-transaction.md): a rollback takes the
+ * row with it, and a failed audit insert (re-thrown by logAction) rolls the
+ * change back. The impersonator, when there is one, is added by logAction
+ * from the request context (F-8).
+ *
+ * @param {object} transaction
+ * @param {string} tenantId
+ * @param {string|null} resourceId - null for a bulk import (many devices)
+ * @param {"CREATE"|"UPDATE"|"DELETE"} action
+ * @param {object} changes
+ * @param {{userId?: string|null, ipAddress?: string|null, userAgent?: string|null}} actor
+ */
+const auditDevice = (transaction, tenantId, resourceId, action, changes, actor) =>
+  auditService.logAction(
+    {
+      tenantId,
+      userId: actor.userId || null,
+      action,
+      resourceType: "CalibrationDevice",
+      resourceId,
+      changes,
+      ipAddress: actor.ipAddress || null,
+      userAgent: actor.userAgent || null,
+    },
+    { transaction },
+  );
+
+/** The values of `device` for the keys in `changes` — the audit row's `before`. */
+const beforeOf = (device, changes) =>
+  Object.fromEntries(Object.keys(changes).map((key) => [key, device[key] ?? null]));
 
 // ==========================================
 // VALIDATION HELPERS
@@ -28,6 +65,99 @@ const validate = (data, schema) => {
   }
   return value;
 };
+
+// ==========================================
+// SERIAL-NUMBER CONFLICTS (A-92, ADR-049)
+// ==========================================
+//
+// `calibration_devices` carries UNIQUE (tenant_id, serial_number) — migration
+// 0026. The index covers SOFT-DELETED rows (a soft delete only sets
+// `isDeleted`), so a serial held by a deleted device is still taken. The model's
+// defaultScope hides those rows, so a duplicate check through it missed them and
+// the insert failed on the index with a 500.
+//
+// Decided behaviour: a serial held by a deleted device is a 409 that says so.
+// It is NOT silently restored: a create that resurrected the old row would hand
+// back an old id with that device's calibration history attached, overwrite its
+// fields without an audit trail of the restore, and turn a "register" into a
+// "restore" the caller never asked for. No code path restores a device
+// (`restoreStatic` has no route), so the message does not promise one.
+//
+// The index is per tenant, so a violation is always in the caller's own tenant:
+// answering it with a 409 discloses nothing about another tenant.
+
+/** The composite unique index created by migration 0026. */
+const SERIAL_UNIQUE_INDEX = "calibration_devices_tenant_id_serial_number_unique";
+
+/**
+ * An empty serial is "no serial". The validator allows "" (and trims "  " to
+ * ""), and "" is not NULL — two serial-less devices stored as "" collided on the
+ * unique index, where two NULLs never do.
+ *
+ * @param {object} validated - validated input; `serialNumber` is normalised in place
+ */
+const normaliseSerial = (validated) => {
+  if (validated.serialNumber === "") {
+    validated.serialNumber = null;
+  }
+};
+
+/**
+ * The device in `tenantId` holding `serialNumber`, deleted or not.
+ * `unscoped()` drops the defaultScope's `isDeleted = false`; `paranoid: false`
+ * sees a row destroyed rather than soft-deleted. Both matter because the unique
+ * index covers every row. The tenant predicate is explicit, and the global
+ * tenant hooks still apply (they are hooks, not a scope).
+ *
+ * @param {string} tenantId
+ * @param {string} serialNumber
+ * @returns {Promise<{id: string, isDeleted: boolean, deletedAt?: Date}|null>}
+ */
+const findSerialHolder = (tenantId, serialNumber) =>
+  CalibrationDevice.unscoped().findOne({
+    where: { tenantId, serialNumber },
+    attributes: ["id", "isDeleted", "deletedAt"],
+    paranoid: false,
+  });
+
+/**
+ * The 409 for a serial number already held in the tenant, explaining which
+ * kind of device holds it and what the caller can do.
+ *
+ * @param {string} serialNumber
+ * @param {{isDeleted?: boolean, deletedAt?: Date}|null} holder - null when unknown (a lost race)
+ * @returns {{success: false, status: 409, message: string, data: null}}
+ */
+const serialConflict = (serialNumber, holder) => {
+  let message;
+  if (holder && (holder.isDeleted || holder.deletedAt)) {
+    message =
+      `Serial number "${serialNumber}" is held by a deleted calibration device in this organisation. ` +
+      "A serial number stays reserved after its device is deleted, so the deleted device's " +
+      "calibration history stays attributable to it. Ask an administrator to restore that device " +
+      "(restoring is not available in the application), or register this device with a different serial number.";
+  } else {
+    message =
+      `A calibration device with serial number "${serialNumber}" already exists in this organisation. ` +
+      "Serial numbers are unique per organisation — edit that device, or use a different serial number.";
+  }
+  return { success: false, status: 409, message, data: null };
+};
+
+/**
+ * Whether `error` is a violation of the per-tenant serial unique index — the
+ * backstop when a concurrent request registered the same serial between the
+ * check and the write. Any other unique violation (`iot_device_token` is
+ * GLOBALLY unique) is not claimed here and propagates unchanged.
+ *
+ * @param {Error & {name?: string, parent?: {constraint?: string}, fields?: object}} error
+ * @returns {boolean}
+ */
+const isSerialUniqueViolation = (error) =>
+  error.name === "SequelizeUniqueConstraintError" &&
+  (error.parent?.constraint === SERIAL_UNIQUE_INDEX ||
+    // UniqueConstraintError always carries `fields` (`{}` when none were parsed)
+    Object.hasOwn(error.fields, "serial_number"));
 
 // ==========================================
 // SERVICE METHODS
@@ -157,7 +287,7 @@ exports.fetchSpecificCalibrationDevice = async (
 /**
  * Create a new calibration device
  */
-exports.createCalibrationDevice = async (tenantId, inputData) => {
+exports.createCalibrationDevice = async (tenantId, inputData, actor = {}) => {
   try {
     const validated = validate(
       inputData,
@@ -165,30 +295,39 @@ exports.createCalibrationDevice = async (tenantId, inputData) => {
         .createCalibrationDeviceSchema,
     );
 
-    // Check for duplicate serial number (only when one is supplied — a null
-    // serialNumber must not be used as a WHERE parameter).
-    const existing = validated.serialNumber
-      ? await CalibrationDevice.findOne({
-          where: {
-            tenantId,
-            serialNumber: validated.serialNumber,
-          },
-        })
+    normaliseSerial(validated);
+
+    // Check for a duplicate serial number (only when one is supplied — a null
+    // serialNumber must not be used as a WHERE parameter). Deleted devices
+    // count: the unique index covers them (A-92).
+    const holder = validated.serialNumber
+      ? await findSerialHolder(tenantId, validated.serialNumber)
       : null;
 
-    if (existing) {
-      return {
-        success: false,
-        status: 409,
-        message: "Calibration device with this serial number already exists",
-        data: null,
-      };
+    if (holder) {
+      return serialConflict(validated.serialNumber, holder);
     }
 
-    const device = await CalibrationDevice.create({
-      ...validated,
-      tenantId,
-    });
+    let device;
+    try {
+      device = await db.transaction(async (transaction) => {
+        const created = await CalibrationDevice.create(
+          { ...validated, tenantId },
+          { transaction },
+        );
+        await auditDevice(transaction, tenantId, created.id, "CREATE", { before: {}, after: validated }, actor);
+        return created;
+      });
+    } catch (error) {
+      // A concurrent request registered the serial after the check above.
+      if (isSerialUniqueViolation(error)) {
+        return serialConflict(
+          validated.serialNumber,
+          await findSerialHolder(tenantId, validated.serialNumber),
+        );
+      }
+      throw error;
+    }
 
     return {
       success: true,
@@ -209,6 +348,7 @@ exports.updateCalibrationDevice = async (
   tenantId,
   calibrationDeviceId,
   inputData,
+  actor = {},
 ) => {
   try {
     const validated = validate(
@@ -230,7 +370,36 @@ exports.updateCalibrationDevice = async (
       };
     }
 
-    await device.update(validated);
+    normaliseSerial(validated);
+
+    // A serial another device of the tenant holds — live or deleted — is a
+    // 409, not a 500 from the unique index (A-92). Keeping the device's own
+    // serial is not a conflict.
+    const changesSerial =
+      validated.serialNumber && validated.serialNumber !== device.serialNumber;
+    if (changesSerial) {
+      const holder = await findSerialHolder(tenantId, validated.serialNumber);
+      if (holder && holder.id !== device.id) {
+        return serialConflict(validated.serialNumber, holder);
+      }
+    }
+
+    try {
+      const before = beforeOf(device, validated);
+      await db.transaction(async (transaction) => {
+        await device.update(validated, { transaction });
+        await auditDevice(transaction, tenantId, device.id, "UPDATE", { before, after: validated }, actor);
+      });
+    } catch (error) {
+      // A concurrent request took the serial after the check above.
+      if (isSerialUniqueViolation(error)) {
+        return serialConflict(
+          validated.serialNumber,
+          await findSerialHolder(tenantId, validated.serialNumber),
+        );
+      }
+      throw error;
+    }
 
     return {
       success: true,
@@ -247,7 +416,7 @@ exports.updateCalibrationDevice = async (
 /**
  * Soft-delete a calibration device
  */
-exports.deleteCalibrationDevice = async (tenantId, calibrationDeviceId) => {
+exports.deleteCalibrationDevice = async (tenantId, calibrationDeviceId, actor = {}) => {
   try {
     const device = await CalibrationDevice.findOne({
       where: { id: calibrationDeviceId, tenantId },
@@ -262,7 +431,19 @@ exports.deleteCalibrationDevice = async (tenantId, calibrationDeviceId) => {
       };
     }
 
-    await device.softDelete();
+    // softDelete() takes no options; it joins this transaction through
+    // Sequelize CLS (config/index.js `useCLS`), as certificate.approve() does.
+    await db.transaction(async (transaction) => {
+      await device.softDelete();
+      await auditDevice(
+        transaction,
+        tenantId,
+        device.id,
+        "DELETE",
+        { before: { isDeleted: false }, after: { isDeleted: true } },
+        actor,
+      );
+    });
 
     return {
       success: true,
@@ -329,7 +510,7 @@ const parseCSV = (filePath) => {
 /**
  * Bulk import calibration devices from a CSV file
  */
-exports.bulkImportCalibrationDevices = async (tenantId, csvFilePath) => {
+exports.bulkImportCalibrationDevices = async (tenantId, csvFilePath, actor = {}) => {
   try {
     const parsedLines = parseCSV(csvFilePath);
     if (parsedLines.length < 2) {
@@ -349,12 +530,21 @@ exports.bulkImportCalibrationDevices = async (tenantId, csvFilePath) => {
     const headers = parsedLines[0].map((h) => h.toLowerCase().trim());
     const dataRows = parsedLines.slice(1);
 
-    const existingDevices = await CalibrationDevice.findAll({
+    // Every serial the tenant holds, DELETED devices included: the unique
+    // index (tenant_id, serial_number) covers them, so a row re-using one
+    // failed the whole bulkCreate with a 500 (A-92). Same lookup rules as
+    // findSerialHolder: unscoped (no isDeleted filter), paranoid off, tenant
+    // predicate explicit.
+    const existingDevices = await CalibrationDevice.unscoped().findAll({
       where: { tenantId },
-      attributes: ["serialNumber"],
+      attributes: ["serialNumber", "isDeleted", "deletedAt"],
+      paranoid: false,
     });
-    const existingSerialNumbers = new Set(
-      existingDevices.map((d) => d.serialNumber).filter(Boolean),
+    /** serial → true when only a deleted device holds it */
+    const existingSerialNumbers = new Map(
+      existingDevices
+        .filter((d) => d.serialNumber)
+        .map((d) => [d.serialNumber, Boolean(d.isDeleted || d.deletedAt)]),
     );
 
     const processedSerialNumbers = new Set();
@@ -412,7 +602,10 @@ exports.bulkImportCalibrationDevices = async (tenantId, csvFilePath) => {
             errors: [
               {
                 field: "serialNumber",
-                message: `Duplicate serial number: ${sn}`,
+                message: existingSerialNumbers.get(sn)
+                  ? `Duplicate serial number: ${sn} is held by a deleted device in this organisation. ` +
+                    "Ask an administrator to restore it, or use a different serial number."
+                  : `Duplicate serial number: ${sn}`,
               },
             ],
           });
@@ -443,7 +636,44 @@ exports.bulkImportCalibrationDevices = async (tenantId, csvFilePath) => {
     }
 
     if (toInsert.length > 0) {
-      await CalibrationDevice.bulkCreate(toInsert);
+      try {
+        // One INSERT and ONE audit row summarising the import (counts and the
+        // ids created), in one transaction: all of it, or none of it.
+        await db.transaction(async (transaction) => {
+          const created = await CalibrationDevice.bulkCreate(toInsert, { transaction });
+          await auditDevice(
+            transaction,
+            tenantId,
+            null,
+            "CREATE",
+            {
+              operation: "bulk_import",
+              after: {
+                successCount: created.length,
+                failedCount: errors.length,
+                totalCount: created.length + errors.length,
+                ids: created.map((d) => d.id),
+              },
+            },
+            actor,
+          );
+        });
+      } catch (error) {
+        // A concurrent request registered one of these serials after the
+        // lookup above. bulkCreate is one INSERT statement, so NOTHING was
+        // written — say so, rather than a 500 or a partial count.
+        if (isSerialUniqueViolation(error)) {
+          return {
+            success: false,
+            status: 409,
+            message:
+              "Bulk import was not applied: a serial number in the file was registered in this " +
+              "organisation while the import ran. No device was imported — upload the file again.",
+            data: null,
+          };
+        }
+        throw error;
+      }
     }
 
     return {

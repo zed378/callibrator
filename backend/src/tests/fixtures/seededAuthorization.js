@@ -105,13 +105,13 @@ const createSeededAuthorization = () => {
             permissionType: g.permissionType,
             menu: menu
               ? {
-                  id: menu.id,
-                  name: menu.name,
-                  slug: menu.slug,
-                  children: menuGroups
-                    .filter((c) => c.parentId === menu.id)
-                    .map((c) => ({ name: c.name, slug: c.slug })),
-                }
+                id: menu.id,
+                name: menu.name,
+                slug: menu.slug,
+                children: menuGroups
+                  .filter((c) => c.parentId === menu.id)
+                  .map((c) => ({ name: c.name, slug: c.slug })),
+              }
               : null,
           };
         }),

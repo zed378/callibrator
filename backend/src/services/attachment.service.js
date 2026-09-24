@@ -74,6 +74,74 @@ const toPublic = (a) => ({
 });
 
 // ------------------------------------------------------------------
+// LINK TARGET (A-97)
+// ------------------------------------------------------------------
+
+/**
+ * A-97. The resource types an attachment may be LINKED to (a `resourceId`),
+ * keyed by lowercased `resourceType`, with the model that holds the record.
+ * The keys are the values the frontend sends (UploadAttachmentModal:
+ * device / certificate / workorder / calibration; the kanban card modal:
+ * KanbanCard) plus their model names. Every model here carries `tenantId`.
+ *
+ * Any other type — `generic`, the CMS `post` (posts are platform content, not
+ * a tenant's record) — is a standalone upload and may not carry a resourceId.
+ */
+const LINKABLE_RESOURCES = Object.freeze({
+  certificate: "Certificate",
+  device: "CalibrationDevice",
+  calibrationdevice: "CalibrationDevice",
+  calibration: "CalibrationRecord",
+  calibrationrecord: "CalibrationRecord",
+  workorder: "MaintenanceWorkOrder",
+  maintenanceworkorder: "MaintenanceWorkOrder",
+  kanbancard: "KanbanCard",
+});
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * A-97. Refuse a `resourceId` that is not a live record of the caller's tenant
+ * for its `resourceType`. It used to be stored as given: it could not cross
+ * tenants (the row's tenant is the principal's) but it could name another
+ * tenant's record, a deleted one, or nothing — and deleteAttachment follows a
+ * certificate link to decide whether evidence is locked.
+ *
+ * Missing, soft-deleted and another tenant's are the SAME 404 (CLAUDE.md). The
+ * tenant predicate is explicit, not left to the global hooks.
+ *
+ * @param {string} tenantId - the principal's tenant
+ * @param {string|undefined} resourceType
+ * @param {string|undefined|null} resourceId
+ * @throws {AppError} 400 for a malformed id or an unlinkable type; 404 when no such record
+ */
+const assertLinkTarget = async (tenantId, resourceType, resourceId) => {
+  if (resourceId === undefined || resourceId === null || resourceId === "") {
+    return;
+  }
+  const modelName = LINKABLE_RESOURCES[String(resourceType || "generic").toLowerCase()];
+  if (!modelName) {
+    throw new AppError(
+      400,
+      `resourceType "${resourceType || "generic"}" cannot be linked to a record — omit resourceId for a standalone file, or use one of: ${Object.keys(LINKABLE_RESOURCES).join(", ")}`,
+    );
+  }
+  if (!UUID_RE.test(String(resourceId))) {
+    throw new AppError(400, "resourceId must be a UUID");
+  }
+
+  const Model = require("../models")[modelName];
+  const where = { id: resourceId, tenantId };
+  if (Model.rawAttributes && Model.rawAttributes.isDeleted) {
+    where.isDeleted = false;
+  }
+  const record = await Model.findOne({ where, attributes: ["id"] });
+  if (!record) {
+    throw new AppError(404, "Resource not found");
+  }
+};
+
+// ------------------------------------------------------------------
 // CREATE (from a multer-uploaded file)
 // ------------------------------------------------------------------
 exports.createAttachment = async (tenantId, file, meta = {}) => {
@@ -82,6 +150,15 @@ exports.createAttachment = async (tenantId, file, meta = {}) => {
   }
 
   const absPath = file.path;
+
+  // A-97: multer has already written the file. A refused link must not leave
+  // it on disk, or in the tenant's storage accounting.
+  try {
+    await assertLinkTarget(tenantId, meta.resourceType, meta.resourceId);
+  } catch (err) {
+    await fs.promises.unlink(absPath).catch(() => {});
+    throw err;
+  }
 
   // Virus-scan hook — reject + remove the file if flagged.
   const scan = await virusScan.scanFile(absPath);
@@ -92,18 +169,57 @@ exports.createAttachment = async (tenantId, file, meta = {}) => {
 
   const checksum = await computeChecksum(absPath);
 
-  const attachment = await Attachment.create({
-    tenantId,
-    resourceType: meta.resourceType || "generic",
-    resourceId: meta.resourceId || null,
-    fileName: file.filename,
-    originalName: file.originalname,
-    folder: ATTACH_FOLDER,
-    mimeType: file.mimetype,
-    size: file.size,
-    checksum,
-    uploadedBy: meta.uploadedBy || null,
-  });
+  // A-117: the row and its CREATE audit row commit together, or neither does
+  // — as deleteAttachment (A-28). An upload used to leave no audit row at
+  // all: evidence could be added to a certificate unattributably. If the
+  // transaction fails, the file multer wrote is removed too, so a refused
+  // upload leaves nothing on disk or in the tenant's storage accounting.
+  let attachment;
+  try {
+    attachment = await db.transaction(async (transaction) => {
+      const created = await Attachment.create(
+        {
+          tenantId,
+          resourceType: meta.resourceType || "generic",
+          resourceId: meta.resourceId || null,
+          fileName: file.filename,
+          originalName: file.originalname,
+          folder: ATTACH_FOLDER,
+          mimeType: file.mimetype,
+          size: file.size,
+          checksum,
+          uploadedBy: meta.uploadedBy || null,
+        },
+        { transaction },
+      );
+      await auditService.logAction(
+        {
+          tenantId,
+          userId: meta.uploadedBy || null,
+          action: "CREATE",
+          resourceType: "Attachment",
+          resourceId: created.id,
+          changes: {
+            originalName: file.originalname,
+            mimeType: file.mimetype,
+            size: file.size,
+            checksum,
+            resource: {
+              type: created.resourceType,
+              id: created.resourceId,
+            },
+          },
+          ipAddress: meta.ipAddress || null,
+          userAgent: meta.userAgent || null,
+        },
+        { transaction },
+      );
+      return created;
+    });
+  } catch (err) {
+    await fs.promises.unlink(absPath).catch(() => {});
+    throw err;
+  }
 
   logger.info("Attachment created", {
     attachmentId: attachment.id,

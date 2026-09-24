@@ -119,7 +119,6 @@ jest.mock("../../models", () => {
     CalibrationRecord: model(),
     Certificate: model(),
     ConsentRecord: model(),
-    DataRetentionPolicy: model({ findAll: jest.fn().mockResolvedValue([]) }),
     DsarRequest: model(),
     // Plural aliases. src/models/index.js really does export these
     // (`Stocks: models.Stock`, ...), and exportTenantData looks tables up by
@@ -137,17 +136,10 @@ jest.mock("../../models", () => {
   };
 });
 
-jest.mock("../../services/dataRetention.service", () => ({
-  isOnLegalHold: jest.fn().mockResolvedValue(false),
-}));
-
 const gdprService = require("../../services/gdpr.service");
-const dataRetentionService = require("../../services/dataRetention.service");
 const {
   User,
-  AuditLog,
   ConsentRecord,
-  DataRetentionPolicy,
   DsarRequest,
 } = require("../../models");
 const fs = require("fs");
@@ -544,149 +536,6 @@ describe("gdprService", () => {
         "user-1",
       );
       expect(result).toEqual({});
-    });
-  });
-
-  describe("enforceDataRetention", () => {
-    it("should return disabled when GDPR is disabled", async () => {
-      process.env.GDPR_ENABLED = "false";
-      const result = await gdprService.enforceDataRetention();
-
-      expect(result.enforced).toBe(false);
-      expect(result.reason).toBe("GDPR disabled");
-    });
-
-    it("should enforce data retention policies and purge expired data", async () => {
-      DataRetentionPolicy.findAll.mockResolvedValueOnce([
-        {
-          id: "policy-1",
-          entityType: "Logs",
-          retentionDays: 30,
-          isActive: true,
-        },
-      ]);
-
-      const result = await gdprService.enforceDataRetention();
-      expect(result.enforced).toBe(true);
-      expect(result.purged).toBe(0);
-    });
-
-    it("should return failure object when database error occurs during retention run", async () => {
-      DataRetentionPolicy.findAll.mockRejectedValueOnce(
-        new Error("DB find failure"),
-      );
-      const result = await gdprService.enforceDataRetention();
-      expect(result.enforced).toBe(false);
-      expect(result.error).toBe("DB find failure");
-    });
-
-    it("purges a known entity type for a tenant not on legal hold", async () => {
-      dataRetentionService.isOnLegalHold.mockResolvedValue(false);
-      AuditLog.destroy.mockResolvedValue(4);
-      DataRetentionPolicy.findAll.mockResolvedValueOnce([
-        { id: "p1", entityType: "audit_logs", tenantId: "t1", retentionDays: 30, isActive: true },
-      ]);
-
-      const result = await gdprService.enforceDataRetention();
-
-      expect(dataRetentionService.isOnLegalHold).toHaveBeenCalledWith("t1");
-      expect(AuditLog.destroy).toHaveBeenCalled();
-      expect(result.purged).toBe(4);
-    });
-
-    it("skips purge for a tenant on legal hold", async () => {
-      dataRetentionService.isOnLegalHold.mockResolvedValue(true);
-      AuditLog.destroy.mockResolvedValue(9);
-      DataRetentionPolicy.findAll.mockResolvedValueOnce([
-        { id: "p1", entityType: "audit_logs", tenantId: "t1", retentionDays: 30, isActive: true },
-      ]);
-
-      const result = await gdprService.enforceDataRetention();
-
-      expect(AuditLog.destroy).not.toHaveBeenCalled();
-      expect(result.purged).toBe(0);
-    });
-
-    // D-03. This test used to be "purges a policy with no tenant scope without
-    // checking legal hold" and asserted `result.purged` of 2 — i.e. that a
-    // global (tenantId null) policy ran `AuditLog.destroy` with NO tenant
-    // predicate, from a cron with no tenant context, past every tenant's legal
-    // hold. That was the defect: one global row deleted every tenant's audit
-    // trail. A global policy now purges nothing.
-    it.each([
-      ["null", null],
-      ["absent", undefined],
-    ])(
-      "never purges for a global policy (tenantId %s) — no tenant's rows are touched",
-      async (_label, tenantId) => {
-        AuditLog.destroy.mockResolvedValue(2);
-        DataRetentionPolicy.findAll.mockResolvedValueOnce([
-          { id: "p1", entityType: "AuditLog", tenantId, retentionDays: 10, isActive: true },
-        ]);
-
-        const result = await gdprService.enforceDataRetention();
-
-        expect(AuditLog.destroy).not.toHaveBeenCalled();
-        expect(dataRetentionService.isOnLegalHold).not.toHaveBeenCalled();
-        expect(result).toEqual({ enforced: true, purged: 0 });
-      },
-    );
-
-    it("confines every purge to the policy's tenant with an explicit predicate", async () => {
-      dataRetentionService.isOnLegalHold.mockResolvedValue(false);
-      AuditLog.destroy.mockResolvedValue(3);
-      DataRetentionPolicy.findAll.mockResolvedValueOnce([
-        { id: "p1", entityType: "AuditLog", tenantId: "t1", retentionDays: 10, isActive: true },
-      ]);
-
-      await gdprService.enforceDataRetention();
-
-      const { Op } = require("sequelize");
-      expect(AuditLog.destroy).toHaveBeenCalledWith({
-        where: { createdAt: { [Op.lt]: expect.any(Date) }, tenantId: "t1" },
-      });
-    });
-
-    it("uses the snake_case tenant key on Session, whose attribute is tenant_id", async () => {
-      const { Session } = require("../../models");
-      dataRetentionService.isOnLegalHold.mockResolvedValue(false);
-      Session.destroy.mockResolvedValue(5);
-      DataRetentionPolicy.findAll.mockResolvedValueOnce([
-        { id: "p1", entityType: "sessions", tenantId: "t1", retentionDays: 10, isActive: true },
-      ]);
-
-      const result = await gdprService.enforceDataRetention();
-
-      const { Op } = require("sequelize");
-      expect(Session.destroy).toHaveBeenCalledWith({
-        where: { createdAt: { [Op.lt]: expect.any(Date) }, tenant_id: "t1" },
-      });
-      expect(result.purged).toBe(5);
-    });
-
-    it("treats a null destroy result as zero purged", async () => {
-      dataRetentionService.isOnLegalHold.mockResolvedValue(false);
-      AuditLog.destroy.mockResolvedValue(null);
-      DataRetentionPolicy.findAll.mockResolvedValueOnce([
-        { id: "p1", entityType: "audit_logs", tenantId: "t1", retentionDays: 30, isActive: true },
-      ]);
-
-      const result = await gdprService.enforceDataRetention();
-
-      expect(result.purged).toBe(0);
-    });
-
-    it("defaults a missing retentionDays to zero (purge-from-now)", async () => {
-      dataRetentionService.isOnLegalHold.mockResolvedValue(false);
-      AuditLog.destroy.mockResolvedValue(1);
-      DataRetentionPolicy.findAll.mockResolvedValueOnce([
-        { id: "p1", entityType: "audit_logs", tenantId: "t1", isActive: true },
-      ]);
-
-      const result = await gdprService.enforceDataRetention();
-
-      expect(AuditLog.destroy).toHaveBeenCalled();
-      expect(result.purged).toBe(1);
     });
   });
 

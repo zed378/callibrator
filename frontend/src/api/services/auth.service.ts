@@ -143,12 +143,21 @@ export const authService = {
   /**
    * POST /api/v1/auth/mfa/setup — generate a TOTP secret + QR for enrollment.
    * The backend returns a ready-to-render QR data URL plus the manual secret.
+   *
+   * A-114: the new secret is PENDING until mfaVerify accepts a code from it;
+   * the current authenticator keeps working until then. On an account that
+   * already has MFA this is a rotation, and the backend requires the current
+   * password and a code from the CURRENT authenticator (409 without them,
+   * 400 when either is wrong).
    */
-  mfaSetup: async (): Promise<{ secret: string; qrCodeUrl: string }> => {
+  mfaSetup: async (reauth?: {
+    currentPassword: string;
+    code: string;
+  }): Promise<{ secret: string; qrCodeUrl: string; rotation?: boolean }> => {
     const response = await api.post<{
       success: boolean;
-      data: { secret: string; qrCodeUrl: string };
-    }>("/api/v1/auth/mfa/setup", {});
+      data: { secret: string; qrCodeUrl: string; rotation?: boolean };
+    }>("/api/v1/auth/mfa/setup", reauth ?? {});
     return response.data;
   },
 

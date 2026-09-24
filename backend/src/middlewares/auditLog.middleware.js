@@ -60,6 +60,8 @@ const recordAudit = (action, resourceType, opts = {}) => {
         .logAction({
           tenantId: req.tenantId || req.user?.tenantId || null,
           userId: req.user?.id || null,
+          // F-8: set by the auth middleware from the verified token claim.
+          ...(req.impersonatorId ? { impersonatorId: req.impersonatorId } : {}),
           action,
           resourceType,
           resourceId,

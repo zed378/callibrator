@@ -954,8 +954,8 @@ describe("auth.service", () => {
     it("should complete MFA login with valid code", async () => {
       jest.resetModules();
 
-      const mockAuthenticator = { check: jest.fn().mockReturnValue(true) };
-      jest.doMock("otplib", () => ({ authenticator: mockAuthenticator }));
+      const mockTotp = { consumeCode: jest.fn().mockResolvedValue(true) };
+      jest.doMock("../../services/mfa.service", () => mockTotp);
       jest.doMock("../../models", () => ({
         Users: {
           findOne: jest.fn(),
@@ -1015,14 +1015,18 @@ describe("auth.service", () => {
       expect(mockUser.update).toHaveBeenCalledWith({
         lastLoginAt: expect.any(Date),
       });
-      expect(mockAuthenticator.check).toHaveBeenCalledWith("123456", "secret");
+      // A-115: the code is CONSUMED against the user's live secret.
+      expect(mockTotp.consumeCode).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "user-1", mfaSecret: "secret" }),
+        "123456",
+      );
     });
 
     it("should reject invalid MFA code", async () => {
       jest.resetModules();
 
-      const mockAuthenticator = { check: jest.fn().mockReturnValue(false) };
-      jest.doMock("otplib", () => ({ authenticator: mockAuthenticator }));
+      const mockTotp = { consumeCode: jest.fn().mockResolvedValue(false) };
+      jest.doMock("../../services/mfa.service", () => mockTotp);
       jest.doMock("../../models", () => ({
         Users: {
           findOne: jest.fn(),
@@ -1054,8 +1058,8 @@ describe("auth.service", () => {
     it("should reject when MFA not enabled", async () => {
       jest.resetModules();
 
-      const mockAuthenticator = { check: jest.fn().mockReturnValue(true) };
-      jest.doMock("otplib", () => ({ authenticator: mockAuthenticator }));
+      const mockTotp = { consumeCode: jest.fn().mockResolvedValue(true) };
+      jest.doMock("../../services/mfa.service", () => mockTotp);
       jest.doMock("../../models", () => ({
         Users: {
           findOne: jest.fn(),
@@ -1091,15 +1095,15 @@ describe("auth.service", () => {
     });
 
     it("should generate MFA setup data", async () => {
-      const mockAuthenticator = {
-        generateSecret: jest.fn().mockReturnValue("test-secret"),
-        keyuri: jest
+      const mockTotp = {
+        createSecret: jest.fn().mockReturnValue("test-secret"),
+        buildOtpauthUri: jest
           .fn()
           .mockReturnValue(
             "otpauth://totp/Callibrator:test@example.com?secret=test-secret",
           ),
       };
-      jest.doMock("otplib", () => ({ authenticator: mockAuthenticator }));
+      jest.doMock("../../services/mfa.service", () => mockTotp);
 
       const jestMockQrcode = {
         toDataURL: jest.fn().mockResolvedValue("qr-data-url"),
@@ -1121,17 +1125,18 @@ describe("auth.service", () => {
 
       expect(result.secret).toBe("test-secret");
       expect(result.qrCodeUrl).toBe("qr-data-url");
+      // A-114: PENDING — the live mfaSecret is not written by setup.
       expect(mockUser.update).toHaveBeenCalledWith({
-        mfaSecret: "test-secret",
+        mfaPendingSecret: "test-secret",
+        mfaPendingCreatedAt: expect.any(Date),
       });
+      expect(result.rotation).toBe(false);
     });
 
     it("should reject when user not found", async () => {
-      jest.doMock("otplib", () => ({
-        authenticator: {
-          generateSecret: jest.fn().mockReturnValue("secret"),
-          keyuri: jest.fn().mockReturnValue("otpauth://"),
-        },
+      jest.doMock("../../services/mfa.service", () => ({
+        createSecret: jest.fn().mockReturnValue("secret"),
+        buildOtpauthUri: jest.fn().mockReturnValue("otpauth://"),
       }));
       jest.doMock("qrcode", () => ({
         toDataURL: jest.fn().mockResolvedValue("qr"),
@@ -1158,12 +1163,17 @@ describe("auth.service", () => {
     });
 
     it("should enable MFA with valid code", async () => {
-      const mockAuthenticator = { check: jest.fn().mockReturnValue(true) };
-      jest.doMock("otplib", () => ({ authenticator: mockAuthenticator }));
+      const mockTotp = { consumeCode: jest.fn().mockResolvedValue(true) };
+      jest.doMock("../../services/mfa.service", () => mockTotp);
+      jest.doMock("../../config", () => ({
+        db: { transaction: jest.fn(async (fn) => fn("TX")) },
+      }));
 
       const mockUser = {
         id: "user-1",
-        mfaSecret: "test-secret",
+        mfaSecret: null,
+        mfaPendingSecret: "test-secret",
+        mfaPendingCreatedAt: new Date(),
         update: jest.fn().mockResolvedValue({}),
       };
 
@@ -1175,20 +1185,34 @@ describe("auth.service", () => {
 
       expect(result.success).toBe(true);
       expect(result.message).toBe("MFA enabled successfully");
-      expect(mockUser.update).toHaveBeenCalledWith({ mfaEnabled: true });
-      expect(mockAuthenticator.check).toHaveBeenCalledWith(
-        "123456",
-        "test-secret",
+      // A-114: the pending secret is promoted, in the transaction.
+      expect(mockUser.update).toHaveBeenCalledWith(
+        {
+          mfaSecret: "test-secret",
+          mfaEnabled: true,
+          mfaPendingSecret: null,
+          mfaPendingCreatedAt: null,
+        },
+        { transaction: "TX" },
       );
+      expect(mockTotp.consumeCode).toHaveBeenCalledWith(mockUser, "123456", {
+        secret: "test-secret",
+        transaction: "TX",
+      });
     });
 
     it("should reject invalid MFA code", async () => {
-      const mockAuthenticator = { check: jest.fn().mockReturnValue(false) };
-      jest.doMock("otplib", () => ({ authenticator: mockAuthenticator }));
+      const mockTotp = { consumeCode: jest.fn().mockResolvedValue(false) };
+      jest.doMock("../../services/mfa.service", () => mockTotp);
+      jest.doMock("../../config", () => ({
+        db: { transaction: jest.fn(async (fn) => fn("TX")) },
+      }));
 
       const mockUser = {
         id: "user-1",
-        mfaSecret: "test-secret",
+        mfaSecret: null,
+        mfaPendingSecret: "test-secret",
+        mfaPendingCreatedAt: new Date(),
         update: jest.fn().mockResolvedValue({}),
       };
 
@@ -1202,8 +1226,8 @@ describe("auth.service", () => {
     });
 
     it("should reject when MFA setup not initiated", async () => {
-      const mockAuthenticator = { check: jest.fn().mockReturnValue(true) };
-      jest.doMock("otplib", () => ({ authenticator: mockAuthenticator }));
+      const mockTotp = { consumeCode: jest.fn().mockResolvedValue(true) };
+      jest.doMock("../../services/mfa.service", () => mockTotp);
 
       const mockUser = {
         id: "user-1",
@@ -1220,8 +1244,8 @@ describe("auth.service", () => {
     });
 
     it("should reject when user not found", async () => {
-      jest.doMock("otplib", () => ({
-        authenticator: { check: jest.fn().mockReturnValue(true) },
+      jest.doMock("../../services/mfa.service", () => ({
+        consumeCode: jest.fn().mockResolvedValue(true),
       }));
 
       const { Users: ImportedUsers } = require("../../models");

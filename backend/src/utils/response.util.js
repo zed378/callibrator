@@ -86,13 +86,16 @@ const success = (
  * @param {string} message - Error message
  * @param {number} statusCode - HTTP status code (default: 400)
  * @param {*} details - Optional error details (development only)
+ * @param {Object|null} [extra] - top-level fields to add (field `errors`, a
+ *   `requestId` for a generic production error — controllerWrapper, A-132)
  */
-const error = (res, message, statusCode = 400, details = null) => {
+const error = (res, message, statusCode = 400, details = null, extra = null) => {
   const response = {
     success: false,
     status: statusCode,
     message,
     data: null,
+    ...(extra || {}),
   };
 
   // Include details only in development
@@ -101,6 +104,38 @@ const error = (res, message, statusCode = 400, details = null) => {
   }
 
   return res.status(statusCode).json(response);
+};
+
+/**
+ * Send a service result envelope `{ success, status, message, data }` down the
+ * path its status belongs on (A-103).
+ *
+ * Many services RETURN their not-found (404) and state-conflict (409) outcomes
+ * rather than throwing them. A controller that forwards every result through
+ * `success(res, result.data, null, result.message, result.status)` sends those
+ * with `success: true` — the HTTP status says 404 while the body says it
+ * worked, and a client that reads `success` shows an empty record as found.
+ *
+ * A status of 400 or more, or `success: false`, goes out through `error()`
+ * (`success: false`, `data: null`). A `success: false` result that carries a
+ * 2xx status is contradictory; it is answered 500 rather than trusted either
+ * way. Everything else goes through `success()`, with `meta` (when given) as
+ * the top-level sibling of `data`.
+ *
+ * @param {import('express').Response} res
+ * @param {{success?: boolean, status?: number, message?: string, data?: *}} result
+ * @param {Object|null} [meta] - pagination for a list; ignored on the error path
+ */
+const sendResult = (res, result, meta = null) => {
+  const status = typeof result.status === "number" ? result.status : 200;
+  if (status >= 400 || result.success === false) {
+    return error(
+      res,
+      result.message || "Request failed",
+      status >= 400 ? status : 500,
+    );
+  }
+  return success(res, result.data, meta, result.message || "success", status);
 };
 
 /**
@@ -219,4 +254,5 @@ module.exports = {
   paginated,
   paginate,
   login,
+  sendResult,
 };

@@ -533,4 +533,3 @@ describe("A-80 — ROLE_MENU_ASSIGNMENTS against the seeded menu slugs", () => {
     expect([...slugs]).toEqual(["profile-page"]);
   });
 });
-

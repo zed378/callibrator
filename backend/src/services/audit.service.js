@@ -4,6 +4,7 @@ const { AppError } = require("../utils/appError.util");
 const { DEFAULT_LIMIT, MAX_LIMIT } = require("../constants");
 const { AUDIT_ACTIONS } = require("../constants/auditActions");
 const { logger } = require("../middlewares/activityLog.middleware");
+const { currentImpersonatorId } = require("../utils/auditActor.util");
 
 // ------------------------------------------------------------------
 // HELPERS
@@ -41,6 +42,10 @@ const transformLogs = (rows) => (rows || []).map(transformLog);
  * @param {object} entry
  * @param {string} entry.tenantId
  * @param {string|null} entry.userId - the actor; null for a system job
+ * @param {string|null} [entry.impersonatorId] - F-8: the super admin acting
+ *   through an impersonation token. When the caller passes none, the current
+ *   request's impersonator (utils/auditActor.util.js) is recorded, so a service
+ *   that builds its entry from chosen actor fields is still attributed.
  * @param {string} entry.action - one of AUDIT_ACTIONS
  * @param {string} entry.resourceType
  * @param {string|null} [entry.resourceId]
@@ -56,6 +61,7 @@ exports.logAction = async (
   {
     tenantId,
     userId,
+    impersonatorId = null,
     action,
     resourceType,
     resourceId = null,
@@ -65,6 +71,7 @@ exports.logAction = async (
   },
   { transaction } = {},
 ) => {
+  const impersonator = impersonatorId || currentImpersonatorId();
   try {
     if (!AUDIT_ACTIONS.includes(action)) {
       throw new Error(
@@ -75,6 +82,9 @@ exports.logAction = async (
       {
         tenantId,
         userId,
+        // Only when there is one: the column defaults to NULL, and the
+        // ordinary row keeps the exact shape it always had.
+        ...(impersonator ? { impersonatorId: impersonator } : {}),
         action,
         resourceType,
         resourceId,
@@ -89,6 +99,7 @@ exports.logAction = async (
     logger.error("Audit log write failed", {
       tenantId,
       userId,
+      impersonatorId: impersonator,
       action,
       resourceType,
       resourceId,
@@ -143,6 +154,9 @@ exports.fetchAuditLogs = async ({
       // carries a scope that would otherwise INNER JOIN and hide those logs.
       include: [
         { model: User, as: "user", attributes: ["id", "username", "firstName", "lastName", "email"], required: false },
+        // F-8: the super admin who acted through an impersonation token. Most
+        // rows have none; required:false for the same reason as `user`.
+        { model: User, as: "impersonator", attributes: ["id", "username", "firstName", "lastName", "email"], required: false },
       ],
     });
 

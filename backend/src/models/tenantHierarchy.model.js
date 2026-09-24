@@ -23,7 +23,7 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.UUID,
         allowNull: false,
         references: { model: "tenants", key: "id" },
-        onDelete: "CASCADE",
+        onDelete: "RESTRICT",
       },
       // Denormalized code of this tenant (unique key used for parent/child links).
       tenantCode: {
@@ -61,8 +61,9 @@ const defineModel = (db, DataTypes) => {
 
   TenantHierarchy.associate = (models) => {
     TenantHierarchy.belongsTo(models.Tenant, {
-      foreignKey: "tenant_id",
+      foreignKey: "tenantId",
       as: "tenant",
+      onDelete: "RESTRICT",
     });
   };
 

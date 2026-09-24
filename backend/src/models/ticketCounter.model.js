@@ -20,7 +20,8 @@ const defineModel = (db, DataTypes) => {
         allowNull: false,
         unique: true,
         references: { model: "tenants", key: "id" },
-        onDelete: "CASCADE",
+        onDelete: "CASCADE", // ADR-051 Q-16; matches migration 0030
+        onUpdate: "CASCADE", // as every association-built tenant FK
       },
       seq: {
         type: DataTypes.INTEGER,

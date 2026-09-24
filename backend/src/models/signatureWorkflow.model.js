@@ -18,7 +18,7 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.UUID,
         allowNull: false,
         references: { model: "tenants", key: "id" },
-        onDelete: "CASCADE",
+        onDelete: "RESTRICT",
       },
       documentId: {
         type: DataTypes.STRING(255),
@@ -70,8 +70,9 @@ const defineModel = (db, DataTypes) => {
 
   SignatureWorkflow.associate = (models) => {
     SignatureWorkflow.belongsTo(models.Tenant, {
-      foreignKey: "tenant_id",
+      foreignKey: "tenantId",
       as: "tenant",
+      onDelete: "RESTRICT",
     });
     SignatureWorkflow.hasMany(models.SignatureWorkflowStep, {
       foreignKey: "workflow_id",

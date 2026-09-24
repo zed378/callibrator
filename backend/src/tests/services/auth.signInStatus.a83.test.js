@@ -35,7 +35,9 @@ jest.mock("../../utils/password.util", () => ({
   comparePassword: jest.fn(),
 }));
 
-jest.mock("otplib", () => ({ authenticator: { check: jest.fn() } }));
+// A-99: the TOTP check is faked at mfa.service, whose contract with the real
+// otplib is proven in mfa.realOtplib.a99.test.js.
+jest.mock("../../services/mfa.service", () => ({ consumeCode: jest.fn() })); // A-115: consumed, not only checked
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
@@ -44,7 +46,7 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
 const { Users, Tenants, AuditLog } = require("../../models");
 const { createSession } = require("../../services/session.service");
 const { comparePassword } = require("../../utils/password.util");
-const { authenticator } = require("otplib");
+const mfaService = require("../../services/mfa.service");
 const authService = require("../../services/auth.service");
 
 const USER_ID = "11111111-1111-4111-8111-111111111111";
@@ -133,6 +135,13 @@ describe("A-83: password login checks the tenant", () => {
     );
   });
 
+  it("a tenant with no status is not refused — the rule auth.middleware applies", async () => {
+    Users.findOne.mockResolvedValue(userRow({ tenant: { id: TENANT_ID, status: null } }));
+    comparePassword.mockResolvedValue(true);
+
+    expect((await passwordLogin()).status).toBe(200);
+  });
+
   it("an active tenant and a tenant-less user both sign in", async () => {
     Users.findOne.mockResolvedValue(userRow());
     comparePassword.mockResolvedValue(true);
@@ -151,19 +160,19 @@ describe("A-83: loginMfa honours lockedUntil and the tenant", () => {
     Users.findByPk.mockResolvedValue(
       mfaRow({ lockedUntil: new Date(Date.now() + 10 * 60 * 1000) }),
     );
-    authenticator.check.mockReturnValue(true);
+    mfaService.consumeCode.mockResolvedValue(true);
 
     await expect(authService.loginMfa(USER_ID, "123456", "203.0.113.6")).rejects.toMatchObject({
       status: 423,
       message: "Account temporarily locked",
     });
-    expect(authenticator.check).not.toHaveBeenCalled();
+    expect(mfaService.consumeCode).not.toHaveBeenCalled();
     nothingWritten();
   });
 
   it("a lock that has expired does not refuse", async () => {
     Users.findByPk.mockResolvedValue(mfaRow({ lockedUntil: new Date(Date.now() - 1000) }));
-    authenticator.check.mockReturnValue(true);
+    mfaService.consumeCode.mockResolvedValue(true);
 
     const result = await authService.loginMfa(USER_ID, "123456", "203.0.113.6");
 
@@ -173,7 +182,7 @@ describe("A-83: loginMfa honours lockedUntil and the tenant", () => {
 
   it("loginMfa refuses a tenant suspended since the password step", async () => {
     Users.findByPk.mockResolvedValue(mfaRow({ tenant: { id: TENANT_ID, status: "suspended" } }));
-    authenticator.check.mockReturnValue(true);
+    mfaService.consumeCode.mockResolvedValue(true);
 
     await expect(authService.loginMfa(USER_ID, "123456")).rejects.toMatchObject({
       status: 403,
@@ -184,7 +193,7 @@ describe("A-83: loginMfa honours lockedUntil and the tenant", () => {
 
   it("loginMfa loads the tenant with the user", async () => {
     Users.findByPk.mockResolvedValue(mfaRow());
-    authenticator.check.mockReturnValue(true);
+    mfaService.consumeCode.mockResolvedValue(true);
 
     await authService.loginMfa(USER_ID, "123456");
 

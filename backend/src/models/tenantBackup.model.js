@@ -44,7 +44,7 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.UUID,
         allowNull: false,
         references: { model: "tenants", key: "id" },
-        onDelete: "CASCADE",
+        onDelete: "RESTRICT",
       },
       // Backup details
       backupPath: {
@@ -266,8 +266,9 @@ const defineModel = (db, DataTypes) => {
   TenantBackup.associate = (models) => {
     // TenantBackup -> Tenant
     TenantBackup.belongsTo(models.Tenant, {
-      foreignKey: "tenant_id",
+      foreignKey: "tenantId",
       as: "tenant",
+      onDelete: "RESTRICT",
     });
     // TenantBackup -> User (creator). createBackup, downloadBackup and the
     // getBackup controller all include `creator`, but the association was

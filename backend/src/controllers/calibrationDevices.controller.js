@@ -3,7 +3,8 @@
  */
 const calibrationDevicesService = require("../services/calibrationDevices.service");
 const { asyncHandler } = require("../utils/controllerWrapper.util");
-const { success } = require("../utils/response.util");
+const { auditActor } = require("../utils/auditActor.util");
+const { success, error } = require("../utils/response.util");
 const {
   getCalibrationDevicesQuery,
   calibrationDeviceIdSchema,
@@ -26,6 +27,21 @@ const validate = (data, schema) => {
   }
   return value;
 };
+
+/**
+ * Send a service result down the path its status belongs on. The service
+ * RETURNS its 404 and 409 outcomes; forwarding those through success() sent
+ * `success: true` with a 409 status (the A-103 defect class). A 409 from
+ * a serial-number conflict (A-92) goes out as `success: false` with its
+ * explanation as the message.
+ *
+ * @param {import("express").Response} res
+ * @param {{status: number, message: string, data: *}} result
+ */
+const send = (res, result) =>
+  result.status >= 400
+    ? error(res, result.message, result.status)
+    : success(res, result.data, null, result.message, result.status);
 
 exports.getAllCalibrationDevices = asyncHandler(async (req, res) => {
   const tenantId = req.tenantId || req.user.tenantId;
@@ -59,7 +75,7 @@ exports.getSpecificCalibrationDevice = asyncHandler(async (req, res) => {
     calibrationDeviceId,
   );
 
-  success(res, result.data, null, result.message, result.status);
+  send(res, result);
 });
 
 exports.createCalibrationDevice = asyncHandler(async (req, res) => {
@@ -68,9 +84,10 @@ exports.createCalibrationDevice = asyncHandler(async (req, res) => {
   const result = await calibrationDevicesService.createCalibrationDevice(
     tenantId,
     validated,
+    auditActor(req),
   );
 
-  success(res, result.data, null, result.message, result.status);
+  send(res, result);
 });
 
 exports.updateCalibrationDevice = asyncHandler(async (req, res) => {
@@ -84,9 +101,10 @@ exports.updateCalibrationDevice = asyncHandler(async (req, res) => {
     tenantId,
     calibrationDeviceId,
     validated,
+    auditActor(req),
   );
 
-  success(res, result.data, null, result.message, result.status);
+  send(res, result);
 });
 
 exports.deleteCalibrationDevice = asyncHandler(async (req, res) => {
@@ -98,9 +116,10 @@ exports.deleteCalibrationDevice = asyncHandler(async (req, res) => {
   const result = await calibrationDevicesService.deleteCalibrationDevice(
     tenantId,
     calibrationDeviceId,
+    auditActor(req),
   );
 
-  success(res, result.data, null, result.message, result.status);
+  send(res, result);
 });
 
 exports.bulkImportCalibrationDevices = asyncHandler(async (req, res) => {
@@ -118,9 +137,10 @@ exports.bulkImportCalibrationDevices = asyncHandler(async (req, res) => {
     const result = await calibrationDevicesService.bulkImportCalibrationDevices(
       tenantId,
       req.file.path,
+      auditActor(req),
     );
 
-    success(res, result.data, null, result.message, result.status);
+    send(res, result);
   } finally {
     fs.unlink(req.file.path, (err) => {
       if (err && err.code !== "ENOENT") {

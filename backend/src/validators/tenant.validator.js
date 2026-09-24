@@ -98,9 +98,10 @@ exports.updateTenantSchema = Joi.object({
 // DELETE TENANT QUERY/PARAMS
 // ==========================================
 
+// A-95: no `deletedBy`. The actor of a delete is the authenticated caller
+// (tenant.controller#deleteTenant); a body or query value is stripped.
 exports.deleteTenantSchema = Joi.object({
   tenantId: Joi.string().uuid().required(),
-  deletedBy: Joi.string().uuid().allow(null, ""),
 });
 
 // ==========================================

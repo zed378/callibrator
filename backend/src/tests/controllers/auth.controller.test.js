@@ -446,6 +446,31 @@ describe("authController", () => {
   // never work. The duplicates are gone; these tests target the live,
   // authService-backed handlers.
   describe("setupMfa", () => {
+    it("A-114: passes currentPassword and code from the body to the service", async () => {
+      req.body = { currentPassword: "pw", code: "123456", userId: "someone-else" };
+      authService.setupMfa.mockResolvedValue({ secret: "S", qrCodeUrl: "q" });
+
+      await authController.setupMfa(req, res);
+
+      // The user is always the caller; nothing else from the body is passed.
+      expect(authService.setupMfa).toHaveBeenCalledWith(req.user.id, {
+        currentPassword: "pw",
+        code: "123456",
+      });
+    });
+
+    it("A-114: a request with no body at all reaches the service with no re-authentication", async () => {
+      req.body = undefined;
+      authService.setupMfa.mockResolvedValue({ secret: "S", qrCodeUrl: "q" });
+
+      await authController.setupMfa(req, res);
+
+      expect(authService.setupMfa).toHaveBeenCalledWith(req.user.id, {
+        currentPassword: undefined,
+        code: undefined,
+      });
+    });
+
     it("should generate the MFA secret via authService", async () => {
       authService.setupMfa.mockResolvedValue({
         secret: "JBSWY3DPEHPK3PXP",
@@ -454,7 +479,11 @@ describe("authController", () => {
 
       await authController.setupMfa(req, res);
 
-      expect(authService.setupMfa).toHaveBeenCalledWith(req.user.id);
+      // A-114: the re-authentication fields travel from the body.
+      expect(authService.setupMfa).toHaveBeenCalledWith(req.user.id, {
+        currentPassword: undefined,
+        code: undefined,
+      });
       expect(success).toHaveBeenCalledWith(
         res,
         expect.objectContaining({ secret: "JBSWY3DPEHPK3PXP" }),
@@ -466,6 +495,34 @@ describe("authController", () => {
   });
 
   describe("verifyMfaSetup", () => {
+    it("A-114: passes the caller's address and user agent for the audit row", async () => {
+      req.body = { code: "123456" };
+      req.ip = "203.0.113.9";
+      req.headers = { "user-agent": "jest-agent" };
+      authService.verifyMfaSetup.mockResolvedValue({ message: "MFA enabled" });
+
+      await authController.verifyMfaSetup(req, res);
+
+      expect(authService.verifyMfaSetup).toHaveBeenCalledWith(req.user.id, "123456", {
+        ipAddress: "203.0.113.9",
+        userAgent: "jest-agent",
+      });
+    });
+
+    it("A-114: a request without headers or an address audits nulls", async () => {
+      req.body = { code: "123456" };
+      req.ip = undefined;
+      req.headers = undefined;
+      authService.verifyMfaSetup.mockResolvedValue({ message: "MFA enabled" });
+
+      await authController.verifyMfaSetup(req, res);
+
+      expect(authService.verifyMfaSetup).toHaveBeenCalledWith(req.user.id, "123456", {
+        ipAddress: null,
+        userAgent: null,
+      });
+    });
+
     it("should verify the setup code via authService", async () => {
       req.body = { code: "123456" };
       authService.verifyMfaSetup.mockResolvedValue({ message: "MFA enabled" });
@@ -475,6 +532,8 @@ describe("authController", () => {
       expect(authService.verifyMfaSetup).toHaveBeenCalledWith(
         req.user.id,
         "123456",
+        // A-114: for the MFA_ENABLE / MFA_ROTATE audit row.
+        { ipAddress: req.ip || null, userAgent: null },
       );
       expect(success).toHaveBeenCalledWith(res, null, null, "MFA enabled", 200);
     });

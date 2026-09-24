@@ -19,26 +19,50 @@ describe("sessionService", () => {
   beforeEach(() => jest.clearAllMocks());
 
   describe("getAll", () => {
-    it("sends default page/limit params and returns the whole response", async () => {
-      const payload = {
+    // A-111: the backend answers the standard envelope — rows in `data`,
+    // pagination in a top-level `meta` (backend session.envelope.a111.test.js
+    // pins the same body from the real response.util).
+    it("sends default page/limit params and reads rows from data and meta from the top level", async () => {
+      const meta = { total: 21, page: 1, limit: 20, totalPages: 2 };
+      mockedApi.get.mockResolvedValueOnce({
         success: true,
-        message: "ok",
-        data: { sessions: [{ id: "s1" }], meta: { total: 1 } },
-      };
-      mockedApi.get.mockResolvedValueOnce(payload);
+        status: 200,
+        message: "Sessions retrieved successfully",
+        data: [{ id: "s1" }],
+        meta,
+      });
 
       const res = await sessionService.getAll();
 
       expect(mockedApi.get).toHaveBeenCalledWith(BASE, {
         params: { page: 1, limit: 20 },
       });
-      expect(res).toBe(payload);
+      expect(res).toEqual({ sessions: [{ id: "s1" }], meta });
+    });
+
+    it("falls back to an empty list and a one-page meta when data and meta are absent", async () => {
+      mockedApi.get.mockResolvedValueOnce({
+        success: true,
+        status: 200,
+        message: "ok",
+        data: null,
+      });
+
+      const res = await sessionService.getAll(3, 10);
+
+      expect(res).toEqual({
+        sessions: [],
+        meta: { total: 0, page: 3, limit: 10, totalPages: 1 },
+      });
     });
 
     it("adds search/status/userId only when provided", async () => {
       mockedApi.get.mockResolvedValueOnce({
         success: true,
-        data: { sessions: [], meta: {} },
+        status: 200,
+        message: "ok",
+        data: [],
+        meta: { total: 0, page: 2, limit: 50, totalPages: 0 },
       });
 
       await sessionService.getAll(2, 50, "10.0.0.1", "active", "u1");

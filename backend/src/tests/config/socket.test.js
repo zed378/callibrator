@@ -299,7 +299,11 @@ describe("socket handshake authentication", () => {
     });
   });
 
-  it("accepts a tenant-bound user whose tenant row is missing", async () => {
+  // A-101: this used to be ACCEPTED. The loader reads the tenant through its
+  // default scope (isDeleted = false) and paranoid, so a missing tenant row on
+  // a tenant-bound user is a soft-deleted or destroyed tenant — refused, as
+  // sign-in (A-83) and the HTTP `auth` middleware refuse it.
+  it("rejects a tenant-bound user whose tenant is soft-deleted (include is null)", async () => {
     verifyPurposeToken.mockReturnValue({ id: "user-1" });
     authService.getAuthUserWithTenant.mockResolvedValue(
       activeUser({ tenant: null }),
@@ -307,8 +311,9 @@ describe("socket handshake authentication", () => {
     const socket = handshakeSocket({ auth: { token: "t" } });
     const next = jest.fn();
     await authenticateHandshake(socket, next);
-    expect(next).toHaveBeenCalledWith();
-    expect(socket.tenantContext.tenantId).toBe("tenant-1");
+    expect(next.mock.calls[0][0].message).toBe(AUTH_ERROR);
+    expect(socket.user).toBeUndefined();
+    expect(socket.tenantContext).toBeUndefined();
   });
 
   it.each(["SUPER_ADMIN", "SUPERADMIN"])(

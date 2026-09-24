@@ -992,3 +992,117 @@ describe("dynamicAccess — remaining branches", () => {
     });
   });
 });
+
+// A-93. The tenant check and the owner check used to be an if/else: a request
+// carrying ANY tenantId equal to the caller's own ran the tenant branch only,
+// and a `userId` naming another tenant's user was never looked at.
+describe("A-93 — checkTenant: tenant and owner checks are independent", () => {
+  let req, res, next;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    RolesService.getRolePermissionsMatrix.mockResolvedValue({ users: ["write"] });
+    getUserOverrideMatrix.mockResolvedValue({});
+    User.findByPk.mockReset();
+    Tenants.findByPk.mockReset();
+    // The caller's own tenant exists; every other id is another tenant's.
+    Tenants.findByPk.mockImplementation(async (id) => ({ id }));
+    User.findByPk.mockImplementation(async (id) =>
+      id === "foreign-user" ? { tenantId: "tenant-999" } : { tenantId: "tenant-123" },
+    );
+    next = jest.fn();
+    req = { user: makeUser(), params: {}, body: {}, query: {}, method: "DELETE" };
+    res = { status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis() };
+  });
+
+  const gate = (options = { checkTenant: true }) =>
+    dynamicAccess("users", "update", options)(req, res, next);
+
+  it.each([
+    ["body", (r) => (r.body = { tenantId: "tenant-123" })],
+    ["query", (r) => (r.query = { tenantId: "tenant-123" })],
+  ])(
+    "own tenantId in the %s does not skip the owner check: a foreign path :userId is 404",
+    async (_where, carry) => {
+      req.params = { userId: "foreign-user" };
+      carry(req);
+
+      await gate();
+
+      expect(User.findByPk).toHaveBeenCalledWith("foreign-user", { attributes: ["tenantId"] });
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        status: 404,
+        message: "Resource not found",
+        data: null,
+      });
+      expect(next).not.toHaveBeenCalled();
+    },
+  );
+
+  it("own path :tenantId does not skip the owner check on a body userId", async () => {
+    req.params = { tenantId: "tenant-123" };
+    req.body = { userId: "foreign-user" };
+
+    await gate();
+
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it("a body tenantId cannot override a path tenantId: every one named must be the caller's", async () => {
+    req.params = { tenantId: "tenant-123" };
+    req.body = { tenantId: "tenant-999" };
+
+    await gate();
+
+    expect(Tenants.findByPk).toHaveBeenCalledWith("tenant-123", { attributes: ["id"] });
+    expect(Tenants.findByPk).toHaveBeenCalledWith("tenant-999", { attributes: ["id"] });
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it("with checkSelf: own tenantId in the query and self nowhere in the path still checks the owner", async () => {
+    req.params = { userId: "foreign-user" };
+    req.query = { tenantId: "tenant-123" };
+
+    await gate({ checkSelf: true, checkTenant: true });
+
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it("both checks pass: own tenant and an owner in it reach the matrix", async () => {
+    req.params = { userId: "same-tenant-user" };
+    req.body = { tenantId: "tenant-123" };
+
+    await gate();
+
+    expect(Tenants.findByPk).toHaveBeenCalledTimes(1);
+    expect(User.findByPk).toHaveBeenCalledTimes(1);
+    expect(next).toHaveBeenCalledWith();
+  });
+
+  it("each distinct id is looked up once, path first; empty values are ignored", () => {
+    const {
+      tenantIdsNamedBy,
+      ownerIdsNamedBy,
+    } = require("../../middlewares/dynamicAccess.middleware");
+
+    expect(
+      tenantIdsNamedBy({
+        params: { tenantId: "t-1" },
+        body: { tenantId: "t-1" },
+        query: { tenantId: "t-2" },
+      }),
+    ).toEqual(["t-1", "t-2"]);
+    expect(
+      ownerIdsNamedBy({ params: {}, body: { userId: "" }, query: { userId: null } }),
+    ).toEqual([]);
+    expect(ownerIdsNamedBy({ params: undefined, body: "raw", query: { userId: "u" } })).toEqual([
+      "u",
+    ]);
+    expect(tenantIdsNamedBy({})).toEqual([]);
+  });
+});
