@@ -172,7 +172,6 @@ const safeUserAttributes = {
     "mfaPendingSecret",
     "mfaPendingCreatedAt",
     "mfaLastUsedStep",
-    "mfaRecoveryCodes",
     "webauthnCredentialId",
     "webauthnPublicKey",
     "webauthnSignCount",
@@ -711,10 +710,6 @@ exports.userCreate = async (input) => {
         // of User, so Sequelize dropped it and every admin-created user was
         // stored unverified (user.create.attributes.test.js).
         isEmailVerified: true,
-        // A-123 (ADR-051 Q-11): the administrator chose this password, and
-        // since ADR-047 a password signs. The holder must replace it before
-        // anything else (auth.middleware answers 403 until they do).
-        mustChangePassword: true,
       },
       {
         transaction,
@@ -733,7 +728,6 @@ exports.userCreate = async (input) => {
           email: email.trim().toLowerCase(),
           roleId,
           status: user.status,
-          mustChangePassword: true,
         },
       },
     });
@@ -776,7 +770,6 @@ exports.userCreate = async (input) => {
         roleDescription: role.description || null,
         status: user.status,
         isEmailVerified: user.isEmailVerified,
-        mustChangePassword: true,
         createdAt: user.createdAt,
         picture: user.picture,
         avatarUrl: user.picture,
@@ -1285,138 +1278,6 @@ exports.deleteUser = async (input) => {
       deletedBy,
     });
 
-    throw {
-      status: err.status || 500,
-      message: err.message || "Internal server error",
-    };
-  }
-};
-
-// ------------------------------------------------------------------
-// ADMIN-ASSISTED MFA RESET (A-141)
-// ------------------------------------------------------------------
-/**
- * A tenant administrator clears another user's second factor — the way back
- * for a user who lost their authenticator AND their recovery codes.
- *
- * Deliberately narrow:
- *  - the target must be in the caller's tenant; another tenant's user is the
- *    same 404 as a missing one (the tenant hooks already scope the lookup;
- *    assertSameTenantOrNotFound is the defence-in-depth twin);
- *  - never oneself: a user turns their own MFA off with their password and a
- *    code (POST /auth/mfa/disable), not with an admin grant;
- *  - never a user whose role outranks the caller's (a tenant admin cannot
- *    strip a super admin's second factor); a super admin may reset anyone;
- *  - every MFA column is cleared and EVERY session of the target is revoked,
- *    so whoever holds the lost device or a session is signed out, and the
- *    user signs in with the password alone and enrols again;
- *  - audited (UPDATE on User, `changes.operation` MFA_ADMIN_RESET) inside
- *    the transaction, naming the administrator as the actor.
- *
- * It does not reset the password: an administrator who can also set the
- * password could then sign in as the user; a password reset stays the user's
- * own e-mail-code path.
- *
- * @param {object} input
- * @param {string} input.userId - the target
- * @param {string} input.resetBy - the administrator (req.user.id)
- * @param {boolean} [input.actorIsSuperAdmin]
- * @param {string|null} [input.actorTenantId]
- * @param {number} [input.actorRoleLevel]
- * @param {string|null} [input.ipAddress]
- * @param {string|null} [input.userAgent]
- * @returns {Promise<object>} the envelope
- * @throws {{status: number, message: string}} 404 not found / not in the
- *   caller's tenant; 400 self; 403 higher role; 409 MFA not enabled
- */
-exports.resetUserMfa = async (input) => {
-  const {
-    userId,
-    resetBy,
-    actorIsSuperAdmin = false,
-    actorTenantId = null,
-    actorRoleLevel = 0,
-  } = input;
-  // Lazily: session.service loads the Session model and Redis.
-  const { revokeOtherSessions } = require("./session.service");
-  const mfaService = require("./mfa.service");
-
-  let transaction;
-  try {
-    transaction = await db.transaction();
-
-    const user = await Users.findByPk(userId, {
-      include: [
-        {
-          model: Roles,
-          as: "role",
-          // ADR-043: the JS attribute is roleLevel.
-          attributes: ["id", "name", "roleLevel"],
-          required: false,
-        },
-      ],
-      transaction,
-    });
-    if (!user) {
-      throw userNotFound();
-    }
-    assertSameTenantOrNotFound("resetUserMfa", user, {
-      actorIsSuperAdmin,
-      actorTenantId,
-    });
-
-    if (String(user.id) === String(resetBy)) {
-      throw {
-        status: 400,
-        message:
-          "You cannot reset your own MFA here; turn it off with your password and a code on the MFA page",
-      };
-    }
-
-    const roleName = user.role?.name;
-    const targetLevel =
-      roleName === "SUPER_ADMIN" || roleName === "SUPERADMIN"
-        ? Number.MAX_SAFE_INTEGER
-        : user.role?.roleLevel || 0;
-    if (!actorIsSuperAdmin && targetLevel > actorRoleLevel) {
-      throw {
-        status: 403,
-        message: "Forbidden: you cannot reset the MFA of a user whose role is above yours",
-      };
-    }
-
-    if (!user.mfaEnabled) {
-      throw { status: 409, message: "MFA is not enabled for this user" };
-    }
-
-    await user.update({ ...mfaService.MFA_CLEARED }, { transaction });
-    const sessionsRevoked = await revokeOtherSessions(user.id, null, "MFA_ADMIN_RESET", {
-      transaction,
-    });
-
-    await auditUserChange(transaction, input, {
-      action: "UPDATE",
-      actorUserId: resetBy,
-      user,
-      changes: { operation: "MFA_ADMIN_RESET", sessionsRevoked },
-    });
-
-    await transaction.commit();
-
-    logger.info("User MFA reset by an administrator", { userId: user.id, resetBy });
-
-    return {
-      success: true,
-      status: 200,
-      message:
-        "MFA has been reset. The user must sign in with their password and set up MFA again.",
-      data: { id: user.id, mfaEnabled: false, sessionsRevoked },
-    };
-  } catch (err) {
-    if (transaction && !transaction.finished) {
-      await transaction.rollback();
-    }
-    logger.error("Error resetting user MFA", { err: err.message, userId, resetBy });
     throw {
       status: err.status || 500,
       message: err.message || "Internal server error",

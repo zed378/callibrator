@@ -159,9 +159,8 @@ const MENU_SLUGS = {
   TICKETS_RESPONSE: "tickets-response",
   // A-84: the e-signature signing surface (POST /esignature/sign, /verify,
   // /history). Separate from QMS on purpose: a signer is whoever a workflow
-  // names, commonly a role with no `qms` menu. A-129 (ADR-051 Q-19): granted
-  // `write` to the technical roles only — not USER, ROOM USER or WAREHOUSE
-  // STAFF — see ROLE_MENU_ASSIGNMENTS and migration 0031.
+  // names, commonly a role with no `qms` menu. Granted `write` to every seeded
+  // role below — see ROLE_MENU_ASSIGNMENTS.
   ESIGNATURE: "esignature",
 };
 
@@ -206,14 +205,11 @@ const ROLE_MENU_ASSIGNMENTS = [
     description: "Full access to all system menus",
     menus: {
       [MENU_SLUGS.PROFILE]: PERMISSION_TYPES.WRITE,
-      // A-84 / A-129 (ADR-051 Q-19): the roles whose work includes attesting
-      // records may sign — the admin roles, ENGINEERING MANAGER, SUPERVISOR,
-      // TECHNICIAN, HEALTHCARE TECHNICIAN and FACILITY MAINTENANCE. USER,
-      // ROOM USER and WAREHOUSE STAFF do not: least privilege, as they do no
-      // technical work. A workflow cannot be created naming a signer without
-      // this grant (eSignature.service#createSignatureWorkflow), so leaving a
-      // role out cannot strand a workflow. A tenant grants it per role or per
-      // user in the permissions screen when it has a reason.
+      // A-84: every seeded role may sign. A workflow can name any user in the
+      // tenant as a signer, and signDocument already refuses anyone but the
+      // named signer (A-65); withholding this from a role would make every
+      // workflow naming one of its users uncompletable. Narrow it per role
+      // in the permissions screen if a tenant wants to.
       [MENU_SLUGS.ESIGNATURE]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.HOME]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.DASHBOARD]: PERMISSION_TYPES.READ,
@@ -413,7 +409,7 @@ const ROLE_MENU_ASSIGNMENTS = [
     description: "Warehouse staff with home access",
     menus: {
       [MENU_SLUGS.PROFILE]: PERMISSION_TYPES.WRITE,
-      // No ESIGNATURE (A-129, ADR-051 Q-19; revoked by migration 0031).
+      [MENU_SLUGS.ESIGNATURE]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.HOME]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.WAREHOUSE]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.EQUIPMENT]: PERMISSION_TYPES.READ,
@@ -426,7 +422,7 @@ const ROLE_MENU_ASSIGNMENTS = [
     description: "Room user with home and dashboard access",
     menus: {
       [MENU_SLUGS.PROFILE]: PERMISSION_TYPES.WRITE,
-      // No ESIGNATURE (A-129, ADR-051 Q-19; revoked by migration 0031).
+      [MENU_SLUGS.ESIGNATURE]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.HOME]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.DASHBOARD]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.WAREHOUSE]: PERMISSION_TYPES.READ,
@@ -440,7 +436,7 @@ const ROLE_MENU_ASSIGNMENTS = [
     description: "Basic user with minimal access",
     menus: {
       [MENU_SLUGS.PROFILE]: PERMISSION_TYPES.WRITE,
-      // No ESIGNATURE (A-129, ADR-051 Q-19; revoked by migration 0031).
+      [MENU_SLUGS.ESIGNATURE]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.HOME]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.DASHBOARD]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.ACCOUNT]: PERMISSION_TYPES.READ,

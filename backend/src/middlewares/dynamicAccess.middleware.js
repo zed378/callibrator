@@ -459,33 +459,6 @@ async function checkMenuPermission(menuName, permTypes, user, requireAll) {
 }
 
 /**
- * A-129 — the gate's own decision, for code that must ask it about a
- * principal outside a route: whether a named signer holds `esignature:write`
- * (ADR-051 Q-19), or whether the caller of GET /esignature/history holds
- * `qms:read` (F-9). The same resolution as `dynamicAccess`, with no second
- * copy to drift: the SUPER_ADMIN bypass, API-key scopes, then the role matrix
- * with the per-user override.
- *
- * @param {{id?: string, role?: {id?: string, name?: string}, isApiKey?: boolean,
- *   apiKeyScopes?: string[]}} principal - `req.user`, or a user row shaped like it
- * @param {string} menuName - a menu slug (MENU_SLUGS)
- * @param {string} permissionType - "read" or "write"
- * @returns {Promise<boolean>}
- */
-exports.principalHasMenuPermission = async (principal, menuName, permissionType) => {
-  if (!principal || !principal.role) {
-    return false;
-  }
-  if (principal.role.name === "SUPER_ADMIN" || principal.role.name === "SUPERADMIN") {
-    return true;
-  }
-  const result = principal.isApiKey
-    ? checkApiKeyScope(menuName, [permissionType], principal.apiKeyScopes, false)
-    : await checkMenuPermission(menuName, [permissionType], principal, false);
-  return result.allowed;
-};
-
-/**
  * Middleware to check if user has permission for a specific action
  * Returns the permission details without blocking access
  * Useful for conditional UI rendering
