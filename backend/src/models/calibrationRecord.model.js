@@ -25,7 +25,7 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.UUID,
         allowNull: false,
         references: { model: "tenants", key: "id" },
-        onDelete: "CASCADE",
+        onDelete: "RESTRICT",
       },
       deviceId: {
         type: DataTypes.UUID,
@@ -37,7 +37,9 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.UUID,
         allowNull: false,
         references: { model: "users", key: "id" },
-        onDelete: "CASCADE",
+        // RESTRICT (F-6, ADR-051 Q-16): hard-deleting the performer must not
+        // delete the calibration record, nor erase who performed it.
+        onDelete: "RESTRICT",
       },
       calibrationDate: {
         type: DataTypes.DATE,
@@ -141,8 +143,9 @@ const defineModel = (db, DataTypes) => {
   CalibrationRecord.associate = (models) => {
     // CalibrationRecord -> Tenant
     CalibrationRecord.belongsTo(models.Tenant, {
-      foreignKey: "tenant_id",
+      foreignKey: "tenantId",
       as: "tenant",
+      onDelete: "RESTRICT",
     });
     // CalibrationRecord -> CalibrationDevice
     CalibrationRecord.belongsTo(models.CalibrationDevice, {
@@ -151,8 +154,9 @@ const defineModel = (db, DataTypes) => {
     });
     // CalibrationRecord -> User (performedBy)
     CalibrationRecord.belongsTo(models.User, {
-      foreignKey: "performed_by",
+      foreignKey: "performedBy",
       as: "performer",
+      onDelete: "RESTRICT",
     });
   };
 

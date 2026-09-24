@@ -66,8 +66,8 @@ describe("A-65 — eSignature.service#signDocument", () => {
       update: jest.fn().mockResolvedValue(true),
     };
     const userRows = {
-      [SIGNER]: { id: SIGNER, status: "active", mfaEnabled: true, mfaSecret: "S" },
-      "u-2": { id: "u-2", status: "active", mfaEnabled: true, mfaSecret: "S2" },
+      [SIGNER]: { id: SIGNER, status: "ACTIVE", isActive: true, mfaEnabled: true, mfaSecret: "S" },
+      "u-2": { id: "u-2", status: "ACTIVE", isActive: true, mfaEnabled: true, mfaSecret: "S2" },
       ...users,
     };
     const models = {
@@ -201,7 +201,7 @@ describe("A-65 — eSignature.service#signDocument", () => {
     });
 
     it("an MFA signature from an account without MFA is a 400, not a 500", async () => {
-      const h = buildHarness({ users: { [SIGNER]: { id: SIGNER, status: "active", mfaEnabled: false } } });
+      const h = buildHarness({ users: { [SIGNER]: { id: SIGNER, status: "ACTIVE", isActive: true, mfaEnabled: false } } });
 
       await expect(
         h.svc.signDocument("step-1", SIGNER, { authenticationMethod: "mfa", authPayload: MFA_CODE }),

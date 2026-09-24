@@ -64,6 +64,10 @@ const logoUrl = (logo) =>
  * @returns {Object} - Transformed tenant data
  */
 const transformTenant = (tenant) => {
+  /* istanbul ignore if -- defensive: every caller passes a loaded row (each
+     returns 404 or throws first). Its only exercised null path was
+     createTenant's after a null insert, which since A-95 throws in the audit
+     row, before the commit and before this is reached. */
   if (!tenant) {return null;}
   const data = tenant.toJSON ? tenant.toJSON() : { ...tenant };
   data.logoBaseUrl = logoUrl(data.logo);
@@ -132,22 +136,17 @@ exports.fetchTenants = async ({ find, page = 1, limit = DEFAULT_LIMIT }) => {
     const totalCount = await Tenants.count({ where: whereClause });
 
     // Get user counts per tenant in a single query
+    // `tenantId` is the attribute (A-88; there is no `tenant_id` attribute any
+    // more): `where` maps it to the column. The selected and grouped
+    // expressions are the COLUMN name on purpose — Sequelize maps neither an
+    // aliased attribute pair nor `group` to fields, so "tenant_id" is quoted
+    // as-is and "tenantId" would name a column that does not exist.
     const userCounts = await Users.findAll({
       attributes: [
         ["tenant_id", "id"],
         [db.sequelize.fn("COUNT", "*"), "count"],
       ],
-      // unreachable else-branch: `whereClause` is initialised to an object
-      // literal a few lines above and is only ever mutated, so it is always
-      // truthy and the alternate can never execute.
-      where: /* istanbul ignore next */ whereClause
-        ? {
-          [Op.or]: [{ tenant_id: tenantRows.map((t) => t.id) }],
-        }
-        : {
-          // unreachable: lives in the dead else-branch above.
-          tenant_id: tenantRows.map(/* istanbul ignore next */ (t) => t.id),
-        },
+      where: { tenantId: tenantRows.map((t) => t.id) },
       group: ["tenant_id"],
       raw: true,
     });
@@ -331,7 +330,20 @@ exports.getPublicBranding = async (tenantId) => {
 // ------------------------------------------------------------------
 // CREATE TENANT
 // ------------------------------------------------------------------
-exports.createTenant = async (input, createdBy) => {
+/**
+ * Create a tenant (a platform operation — the route is superAdminOnly, A-76).
+ *
+ * A-95: the create and its audit row share the transaction (A-41). The row is
+ * recorded under the ACTOR's home tenant (BR-A41-4): a platform operation on a
+ * tenant is the actor's action, and the new tenant's own history begins with
+ * it only in the resourceId.
+ *
+ * @param {object} input - fields to validate against createTenantSchema
+ * @param {string|null} createdBy - the acting user id (from req.user)
+ * @param {{tenantId?: (string|null), ipAddress?: (string|null),
+ *   userAgent?: (string|null)}} [actor] - the request's audit actor
+ */
+exports.createTenant = async (input, createdBy, actor = {}) => {
   // Validate input
   const data = validate(input, createTenantSchema);
   const {
@@ -408,6 +420,24 @@ exports.createTenant = async (input, createdBy) => {
         country: country || null,
         website: website || null,
         createdBy,
+      },
+      { transaction },
+    );
+
+    // A-95: inside the transaction — a failed insert re-throws and the tenant
+    // is not created.
+    await auditService.logAction(
+      {
+        tenantId: actor.tenantId || null,
+        userId: createdBy || null,
+        action: "CREATE",
+        resourceType: "Tenant",
+        resourceId: tenant.id,
+        changes: {
+          after: { name: tenant.name, code: tenant.code, subdomain: tenant.subdomain },
+        },
+        ipAddress: actor.ipAddress || null,
+        userAgent: actor.userAgent || null,
       },
       { transaction },
     );
@@ -714,7 +744,22 @@ exports.updateTenant = async (tenantId, input, updatedBy, actor = {}) => {
 // ------------------------------------------------------------------
 // DELETE TENANT
 // ------------------------------------------------------------------
-exports.deleteTenant = async (tenantId, deletedBy) => {
+/**
+ * Delete (soft — the model is paranoid) a tenant. A platform operation: the
+ * route is superAdminOnly (A-76).
+ *
+ * A-95: the actor comes from the authenticated request only (it was read from
+ * the body or query as `deletedBy`, so the row could name anyone), and the
+ * delete and its audit row share the transaction. The row is recorded under
+ * the ACTOR's home tenant (BR-A41-4) — not under the deleted tenant, whose
+ * rows go with it.
+ *
+ * @param {string} tenantId
+ * @param {{userId?: (string|null), tenantId?: (string|null),
+ *   ipAddress?: (string|null), userAgent?: (string|null)}} [actor] - auditActor(req)
+ */
+exports.deleteTenant = async (tenantId, actor = {}) => {
+  const deletedBy = actor.userId || null;
   const transaction = await db.transaction();
 
   try {
@@ -743,6 +788,23 @@ exports.deleteTenant = async (tenantId, deletedBy) => {
     }
 
     await tenant.destroy({ transaction });
+
+    await auditService.logAction(
+      {
+        tenantId: actor.tenantId || null,
+        userId: deletedBy,
+        action: "DELETE",
+        resourceType: "Tenant",
+        resourceId: tenant.id,
+        changes: {
+          before: { name: tenant.name, code: tenant.code, status: tenant.status },
+          after: { deleted: true },
+        },
+        ipAddress: actor.ipAddress || null,
+        userAgent: actor.userAgent || null,
+      },
+      { transaction },
+    );
 
     await transaction.commit();
 
@@ -855,7 +917,22 @@ exports.getTenantSettings = async (tenantId) => {
 // ------------------------------------------------------------------
 // UPDATE TENANT SETTINGS
 // ------------------------------------------------------------------
-exports.updateTenantSettings = async (tenantId, settingsData, updatedBy) => {
+/**
+ * Upsert tenant settings.
+ *
+ * A-117: audited — one UPDATE row on the tenant, written in the SAME
+ * transaction as the settings, so a rolled-back change leaves no row and a
+ * committed one always has one. The row names the keys that were created or
+ * changed, not their values: settings can carry credentials (SMTP, storage),
+ * and audit_logs is permanent.
+ *
+ * @param {string} tenantId - the tenant whose settings change
+ * @param {object} settingsData - key -> value
+ * @param {string|null} updatedBy - the acting user id
+ * @param {{userId?: (string|null), ipAddress?: (string|null),
+ *   userAgent?: (string|null)}} [actor] - auditActor(req)
+ */
+exports.updateTenantSettings = async (tenantId, settingsData, updatedBy, actor = {}) => {
   const transaction = await db.transaction();
 
   try {
@@ -867,6 +944,8 @@ exports.updateTenantSettings = async (tenantId, settingsData, updatedBy) => {
     }
 
     // Upsert each setting, skipping internal properties
+    const createdKeys = [];
+    const changedKeys = [];
     for (const [key, value] of Object.entries(settingsData)) {
       if (key === "tenantId" || key === "settings") {continue;}
 
@@ -877,10 +956,14 @@ exports.updateTenantSettings = async (tenantId, settingsData, updatedBy) => {
         defaults: { value: stringValue },
         transaction,
       }).then(([setting, created]) => {
-        if (!created) {
-          return setting.update({ value: stringValue }, { transaction });
+        if (created) {
+          createdKeys.push(key);
+          return setting;
         }
-        return setting;
+        if (setting.value !== stringValue) {
+          changedKeys.push(key);
+        }
+        return setting.update({ value: stringValue }, { transaction });
       });
     }
 
@@ -897,6 +980,25 @@ exports.updateTenantSettings = async (tenantId, settingsData, updatedBy) => {
 
     // Keep the JSONB settings column updated on the Tenant record
     await tenant.update({ settings: settingsJson }, { transaction });
+
+    // A-117: in the transaction; a failed insert throws and rolls it back.
+    await auditService.logAction(
+      {
+        tenantId,
+        userId: actor.userId || updatedBy || null,
+        action: "UPDATE",
+        resourceType: "TenantSettings",
+        resourceId: tenantId,
+        changes: {
+          operation: "UPDATE_SETTINGS",
+          created: createdKeys,
+          changed: changedKeys,
+        },
+        ipAddress: actor.ipAddress || null,
+        userAgent: actor.userAgent || null,
+      },
+      { transaction },
+    );
 
     await transaction.commit();
 

@@ -200,6 +200,11 @@ make test-e2e      # 53 live specs, running server required
 make migrate       # then: make migrate-verify — the log is not evidence
 ```
 
+**Run backend tests through the npm scripts** (`npm test`, `npm run test:coverage`), not bare
+`npx jest`. Since A-99 the scripts pass `--experimental-vm-modules`, because the real `otplib` 13
+needs ES-module-only dependencies. A bare `npx jest` on the suites that use it fails with "Must use
+import to load ES Module".
+
 ## Code Style
 
 Match the surrounding code. Both workspaces have standards documents:

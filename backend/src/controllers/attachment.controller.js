@@ -16,6 +16,9 @@ exports.upload = asyncHandler(async (req, res) => {
     resourceType,
     resourceId,
     uploadedBy: req.user.id,
+    // A-117: for the CREATE audit row written with the attachment.
+    ipAddress: req.ip,
+    userAgent: req.get("user-agent"),
   });
   success(res, data, null, "Attachment uploaded", 201);
 });

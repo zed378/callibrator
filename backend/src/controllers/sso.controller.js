@@ -3,7 +3,7 @@ const ssoService = require("../services/sso.service");
 const tenantService = require("../services/tenant.service");
 const auditService = require("../services/audit.service");
 const redis = require("../services/redis.service");
-const { recordAuthFailure } = require("../services/rateLimiter.redis.service");
+const { noteAuthFailure } = require("../services/rateLimiter.redis.service");
 const { Tenants, Users, sequelize } = require("../models");
 const { tenantInclude, tenantRefusal } = require("../services/auth.service");
 const { generateAccessToken, generateOpaqueRefreshToken } = require("../utils/jwt.util");
@@ -317,7 +317,8 @@ exports.oidcCallback = asyncHandler(async (req, res) => {
  * Called server-to-server by the frontend's /api/v1/auth/sso-session route.
  * The body has already passed validate(ssoExchangeSchema). An unknown, expired
  * or already-used code is one 401 — the three are indistinguishable on
- * purpose — and counts as a failure against the caller's IP.
+ * purpose — and counts as a failure against the caller's IP when
+ * AUTH_RATE_LIMIT_BY_IP is "true" (A-100).
  *
  * Answers exactly as /auth/login does (`login()`): the access token at the
  * top-level `token`, the session at `session`, so the frontend sets the same
@@ -327,11 +328,17 @@ exports.ssoExchange = asyncHandler(async (req, res) => {
   const entry = await redeemHandoffCode(req.body.code);
 
   if (!entry) {
-    try {
-      await recordAuthFailure({ ...req.rateLimitContext, endpoint: "ssoExchange" });
-    } catch (err) {
-      logger.error(`SSO exchange failure recording error: ${err.message}`);
-    }
+    // A-100: counted through noteAuthFailure, like every other auth endpoint
+    // (A-67, A-81), so the per-IP count obeys AUTH_RATE_LIMIT_BY_IP. It used
+    // to call recordAuthFailure directly and count by IP unconditionally —
+    // and this endpoint is called server-to-server by the frontend, so until
+    // a deployment's req.ip is known to be the client (A-16), that address
+    // can be one shared by every browser: 30 bad codes from anyone would have
+    // locked SSO sign-in for everyone for five minutes. The code itself is
+    // 256 bits, so the count is defence in depth, not the barrier.
+    // noteAuthFailure never throws: a limiter fault must not turn this 401
+    // into a 500.
+    await noteAuthFailure(req, "ssoExchange");
     throw new AppError(401, "Invalid or expired SSO code");
   }
 

@@ -15,7 +15,6 @@ module.exports = {
   transformIgnorePatterns: ["/node_modules/"],
   moduleNameMapper: {
     "^uuid$": "<rootDir>/__mocks__/uuid.js",
-    "^otplib$": "<rootDir>/__mocks__/otplib.js",
   },
   moduleFileExtensions: ["js", "json"],
   testTimeout: 30000,

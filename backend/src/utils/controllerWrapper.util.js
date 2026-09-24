@@ -13,6 +13,40 @@
 
 const { error: sendError } = require("./response.util");
 const { AppError } = require("./appError.util");
+const {
+  isExposableError,
+  publicErrorMessage,
+} = require("./fileValidation.util");
+
+const isProductionEnv = () => process.env.NODE_ENV === "production";
+
+/**
+ * Send a caught controller error (A-132) under the same rule as the global
+ * errorHandler: in production the error's own message goes out only when it is
+ * an operational 4xx (fileValidation.util#isExposableError, or `exposable`
+ * when a caller has classified it); otherwise the generic message and the
+ * request id.
+ *
+ * @param {import('express').Request|undefined} req
+ * @param {import('express').Response} res
+ * @param {*} error
+ * @param {number} status
+ * @param {Array} detailsArg - `[details]` for response.util#error, or `[]`
+ * @param {boolean} [exposable] - the caller's own classification
+ */
+const sendCaughtError = (req, res, error, status, detailsArg, exposable) => {
+  const isProduction = isProductionEnv();
+  const shown = exposable === true || isExposableError(error, status);
+  const message = shown
+    ? (error && error.message) || "Internal server error"
+    : publicErrorMessage(error, status, isProduction);
+
+  if (isProduction && !shown) {
+    const requestId = (req && req.requestId) || "unknown";
+    return sendError(res, message, status, null, { requestId });
+  }
+  return sendError(res, message, status, ...detailsArg);
+};
 
 // A-03. Deny-by-default for API-key principals.
 //
@@ -45,13 +79,11 @@ const asyncHandler = (fn) => {
       return undefined;
     }
     return Promise.resolve(fn(req, res, next)).catch((error) => {
-      // Ensure status and message are resolved
       const status = error.status || error.statusCode || 500;
-      const message = error.message || "Internal server error";
 
       // Call response utility error handler
       try {
-        sendError(res, message, status, error.stack || String(error));
+        sendCaughtError(req, res, error, status, [error.stack || String(error)]);
       } catch (err) {
         // Ignore response errors
       }
@@ -79,15 +111,18 @@ const asyncHandler = (fn) => {
  * @param {Record<string, number>} errorMap
  * @returns {number}
  */
-const resolveErrorStatus = (error, errorMap) => {
+const mappedErrorStatus = (error, errorMap) => {
   const errorMessage = error.message || "Internal server error";
   for (const [pattern, code] of Object.entries(errorMap)) {
     if (errorMessage.toLowerCase().includes(pattern.toLowerCase())) {
       return code;
     }
   }
-  return error.status || error.statusCode || 500;
+  return null;
 };
+
+const resolveErrorStatus = (error, errorMap) =>
+  mappedErrorStatus(error, errorMap) ?? (error.status || error.statusCode || 500);
 
 /**
  * Wraps a controller with custom error mapping
@@ -124,10 +159,17 @@ const asyncHandlerWithMapping = (fn, errorMap = {}) => {
       })
       .catch((error) => {
         const statusCode = resolveErrorStatus(error, errorMap);
-        const errorMessage = error.message || "Internal server error";
-
-        const { error: sendError } = require("./response.util");
-        return sendError(res, errorMessage, statusCode);
+        // A status the controller's errorMap assigned is its author's own
+        // classification of that message as a client error (A-132).
+        const mapped = mappedErrorStatus(error, errorMap);
+        return sendCaughtError(
+          req,
+          res,
+          error,
+          statusCode,
+          [],
+          mapped !== null && mapped >= 400 && mapped < 500,
+        );
       });
   };
 };

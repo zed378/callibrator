@@ -40,7 +40,7 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.UUID,
         allowNull: false,
         references: { model: "tenants", key: "id" },
-        onDelete: "CASCADE",
+        onDelete: "RESTRICT",
       },
       // Reference links
       calibrationRecordId: {
@@ -74,20 +74,25 @@ const defineModel = (db, DataTypes) => {
         defaultValue: "draft",
       },
       // Signatures
+      // Who calibrated, approved and signed: RESTRICT (ADR-051 Q-16) — a
+      // hard delete of the user is refused rather than erasing the attestation.
       calibratedBy: {
         type: DataTypes.UUID,
         allowNull: true,
         references: { model: "users", key: "id" },
+        onDelete: "RESTRICT",
       },
       approvedBy: {
         type: DataTypes.UUID,
         allowNull: true,
         references: { model: "users", key: "id" },
+        onDelete: "RESTRICT",
       },
       signedBy: {
         type: DataTypes.UUID,
         allowNull: true,
         references: { model: "users", key: "id" },
+        onDelete: "RESTRICT",
       },
       // Digital signature
       digitalSignature: {
@@ -315,8 +320,9 @@ const defineModel = (db, DataTypes) => {
   Certificate.associate = (models) => {
     // Certificate -> Tenant
     Certificate.belongsTo(models.Tenant, {
-      foreignKey: "tenant_id",
+      foreignKey: "tenantId",
       as: "tenant",
+      onDelete: "RESTRICT",
     });
     // Certificate -> CalibrationRecord
     Certificate.belongsTo(models.CalibrationRecord, {
@@ -330,18 +336,21 @@ const defineModel = (db, DataTypes) => {
     });
     // Certificate -> CalibratedBy (User)
     Certificate.belongsTo(models.User, {
-      foreignKey: "calibrated_by",
+      foreignKey: "calibratedBy",
       as: "calibratedByUser",
+      onDelete: "RESTRICT",
     });
     // Certificate -> ApprovedBy (User)
     Certificate.belongsTo(models.User, {
-      foreignKey: "approved_by",
+      foreignKey: "approvedBy",
       as: "approvedByUser",
+      onDelete: "RESTRICT",
     });
     // Certificate -> SignedBy (User)
     Certificate.belongsTo(models.User, {
-      foreignKey: "signed_by",
+      foreignKey: "signedBy",
       as: "signedByUser",
+      onDelete: "RESTRICT",
     });
   };
 

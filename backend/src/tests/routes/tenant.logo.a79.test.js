@@ -304,7 +304,8 @@ describe("A-79 shape on delete — the tenant's logo file goes only after the co
     const res = await http("delete", "/delete", { tenantId: fx.tenantB.id });
 
     expect(res.status).toBe(200);
-    expect(mockEvents).toEqual(["destroy", "commit", "unlink:logo-of-b.png"]);
+    // A-95: the delete's audit row is written inside the transaction.
+    expect(mockEvents).toEqual(["destroy", "audit", "commit", "unlink:logo-of-b.png"]);
   });
 
   it("a delete that fails before the commit keeps the logo file", async () => {

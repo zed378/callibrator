@@ -35,13 +35,23 @@ export interface SessionMeta {
   totalPages: number;
 }
 
-export interface SessionsResponse {
+/**
+ * The wire shape of GET /api/v1/sessions — the standard envelope: rows in
+ * `data`, pagination in a TOP-LEVEL `meta` (A-111). The backend used to send
+ * `data: { sessions, meta }`; nothing reads that shape any more.
+ */
+interface SessionsEnvelope {
   success: boolean;
+  status: number;
   message: string;
-  data: {
-    sessions: Session[];
-    meta: SessionMeta;
-  };
+  data: Session[] | null;
+  meta?: SessionMeta;
+}
+
+/** What `getAll` resolves to: the rows and their pagination. */
+export interface SessionsResult {
+  sessions: Session[];
+  meta: SessionMeta;
 }
 
 export interface SessionStats {
@@ -76,17 +86,25 @@ export const sessionService = {
     search?: string,
     status?: "active" | "expired" | "revoked",
     userId?: string,
-  ): Promise<SessionsResponse> => {
+  ): Promise<SessionsResult> => {
     const params: Record<string, string | number> = { page, limit };
 
     if (search) params.search = search;
     if (status) params.status = status;
     if (userId) params.userId = userId;
 
-    const response = await api.get<SessionsResponse>("/api/v1/sessions", {
+    const response = await api.get<SessionsEnvelope>("/api/v1/sessions", {
       params,
     });
-    return response;
+
+    const sessions = response.data ?? [];
+    const meta: SessionMeta = response.meta ?? {
+      total: sessions.length,
+      page,
+      limit,
+      totalPages: 1,
+    };
+    return { sessions, meta };
   },
 
   /**

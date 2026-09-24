@@ -101,9 +101,17 @@ The backend also has `FORCE_HTTPS`, which redirects when `X-Forwarded-Proto` is 
 ```nginx
 proxy_set_header Host              $host;
 proxy_set_header X-Real-IP         $remote_addr;
-proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+proxy_set_header X-Forwarded-For   $remote_addr;   # OVERWRITE — never $proxy_add_x_forwarded_for
+proxy_set_header CF-Connecting-IP  "";
 proxy_set_header X-Forwarded-Proto $scheme;
 ```
+
+**Overwrite, never append (ADR-050, 2026-09-24).** `$proxy_add_x_forwarded_for` keeps whatever the
+client sent at the front of the list, so a browser can name its own address. On the VM, nginx first
+resolves the client from `CF-Connecting-IP` with the `realip` module, trusting that header **only**
+from the compose gateway where cloudflared arrives (`vm-http.conf`). Next then forwards that single
+value (`frontend/src/lib/clientIp.ts`), and the backend trusts exactly one hop (`TRUST_PROXY_HOPS`).
+The Socket.IO location sets its own headers, so it must repeat these; before A-16 it forwarded none.
 
 `X-Forwarded-For` is not cosmetic here. It reaches:
 
@@ -117,7 +125,7 @@ proxy_set_header X-Forwarded-Proto $scheme;
 
 **Without it every request appears to come from the proxy.** Per-source rate limiting collapses into one bucket, the session and audit rows record the proxy instead of the client, and the signature evidence records the wrong address — which is a compliance defect, not an operational one.
 
-Express must be configured to trust the proxy for `req.ip` to reflect the real client.
+Express trusts exactly one hop (`constants/appConstants.js#TRUST_PROXY_HOPS`) — the Next proxy — because every hop in front of it forwards one resolved value rather than a list (ADR-050).
 
 `X-Forwarded-Proto` is what `FORCE_HTTPS` reads. Omitting it produces a redirect loop.
 

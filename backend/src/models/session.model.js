@@ -143,6 +143,7 @@ const defineModel = (db, DataTypes) => {
     Session.belongsTo(models.Tenant, {
       foreignKey: "tenant_id",
       as: "tenant",
+      onDelete: "CASCADE",
     });
   };
 

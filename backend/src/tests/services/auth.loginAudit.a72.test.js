@@ -48,7 +48,9 @@ jest.mock("../../utils/password.util", () => ({
   comparePassword: jest.fn(),
 }));
 
-jest.mock("otplib", () => ({ authenticator: { check: jest.fn() } }));
+// A-99: the TOTP check is faked at mfa.service, whose contract with the real
+// otplib is proven in mfa.realOtplib.a99.test.js.
+jest.mock("../../services/mfa.service", () => ({ consumeCode: jest.fn() })); // A-115: consumed, not only checked
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
@@ -57,7 +59,7 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
 const { Users, AuditLog } = require("../../models");
 const { createSession } = require("../../services/session.service");
 const { comparePassword } = require("../../utils/password.util");
-const { authenticator } = require("otplib");
+const mfaService = require("../../services/mfa.service");
 const { logger } = require("../../middlewares/activityLog.middleware");
 const authService = require("../../services/auth.service");
 
@@ -139,7 +141,7 @@ describe("A-72: a successful login writes one LOGIN audit row", () => {
     Users.findByPk.mockResolvedValue(
       userRow({ mfaEnabled: true, mfaSecret: "BASE32SECRET" }),
     );
-    authenticator.check.mockReturnValue(true);
+    mfaService.consumeCode.mockResolvedValue(true);
 
     const result = await authService.loginMfa(USER_ID, "123456", "203.0.113.6", "jest-agent");
 
@@ -230,7 +232,7 @@ describe("A-72: a refused login writes no session and no LOGIN row", () => {
     Users.findByPk.mockResolvedValue(
       userRow({ mfaEnabled: true, mfaSecret: "S", ...overrides }),
     );
-    authenticator.check.mockReturnValue(true);
+    mfaService.consumeCode.mockResolvedValue(true);
 
     await expect(authService.loginMfa(USER_ID, "123456")).rejects.toMatchObject({
       status: 403,

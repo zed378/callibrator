@@ -18,6 +18,7 @@ jest.mock("../../services/certificate.service", () => ({
 jest.mock("../../utils/response.util", () => ({
   success: jest.fn(),
   error: jest.fn(),
+  sendResult: jest.fn(),
 }));
 
 jest.mock("../../validators/certificate.validator", () => {
@@ -41,7 +42,7 @@ jest.mock("../../validators/certificate.validator", () => {
 
 const certificateController = require("../../controllers/certificate.controller");
 const certificateService = require("../../services/certificate.service");
-const { success, error } = require("../../utils/response.util");
+const { success, error, sendResult } = require("../../utils/response.util");
 
 describe("certificateController", () => {
   let req;
@@ -71,6 +72,14 @@ describe("certificateController", () => {
     error.mockImplementation((response, message, status) => {
       response.status(status || 500).json({ success: false, message });
     });
+    // The real routing rule is pinned against the real response.util in
+    // certificate.controller.envelope.a103.test.js; here it routes onto the
+    // doubles above so these tests can keep asserting on success/error.
+    sendResult.mockImplementation((response, result, meta = null) =>
+      result.status >= 400 || result.success === false
+        ? error(response, result.message, result.status)
+        : success(response, result.data, meta, result.message, result.status),
+    );
   });
 
   describe("getAllCertificates", () => {

@@ -33,7 +33,7 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.UUID,
         allowNull: true,
         references: { model: "tenants", key: "id" },
-        onDelete: "CASCADE",
+        onDelete: "RESTRICT",
       },
       roleId: {
         type: DataTypes.UUID,
@@ -79,6 +79,27 @@ const defineModel = (db, DataTypes) => {
       },
       mfaSecret: {
         type: DataTypes.STRING(255),
+        allowNull: true,
+      },
+      // A-114: a secret being enrolled or rotated in. It is NOT the live
+      // second factor — nothing signs in with it — until verifyMfaSetup
+      // accepts a code from it and promotes it to mfaSecret. Held with the
+      // time it was issued; an enrolment older than MFA_PENDING_TTL_MS is
+      // refused (auth.service.js). Column added by migration 0028.
+      mfaPendingSecret: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+      },
+      mfaPendingCreatedAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
+      // A-115: the last TOTP time step (floor(epoch / 30)) this account had a
+      // code accepted for. A code whose step is <= this is a replay and is
+      // refused (mfa.service.js#consumeCode). INTEGER holds steps until the
+      // year ~4010. Column added by migration 0028.
+      mfaLastUsedStep: {
+        type: DataTypes.INTEGER,
         allowNull: true,
       },
       // WebAuthn (passkeys / security keys)
@@ -209,8 +230,9 @@ const defineModel = (db, DataTypes) => {
     });
     // User -> Tenant
     User.belongsTo(models.Tenant, {
-      foreignKey: "tenant_id",
+      foreignKey: "tenantId",
       as: "tenant",
+      onDelete: "RESTRICT",
     });
     // User -> Session (hasMany)
     User.hasMany(models.Session, {
@@ -238,9 +260,12 @@ const defineModel = (db, DataTypes) => {
       as: "performedOpnames",
     });
     // User -> CalibrationRecord (performedBy)
+    // The ATTRIBUTE, not the column: "performed_by" added a second, nullable
+    // attribute that sync() built as nullable + SET NULL (A-88 shape; F-6).
     User.hasMany(models.CalibrationRecord, {
-      foreignKey: "performed_by",
+      foreignKey: "performedBy",
       as: "calibrationRecords",
+      onDelete: "RESTRICT",
     });
   };
 

@@ -281,9 +281,67 @@ exports.sanitizeFilename = (filename, allowedExtensions = []) => {
 // ERROR SANITIZATION
 // ==========================================
 
+/** What a client is told in production when an error's message is not safe to show. */
+const GENERIC_ERROR_MESSAGE = "An unexpected error occurred. Please try again later.";
+exports.GENERIC_ERROR_MESSAGE = GENERIC_ERROR_MESSAGE;
+
+/**
+ * Whether an error's own message may be shown to the client in production
+ * (A-132). One rule for every error path: the global errorHandler (through
+ * sanitizeError), asyncHandler and asyncHandlerWithMapping.
+ *
+ * Only a 4xx the code raised on purpose qualifies:
+ * - an AppError that is operational (the default), e.g. a 409 state
+ *   explanation or a 404;
+ * - a plain `{ status, message }` object — the validators' and services'
+ *   deliberate throw shape; no library throws a non-Error;
+ * - an http-errors error marked `expose` (body-parser's 400 and 413).
+ *
+ * A 5xx, a non-operational AppError, and an arbitrary Error that merely
+ * carries a 4xx status (a library error, a driver error) do not: their message
+ * can name tables, hosts or internals.
+ *
+ * @param {*} err
+ * @param {number} status - the status the response is answered with
+ * @returns {boolean}
+ */
+exports.isExposableError = (err, status) => {
+  if (!err || typeof err !== "object") {
+    return false;
+  }
+  if (!Number.isInteger(status) || status < 400 || status > 499) {
+    return false;
+  }
+  if (err instanceof AppError) {
+    return err.isOperational !== false;
+  }
+  if (!(err instanceof Error)) {
+    return true;
+  }
+  return err.expose === true;
+};
+
+/**
+ * The message a client receives for an error: its own outside production, and
+ * in production its own only when isExposableError allows it.
+ *
+ * @param {*} err
+ * @param {number} status
+ * @param {boolean} isProduction
+ * @returns {string}
+ */
+exports.publicErrorMessage = (err, status, isProduction) => {
+  if (isProduction && !exports.isExposableError(err, status)) {
+    return GENERIC_ERROR_MESSAGE;
+  }
+  return (err && err.message) || "Internal server error";
+};
+
 /**
  * Sanitize error object for production response
- * Strips sensitive information like stack traces
+ * Strips sensitive information like stack traces. In production an error's
+ * message and field `errors` are kept only for an operational 4xx (A-132,
+ * isExposableError); anything else gets GENERIC_ERROR_MESSAGE.
  * @param {Error} err - The error object
  * @param {boolean} isProduction - Whether running in production
  * @returns {Object} Sanitized error object
@@ -292,16 +350,17 @@ exports.sanitizeError = (
   err,
   isProduction = process.env.NODE_ENV === "production",
 ) => {
+  const status = err.status || err.statusCode || 500;
   const sanitized = {
     success: false,
-    status: err.status || err.statusCode || 500,
-    message: isProduction
-      ? "An unexpected error occurred. Please try again later."
-      : err.message || "Internal server error",
+    status,
+    message: exports.publicErrorMessage(err, status, isProduction),
   };
 
-  // Include validation errors regardless of environment
-  if (err.errors) {
+  // Field-level validation errors, wherever the message itself may be shown.
+  // A driver's error list (a Sequelize ValidationErrorItem carries the row
+  // instance) is not shown in production.
+  if (err.errors && (!isProduction || exports.isExposableError(err, status))) {
     sanitized.errors = err.errors;
   }
 

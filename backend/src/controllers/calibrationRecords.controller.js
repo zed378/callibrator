@@ -3,7 +3,9 @@
  */
 const calibrationRecordsService = require("../services/calibrationRecords.service");
 const { asyncHandler } = require("../utils/controllerWrapper.util");
-const { success } = require("../utils/response.util");
+// A-112: sendResult, not success() — calibrationRecords.service RETURNS its
+// not-found outcomes, and success() sent them with `success: true`.
+const { sendResult } = require("../utils/response.util");
 // Who did it, from where — for the audit row the service writes inside its
 // transaction (A-41).
 const { auditActor } = require("../utils/auditActor.util");
@@ -43,13 +45,10 @@ exports.getAllCalibrationRecords = asyncHandler(async (req, res) => {
     to: validated.to,
   });
 
-  success(
-    res,
-    result.data.rows,
-    result.data.meta,
-    result.message,
-    result.status,
-  );
+  // Rows in `data`, pagination in a top-level `meta`. A failed result carries
+  // no rows; sendResult sends it down the error path and ignores the meta.
+  const page = result.data || {};
+  sendResult(res, { ...result, data: page.rows }, page.meta || null);
 });
 
 exports.getSpecificCalibrationRecord = asyncHandler(async (req, res) => {
@@ -63,7 +62,7 @@ exports.getSpecificCalibrationRecord = asyncHandler(async (req, res) => {
     calibrationRecordId,
   );
 
-  success(res, result.data, null, result.message, result.status);
+  sendResult(res, result);
 });
 
 exports.createCalibrationRecord = asyncHandler(async (req, res) => {
@@ -77,7 +76,7 @@ exports.createCalibrationRecord = asyncHandler(async (req, res) => {
     auditActor(req),
   );
 
-  success(res, result.data, null, result.message, result.status);
+  sendResult(res, result);
 });
 
 exports.updateCalibrationRecord = asyncHandler(async (req, res) => {
@@ -94,7 +93,7 @@ exports.updateCalibrationRecord = asyncHandler(async (req, res) => {
     auditActor(req),
   );
 
-  success(res, result.data, null, result.message, result.status);
+  sendResult(res, result);
 });
 
 exports.deleteCalibrationRecord = asyncHandler(async (req, res) => {
@@ -109,5 +108,5 @@ exports.deleteCalibrationRecord = asyncHandler(async (req, res) => {
     auditActor(req),
   );
 
-  success(res, result.data, null, result.message, result.status);
+  sendResult(res, result);
 });

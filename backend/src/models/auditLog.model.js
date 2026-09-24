@@ -6,12 +6,23 @@ module.exports = (sequelize) => {
       AuditLog.belongsTo(models.Tenant, {
         foreignKey: "tenantId",
         as: "tenant",
-        onDelete: "CASCADE",
+        // RESTRICT (W-20, ADR-051 Q-16): deleting a tenant row must never
+        // delete its audit trail. Matches migration 0030.
+        onDelete: "RESTRICT",
       });
       AuditLog.belongsTo(models.User, {
         foreignKey: "userId",
         as: "user",
-        onDelete: "SET NULL", // Keep the log even if user is deleted
+        // RESTRICT (ADR-051 Q-16): a hard delete of an actor is refused rather
+        // than erasing WHO from the trail. Users are paranoid, so this blocks
+        // only hard deletes. Matches migration 0030.
+        onDelete: "RESTRICT",
+      });
+      // F-8: the super admin who acted through an impersonation token.
+      AuditLog.belongsTo(models.User, {
+        foreignKey: "impersonatorId",
+        as: "impersonator",
+        onDelete: "RESTRICT", // as userId; 0029 deferred this to Q-16 (0030)
       });
     }
   }
@@ -30,8 +41,20 @@ module.exports = (sequelize) => {
           model: "tenants",
           key: "id",
         },
+        onDelete: "RESTRICT",
       },
       userId: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: {
+          model: "users",
+          key: "id",
+        },
+      },
+      // F-8: set when the change was made by a super admin impersonating
+      // `userId`; null otherwise. Added to existing databases by migration
+      // 0029-audit-log-impersonator.
+      impersonatorId: {
         type: DataTypes.UUID,
         allowNull: true,
         references: {

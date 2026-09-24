@@ -109,7 +109,7 @@ describe("eSignature.service — RSA signing and verification", () => {
       },
       AuditLog: { create: jest.fn().mockResolvedValue(true) },
       User: {
-        findByPk: jest.fn().mockResolvedValue({ id: "u-1", status: "active" }),
+        findByPk: jest.fn().mockResolvedValue({ id: "u-1", status: "ACTIVE", isActive: true }),
         findOne: jest.fn().mockResolvedValue(null),
       },
     };

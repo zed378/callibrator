@@ -59,8 +59,11 @@ jest.mock("../../services/audit.service", () => ({
   logAction: jest.fn().mockResolvedValue({ id: "audit-1" }),
 }));
 
+// A-100: ssoExchange counts a failure through noteAuthFailure, which applies
+// AUTH_RATE_LIMIT_BY_IP and never throws (rateLimiter.service.coverage.test.js;
+// auth.ssoExchange.a60.test.js drives the real limiter through the route).
 jest.mock("../../services/rateLimiter.redis.service", () => ({
-  recordAuthFailure: jest.fn().mockResolvedValue({ allowed: true }),
+  noteAuthFailure: jest.fn().mockResolvedValue(undefined),
 }));
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
@@ -99,7 +102,7 @@ const ssoController = require("../../controllers/sso.controller");
 const { success, error, login } = require("../../utils/response.util");
 const redis = require("../../services/redis.service");
 const auditService = require("../../services/audit.service");
-const { recordAuthFailure } = require("../../services/rateLimiter.redis.service");
+const { noteAuthFailure } = require("../../services/rateLimiter.redis.service");
 const { logger } = require("../../middlewares/activityLog.middleware");
 const { createSession } = require("../../services/session.service");
 const { generateAccessToken } = require("../../utils/jwt.util");
@@ -810,7 +813,10 @@ describe("sso.controller", () => {
       // Unknown: well-formed, never issued.
       const unknown = await exchange("A".repeat(43), { ip: "10.9.9.9" });
       refused(unknown);
-      expect(recordAuthFailure).toHaveBeenCalledWith({ ip: "10.9.9.9", endpoint: "ssoExchange" });
+      expect(noteAuthFailure).toHaveBeenCalledWith(
+        expect.objectContaining({ rateLimitContext: { ip: "10.9.9.9" } }),
+        "ssoExchange",
+      );
       expect(createSession).not.toHaveBeenCalled();
 
       // Expired: Redis drops the key at its TTL (asserted above as 60s); the
@@ -903,12 +909,15 @@ describe("sso.controller", () => {
       refused(await exchange("B".repeat(43)));
     });
 
-    it("still refuses, and logs, when the failure cannot be recorded", async () => {
-      recordAuthFailure.mockRejectedValueOnce(new Error("limiter down"));
+    it("counts a failure only for a refused code, never for a redeemed one", async () => {
+      const code = codeFrom(await callback("oidc"));
+      noteAuthFailure.mockClear();
+      await exchange(code);
+      expect(noteAuthFailure).not.toHaveBeenCalled();
+
+      login.mockClear();
       refused(await exchange("C".repeat(43)));
-      expect(logger.error).toHaveBeenCalledWith(
-        "SSO exchange failure recording error: limiter down",
-      );
+      expect(noteAuthFailure).toHaveBeenCalledTimes(1);
     });
   });
 });

@@ -19,7 +19,13 @@ jest.mock("../../config", () => ({
 }));
 
 jest.mock("../../models", () => ({
-  Users: { findOne: jest.fn(), findByPk: jest.fn(), create: jest.fn() },
+  Users: {
+    findOne: jest.fn(),
+    findByPk: jest.fn(),
+    create: jest.fn(),
+    // A-115: mfa.service#consumeCode stamps the used TOTP step (one row).
+    update: jest.fn().mockResolvedValue([1]),
+  },
   Role: { findOne: jest.fn() },
   Roles: { findOne: jest.fn() },
   Tenants: { findOne: jest.fn() },
@@ -102,6 +108,11 @@ const {
 } = require("../../services/redis.service");
 const { logger } = require("../../middlewares/activityLog.middleware");
 const { ROLE_IDS } = require("../../constants");
+// A-99: the TOTP check is the REAL otplib — a code generated from the secret
+// now. These cases used to pass any code through a global mock.
+const { generateSync } = require("otplib");
+const TOTP_SECRET = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
+const liveCode = () => generateSync({ secret: TOTP_SECRET });
 
 const {
   registerUser,
@@ -792,13 +803,13 @@ describe("auth.service (coverage)", () => {
         roleId: "role-1",
         isActive: true,
         mfaEnabled: true,
-        mfaSecret: "secret",
+        mfaSecret: TOTP_SECRET,
         role: { id: "role-1", name: "USER" },
         update: jest.fn().mockResolvedValue({}),
       };
       Users.findByPk.mockResolvedValue(user);
 
-      const result = await loginMfa("user-1", "123456");
+      const result = await loginMfa("user-1", liveCode());
 
       expect(result.status).toBe(200);
       expect(result.data.mfaEnabled).toBe(true);
@@ -820,12 +831,12 @@ describe("auth.service (coverage)", () => {
         email: "ada@example.com",
         isActive: true,
         mfaEnabled: true,
-        mfaSecret: "secret",
+        mfaSecret: TOTP_SECRET,
         role: null,
         update: jest.fn().mockResolvedValue({}),
       });
 
-      const result = await loginMfa("user-1", "123456", "10.0.0.1", "jest");
+      const result = await loginMfa("user-1", liveCode(), "10.0.0.1", "jest");
 
       expect(result.data.role).toBeNull();
     });

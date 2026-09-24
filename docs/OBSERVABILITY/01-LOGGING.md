@@ -201,7 +201,7 @@ The access-log format is defined at `accessLog.middleware.js:79`:
 :request-id :user-id :real-ip - :remote-user [:custom-date] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent" :response-time[3] ms
 ```
 
-`:real-ip` prefers `cf-connecting-ip`, then `x-forwarded-for`, then `req.ip` (`accessLog.middleware.js:64`). **This is not the resolution the rest of the system uses.** `audit_logs`, `sessions` and `e_signature_records` store `req.ip`, which is subject to `trust proxy` and has not been verified behind this deployment's hops — A-16, open.
+`:real-ip` is `req.ip` since 2026-09-24 (A-16, ADR-050) — the same resolution `audit_logs`, `sessions` and `e_signature_records` use. It used to prefer the client-forgeable `cf-connecting-ip` and raw `x-forwarded-for`. Whether `req.ip` is the real client on the VM is verified at the next deploy.
 
 Timestamps in the access log are `Asia/Jakarta` (`accessLog.middleware.js:52`); winston timestamps are `YYYY-MM-DD HH:mm:ss` in the process's local zone with **no offset recorded** (`activityLog.middleware.js:18`). Correlating the two means knowing the container's `TZ`.
 

@@ -10,9 +10,11 @@ import { api } from "../client";
  *   GET    /key-pairs
  *   POST   /key-pairs                (denies API keys)
  *   DELETE /key-pairs/:keyPairId
- *   GET    /workflows                ?status
+ *   GET    /workflows                ?status       (management: qms)
  *   POST   /workflows
  *   GET    /workflows/:workflowId
+ *   GET    /my-workflows             ?stepStatus   (signer view, A-91)
+ *   GET    /my-workflows/:workflowId              (signer view, A-91)
  *   PUT    /workflows/:workflowId
  *   DELETE /workflows/:workflowId
  *   POST   /sign                     (denies API keys)
@@ -158,23 +160,30 @@ export interface SignatureHistoryParams {
   endDate?: string;
 }
 
+/** The caller's own step status, for GET /my-workflows?stepStatus=. */
+export type SignerStepStatus = "waiting" | "pending" | "signed" | "declined";
+
 // Backend response envelope
 interface BackendResponse<T> {
   success: boolean;
   status: number;
   message: string;
   data: T;
+  meta?: { total: number };
 }
 
 // ---------- Service ----------
 
 export const eSignatureService = {
-  /** GET /key-pairs — backend wraps the list as data.keyPairs. */
+  /**
+   * GET /key-pairs — rows are `data` itself, the count in a top-level
+   * `meta.total` (A-113; the backend used to wrap them as data.keyPairs).
+   */
   getKeyPairs: async (): Promise<KeyPair[]> => {
-    const response = await api.get<BackendResponse<{ keyPairs: KeyPair[] }>>(
+    const response = await api.get<BackendResponse<KeyPair[]>>(
       `${BASE}/key-pairs`,
     );
-    return response.data?.keyPairs ?? [];
+    return response.data ?? [];
   },
 
   /**
@@ -194,18 +203,50 @@ export const eSignatureService = {
     await api.delete<BackendResponse<null>>(`${BASE}/key-pairs/${keyPairId}`);
   },
 
-  /** GET /workflows — backend wraps the list as data.workflows. */
+  /**
+   * GET /workflows — rows are `data` itself, the count in a top-level
+   * `meta.total` (A-106; the backend used to wrap them as data.workflows).
+   */
   getWorkflows: async (status?: string): Promise<SignatureWorkflow[]> => {
-    const response = await api.get<
-      BackendResponse<{ workflows: SignatureWorkflow[] }>
-    >(`${BASE}/workflows`, { params: status ? { status } : {} });
-    return response.data?.workflows ?? [];
+    const response = await api.get<BackendResponse<SignatureWorkflow[]>>(
+      `${BASE}/workflows`,
+      { params: status ? { status } : {} },
+    );
+    return response.data ?? [];
   },
 
   /** GET /workflows/:workflowId */
   getWorkflow: async (workflowId: string): Promise<SignatureWorkflow> => {
     const response = await api.get<BackendResponse<SignatureWorkflow>>(
       `${BASE}/workflows/${workflowId}`,
+    );
+    return response.data;
+  },
+
+  /**
+   * GET /my-workflows — A-91, the signer view. The workflows in which a step
+   * names the caller, gated on `esignature` (read), NOT `qms`: a technician
+   * named as a signer can open what they must sign. Rows are `data` itself
+   * (meta.total beside it), as for GET /workflows.
+   * Steps carry no IP address or user agent.
+   */
+  getMyWorkflows: async (
+    stepStatus?: SignerStepStatus,
+  ): Promise<SignatureWorkflow[]> => {
+    const response = await api.get<BackendResponse<SignatureWorkflow[]>>(
+      `${BASE}/my-workflows`,
+      { params: stepStatus ? { stepStatus } : {} },
+    );
+    return response.data ?? [];
+  },
+
+  /**
+   * GET /my-workflows/:workflowId — one workflow naming the caller as a
+   * signer. 404 when it does not name them (or is another tenant's).
+   */
+  getMyWorkflow: async (workflowId: string): Promise<SignatureWorkflow> => {
+    const response = await api.get<BackendResponse<SignatureWorkflow>>(
+      `${BASE}/my-workflows/${workflowId}`,
     );
     return response.data;
   },
@@ -261,14 +302,18 @@ export const eSignatureService = {
     return response.data;
   },
 
-  /** GET /history — backend wraps the list as data.signatures. */
+  /**
+   * GET /history — rows are `data` itself, the count in a top-level
+   * `meta.total` (A-106; the backend used to wrap them as data.signatures).
+   */
   getSignatureHistory: async (
     params: SignatureHistoryParams = {},
   ): Promise<SignatureRecord[]> => {
-    const response = await api.get<
-      BackendResponse<{ signatures: SignatureRecord[] }>
-    >(`${BASE}/history`, { params });
-    return response.data?.signatures ?? [];
+    const response = await api.get<BackendResponse<SignatureRecord[]>>(
+      `${BASE}/history`,
+      { params },
+    );
+    return response.data ?? [];
   },
 };
 

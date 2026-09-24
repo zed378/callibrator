@@ -25,10 +25,13 @@ One table, and the only one in the schema whose most important property is somet
 
 **`audit_logs` is not `paranoid`. It has no `isDeleted`, no `deletedAt`, and no delete path anywhere in the codebase.**
 
-> **Contradicted by the code (found 2026-09-24):** the retention purge in `dataRetention.service.js`
-> deletes `audit_logs` rows older than 365 days, and has since it was written. Since W-04 it at least
-> records that it did. Which of the two is right is **Q-12** in `TASKS/BACKLOG.md`; this document is
-> amended through an ADR once that is decided, not before.
+> **History, and the decision (2026-09-24):** until A-121 this sentence was false. The retention
+> purge in `dataRetention.service.js` deleted audit rows older than 365 days, and a second, dead engine
+> in `gdpr.service.js` could delete them all. **ADR-051 (Q-12) decided that audit rows are never
+> purged.** Both paths are removed, and `setRetentionPolicy` refuses `audit_logs`. Still to come: the
+> foreign key goes from `CASCADE` to `RESTRICT` (A-122), and a `REVOKE`/trigger follows (P6-03's
+> pattern). For GDPR, personal data in audit rows is **masked, not deleted** — and the masking path
+> does not work yet (A-135).
 
 That absence is the control (BR-6). An audit trail that can be edited or deleted is not an audit trail — it is a log, and a log that the person under investigation could have altered proves nothing.
 
@@ -112,7 +115,7 @@ Large exports run as batch jobs, and are themselves audited.
 
 ## Growth
 
-`audit_logs` grows monotonically and, by design, has no delete path.
+`audit_logs` grows monotonically and, by design, has no delete path (ADR-051 Q-12). Growth is handled by partitioning and archiving, not deletion.
 
 | Table | Managed by |
 |---|---|

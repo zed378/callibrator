@@ -48,7 +48,7 @@ const defineModel = (db, DataTypes) => {
   );
 
   UsageMetric.associate = (models) => {
-    UsageMetric.belongsTo(models.Tenant, { foreignKey: "tenantId", as: "tenant" });
+    UsageMetric.belongsTo(models.Tenant, { foreignKey: "tenantId", as: "tenant", onDelete: "CASCADE" });
   };
 
   return UsageMetric;

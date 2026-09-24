@@ -6,7 +6,7 @@ module.exports = (sequelize) => {
       WorkflowInstance.belongsTo(models.Tenant, {
         foreignKey: "tenantId",
         as: "tenant",
-        onDelete: "CASCADE",
+        onDelete: "RESTRICT",
       });
       WorkflowInstance.belongsTo(models.Workflow, {
         foreignKey: "workflowId",
@@ -35,6 +35,7 @@ module.exports = (sequelize) => {
           model: "tenants",
           key: "id",
         },
+        onDelete: "RESTRICT",
       },
       workflowId: {
         type: DataTypes.UUID,

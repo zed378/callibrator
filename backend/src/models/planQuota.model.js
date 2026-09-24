@@ -37,7 +37,7 @@ const defineModel = (db, DataTypes) => {
   );
 
   PlanQuota.associate = (models) => {
-    PlanQuota.belongsTo(models.Tenant, { foreignKey: "tenant_id", as: "tenant" });
+    PlanQuota.belongsTo(models.Tenant, { foreignKey: "tenantId", as: "tenant", onDelete: "CASCADE" });
   };
 
   return PlanQuota;

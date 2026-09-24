@@ -23,7 +23,7 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.UUID,
         allowNull: false,
         references: { model: "tenants", key: "id" },
-        onDelete: "CASCADE",
+        onDelete: "RESTRICT",
       },
       name: {
         type: DataTypes.STRING(255),

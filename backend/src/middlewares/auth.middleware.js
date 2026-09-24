@@ -7,6 +7,7 @@ const apiKeyService = require("../services/apiKey.service");
 const sessionService = require("../services/session.service");
 const { logger } = require("./activityLog.middleware");
 const { tenantContextMiddleware } = require("./tenantContext.middleware");
+const { runWithImpersonator } = require("../utils/auditActor.util");
 
 /**
  * A-59 — TODO: flip to `false` to refuse access tokens that name no session.
@@ -26,6 +27,56 @@ const { tenantContextMiddleware } = require("./tenantContext.middleware");
 const SIDLESS_ACCESS_TOKENS_ACCEPTED = true;
 
 exports.SIDLESS_ACCESS_TOKENS_ACCEPTED = SIDLESS_ACCESS_TOKENS_ACCEPTED;
+
+/**
+ * A-101 — why this principal's tenant may not act, or null when it may. The
+ * same rule as the sign-in points (auth.service.js `tenantRefusal`, A-83),
+ * kept here rather than imported because most suites replace auth.service
+ * with a double that has only the loader.
+ *
+ * A user whose tenantId names no tenant the include can see is refused as
+ * deleted: getAuthUserWithTenant loads the tenant through the Tenant model's
+ * default scope (isDeleted = false) and paranoid, so a soft-deleted or
+ * destroyed tenant comes back as `tenant: null`. This used to let the request
+ * through — only a VISIBLE suspended/deleted tenant was refused — so a
+ * soft-deleted tenant's users kept working on any unexpired session although
+ * none of them could sign in again.
+ *
+ * A principal with no tenantId (a platform super admin need not have one) is
+ * never refused here. A super admin whose home tenant is gone is refused like
+ * anyone else — as sign-in already refuses them; tenant.service deleteTenant
+ * refuses a tenant that still has users, which is what keeps the default
+ * tenant (home of the seeded super admin) from being deleted under them.
+ *
+ * @param {{tenantId?: string|null, tenant?: {status?: string}|null}} user
+ * @returns {string|null} the refusal message (answered with 403)
+ */
+const tenantRefusal = (user) => {
+  if (!user.tenantId) {
+    return null;
+  }
+  if (!user.tenant) {
+    return "Tenant account is deleted";
+  }
+  const status = String(user.tenant.status || "").toLowerCase();
+  return status === "suspended" || status === "deleted"
+    ? `Tenant account is ${status}`
+    : null;
+};
+
+/**
+ * F-8 — the impersonating super admin named by a VERIFIED access token, or
+ * null. Only impersonateUser (auth.service.js) sets the claim, and only a
+ * non-empty string is taken: the value is written into audit_logs, so anything
+ * else is ignored rather than trusted. Never read from a body, header or query.
+ *
+ * @param {object} decoded - verified access-token payload
+ * @returns {string|null}
+ */
+const impersonatorFrom = (decoded) =>
+  typeof decoded.impersonatorId === "string" && decoded.impersonatorId
+    ? decoded.impersonatorId
+    : null;
 
 /**
  * A-48. Whether the session a verified access token was issued with is still
@@ -162,20 +213,15 @@ exports.auth = async (req, res, next) => {
     req.user = user;
     req.token = token;
     req.sessionId = decoded.sid || null;
+    // F-8: the super admin acting through this token, when it is an
+    // impersonation token. Every audit row the request writes names them.
+    req.impersonatorId = impersonatorFrom(decoded);
 
     // Attach tenant context from user
     if (user.tenantId) {
-      if (
-        user.tenant &&
-        (user.tenant.status === "suspended" ||
-          user.tenant.status === "deleted" ||
-          user.tenant.status === "SUSPENDED" ||
-          user.tenant.status === "DELETED")
-      ) {
-        return forbidden(
-          res,
-          `Tenant account is ${user.tenant.status.toLowerCase()}`,
-        );
+      const refusal = tenantRefusal(user);
+      if (refusal) {
+        return forbidden(res, refusal);
       }
       req.tenantId = user.tenantId;
       req.tenant = user.tenant;
@@ -216,7 +262,9 @@ exports.auth = async (req, res, next) => {
     // The session is carried in a request context as well as on req, because
     // POST /auth/logout reaches authService.logoutSession() without `req`.
     sessionService.runWithSession(req.sessionId, () =>
-      tenantContextMiddleware(req, res, next),
+      runWithImpersonator(req.impersonatorId, () =>
+        tenantContextMiddleware(req, res, next),
+      ),
     );
   } catch (error) {
     logger.error(`AUTH MIDDLEWARE ERROR: ${error.message}`, error.stack);
@@ -244,18 +292,24 @@ exports.optionalAuth = async (req, res, next) => {
       ? await authService.getAuthUserWithTenant(decoded.id)
       : null;
 
+    // A-101: a principal whose tenant is suspended or gone is treated as no
+    // principal at all — optional auth never refuses, it just does not attach.
     if (
       user &&
       user.isActive &&
-      (user.status === "ACTIVE" || user.status === "INACTIVE")
+      (user.status === "ACTIVE" || user.status === "INACTIVE") &&
+      !tenantRefusal(user)
     ) {
       req.user = user;
+      req.impersonatorId = impersonatorFrom(decoded);
       if (user.tenantId) {
         req.tenantId = user.tenantId;
       }
     }
 
-    tenantContextMiddleware(req, res, next);
+    runWithImpersonator(req.impersonatorId, () =>
+      tenantContextMiddleware(req, res, next),
+    );
   } catch (error) {
     // Continue without auth
     tenantContextMiddleware(req, res, next);

@@ -16,8 +16,21 @@ jest.mock("../../models", () => ({
     create: jest.fn(),
     findAll: jest.fn(),
     bulkCreate: jest.fn(),
+    // A-92: serial lookups go through unscoped() (deleted rows hold serials
+    // too); it hands back the same mock so findOne/findAll stay shared.
+    unscoped: jest.fn(),
   },
 }));
+
+// A-133: device writes run in a managed transaction with their audit row
+// (asserted against the auditLedger in calibrationDevices.audit.a133.test.js).
+jest.mock("../../config", () => ({
+  db: { transaction: jest.fn(async (callback) => callback({ id: "tx" })) },
+}));
+jest.mock("../../services/audit.service", () => ({ logAction: jest.fn() }));
+
+/** The stand-in transaction the mocked db.transaction hands its callback. */
+const TX = { id: "tx" };
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: {
@@ -59,6 +72,7 @@ const {
 describe("calibrationDevices.service", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    CalibrationDevice.unscoped.mockReturnValue(CalibrationDevice);
   });
 
   describe("fetchCalibrationDevices", () => {
@@ -211,7 +225,7 @@ describe("calibrationDevices.service", () => {
       expect(CalibrationDevice.create).toHaveBeenCalledWith({
         name: "Device A",
         tenantId: "tenant-1",
-      });
+      }, { transaction: TX });
     });
 
     it("should create device successfully if all valid", async () => {
@@ -300,7 +314,7 @@ describe("calibrationDevices.service", () => {
 
       expect(result.success).toBe(true);
       expect(result.status).toBe(200);
-      expect(mockDevice.update).toHaveBeenCalledWith({ name: "Updated Name" });
+      expect(mockDevice.update).toHaveBeenCalledWith({ name: "Updated Name" }, { transaction: TX });
     });
 
     it("should handle error during update", async () => {
@@ -430,7 +444,7 @@ describe("calibrationDevices.service", () => {
           status: "active",
           tenantId: "tenant-1",
         }),
-      ]);
+      ], { transaction: TX });
     });
 
     it("should handle db errors and throw", async () => {
@@ -473,7 +487,7 @@ describe("calibrationDevices.service", () => {
           manufacturer: "Manufacturer B",
           calibrationIntervalDays: null,
         }),
-      ]);
+      ], { transaction: TX });
     });
 
     it("ignores a whitespace-only trailing fragment after the final newline", async () => {
@@ -495,7 +509,7 @@ describe("calibrationDevices.service", () => {
       expect(CalibrationDevice.bulkCreate).toHaveBeenCalledWith([
         expect.objectContaining({ name: "Device A" }),
         expect.objectContaining({ name: "Device B" }),
-      ]);
+      ], { transaction: TX });
     });
 
     it("skips blank lines in the middle of the file", async () => {
@@ -516,7 +530,7 @@ describe("calibrationDevices.service", () => {
       expect(CalibrationDevice.bulkCreate).toHaveBeenCalledWith([
         expect.objectContaining({ name: "Device A" }),
         expect.objectContaining({ name: "Device B" }),
-      ]);
+      ], { transaction: TX });
     });
 
     it("parses a final single-column row that has no trailing newline", async () => {
@@ -534,7 +548,7 @@ describe("calibrationDevices.service", () => {
       expect(result.data.successCount).toBe(1);
       expect(CalibrationDevice.bulkCreate).toHaveBeenCalledWith([
         { name: "Device A", tenantId: "tenant-1" },
-      ]);
+      ], { transaction: TX });
     });
 
     it("ignores unmapped headers and columns missing from a short row", async () => {
@@ -553,7 +567,7 @@ describe("calibrationDevices.service", () => {
       expect(result.data.successCount).toBe(1);
       expect(CalibrationDevice.bulkCreate).toHaveBeenCalledWith([
         { name: "Device A", tenantId: "tenant-1" },
-      ]);
+      ], { transaction: TX });
     });
 
     it("passes a non-numeric calibration interval through unconverted so validation can reject it", async () => {
@@ -570,7 +584,7 @@ describe("calibrationDevices.service", () => {
 
       expect(CalibrationDevice.bulkCreate).toHaveBeenCalledWith([
         expect.objectContaining({ calibrationIntervalDays: "not-a-number" }),
-      ]);
+      ], { transaction: TX });
     });
 
     it("does not call bulkCreate when every row fails validation", async () => {

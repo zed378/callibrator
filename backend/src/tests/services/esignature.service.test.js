@@ -202,7 +202,7 @@ describe("eSignature.service", () => {
         User: {
           findByPk: jest
             .fn()
-            .mockResolvedValue({ id: "u-1", status: "active" }),
+            .mockResolvedValue({ id: "u-1", status: "ACTIVE", isActive: true }),
         },
       };
 
@@ -290,7 +290,7 @@ describe("eSignature.service", () => {
   describe("getWorkflow", () => {
     it("should return workflow with steps", async () => {
       const mockWorkflow = {
-        findByPk: jest.fn().mockResolvedValue({
+        findOne: jest.fn().mockResolvedValue({
           id: "wf-1",
           steps: [{ id: "step-1", stepNumber: 1 }],
         }),
@@ -306,13 +306,22 @@ describe("eSignature.service", () => {
         getWorkflow: gw,
       } = require("../../services/eSignature.service");
 
-      const result = await gw("wf-1");
+      const result = await gw("wf-1", "tenant-1");
 
       expect(result).not.toBeNull();
+      // A-105 — the tenant is explicit on the workflow AND its steps.
+      expect(mockWorkflow.findOne).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "wf-1", tenantId: "tenant-1" },
+          include: [
+            expect.objectContaining({ where: { tenantId: "tenant-1" }, required: false }),
+          ],
+        }),
+      );
     });
 
-    it("should return null when workflow not found", async () => {
-      const mockWorkflow = { findByPk: jest.fn().mockResolvedValue(null) };
+    it("should throw 404 when workflow not found", async () => {
+      const mockWorkflow = { findOne: jest.fn().mockResolvedValue(null) };
       const mockModels = { SignatureWorkflow: mockWorkflow };
       jest.doMock("../../models", () => mockModels);
 
@@ -321,9 +330,10 @@ describe("eSignature.service", () => {
         getWorkflow: gw2,
       } = require("../../services/eSignature.service");
 
-      const result = await gw2("not-found");
-
-      expect(result).toBeNull();
+      await expect(gw2("not-found", "tenant-1")).rejects.toMatchObject({
+        status: 404,
+        message: "Workflow not found",
+      });
     });
   });
 
@@ -379,7 +389,10 @@ describe("eSignature.service", () => {
           update: mockUpdate,
         }),
       };
-      const mockModels = { SignatureWorkflow: mockWorkflow };
+      // A-104 — the cancellation writes its audit row (audit.service reads
+      // AuditLog from the models barrel).
+      const mockAuditLog = { create: jest.fn().mockResolvedValue({ id: "a-1" }) };
+      const mockModels = { SignatureWorkflow: mockWorkflow, AuditLog: mockAuditLog };
       jest.doMock("../../models", () => mockModels);
 
       jest.resetModules();
@@ -390,6 +403,11 @@ describe("eSignature.service", () => {
       const result = await cw3("wf-1", "u-1", "tenant-1");
 
       expect(result.success).toBe(true);
+      expect(mockUpdate).toHaveBeenCalledWith({ status: "cancelled" }, { transaction: "TX" });
+      expect(mockAuditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({ action: "UPDATE", resourceId: "wf-1", userId: "u-1" }),
+        { transaction: "TX" },
+      );
     });
   });
 

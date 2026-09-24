@@ -17,7 +17,7 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.UUID,
         allowNull: false,
         references: { model: "tenants", key: "id" },
-        onDelete: "CASCADE",
+        onDelete: "RESTRICT",
       },
       deviceId: {
         type: DataTypes.UUID,
@@ -62,8 +62,9 @@ const defineModel = (db, DataTypes) => {
   IotReading.associate = (models) => {
     // IotReading -> Tenant
     IotReading.belongsTo(models.Tenant, {
-      foreignKey: "tenant_id",
+      foreignKey: "tenantId",
       as: "tenant",
+      onDelete: "RESTRICT",
     });
     // IotReading -> CalibrationDevice
     IotReading.belongsTo(models.CalibrationDevice, {

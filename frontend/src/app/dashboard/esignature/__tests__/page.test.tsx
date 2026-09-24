@@ -3,7 +3,8 @@
  * A-65 — signing a workflow step re-authenticates the signer.
  *
  * Fixtures mirror the backend exactly:
- *  - GET /esignature/workflows    → success(res, { workflows }) — data.workflows
+ *  - GET /esignature/workflows    → rows ARE `data`, count in a top-level
+ *    `meta` (A-106; formerly data.workflows)
  *  - GET /esignature/workflows/:id → success(res, workflow) with `steps`, each a
  *    signatureWorkflowStep row: { id, workflowId, stepNumber, signerId,
  *    signerEmail, signerName, status, signedAt } (no `userId`)
@@ -95,8 +96,13 @@ const signed = {
 
 const serveWorkflow = (wf: ReturnType<typeof workflow>) => {
   mockedApi.get.mockImplementation(async (path: string) => {
-    if (path.endsWith("/key-pairs")) return envelope({ keyPairs: [] });
-    if (path.endsWith("/workflows")) return envelope({ workflows: [wf] });
+    // A-113: rows ARE `data`, count in a top-level `meta`.
+    if (path.endsWith("/key-pairs")) return { ...envelope([]), meta: { total: 0 } };
+    // A-91 signer view: rows ARE `data`, count in a top-level `meta`.
+    if (path.endsWith("/my-workflows")) return { ...envelope([wf]), meta: { total: 1 } };
+    if (path.endsWith(`/my-workflows/${WF}`)) return envelope(wf);
+    // A-106: the management list has the same shape as the signer view.
+    if (path.endsWith("/workflows")) return { ...envelope([wf]), meta: { total: 1 } };
     if (path.endsWith(`/workflows/${WF}`)) return envelope(wf);
     throw new Error(`unexpected GET ${path}`);
   });
@@ -210,5 +216,129 @@ describe("ESignaturePage — signing re-authenticates (A-65)", () => {
 
     expect(screen.queryByRole("button", { name: "Sign" })).not.toBeInTheDocument();
     expect(screen.getByText("Awaiting Other Signer")).toBeInTheDocument();
+  });
+});
+
+/**
+ * A-91 — a signer without `qms` opens the workflow they must sign through the
+ * signer view (GET /esignature/my-workflows[/:id], gated on `esignature`).
+ * The fixtures are the backend's real shapes: eSignature.controller
+ * #getSignerWorkflows answers success(res, rows, { total }, msg) — rows in
+ * `data`, `meta` a top-level sibling — and #getSignerWorkflow the workflow in
+ * `data`, its steps without ipAddress/userAgent. The management routes answer
+ * a signer without `qms` with 403, as dynamicAccess does.
+ */
+describe("ESignaturePage — the signer view (A-91)", () => {
+  const forbidden = () =>
+    Object.assign(new Error("Access denied"), { response: { status: 403 } });
+
+  const serveSignerOnly = (wf: ReturnType<typeof workflow>) => {
+    mockedApi.get.mockImplementation(async (path: string) => {
+      if (path.endsWith("/my-workflows")) return { ...envelope([wf]), meta: { total: 1 } };
+      if (path.endsWith(`/my-workflows/${WF}`)) return envelope(wf);
+      if (path.endsWith("/key-pairs") || path.includes("/esignature/workflows")) {
+        throw forbidden();
+      }
+      throw new Error(`unexpected GET ${path}`);
+    });
+  };
+
+  it("opens on To sign, listing the workflows that name the caller, and never calls the qms routes", async () => {
+    serveSignerOnly(workflow([step({})]));
+    render(<ESignaturePage />);
+
+    expect(await screen.findByText("Approve SOP-12")).toBeInTheDocument();
+    expect(screen.getByText("awaiting your signature")).toBeInTheDocument();
+    const paths = mockedApi.get.mock.calls.map(([path]) => path);
+    expect(paths).toEqual(["/api/v1/esignature/my-workflows"]);
+    expect(mockedApi.get).toHaveBeenCalledWith("/api/v1/esignature/my-workflows", { params: {} });
+  });
+
+  it("a technician named as signer can open and sign their step without qms", async () => {
+    const wf = workflow([step({})]);
+    serveSignerOnly(wf);
+    mockedApi.post.mockResolvedValueOnce(envelope(signed, "Document signed"));
+    render(<ESignaturePage />);
+
+    await screen.findByText("Approve SOP-12");
+    fireEvent.click(screen.getByRole("button", { name: "Open" }));
+    await screen.findByText("Me Signer");
+    expect(mockedApi.get).toHaveBeenCalledWith(`/api/v1/esignature/my-workflows/${WF}`);
+
+    fireEvent.click(screen.getByRole("button", { name: "Sign" }));
+    const form = screen.getByRole("form", { name: "Sign this step" });
+    fireEvent.change(within(form).getByPlaceholderText("Your password"), {
+      target: { value: "s3cret" },
+    });
+    fireEvent.change(within(form).getByPlaceholderText("e.g. Reviewed and approved"), {
+      target: { value: "Verified" },
+    });
+    fireEvent.click(within(form).getByRole("button", { name: "Sign" }));
+
+    await waitFor(() =>
+      expect(useToastStore.getState().toasts).toEqual([
+        expect.objectContaining({ type: "success", title: "Document signed" }),
+      ]),
+    );
+    expect(mockedApi.post).toHaveBeenCalledWith(
+      "/api/v1/esignature/sign",
+      expect.objectContaining({ stepId: MY_STEP }),
+    );
+    // Re-read through the signer view, never the qms routes.
+    const paths = mockedApi.get.mock.calls.map(([path]) => path);
+    expect(paths.filter((path) => path.includes("/esignature/workflows"))).toEqual([]);
+    expect(paths.filter((path) => path === `/api/v1/esignature/my-workflows/${WF}`)).toHaveLength(2);
+  });
+
+  it("management tabs explain the missing permission instead of toasting a 403", async () => {
+    serveSignerOnly(workflow([step({})]));
+    render(<ESignaturePage />);
+    await screen.findByText("Approve SOP-12");
+
+    fireEvent.click(screen.getByRole("button", { name: "Workflows" }));
+
+    expect(
+      await screen.findByText(/needs the Quality Management permission/),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "New Workflow" })).not.toBeInTheDocument();
+    expect(useToastStore.getState().toasts).toEqual([]);
+
+    // Once refused, the other management tab does not ask again.
+    fireEvent.click(screen.getByRole("button", { name: "Key Pairs" }));
+    expect(screen.getByText(/needs the Quality Management permission/)).toBeInTheDocument();
+    const keyCalls = mockedApi.get.mock.calls.filter(([path]) => path.endsWith("/key-pairs"));
+    expect(keyCalls).toEqual([]);
+  });
+
+  it("a management load failure other than 403 is still reported", async () => {
+    mockedApi.get.mockImplementation(async (path: string) => {
+      if (path.endsWith("/my-workflows")) return { ...envelope([]), meta: { total: 0 } };
+      throw new Error("Service unavailable");
+    });
+    render(<ESignaturePage />);
+    await screen.findByText("No signature workflows name you as a signer.");
+
+    fireEvent.click(screen.getByRole("button", { name: "Key Pairs" }));
+
+    await waitFor(() =>
+      expect(useToastStore.getState().toasts).toEqual([
+        expect.objectContaining({ type: "error", title: "Could not load key pairs" }),
+      ]),
+    );
+  });
+
+  it("a failure to load the signer view is reported", async () => {
+    mockedApi.get.mockRejectedValue(new Error("Service unavailable"));
+    render(<ESignaturePage />);
+
+    await waitFor(() =>
+      expect(useToastStore.getState().toasts).toEqual([
+        expect.objectContaining({
+          type: "error",
+          title: "Could not load your signature requests",
+          description: "Service unavailable",
+        }),
+      ]),
+    );
   });
 });

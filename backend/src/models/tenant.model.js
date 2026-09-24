@@ -174,39 +174,57 @@ const defineModel = (db, DataTypes) => {
    * @param {object} models - The aggregated models object
    */
   Tenant.associate = (models) => {
+    // The foreign key is the ATTRIBUTE (tenantId), never the column name
+    // ("tenant_id"): the column name made Sequelize add a second, nullable
+    // attribute that sync() built as nullable + ON DELETE SET NULL (A-88).
+    // RESTRICT matches the child model and migration 0030 (ADR-051 Q-16).
     // Tenant -> Users
-    Tenant.hasMany(models.User, { foreignKey: "tenant_id", as: "users" });
+    Tenant.hasMany(models.User, {
+      foreignKey: "tenantId",
+      as: "users",
+      onDelete: "RESTRICT",
+    });
     // Tenant -> Warehouses
     Tenant.hasMany(models.Warehouse, {
-      foreignKey: "tenant_id",
+      foreignKey: "tenantId",
       as: "warehouses",
+      onDelete: "RESTRICT",
     });
     // Tenant -> StorageLocation
     Tenant.hasMany(models.StorageLocation, {
-      foreignKey: "tenant_id",
+      foreignKey: "tenantId",
       as: "locations",
+      onDelete: "RESTRICT",
     });
     // Tenant -> Stock
-    Tenant.hasMany(models.Stock, { foreignKey: "tenant_id", as: "stocks" });
+    Tenant.hasMany(models.Stock, {
+      foreignKey: "tenantId",
+      as: "stocks",
+      onDelete: "RESTRICT",
+    });
     // Tenant -> StockTransfer
     Tenant.hasMany(models.StockTransfer, {
-      foreignKey: "tenant_id",
+      foreignKey: "tenantId",
       as: "transfers",
+      onDelete: "RESTRICT",
     });
     // Tenant -> StockAdjustment
     Tenant.hasMany(models.StockAdjustment, {
-      foreignKey: "tenant_id",
+      foreignKey: "tenantId",
       as: "adjustments",
+      onDelete: "RESTRICT",
     });
     // Tenant -> StockOpname
     Tenant.hasMany(models.StockOpname, {
-      foreignKey: "tenant_id",
+      foreignKey: "tenantId",
       as: "opnames",
+      onDelete: "RESTRICT",
     });
     // Tenant -> CalibrationDevice
     Tenant.hasMany(models.CalibrationDevice, {
-      foreignKey: "tenant_id",
+      foreignKey: "tenantId",
       as: "calibrationDevices",
+      onDelete: "RESTRICT",
     });
   };
 

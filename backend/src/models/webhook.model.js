@@ -92,7 +92,7 @@ const defineModel = (db, DataTypes) => {
   };
 
   Webhook.associate = (models) => {
-    Webhook.belongsTo(models.Tenant, { foreignKey: "tenant_id", as: "tenant" });
+    Webhook.belongsTo(models.Tenant, { foreignKey: "tenantId", as: "tenant", onDelete: "CASCADE" });
     Webhook.hasMany(models.WebhookDelivery, {
       foreignKey: "webhook_id",
       as: "deliveries",

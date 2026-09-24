@@ -4,6 +4,7 @@ const router = express.Router();
 const { auth } = require("../../middlewares/auth.middleware");
 const { dynamicAccess } = require("../../middlewares/dynamicAccess.middleware");
 const { validateUuid } = require("../../middlewares/validateUuid.middleware");
+const { denyPlatformAuthoring } = require("../../middlewares/denyPlatformAuthoring.middleware"); // A-127, ADR-051 Q-17
 const certificateController = require("../../controllers/certificate.controller");
 const certificatePdfController = require("../../controllers/certificatePdf.controller");
 const { validate } = require("../../middlewares/validation.middleware");
@@ -387,6 +388,7 @@ router.post(
   auth,
   validateUuid("certificateId"),
   dynamicAccess("certificate", "approve"),
+  denyPlatformAuthoring,
   // A-62: strips a body `approvedBy` before the controller sees it. The schema
   // is body-only — the certificateId path param is validated separately
   // (validateUuid here, certificateIdSchema in the controller).
@@ -401,6 +403,7 @@ router.post(
   auth,
   validateUuid("certificateId"),
   dynamicAccess("certificate", "approve"),
+  denyPlatformAuthoring,
   certificateController.submitCertificate,
 );
 
@@ -450,6 +453,7 @@ router.post(
   auth,
   validateUuid("certificateId"),
   dynamicAccess("certificate", "sign"),
+  denyPlatformAuthoring,
   certificateController.signCertificate,
 );
 
@@ -499,6 +503,7 @@ router.post(
   auth,
   validateUuid("certificateId"),
   dynamicAccess("certificate", "generate"),
+  denyPlatformAuthoring,
   certificateController.revokeCertificate,
 );
 

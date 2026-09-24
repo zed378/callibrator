@@ -36,6 +36,7 @@ module.exports = (sequelize) => {
           model: "tenants",
           key: "id",
         },
+        onDelete: "CASCADE",
       },
       userId: {
         type: DataTypes.UUID,

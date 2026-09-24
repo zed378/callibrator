@@ -13,7 +13,6 @@ const {
 } = require("../../validators/tenant.validator");
 
 const UUID = "8c352a92-d6cf-4b71-b0db-6e69622d1b11";
-const UUID2 = "8c352a92-d6cf-4b71-b0db-6e69622d1b12";
 
 describe("Tenant Validators", () => {
   describe("getAllTenantsQuery", () => {
@@ -561,21 +560,16 @@ describe("Tenant Validators", () => {
       expect(result.tenantId).toBe(UUID);
     });
 
-    it("should accept deletedBy", () => {
-      const result = validate(
-        { tenantId: UUID, deletedBy: UUID2 },
-        deleteTenantSchema,
-      );
-      expect(result.deletedBy).toBe(UUID2);
-    });
-
-    it("should accept null for deletedBy", () => {
-      const result = validate(
-        { tenantId: UUID, deletedBy: null },
-        deleteTenantSchema,
-      );
-      expect(result.deletedBy).toBeNull();
-    });
+    // A-95: the actor of a delete is the authenticated caller. A body or
+    // query `deletedBy` is stripped, whatever its value — it was accepted and
+    // passed to the service as the actor.
+    it.each(["99999999-9999-4999-8999-999999999999", null, "not-a-uuid"])(
+      "strips deletedBy (%s) — it never reaches the service",
+      (deletedBy) => {
+        const result = validate({ tenantId: UUID, deletedBy }, deleteTenantSchema);
+        expect(result).toEqual({ tenantId: UUID });
+      },
+    );
 
     it("should reject missing tenantId", () => {
       expect(() => validate({}, deleteTenantSchema)).toThrow();
@@ -587,14 +581,6 @@ describe("Tenant Validators", () => {
       ).toThrow();
     });
 
-    it("should reject invalid deletedBy UUID", () => {
-      expect(() =>
-        validate(
-          { tenantId: UUID, deletedBy: "not-a-uuid" },
-          deleteTenantSchema,
-        ),
-      ).toThrow();
-    });
   });
 
   describe("tenantIdSchema", () => {

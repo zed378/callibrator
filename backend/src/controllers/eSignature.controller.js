@@ -8,7 +8,9 @@ const eSignatureService = require("../services/eSignature.service");
 const { success, error } = require("../utils/response.util");
 const { asyncHandler } = require("../utils/controllerWrapper.util");
 const { logger } = require("../middlewares/activityLog.middleware");
-const { AppError } = require("../utils/appError.util");
+// Who did it, from where — for the audit row the service writes inside its
+// transaction (A-104).
+const { auditActor } = require("../utils/auditActor.util");
 
 /**
  * Get all key pairs for the tenant
@@ -16,9 +18,11 @@ const { AppError } = require("../utils/appError.util");
 exports.getKeyPairs = asyncHandler(async (req, res) => {
   const { tenantId } = req.user;
 
-  const keyPairs = await eSignatureService.getKeyPairs(tenantId);
+  const keyPairs = (await eSignatureService.getKeyPairs(tenantId)) || [];
 
-  return success(res, { keyPairs: keyPairs || [] }, "Key pairs retrieved");
+  // A-113: rows in `data`, the count in a top-level `meta` — the envelope
+  // (CLAUDE.md). It used to wrap the rows as `data.keyPairs`.
+  return success(res, keyPairs, { total: keyPairs.length }, "Key pairs retrieved");
 });
 
 /**
@@ -47,7 +51,10 @@ exports.deleteKeyPair = asyncHandler(async (req, res) => {
 });
 
 /**
- * Get all workflows for the tenant
+ * Get all workflows for the tenant.
+ *
+ * A-106 — rows in `data`, the count in a top-level `meta` (the envelope rule).
+ * They used to be wrapped as `data.workflows`.
  */
 exports.getWorkflows = asyncHandler(async (req, res) => {
   const { tenantId } = req.user;
@@ -55,7 +62,7 @@ exports.getWorkflows = asyncHandler(async (req, res) => {
 
   const workflows = await eSignatureService.getWorkflows(tenantId, { status });
 
-  return success(res, { workflows: workflows || [] }, "Workflows retrieved");
+  return success(res, workflows, { total: workflows.length }, "Workflows retrieved");
 });
 
 /**
@@ -81,14 +88,12 @@ exports.createWorkflow = asyncHandler(async (req, res) => {
  */
 exports.getWorkflow = asyncHandler(async (req, res) => {
   const { workflowId } = req.params;
+  const { tenantId } = req.user;
 
-  const workflow = await eSignatureService.getWorkflow(workflowId);
-  // A-91 — the service answers null for a workflow it cannot find (another
-  // tenant's included, through the tenant hooks). That used to go out as a
-  // 200 with `data: null`; not-found is 404.
-  if (!workflow) {
-    throw new AppError(404, "Workflow not found");
-  }
+  // A-105 — the service scopes by the caller's tenant explicitly and throws
+  // 404 for a workflow it cannot find (another tenant's included). A database
+  // failure propagates as a 500; it is no longer reported as not-found.
+  const workflow = await eSignatureService.getWorkflow(workflowId, tenantId);
 
   return success(res, workflow, "Workflow retrieved");
 });
@@ -140,6 +145,7 @@ exports.updateWorkflow = asyncHandler(async (req, res) => {
     workflowId,
     tenantId,
     req.body || {},
+    auditActor(req),
   );
 
   return success(res, result, "Workflow updated");
@@ -152,7 +158,7 @@ exports.deleteWorkflow = asyncHandler(async (req, res) => {
   const { workflowId } = req.params;
   const { tenantId } = req.user;
 
-  await eSignatureService.deleteWorkflow(workflowId, tenantId);
+  await eSignatureService.deleteWorkflow(workflowId, tenantId, auditActor(req));
 
   return success(res, null, "Workflow deleted");
 });
@@ -205,7 +211,10 @@ exports.verifySignature = asyncHandler(async (req, res) => {
 });
 
 /**
- * Get signature history / audit trail
+ * Get signature history / audit trail.
+ *
+ * A-106 — rows in `data`, the count in a top-level `meta`. They used to be
+ * wrapped as `data.signatures`.
  */
 exports.getSignatureHistory = asyncHandler(async (req, res) => {
   const { tenantId } = req.user;
@@ -217,7 +226,7 @@ exports.getSignatureHistory = asyncHandler(async (req, res) => {
     endDate,
   });
 
-  return success(res, { signatures: history || [] }, "Signature history retrieved");
+  return success(res, history, { total: history.length }, "Signature history retrieved");
 });
 
 /**
@@ -228,7 +237,7 @@ exports.cancelWorkflow = asyncHandler(async (req, res) => {
   // req.user exposes `id`, not `userId`.
   const { id: userId, tenantId } = req.user;
 
-  await eSignatureService.cancelWorkflow(workflowId, userId, tenantId);
+  await eSignatureService.cancelWorkflow(workflowId, userId, tenantId, auditActor(req));
 
   return success(res, null, "Workflow cancelled");
 });

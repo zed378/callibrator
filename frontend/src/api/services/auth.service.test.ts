@@ -420,4 +420,36 @@ describe("authService", () => {
       });
     });
   });
+
+  // A-114: on an account with MFA, setup is a rotation and the backend needs
+  // the current password and a current code; a first enrolment sends none.
+  describe("mfaSetup", () => {
+    it("first enrolment posts an empty body", async () => {
+      (api.post as jest.Mock).mockResolvedValueOnce({
+        success: true,
+        data: { secret: "S", qrCodeUrl: "q", rotation: false },
+      });
+
+      await expect(authService.mfaSetup()).resolves.toEqual({
+        secret: "S",
+        qrCodeUrl: "q",
+        rotation: false,
+      });
+      expect(api.post).toHaveBeenCalledWith("/api/v1/auth/mfa/setup", {});
+    });
+
+    it("a rotation posts the current password and the current code", async () => {
+      (api.post as jest.Mock).mockResolvedValueOnce({
+        success: true,
+        data: { secret: "S2", qrCodeUrl: "q2", rotation: true },
+      });
+
+      await authService.mfaSetup({ currentPassword: "pw", code: "123456" });
+
+      expect(api.post).toHaveBeenCalledWith("/api/v1/auth/mfa/setup", {
+        currentPassword: "pw",
+        code: "123456",
+      });
+    });
+  });
 });

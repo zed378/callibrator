@@ -148,17 +148,33 @@ const validate = (data, schema) => {
 // ------------------------------------------------------------------
 // Safe user attributes exclude sensitive fields.
 // Includes: picture (profile endpoint + profile string), username, first_name, last_name, email
+//
+// `exclude` takes ATTRIBUTE names. This list used to name columns
+// (`otp_code`, `locked_until`, ...), which match no attribute and so excluded
+// nothing — and it never named the second-factor secrets at all: GET /users
+// and GET /users/:id returned every user's TOTP seed (`mfaSecret`), from
+// which anyone who can list users can generate that user's codes, plus the
+// e-mail OTP and the lockout counters. `role_id` is kept: it IS an attribute
+// (added by the Role association), a duplicate of `roleId`.
+// user.safeAttributes.test.js checks every name here against the model.
 const safeUserAttributes = {
   exclude: [
     "updatedAt",
-    "otp_code",
-    "otp_expired_at",
-    "otp_request_count",
     "password",
-    "otp_last_requested_at",
-    "failed_login_attempts",
-    "locked_until",
-    "password_changed_at",
+    "passwordChangedAt",
+    "otpCode",
+    "otpExpiredAt",
+    "otpRequestCount",
+    "otpLastRequestedAt",
+    "failedLoginAttempts",
+    "lockedUntil",
+    "mfaSecret",
+    "mfaPendingSecret",
+    "mfaPendingCreatedAt",
+    "mfaLastUsedStep",
+    "webauthnCredentialId",
+    "webauthnPublicKey",
+    "webauthnSignCount",
     "role_id",
   ],
 };
@@ -195,9 +211,18 @@ exports.fetchUsers = async ({
     // Tenant scoping – skip for SUPER_ADMIN
     if (roleId !== SUPER_ADMIN_ROLE_ID) {
       whereClause.tenantId = tenantId;
-      whereClause.roleId = {
-        [Op.notIn]: [SUPER_ADMIN_ROLE_ID],
-      };
+      // A-109: `role_id NOT IN (...)` is NULL — not true — for a user with no
+      // role, so this alone dropped every role-less user from the list even
+      // with the role include made LEFT below. Hide super admins, keep them.
+      whereClause[Op.and] = [
+        ...(whereClause[Op.and] || []),
+        {
+          [Op.or]: [
+            { roleId: null },
+            { roleId: { [Op.notIn]: [SUPER_ADMIN_ROLE_ID] } },
+          ],
+        },
+      ];
     }
 
     // Free-text search
@@ -243,6 +268,11 @@ exports.fetchUsers = async ({
           model: Roles,
           as: "role",
           attributes: ["id", "name", "nameToShow", "description"],
+          // A-109: Role's defaultScope made this an implicit INNER JOIN, so a
+          // user with no role (roleId NULL, e.g. after the role was deleted)
+          // or a soft-deleted role vanished from the list AND from
+          // meta.total. The user exists; the relation reads as null.
+          required: false,
         },
       ],
       transaction,
@@ -347,6 +377,9 @@ exports.fetchSpecificUser = async (userId) => {
           model: Roles,
           as: "role",
           attributes: ["id", "name", "nameToShow", "description"],
+          // A-109: LEFT, not the defaultScope's implicit INNER — a user
+          // without a live role is still a user, not a 404.
+          required: false,
         },
       ],
     });
@@ -448,6 +481,10 @@ exports.userRoleUpdate = async (input) => {
           model: Roles,
           as: "role",
           attributes: ["id", "name"],
+          // A-109: LEFT. As an implicit INNER JOIN a user whose role was
+          // deleted was "not found" here — so the one operation that repairs
+          // such a user, giving them a role, could not reach them.
+          required: false,
         },
       ],
       transaction,
@@ -669,7 +706,10 @@ exports.userCreate = async (input) => {
         password: hashedPassword,
         role_id: roleId,
         status: status || "ACTIVE",
-        is_email_verified: true,
+        // The ATTRIBUTE, not the column: `is_email_verified` is no attribute
+        // of User, so Sequelize dropped it and every admin-created user was
+        // stored unverified (user.create.attributes.test.js).
+        isEmailVerified: true,
       },
       {
         transaction,
@@ -928,32 +968,128 @@ exports.editUser = async (input) => {
 // USER AVATAR UPLOAD FUNCTIONS
 // ==========================================
 
+/** The avatar "no photo" sentinel — never a file of this user's to delete. */
+const AVATAR_PLACEHOLDER = "default.svg";
+const AVATAR_FOLDER = "uploads/profile";
+
 /**
- * Update user avatar
+ * The stored avatar filename of a user, or null when there is none of their
+ * own (unset or the shared placeholder). Read from the ATTRIBUTE, not the
+ * `picture` getter, which is a URL built over it.
+ *
+ * @param {object} user
+ * @returns {string|null}
  */
-exports.updateUserAvatar = async (userId, filename, updatedBy) => {
+const ownAvatarFile = (user) => {
+  const stored = user.avatarUrl ? String(user.avatarUrl).split("/").pop() : null;
+  return stored && stored !== AVATAR_PLACEHOLDER ? stored : null;
+};
+
+/**
+ * Delete a replaced avatar AFTER the commit that stopped referencing it.
+ * The change is committed; a leftover file is a storage leak, not a reason to
+ * report the change as failed.
+ *
+ * @param {string|null} filename
+ */
+const unlinkReplacedAvatar = async (filename) => {
+  if (!filename) {
+    return;
+  }
   try {
-    const user = await Users.findByPk(userId);
+    await deleteUpload(filename, AVATAR_FOLDER);
+  } catch (err) {
+    logger.warn(`Failed to delete replaced avatar file: ${filename}`, err);
+  }
+};
 
+/**
+ * A-96. Change a user's avatar attribute: row update and its audit row in ONE
+ * transaction; the file the change stops referencing is deleted only after the
+ * commit. Deleted before it (as it was), a failed update — a failed audit
+ * insert included — left the user pointing at a file that no longer existed.
+ *
+ * `actor` defaults to "nobody": a non-super-admin actor may change only a user
+ * of their own tenant; anyone else's is 404, like a missing user (AZ-04). On
+ * the HTTP path the gate (checkTenant) and the global hooks already confine the
+ * lookup — this is the service holding its own line.
+ *
+ * @param {object} p
+ * @param {string} p.userId
+ * @param {string} p.next - the new avatarUrl value
+ * @param {string} p.operation - changes.operation for the audit row
+ * @param {string|null} p.updatedBy - the acting user id (from req.user)
+ * @param {{actorTenantId?: (string|null), actorIsSuperAdmin?: boolean,
+ *   ipAddress?: (string|null), userAgent?: (string|null)}} p.actor
+ * @param {boolean} p.skipWhenNoAvatar - a remove with nothing to remove writes nothing
+ * @returns {Promise<{changed: boolean, replaced: (string|null)}>}
+ */
+const changeAvatar = async ({ userId, next, operation, updatedBy, actor, skipWhenNoAvatar }) => {
+  const transaction = await db.transaction();
+  try {
+    const user = await Users.findByPk(userId, { transaction });
     if (!user) {
-      throw new AppError(404, "User not found");
+      // The same error assertSameTenantOrNotFound throws (AZ-04).
+      throw userNotFound();
+    }
+    assertSameTenantOrNotFound(operation, user, {
+      actorIsSuperAdmin: actor.actorIsSuperAdmin === true,
+      actorTenantId: actor.actorTenantId || null,
+    });
+
+    const replaced = ownAvatarFile(user);
+    if (skipWhenNoAvatar && !replaced) {
+      // Nothing to change, so nothing to audit.
+      await transaction.rollback();
+      return { changed: false, replaced: null };
     }
 
-    if (user.picture) {
-      const oldFilename = user.picture.split("/").pop();
-      if (oldFilename && oldFilename !== "default.svg") {
-        try {
-          await deleteUpload(oldFilename, "uploads/profile");
-        } catch (err) {
-          logger.warn(`Failed to delete old avatar: ${oldFilename}`, err);
-        }
-      }
-    }
-
+    const before = user.avatarUrl ?? null;
     // Must be the MODEL attribute (avatarUrl), not the column name
-    // (avatar_url). Sequelize silently drops unknown keys, so writing the
-    // snake_case name made this a no-op that still reported success.
-    await user.update({ avatarUrl: filename }, { silent: true });
+    // (avatar_url) nor the read-only `picture` getter: Sequelize silently
+    // drops those, and the change would report success without saving.
+    await user.update({ avatarUrl: next }, { silent: true, transaction });
+
+    await auditUserChange(transaction, actor, {
+      action: "UPDATE",
+      actorUserId: updatedBy || null,
+      user,
+      changes: { operation, avatarUrl: { before, after: next } },
+    });
+
+    await transaction.commit();
+
+    // Never the file just stored (a re-upload under the same name).
+    await unlinkReplacedAvatar(replaced !== next ? replaced : null);
+    return { changed: true, replaced };
+  } catch (error) {
+    // Every throw above happens before the commit. A rollback of a
+    // transaction that is somehow already finished is not the error the
+    // caller must see.
+    await transaction.rollback().catch(() => {});
+    throw error;
+  }
+};
+
+/**
+ * Update user avatar (A-96: audited in the transaction; old file deleted after
+ * the commit).
+ *
+ * @param {string} userId
+ * @param {string} filename - the file this request uploaded
+ * @param {string|null} updatedBy - the acting user id
+ * @param {object} [actor] - see changeAvatar; defaults to nobody
+ */
+exports.updateUserAvatar = async (userId, filename, updatedBy, actor = {}) => {
+  try {
+    await changeAvatar({
+      userId,
+      next: filename,
+      operation: "UPDATE_AVATAR",
+      updatedBy,
+      actor,
+      skipWhenNoAvatar: false,
+    });
 
     logger.info(`User avatar updated: ${userId} by ${updatedBy}`);
 
@@ -972,34 +1108,30 @@ exports.updateUserAvatar = async (userId, filename, updatedBy) => {
 };
 
 /**
- * Remove user avatar
+ * Remove user avatar (A-96: audited in the transaction; file deleted after
+ * the commit). A user with no avatar of their own is left untouched.
+ *
+ * @param {string} userId
+ * @param {string|null} updatedBy - the acting user id
+ * @param {object} [actor] - see changeAvatar; defaults to nobody
  */
-exports.removeUserAvatar = async (userId, updatedBy) => {
+exports.removeUserAvatar = async (userId, updatedBy, actor = {}) => {
   try {
-    const user = await Users.findByPk(userId);
+    const { changed } = await changeAvatar({
+      userId,
+      next: AVATAR_PLACEHOLDER,
+      operation: "REMOVE_AVATAR",
+      updatedBy,
+      actor,
+      skipWhenNoAvatar: true,
+    });
 
-    if (!user) {
-      throw new AppError(404, "User not found");
-    }
-
-    if (user.picture) {
-      const filename = user.picture.split("/").pop();
-      if (filename && filename !== "default.svg") {
-        try {
-          await deleteUpload(filename, "uploads/profile");
-        } catch (err) {
-          logger.warn(`Failed to delete avatar file: ${filename}`, err);
-        }
-      }
-
-      // `picture` is a read-only getter over avatarUrl — writing it does
-      // nothing. Reset the real attribute instead.
-      await user.update({ avatarUrl: "default.svg" }, { silent: true });
+    if (changed) {
       logger.info(`User avatar removed: ${userId} by ${updatedBy}`);
     }
 
     return {
-      data: { avatar: "default.svg" },
+      data: { avatar: AVATAR_PLACEHOLDER },
       message: "User avatar removed successfully",
       status: 200,
     };
@@ -1037,6 +1169,10 @@ exports.deleteUser = async (input) => {
           model: Roles,
           as: "role",
           attributes: ["id", "name"],
+          // A-109: LEFT — a user without a live role can still be deleted.
+          // The super-admin guard below reads `user.roleId` as well as
+          // `user.role?.name`, so a null relation does not open it.
+          required: false,
         },
       ],
     });

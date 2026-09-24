@@ -224,7 +224,26 @@ exports.deleteUser = asyncHandler(async (req, res) => {
   );
 });
 
+/**
+ * A-96. Remove the avatar file THIS request uploaded, after the service
+ * refused or failed. Never throws: the original error is what the caller must
+ * see.
+ *
+ * @param {import("express").Request} req
+ */
+const discardUploadedAvatar = async (req) => {
+  try {
+    await require("../utils/upload.util").deleteUpload(req.uploadFilename, "uploads/profile");
+  } catch (deleteErr) {
+    require("../middlewares/activityLog.middleware").logger.warn(
+      `Failed to delete uploaded avatar after failure: ${req.uploadFilename}`,
+      deleteErr,
+    );
+  }
+};
+
 exports.uploadUserAvatar = asyncHandler(async (req, res) => {
+  // The PATH names the user (the gate checked it); a body userId never wins.
   const { userId } = { ...req.body, ...req.params };
   const updatedBy = req.user?.id;
 
@@ -237,11 +256,21 @@ exports.uploadUserAvatar = asyncHandler(async (req, res) => {
     });
   }
 
-  const result = await userService.updateUserAvatar(
-    userId,
-    req.uploadFilename,
-    updatedBy,
-  );
+  let result;
+  try {
+    // A-96: the service audits inside its transaction and throws for every
+    // refusal BEFORE the commit — so a throw means the upload belongs to
+    // nobody and must not stay on disk.
+    result = await userService.updateUserAvatar(
+      userId,
+      req.uploadFilename,
+      updatedBy,
+      getActor(req),
+    );
+  } catch (err) {
+    await discardUploadedAvatar(req);
+    throw err;
+  }
 
   success(
     res,
@@ -256,7 +285,7 @@ exports.removeUserAvatar = asyncHandler(async (req, res) => {
   const { userId } = { ...req.body, ...req.params };
   const updatedBy = req.user?.id;
 
-  const result = await userService.removeUserAvatar(userId, updatedBy);
+  const result = await userService.removeUserAvatar(userId, updatedBy, getActor(req));
 
   success(
     res,
@@ -277,6 +306,9 @@ exports.getAllUsersSimple = asyncHandler(async (req, res) => {
         model: Roles,
         as: "role",
         attributes: ["id", "name", "description"],
+        // A-109: LEFT — the defaultScope's implicit INNER JOIN left users
+        // without a live role out of every picker built on this list.
+        required: false,
       },
     ],
     order: [["firstName", "ASC"]],

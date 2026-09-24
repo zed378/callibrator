@@ -39,9 +39,10 @@
  *                                  (req.tenantId from auth); CSV rows carry no
  *                                  tenant and the service stamps it.
  *
- * Not in the list because it is not gated at all: POST /ai/ocr (multer, auth
- * only — no dynamicAccess). Reported separately; it is a missing gate, not a
- * blind one.
+ *   POST  /ai/ocr                  no checkTenant: the tenant is the
+ *                                  principal's (req.user.tenantId in the
+ *                                  controller); the multipart body carries only
+ *                                  the file. Gated since A-94 (it had no gate).
  */
 
 const fs = require("fs");
@@ -94,6 +95,7 @@ const uploadsAfterGate = () => {
 
 // key -> how tenant ownership holds although the gate cannot read the body.
 const REVIEWED = {
+  "ai.route.js POST /ocr": "no checkTenant; tenant from req.user.tenantId (A-94)",
   "attachments.route.js POST /": "no checkTenant; tenant from req.user.tenantId",
   "calibrationDevices.route.js POST /bulk-import": "no checkTenant; tenant from the principal",
   "tenant.route.js PATCH /edit": "service: tenantService.updateTenant (A-63)",

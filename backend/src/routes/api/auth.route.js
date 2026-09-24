@@ -812,11 +812,33 @@ router.post(
  *   post:
  *     tags: [Auth]
  *     summary: Generate an MFA secret and QR code for the authenticated user
+ *     description: |
+ *       The new secret is held PENDING; it replaces nothing until
+ *       /auth/mfa/verify accepts a code from it (A-114). On an account that
+ *       already has MFA this is a rotation, and needs the current password
+ *       and a code from the current authenticator.
  *     security:
  *       - bearerAuth: []
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               currentPassword:
+ *                 type: string
+ *                 description: required when MFA is already enabled
+ *               code:
+ *                 type: string
+ *                 description: a code from the CURRENT authenticator; required when MFA is already enabled
  *     responses:
  *       '200':
  *         description: Returns the MFA secret and QR code data URL
+ *       '400':
+ *         description: Current password or MFA code is incorrect
+ *       '409':
+ *         description: MFA is already enabled and no re-authentication was given
  */
 router.post("/mfa/setup", auth, setupMfa);
 

@@ -218,8 +218,12 @@ exports.passIsValid = asyncHandlerWithMapping(async (req, res) => {
 // MFA (MULTI-FACTOR AUTHENTICATION)
 // ------------------------------------------------------------------
 
+// A-114: on an account that already has MFA, setup is a ROTATION and needs
+// `currentPassword` and a `code` from the current authenticator (409 without
+// them). Both come from the body; the user is always the caller.
 exports.setupMfa = asyncHandlerWithMapping(async (req, res) => {
-  const result = await authService.setupMfa(req.user.id);
+  const { currentPassword, code } = req.body || {};
+  const result = await authService.setupMfa(req.user.id, { currentPassword, code });
   success(res, result, null, "MFA secret generated", 200);
 }, {});
 
@@ -228,7 +232,10 @@ exports.verifyMfaSetup = asyncHandlerWithMapping(async (req, res) => {
   if (!code) {
     throw new AppError(400, "MFA code is required");
   }
-  const result = await authService.verifyMfaSetup(req.user.id, code);
+  const result = await authService.verifyMfaSetup(req.user.id, code, {
+    ipAddress: req.ip || null,
+    userAgent: req.headers?.["user-agent"] || null,
+  });
   success(res, null, null, result.message, 200);
 }, {
   "Invalid MFA code": 400,
@@ -265,7 +272,7 @@ exports.loginMfa = asyncHandlerWithMapping(
       decoded.id,
       code,
       req.ip,
-      req.headers["user-agent"]
+      req.headers["user-agent"],
     );
 
     login(res, result.data, result.token, result.session);

@@ -14,7 +14,7 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.UUID,
         allowNull: false,
         references: { model: "tenants", key: "id" },
-        onDelete: "CASCADE",
+        onDelete: "RESTRICT",
       },
       vendorId: {
         type: DataTypes.UUID,
@@ -76,8 +76,9 @@ const defineModel = (db, DataTypes) => {
 
   SupplierScorecard.associate = (models) => {
     SupplierScorecard.belongsTo(models.Tenant, {
-      foreignKey: "tenant_id",
+      foreignKey: "tenantId",
       as: "tenant",
+      onDelete: "RESTRICT",
     });
     SupplierScorecard.belongsTo(models.Vendor, {
       foreignKey: "vendor_id",

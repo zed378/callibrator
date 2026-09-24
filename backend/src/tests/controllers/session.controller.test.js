@@ -139,8 +139,8 @@ describe("Session Controller", () => {
 
         await sessionController.getAllSessions(req, res);
 
-        // success(res, { sessions, meta }, null, message, status)
-        return success.mock.calls[0][1].sessions[0].device;
+        // success(res, sessions, meta, message, status) — A-111
+        return success.mock.calls[0][1][0].device;
       };
 
       it("prefers the stored device when present", async () => {
@@ -264,25 +264,23 @@ describe("Session Controller", () => {
 
       await sessionController.getAllSessions(req, res);
 
+      // A-111: rows are `data` itself; meta is its own argument (top level)
       expect(success).toHaveBeenCalledWith(
         expect.any(Object),
-        expect.objectContaining({
-          sessions: expect.arrayContaining([
-            expect.objectContaining({
-              id: VALID_SESSION_ID,
-              userId: VALID_USER_ID,
-              username: "testuser",
-              isActive: true,
-              isRevoked: false,
-            }),
-          ]),
-          meta: expect.objectContaining({
-            total: 1,
-            page: 1,
-            limit: 10,
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: VALID_SESSION_ID,
+            userId: VALID_USER_ID,
+            username: "testuser",
+            isActive: true,
+            isRevoked: false,
           }),
+        ]),
+        expect.objectContaining({
+          total: 1,
+          page: 1,
+          limit: 10,
         }),
-        null,
         "Sessions retrieved successfully",
         200,
       );
@@ -718,7 +716,7 @@ describe("Session Controller", () => {
       expect(success).toHaveBeenCalled();
       const callArgs = success.mock.calls[0];
       const data = callArgs[1];
-      expect(data.sessions[0].browser).toBe("Google Chrome");
+      expect(data[0].browser).toBe("Google Chrome");
     });
 
     it("should include OS detection in session data", async () => {
@@ -759,7 +757,7 @@ describe("Session Controller", () => {
       expect(success).toHaveBeenCalled();
       const callArgs = success.mock.calls[0];
       const data = callArgs[1];
-      expect(data.sessions[0].os).toBe("Windows");
+      expect(data[0].os).toBe("Windows");
     });
 
     it("should include correct status for active session", async () => {
@@ -799,7 +797,7 @@ describe("Session Controller", () => {
       expect(success).toHaveBeenCalled();
       const callArgs = success.mock.calls[0];
       const data = callArgs[1];
-      expect(data.sessions[0].status).toBe("active");
+      expect(data[0].status).toBe("active");
     });
 
     it("should include correct status for revoked session", async () => {
@@ -839,7 +837,7 @@ describe("Session Controller", () => {
       expect(success).toHaveBeenCalled();
       const callArgs = success.mock.calls[0];
       const data = callArgs[1];
-      expect(data.sessions[0].status).toBe("revoked");
+      expect(data[0].status).toBe("revoked");
     });
 
     it("should include correct status for expired session", async () => {
@@ -879,7 +877,7 @@ describe("Session Controller", () => {
       expect(success).toHaveBeenCalled();
       const callArgs = success.mock.calls[0];
       const data = callArgs[1];
-      expect(data.sessions[0].status).toBe("expired");
+      expect(data[0].status).toBe("expired");
     });
   });
 // detectBrowser/detectOS parse the stored user_agent for every mapped
@@ -900,7 +898,7 @@ describe("Session Controller", () => {
         rows: [{ ...baseRow, user_agent }],
       });
       await sessionController.getAllSessions(req, res);
-      return success.mock.calls[0][1].sessions[0];
+      return success.mock.calls[0][1][0];
     };
 
     it.each([
@@ -944,7 +942,7 @@ describe("Session Controller", () => {
 
       await sessionController.getAllSessions(req, res);
 
-      const s = success.mock.calls[0][1].sessions[0];
+      const s = success.mock.calls[0][1][0];
       expect(s).toMatchObject({
         username: "Unknown",
         email: "Unknown",
@@ -1009,7 +1007,7 @@ describe("Session Controller", () => {
       expect(mockSessions.findAndCountAll).toHaveBeenCalledWith(
         expect.objectContaining({ limit: 20, offset: 0 }),
       );
-      expect(success.mock.calls[0][1].meta).toEqual({
+      expect(success.mock.calls[0][2]).toEqual({
         total: 0, page: 1, limit: 20, totalPages: 0,
       });
     });

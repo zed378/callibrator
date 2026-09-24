@@ -4,6 +4,7 @@ const router = express.Router();
 const { auth } = require("../../middlewares/auth.middleware");
 const { dynamicAccess } = require("../../middlewares/dynamicAccess.middleware");
 const { validateUuid } = require("../../middlewares/validateUuid.middleware");
+const { denyPlatformAuthoring } = require("../../middlewares/denyPlatformAuthoring.middleware"); // A-127, ADR-051 Q-17
 const calibrationRecordsController = require("../../controllers/calibrationRecords.controller");
 
 /* ------------------------------------------------------------------ */
@@ -146,6 +147,7 @@ router.post(
   "/",
   auth,
   dynamicAccess("calibration", "write"),
+  denyPlatformAuthoring,
   calibrationRecordsController.createCalibrationRecord,
 );
 
@@ -267,6 +269,7 @@ router.put(
   auth,
   validateUuid("calibrationRecordId"),
   dynamicAccess("calibration", "write"),
+  denyPlatformAuthoring,
   calibrationRecordsController.updateCalibrationRecord,
 );
 
@@ -314,6 +317,7 @@ router.delete(
   auth,
   validateUuid("calibrationRecordId"),
   dynamicAccess("calibration", "write"),
+  denyPlatformAuthoring,
   calibrationRecordsController.deleteCalibrationRecord,
 );
 

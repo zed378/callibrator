@@ -265,9 +265,9 @@ beforeEach(() => {
   mockStore.records = [];
   mockStore.key = { keyId: keyPair.keyId, privateKey: keyPair.privateKey };
   mockStore.users = {
-    [technicianA.id]: { id: technicianA.id, status: "active" },
-    [supervisorA.id]: { id: supervisorA.id, status: "active" },
-    [userA.id]: { id: userA.id, status: "active" },
+    [technicianA.id]: { id: technicianA.id, status: "ACTIVE", isActive: true },
+    [supervisorA.id]: { id: supervisorA.id, status: "ACTIVE", isActive: true },
+    [userA.id]: { id: userA.id, status: "ACTIVE", isActive: true },
   };
   mockStore.workflows = [
     workflow({

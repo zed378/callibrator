@@ -3,7 +3,7 @@ const { Model } = require("sequelize");
 module.exports = (sequelize, DataTypes) => {
   class BatchJob extends Model {
     static associate(models) {
-      BatchJob.belongsTo(models.Tenant, { foreignKey: "tenant_id", as: "tenant" });
+      BatchJob.belongsTo(models.Tenant, { foreignKey: "tenantId", as: "tenant", onDelete: "CASCADE" });
       BatchJob.belongsTo(models.User, { foreignKey: "user_id", as: "user" });
     }
   }
@@ -19,6 +19,8 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.UUID,
         field: "tenant_id",
         allowNull: false,
+        references: { model: "tenants", key: "id" },
+        onDelete: "CASCADE",
       },
       userId: {
         type: DataTypes.UUID,

@@ -353,7 +353,7 @@
     "/api/v1/ai/ocr": {
       "post": {
         "summary": "Certificate OCR extraction",
-        "description": "Extracts structured data from an uploaded certificate image or PDF. Requires authentication.",
+        "description": "Extracts structured data from an uploaded certificate image or PDF. Requires `certificate` write access.",
         "tags": [
           "AI"
         ],
@@ -387,6 +387,9 @@
           },
           "401": {
             "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Missing `certificate` write access"
           }
         }
       }
@@ -394,7 +397,7 @@
     "/api/v1/ai/query": {
       "post": {
         "summary": "RAG document Q&A",
-        "description": "Answers a question over indexed documents using retrieval-augmented generation. Requires authentication.",
+        "description": "Answers a question over indexed documents using retrieval-augmented generation. Requires `sop` read access.",
         "tags": [
           "AI"
         ],
@@ -427,6 +430,9 @@
           },
           "401": {
             "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Missing `sop` read access"
           }
         }
       }
@@ -1926,14 +1932,41 @@
           "Auth"
         ],
         "summary": "Generate an MFA secret and QR code for the authenticated user",
+        "description": "The new secret is held PENDING; it replaces nothing until\n/auth/mfa/verify accepts a code from it (A-114). On an account that\nalready has MFA this is a rotation, and needs the current password\nand a code from the current authenticator.\n",
         "security": [
           {
             "bearerAuth": []
           }
         ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "currentPassword": {
+                    "type": "string",
+                    "description": "required when MFA is already enabled"
+                  },
+                  "code": {
+                    "type": "string",
+                    "description": "a code from the CURRENT authenticator; required when MFA is already enabled"
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Returns the MFA secret and QR code data URL"
+          },
+          "400": {
+            "description": "Current password or MFA code is incorrect"
+          },
+          "409": {
+            "description": "MFA is already enabled and no re-authentication was given"
           }
         }
       }
@@ -5340,7 +5373,15 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "keyPairs": {
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "total": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "data": {
                       "type": "array",
                       "items": {
                         "type": "object",
@@ -5518,16 +5559,24 @@
         ],
         "responses": {
           "200": {
-            "description": "Workflows retrieved successfully",
+            "description": "Workflows retrieved successfully. Rows are `data` itself, the count in a top-level `meta.total` (A-106; formerly `data.workflows`).",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "workflows": {
+                    "data": {
                       "type": "array",
                       "items": {
                         "type": "object"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "total": {
+                          "type": "integer"
+                        }
                       }
                     }
                   }
@@ -5765,7 +5814,7 @@
       },
       "delete": {
         "summary": "Delete workflow",
-        "description": "Deletes a workflow (only if in draft status). Requires write access to ESignature.",
+        "description": "Soft-deletes a workflow. A completed (fully signed) workflow cannot be deleted (409). Requires write access to QMS.",
         "tags": [
           "ESignature"
         ],
@@ -5794,6 +5843,9 @@
           },
           "404": {
             "description": "Workflow not found"
+          },
+          "409": {
+            "description": "The workflow is completed; its signatures cover it"
           }
         }
       }
@@ -6078,13 +6130,21 @@
         ],
         "responses": {
           "200": {
-            "description": "Signature history retrieved successfully",
+            "description": "Signature history retrieved successfully. Rows are `data` itself, the count in a top-level `meta.total` (A-106; formerly `data.signatures`).",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "signatures": {
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "total": {
+                          "type": "integer"
+                        }
+                      }
+                    },
+                    "data": {
                       "type": "array",
                       "items": {
                         "type": "object",

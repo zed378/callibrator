@@ -31,7 +31,18 @@ import {
   type ESignatureFormFields,
 } from "@/app/dashboard/calibration/components/ESignatureFields";
 
-type Tab = "keys" | "workflows" | "verify";
+type Tab = "sign" | "keys" | "workflows" | "verify";
+
+/** Which route a workflow detail was read through — and is re-read through. */
+type DetailSource = "signer" | "manage";
+
+/**
+ * A-91 — key pairs and the full workflow list are management, gated on `qms`;
+ * most roles that can be named as signers do not hold it. A 403 from those
+ * routes is an expected state for them, not an error to toast.
+ */
+const isForbidden = (err: unknown) =>
+  (err as { response?: { status?: number } } | null)?.response?.status === 403;
 
 const fmt = (v?: string | null) => (v ? new Date(v).toLocaleString() : "—");
 
@@ -90,18 +101,29 @@ function TabButton({
 export default function ESignaturePage() {
   const addToast = useToastStore((s) => s.addToast);
   const currentUserId = useAuthStore((s) => s.user?.id);
-  const [tab, setTab] = useState<Tab>("keys");
+  // A-91 — "To sign" is the view every signer can open (the `esignature`
+  // menu); the management tabs load only when opened.
+  const [tab, setTab] = useState<Tab>("sign");
 
   // Shared
   const [busy, setBusy] = useState<string | null>(null);
 
+  // To sign — the signer view (GET /my-workflows)
+  const [myWorkflows, setMyWorkflows] = useState<SignatureWorkflow[]>([]);
+  const [myLoading, setMyLoading] = useState(true);
+
+  // Management (qms): set when those routes answer 403 for this user.
+  const [manageDenied, setManageDenied] = useState(false);
+
   // Key pairs
   const [keys, setKeys] = useState<KeyPair[]>([]);
-  const [keysLoading, setKeysLoading] = useState(true);
+  const [keysLoading, setKeysLoading] = useState(false);
+  const [keysLoaded, setKeysLoaded] = useState(false);
 
   // Workflows
   const [workflows, setWorkflows] = useState<SignatureWorkflow[]>([]);
-  const [wfLoading, setWfLoading] = useState(true);
+  const [wfLoading, setWfLoading] = useState(false);
+  const [wfLoaded, setWfLoaded] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [form, setForm] = useState({
     documentId: "",
@@ -110,6 +132,7 @@ export default function ESignaturePage() {
     signers: [emptySigner()],
   });
   const [detail, setDetail] = useState<SignatureWorkflow | null>(null);
+  const [detailSource, setDetailSource] = useState<DetailSource>("signer");
   // A-65 — signing re-authenticates: the step being signed and the signer's
   // credential, collected inline under that step.
   const [signingStepId, setSigningStepId] = useState<string | null>(null);
@@ -119,11 +142,31 @@ export default function ESignaturePage() {
   const [verifyId, setVerifyId] = useState("");
   const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null);
 
+  const loadMine = useCallback(async () => {
+    setMyLoading(true);
+    try {
+      setMyWorkflows(await eSignatureService.getMyWorkflows());
+    } catch (err) {
+      addToast({
+        type: "error",
+        title: "Could not load your signature requests",
+        description: err instanceof Error ? err.message : undefined,
+      });
+    } finally {
+      setMyLoading(false);
+    }
+  }, [addToast]);
+
   const loadKeys = useCallback(async () => {
     setKeysLoading(true);
     try {
       setKeys(await eSignatureService.getKeyPairs());
+      setKeysLoaded(true);
     } catch (err) {
+      if (isForbidden(err)) {
+        setManageDenied(true);
+        return;
+      }
       addToast({
         type: "error",
         title: "Could not load key pairs",
@@ -138,7 +181,12 @@ export default function ESignaturePage() {
     setWfLoading(true);
     try {
       setWorkflows(await eSignatureService.getWorkflows());
+      setWfLoaded(true);
     } catch (err) {
+      if (isForbidden(err)) {
+        setManageDenied(true);
+        return;
+      }
       addToast({
         type: "error",
         title: "Could not load workflows",
@@ -149,23 +197,27 @@ export default function ESignaturePage() {
     }
   }, [addToast]);
 
-  const loadAll = useCallback(async () => {
-    await Promise.all([loadKeys(), loadWorkflows()]);
-  }, [loadKeys, loadWorkflows]);
-
   useEffect(() => {
-    // Defer past the synchronous effect body — loadAll() writes state, and
+    // Defer past the synchronous effect body — loadMine() writes state, and
     // doing that synchronously in an effect cascades renders
     // (set-state-in-effect). Same pattern as dashboard/metered-billing.
     let active = true;
     (async () => {
       await Promise.resolve();
-      if (active) await loadAll();
+      if (active) await loadMine();
     })();
     return () => {
       active = false;
     };
-  }, [loadAll]);
+  }, [loadMine]);
+
+  // Management data loads when its tab is first opened, so a signer without
+  // `qms` is not greeted by failed requests they cannot do anything about.
+  const selectTab = (next: Tab) => {
+    setTab(next);
+    if (next === "keys" && !keysLoaded && !manageDenied) void loadKeys();
+    if (next === "workflows" && !wfLoaded && !manageDenied) void loadWorkflows();
+  };
 
   // ---- Key-pair actions ----
   const generateKey = async () => {
@@ -241,9 +293,14 @@ export default function ESignaturePage() {
     }
   };
 
-  const openDetail = async (id: string) => {
+  const openDetail = async (id: string, source: DetailSource) => {
     try {
-      setDetail(await eSignatureService.getWorkflow(id));
+      setDetail(
+        source === "signer"
+          ? await eSignatureService.getMyWorkflow(id)
+          : await eSignatureService.getWorkflow(id),
+      );
+      setDetailSource(source);
     } catch (err) {
       addToast({
         type: "error",
@@ -289,8 +346,9 @@ export default function ESignaturePage() {
       });
       addToast({ type: "success", title: "Document signed" });
       cancelSigning();
-      if (detail) await openDetail(detail.id);
-      await loadWorkflows();
+      if (detail) await openDetail(detail.id, detailSource);
+      await loadMine();
+      if (wfLoaded) await loadWorkflows();
     } catch (err) {
       // Never keep a rejected credential in the form.
       setSignForm((f) => ({ ...f, authPayload: "" }));
@@ -420,7 +478,7 @@ export default function ESignaturePage() {
       header: "",
       render: (_v: unknown, r: Record<string, unknown>) => (
         <div className="flex gap-1">
-          <Button size="sm" variant="ghost" onClick={() => openDetail(String(r.id))}>
+          <Button size="sm" variant="ghost" onClick={() => openDetail(String(r.id), "manage")}>
             View
           </Button>
           <Button
@@ -437,6 +495,48 @@ export default function ESignaturePage() {
     },
   ];
 
+  // The caller's own step in a workflow. A workflow may name them twice; the
+  // one still awaiting them is the one that matters.
+  const myStep = (wf: SignatureWorkflow) => {
+    const mine = (wf.steps ?? []).filter((st) => st.signerId === currentUserId);
+    return mine.find((st) => st.status === "pending") ?? mine[0];
+  };
+
+  const signColumns = [
+    wfColumns[0],
+    wfColumns[1],
+    {
+      key: "myStep",
+      header: "Your step",
+      render: (_v: unknown, r: Record<string, unknown>) => {
+        const st = myStep(r as unknown as SignatureWorkflow);
+        return st?.status === "pending" ? (
+          <Badge variant="warning" size="sm">
+            awaiting your signature
+          </Badge>
+        ) : (
+          <span className="text-sm text-muted-foreground">{st?.status ?? "—"}</span>
+        );
+      },
+    },
+    {
+      key: "actions",
+      header: "",
+      render: (_v: unknown, r: Record<string, unknown>) => (
+        <Button size="sm" variant="ghost" onClick={() => openDetail(String(r.id), "signer")}>
+          Open
+        </Button>
+      ),
+    },
+  ];
+
+  const manageDeniedNotice = (
+    <Alert variant="info">
+      Managing key pairs and workflows needs the Quality Management permission.
+      Workflows that name you as a signer are under To sign.
+    </Alert>
+  );
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -450,23 +550,50 @@ export default function ESignaturePage() {
 
         <div className="flex gap-2 border-b border-border">
           <TabButton
+            label="To sign"
+            active={tab === "sign"}
+            onClick={() => selectTab("sign")}
+          />
+          <TabButton
             label="Key Pairs"
             active={tab === "keys"}
-            onClick={() => setTab("keys")}
+            onClick={() => selectTab("keys")}
           />
           <TabButton
             label="Workflows"
             active={tab === "workflows"}
-            onClick={() => setTab("workflows")}
+            onClick={() => selectTab("workflows")}
           />
           <TabButton
             label="Verify"
             active={tab === "verify"}
-            onClick={() => setTab("verify")}
+            onClick={() => selectTab("verify")}
           />
         </div>
 
-        {tab === "keys" && (
+        {tab === "sign" && (
+          <div className="space-y-4">
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={loadMine}
+                leftIcon={<RefreshCw className="h-4 w-4" />}
+              >
+                Refresh
+              </Button>
+            </div>
+            <Table
+              columns={signColumns}
+              data={myWorkflows as unknown as Record<string, unknown>[]}
+              isLoading={myLoading}
+              emptyMessage="No signature workflows name you as a signer."
+            />
+          </div>
+        )}
+
+        {tab === "keys" && manageDenied && manageDeniedNotice}
+
+        {tab === "keys" && !manageDenied && (
           <div className="space-y-4">
             <div className="flex justify-end gap-2">
               <Button
@@ -493,7 +620,9 @@ export default function ESignaturePage() {
           </div>
         )}
 
-        {tab === "workflows" && (
+        {tab === "workflows" && manageDenied && manageDeniedNotice}
+
+        {tab === "workflows" && !manageDenied && (
           <div className="space-y-4">
             <div className="flex justify-end gap-2">
               <Button

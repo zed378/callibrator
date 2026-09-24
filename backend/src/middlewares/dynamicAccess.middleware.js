@@ -68,6 +68,46 @@ const selfOwnerIdFromPath = (req) => req.params?.userId || req.params?.id;
 exports.selfOwnerIdFromPath = selfOwnerIdFromPath;
 
 /**
+ * The distinct, non-empty values of `field` in the path, body and query, in
+ * that order. A-93: every one is checked; none can stand in for another.
+ *
+ * @param {import('express').Request} req
+ * @param {string} field
+ * @returns {string[]}
+ */
+const namedBy = (req, field) => {
+  const seen = [];
+  for (const source of [req.params, req.body, req.query]) {
+    const value = source && typeof source === "object" ? source[field] : undefined;
+    if (value !== undefined && value !== null && value !== "" && !seen.includes(String(value))) {
+      seen.push(String(value));
+    }
+  }
+  return seen;
+};
+
+/**
+ * A-93. Every tenant id a request names — path first. Exported so the
+ * "all of them are checked" property can be tested directly.
+ *
+ * @param {import('express').Request} req
+ * @returns {string[]}
+ */
+const tenantIdsNamedBy = (req) => namedBy(req, "tenantId");
+exports.tenantIdsNamedBy = tenantIdsNamedBy;
+
+/**
+ * A-93. Every user id a request names as the resource owner (`userId` in the
+ * path, body or query). Checked for tenant membership independently of any
+ * tenant id the request also carries.
+ *
+ * @param {import('express').Request} req
+ * @returns {string[]}
+ */
+const ownerIdsNamedBy = (req) => namedBy(req, "userId");
+exports.ownerIdsNamedBy = ownerIdsNamedBy;
+
+/**
  * Dynamic RBAC Middleware
  *
  * Simplified RBAC middleware that checks role-based menu permissions.
@@ -90,7 +130,9 @@ exports.selfOwnerIdFromPath = selfOwnerIdFromPath;
  * @param {boolean} options.requireAll - Require all actions (AND logic) vs any action (OR logic, default)
  * @param {boolean} options.checkSelf - Allow the caller on a route whose PATH names them
  *   (`:userId` / `:id`) without the menu permission. Runs after checkTenant, never instead of it (A-63)
- * @param {boolean} options.checkTenant - Enforce multi-tenant isolation (reject if resource belongs to different tenant)
+ * @param {boolean} options.checkTenant - Enforce multi-tenant isolation: every `tenantId` the
+ *   request names (path, body, query) must be the caller's, AND every `userId` it names must be a
+ *   user of the caller's tenant — both checks, independently (A-93). A mismatch is 404
  * @returns {Function} Express middleware
  */
 exports.dynamicAccess = (menuGroup, permissionType, options = {}) => {
@@ -121,12 +163,21 @@ exports.dynamicAccess = (menuGroup, permissionType, options = {}) => {
         return next();
       }
 
-      // ---- Tenant isolation check ----
+      // ---- Tenant isolation check (A-93) ----
+      // Two INDEPENDENT checks, each applied to every place the request names
+      // one. They used to be an if/else: a request carrying ANY tenantId equal
+      // to the caller's own took the tenant branch, and the owner check never
+      // ran — so `DELETE /users/<another tenant's user>/avatar` with
+      // `?tenantId=<my tenant>` passed the gate on the global hooks alone.
       if (options.checkTenant) {
-        const resourceTenantId =
-          req.params?.tenantId || req.body?.tenantId || req.query?.tenantId;
+        const userTenantId = user.tenantId || (user.tenant && user.tenant.id);
 
-        if (resourceTenantId) {
+        // 1. Every tenant id the request names must be the caller's own.
+        //    The PATH parameter is the resource the route addresses; a body or
+        //    query value is caller-chosen. Those are consulted ONLY to refuse
+        //    (a mismatch is 404) — they can never widen what the path allows,
+        //    and they never switch the owner check below off.
+        for (const resourceTenantId of tenantIdsNamedBy(req)) {
           // Ensure resource belongs to user's tenant
           const tenant = await Tenants.findByPk(resourceTenantId, {
             attributes: ["id"],
@@ -141,41 +192,36 @@ exports.dynamicAccess = (menuGroup, permissionType, options = {}) => {
             });
           }
 
-          const userTenantId = user.tenantId || (user.tenant && user.tenant.id);
           if (String(tenant.id) !== String(userTenantId)) {
             return denyTenantIsolation(req, res, TENANT_NOT_FOUND_MESSAGE, {
               reason: "cross-tenant",
               resourceTenantId: String(resourceTenantId),
             });
           }
-        } else {
-          // No tenant ID provided but checkTenant is enabled — check resource ownership
-          const resourceOwnerId =
-            req.params?.userId || req.body?.userId || req.query?.userId;
+        }
 
-          if (resourceOwnerId) {
-            const owner = await User.findByPk(resourceOwnerId, {
-              attributes: ["tenantId"],
+        // 2. Every user the request names must belong to the caller's tenant,
+        //    whether or not a tenant id was also supplied.
+        for (const resourceOwnerId of ownerIdsNamedBy(req)) {
+          const owner = await User.findByPk(resourceOwnerId, {
+            attributes: ["tenantId"],
+          });
+
+          // AZ-04: same status, same body, whether the owner does not
+          // exist or belongs to another tenant.
+          if (!owner) {
+            return denyTenantIsolation(req, res, RESOURCE_NOT_FOUND_MESSAGE, {
+              reason: "no-such-owner",
+              resourceOwnerId: String(resourceOwnerId),
             });
+          }
 
-            // AZ-04: same status, same body, whether the owner does not
-            // exist or belongs to another tenant.
-            if (!owner) {
-              return denyTenantIsolation(req, res, RESOURCE_NOT_FOUND_MESSAGE, {
-                reason: "no-such-owner",
-                resourceOwnerId: String(resourceOwnerId),
-              });
-            }
-
-            const userTenantId =
-              user.tenantId || (user.tenant && user.tenant.id);
-            if (String(owner.tenantId) !== String(userTenantId)) {
-              return denyTenantIsolation(req, res, RESOURCE_NOT_FOUND_MESSAGE, {
-                reason: "cross-tenant-owner",
-                resourceOwnerId: String(resourceOwnerId),
-                ownerTenantId: String(owner.tenantId),
-              });
-            }
+          if (String(owner.tenantId) !== String(userTenantId)) {
+            return denyTenantIsolation(req, res, RESOURCE_NOT_FOUND_MESSAGE, {
+              reason: "cross-tenant-owner",
+              resourceOwnerId: String(resourceOwnerId),
+              ownerTenantId: String(owner.tenantId),
+            });
           }
         }
       }

@@ -60,8 +60,19 @@ const exchange = (body, ip = "198.51.100.20") =>
 
 const WELL_FORMED_UNKNOWN = "Z".repeat(43);
 
+const ORIGINAL_BY_IP = process.env.AUTH_RATE_LIMIT_BY_IP;
+
 beforeEach(() => {
+  delete process.env.AUTH_RATE_LIMIT_BY_IP;
   clearMemoryStore();
+});
+
+afterAll(() => {
+  if (ORIGINAL_BY_IP === undefined) {
+    delete process.env.AUTH_RATE_LIMIT_BY_IP;
+  } else {
+    process.env.AUTH_RATE_LIMIT_BY_IP = ORIGINAL_BY_IP;
+  }
 });
 
 describe("A-60: POST /auth/sso/exchange", () => {
@@ -102,7 +113,8 @@ describe("A-60: POST /auth/sso/exchange", () => {
     expect(res.body).not.toHaveProperty("token");
   });
 
-  it("locks an IP out with 429 after repeated failed exchanges, and only that IP", async () => {
+  it("with AUTH_RATE_LIMIT_BY_IP=true, locks an IP out with 429 after repeated failed exchanges, and only that IP", async () => {
+    process.env.AUTH_RATE_LIMIT_BY_IP = "true";
     // ssoExchange: maxAttempts 10; the per-IP lock is at maxAttempts * 3.
     for (let i = 0; i < 30; i += 1) {
       expect((await exchange({ code: WELL_FORMED_UNKNOWN }, "198.51.100.66")).status).toBe(401);
@@ -112,5 +124,23 @@ describe("A-60: POST /auth/sso/exchange", () => {
 
     const other = await exchange({ code: WELL_FORMED_UNKNOWN }, "198.51.100.67");
     expect(other.status).toBe(401);
+  });
+
+  // A-100: the exchange counted every failure by IP regardless of the flag.
+  // It is called server-to-server by the frontend, so until a deployment's
+  // req.ip is known to be the client (A-16) that address may be shared by
+  // every browser — and 30 bad codes from anyone locked SSO for everyone.
+  it("with AUTH_RATE_LIMIT_BY_IP unset, failed exchanges never lock the address", async () => {
+    delete process.env.AUTH_RATE_LIMIT_BY_IP;
+    for (let i = 0; i < 40; i += 1) {
+      expect((await exchange({ code: WELL_FORMED_UNKNOWN }, "198.51.100.68")).status).toBe(401);
+    }
+  });
+
+  it("with AUTH_RATE_LIMIT_BY_IP=false, failed exchanges never lock the address", async () => {
+    process.env.AUTH_RATE_LIMIT_BY_IP = "false";
+    for (let i = 0; i < 40; i += 1) {
+      expect((await exchange({ code: WELL_FORMED_UNKNOWN }, "198.51.100.69")).status).toBe(401);
+    }
   });
 });

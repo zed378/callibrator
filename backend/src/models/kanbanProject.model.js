@@ -65,8 +65,9 @@ const defineModel = (db, DataTypes) => {
 
   KanbanProject.associate = (models) => {
     KanbanProject.belongsTo(models.Tenant, {
-      foreignKey: "tenant_id",
+      foreignKey: "tenantId",
       as: "tenant",
+      onDelete: "CASCADE",
     });
     KanbanProject.belongsTo(models.User, {
       foreignKey: "created_by",

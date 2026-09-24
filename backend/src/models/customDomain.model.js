@@ -78,8 +78,9 @@ const defineModel = (db, DataTypes) => {
 
   CustomDomain.associate = (models) => {
     CustomDomain.belongsTo(models.Tenant, {
-      foreignKey: "tenant_id",
+      foreignKey: "tenantId",
       as: "tenant",
+      onDelete: "CASCADE",
     });
   };
 

@@ -19,7 +19,8 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.UUID,
         allowNull: false,
         references: { model: "tenants", key: "id" },
-        onDelete: "CASCADE",
+        onDelete: "RESTRICT", // ADR-051 Q-16; matches migration 0030
+        onUpdate: "CASCADE", // as every association-built tenant FK
       },
       workflowId: {
         type: DataTypes.UUID,

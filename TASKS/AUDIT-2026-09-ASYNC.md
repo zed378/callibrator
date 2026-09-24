@@ -40,7 +40,7 @@ needs one to settle says so in its own card.
 | W-17 | unbounded result sets and N+1 inside the per-tenant and per-device loops | low–medium | **live** |
 | W-18 | connection and timer lifecycle: two AMQP connections per process, one never closed, no in-flight memo on either getter | low–medium | **live** |
 | W-19 | the rate limiter's memory fallback has lazy expiry only — no sweep, unbounded growth | low | **live** |
-| W-20 | `hardDeleteOffboardedTenant` would **cascade-delete the tenant's audit trail** (`audit_logs.tenant_id ON DELETE CASCADE`), with no transaction and no audit row | **high** | latent — not routed |
+| W-20 | `hardDeleteOffboardedTenant` would **cascade-delete the tenant's audit trail** (`audit_logs.tenant_id ON DELETE CASCADE`), with no transaction and no audit row | **high** | **fixed** 2026-09-24 — `audit_logs.tenant_id` RESTRICT (migration 0030) |
 | W-21 | `enterGracePeriod` accepts a tenant that is not suspended; a later suspension past the deadline is offboarded immediately | medium | live |
 
 **By severity:** 6 high · 2 medium–high · 8 medium · 3 low/low–medium. **19 total.**

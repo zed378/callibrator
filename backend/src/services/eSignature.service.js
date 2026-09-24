@@ -16,6 +16,7 @@ const { logger } = require("../middlewares/activityLog.middleware");
 const { AppError } = require("../utils/appError.util");
 const { db } = require("../config");
 const auditService = require("./audit.service");
+const { USER_STATUS } = require("../constants/appConstants");
 
 // ==========================================
 // CONFIGURATION
@@ -544,7 +545,13 @@ exports.signDocument = async (stepId, userId, signatureData) => {
     // anything is signed or persisted.
     const method = authenticationMethod || "password";
     const user = await require("../models").User.findByPk(userId);
-    if (!user || user.status !== "active") {
+    // User.status is UPPERCASE — the model default and USER_STATUS are
+    // "ACTIVE". This compared against "active", which no stored row carries,
+    // so every real signer was refused here with a 401; the unit tests passed
+    // only because their fixtures used the same wrong lowercase value. Signing
+    // a Part 11 record needs an account that is active on both flags, the
+    // rule the SSO sign-in applies (sso.service.js).
+    if (!user || !user.isActive || user.status !== USER_STATUS.ACTIVE) {
       throw new AppError(401, "Re-authentication required");
     }
     await require("./certificate.service").verifySignerCredentials(userId, method, authPayload);
@@ -908,30 +915,46 @@ exports.verifySignature = async (signatureId) => {
 // ==========================================
 
 /**
- * Get workflow by ID
+ * One workflow, for workflow management (qms), with its steps in order.
+ *
+ * A-105. The tenant is taken explicitly, as getSignerWorkflow does, and not
+ * only through the global hooks. A workflow in another tenant, a deleted one
+ * and a missing one are the same 404. A database failure is NOT caught: it
+ * used to be logged and answered as `null`, which the controller turned into
+ * a 404 — an outage reported as "this workflow does not exist". It now
+ * propagates to the global handler as a 500.
+ *
+ * The step order is a top-level `order` naming the association. An `order`
+ * inside an include entry is ignored by Sequelize, so the steps came back in
+ * whatever order the database chose.
+ *
+ * @param {string} workflowId
+ * @param {string} tenantId - the caller's tenant (from req.user)
+ * @returns {Promise<Object>} the workflow with its `steps` ordered by stepNumber
+ * @throws {AppError} 404 when there is no such workflow in the tenant
  */
-exports.getWorkflow = async (workflowId) => {
-  try {
-    const { SignatureWorkflow, SignatureWorkflowStep } = require("../models");
+exports.getWorkflow = async (workflowId, tenantId) => {
+  const { SignatureWorkflow, SignatureWorkflowStep } = require("../models");
 
-    const workflow = await SignatureWorkflow.findByPk(workflowId, {
-      include: [
-        {
-          model: SignatureWorkflowStep,
-          as: "steps",
-          order: [["stepNumber", "ASC"]],
-        },
-      ],
-    });
+  const workflow = await SignatureWorkflow.findOne({
+    where: { id: workflowId, tenantId },
+    include: [
+      {
+        model: SignatureWorkflowStep,
+        as: "steps",
+        where: { tenantId },
+        // A workflow whose steps cannot be joined is still a workflow; an
+        // INNER JOIN would make it a 404 (CLAUDE.md, the first trap).
+        required: false,
+      },
+    ],
+    order: [[{ model: SignatureWorkflowStep, as: "steps" }, "stepNumber", "ASC"]],
+  });
 
-    return workflow || null;
-  } catch (err) {
-    logger.error("Failed to get workflow", {
-      workflowId,
-      error: err.message,
-    });
-    return null;
+  if (!workflow) {
+    throw new AppError(404, "Workflow not found");
   }
+  return workflow;
 };
 
 /**
@@ -1018,14 +1041,14 @@ const signerStepsInclude = (SignatureWorkflowStep, tenantId) => ({
  *
  * @param {string} tenantId - the caller's tenant (from req.user)
  * @param {string} userId - the caller (from req.user)
- * @param {Object} [filters]
+ * @param {Object} filters
  * @param {string} [filters.stepStatus] - only workflows where the caller's own
  *   step has this status; "pending" is "waiting for my signature"
  * @returns {Promise<Array>} workflows, newest first, each with its `steps`
  *   ordered by stepNumber
  * @throws {AppError} 400 on an unknown stepStatus
  */
-exports.getSignerWorkflows = async (tenantId, userId, filters = {}) => {
+exports.getSignerWorkflows = async (tenantId, userId, filters) => {
   const { stepStatus } = filters;
   if (stepStatus !== undefined && !SIGNER_STEP_STATUSES.includes(stepStatus)) {
     throw new AppError(
@@ -1092,38 +1115,95 @@ exports.getSignerWorkflow = async (workflowId, tenantId, userId) => {
 };
 
 /**
+ * The audit row for a workflow-management mutation, written inside the
+ * mutation's transaction (A-104). `auditService.logAction` re-throws inside a
+ * transaction, so a failed audit insert rolls the mutation back with it.
+ *
+ * @param {object} transaction
+ * @param {string} tenantId - the workflow's tenant
+ * @param {{userId?: string|null, ipAddress?: string|null, userAgent?: string|null}} actor
+ * @param {string} action - one of AUDIT_ACTIONS
+ * @param {string} workflowId
+ * @param {object} changes
+ */
+const auditWorkflowChange = (transaction, tenantId, actor, action, workflowId, changes) =>
+  auditService.logAction(
+    {
+      tenantId,
+      userId: actor.userId || null,
+      action,
+      resourceType: "SignatureWorkflow",
+      resourceId: workflowId,
+      changes,
+      ipAddress: actor.ipAddress || null,
+      userAgent: actor.userAgent || null,
+    },
+    { transaction },
+  );
+
+/**
+ * Load a workflow for a management mutation, inside that mutation's
+ * transaction and locked (FOR UPDATE) against a concurrent one. 404 when it is
+ * not in the tenant.
+ */
+const findWorkflowForMutation = async (workflowId, tenantId, transaction) => {
+  const { SignatureWorkflow } = require("../models");
+  const workflow = await SignatureWorkflow.findOne({
+    where: { id: workflowId, tenantId },
+    transaction,
+    lock: true,
+  });
+  if (!workflow) {
+    throw new AppError(404, "Workflow not found");
+  }
+  return workflow;
+};
+
+/**
  * Update a workflow's editable metadata (subject/message/expiry). A completed or
  * cancelled workflow is immutable.
+ *
+ * A-104 — the update and its audit row commit together, or neither does. A
+ * body that changes none of the editable fields writes nothing, audit row
+ * included.
+ *
  * @param {string} workflowId
  * @param {string} tenantId
  * @param {Object} updates
+ * @param {{userId?: string, ipAddress?: string, userAgent?: string}} [actor] -
+ *   auditActor(req)
  * @returns {Promise<Object>} the updated workflow
  */
-exports.updateWorkflow = async (workflowId, tenantId, updates = {}) => {
+exports.updateWorkflow = async (workflowId, tenantId, updates = {}, actor = {}) => {
   try {
-    const { SignatureWorkflow } = require("../models");
-    const workflow = await SignatureWorkflow.findOne({
-      where: { id: workflowId, tenantId },
-    });
-    if (!workflow) {
-      throw new AppError(404, "Workflow not found");
-    }
-    // A-92 — editing a closed workflow is a state conflict (409), explained;
-    // the same body is accepted while the workflow is open.
-    if (workflow.status === "completed" || workflow.status === "cancelled") {
-      throw new AppError(409, explainClosedWorkflow(workflow.status, "edited"));
-    }
-    // Only a safe subset of fields is mutable — the client cannot force a status
-    // (e.g. "completed") or re-point the document.
-    const allowed = ["subject", "message", "expiresAt"];
-    const patch = {};
-    for (const field of allowed) {
-      if (updates[field] !== undefined) {
-        patch[field] = updates[field];
+    return await db.transaction(async (transaction) => {
+      const workflow = await findWorkflowForMutation(workflowId, tenantId, transaction);
+      // A-92 — editing a closed workflow is a state conflict (409), explained;
+      // the same body is accepted while the workflow is open.
+      if (workflow.status === "completed" || workflow.status === "cancelled") {
+        throw new AppError(409, explainClosedWorkflow(workflow.status, "edited"));
       }
-    }
-    await workflow.update(patch);
-    return workflow;
+      // Only a safe subset of fields is mutable — the client cannot force a status
+      // (e.g. "completed") or re-point the document.
+      const allowed = ["subject", "message", "expiresAt"];
+      const patch = {};
+      const before = {};
+      for (const field of allowed) {
+        if (updates[field] !== undefined) {
+          patch[field] = updates[field];
+          before[field] = workflow[field];
+        }
+      }
+      if (Object.keys(patch).length === 0) {
+        return workflow;
+      }
+      await workflow.update(patch, { transaction });
+      await auditWorkflowChange(transaction, tenantId, actor, "UPDATE", workflowId, {
+        before,
+        after: patch,
+      });
+      return workflow;
+    });
   } catch (err) {
     if (err.status) throw err;
     logger.error("Failed to update workflow", {
@@ -1136,19 +1216,30 @@ exports.updateWorkflow = async (workflowId, tenantId, updates = {}) => {
 
 /**
  * Soft-delete a workflow.
+ *
+ * A-104 — the soft delete and its audit row commit together, or neither does.
+ *
  * @param {string} workflowId
  * @param {string} tenantId
+ * @param {{userId?: string, ipAddress?: string, userAgent?: string}} [actor] -
+ *   auditActor(req)
  */
-exports.deleteWorkflow = async (workflowId, tenantId) => {
+exports.deleteWorkflow = async (workflowId, tenantId, actor = {}) => {
   try {
-    const { SignatureWorkflow } = require("../models");
-    const workflow = await SignatureWorkflow.findOne({
-      where: { id: workflowId, tenantId },
+    await db.transaction(async (transaction) => {
+      const workflow = await findWorkflowForMutation(workflowId, tenantId, transaction);
+      // A-113 — a completed workflow is a signed record (21 CFR 11.70: the
+      // signatures are linked to the record they sign). Soft-deleting it hid
+      // that record from every list with no state check. A state conflict
+      // (409), explained — as editing or cancelling it already is (A-92).
+      if (workflow.status === "completed") {
+        throw new AppError(409, explainClosedWorkflow(workflow.status, "deleted"));
+      }
+      await workflow.destroy({ transaction }); // paranoid soft delete
+      await auditWorkflowChange(transaction, tenantId, actor, "DELETE", workflowId, {
+        before: { status: workflow.status, documentId: workflow.documentId },
+      });
     });
-    if (!workflow) {
-      throw new AppError(404, "Workflow not found");
-    }
-    await workflow.destroy(); // paranoid soft delete
     logger.info("Signature workflow deleted", { tenantId, workflowId });
     return { success: true };
   } catch (err) {
@@ -1202,26 +1293,42 @@ exports.getSignatureHistory = async (tenantId, filters = {}) => {
 };
 
 /**
- * Cancel a signature workflow
+ * Cancel a signature workflow.
+ *
+ * A-104 — the cancellation and its audit row (`UPDATE`, operation `CANCEL`;
+ * the audit ENUM has no CANCEL) commit together, or neither does.
+ *
+ * @param {string} workflowId
+ * @param {string} userId - the caller
+ * @param {string} tenantId
+ * @param {{ipAddress?: string, userAgent?: string}} [actor] - auditActor(req);
+ *   the audit row's user is always `userId`
  */
-exports.cancelWorkflow = async (workflowId, userId, tenantId) => {
+exports.cancelWorkflow = async (workflowId, userId, tenantId, actor = {}) => {
   try {
-    const { SignatureWorkflow } = require("../models");
+    await db.transaction(async (transaction) => {
+      const workflow = await findWorkflowForMutation(workflowId, tenantId, transaction);
 
-    const workflow = await SignatureWorkflow.findOne({
-      where: { id: workflowId, tenantId },
+      // A-92 — a state conflict (409), explained, not a malformed request.
+      if (workflow.status === "completed") {
+        throw new AppError(409, explainClosedWorkflow(workflow.status, "cancelled"));
+      }
+
+      const previousStatus = workflow.status;
+      await workflow.update({ status: "cancelled" }, { transaction });
+      await auditWorkflowChange(
+        transaction,
+        tenantId,
+        { ...actor, userId },
+        "UPDATE",
+        workflowId,
+        {
+          operation: "CANCEL",
+          before: { status: previousStatus },
+          after: { status: "cancelled" },
+        },
+      );
     });
-
-    if (!workflow) {
-      throw new AppError(404, "Workflow not found");
-    }
-
-    // A-92 — a state conflict (409), explained, not a malformed request.
-    if (workflow.status === "completed") {
-      throw new AppError(409, explainClosedWorkflow(workflow.status, "cancelled"));
-    }
-
-    await workflow.update({ status: "cancelled" });
 
     logger.info("Workflow cancelled", {
       workflowId,

@@ -24,7 +24,7 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.UUID,
         allowNull: false,
         references: { model: "tenants", key: "id" },
-        onDelete: "CASCADE",
+        onDelete: "RESTRICT",
       },
       name: {
         type: DataTypes.STRING(255),
@@ -166,8 +166,9 @@ const defineModel = (db, DataTypes) => {
   CalibrationDevice.associate = (models) => {
     // CalibrationDevice -> Tenant
     CalibrationDevice.belongsTo(models.Tenant, {
-      foreignKey: "tenant_id",
+      foreignKey: "tenantId",
       as: "tenant",
+      onDelete: "RESTRICT",
     });
     // CalibrationDevice -> Warehouse
     CalibrationDevice.belongsTo(models.Warehouse, {

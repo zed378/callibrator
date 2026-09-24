@@ -729,117 +729,14 @@ exports.getPrivacyPreferences = async (tenantId, userId) => {
 // ==========================================
 // DATA RETENTION
 // ==========================================
-
-/**
- * Enforce data retention policies
- * Purges data past retention period
- */
-exports.enforceDataRetention = async () => {
-  if (!isGdprEnabled()) {
-    return { enforced: false, reason: "GDPR disabled" };
-  }
-
-  try {
-    const { DataRetentionPolicy } = require("../models");
-
-    const policies = await DataRetentionPolicy.findAll({
-      where: { isActive: true },
-    });
-
-    let purged = 0;
-
-    for (const policy of policies) {
-      const result = await purgeExpiredData(policy);
-      purged += result;
-    }
-
-    logger.info("Data retention enforced", { purged });
-    return { enforced: true, purged };
-  } catch (err) {
-    logger.error("Data retention enforcement failed", { error: err.message });
-    return { enforced: false, error: err.message };
-  }
-};
-
-/**
- * Purge expired data for a single retention policy.
- *
- * Deletes rows of the policy's entity type older than its retention window for
- * the policy's tenant, honoring an active legal hold. Entity types with no known
- * backing model are logged and skipped (return 0) rather than throwing, and so
- * is a policy with no tenant — the delete only ever runs with an explicit tenant
- * predicate (D-03).
- */
-async function purgeExpiredData(policy) {
-  const models = require("../models");
-  const { Op } = require("sequelize");
-  const dataRetention = require("./dataRetention.service");
-
-  // Map a policy's entityType (either the snake_case retention key or the model
-  // name) to its Sequelize model and to the attribute that model names its
-  // tenant key with. Session declares snake_case attributes, so `tenantId` on it
-  // throws `column "tenantId" does not exist` (CLAUDE.md, The Traps).
-  const ENTITY_MODEL = {
-    audit_logs: { model: models.AuditLog, tenantKey: "tenantId" },
-    AuditLog: { model: models.AuditLog, tenantKey: "tenantId" },
-    notifications: { model: models.Notification, tenantKey: "tenantId" },
-    Notification: { model: models.Notification, tenantKey: "tenantId" },
-    sessions: { model: models.Session, tenantKey: "tenant_id" },
-    Session: { model: models.Session, tenantKey: "tenant_id" },
-  };
-
-  const entity = ENTITY_MODEL[policy.entityType];
-  if (!entity) {
-    logger.debug("No purge handler for entity type; skipping", {
-      policyId: policy.id,
-      entityType: policy.entityType,
-    });
-    return 0;
-  }
-
-  // D-03: `data_retention_policies.tenantId` is nullable — "null = global
-  // default policy". Nothing else would confine such a policy: this runs from a
-  // scheduler, with no AsyncLocalStorage context, and tenantScope resolves that
-  // to { mode: "skip" }, adding no predicate. A global policy naming AuditLog
-  // would therefore hard-delete EVERY tenant's audit rows from one row of
-  // configuration. The purge never runs without an explicit tenant predicate;
-  // whether a platform-wide policy should exist at all is an open question for
-  // the owner (TASKS/BACKLOG.md), not something to infer here.
-  if (!policy.tenantId) {
-    logger.warn("Purge skipped: retention policy has no tenant", {
-      policyId: policy.id,
-      entityType: policy.entityType,
-    });
-    return 0;
-  }
-
-  // Never purge a tenant under legal hold.
-  if (await dataRetention.isOnLegalHold(policy.tenantId)) {
-    logger.info("Purge skipped: legal hold active", {
-      tenantId: policy.tenantId,
-      entityType: policy.entityType,
-    });
-    return 0;
-  }
-
-  const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - (policy.retentionDays || 0));
-
-  const where = {
-    createdAt: { [Op.lt]: cutoff },
-    [entity.tenantKey]: policy.tenantId,
-  };
-
-  const deleted = await entity.model.destroy({ where });
-
-  logger.info("Purged expired data", {
-    policyId: policy.id,
-    entityType: policy.entityType,
-    deleted,
-  });
-
-  return deleted || 0;
-}
+//
+// A-121 (ADR-051 Q-10, F-4): this service used to carry a second purge engine
+// (`enforceDataRetention` / `purgeExpiredData`) over `data_retention_policies`.
+// It had no caller, wrote no audit row, ran with no transaction, treated a
+// 0-day policy as "delete everything up to now" (the opposite of the live
+// engine), and could destroy a tenant's audit rows. It is removed. The one
+// retention engine is `dataRetention.service` (scheduled nightly by
+// retentionScheduler), and audit rows are never purged (Q-12).
 
 // ==========================================
 // DSAR (Data Subject Access Request)

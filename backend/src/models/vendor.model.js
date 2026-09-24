@@ -6,7 +6,7 @@ module.exports = (sequelize) => {
       Vendor.belongsTo(models.Tenant, {
         foreignKey: "tenantId",
         as: "tenant",
-        onDelete: "CASCADE",
+        onDelete: "RESTRICT",
       });
     }
   }
@@ -25,6 +25,7 @@ module.exports = (sequelize) => {
           model: "tenants",
           key: "id",
         },
+        onDelete: "RESTRICT",
       },
       name: {
         type: DataTypes.STRING,

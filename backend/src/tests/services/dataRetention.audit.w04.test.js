@@ -1,8 +1,9 @@
 /**
- * W-04 — the retention purge is the only code that permanently destroys
- * audit_logs rows. It must record what it destroyed, in the same transaction
- * as the destruction (MEMORY/specs/A-41-audit-inside-transaction.md, row 25),
- * so an auditor can answer "what did your retention job delete, and when?".
+ * W-04 — the retention purge must record what it destroyed, in the same
+ * transaction as the destruction (MEMORY/specs/A-41-audit-inside-transaction.md,
+ * row 25), so an auditor can answer "what did your retention job delete, and
+ * when?". Since A-121 it destroys notifications and sessions only; audit rows
+ * are never purged (dataRetention.a121.test.js).
  *
  * Effects against the auditLedger fixture (real ENUM, real rollback), with
  * `cls: false` so every delete must carry `{ transaction }` explicitly.
@@ -38,7 +39,7 @@ const { logger } = require("../../middlewares/activityLog.middleware");
 describe("W-04 — the retention purge audits what it destroyed", () => {
   beforeEach(() => {
     mockRef.ledger = createLedger({ cls: false });
-    mockRef.counts = { audit_logs: 120, notifications: 7, sessions: 0 };
+    mockRef.counts = { audit_logs: 120, notifications: 7, sessions: 3 };
     mockRef.settings = [];
     mockRef.legalHold = null;
     jest.spyOn(logger, "info").mockImplementation(() => logger);
@@ -48,8 +49,9 @@ describe("W-04 — the retention purge audits what it destroyed", () => {
   it("commits the purge with one valid audit row naming each table's count and cutoff", async () => {
     const result = await dataRetention.purgeExpiredRecords("tenant-1");
 
-    expect(result.purged).toEqual({ audit_logs: 120, notifications: 7 });
-    expect(mockRef.ledger.committed("purge:audit_logs")).toHaveLength(1);
+    expect(result.purged).toEqual({ notifications: 7, sessions: 3 });
+    expect(mockRef.ledger.committed("purge:notifications")).toHaveLength(1);
+    expect(mockRef.ledger.committed("purge:audit_logs")).toEqual([]);
     expect(mockRef.ledger.auditRows()).toEqual([
       expect.objectContaining({
         tenantId: "tenant-1",
@@ -60,12 +62,11 @@ describe("W-04 — the retention purge audits what it destroyed", () => {
           operation: "RETENTION_PURGE",
           actor: "system:retention-purge",
           before: {
-            retentionDays: { audit_logs: 365, notifications: 90, sessions: 30 },
+            retentionDays: { notifications: 90, sessions: 30 },
           },
           after: {
-            purged: { audit_logs: 120, notifications: 7 },
+            purged: { notifications: 7, sessions: 3 },
             cutoffs: {
-              audit_logs: expect.any(String),
               notifications: expect.any(String),
               sessions: expect.any(String),
             },
@@ -80,8 +81,8 @@ describe("W-04 — the retention purge audits what it destroyed", () => {
 
     await expect(dataRetention.purgeExpiredRecords("tenant-1")).rejects.toThrow("audit insert failed");
 
-    expect(mockRef.ledger.committed("purge:audit_logs")).toEqual([]);
     expect(mockRef.ledger.committed("purge:notifications")).toEqual([]);
+    expect(mockRef.ledger.committed("purge:sessions")).toEqual([]);
     expect(mockRef.ledger.auditRows()).toEqual([]);
   });
 
@@ -90,7 +91,7 @@ describe("W-04 — the retention purge audits what it destroyed", () => {
 
     await expect(dataRetention.purgeExpiredRecords("tenant-1")).rejects.toThrow("sessions delete failed");
 
-    expect(mockRef.ledger.committed("purge:audit_logs")).toEqual([]);
+    expect(mockRef.ledger.committed("purge:notifications")).toEqual([]);
     expect(mockRef.ledger.auditRows()).toEqual([]);
   });
 
@@ -120,7 +121,7 @@ describe("W-04 — the retention purge audits what it destroyed", () => {
 
     const summary = await dataRetention.runRetentionSweep();
 
-    expect(summary).toEqual({ tenants: 2, purged: 127, skipped: 0, errors: 1 });
+    expect(summary).toEqual({ tenants: 2, purged: 10, skipped: 0, errors: 1 });
     expect(mockRef.ledger.auditRows()).toEqual([
       expect.objectContaining({ tenantId: "tenant-2", action: "DELETE" }),
     ]);

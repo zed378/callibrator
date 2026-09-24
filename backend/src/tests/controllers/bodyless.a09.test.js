@@ -292,6 +292,9 @@ describe("A-09 — handlers that hand an absent body to a service", () => {
       resourceType: undefined,
       resourceId: undefined,
       uploadedBy: USER_ID,
+      // A-117: the request's address and agent, for the CREATE audit row.
+      ipAddress: "127.0.0.1",
+      userAgent: undefined,
     });
     expectNoTypeError(result);
   });
@@ -355,6 +358,7 @@ describe("A-09 — handlers whose own validator sees params, not the body", () =
       TENANT_ID,
       {},
       USER_ID,
+      expect.objectContaining({ userId: USER_ID }), // A-117: the audit actor
     );
     expectNoTypeError(result);
   });

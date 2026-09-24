@@ -102,18 +102,17 @@ exports.getAllSessions = asyncHandlerWithMapping(async (req, res) => {
     status: getSessionStatus(session),
   }));
 
+  // The envelope (A-111): rows in `data`, pagination in a TOP-LEVEL `meta`.
+  // This used to send `data: { sessions, meta }`.
   success(
     res,
+    sessions,
     {
-      sessions,
-      meta: {
-        total: count,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        totalPages: Math.ceil(count / parseInt(limit)),
-      },
+      total: count,
+      page: parseInt(page),
+      limit: parseInt(limit),
+      totalPages: Math.ceil(count / parseInt(limit)),
     },
-    null,
     "Sessions retrieved successfully",
     200,
   );

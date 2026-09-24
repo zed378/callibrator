@@ -1733,6 +1733,153 @@ Separately, the signing routes had no permission gate at all (A-84).
 
 ---
 
+## ADR-050: One Client Address, Resolved Once at the Edge
+
+**Date:** 2026-09-24 · **Findings:** A-16, A-67
+
+**Context**
+
+Behind Cloudflare Tunnel → nginx → Next → backend, the backend's `req.ip` was the Docker gateway for
+every browser. nginx *appended* to `X-Forwarded-For`, so a client could also plant any address at the
+front of the list. Per-IP rate limiting was therefore either useless or — once A-67 made it count — a
+way for anyone to lock every user out.
+
+**Decision**
+
+- **The client address is decided once, at the first hop we control, and every later hop forwards
+  exactly one value.**
+  - On the VM, nginx accepts `CF-Connecting-IP` **only** from the compose gateway, where cloudflared
+    arrives. It then **overwrites** `X-Forwarded-For` and strips the Cloudflare header.
+  - Where nginx is itself the edge, it overwrites the header with the peer address.
+- **Next** forwards the rightmost valid IP and drops every other client-address header.
+- **The backend trusts exactly one hop** (`TRUST_PROXY_HOPS`) and never reads a forwarded header
+  directly.
+- **Per-IP auth counting** stays behind `AUTH_RATE_LIMIT_BY_IP` until a real sign-in on the VM shows a
+  real public address.
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| Raise `trust proxy` to the full hop count | the chain differs between the VM and `default.conf`, and every appended value is still client-controlled at the front |
+| Have the backend read `CF-Connecting-IP` directly | any client that can reach any hop could set it; trust must be tied to a peer address, which only nginx sees |
+| Keep per-IP counting off permanently | leaves password spraying across many accounts unthrottled |
+
+**Implications — including the bad ones**
+
+- **Trusting the gateway means trusting any process on the VM host** that can reach nginx's published
+  port. The tunnel already relies on that.
+- **The compose subnet is pinned** (`172.30.19.0/24`). If it collides with another project's network,
+  both the compose file and `vm-http.conf` must change together.
+- **Docs to amend:** `docs/DEVOPS/03-REVERSE-PROXY.md`, `deploy/README.md` and
+  `docs/OBSERVABILITY/01-LOGGING.md` still show `$proxy_add_x_forwarded_for` or the old `:real-ip` —
+  amended with this ADR.
+
+**Status:** Accepted — implemented 2026-09-24; **verification on the VM pending.**
+
+---
+
+## ADR-051: The Owner Questions Q-09 to Q-19, Decided by Debate
+
+**Date:** 2026-09-24 · **Debate:**
+[`../TASKS/DEBATE-owner-questions-A-compliance.md`](../TASKS/DEBATE-owner-questions-A-compliance.md) ·
+[`../TASKS/DEBATE-owner-questions-B-operability.md`](../TASKS/DEBATE-owner-questions-B-operability.md)
+· **Authority:** the owner directed, on 2026-09-24, that contradictions be settled by agents
+debating from different positions, with the orchestrator deciding the best practice.
+
+**Context**
+
+Eleven questions had been parked for the owner, plus three that were product-shaped (A-86, A-98 and
+A-107). Two agents argued them independently: one compliance-first, one for operability and minimal
+disruption. **They agreed on more than half.**
+
+- **Agreed:** audit rows are never purged; no cascading deletes on regulated data; no deletion once a
+  signature exists; no silent restoration of an erased person; email-only signers are refused.
+- **Disagreed, and decided below:** Q-09, Q-11, Q-14, Q-15, Q-17, Q-18, Q-19 and A-98.
+
+Both papers found live defects while reading the code. These were checked by the orchestrator before
+deciding:
+- *Workflow signing refuses every real user* — `"active"` against a stored `"ACTIVE"`. **Confirmed.**
+- *Admin-created users are never marked verified* — `is_email_verified` is not an attribute.
+  **Confirmed.**
+
+**Decisions**
+
+| # | Decision | Taken from | Why this side |
+|---|---|---|---|
+| **Q-09** restore, account missing | **Never re-create.** Report it as `notRestored` in the response and in the audit row; the admin re-invites through the ordinary create path | A | B's default **re-creates an anonymised person** from the archive (F-1): the restore tool becomes the mechanism that reverses a GDPR erasure. The re-created account has a new id, so it re-links to nothing — the default recovers nothing the strict answer loses |
+| **Q-10** global retention policies | **One engine.** Delete the dead second purge engine in `gdpr.service` (F-4). No global policy rows. Per-entity minimum days in code | both | a second engine where 0 days means "delete everything" is a loaded gun with no caller |
+| **Q-11** unverified accounts | **Verification stays informational** (not checked at login); fix F-2; a completed email-code reset marks the address verified. **But an admin-chosen password must be changed at first login** — the user is flagged and every route but change-password answers 403 until it is | B, plus A's non-negotiable | enforcing verification today locks out every admin-created account (F-2). A's credential point survives on its own merits: since ADR-047 a password signs, so the admin who set it could sign as the user (F-3) |
+| **Q-12** purging `audit_logs` | **Never.** Remove audit rows from every purge path and every retention setting (F-4, F-5); `RESTRICT` the foreign key (W-20); partition and archive later; mask IP and user agent for GDPR rather than deleting rows | both | irreversible once the first rows are 365 days old — first in the rollout |
+| **Q-13** system actor | **Two columns on `audit_logs`, `actor_type` (`user` or `system`) and `actor_name`, from a fixed list of job names; no system user row.** `logAction` requires exactly one of a user or a system actor. Individual IoT readings and session sweeps are not audited | A's shape, B's constraint and scope | queryable, honest for old rows (backfilled as `unknown`), and it does not pretend a job is a person |
+| **Q-14** tenant of a cross-tenant change | **A reserved PLATFORM tenant** records platform operations: tenant create and delete, global roles. A change to one tenant's data is recorded in that tenant | A | F-7: under the current rule every platform operation lands in "Default Hospital Tenant"'s trail, **readable by that hospital's admins** and deleted with it |
+| **Q-15** failed sign-ins as audit rows | **Audit `ACCOUNT_LOCKED` and `SIGNATURE_AUTH_FAILED`** as new ENUM values (one migration). Individual failed logins stay in the security log | B's scope, A's typing | 21 CFR 11.300(d) wants unauthorized attempts on signature credentials detected and reported, and that is the signing case. Recording them as `UPDATE` would hide them from every query that looks for them |
+| **Q-16** `tenant_id` foreign keys | **`RESTRICT` by default, including `audit_logs`; `CASCADE` only for a named list of throwaway tables.** One migration that refuses to run while orphans exist. `calibration_records.performed_by` → users becomes `RESTRICT` (F-6) | both | agreed |
+| **Q-17** platform-operator identity | **Operators may not author Part 11 records inside a tenant:** signing, approving, creating or editing a calibration record while impersonating or overriding the tenant answers 403. Other writes remain allowed and are **audited with the impersonator** (F-8). References show *"Platform operator"* | A, narrowed | A's read-only impersonation would remove the support tool entirely. The regulated acts are what must never be authored by a non-member |
+| **Q-18** account identity | **Global identity stays for now.** The residual oracle — a 409 on create — is reachable only by tenant admins; those conflicts are rate-limited and audited. Per-tenant **memberships** are the long-term model. Per-tenant uniqueness with tenant-qualified login is rejected | B | A's own confidence was medium-high and it conceded memberships are the better model. Tenant-qualified login is a redesign of every sign-in path for a residual reachable only by admins |
+| **Q-19** who may sign | **Default `esignature: write` for the technical roles only** — not USER, ROOM USER or WAREHOUSE STAFF. The signer's eligibility is checked when the workflow is created. The signer's name and email come from the user record (F-10). The meaning is mandatory. `/history` requires `qms` read, or returns only the caller's own signatures (F-9) | A | least privilege costs nothing here: those roles do no technical work. F-9 exposed every signature's IP address and biometric data to every role |
+| **A-107** deleting certificates and workflows | **409** for approved, signed and revoked certificates and for any workflow with a signature. Public verification reads soft-deleted rows, so a deleted revoked certificate still says *revoked* (F-11). Add a cancel-workflow route; revoking a signature stays unrouted | both, with B on revoke | no demand for revocation through the API yet, and it is a Part 11 act that needs its own design |
+| **A-86** external signers | **Refuse email-only signers at creation (400).** An outside engineer gets a user account | both | agreed |
+| **A-98** change password | **Available to every authenticated user, outside the permission matrix.** It writes an audit row (F-12). SSO users are pointed to their identity provider | A | a self-service security control must not depend on a menu grant a tenant admin can withdraw |
+
+**Alternatives considered** — every alternative is the losing paper's position on that row. Each
+paper steelmanned the other, and those arguments are in the papers.
+
+**Implications — including the bad ones**
+
+- **Q-11:** every admin-created user is forced to change their password at next login.
+- **Q-19:** USER, ROOM USER and WAREHOUSE STAFF lose signing. A migration revokes the default grant
+  only where it is still the untouched default.
+- **Q-14:** a PLATFORM tenant row must exist. It is excluded from every tenant listing, and from the
+  tenant hooks' reach for ordinary users.
+- **Q-16:** the migration may refuse to run on a deployment that has orphans, and an operator must
+  resolve them by hand.
+- **Q-17:** a super admin can no longer fix a calibration record by impersonating the hospital. They
+  must ask a member to do it.
+- **Q-18** leaves a known, narrow residual oracle, and says so.
+
+**Status:** Accepted — implementation tracked as cards **A-119 to A-131**.
+
+---
+
+## ADR-052: A Super Admin Authors Part 11 Records Only as a Member of Their Home Tenant
+
+**Date:** 2026-09-24 · **Finding:** A-127 · **Extends:** ADR-051 (Q-17)
+
+**Context**
+
+ADR-051 decided that platform operators may not author Part 11 records inside a tenant. Implementing
+it showed a hole the decision had not named. The tenant hooks **skip super admins entirely**, so on a
+route that takes a record id, a super admin could sign or approve **another tenant's** record by its
+id — no impersonation and no header needed.
+
+**Decision**
+
+On a Part 11 authoring route (`denyPlatformAuthoring`):
+- an impersonated request, a header override into another tenant, and a super admin with no home
+  tenant are refused with 403;
+- a super admin in their home tenant is **rebound for the rest of the request as an ordinary member
+  of that tenant**: `isSuperAdmin: false`. Another tenant's id then answers 404, like anyone else's.
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| Refuse super admins on these routes outright | the platform operator's home tenant may genuinely be where they work |
+| Leave super-admin scope as it is | the id-based cross-tenant signature stays open |
+
+**Implications — including the bad ones**
+
+- **Inside their own tenant, on these routes, a super admin behaves as a member**, including 404s for
+  records outside it. A support workflow that relied on the super admin reaching across tenants by
+  id no longer works on these routes. That is intended.
+- **The route list is enforced by a source scan.** A new authoring route fails the build until someone
+  decides whether it is guarded.
+
+**Status:** Accepted — implemented 2026-09-24.
+
+---
+
 ## Open Decisions
 
 Recorded so a future reader can tell whether their idea was evaluated and rejected, or genuinely never considered.

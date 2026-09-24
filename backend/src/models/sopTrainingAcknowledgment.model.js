@@ -3,9 +3,9 @@ const { Model } = require("sequelize");
 module.exports = (sequelize, DataTypes) => {
   class SopTrainingAcknowledgment extends Model {
     static associate(models) {
-      SopTrainingAcknowledgment.belongsTo(models.Tenant, { foreignKey: "tenant_id", as: "tenant" });
+      SopTrainingAcknowledgment.belongsTo(models.Tenant, { foreignKey: "tenantId", as: "tenant", onDelete: "RESTRICT" });
       SopTrainingAcknowledgment.belongsTo(models.SopDocument, { foreignKey: "document_id", as: "document" });
-      SopTrainingAcknowledgment.belongsTo(models.User, { foreignKey: "user_id", as: "user" });
+      SopTrainingAcknowledgment.belongsTo(models.User, { foreignKey: "userId", as: "user", onDelete: "RESTRICT" });
     }
   }
   
@@ -20,6 +20,8 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.UUID,
         field: "tenant_id",
         allowNull: false,
+        references: { model: "tenants", key: "id" },
+        onDelete: "RESTRICT",
       },
       documentId: {
         type: DataTypes.UUID,
