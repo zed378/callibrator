@@ -108,9 +108,13 @@ export interface CertificateCreateInput {
   validUntil?: string;
 }
 
+/**
+ * PUT /certificates/:id edits the certificate's content only. There is no
+ * `status`: the backend refuses a status change with a 409 (A-64) — status
+ * moves only through submit / approve / sign / revoke, which re-authenticate.
+ */
 export interface CertificateUpdateInput extends Partial<CertificateCreateInput> {
   id: string;
-  status?: Certificate["status"];
 }
 
 /**

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { API_BASE_URL } from "@/constants";
+import { CLIENT_ADDRESS_HEADERS, forwardedClientIp } from "@/lib/clientIp";
 
 async function handleProxy(
   req: NextRequest,
@@ -21,18 +22,29 @@ async function handleProxy(
 
   const headers = new Headers();
   
-  // Copy incoming headers (skip host, origin, connection, and cookie to avoid conflicts)
+  // Copy incoming headers (skip host, origin, connection, and cookie to avoid
+  // conflicts). A-16: every client-address header is skipped too — as they
+  // arrive they may be the browser's own — and ONE sanitized address is set in
+  // their place below.
   req.headers.forEach((value, key) => {
     const lowercaseKey = key.toLowerCase();
     if (
       lowercaseKey !== "host" &&
       lowercaseKey !== "origin" &&
       lowercaseKey !== "connection" &&
-      lowercaseKey !== "cookie"
+      lowercaseKey !== "cookie" &&
+      !CLIENT_ADDRESS_HEADERS.includes(lowercaseKey)
     ) {
       headers.set(key, value);
     }
   });
+
+  // The address nginx forwarded — the only one the backend's one-hop
+  // `trust proxy` will read (src/lib/clientIp.ts).
+  const clientIp = forwardedClientIp(req.headers);
+  if (clientIp) {
+    headers.set("X-Forwarded-For", clientIp);
+  }
 
   // Inject authentication and tenant context headers
   if (token) {

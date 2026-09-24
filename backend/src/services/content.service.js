@@ -313,7 +313,10 @@ exports.getPublishedPostBySlug = async (slug) => {
     const post = await Post.findOne({
       where: { slug, status: "PUBLISHED" },
       attributes: [...PUBLIC_LIST_ATTRS, "contentHtml"],
-      include: [CATEGORY_INCLUDE],
+      // LEFT JOIN (A-90): Category has a defaultScope `where`, so a bare
+      // CATEGORY_INCLUDE is required — a published post with no category (or
+      // only soft-deleted ones) answered 404 by slug while the list showed it.
+      include: [{ ...CATEGORY_INCLUDE, required: false }],
     });
     if (!post) throw new AppError(404, "Post not found");
     return { success: true, status: 200, message: "OK", data: transformPost(post) };

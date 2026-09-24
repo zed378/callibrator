@@ -56,7 +56,7 @@ Task ids are `A-nn`. They are referenced from [`PHASE-9-TYPESCRIPT-MIGRATION.md`
 | A-34 | **the backend lint gate has never run** — a version mismatch crashed ESLint; behind it, 1,319 errors | medium | 0 | partly DONE 2026-09-23 |
 | A-35 | **every per-user permission override silently did nothing** — including a `none` revocation | **high** | 0 | **DONE** 2026-09-23 |
 | A-36 | RabbitMQ connections are never reused and never closed: `connection.isOpen` does not exist in amqplib | **high** | 0 | **DONE** 2026-09-23 |
-| A-37 | **SCIM user creation is a cross-tenant existence oracle** — global unique email, tenant-scoped duplicate check | **high** | 0 | TODO |
+| A-37 | **SCIM user creation is a cross-tenant existence oracle** — global unique email, tenant-scoped duplicate check | **high** | 0 | **PARTIAL** 2026-09-24 — signal hidden; the constraint is Q-18 |
 | A-38 | SCIM Groups are global roles: every tenant's groups are listed, and a delete removes one for everyone | medium | 1 | TODO |
 | A-39 | a SCIM-provisioned group grants nothing, silently — `roleLevel` defaults to 1 and it gets no menu permissions | medium | 1 | TODO |
 | A-40 | storage: the driver cache is per process, and a null-checksum migration reports `migrated` unverified | low | 2 | TODO |
@@ -82,16 +82,36 @@ Task ids are `A-nn`. They are referenced from [`PHASE-9-TYPESCRIPT-MIGRATION.md`
 | A-60 | SSO tokens travel in the redirect URL; `/auth/sso-session` stores any posted token unverified; login never checks `isEmailVerified` | **high** | 0 | **PARTIAL** 2026-09-24 — items 1 and 2 done; item 3 is Q-11 |
 | A-61 | **every e-signature signing and revocation failed its audit insert** — out-of-ENUM actions, non-existent columns — after the signature had committed | **critical** | 0 | **DONE** 2026-09-24 |
 | A-62 | `approveCertificate` takes `approvedBy` from the request body, so the recorded approver can differ from the caller | **high** | 0 | **DONE** 2026-09-24 |
-| A-63 | **any authenticated user can edit — or suspend — any tenant**: the `checkSelf` bypass trusts a body `userId` and returns before the tenant check | **critical** | 0 | TODO |
-| A-64 | `PUT /certificates/:id` accepts `status: "approved"` / `"signed"`, bypassing re-authentication and the e-signature | **critical** | 0 | TODO |
-| A-65 | `signDocument` never checks the signer is the step's signer, does no re-authentication, and takes the Part 11 IP and user agent from the body | **high** | 0 | TODO |
-| A-66 | the QMS routes have no permission gate and write no audit row | **high** | 0 | TODO |
-| A-67 | the rate limiter's failure recording on login, register, OTP and reset **never runs** — it is mounted before the handler | **high** | 0 | TODO |
+| A-63 | **any authenticated user can edit — or suspend — any tenant**: the `checkSelf` bypass trusts a body `userId` and returns before the tenant check | **critical** | 0 | **DONE** 2026-09-24 — not yet verified on a running server |
+| A-64 | `PUT /certificates/:id` accepts `status: "approved"` / `"signed"`, bypassing re-authentication and the e-signature | **critical** | 0 | **DONE** 2026-09-24 |
+| A-65 | `signDocument` never checks the signer is the step's signer, does no re-authentication, and takes the Part 11 IP and user agent from the body | **high** | 0 | **DONE** 2026-09-24 — see ADR-047 |
+| A-66 | the QMS routes have no permission gate and write no audit row | **high** | 0 | **DONE** 2026-09-24 |
+| A-73 | NC and CAPA numbers are `count()+1` — concurrent creates collide, and nothing enforces per-tenant uniqueness | medium | 0 | **DONE** 2026-09-24 — verified on PostgreSQL 18 |
+| A-74 | `POST /qms/nc` and `/qms/capa` have no validator — bad input is a 500 | medium | 0 | **DONE** 2026-09-24 |
+| A-75 | `createNC`/`createCapa` store a `deviceId`/`assignedTo` from another tenant unchecked; their list includes lack `required: false` | **high** | 0 | **DONE** 2026-09-24 — verified on PostgreSQL 18 |
+| A-76 | a tenant admin can probably **create tenants, list every hospital, and delete their own tenant** — the `Management` slug gates platform operations | **critical** | 0 | TODO |
+| A-77 | user edits (`/users/edit`, profile) write no audit row | **high** | 0 | TODO |
+| A-78 | `checkTenant` cannot see a multipart `tenantId` on any route where `upload()` runs after the gate | **high** | 0 | TODO |
+| A-79 | tenant edit leaves the uploaded logo on a refused request, and deletes the old logo before commit | low | 0 | TODO |
+| A-80 | the profile slug is `profile` in `ROLE_MENU_ASSIGNMENTS` and `profile-page` in the seed | medium | 0 | TODO |
+| A-81 | `/auth/mfa/login` has no rate limit — the TOTP is brute-forceable inside the 5-minute MFA token | **high** | 0 | TODO |
+| A-82 | impersonation creates a session with no audit row | **high** | 0 | TODO |
+| A-83 | login does not check tenant status; `loginMfa` ignores `lockedUntil`; SSO exchange does not re-check user status at redemption | medium | 0 | TODO |
+| A-84 | `POST /esignature/sign` has no `dynamicAccess` gate | medium | 0 | **DONE** 2026-09-24 |
+| A-85 | a non-pending signature step and a `PUT` on a signed or revoked certificate answer 400 where the rule is 409 | low | 0 | **DONE** 2026-09-24 — three more are A-92 |
+| A-86 | external (email-only) signers have no way to sign — a workflow naming one can never complete | medium | 0 | TODO |
+| A-87 | **the global tenant hooks never filter an include** — every include of a tenant-scoped model can reach other tenants' rows; and an include of a `defaultScope`d model is an INNER JOIN even without a `where` | **critical** | 0 | **DONE** 2026-09-24 (mechanism, ADR-048) — implicit-INNER call sites are A-90 |
+| A-88 | several associations declare `foreignKey: "tenant_id"` (the column), adding a second, **nullable** `tenant_id` attribute with `ON DELETE SET NULL` on synced databases | **high** | 0 | **BLOCKED** — owner decision Q-16 |
+| A-89 | the QMS form sends `description` / `actionPlan` as optional; both are NOT NULL, so creation now gets a 400 (it used to be a 500) | low | 0 | TODO |
+| A-90 | ~20 implicit-INNER includes (`defaultScope`) silently drop rows — and since A-87, also rows that reference a super-admin identity | **high** | 0 | TODO |
+| A-91 | **most signers cannot reach the signing UI** — the page loads workflows through routes gated on `qms:read` | **high** | 0 | TODO |
+| A-92 | more state conflicts answering 400 (workflow update and cancel, deleting a signed certificate) and in-tenant unique violations answering 500 (device serial on update, re-creating a soft-deleted serial) | medium | 0 | TODO |
+| A-67 | the rate limiter's failure recording on login, register, OTP and reset **never runs** — it is mounted before the handler | **high** | 0 | **PARTIAL** 2026-09-24 — recording fixed; per-IP counting off until A-16 |
 | A-68 | OIDC has no `state`, `nonce` or PKCE check — login CSRF and code injection | **high** | 0 | TODO |
 | A-69 | SSO through the Next `/api` proxy cannot work: the proxy follows the backend's 302 server-side | **high** | 0 | TODO |
-| A-70 | SSO provisioning signs in a suspended or inactive user (a session and a LOGIN row are created) | medium | 0 | TODO |
+| A-70 | SSO provisioning signs in a suspended or inactive user (a session and a LOGIN row are created) | medium | 0 | **DONE** 2026-09-24 |
 | A-71 | the login response returns the access token to browser JavaScript, beside the httpOnly cookie | medium | 0 | TODO |
-| A-72 | password and MFA login write no `LOGIN` audit row | medium | 0 | TODO |
+| A-72 | password and MFA login write no `LOGIN` audit row | medium | 0 | **DONE** 2026-09-24 |
 
 ---
 
@@ -1328,7 +1348,7 @@ not just three fixes.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **PARTIAL** 2026-09-24 |
 | **Severity** | **high — the trap `CLAUDE.md` names by name** |
 | **Verified** | from code, 2026-09-23 (found during the documentation sweep, confirmed by the orchestrator) |
 
@@ -1357,6 +1377,21 @@ Open Question for `TASKS/BACKLOG.md` either way; do not pick one in a bug fix.
 - [ ] creating a user whose email exists in ANOTHER tenant is indistinguishable from creating one with a fresh email failing for any other reason
 - [ ] a two-tenant test asserts the two responses are byte-identical
 - [ ] whichever route is chosen is recorded as an ADR
+
+**What was changed (2026-09-24) — the minimal fix.** Every failure of `Users.create` in SCIM
+`createUser` now answers one fixed `500 "The user could not be provisioned"`. A unique violation
+against another tenant's row is **byte-identical** to a lost connection. The reason is logged without
+the address. A duplicate inside the caller's own tenant still answers 409, which discloses nothing the
+caller cannot list.
+
+**Test:** `scim.crossTenantOracle.a37.test.js` › *"SCIM create for an email that exists in another
+tenant is indistinguishable from a fresh email whose insert fails for any other reason"*. 4 of its 6
+tests failed against the old code, which answered *"Validation error"* with a
+`SequelizeUniqueConstraintError` stack.
+
+**What this does not close:** an address that fails on every attempt is still a statistical hint,
+and timing is not addressed. Only per-tenant uniqueness removes the oracle — D-06, owner question
+**Q-18**.
 
 ---
 
@@ -2330,7 +2365,7 @@ and the audit row's userId are the same id"*. 4 of its 5 tests failed against th
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24 — server check open |
 | **Severity** | **critical** — cross-tenant write |
 | **Verified** | from code, 2026-09-24. Not yet exercised against a running server |
 
@@ -2362,10 +2397,47 @@ from the path, never the body or query, and never let the self bypass skip the t
 404 test CLAUDE.md requires.
 
 **Definition of Done**
-- [ ] a user of tenant A sending tenant B's id with their own `userId` gets 404, and tenant B is unchanged
-- [ ] an ordinary user cannot change their own tenant's `status` or `maxUsers`
-- [ ] the self bypass reads no body or query field, by a named test
+- [x] a user of tenant A sending tenant B's id with their own `userId` gets 404, and tenant B is unchanged
+- [x] an ordinary user cannot change their own tenant's `status` or `maxUsers`
+- [x] the self bypass reads no body or query field, by a named test
 - [ ] verified against the running server
+
+**What was changed (2026-09-24).**
+
+`dynamicAccess`'s self bypass now runs **after** the tenant check, and takes ownership from the
+path only (`selfOwnerIdFromPath`: `:userId` or `:id`). `abac` gets the same rule.
+
+`checkSelf` is removed from `PATCH /tenants/edit` and from `PATCH /users/edit`, which now needs
+`users` update access. Self-service moves to a new route, `PATCH /users/:userId/profile`:
+- username and names only;
+- the path wins over the body;
+- the frontend's `updateProfile` calls it.
+
+**The gate cannot be the real control on the tenant edit.** The frontend sends multipart, and
+multer parses the body after the gate — so `checkTenant` never sees the `tenantId` (A-78). So
+`tenantService.updateTenant` enforces it:
+- a non-super-admin may update only their own tenant;
+- any other id is a 404 identical to a missing tenant;
+- only a super admin may change `status` or `maxUsers`. Suspending your own tenant locks you out,
+  and `maxUsers` is the seat limit.
+
+`updateTenant` now writes its audit row inside the transaction. It wrote none before.
+
+**`createTwoTenants()` now exists:** `tests/fixtures/twoTenants.js`. `CLAUDE.md` is corrected.
+
+**Tests:**
+- `tenant.edit.a63.test.js`, including *"a user of tenant A sending tenant B's id with their own
+  userId gets 404, and tenant B is unchanged"* and *"an ordinary user cannot change their own
+  tenant's status or maxUsers"*.
+- `user.profile.a63.test.js`.
+- `dynamicAccess.test.js` › *"the self bypass reads no body or query field"*.
+
+**Fail-before:** 16 of these tests failed against `HEAD`. Against the old code, the cross-tenant
+edit returned **200**.
+
+**Still open:** verification against a running server.
+
+**Found while fixing:** A-76 to A-80.
 
 ---
 
@@ -2373,7 +2445,7 @@ from the path, never the body or query, and never let the self bypass skip the t
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24 |
 | **Severity** | **critical** — a 21 CFR Part 11 bypass |
 | **Verified** | from code, 2026-09-24, during A-62 |
 
@@ -2386,8 +2458,22 @@ record and — since A-62 — no approver. The state machine exists in the model
 routes, and an invalid one is a 409 with a state explanation.
 
 **Definition of Done**
-- [ ] a `PUT` carrying `status` does not change the status, by a named test
-- [ ] every transition goes through its route and writes its audit row
+- [x] a `PUT` carrying `status` does not change the status, by a named test
+- [x] every transition goes through its route and writes its audit row
+
+**What was changed (2026-09-24).** A `PUT` that tries to change `status` is a **409** that explains the
+state, for example: *This certificate is in "draft" and editing it cannot change its status. Submit it
+for approval with POST /certificates/:id/submit.* The request is refused rather than the field
+stripped, because stripping would silently discard what the client meant.
+
+- Repeating the **current** status is not a transition: it is dropped and the rest of the edit
+  applies.
+- Not-found runs first, so another tenant's certificate is still a 404.
+- The audit row's `after` never carries `status`.
+- No frontend code used `PUT` to change status.
+
+**Test:** `certificate.statusLock.a64.test.js` › *"a PUT carrying status does not change the status"*,
+across 7 transitions. Every one of them failed against the old code.
 
 ---
 
@@ -2395,7 +2481,7 @@ routes, and an invalid one is a 409 with a state explanation.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24 |
 | **Severity** | **high** |
 | **Verified** | from code, 2026-09-24, during A-62 |
 
@@ -2411,9 +2497,31 @@ A signature is supposed to be attributable, intentional and non-repudiable. As b
 the three.
 
 **Definition of Done**
-- [ ] a user who is not the step's signer gets 403 inside their own tenant, by a named test
-- [ ] signing requires the signer's password (or MFA code), the way certificate approval does
-- [ ] the IP address and user agent come from the connection only
+- [x] a user who is not the step's signer gets 403 inside their own tenant, by a named test
+- [x] signing requires the signer's password (or MFA code), the way certificate approval does
+- [x] the IP address and user agent come from the connection only
+
+**What was changed (2026-09-24).**
+
+- **Signer check.** A caller who is not `step.signerId` gets **403**. The check runs before the
+  pending check, so a non-signer learns nothing about the step. Another tenant's step is still a 404.
+- **Real re-authentication.** The credential check was extracted from certificate approval as
+  `verifySignerCredentials` in `certificate.service.js`. Certificate approve, sign and revoke and
+  workflow signing all use it. `REQUIRE_REAUTHENTICATION` no longer switches it off — **ADR-047**.
+- **The IP address and user agent** come from the connection only.
+- **Validator.** `authPayload` is required, and the method is `password` or `mfa`. `webauthn` and
+  `totp` are refused, because nothing can verify them at signing time. `reason` is now accepted: the
+  service signed over it, but the validator had been dropping it.
+- **Frontend.** The e-signature page shows *Sign* only on the caller's own step, with a password or
+  MFA form. Its types now match the real response: steps carry `signerId`, not `userId`.
+
+**Tests.** `esignature.signer.a65.test.js` › *"a user who is not the step's signer gets 403"*,
+*"signing requires the signer's password"* and *"the IP address and user agent come from the
+connection only"*. 11 of the file's 13 tests failed against the old code. There is also a new
+frontend page test, whose 4 tests all failed against the old page.
+
+**Consequence:** a step whose signer is external (email only, no `signerId`) can no longer be signed
+by anyone. No route has ever existed for external signers (A-86).
 
 ---
 
@@ -2421,7 +2529,7 @@ the three.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24 |
 | **Severity** | **high** |
 | **Verified** | from code, 2026-09-24, during A-62 |
 
@@ -2432,8 +2540,43 @@ codebase — this is one, on a quality-management surface. `frontend qmsService.
 `status: "APPROVED"`, which the backend enum does not contain; nothing calls it today.
 
 **Definition of Done**
-- [ ] every QMS route has a `dynamicAccess` gate whose slug is seeded (the A-58 boot assertion checks it)
-- [ ] QMS mutations write audit rows inside their transactions
+- [x] every QMS route has a `dynamicAccess` gate whose slug is seeded (the A-58 boot assertion checks it)
+- [x] QMS mutations write audit rows inside their transactions
+
+**What was changed (2026-09-24).** All six QMS routes are gated on the `qms` slug:
+
+- reads need `read`;
+- creates and updates need `write`.
+
+The slug was already in `MENU_SLUGS`, the seed and the role assignments, so no migration was needed.
+
+**Who has access now:**
+
+| Role | Access |
+|---|---|
+| HEALTHCARE ADMIN, CALIBRATOR ADMIN | keep full access |
+| ENGINEERING MANAGER | read only |
+| every other seeded role | **loses QMS access it should never have had** |
+
+**This is a visible behaviour change for technicians and users.**
+
+`createNC`, `updateNC`, `createCapa` and `updateCapa` each run in one transaction with their audit
+row: `CREATE`, `UPDATE` (changed fields only), or `APPROVE` for a CAPA approval.
+
+**The QMS screen had been empty since it was built.** It read `data.nonConformances` and
+`data.capas`, while the envelope puts rows in `data` — the CLAUDE.md trap, a fourth time. The
+frontend now reads the envelope, and its status vocabularies match the backend enums. `approveCapa`
+had been sending `"APPROVED"`, a value the validator rejects.
+
+**Tests:**
+
+- **`routeGuards.a66.test.js`** (44 tests), including *"every QMS route has a dynamicAccess gate
+  whose slug is seeded"* and *"a user without QMS permission gets 403 in their own tenant"*.
+- **`qms.audit.a66.test.js`** (22 tests), including *"a CAPA update writes its audit row in the
+  transaction"* and *"a failing audit insert rolls the QMS change back"*.
+- **Frontend `qms.service.test.ts`**, including *"lists NCs from the house envelope"*.
+
+**Fail-before:** 41 backend and 9 frontend tests failed against the old code.
 
 ---
 
@@ -2441,7 +2584,7 @@ codebase — this is one, on a quality-management surface. `frontend qmsService.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **PARTIAL** 2026-09-24 |
 | **Severity** | **high** |
 | **Verified** | from code, 2026-09-24, during A-60 — not yet on a running server |
 
@@ -2454,6 +2597,29 @@ that exists to throttle it. The new `/sso/exchange` records its failures explici
 
 **Definition of Done**
 - [ ] N failed logins from one IP lock that IP, by a test that drives the real router
+
+**What was changed (2026-09-24).** The broken `authPostFailure` and `authPostSuccess` middlewares are
+gone. The login, register, send-OTP and reset handlers record their own outcome through
+`withAuthOutcome` and `noteAuthFailure`/`noteAuthSuccess`, following the A-60 `ssoExchange`
+pattern:
+
+- any 4xx except 429 counts as a failure, and a 5xx never does;
+- a success clears only the per-user and per-token counters;
+- each failure is logged at `warn` with its real reason.
+
+**Per-IP counting ships switched OFF**, behind `AUTH_RATE_LIMIT_BY_IP=true`. This was decided by the
+orchestrator after the fix agent's warning. Behind the Next proxy, `req.ip` is one shared hop for
+every browser (A-16), so turning it on today would let **15 failed logins from anyone lock login for
+everyone**, indefinitely. That is a worse defect than the one being fixed.
+
+**Tests** are in `auth.rateLimit.a67.test.js`, which drives the real router:
+- with the switch on: *"N failed logins from one IP lock that IP"* and the register, OTP and reset
+  cases. These failed against the old code with 401 instead of 429;
+- with it off: *"with AUTH_RATE_LIMIT_BY_IP unset, failures never lock the shared proxy address"*.
+
+**To close:** fix A-16 so the backend sees the real client IP. `trust proxy` is 1 today, but the chain
+has more hops than that: Cloudflare tunnel, nginx, then Next. The edge must overwrite
+`X-Forwarded-For`, since the proxy passes the client's value through. Then set the switch on the VM.
 
 ---
 
@@ -2497,13 +2663,24 @@ paths are routed to the backend directly in nginx. Decide which, and test with a
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24 |
 | **Severity** | medium |
 | **Verified** | from code, 2026-09-24, during A-60 |
 
 `provisionUser` does not check `isActive` or `status`. A suspended user's SSO sign-in creates a
 session and a `LOGIN` audit row. The auth middleware refuses the token on every request, so no data
 is reached, but the audit trail records a login that should have been refused.
+
+**What was changed (2026-09-24).**
+
+- **The card was partly wrong:** `status` was already checked, and only `isActive` was missing.
+  `provisionUser` now refuses both with a 403, so no code, session or `LOGIN` row is created.
+- **Password login** now also refuses a user whose `status` is `INACTIVE` or `SUSPENDED`. Before, a
+  user deprovisioned through SCIM could still sign in.
+- **`loginMfa`** now checks status too; it checked nothing before.
+
+**Test:** `sso.suspendedUser.a70.test.js` › *"a suspended user's SSO sign-in creates no session"*. It
+returned a 302 with a code on the old code.
 
 ---
 
@@ -2529,9 +2706,501 @@ therefore yields a bearer token.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24 |
 | **Severity** | medium |
 | **Verified** | from code, 2026-09-24, during A-60 |
 
 Since A-60, SSO sign-in writes a `LOGIN` audit row. Password and MFA login write none, so *who
 accessed the system, when* — basic Part 11 and ISO 27001 evidence — exists for SSO users only.
+
+**What was changed (2026-09-24).** Password login and MFA login write a `LOGIN` / `Session` row, with
+`changes.method` set to `password` or `password+totp`, in the same transaction that creates the
+session. If the audit insert fails, the login fails.
+
+**Failed logins write no audit row.** The ENUM has no `LOGIN_FAILED`, and an unknown username has no
+tenant. They are logged at `warn`. Whether to add the ENUM value is **Q-15**.
+
+**Tests:** `auth.loginAudit.a72.test.js` › *"a successful password login writes one LOGIN audit row"*
+and *"an MFA login writes one LOGIN audit row"*. Each found 0 rows on the old code.
+
+---
+
+### A-73 — NC and CAPA numbers can collide
+
+| | |
+|---|---|
+| **Status** | **DONE** 2026-09-24 |
+| **Severity** | medium |
+| **Verified** | from code, 2026-09-24 (A-66) |
+
+Numbers are `count() + 1`. Two concurrent creates read the same count and issue the same number, and
+no per-tenant unique constraint stops it. A transaction does not serialise a `count()`. **Fix
+direction:** a per-tenant sequence or a locked counter row, plus a composite unique on
+`(tenant_id, number)`. The unique constraint must be per tenant, never global — a global one is an
+existence oracle.
+
+**What was changed (2026-09-24).**
+
+**How a number is claimed.** One upsert, run inside the create's transaction:
+`INSERT INTO qms_counters … ON CONFLICT (tenant_id, kind) DO UPDATE SET seq = GREATEST(seq + 1, …)
+RETURNING seq`. It follows the existing `ticket_counters` pattern.
+- The counter row stays locked until commit, so concurrent creates in one tenant queue.
+- A rollback releases the number.
+- The first value continues from the tenant's highest existing number.
+
+**Migration `0024-qms-number-uniqueness`** creates `qms_counters` and **per-tenant** unique indexes
+on `(tenant_id, nc_number)` and `(tenant_id, capa_number)`. If any tenant already has a duplicate, it
+**refuses**, naming every one, rather than renumbering. These are ISO 13485 record identifiers, and
+a migration should not rewrite them on its own authority. **Consequence:** migrations run at boot,
+so a database holding duplicates refuses to boot until they are resolved by hand.
+
+**Verified on real PostgreSQL 18:**
+- **The defect:** the old logic issued `NC-00001` twice from two overlapping transactions.
+- **The refusal:** the migration refused the duplicate and changed nothing.
+- **After the fix:**
+  - 25 concurrent NCs in each of two tenants came out distinct and gap-free, and 10 concurrent CAPAs
+    did too;
+  - a direct duplicate insert was refused with 23505;
+  - `down`, `up`, `down` ran clean.
+
+**Test:** `qms.numbering.a73.test.js` › *"two concurrent creates get distinct numbers"*. On the old
+code both creates got `NC-00001`.
+
+---
+
+### A-74 — The QMS create routes have no validator
+
+| | |
+|---|---|
+| **Status** | **DONE** 2026-09-24 |
+| **Severity** | medium |
+| **Verified** | from code, 2026-09-24 (A-66) |
+
+`POST /qms/nc` and `POST /qms/capa` mount no `validate(schema)`. An out-of-enum `severity` or a
+missing `title` reaches the database and returns a 500, although Swagger documents a 400.
+
+**What was changed (2026-09-24).** `createNCSchema` and `createCapaSchema` are mounted on the routes.
+They validate the required NOT NULL fields and take their enums from `constants/qmsConstants.js`,
+which the models also read. `tenantId` and `status` are stripped. `rootCause` is now stored — Swagger
+documented it, and the service had been dropping it.
+
+**Test:** `qms.tenancy.a75.test.js` › *"POST /nc with an invalid severity is a 400"*. On the old code
+it returned 201.
+
+---
+
+### A-75 — QMS records can reference another tenant's device or user
+
+| | |
+|---|---|
+| **Status** | **DONE** 2026-09-24 |
+| **Severity** | **high** |
+| **Verified** | from code, 2026-09-24 (A-66). The include behaviour is unverified |
+
+`createNC` never checks that `deviceId` belongs to the caller's tenant, and `createCapa` never checks
+`assignedTo`, so a foreign id is stored. `getNCs` and `getCapas` include `CalibrationDevice` and
+`User` (as `assignee`) with no `required: false`. If the tenant hooks apply to the include, rows with
+a foreign or deleted reference **vanish from the list** (the INNER JOIN trap). If they do not, another
+tenant's device name or user **leaks**. Either is wrong.
+
+**Definition of Done**
+- [x] a foreign `deviceId` / `assignedTo` is refused with 404, by a two-tenant test
+- [x] both includes are `required: false`, and a test shows no foreign attribute is returned
+
+**What was changed (2026-09-24).**
+
+- **Foreign references refused.** A foreign `deviceId` or `assignedTo` gets a 404 on create, and on
+  `updateCapa`. The body is identical to the one for a missing id.
+- **List includes.** Every include in the lists is `required: false` and carries an explicit
+  `where: { tenantId }`.
+
+**Verified on real PostgreSQL 18:**
+- the lists return NCs that have no device, which the old INNER JOIN dropped;
+- a reference to another tenant's device comes back as `device: null`.
+
+**Tests:**
+- `qms.tenancy.a75.test.js` › *"a foreign deviceId is refused with 404"* and *"a foreign assignedTo
+  is refused with 404"*. Both returned 201 on the old code.
+- `qms.includes.a75.test.js` › *"both QMS includes are required:false"*.
+
+**What checking the includes uncovered is bigger than QMS — A-87.**
+
+---
+
+### A-76 — Tenant administrators hold platform operations
+
+| | |
+|---|---|
+| **Status** | TODO |
+| **Severity** | **critical** — if confirmed |
+| **Verified** | from code, 2026-09-24 (A-63). **Not exercised against a server** |
+
+`POST /tenants/create`, `GET /tenants/all` and `DELETE /tenants/delete` are gated on the `Management`
+slug. The seed gives `management` to both HEALTHCARE ADMIN and CALIBRATOR ADMIN, and Engineering
+Manager holds `read`. `tenants` is not tenant-scoped. So, as read from the code:
+- a hospital's own admin can create tenants;
+- anyone with `Management` read can list every hospital on the platform;
+- a tenant admin can delete their own tenant, since only `checkTenant` applies.
+
+**Fix direction:** these are platform operations — `superAdminOnly`, like
+`PATCH /admin/tenants/:id/status` already is.
+
+**Definition of Done**
+- [ ] a tenant admin gets 403 on create, list-all and delete, by a named test driving the real seed matrix
+- [ ] verified against the running server
+
+---
+
+### A-77 — User edits are unaudited
+
+| | |
+|---|---|
+| **Status** | TODO |
+| **Severity** | **high** |
+| **Verified** | from code, 2026-09-24 (A-63) |
+
+`userService.editUser` writes no audit row, and `/users/edit` has no `recordAudit`. A change to a
+user's role or status — an authorization change — leaves no attributable record. The new profile
+route inherits the gap.
+
+---
+
+### A-78 — `checkTenant` is blind to multipart bodies
+
+| | |
+|---|---|
+| **Status** | TODO |
+| **Severity** | **high** |
+| **Verified** | from code, 2026-09-24 (A-63) |
+
+`dynamicAccess`'s `checkTenant` reads `req.body.tenantId`. On a route where `upload()` (multer) runs
+**after** the gate, a multipart body has not been parsed yet, so the check sees nothing and passes.
+Every such route must enforce tenant ownership in its service. Enumerate them, and either move the
+check into the service or parse before the gate.
+
+---
+
+### A-79 — Tenant edit mishandles logo files
+
+| | |
+|---|---|
+| **Status** | TODO |
+| **Severity** | low |
+| **Verified** | from code, 2026-09-24 (A-63) |
+
+A refused edit (404, 403 or 409) leaves the uploaded logo on disk, which `createTenant` cleans up and
+`updateTenant` does not. And the old logo is deleted **before** the commit, so a rollback — including
+a failed audit insert — loses it.
+
+---
+
+### A-80 — The profile slug differs between assignment and seed
+
+| | |
+|---|---|
+| **Status** | TODO |
+| **Severity** | medium |
+| **Verified** | from code, 2026-09-24 (A-63) |
+
+`ROLE_MENU_ASSIGNMENTS` grants `profile`; `seedMenuGroups` seeds `profile-page`. This is the A-58
+shape: one of the two names matches nothing. Check whether the A-58 boot assertion covers
+assignments, and extend it if not.
+
+---
+
+### A-81 — MFA verification is not rate-limited
+
+| | |
+|---|---|
+| **Status** | TODO |
+| **Severity** | **high** |
+| **Verified** | from code, 2026-09-24 (A-67) |
+
+`/auth/mfa/login` mounts no limiter. A 6-digit TOTP has 10⁶ values, and the MFA token lives for 5
+minutes. A fresh token costs only the correct password, so a stolen password and an unthrottled
+endpoint defeat the second factor.
+
+**Definition of Done**
+- [ ] N wrong TOTP codes for one MFA token or user lock further attempts, by a named test
+
+---
+
+### A-82 — Impersonation is unaudited
+
+| | |
+|---|---|
+| **Status** | TODO |
+| **Severity** | **high** |
+| **Verified** | from code, 2026-09-24 (A-67) |
+
+`impersonateUser` creates a session as another user and calls only `logger.info`. A super admin acting
+as a hospital user is precisely what an audit trail exists to record.
+
+---
+
+### A-83 — Status checks missing at three sign-in points
+
+| | |
+|---|---|
+| **Status** | TODO |
+| **Severity** | medium |
+| **Verified** | from code, 2026-09-24 (A-67) |
+
+- Password login does not check the **tenant's** status; only the per-request middleware does.
+- `loginMfa` ignores `lockedUntil`.
+- `ssoExchange` does not re-check the user's status when the code is redeemed, which leaves a
+  60-second window.
+
+In each case the middleware refuses the token afterwards, but a session and a `LOGIN` row are written
+for a sign-in that should have been refused.
+
+---
+
+### A-84 — The signing route has no permission gate
+
+| | |
+|---|---|
+| **Status** | **DONE** 2026-09-24 |
+| **Severity** | medium — A-65's signer check limits it |
+| **Verified** | from code, 2026-09-24 (A-65) |
+
+`POST /esignature/sign` mounts `auth` and `denyApiKey` only. CLAUDE.md: every route needs a gate.
+
+**What was changed (2026-09-24).** Three of the eleven e-signature routes had no gate:
+`POST /sign`, `POST /verify` and `GET /history`. They now use a new `esignature` slug — `write` to sign,
+`read` to verify and read history.
+
+**Why a new slug rather than `qms`:** a signer is whoever the workflow names, and most roles have no
+`qms` menu.
+
+**Default grant: every seeded role gets `esignature: write`.** A-65 already refuses anyone but the
+named signer, so the gate adds what was missing:
+- a tenant can withdraw signing per role, or per user;
+- an API key needs an explicit scope.
+
+The default is recorded in ADR-049.
+
+**Migration `0025-esignature-menu-grants`** backfills seeded databases. It never overwrites an
+existing grant, and does nothing on an unseeded database. It was verified on PostgreSQL 18.
+
+**At deploy:** each role's permission matrix is cached in Redis for up to an hour. Flush
+`permissions:*`, or non-admin signers get 403 for up to an hour.
+
+**Test:** `eSignature.gate.a84.test.js`, which runs the real router against the real seed matrix. It
+includes a withdrawn grant (403) and a read-only role that can verify but not sign. The A-58 check
+reports 140 gates and 0 errors.
+
+---
+
+### A-85 — Two state conflicts answer 400
+
+| | |
+|---|---|
+| **Status** | **DONE** 2026-09-24 |
+| **Severity** | low |
+| **Verified** | from code, 2026-09-24 (A-65) |
+
+Signing a step that is not pending, and editing a signed or revoked certificate, are state conflicts:
+**409 with a state explanation**, per CLAUDE.md. Both return 400.
+
+**What was changed (2026-09-24).** Both conflicts now answer 409 with a state explanation instead of
+400:
+
+- **Signing a step that is not pending.** The explanation depends on the state: *waiting for an
+  earlier signer*, *already signed*, or *declined*.
+- **Editing a signed or revoked certificate.** A signed one names the revoke route and says to issue a
+  new certificate; a revoked one says revocation is final.
+
+**Tests:**
+- `esignature.service.coverage.test.js` › *"A-85: signing a step that is not pending is 409 with a
+  state explanation"*
+- `certificate.service.test.js` › *"A-85: a PUT on a signed certificate is 409…"*
+
+---
+
+### A-86 — External signers cannot sign
+
+| | |
+|---|---|
+| **Status** | TODO — **owner decision** |
+| **Severity** | medium |
+| **Verified** | from code, 2026-09-24 (A-65) |
+
+A workflow step can name a signer by email alone (`signerId` null). No route authenticates such a
+signer, and since A-65 nobody else may sign in their place — so such a workflow can never complete.
+Either external signing gets a real identity mechanism (an emailed one-time link and a
+re-authentication step), or workflows refuse external signers at creation.
+
+---
+
+### A-87 — The tenant hooks do not reach includes
+
+| | |
+|---|---|
+| **Status** | **DONE** 2026-09-24 — mechanism; call sites under A-90 |
+| **Severity** | **critical** — a codebase-wide cross-tenant read path |
+| **Verified** | against Sequelize's real PostgreSQL SQL generation, with the real models and hooks, 2026-09-24 (A-75). Pinned in `qms.includes.a75.test.js` |
+
+CLAUDE.md says tenant isolation is enforced by global hooks, deny-by-default, and that "you do not
+opt in". **That is true of the root query only.** `beforeFind` fires once, for the model `findAll`
+is called on, and it adds the tenant predicate to that model's `WHERE`. An `include` of another
+tenant-scoped model gets **no** tenant predicate. Any include whose foreign key can point at another
+tenant's row returns that row's attributes. Rows are pointed that way today: A-75 found QMS storing
+unchecked foreign ids, and there is no reason to believe it was the only writer that trusted a body
+id.
+
+Second finding, same test: including `User` or `CalibrationDevice` — both have a `defaultScope`
+`where` (`is_deleted = false`) — is treated as **required**, an INNER JOIN, even when the include
+names no `where`. So the most repeated defect in this codebase, the one CLAUDE.md's trap table puts
+first, has a trigger nobody had written down.
+
+**Fix direction:** decide the mechanism once, not per query. Either a hook that walks
+`options.include` recursively and adds the tenant predicate to every tenant-scoped model, or a lint
+or test that refuses an include without an explicit tenant `where`. Then audit every include of a
+tenant-scoped model — `User` and `CalibrationDevice` first — for both the leak and the INNER JOIN.
+This is an architectural change to ADR-029's mechanism, so it needs an ADR.
+
+**Definition of Done**
+- [x] a test proves an include of a tenant-scoped model carries the tenant predicate, for every include in the codebase — data-driven, not per query
+- [ ] every include of a `defaultScope`d model is `required: false` unless an INNER JOIN is intended and commented
+- [x] an ADR amends ADR-029, and CLAUDE.md's "you do not opt in" is corrected
+
+**What was changed (2026-09-24, ADR-048).** `tenantScope.util.js#applyTenantToIncludes` runs in
+`beforeFind` and `beforeCount`:
+
+- It normalises the includes with Sequelize's own helpers, then walks the tree, `through` models
+  included.
+- It adds the root's tenant predicate to every tenant-scoped include's ON clause, resolved by the
+  same `resolveScope`, with the same super-admin and system exemptions.
+- It first pins `required` to Sequelize's own default, so **a join type never changes**: LEFT stays
+  LEFT, and a cross-tenant related row joins as `null`.
+- `separate` includes are scoped by their own `findAll`.
+- `skipTenantScope: true` on an include is the only opt-out.
+
+**Tests** are in `tenantScope.includes.a87.test.js`, 743 of them:
+- **Data-driven:** every one of the 245 associations in the models barrel, with implicit,
+  `required: false` and `required: true` includes. The join type must equal the no-hook baseline,
+  and a tenant-scoped target must carry the predicate.
+- **343 failed** with the hook call disabled.
+- **A mutation test:** the naive `include.where = { tenantId }` breaks 50 of them, 46 of which turn a
+  LEFT JOIN into an INNER JOIN.
+
+**Verified on PostgreSQL 18.6:**
+
+| Query, run as tenant A | Before | After |
+|---|---|---|
+| NC list whose NC points at tenant B's device and user | returned `B SECRET DEVICE` and `secret-b-user@b` | both `null`; no rows lost |
+| CAPA with a LEFT include of B's NC | returned tenant B's NC | `null` |
+
+**Not done here:** the `defaultScope` INNER JOIN (DoD 2) is deliberately **not** forced by the hook,
+because join semantics are a query-author decision. Those sites are **A-90**.
+
+**The risk:** the fix relies on private Sequelize statics. The data-driven test fails if an upgrade
+changes them.
+
+---
+
+### A-88 — Associations that create a second, nullable `tenant_id`
+
+| | |
+|---|---|
+| **Status** | TODO |
+| **Severity** | **high** |
+| **Verified** | on PostgreSQL 18, `\d non_conformances`, 2026-09-24 (A-75) |
+
+`NonConformance` and `Capa` associate to `Tenant` with `foreignKey: "tenant_id"` — the column name,
+not the attribute name. Sequelize adds a second attribute. On a database built by `sync()`, the
+column comes out **nullable with `ON DELETE SET NULL`**: a deleted tenant leaves orphaned rows that
+belong to nobody, and the tenant hooks' predicate cannot match them. The same shape exists on other
+associations. **Fix direction:** find every `foreignKey: "tenant_id"`, use the attribute name, and
+verify the column in psql on a fresh database.
+
+---
+
+### A-89 — The QMS form lets required fields be empty
+
+| | |
+|---|---|
+| **Status** | TODO |
+| **Severity** | low |
+| **Verified** | from code, 2026-09-24 (A-74) |
+
+`dashboard/qms/page.tsx` treats `description` and `actionPlan` as optional. Both are NOT NULL. Since
+A-74 the API answers with a 400 instead of a 500, but the form should mark them required.
+
+---
+
+### A-90 — Implicit INNER JOINs at about twenty call sites
+
+| | |
+|---|---|
+| **Status** | TODO |
+| **Severity** | **high** |
+| **Verified** | from code and SQL generation, 2026-09-24 (A-87) |
+
+Includes of `User`, `CalibrationDevice` and `Warehouse` with no `required` are INNER JOINs, because
+those models have a `defaultScope` `where` (A-75). They drop parent rows whose reference is null or
+soft-deleted. `calibrationDevices.service.js` states that a device may have no warehouse, yet its list
+query drops every such device.
+
+Since A-87, they also drop rows whose reference points outside the tenant. The realistic case is the
+super admin acting inside a tenant: calibration performer, stock adjuster, SOP author, backup creator,
+session user.
+
+Sites, from A-87:
+
+| File | Includes |
+|---|---|
+| `calibrationRecords.service.js` | `device`, `performer` |
+| `calibrationDevices.service.js` | `warehouse` |
+| `stock.service.js` | seven sites: Warehouse, `adjuster`, `requester`, `approver`, `performer` |
+| `sop.service.js` | `author` |
+| `supplierScorecard.service.js` | `evaluator` |
+| `tenantBackup.service.js` and its controller | `creator` |
+| `session.controller.js` | `user` |
+| `certificate.service.js` | `device` |
+
+**Definition of Done**
+- [ ] every listed include is `required: false`, or carries a comment saying why an INNER JOIN is intended
+- [ ] a test per service shows a row with a null or foreign reference is still listed
+
+---
+
+### A-91 — Signers cannot open the workflow they are asked to sign
+
+| | |
+|---|---|
+| **Status** | TODO |
+| **Severity** | **high** |
+| **Verified** | from code, 2026-09-24 (A-84) |
+
+`/dashboard/esignature` loads workflows through `GET /workflows` and `GET /workflows/:id`, which are
+gated on `qms:read`. Technicians and every other role without a `qms` menu can be named as signers
+(A-84 grants them `esignature: write`), but cannot open the workflow to sign it. A-65 made them the
+only people who can sign their step. So a workflow naming a technician cannot complete.
+
+**Fix direction:** a signer can read the workflows in which they are named, through the
+`esignature` slug, or through a "my pending signatures" route. Workflow **management** stays on `qms`.
+
+---
+
+### A-92 — More conflicts with the wrong status
+
+| | |
+|---|---|
+| **Status** | TODO |
+| **Severity** | medium |
+| **Verified** | from code, 2026-09-24 (A-85) |
+
+These state conflicts answer 400 where the rule is 409 with a state explanation:
+- `eSignature.service#updateWorkflow`
+- `eSignature.service#cancelWorkflow`
+- `certificate.service#deleteCertificate` on a signed certificate
+
+These in-tenant unique violations answer 500 where the rule is 409:
+- changing a device's serial to one another device in the tenant holds;
+- re-creating the serial of a soft-deleted device, because the duplicate pre-check does not see
+  soft-deleted rows.
+
+`calibration_devices.iot_device_token` is also globally unique. It is a token, not a guessable
+identifier, so the risk is low.

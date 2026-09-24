@@ -50,6 +50,12 @@ const devices = await Device.findAll();
 // tenant matches NO_TENANT_UUID and sees NOTHING.
 ```
 
+**Includes too, since 2026-09-24 (ADR-048).** Before that, the hooks scoped only the **root**
+model, and an include could join another tenant's row (A-87, proven on PostgreSQL 18). The hooks now
+add the predicate to every tenant-scoped include's ON clause **without changing its join type** — so a
+cross-tenant reference reads as `null` on a LEFT include and drops the row on an INNER one.
+`skipTenantScope: true` is the only opt-out, at either level.
+
 **Never** read `tenantId` from a request body. It is stamped from the context.
 
 **Raw SQL bypasses the hooks entirely.** Every `sequelize.query` carries the predicate explicitly, and every new one is a review item.
@@ -74,11 +80,11 @@ An audit row that survives a rolled-back action records something that did not h
 
 Not 403. Not 200.
 
-**`createTwoTenants()` does not exist.** This file said it was "a one-line fixture precisely so
-this gets written"; it appears here and in eight `docs/` files and in **zero** code files (checked
-2026-09-23, A-55). So the thing that was supposed to make the test cheap is itself unwritten, and
-the test this section calls mandatory exists for almost no route. Write the fixture first, then the
-test — and correct this paragraph when it exists.
+**`createTwoTenants()` exists since 2026-09-24** — `backend/src/tests/fixtures/twoTenants.js` (A-63).
+For about a month this file called it "a one-line fixture" while it existed in no code file (A-55).
+It gives two tenants, principals by role in either, and a transaction double. Its first users are
+`tenant.edit.a63.test.js` and `user.profile.a63.test.js`, which show how to wire it. **Most `:id`
+routes still have no two-tenant test**, so writing one is still part of any change to such a route.
 
 ## The Traps
 
@@ -87,6 +93,8 @@ Every one of these has caused a production defect here. They are structural, not
 | Trap | What happens |
 |---|---|
 | An optional include without **`required: false`** | INNER JOIN — the list silently returns **nothing** |
+| An include of a model with a **`defaultScope`** (`User`, `CalibrationDevice`) | an **INNER JOIN even with no `where`** — rows whose reference is null or deleted vanish (A-75) |
+| An INNER include (explicit, or implicit via `defaultScope`) of a row authored by the **super admin** inside a tenant | since ADR-048 the parent row **disappears** for tenant users — the referenced user is in another tenant (A-90, Q-17) |
 | **`schema.validate`** passed to Express | **500 on every request** to that route |
 | A path parameter the validator never sees | **400 on every request** — merge `{ ...req.params, ...req.body }` |
 | **`db`** destructured from the models barrel | it exports `sequelize`; you get `undefined`, then a throw |

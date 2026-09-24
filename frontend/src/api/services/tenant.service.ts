@@ -55,6 +55,33 @@ export const tenantService = {
     };
   },
 
+  /**
+   * The tenants the caller may see, as one list shape for every caller.
+   *
+   * A-76: GET /tenants/all is super-admin only — it lists every hospital on
+   * the platform. Any other principal sees exactly one tenant, its own, read
+   * through POST /tenants/detail. Pass `ownTenantId` for those callers; pass
+   * null/undefined for a super admin.
+   */
+  getVisible: async (
+    page = 1,
+    limit = 25,
+    search?: string,
+    ownTenantId?: string | null,
+  ): Promise<PaginatedResponse<Tenant>> => {
+    if (!ownTenantId) {
+      return tenantService.getAll(page, limit, search);
+    }
+    const tenant = await tenantService.getById(ownTenantId);
+    const data = tenant ? [tenant] : [];
+    return {
+      success: true,
+      message: "Fetch tenant successful",
+      data,
+      meta: { total: data.length, page: 1, limit, totalPages: 1 },
+    };
+  },
+
   getById: async (tenantId: string): Promise<Tenant> => {
     const response = await api.post<{ success: boolean; data: Tenant }>(
       "/api/v1/tenants/detail",

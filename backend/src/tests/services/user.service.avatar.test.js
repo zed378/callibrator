@@ -2,6 +2,11 @@
  * Tests for user avatar upload functions (consolidated into user.service.js)
  */
 
+// A-77: user mutations write their audit row inside the transaction.
+jest.mock("../../services/audit.service", () => ({
+  logAction: jest.fn().mockResolvedValue({}),
+}));
+
 // Mock appError first with proper constructor signature matching service usage
 jest.mock("../../utils/appError.util", () => {
   class AppError extends Error {

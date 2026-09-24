@@ -16,6 +16,10 @@
  * mocking the lookup to return the foreign row (the "hooks bypassed" case).
  */
 
+// A-77: user mutations write their audit row inside the transaction.
+jest.mock("../../services/audit.service", () => ({
+  logAction: jest.fn().mockResolvedValue({}),
+}));
 jest.mock("sequelize", () => ({
   Sequelize: { fn: jest.fn(), col: jest.fn() },
   Op: {

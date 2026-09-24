@@ -56,10 +56,19 @@ export interface SignatureWorkflow {
   createdAt?: string;
 }
 
+/**
+ * One signer's slot, as backend/src/models/signatureWorkflowStep.model.js
+ * returns it inside GET /workflows/:id → data.steps. The signer is
+ * `signerId` (there is no `userId` on a step). Only that user can sign the
+ * step — anyone else gets 403 (A-65).
+ */
 export interface SignatureStep {
   id: string;
   workflowId?: string;
-  userId?: string;
+  stepNumber?: number;
+  signerId?: string | null;
+  signerEmail?: string;
+  signerName?: string;
   status?: string;
   signedAt?: string | null;
 }
@@ -97,15 +106,50 @@ export interface CreateWorkflowInput {
   expiresAt?: string;
 }
 
+/** The methods the backend can re-verify at the moment of signing (A-65). */
+export type SigningAuthMethod = "password" | "mfa";
+
+/**
+ * POST /sign body. Signing re-authenticates the signer: `authPayload` is their
+ * password or current MFA code, matching `authenticationMethod`. There is no
+ * ipAddress / userAgent — the backend records the connection's own, and
+ * ignores any in the body (A-65).
+ */
 export interface SignDocumentInput {
   /** The workflow step being signed. */
   stepId: string;
+  /** Server defaults to "password". */
+  authenticationMethod?: SigningAuthMethod;
+  /** The signer's password or MFA code. Never stored. */
+  authPayload: string;
+  /** The meaning of the signature (21 CFR 11.50), max 255. */
+  reason?: string;
   polygon?: Record<string, unknown> | null;
   biometricData?: string | null;
-  /** Server defaults to "password". */
-  authenticationMethod?: AuthenticationMethod;
-  ipAddress?: string;
-  userAgent?: string;
+}
+
+/**
+ * What POST /sign returns in `data`: eSignature.service#signDocument's
+ * `{ signatureId, certificate }`, the certificate being
+ * generateSignatureCertificate()'s summary of the signature.
+ */
+export interface SignDocumentResult {
+  signatureId: string;
+  certificate: {
+    signatureId: string;
+    workflowId: string;
+    documentId: string;
+    signerId: string;
+    signedAt: string;
+    signatureHash: string;
+    signatureValue: string;
+    signingKeyId: string;
+    signatureScheme: string;
+    algorithm: string;
+    ipAddress: string | null;
+    userAgent: string | null;
+    verificationUrl: string;
+  };
 }
 
 export interface SignatureHistoryParams {
@@ -195,12 +239,13 @@ export const eSignatureService = {
   },
 
   /**
-   * POST /sign — signs one workflow step.
-   * stepId travels in the body (the route has no path param).
-   * Rejected for API-key auth (denyApiKey).
+   * POST /sign — signs one workflow step, as its assigned signer, after
+   * re-authenticating (password or MFA code). stepId travels in the body (the
+   * route has no path param). Rejected for API-key auth (denyApiKey).
+   * 401 — wrong credential; 403 — not this step's signer; 404 — no such step.
    */
-  signDocument: async (input: SignDocumentInput): Promise<SignatureRecord> => {
-    const response = await api.post<BackendResponse<SignatureRecord>>(
+  signDocument: async (input: SignDocumentInput): Promise<SignDocumentResult> => {
+    const response = await api.post<BackendResponse<SignDocumentResult>>(
       `${BASE}/sign`,
       input,
     );

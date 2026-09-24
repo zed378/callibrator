@@ -323,18 +323,20 @@ describe("certificate.service", () => {
       expect(result.status).toBe(404);
     });
 
-    it("should return 400 if certificate status is SIGNED or REVOKED", async () => {
+    // A-85: editing a signed or revoked certificate is a state conflict — 409
+    // with the state and the way forward, never a 400.
+    it("A-85: a PUT on a signed certificate is 409 with a state explanation, and writes nothing", async () => {
       validator.validate.mockReturnValueOnce({ summary: "New summary" });
-      Certificate.findOne.mockResolvedValueOnce({
-        id: "cert-1",
-        status: "signed",
-      });
+      const signed = { id: "cert-1", status: "signed", update: jest.fn() };
+      Certificate.findOne.mockResolvedValueOnce(signed);
 
       const result = await updateCertificate("tenant-1", "cert-1", { summary: "New summary" });
 
       expect(result.success).toBe(false);
-      expect(result.status).toBe(400);
-      expect(result.message).toContain("Cannot update");
+      expect(result.status).toBe(409);
+      expect(result.message).toContain('"signed"');
+      expect(result.message).toContain("POST /certificates/:id/revoke");
+      expect(signed.update).not.toHaveBeenCalled();
     });
 
     it("should update certificate successfully", async () => {
@@ -379,15 +381,20 @@ describe("certificate.service", () => {
       );
     });
 
-    it("should return 400 for a revoked certificate", async () => {
+    it("A-85: a PUT on a revoked certificate is 409 with a state explanation, and writes nothing", async () => {
       validator.validate.mockReturnValueOnce({ summary: "New summary" });
-      Certificate.findOne.mockResolvedValueOnce({ id: "cert-1", status: "revoked" });
+      const revoked = { id: "cert-1", status: "revoked", update: jest.fn() };
+      Certificate.findOne.mockResolvedValueOnce(revoked);
 
       const result = await updateCertificate("tenant-1", "cert-1", { summary: "New summary" });
 
       expect(result.success).toBe(false);
-      expect(result.status).toBe(400);
-      expect(result.message).toBe("Cannot update revoked certificate");
+      expect(result.status).toBe(409);
+      expect(result.message).toBe(
+        'This certificate is "revoked" and can no longer be edited: revocation is final. ' +
+          "Issue a new certificate instead.",
+      );
+      expect(revoked.update).not.toHaveBeenCalled();
     });
 
     it("should handle error during update", async () => {
@@ -410,17 +417,22 @@ describe("certificate.service", () => {
       expect(result.status).toBe(404);
     });
 
-    it("should return 400 if certificate is signed", async () => {
+    // A-92 — deleting a signed certificate is a state conflict: 409 with the
+    // state and the way forward (revoke), not a 400 — and nothing is deleted.
+    it("refuses to delete a signed certificate with a 409 that explains the state", async () => {
+      const destroy = jest.fn();
       Certificate.findOne.mockResolvedValueOnce({
         id: "cert-1",
         status: "signed",
+        destroy,
       });
 
-      const result = await deleteCertificate("tenant-1", "cert-1");
+      const err = await deleteCertificate("tenant-1", "cert-1").catch((e) => e);
 
-      expect(result.success).toBe(false);
-      expect(result.status).toBe(400);
-      expect(result.message).toContain("Cannot delete signed certificate");
+      expect(err.status).toBe(409);
+      expect(err.message).toContain('This certificate is "signed" and cannot be deleted');
+      expect(err.message).toContain("POST /certificates/:id/revoke");
+      expect(destroy).not.toHaveBeenCalled();
     });
 
     it("should delete certificate successfully", async () => {

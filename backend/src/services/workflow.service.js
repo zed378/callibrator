@@ -23,7 +23,10 @@ class WorkflowService {
         {
           model: WorkflowStep,
           as: "steps",
-          include: [{ model: Role, as: "role", attributes: ["id", "name"] }],
+          // LEFT JOIN (A-90): Role's defaultScope would make this INNER, and a
+          // step whose role was soft-deleted would silently drop out of the
+          // workflow's step list.
+          include: [{ model: Role, as: "role", attributes: ["id", "name"], required: false }],
         },
       ],
       order: [
@@ -40,7 +43,10 @@ class WorkflowService {
         {
           model: WorkflowStep,
           as: "steps",
-          include: [{ model: Role, as: "role", attributes: ["id", "name"] }],
+          // LEFT JOIN (A-90): Role's defaultScope would make this INNER, and a
+          // step whose role was soft-deleted would silently drop out of the
+          // workflow's step list.
+          include: [{ model: Role, as: "role", attributes: ["id", "name"], required: false }],
         },
       ],
       order: [[{ model: WorkflowStep, as: "steps" }, "stepOrder", "ASC"]],

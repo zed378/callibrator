@@ -241,6 +241,7 @@ describe("sso.service", () => {
       const mockUser = {
         id: "user-123",
         email: "existing@hospital.com",
+        isActive: true,
         status: "ACTIVE",
       };
       Users.findOne.mockResolvedValueOnce(mockUser);
@@ -266,11 +267,25 @@ describe("sso.service", () => {
       })).rejects.toThrow("Account is suspended");
     });
 
+    it("A-70: refuses an existing user switched off by isActive, whatever the status says", async () => {
+      Users.findOne.mockResolvedValueOnce({
+        id: "user-123",
+        email: "banned@hospital.com",
+        isActive: false,
+        status: "ACTIVE",
+      });
+
+      await expect(ssoService.provisionUser("tenant-1", {
+        email: "banned@hospital.com",
+      })).rejects.toMatchObject({ status: 403, message: "Account is suspended" });
+    });
+
     it("should create and JIT-provision user if they do not exist", async () => {
       Users.findOne.mockResolvedValueOnce(null);
       const mockCreatedUser = {
         id: "user-new",
         email: "new@hospital.com",
+        isActive: true,
         status: "ACTIVE",
       };
       Users.create.mockResolvedValueOnce(mockCreatedUser);

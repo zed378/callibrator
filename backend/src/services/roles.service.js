@@ -405,6 +405,10 @@ class RolesService {
 
     const user = await User.findByPk(userId, {
       include: [
+        // INNER JOIN on purpose (A-90): Role's defaultScope makes this include
+        // required, and the role is a filter — a user whose role is
+        // soft-deleted has no permission. The `!user || !user.role` check
+        // below denies either way; the join type states it.
         {
           model: Role,
           as: "role",
@@ -539,6 +543,8 @@ class RolesService {
   static async getUserMenus(userId) {
     const user = await User.findByPk(userId, {
       include: [
+        // INNER JOIN on purpose (A-90): a user whose role is soft-deleted has
+        // no menus. `!user || !user.role` below returns [] either way.
         {
           model: Role,
           as: "role",

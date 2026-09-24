@@ -49,6 +49,12 @@ jest.mock("../../validators/tenant.validator", () => ({
   formatErrors: jest.fn((details) => details),
 }));
 
+// The audit insert (A-41) — its own suite covers logAction; here only the
+// call the service makes inside its transaction is observed.
+jest.mock("../../services/audit.service", () => ({
+  logAction: jest.fn(),
+}));
+
 jest.mock("../../config", () => ({
   db: {
     transaction: jest.fn(),
@@ -81,6 +87,7 @@ const { logger } = require("../../middlewares/activityLog.middleware");
 const { deleteUpload } = require("../../utils/upload.util");
 const { validate: validateInput } = require("../../validators/tenant.validator");
 const { AppError } = require("../../utils/appError.util");
+const auditService = require("../../services/audit.service");
 
 const tenantService = require("../../services/tenant.service");
 
@@ -149,6 +156,7 @@ describe("tenant.service - branch & error coverage", () => {
     deleteUpload.mockReset().mockResolvedValue(undefined);
     db.transaction.mockReset().mockResolvedValue(mockTransaction());
     validateInput.mockReset().mockImplementation((body) => ({ ...body }));
+    auditService.logAction.mockReset().mockResolvedValue({});
   });
 
   // ==============================================================
@@ -649,9 +657,17 @@ describe("tenant.service - branch & error coverage", () => {
   // updateTenant
   // ==============================================================
   describe("updateTenant", () => {
+    // The pre-A-63 cases below exercise the update itself, as a super admin
+    // (who may change any tenant and every field). The A-63 ownership and
+    // platform-field rules have their own describe block after this one.
+    const SUPER_ADMIN_ACTOR = { actorIsSuperAdmin: true, tenantId: null };
+    const updateAsSuperAdmin = (id, input) =>
+      tenantService.updateTenant(id, input, "admin-1", SUPER_ADMIN_ACTOR);
+
     it("should throw a 404 AppError when the tenant does not exist", async () => {
       Tenants.findByPk.mockResolvedValue(null);
 
+      // No actor at all: the default is "nobody", and a missing tenant is 404.
       const err = await catchErr(tenantService.updateTenant("ghost", { name: "X" }));
 
       expect(err).toBeInstanceOf(AppError);
@@ -664,7 +680,7 @@ describe("tenant.service - branch & error coverage", () => {
       Tenants.findByPk.mockResolvedValue(makeTenant());
       Tenants.findOne.mockResolvedValue({ id: "t-other" });
 
-      const err = await catchErr(tenantService.updateTenant("t-1", { code: "TAKEN" }));
+      const err = await catchErr(updateAsSuperAdmin("t-1", { code: "TAKEN" }));
 
       expect(err).toBeInstanceOf(AppError);
       expect(err.status).toBe(409);
@@ -680,7 +696,7 @@ describe("tenant.service - branch & error coverage", () => {
       Tenants.findByPk.mockResolvedValue(makeTenant());
       Tenants.findOne.mockResolvedValue({ id: "t-other" });
 
-      const err = await catchErr(tenantService.updateTenant("t-1", { name: "TAKEN" }));
+      const err = await catchErr(updateAsSuperAdmin("t-1", { name: "TAKEN" }));
 
       expect(err).toBeInstanceOf(AppError);
       expect(err.status).toBe(409);
@@ -691,7 +707,7 @@ describe("tenant.service - branch & error coverage", () => {
       const tenant = makeTenant();
       Tenants.findByPk.mockResolvedValue(tenant);
 
-      await tenantService.updateTenant("t-1", { maxUsers: 42 });
+      await updateAsSuperAdmin("t-1", { maxUsers: 42 });
 
       expect(Tenants.findOne).not.toHaveBeenCalled();
       expect(tenant.update.mock.calls[0][0].maxUsers).toBe(42);
@@ -701,7 +717,7 @@ describe("tenant.service - branch & error coverage", () => {
       const tenant = makeTenant({ logo: "old-logo.png" });
       Tenants.findByPk.mockResolvedValue(tenant);
 
-      await tenantService.updateTenant("t-1", { logo: "new-logo.png" });
+      await updateAsSuperAdmin("t-1", { logo: "new-logo.png" });
 
       expect(deleteUpload).toHaveBeenCalledWith("old-logo.png", "uploads/tenant");
       expect(tenant.update.mock.calls[0][0].logo).toBe("new-logo.png");
@@ -710,7 +726,7 @@ describe("tenant.service - branch & error coverage", () => {
     it("should not delete the shared default logo", async () => {
       Tenants.findByPk.mockResolvedValue(makeTenant({ logo: "default.svg" }));
 
-      await tenantService.updateTenant("t-1", { logo: "new-logo.png" });
+      await updateAsSuperAdmin("t-1", { logo: "new-logo.png" });
 
       expect(deleteUpload).not.toHaveBeenCalled();
     });
@@ -718,7 +734,7 @@ describe("tenant.service - branch & error coverage", () => {
     it("should tolerate a tenant with no previous logo", async () => {
       Tenants.findByPk.mockResolvedValue(makeTenant({ logo: null }));
 
-      await tenantService.updateTenant("t-1", { logo: "new-logo.png" });
+      await updateAsSuperAdmin("t-1", { logo: "new-logo.png" });
 
       expect(deleteUpload).not.toHaveBeenCalled();
     });
@@ -726,7 +742,7 @@ describe("tenant.service - branch & error coverage", () => {
     it("should not delete the logo when it is unchanged", async () => {
       Tenants.findByPk.mockResolvedValue(makeTenant({ logo: "same.png" }));
 
-      await tenantService.updateTenant("t-1", { logo: "same.png" });
+      await updateAsSuperAdmin("t-1", { logo: "same.png" });
 
       expect(deleteUpload).not.toHaveBeenCalled();
     });
@@ -736,7 +752,7 @@ describe("tenant.service - branch & error coverage", () => {
       Tenants.findByPk.mockResolvedValue(tenant);
       deleteUpload.mockRejectedValue(new Error("ENOENT"));
 
-      const result = await tenantService.updateTenant("t-1", { logo: "new.png" });
+      const result = await updateAsSuperAdmin("t-1", { logo: "new.png" });
 
       expect(logger.warn).toHaveBeenCalledWith(
         "Failed to delete old logo: old.png",
@@ -750,7 +766,7 @@ describe("tenant.service - branch & error coverage", () => {
       const tenant = makeTenant({ logo: "keep.png" });
       Tenants.findByPk.mockResolvedValue(tenant);
 
-      await tenantService.updateTenant("t-1", { name: "Renamed" });
+      await updateAsSuperAdmin("t-1", { name: "Renamed" });
 
       expect(tenant.update.mock.calls[0][0].logo).toBe("keep.png");
     });
@@ -774,7 +790,7 @@ describe("tenant.service - branch & error coverage", () => {
       });
       Tenants.findByPk.mockResolvedValue(tenant);
 
-      await tenantService.updateTenant("t-1", {});
+      await updateAsSuperAdmin("t-1", {});
 
       expect(tenant.update.mock.calls[0][0]).toEqual({
         name: "Old",
@@ -799,7 +815,7 @@ describe("tenant.service - branch & error coverage", () => {
       const tenant = makeTenant();
       Tenants.findByPk.mockResolvedValue(tenant);
 
-      await tenantService.updateTenant("t-1", {
+      await updateAsSuperAdmin("t-1", {
         maxUsers: 77,
         email: "new@x.com",
         phone: "555",
@@ -832,7 +848,7 @@ describe("tenant.service - branch & error coverage", () => {
       const tenant = makeTenant({ primaryColor: "#ffffff" });
       Tenants.findByPk.mockResolvedValue(tenant);
 
-      await tenantService.updateTenant("t-1", { primaryColor: "" });
+      await updateAsSuperAdmin("t-1", { primaryColor: "" });
 
       expect(tenant.update.mock.calls[0][0].primaryColor).toBeNull();
     });
@@ -841,7 +857,7 @@ describe("tenant.service - branch & error coverage", () => {
       const tenant = makeTenant({ description: "old", email: "old@x.com" });
       Tenants.findByPk.mockResolvedValue(tenant);
 
-      await tenantService.updateTenant("t-1", { description: null, email: null });
+      await updateAsSuperAdmin("t-1", { description: null, email: null });
 
       const payload = tenant.update.mock.calls[0][0];
       expect(payload.description).toBeNull();
@@ -851,7 +867,7 @@ describe("tenant.service - branch & error coverage", () => {
     it("should move the by-code cache entry when the code changes", async () => {
       Tenants.findByPk.mockResolvedValue(makeTenant({ code: "OLD" }));
 
-      await tenantService.updateTenant("t-1", { code: "NEW" });
+      await updateAsSuperAdmin("t-1", { code: "NEW" });
 
       expect(del).toHaveBeenCalledWith("tenant:code:OLD");
       expect(set).toHaveBeenCalledWith("tenant:code:NEW", expect.any(Object), 600);
@@ -862,7 +878,7 @@ describe("tenant.service - branch & error coverage", () => {
     it("should not touch the by-code cache when the code is unchanged", async () => {
       Tenants.findByPk.mockResolvedValue(makeTenant({ code: "SAME" }));
 
-      await tenantService.updateTenant("t-1", { code: "SAME" });
+      await updateAsSuperAdmin("t-1", { code: "SAME" });
 
       expect(del).not.toHaveBeenCalled();
     });
@@ -874,7 +890,7 @@ describe("tenant.service - branch & error coverage", () => {
         makeTenant({ update: jest.fn().mockRejectedValue(new Error("write failed")) }),
       );
 
-      const err = await catchErr(tenantService.updateTenant("t-1", { name: "X" }));
+      const err = await catchErr(updateAsSuperAdmin("t-1", { name: "X" }));
 
       expect(err.message).toBe("write failed");
       expect(tx.rollback).toHaveBeenCalled();
@@ -893,7 +909,7 @@ describe("tenant.service - branch & error coverage", () => {
       Tenants.findByPk.mockResolvedValue(makeTenant());
       set.mockRejectedValue(new Error("redis down"));
 
-      const err = await catchErr(tenantService.updateTenant("t-1", { name: "X" }));
+      const err = await catchErr(updateAsSuperAdmin("t-1", { name: "X" }));
 
       expect(err.message).toBe("redis down");
       expect(tx.rollback).not.toHaveBeenCalled();
@@ -907,9 +923,140 @@ describe("tenant.service - branch & error coverage", () => {
       db.transaction.mockResolvedValue(tx);
       Tenants.findByPk.mockRejectedValue(new Error("lookup failed"));
 
-      const err = await catchErr(tenantService.updateTenant("t-1", { name: "X" }));
+      const err = await catchErr(updateAsSuperAdmin("t-1", { name: "X" }));
 
       expect(err.message).toBe("lookup failed");
+    });
+  });
+
+  describe("updateTenant — A-63 ownership and platform-controlled fields", () => {
+    const OWN = { actorIsSuperAdmin: false, tenantId: "t-1" };
+
+    it("answers a non-super-admin's foreign tenant exactly like a missing one (404), and writes nothing", async () => {
+      const tx = mockTransaction();
+      db.transaction.mockResolvedValue(tx);
+      const foreignTenant = makeTenant({ id: "t-2" });
+      Tenants.findByPk.mockResolvedValue(foreignTenant);
+
+      const err = await catchErr(
+        tenantService.updateTenant("t-2", { name: "X" }, "u-1", OWN),
+      );
+
+      expect(err).toBeInstanceOf(AppError);
+      expect(err.status).toBe(404);
+      expect(err.message).toBe("Tenant not found");
+      expect(foreignTenant.update).not.toHaveBeenCalled();
+      expect(auditService.logAction).not.toHaveBeenCalled();
+      expect(tx.rollback).toHaveBeenCalled();
+      expect(logger.warn).toHaveBeenCalledWith(
+        "tenant.service: cross-tenant update refused",
+        expect.objectContaining({ reason: "cross-tenant", tenantId: "t-2", actorTenantId: "t-1" }),
+      );
+    });
+
+    it("a non-super-admin with no tenant matches no tenant (404)", async () => {
+      Tenants.findByPk.mockResolvedValue(makeTenant({ id: "t-1" }));
+
+      const err = await catchErr(
+        tenantService.updateTenant("t-1", { name: "X" }, "u-1", { actorIsSuperAdmin: false, tenantId: null }),
+      );
+
+      expect(err.status).toBe(404);
+    });
+
+    it("a missing tenant is 404 for a non-super-admin too, without the cross-tenant log", async () => {
+      Tenants.findByPk.mockResolvedValue(null);
+
+      const err = await catchErr(tenantService.updateTenant("t-9", { name: "X" }, "u-1", OWN));
+
+      expect(err.status).toBe(404);
+      expect(logger.warn).not.toHaveBeenCalledWith(
+        "tenant.service: cross-tenant update refused",
+        expect.anything(),
+      );
+    });
+
+    it.each([
+      [{ status: "SUSPENDED" }, "status"],
+      [{ maxUsers: 500 }, "maxUsers"],
+      [{ status: "INACTIVE", maxUsers: 1 }, "status or maxUsers"],
+    ])("refuses a non-super-admin changing %j on their own tenant (403)", async (input, named) => {
+      const tenant = makeTenant({ id: "t-1", status: "ACTIVE", maxUsers: 10 });
+      Tenants.findByPk.mockResolvedValue(tenant);
+
+      const err = await catchErr(tenantService.updateTenant("t-1", input, "u-1", OWN));
+
+      expect(err).toBeInstanceOf(AppError);
+      expect(err.status).toBe(403);
+      expect(err.message).toBe(`Only a platform administrator can change a tenant's ${named}`);
+      expect(tenant.update).not.toHaveBeenCalled();
+      expect(auditService.logAction).not.toHaveBeenCalled();
+    });
+
+    it("lets a non-super-admin resubmit the current status (any case) and maxUsers, or a blank status", async () => {
+      const tenant = makeTenant({ id: "t-1", status: "active", maxUsers: 10 });
+      Tenants.findByPk.mockResolvedValue(tenant);
+
+      await tenantService.updateTenant("t-1", { name: "Renamed", status: "ACTIVE", maxUsers: "10" }, "u-1", OWN);
+      await tenantService.updateTenant("t-1", { status: "" }, "u-1", OWN);
+
+      expect(tenant.update).toHaveBeenCalledTimes(2);
+    });
+
+    it("writes the audit row inside the transaction with only the fields that changed", async () => {
+      const tx = mockTransaction();
+      db.transaction.mockResolvedValue(tx);
+      const tenant = makeTenant({ id: "t-1", name: "Old" });
+      tenant.update = jest.fn(async (values) => Object.assign(tenant, values));
+      Tenants.findByPk.mockResolvedValue(tenant);
+
+      await tenantService.updateTenant("t-1", { name: "New" }, "u-1", {
+        ...OWN,
+        ipAddress: "10.0.0.1",
+        userAgent: "jest",
+      });
+
+      expect(auditService.logAction).toHaveBeenCalledWith(
+        {
+          tenantId: "t-1",
+          userId: "u-1",
+          action: "UPDATE",
+          resourceType: "Tenant",
+          resourceId: "t-1",
+          changes: { name: { before: "Old", after: "New" } },
+          ipAddress: "10.0.0.1",
+          userAgent: "jest",
+        },
+        { transaction: tx },
+      );
+      // Inside the transaction: the audit write happens before the commit.
+      expect(auditService.logAction.mock.invocationCallOrder[0]).toBeLessThan(
+        tx.commit.mock.invocationCallOrder[0],
+      );
+    });
+
+    it("records a null actor id / ip / user agent rather than undefined", async () => {
+      Tenants.findByPk.mockResolvedValue(makeTenant({ id: "t-1" }));
+
+      await tenantService.updateTenant("t-1", { name: "X" }, undefined, OWN);
+
+      expect(auditService.logAction).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: null, ipAddress: null, userAgent: null }),
+        expect.any(Object),
+      );
+    });
+
+    it("rolls the update back when the audit insert fails", async () => {
+      const tx = mockTransaction();
+      db.transaction.mockResolvedValue(tx);
+      Tenants.findByPk.mockResolvedValue(makeTenant({ id: "t-1" }));
+      auditService.logAction.mockRejectedValue(new Error("audit insert failed"));
+
+      const err = await catchErr(tenantService.updateTenant("t-1", { name: "X" }, "u-1", OWN));
+
+      expect(err.message).toBe("audit insert failed");
+      expect(tx.commit).not.toHaveBeenCalled();
+      expect(tx.rollback).toHaveBeenCalled();
     });
   });
 

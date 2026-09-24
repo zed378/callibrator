@@ -1518,7 +1518,7 @@ Base: `/api/v1/certificates`, `/api/v1/esignature`.
 | `CERT_VERIFY_BASE_URL` / `PUBLIC_BASE_URL` | — / `http://localhost:5000` | QR verify URL base |
 | `KMS_MASTER_KEY` | derived mock | Envelope encryption |
 | `ENCRYPT_KEY` | dev default | Private-key-at-rest (AES-256-CBC) |
-| `ESIGN_ENABLED` / `SIGNATURE_ALGORITHM` / `SIGNATURE_KEY_SIZE` / `REQUIRE_REAUTHENTICATION` | on / RS256 / 2048 / on | e-signature |
+| `ESIGN_ENABLED` / `SIGNATURE_ALGORITHM` / `SIGNATURE_KEY_SIZE` | on / RS256 / 2048 | e-signature. `REQUIRE_REAUTHENTICATION` **no longer has any effect** — signing always re-authenticates (ADR-047, 2026-09-24) |
 
 ### 19. Dependency
 `puppeteer`, `qrcode`, `joi`, `sequelize`, `nodemailer`, `otplib`, Node `crypto`; internal `kms.service`, `auth.service`, `mfa.service`, `workflow.service`.

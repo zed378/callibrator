@@ -18,6 +18,9 @@ import {
 } from "@/components/ui";
 import { Plus } from "lucide-react";
 import {
+  CAPA_STATUSES,
+  NC_SEVERITIES,
+  NC_STATUSES,
   qmsService,
   type Capa,
   type CapaStatus,
@@ -31,15 +34,6 @@ type Tab = "nc" | "capa";
 
 const PAGE_SIZE = 10;
 
-const NC_STATUSES: NcStatus[] = ["OPEN", "IN_PROGRESS", "CLOSED", "CANCELLED"];
-const NC_SEVERITIES: NcSeverity[] = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
-const CAPA_STATUSES: CapaStatus[] = [
-  "DRAFT",
-  "IN_PROGRESS",
-  "COMPLETED",
-  "APPROVED",
-  "CANCELLED",
-];
 
 const severityVariant = (s: string): "default" | "info" | "warning" | "danger" => {
   switch (s) {
@@ -61,14 +55,14 @@ const statusVariant = (
     case "OPEN":
     case "DRAFT":
       return "warning";
+    case "CAPA_REQUIRED":
+      return "danger";
+    case "UNDER_INVESTIGATION":
     case "IN_PROGRESS":
+    case "VERIFICATION":
       return "info";
     case "CLOSED":
-    case "COMPLETED":
-    case "APPROVED":
       return "success";
-    case "CANCELLED":
-      return "default";
     default:
       return "default";
   }

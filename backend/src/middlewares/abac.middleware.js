@@ -77,13 +77,13 @@ function requiredMenuAction(permissions) {
  * // Tenant-level permission check
  * router.post('/backup', auth, rbac(['SUPER_ADMIN']), abac(['tenant:update'], { checkTenant: true }), controller);
  *
- * // Self-check (resource belongs to user)
- * router.post('/profile', auth, abac(['user:update'], { checkSelf: true }), controller);
+ * // Self-check (the PATH names the caller — never a body/query field, A-63)
+ * router.post('/:userId/profile', auth, abac(['user:update'], { checkSelf: true }), controller);
  *
  * @param {string[]} permissions - Required permission(s)
  * @param {Object} options - Additional options
  * @param {boolean} options.checkTenant - Enforce multi-tenant isolation
- * @param {boolean} options.checkSelf - Check if the resource belongs to the requesting user
+ * @param {boolean} options.checkSelf - Allow the caller when the path (`:userId` / `:id`) names them
  * @returns {Function} Express middleware
  */
 
@@ -139,13 +139,12 @@ exports.abac = (permissions, options = {}) => {
 
       // ---- Self-check ----
       // A user acting on their OWN resource is allowed without the permission
-      // check (matched against the authenticated user id only).
+      // check (matched against the authenticated user id only). It runs after
+      // the tenant check above, and — A-63, as in dynamicAccess — ownership
+      // comes from the PATH only: a body or query `userId` is caller-chosen
+      // and need not be the row the handler acts on.
       if (options.checkSelf) {
-        const resourceOwnerId =
-          req.params?.userId ||
-          req.body?.userId ||
-          req.params?.id ||
-          req.query?.userId;
+        const resourceOwnerId = req.params?.userId || req.params?.id;
 
         if (resourceOwnerId && String(user.id) === String(resourceOwnerId)) {
           req.abacContext = {

@@ -108,3 +108,23 @@ services:
     ports:
       - "0.0.0.0:${HTTP_PORT:-19080}:80"
     restart: unless-stopped
+
+# A-16 — the compose network's address is PINNED so nginx can name the one hop
+# it trusts. cloudflared runs on the VM host and reaches nginx through
+# localhost:19080; inside the container that connection arrives from this
+# network's gateway, 172.30.19.1. nginx/vm-http.conf trusts CF-Connecting-IP
+# from that address and from nothing else. The two values must change together.
+#
+# Pinning an existing deployment's network needs the network recreated:
+#   docker compose -f docker-compose.yml -f docker-compose.vm.yml down
+#   docker compose -f docker-compose.yml -f docker-compose.vm.yml up -d --build
+# (the data is in bind-mounted ./volumes and survives). If `up` fails with
+# "Pool overlaps with other one on this address space", another network on the
+# host already holds the range: pick a free /24 and change it here AND in
+# vm-http.conf's set_real_ip_from.
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.30.19.0/24
+          gateway: 172.30.19.1

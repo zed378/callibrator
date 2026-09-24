@@ -3,8 +3,8 @@ import { Input, Select } from "@/components/ui";
 import { ShieldCheck } from "lucide-react";
 
 /**
- * 21 CFR Part 11 signing credentials, shared by the approve / sign / revoke
- * modals. The regulation requires the signer to re-authenticate at the moment
+ * 21 CFR Part 11 signing credentials, shared by the certificate approve / sign /
+ * revoke modals and e-signature workflow signing (A-65). The regulation requires the signer to re-authenticate at the moment
  * of signing and to record what the signature means — the backend rejects any
  * of these three fields being absent.
  */
@@ -34,8 +34,8 @@ export function ESignatureFields<T extends ESignatureFormFields>({
         <p className="text-sm font-semibold">Electronic signature</p>
       </div>
       <p className="text-xs text-muted-foreground">
-        Re-enter your credentials to sign. This is recorded against the
-        certificate as an auditable, attributable act.
+        Re-enter your credentials to sign. This is recorded as an auditable,
+        attributable act.
       </p>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

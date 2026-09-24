@@ -21,7 +21,6 @@ const {
   enforceStorageQuota,
 } = require("../../middlewares/enforceQuota.middleware");
 const userController = require("../../controllers/user.controller");
-const { recordAudit } = require("../../middlewares/auditLog.middleware");
 
 /* ------------------------------------------------------------------ */
 /* GET ALL USERS (paginated, searchable, tenant‑scoped)               */
@@ -358,9 +357,8 @@ router.post(
   "/role-update",
   auth,
   dynamicAccess("users", "update", { checkTenant: true }),
-  recordAudit("UPDATE", "User", {
-    resolveResourceId: (req) => req.body?.userId,
-  }),
+  // A-77: audited inside the service's transaction (userService.userRoleUpdate),
+  // not by the post-response audit middleware, which could not undo a commit.
   userController.updateUserRole,
 );
 
@@ -467,7 +465,7 @@ router.post(
   auth,
   dynamicAccess("users", "create", { checkTenant: true }),
   enforceSeatQuota(),
-  recordAudit("CREATE", "User"),
+  // A-77: audited inside userService.userCreate's transaction.
   userController.createUser,
 );
 
@@ -479,7 +477,7 @@ router.post(
  * /api/v1/users/edit:
  *   patch:
  *     summary: Update an existing user's details
- *     description: Requires update access to User model. Self-check enabled. Uses dynamic RBAC/ABAC.
+ *     description: Requires users update access. There is no self bypass on this route (A-63) — the target is a body field; a user editing their own profile uses PATCH /api/v1/users/{userId}/profile.
  *     tags:
  *       - Users
  *     security:
@@ -542,8 +540,63 @@ router.post(
 router.patch(
   "/edit",
   auth,
-  dynamicAccess("users", "update", { checkSelf: true, checkTenant: true }),
+  // A-63: no `checkSelf`. The target here is `req.body.userId`, and the self
+  // bypass no longer reads the body — ownership comes from the path only.
+  dynamicAccess("users", "update", { checkTenant: true }),
   userController.editUser,
+);
+
+/* ------------------------------------------------------------------ */
+/* UPDATE OWN PROFILE (A-63)                                          */
+/* ------------------------------------------------------------------ */
+/**
+ * @swagger
+ * /api/v1/users/{userId}/profile:
+ *   patch:
+ *     summary: Update a user's profile fields (username, first and last name)
+ *     description: The caller may edit their own profile (the path names them) without users update access; editing anyone else's requires users update access and the same tenant (another tenant's user answers 404). Status and email are not editable here — use PATCH /api/v1/users/edit.
+ *     tags:
+ *       - Users
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               username:
+ *                 type: string
+ *               firstName:
+ *                 type: string
+ *               lastName:
+ *                 type: string
+ *     responses:
+ *       '200':
+ *         description: Profile updated successfully
+ *       '400':
+ *         description: Validation failed
+ *       '403':
+ *         description: Forbidden - editing another user without users update access
+ *       '404':
+ *         description: User not found (including a user of another tenant)
+ *       '409':
+ *         description: Username already used
+ */
+router.patch(
+  "/:userId/profile",
+  auth,
+  validateUuid("userId"),
+  dynamicAccess("users", "update", { checkSelf: true, checkTenant: true }),
+  userController.updateProfile,
 );
 
 /* ------------------------------------------------------------------ */
@@ -604,9 +657,7 @@ router.delete(
   "/delete",
   auth,
   dynamicAccess("users", "delete", { checkTenant: true }),
-  recordAudit("DELETE", "User", {
-    resolveResourceId: (req) => req.query?.userId || req.body?.userId,
-  }),
+  // A-77: audited inside userService.deleteUser's transaction.
   userController.deleteUser,
 );
 

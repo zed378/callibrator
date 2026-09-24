@@ -35,6 +35,14 @@ const VALID_USER_ID = "550e8400-e29b-41d4-a716-446655440001";
 const VALID_NC_ID = "550e8400-e29b-41d4-a716-446655440010";
 const VALID_CAPA_ID = "550e8400-e29b-41d4-a716-446655440011";
 
+// A-66: every mutation hands the service the audit actor (auditActor(req)).
+const ACTOR = {
+  userId: VALID_USER_ID,
+  tenantId: VALID_TENANT_ID,
+  ipAddress: "10.0.0.9",
+  userAgent: "jest-UA",
+};
+
 describe("qms Controller", () => {
   let req, res, next;
 
@@ -45,6 +53,8 @@ describe("qms Controller", () => {
       params: {},
       query: {},
       user: { id: VALID_USER_ID, tenantId: VALID_TENANT_ID },
+      ip: "10.0.0.9",
+      headers: { "user-agent": "jest-UA" },
     };
     res = {
       status: jest.fn().mockReturnThis(),
@@ -61,7 +71,7 @@ describe("qms Controller", () => {
 
       await qmsController.createNC(req, res, next);
 
-      expect(qmsService.createNC).toHaveBeenCalledWith(VALID_TENANT_ID, VALID_USER_ID, req.body);
+      expect(qmsService.createNC).toHaveBeenCalledWith(VALID_TENANT_ID, VALID_USER_ID, req.body, ACTOR);
       expect(sendError).not.toHaveBeenCalled();
     });
   });
@@ -97,7 +107,7 @@ describe("qms Controller", () => {
 
       await qmsController.updateNC(req, res, next);
 
-      expect(qmsService.updateNC).toHaveBeenCalledWith(VALID_TENANT_ID, VALID_NC_ID, req.body);
+      expect(qmsService.updateNC).toHaveBeenCalledWith(VALID_TENANT_ID, VALID_NC_ID, req.body, ACTOR);
       expect(sendError).not.toHaveBeenCalled();
     });
 
@@ -121,7 +131,7 @@ describe("qms Controller", () => {
 
       await qmsController.createCapa(req, res, next);
 
-      expect(qmsService.createCapa).toHaveBeenCalledWith(VALID_TENANT_ID, req.body);
+      expect(qmsService.createCapa).toHaveBeenCalledWith(VALID_TENANT_ID, req.body, ACTOR);
       expect(sendError).not.toHaveBeenCalled();
     });
 
@@ -168,7 +178,7 @@ describe("qms Controller", () => {
         VALID_TENANT_ID,
         VALID_CAPA_ID,
         req.body,
-        req.user.id,
+        ACTOR,
       );
     });
 

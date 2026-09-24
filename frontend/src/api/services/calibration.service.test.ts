@@ -200,10 +200,10 @@ describe("calibrationService", () => {
       mockedApi.put.mockResolvedValueOnce(envelope({ id: "cert1" }));
       await calibrationService.updateCertificate({
         id: "cert1",
-        status: "approved",
+        summary: "Within tolerance",
       });
       expect(mockedApi.put).toHaveBeenCalledWith("/api/v1/certificates/cert1", {
-        status: "approved",
+        summary: "Within tolerance",
       });
     });
   });

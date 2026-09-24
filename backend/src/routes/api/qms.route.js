@@ -8,8 +8,15 @@
 const express = require("express");
 const router = express.Router();
 const { auth, denyApiKey } = require("../../middlewares/auth.middleware");
+const { dynamicAccess } = require("../../middlewares/dynamicAccess.middleware");
 const { validate } = require("../../middlewares/validation.middleware");
-const { updateNCSchema, updateCapaSchema } = require("../../validators/qms.validator");
+const { MENU_SLUGS } = require("../../constants");
+const {
+  createNCSchema,
+  updateNCSchema,
+  createCapaSchema,
+  updateCapaSchema,
+} = require("../../validators/qms.validator");
 const {
   createNC,
   getNCs,
@@ -20,6 +27,17 @@ const {
 } = require("../../controllers/qms.controller");
 
 router.use(auth);
+
+// A-66 — authorization. Until 2026-09-24 every route here carried `auth` (and
+// the mutations `denyApiKey`) and nothing else, so any authenticated user in a
+// tenant could raise, edit and approve NCs and CAPAs. Each route is now gated
+// on the seeded `qms` menu group ("Quality (NC & CAPA)"):
+//   read  — HEALTHCARE ADMIN, CALIBRATOR ADMIN (write implies read),
+//           ENGINEERING MANAGER (read)
+//   write — HEALTHCARE ADMIN, CALIBRATOR ADMIN
+// (ROLE_MENU_ASSIGNMENTS in constants/roleConstants.js; SUPER_ADMIN bypasses.)
+// `update` normalizes to `write` in dynamicAccess — the matrix stores only
+// read/write. Every other role now gets 403 in its own tenant.
 
 // Non-Conformance Routes
 // Mutations require an interactive user session (denyApiKey): a scoped service
@@ -63,8 +81,20 @@ router.use(auth);
  *         description: Validation error
  *       401:
  *         description: Unauthorized
+ *       403:
+ *         description: No permission on the qms menu in the caller's tenant
+ *       404:
+ *         description: deviceId is not a device of the caller's tenant (another tenant's, deleted or non-existent — indistinguishable)
  */
-router.post("/nc", denyApiKey, createNC);
+// A-74: validated before the controller — an out-of-enum severity or a missing
+// title is a 400 here, not a database error reported as 500.
+router.post(
+  "/nc",
+  denyApiKey,
+  dynamicAccess(MENU_SLUGS.QMS, "write"),
+  validate(createNCSchema),
+  createNC,
+);
 /**
  * @swagger
  * /api/v1/qms/nc:
@@ -85,8 +115,10 @@ router.post("/nc", denyApiKey, createNC);
  *         description: List of non-conformances
  *       401:
  *         description: Unauthorized
+ *       403:
+ *         description: No permission on the qms menu in the caller's tenant
  */
-router.get("/nc", getNCs);
+router.get("/nc", dynamicAccess(MENU_SLUGS.QMS, "read"), getNCs);
 /**
  * @swagger
  * /api/v1/qms/nc/{id}:
@@ -129,10 +161,18 @@ router.get("/nc", getNCs);
  *         description: Validation error
  *       401:
  *         description: Unauthorized
+ *       403:
+ *         description: No permission on the qms menu in the caller's tenant
  *       404:
  *         description: Non-conformance not found
  */
-router.patch("/nc/:id", denyApiKey, validate(updateNCSchema), updateNC);
+router.patch(
+  "/nc/:id",
+  denyApiKey,
+  dynamicAccess(MENU_SLUGS.QMS, "update"),
+  validate(updateNCSchema),
+  updateNC,
+);
 
 // CAPA Routes
 /**
@@ -159,8 +199,6 @@ router.patch("/nc/:id", denyApiKey, validate(updateNCSchema), updateNC);
  *                 type: string
  *               actionPlan:
  *                 type: string
- *               status:
- *                 type: string
  *               assignedTo:
  *                 type: string
  *                 format: uuid
@@ -174,8 +212,18 @@ router.patch("/nc/:id", denyApiKey, validate(updateNCSchema), updateNC);
  *         description: Validation error
  *       401:
  *         description: Unauthorized
+ *       403:
+ *         description: No permission on the qms menu in the caller's tenant
+ *       404:
+ *         description: ncId or assignedTo is not a record of the caller's tenant (another tenant's, deleted or non-existent — indistinguishable)
  */
-router.post("/capa", denyApiKey, createCapa);
+router.post(
+  "/capa",
+  denyApiKey,
+  dynamicAccess(MENU_SLUGS.QMS, "write"),
+  validate(createCapaSchema),
+  createCapa,
+);
 /**
  * @swagger
  * /api/v1/qms/capa:
@@ -196,8 +244,10 @@ router.post("/capa", denyApiKey, createCapa);
  *         description: List of CAPAs
  *       401:
  *         description: Unauthorized
+ *       403:
+ *         description: No permission on the qms menu in the caller's tenant
  */
-router.get("/capa", getCapas);
+router.get("/capa", dynamicAccess(MENU_SLUGS.QMS, "read"), getCapas);
 /**
  * @swagger
  * /api/v1/qms/capa/{id}:
@@ -249,9 +299,17 @@ router.get("/capa", getCapas);
  *         description: Validation error
  *       401:
  *         description: Unauthorized
+ *       403:
+ *         description: No permission on the qms menu in the caller's tenant
  *       404:
- *         description: CAPA not found
+ *         description: CAPA not found, or assignedTo is not a user of the caller's tenant
  */
-router.patch("/capa/:id", denyApiKey, validate(updateCapaSchema), updateCapa);
+router.patch(
+  "/capa/:id",
+  denyApiKey,
+  dynamicAccess(MENU_SLUGS.QMS, "update"),
+  validate(updateCapaSchema),
+  updateCapa,
+);
 
 module.exports = router;

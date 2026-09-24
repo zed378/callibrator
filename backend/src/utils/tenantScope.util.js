@@ -23,6 +23,14 @@
  *   context.tenantId         -> filter by that tenant
  *   otherwise                -> DENY   (authenticated, no tenant => sees nothing)
  *
+ * INCLUDES (A-87). Until 2026-09-24 the predicate reached the ROOT model's
+ * WHERE only; an include of a tenant-scoped model joined whatever row its
+ * foreign key pointed at, in any tenant. `beforeFind` and `beforeCount` now
+ * also walk the include tree (`applyTenantToIncludes`) and put the same
+ * predicate, resolved the same way, on every tenant-scoped include — in its
+ * ON clause, with its join type pinned to what it would have been without
+ * the hook, so a LEFT JOIN never silently becomes an INNER JOIN.
+ *
  * Nine hooks are registered. Read/bulk-write verbs get a predicate; create-shaped
  * verbs get a stamp. `bulkCreate` and `upsert` (D-01) were outside the hooks
  * entirely until 2026-09-23 — see `applyTenantAssignmentBulk` and
@@ -30,6 +38,7 @@
  * silently re-scoping it.
  */
 
+const { Op } = require("sequelize");
 const { tenantStorage } = require("../middlewares/tenantContext.middleware");
 
 /**
@@ -76,6 +85,117 @@ const applyTenantWhere = (options, model) => {
   // Isolation is FORCED: a caller asking for another tenant simply gets nothing.
   const value = scope.mode === "deny" ? NO_TENANT_UUID : scope.tenantId;
   options.where = { ...(options.where || {}), [key]: value };
+};
+
+/**
+ * `where` with the tenant predicate added — the include-level twin of the
+ * spread in `applyTenantWhere`. A plain object is spread (symbol operators
+ * such as `[Op.or]` survive a spread), so the tenant key is FORCED exactly as
+ * it is on the root: an include asking for another tenant gets nothing. Any
+ * other shape (`sequelize.where(...)`, a literal) is AND-ed, never replaced.
+ */
+const withTenantPredicate = (where, key, value) => {
+  if (where === undefined || where === null) {return { [key]: value };}
+  if (Object.getPrototypeOf(where) === Object.prototype) {return { ...where, [key]: value };}
+  return { [Op.and]: [where, { [key]: value }] };
+};
+
+/**
+ * The include's association, or null when Sequelize cannot resolve it — in
+ * which case Sequelize itself throws the EagerLoadingError a moment later, so
+ * there is nothing for this hook to scope.
+ */
+const associationOf = (include, parentModel) => {
+  if (include.association) {return include.association;}
+  try {
+    return parentModel._getIncludedAssociation(include.model, include.as);
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * A `separate: true` include (and a hasMany include with a `limit`, which
+ * Sequelize makes separate) is not joined: `_findSeparate` runs it as its OWN
+ * `findAll` on the target, where `beforeFind` fires again and scopes it as a
+ * root query — its nested includes included.
+ */
+const isSeparate = (include) =>
+  include.separate === true ||
+  (include.separate === undefined && Boolean(include.limit));
+
+/**
+ * Put the tenant predicate on every tenant-scoped model in an include tree.
+ *
+ * JOIN SEMANTICS ARE PRESERVED. Sequelize defaults an include's `required` to
+ * `!!include.where` AFTER merging the target's defaultScope `where` into it
+ * (`_validateIncludedElement`). Adding a `where` here would therefore turn
+ * every LEFT JOIN into an INNER JOIN. So when the include did not say, its
+ * `required` is pinned FIRST to what Sequelize would have chosen without this
+ * hook: `!!(own where || defaultScope where)`. A LEFT JOIN stays a LEFT JOIN
+ * (the predicate lands in its ON clause, so a foreign row joins as NULL), and
+ * an INNER JOIN stays INNER (a row pointing at a foreign row drops out).
+ *
+ * @param {Array<object>} includes - Conformed includes (`{ model, as, ... }`)
+ * @param {object} parentModel - The model these includes hang off
+ * @param {string} value - The tenant id (or NO_TENANT_UUID) to force
+ */
+const scopeIncludes = (includes, parentModel, value) => {
+  for (const include of includes) {
+    // A pseudo include is the `through` row Sequelize generated while
+    // validating a belongsToMany; it is scoped via `include.through` below.
+    // `skipTenantScope` on an include is the include-level twin of the root
+    // opt-out: explicit, greppable, reviewable.
+    if (include._pseudo || include.skipTenantScope || isSeparate(include)) {continue;}
+
+    const key = tenantKeyOf(include.model);
+    if (key) {
+      if (include.required === undefined) {
+        include.required = Boolean(include.where || include.model._scope.where);
+      }
+      include.where = withTenantPredicate(include.where, key, value);
+    }
+
+    const association = associationOf(include, parentModel);
+    const throughKey = tenantKeyOf(association && association.through && association.through.model);
+    if (throughKey) {
+      const through = include.through || {};
+      include.through = { ...through, where: withTenantPredicate(through.where, throughKey, value) };
+    }
+
+    if (Array.isArray(include.include)) {
+      scopeIncludes(include.include, include.model, value);
+    }
+  }
+};
+
+/**
+ * Inject the tenant predicate into every include of a find/count (A-87).
+ *
+ * `beforeFind` fires once, for the root model; `applyTenantWhere` only reaches
+ * that model's WHERE. Without this an include of a tenant-scoped model joins
+ * any tenant's row its foreign key points at. Resolution is IDENTICAL to the
+ * root's (`resolveScope` on the root options): skip for no context, system
+ * work, the super admin and `skipTenantScope`; force the caller's tenant; deny
+ * with NO_TENANT_UUID. There are no "global rows" to special-case: a
+ * NULL-tenant row is invisible to the root predicate, so it is invisible here.
+ *
+ * Includes are normalised first with Sequelize's own `_conformIncludes` and
+ * `_expandIncludeAll` (both idempotent; findAll and aggregate call them again
+ * after this hook) so a string alias, a bare model, an association or
+ * `{ all: true }` all arrive as `{ model, as, include }`.
+ */
+const applyTenantToIncludes = (options, model) => {
+  if (!options.include) {return;}
+
+  const scope = resolveScope(options);
+  if (scope.mode === "skip") {return;}
+  const value = scope.mode === "deny" ? NO_TENANT_UUID : scope.tenantId;
+
+  model._conformIncludes(options, model);
+  model._expandIncludeAll(options);
+  if (!options.include) {return;} // `include: []` conforms to no include at all
+  scopeIncludes(options.include, model, value);
 };
 
 /** Stamp the active tenant onto a row being created/updated. */
@@ -228,9 +348,11 @@ const assertSameTenant = (instance, model, options) => {
 const register = (db) => {
   db.addHook("beforeFind", function (options) {
     applyTenantWhere(options, this);
+    applyTenantToIncludes(options, this);
   });
   db.addHook("beforeCount", function (options) {
     applyTenantWhere(options, this);
+    applyTenantToIncludes(options, this);
   });
   db.addHook("beforeBulkUpdate", function (options) {
     applyTenantWhere(options, this);
@@ -260,6 +382,7 @@ module.exports = {
   tenantKeyOf,
   resolveScope,
   applyTenantWhere,
+  applyTenantToIncludes,
   applyTenantAssignment,
   applyTenantAssignmentBulk,
   assertUpsertTenant,

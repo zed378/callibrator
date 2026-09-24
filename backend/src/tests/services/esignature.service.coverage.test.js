@@ -59,6 +59,8 @@ const mockLogger = {
  * ESIGN_ENABLED / REQUIRE_REAUTHENTICATION are read once at module load, so the
  * env must be set before the require.
  */
+const mockPassIsValid = jest.fn(async () => ({ data: { valid: true } }));
+
 const loadService = ({ models = {}, env = {} } = {}) => {
   jest.resetModules();
   for (const [key, value] of Object.entries(env)) {
@@ -73,6 +75,9 @@ const loadService = ({ models = {}, env = {} } = {}) => {
   jest.doMock("../../middlewares/activityLog.middleware", () => ({
     logger: mockLogger,
   }));
+  // A-65 — signing re-authenticates through certificate.service's shared
+  // credential check; the password comparison is the boundary doubled here.
+  jest.doMock("../../services/auth.service", () => ({ passIsValid: mockPassIsValid }));
   return require(ESIGN_PATH);
 };
 
@@ -239,39 +244,58 @@ describe("eSignature.service (facade guard/error branches)", () => {
         models: { SignatureWorkflowStep: { findByPk: jest.fn().mockResolvedValue(null) } },
       });
 
-      await expect(svc.signDocument("missing", "u-1", {})).rejects.toMatchObject({
+      await expect(svc.signDocument("missing", "u-1", { authPayload: "pw" })).rejects.toMatchObject({
         status: 404,
         message: "Signature step not found",
       });
     });
 
-    it("400s when the step is not pending", async () => {
+    it("A-85: signing a step that is not pending is 409 with a state explanation", async () => {
       const svc = loadService({
         models: {
           SignatureWorkflowStep: {
-            findByPk: jest.fn().mockResolvedValue({ id: "step-1", status: "signed" }),
+            findByPk: jest.fn().mockResolvedValue({ id: "step-1", signerId: "u-1", status: "signed" }),
           },
         },
       });
 
-      await expect(svc.signDocument("step-1", "u-1", {})).rejects.toMatchObject({
-        status: 400,
-        message: "Step is not pending (status: signed)",
+      await expect(svc.signDocument("step-1", "u-1", { authPayload: "pw" })).rejects.toMatchObject({
+        status: 409,
+        message: 'This signature step is "signed" and cannot be signed: it has already been signed, and a step is signed once.',
       });
+    });
+
+    it.each([
+      ["waiting", "an earlier signer in this workflow has not signed yet"],
+      ["declined", "it was declined, which ends the step"],
+      ["expired", "only a pending step can be signed"],
+    ])("A-85: a %s step is 409 and the message says why", async (status, why) => {
+      const svc = loadService({
+        models: {
+          SignatureWorkflowStep: {
+            findByPk: jest.fn().mockResolvedValue({ id: "step-1", signerId: "u-1", status }),
+          },
+        },
+      });
+
+      const err = await svc.signDocument("step-1", "u-1", { authPayload: "pw" }).catch((e) => e);
+      expect(err.status).toBe(409);
+      expect(err.message).toContain(`"${status}"`);
+      expect(err.message).toContain(why);
     });
 
     it("401s when the re-authenticated user is not active", async () => {
       const svc = loadService({
         models: {
           SignatureWorkflowStep: {
-            findByPk: jest.fn().mockResolvedValue({ id: "step-1", status: "pending" }),
+            findByPk: jest.fn().mockResolvedValue({ id: "step-1", signerId: "u-1", status: "pending" }),
           },
           User: { findByPk: jest.fn().mockResolvedValue({ id: "u-1", status: "suspended" }) },
         },
         env: { REQUIRE_REAUTHENTICATION: "true" },
       });
 
-      await expect(svc.signDocument("step-1", "u-1", {})).rejects.toMatchObject({
+      await expect(svc.signDocument("step-1", "u-1", { authPayload: "pw" })).rejects.toMatchObject({
         status: 401,
         message: "Re-authentication required",
       });
@@ -281,22 +305,22 @@ describe("eSignature.service (facade guard/error branches)", () => {
       const svc = loadService({
         models: {
           SignatureWorkflowStep: {
-            findByPk: jest.fn().mockResolvedValue({ id: "step-1", status: "pending" }),
+            findByPk: jest.fn().mockResolvedValue({ id: "step-1", signerId: "u-1", status: "pending" }),
           },
           User: { findByPk: jest.fn().mockResolvedValue(null) },
         },
         env: { REQUIRE_REAUTHENTICATION: "true" },
       });
 
-      await expect(svc.signDocument("step-1", "u-1", {})).rejects.toMatchObject({ status: 401 });
+      await expect(svc.signDocument("step-1", "u-1", { authPayload: "pw" })).rejects.toMatchObject({ status: 401 });
     });
 
-    it("skips the re-authentication lookup when REQUIRE_REAUTHENTICATION=false", async () => {
+    it("still re-authenticates when REQUIRE_REAUTHENTICATION=false (A-65: the switch is gone)", async () => {
       const User = { findByPk: jest.fn() };
       const svc = loadService({
         models: {
           SignatureWorkflowStep: {
-            findByPk: jest.fn().mockResolvedValue({ id: "step-1", status: "pending", workflowId: "wf-1" }),
+            findByPk: jest.fn().mockResolvedValue({ id: "step-1", signerId: "u-1", status: "pending", workflowId: "wf-1" }),
           },
           SignatureWorkflow: { findByPk: jest.fn().mockResolvedValue(null) },
           User,
@@ -304,23 +328,23 @@ describe("eSignature.service (facade guard/error branches)", () => {
         env: { REQUIRE_REAUTHENTICATION: "false" },
       });
 
-      // Fails later (workflow missing), but the user lookup must not have run.
-      await expect(svc.signDocument("step-1", "u-1", {})).rejects.toMatchObject({ status: 404 });
-      expect(User.findByPk).not.toHaveBeenCalled();
+      // The user lookup runs regardless; with no user it is a 401.
+      await expect(svc.signDocument("step-1", "u-1", { authPayload: "pw" })).rejects.toMatchObject({ status: 401 });
+      expect(User.findByPk).toHaveBeenCalledWith("u-1");
     });
 
     it("404s when the parent workflow is missing", async () => {
       const svc = loadService({
         models: {
           SignatureWorkflowStep: {
-            findByPk: jest.fn().mockResolvedValue({ id: "step-1", status: "pending", workflowId: "wf-1" }),
+            findByPk: jest.fn().mockResolvedValue({ id: "step-1", signerId: "u-1", status: "pending", workflowId: "wf-1" }),
           },
           SignatureWorkflow: { findByPk: jest.fn().mockResolvedValue(null) },
           User: activeUser,
         },
       });
 
-      await expect(svc.signDocument("step-1", "u-1", {})).rejects.toMatchObject({
+      await expect(svc.signDocument("step-1", "u-1", { authPayload: "pw" })).rejects.toMatchObject({
         status: 404,
         message: "Workflow not found",
       });
@@ -335,6 +359,7 @@ describe("eSignature.service (facade guard/error branches)", () => {
             findByPk: jest.fn().mockResolvedValue({
               id: "step-1",
               status: "pending",
+              signerId: "u-1",
               workflowId: "wf-1",
               tenantId: "tenant-1",
               update: jest.fn().mockResolvedValue(true),
@@ -355,7 +380,7 @@ describe("eSignature.service (facade guard/error branches)", () => {
         },
       });
 
-      await svc.signDocument("step-1", "u-1", {});
+      await svc.signDocument("step-1", "u-1", { authPayload: "pw" });
 
       expect(SignatureRecord.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -385,6 +410,7 @@ describe("eSignature.service (facade guard/error branches)", () => {
             findByPk: jest.fn().mockResolvedValue({
               id: "step-1",
               status: "pending",
+              signerId: "u-1",
               workflowId: "wf-1",
               tenantId: "tenant-1",
               update: jest.fn().mockResolvedValue(true),
@@ -400,7 +426,7 @@ describe("eSignature.service (facade guard/error branches)", () => {
         },
       });
 
-      const result = await svc.signDocument("step-1", "u-1", {});
+      const result = await svc.signDocument("step-1", "u-1", { authPayload: "pw" });
 
       expect(result.signatureId).toBe("sig-1");
       // Workflow stays open; the next signer is advanced to pending.
@@ -421,6 +447,7 @@ describe("eSignature.service (facade guard/error branches)", () => {
             findByPk: jest.fn().mockResolvedValue({
               id: "step-1",
               status: "pending",
+              signerId: "u-1",
               workflowId: "wf-1",
               tenantId: "tenant-1",
               update: jest.fn().mockResolvedValue(true),
@@ -437,7 +464,7 @@ describe("eSignature.service (facade guard/error branches)", () => {
         },
       });
 
-      const result = await svc.signDocument("step-1", "u-1", {});
+      const result = await svc.signDocument("step-1", "u-1", { authPayload: "pw" });
 
       expect(result.signatureId).toBe("sig-1");
       expect(workflow.update).not.toHaveBeenCalled();
@@ -450,6 +477,7 @@ describe("eSignature.service (facade guard/error branches)", () => {
             findByPk: jest.fn().mockResolvedValue({
               id: "step-1",
               status: "pending",
+              signerId: "u-1",
               workflowId: "wf-1",
               tenantId: "tenant-1",
             }),
@@ -462,7 +490,7 @@ describe("eSignature.service (facade guard/error branches)", () => {
         },
       });
 
-      await expect(svc.signDocument("step-1", "u-1", {})).rejects.toMatchObject({
+      await expect(svc.signDocument("step-1", "u-1", { authPayload: "pw" })).rejects.toMatchObject({
         status: 500,
         message: "Failed to sign document",
       });
@@ -495,6 +523,7 @@ describe("eSignature.service (facade guard/error branches)", () => {
             findByPk: jest.fn().mockResolvedValue({
               id: "step-1",
               status: "pending",
+              signerId: "u-1",
               workflowId: "wf-1",
               tenantId: "tenant-1",
               update: jest.fn().mockResolvedValue(true),
@@ -524,7 +553,7 @@ describe("eSignature.service (facade guard/error branches)", () => {
       models.SignatureWorkflow.findByPk = jest.fn().mockResolvedValue(workflow);
       const svc = loadService({ models });
 
-      const result = await svc.signDocument("step-1", "u-1", {});
+      const result = await svc.signDocument("step-1", "u-1", { authPayload: "pw" });
 
       expect(result.signatureId).toBe("sig-1");
       expect(workflow.update).toHaveBeenCalledWith({ status: "completed" }, { transaction: "TX" });
@@ -541,7 +570,7 @@ describe("eSignature.service (facade guard/error branches)", () => {
       models.SignatureWorkflow.findByPk = jest.fn().mockResolvedValue(workflow);
       const svc = loadService({ models });
 
-      await svc.signDocument("step-1", "u-1", {});
+      await svc.signDocument("step-1", "u-1", { authPayload: "pw" });
 
       expect(mockLogger.warn).not.toHaveBeenCalledWith(
         "Failed to notify on workflow completion",
@@ -554,7 +583,7 @@ describe("eSignature.service (facade guard/error branches)", () => {
       models.SignatureWorkflow.findByPk = jest.fn().mockResolvedValue(workflow);
       const svc = loadService({ models });
 
-      await svc.signDocument("step-1", "u-1", {});
+      await svc.signDocument("step-1", "u-1", { authPayload: "pw" });
 
       expect(mockLogger.warn).not.toHaveBeenCalledWith(
         "Failed to notify on workflow completion",
@@ -566,7 +595,7 @@ describe("eSignature.service (facade guard/error branches)", () => {
       const { models } = buildModels({ workflowOnComplete: null, owner: null });
       const svc = loadService({ models });
 
-      await svc.signDocument("step-1", "u-1", {});
+      await svc.signDocument("step-1", "u-1", { authPayload: "pw" });
 
       // completeWorkflow bailed at `if (!workflow) return` — no owner lookup.
       expect(models.User.findOne).not.toHaveBeenCalled();

@@ -139,15 +139,21 @@ export const userService = {
     return response.data;
   },
 
-  updateProfile: async (data: {
+  // A-63: the caller's own profile goes to PATCH /users/:userId/profile — the
+  // backend's self bypass trusts only the path, never a body `userId`, so
+  // PATCH /users/edit now requires `users` update access.
+  updateProfile: async ({
+    userId,
+    ...fields
+  }: {
     userId: string;
     firstName?: string;
     lastName?: string;
     username?: string;
   }): Promise<User> => {
     const response = await api.patch<{ success: boolean; data: User }>(
-      "/api/v1/users/edit",
-      data,
+      `/api/v1/users/${encodeURIComponent(userId)}/profile`,
+      fields,
     );
     return response.data;
   },

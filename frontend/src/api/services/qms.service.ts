@@ -15,24 +15,42 @@ import { api } from "../client";
  * There are only these six. There is no per-id GET, no DELETE, and no /stats.
  * NCs live at /nc — NOT /non-conformances.
  *
- * List endpoints return data as
- * `{ total, page, limit, totalPages, nonConformances | capas }` — the rows are
- * under a named key, not `data.rows`, and there is no top-level `meta`.
+ * Every route is gated on the `qms` menu (A-66): reads need `read`, mutations
+ * `write`. A caller without it gets 403.
+ *
+ * List endpoints use the house envelope (backend qms.controller.js): the rows
+ * ARE `data` (an array), and pagination is a top-level `meta` sibling —
+ * `{ data: [...], meta: { total, page, limit, totalPages } }`. Not `data.rows`,
+ * not `data.nonConformances`, not `data.meta`.
  */
 
 const BASE = "/api/v1/qms";
 
 // ---------- Types ----------
 
-/** Backend persists uppercase. */
-export type NcStatus = "OPEN" | "IN_PROGRESS" | "CLOSED" | "CANCELLED";
-export type NcSeverity = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
-export type CapaStatus =
-  | "DRAFT"
-  | "IN_PROGRESS"
-  | "COMPLETED"
-  | "APPROVED"
-  | "CANCELLED";
+/**
+ * The backend ENUMs, verbatim (models/nonConformance.model.js,
+ * models/capa.model.js; enforced by validators/qms.validator.js). Anything
+ * else is a 400. These used to list IN_PROGRESS/CANCELLED for NCs and
+ * COMPLETED/APPROVED/CANCELLED for CAPAs — none of which the backend accepts.
+ */
+export const NC_STATUSES = [
+  "OPEN",
+  "UNDER_INVESTIGATION",
+  "CAPA_REQUIRED",
+  "CLOSED",
+] as const;
+export type NcStatus = (typeof NC_STATUSES)[number];
+export const NC_SEVERITIES = ["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;
+export type NcSeverity = (typeof NC_SEVERITIES)[number];
+export const CAPA_STATUSES = [
+  "DRAFT",
+  "OPEN",
+  "IN_PROGRESS",
+  "VERIFICATION",
+  "CLOSED",
+] as const;
+export type CapaStatus = (typeof CAPA_STATUSES)[number];
 
 export interface NcReporter {
   id: string;
@@ -139,43 +157,38 @@ export interface ListParams {
   status?: string;
 }
 
+interface PageMeta {
+  total?: number;
+  page?: number;
+  limit?: number;
+  totalPages?: number;
+}
+
 // Backend response envelope
 interface BackendResponse<T> {
   success: boolean;
   status: number;
   message: string;
   data: T;
+  /** Lists only — a SIBLING of `data`, never inside it. */
+  meta?: PageMeta;
 }
 
-/** Raw list payloads, keyed by resource. */
-interface RawNcList {
-  total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
-  nonConformances: NonConformance[];
-}
-
-interface RawCapaList {
-  total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
-  capas: Capa[];
-}
-
-/** Normalize the backend's named-key list into a uniform page. */
+/** Normalize the house list envelope into a uniform page. */
 const toPage = <T,>(
-  raw: { total?: number; page?: number; limit?: number; totalPages?: number },
-  rows: T[] | undefined,
+  response: BackendResponse<T[]> | undefined,
   params: ListParams,
-): QmsPage<T> => ({
-  rows: rows ?? [],
-  total: raw?.total ?? 0,
-  page: raw?.page ?? params.page ?? 1,
-  limit: raw?.limit ?? params.limit ?? 10,
-  totalPages: raw?.totalPages ?? 1,
-});
+): QmsPage<T> => {
+  const rows = Array.isArray(response?.data) ? response.data : [];
+  const meta = response?.meta ?? {};
+  return {
+    rows,
+    total: meta.total ?? rows.length,
+    page: meta.page ?? params.page ?? 1,
+    limit: meta.limit ?? params.limit ?? 10,
+    totalPages: meta.totalPages ?? 1,
+  };
+};
 
 // ---------- Service ----------
 
@@ -186,10 +199,11 @@ export const qmsService = {
   listNonConformances: async (
     params: ListParams = {},
   ): Promise<QmsPage<NonConformance>> => {
-    const response = await api.get<BackendResponse<RawNcList>>(`${BASE}/nc`, {
-      params,
-    });
-    return toPage(response.data, response.data?.nonConformances, params);
+    const response = await api.get<BackendResponse<NonConformance[]>>(
+      `${BASE}/nc`,
+      { params },
+    );
+    return toPage(response, params);
   },
 
   /** POST /qms/nc — ncNumber and status are assigned server-side. */
@@ -230,11 +244,10 @@ export const qmsService = {
 
   /** GET /qms/capa */
   listCapas: async (params: ListParams = {}): Promise<QmsPage<Capa>> => {
-    const response = await api.get<BackendResponse<RawCapaList>>(
-      `${BASE}/capa`,
-      { params },
-    );
-    return toPage(response.data, response.data?.capas, params);
+    const response = await api.get<BackendResponse<Capa[]>>(`${BASE}/capa`, {
+      params,
+    });
+    return toPage(response, params);
   },
 
   /** POST /qms/capa — requires ncId; capaNumber/status are server-side. */
@@ -260,9 +273,13 @@ export const qmsService = {
     qmsService.updateCapa(id, { status }),
 
   /**
-   * Convenience: close out a CAPA.
-   * The backend has no effectiveness-review concept; approval is recorded via
-   * approvedBy + verificationNotes.
+   * Convenience: approve and close out a CAPA.
+   *
+   * There is no APPROVED status — the backend CAPA enum ends at CLOSED, and it
+   * used to be sent "APPROVED", which the validator rejects with 400 (A-66).
+   * Approval is recorded by sending any `approvedBy`: the backend IGNORES the
+   * id and records the authenticated caller (A-62), and writes an APPROVE
+   * audit row. Pass the current user's id; it must be a UUID to validate.
    */
   approveCapa: (
     id: string,
@@ -270,7 +287,7 @@ export const qmsService = {
     verificationNotes?: string,
   ): Promise<Capa> =>
     qmsService.updateCapa(id, {
-      status: "APPROVED",
+      status: "CLOSED",
       approvedBy,
       verificationNotes,
     }),

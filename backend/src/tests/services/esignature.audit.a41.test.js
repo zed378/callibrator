@@ -55,6 +55,10 @@ jest.mock("../../models", () => ({
 jest.mock("../../config", () => ({
   db: { transaction: (...args) => mockRef.ledger.transaction(...args) },
 }));
+// A-65 — signing re-authenticates the signer; the password check is doubled.
+jest.mock("../../services/auth.service", () => ({
+  passIsValid: async () => ({ data: { valid: true } }),
+}));
 jest.mock("../../services/emailQueue.service", () => ({
   emailQueueService: { queueEmail: jest.fn(async () => undefined) },
 }));
@@ -64,7 +68,7 @@ const { emailQueueService } = require("../../services/emailQueue.service");
 const { logger } = require("../../middlewares/activityLog.middleware");
 
 const makeStep = (id, status, stepNumber) => {
-  const step = { id, status, stepNumber, workflowId: "wf-1", tenantId: "tenant-1", signerEmail: `${id}@x` };
+  const step = { id, status, stepNumber, workflowId: "wf-1", tenantId: "tenant-1", signerId: "u-1", signerEmail: `${id}@x` };
   step.update = (values, options) => {
     const row = mockRef.ledger.write("signature_workflow_steps", { id, ...values }, options);
     Object.assign(step, values);
@@ -76,6 +80,7 @@ const makeStep = (id, status, stepNumber) => {
 const sign = () =>
   eSignatureService.signDocument("step-1", "u-1", {
     authenticationMethod: "password",
+    authPayload: "pw",
     reason: "Approved by QA",
     ipAddress: "10.0.0.1",
     userAgent: "UA",

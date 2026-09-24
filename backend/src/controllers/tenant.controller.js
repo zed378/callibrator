@@ -11,6 +11,24 @@ const {
   tenantIdSchema,
   validate,
 } = require("../validators/tenant.validator");
+const { auditActor } = require("../utils/auditActor.util");
+
+/**
+ * A-63. The principal a tenant mutation is checked against: the audit actor
+ * (A-41) plus whether it is a super admin. Taken from the authenticated user
+ * only — never from the body, the query or an x-tenant-* header.
+ *
+ * @param {import("express").Request} req
+ * @returns {{userId: string|null, tenantId: string|null, ipAddress: string|null,
+ *   userAgent: string|null, actorIsSuperAdmin: boolean}}
+ */
+const tenantActor = (req) => {
+  const roleName = req.user && req.user.role && req.user.role.name;
+  return {
+    ...auditActor(req),
+    actorIsSuperAdmin: roleName === "SUPER_ADMIN" || roleName === "SUPERADMIN",
+  };
+};
 
 exports.getAllTenants = asyncHandler(async (req, res) => {
   const validated = validate(req.query, getAllTenantsQuery);
@@ -79,6 +97,9 @@ exports.createTenant = asyncHandler(async (req, res, next) => {
     const uploadedFilename = req.file ? req.uploadFilename : null;
 
     const inputData = { ...validated };
+    // A-79: the logo is only ever the file this request uploaded, never a
+    // filename from the body (which could name another tenant's file).
+    delete inputData.logo;
 
     if (uploadedFilename) {
       inputData.logo = uploadedFilename;
@@ -111,25 +132,61 @@ exports.createTenant = asyncHandler(async (req, res, next) => {
   }
 });
 
-exports.updateTenant = asyncHandler(async (req, res) => {
-  const validated = validate(
-    { ...req.params, ...req.body },
-    updateTenantSchema,
-  );
-  const updatedBy = req.user?.id;
-  const uploadedFilename = req.file ? req.uploadFilename : null;
-
-  const inputData = { ...validated };
-
-  if (uploadedFilename) {
-    inputData.logo = uploadedFilename;
+/**
+ * A-79. Remove the file THIS request uploaded, after the update was refused or
+ * failed. Never throws: the original error is what the caller must see.
+ *
+ * @param {import("express").Request} req
+ */
+const discardUploadedLogo = async (req) => {
+  if (!req.file) {
+    return;
   }
+  try {
+    await require("../utils/upload.util").deleteUpload(req.uploadFilename, "uploads/tenant");
+  } catch (deleteErr) {
+    require("../middlewares/activityLog.middleware").logger.warn(
+      `Failed to delete uploaded file after failure: ${req.uploadFilename}`,
+      deleteErr,
+    );
+  }
+};
 
-  const result = await tenantService.updateTenant(
-    validated.tenantId,
-    inputData,
-    updatedBy,
-  );
+exports.updateTenant = asyncHandler(async (req, res) => {
+  let result;
+  try {
+    const validated = validate(
+      { ...req.params, ...req.body },
+      updateTenantSchema,
+    );
+    const updatedBy = req.user?.id;
+    const uploadedFilename = req.file ? req.uploadFilename : null;
+
+    const inputData = { ...validated };
+    // A-79: the logo is only ever the file this request uploaded. A body
+    // `logo` could name another tenant's file — which the next upload would
+    // then delete as "the old logo".
+    delete inputData.logo;
+
+    if (uploadedFilename) {
+      inputData.logo = uploadedFilename;
+    }
+
+    // A-63: who is asking decides WHICH tenant may be changed and WHICH fields.
+    // Derived from the authenticated principal, never from the request.
+    // It throws for every refusal (400, 403, 404, 409) and for a failed audit
+    // insert, all BEFORE the commit — so a throw means nothing was committed
+    // and the uploaded file belongs to no tenant.
+    result = await tenantService.updateTenant(
+      validated.tenantId,
+      inputData,
+      updatedBy,
+      tenantActor(req),
+    );
+  } catch (err) {
+    await discardUploadedLogo(req);
+    throw err;
+  }
 
   if (result.status === 404) {
     return res.status(404).json({

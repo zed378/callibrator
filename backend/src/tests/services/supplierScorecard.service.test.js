@@ -95,7 +95,8 @@ describe("supplierScorecard.service", () => {
         order: [["evaluationDate", "DESC"]],
         include: [
           { model: Vendor, as: "vendor", attributes: ["id", "name"] },
-          { model: User, as: "evaluator", attributes: ["id", "firstName", "lastName", "email"] },
+          // A-90: LEFT JOIN — see includes.a90.test.js for the SQL.
+          { model: User, as: "evaluator", attributes: ["id", "firstName", "lastName", "email"], required: false },
         ],
       });
       expect(result).toEqual({
@@ -151,7 +152,8 @@ describe("supplierScorecard.service", () => {
         where: { id: "s1", tenantId: "tenant123" },
         include: [
           { model: Vendor, as: "vendor", attributes: ["id", "name"] },
-          { model: User, as: "evaluator", attributes: ["id", "firstName", "lastName", "email"] },
+          // A-90: LEFT JOIN — see includes.a90.test.js for the SQL.
+          { model: User, as: "evaluator", attributes: ["id", "firstName", "lastName", "email"], required: false },
         ],
       });
       expect(result).toEqual(mock);

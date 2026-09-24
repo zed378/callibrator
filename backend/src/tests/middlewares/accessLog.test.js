@@ -121,22 +121,24 @@ describe("accessLog middleware", () => {
       expect(mockTokens["user-id"]({ user: { id: "u-1" } })).toBe("u-1");
     });
 
-    it("real-ip token should prefer cf-connecting-ip", () => {
-      const req = { headers: { "cf-connecting-ip": "1.1.1.1" } };
-      expect(mockTokens["real-ip"](req)).toBe("1.1.1.1");
-    });
-
-    it("real-ip token should fall back to x-forwarded-for", () => {
+    it("A-16: real-ip token is req.ip, whatever address headers the client sent", () => {
       const req = {
-        headers: { "x-forwarded-for": "2.2.2.2" },
+        headers: { "cf-connecting-ip": "1.1.1.1", "x-forwarded-for": "2.2.2.2" },
         ip: "3.3.3.3",
       };
-      expect(mockTokens["real-ip"](req)).toBe("2.2.2.2");
+      expect(mockTokens["real-ip"](req)).toBe("3.3.3.3");
     });
 
-    it("real-ip token should fall back to req.ip", () => {
-      const req = { headers: {}, ip: "3.3.3.3" };
-      expect(mockTokens["real-ip"](req)).toBe("3.3.3.3");
+    it("real-ip token falls back to the socket address, never a header", () => {
+      const req = {
+        headers: { "x-forwarded-for": "2.2.2.2" },
+        socket: { remoteAddress: "4.4.4.4" },
+      };
+      expect(mockTokens["real-ip"](req)).toBe("4.4.4.4");
+    });
+
+    it("real-ip token is a dash when there is no address at all", () => {
+      expect(mockTokens["real-ip"]({ headers: {} })).toBe("-");
     });
   });
 

@@ -117,16 +117,41 @@ describe("eSignatureService", () => {
   });
 
   describe("sign and verify", () => {
-    it("sends stepId in the body (the route has no path param)", async () => {
-      mockedApi.post.mockResolvedValueOnce(envelope({ id: "s1" }));
-      await eSignatureService.signDocument({
+    it("sends stepId and the re-authentication credential in the body, and unwraps { signatureId, certificate }", async () => {
+      // data is eSignature.service#signDocument's return value, verbatim.
+      const signed = {
+        signatureId: "sig-1",
+        certificate: {
+          signatureId: "sig-1",
+          workflowId: "wf-1",
+          documentId: "doc-1",
+          signerId: "u-1",
+          signedAt: "2026-09-24T08:00:00.000Z",
+          signatureHash: "ab".repeat(32),
+          signatureValue: "c2ln",
+          signingKeyId: "key-1",
+          signatureScheme: "esig-v2-rsa-sha256",
+          algorithm: "RS256",
+          ipAddress: "203.0.113.9",
+          userAgent: "Mozilla/5.0",
+          verificationUrl: "/api/v1/esignature/verify/sig-1",
+        },
+      };
+      mockedApi.post.mockResolvedValueOnce(envelope(signed));
+      const res = await eSignatureService.signDocument({
         stepId: "step-1",
         authenticationMethod: "mfa",
+        authPayload: "123456",
+        reason: "Reviewed and approved",
       });
       expect(mockedApi.post).toHaveBeenCalledWith(`${BASE}/sign`, {
         stepId: "step-1",
         authenticationMethod: "mfa",
+        authPayload: "123456",
+        reason: "Reviewed and approved",
       });
+      expect(res.signatureId).toBe("sig-1");
+      expect(res.certificate.signerId).toBe("u-1");
     });
 
     it("verifies by signatureId in the body", async () => {

@@ -20,10 +20,16 @@ import {
   eSignatureService,
   type KeyPair,
   type Signer,
+  type SignatureStep,
   type SignatureWorkflow,
   type VerifyResult,
 } from "@/api/services/eSignature.service";
 import { useToastStore } from "@/stores/toastStore";
+import { useAuthStore } from "@/stores/authStore";
+import {
+  ESignatureFields,
+  type ESignatureFormFields,
+} from "@/app/dashboard/calibration/components/ESignatureFields";
 
 type Tab = "keys" | "workflows" | "verify";
 
@@ -47,6 +53,15 @@ const statusVariant = (
 };
 
 const emptySigner = (): Signer => ({ userId: "", email: "", name: "" });
+
+const emptySignForm = (): ESignatureFormFields => ({
+  authMethod: "password",
+  authPayload: "",
+  meaning: "",
+});
+
+const signerLabel = (step: SignatureStep) =>
+  step.signerName || step.signerEmail || step.signerId || "signer";
 
 function TabButton({
   label,
@@ -74,6 +89,7 @@ function TabButton({
 
 export default function ESignaturePage() {
   const addToast = useToastStore((s) => s.addToast);
+  const currentUserId = useAuthStore((s) => s.user?.id);
   const [tab, setTab] = useState<Tab>("keys");
 
   // Shared
@@ -94,6 +110,10 @@ export default function ESignaturePage() {
     signers: [emptySigner()],
   });
   const [detail, setDetail] = useState<SignatureWorkflow | null>(null);
+  // A-65 — signing re-authenticates: the step being signed and the signer's
+  // credential, collected inline under that step.
+  const [signingStepId, setSigningStepId] = useState<string | null>(null);
+  const [signForm, setSignForm] = useState<ESignatureFormFields>(emptySignForm);
 
   // Verify
   const [verifyId, setVerifyId] = useState("");
@@ -134,7 +154,17 @@ export default function ESignaturePage() {
   }, [loadKeys, loadWorkflows]);
 
   useEffect(() => {
-    void loadAll();
+    // Defer past the synchronous effect body — loadAll() writes state, and
+    // doing that synchronously in an effect cascades renders
+    // (set-state-in-effect). Same pattern as dashboard/metered-billing.
+    let active = true;
+    (async () => {
+      await Promise.resolve();
+      if (active) await loadAll();
+    })();
+    return () => {
+      active = false;
+    };
   }, [loadAll]);
 
   // ---- Key-pair actions ----
@@ -223,14 +253,47 @@ export default function ESignaturePage() {
     }
   };
 
-  const signStep = async (stepId: string) => {
+  const startSigning = (stepId: string) => {
+    setSignForm(emptySignForm());
+    setSigningStepId(stepId);
+  };
+
+  const cancelSigning = () => {
+    setSigningStepId(null);
+    setSignForm(emptySignForm());
+  };
+
+  const closeDetail = () => {
+    cancelSigning();
+    setDetail(null);
+  };
+
+  const submitSignature = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!signingStepId) return;
+    if (!signForm.authPayload || !signForm.meaning.trim()) {
+      addToast({
+        type: "warning",
+        title: "Enter your credential and the meaning of your signature",
+      });
+      return;
+    }
+    const stepId = signingStepId;
     setBusy(`sign-${stepId}`);
     try {
-      await eSignatureService.signDocument({ stepId });
+      await eSignatureService.signDocument({
+        stepId,
+        authenticationMethod: signForm.authMethod,
+        authPayload: signForm.authPayload,
+        reason: signForm.meaning.trim(),
+      });
       addToast({ type: "success", title: "Document signed" });
+      cancelSigning();
       if (detail) await openDetail(detail.id);
       await loadWorkflows();
     } catch (err) {
+      // Never keep a rejected credential in the form.
+      setSignForm((f) => ({ ...f, authPayload: "" }));
       addToast({
         type: "error",
         title: "Could not sign",
@@ -581,7 +644,7 @@ export default function ESignaturePage() {
         {/* Workflow detail dialog */}
         <Dialog
           isOpen={!!detail}
-          onClose={() => setDetail(null)}
+          onClose={closeDetail}
           title={detail?.subject || "Workflow"}
           size="lg"
         >
@@ -600,29 +663,75 @@ export default function ESignaturePage() {
               )}
               <div className="space-y-2">
                 <span className="text-sm font-medium">Steps</span>
-                {(detail.steps ?? []).map((step) => (
-                  <div
-                    key={step.id}
-                    className="flex items-center justify-between rounded-md border border-border p-3"
-                  >
-                    <div>
-                      <div className="text-sm">{step.userId || "signer"}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {step.status ?? "waiting"} · {fmt(step.signedAt)}
+                {(detail.steps ?? []).map((step) => {
+                  // Only the step's own signer can sign it; the backend
+                  // answers anyone else with 403 (A-65).
+                  const isMine =
+                    !!currentUserId && step.signerId === currentUserId;
+                  const canSign = step.status === "pending" && isMine;
+                  return (
+                    <div
+                      key={step.id}
+                      className="rounded-md border border-border p-3 space-y-3"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-sm">{signerLabel(step)}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {step.status ?? "waiting"} · {fmt(step.signedAt)}
+                          </div>
+                        </div>
+                        {canSign && signingStepId !== step.id && (
+                          <Button
+                            size="sm"
+                            onClick={() => startSigning(step.id)}
+                            leftIcon={<ShieldCheck className="h-4 w-4" />}
+                          >
+                            Sign
+                          </Button>
+                        )}
+                        {step.status === "pending" && !isMine && (
+                          <span className="text-xs text-muted-foreground">
+                            Awaiting {signerLabel(step)}
+                          </span>
+                        )}
                       </div>
+                      {canSign && signingStepId === step.id && (
+                        <form
+                          onSubmit={submitSignature}
+                          className="space-y-3"
+                          aria-label="Sign this step"
+                        >
+                          <ESignatureFields
+                            form={signForm}
+                            setForm={setSignForm}
+                            meaningOptions={[
+                              "Reviewed and approved",
+                              "Authored",
+                              "Verified",
+                            ]}
+                          />
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={cancelSigning}
+                            >
+                              Cancel
+                            </Button>
+                            <Button
+                              type="submit"
+                              isLoading={busy === `sign-${step.id}`}
+                              leftIcon={<ShieldCheck className="h-4 w-4" />}
+                            >
+                              Sign
+                            </Button>
+                          </div>
+                        </form>
+                      )}
                     </div>
-                    {step.status === "pending" && (
-                      <Button
-                        size="sm"
-                        isLoading={busy === `sign-${step.id}`}
-                        onClick={() => signStep(step.id)}
-                        leftIcon={<ShieldCheck className="h-4 w-4" />}
-                      >
-                        Sign
-                      </Button>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
                 {(detail.steps ?? []).length === 0 && (
                   <p className="text-sm text-muted-foreground">No steps.</p>
                 )}

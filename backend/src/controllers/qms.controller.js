@@ -1,8 +1,16 @@
 const qmsService = require("../services/qms.service");
 const { asyncHandlerWithMapping } = require("../utils/controllerWrapper.util");
+// Who did it, from where — for the audit row the service writes inside its
+// transaction (A-66, the A-41 pattern).
+const { auditActor } = require("../utils/auditActor.util");
 
 exports.createNC = asyncHandlerWithMapping(async (req, res) => {
-  const result = await qmsService.createNC(req.user.tenantId, req.user.id, req.body || {});
+  const result = await qmsService.createNC(
+    req.user.tenantId,
+    req.user.id,
+    req.body || {},
+    auditActor(req),
+  );
   return {
     success: true,
     status: 201,
@@ -28,7 +36,12 @@ exports.getNCs = asyncHandlerWithMapping(async (req, res) => {
 }, {});
 
 exports.updateNC = asyncHandlerWithMapping(async (req, res) => {
-  const result = await qmsService.updateNC(req.user.tenantId, req.params.id, req.body);
+  const result = await qmsService.updateNC(
+    req.user.tenantId,
+    req.params.id,
+    req.body,
+    auditActor(req),
+  );
   return {
     success: true,
     status: 200,
@@ -40,7 +53,7 @@ exports.updateNC = asyncHandlerWithMapping(async (req, res) => {
 });
 
 exports.createCapa = asyncHandlerWithMapping(async (req, res) => {
-  const result = await qmsService.createCapa(req.user.tenantId, req.body || {});
+  const result = await qmsService.createCapa(req.user.tenantId, req.body || {}, auditActor(req));
   return {
     success: true,
     status: 201,
@@ -66,12 +79,12 @@ exports.getCapas = asyncHandlerWithMapping(async (req, res) => {
 
 exports.updateCapa = asyncHandlerWithMapping(async (req, res) => {
   // A-62 — the caller is passed as the actor: a CAPA's approver is whoever
-  // made the request, never an id named in the body.
+  // made the request (auditActor(req).userId), never an id named in the body.
   const result = await qmsService.updateCapa(
     req.user.tenantId,
     req.params.id,
     req.body,
-    req.user.id,
+    auditActor(req),
   );
   return {
     success: true,

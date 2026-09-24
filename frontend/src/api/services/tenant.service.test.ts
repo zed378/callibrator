@@ -311,4 +311,48 @@ describe("tenantService", () => {
   // tenantBackupService.create, omitted the required `name` (a guaranteed
   // 400), and returned a `downloadUrl` the endpoint never sends. Backup
   // creation is covered by tenantBackup.service.test.ts.
+  // A-76: GET /tenants/all is super-admin only. Everyone else must be asked
+  // for their own tenant, never for the platform-wide list.
+  describe("getVisible (A-76)", () => {
+    it("asks a non-super-admin for their own tenant only, never /tenants/all", async () => {
+      (api.post as jest.Mock).mockResolvedValue({
+        success: true,
+        data: { id: "tenant-a", name: "Hospital A", code: "HOSP-A" },
+      });
+
+      const result = await tenantService.getVisible(1, 25, undefined, "tenant-a");
+
+      expect(api.get).not.toHaveBeenCalled();
+      expect(api.post).toHaveBeenCalledWith("/api/v1/tenants/detail", {
+        tenantId: "tenant-a",
+      });
+      expect(result.data.map((t) => t.id)).toEqual(["tenant-a"]);
+      expect(result.meta).toEqual({ total: 1, page: 1, limit: 25, totalPages: 1 });
+    });
+
+    it("returns an empty list when the own-tenant lookup yields nothing", async () => {
+      (api.post as jest.Mock).mockResolvedValue({ success: true, data: null });
+
+      const result = await tenantService.getVisible(1, 10, undefined, "tenant-a");
+
+      expect(result.data).toEqual([]);
+      expect(result.meta.total).toBe(0);
+    });
+
+    it("lists every tenant for a super admin (no own-tenant id)", async () => {
+      (api.get as jest.Mock).mockResolvedValue({
+        success: true,
+        message: "ok",
+        data: [],
+        meta: { total: 0, page: 2, limit: 10, totalPages: 0 },
+      });
+
+      await tenantService.getVisible(2, 10, "x", null);
+
+      expect(api.get).toHaveBeenCalledWith("/api/v1/tenants/all", {
+        params: { page: 2, limit: 10, find: "x" },
+      });
+      expect(api.post).not.toHaveBeenCalled();
+    });
+  });
 });

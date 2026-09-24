@@ -10,6 +10,9 @@ jest.mock("../../models", () => ({
   Roles: { findOne: jest.fn() },
 }));
 jest.mock("../../utils/password.util");
+// A-72: loginUser/loginMfa write a LOGIN audit row; its contract is covered
+// with the real audit.service in auth.loginAudit.a72.test.js.
+jest.mock("../../services/audit.service", () => ({ logAction: jest.fn() }));
 jest.mock("../../utils/jwt.util");
 jest.mock("../../services/session.service");
 jest.mock("../../services/emailQueue.service");
@@ -226,6 +229,11 @@ describe("auth.service", () => {
   // LOGIN
   // ========================
   describe("loginUser", () => {
+    beforeEach(() => {
+      // A-72: the session and its LOGIN row are written in one transaction.
+      db.transaction.mockImplementation(async (fn) => fn({ id: "tx" }));
+    });
+
     it("should login with username and return opaque refresh token", async () => {
       const mockUser = {
         id: "user-1",
@@ -234,6 +242,7 @@ describe("auth.service", () => {
         password: "hashed-password",
         isActive: true,
         tenantId: "tenant-1",
+        tenant: { id: "tenant-1", status: "active" }, // A-83
         failedLoginAttempts: 0,
         lockedUntil: null,
         update: jest.fn().mockResolvedValue({}),
@@ -956,7 +965,7 @@ describe("auth.service", () => {
         Roles: { findOne: jest.fn() },
       }));
       jest.doMock("../../config", () => ({
-        db: { transaction: jest.fn() },
+        db: { transaction: jest.fn(async (fn) => fn({ id: "tx" })) },
       }));
       jest.doMock("../../utils/jwt.util", () => ({
         generateAccessToken: jest.fn().mockReturnValue("access-token"),
@@ -979,7 +988,10 @@ describe("auth.service", () => {
         firstName: "Test",
         lastName: "User",
         tenantId: "tenant-1",
+        tenant: { id: "tenant-1", status: "active" }, // A-83
         roleId: "role-1",
+        isActive: true,
+        status: "ACTIVE",
         mfaEnabled: true,
         mfaSecret: "secret",
         lastLoginAt: null,
@@ -1020,12 +1032,13 @@ describe("auth.service", () => {
         Roles: { findOne: jest.fn() },
       }));
       jest.doMock("../../config", () => ({
-        db: { transaction: jest.fn() },
+        db: { transaction: jest.fn(async (fn) => fn({ id: "tx" })) },
       }));
 
       const { Users: ImportedUsers } = require("../../models");
       const mockUser = {
         id: "user-1",
+        isActive: true,
         mfaEnabled: true,
         mfaSecret: "secret",
         update: jest.fn().mockResolvedValue({}),
@@ -1052,7 +1065,7 @@ describe("auth.service", () => {
         Roles: { findOne: jest.fn() },
       }));
       jest.doMock("../../config", () => ({
-        db: { transaction: jest.fn() },
+        db: { transaction: jest.fn(async (fn) => fn({ id: "tx" })) },
       }));
 
       const { Users: ImportedUsers } = require("../../models");

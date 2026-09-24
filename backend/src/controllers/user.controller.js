@@ -1,9 +1,11 @@
 const userService = require("../services/user.service");
 const { asyncHandler } = require("../utils/controllerWrapper.util");
 const { success } = require("../utils/response.util");
+const { auditActor } = require("../utils/auditActor.util");
 const {
   createUserSchema,
   updateUserSchema,
+  updateProfileSchema,
   // The validator exports this as `updateRoleSchema` ({ userId, roleId }).
   updateRoleSchema: updateUserRoleSchema,
   usernameCheckSchema: checkUsernameSchema,
@@ -32,12 +34,19 @@ const handleValidation = (result, res, status = 400) => {
  * Tenant scope and privilege are taken from the verified token/session,
  * never from client-supplied query/body values.
  */
-const getActor = (req) => ({
-  actorTenantId: req.user?.tenantId || null,
-  actorIsSuperAdmin:
-    req.user?.role?.name === "SUPER_ADMIN" ||
-    req.user?.role?.name === "SUPERADMIN",
-});
+const getActor = (req) => {
+  // A-77: the IP and user agent go into the audit row the service writes
+  // inside its transaction.
+  const { ipAddress, userAgent } = auditActor(req);
+  return {
+    actorTenantId: req.user?.tenantId || null,
+    actorIsSuperAdmin:
+      req.user?.role?.name === "SUPER_ADMIN" ||
+      req.user?.role?.name === "SUPERADMIN",
+    ipAddress,
+    userAgent,
+  };
+};
 
 exports.getAllUsers = asyncHandler(async (req, res) => {
   const { error, value } = validateUser(req.query, getAllUsersQuery);
@@ -154,6 +163,33 @@ exports.editUser = asyncHandler(async (req, res) => {
     result.data,
     null,
     result.message || "User updated successfully",
+    result.status || 200,
+  );
+});
+
+/**
+ * A-63. PATCH /users/:userId/profile — edit a user's own profile fields.
+ *
+ * The target comes from the PATH, and the path param wins over any body
+ * `userId`, so the id the `checkSelf` gate compared is the id edited. Only
+ * username / firstName / lastName reach the service (updateProfileSchema).
+ */
+exports.updateProfile = asyncHandler(async (req, res) => {
+  const validated = handleValidation(
+    validateUser({ ...req.body, userId: req.params.userId }, updateProfileSchema),
+    res,
+  );
+  const result = await userService.editUser({
+    ...validated,
+    updatedBy: req.user.id,
+    ...getActor(req),
+  });
+
+  success(
+    res,
+    result.data,
+    null,
+    result.message || "Profile updated successfully",
     result.status || 200,
   );
 });

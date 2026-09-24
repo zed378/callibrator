@@ -71,6 +71,35 @@ describe("calibrationRecords.service", () => {
   });
 
   describe("fetchCalibrationRecords", () => {
+    // A-90: the includes are LEFT JOINs (SQL asserted in includes.a90.test.js);
+    // a record whose device and performer are gone is listed with both null.
+    it("A-90: lists a record whose device and performer are null, asking for LEFT joins", async () => {
+      const orphan = { id: "record-1", device: null, performer: null };
+      CalibrationRecord.findAndCountAll.mockResolvedValueOnce({ rows: [orphan], count: 1 });
+
+      const result = await fetchCalibrationRecords({ tenantId: "tenant-1" });
+
+      expect(result.data.rows).toEqual([orphan]);
+      expect(result.data.meta.total).toBe(1);
+      const { include } = CalibrationRecord.findAndCountAll.mock.calls[0][0];
+      expect(include.map((i) => [i.association, i.required])).toEqual([
+        ["device", false],
+        ["performer", false],
+      ]);
+    });
+
+    it("A-90: the detail of a record whose device and performer are null is found, not a 404", async () => {
+      const orphan = { id: "record-1", device: null, performer: null };
+      CalibrationRecord.findOne.mockResolvedValueOnce(orphan);
+
+      const result = await fetchSpecificCalibrationRecord("tenant-1", "record-1");
+
+      expect(result.status).toBe(200);
+      expect(result.data).toBe(orphan);
+      const { include } = CalibrationRecord.findOne.mock.calls[0][0];
+      expect(include.every((i) => i.required === false)).toBe(true);
+    });
+
     it("should fetch records successfully without optional filters", async () => {
       CalibrationRecord.findAndCountAll.mockResolvedValueOnce({
         rows: [{ id: "record-1" }],

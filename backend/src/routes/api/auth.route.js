@@ -10,10 +10,13 @@ const router = express.Router();
 const { auth } = require("../../middlewares/auth.middleware");
 const { validate } = require("../../middlewares/validation.middleware");
 const { ssoExchangeSchema } = require("../../validators/sso.validator");
+// A-67: authPreCheck refuses a locked-out caller and attaches the rate-limit
+// context; the CONTROLLER records the outcome against it (auth.controller.js
+// `withAuthOutcome`). There is no post-handler middleware — one mounted before
+// the handler sees status 200, one mounted after it never runs.
 const {
   authPreCheck,
-  authPostFailure,
-  authPostSuccess,
+  mfaLoginPreCheck,
 } = require("../../services/rateLimiter.redis.service");
 
 const {
@@ -74,9 +77,7 @@ const {
 router.post(
   "/register",
   authPreCheck("register"),
-  authPostFailure("register"),
   register,
-  authPostSuccess("register"),
 );
 
 /* ------------------------------------------------------------------ */
@@ -176,9 +177,7 @@ router.get("/activation", activation);
 router.post(
   "/login",
   authPreCheck("login"),
-  authPostFailure("login"),
   login,
-  authPostSuccess("login"),
 );
 
 /* ------------------------------------------------------------------ */
@@ -220,9 +219,7 @@ router.post(
 router.post(
   "/send-otp",
   authPreCheck("forgotPassword"),
-  authPostFailure("forgotPassword"),
   sendOTP,
-  authPostSuccess("forgotPassword"),
 );
 
 /* ------------------------------------------------------------------ */
@@ -264,9 +261,7 @@ router.post(
 router.post(
   "/reset-password",
   authPreCheck("resetPassword"),
-  authPostFailure("resetPassword"),
   resetPassword,
-  authPostSuccess("resetPassword"),
 );
 
 /* ------------------------------------------------------------------ */
@@ -930,7 +925,18 @@ router.post("/impersonate/exit", auth, logout);
  *         description: MFA code and temporary token are required
  *       401:
  *         description: Invalid MFA code, or invalid/expired login token
+ *       403:
+ *         description: The account or its tenant is suspended
+ *       423:
+ *         description: The account is locked
+ *       429:
+ *         description: >
+ *           Too many wrong codes — for this user (5 per 15 minutes, across any
+ *           number of MFA tokens), for this MFA token (3), or from this IP
+ *           when per-IP counting is enabled
  */
-router.post("/mfa/login", loginMfa);
+// A-81: rate-limited. mfaLoginPreCheck refuses a locked user, token or address
+// and the handler records the outcome (withAuthOutcome).
+router.post("/mfa/login", mfaLoginPreCheck(), loginMfa);
 
 module.exports = router;

@@ -21,6 +21,8 @@ const {
   signDocument,
   verifySignature,
   getSignatureHistory,
+  getSignerWorkflows,
+  getSignerWorkflow,
 } = require("../../controllers/eSignature.controller");
 const {
   createKeyPair: createKeyPairValidator,
@@ -49,10 +51,10 @@ const { MENU_SLUGS } = require("../../constants");
 // write for mutation). `qms:write` is held by SUPERADMIN, HEALTHCARE ADMIN and
 // CALIBRATOR ADMIN; ENGINEERING MANAGER holds read.
 //
-// Deliberately NOT changed here: POST /sign, POST /verify and GET /history.
+// Deliberately NOT gated on `qms`: POST /sign, POST /verify and GET /history.
 // A signer is whoever the workflow names — commonly a TECHNICIAN with no `qms`
 // menu — so gating /sign on `qms:write` would make the workflows unsignable.
-// Those three are A-28-adjacent and remain on `auth` (+ `denyApiKey` on /sign).
+// Those three have their own gate, `esignature` (A-84, at the routes below).
 
 /**
  * @swagger
@@ -417,12 +419,95 @@ router.delete(
   deleteWorkflow,
 );
 
+// A-91 — the signer's own view. GET /workflows and GET /workflows/:id are
+// management and stay on `qms`, which technicians and most other roles do not
+// hold; a workflow naming one of them could not be opened, so it could never
+// complete. These two are gated on `esignature` (read) — the same menu as
+// /sign — and the service returns only workflows in which a step names the
+// caller. A workflow they are not named in is 404, like another tenant's.
+
+/**
+ * @swagger
+ * /api/v1/esignature/my-workflows:
+ *   get:
+ *     summary: Workflows in which the caller is a named signer
+ *     description: >-
+ *       Lists the tenant's signature workflows in which one of the steps names
+ *       the caller as its signer, newest first, each with its steps ordered by
+ *       stepNumber. Steps carry no IP address or user agent. Requires read
+ *       access to `esignature` (not `qms`).
+ *     tags: [ESignature]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: stepStatus
+ *         description: Only workflows where the caller's own step has this status ("pending" = awaiting my signature).
+ *         schema:
+ *           type: string
+ *           enum: [waiting, pending, signed, declined]
+ *     responses:
+ *       200:
+ *         description: Rows in `data`, `meta.total` the count
+ *       400:
+ *         description: Unknown stepStatus
+ *       403:
+ *         description: The caller lacks `esignature` read
+ */
+router.get(
+  "/my-workflows",
+  auth,
+  dynamicAccess(MENU_SLUGS.ESIGNATURE, "read"),
+  getSignerWorkflows,
+);
+
+/**
+ * @swagger
+ * /api/v1/esignature/my-workflows/{workflowId}:
+ *   get:
+ *     summary: One workflow in which the caller is a named signer
+ *     description: >-
+ *       The workflow and its ordered steps, for a caller named as a signer in
+ *       it. Requires read access to `esignature` (not `qms`).
+ *     tags: [ESignature]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: workflowId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: The workflow in `data`
+ *       403:
+ *         description: The caller lacks `esignature` read
+ *       404:
+ *         description: >-
+ *           Not found — including a workflow in another tenant, and one that
+ *           does not name the caller as a signer
+ */
+router.get(
+  "/my-workflows/:workflowId",
+  auth,
+  dynamicAccess(MENU_SLUGS.ESIGNATURE, "read"),
+  validateUuid("workflowId"),
+  getSignerWorkflow,
+);
+
 /**
  * @swagger
  * /api/v1/e-signature/sign:
  *   post:
- *     summary: Sign a document
- *     description: Signs a document using the user's key pair and records the signature. Complies with 21 CFR Part 11 Section 11.10(a). Requires write access to ESignature.
+ *     summary: Sign a workflow step
+ *     description: >-
+ *       Signs one workflow step with the tenant's key pair (21 CFR Part 11).
+ *       Only the step's assigned signer may sign it (403 otherwise; a step in
+ *       another tenant is 404), and the signer re-authenticates with their
+ *       password or MFA code (401 when wrong). The IP address and user agent
+ *       recorded are the connection's; body values are ignored (A-65).
  *     tags: [ESignature]
  *     security:
  *       - bearerAuth: []
@@ -433,22 +518,29 @@ router.delete(
  *           schema:
  *             type: object
  *             required:
- *               - workflowId
- *               - documentId
+ *               - stepId
+ *               - authPayload
  *             properties:
- *               workflowId:
+ *               stepId:
  *                 type: string
  *                 format: uuid
- *               documentId:
+ *               authenticationMethod:
  *                 type: string
- *                 format: uuid
- *               keyPairId:
+ *                 enum: [password, mfa]
+ *                 default: password
+ *               authPayload:
  *                 type: string
- *                 format: uuid
- *               signatureReason:
+ *                 description: The signer's password, or a current MFA code. Never stored.
+ *               reason:
  *                 type: string
- *               signatureLocation:
+ *                 maxLength: 255
+ *                 description: The meaning of the signature (21 CFR 11.50).
+ *               polygon:
+ *                 type: object
+ *                 nullable: true
+ *               biometricData:
  *                 type: string
+ *                 nullable: true
  *     responses:
  *       201:
  *         description: Document signed successfully
@@ -467,10 +559,30 @@ router.delete(
  *                   format: date-time
  *                 auditTrail:
  *                   type: object
+ *       400:
+ *         description: Validation failed, or MFA requested for an account without MFA
  *       401:
- *         description: Unauthorized
+ *         description: Unauthenticated, or re-authentication failed
+ *       403:
+ *         description: The caller is not this step's signer
+ *       404:
+ *         description: Step not found (including a step in another tenant)
  */
-router.post("/sign", auth, denyApiKey, validate(signDocumentValidator), signDocument);
+// A-84 — /sign, /verify and /history carried no permission gate (CLAUDE.md:
+// every route needs one). They are gated on their own menu, `esignature`, NOT
+// on `qms`: a signer is whoever the workflow names. Every seeded role holds
+// `esignature:write` (ROLE_MENU_ASSIGNMENTS; migration 0025 for databases
+// seeded earlier), so no role that can be named a signer is locked out, and a
+// tenant can now narrow signing per role or per user. The gate does not
+// replace the A-65 check in signDocument — only the step's own signer signs.
+router.post(
+  "/sign",
+  auth,
+  denyApiKey,
+  dynamicAccess(MENU_SLUGS.ESIGNATURE, "write"),
+  validate(signDocumentValidator),
+  signDocument,
+);
 
 /**
  * @swagger
@@ -513,7 +625,13 @@ router.post("/sign", auth, denyApiKey, validate(signDocumentValidator), signDocu
  *       401:
  *         description: Unauthorized
  */
-router.post("/verify", auth, validate(verifySignatureValidator), verifySignature);
+router.post(
+  "/verify",
+  auth,
+  dynamicAccess(MENU_SLUGS.ESIGNATURE, "read"),
+  validate(verifySignatureValidator),
+  verifySignature,
+);
 
 /**
  * @swagger
@@ -573,6 +691,6 @@ router.post("/verify", auth, validate(verifySignatureValidator), verifySignature
  *       401:
  *         description: Unauthorized
  */
-router.get("/history", auth, getSignatureHistory);
+router.get("/history", auth, dynamicAccess(MENU_SLUGS.ESIGNATURE, "read"), getSignatureHistory);
 
 module.exports = router;

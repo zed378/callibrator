@@ -91,14 +91,18 @@ exports.getBackup = asyncHandler(async (req, res) => {
 
   const backup = await TenantBackup.findByPk(backupId, {
     include: [
+      // A-90: LEFT JOINs — a backup whose creator is deleted or outside the
+      // tenant, or whose tenant row is soft-deleted, is still found.
       {
         model: Users,
         as: "creator",
         attributes: ["id", "username", "email"],
+        required: false,
       },
       {
         model: Tenants,
         as: "tenant",
+        required: false,
       },
     ],
   });

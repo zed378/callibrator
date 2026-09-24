@@ -74,6 +74,28 @@ exports.updateUserSchema = Joi.object({
 });
 
 // ==========================================
+// UPDATE OWN PROFILE (A-63)
+// ==========================================
+
+/**
+ * PATCH /users/:userId/profile. The target is the PATH `userId` (merged in by
+ * the controller), never a body field. Only the profile fields: `status` and
+ * `email` stay on the permission-gated PATCH /users/edit, so the self bypass
+ * cannot be used to reactivate, deactivate or re-address an account.
+ */
+exports.updateProfileSchema = Joi.object({
+  userId: Joi.string().uuid().required(),
+  username: Joi.string().alphanum().min(3).max(30),
+  firstName: Joi.string().trim().min(2).max(100),
+  lastName: Joi.string().trim().min(2).max(100),
+}).custom((value) => {
+  if (value.username) {
+    value.username = value.username.toLowerCase();
+  }
+  return value;
+});
+
+// ==========================================
 // GET/DELETE USER BY ID
 // ==========================================
 

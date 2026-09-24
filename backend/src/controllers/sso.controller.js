@@ -4,7 +4,8 @@ const tenantService = require("../services/tenant.service");
 const auditService = require("../services/audit.service");
 const redis = require("../services/redis.service");
 const { recordAuthFailure } = require("../services/rateLimiter.redis.service");
-const { Tenants, sequelize } = require("../models");
+const { Tenants, Users, sequelize } = require("../models");
+const { tenantInclude, tenantRefusal } = require("../services/auth.service");
 const { generateAccessToken, generateOpaqueRefreshToken } = require("../utils/jwt.util");
 const { createSession } = require("../services/session.service");
 const { ssoLoginSchema, validate } = require("../validators/sso.validator");
@@ -332,6 +333,25 @@ exports.ssoExchange = asyncHandler(async (req, res) => {
       logger.error(`SSO exchange failure recording error: ${err.message}`);
     }
     throw new AppError(401, "Invalid or expired SSO code");
+  }
+
+  // A-83: the user and the tenant are checked AGAIN at redemption. The code
+  // was issued for the IdP's answer at the callback; an account suspended
+  // (SCIM deprovisioning sets SUSPENDED) or a tenant suspended in the 60
+  // seconds since must not receive a session or a LOGIN row. The rule is the
+  // callback's own (sso.service provisionUser, A-70) plus the tenant check
+  // every sign-in point now makes (auth.service tenantRefusal). The code is
+  // already spent, so a refused exchange cannot be retried.
+  const user = await Users.findByPk(entry.userId, {
+    attributes: ["id", "tenantId", "isActive", "status"],
+    include: [tenantInclude()],
+  });
+  if (!user || !user.isActive || user.status !== "ACTIVE") {
+    throw new AppError(403, "Account is suspended");
+  }
+  const refusal = tenantRefusal(user);
+  if (refusal) {
+    throw new AppError(403, refusal);
   }
 
   const { accessToken, session } = await issueSsoTokens(entry);

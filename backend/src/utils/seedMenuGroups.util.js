@@ -59,6 +59,7 @@ function getMenuGroupId(slug) {
     "kanban": "a0000000-0000-0000-0000-000000000230",
     "tickets-raise": "a0000000-0000-0000-0000-000000000231",
     "tickets-response": "a0000000-0000-0000-0000-000000000232",
+    "esignature": "a0000000-0000-0000-0000-000000000233",
     "predictive-maintenance": "a0000000-0000-0000-0000-000000000306",
     // Management sub-group categories (level 2 of the 3-level sidebar)
     "mgmt-organization": "a0000000-0000-0000-0000-000000000250",
@@ -343,6 +344,17 @@ async function seedMenuGroups() {
       slug: "data-retention",
       icon: "Trash2",
       sortOrder: 4,
+      is_active: true,
+      parentSlug: "mgmt-quality",
+    },
+    // A-84: gates POST /esignature/sign, /verify and /history. Every seeded
+    // role holds it (ROLE_MENU_ASSIGNMENTS); migration 0025 adds it to
+    // databases seeded before it existed.
+    {
+      name: "E-Signatures",
+      slug: "esignature",
+      icon: "ClipboardCheck",
+      sortOrder: 5,
       is_active: true,
       parentSlug: "mgmt-quality",
     },
@@ -733,6 +745,7 @@ async function seedRoleMenuPermissions() {
         "custom-domains",
         "kanban",
         "tickets-response",
+        "esignature",
       ],
     },
     {
@@ -778,6 +791,7 @@ async function seedRoleMenuPermissions() {
         "kanban",
         "tickets-raise",
         "tickets-response",
+        "esignature",
       ],
     },
     {
@@ -812,6 +826,7 @@ async function seedRoleMenuPermissions() {
         "workflows",
         "finance",
         "batch-jobs",
+        "esignature",
       ],
     },
     {
@@ -823,6 +838,7 @@ async function seedRoleMenuPermissions() {
         "change-password",
         "profile-page",
         "notifications",
+        "esignature",
       ],
     },
   ];

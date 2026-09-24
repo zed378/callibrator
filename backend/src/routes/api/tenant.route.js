@@ -12,7 +12,7 @@
  */
 const express = require("express");
 const router = express.Router();
-const { auth } = require("../../middlewares/auth.middleware");
+const { auth, superAdminOnly } = require("../../middlewares/auth.middleware");
 const { dynamicAccess } = require("../../middlewares/dynamicAccess.middleware");
 const { validateUuid } = require("../../middlewares/validateUuid.middleware");
 const { endpointRateLimiter } = require("../../services/rateLimiter.redis.service");
@@ -28,7 +28,7 @@ const { upload } = require("../../utils/upload.util");
  * /api/v1/tenants/all:
  *   get:
  *     summary: Retrieve a paginated list of tenants
- *     description: Requires read access to Tenant model with tenant scope. Uses dynamic RBAC/ABAC.
+ *     description: Super admin only (A-76) — a platform operation. A tenant reads its own row through POST /tenants/detail.
  *     tags:
  *       - Tenants
  *     security:
@@ -117,12 +117,12 @@ const { upload } = require("../../utils/upload.util");
  *                   type: string
  *                   example: "Forbidden"
  */
-router.get(
-  "/all",
-  auth,
-  dynamicAccess("Management", "read", { checkTenant: true }),
-  tenantController.getAllTenants,
-);
+// A-76: listing every tenant is a PLATFORM operation. It was gated on the
+// `Management` menu, which the seed grants to every tenant administrator (and
+// read to ENGINEERING MANAGER), and `tenants` is not tenant-scoped — so any of
+// them could enumerate every hospital on the platform. A tenant reads its own
+// row through POST /detail.
+router.get("/all", auth, superAdminOnly, tenantController.getAllTenants);
 
 /* ------------------------------------------------------------------ */
 /* GET SPECIFIC TENANT                                                */
@@ -260,7 +260,7 @@ router.get("/public", tenantController.getPublicBranding);
  * /api/v1/tenants/create:
  *   post:
  *     summary: Create a new tenant
- *     description: Requires create access to Tenant model with tenant scope. Uses dynamic RBAC/ABAC. Supports multipart/form-data for file upload.
+ *     description: Super admin only (A-76) — a platform operation. Supports multipart/form-data for file upload.
  *     tags:
  *       - Tenants
  *     security:
@@ -373,7 +373,10 @@ router.post(
   "/create",
   endpointRateLimiter("tenantCreate"),
   auth,
-  dynamicAccess("Management", "create", { checkTenant: true }),
+  // A-76: creating a tenant is a platform operation (it was `Management`
+  // create, which every tenant administrator holds). The gate runs before
+  // upload(), so a refused request never writes a file.
+  superAdminOnly,
   upload({
     folder: "uploads/tenant",
     allowedMimes: [
@@ -397,7 +400,7 @@ router.post(
  * /api/v1/tenants/edit:
  *   patch:
  *     summary: Update an existing tenant's details
- *     description: Requires update access to Tenant model. Self-check enabled. Uses dynamic RBAC/ABAC. Supports multipart/form-data for file upload.
+ *     description: Requires Management update access. A non-super-admin may update only their own tenant (any other tenantId answers 404, as a missing one does); only a super admin may change status or maxUsers (403 otherwise). Supports multipart/form-data for file upload.
  *     tags:
  *       - Tenants
  *     security:
@@ -533,7 +536,12 @@ router.patch(
   "/edit",
   endpointRateLimiter("tenantUpload"),
   auth,
-  dynamicAccess("Management", "update", { checkSelf: true, checkTenant: true }),
+  // A-63: no `checkSelf` — a tenant is not a user's own resource, and the
+  // self bypass it enabled skipped checkTenant for any body `userId: <self>`.
+  // checkTenant here sees a JSON body's tenantId but NOT a multipart one
+  // (multer parses that later, in upload()), so the ownership rule that
+  // actually holds is in tenantService.updateTenant.
+  dynamicAccess("Management", "update", { checkTenant: true }),
   enforceStorageQuota(),
   upload({
     folder: "uploads/tenant",
@@ -558,7 +566,7 @@ router.patch(
  * /api/v1/tenants/delete:
  *   delete:
  *     summary: Delete a tenant
- *     description: Requires delete access to Tenant model with tenant scope. Uses dynamic RBAC/ABAC.
+ *     description: Super admin only (A-76) — a platform operation.
  *     tags:
  *       - Tenants
  *     security:
@@ -641,12 +649,10 @@ router.patch(
  *                   type: string
  *                   example: "Forbidden"
  */
-router.delete(
-  "/delete",
-  auth,
-  dynamicAccess("Management", "delete", { checkTenant: true }),
-  tenantController.deleteTenant,
-);
+// A-76: deleting a tenant is a platform operation. Under `Management` delete
+// with checkTenant, a tenant administrator could delete their OWN tenant —
+// checkTenant only proves the target is theirs.
+router.delete("/delete", auth, superAdminOnly, tenantController.deleteTenant);
 
 /* ------------------------------------------------------------------ */
 /* TENANT SETTINGS & LOGO OPERATIONS */

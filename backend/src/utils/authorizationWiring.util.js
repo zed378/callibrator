@@ -10,6 +10,10 @@
  * (A-58). Nobody saw a misconfiguration; they saw a 403 and read it as a
  * permission decision. One character.
  *
+ * A-80 added a fourth: a `ROLE_MENU_ASSIGNMENTS` key that is not a seeded
+ * slug (`profile` for the seeded `profile-page`) — the seed skips it, so the
+ * grant never exists for any role that lists it.
+ *
  * The same shape has two siblings, both of which fail just as quietly:
  * a `ROLE_NAMES` entry with no `ROLE_LEVELS` entry (every level-comparing gate
  * refuses it), and a `roles` table whose `role_level` disagrees with the
@@ -114,7 +118,13 @@ const fs = require("fs");
 const path = require("path");
 const { QueryTypes } = require("sequelize");
 const { logger } = require("../middlewares/activityLog.middleware");
-const { MENU_SLUGS, ROLE_NAMES, ROLE_IDS, ROLE_LEVELS } = require("../constants");
+const {
+  MENU_SLUGS,
+  ROLE_NAMES,
+  ROLE_IDS,
+  ROLE_LEVELS,
+  ROLE_MENU_ASSIGNMENTS,
+} = require("../constants");
 
 const ROUTES_DIR = path.join(__dirname, "..", "routes");
 const SEED_FILE = path.join(__dirname, "seedMenuGroups.util.js");
@@ -392,6 +402,27 @@ function collectRouteGates(dir = ROUTES_DIR) {
  * @returns {Set<string>} every seeded menu name and slug
  */
 function seededMenuVocabulary(source = fs.readFileSync(SEED_FILE, "utf8")) {
+  const inner = seededMenuDataText(source);
+  const vocabulary = new Set();
+
+  for (const m of inner.matchAll(/(?:^|[\s,{])name:\s*"([^"]+)"/g)) {
+    vocabulary.add(m[1]);
+  }
+  for (const slug of seededMenuSlugs(source)) {
+    vocabulary.add(slug);
+  }
+
+  return vocabulary;
+}
+
+/**
+ * The text of the seed's `menuData` array, comments blanked.
+ *
+ * @param {string} source - seed file source
+ * @returns {string} the inner text of `const menuData = [ … ]`
+ * @throws {Error} when the seed no longer has that shape
+ */
+function seededMenuDataText(source) {
   const clean = stripComments(source);
   const start = clean.indexOf("const menuData = [");
 
@@ -402,17 +433,26 @@ function seededMenuVocabulary(source = fs.readFileSync(SEED_FILE, "utf8")) {
     );
   }
 
-  const inner = readBracketed(clean, clean.indexOf("[", start));
-  const vocabulary = new Set();
+  return readBracketed(clean, clean.indexOf("[", start));
+}
 
-  for (const m of inner.matchAll(/(?:^|[\s,{])name:\s*"([^"]+)"/g)) {
-    vocabulary.add(m[1]);
-  }
+/**
+ * The menu SLUGS the seed creates — slugs only, not names.
+ *
+ * A gate may name a menu by name or slug (the matrix is keyed by both), but
+ * the seed resolves a `ROLE_MENU_ASSIGNMENTS` key with
+ * `MenuGroup.findOne({ where: { slug } })`, so an assignment must be a slug.
+ *
+ * @param {string} [source] - seed file source (injectable for tests)
+ * @returns {Set<string>} every seeded menu slug
+ */
+function seededMenuSlugs(source = fs.readFileSync(SEED_FILE, "utf8")) {
+  const inner = seededMenuDataText(source);
+  const slugs = new Set();
   for (const m of inner.matchAll(/(?:^|[\s,{])slug:\s*"([^"]+)"/g)) {
-    vocabulary.add(m[1]);
+    slugs.add(m[1]);
   }
-
-  return vocabulary;
+  return slugs;
 }
 
 // ---------------------------------------------------------------------------
@@ -568,6 +608,38 @@ async function checkSeededRoles(sequelize) {
   return { errors, skipped: null };
 }
 
+/**
+ * A-80. Check every `ROLE_MENU_ASSIGNMENTS` key against the slugs the seed
+ * creates.
+ *
+ * The seed (`migration.service.js#seedMenuGroupsAndItems`) looks each key up by
+ * slug and, on a miss, logs "Menu group not found" and SKIPS it. So a key that
+ * is not a seeded slug is a grant that silently never exists — for every role
+ * that lists it. `profile` (the seed says `profile-page`) was exactly that, on
+ * all eleven roles, and nothing said so.
+ *
+ * @param {Array<{roleName: string, menus: Object<string, string>}>} [assignments]
+ *   the assignment table (injectable for tests)
+ * @param {Set<string>} [slugs] - seeded menu slugs (injectable for tests)
+ * @returns {string[]} findings, one per role and slug
+ */
+function checkRoleMenuAssignments(assignments = ROLE_MENU_ASSIGNMENTS, slugs = seededMenuSlugs()) {
+  const errors = [];
+
+  for (const assignment of assignments) {
+    for (const slug of Object.keys(assignment.menus)) {
+      if (!slugs.has(slug)) {
+        errors.push(
+          `ROLE_MENU_ASSIGNMENTS["${assignment.roleName}"] grants "${slug}", which is not the slug of ` +
+            "any seeded menu group — the seed skips it and the role never receives that grant, silently (A-80)",
+        );
+      }
+    }
+  }
+
+  return errors;
+}
+
 // ---------------------------------------------------------------------------
 // Orchestration
 // ---------------------------------------------------------------------------
@@ -589,7 +661,8 @@ function refuse(errors, log) {
 
 /**
  * Phase 1 — the checks that need NO database: every route gate against the
- * seeded menu vocabulary, and every role name against `ROLE_LEVELS`.
+ * seeded menu vocabulary, every ROLE_MENU_ASSIGNMENTS key against the seeded
+ * menu slugs (A-80), and every role name against `ROLE_LEVELS`.
  *
  * Synchronous and database-free on purpose, so boot can run it BEFORE the
  * connection is attempted: a gate typo then refuses the boot for that reason
@@ -599,13 +672,17 @@ function refuse(errors, log) {
  * @param {object} [options.log] - logger (injectable for tests)
  * @param {Function} [options.collect] - gate collector (injectable for tests)
  * @param {Function} [options.vocabulary] - vocabulary loader (injectable for tests)
+ * @param {Array<object>} [options.assignments] - ROLE_MENU_ASSIGNMENTS (injectable for tests)
+ * @param {Function} [options.slugs] - seeded-slug loader (injectable for tests)
  * @returns {{gates: number, warnings: string[]}} what was checked
- * @throws {Error} AUTHZ_WIRING_FAILURE when any gate or role level is broken
+ * @throws {Error} AUTHZ_WIRING_FAILURE when any gate, assignment or role level is broken
  */
 function assertStaticAuthorizationWiring({
   log = logger,
   collect = collectRouteGates,
   vocabulary = seededMenuVocabulary,
+  assignments = ROLE_MENU_ASSIGNMENTS,
+  slugs = seededMenuSlugs,
 } = {}) {
   const errors = [];
   const warnings = [];
@@ -632,6 +709,17 @@ function assertStaticAuthorizationWiring({
     );
   }
 
+  // A-80: every role-menu assignment must name a slug the seed creates. Its
+  // own try: an unreadable seed file is "not verified", said out loud, exactly
+  // as for the route scan above.
+  try {
+    errors.push(...checkRoleMenuAssignments(assignments, slugs()));
+  } catch (err) {
+    warnings.push(
+      `the menu seed could not be read (${err.message}) — ROLE_MENU_ASSIGNMENTS was not verified in this build`,
+    );
+  }
+
   errors.push(...checkRoleLevels());
 
   for (const warning of warnings) {
@@ -644,6 +732,7 @@ function assertStaticAuthorizationWiring({
 
   log.info(
     `Authorization wiring validated: ${gates.length} dynamicAccess gate(s), ` +
+      `${assignments.length} role-menu assignment(s), ` +
       `${Object.keys(ROLE_NAMES).length} role name(s), ${warnings.length} warning(s)`,
   );
 
@@ -703,6 +792,8 @@ module.exports = {
   validateAuthorizationWiring,
   collectRouteGates,
   seededMenuVocabulary,
+  seededMenuSlugs,
+  checkRoleMenuAssignments,
   checkRouteGates,
   checkRoleLevels,
   checkSeededRoles,

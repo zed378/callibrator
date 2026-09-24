@@ -1,4 +1,5 @@
 const { Model } = require("sequelize");
+const { NC_STATUSES, NC_SEVERITIES } = require("../constants/qmsConstants");
 
 module.exports = (sequelize, DataTypes) => {
   class NonConformance extends Model {
@@ -36,12 +37,12 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
       },
       status: {
-        type: DataTypes.ENUM("OPEN", "UNDER_INVESTIGATION", "CAPA_REQUIRED", "CLOSED"),
+        type: DataTypes.ENUM(...NC_STATUSES),
         defaultValue: "OPEN",
         allowNull: false,
       },
       severity: {
-        type: DataTypes.ENUM("LOW", "MEDIUM", "HIGH", "CRITICAL"),
+        type: DataTypes.ENUM(...NC_SEVERITIES),
         defaultValue: "MEDIUM",
         allowNull: false,
       },

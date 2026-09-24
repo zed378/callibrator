@@ -13,6 +13,7 @@ const {
   updateTenantSchema,
 } = require("../validators/tenant.validator");
 const { get, set, del, delPattern, cacheKeys } = require("./redis.service");
+const auditService = require("./audit.service");
 
 // ==========================================
 // VALIDATION HELPERS
@@ -450,7 +451,82 @@ exports.createTenant = async (input, createdBy) => {
 // ------------------------------------------------------------------
 // UPDATE TENANT
 // ------------------------------------------------------------------
-exports.updateTenant = async (tenantId, input, updatedBy) => {
+
+/**
+ * A-63. Fields of a tenant that belong to the PLATFORM, not to the tenant.
+ *
+ *  - `status` — SUSPENDED/INACTIVE locks every user of the tenant out at
+ *    auth.middleware.js, including whoever set it, and recovery then needs a
+ *    super admin. The platform already owns this transition
+ *    (PATCH /admin/tenants/:id/status, super-admin only).
+ *  - `maxUsers` — the tenant's seat limit (`getTenantUserCount` answers
+ *    `remainingSlots` from it). A tenant raising its own limit is a tenant
+ *    granting itself capacity it has not been given.
+ *
+ * So only a super admin may CHANGE them. A non-super-admin resubmitting the
+ * current value (a form that posts every field) is not a change and passes.
+ */
+const PLATFORM_CONTROLLED_FIELDS = Object.freeze(["status", "maxUsers"]);
+
+/**
+ * The platform-controlled fields `data` would actually change on `tenant`.
+ *
+ * @param {object} tenant - the loaded row
+ * @param {{status?: string, maxUsers?: number}} data - validated input
+ * @returns {string[]} the names of the fields that would change
+ */
+const platformFieldChanges = (tenant, { status, maxUsers }) => {
+  const changed = [];
+  // `status || tenant.status` below: an empty or null status is "no change".
+  if (status && String(status).toUpperCase() !== String(tenant.status).toUpperCase()) {
+    changed.push("status");
+  }
+  if (maxUsers !== undefined && Number(maxUsers) !== Number(tenant.maxUsers)) {
+    changed.push("maxUsers");
+  }
+  return changed;
+};
+
+/** The columns updateTenant can write, for the audit row's before/after. */
+const AUDITED_TENANT_FIELDS = Object.freeze([
+  "name",
+  "code",
+  "description",
+  "logo",
+  "primaryColor",
+  ...PLATFORM_CONTROLLED_FIELDS,
+  "email",
+  "phone",
+  "address",
+  "city",
+  "state",
+  "zipCode",
+  "country",
+  "website",
+]);
+
+/**
+ * Update a tenant.
+ *
+ * A-63 — `actor` decides which tenant may be changed and which fields:
+ *  - a non-super-admin may update ONLY their own tenant. Any other id answers
+ *    404 "Tenant not found", byte-identical to an id that does not exist
+ *    (CLAUDE.md: cross-tenant is 404, never 403). `tenants` is not itself
+ *    tenant-scoped, so `findByPk` alone would load anyone's tenant.
+ *  - a non-super-admin may not change PLATFORM_CONTROLLED_FIELDS (403 — the
+ *    tenant is their own, so this is a permission failure inside it).
+ * The actor defaults to "nobody": a caller that passes none is refused.
+ *
+ * The change is audited inside the transaction (A-41).
+ *
+ * @param {string} tenantId
+ * @param {object} input - fields to validate against updateTenantSchema
+ * @param {string|null} updatedBy - the acting user id
+ * @param {{actorIsSuperAdmin?: boolean, tenantId?: (string|null),
+ *   userId?: (string|null), ipAddress?: (string|null), userAgent?: (string|null)}} [actor]
+ */
+exports.updateTenant = async (tenantId, input, updatedBy, actor = {}) => {
+  const actorIsSuperAdmin = actor.actorIsSuperAdmin === true;
   // Validate input
   const data = validate(input, updateTenantSchema);
   const {
@@ -476,8 +552,36 @@ exports.updateTenant = async (tenantId, input, updatedBy) => {
   try {
     const tenant = await Tenants.findByPk(tenantId, { transaction });
 
-    if (!tenant) {
+    // A-63: another tenant's row answers exactly as a missing one does.
+    const foreign =
+      Boolean(tenant) &&
+      !actorIsSuperAdmin &&
+      String(tenant.id) !== String(actor.tenantId);
+    if (!tenant || foreign) {
+      if (foreign) {
+        logger.warn("tenant.service: cross-tenant update refused", {
+          reason: "cross-tenant",
+          tenantId: String(tenantId),
+          actorTenantId: String(actor.tenantId),
+          updatedBy,
+        });
+      }
       throw new AppError(404, "Tenant not found");
+    }
+
+    if (!actorIsSuperAdmin) {
+      const refused = platformFieldChanges(tenant, data);
+      if (refused.length > 0) {
+        throw new AppError(
+          403,
+          `Only a platform administrator can change a tenant's ${refused.join(" or ")}`,
+        );
+      }
+    }
+
+    const before = {};
+    for (const field of AUDITED_TENANT_FIELDS) {
+      before[field] = tenant[field];
     }
 
     // Check if code already exists (excluding current tenant)
@@ -504,18 +608,13 @@ exports.updateTenant = async (tenantId, input, updatedBy) => {
       }
     }
 
-    // Delete old logo file if new logo is being uploaded and old logo exists and is not default
+    // A-79: the file the new logo replaces is only REMEMBERED here. It is
+    // deleted after the commit (below): deleted before it, any rollback — a
+    // failed audit insert included — left the tenant pointing at a file that
+    // no longer exists.
     const newLogo = logo || tenant.logo;
-    if (logo && logo !== tenant.logo) {
-      const oldLogoFilename = (tenant.logo || "").split("/").pop();
-      if (oldLogoFilename && oldLogoFilename !== "default.svg") {
-        try {
-          await deleteUpload(oldLogoFilename, "uploads/tenant");
-        } catch (err) {
-          logger.warn(`Failed to delete old logo: ${oldLogoFilename}`, err);
-        }
-      }
-    }
+    const replacedLogo =
+      logo && logo !== tenant.logo ? (tenant.logo || "").split("/").pop() : null;
 
     await tenant.update(
       {
@@ -540,7 +639,39 @@ exports.updateTenant = async (tenantId, input, updatedBy) => {
       { transaction },
     );
 
+    // Every mutation writes its audit row inside the transaction (A-41): a
+    // failed insert re-throws and rolls the update back with it.
+    const changes = {};
+    for (const field of AUDITED_TENANT_FIELDS) {
+      if (tenant[field] !== before[field]) {
+        changes[field] = { before: before[field], after: tenant[field] };
+      }
+    }
+    await auditService.logAction(
+      {
+        tenantId: tenant.id,
+        userId: updatedBy || null,
+        action: "UPDATE",
+        resourceType: "Tenant",
+        resourceId: tenant.id,
+        changes,
+        ipAddress: actor.ipAddress || null,
+        userAgent: actor.userAgent || null,
+      },
+      { transaction },
+    );
+
     await transaction.commit();
+
+    if (replacedLogo && replacedLogo !== "default.svg") {
+      try {
+        await deleteUpload(replacedLogo, "uploads/tenant");
+      } catch (err) {
+        // The update is committed; a leftover file is a storage leak, not a
+        // reason to report the update as failed.
+        logger.warn(`Failed to delete old logo: ${replacedLogo}`, err);
+      }
+    }
 
     // Transform tenant to include logoBaseUrl
     const transformedTenant = transformTenant(tenant);
@@ -611,7 +742,12 @@ exports.deleteTenant = async (tenantId, deletedBy) => {
       );
     }
 
-    // Delete tenant logo file if exists and not default
+    await tenant.destroy({ transaction });
+
+    await transaction.commit();
+
+    // The logo file goes only after the commit (the A-79 shape): deleted
+    // before it, a rolled-back delete left a live tenant with no logo file.
     if (tenant.logo) {
       const logoFilename = tenant.logo.split("/").pop();
       if (logoFilename && logoFilename !== "default.svg") {
@@ -622,10 +758,6 @@ exports.deleteTenant = async (tenantId, deletedBy) => {
         }
       }
     }
-
-    await tenant.destroy({ transaction });
-
-    await transaction.commit();
 
     // Invalidate all tenant caches
     await del(cacheKeys.tenant(tenantId));

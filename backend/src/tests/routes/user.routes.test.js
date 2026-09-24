@@ -5,10 +5,8 @@
  */
 const EventEmitter = require("events");
 
-// The route file passes `resolveResourceId` callbacks into recordAudit. They
-// only run when the real middleware fires on response finish, so keep
-// auditLog.middleware UNMOCKED and stub what it writes through instead —
-// mocking recordAudit would leave those callbacks uncovered.
+// auditLog.middleware stays UNMOCKED and what it writes through is stubbed, so
+// a recordAudit layer on any user route would show up as a logAction call.
 jest.mock("../../services/audit.service", () => ({
   logAction: jest.fn().mockResolvedValue(undefined),
 }));
@@ -120,131 +118,56 @@ describe("User Routes", () => {
   });
 
   // --------------------------------------------------------------------
-  // Audit trail (FDA 21 CFR Part 11 §11.10(e)). The recordAudit middleware
-  // is driven off the route stack so the route's own resolveResourceId
-  // callbacks actually execute.
+  // A-77. The user mutations are audited INSIDE the service's transaction
+  // (userService.userCreate / userRoleUpdate / editUser / deleteUser — see
+  // services/user.audit.a77.test.js). The post-response recordAudit that used
+  // to sit on these routes ran after the commit, so it could not undo a
+  // change whose audit insert failed; left in place it would also write a
+  // second row for every change. No route layer may write an audit row.
   // --------------------------------------------------------------------
-  describe("recordAudit resource resolution", () => {
-    /** The recordAudit layer registered on a given route path. */
-    const auditLayerFor = (path, method) => {
+  describe("A-77 — no post-response audit on the user mutation routes", () => {
+    const handlesFor = (path, method) => {
       const layer = userRoutes.stack.find(
         (l) => l.route && l.route.path === path && l.route.methods[method],
       );
-      // recordAudit returns an anonymous middleware; it is the one that
-      // subscribes to res "finish".
-      return layer?.route.stack.map((s) => s.handle);
+      return layer.route.stack.map((s) => s.handle);
     };
 
-    /**
-     * Invoke every handler on the route so the recordAudit layer subscribes to
-     * "finish", then emit it.
-     *
-     * The other layers (auth, dynamicAccess) run too and will reject the fake
-     * request — that is fine and intentional, but they need a res that answers
-     * status()/json(), otherwise they throw before recordAudit is reached.
-     */
-    const fireAudit = async (path, method, req, statusCode = 200) => {
-      const handles = auditLayerFor(path, method) || [];
+    const fireFinish = async (path, method) => {
       const res = new EventEmitter();
-      res.statusCode = statusCode;
+      res.statusCode = 200;
       res.status = jest.fn().mockReturnValue(res);
       res.json = jest.fn().mockReturnValue(res);
       res.send = jest.fn().mockReturnValue(res);
       res.setHeader = jest.fn().mockReturnValue(res);
       res.getHeader = jest.fn();
-
-      for (const h of handles) {
+      const req = {
+        headers: {},
+        params: {},
+        query: { userId: "user-99" },
+        body: { userId: "user-99" },
+        user: { id: "actor-1", tenantId: "tenant-1" },
+      };
+      for (const h of handlesFor(path, method)) {
         try {
           h(req, res, () => {});
         } catch {
-          /* a non-audit layer rejecting the stub request */
+          /* a gate rejecting the stub request */
         }
       }
       res.emit("finish");
-      // logAction is fired without await inside the finish handler.
       await new Promise((r) => setImmediate(r));
-      return res;
     };
 
     beforeEach(() => jest.clearAllMocks());
 
-    it("resolves the UPDATE resource id from body.userId", async () => {
-      await fireAudit("/role-update", "post", {
-        headers: {},
-        query: {},
-        params: {},
-        body: { userId: "user-42" },
-        user: { id: "actor-1", tenantId: "tenant-1" },
-      });
-
-      expect(auditService.logAction).toHaveBeenCalledWith(
-        expect.objectContaining({
-          action: "UPDATE",
-          resourceType: "User",
-          resourceId: "user-42",
-        }),
-      );
-    });
-
-    it("resolves the DELETE resource id from query.userId", async () => {
-      await fireAudit("/delete", "delete", {
-        headers: {},
-        params: {},
-        query: { userId: "user-99" },
-        body: {},
-        user: { id: "actor-1", tenantId: "tenant-1" },
-      });
-
-      expect(auditService.logAction).toHaveBeenCalledWith(
-        expect.objectContaining({
-          action: "DELETE",
-          resourceId: "user-99",
-        }),
-      );
-    });
-
-    it("falls back to body.userId when DELETE has no query id", async () => {
-      await fireAudit("/delete", "delete", {
-        headers: {},
-        params: {},
-        query: {},
-        body: { userId: "user-77" },
-        user: { id: "actor-1", tenantId: "tenant-1" },
-      });
-
-      expect(auditService.logAction).toHaveBeenCalledWith(
-        expect.objectContaining({ resourceId: "user-77" }),
-      );
-    });
-
-    it("records a null resource id when neither is supplied", async () => {
-      await fireAudit("/delete", "delete", {
-        headers: {},
-        params: {},
-        query: {},
-        body: {},
-        user: { id: "actor-1", tenantId: "tenant-1" },
-      });
-
-      expect(auditService.logAction).toHaveBeenCalledWith(
-        expect.objectContaining({ resourceId: null }),
-      );
-    });
-
-    it("does not record an audit row for a failed request", async () => {
-      await fireAudit(
-        "/delete",
-        "delete",
-        {
-          headers: {},
-          params: {},
-          query: { userId: "user-99" },
-          body: {},
-          user: { id: "a" },
-        },
-        400,
-      );
-
+    it.each([
+      ["/role-update", "post"],
+      ["/create", "post"],
+      ["/edit", "patch"],
+      ["/delete", "delete"],
+    ])("%s (%s) writes no audit row from the route layer", async (path, method) => {
+      await fireFinish(path, method);
       expect(auditService.logAction).not.toHaveBeenCalled();
     });
   });

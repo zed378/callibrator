@@ -28,7 +28,7 @@ describes the hooks and the raw-SQL rule more confidently than the code supports
 | D-01 | **`bulkCreate` and `upsert` are outside the tenant hooks entirely** — no predicate, no stamping | **critical** | from code | **DONE** 2026-09-24 |
 | D-02 | tenant-backup restore writes `users` rows straight from a caller-supplied payload | **high** | from code | TODO |
 | D-03 | the GDPR retention purge deletes across **every tenant** when the policy is global | **high** | from code | **DONE** 2026-09-24 |
-| D-04 | `calibration_devices.serial_number` is **globally unique** — a cross-tenant device oracle, and a real collision between two hospitals | **high** | from code | TODO |
+| D-04 | `calibration_devices.serial_number` is **globally unique** — a cross-tenant device oracle, and a real collision between two hospitals | **high** | from code | **DONE** 2026-09-24 (ADR-049) |
 | D-05 | one `sequelize.query` carries no tenant predicate; `CLAUDE.md` says they all do | medium | from code | TODO |
 | D-06 | `users.email` **and `users.username`** are globally unique — A-37 is wider than SCIM | **high** | from code | TODO |
 | D-07 | `restoreStatic()` on **seven** models (the card first said six) was a **silent no-op** — `is_deleted` written where the attribute is `isDeleted` | **high** | from code | **DONE** 2026-09-24 |
@@ -429,7 +429,7 @@ now inert, and a policy row that does nothing is its own kind of confusion.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24 |
 | **Severity** | **high** |
 | **Verified** | from code, 2026-09-23. **Needs psql** to confirm the constraint on the deployed database |
 
@@ -478,6 +478,28 @@ SELECT tenant_id, serial_number, count(*)
 - [ ] test: tenant A and tenant B each create a device with serial `SN-1`; both succeed
 - [ ] test: a duplicate **within** one tenant is a 409 with a state explanation, not a 500
 - [ ] the CSV import reports per-row failures instead of failing the batch
+
+**What was changed (2026-09-24, ADR-049).** Migration `0026-calibration-device-serial-per-tenant`
+does three things, in this order:
+
+1. It **refuses** if any serial repeats within a tenant, naming each one. This runs before any DDL.
+2. It drops every unique constraint or index keyed on `serial_number` alone, whatever its name.
+3. It adds `UNIQUE (tenant_id, serial_number)`.
+
+`down` refuses while any serial is held by two tenants. The model no longer declares the global
+unique.
+
+**Verified on PostgreSQL 18.6:**
+- **Before:** tenant B registering tenant A's serial failed.
+- **After:**
+  - it succeeds;
+  - an in-tenant duplicate still fails;
+  - NULL serials stay distinct;
+  - `up` is idempotent, and both refusals fire.
+
+**Test:** `0026-calibration-device-serial-per-tenant.test.js`.
+
+**Still to do:** run the card's psql checks on the deployed database after the next deploy.
 
 ---
 

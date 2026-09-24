@@ -39,6 +39,10 @@ jest.mock("../../utils/jwt.util", () => ({
   generateRefreshToken: jest.fn(),
 }));
 
+// A-72: the LOGIN audit row's contract is tested with the real audit.service
+// in auth.loginAudit.a72.test.js.
+jest.mock("../../services/audit.service", () => ({ logAction: jest.fn() }));
+
 jest.mock("../../services/emailQueue.service", () => ({
   queueActivationEmail: jest.fn(),
   queueOtpEmail: jest.fn(),
@@ -146,6 +150,8 @@ describe("auth.service (coverage)", () => {
     generatePurposeToken.mockReturnValue("purpose-token");
     generateOpaqueRefreshToken.mockReturnValue("opaque-refresh");
     createSession.mockResolvedValue({ id: "session-1" });
+    // A-72: login opens a transaction for the session and its LOGIN row.
+    db.transaction.mockImplementation(async (fn) => fn({ id: "tx" }));
     queueActivationEmail.mockResolvedValue(true);
     queueOtpEmail.mockResolvedValue(true);
   });
@@ -414,6 +420,7 @@ describe("auth.service (coverage)", () => {
       password: "hashed",
       isActive: true,
       tenantId: "tenant-1",
+      tenant: { id: "tenant-1", status: "active" }, // A-83
       failedLoginAttempts: 0,
       lockedUntil: null,
       role: null,
@@ -479,6 +486,7 @@ describe("auth.service (coverage)", () => {
       password: "hashed",
       isActive: true,
       tenantId: "tenant-1",
+      tenant: { id: "tenant-1", status: "active" }, // A-83
       failedLoginAttempts: 0,
       lockedUntil: null,
       role: null,
@@ -573,6 +581,7 @@ describe("auth.service (coverage)", () => {
         password: "hashed",
         isActive: true,
         tenantId: "tenant-1",
+        tenant: { id: "tenant-1", status: "active" }, // A-83
         failedLoginAttempts: 0,
         lockedUntil: null,
         mfaEnabled: true,
@@ -619,6 +628,7 @@ describe("auth.service (coverage)", () => {
         password: "hashed",
         isActive: true,
         tenantId: "tenant-1",
+        tenant: { id: "tenant-1", status: "active" }, // A-83
         roleId: "role-1",
         failedLoginAttempts: 0,
         lockedUntil: null,
@@ -778,7 +788,9 @@ describe("auth.service (coverage)", () => {
         username: "adalovelace",
         email: "ada@example.com",
         tenantId: "tenant-1",
+        tenant: { id: "tenant-1", status: "active" }, // A-83
         roleId: "role-1",
+        isActive: true,
         mfaEnabled: true,
         mfaSecret: "secret",
         role: { id: "role-1", name: "USER" },
@@ -806,6 +818,7 @@ describe("auth.service (coverage)", () => {
         id: "user-1",
         username: "adalovelace",
         email: "ada@example.com",
+        isActive: true,
         mfaEnabled: true,
         mfaSecret: "secret",
         role: null,

@@ -66,10 +66,14 @@ morgan.token("user-id", (req) => {
   return req.user?.id || "-";
 });
 
+// A-16: req.ip — the address sessions, audit rows and e-signatures record —
+// and never a request header. This token used to prefer CF-Connecting-IP and
+// then the raw X-Forwarded-For, which a client connecting to nginx directly
+// can set to anything; it also made the access log disagree with the audit
+// trail about who the client was. nginx now resolves the edge header itself
+// and strips it (deploy/compose/nginx/vm-http.conf).
 morgan.token("real-ip", (req) => {
-  return (
-    req.headers["cf-connecting-ip"] || req.headers["x-forwarded-for"] || req.ip
-  );
+  return req.ip || req.socket?.remoteAddress || "-";
 });
 
 // activate for the future

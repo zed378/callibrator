@@ -17,6 +17,7 @@ import { useTenants } from "./hooks/useTenants";
 
 export default function TenantsPage() {
   const {
+    canManagePlatform,
     tenants,
     isLoading,
     error,
@@ -73,16 +74,19 @@ export default function TenantsPage() {
             </h1>
             <p className="text-muted-foreground mt-1">Configure and manage multitenant workspace environments</p>
           </div>
-          <Button
-            variant="primary"
-            leftIcon={<Plus className="h-4 w-4" />}
-            onClick={() => {
-              setFormError("");
-              setShowCreateModal(true);
-            }}
-          >
-            Create Tenant
-          </Button>
+          {/* A-76: creating a tenant is a super-admin (platform) operation. */}
+          {canManagePlatform && (
+            <Button
+              variant="primary"
+              leftIcon={<Plus className="h-4 w-4" />}
+              onClick={() => {
+                setFormError("");
+                setShowCreateModal(true);
+              }}
+            >
+              Create Tenant
+            </Button>
+          )}
         </div>
 
         <TenantStatsCards total={tenants?.meta?.total || 0} data={tenants?.data || []} />
@@ -110,7 +114,7 @@ export default function TenantsPage() {
                     tenant={tenant}
                     onEdit={handleEdit}
                     onSsoConfig={handleSsoClick}
-                    onDelete={handleDeleteRequest}
+                    onDelete={canManagePlatform ? handleDeleteRequest : undefined}
                   />
                 ))}
             </div>
@@ -134,14 +138,18 @@ export default function TenantsPage() {
             <div className="p-12 text-center">
               <Building2 className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
               <h3 className="text-lg font-medium text-foreground mb-2">No tenants found</h3>
-              <p className="text-muted-foreground mb-4">Get started by creating your first tenant workspace.</p>
-              <Button
-                variant="primary"
-                leftIcon={<Plus className="h-4 w-4" />}
-                onClick={() => setShowCreateModal(true)}
-              >
-                Create Tenant
-              </Button>
+              {canManagePlatform && (
+                <>
+                  <p className="text-muted-foreground mb-4">Get started by creating your first tenant workspace.</p>
+                  <Button
+                    variant="primary"
+                    leftIcon={<Plus className="h-4 w-4" />}
+                    onClick={() => setShowCreateModal(true)}
+                  >
+                    Create Tenant
+                  </Button>
+                </>
+              )}
             </div>
           </Card>
         )}
@@ -170,6 +178,7 @@ export default function TenantsPage() {
         onSubmit={handleUpdate}
         error={formError}
         isSubmitting={isSubmitting}
+        platformFieldsEditable={canManagePlatform}
         logoFile={editLogoFile}
         setLogoFile={setEditLogoFile}
         logoPreview={editLogoPreview}

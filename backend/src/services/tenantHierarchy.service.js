@@ -195,6 +195,10 @@ exports.getTenantTree = async (tenantId) => {
   const { Tenant, TenantHierarchy } = require("../models");
 
   try {
+    // The Tenant includes in this function and in getAncestorTenants are INNER on
+    // purpose (A-90): Tenant's defaultScope makes them required, and a
+    // soft-deleted tenant is meant to drop out of the tree — the children
+    // mapping below reads `c.tenant.id` unguarded.
     const hierarchy = await TenantHierarchy.findOne({
       where: { tenantId },
       include: [
@@ -303,6 +307,7 @@ exports.getAncestorTenants = async (tenantId) => {
       const partialPath = "/" + pathParts.slice(0, i + 1).join("/");
       const ancestor = await TenantHierarchy.findOne({
         where: { path: partialPath },
+        // INNER on purpose (A-90): a soft-deleted ancestor is skipped.
         include: [
           {
             model: Tenant,

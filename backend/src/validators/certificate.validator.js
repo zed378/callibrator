@@ -70,6 +70,11 @@ const updateCertificateSchema = Joi.object({
   summary: Joi.string().allow("", null),
   conditions: Joi.string().allow("", null),
   notes: Joi.string().allow("", null),
+  // A-64 — accepted ONLY so an attempted status change can be refused with a
+  // 409 that explains the certificate's state (certificate.service
+  // #updateCertificate). A PUT never changes status: transitions go through
+  // /submit, /approve, /sign and /revoke, which re-authenticate and audit.
+  // The current status repeated back is not a transition and is dropped.
   status: Joi.string()
     .valid(...CERTIFICATE_STATUS)
     .allow("", null),

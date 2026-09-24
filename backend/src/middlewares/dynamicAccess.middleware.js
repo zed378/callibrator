@@ -54,6 +54,20 @@ const denyTenantIsolation = (req, res, message, context) => {
 };
 
 /**
+ * A-63. The owner id the `checkSelf` bypass compares against the caller.
+ *
+ * PATH PARAMETERS ONLY — never `req.body` or `req.query`. A body or query value
+ * is caller-chosen and says nothing about which row the handler will act on;
+ * a path parameter is the resource the route addresses. Exported so the
+ * "reads no body or query field" property can be tested directly.
+ *
+ * @param {import('express').Request} req
+ * @returns {string|undefined}
+ */
+const selfOwnerIdFromPath = (req) => req.params?.userId || req.params?.id;
+exports.selfOwnerIdFromPath = selfOwnerIdFromPath;
+
+/**
  * Dynamic RBAC Middleware
  *
  * Simplified RBAC middleware that checks role-based menu permissions.
@@ -74,7 +88,8 @@ const denyTenantIsolation = (req, res, message, context) => {
  * @param {string|string[]} permissionType - Permission type(s) (e.g., 'read', 'write', ['read', 'write'])
  * @param {Object} options - Additional options
  * @param {boolean} options.requireAll - Require all actions (AND logic) vs any action (OR logic, default)
- * @param {boolean} options.checkSelf - Check if the requested resource belongs to the user
+ * @param {boolean} options.checkSelf - Allow the caller on a route whose PATH names them
+ *   (`:userId` / `:id`) without the menu permission. Runs after checkTenant, never instead of it (A-63)
  * @param {boolean} options.checkTenant - Enforce multi-tenant isolation (reject if resource belongs to different tenant)
  * @returns {Function} Express middleware
  */
@@ -104,29 +119,6 @@ exports.dynamicAccess = (menuGroup, permissionType, options = {}) => {
           permissionTypes: permTypes,
         };
         return next();
-      }
-
-      // ---- Self-service bypass ----
-      // When checkSelf is enabled, a user acting on their OWN resource
-      // (e.g. editing their own profile / avatar) is allowed regardless of
-      // menu permission. Ownership is matched against the authenticated
-      // user id, never a client-asserted role.
-      if (options.checkSelf) {
-        const ownerId =
-          req.params?.userId ||
-          req.body?.userId ||
-          req.params?.id ||
-          req.query?.userId;
-
-        if (ownerId && String(ownerId) === String(user.id)) {
-          req.dynamicAccessContext = {
-            allowed: true,
-            reason: "self",
-            menuGroups,
-            permissionTypes: permTypes,
-          };
-          return next();
-        }
       }
 
       // ---- Tenant isolation check ----
@@ -185,6 +177,41 @@ exports.dynamicAccess = (menuGroup, permissionType, options = {}) => {
               });
             }
           }
+        }
+      }
+
+      // ---- Self-service bypass (A-63) ----
+      // When checkSelf is enabled, a user acting on their OWN resource
+      // (e.g. their own avatar) is allowed without the menu permission.
+      //
+      // Two rules, both load-bearing:
+      //
+      //  1. It runs AFTER the tenant-isolation check above, never before it.
+      //     It used to run first and `return next()`, so a request that
+      //     matched "self" skipped checkTenant entirely.
+      //
+      //  2. Ownership comes from the PATH only (`:userId` / `:id`). It used to
+      //     fall back to `req.body.userId` and `req.query.userId`. A body field
+      //     is whatever the caller types, and it need not be the id the
+      //     handler then acts on: PATCH /tenants/edit took `userId: <self>`
+      //     for the bypass and then updated `tenantId: <any tenant>`. A path
+      //     parameter is the resource the route addresses, so "the path names
+      //     me" means "this request acts on me" for every route that uses it.
+      //
+      // Routes whose target is not in the path (for example PATCH /users/edit)
+      // therefore get no self bypass at all; the self-service path for a
+      // profile is PATCH /users/:userId/profile.
+      if (options.checkSelf) {
+        const ownerId = selfOwnerIdFromPath(req);
+
+        if (ownerId && String(ownerId) === String(user.id)) {
+          req.dynamicAccessContext = {
+            allowed: true,
+            reason: "self",
+            menuGroups,
+            permissionTypes: permTypes,
+          };
+          return next();
         }
       }
 

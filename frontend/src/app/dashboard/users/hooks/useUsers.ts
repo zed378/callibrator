@@ -85,9 +85,17 @@ export function useUsers() {
     fetchRoles();
   }, []);
 
+  // A-76: only a super admin may list every tenant; anyone else gets their
+  // own tenant as the single option (the backend stamps it for them anyway).
+  const authUser = useAuthStore((state) => state.user);
+  const isPlatformAdmin =
+    authUser?.role?.name === "SUPERADMIN" || authUser?.role?.name === "SUPER_ADMIN";
+  const ownTenantId = isPlatformAdmin ? null : (authUser?.tenantId ?? null);
+
   useEffect(() => {
-    fetchTenants(1, 100);
-  }, [fetchTenants]);
+    if (!authUser) return;
+    fetchTenants(1, 100, undefined, ownTenantId);
+  }, [fetchTenants, authUser, ownTenantId]);
 
   useEffect(() => {
     return () => {

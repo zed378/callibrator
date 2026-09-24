@@ -19,7 +19,7 @@ const {
   makeKey,
 } = require("../constants/rateLimitConstants");
 const { hashToken } = require("../utils/session.util");
-const { verifyAccessToken } = require("../utils/jwt.util");
+const { verifyAccessToken, verifyPurposeToken } = require("../utils/jwt.util");
 const { Users } = require("../models");
 
 // ============================================================
@@ -56,6 +56,17 @@ function readyRedis() {
   }
 }
 
+/**
+ * The caller's address for a per-IP key: `req.ip`, else the socket's. Never a
+ * request header (see THE IP IDENTIFIER below).
+ *
+ * @param {{ip?: string, socket?: {remoteAddress?: string}}} req
+ * @returns {string|undefined}
+ */
+function clientAddress(req) {
+  return req.ip || req.socket?.remoteAddress;
+}
+
 // ============================================================
 // KEY DESIGN, AND WHAT HAPPENS WHEN REDIS IS DOWN
 // ============================================================
@@ -70,12 +81,19 @@ function readyRedis() {
 // preserved across increments, so the lockout end a caller reports stays
 // anchored to the first failure rather than to the latest one.
 //
-// A-16 CAVEAT: the IP identifier is `req.ip`. Whether that is the real client
-// through this deployment's proxy chain (Cloudflare -> nginx -> Next.js ->
-// backend) is a separate, unverified finding (A-16), and the trust-proxy
-// configuration is deliberately untouched here. If `req.ip` is a proxy
-// address then every user shares one IP bucket — so the correctness of the
-// per-IP keys depends on A-16. The per-user and per-token keys do not.
+// THE IP IDENTIFIER is `req.ip`, and only `req.ip` (A-16). Express derives it
+// from X-Forwarded-For under a one-hop `trust proxy` (TRUST_PROXY_HOPS), and
+// every proxy adjacent to the backend sends exactly one entry, the client
+// address resolved at the edge (deploy/compose/nginx/*.conf, frontend
+// src/lib/clientIp.ts). A raw X-Forwarded-For is never read here: it is the
+// one header a client can write, so falling back to it would let a caller
+// choose its own bucket. When req.ip is absent the socket address is used.
+//
+// Per-IP FAILURE counting is still switched off unless AUTH_RATE_LIMIT_BY_IP
+// is "true" (noteAuthFailure). Turn it on for a deployment only after its
+// stored session IPs have been seen to be real client addresses — until then
+// req.ip may be one proxy address shared by every browser, and a per-IP lock
+// would lock everyone. The per-user and per-token keys do not depend on it.
 //
 // OUTAGE POLICY — fail over to memory, never fail open. If Redis is not ready,
 // or a command throws mid-flight, the counter is kept in this process's Map
@@ -280,7 +298,7 @@ function clearMemoryStore() {
  * @param {string} endpoint - Endpoint key (login, register, forgotPassword, resetPassword)
  * @returns {Promise<object>} { allowed, remainingAttempts, lockoutUntil, lockoutReason, revokedToken }
  */
-async function recordAuthFailure({ userId = null, tokenHash = null, ip = null, endpoint }) {
+async function recordAuthFailure({ userId = null, tokenHash = null, ip = null, alsoByIp = false, endpoint }) {
   const config = getAuthConfig(endpoint);
   const now = Date.now();
 
@@ -354,8 +372,11 @@ async function recordAuthFailure({ userId = null, tokenHash = null, ip = null, e
     }
   }
 
-  // ---- IP-BASED FALLBACK ----
-  if (ip && !userId && !tokenHash) {
+  // ---- IP-BASED ----
+  // A fallback for a caller with no user or token — unless the endpoint asks
+  // for the address to be counted as well (`alsoByIp`, A-81: /mfa/login always
+  // has a token, and a fresh token costs an attacker only the password).
+  if (ip && (alsoByIp || (!userId && !tokenHash))) {
     const ipKey = makeKey("auth", endpoint, `ip:${ip}`);
     const count = await storeIncr(ipKey, config.windowMs);
     if (count >= config.maxAttempts * 3) {
@@ -371,7 +392,7 @@ async function recordAuthFailure({ userId = null, tokenHash = null, ip = null, e
 /**
  * Check if a user/token/IP is currently locked out (without recording attempt).
  */
-async function checkAuthLockout({ userId = null, tokenHash = null, ip = null, endpoint }) {
+async function checkAuthLockout({ userId = null, tokenHash = null, ip = null, alsoByIp = false, endpoint }) {
   const config = getAuthConfig(endpoint);
   const now = Date.now();
 
@@ -391,7 +412,7 @@ async function checkAuthLockout({ userId = null, tokenHash = null, ip = null, en
     }
   }
 
-  if (ip && !userId && !tokenHash) {
+  if (ip && (alsoByIp || (!userId && !tokenHash))) {
     const ipKey = makeKey("auth", endpoint, `ip:${ip}`);
     const entry = await storeGet(ipKey);
     if (entry && entry.count >= config.maxAttempts * 3) {
@@ -458,7 +479,7 @@ function endpointRateLimiter(endpointKey, options = {}) {
         }
       }
       if (byIp) {
-        const ip = req.ip || req.headers["x-forwarded-for"] || req.socket.remoteAddress;
+        const ip = clientAddress(req);
         keys.push(makeKey("api", endpointKey, `ip:${ip}`));
       }
 
@@ -654,7 +675,7 @@ function authPreCheck(endpoint) {
     try {
       const token = req.headers.authorization?.replace("Bearer ", "");
       const tokenHash = token ? hashToken(token) : null;
-      const ip = req.ip || req.headers["x-forwarded-for"] || req.socket.remoteAddress;
+      const ip = clientAddress(req);
 
       let userId = null;
       if (token) {
@@ -688,36 +709,122 @@ function authPreCheck(endpoint) {
 }
 
 /**
- * Middleware to record auth failure AFTER failed login/register.
+ * A-81 — the lockout check for POST /auth/mfa/login.
+ *
+ * The second factor was unthrottled: a 6-digit TOTP has 10^6 values, the MFA
+ * token lives five minutes, and a fresh token costs only the password — so a
+ * stolen password and an unlimited endpoint defeated the second factor.
+ *
+ * authPreCheck cannot serve here: it reads the principal from an
+ * Authorization header, and the MFA token travels in the body. This reads it
+ * from there and keys the attempt three ways:
+ *   - the USER the token names — the one that matters, because minting a new
+ *     token does not reset it. It locks at `mfaLogin.maxAttempts` failures,
+ *     and recordAuthFailure then also writes users.locked_until, which
+ *     loginMfa and loginUser both honour (A-83);
+ *   - the TOKEN — revoked after three failures, as on every auth endpoint;
+ *   - the ADDRESS, when AUTH_RATE_LIMIT_BY_IP is on (`alsoByIp`), so one
+ *     source cannot spread its guesses across many accounts.
+ * The handler records the outcome (auth.controller.js `withAuthOutcome`).
+ *
+ * @returns {import("express").RequestHandler}
  */
-function authPostFailure(endpoint) {
+function mfaLoginPreCheck() {
+  const endpoint = "mfaLogin";
   return async (req, res, next) => {
-    // Only record if response indicates failure (4xx, not 429 which is pre-check)
-    if (res.statusCode >= 400 && res.statusCode < 500 && res.statusCode !== 429) {
-      try {
-        await recordAuthFailure({ ...req.rateLimitContext, endpoint });
-      } catch (err) {
-        logger.error(`Auth post-failure recording error: ${err.message}`);
+    try {
+      const token = typeof req.body?.token === "string" ? req.body.token : null;
+      const tokenHash = token ? hashToken(token) : null;
+      const ip = clientAddress(req);
+
+      let userId = null;
+      if (token) {
+        try {
+          userId = verifyPurposeToken(token, "mfa").id || null;
+        } catch (_) {
+          // An invalid token names no user; it is still counted by its hash.
+        }
       }
+
+      const context = { userId, tokenHash, ip, alsoByIp: true, endpoint };
+      const lockout = await checkAuthLockout(context);
+      if (lockout.locked) {
+        return res.status(429).json({
+          success: false,
+          status: 429,
+          message: lockout.reason,
+          lockoutUntil: lockout.lockoutUntil.toISOString(),
+          retryAfter: Math.ceil((lockout.lockoutUntil - Date.now()) / 1000),
+        });
+      }
+
+      req.rateLimitContext = context;
+      next();
+    } catch (err) {
+      logger.error(`MFA login pre-check error: ${err.message}`);
+      next();
     }
-    next();
   };
 }
 
+// A-67 — RECORDING THE OUTCOME
+//
+// This used to be two middlewares, `authPostFailure` mounted BEFORE the
+// controller and `authPostSuccess` mounted AFTER it. The first ran while the
+// status was still 200, so it never saw a failure; the second sat behind a
+// controller that sends the response and never calls next(), so it never ran.
+// Every auth lockout this service implements was therefore a no-op on login,
+// register, send-OTP and reset-password.
+//
+// The outcome is now recorded by the handler itself (auth.controller.js
+// `withAuthOutcome`, sso.controller.js ssoExchange), which is the only code
+// that knows the outcome — and it records a failure BEFORE the error response
+// is sent, so a client cannot learn the result of attempt N and send attempt
+// N+1 ahead of the count.
+
 /**
- * Middleware to reset auth failures AFTER successful login.
+ * Count a failed attempt against whatever authPreCheck attached to the request.
+ * Never throws: a limiter fault must not turn a 401 into a 500.
+ *
+ * @param {object} req - carries `rateLimitContext` from authPreCheck
+ * @param {string} endpoint - AUTH_ENDPOINTS key
+ * @returns {Promise<void>}
  */
-function authPostSuccess(endpoint) {
-  return async (req, res, next) => {
-    if (res.statusCode === 200 && req.rateLimitContext) {
-      try {
-        await resetAuthFailures({ ...req.rateLimitContext, endpoint });
-      } catch (err) {
-        logger.error(`Auth post-success reset error: ${err.message}`);
-      }
+async function noteAuthFailure(req, endpoint) {
+  try {
+    // A-67 / A-16: until a deployment's req.ip is known to be the client
+    // (see THE IP IDENTIFIER above), it may be one proxy address shared by
+    // every browser, and a per-IP count would let anyone lock login for
+    // everyone. Count by IP only where AUTH_RATE_LIMIT_BY_IP says so.
+    const context = { ...req.rateLimitContext };
+    if (process.env.AUTH_RATE_LIMIT_BY_IP !== "true") {
+      context.ip = null;
     }
-    next();
-  };
+    await recordAuthFailure({ ...context, endpoint });
+  } catch (err) {
+    logger.error(`Auth failure recording error on ${endpoint}: ${err.message}`);
+  }
+}
+
+/**
+ * Clear the per-user and per-token counters after a success. The per-IP
+ * counter is deliberately NOT cleared (resetAuthFailures takes no ip): one
+ * valid account must not buy an address a fresh budget of guesses against
+ * every other account.
+ *
+ * @param {object} req - carries `rateLimitContext` from authPreCheck
+ * @param {string} endpoint - AUTH_ENDPOINTS key
+ * @returns {Promise<void>}
+ */
+async function noteAuthSuccess(req, endpoint) {
+  if (!req.rateLimitContext) {
+    return;
+  }
+  try {
+    await resetAuthFailures({ ...req.rateLimitContext, endpoint });
+  } catch (err) {
+    logger.error(`Auth success reset error on ${endpoint}: ${err.message}`);
+  }
 }
 
 module.exports = {
@@ -737,8 +844,9 @@ module.exports = {
 
   // Auth route middleware
   authPreCheck,
-  authPostFailure,
-  authPostSuccess,
+  mfaLoginPreCheck,
+  noteAuthFailure,
+  noteAuthSuccess,
 
   // Config access
   getAuthConfig,

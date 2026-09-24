@@ -229,12 +229,19 @@ describe("abac middleware", () => {
     expect(next).toHaveBeenCalled();
   });
 
-  it("should handle checkSelf when userId is in query params", async () => {
+  // A-63: this test used to assert that a QUERY `userId` naming the caller
+  // earned the self bypass. Ownership now comes from the path only — a query
+  // or body value is caller-chosen and need not be the row the handler edits.
+  it("does not treat a query or body userId naming the caller as self (A-63)", async () => {
+    req.params = {};
     req.query.userId = "user-123";
+    req.body.userId = "user-123";
+    spyMatrix.mockResolvedValue({ management: [] });
     const middleware = abac(["user:update"], { checkSelf: true });
     await middleware(req, res, next);
-    expect(next).toHaveBeenCalled();
-    expect(req.abacContext.reason).toBe("self");
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(next).not.toHaveBeenCalled();
+    expect(req.abacContext).toBeUndefined();
   });
 
   it("should fall back to Management matrix key if management is missing", async () => {

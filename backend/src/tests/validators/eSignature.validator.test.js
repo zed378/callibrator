@@ -265,49 +265,55 @@ describe("E-Signature Validators", () => {
     // req.params.stepId, which was always undefined.
     const STEP_ID = "3f2504e0-4f89-11d3-9a0c-0305e82c3301";
 
+    // A-65 — every signing request carries the signer's credential.
+    const PW = "the-signers-password";
+
     it("should validate with default authentication method", () => {
-      const value = validate({ stepId: STEP_ID }, signDocument);
+      const value = validate({ stepId: STEP_ID, authPayload: PW }, signDocument);
 
       expect(value.authenticationMethod).toBe("password");
       expect(value.stepId).toBe(STEP_ID);
+      expect(value.authPayload).toBe(PW);
     });
 
     it("should reject a missing stepId", () => {
-      expect(() => validate({}, signDocument)).toThrow();
+      expect(() => validate({ authPayload: PW }, signDocument)).toThrow();
     });
 
     it("should reject a stepId that is not a uuid", () => {
-      expect(() => validate({ stepId: "not-a-uuid" }, signDocument)).toThrow();
+      expect(() => validate({ stepId: "not-a-uuid", authPayload: PW }, signDocument)).toThrow();
+    });
+
+    it("should reject a signing request without a password or MFA code (A-65)", () => {
+      expect(() => validate({ stepId: STEP_ID }, signDocument)).toThrow();
+      expect(() => validate({ stepId: STEP_ID, authPayload: "" }, signDocument)).toThrow();
     });
 
     it("should validate with password method", () => {
       expect(() =>
-        validate({ stepId: STEP_ID, authenticationMethod: "password" }, signDocument),
+        validate({ stepId: STEP_ID, authenticationMethod: "password", authPayload: PW }, signDocument),
       ).not.toThrow();
     });
 
     it("should validate with mfa method", () => {
       expect(() =>
-        validate({ stepId: STEP_ID, authenticationMethod: "mfa" }, signDocument),
+        validate({ stepId: STEP_ID, authenticationMethod: "mfa", authPayload: "123456" }, signDocument),
       ).not.toThrow();
     });
 
-    it("should validate with webauthn method", () => {
-      expect(() =>
-        validate({ stepId: STEP_ID, authenticationMethod: "webauthn" }, signDocument),
-      ).not.toThrow();
-    });
-
-    it("should validate with totp method", () => {
-      expect(() =>
-        validate({ stepId: STEP_ID, authenticationMethod: "totp" }, signDocument),
-      ).not.toThrow();
-    });
+    it.each(["webauthn", "totp", "sms"])(
+      "should reject %s — only password and MFA can be re-verified at signing (A-65)",
+      (method) => {
+        expect(() =>
+          validate({ stepId: STEP_ID, authenticationMethod: method, authPayload: PW }, signDocument),
+        ).toThrow();
+      },
+    );
 
     it("should validate with polygon data", () => {
       expect(() =>
         validate(
-          { stepId: STEP_ID, polygon: { x: 10, y: 20, width: 100, height: 50 } },
+          { stepId: STEP_ID, authPayload: PW, polygon: { x: 10, y: 20, width: 100, height: 50 } },
           signDocument,
         ),
       ).not.toThrow();
@@ -315,36 +321,41 @@ describe("E-Signature Validators", () => {
 
     it("should validate with null polygon", () => {
       expect(() =>
-        validate({ stepId: STEP_ID, polygon: null }, signDocument),
+        validate({ stepId: STEP_ID, authPayload: PW, polygon: null }, signDocument),
       ).not.toThrow();
     });
 
     it("should validate with biometric data", () => {
       expect(() =>
-        validate({ stepId: STEP_ID, biometricData: "abc123" }, signDocument),
+        validate({ stepId: STEP_ID, authPayload: PW, biometricData: "abc123" }, signDocument),
       ).not.toThrow();
     });
 
-    it("should validate with all fields", () => {
+    it("should accept the meaning of the signature as `reason`, up to the column's 255", () => {
+      expect(validate({ stepId: STEP_ID, authPayload: PW, reason: "Reviewed" }, signDocument).reason).toBe(
+        "Reviewed",
+      );
       expect(() =>
-        validate(
-          {
-            stepId: STEP_ID,
-            polygon: { x: 10, y: 20 },
-            biometricData: "xyz",
-            authenticationMethod: "mfa",
-            ipAddress: "192.168.1.1",
-            userAgent: "Mozilla/5.0",
-          },
-          signDocument,
-        ),
-      ).not.toThrow();
-    });
-
-    it("should reject invalid authentication method", () => {
-      expect(() =>
-        validate({ stepId: STEP_ID, authenticationMethod: "sms" }, signDocument),
+        validate({ stepId: STEP_ID, authPayload: PW, reason: "x".repeat(256) }, signDocument),
       ).toThrow();
+    });
+
+    it("should strip a body ipAddress / userAgent — they come from the connection (A-65)", () => {
+      const value = validate(
+        {
+          stepId: STEP_ID,
+          polygon: { x: 10, y: 20 },
+          biometricData: "xyz",
+          authenticationMethod: "mfa",
+          authPayload: "123456",
+          ipAddress: "192.168.1.1",
+          userAgent: "Forged/1.0",
+        },
+        signDocument,
+      );
+
+      expect(value).not.toHaveProperty("ipAddress");
+      expect(value).not.toHaveProperty("userAgent");
     });
   });
 

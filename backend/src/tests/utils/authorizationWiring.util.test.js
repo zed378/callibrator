@@ -26,7 +26,13 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
 }));
 
 const { logger } = require("../../middlewares/activityLog.middleware");
-const { ROLE_NAMES, ROLE_IDS, ROLE_LEVELS, MENU_SLUGS } = require("../../constants");
+const {
+  ROLE_NAMES,
+  ROLE_IDS,
+  ROLE_LEVELS,
+  MENU_SLUGS,
+  ROLE_MENU_ASSIGNMENTS,
+} = require("../../constants");
 const wiring = require("../../utils/authorizationWiring.util");
 
 const {
@@ -35,6 +41,8 @@ const {
   validateAuthorizationWiring,
   collectRouteGates,
   seededMenuVocabulary,
+  seededMenuSlugs,
+  checkRoleMenuAssignments,
   checkRouteGates,
   checkRoleLevels,
   checkSeededRoles,
@@ -449,3 +457,80 @@ describe("collectRouteGates / seededMenuVocabulary on injected inputs", () => {
     );
   });
 });
+
+// ===========================================================================
+describe("A-80 — ROLE_MENU_ASSIGNMENTS against the seeded menu slugs", () => {
+  it("every assignment key in the real constants is a slug the real seed creates", () => {
+    expect(checkRoleMenuAssignments()).toEqual([]);
+  });
+
+  it("the Profile page is assigned by its seeded slug, `profile-page` — not `profile`", () => {
+    const slugs = seededMenuSlugs();
+    expect(slugs.has("profile-page")).toBe(true);
+    expect(slugs.has("profile")).toBe(false);
+    expect(MENU_SLUGS.PROFILE).toBe("profile-page");
+  });
+
+  it("A-80 reproduced: the pre-fix `profile` key is refused, naming the role and the slug", () => {
+    const preFix = ROLE_MENU_ASSIGNMENTS.map((a) => {
+      const menus = { ...a.menus };
+      delete menus["profile-page"];
+      return { roleName: a.roleName, menus: { profile: "write", ...menus } };
+    });
+
+    const errors = checkRoleMenuAssignments(preFix);
+
+    expect(errors).toHaveLength(ROLE_MENU_ASSIGNMENTS.length);
+    expect(errors[0]).toMatch(
+      /^ROLE_MENU_ASSIGNMENTS\["SUPERADMIN"\] grants "profile", which is not the slug of any seeded menu group .*\(A-80\)$/,
+    );
+  });
+
+  it("a menu NAME is not a slug: `Profile` is refused although the matrix would accept it from a gate", () => {
+    const errors = checkRoleMenuAssignments(
+      [{ roleName: "USER", menus: { Profile: "write" } }],
+      seededMenuSlugs(),
+    );
+    expect(errors).toHaveLength(1);
+    expect(seededMenuVocabulary().has("Profile")).toBe(true);
+  });
+
+  it("boot's static phase REFUSES to start on a mismatched assignment", () => {
+    const log = fakeLog();
+
+    expect(() =>
+      assertStaticAuthorizationWiring({
+        log,
+        collect: () => [],
+        assignments: [{ roleName: "TECHNICIAN", menus: { profile: "write" } }],
+      }),
+    ).toThrow(
+      /AUTHZ_WIRING_FAILURE: refusing to start — 1 authorization wiring defect\(s\):\n {2}- ROLE_MENU_ASSIGNMENTS\["TECHNICIAN"\] grants "profile"/,
+    );
+  });
+
+  it("warns, and does not refuse, when the seed file cannot be read for the assignment check", () => {
+    const log = fakeLog();
+
+    assertStaticAuthorizationWiring({
+      log,
+      collect: () => [],
+      slugs: () => {
+        throw new Error("ENOENT: seedMenuGroups.util.js");
+      },
+    });
+
+    expect(log.warn).toHaveBeenCalledWith(
+      expect.stringMatching(/menu seed could not be read \(ENOENT.*ROLE_MENU_ASSIGNMENTS was not verified/),
+    );
+    expect(log.error).not.toHaveBeenCalled();
+  });
+
+  it("seededMenuSlugs reads slugs only, never names", () => {
+    const slugs = seededMenuSlugs(
+      'const menuData = [\n  { name: "Profile", slug: "profile-page" },\n];',
+    );
+    expect([...slugs]).toEqual(["profile-page"]);
+  });
+});
+

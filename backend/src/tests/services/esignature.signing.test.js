@@ -35,6 +35,11 @@ const mockLogger = {
 const loadService = (models) => {
   jest.resetModules();
   jest.doMock("../../models", () => models);
+  // A-65 — signing re-authenticates through certificate.service's shared
+  // credential check; the password comparison is the boundary doubled here.
+  jest.doMock("../../services/auth.service", () => ({
+    passIsValid: async () => ({ data: { valid: true } }),
+  }));
   jest.doMock("../../middlewares/activityLog.middleware", () => ({
     logger: mockLogger,
   }));
@@ -76,6 +81,7 @@ describe("eSignature.service — RSA signing and verification", () => {
       stepNumber: 1,
       workflowId: "wf-1",
       tenantId: TENANT_ID,
+      signerId: "u-1",
       update: jest.fn().mockResolvedValue(true),
     };
 
@@ -122,6 +128,7 @@ describe("eSignature.service — RSA signing and verification", () => {
   const signOnce = async (harness, data = {}) =>
     harness.svc.signDocument("step-1", "u-1", {
       authenticationMethod: "password",
+      authPayload: "pw",
       ipAddress: "10.0.0.9",
       userAgent: "jest",
       ...data,
