@@ -15,10 +15,23 @@ const legalHoldSchema = Joi.object({
   reason: Joi.string().optional(),
 });
 
+// A-135: masking the audit trail is per DATA SUBJECT (their user ids, in
+// `subjectIds`), never per audit row id — naming rows would let an operator
+// blank chosen rows' IP addresses, and an audit row id passed where a subject
+// was meant would silently match nothing. `users` masking keeps `recordIds`.
 const piiMaskSchema = Joi.object({
   tenantId: Joi.string().uuid().required(),
   entityType: Joi.string().required(),
-  recordIds: Joi.array().items(Joi.string().uuid()).required(),
+  recordIds: Joi.when("entityType", {
+    is: "audit_logs",
+    then: Joi.forbidden(),
+    otherwise: Joi.array().items(Joi.string().uuid()).min(1).required(),
+  }),
+  subjectIds: Joi.when("entityType", {
+    is: "audit_logs",
+    then: Joi.array().items(Joi.string().uuid()).min(1).required(),
+    otherwise: Joi.forbidden(),
+  }),
 });
 
 const anonymizeSchema = Joi.object({

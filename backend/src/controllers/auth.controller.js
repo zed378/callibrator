@@ -64,6 +64,18 @@ const withAuthOutcome = (endpoint, errorMap, handler) => async (req, res) => {
   return result;
 };
 
+/**
+ * The address and user agent an audit row records — from the request itself,
+ * never the body.
+ *
+ * @param {object} req
+ * @returns {{ipAddress: string|null, userAgent: string|null}}
+ */
+const requestContext = (req) => ({
+  ipAddress: req.ip || null,
+  userAgent: req.headers?.["user-agent"] || null,
+});
+
 const REGISTER_ERRORS = { registered: 409, used: 409 };
 const LOGIN_ERRORS = {
   credentials: 401,
@@ -199,10 +211,13 @@ exports.socketToken = asyncHandlerWithMapping(async (req, res) => {
 exports.justUpdatePassword = asyncHandlerWithMapping(async (req, res) => {
   const { id: userId } = req.user;
   const { newPassword, currentPassword } = req.body || {};
+  // A-98 / F-12: the audit row the service writes carries the caller's
+  // address and user agent.
   const result = await authService.justUpdatePassword(
     userId,
     newPassword,
     currentPassword,
+    requestContext(req),
   );
   success(res, null, null, result.message, 200);
 }, {});
@@ -218,28 +233,63 @@ exports.passIsValid = asyncHandlerWithMapping(async (req, res) => {
 // MFA (MULTI-FACTOR AUTHENTICATION)
 // ------------------------------------------------------------------
 
+// A-142: setup, verify and disable are rate-limited as one `mfaManage`
+// bucket per user (mfaManagePreCheck, auth.route.js). A 4xx counts as a
+// failed attempt and a success clears the count — `withAuthOutcome`, as on
+// every other auth endpoint.
+
 // A-114: on an account that already has MFA, setup is a ROTATION and needs
 // `currentPassword` and a `code` from the current authenticator (409 without
 // them). Both come from the body; the user is always the caller.
-exports.setupMfa = asyncHandlerWithMapping(async (req, res) => {
-  const { currentPassword, code } = req.body || {};
-  const result = await authService.setupMfa(req.user.id, { currentPassword, code });
-  success(res, result, null, "MFA secret generated", 200);
-}, {});
+exports.setupMfa = asyncHandlerWithMapping(
+  withAuthOutcome("mfaManage", {}, async (req, res) => {
+    const { currentPassword, code } = req.body || {};
+    const result = await authService.setupMfa(req.user.id, { currentPassword, code });
+    success(res, result, null, "MFA secret generated", 200);
+  }),
+  {},
+);
 
-exports.verifyMfaSetup = asyncHandlerWithMapping(async (req, res) => {
-  const { code } = req.body || {};
-  if (!code) {
-    throw new AppError(400, "MFA code is required");
-  }
-  const result = await authService.verifyMfaSetup(req.user.id, code, {
-    ipAddress: req.ip || null,
-    userAgent: req.headers?.["user-agent"] || null,
-  });
-  success(res, null, null, result.message, 200);
-}, {
-  "Invalid MFA code": 400,
-});
+const MFA_VERIFY_ERRORS = { "Invalid MFA code": 400 };
+
+// A-141: the response carries the new one-time recovery codes — the only
+// time they are ever shown — at `data.recoveryCodes`. `sessionId` lets a
+// rotation keep the caller's own session while every other one is revoked.
+exports.verifyMfaSetup = asyncHandlerWithMapping(
+  withAuthOutcome("mfaManage", MFA_VERIFY_ERRORS, async (req, res) => {
+    const { code } = req.body || {};
+    if (!code) {
+      throw new AppError(400, "MFA code is required");
+    }
+    const result = await authService.verifyMfaSetup(req.user.id, code, {
+      ...requestContext(req),
+      sessionId: req.sessionId || null,
+    });
+    success(res, { recoveryCodes: result.recoveryCodes }, null, result.message, 200);
+  }),
+  MFA_VERIFY_ERRORS,
+);
+
+// A-141: turn MFA off. Needs `currentPassword` and either `code` (TOTP) or
+// `recoveryCode`; every other session of the caller is signed out.
+exports.disableMfa = asyncHandlerWithMapping(
+  withAuthOutcome("mfaManage", {}, async (req, res) => {
+    const { currentPassword, code, recoveryCode } = req.body || {};
+    const result = await authService.disableMfa(
+      req.user.id,
+      { currentPassword, code, recoveryCode },
+      { ...requestContext(req), sessionId: req.sessionId || null },
+    );
+    success(
+      res,
+      { otherSessionsRevoked: result.otherSessionsRevoked },
+      null,
+      result.message,
+      200,
+    );
+  }),
+  {},
+);
 
 // A-81: wrong codes count against the user, the MFA token and (when enabled)
 // the address that mfaLoginPreCheck attached; a success clears the user and
@@ -248,8 +298,9 @@ const MFA_LOGIN_ERRORS = { "Invalid MFA code": 401 };
 
 exports.loginMfa = asyncHandlerWithMapping(
   withAuthOutcome("mfaLogin", MFA_LOGIN_ERRORS, async (req, res) => {
-    const { code, token } = req.body || {};
-    if (!code || !token) {
+    // A-141: `recoveryCode` is accepted in place of `code`.
+    const { code, token, recoveryCode } = req.body || {};
+    if ((!code && !recoveryCode) || !token) {
       throw new AppError(400, "MFA code and temporary token are required");
     }
 
@@ -273,6 +324,7 @@ exports.loginMfa = asyncHandlerWithMapping(
       code,
       req.ip,
       req.headers["user-agent"],
+      { recoveryCode },
     );
 
     login(res, result.data, result.token, result.session);

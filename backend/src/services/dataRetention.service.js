@@ -253,7 +253,7 @@ exports.purgeExpiredRecords = async (tenantId) => {
       await auditService.logAction(
         {
           tenantId,
-          userId: null,
+          systemActor: RETENTION_ACTOR, // A-124: a job, from constants/systemActors.js
           action: 'DELETE',
           resourceType: 'DataRetention',
           resourceId: null,
@@ -311,46 +311,257 @@ exports.runRetentionSweep = async () => {
   return summary;
 };
 
-exports.maskPII = async (tenantId, entityType, recordIds) => {
+/** What a masked personal-data value is replaced with. */
+const PII_MASK = "[REDACTED]";
+
+/**
+ * Keys that carry network identity (who connected from where). Masked inside
+ * `changes` of every audit row the subject ACTED in.
+ */
+const NETWORK_KEYS = Object.freeze(["ipAddress", "ip", "ip_address", "userAgent", "user_agent"]);
+
+/**
+ * Keys that carry a person's identity. Masked inside `changes` of every audit
+ * row ABOUT the subject (resourceType `User`, resourceId = the subject), where
+ * before/after snapshots of the account record their name and contact details.
+ * `userId`, `resourceId` and the ids inside `changes` are NOT masked: they are
+ * the trail's "who did what to which record", which Q-12 keeps.
+ */
+const PERSONAL_KEYS = Object.freeze([
+  "email",
+  "username",
+  "firstName",
+  "lastName",
+  "first_name",
+  "last_name",
+  "fullName",
+  "name",
+  "phone",
+  "avatarUrl",
+  ...NETWORK_KEYS,
+]);
+
+/**
+ * Replace every value under one of `keys`, at any depth, with PII_MASK.
+ * Returns a new value; the input is not modified.
+ *
+ * @param {*} value - a JSON value (an audit row's `changes`)
+ * @param {ReadonlyArray<string>} keys - the keys whose values are masked
+ * @returns {{ value: *, changed: boolean }}
+ */
+const maskKeys = (value, keys) => {
+  if (Array.isArray(value)) {
+    let changed = false;
+    const out = value.map((item) => {
+      const r = maskKeys(item, keys);
+      changed = changed || r.changed;
+      return r.value;
+    });
+    return { value: out, changed };
+  }
+  if (value === null || typeof value !== "object") {
+    return { value, changed: false };
+  }
+  let changed = false;
+  const out = {};
+  for (const [key, inner] of Object.entries(value)) {
+    if (keys.includes(key) && inner !== null && inner !== undefined && inner !== PII_MASK) {
+      out[key] = PII_MASK;
+      changed = true;
+    } else {
+      const r = maskKeys(inner, keys);
+      out[key] = r.value;
+      changed = changed || r.changed;
+    }
+  }
+  return { value: out, changed };
+};
+
+/**
+ * GDPR minimisation of the audit trail for a set of data subjects (A-135,
+ * ADR-051 Q-12). Audit rows are NEVER deleted; their personal data is masked:
+ *
+ *  - rows the subject ACTED in (`userId`, or `impersonatorId` for a super
+ *    admin behind an impersonation): `ipAddress` and `userAgent`, and any
+ *    network-identity key inside `changes`;
+ *  - rows ABOUT the subject (`resourceType` `User`, `resourceId` the subject):
+ *    the identity keys inside `changes` (`PERSONAL_KEYS`). The row's own
+ *    `ipAddress` there belongs to whoever made the change, not the subject,
+ *    and is kept.
+ *
+ * `userId`, `action`, `resourceType`, `resourceId` and `createdAt` are never
+ * touched. Every change and the audit row that records it are one transaction.
+ *
+ * @param {string} tenantId
+ * @param {string[]} subjectIds - the data subjects' user ids
+ * @param {object} actor - auditActor(req)
+ * @returns {Promise<{masked: number, fields: string[]}>}
+ */
+const maskAuditTrail = async (tenantId, subjectIds, actor) => {
+  const { AuditLog } = require("../models");
+  const subjects = new Set(subjectIds.map(String));
+  const fieldsMasked = new Set();
+  let masked = 0;
+
+  await db.transaction(async (transaction) => {
+    const rows = await AuditLog.findAll({
+      where: {
+        // Explicit, as well as the tenant hooks: this runs for a super admin,
+        // whose context may not be the tenant being masked.
+        tenantId,
+        [Op.or]: [
+          { userId: { [Op.in]: subjectIds } },
+          { impersonatorId: { [Op.in]: subjectIds } },
+          { resourceType: "User", resourceId: { [Op.in]: subjectIds } },
+        ],
+      },
+      transaction,
+    });
+
+    for (const row of rows) {
+      const actedBySubject =
+        subjects.has(String(row.userId)) || subjects.has(String(row.impersonatorId));
+      const aboutSubject = row.resourceType === "User" && subjects.has(String(row.resourceId));
+      const updates = {};
+
+      if (actedBySubject) {
+        for (const field of ["ipAddress", "userAgent"]) {
+          if (row[field] && row[field] !== PII_MASK) {
+            updates[field] = PII_MASK;
+          }
+        }
+      }
+
+      const keys = aboutSubject ? PERSONAL_KEYS : NETWORK_KEYS;
+      const { value, changed } = maskKeys(row.changes, keys);
+      if (changed) {
+        updates.changes = value;
+      }
+
+      const fields = Object.keys(updates);
+      if (fields.length === 0) {
+        continue;
+      }
+      fields.forEach((f) => fieldsMasked.add(f));
+      await row.update(updates, { transaction });
+      masked += 1;
+    }
+
+    await auditService.logAction(
+      {
+        tenantId,
+        // Always a request's user: masking is a super-admin route. logAction
+        // refuses an entry with no actor, which rolls the masking back.
+        userId: actor.userId,
+        action: "UPDATE",
+        resourceType: "AuditLog",
+        resourceId: null,
+        changes: {
+          operation: "GDPR_MASK_AUDIT_PII",
+          subjectIds: [...subjects],
+          rowsMasked: masked,
+          fields: [...fieldsMasked].sort(),
+        },
+        ipAddress: actor.ipAddress || null,
+        userAgent: actor.userAgent || null,
+      },
+      { transaction },
+    );
+  });
+
+  logger.info("PII masked in audit rows", { tenantId, subjects: subjects.size, rowsMasked: masked });
+
+  return { masked, fields: [...fieldsMasked].sort() };
+};
+
+/**
+ * Mask personal data for `entityType` (A-135).
+ *
+ * - `users`: `ids` are user ids. Each account's name, email and phone are
+ *   masked. The email becomes a unique, syntactically valid address, because
+ *   `users.email` is unique and validated: the single shared `[REDACTED]` the
+ *   previous version wrote failed the model's `isEmail` validation on every
+ *   call, and would have collided on the unique index from the second row on.
+ * - `audit_logs`: `ids` are the DATA SUBJECTS' user ids, not audit row ids —
+ *   see `maskAuditTrail`. The previous version looked up a model named
+ *   `Audit_log`, which does not exist, so it had never masked a row.
+ *
+ * Refused while a legal hold is active: a hold preserves records as they are.
+ * Transactional and audited in both cases.
+ *
+ * @param {string} tenantId
+ * @param {string} entityType - `users` or `audit_logs`
+ * @param {string[]} ids - see above
+ * @param {object} [actor] - auditActor(req)
+ * @returns {Promise<{masked: number, fields: string[]}>}
+ */
+exports.maskPII = async (tenantId, entityType, ids, actor = {}) => {
   const onLegalHold = await exports.isOnLegalHold(tenantId);
 
   if (onLegalHold) {
-    throw new AppError(400, 'Cannot mask PII while legal hold is active');
+    throw new AppError(400, "Cannot mask PII while legal hold is active");
   }
 
-  const maskMap = {
-    users: { fields: ['email', 'firstName', 'lastName', 'phone'], mask: '[REDACTED]' },
-    audit_logs: { fields: ['ipAddress', 'userAgent'], mask: '[REDACTED]' },
-  };
+  if (entityType === "audit_logs") {
+    return maskAuditTrail(tenantId, ids, actor);
+  }
 
-  const config = maskMap[entityType];
-  if (!config) {
+  if (entityType !== "users") {
     throw new AppError(400, `Unknown entity type for PII masking: ${entityType}`);
   }
 
-  const Model = require('../models')[entityType.charAt(0).toUpperCase() + entityType.slice(1, -1)];
-  if (!Model) {
+  const { User } = require("../models");
+  if (!User) {
     throw new AppError(400, `Model not found for entity type: ${entityType}`);
   }
 
-  const updates = {};
-  config.fields.forEach((field) => {
-    updates[field] = config.mask;
+  const fields = ["email", "firstName", "lastName", "phone"];
+  let masked = 0;
+
+  await db.transaction(async (transaction) => {
+    for (const id of ids) {
+      const [count] = await User.update(
+        {
+          email: `redacted_${id}@redacted.invalid`,
+          firstName: PII_MASK,
+          lastName: PII_MASK,
+          phone: PII_MASK,
+        },
+        { where: { id, tenantId }, transaction },
+      );
+      masked += count;
+    }
+
+    await auditService.logAction(
+      {
+        tenantId,
+        userId: actor.userId || null,
+        action: "UPDATE",
+        resourceType: "User",
+        resourceId: null,
+        changes: { operation: "GDPR_MASK_PII", recordIds: ids, masked, fields },
+        ipAddress: actor.ipAddress || null,
+        userAgent: actor.userAgent || null,
+      },
+      { transaction },
+    );
   });
 
-  await Model.update(updates, {
-    where: {
-      id: { [Op.in]: recordIds },
-      tenantId,
-    },
-  });
+  logger.info(`PII masked for ${entityType}`, { tenantId, masked, fields });
 
-  logger.info(`PII masked for ${entityType}`, { tenantId, recordIds, fields: config.fields });
-
-  return { masked: recordIds.length, fields: config.fields };
+  return { masked, fields };
 };
 
 exports.anonymizeDataset = async (tenantId, entityType, options = {}) => {
+  // Q-12: audit rows are never rewritten wholesale. GDPR minimisation of the
+  // trail is per subject, through maskPII("audit_logs").
+  if (entityType === "audit_logs") {
+    throw new AppError(
+      400,
+      "Audit logs cannot be anonymized: they are kept as the audit trail. Mask a data subject's personal data with mask-pii instead.",
+    );
+  }
+
   const onLegalHold = await exports.isOnLegalHold(tenantId);
 
   if (onLegalHold) {

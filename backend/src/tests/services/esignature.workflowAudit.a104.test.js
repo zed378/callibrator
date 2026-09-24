@@ -19,6 +19,8 @@ jest.mock("../../models", () => ({
   SignatureWorkflow: {
     findOne: async () => mockRef.workflow,
   },
+  // A-130: deletion counts signatures first; these workflows have none.
+  SignatureRecord: { count: async () => 0 },
   AuditLog: { create: (...args) => mockRef.ledger.AuditLog.create(...args) },
 }));
 jest.mock("../../config", () => ({

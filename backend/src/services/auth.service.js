@@ -39,6 +39,7 @@ const {
   revokeSession,
   revokeAllSessions,
   revokeSessionById,
+  revokeOtherSessions,
   getCurrentSessionId,
 } = require("../services/session.service");
 const { PASSWORD_MIN_LENGTH, ROLE_IDS } = require("../constants");
@@ -107,6 +108,66 @@ const tenantRefusal = (user) => {
 
 exports.tenantInclude = tenantInclude;
 exports.tenantRefusal = tenantRefusal;
+
+/**
+ * Audit a change to a user's own credentials — password, second factor —
+ * INSIDE its transaction, so a failed insert rolls the change back (A-41).
+ * `changes` never carries a secret: audit_logs is permanent.
+ *
+ * audit_logs.tenant_id is NOT NULL, so a tenant-less principal (a platform
+ * super admin) has no trail to write into; the change proceeds with an
+ * `error` log as the evidence — the rule openLoginSession and verifyMfaSetup
+ * already follow. Refusing would lock such an account out of its own
+ * security controls on an audit-schema constraint.
+ *
+ * @param {object} transaction
+ * @param {object} entry
+ * @param {{id: string, tenantId: string|null}} entry.user - the account
+ *   changed, which is also the actor: every caller is the user acting on
+ *   their own credentials
+ * @param {string} entry.operation - changes.operation
+ * @param {object} entry.details - more non-secret fields for `changes`
+ * @param {string|null} [entry.ipAddress]
+ * @param {string|null} [entry.userAgent]
+ * @returns {Promise<void>}
+ */
+const auditCredentialChange = async (
+  transaction,
+  { user, operation, details, ipAddress = null, userAgent = null },
+) => {
+  if (!user.tenantId) {
+    logger.error("Credential change not audited: the user has no tenant", {
+      userId: user.id,
+      operation,
+    });
+    return;
+  }
+  await auditService.logAction(
+    {
+      tenantId: user.tenantId,
+      userId: user.id,
+      action: "UPDATE",
+      resourceType: "User",
+      resourceId: user.id,
+      changes: { operation, ...details },
+      ipAddress,
+      userAgent,
+    },
+    { transaction },
+  );
+};
+
+exports.auditCredentialChange = auditCredentialChange;
+
+/**
+ * How many unused MFA recovery codes the account has (A-141). A count, never
+ * a code.
+ *
+ * @param {{mfaRecoveryCodes?: string[]|null}} user
+ * @returns {number}
+ */
+const recoveryCodesRemaining = (user) =>
+  Array.isArray(user.mfaRecoveryCodes) ? user.mfaRecoveryCodes.length : 0;
 
 const validate = (data, schema) => {
   const { error, value } = validateInput(data, schema);
@@ -240,11 +301,16 @@ exports.registerUser = async (input, origin) => {
  * @param {string} params.refreshToken
  * @param {string} [params.ipAddress]
  * @param {string} [params.userAgent]
- * @param {"password"|"password+totp"} params.method
+ * @param {"password"|"password+totp"|"password+recovery_code"} params.method
+ * @param {(transaction: object) => Promise<object>} [params.secondFactor] -
+ *   A-141: spends a one-time factor INSIDE the transaction and returns extra
+ *   non-secret audit fields; it throws to refuse. A recovery code is spent
+ *   only if the session and its LOGIN row commit.
  * @returns {Promise<object>} the session row
  */
-const openLoginSession = ({ user, refreshToken, ipAddress, userAgent, method }) =>
+const openLoginSession = ({ user, refreshToken, ipAddress, userAgent, method, secondFactor }) =>
   db.transaction(async (transaction) => {
+    const details = secondFactor ? await secondFactor(transaction) : {};
     const session = await createSession({
       tenantId: user.tenantId,
       userId: user.id,
@@ -268,7 +334,7 @@ const openLoginSession = ({ user, refreshToken, ipAddress, userAgent, method }) 
         action: "LOGIN",
         resourceType: "Session",
         resourceId: session.id,
-        changes: { method },
+        changes: { method, ...details },
         ipAddress: ipAddress || null,
         userAgent: userAgent || null,
       },
@@ -433,6 +499,8 @@ exports.loginUser = async (input) => {
       role,
       tenantId: dbUser.tenantId,
       mfaEnabled: !!dbUser.mfaEnabled,
+      // A-123: the frontend goes straight to the change-password screen.
+      mustChangePassword: !!dbUser.mustChangePassword,
     },
     token: accessToken,
     refreshToken,
@@ -550,17 +618,37 @@ exports.processResetPassword = async (input) => {
     throw new AppError(400, "OTP expired");
   }
 
-  // Update password and clear OTP
   const hashedPassword = await hashPassword(newPassword);
-  await user.update({
-    password: hashedPassword,
-    otpCode: null,
-    otpExpiredAt: null,
-    passwordChangedAt: new Date(),
-  });
 
-  // Revoke all sessions — invalidates all active refresh tokens
-  await revokeAllSessions(user.id, "PASSWORD_RESET");
+  // One transaction: the new password, the revoked sessions and the audit row
+  // commit together or not at all (A-98 / F-12). CLS carries the transaction
+  // into revokeAllSessions.
+  await db.transaction(async (transaction) => {
+    await user.update(
+      {
+        password: hashedPassword,
+        otpCode: null,
+        otpExpiredAt: null,
+        passwordChangedAt: new Date(),
+        // ADR-051 Q-11: a completed e-mail-code reset proves the holder reads
+        // this mailbox, so the address is verified.
+        isEmailVerified: true,
+        // A-123: the password is now one the holder chose, not an
+        // administrator — the forced change is satisfied.
+        mustChangePassword: false,
+      },
+      { transaction },
+    );
+
+    // Revoke all sessions — invalidates all active refresh tokens
+    await revokeAllSessions(user.id, "PASSWORD_RESET");
+
+    await auditCredentialChange(transaction, {
+      user,
+      operation: "PASSWORD_RESET",
+      details: { method: "email_otp" },
+    });
+  });
 
   return { success: true, status: 200, message: "Password reset successful" };
 };
@@ -608,6 +696,13 @@ exports.verifyUserSession = async (userId, _session) => {
           }
         : null,
       tenantId: user.tenantId,
+      // A-123: "who am I" is one of the routes a flagged account may call,
+      // so this is where the frontend learns it must change the password.
+      mustChangePassword: !!user.mustChangePassword,
+      // A-141: the MFA page offers disable / re-enrol from this, and warns
+      // when the recovery codes are running out. Only a count, never a code.
+      mfaEnabled: !!user.mfaEnabled,
+      mfaRecoveryCodesRemaining: recoveryCodesRemaining(user),
     },
   };
 };
@@ -641,7 +736,27 @@ exports.getAuthUserWithTenant = async (userId) => {
 // ------------------------------------------------------------------
 // JUST UPDATE PASSWORD
 // ------------------------------------------------------------------
-exports.justUpdatePassword = async (userId, newPassword, currentPassword) => {
+/**
+ * Change the caller's own password.
+ *
+ * A-98 / F-12: audited (UPDATE on User, `changes.operation` PASSWORD_CHANGE)
+ * in the same transaction as the new hash and the session revocation.
+ * A-123: clears `mustChangePassword` — this is the route a flagged account is
+ * sent to, and the only way out of the flag besides an e-mail-code reset.
+ *
+ * @param {string} userId - the authenticated caller
+ * @param {string} newPassword
+ * @param {string} currentPassword
+ * @param {object} [context]
+ * @param {string|null} [context.ipAddress]
+ * @param {string|null} [context.userAgent]
+ */
+exports.justUpdatePassword = async (
+  userId,
+  newPassword,
+  currentPassword,
+  { ipAddress = null, userAgent = null } = {},
+) => {
   if (!newPassword || newPassword.length < PASSWORD_MIN_LENGTH) {
     throw new AppError(
       400,
@@ -662,12 +777,33 @@ exports.justUpdatePassword = async (userId, newPassword, currentPassword) => {
   if (!currentMatches) {
     throw new AppError(400, "Current password is incorrect");
   }
-  await user.update({
-    password: await hashPassword(newPassword),
-    passwordChangedAt: new Date(),
+  // A-123: "changing" to the same password would clear the forced-change
+  // flag while the administrator still knows the password.
+  if (newPassword === currentPassword) {
+    throw new AppError(400, "The new password must be different from the current one");
+  }
+  const hashed = await hashPassword(newPassword);
+  const wasForced = !!user.mustChangePassword;
+  await db.transaction(async (transaction) => {
+    await user.update(
+      {
+        password: hashed,
+        passwordChangedAt: new Date(),
+        mustChangePassword: false,
+      },
+      { transaction },
+    );
+    // Revoke all sessions — invalidates all active refresh tokens. CLS
+    // carries the transaction into revokeAllSessions.
+    await revokeAllSessions(userId, "PASSWORD_CHANGED");
+    await auditCredentialChange(transaction, {
+      user,
+      operation: "PASSWORD_CHANGE",
+      details: { forced: wasForced },
+      ipAddress,
+      userAgent,
+    });
   });
-  // Revoke all sessions — invalidates all active refresh tokens
-  await revokeAllSessions(userId, "PASSWORD_CHANGED");
   return {
     success: true,
     status: 200,
@@ -802,7 +938,18 @@ exports.logoutAllUserSessions = async (userId) => {
 // ------------------------------------------------------------------
 // MFA LOGIN
 // ------------------------------------------------------------------
-exports.loginMfa = async (userId, tokenCode, inputIp, inputUserAgent) => {
+/**
+ * Second step of an MFA sign-in.
+ *
+ * @param {string} userId - from the verified "mfa" purpose token
+ * @param {unknown} tokenCode - the TOTP code (ignored when `recoveryCode` is given)
+ * @param {string} [inputIp]
+ * @param {string} [inputUserAgent]
+ * @param {object} [options]
+ * @param {unknown} [options.recoveryCode] - A-141: a one-time recovery code in
+ *   place of the TOTP code
+ */
+exports.loginMfa = async (userId, tokenCode, inputIp, inputUserAgent, { recoveryCode } = {}) => {
   const dbUser = await Users.findByPk(userId, {
     include: [
       {
@@ -847,27 +994,37 @@ exports.loginMfa = async (userId, tokenCode, inputIp, inputUserAgent) => {
     throw new AppError(403, refusal);
   }
 
+  const useRecovery = recoveryCode !== undefined && recoveryCode !== null && recoveryCode !== "";
+  const spendRecoveryCode = async (transaction) => {
+    if (!(await mfaService.consumeRecoveryCode(dbUser, recoveryCode, { transaction }))) {
+      throw new AppError(401, "Invalid MFA code");
+    }
+    return { recoveryCodesRemaining: recoveryCodesRemaining(dbUser) };
+  };
+
   // A-115: consumeCode, not checkCode — the code is accepted once. A replay
   // inside its ~90-second window is the same 401 as a wrong code (and counts
   // against the caller the same way, A-81).
-  const isValid = await mfaService.consumeCode(dbUser, tokenCode);
-  if (!isValid) {
+  if (!useRecovery && !(await mfaService.consumeCode(dbUser, tokenCode))) {
     throw new AppError(401, "Invalid MFA code");
   }
-
-  // Update last login
-  await dbUser.update({ lastLoginAt: new Date() });
 
   const refreshToken = generateOpaqueRefreshToken();
 
   // Create session — and its LOGIN audit row, in one transaction (A-72).
+  // A-141: a recovery code is spent in that transaction. A wrong or spent one
+  // is the same 401 as a wrong TOTP code, counted by the same limiter (A-81).
   const session = await openLoginSession({
     user: dbUser,
     refreshToken,
     ipAddress: inputIp,
     userAgent: inputUserAgent,
-    method: "password+totp",
+    method: useRecovery ? "password+recovery_code" : "password+totp",
+    secondFactor: useRecovery ? spendRecoveryCode : undefined,
   });
+
+  // Update last login — after the second factor, whichever it was, passed.
+  await dbUser.update({ lastLoginAt: new Date() });
 
   const accessToken = generateAccessToken({
     id: dbUser.id,
@@ -900,6 +1057,11 @@ exports.loginMfa = async (userId, tokenCode, inputIp, inputUserAgent) => {
       role,
       tenantId: dbUser.tenantId,
       mfaEnabled: true,
+      mustChangePassword: !!dbUser.mustChangePassword,
+      // A-141: how many recovery codes are left, so the UI can say "re-enrol
+      // soon" after one is used. A count, never a code.
+      mfaRecoveryCodesRemaining: recoveryCodesRemaining(dbUser),
+      usedRecoveryCode: useRecovery,
     },
     token: accessToken,
     refreshToken,
@@ -931,8 +1093,7 @@ exports.loginMfa = async (userId, tokenCode, inputIp, inputUserAgent) => {
 //  - enabling and rotating are audited (UPDATE on User, `changes.operation`
 //    MFA_ENABLE / MFA_ROTATE) in the SAME transaction as the promotion.
 //
-// There is no MFA-disable endpoint (none existed before A-114 either), so
-// there is no disable to audit.
+// Disabling is disableMfa below (A-141), audited as MFA_DISABLE.
 // ------------------------------------------------------------------
 
 const MFA_PENDING_TTL_MS = 15 * 60 * 1000;
@@ -1005,7 +1166,11 @@ exports.setupMfa = async (userId, { currentPassword, code } = {}) => {
  * @param {string|null} [context.userAgent]
  * @returns {Promise<{ success: true, message: string }>}
  */
-exports.verifyMfaSetup = async (userId, tokenCode, { ipAddress = null, userAgent = null } = {}) => {
+exports.verifyMfaSetup = async (
+  userId,
+  tokenCode,
+  { ipAddress = null, userAgent = null, sessionId = null } = {},
+) => {
   const dbUser = await Users.findByPk(userId);
   if (!dbUser) {
     throw new AppError(404, "User not found");
@@ -1022,6 +1187,10 @@ exports.verifyMfaSetup = async (userId, tokenCode, { ipAddress = null, userAgent
   }
 
   const rotation = Boolean(dbUser.mfaEnabled);
+  // A-141: a new set of one-time recovery codes with every new authenticator.
+  // The old set (if any) is replaced in the same update. Only the hashes are
+  // stored; the codes themselves are returned ONCE, in this response.
+  const recoveryCodes = mfaService.createRecoveryCodes();
 
   await db.transaction(async (transaction) => {
     // Consumed in the transaction: a rolled-back promotion does not burn it.
@@ -1039,38 +1208,125 @@ exports.verifyMfaSetup = async (userId, tokenCode, { ipAddress = null, userAgent
         mfaEnabled: true,
         mfaPendingSecret: null,
         mfaPendingCreatedAt: null,
+        mfaRecoveryCodes: mfaService.hashRecoveryCodes(dbUser.id, recoveryCodes),
       },
       { transaction },
     );
 
-    if (!dbUser.tenantId) {
-      // audit_logs.tenant_id is NOT NULL; a tenantless principal (the
-      // platform super admin) has no trail to write into — as openLoginSession.
-      logger.error("MFA change not audited: the user has no tenant", {
-        userId: dbUser.id,
-        operation: rotation ? "MFA_ROTATE" : "MFA_ENABLE",
-      });
-      return;
-    }
-    await auditService.logAction(
-      {
-        tenantId: dbUser.tenantId,
-        userId: dbUser.id,
-        action: "UPDATE",
-        resourceType: "User",
-        resourceId: dbUser.id,
-        // Never the secret: audit_logs is permanent.
-        changes: { operation: rotation ? "MFA_ROTATE" : "MFA_ENABLE" },
-        ipAddress,
-        userAgent,
+    // A-141: replacing the authenticator signs out every OTHER session. If the
+    // old phone was lost or the rotation answers a compromise, the session
+    // that holds it must end now, not when it expires. The caller's own
+    // session survives. A first enrolment replaces nothing and revokes nothing.
+    const otherSessionsRevoked = rotation
+      ? await revokeOtherSessions(dbUser.id, sessionId, "MFA_ROTATED", { transaction })
+      : 0;
+
+    await auditCredentialChange(transaction, {
+      user: dbUser,
+      // Never the secret or a code: audit_logs is permanent.
+      operation: rotation ? "MFA_ROTATE" : "MFA_ENABLE",
+      details: {
+        recoveryCodesIssued: recoveryCodes.length,
+        ...(rotation ? { otherSessionsRevoked } : {}),
       },
-      { transaction },
-    );
+      ipAddress,
+      userAgent,
+    });
   });
 
   return {
     success: true,
     message: rotation ? "MFA authenticator replaced successfully" : "MFA enabled successfully",
+    recoveryCodes,
+  };
+};
+
+// ------------------------------------------------------------------
+// DISABLE MFA  (A-141)
+//
+// There was no way to turn MFA off, so a user who lost their authenticator
+// had no way back in and no way to start over. Disabling needs BOTH the
+// current password AND a second factor — a current TOTP code, or one of the
+// recovery codes (the path for someone whose phone is gone: sign in with a
+// recovery code, then disable and enrol again). As for a rotation, a wrong
+// password and a wrong code are one combined 400.
+//
+// It clears the live secret, any pending enrolment, the replay step and the
+// recovery codes; signs out every other session; and is audited (MFA_DISABLE)
+// in the same transaction.
+// ------------------------------------------------------------------
+
+const MFA_NOT_ENABLED = "MFA is not enabled for this account";
+
+/**
+ * @param {string} userId - the authenticated caller
+ * @param {object} reauth
+ * @param {string} [reauth.currentPassword]
+ * @param {string} [reauth.code] - a current TOTP code
+ * @param {string} [reauth.recoveryCode] - or a recovery code
+ * @param {object} [context]
+ * @param {string|null} [context.ipAddress]
+ * @param {string|null} [context.userAgent]
+ * @param {string|null} [context.sessionId] - the caller's session, which survives
+ * @returns {Promise<{ success: true, message: string, otherSessionsRevoked: number }>}
+ * @throws {AppError} 404 no user; 409 MFA not enabled; 400 re-authentication
+ *   missing or wrong
+ */
+exports.disableMfa = async (
+  userId,
+  { currentPassword, code, recoveryCode } = {},
+  { ipAddress = null, userAgent = null, sessionId = null } = {},
+) => {
+  const dbUser = await Users.findByPk(userId);
+  if (!dbUser) {
+    throw new AppError(404, "User not found");
+  }
+  if (!dbUser.mfaEnabled) {
+    throw new AppError(409, MFA_NOT_ENABLED);
+  }
+  if (!currentPassword || (!code && !recoveryCode)) {
+    throw new AppError(400, "Current password and an MFA or recovery code are required");
+  }
+
+  // The password first: a wrong password must not burn a code.
+  const passwordOk = await comparePassword(currentPassword, dbUser.password);
+  if (!passwordOk) {
+    logger.warn("MFA disable refused: re-authentication failed", {
+      userId: dbUser.id,
+      reason: "password",
+    });
+    throw new AppError(400, MFA_REAUTH_FAILED);
+  }
+
+  const method = recoveryCode ? "recovery_code" : "totp";
+  const otherSessionsRevoked = await db.transaction(async (transaction) => {
+    const factorOk = recoveryCode
+      ? await mfaService.consumeRecoveryCode(dbUser, recoveryCode, { transaction })
+      : await mfaService.consumeCode(dbUser, code, { transaction });
+    if (!factorOk) {
+      logger.warn("MFA disable refused: re-authentication failed", {
+        userId: dbUser.id,
+        reason: method,
+      });
+      throw new AppError(400, MFA_REAUTH_FAILED);
+    }
+
+    await dbUser.update({ ...mfaService.MFA_CLEARED }, { transaction });
+    const revoked = await revokeOtherSessions(dbUser.id, sessionId, "MFA_DISABLED", { transaction });
+    await auditCredentialChange(transaction, {
+      user: dbUser,
+      operation: "MFA_DISABLE",
+      details: { method, otherSessionsRevoked: revoked },
+      ipAddress,
+      userAgent,
+    });
+    return revoked;
+  });
+
+  return {
+    success: true,
+    message: "MFA disabled",
+    otherSessionsRevoked,
   };
 };
 

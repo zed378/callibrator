@@ -11,13 +11,15 @@ import { api } from "../client";
  *   POST   /key-pairs                (denies API keys)
  *   DELETE /key-pairs/:keyPairId
  *   GET    /workflows                ?status       (management: qms)
- *   POST   /workflows
+ *   POST   /workflows                signers by userId only (A-129)
+ *   GET    /signers                  users a workflow may name (qms write, A-129)
  *   GET    /workflows/:workflowId
  *   GET    /my-workflows             ?stepStatus   (signer view, A-91)
  *   GET    /my-workflows/:workflowId              (signer view, A-91)
  *   PUT    /workflows/:workflowId
- *   DELETE /workflows/:workflowId
- *   POST   /sign                     (denies API keys)
+ *   DELETE /workflows/:workflowId    409 once any step is signed (A-130)
+ *   POST   /workflows/:workflowId/cancel             (A-130)
+ *   POST   /sign                     (denies API keys; `reason` required)
  *   POST   /verify
  *   GET    /history                  ?userId&startDate&endDate
  */
@@ -40,10 +42,32 @@ export interface KeyPair {
   expiresAt?: string | null;
 }
 
+/**
+ * A signer as POST /workflows takes it (A-129, ADR-051 Q-19, A-86): a user of
+ * the tenant, by id. The backend reads the name and email from the user
+ * record and ignores any in the body; an email-only signer is refused (400).
+ */
 export interface Signer {
   userId: string;
-  email: string;
+}
+
+/**
+ * One row of GET /signers — an active user of the tenant holding
+ * `esignature` write, i.e. a user POST /workflows will accept as a signer.
+ */
+export interface EligibleSigner {
+  id: string;
   name: string;
+  email: string;
+}
+
+/**
+ * What POST /workflows returns in `data`:
+ * eSignature.service#createSignatureWorkflow's `{ workflowId, signers }`.
+ */
+export interface CreatedWorkflow {
+  workflowId: string;
+  signers: Array<{ userId: string; email: string; name: string; status: string }>;
 }
 
 export interface SignatureWorkflow {
@@ -75,15 +99,22 @@ export interface SignatureStep {
   signedAt?: string | null;
 }
 
+/**
+ * A row of GET /history. `ipAddress`, `userAgent` and `biometricData` are
+ * present only for a caller holding `qms` read; everyone else gets their own
+ * signatures without them (A-129, F-9).
+ */
 export interface SignatureRecord {
   id: string;
-  stepId?: string;
+  workflowId?: string;
+  workflowStepId?: string;
   userId?: string;
-  documentId?: string;
   signedAt?: string;
+  signatureReason?: string | null;
+  status?: string;
   authenticationMethod?: AuthenticationMethod;
-  ipAddress?: string;
-  userAgent?: string;
+  ipAddress?: string | null;
+  userAgent?: string | null;
 }
 
 export interface VerifyResult {
@@ -124,8 +155,8 @@ export interface SignDocumentInput {
   authenticationMethod?: SigningAuthMethod;
   /** The signer's password or MFA code. Never stored. */
   authPayload: string;
-  /** The meaning of the signature (21 CFR 11.50), max 255. */
-  reason?: string;
+  /** The meaning of the signature (21 CFR 11.50), max 255. Required (A-129). */
+  reason: string;
   polygon?: Record<string, unknown> | null;
   biometricData?: string | null;
 }
@@ -251,15 +282,38 @@ export const eSignatureService = {
     return response.data;
   },
 
-  /** POST /workflows — signers and subject are required server-side. */
-  createWorkflow: async (
-    input: CreateWorkflowInput,
-  ): Promise<SignatureWorkflow> => {
-    const response = await api.post<BackendResponse<SignatureWorkflow>>(
+  /**
+   * POST /workflows — signers and subject are required server-side. Each
+   * signer is `{ userId }` (A-129): 400 for an email-only, inactive or
+   * unauthorised signer; 404 for one who is not a user of this tenant.
+   */
+  createWorkflow: async (input: CreateWorkflowInput): Promise<CreatedWorkflow> => {
+    const response = await api.post<BackendResponse<CreatedWorkflow>>(
       `${BASE}/workflows`,
       input,
     );
     return response.data;
+  },
+
+  /**
+   * GET /signers — the users a workflow may name (A-129). Rows are `data`
+   * itself, the count in a top-level `meta.total`.
+   */
+  getEligibleSigners: async (): Promise<EligibleSigner[]> => {
+    const response = await api.get<BackendResponse<EligibleSigner[]>>(`${BASE}/signers`);
+    return response.data ?? [];
+  },
+
+  /**
+   * POST /workflows/:workflowId/cancel (A-130) — the way to withdraw a
+   * workflow that has a signature, since it cannot be deleted. 409 when it is
+   * completed or already cancelled.
+   */
+  cancelWorkflow: async (workflowId: string, reason?: string): Promise<void> => {
+    await api.post<BackendResponse<null>>(
+      `${BASE}/workflows/${workflowId}/cancel`,
+      reason ? { reason } : {},
+    );
   },
 
   /** PUT /workflows/:workflowId */
@@ -274,7 +328,10 @@ export const eSignatureService = {
     return response.data;
   },
 
-  /** DELETE /workflows/:workflowId */
+  /**
+   * DELETE /workflows/:workflowId — 409 with an explanation once the workflow
+   * has any signature (A-130, A-144); cancel it instead.
+   */
   deleteWorkflow: async (workflowId: string): Promise<void> => {
     await api.delete<BackendResponse<null>>(`${BASE}/workflows/${workflowId}`);
   },
@@ -305,6 +362,8 @@ export const eSignatureService = {
   /**
    * GET /history — rows are `data` itself, the count in a top-level
    * `meta.total` (A-106; the backend used to wrap them as data.signatures).
+   * Without `qms` read, only the caller's own signatures, `userId` ignored
+   * (A-129).
    */
   getSignatureHistory: async (
     params: SignatureHistoryParams = {},

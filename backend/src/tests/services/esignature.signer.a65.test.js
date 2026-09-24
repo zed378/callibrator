@@ -120,7 +120,7 @@ describe("A-65 — eSignature.service#signDocument", () => {
 
       // u-2 is in the same tenant and holds valid credentials of their own.
       await expect(
-        h.svc.signDocument("step-1", "u-2", { authenticationMethod: "mfa", authPayload: MFA_CODE }),
+        h.svc.signDocument("step-1", "u-2", { authenticationMethod: "mfa", authPayload: MFA_CODE, reason: "Approved" }),
       ).rejects.toMatchObject({ status: 403 });
 
       expectNothingPersisted(h);
@@ -130,7 +130,7 @@ describe("A-65 — eSignature.service#signDocument", () => {
       const h = buildHarness({ stepFields: { signerId: null } });
 
       await expect(
-        h.svc.signDocument("step-1", SIGNER, { authenticationMethod: "password", authPayload: PASSWORD }),
+        h.svc.signDocument("step-1", SIGNER, { authenticationMethod: "password", authPayload: PASSWORD, reason: "Approved" }),
       ).rejects.toMatchObject({ status: 403 });
 
       expectNothingPersisted(h);
@@ -143,6 +143,7 @@ describe("A-65 — eSignature.service#signDocument", () => {
         h.svc.signDocument("step-of-another-tenant", "u-2", {
           authenticationMethod: "password",
           authPayload: PASSWORD,
+          reason: "Approved",
         }),
       ).rejects.toMatchObject({ status: 404 });
 
@@ -153,7 +154,7 @@ describe("A-65 — eSignature.service#signDocument", () => {
       const h = buildHarness({ stepFields: { status: "signed" } });
 
       await expect(
-        h.svc.signDocument("step-1", "u-2", { authenticationMethod: "password", authPayload: PASSWORD }),
+        h.svc.signDocument("step-1", "u-2", { authenticationMethod: "password", authPayload: PASSWORD, reason: "Approved" }),
       ).rejects.toMatchObject({ status: 403 });
     });
   });
@@ -163,16 +164,17 @@ describe("A-65 — eSignature.service#signDocument", () => {
       const h = buildHarness();
 
       await expect(
-        h.svc.signDocument("step-1", SIGNER, { authenticationMethod: "password" }),
+        h.svc.signDocument("step-1", SIGNER, { authenticationMethod: "password", reason: "Approved" }),
       ).rejects.toMatchObject({ status: 401 });
       await expect(
-        h.svc.signDocument("step-1", SIGNER, { authenticationMethod: "password", authPayload: "wrong" }),
+        h.svc.signDocument("step-1", SIGNER, { authenticationMethod: "password", authPayload: "wrong", reason: "Approved" }),
       ).rejects.toMatchObject({ status: 401 });
       expectNothingPersisted(h);
 
       const signed = await h.svc.signDocument("step-1", SIGNER, {
         authenticationMethod: "password",
         authPayload: PASSWORD,
+        reason: "Approved",
       });
 
       expect(signed.signatureId).toBe("sig-1");
@@ -184,11 +186,11 @@ describe("A-65 — eSignature.service#signDocument", () => {
       const h = buildHarness();
 
       await expect(
-        h.svc.signDocument("step-1", SIGNER, { authenticationMethod: "mfa", authPayload: "000000" }),
+        h.svc.signDocument("step-1", SIGNER, { authenticationMethod: "mfa", authPayload: "000000", reason: "Approved" }),
       ).rejects.toMatchObject({ status: 401 });
       expectNothingPersisted(h);
 
-      await h.svc.signDocument("step-1", SIGNER, { authenticationMethod: "mfa", authPayload: MFA_CODE });
+      await h.svc.signDocument("step-1", SIGNER, { authenticationMethod: "mfa", authPayload: MFA_CODE, reason: "Approved" });
 
       expect(h.verifyLogin).toHaveBeenLastCalledWith(
         expect.objectContaining({ id: SIGNER }),
@@ -204,7 +206,7 @@ describe("A-65 — eSignature.service#signDocument", () => {
       const h = buildHarness({ users: { [SIGNER]: { id: SIGNER, status: "ACTIVE", isActive: true, mfaEnabled: false } } });
 
       await expect(
-        h.svc.signDocument("step-1", SIGNER, { authenticationMethod: "mfa", authPayload: MFA_CODE }),
+        h.svc.signDocument("step-1", SIGNER, { authenticationMethod: "mfa", authPayload: MFA_CODE, reason: "Approved" }),
       ).rejects.toMatchObject({ status: 400 });
       expectNothingPersisted(h);
     });
@@ -214,7 +216,7 @@ describe("A-65 — eSignature.service#signDocument", () => {
       const h = buildHarness();
 
       await expect(
-        h.svc.signDocument("step-1", SIGNER, { authenticationMethod: "password", authPayload: "wrong" }),
+        h.svc.signDocument("step-1", SIGNER, { authenticationMethod: "password", authPayload: "wrong", reason: "Approved" }),
       ).rejects.toMatchObject({ status: 401 });
       expectNothingPersisted(h);
       expect(h.svc.getStatus().reauthenticationRequired).toBe(true);
@@ -226,6 +228,7 @@ describe("A-65 — eSignature.service#signDocument", () => {
       await h.svc.signDocument("step-1", SIGNER, {
         authenticationMethod: "password",
         authPayload: PASSWORD,
+        reason: "Approved",
       });
 
       expect(JSON.stringify(h.models.SignatureRecord.create.mock.calls)).not.toContain(PASSWORD);
@@ -269,6 +272,7 @@ describe("A-65 — POST /esignature/sign (validator + controller)", () => {
         stepId: STEP,
         authenticationMethod: "password",
         authPayload: PASSWORD,
+        reason: "Approved",
         ipAddress: "198.51.100.4",
         userAgent: "Forged/1.0",
       },
@@ -288,6 +292,7 @@ describe("A-65 — POST /esignature/sign (validator + controller)", () => {
         stepId: STEP,
         authenticationMethod: "password",
         authPayload: PASSWORD,
+        reason: "Approved",
         ipAddress: "198.51.100.4",
         userAgent: "Forged/1.0",
       },
@@ -314,7 +319,7 @@ describe("A-65 — POST /esignature/sign (validator + controller)", () => {
 
   it("a signing request without a credential is a 400 and never reaches the service", async () => {
     const { signDocument, res } = await runRoute(
-      { stepId: STEP, authenticationMethod: "password" },
+      { stepId: STEP, authenticationMethod: "password", reason: "Approved" },
       { ip: "203.0.113.9", userAgent: "Mozilla/5.0" },
     );
 

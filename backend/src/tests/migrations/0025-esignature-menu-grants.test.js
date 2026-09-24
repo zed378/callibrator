@@ -57,14 +57,21 @@ describe("migration 0025 — esignature menu group and grants (A-84)", () => {
     );
   });
 
-  it("the frozen role list is exactly the seeded roles ROLE_MENU_ASSIGNMENTS grants `esignature: write`", () => {
+  it("the frozen role list is every seeded role — ROLE_MENU_ASSIGNMENTS as it stood when 0025 was written", () => {
+    // A-129 (ADR-051 Q-19) later narrowed ROLE_MENU_ASSIGNMENTS; migration
+    // 0032 withdrew the untouched default from the roles it names. What 0025
+    // did is frozen: its list plus 0032's is still every seeded role, and
+    // today's grants are exactly its list minus 0032's.
     const granted = ROLE_MENU_ASSIGNMENTS.filter(
       (a) => a.menus[MENU_SLUGS.ESIGNATURE] === "write",
     ).map((a) => a.roleName);
     const seeded = Object.keys(ROLE_IDS).map((key) => ROLE_NAMES[key]);
+    const { REVOKED_ROLES } = require("../../migrations/0032-esignature-technical-roles-only");
 
-    expect([...migration.GRANTED_ROLES].sort()).toEqual([...granted].sort());
     expect([...migration.GRANTED_ROLES].sort()).toEqual([...seeded].sort());
+    expect(
+      migration.GRANTED_ROLES.filter((role) => !REVOKED_ROLES.includes(role)).sort(),
+    ).toEqual([...granted].sort());
   });
 
   it("uses the same slug and fixed id as the seed", () => {

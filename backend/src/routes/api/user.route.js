@@ -15,6 +15,8 @@ const router = express.Router();
 const { auth } = require("../../middlewares/auth.middleware");
 const { dynamicAccess } = require("../../middlewares/dynamicAccess.middleware");
 const { validateUuid } = require("../../middlewares/validateUuid.middleware");
+const { rbac } = require("../../middlewares/rbac.middleware");
+const { ROLE_NAMES } = require("../../constants");
 const { upload } = require("../../utils/upload.util");
 const {
   enforceSeatQuota,
@@ -850,6 +852,55 @@ router.delete(
   validateUuid("userId"),
   dynamicAccess("users", "update", { checkSelf: true, checkTenant: true }),
   userController.removeUserAvatar,
+);
+
+/* ------------------------------------------------------------------ */
+/* ADMIN-ASSISTED MFA RESET (A-141)                                   */
+/* ------------------------------------------------------------------ */
+/**
+ * @swagger
+ * /api/v1/users/{userId}/mfa/reset:
+ *   post:
+ *     summary: Reset another user's MFA (tenant administrator)
+ *     description: >
+ *       For a user who lost their authenticator and their recovery codes.
+ *       Clears the user's second factor and recovery codes, signs out every
+ *       session of theirs, and is audited (MFA_ADMIN_RESET). The user then
+ *       signs in with their password and enrols again. Requires users update
+ *       access and a tenant-administrator role; the target must be in the
+ *       caller's tenant (another tenant's user answers 404), may not be the
+ *       caller, and may not hold a role above the caller's.
+ *     tags:
+ *       - Users
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       '200':
+ *         description: MFA reset; the user's sessions were revoked
+ *       '400':
+ *         description: The caller named themselves (use POST /auth/mfa/disable)
+ *       '403':
+ *         description: Not a tenant administrator, or the target's role is above the caller's
+ *       '404':
+ *         description: User not found (including a user of another tenant)
+ *       '409':
+ *         description: The user has no MFA to reset
+ */
+router.post(
+  "/:userId/mfa/reset",
+  auth,
+  validateUuid("userId"),
+  dynamicAccess("users", "update", { checkTenant: true }),
+  rbac([ROLE_NAMES.TENANT_ADMIN]),
+  // Audited inside userService.resetUserMfa's transaction.
+  userController.resetUserMfa,
 );
 
 module.exports = router;

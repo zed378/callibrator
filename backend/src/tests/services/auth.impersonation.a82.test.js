@@ -106,6 +106,9 @@ describe("A-82: impersonation is audited", () => {
       tenantId: TARGET_TENANT,
       // ... attributed to the ACTOR, the super admin, not the impersonated user.
       userId: SUPER_ADMIN_ID,
+      // A-124: the actor columns, derived by logAction.
+      actorType: "user",
+      actorName: null,
       action: "LOGIN",
       resourceType: "Session",
       resourceId: SESSION_ID,

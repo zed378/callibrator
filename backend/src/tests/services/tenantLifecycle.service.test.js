@@ -164,7 +164,8 @@ describe("tenantLifecycle.service", () => {
         { transaction: { id: "tx" } },
       );
       expect(auditService.logAction).toHaveBeenCalledWith(
-        expect.objectContaining({ tenantId: "t1", userId: null, action: "DELETE" }),
+        // A-124: the scheduler is the system actor, not a null user.
+        expect.objectContaining({ tenantId: "t1", systemActor: "system:tenant-lifecycle", action: "DELETE" }),
         { transaction: { id: "tx" } },
       );
     });

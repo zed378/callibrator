@@ -20,14 +20,10 @@ jest.mock("../../models", () => {
       createdAt: { fieldName: "createdAt", type: { key: "DATE" } },
     },
   };
-  const mockAudit_log = {
-    findAll: jest.fn(),
-    update: jest.fn(),
-    rawAttributes: {
-      id: { fieldName: "id", type: { key: "INTEGER" } },
-      ipAddress: { fieldName: "ipAddress", type: { key: "STRING" } },
-    },
-  };
+  // A-135: there is no `Audit_log` model. This mock used to invent one, so
+  // the tests passed while maskPII("audit_logs") answered 400 on every real
+  // call. Audit-row masking is tested against the real models in
+  // dataRetention.maskAudit.a135.test.js.
 
   return {
     AuditLog: { destroy: jest.fn() },
@@ -41,12 +37,12 @@ jest.mock("../../models", () => {
       destroy: jest.fn(),
     },
     User: mockUser,
-    Audit_log: mockAudit_log,
   };
 });
 
 const dataRetention = require("../../services/dataRetention.service");
-const { AuditLog, Notification, Session, Tenant, TenantSettings, User, Audit_log } = require("../../models");
+const { AuditLog, Notification, Session, Tenant, TenantSettings, User } = require("../../models");
+const auditService = require("../../services/audit.service");
 
 describe("dataRetention.service", () => {
   beforeEach(() => jest.clearAllMocks());
@@ -212,22 +208,65 @@ describe("dataRetention.service", () => {
       await expect(dataRetention.maskPII("t1", "unknown", [1])).rejects.toThrow("Unknown entity type for PII masking");
     });
 
-    it("masks users fields with redacted values", async () => {
+    it("masks each user in one transaction with a unique, valid email, and audits it", async () => {
+      // A-135: a single shared "[REDACTED]" email failed the model's isEmail
+      // validation, and would collide on the unique index from the 2nd row.
       TenantSettings.findOne.mockResolvedValue(null);
-      User.update.mockResolvedValue([1]);
+      User.update.mockResolvedValueOnce([1]).mockResolvedValueOnce([0]);
 
-      const result = await dataRetention.maskPII("t1", "users", [1, 2]);
+      const result = await dataRetention.maskPII("t1", "users", ["u1", "u2"], {
+        userId: "admin-1",
+        ipAddress: "10.0.0.1",
+        userAgent: "ua",
+      });
 
-      expect(User.update).toHaveBeenCalledWith(
+      expect(User.update).toHaveBeenNthCalledWith(
+        1,
         {
-          email: "[REDACTED]",
+          email: "redacted_u1@redacted.invalid",
           firstName: "[REDACTED]",
           lastName: "[REDACTED]",
           phone: "[REDACTED]",
         },
-        expect.any(Object)
+        { where: { id: "u1", tenantId: "t1" }, transaction: "TX" },
       );
-      expect(result.masked).toBe(2);
+      expect(User.update).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({ email: "redacted_u2@redacted.invalid" }),
+        { where: { id: "u2", tenantId: "t1" }, transaction: "TX" },
+      );
+      // The count is what the database changed, not what was asked for.
+      expect(result).toEqual({ masked: 1, fields: ["email", "firstName", "lastName", "phone"] });
+      expect(auditService.logAction).toHaveBeenCalledWith(
+        {
+          tenantId: "t1",
+          userId: "admin-1",
+          action: "UPDATE",
+          resourceType: "User",
+          resourceId: null,
+          changes: {
+            operation: "GDPR_MASK_PII",
+            recordIds: ["u1", "u2"],
+            masked: 1,
+            fields: ["email", "firstName", "lastName", "phone"],
+          },
+          ipAddress: "10.0.0.1",
+          userAgent: "ua",
+        },
+        { transaction: "TX" },
+      );
+    });
+
+    it("records null request-origin fields when no actor detail is given", async () => {
+      TenantSettings.findOne.mockResolvedValue(null);
+      User.update.mockResolvedValue([1]);
+
+      await dataRetention.maskPII("t1", "users", ["u1"]);
+
+      expect(auditService.logAction).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: null, ipAddress: null, userAgent: null }),
+        { transaction: "TX" },
+      );
     });
 
     it("throws error when model not found", async () => {

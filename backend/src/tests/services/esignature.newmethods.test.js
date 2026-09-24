@@ -243,9 +243,11 @@ describe("eSignature.service — implemented workflow/key methods", () => {
     it("soft-deletes an owned workflow", async () => {
       const destroy = jest.fn().mockResolvedValue(true);
       const findOne = jest.fn().mockResolvedValue({ id: "wf-1", destroy });
-      const { deleteWorkflow } = load({ SignatureWorkflow: { findOne } });
+      // A-130: a workflow with no signature may still be deleted.
+      const count = jest.fn().mockResolvedValue(0);
+      const { deleteWorkflow } = load({ SignatureWorkflow: { findOne }, SignatureRecord: { count } });
 
-      const result = await deleteWorkflow("wf-1", "tenant-1");
+      const result = await deleteWorkflow("wf-1", "tenant-1", { userId: "admin-1" });
 
       expect(destroy).toHaveBeenCalledWith({ transaction: "TX" });
       expect(result).toEqual({ success: true });
@@ -272,25 +274,29 @@ describe("eSignature.service — implemented workflow/key methods", () => {
 
   // ------------------------------------------------------- getSignatureHistory
   describe("getSignatureHistory", () => {
-    it("returns records with no filters", async () => {
+    // A-129 (F-9): the tenant-wide history is for a caller holding `qms`
+    // read (canManage). The own-signatures scope is pinned in
+    // esignature.history.a129.test.js.
+    it("returns the tenant's records with no filters, to a manager", async () => {
       const findAll = jest.fn().mockResolvedValue([{ id: "sig-1" }]);
       const { getSignatureHistory } = load({ SignatureRecord: { findAll } });
 
-      const result = await getSignatureHistory("tenant-1", {});
+      const result = await getSignatureHistory("tenant-1", {}, { callerId: "u-9", canManage: true });
 
       const arg = findAll.mock.calls[0][0];
       expect(arg.where).toEqual({ tenantId: "tenant-1" });
+      expect(arg.attributes).toBeUndefined();
       expect(arg.order).toEqual([["signedAt", "DESC"]]);
       expect(result).toHaveLength(1);
     });
 
-    it("defaults filters when the argument is omitted", async () => {
+    it("with no filters and no scope it is deny-by-default: no caller, no rows", async () => {
       const findAll = jest.fn().mockResolvedValue([]);
       const { getSignatureHistory } = load({ SignatureRecord: { findAll } });
 
       await getSignatureHistory("tenant-1");
 
-      expect(findAll.mock.calls[0][0].where).toEqual({ tenantId: "tenant-1" });
+      expect(findAll.mock.calls[0][0].where).toEqual({ tenantId: "tenant-1", userId: null });
     });
 
     it("filters by startDate only", async () => {
@@ -321,7 +327,7 @@ describe("eSignature.service — implemented workflow/key methods", () => {
       const findAll = jest.fn().mockResolvedValue([]);
       const { getSignatureHistory } = load({ SignatureRecord: { findAll } });
 
-      await getSignatureHistory("tenant-1", { userId: "u-1" });
+      await getSignatureHistory("tenant-1", { userId: "u-1" }, { callerId: "u-9", canManage: true });
 
       expect(findAll.mock.calls[0][0].where).toMatchObject({
         tenantId: "tenant-1",

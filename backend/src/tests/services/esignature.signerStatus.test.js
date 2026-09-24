@@ -95,7 +95,7 @@ describe("signDocument — the signer's account state", () => {
   };
 
   const sign = (h) =>
-    h.svc.signDocument("step-1", SIGNER, { authenticationMethod: "password", authPayload: PASSWORD });
+    h.svc.signDocument("step-1", SIGNER, { authenticationMethod: "password", authPayload: PASSWORD, reason: "Approved" });
 
   it("a real ACTIVE user (as stored by the model default) can sign their step", async () => {
     const user = realUser();

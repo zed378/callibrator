@@ -92,6 +92,28 @@ describe("dataRetention Controller", () => {
       dataRetentionService.maskPII.mockResolvedValue({ masked: 1 });
       await dataRetentionController.maskPII(req, res, next);
       expect(res.json).toHaveBeenCalled();
+      expect(dataRetentionService.maskPII).toHaveBeenCalledWith(
+        "tenant-1",
+        "user",
+        ["id-1"],
+        expect.objectContaining({ userId: "user-1" }),
+      );
+    });
+
+    it("A-135: passes the data subjects, and the actor, when masking audit rows", async () => {
+      req.body = { tenantId: "tenant-1", entityType: "audit_logs", subjectIds: ["s-1"] };
+      req.ip = "10.0.0.1";
+      req.headers = { "user-agent": "ops" };
+      dataRetentionService.maskPII.mockResolvedValue({ masked: 3 });
+
+      await dataRetentionController.maskPII(req, res, next);
+
+      expect(dataRetentionService.maskPII).toHaveBeenCalledWith("tenant-1", "audit_logs", ["s-1"], {
+        userId: "user-1",
+        tenantId: "tenant-1",
+        ipAddress: "10.0.0.1",
+        userAgent: "ops",
+      });
     });
   });
 

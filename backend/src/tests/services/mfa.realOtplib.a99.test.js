@@ -120,7 +120,12 @@ describe("A-99: the real otplib, not a mock", () => {
 
     // 2. verify setup with a code an authenticator app would show now.
     const verified = await authService.verifyMfaSetup(USER_ID, codeAt(setup.secret, NOW_S));
-    expect(verified).toEqual({ success: true, message: "MFA enabled successfully" });
+    // A-141: plus the one-time recovery codes, shown this once.
+    expect(verified).toEqual({
+      success: true,
+      message: "MFA enabled successfully",
+      recoveryCodes: expect.any(Array),
+    });
     expect(user.mfaEnabled).toBe(true);
     expect(user.mfaSecret).toBe(setup.secret);
 

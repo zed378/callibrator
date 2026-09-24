@@ -310,16 +310,15 @@ describe("attachment.service", () => {
       );
     });
 
-    it("records an unattributed audit row when no actor is supplied", async () => {
+    // A-124 (ADR-051 Q-13): an audit row names exactly one actor. A delete
+    // with no actor is refused inside its transaction, not recorded unattributed.
+    it("refuses a delete with no actor — no unattributed audit row is written", async () => {
       const mockAtt = attachmentRow({ id: "a-2" });
       Attachment.findOne.mockResolvedValueOnce(mockAtt);
 
-      await attachmentService.deleteAttachment("t-1", "a-2");
+      await expect(attachmentService.deleteAttachment("t-1", "a-2")).rejects.toThrow(/must name its actor/);
 
-      expect(AuditLog.create).toHaveBeenCalledWith(
-        expect.objectContaining({ userId: null, ipAddress: null, userAgent: null }),
-        { transaction: "TX" },
-      );
+      expect(AuditLog.create).not.toHaveBeenCalled();
     });
 
     it("throws 404 when not found", async () => {

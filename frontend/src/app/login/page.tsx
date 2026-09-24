@@ -39,6 +39,8 @@ function LoginForm() {
     mfaCode,
     setMfaCode,
     mfaLoading,
+    useRecoveryCode,
+    setUseRecoveryCode,
     handleMfaSubmit,
     cancelMfa,
   } = useLoginForm();
@@ -101,6 +103,8 @@ function LoginForm() {
                 onSubmit={handleMfaSubmit}
                 onBack={cancelMfa}
                 isLoading={mfaLoading}
+                useRecoveryCode={useRecoveryCode}
+                setUseRecoveryCode={setUseRecoveryCode}
               />
             ) : (
               <>

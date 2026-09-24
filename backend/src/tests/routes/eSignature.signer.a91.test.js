@@ -219,7 +219,7 @@ const STEP_B = "5b5b5b5b-0000-4000-8000-000000000001";
 let fx;
 let technicianA;
 let supervisorA;
-let userA;
+let bystanderA;
 let technicianB;
 let keyPair;
 
@@ -236,7 +236,7 @@ beforeEach(() => {
   fx = createTwoTenants();
   technicianA = fx.principal(fx.tenantA, "TECHNICIAN");
   supervisorA = fx.principal(fx.tenantA, "SUPERVISOR");
-  userA = fx.principal(fx.tenantA, "USER");
+  bystanderA = fx.principal(fx.tenantA, "HEALTHCARE_TECHNICIAN"); // A-129: holds esignature, named in no step
   technicianB = fx.principal(fx.tenantB, "TECHNICIAN");
 
   const step = (fields) => ({
@@ -267,7 +267,7 @@ beforeEach(() => {
   mockStore.users = {
     [technicianA.id]: { id: technicianA.id, status: "ACTIVE", isActive: true },
     [supervisorA.id]: { id: supervisorA.id, status: "ACTIVE", isActive: true },
-    [userA.id]: { id: userA.id, status: "ACTIVE", isActive: true },
+    [bystanderA.id]: { id: bystanderA.id, status: "ACTIVE", isActive: true },
   };
   mockStore.workflows = [
     workflow({
@@ -387,7 +387,7 @@ describe("A-91 — the signer view of e-signature workflows", () => {
   });
 
   it("a user not named as signer cannot read the workflow", async () => {
-    as(userA);
+    as(bystanderA);
 
     const res = await http("get", `/my-workflows/${WF_A}`);
 
@@ -412,7 +412,7 @@ describe("A-91 — the signer view of e-signature workflows", () => {
   });
 
   it("not-yours, another tenant's and non-existent are byte-identical", async () => {
-    as(userA);
+    as(bystanderA);
     const notNamed = await http("get", `/my-workflows/${WF_A}`);
     const foreign = await http("get", `/my-workflows/${WF_B}`);
     const missing = await http("get", "/my-workflows/eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee");

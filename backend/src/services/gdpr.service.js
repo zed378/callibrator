@@ -14,7 +14,7 @@ const path = require("path");
 const archiver = require("archiver");
 const { logger } = require("../middlewares/activityLog.middleware");
 const { AppError } = require("../utils/appError.util");
-const { db } = require("../config");
+const { Op } = require("sequelize");
 const storagePath = require("../utils/storagePath.util");
 
 // ==========================================
@@ -98,10 +98,30 @@ exports.exportUserData = async (tenantId, userId, options = {}) => {
 async function exportUserProfile(exportDir, tenantId, userId) {
   const { User, Role } = require("../models");
 
+  // A-140: `User` is associated to `Role` under the alias `role`
+  // (user.model.js). `include: [Role]` without it made Sequelize throw before
+  // any query ran, so every Article 15 export failed. No `raw: true`: it
+  // flattens an include to `"role.name"` keys, and `user.role` would be unset.
+  // The role is a LEFT JOIN — a user whose role was deleted (role_id SET NULL)
+  // is still owed their data. The attributes are named, so no credential or
+  // second-factor column is ever selected into an export.
   const user = await User.findOne({
     where: { id: userId, tenantId },
-    include: [Role],
-    raw: true,
+    attributes: [
+      "id",
+      "email",
+      "username",
+      "firstName",
+      "lastName",
+      "phone",
+      "avatarUrl",
+      "status",
+      "createdAt",
+      "lastLoginAt",
+    ],
+    include: [
+      { model: Role, as: "role", attributes: ["id", "name"], required: false },
+    ],
   });
 
   if (!user) {
@@ -117,7 +137,10 @@ async function exportUserProfile(exportDir, tenantId, userId) {
       username: user.username,
       firstName: user.firstName,
       lastName: user.lastName,
-      role: user.Role?.name,
+      // Personal data the subject is owed and the export used to omit.
+      phone: user.phone,
+      avatarUrl: user.avatarUrl,
+      role: user.role?.name ?? null,
       status: user.status,
       createdAt: user.createdAt,
       lastLoginAt: user.lastLoginAt,
@@ -177,10 +200,14 @@ async function exportAuditLogs(exportDir, tenantId, userId) {
   const { AuditLog } = require("../models");
 
   try {
+    // The rows the subject acted in: as the principal, or as the super admin
+    // behind an impersonation (F-8). `performedBy` is not an audit_logs
+    // column; filtering on it made PostgreSQL reject the query, and the
+    // subject received an error object in place of their own audit rows.
     const logs = await AuditLog.findAll({
       where: {
         tenantId,
-        [db.Sequelize.Op.or]: [{ userId }, { performedBy: userId }],
+        [Op.or]: [{ userId }, { impersonatorId: userId }],
       },
       limit: 5000,
       raw: true,
@@ -312,10 +339,16 @@ function generateExportId() {
  * @param {string} tenantId - Tenant ID
  * @param {string} userId - User ID to erase
  * @param {Object} options - Erasure options
+ * @param {string} options.requestedBy - A-124: the user who requested the
+ *   erasure; the audit row's actor. Refused (400) when absent — an erasure is
+ *   never recorded without one.
  */
 exports.eraseUserData = async (tenantId, userId, options = {}) => {
   if (!isGdprEnabled()) {
     throw new AppError(400, "Data erasure is disabled");
+  }
+  if (!options.requestedBy) {
+    throw new AppError(400, "An erasure must name the user who requested it");
   }
 
   const hardDelete = options.hardDelete === true;
@@ -323,7 +356,7 @@ exports.eraseUserData = async (tenantId, userId, options = {}) => {
 
   try {
     // Create erasure audit record before deleting
-    await logErasureRequest(tenantId, userId, hardDelete, anonymize);
+    await logErasureRequest(tenantId, userId, hardDelete, anonymize, options.requestedBy);
 
     // Anonymize or delete user
     if (anonymize) {
@@ -406,7 +439,7 @@ async function hardDeleteUser(tenantId, userId) {
 /**
  * Log erasure request
  */
-async function logErasureRequest(tenantId, userId, hardDelete, anonymize) {
+async function logErasureRequest(tenantId, userId, hardDelete, anonymize, requestedBy) {
   const { AuditLog } = require("../models");
 
   // Map onto the actual AuditLog schema: `action` is an ENUM
@@ -416,7 +449,9 @@ async function logErasureRequest(tenantId, userId, hardDelete, anonymize) {
   // the insert and silently drop the erasure audit record.
   await AuditLog.create({
     tenantId,
-    userId: null,
+    // A-124 (ADR-051 Q-13): the requester is the actor — never a null user.
+    userId: requestedBy,
+    actorType: "user",
     action: "DELETE",
     resourceType: "User",
     resourceId: userId,
@@ -651,6 +686,7 @@ exports.rectifyData = async (tenantId, userId, field, value) => {
     await AuditLog.create({
       tenantId,
       userId,
+      actorType: "user", // A-124: the authenticated requester
       action: "UPDATE",
       resourceType: "User",
       resourceId: userId,

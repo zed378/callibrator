@@ -1967,6 +1967,9 @@
           },
           "409": {
             "description": "MFA is already enabled and no re-authentication was given"
+          },
+          "429": {
+            "description": "Too many failed attempts on the MFA endpoints (setup, verify and disable share one budget: 5 per user per 15 minutes; per IP too when AUTH_RATE_LIMIT_BY_IP is on)\n"
           }
         }
       }
@@ -2000,9 +2003,70 @@
             }
           }
         },
+        "description": "Promotes the pending secret. The response carries ten one-time recovery codes at `data.recoveryCodes` — shown this once, stored only as hashes. On a rotation every OTHER session of the caller is signed out (A-141).\n",
         "responses": {
           "200": {
-            "description": "MFA successfully enabled"
+            "description": "MFA enabled (or authenticator replaced); recovery codes returned"
+          },
+          "400": {
+            "description": "Invalid code, or no pending setup"
+          },
+          "429": {
+            "description": "Too many failed attempts (shared with setup and disable)"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/mfa/disable": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Turn MFA off for the authenticated user",
+        "description": "Needs the current password AND a current TOTP code or one of the recovery codes (A-141). Clears the secret, any pending enrolment, the replay step and the recovery codes; signs out every other session; audited as MFA_DISABLE.\n",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "currentPassword"
+                ],
+                "properties": {
+                  "currentPassword": {
+                    "type": "string"
+                  },
+                  "code": {
+                    "type": "string",
+                    "description": "a current 6-digit TOTP code"
+                  },
+                  "recoveryCode": {
+                    "type": "string",
+                    "description": "one of the recovery codes, instead of `code`"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "MFA disabled"
+          },
+          "400": {
+            "description": "Re-authentication missing, or the password or code is incorrect"
+          },
+          "409": {
+            "description": "MFA is not enabled"
+          },
+          "429": {
+            "description": "Too many failed attempts (shared with setup and verify)"
           }
         }
       }
@@ -2079,13 +2143,16 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "code",
                   "token"
                 ],
                 "properties": {
                   "code": {
                     "type": "string",
-                    "description": "The 6-digit TOTP code."
+                    "description": "The 6-digit TOTP code (or send `recoveryCode`)."
+                  },
+                  "recoveryCode": {
+                    "type": "string",
+                    "description": "A one-time recovery code, in place of `code` (A-141). It is spent on success; a wrong or spent one counts like a wrong code.\n"
                   },
                   "token": {
                     "type": "string",
@@ -5591,7 +5658,7 @@
       },
       "post": {
         "summary": "Create a workflow",
-        "description": "Creates a new digital signature workflow. Defines signers, signing order, and document references. Requires write access to ESignature.",
+        "description": "Creates a signature workflow, its steps (one per signer, in order) and an audit row, in one transaction. Every signer is named by `userId` and must be an active user of the caller's tenant holding `esignature` write; the name and email on each step are read from the user record, and any `name`/`email` in the body is ignored (A-129, F-10). Requires write access to QMS.",
         "tags": [
           "ESignature"
         ],
@@ -5607,39 +5674,37 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "name",
+                  "documentId",
+                  "subject",
                   "signers"
                 ],
                 "properties": {
-                  "name": {
-                    "type": "string",
-                    "description": "Workflow name"
+                  "documentId": {
+                    "type": "string"
                   },
-                  "description": {
+                  "subject": {
                     "type": "string",
-                    "description": "Workflow description"
+                    "maxLength": 255
+                  },
+                  "message": {
+                    "type": "string"
                   },
                   "signers": {
                     "type": "array",
+                    "minItems": 1,
+                    "description": "In signing order.",
                     "items": {
                       "type": "object",
+                      "required": [
+                        "userId"
+                      ],
                       "properties": {
                         "userId": {
                           "type": "string",
                           "format": "uuid"
-                        },
-                        "order": {
-                          "type": "integer"
-                        },
-                        "message": {
-                          "type": "string"
                         }
                       }
                     }
-                  },
-                  "keyPairId": {
-                    "type": "string",
-                    "format": "uuid"
                   },
                   "expiresAt": {
                     "type": "string",
@@ -5680,8 +5745,14 @@
               }
             }
           },
+          "400": {
+            "description": "Validation failed; an email-only (external) signer (A-86); or a signer who is inactive or does not hold `esignature` write"
+          },
           "401": {
             "description": "Unauthorized"
+          },
+          "404": {
+            "description": "A signer is not a user of this tenant"
           }
         }
       }
@@ -5814,7 +5885,7 @@
       },
       "delete": {
         "summary": "Delete workflow",
-        "description": "Soft-deletes a workflow. A completed (fully signed) workflow cannot be deleted (409). Requires write access to QMS.",
+        "description": "Soft-deletes a workflow that carries no signature. A workflow with any signature — completed, or in progress with some steps signed — cannot be deleted (409); cancel it instead (A-130, A-144). Requires write access to QMS.",
         "tags": [
           "ESignature"
         ],
@@ -5845,7 +5916,85 @@
             "description": "Workflow not found"
           },
           "409": {
-            "description": "The workflow is completed; its signatures cover it"
+            "description": "The workflow has at least one signature"
+          }
+        }
+      }
+    },
+    "/api/v1/esignature/workflows/{workflowId}/cancel": {
+      "post": {
+        "summary": "Cancel a workflow",
+        "description": "Cancels an open workflow. Its signatures, if any, are kept and stay verifiable; no further step can be signed. The cancellation and its audit row commit together. This is how a workflow with a signature is withdrawn, since it cannot be deleted (A-130, ADR-051 A-107). Requires write access to QMS.",
+        "tags": [
+          "ESignature"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workflowId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "maxLength": 500,
+                    "description": "Recorded in the audit row."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Workflow cancelled"
+          },
+          "403": {
+            "description": "The caller lacks `qms` write"
+          },
+          "404": {
+            "description": "Workflow not found (including one in another tenant)"
+          },
+          "409": {
+            "description": "The workflow is completed or already cancelled"
+          }
+        }
+      }
+    },
+    "/api/v1/esignature/signers": {
+      "get": {
+        "summary": "Users a workflow may name as signers",
+        "description": "Active users of the caller's tenant who hold `esignature` write — the rule POST /workflows enforces on every signer (A-129). Each row is `{ id, name, email }`, sorted by name. Requires write access to QMS (the permission that creates workflows).",
+        "tags": [
+          "ESignature"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rows in `data`, `meta.total` the count"
+          },
+          "403": {
+            "description": "The caller lacks `qms` write"
           }
         }
       }
@@ -5947,7 +6096,8 @@
                 "type": "object",
                 "required": [
                   "stepId",
-                  "authPayload"
+                  "authPayload",
+                  "reason"
                 ],
                 "properties": {
                   "stepId": {
@@ -5969,7 +6119,7 @@
                   "reason": {
                     "type": "string",
                     "maxLength": 255,
-                    "description": "The meaning of the signature (21 CFR 11.50)."
+                    "description": "The meaning of the signature (21 CFR 11.50). Required (A-129)."
                   },
                   "polygon": {
                     "type": "object",
@@ -6022,6 +6172,9 @@
           },
           "404": {
             "description": "Step not found (including a step in another tenant)"
+          },
+          "409": {
+            "description": "The step is not pending, or the workflow is cancelled"
           }
         }
       }
@@ -6092,7 +6245,7 @@
     "/api/v1/e-signature/history": {
       "get": {
         "summary": "Get signature history",
-        "description": "Retrieves the complete audit trail of all digital signatures for the tenant. Complies with 21 CFR Part 11 Section 11.10(e). Requires read access to ESignature.",
+        "description": "Signature history. With `qms` read, the tenant's signatures (the `userId` filter applies). Without it, only the caller's own signatures, `userId` ignored, and without `biometricData`, `ipAddress` or `userAgent` (A-129, F-9). Requires read access to `esignature`.",
         "tags": [
           "ESignature"
         ],
@@ -6108,7 +6261,7 @@
             "schema": {
               "type": "string",
               "format": "uuid",
-              "description": "Filter by user ID"
+              "description": "Filter by user ID (honoured only with `qms` read)"
             }
           },
           {
@@ -17948,6 +18101,48 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/users/{userId}/mfa/reset": {
+      "post": {
+        "summary": "Reset another user's MFA (tenant administrator)",
+        "description": "For a user who lost their authenticator and their recovery codes. Clears the user's second factor and recovery codes, signs out every session of theirs, and is audited (MFA_ADMIN_RESET). The user then signs in with their password and enrols again. Requires users update access and a tenant-administrator role; the target must be in the caller's tenant (another tenant's user answers 404), may not be the caller, and may not hold a role above the caller's.\n",
+        "tags": [
+          "Users"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "userId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "MFA reset; the user's sessions were revoked"
+          },
+          "400": {
+            "description": "The caller named themselves (use POST /auth/mfa/disable)"
+          },
+          "403": {
+            "description": "Not a tenant administrator, or the target's role is above the caller's"
+          },
+          "404": {
+            "description": "User not found (including a user of another tenant)"
+          },
+          "409": {
+            "description": "The user has no MFA to reset"
           }
         }
       }

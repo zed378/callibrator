@@ -12,6 +12,7 @@ jest.mock("../../services/eSignature.service", () => ({
   getSignatureHistory: jest.fn(),
   cancelWorkflow: jest.fn(),
   revokeSignature: jest.fn(),
+  getEligibleSigners: jest.fn(),
   getStatus: jest.fn(() => ({ enabled: true, algorithm: "RSA" })),
 }));
 
@@ -108,6 +109,32 @@ describe("eSignature Controller", () => {
       eSignatureService.createSignatureWorkflow.mockResolvedValue({ id: "wf-1" });
       await eSignatureController.createWorkflow(req, res, next);
       expect(res.status).toHaveBeenCalledWith(201);
+    });
+
+    it("A-129: hands the service the actor for the CREATE audit row it writes in its transaction", async () => {
+      req.body = { documentId: "doc-1", signers: [{ userId: "u-2" }], subject: "test" };
+      req.ip = "203.0.113.9";
+      eSignatureService.createSignatureWorkflow.mockResolvedValue({ workflowId: "wf-1" });
+
+      await eSignatureController.createWorkflow(req, res, next);
+
+      expect(eSignatureService.createSignatureWorkflow).toHaveBeenCalledWith(
+        "tenant-1",
+        expect.objectContaining({ documentId: "doc-1", signers: [{ userId: "u-2" }] }),
+        expect.objectContaining({ userId: "user-1", ipAddress: "203.0.113.9" }),
+      );
+    });
+  });
+
+  describe("getEligibleSigners (A-129)", () => {
+    it("sends the rows as data with meta.total beside them", async () => {
+      const rows = [{ id: "u-2", name: "Ana Tech", email: "ana@example.com" }];
+      eSignatureService.getEligibleSigners.mockResolvedValue(rows);
+
+      await eSignatureController.getEligibleSigners(req, res, next);
+
+      expect(eSignatureService.getEligibleSigners).toHaveBeenCalledWith("tenant-1");
+      expect(success).toHaveBeenCalledWith(res, rows, { total: 1 }, "Eligible signers retrieved");
     });
   });
 
@@ -232,6 +259,32 @@ describe("eSignature Controller", () => {
       await eSignatureController.cancelWorkflow(req, res, next);
       expect(res.json).toHaveBeenCalled();
     });
+
+    it("A-130: passes the optional reason for the audit row, and tolerates an absent body", async () => {
+      req.params = { workflowId: "wf-1" };
+      req.body = { reason: "superseded" };
+      eSignatureService.cancelWorkflow.mockResolvedValue({ success: true });
+
+      await eSignatureController.cancelWorkflow(req, res, next);
+
+      expect(eSignatureService.cancelWorkflow).toHaveBeenCalledWith(
+        "wf-1",
+        "user-1",
+        "tenant-1",
+        expect.objectContaining({ userId: "user-1" }),
+        "superseded",
+      );
+
+      req.body = undefined;
+      await eSignatureController.cancelWorkflow(req, res, next);
+      expect(eSignatureService.cancelWorkflow).toHaveBeenLastCalledWith(
+        "wf-1",
+        "user-1",
+        "tenant-1",
+        expect.any(Object),
+        undefined,
+      );
+    });
   });
 
   describe("revokeSignature", () => {
@@ -286,12 +339,28 @@ describe("eSignature Controller", () => {
 
       await eSignatureController.getSignatureHistory(req, res, next);
 
-      expect(eSignatureService.getSignatureHistory).toHaveBeenCalledWith("tenant-1", {
-        userId: "user-9",
-        startDate: "2026-01-01",
-        endDate: "2026-06-30",
-      });
+      // A-129 (F-9): a caller with no `qms` read (this principal has no role
+      // at all) is scoped to their own signatures by the service.
+      expect(eSignatureService.getSignatureHistory).toHaveBeenCalledWith(
+        "tenant-1",
+        { userId: "user-9", startDate: "2026-01-01", endDate: "2026-06-30" },
+        { callerId: "user-1", canManage: false },
+      );
       expect(success).toHaveBeenCalledWith(res, [], { total: 0 }, "Signature history retrieved");
+    });
+
+    it("A-129: a caller holding `qms` (here through the SUPERADMIN bypass) gets the tenant-wide scope", async () => {
+      eSignatureService.getSignatureHistory.mockResolvedValue([]);
+      req.user = { id: "user-1", tenantId: "tenant-1", role: { id: "r", name: "SUPERADMIN" } };
+      req.query = { userId: "user-9" };
+
+      await eSignatureController.getSignatureHistory(req, res, next);
+
+      expect(eSignatureService.getSignatureHistory).toHaveBeenCalledWith(
+        "tenant-1",
+        { userId: "user-9", startDate: undefined, endDate: undefined },
+        { callerId: "user-1", canManage: true },
+      );
     });
 
     it("passes the signature history through when the service returns rows", async () => {

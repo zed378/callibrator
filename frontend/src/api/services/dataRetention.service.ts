@@ -5,9 +5,9 @@ import { api } from "../client";
  *
  * Mounted on the tenant base path — every endpoint is scoped to a tenant id.
  * Backend: src/routes/api/dataRetention.route.js
- *   GET    /api/v1/tenants/:tenantId/policy
+ *   GET    /api/v1/tenants/:tenantId/policy        (data-retention read; own tenant, else 404)
  *   PUT    /api/v1/tenants/:tenantId/policy        (super admin)
- *   GET    /api/v1/tenants/:tenantId/legal-hold
+ *   GET    /api/v1/tenants/:tenantId/legal-hold    (data-retention read; own tenant, else 404)
  *   POST   /api/v1/tenants/:tenantId/legal-hold    (super admin)
  *   DELETE /api/v1/tenants/:tenantId/legal-hold    (super admin)
  *   POST   /api/v1/tenants/:tenantId/purge         (super admin)
@@ -16,39 +16,83 @@ import { api } from "../client";
  */
 
 // ---------- Types ----------
+//
+// A-135: every shape below is the backend's, read from
+// backend/src/services/dataRetention.service.js and its controller. This file
+// used to send `audit_log_retention_days` / `notification_retention_days` /
+// `session_retention_days`, keys the backend has never accepted (every save
+// answered 400 "Unknown retention policy"), and offered an audit-log window
+// although audit rows are never purged (ADR-051 Q-12).
 
-/** Retention policy keys the backend recognises. */
-export type RetentionPolicyKey =
-  | "audit_log_retention_days"
-  | "notification_retention_days"
-  | "session_retention_days";
+/** The retention policy keys `PUT /policy` accepts — the purgeable entities. */
+export type RetentionPolicyKey = "notifications" | "sessions";
 
-/** policyKey -> retention window in days. */
-export type RetentionPolicy = Record<string, number>;
+/**
+ * The shortest period, in days, the backend accepts for each key
+ * (`MIN_RETENTION_DAYS`); `0` means keep forever and is always accepted.
+ */
+export const RETENTION_MIN_DAYS: Record<RetentionPolicyKey, number> = {
+  notifications: 30,
+  sessions: 30,
+};
 
+/** `GET /policy`: each purgeable entity's period in days (0 = keep forever). */
+export type RetentionPolicy = Record<RetentionPolicyKey, number>;
+
+/** `PUT /policy` answers with the one policy it set. */
+export interface SetPolicyResult {
+  policyKey: RetentionPolicyKey;
+  days: number;
+}
+
+/** What the UI reads; normalised from the backend's `{ tenantId, onLegalHold }`. */
 export interface LegalHoldStatus {
   enabled: boolean;
-  reason?: string | null;
-  enabledBy?: string | null;
 }
 
+/** `POST /legal-hold` answers with the hold it set. */
+export interface LegalHoldEnabled {
+  tenantId: string;
+  enabled: true;
+  reason: string;
+  enabledBy: string;
+}
+
+/** `DELETE /legal-hold` answers with the release. */
+export interface LegalHoldDisabled {
+  tenantId: string;
+  enabled: false;
+  disabledBy: string;
+}
+
+/**
+ * `POST /purge`: `purged` maps each entity to the rows destroyed (only those
+ * with any), or the purge was skipped under a legal hold (`purged` absent).
+ */
 export interface PurgeResult {
-  purged?: boolean;
-  skipped?: boolean;
-  reason?: string;
-  deleted?: Record<string, number>;
+  tenantId?: string;
+  purged?: Partial<Record<RetentionPolicyKey, number>>;
+  skipped: boolean;
+  reason?: "legal_hold";
 }
 
+/**
+ * The entity types `POST /mask-pii` accepts. `users` is addressed by user id;
+ * `audit_logs` by the DATA SUBJECT's user id — audit rows are never addressed
+ * one by one, and never deleted (ADR-051 Q-12).
+ */
+export type MaskPiiEntity = "users" | "audit_logs";
+
+/** `POST /mask-pii`: rows changed, and which fields were masked. */
 export interface MaskPiiResult {
-  masked?: boolean;
-  entityType?: string;
-  count?: number;
+  masked: number;
+  fields: string[];
 }
 
+/** `POST /anonymize`: rows changed. `audit_logs` is refused (Q-12). */
 export interface AnonymizeResult {
-  anonymized?: boolean;
-  entityType?: string;
-  count?: number;
+  anonymized: number;
+  entityType: string;
 }
 
 // Backend response envelope
@@ -73,42 +117,34 @@ export const dataRetentionService = {
   /** PUT /api/v1/tenants/:tenantId/policy — super admin only. */
   setPolicy: async (
     tenantId: string,
-    policyKey: RetentionPolicyKey | string,
+    policyKey: RetentionPolicyKey,
     days: number,
-  ): Promise<RetentionPolicy> => {
-    const response = await api.put<BackendResponse<RetentionPolicy>>(
+  ): Promise<SetPolicyResult> => {
+    const response = await api.put<BackendResponse<SetPolicyResult>>(
       `/api/v1/tenants/${tenantId}/policy`,
       { tenantId, policyKey, days },
     );
     return response.data;
   },
 
-  /** GET /api/v1/tenants/:tenantId/legal-hold */
+  /**
+   * GET /api/v1/tenants/:tenantId/legal-hold — `data-retention: read`.
+   * The backend answers `{ tenantId, onLegalHold }` only; it does not return
+   * the hold's reason or who set it.
+   */
   getLegalHold: async (tenantId: string): Promise<LegalHoldStatus> => {
     const response = await api.get<
-      BackendResponse<{
-        tenantId: string;
-        onLegalHold: boolean;
-        reason?: string | null;
-        enabledBy?: string | null;
-      }>
+      BackendResponse<{ tenantId: string; onLegalHold: boolean }>
     >(`/api/v1/tenants/${tenantId}/legal-hold`);
-    // Backend returns the flag as `onLegalHold`; normalise to the `enabled`
-    // shape the UI reads.
-    const d = response.data;
-    return {
-      enabled: !!d?.onLegalHold,
-      reason: d?.reason ?? null,
-      enabledBy: d?.enabledBy ?? null,
-    };
+    return { enabled: response.data?.onLegalHold === true };
   },
 
   /** POST /api/v1/tenants/:tenantId/legal-hold — super admin only. */
   enableLegalHold: async (
     tenantId: string,
     reason: string,
-  ): Promise<LegalHoldStatus> => {
-    const response = await api.post<BackendResponse<LegalHoldStatus>>(
+  ): Promise<LegalHoldEnabled> => {
+    const response = await api.post<BackendResponse<LegalHoldEnabled>>(
       `/api/v1/tenants/${tenantId}/legal-hold`,
       { tenantId, reason },
     );
@@ -116,8 +152,8 @@ export const dataRetentionService = {
   },
 
   /** DELETE /api/v1/tenants/:tenantId/legal-hold — super admin only. */
-  disableLegalHold: async (tenantId: string): Promise<LegalHoldStatus> => {
-    const response = await api.delete<BackendResponse<LegalHoldStatus>>(
+  disableLegalHold: async (tenantId: string): Promise<LegalHoldDisabled> => {
+    const response = await api.delete<BackendResponse<LegalHoldDisabled>>(
       `/api/v1/tenants/${tenantId}/legal-hold`,
     );
     return response.data;
@@ -138,15 +174,20 @@ export const dataRetentionService = {
   /**
    * POST /api/v1/tenants/:tenantId/mask-pii — super admin only.
    * Blocked while a legal hold is active.
+   *
+   * `ids` are user ids for `users`, and the data subjects' user ids for
+   * `audit_logs` — sent as `recordIds` and `subjectIds` respectively, the
+   * only field the backend accepts for each.
    */
   maskPii: async (
     tenantId: string,
-    entityType: string,
-    recordIds: string[],
+    entityType: MaskPiiEntity,
+    ids: string[],
   ): Promise<MaskPiiResult> => {
+    const idField = entityType === "audit_logs" ? "subjectIds" : "recordIds";
     const response = await api.post<BackendResponse<MaskPiiResult>>(
       `/api/v1/tenants/${tenantId}/mask-pii`,
-      { tenantId, entityType, recordIds },
+      { tenantId, entityType, [idField]: ids },
     );
     return response.data;
   },
@@ -157,7 +198,7 @@ export const dataRetentionService = {
    */
   anonymize: async (
     tenantId: string,
-    entityType: string,
+    entityType: "users",
     options?: { keepDates?: boolean; keepNumericIds?: boolean },
   ): Promise<AnonymizeResult> => {
     const response = await api.post<BackendResponse<AnonymizeResult>>(

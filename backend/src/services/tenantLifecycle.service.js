@@ -4,15 +4,18 @@ const { AppError } = require('../utils/appError.util');
 const { logger } = require('../middlewares/activityLog.middleware');
 const { isEnabled } = require('./featureFlag.service');
 const auditService = require('./audit.service');
+const { SYSTEM_ACTORS } = require('../constants/systemActors');
 const { db } = require('../config');
 const { tenantStorage } = require('../middlewares/tenantContext.middleware');
 
 /**
  * The actor recorded on an audit row the scheduler writes: a job, not a user
- * (W-04). Same shape as the retention purge's `system:retention-purge` until
- * Q-13 decides whether background jobs get a first-class system principal.
+ * (W-04). Since A-124 (ADR-051 Q-13) it is the row's first-class system
+ * actor (`actor_type = 'system'`, `actor_name`), from the closed list in
+ * constants/systemActors.js. `changes.actor` still carries it, so a reader of
+ * rows from before and after migration 0033 finds it in the same place.
  */
-const TENANT_LIFECYCLE_ACTOR = 'system:tenant-lifecycle';
+const TENANT_LIFECYCLE_ACTOR = SYSTEM_ACTORS.TENANT_LIFECYCLE;
 
 const GRACE_PERIOD_DAYS = parseInt(process.env.TENANT_GRACE_PERIOD_DAYS || '7', 10);
 const OFFBOARD_RETENTION_DAYS = parseInt(process.env.TENANT_OFFBOARD_RETENTION_DAYS || '30', 10);
@@ -177,7 +180,8 @@ exports.offboardTenant = async (
     await auditService.logAction(
       {
         tenantId,
-        userId,
+        // A-124: exactly one actor — the operator, or else the scheduler.
+        ...(userId ? { userId } : { systemActor: TENANT_LIFECYCLE_ACTOR }),
         action: 'DELETE',
         resourceType: 'Tenant',
         resourceId: tenantId,

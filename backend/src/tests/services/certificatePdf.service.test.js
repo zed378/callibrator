@@ -493,6 +493,65 @@ describe("certificatePdf.service", () => {
       expect(result.data.documentUrl).toBe("/uploads/certificates/CERT-001.pdf");
     });
 
+    // A-130 (F-11, ADR-051 A-107). The double honours `paranoid` the way
+    // Sequelize does: a soft-deleted row is returned only with
+    // `paranoid: false`. Fail-before: the lookup used the default (paranoid)
+    // scope, so a deleted REVOKED certificate answered "No certificate matches
+    // this number" — to a third party, a forgery.
+    describe("A-130 — a soft-deleted certificate is still reported", () => {
+      const deletedRow = (status) => ({
+        id: "c-9",
+        certificateNumber: "CERT-009",
+        type: "calibration",
+        status,
+        issueDate: new Date("2025-01-01"),
+        validUntil: new Date("2099-01-01"),
+        tenant: { name: "Test Corp" },
+        signedAt: new Date("2025-06-01"),
+        filePath: "/uploads/certificates/CERT-009.pdf",
+        deletedAt: new Date("2026-09-01"),
+      });
+      const paranoidAware = (row) => async (options) =>
+        row.deletedAt && options.paranoid !== false ? null : row;
+
+      it("a deleted revoked certificate still says revoked, withdrawn, and not valid", async () => {
+        Certificate.findOne.mockImplementationOnce(paranoidAware(deletedRow("revoked")));
+
+        const result = await verifyByCertificateNumber("CERT-009");
+
+        expect(Certificate.findOne.mock.calls[0][0]).toMatchObject({
+          where: { certificateNumber: "CERT-009" },
+          paranoid: false,
+        });
+        expect(result.data).toMatchObject({
+          found: true,
+          valid: false,
+          status: "revoked",
+          revoked: true,
+          withdrawn: true,
+          documentUrl: null,
+        });
+      });
+
+      it("a withdrawn signed certificate is never valid and publishes no document", async () => {
+        Certificate.findOne.mockImplementationOnce(paranoidAware(deletedRow("signed")));
+
+        const result = await verifyByCertificateNumber("CERT-009");
+
+        expect(result.data).toMatchObject({ found: true, valid: false, withdrawn: true, documentUrl: null });
+      });
+
+      it("a live certificate is not withdrawn", async () => {
+        Certificate.findOne.mockImplementationOnce(
+          paranoidAware({ ...deletedRow("signed"), deletedAt: null }),
+        );
+
+        const result = await verifyByCertificateNumber("CERT-009");
+
+        expect(result.data).toMatchObject({ valid: true, withdrawn: false });
+      });
+    });
+
     it("should return not found for unknown certificate number", async () => {
       Certificate.findOne.mockResolvedValueOnce(null);
 

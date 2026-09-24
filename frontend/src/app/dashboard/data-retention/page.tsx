@@ -18,35 +18,35 @@ import {
 import { Eraser, Lock, ShieldOff, Trash2, UserX } from "lucide-react";
 import {
   dataRetentionService,
+  RETENTION_MIN_DAYS,
   type LegalHoldStatus,
   type RetentionPolicy,
+  type RetentionPolicyKey,
 } from "@/api/services/dataRetention.service";
 import { tenantService } from "@/api/services/tenant.service";
 import { useAuthStore } from "@/stores/authStore";
 import { useToastStore } from "@/stores/toastStore";
 
-const POLICY_KEYS: { key: string; label: string; help: string }[] = [
+/**
+ * The purgeable entities, keyed exactly as the backend accepts them (A-135).
+ * Audit logs are not here: they are the audit trail and are never purged
+ * (ADR-051 Q-12) — the backend refuses a retention period for them.
+ */
+const POLICY_KEYS: { key: RetentionPolicyKey; label: string; help: string }[] = [
   {
-    key: "audit_log_retention_days",
-    label: "Audit Logs",
-    help: "Compliance records — keep at least as long as the underlying data.",
-  },
-  {
-    key: "notification_retention_days",
+    key: "notifications",
     label: "Notifications",
-    help: "In-app notification history.",
+    help: `In-app notification history. At least ${RETENTION_MIN_DAYS.notifications} days, or 0 to keep forever.`,
   },
   {
-    key: "session_retention_days",
+    key: "sessions",
     label: "Sessions",
-    help: "Expired/revoked session rows.",
+    help: `Sign-in session rows. At least ${RETENTION_MIN_DAYS.sessions} days, or 0 to keep forever.`,
   },
 ];
 
-const ENTITY_OPTIONS = [
-  { value: "users", label: "Users" },
-  { value: "audit_logs", label: "Audit Logs" },
-];
+/** Datasets that may be anonymized. Audit logs are never rewritten (Q-12). */
+const ENTITY_OPTIONS = [{ value: "users", label: "Users" }];
 
 export default function DataRetentionPage() {
   const addToast = useToastStore((s) => s.addToast);
@@ -57,7 +57,7 @@ export default function DataRetentionPage() {
   // Derived: default to the signed-in user's tenant; explicit choice wins.
   const tenantId = selectedTenantId || user?.tenantId || "";
 
-  const [policy, setPolicy] = useState<RetentionPolicy>({});
+  const [policy, setPolicy] = useState<Partial<RetentionPolicy>>({});
   const [legalHold, setLegalHold] = useState<LegalHoldStatus | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -105,15 +105,23 @@ export default function DataRetentionPage() {
   }, [tenantId]);
 
   useEffect(() => {
-    void load();
+    // Deferred: `load` sets loading state synchronously, which the React
+    // Compiler rule (react-hooks/set-state-in-effect) refuses in an effect body.
+    queueMicrotask(() => {
+      void load();
+    });
   }, [load]);
 
   const held = legalHold?.enabled === true;
 
-  const savePolicy = async (key: string) => {
+  const savePolicy = async (key: RetentionPolicyKey) => {
     const days = Number(drafts[key]);
-    if (!Number.isInteger(days) || days < 0) {
-      addToast({ type: "error", title: "Enter a whole number of days (0+)" });
+    const floor = RETENTION_MIN_DAYS[key];
+    if (!Number.isInteger(days) || days < 0 || (days > 0 && days < floor)) {
+      addToast({
+        type: "error",
+        title: `Enter 0 (keep forever) or at least ${floor} days`,
+      });
       return;
     }
     setBusy(key);
@@ -175,7 +183,7 @@ export default function DataRetentionPage() {
   const confirmAnonymize = async () => {
     await run(
       "anon",
-      () => dataRetentionService.anonymize(tenantId, anonEntity),
+      () => dataRetentionService.anonymize(tenantId, "users"),
       "Dataset anonymized",
     );
     setIsAnonOpen(false);
@@ -229,12 +237,6 @@ export default function DataRetentionPage() {
                       While a legal hold is active, purge, PII masking, and
                       anonymization are blocked.
                     </p>
-                    {held && legalHold?.reason && (
-                      <p className="mt-2 text-sm">
-                        <span className="text-muted-foreground">Reason: </span>
-                        <span className="font-medium">{legalHold.reason}</span>
-                      </p>
-                    )}
                   </div>
                   {held ? (
                     <Button
@@ -270,7 +272,8 @@ export default function DataRetentionPage() {
                   <h2 className="text-lg font-semibold">Retention Windows</h2>
                   <p className="text-sm text-muted-foreground">
                     Records older than the window are removed on purge. 0 = keep
-                    forever.
+                    forever. Audit logs are never purged: they are kept as the
+                    audit trail.
                   </p>
                 </div>
 

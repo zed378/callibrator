@@ -5,6 +5,7 @@ const { DEFAULT_LIMIT, MAX_LIMIT } = require("../constants");
 const { AUDIT_ACTIONS } = require("../constants/auditActions");
 const { logger } = require("../middlewares/activityLog.middleware");
 const { currentImpersonatorId } = require("../utils/auditActor.util");
+const { ACTOR_TYPES, SYSTEM_ACTOR_NAMES } = require("../constants/systemActors");
 
 // ------------------------------------------------------------------
 // HELPERS
@@ -15,6 +16,41 @@ const transformLog = (log) => {
 };
 
 const transformLogs = (rows) => (rows || []).map(transformLog);
+
+/**
+ * A-124 — the actor columns of an audit row, or a throw.
+ *
+ * Exactly one of a user or a registered system actor. A user row carries no
+ * `actorName` (the user is `userId`); a system row carries no `userId`. The
+ * database enforces the same shape (migration 0033's CHECK) — this refuses it
+ * first, with a message that names the call site's mistake.
+ *
+ * @param {string|null} userId
+ * @param {string|null} systemActor
+ * @returns {{userId: (string|null), actorType: string, actorName: (string|null)}}
+ * @throws {Error} neither, both, or an unregistered system actor
+ */
+const resolveActor = (userId, systemActor) => {
+  if (userId && systemActor) {
+    throw new Error(
+      `An audit entry names one actor: both user "${userId}" and system actor "${systemActor}" were given`,
+    );
+  }
+  if (userId) {
+    return { userId, actorType: ACTOR_TYPES.USER, actorName: null };
+  }
+  if (!systemActor) {
+    throw new Error(
+      "An audit entry must name its actor: a userId, or a systemActor from constants/systemActors.js",
+    );
+  }
+  if (!SYSTEM_ACTOR_NAMES.includes(systemActor)) {
+    throw new Error(
+      `Unknown system actor "${systemActor}" — audit_logs accepts only ${SYSTEM_ACTOR_NAMES.join(", ")}`,
+    );
+  }
+  return { userId: null, actorType: ACTOR_TYPES.SYSTEM, actorName: systemActor };
+};
 
 // ------------------------------------------------------------------
 // LOG ACTION (Internal Use Only)
@@ -39,9 +75,18 @@ const transformLogs = (rows) => (rows || []).map(transformLog);
  * Either way a failure goes to winston at `error` — the file sink production
  * collects — never only to `console`, with enough context to find the action.
  *
+ * A-124 (ADR-051 Q-13) — the entry names EXACTLY ONE actor: a user
+ * (`userId`) or a system job (`systemActor`, one of constants/systemActors.js
+ * SYSTEM_ACTORS). Neither, both, or an unregistered job name is refused the
+ * same way an invalid action is — re-thrown inside a transaction (so the
+ * mutation rolls back rather than commit unattributed), logged and `null`
+ * outside one. `actor_type` / `actor_name` are derived here and nowhere else.
+ *
  * @param {object} entry
  * @param {string} entry.tenantId
- * @param {string|null} entry.userId - the actor; null for a system job
+ * @param {string|null} [entry.userId] - the acting user
+ * @param {string|null} [entry.systemActor] - A-124: the acting job, from
+ *   SYSTEM_ACTORS; only when there is no user
  * @param {string|null} [entry.impersonatorId] - F-8: the super admin acting
  *   through an impersonation token. When the caller passes none, the current
  *   request's impersonator (utils/auditActor.util.js) is recorded, so a service
@@ -60,7 +105,8 @@ const transformLogs = (rows) => (rows || []).map(transformLog);
 exports.logAction = async (
   {
     tenantId,
-    userId,
+    userId = null,
+    systemActor = null,
     impersonatorId = null,
     action,
     resourceType,
@@ -78,10 +124,13 @@ exports.logAction = async (
         `Invalid audit action "${action}" — audit_logs.action accepts only ${AUDIT_ACTIONS.join(", ")}`,
       );
     }
+    const actor = resolveActor(userId, systemActor);
     const newLog = await AuditLog.create(
       {
         tenantId,
-        userId,
+        userId: actor.userId,
+        actorType: actor.actorType,
+        actorName: actor.actorName,
         // Only when there is one: the column defaults to NULL, and the
         // ordinary row keeps the exact shape it always had.
         ...(impersonator ? { impersonatorId: impersonator } : {}),
@@ -99,6 +148,7 @@ exports.logAction = async (
     logger.error("Audit log write failed", {
       tenantId,
       userId,
+      systemActor,
       impersonatorId: impersonator,
       action,
       resourceType,
@@ -117,11 +167,20 @@ exports.logAction = async (
 // ------------------------------------------------------------------
 // FETCH AUDIT LOGS
 // ------------------------------------------------------------------
+/**
+ * One tenant's audit trail, newest first. Each row carries `actorType` and
+ * `actorName` (A-124) beside `userId` / `user`.
+ *
+ * `tenantId` is chosen by the controller: the reader's home tenant, or — for a
+ * super admin asking for `scope=platform` only — PLATFORM_TENANT_ID (A-125).
+ * For anyone else the global tenant hooks force their own tenant regardless.
+ */
 exports.fetchAuditLogs = async ({
   tenantId,
   page = 1,
   limit = DEFAULT_LIMIT,
   userId,
+  actorType,
   action,
   resourceType,
   resourceId,
@@ -132,6 +191,8 @@ exports.fetchAuditLogs = async ({
     const whereClause = { tenantId };
 
     if (userId) {whereClause.userId = userId;}
+    // A-124: "every action not taken by a person" is `actorType=system`.
+    if (actorType) {whereClause.actorType = actorType;}
     if (action) {whereClause.action = action;}
     if (resourceType) {whereClause.resourceType = resourceType;}
     if (resourceId) {whereClause.resourceId = resourceId;}

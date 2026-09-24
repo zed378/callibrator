@@ -9,6 +9,7 @@ import Sidebar from "./Sidebar";
 import TopBar from "./TopBar";
 import ImpersonationBanner from "./ImpersonationBanner";
 import { MenuGroupType, convertBackendMenuToFrontend } from "./menuHelpers";
+import { CHANGE_PASSWORD_PATH } from "@/api/client";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -43,6 +44,17 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
       }
     }
   }, [isAuthenticated, isMenuLoaded, fetchPersonalizedMenu, user?.roleId]);
+
+  // A-123: an account whose password an administrator set may use only the
+  // change-password screen until it is changed (the backend refuses the rest
+  // with 403 PASSWORD_CHANGE_REQUIRED). Go there rather than render pages
+  // whose every request would fail.
+  const mustChangePassword = user?.mustChangePassword === true;
+  useEffect(() => {
+    if (isAuthenticated && mustChangePassword && pathname !== CHANGE_PASSWORD_PATH) {
+      router.replace(CHANGE_PASSWORD_PATH);
+    }
+  }, [isAuthenticated, mustChangePassword, pathname, router]);
 
   // Handle responsive layout resizing
   useEffect(() => {

@@ -142,15 +142,48 @@ describe("eSignatureService", () => {
       expect(mockedApi.get).toHaveBeenCalledWith(`${BASE}/workflows/w1`);
     });
 
-    it("creates a workflow with the required signers", async () => {
-      mockedApi.post.mockResolvedValueOnce(envelope({ id: "w1" }));
-      const input = {
-        documentId: "d1",
-        subject: "Please sign",
-        signers: [{ userId: "u1", email: "a@b.c", name: "A" }],
+    // A-129: signers are users, by id only; data is
+    // eSignature.service#createSignatureWorkflow's { workflowId, signers },
+    // the name and email read by the backend from the user record.
+    it("creates a workflow naming signers by userId, and unwraps { workflowId, signers }", async () => {
+      const created = {
+        workflowId: "w1",
+        signers: [{ userId: "u1", email: "ana@hospital.test", name: "Ana Tech", status: "pending" }],
       };
-      await eSignatureService.createWorkflow(input);
+      mockedApi.post.mockResolvedValueOnce(envelope(created));
+      const input = { documentId: "d1", subject: "Please sign", signers: [{ userId: "u1" }] };
+
+      const res = await eSignatureService.createWorkflow(input);
+
       expect(mockedApi.post).toHaveBeenCalledWith(`${BASE}/workflows`, input);
+      expect(res).toEqual(created);
+    });
+
+    // A-129: GET /signers answers success(res, rows, { total }, msg).
+    it("lists the eligible signers from data itself", async () => {
+      const rows = [{ id: "u1", name: "Ana Tech", email: "ana@hospital.test" }];
+      mockedApi.get.mockResolvedValueOnce({ ...envelope(rows), meta: { total: 1 } });
+
+      await expect(eSignatureService.getEligibleSigners()).resolves.toEqual(rows);
+      expect(mockedApi.get).toHaveBeenCalledWith(`${BASE}/signers`);
+    });
+
+    it("an absent data is no eligible signers", async () => {
+      mockedApi.get.mockResolvedValueOnce(envelope(null));
+      await expect(eSignatureService.getEligibleSigners()).resolves.toEqual([]);
+    });
+
+    // A-130: POST /workflows/:id/cancel, the reason optional.
+    it("cancels a workflow, with or without a reason", async () => {
+      mockedApi.post.mockResolvedValue(envelope(null));
+
+      await eSignatureService.cancelWorkflow("w1", "Superseded");
+      await eSignatureService.cancelWorkflow("w2");
+
+      expect(mockedApi.post).toHaveBeenNthCalledWith(1, `${BASE}/workflows/w1/cancel`, {
+        reason: "Superseded",
+      });
+      expect(mockedApi.post).toHaveBeenNthCalledWith(2, `${BASE}/workflows/w2/cancel`, {});
     });
 
     it("updates a workflow", async () => {

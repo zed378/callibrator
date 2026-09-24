@@ -19,6 +19,7 @@ jest.mock("../../services/auth.service", () => ({
   justUpdatePassword: jest.fn(),
   setupMfa: jest.fn(),
   verifyMfaSetup: jest.fn(),
+  disableMfa: jest.fn(),
   loginMfa: jest.fn(),
   impersonateUser: jest.fn(),
 }));
@@ -314,10 +315,12 @@ describe("authController", () => {
       await authController.justUpdatePassword(req, res);
 
       // The current password must be forwarded so the service can re-authenticate.
+      // A-98 / F-12: plus the request context for the audit row.
       expect(authService.justUpdatePassword).toHaveBeenCalledWith(
         "user-1",
         "NewPass123",
         "OldPass123",
+        { ipAddress: "127.0.0.1", userAgent: null },
       );
       expect(success).toHaveBeenCalled();
     });
@@ -506,6 +509,7 @@ describe("authController", () => {
       expect(authService.verifyMfaSetup).toHaveBeenCalledWith(req.user.id, "123456", {
         ipAddress: "203.0.113.9",
         userAgent: "jest-agent",
+        sessionId: null,
       });
     });
 
@@ -520,6 +524,7 @@ describe("authController", () => {
       expect(authService.verifyMfaSetup).toHaveBeenCalledWith(req.user.id, "123456", {
         ipAddress: null,
         userAgent: null,
+        sessionId: null,
       });
     });
 
@@ -532,10 +537,42 @@ describe("authController", () => {
       expect(authService.verifyMfaSetup).toHaveBeenCalledWith(
         req.user.id,
         "123456",
-        // A-114: for the MFA_ENABLE / MFA_ROTATE audit row.
-        { ipAddress: req.ip || null, userAgent: null },
+        // A-114: for the MFA_ENABLE / MFA_ROTATE audit row; A-141: the
+        // caller's session, which a rotation keeps.
+        { ipAddress: req.ip || null, userAgent: null, sessionId: null },
       );
-      expect(success).toHaveBeenCalledWith(res, null, null, "MFA enabled", 200);
+      // A-141: the recovery codes are returned in data.
+      expect(success).toHaveBeenCalledWith(
+        res,
+        { recoveryCodes: undefined },
+        null,
+        "MFA enabled",
+        200,
+      );
+    });
+
+    it("A-141: passes the caller's session so a rotation keeps it, and returns the recovery codes", async () => {
+      req.body = { code: "123456" };
+      req.sessionId = "sess-mine";
+      authService.verifyMfaSetup.mockResolvedValue({
+        message: "MFA enabled",
+        recoveryCodes: ["AAAA-BBBB-CCCC-DDDD"],
+      });
+
+      await authController.verifyMfaSetup(req, res);
+
+      expect(authService.verifyMfaSetup).toHaveBeenCalledWith(
+        req.user.id,
+        "123456",
+        expect.objectContaining({ sessionId: "sess-mine" }),
+      );
+      expect(success).toHaveBeenCalledWith(
+        res,
+        { recoveryCodes: ["AAAA-BBBB-CCCC-DDDD"] },
+        null,
+        "MFA enabled",
+        200,
+      );
     });
 
     it("should return 400 when the code is missing", async () => {
@@ -578,6 +615,7 @@ describe("authController", () => {
         "123456",
         req.ip,
         req.headers["user-agent"],
+        { recoveryCode: undefined },
       );
       expect(login).toHaveBeenCalledWith(
         res,
@@ -657,6 +695,78 @@ describe("authController", () => {
 
       expect(error).toHaveBeenCalledWith(res, "Invalid MFA code", 401);
       expect(login).not.toHaveBeenCalled();
+    });
+
+    it("A-141: a recovery code in place of the TOTP code reaches the service", async () => {
+      req.body = { recoveryCode: "AAAA-BBBB-CCCC-DDDD", token: "temp-mfa-token" };
+      verifyPurposeToken.mockReturnValue({ id: "user-1", mfaRequired: true });
+      authService.loginMfa.mockResolvedValue({
+        data: { id: "user-1" },
+        token: "jwt",
+        session: { id: "sess-1" },
+      });
+
+      await authController.loginMfa(req, res);
+
+      expect(authService.loginMfa).toHaveBeenCalledWith(
+        "user-1",
+        undefined,
+        req.ip,
+        undefined,
+        { recoveryCode: "AAAA-BBBB-CCCC-DDDD" },
+      );
+      expect(login).toHaveBeenCalled();
+    });
+  });
+
+  describe("disableMfa (A-141)", () => {
+    it("passes the re-authentication, the request context and the caller's session", async () => {
+      req.body = { currentPassword: "pw", code: "123456" };
+      req.ip = "203.0.113.9";
+      req.headers = { "user-agent": "jest-agent" };
+      req.sessionId = "sess-mine";
+      authService.disableMfa.mockResolvedValue({
+        success: true,
+        message: "MFA disabled",
+        otherSessionsRevoked: 2,
+      });
+
+      await authController.disableMfa(req, res);
+
+      expect(authService.disableMfa).toHaveBeenCalledWith(
+        "user-1",
+        { currentPassword: "pw", code: "123456", recoveryCode: undefined },
+        { ipAddress: "203.0.113.9", userAgent: "jest-agent", sessionId: "sess-mine" },
+      );
+      expect(success).toHaveBeenCalledWith(
+        res,
+        { otherSessionsRevoked: 2 },
+        null,
+        "MFA disabled",
+        200,
+      );
+    });
+
+    it("a request with no body and no session still reaches the service (which refuses it)", async () => {
+      req.body = undefined;
+      authService.disableMfa.mockRejectedValue(
+        Object.assign(new Error("Current password and an MFA or recovery code are required"), {
+          status: 400,
+        }),
+      );
+
+      await authController.disableMfa(req, res);
+
+      expect(authService.disableMfa).toHaveBeenCalledWith(
+        "user-1",
+        { currentPassword: undefined, code: undefined, recoveryCode: undefined },
+        { ipAddress: "127.0.0.1", userAgent: null, sessionId: null },
+      );
+      expect(error).toHaveBeenCalledWith(
+        res,
+        "Current password and an MFA or recovery code are required",
+        400,
+      );
     });
   });
 

@@ -1106,3 +1106,46 @@ describe("A-93 — checkTenant: tenant and owner checks are independent", () => 
     expect(tenantIdsNamedBy({})).toEqual([]);
   });
 });
+
+// A-129 — the gate's resolver, for code that must ask it about a principal
+// outside a route (a named signer; the /history caller).
+describe("principalHasMenuPermission (A-129)", () => {
+  const { principalHasMenuPermission } = require("../../middlewares/dynamicAccess.middleware");
+  const RolesService = require("../../services/roles.service");
+  const { scopeAllows } = require("../../services/apiKey.service");
+  const { getUserOverrideMatrix } = require("../../services/userPermission.service");
+
+  it("no principal, or no role, holds nothing", async () => {
+    expect(await principalHasMenuPermission(null, "esignature", "write")).toBe(false);
+    expect(await principalHasMenuPermission({ id: "u-1", role: null }, "esignature", "write")).toBe(false);
+  });
+
+  it.each(["SUPER_ADMIN", "SUPERADMIN"])("%s holds everything, as the gate's bypass", async (name) => {
+    expect(await principalHasMenuPermission({ id: "u", role: { id: "r", name } }, "qms", "read")).toBe(true);
+  });
+
+  it("a role is resolved through the matrix and the per-user override, as the gate does", async () => {
+    RolesService.getRolePermissionsMatrix.mockResolvedValueOnce({ esignature: ["write"] });
+    getUserOverrideMatrix.mockResolvedValueOnce({});
+    const tech = { id: "u-2", role: { id: "r-tech", name: "TECHNICIAN" } };
+    expect(await principalHasMenuPermission(tech, "esignature", "write")).toBe(true);
+
+    RolesService.getRolePermissionsMatrix.mockResolvedValueOnce({ esignature: ["write"] });
+    getUserOverrideMatrix.mockResolvedValueOnce({ esignature: "none" });
+    expect(await principalHasMenuPermission(tech, "esignature", "write")).toBe(false);
+
+    RolesService.getRolePermissionsMatrix.mockResolvedValueOnce({ qms: ["write"] });
+    getUserOverrideMatrix.mockResolvedValueOnce({});
+    expect(await principalHasMenuPermission(tech, "qms", "read")).toBe(true);
+  });
+
+  it("an API key is resolved through its scopes, never the role matrix", async () => {
+    scopeAllows.mockReturnValueOnce(false);
+    RolesService.getRolePermissionsMatrix.mockClear();
+    const key = { id: "k", isApiKey: true, apiKeyScopes: ["esignature:read"], role: { id: null, name: "API_KEY" } };
+
+    expect(await principalHasMenuPermission(key, "qms", "read")).toBe(false);
+    expect(scopeAllows).toHaveBeenLastCalledWith(["esignature:read"], "qms", "read");
+    expect(RolesService.getRolePermissionsMatrix).not.toHaveBeenCalled();
+  });
+});

@@ -1,6 +1,7 @@
 const dataRetentionService = require("../services/dataRetention.service");
 const { asyncHandler } = require("../utils/controllerWrapper.util");
 const { success, error } = require("../utils/response.util");
+const { auditActor } = require("../utils/auditActor.util");
 const {
   tenantIdSchema,
   retentionPolicySchema,
@@ -70,7 +71,9 @@ exports.maskPII = asyncHandler(async (req, res) => {
   const result = await dataRetentionService.maskPII(
     validated.tenantId,
     validated.entityType,
-    validated.recordIds,
+    // A-135: audit rows are masked per data subject (piiMaskSchema).
+    validated.entityType === "audit_logs" ? validated.subjectIds : validated.recordIds,
+    auditActor(req),
   );
 
   success(res, result, null, "PII masked");

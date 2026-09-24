@@ -12,6 +12,9 @@
 const mockModels = {
   TenantKey: { findAll: jest.fn() },
   SignatureWorkflow: { findOne: jest.fn() },
+  // A-130 / A-144: deletion now also counts the workflow's signatures. These
+  // cases have none; the signed cases are in eSignature.a130.test.js.
+  SignatureRecord: { count: jest.fn() },
 };
 
 jest.mock("../../models", () => mockModels);
@@ -51,6 +54,7 @@ const makeReq = (overrides = {}) => ({
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockModels.SignatureRecord.count.mockResolvedValue(0);
 });
 
 describe("A-113 — GET /key-pairs: rows in data, count in a top-level meta", () => {

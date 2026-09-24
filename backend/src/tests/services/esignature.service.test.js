@@ -134,9 +134,26 @@ describe("eSignature.service", () => {
       const mockModels = {
         SignatureWorkflow: mockWorkflow,
         SignatureWorkflowStep: mockStep,
+        // A-129 — the signer is read from the user row, in the tenant.
+        User: {
+          findOne: jest.fn().mockResolvedValue({
+            id: "u-1",
+            email: "a@b.com",
+            firstName: "A",
+            lastName: "B",
+            isActive: true,
+            status: "ACTIVE",
+            roleId: "r-1",
+          }),
+        },
+        Role: { findByPk: jest.fn().mockResolvedValue({ id: "r-1", name: "TECHNICIAN" }) },
+        AuditLog: { create: jest.fn().mockResolvedValue(true) },
       };
 
       jest.doMock("../../models", () => mockModels);
+      jest.doMock("../../middlewares/dynamicAccess.middleware", () => ({
+        principalHasMenuPermission: jest.fn().mockResolvedValue(true),
+      }));
       jest.doMock("../../services/emailQueue.service", () => ({
         emailQueueService: {
           queueEmail: jest.fn().mockResolvedValue(undefined),
@@ -148,10 +165,11 @@ describe("eSignature.service", () => {
         createSignatureWorkflow: csw3,
       } = require("../../services/eSignature.service");
 
-      const result = await csw3("tenant-1", {
-        documentId: "doc-1",
-        signers: [{ userId: "u-1", email: "a@b.com", name: "A" }],
-      });
+      const result = await csw3(
+        "tenant-1",
+        { documentId: "doc-1", signers: [{ userId: "u-1", email: "a@b.com", name: "A" }] },
+        { userId: "admin-1" },
+      );
 
       expect(result.workflowId).toBeDefined();
       expect(result.signers).toHaveLength(1);
@@ -221,6 +239,7 @@ describe("eSignature.service", () => {
         polygon: { x: 10, y: 20 },
         authenticationMethod: "password",
         authPayload: "pw",
+        reason: "Approved",
       });
 
       expect(result.signatureId).toBeDefined();

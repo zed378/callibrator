@@ -84,7 +84,7 @@ describe("attachment.service (coverage)", () => {
 
   // ================================================================
   describe("createAttachment", () => {
-    it("defaults resourceType/resourceId/uploadedBy when no meta is given", async () => {
+    it("defaults resourceType/resourceId when the meta names only the uploader", async () => {
       const created = {
         id: "att-1",
         tenantId: "t-1",
@@ -95,25 +95,29 @@ describe("attachment.service (coverage)", () => {
         mimeType: "application/pdf",
         size: 10,
         checksum: "c",
-        uploadedBy: null,
+        uploadedBy: "u-1",
         folder: "uploads/attachments",
         createdAt: new Date(),
       };
       Attachment.create.mockResolvedValue(created);
 
-      const result = await attachmentService.createAttachment("t-1", {
-        path: "/tmp/f.pdf",
-        filename: "f.pdf",
-        originalname: "F.pdf",
-        mimetype: "application/pdf",
-        size: 10,
-      });
+      const result = await attachmentService.createAttachment(
+        "t-1",
+        {
+          path: "/tmp/f.pdf",
+          filename: "f.pdf",
+          originalname: "F.pdf",
+          mimetype: "application/pdf",
+          size: 10,
+        },
+        { uploadedBy: "u-1" },
+      );
 
       expect(Attachment.create).toHaveBeenCalledWith(
         expect.objectContaining({
           resourceType: "generic",
           resourceId: null,
-          uploadedBy: null,
+          uploadedBy: "u-1",
           folder: "uploads/attachments",
         }),
         { transaction: "TX" }, // A-117: with its audit row
@@ -162,13 +166,17 @@ describe("attachment.service (coverage)", () => {
         size: 5,
       });
 
-      await attachmentService.createAttachment("t-1", {
-        path: "/tmp/f",
-        filename: "f",
-        originalname: "F",
-        mimetype: "text/plain",
-        size: 5,
-      });
+      await attachmentService.createAttachment(
+        "t-1",
+        {
+          path: "/tmp/f",
+          filename: "f",
+          originalname: "F",
+          mimetype: "text/plain",
+          size: 5,
+        },
+        { uploadedBy: "u-1" }, // A-124: the audit row names its actor
+      );
 
       // sha256("hello")
       expect(Attachment.create).toHaveBeenCalledWith(

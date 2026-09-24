@@ -142,6 +142,37 @@ describe("Data Retention Validators", () => {
       ).toThrow();
     });
 
+    describe("A-135 — audit_logs is masked per data subject", () => {
+      const T = "123e4567-e89b-12d3-a456-426614174000";
+      const S = "123e4567-e89b-12d3-a456-426614174009";
+
+      it("accepts subjectIds for audit_logs", () => {
+        expect(validate({ tenantId: T, entityType: "audit_logs", subjectIds: [S] }, piiMaskSchema)).toEqual({
+          tenantId: T,
+          entityType: "audit_logs",
+          subjectIds: [S],
+        });
+      });
+
+      it("refuses recordIds for audit_logs: audit rows are never named one by one", () => {
+        expect(() =>
+          validate({ tenantId: T, entityType: "audit_logs", recordIds: [S] }, piiMaskSchema),
+        ).toThrow(expect.objectContaining({ status: 400 }));
+      });
+
+      it("requires at least one subject for audit_logs", () => {
+        expect(() =>
+          validate({ tenantId: T, entityType: "audit_logs", subjectIds: [] }, piiMaskSchema),
+        ).toThrow(expect.objectContaining({ status: 400 }));
+      });
+
+      it("refuses subjectIds for users", () => {
+        expect(() =>
+          validate({ tenantId: T, entityType: "users", recordIds: [S], subjectIds: [S] }, piiMaskSchema),
+        ).toThrow(expect.objectContaining({ status: 400 }));
+      });
+    });
+
     it("should reject non-UUID in record IDs", () => {
       expect(() =>
         validate(
