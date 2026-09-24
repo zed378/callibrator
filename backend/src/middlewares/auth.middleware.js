@@ -1,5 +1,5 @@
 const { verifyAccessToken } = require("../utils/jwt.util");
-const { unauthorized, forbidden } = require("../utils/response.util");
+const { unauthorized, forbidden, error: errorResponse } = require("../utils/response.util");
 const { ROLE_NAMES } = require("../constants");
 const authService = require("../services/auth.service");
 const tenantService = require("../services/tenant.service");
@@ -73,6 +73,42 @@ const tenantRefusal = (user) => {
  * @param {object} decoded - verified access-token payload
  * @returns {string|null}
  */
+/**
+ * A-123 (ADR-051 Q-11) — the routes an account flagged `mustChangePassword`
+ * may still call: change the password, sign out, and "who am I" (which is how
+ * the frontend learns about the flag). Every other authenticated route
+ * answers 403 PASSWORD_CHANGE_REQUIRED until the password is changed.
+ *
+ * Matched on method + the FULL path (router mount + route), so a same-named
+ * route under another router is not let through.
+ */
+const PASSWORD_CHANGE_ALLOWED = new Set([
+  "POST /api/v1/auth/just-update-password",
+  "POST /api/v1/auth/logout",
+  "POST /api/v1/auth/logout-all",
+  "POST /api/v1/auth/verify",
+]);
+
+exports.PASSWORD_CHANGE_ALLOWED = PASSWORD_CHANGE_ALLOWED;
+exports.PASSWORD_CHANGE_REQUIRED_CODE = "PASSWORD_CHANGE_REQUIRED";
+
+/**
+ * Whether a flagged account must be refused on this request.
+ *
+ * An impersonation token is not refused: the impersonating super admin is
+ * not the account holder, cannot change the holder's password, and the
+ * forced change protects the holder's credential, not the support session.
+ *
+ * @param {object} user - req.user
+ * @param {object} req
+ * @param {string|null} impersonatorId
+ * @returns {boolean}
+ */
+const mustChangePasswordFirst = (user, req, impersonatorId) =>
+  Boolean(user.mustChangePassword) &&
+  !impersonatorId &&
+  !PASSWORD_CHANGE_ALLOWED.has(`${req.method} ${req.baseUrl || ""}${req.path || ""}`);
+
 const impersonatorFrom = (decoded) =>
   typeof decoded.impersonatorId === "string" && decoded.impersonatorId
     ? decoded.impersonatorId
@@ -207,6 +243,22 @@ exports.auth = async (req, res, next) => {
     }
 
     // ==========================================
+    // FORCED PASSWORD CHANGE (A-123, ADR-051 Q-11)
+    // ==========================================
+    // An administrator chose this account's password, and a password signs
+    // (ADR-047). Until the holder replaces it, only change-password, logout
+    // and "who am I" are answered; the frontend redirects on this code.
+    if (mustChangePasswordFirst(user, req, impersonatorFrom(decoded))) {
+      return errorResponse(
+        res,
+        "You must change the password an administrator set for you before continuing",
+        403,
+        null,
+        { code: exports.PASSWORD_CHANGE_REQUIRED_CODE },
+      );
+    }
+
+    // ==========================================
     // ATTACH USER TO REQUEST
     // ==========================================
 
@@ -294,11 +346,14 @@ exports.optionalAuth = async (req, res, next) => {
 
     // A-101: a principal whose tenant is suspended or gone is treated as no
     // principal at all — optional auth never refuses, it just does not attach.
+    // A-123: nor does it attach an account that must change its password
+    // first (unless impersonated) — it is anonymous until it has.
     if (
       user &&
       user.isActive &&
       (user.status === "ACTIVE" || user.status === "INACTIVE") &&
-      !tenantRefusal(user)
+      !tenantRefusal(user) &&
+      !mustChangePasswordFirst(user, req, impersonatorFrom(decoded))
     ) {
       req.user = user;
       req.impersonatorId = impersonatorFrom(decoded);

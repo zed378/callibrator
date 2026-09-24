@@ -15,11 +15,11 @@ import {
   Table,
   Textarea,
 } from "@/components/ui";
-import { KeyRound, Plus, RefreshCw, ShieldCheck, Trash2, X } from "lucide-react";
+import { Ban, KeyRound, Plus, RefreshCw, ShieldCheck, Trash2, X } from "lucide-react";
 import {
   eSignatureService,
+  type EligibleSigner,
   type KeyPair,
-  type Signer,
   type SignatureStep,
   type SignatureWorkflow,
   type VerifyResult,
@@ -41,8 +41,22 @@ type DetailSource = "signer" | "manage";
  * most roles that can be named as signers do not hold it. A 403 from those
  * routes is an expected state for them, not an error to toast.
  */
-const isForbidden = (err: unknown) =>
-  (err as { response?: { status?: number } } | null)?.response?.status === 403;
+const statusOf = (err: unknown) =>
+  (err as { response?: { status?: number } } | null)?.response?.status;
+
+const isForbidden = (err: unknown) => statusOf(err) === 403;
+
+/**
+ * A-130 — a 409 is a state conflict the backend explains ("has 1 signature,
+ * so it cannot be deleted … cancel it instead"): shown as that explanation,
+ * under a title that names the refused action, not as a generic failure.
+ */
+const isConflict = (err: unknown) => statusOf(err) === 409;
+
+const errorText = (err: unknown) => (err instanceof Error ? err.message : undefined);
+
+/** A workflow still open to signing — the only ones that can be cancelled. */
+const isOpen = (status?: string) => status !== "completed" && status !== "cancelled";
 
 const fmt = (v?: string | null) => (v ? new Date(v).toLocaleString() : "—");
 
@@ -63,7 +77,10 @@ const statusVariant = (
   }
 };
 
-const emptySigner = (): Signer => ({ userId: "", email: "", name: "" });
+// A-129 / A-86 — a signer is a user of the tenant, chosen from GET /signers;
+// the form holds only their id. The backend reads name and email from the user
+// record and refuses an email-only signer.
+const emptySigner = (): string => "";
 
 const emptySignForm = (): ESignatureFormFields => ({
   authMethod: "password",
@@ -125,6 +142,8 @@ export default function ESignaturePage() {
   const [wfLoading, setWfLoading] = useState(false);
   const [wfLoaded, setWfLoaded] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [eligibleSigners, setEligibleSigners] = useState<EligibleSigner[]>([]);
+  const [signersLoading, setSignersLoading] = useState(false);
   const [form, setForm] = useState({
     documentId: "",
     subject: "",
@@ -255,14 +274,32 @@ export default function ESignaturePage() {
   };
 
   // ---- Workflow actions ----
-  const updateSigner = (idx: number, patch: Partial<Signer>) =>
+  const updateSigner = (idx: number, userId: string) =>
     setForm((f) => ({
       ...f,
-      signers: f.signers.map((s, i) => (i === idx ? { ...s, ...patch } : s)),
+      signers: f.signers.map((s, i) => (i === idx ? userId : s)),
     }));
 
+  // The users a workflow may name: loaded each time the dialog opens, so a
+  // grant changed since the last open is reflected.
+  const openCreate = async () => {
+    setIsCreateOpen(true);
+    setSignersLoading(true);
+    try {
+      setEligibleSigners(await eSignatureService.getEligibleSigners());
+    } catch (err) {
+      addToast({
+        type: "error",
+        title: "Could not load the users who can sign",
+        description: errorText(err),
+      });
+    } finally {
+      setSignersLoading(false);
+    }
+  };
+
   const createWorkflow = async () => {
-    const signers = form.signers.filter((s) => s.email.trim());
+    const signers = form.signers.filter(Boolean).map((userId) => ({ userId }));
     if (!form.documentId.trim() || !form.subject.trim() || signers.length === 0) {
       addToast({
         type: "warning",
@@ -370,9 +407,29 @@ export default function ESignaturePage() {
       await loadWorkflows();
     } catch (err) {
       addToast({
-        type: "error",
-        title: "Could not delete workflow",
-        description: err instanceof Error ? err.message : undefined,
+        type: isConflict(err) ? "warning" : "error",
+        title: isConflict(err) ? "This workflow cannot be deleted" : "Could not delete workflow",
+        description: errorText(err),
+      });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // A-130 — cancelling keeps the signatures; it is how a signed workflow is
+  // withdrawn.
+  const cancelWorkflow = async (id: string) => {
+    setBusy(`cancel-wf-${id}`);
+    try {
+      await eSignatureService.cancelWorkflow(id);
+      addToast({ type: "success", title: "Workflow cancelled" });
+      await loadWorkflows();
+      if (detail?.id === id) await openDetail(id, detailSource);
+    } catch (err) {
+      addToast({
+        type: isConflict(err) ? "warning" : "error",
+        title: isConflict(err) ? "This workflow cannot be cancelled" : "Could not cancel workflow",
+        description: errorText(err),
       });
     } finally {
       setBusy(null);
@@ -481,6 +538,17 @@ export default function ESignaturePage() {
           <Button size="sm" variant="ghost" onClick={() => openDetail(String(r.id), "manage")}>
             View
           </Button>
+          {isOpen(r.status as string | undefined) && (
+            <Button
+              size="sm"
+              variant="ghost"
+              isLoading={busy === `cancel-wf-${r.id}`}
+              onClick={() => cancelWorkflow(String(r.id))}
+              leftIcon={<Ban className="h-4 w-4" />}
+            >
+              Cancel
+            </Button>
+          )}
           <Button
             size="sm"
             variant="ghost"
@@ -633,7 +701,7 @@ export default function ESignaturePage() {
                 Refresh
               </Button>
               <Button
-                onClick={() => setIsCreateOpen(true)}
+                onClick={() => void openCreate()}
                 leftIcon={<Plus className="h-4 w-4" />}
               >
                 New Workflow
@@ -723,23 +791,35 @@ export default function ESignaturePage() {
                   Add signer
                 </Button>
               </div>
-              {form.signers.map((s, i) => (
+              <p className="text-xs text-muted-foreground">
+                Signers are users of this organisation who hold the e-signature
+                permission. To have an outside party sign, invite them as a user
+                first.
+              </p>
+              {!signersLoading && eligibleSigners.length === 0 && (
+                <Alert variant="info">
+                  No users can sign yet. Grant the e-signature permission to a
+                  role or a user first.
+                </Alert>
+              )}
+              {form.signers.map((userId, i) => (
                 <div key={i} className="flex gap-2 items-start">
-                  <Input
-                    value={s.name}
-                    onChange={(e) => updateSigner(i, { name: e.target.value })}
-                    placeholder="Name"
-                  />
-                  <Input
-                    value={s.email}
-                    onChange={(e) => updateSigner(i, { email: e.target.value })}
-                    placeholder="Email"
-                  />
-                  <Input
-                    value={s.userId}
-                    onChange={(e) => updateSigner(i, { userId: e.target.value })}
-                    placeholder="User ID (optional)"
-                  />
+                  <select
+                    aria-label={`Signer ${i + 1}`}
+                    value={userId}
+                    disabled={signersLoading}
+                    onChange={(e) => updateSigner(i, e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl bg-muted/50 text-foreground ring-1 ring-border focus:outline-none focus:ring-2 focus:ring-ring/50"
+                  >
+                    <option value="">
+                      {signersLoading ? "Loading users…" : "Choose a signer"}
+                    </option>
+                    {eligibleSigners.map((signer) => (
+                      <option key={signer.id} value={signer.id}>
+                        {signer.name} — {signer.email}
+                      </option>
+                    ))}
+                  </select>
                   {form.signers.length > 1 && (
                     <Button
                       size="sm"
@@ -789,6 +869,19 @@ export default function ESignaturePage() {
               </div>
               {detail.message && (
                 <p className="text-sm text-muted-foreground">{detail.message}</p>
+              )}
+              {detailSource === "manage" && isOpen(detail.status) && (
+                <div className="flex justify-end">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    isLoading={busy === `cancel-wf-${detail.id}`}
+                    onClick={() => cancelWorkflow(detail.id)}
+                    leftIcon={<Ban className="h-4 w-4" />}
+                  >
+                    Cancel workflow
+                  </Button>
+                </div>
               )}
               <div className="space-y-2">
                 <span className="text-sm font-medium">Steps</span>

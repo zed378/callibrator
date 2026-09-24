@@ -1,6 +1,30 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosError } from "axios";
 import { API_TIMEOUT } from "@/constants";
 
+/** The backend's 403 `code` for an account that must change its password (A-123). */
+export const PASSWORD_CHANGE_REQUIRED = "PASSWORD_CHANGE_REQUIRED";
+/** Where such an account is sent. */
+export const CHANGE_PASSWORD_PATH = "/dashboard/change-password";
+
+/**
+ * A-123 (ADR-051 Q-11): where a failed request should send the browser
+ * because the account must change an administrator-set password — or null.
+ * The backend answers every route but change-password, logout and "who am I"
+ * with 403 + `code: PASSWORD_CHANGE_REQUIRED` until it is changed. Not again
+ * once on that page, or it would reload on each of its own background
+ * requests.
+ */
+export const passwordChangeRedirect = (
+  status: number | undefined,
+  code: string | undefined,
+  pathname: string,
+): string | null =>
+  status === 403 &&
+  code === PASSWORD_CHANGE_REQUIRED &&
+  pathname !== CHANGE_PASSWORD_PATH
+    ? CHANGE_PASSWORD_PATH
+    : null;
+
 // Create axios instance
 const apiClient: AxiosInstance = axios.create({
   baseURL: "", // Send requests to current Next.js origin for proxying
@@ -39,7 +63,7 @@ apiClient.interceptors.response.use(
   (error: AxiosError) => {
     // Extract error message from response body if available
     const responseData = error.response?.data as
-      | { message?: string; error?: string }
+      | { message?: string; error?: string; code?: string }
       | undefined;
     const errorMessage =
       responseData?.message || responseData?.error || error.message;
@@ -49,6 +73,19 @@ apiClient.interceptors.response.use(
       // cookies are cleared server-side on logout/verify failure.
       if (typeof window !== "undefined") {
         window.location.href = "/login";
+      }
+    }
+
+    // A-123: an account that must change its password goes to the one
+    // screen that can clear the flag.
+    if (typeof window !== "undefined") {
+      const target = passwordChangeRedirect(
+        error.response?.status,
+        responseData?.code,
+        window.location.pathname,
+      );
+      if (target) {
+        window.location.href = target;
       }
     }
 

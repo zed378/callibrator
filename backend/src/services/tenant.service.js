@@ -14,6 +14,7 @@ const {
 } = require("../validators/tenant.validator");
 const { get, set, del, delPattern, cacheKeys } = require("./redis.service");
 const auditService = require("./audit.service");
+const { PLATFORM_TENANT_ID } = require("../constants/platformTenant");
 
 // ==========================================
 // VALIDATION HELPERS
@@ -333,10 +334,12 @@ exports.getPublicBranding = async (tenantId) => {
 /**
  * Create a tenant (a platform operation — the route is superAdminOnly, A-76).
  *
- * A-95: the create and its audit row share the transaction (A-41). The row is
- * recorded under the ACTOR's home tenant (BR-A41-4): a platform operation on a
- * tenant is the actor's action, and the new tenant's own history begins with
- * it only in the resourceId.
+ * A-95: the create and its audit row share the transaction (A-41). A-125
+ * (ADR-051 Q-14, F-7): the row is recorded under the reserved PLATFORM tenant.
+ * It used to go under the ACTOR's home tenant (BR-A41-4) — for the seeded
+ * super admin, "Default Hospital Tenant", whose admins could then read every
+ * other hospital's creation. The new tenant's own history begins with it only
+ * in the resourceId. `actor.tenantId` is no longer read here.
  *
  * @param {object} input - fields to validate against createTenantSchema
  * @param {string|null} createdBy - the acting user id (from req.user)
@@ -425,10 +428,11 @@ exports.createTenant = async (input, createdBy, actor = {}) => {
     );
 
     // A-95: inside the transaction — a failed insert re-throws and the tenant
-    // is not created.
+    // is not created. A-125: recorded under PLATFORM, never the actor's home
+    // tenant (F-7).
     await auditService.logAction(
       {
-        tenantId: actor.tenantId || null,
+        tenantId: PLATFORM_TENANT_ID,
         userId: createdBy || null,
         action: "CREATE",
         resourceType: "Tenant",
@@ -750,9 +754,11 @@ exports.updateTenant = async (tenantId, input, updatedBy, actor = {}) => {
  *
  * A-95: the actor comes from the authenticated request only (it was read from
  * the body or query as `deletedBy`, so the row could name anyone), and the
- * delete and its audit row share the transaction. The row is recorded under
- * the ACTOR's home tenant (BR-A41-4) — not under the deleted tenant, whose
- * rows go with it.
+ * delete and its audit row share the transaction. A-125 (ADR-051 Q-14, F-7):
+ * the row is recorded under the reserved PLATFORM tenant — not under the
+ * actor's home tenant (a hospital, whose admins could read it) and not under
+ * the deleted tenant. The PLATFORM tenant itself cannot be deleted here: the
+ * Tenant model hides it, so it answers 404 like an id that does not exist.
  *
  * @param {string} tenantId
  * @param {{userId?: (string|null), tenantId?: (string|null),
@@ -789,9 +795,11 @@ exports.deleteTenant = async (tenantId, actor = {}) => {
 
     await tenant.destroy({ transaction });
 
+    // A-125: under PLATFORM (F-7). Not under the deleted tenant either: a
+    // platform operation belongs to the platform's trail.
     await auditService.logAction(
       {
-        tenantId: actor.tenantId || null,
+        tenantId: PLATFORM_TENANT_ID,
         userId: deletedBy,
         action: "DELETE",
         resourceType: "Tenant",

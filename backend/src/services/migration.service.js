@@ -67,6 +67,7 @@ const {
   PERMISSION_TYPES,
   DEFAULT_TENANT,
 } = require("../constants");
+const { PLATFORM_TENANT } = require("../constants/platformTenant");
 const { logger } = require("../middlewares/activityLog.middleware");
 
 // ==========================================
@@ -636,11 +637,38 @@ async function seedRoleMenuPermissions(roleName, menuSlugs, permissionType) {
 }
 
 /**
- * Seed default tenant
+ * A-125 (ADR-051 Q-14) — create the reserved PLATFORM tenant if absent. Its
+ * audit trail records platform operations (tenant create and delete, global
+ * roles). Migration 0034 creates it too; this covers a database seeded before
+ * the migrator runs, or reset by resetAndSeed.
+ *
+ * `includePlatformTenant`: the Tenant model's hooks hide the row from every
+ * other query. A soft-deleted PLATFORM row (paranoid: false finds it) is not
+ * resurrected here — that is not a state the application can produce, and
+ * deciding what it means is not a seed's job.
+ *
+ * @returns {Promise<void>}
+ */
+async function seedPlatformTenant() {
+  const existing = await Tenant.findOne({
+    where: { id: PLATFORM_TENANT.id },
+    paranoid: false,
+    includePlatformTenant: true,
+  });
+  if (!existing) {
+    await Tenant.create({ ...PLATFORM_TENANT });
+    logger.info(`Created platform tenant: ${PLATFORM_TENANT.name}`);
+  }
+}
+
+/**
+ * Seed default tenant — and, first, the PLATFORM tenant (A-125), so every path
+ * that seeds a tenant (resetAndSeed, seedAll, seedDemoData) creates both.
  * @returns {Promise<void>}
  */
 async function seedDefaultTenant() {
   try {
+    await seedPlatformTenant();
     const existing = await Tenant.findOne({
       where: { id: DEFAULT_TENANT.id },
       paranoid: false,
@@ -2113,6 +2141,9 @@ module.exports = {
 
   // User seeding
   seedUsers,
+
+  // Tenant seeding (A-125)
+  seedPlatformTenant,
 
   // Complete seeding
   seedAll,

@@ -28,6 +28,12 @@ export interface User {
   role?: Role;
   createdAt?: string;
   updatedAt?: string;
+  // A-141: from /auth/verify and the MFA sign-in step. A count, never a code.
+  mfaEnabled?: boolean;
+  mfaRecoveryCodesRemaining?: number;
+  // A-123: an administrator set this account's password; it must be changed
+  // before anything else (the backend answers 403 PASSWORD_CHANGE_REQUIRED).
+  mustChangePassword?: boolean;
 }
 
 export interface LoginCredentials {

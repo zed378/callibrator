@@ -13,6 +13,10 @@
  *    under test. An out-of-ENUM value throws PostgreSQL's error text.
  *  - the model's NOT NULL columns are enforced (so `entityType` in place of
  *    `resourceType` fails, as it does against the database).
+ *  - A-124: `actor_type` is the model's ENUM, and migration 0033's CHECK
+ *    `audit_logs_actor_check` is enforced — a user row names a user and no
+ *    actor name, a system row names no user and a `system:` actor, and no NEW
+ *    row may be `unknown` (the CHECK's cut-off is in the past for any test).
  *  - `transaction(cb)` stages every write and commits only if `cb` resolves.
  *    A failed statement aborts the transaction, as PostgreSQL does — and a
  *    COMMIT of an aborted transaction silently rolls back, as PostgreSQL does.
@@ -34,6 +38,7 @@ const loadAuditSchema = () => {
   const attributes = AuditLog.getAttributes();
   return {
     actions: Object.freeze([...attributes.action.values]),
+    actorTypes: Object.freeze([...attributes.actorType.values]),
     // createdAt is NOT NULL but stamped by Sequelize itself.
     notNull: Object.entries(attributes)
       .filter(([name, a]) => a.allowNull === false && !a.primaryKey && name !== "createdAt")
@@ -45,6 +50,19 @@ let cachedSchema = null;
 const auditSchema = () => {
   if (!cachedSchema) {cachedSchema = loadAuditSchema();}
   return cachedSchema;
+};
+
+/**
+ * Migration 0033's CHECK `audit_logs_actor_check`, for a row inserted now.
+ * `unknown` is never valid for a new row: the CHECK allows it only for rows
+ * created before the migration ran.
+ */
+const actorCheckHolds = ({ actorType, userId, actorName }) => {
+  const hasUser = userId !== undefined && userId !== null;
+  const hasName = actorName !== undefined && actorName !== null;
+  if (actorType === "user") {return hasUser && !hasName;}
+  if (actorType === "system") {return !hasUser && hasName && String(actorName).startsWith("system:");}
+  return false;
 };
 
 class LedgerTransaction {
@@ -164,6 +182,23 @@ const createLedger = ({ cls = true } = {}) => {
             err.name = "SequelizeValidationError";
             throw err;
           }
+        }
+        const { actorTypes } = auditSchema();
+        if (!actorTypes.includes(values.actorType)) {
+          if (tx) {tx.aborted = true;}
+          const err = new Error(
+            `invalid input value for enum enum_audit_logs_actor_type: "${values.actorType}"`,
+          );
+          err.name = "SequelizeDatabaseError";
+          throw err;
+        }
+        if (!actorCheckHolds(values)) {
+          if (tx) {tx.aborted = true;}
+          const err = new Error(
+            'new row for relation "audit_logs" violates check constraint "audit_logs_actor_check"',
+          );
+          err.name = "SequelizeDatabaseError";
+          throw err;
         }
         if (!actions.includes(values.action)) {
           if (tx) {tx.aborted = true;}

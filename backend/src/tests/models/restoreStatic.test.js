@@ -32,8 +32,8 @@ const { Sequelize, DataTypes, Op } = require("sequelize");
 /**
  * Evaluate a mapped Sequelize where clause against one in-memory row. Only the
  * shapes this path really produces are understood — a plain equality, the
- * `{ [Op.eq]: null }` paranoid clause, and the `Op.and` wrapper that combines
- * them. Anything else throws rather than matching, so a where clause this
+ * `{ [Op.eq]: null }` paranoid clause, the Tenant model's `{ [Op.ne]: … }`
+ * PLATFORM exclusion (A-125), and the `Op.and` wrapper that combines them. Anything else throws rather than matching, so a where clause this
  * harness does not understand fails the test instead of passing it.
  */
 const matchesWhere = (row, where) => {
@@ -52,6 +52,11 @@ const matchesWhere = (row, where) => {
     if (expected !== null && typeof expected === "object") {
       if (Op.eq in expected) {
         return row[key] === expected[Op.eq];
+      }
+      // A-125: the Tenant model's hook ANDs `id <> PLATFORM_TENANT_ID` into
+      // every bulk update (models/tenant.model.js excludePlatformTenant).
+      if (Op.ne in expected) {
+        return row[key] !== expected[Op.ne];
       }
       throw new Error(`unsupported predicate on ${String(key)}`);
     }

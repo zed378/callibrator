@@ -342,3 +342,281 @@ describe("ESignaturePage — the signer view (A-91)", () => {
     );
   });
 });
+
+/**
+ * A-129 / A-130 — workflow management against the backend's real shapes:
+ *  - GET /esignature/signers → success(res, rows, { total }, msg): rows
+ *    `{ id, name, email }` in `data`, `meta` a top-level sibling
+ *  - POST /esignature/workflows takes `signers: [{ userId }]` only; the name
+ *    and email come from the user record (F-10), an email-only signer is 400
+ *  - DELETE /esignature/workflows/:id answers 409 with a state explanation
+ *    once any step is signed (A-144); POST /workflows/:id/cancel is the way
+ *    to withdraw it, and answers 409 for a completed or cancelled workflow
+ *  - the api client rejects with an Error carrying the backend message and
+ *    the axios `response.status`
+ */
+describe("ESignaturePage — workflow management (A-129, A-130)", () => {
+  const ANA = "66666666-6666-4666-8666-666666666666";
+  const BEN = "77777777-7777-4777-8777-777777777777";
+  const eligible = [
+    { id: ANA, name: "Ana Tech", email: "ana@hospital.test" },
+    { id: BEN, name: "Ben Supervisor", email: "ben@hospital.test" },
+  ];
+  const conflict = (message: string) =>
+    Object.assign(new Error(message), { response: { status: 409 } });
+
+  const serveManagement = (wf: ReturnType<typeof workflow>, signers = eligible) => {
+    mockedApi.get.mockImplementation(async (path: string) => {
+      if (path.endsWith("/my-workflows")) return { ...envelope([]), meta: { total: 0 } };
+      if (path.endsWith("/signers")) return { ...envelope(signers), meta: { total: signers.length } };
+      if (path.endsWith("/workflows")) return { ...envelope([wf]), meta: { total: 1 } };
+      if (path.endsWith(`/workflows/${WF}`)) return envelope(wf);
+      throw new Error(`unexpected GET ${path}`);
+    });
+  };
+
+  const openWorkflowsTab = async () => {
+    render(<ESignaturePage />);
+    fireEvent.click(screen.getByRole("button", { name: "Workflows" }));
+    await screen.findByText("Approve SOP-12");
+  };
+
+  const fillDocument = (documentId: string, subject: string) => {
+    fireEvent.change(screen.getByPlaceholderText("e.g. certificate uuid"), {
+      target: { value: documentId },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Please sign this certificate"), {
+      target: { value: subject },
+    });
+  };
+
+  it("New Workflow picks signers from the eligible users — no free-text name or email — and posts only their ids", async () => {
+    serveManagement(workflow([step({})]));
+    mockedApi.post.mockResolvedValueOnce(
+      envelope({
+        workflowId: WF,
+        signers: [
+          { userId: ANA, email: "ana@hospital.test", name: "Ana Tech", status: "pending" },
+          { userId: BEN, email: "ben@hospital.test", name: "Ben Supervisor", status: "waiting" },
+        ],
+      }),
+    );
+    await openWorkflowsTab();
+
+    fireEvent.click(screen.getByRole("button", { name: "New Workflow" }));
+    const first = (await screen.findByRole("combobox", { name: "Signer 1" })) as HTMLSelectElement;
+    await waitFor(() => expect(first).not.toBeDisabled());
+    expect(mockedApi.get).toHaveBeenCalledWith("/api/v1/esignature/signers");
+    expect(screen.queryByPlaceholderText("Email")).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("Name")).not.toBeInTheDocument();
+    expect(
+      within(first).getByRole("option", { name: "Ana Tech — ana@hospital.test" }),
+    ).toBeInTheDocument();
+
+    fillDocument("cert-9", "Approve CAL-9");
+    fireEvent.change(first, { target: { value: ANA } });
+    fireEvent.click(screen.getByRole("button", { name: "Add signer" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Signer 2" }), { target: { value: BEN } });
+    fireEvent.click(screen.getByRole("button", { name: "Create Workflow" }));
+
+    await waitFor(() => expect(mockedApi.post).toHaveBeenCalledTimes(1));
+    expect(mockedApi.post).toHaveBeenCalledWith("/api/v1/esignature/workflows", {
+      documentId: "cert-9",
+      subject: "Approve CAL-9",
+      message: undefined,
+      signers: [{ userId: ANA }, { userId: BEN }],
+    });
+    await waitFor(() =>
+      expect(useToastStore.getState().toasts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ type: "success", title: "Signature workflow created" }),
+        ]),
+      ),
+    );
+  });
+
+  it("with no eligible signer the dialog says why, and nothing can be created", async () => {
+    serveManagement(workflow([step({})]), []);
+    await openWorkflowsTab();
+
+    fireEvent.click(screen.getByRole("button", { name: "New Workflow" }));
+
+    expect(await screen.findByText(/No users can sign yet/)).toBeInTheDocument();
+    fillDocument("cert-9", "Approve");
+    fireEvent.click(screen.getByRole("button", { name: "Create Workflow" }));
+
+    expect(mockedApi.post).not.toHaveBeenCalled();
+    expect(useToastStore.getState().toasts).toEqual([expect.objectContaining({ type: "warning" })]);
+  });
+
+  it("a signer the backend refuses shows its explanation", async () => {
+    serveManagement(workflow([step({})]));
+    mockedApi.post.mockRejectedValueOnce(
+      Object.assign(
+        new Error(
+          "Signer 1 (Ana Tech) does not hold the e-signature signing permission, so they could not sign.",
+        ),
+        { response: { status: 400 } },
+      ),
+    );
+    await openWorkflowsTab();
+    fireEvent.click(screen.getByRole("button", { name: "New Workflow" }));
+    const first = await screen.findByRole("combobox", { name: "Signer 1" });
+    await waitFor(() => expect(first).not.toBeDisabled());
+    fillDocument("c", "s");
+    fireEvent.change(first, { target: { value: ANA } });
+    fireEvent.click(screen.getByRole("button", { name: "Create Workflow" }));
+
+    await waitFor(() =>
+      expect(useToastStore.getState().toasts).toEqual([
+        expect.objectContaining({
+          type: "error",
+          title: "Could not create workflow",
+          description: expect.stringMatching(/does not hold the e-signature signing permission/),
+        }),
+      ]),
+    );
+  });
+
+  it("a failure to load the eligible signers is reported", async () => {
+    mockedApi.get.mockImplementation(async (path: string) => {
+      if (path.endsWith("/my-workflows")) return { ...envelope([]), meta: { total: 0 } };
+      if (path.endsWith("/workflows")) return { ...envelope([workflow([])]), meta: { total: 1 } };
+      throw new Error("Service unavailable");
+    });
+    await openWorkflowsTab();
+
+    fireEvent.click(screen.getByRole("button", { name: "New Workflow" }));
+
+    await waitFor(() =>
+      expect(useToastStore.getState().toasts).toEqual([
+        expect.objectContaining({
+          type: "error",
+          title: "Could not load the users who can sign",
+          description: "Service unavailable",
+        }),
+      ]),
+    );
+  });
+
+  it("deleting a workflow with a signature shows the backend's 409 explanation, not a generic failure", async () => {
+    const explanation =
+      'This signature workflow is "in_progress" and has 1 signature, so it cannot be deleted: a signature ' +
+      "stays linked to the record it signs (21 CFR 11.70); cancel it instead " +
+      "(POST /esignature/workflows/:workflowId/cancel), which keeps the signatures.";
+    serveManagement(workflow([step({ status: "signed" })]));
+    mockedApi.delete.mockRejectedValueOnce(conflict(explanation));
+    await openWorkflowsTab();
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    await waitFor(() =>
+      expect(useToastStore.getState().toasts).toEqual([
+        expect.objectContaining({
+          type: "warning",
+          title: "This workflow cannot be deleted",
+          description: explanation,
+        }),
+      ]),
+    );
+    expect(mockedApi.delete).toHaveBeenCalledWith(`/api/v1/esignature/workflows/${WF}`);
+  });
+
+  it("any other delete failure is still an error", async () => {
+    serveManagement(workflow([step({})]));
+    mockedApi.delete.mockRejectedValueOnce(new Error("Service unavailable"));
+    await openWorkflowsTab();
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    await waitFor(() =>
+      expect(useToastStore.getState().toasts).toEqual([
+        expect.objectContaining({ type: "error", title: "Could not delete workflow" }),
+      ]),
+    );
+  });
+
+  it("cancels an open workflow from the list, then re-reads the list", async () => {
+    serveManagement(workflow([step({})]));
+    mockedApi.post.mockResolvedValueOnce(envelope(null, "Workflow cancelled"));
+    await openWorkflowsTab();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() =>
+      expect(mockedApi.post).toHaveBeenCalledWith(`/api/v1/esignature/workflows/${WF}/cancel`, {}),
+    );
+    await waitFor(() =>
+      expect(useToastStore.getState().toasts).toEqual([
+        expect.objectContaining({ type: "success", title: "Workflow cancelled" }),
+      ]),
+    );
+    const listReads = mockedApi.get.mock.calls.filter(
+      ([path]) => path === "/api/v1/esignature/workflows",
+    );
+    expect(listReads).toHaveLength(2);
+  });
+
+  it("cancels from the workflow detail too, and re-reads the detail", async () => {
+    serveManagement(workflow([step({})]));
+    mockedApi.post.mockResolvedValueOnce(envelope(null, "Workflow cancelled"));
+    await openWorkflowsTab();
+    fireEvent.click(screen.getByRole("button", { name: "View" }));
+    await screen.findByText("Me Signer");
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel workflow" }));
+
+    await waitFor(() =>
+      expect(useToastStore.getState().toasts).toEqual([
+        expect.objectContaining({ type: "success", title: "Workflow cancelled" }),
+      ]),
+    );
+    await waitFor(() =>
+      expect(
+        mockedApi.get.mock.calls.filter(([path]) => path === `/api/v1/esignature/workflows/${WF}`),
+      ).toHaveLength(2),
+    );
+  });
+
+  it("a 409 on cancel shows the state explanation; another failure is an error", async () => {
+    serveManagement(workflow([step({})]));
+    mockedApi.post
+      .mockRejectedValueOnce(
+        conflict(
+          'This signature workflow is "cancelled" and cannot be cancelled: cancellation is final; create a new workflow instead.',
+        ),
+      )
+      .mockRejectedValueOnce(new Error("Service unavailable"));
+    await openWorkflowsTab();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(useToastStore.getState().toasts).toEqual([
+        expect.objectContaining({
+          type: "warning",
+          title: "This workflow cannot be cancelled",
+          description: expect.stringMatching(/cancellation is final/),
+        }),
+      ]),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(useToastStore.getState().toasts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ type: "error", title: "Could not cancel workflow" }),
+        ]),
+      ),
+    );
+  });
+
+  it.each(["completed", "cancelled"])("a %s workflow offers no Cancel", async (status) => {
+    serveManagement({ ...workflow([step({ status: "signed" })]), status });
+    await openWorkflowsTab();
+
+    expect(screen.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "View" }));
+    await screen.findByText("Me Signer");
+    expect(screen.queryByRole("button", { name: "Cancel workflow" })).not.toBeInTheDocument();
+  });
+});

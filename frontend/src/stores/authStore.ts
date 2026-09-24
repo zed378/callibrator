@@ -36,7 +36,12 @@ interface AuthState {
     username: string,
     password: string,
   ) => Promise<{ mfaRequired: boolean; mfaToken?: string }>;
-  completeMfaLogin: (mfaToken: string, code: string) => Promise<void>;
+  // A-141: `useRecoveryCode` sends `code` as a one-time recovery code.
+  completeMfaLogin: (
+    mfaToken: string,
+    code: string,
+    useRecoveryCode?: boolean,
+  ) => Promise<void>;
   // A-60: redeems the one-time code from the SSO redirect. The tokens never
   // reach the browser; the server route sets the httpOnly cookies.
   loginWithSSOCode: (code: string) => Promise<void>;
@@ -198,10 +203,18 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     }
   },
 
-  completeMfaLogin: async (mfaToken: string, code: string) => {
+  completeMfaLogin: async (
+    mfaToken: string,
+    code: string,
+    useRecoveryCode = false,
+  ) => {
     set({ isLoading: true, error: null });
     try {
-      const response = await authService.mfaLogin(mfaToken, code);
+      const response = await authService.mfaLogin(
+        mfaToken,
+        code,
+        useRecoveryCode,
+      );
       const userData = response.data;
       const enrichedUser = {
         ...userData,

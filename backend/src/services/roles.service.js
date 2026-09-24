@@ -13,6 +13,7 @@ const { Op } = require("sequelize");
 const { get, set, del, delPattern, cacheKeys } = require("./redis.service");
 const { ROLE_LEVELS } = require("../constants");
 const auditService = require("./audit.service");
+const { PLATFORM_TENANT_ID } = require("../constants/platformTenant");
 const { db } = require("../config");
 // A-132: status-carrying errors are AppErrors, so production shows their
 // message (fileValidation.util#isExposableError). `statusCode` is kept too.
@@ -24,10 +25,14 @@ const { AppError } = require("../utils/appError.util");
  * (MEMORY/specs/A-41-audit-inside-transaction.md, rows 16-22). A failed audit
  * insert is re-thrown by logAction and rolls the change back.
  *
- * BR-A41-4 — roles are global, but audit_logs.tenantId is NOT NULL: a change to
- * a role is recorded under the ACTOR's tenant; a change to a user's role under
- * that USER's tenant, falling back to the actor's. If neither resolves the
- * insert fails and the change is refused (fail-closed).
+ * BR-A41-4, as amended by A-125 (ADR-051 Q-14, F-7) — roles are global, but
+ * audit_logs.tenantId is NOT NULL: a change to a role or its grants is a
+ * platform operation, and each such call passes `tenantId: PLATFORM_TENANT_ID`
+ * — the reserved PLATFORM tenant — no longer the ACTOR's home tenant, which for the
+ * seeded super admin is a hospital whose admins could read it. A change to a
+ * user's role is recorded under that USER's tenant, falling back to the
+ * actor's. If neither resolves the insert fails and the change is refused
+ * (fail-closed).
  *
  * Cache invalidation runs after the commit, never inside the transaction:
  * invalidating before the commit lets a concurrent request re-cache the old
@@ -96,6 +101,7 @@ class RolesService {
         { transaction },
       );
       await auditAccessChange(transaction, actor, {
+        tenantId: PLATFORM_TENANT_ID, // A-125: a global role is a platform operation
         action: "CREATE",
         resourceType: "Role",
         resourceId: role.id,
@@ -208,6 +214,7 @@ class RolesService {
     await db.transaction(async (transaction) => {
       await role.update(updates, { transaction });
       await auditAccessChange(transaction, actor, {
+        tenantId: PLATFORM_TENANT_ID, // A-125: a global role is a platform operation
         action: "UPDATE",
         resourceType: "Role",
         resourceId: id,
@@ -249,6 +256,7 @@ class RolesService {
           transaction,
         });
         await auditAccessChange(transaction, actor, {
+          tenantId: PLATFORM_TENANT_ID, // A-125: a global role is a platform operation
           action: "DELETE",
           resourceType: "Role",
           resourceId: id,
@@ -266,6 +274,7 @@ class RolesService {
     await db.transaction(async (transaction) => {
       await role.destroy({ transaction });
       await auditAccessChange(transaction, actor, {
+        tenantId: PLATFORM_TENANT_ID, // A-125: a global role is a platform operation
         action: "DELETE",
         resourceType: "Role",
         resourceId: id,
@@ -314,6 +323,7 @@ class RolesService {
       }
 
       await auditAccessChange(transaction, actor, {
+        tenantId: PLATFORM_TENANT_ID, // A-125: a global role is a platform operation
         action: "UPDATE",
         resourceType: "Role",
         resourceId: roleId,
@@ -345,6 +355,7 @@ class RolesService {
       // Nothing removed, nothing changed — and nothing to attribute.
       if (removed > 0) {
         await auditAccessChange(transaction, actor, {
+          tenantId: PLATFORM_TENANT_ID, // A-125: a global role is a platform operation
           action: "UPDATE",
           resourceType: "Role",
           resourceId: roleId,

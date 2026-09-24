@@ -30,6 +30,12 @@ interface VerifyData {
   status?: string;
   revoked?: boolean;
   expired?: boolean;
+  /**
+   * A-130 (F-11): the issuer deleted the certificate. The backend still
+   * reports it (never as valid, and without its document) rather than
+   * answering "not found", which would read as a forgery.
+   */
+  withdrawn?: boolean;
   certificateNumber?: string;
   type?: string;
   standard?: string | null;
@@ -62,7 +68,7 @@ function Verdict({ data }: { data: VerifyData }) {
   const Icon =
     data.valid && data.found
       ? ShieldCheck
-      : data.revoked || !data.found
+      : data.revoked || data.withdrawn || !data.found
         ? ShieldX
         : ShieldAlert;
 
@@ -78,6 +84,10 @@ function Verdict({ data }: { data: VerifyData }) {
     tone = "invalid";
     title = "Certificate revoked";
     sub = "This certificate was revoked by the issuer and is no longer valid.";
+  } else if (data.withdrawn) {
+    tone = "invalid";
+    title = "Certificate withdrawn";
+    sub = "This certificate was withdrawn by the issuer and is no longer valid.";
   } else if (data.expired) {
     tone = "warn";
     title = "Certificate expired";

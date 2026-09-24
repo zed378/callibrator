@@ -133,7 +133,7 @@ Task ids are `A-nn`. They are referenced from [`PHASE-9-TYPESCRIPT-MIGRATION.md`
 | A-117 | `createAttachment` and `updateTenantSettings` write no audit row | medium | 0 | **DONE** 2026-09-24 |
 | A-118 | the AI assistant page has no menu entry and now 403s for roles without `certificate` write / `sop` read; the attachment modal offers "General" with a record id, which now 400s | low | 0 | TODO |
 | A-119 | **workflow signing refused every real user**: `status !== "active"` against a stored `"ACTIVE"` — seven test files encoded the lowercase fixture | **critical** | 0 | **DONE** 2026-09-24 |
-| A-120 | a backup restore re-creates a GDPR-erased person from the archive (F-1); ADR-051 Q-09: never re-create | **critical** | 0 | TODO |
+| A-120 | a backup restore re-creates a GDPR-erased person from the archive (F-1); ADR-051 Q-09: never re-create | **critical** | 0 | **DONE** 2026-09-24 |
 | A-121 | audit rows are purgeable: the dead second engine (F-4), `setRetentionPolicy` accepts `audit_logs` (F-5), CASCADE on tenant delete; ADR-051 Q-10 and Q-12 | **critical** | 0 | **DONE** 2026-09-24 — FK half is A-122; REVOKE/trigger and partitioning later |
 | A-122 | hard-deleting a user cascades to every calibration record they performed (F-6); ADR-051 Q-16 — the RESTRICT migration | **critical** | 0 | **DONE** 2026-09-24 — verified on PostgreSQL 18.6 |
 | A-123 | an admin-chosen password is never forced to change, and a password signs (F-3); `is_email_verified` is dropped (F-2); ADR-051 Q-11 | **high** | 0 | **PARTIAL** 2026-09-24 — F-2 fixed; forced first-login password change open |
@@ -148,12 +148,12 @@ Task ids are `A-nn`. They are referenced from [`PHASE-9-TYPESCRIPT-MIGRATION.md`
 | A-132 | **production hides every thrown 4xx explanation**: `fileValidation.util.js#sanitizeError` replaces any thrown error's message with "An unexpected error occurred…", so today's 409 state explanations never reach a user | **high** | 0 | **DONE** 2026-09-24 |
 | A-133 | calibration-device create, update, delete and bulk import write no audit row; a soft-deleted device cannot be restored (no route calls `restoreStatic`) | **high** | 0 | **PARTIAL** 2026-09-24 — audit rows done; device restore is a decision |
 | A-134 | `tenantHierarchy#cascadeRoles` has never worked (an alias-less include and a `level` attribute that does not exist, the throw swallowed as "non-fatal"); `getUserRolesAcrossTenants` can return at most one row | medium | 0 | TODO |
-| A-135 | the frontend retention page uses keys the backend has never accepted and still offers an "Audit Logs" row; `maskPII("audit_logs")` has never worked (it looks up a model `Audit_log`) — and Q-12 relies on masking | **high** | 0 | TODO |
-| A-136 | `GET /data-retention/:tenantId/policy` and `/legal-hold` have no permission gate | medium | 0 | TODO |
+| A-135 | the frontend retention page uses keys the backend has never accepted and still offers an "Audit Logs" row; `maskPII("audit_logs")` has never worked (it looks up a model `Audit_log`) — and Q-12 relies on masking | **high** | 0 | **DONE** 2026-09-24 |
+| A-136 | `GET /data-retention/:tenantId/policy` and `/legal-hold` have no permission gate | medium | 0 | **DONE** 2026-09-24 |
 | A-137 | the `data_retention_policies` table and model serve only the removed engine — drop them through a migration that refuses if rows exist | low | 0 | TODO |
 | A-138 | **`GET /users` and `GET /users/:id` returned every user's TOTP secret**, email OTP, lockout counters and WebAuthn key — the exclusion list named columns, not attributes | **critical** | 0 | **DONE** 2026-09-24 |
-| A-139 | **tenant backup archives contain second-factor secrets** (`mfaSecret`, `mfaPendingSecret`, `otpCode`, `webauthnPublicKey`) — only the password is excluded | **critical** | 0 | TODO |
-| A-140 | the GDPR profile export always throws (`include: [Role]` with no alias) | **high** | 0 | TODO |
+| A-139 | **tenant backup archives contain second-factor secrets** (`mfaSecret`, `mfaPendingSecret`, `otpCode`, `webauthnPublicKey`) — only the password is excluded | **critical** | 0 | **DONE** 2026-09-24 |
+| A-140 | the GDPR profile export always throws (`include: [Role]` with no alias) | **high** | 0 | **DONE** 2026-09-24 |
 | A-141 | no endpoint to disable MFA and no recovery path — a lost authenticator locks the user out; replacing an authenticator does not sign out other sessions | **high** | 0 | TODO |
 | A-142 | `/auth/mfa/setup` and `/auth/mfa/verify` are not rate-limited | medium | 0 | TODO |
 | A-143 | `auth.middleware.js:237` compares `tenant.status === "ACTIVE"` against a lowercase enum, so the super admin's `x-tenant-id` override **never applies** (it fails closed) | medium | 0 | TODO — enabling it is a decision |
@@ -163,6 +163,13 @@ Task ids are `A-nn`. They are referenced from [`PHASE-9-TYPESCRIPT-MIGRATION.md`
 | A-147 | migration `0011` has a blanket `.catch(() => {})` on `dropTable`, and drops and recreates `e_signature_records` over what `sync()` built | medium | 0 | TODO |
 | A-148 | 64 more duplicate attributes of the A-88 shape on FKs outside Q-16 (e.g. `calibration_records.device_id`, `certificates.calibration_record_id`) | medium | 0 | TODO |
 | A-149 | `signature_records.revoked_by` and `signature_workflow_steps.signer_id` have no foreign key at all | medium | 0 | TODO |
+| A-150 | **`updateTenantSettings` copies decrypted secrets into `tenants.settings` in plaintext**, undoing KMS encryption at rest; APIs returning the tenant row probably expose them; `ai_api_key` is not on the encrypted-keys list | **critical** | 0 | TODO |
+| A-151 | a GDPR subject export includes whole-tenant tables (stocks, calibration records, certificates, notifications) — other people's data; a 404 becomes a 500 | **high** | 0 | TODO |
+| A-152 | `anonymizeDataset("users")` overwrites every text column (password, username, email) with no transaction or audit row, and the page still offers it | **high** | 0 | TODO |
+| A-153 | legal-hold enable/release and `setRetentionPolicy` write no audit row; `rectifyData` audits outside its transaction and writes the new value into the permanent trail | medium | 0 | TODO |
+| A-154 | `anonymizeUser` leaves avatar, sessions and second-factor secrets untouched | **high** | 0 | TODO |
+| A-155 | more ungated reads: `tenantLifecycle GET /:tenantId/status`, `featureFlags GET /:tenantId/:flagKey`, the `networkSecurity` GETs | **high** | 0 | TODO |
+| A-156 | the backup screen does not show the restore's `notRestored` list | low | 0 | TODO |
 | A-67 | the rate limiter's failure recording on login, register, OTP and reset **never runs** — it is mounted before the handler | **high** | 0 | **DONE** 2026-09-24 — `AUTH_RATE_LIMIT_BY_IP=true` enabled on the VM after A-16 was verified |
 | A-68 | OIDC has no `state`, `nonce` or PKCE check — login CSRF and code injection | **high** | 0 | TODO |
 | A-69 | SSO through the Next `/api` proxy cannot work: the proxy follows the backend's 302 server-side | **high** | 0 | TODO |
@@ -3810,3 +3817,43 @@ data.
 - The dev unseed tools and the unrouted `hardDeleteOffboardedTenant` are now refused wherever
   regulated rows exist. **That is the intent.**
 - The migration runs at boot, so **run the orphan query by hand before a planned deploy.**
+
+---
+
+### A-120, A-135, A-136, A-139, A-140 — What was changed (2026-09-24)
+
+**A-139.** The backup exports an **allow-list** of user fields and of tenant fields. Each list is
+applied in the SELECT and again when the archive is written.
+
+- The tenant's `settings` column is no longer exported: the restore needs only the tenant id, and
+  that column held plaintext credentials (A-150).
+- The new `mfaRecoveryCodes` column is excluded automatically; a deny-list would have exported it.
+
+Test: `tenantBackup.secrets.a139.test.js` › *"a tenant backup archive contains no second-factor or
+credential field"*. **4 of its 5 tests failed** against the old code — `mfaSecret` was in the
+archive.
+
+**A-120 (ADR-051 Q-09).** A restore never creates an account. A missing account is reported as
+`notRestored`, with `erased` or `absent`. **The audit row lists archive entry numbers, not
+usernames**: an erased person's username must not be written into a table that is never purged.
+Test: *"a restore never re-creates an account missing from the tenant (e.g. GDPR-erased)"*.
+
+**A-140.** The profile export joins `role` by its alias. The audit part of the export filtered on a
+column that does not exist, so a subject received an error object instead of their audit rows; that
+is fixed too. Test: `gdpr.exportProfile.a140.test.js`, **4 of its 6 tests failed** against the old
+code.
+
+**A-135.** Audit rows are masked **per data subject** (`subjectIds`), never per row id. Otherwise an
+operator could blank the IP address of chosen rows.
+
+- On rows the subject performed, the IP address and user agent are masked.
+- On rows about the subject, their personal data inside `changes` is masked.
+- **No row is deleted**, and who, what and when are untouched.
+- It runs in a transaction with its own audit row, and is refused under legal hold.
+- User masking now writes a unique valid address per user. It used to write one shared
+  `[REDACTED]` value, which would collide on the unique index.
+
+The frontend retention page now uses the backend's real keys, and the "Audit Logs" row is gone.
+
+**A-136.** Both reads require `data-retention` read, and another tenant's id answers 404. Test:
+`dataRetention.gate.a136.test.js`, **18 of its 24 tests failed** against the old code.

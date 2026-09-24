@@ -80,7 +80,9 @@ beforeEach(() => {
   }));
 });
 
-const create = (meta) => attachmentService.createAttachment(TENANT, FILE, meta);
+// A-124: every upload names its uploader — logAction refuses an actor-less row.
+const create = (meta) =>
+  attachmentService.createAttachment(TENANT, FILE, { uploadedBy: "u-uploader", ...meta });
 
 describe("A-97 — a linked resourceId must be a live record of the caller's tenant", () => {
   it.each([

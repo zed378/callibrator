@@ -1,4 +1,5 @@
 const { Model, DataTypes } = require("sequelize");
+const { ACTOR_TYPE_VALUES, ACTOR_NAME_MAX_LENGTH } = require("../constants/systemActors");
 
 module.exports = (sequelize) => {
   class AuditLog extends Model {
@@ -61,6 +62,21 @@ module.exports = (sequelize) => {
           model: "users",
           key: "id",
         },
+      },
+      // A-124 (ADR-051 Q-13): WHAT acted — a user (`userId`), a system job
+      // (`actorName`), or, for rows written before migration 0033 only,
+      // `unknown`. Added to existing databases, and backfilled, by 0033,
+      // which also adds the CHECK tying the three columns together.
+      // audit.service#logAction sets it; nothing else writes this table.
+      actorType: {
+        type: DataTypes.ENUM(...ACTOR_TYPE_VALUES),
+        allowNull: false,
+      },
+      // A-124: the system job's name, from constants/systemActors.js
+      // SYSTEM_ACTORS; NULL for a user row (the user is `userId`).
+      actorName: {
+        type: DataTypes.STRING(ACTOR_NAME_MAX_LENGTH),
+        allowNull: true,
       },
       action: {
         type: DataTypes.ENUM("CREATE", "UPDATE", "DELETE", "LOGIN", "APPROVE", "EXPORT"),

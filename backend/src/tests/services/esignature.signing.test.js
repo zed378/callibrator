@@ -129,6 +129,7 @@ describe("eSignature.service — RSA signing and verification", () => {
     harness.svc.signDocument("step-1", "u-1", {
       authenticationMethod: "password",
       authPayload: "pw",
+      reason: "Approved",
       ipAddress: "10.0.0.9",
       userAgent: "jest",
       ...data,
@@ -173,6 +174,37 @@ describe("eSignature.service — RSA signing and verification", () => {
       await expect(harness.svc.verifySignature("sig-1")).resolves.toMatchObject(
         { valid: true, details: { reason: "Approved by the quality manager" } },
       );
+    });
+
+    // A-129 made the meaning mandatory at signing. A signature made before
+    // that, with NULL as its meaning, was signed over "" in that position and
+    // must go on verifying: the canonical form is pinned here byte for byte.
+    it("a signature made before A-129 with no meaning (NULL) still verifies", async () => {
+      const crypto = require("crypto");
+      const harness = buildHarness();
+      await signOnce(harness);
+      const signedAt = harness.stored.signedAt.toISOString();
+      const payload = JSON.stringify([
+        ["scheme", "esig-v2-rsa-sha256"],
+        ["algorithm", "RS256"],
+        ["tenantId", TENANT_ID],
+        ["documentId", "doc-1"],
+        ["workflowId", "wf-1"],
+        ["workflowStepId", "step-1"],
+        ["signerUserId", "u-1"],
+        ["signedAt", signedAt],
+        ["authenticationMethod", "password"],
+        ["reason", ""],
+      ]);
+      harness.stored.signatureReason = null;
+      harness.stored.signatureValue = crypto
+        .sign("sha256", Buffer.from(payload, "utf8"), keyPair.privateKey)
+        .toString("base64");
+
+      await expect(harness.svc.verifySignature("sig-1")).resolves.toMatchObject({
+        valid: true,
+        details: { reason: null },
+      });
     });
 
     it("verifies when the driver returns signedAt as an ISO string rather than a Date", async () => {

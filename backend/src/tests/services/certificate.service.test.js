@@ -435,6 +435,34 @@ describe("certificate.service", () => {
       expect(destroy).not.toHaveBeenCalled();
     });
 
+    // A-130 (ADR-051 A-107) — only a draft or a certificate pending approval
+    // may be deleted. Fail-before: approved and revoked were deleted (only
+    // `signed` was refused), and a deleted revoked certificate then read as
+    // "no certificate matches" on the public verification page (F-11).
+    it.each([
+      ["approved", 'This certificate is "approved" and cannot be deleted: its approval is a signed record. Revoke it with POST /certificates/:id/revoke instead.'],
+      ["revoked", 'This certificate is "revoked" and cannot be deleted: a revoked certificate is the permanent record that it was withdrawn, and its verification page goes on showing it as revoked.'],
+    ])("A-130: refuses to delete a %s certificate with a 409 that explains the state", async (status, message) => {
+      const destroy = jest.fn();
+      Certificate.findOne.mockResolvedValueOnce({ id: "cert-1", status, destroy });
+
+      const err = await deleteCertificate("tenant-1", "cert-1").catch((e) => e);
+
+      expect(err.status).toBe(409);
+      expect(err.message).toBe(message);
+      expect(destroy).not.toHaveBeenCalled();
+    });
+
+    it("A-130: a certificate pending approval may still be deleted", async () => {
+      const mockCert = { id: "cert-1", status: "pending_approval", destroy: jest.fn().mockResolvedValueOnce(true) };
+      Certificate.findOne.mockResolvedValueOnce(mockCert);
+
+      const result = await deleteCertificate("tenant-1", "cert-1");
+
+      expect(result.status).toBe(200);
+      expect(mockCert.destroy).toHaveBeenCalled();
+    });
+
     it("should delete certificate successfully", async () => {
       const mockCert = {
         id: "cert-1",

@@ -324,6 +324,9 @@ describe("W-01 — tenant lifecycle against the real Tenant model", () => {
         expect.objectContaining({
           tenantId: T1,
           userId: null,
+          // A-124: the scheduler is a first-class system actor.
+          actorType: "system",
+          actorName: "system:tenant-lifecycle",
           action: "DELETE",
           resourceType: "Tenant",
           resourceId: T1,

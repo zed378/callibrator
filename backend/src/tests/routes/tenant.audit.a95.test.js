@@ -9,8 +9,9 @@
  *
  * CLAUDE.md: "Every mutation writes an audit row, inside the transaction." The
  * row for a platform operation on a tenant (create, delete) is recorded under
- * the ACTOR's home tenant (BR-A41-4, auditActor.util.js); a logo change is
- * recorded under the tenant changed.
+ * the reserved PLATFORM tenant (A-125, ADR-051 Q-14, F-7) — it was the ACTOR's
+ * home tenant (BR-A41-4), a hospital whose admins could read it; a logo change
+ * is recorded under the tenant changed.
  *
  * Real chain: tenant.route -> gate -> tenant.controller -> tenant.service /
  * tenantUpload.service, over the two-tenant fixture. Stubbed: `auth`, the
@@ -125,6 +126,7 @@ const auditService = require("../../services/audit.service");
 const { deleteUpload } = require("../../utils/upload.util");
 const { Tenants } = require("../../models");
 const { ROLE_NAMES } = require("../../constants");
+const { PLATFORM_TENANT_ID } = require("../../constants/platformTenant");
 const router = require("../../routes/api/tenant.route");
 
 const http = (method, url, { body = {}, query = {} } = {}) =>
@@ -205,7 +207,7 @@ const auditCall = () => {
 };
 
 describe("A-95 — POST /tenants/create is audited inside its transaction", () => {
-  it("the row names the super admin, is recorded under their home tenant, and precedes the commit", async () => {
+  it("a tenant creation is audited under the PLATFORM tenant, not the super admin's home tenant", async () => {
     currentUser = fx.superAdmin;
 
     const res = await http("post", "/create", {
@@ -215,7 +217,7 @@ describe("A-95 — POST /tenants/create is audited inside its transaction", () =
     expect(res.status).toBe(201);
     const [entry, options] = auditCall();
     expect(entry).toMatchObject({
-      tenantId: fx.superAdmin.tenantId,
+      tenantId: PLATFORM_TENANT_ID,
       userId: fx.superAdmin.id,
       action: "CREATE",
       resourceType: "Tenant",
@@ -223,6 +225,7 @@ describe("A-95 — POST /tenants/create is audited inside its transaction", () =
       ipAddress: "127.0.0.9",
       userAgent: "jest-a95",
     });
+    expect(entry.tenantId).not.toBe(fx.superAdmin.tenantId);
     expect(entry.changes).toMatchObject({ after: { name: "New Hospital", code: "NEW-H" } });
     expect(options).toEqual({ transaction: fx.lastTx });
     expect(mockEvents).toEqual(["create", "audit", "commit"]);
@@ -254,7 +257,8 @@ describe("A-95 — DELETE /tenants/delete: audited, and the actor is the caller"
     expect(res.status).toBe(200);
     const [entry, options] = auditCall();
     expect(entry).toMatchObject({
-      tenantId: fx.superAdmin.tenantId,
+      // A-125: under PLATFORM — not the actor's home tenant, not the deleted one.
+      tenantId: PLATFORM_TENANT_ID,
       userId: fx.superAdmin.id,
       action: "DELETE",
       resourceType: "Tenant",

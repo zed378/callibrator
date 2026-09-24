@@ -381,8 +381,26 @@ describe("gdprService", () => {
       ).rejects.toThrow("Data erasure is disabled");
     });
 
+    // A-124: every erasure names its requester, the audit row's actor.
+    it("refuses an erasure that names no requester, and erases nothing", async () => {
+      await expect(gdprService.eraseUserData("tenant-1", "user-1")).rejects.toMatchObject({
+        status: 400,
+        message: "An erasure must name the user who requested it",
+      });
+      expect(User.update).not.toHaveBeenCalled();
+    });
+
+    it("records the requester as the erasure's actor", async () => {
+      const { AuditLog } = require("../../models");
+      await gdprService.eraseUserData("tenant-1", "user-1", { requestedBy: "dpo-1" });
+
+      expect(AuditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: "dpo-1", actorType: "user", resourceId: "user-1" }),
+      );
+    });
+
     it("should anonymize user by default", async () => {
-      const result = await gdprService.eraseUserData("tenant-1", "user-1");
+      const result = await gdprService.eraseUserData("tenant-1", "user-1", { requestedBy: "user-1" });
 
       expect(result).toHaveProperty("erased", true);
       expect(result).toHaveProperty("method", "anonymized");
@@ -392,6 +410,7 @@ describe("gdprService", () => {
     it("should soft delete when anonymize is false", async () => {
       const result = await gdprService.eraseUserData("tenant-1", "user-1", {
         anonymize: false,
+        requestedBy: "user-1",
       });
 
       expect(result.method).toBe("soft_deleted");
@@ -401,6 +420,7 @@ describe("gdprService", () => {
       const result = await gdprService.eraseUserData("tenant-1", "user-1", {
         hardDelete: true,
         anonymize: false,
+        requestedBy: "user-1",
       });
 
       expect(result.method).toBe("hard_deleted");
@@ -409,7 +429,7 @@ describe("gdprService", () => {
     it("should throw AppError on database exception during erasure", async () => {
       User.update.mockRejectedValueOnce(new Error("Update failed"));
       await expect(
-        gdprService.eraseUserData("tenant-1", "user-1"),
+        gdprService.eraseUserData("tenant-1", "user-1", { requestedBy: "user-1" }),
       ).rejects.toThrow("Failed to erase user data");
     });
   });

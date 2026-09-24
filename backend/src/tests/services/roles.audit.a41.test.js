@@ -6,10 +6,13 @@
  * Effects against the auditLedger fixture (real ENUM, real rollback), with
  * `cls: false` so every write must carry `{ transaction }` explicitly.
  *
- * BR-A41-4: a change to a GLOBAL role is recorded under the actor's tenant; a
- * change to a USER's role or override is recorded under that user's tenant.
+ * BR-A41-4 as amended by A-125 (ADR-051 Q-14, F-7): a change to a GLOBAL role
+ * is recorded under the reserved PLATFORM tenant — no longer the actor's home
+ * tenant; a change to a USER's role or override is recorded under that user's
+ * tenant.
  */
 const { createLedger } = require("../fixtures/auditLedger");
+const { PLATFORM_TENANT_ID } = require("../../constants/platformTenant");
 
 const mockRef = { ledger: null, role: null, user: null, grant: null, removed: 1 };
 
@@ -87,7 +90,7 @@ const CASES = [
     action: "CREATE",
     resourceType: "Role",
     resourceId: "role-new",
-    tenantId: "tenant-admin",
+    tenantId: PLATFORM_TENANT_ID,
   },
   {
     name: "updateRole",
@@ -96,7 +99,7 @@ const CASES = [
     action: "UPDATE",
     resourceType: "Role",
     resourceId: "role-1",
-    tenantId: "tenant-admin",
+    tenantId: PLATFORM_TENANT_ID,
     invalidates: "perm:role-1",
   },
   {
@@ -106,7 +109,7 @@ const CASES = [
     action: "DELETE",
     resourceType: "Role",
     resourceId: "role-1",
-    tenantId: "tenant-admin",
+    tenantId: PLATFORM_TENANT_ID,
     invalidates: "perm:role-1",
   },
   {
@@ -117,7 +120,7 @@ const CASES = [
     action: "DELETE",
     resourceType: "Role",
     resourceId: "role-1",
-    tenantId: "tenant-admin",
+    tenantId: PLATFORM_TENANT_ID,
     invalidates: "perm:role-1",
   },
   {
@@ -127,7 +130,7 @@ const CASES = [
     action: "UPDATE",
     resourceType: "Role",
     resourceId: "role-1",
-    tenantId: "tenant-admin",
+    tenantId: PLATFORM_TENANT_ID,
     invalidates: "perm:role-1",
   },
   {
@@ -138,7 +141,7 @@ const CASES = [
     action: "UPDATE",
     resourceType: "Role",
     resourceId: "role-1",
-    tenantId: "tenant-admin",
+    tenantId: PLATFORM_TENANT_ID,
     invalidates: "perm:role-1",
   },
   {
@@ -148,7 +151,7 @@ const CASES = [
     action: "UPDATE",
     resourceType: "Role",
     resourceId: "role-1",
-    tenantId: "tenant-admin",
+    tenantId: PLATFORM_TENANT_ID,
     invalidates: "perm:role-1",
   },
   {
@@ -290,8 +293,27 @@ describe("A-41 — role and permission changes audit inside their transaction", 
   });
 
   it("with no resolvable tenant the change is refused, not committed unattributed (BR-A41-4, fail-closed)", async () => {
-    await expect(RolesService.createRole({ name: "Ghost" }, {})).rejects.toThrow(/tenantId cannot be null/);
+    mockRef.user.tenantId = null;
+
+    await expect(RolesService.assignRoleToUser("user-9", "role-1", { userId: "admin-1" })).rejects.toThrow(
+      /tenantId cannot be null/,
+    );
+
+    expect(mockRef.ledger.committed("users")).toEqual([]);
+  });
+
+  it("A-124: a global role change with no actor is refused, not committed unattributed", async () => {
+    await expect(RolesService.createRole({ name: "Ghost" }, {})).rejects.toThrow(/must name its actor/);
 
     expect(mockRef.ledger.committed("roles")).toEqual([]);
+  });
+
+  it("A-125: a global role change is recorded under PLATFORM, not the actor's home tenant (F-7)", async () => {
+    await RolesService.createRole({ name: "Auditor", roleLevel: 3 }, actor);
+
+    const [row] = mockRef.ledger.auditRows();
+    expect(row.tenantId).toBe(PLATFORM_TENANT_ID);
+    expect(row.tenantId).not.toBe(actor.tenantId);
+    expect(row).toMatchObject({ userId: "admin-1", actorType: "user", actorName: null });
   });
 });

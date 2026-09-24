@@ -63,6 +63,23 @@ const AUTH_ENDPOINTS = {
     lockoutMs: WINDOW.FIFTEEN_MIN,
     description: "MFA login (TOTP code)",
   },
+  // A-142: the SIGNED-IN MFA endpoints — /auth/mfa/setup (a rotation checks
+  // the current password and a current code), /auth/mfa/verify (a code from
+  // the new authenticator) and /auth/mfa/disable (password and a code). One
+  // bucket for all three, keyed by the user, so spreading guesses across them
+  // buys nothing. Per IP too when AUTH_RATE_LIMIT_BY_IP is on.
+  //
+  // persistUserLockout: false — the lock is on these endpoints only. It does
+  // NOT write users.locked_until (which blocks SIGN-IN): whoever is guessing
+  // here already holds a session, so locking sign-in would only lock out the
+  // real user, and a success here must not clear a sign-in lock either.
+  mfaManage: {
+    maxAttempts: 5,
+    windowMs: WINDOW.FIFTEEN_MIN,
+    lockoutMs: WINDOW.FIFTEEN_MIN,
+    description: "MFA setup, verification and disable",
+    persistUserLockout: false,
+  },
 };
 
 /**

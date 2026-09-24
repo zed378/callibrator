@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
 import DashboardLayout from "@/components/layouts/DashboardLayout";
-import { Loader2, Lock, Shield } from "lucide-react";
+import { AlertTriangle, Loader2, Lock, Shield } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { userService } from "@/api/services/user.service";
 import { Button, Card } from "@/components/ui";
@@ -19,8 +20,16 @@ interface PasswordValidation {
   hasSymbol: boolean;
 }
 
+/** The HTTP status of a failed axios call, if any. */
+const statusOf = (err: unknown): number | undefined =>
+  (err as { response?: { status?: number } } | null)?.response?.status;
+
 export default function ChangePasswordPage() {
-  const { user, fetchUser } = useAuthStore();
+  const router = useRouter();
+  const { user, fetchUser, logout } = useAuthStore();
+  // A-123: an administrator set this password; nothing else works until it
+  // is changed (the backend answers 403 PASSWORD_CHANGE_REQUIRED elsewhere).
+  const forced = user?.mustChangePassword === true;
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -48,8 +57,11 @@ export default function ChangePasswordPage() {
         const { valid } = await userService.verifyCurrentPassword(currentPw);
         if (cancelled) return;
         setPwStatus(valid ? "valid" : "invalid");
-      } catch {
-        if (!cancelled) setPwStatus("invalid");
+      } catch (err) {
+        // A-123: the live check is not one of the routes an account that must
+        // change its password may call; its 403 says nothing about the
+        // password, so show no verdict rather than a false "invalid".
+        if (!cancelled) setPwStatus(statusOf(err) === 403 ? "idle" : "invalid");
       }
     }, 600);
     return () => {
@@ -114,6 +126,12 @@ export default function ChangePasswordPage() {
       setNewPw("");
       setConfirmPw("");
       setSuccessMsg("Password changed successfully!");
+      if (forced) {
+        // Changing the password signs out every session, this one included;
+        // sign in again with the new password.
+        await logout();
+        router.replace("/login");
+      }
     } catch (err) {
       // Surface the server's reason (e.g. "Current password is incorrect")
       // rather than a generic failure.
@@ -126,7 +144,7 @@ export default function ChangePasswordPage() {
     } finally {
       setIsSaving(false);
     }
-  }, [user, currentPw, newPw, confirmPw]);
+  }, [user, currentPw, newPw, confirmPw, forced, logout, router]);
 
   if (isLoading)
     return (
@@ -161,6 +179,21 @@ export default function ChangePasswordPage() {
             </p>
           </div>
         </div>
+
+        {forced && (
+          <div
+            role="alert"
+            className="flex items-start gap-3 rounded-xl border border-warning/40 bg-warning/10 p-4 text-sm text-foreground md:max-w-150"
+          >
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
+            <span>
+              An administrator set your password. Choose a new one before you
+              continue — until you do, the rest of the application is
+              unavailable. Afterwards you will sign in again with the new
+              password.
+            </span>
+          </div>
+        )}
 
         {successMsg && <SuccessMessage message={successMsg} />}
         {errors._form && <FormError message={errors._form} />}

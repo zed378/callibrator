@@ -2,8 +2,20 @@ const express = require("express");
 const router = express.Router();
 const dataRetentionController = require("../../controllers/dataRetention.controller");
 const { auth, superAdminOnly } = require("../../middlewares/auth.middleware");
+const { dynamicAccess } = require("../../middlewares/dynamicAccess.middleware");
+const { MENU_SLUGS } = require("../../constants/roleConstants");
 
 router.use(auth);
+
+/**
+ * A-136: the two reads were gated on nothing but a token, so any role in any
+ * tenant could read any tenant's retention periods and legal-hold state by
+ * naming its id. They now need `data-retention: read` (seeded for the tenant
+ * admin roles), and `checkTenant` answers 404 for a tenant id that is not the
+ * caller's own — the same as for one that does not exist. The writes below
+ * stay super-admin only.
+ */
+const canReadRetention = dynamicAccess(MENU_SLUGS.DATA_RETENTION, "read", { checkTenant: true });
 
 /**
  * @swagger
@@ -29,7 +41,7 @@ router.use(auth);
  *       404:
  *         description: Not found
  */
-router.get("/:tenantId/policy", dataRetentionController.getRetentionPolicy);
+router.get("/:tenantId/policy", canReadRetention, dataRetentionController.getRetentionPolicy);
 /**
  * @swagger
  * /api/v1/tenants/{tenantId}/policy:
@@ -90,7 +102,7 @@ router.put("/:tenantId/policy", superAdminOnly, dataRetentionController.setReten
  *       404:
  *         description: Not found
  */
-router.get("/:tenantId/legal-hold", dataRetentionController.isOnLegalHold);
+router.get("/:tenantId/legal-hold", canReadRetention, dataRetentionController.isOnLegalHold);
 /**
  * @swagger
  * /api/v1/tenants/{tenantId}/legal-hold:

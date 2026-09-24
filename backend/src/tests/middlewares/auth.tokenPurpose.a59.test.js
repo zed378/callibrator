@@ -531,7 +531,9 @@ describe("A-59: the MFA-pending token", () => {
       session: { id: "s" },
     });
     expect((await completeMfa(token)).status).toBe(200);
-    expect(loginMfa).toHaveBeenCalledWith(USER_ID, "123456", "10.0.0.1", undefined);
+    expect(loginMfa).toHaveBeenCalledWith(USER_ID, "123456", "10.0.0.1", undefined, {
+      recoveryCode: undefined,
+    });
   });
 
   it("MFA completion refuses an access token, even one carrying mfaRequired", async () => {

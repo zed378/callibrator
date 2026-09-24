@@ -163,24 +163,50 @@ export const authService = {
 
   /**
    * POST /api/v1/auth/mfa/verify — confirm the enrollment code and enable MFA.
+   *
+   * A-141: resolves with the ten one-time recovery codes. This response is the
+   * ONLY time they exist in plain text (the backend keeps hashes), so the
+   * caller must show them now. On a replacement, every other session of the
+   * user has been signed out.
    */
-  mfaVerify: async (code: string): Promise<void> => {
-    await api.post("/api/v1/auth/mfa/verify", { code });
+  mfaVerify: async (code: string): Promise<{ recoveryCodes: string[] }> => {
+    const response = await api.post<{
+      success: boolean;
+      data?: { recoveryCodes?: string[] } | null;
+    }>("/api/v1/auth/mfa/verify", { code });
+    return { recoveryCodes: response?.data?.recoveryCodes ?? [] };
+  },
+
+  /**
+   * POST /api/v1/auth/mfa/disable — turn MFA off (A-141). Needs the current
+   * password AND either a current authenticator code or a recovery code.
+   * Every other session of the user is signed out.
+   */
+  mfaDisable: async (reauth: {
+    currentPassword: string;
+    code?: string;
+    recoveryCode?: string;
+  }): Promise<void> => {
+    await api.post("/api/v1/auth/mfa/disable", reauth);
   },
 
   /**
    * POST /api/v1/auth/mfa/login — complete a login that requires the second
    * factor. `token` is the temporary token returned by /auth/login (202); the
    * response is a normal login body and the proxy sets the real session cookie.
+   *
+   * A-141: with `useRecoveryCode`, `code` is sent as a one-time recovery code
+   * instead of a TOTP code. It is spent on success.
    */
   mfaLogin: async (
     token: string,
     code: string,
+    useRecoveryCode = false,
   ): Promise<BackendLoginResponse> => {
-    return api.post<BackendLoginResponse>("/api/v1/auth/mfa/login", {
-      token,
-      code,
-    });
+    return api.post<BackendLoginResponse>(
+      "/api/v1/auth/mfa/login",
+      useRecoveryCode ? { token, recoveryCode: code } : { token, code },
+    );
   },
 
   // ----------------------------------------------------------------

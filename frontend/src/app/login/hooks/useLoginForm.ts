@@ -2,6 +2,16 @@ import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthStore } from "@/stores/authStore";
 import { authService } from "@/api/services/auth.service";
+import { CHANGE_PASSWORD_PATH } from "@/api/client";
+
+/**
+ * Where to go once signed in: the change-password screen when the account
+ * must replace an administrator-set password (A-123), else the callback.
+ */
+const destinationAfterSignIn = (callbackUrl: string) =>
+  useAuthStore.getState().user?.mustChangePassword
+    ? CHANGE_PASSWORD_PATH
+    : callbackUrl;
 
 export function useLoginForm() {
   const router = useRouter();
@@ -25,6 +35,14 @@ export function useLoginForm() {
   const [mfaToken, setMfaToken] = useState<string | null>(null);
   const [mfaCode, setMfaCode] = useState("");
   const [mfaLoading, setMfaLoading] = useState(false);
+  // A-141: sign in with a one-time recovery code instead of the app's code.
+  const [useRecoveryCode, setUseRecoveryCodeState] = useState(false);
+
+  const setUseRecoveryCode = (value: boolean) => {
+    setUseRecoveryCodeState(value);
+    // The two inputs have different shapes; never carry one into the other.
+    setMfaCode("");
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,7 +56,7 @@ export function useLoginForm() {
         setMfaRequired(true);
         return;
       }
-      router.push(callbackUrl);
+      router.push(destinationAfterSignIn(callbackUrl));
     } catch (err) {
       console.error("[Login] Login failed:", err);
     } finally {
@@ -51,8 +69,8 @@ export function useLoginForm() {
     if (!mfaToken) return;
     setMfaLoading(true);
     try {
-      await completeMfaLogin(mfaToken, mfaCode.trim());
-      router.push(callbackUrl);
+      await completeMfaLogin(mfaToken, mfaCode.trim(), useRecoveryCode);
+      router.push(destinationAfterSignIn(callbackUrl));
     } catch (err) {
       console.error("[Login] MFA verification failed:", err);
     } finally {
@@ -64,6 +82,7 @@ export function useLoginForm() {
     setMfaRequired(false);
     setMfaToken(null);
     setMfaCode("");
+    setUseRecoveryCodeState(false);
   };
 
   const handleSsoSubmit = async (e: React.FormEvent) => {
@@ -113,6 +132,8 @@ export function useLoginForm() {
     mfaCode,
     setMfaCode,
     mfaLoading,
+    useRecoveryCode,
+    setUseRecoveryCode,
     handleMfaSubmit,
     cancelMfa,
   };

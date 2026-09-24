@@ -17,6 +17,7 @@ const { ssoExchangeSchema } = require("../../validators/sso.validator");
 const {
   authPreCheck,
   mfaLoginPreCheck,
+  mfaManagePreCheck,
 } = require("../../services/rateLimiter.redis.service");
 
 const {
@@ -34,6 +35,7 @@ const {
   socketToken,
   setupMfa,
   verifyMfaSetup,
+  disableMfa,
   loginMfa,
   impersonateUser,
 } = require("../../controllers/auth.controller");
@@ -839,8 +841,14 @@ router.post(
  *         description: Current password or MFA code is incorrect
  *       '409':
  *         description: MFA is already enabled and no re-authentication was given
+ *       '429':
+ *         description: >
+ *           Too many failed attempts on the MFA endpoints (setup, verify and
+ *           disable share one budget: 5 per user per 15 minutes; per IP too
+ *           when AUTH_RATE_LIMIT_BY_IP is on)
  */
-router.post("/mfa/setup", auth, setupMfa);
+// A-142: rate-limited per user (and per IP when AUTH_RATE_LIMIT_BY_IP).
+router.post("/mfa/setup", auth, mfaManagePreCheck(), setupMfa);
 
 /**
  * @swagger
@@ -861,11 +869,61 @@ router.post("/mfa/setup", auth, setupMfa);
  *             properties:
  *               code:
  *                 type: string
+ *     description: >
+ *       Promotes the pending secret. The response carries ten one-time
+ *       recovery codes at `data.recoveryCodes` — shown this once, stored only
+ *       as hashes. On a rotation every OTHER session of the caller is signed
+ *       out (A-141).
  *     responses:
  *       '200':
- *         description: MFA successfully enabled
+ *         description: MFA enabled (or authenticator replaced); recovery codes returned
+ *       '400':
+ *         description: Invalid code, or no pending setup
+ *       '429':
+ *         description: Too many failed attempts (shared with setup and disable)
  */
-router.post("/mfa/verify", auth, verifyMfaSetup);
+router.post("/mfa/verify", auth, mfaManagePreCheck(), verifyMfaSetup);
+
+/**
+ * @swagger
+ * /api/v1/auth/mfa/disable:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Turn MFA off for the authenticated user
+ *     description: >
+ *       Needs the current password AND a current TOTP code or one of the
+ *       recovery codes (A-141). Clears the secret, any pending enrolment, the
+ *       replay step and the recovery codes; signs out every other session;
+ *       audited as MFA_DISABLE.
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [currentPassword]
+ *             properties:
+ *               currentPassword:
+ *                 type: string
+ *               code:
+ *                 type: string
+ *                 description: a current 6-digit TOTP code
+ *               recoveryCode:
+ *                 type: string
+ *                 description: one of the recovery codes, instead of `code`
+ *     responses:
+ *       '200':
+ *         description: MFA disabled
+ *       '400':
+ *         description: Re-authentication missing, or the password or code is incorrect
+ *       '409':
+ *         description: MFA is not enabled
+ *       '429':
+ *         description: Too many failed attempts (shared with setup and verify)
+ */
+router.post("/mfa/disable", auth, mfaManagePreCheck(), disableMfa);
 
 /* ------------------------------------------------------------------ */
 /* IMPERSONATION */
@@ -932,11 +990,16 @@ router.post("/impersonate/exit", auth, logout);
  *         application/json:
  *           schema:
  *             type: object
- *             required: [code, token]
+ *             required: [token]
  *             properties:
  *               code:
  *                 type: string
- *                 description: The 6-digit TOTP code.
+ *                 description: The 6-digit TOTP code (or send `recoveryCode`).
+ *               recoveryCode:
+ *                 type: string
+ *                 description: >
+ *                   A one-time recovery code, in place of `code` (A-141). It is
+ *                   spent on success; a wrong or spent one counts like a wrong code.
  *               token:
  *                 type: string
  *                 description: The temporary token returned by /auth/login.

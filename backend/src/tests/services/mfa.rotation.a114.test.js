@@ -59,6 +59,8 @@ jest.mock("../../services/audit.service", () => ({ logAction: jest.fn() }));
 
 jest.mock("../../services/session.service", () => ({
   createSession: jest.fn(),
+  // A-141: a rotation signs out the user's other sessions.
+  revokeOtherSessions: jest.fn(async () => 2),
 }));
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
@@ -197,7 +199,12 @@ describe("A-114 — rotating an enabled second factor needs re-authentication", 
       ipAddress: "203.0.113.9",
       userAgent: "jest",
     });
-    expect(done).toEqual({ success: true, message: "MFA authenticator replaced successfully" });
+    // A-141: a fresh set of recovery codes comes back, shown this once.
+    expect(done).toEqual({
+      success: true,
+      message: "MFA authenticator replaced successfully",
+      recoveryCodes: expect.any(Array),
+    });
     expect(user.mfaSecret).toBe(setup.secret);
     expect(user.mfaPendingSecret).toBeNull();
     expect(user.update).toHaveBeenLastCalledWith(
@@ -206,6 +213,7 @@ describe("A-114 — rotating an enabled second factor needs re-authentication", 
         mfaEnabled: true,
         mfaPendingSecret: null,
         mfaPendingCreatedAt: null,
+        mfaRecoveryCodes: mfaService.hashRecoveryCodes(USER_ID, done.recoveryCodes),
       },
       { transaction: mockTx },
     );
@@ -216,7 +224,8 @@ describe("A-114 — rotating an enabled second factor needs re-authentication", 
         action: "UPDATE",
         resourceType: "User",
         resourceId: USER_ID,
-        changes: { operation: "MFA_ROTATE" },
+        // A-141: the other sessions were signed out (the double revokes 2).
+        changes: { operation: "MFA_ROTATE", recoveryCodesIssued: 10, otherSessionsRevoked: 2 },
         ipAddress: "203.0.113.9",
         userAgent: "jest",
       },
@@ -245,7 +254,10 @@ describe("A-114 — rotating an enabled second factor needs re-authentication", 
     expect(user.mfaEnabled).toBe(true);
     expect(user.mfaSecret).toBe(setup.secret);
     expect(auditService.logAction).toHaveBeenCalledWith(
-      expect.objectContaining({ action: "UPDATE", changes: { operation: "MFA_ENABLE" } }),
+      expect.objectContaining({
+        action: "UPDATE",
+        changes: { operation: "MFA_ENABLE", recoveryCodesIssued: 10 },
+      }),
       { transaction: mockTx },
     );
   });
@@ -282,7 +294,7 @@ describe("A-114 — rotating an enabled second factor needs re-authentication", 
 
     expect(user.mfaEnabled).toBe(true);
     expect(auditService.logAction).not.toHaveBeenCalled();
-    expect(logger.error).toHaveBeenCalledWith("MFA change not audited: the user has no tenant", {
+    expect(logger.error).toHaveBeenCalledWith("Credential change not audited: the user has no tenant", {
       userId: USER_ID,
       operation: "MFA_ENABLE",
     });
@@ -316,7 +328,7 @@ describe("A-114 — edge cases", () => {
     setNow(NOW_S + 30);
     await authService.verifyMfaSetup(USER_ID, codeAt(setup.secret, NOW_S + 30));
 
-    expect(logger.error).toHaveBeenCalledWith("MFA change not audited: the user has no tenant", {
+    expect(logger.error).toHaveBeenCalledWith("Credential change not audited: the user has no tenant", {
       userId: USER_ID,
       operation: "MFA_ROTATE",
     });

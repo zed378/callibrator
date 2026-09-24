@@ -5,6 +5,9 @@
  * Multi-tenant isolation with shared infrastructure.
  */
 
+const { Op } = require("sequelize");
+const { PLATFORM_TENANT_ID } = require("../constants/platformTenant");
+
 /**
  * Define the Tenant model.
  * @param {import("sequelize").Sequelize} db - The Sequelize instance
@@ -145,6 +148,39 @@ const defineModel = (db, DataTypes) => {
       },
     },
   );
+
+  /**
+   * A-125 (ADR-051 Q-14) — the reserved PLATFORM tenant is not a customer.
+   *
+   * Every Tenant query — findAll/findOne/findByPk, count, findAndCountAll, a
+   * bulk update or destroy — is AND-ed with `id <> PLATFORM_TENANT_ID` unless
+   * it passes `includePlatformTenant: true` (the seed and migration 0034 do;
+   * nothing on a request path should). So it is absent from every listing,
+   * count and selection screen; the tenant API answers 404 for it, exactly as
+   * for an id that does not exist; the x-tenant-id resolution cannot select
+   * it; and a bulk suspend or offboard sweep cannot reach it.
+   *
+   * A hook, not the defaultScope: a scope's `where` is merged key by key and
+   * the query's own key wins (`findByPk` is `where: { id }`), and `unscoped()`
+   * drops it. A hook runs after the scope is injected and wraps whatever
+   * `where` it finds, so no key in the query can override it.
+   *
+   * Not covered, deliberately: an INCLUDE of Tenant from another model (hooks
+   * fire for the root model only). A row that references PLATFORM — an audit
+   * row — may still show it by include; that is a reference, not a listing.
+   */
+  const excludePlatformTenant = (options) => {
+    if (options && options.includePlatformTenant === true) {return;}
+    const notPlatform = { id: { [Op.ne]: PLATFORM_TENANT_ID } };
+    options.where =
+      options.where === undefined || options.where === null
+        ? notPlatform
+        : { [Op.and]: [options.where, notPlatform] };
+  };
+  Tenant.addHook("beforeFind", "excludePlatformTenant", excludePlatformTenant);
+  Tenant.addHook("beforeCount", "excludePlatformTenant", excludePlatformTenant);
+  Tenant.addHook("beforeBulkUpdate", "excludePlatformTenant", excludePlatformTenant);
+  Tenant.addHook("beforeBulkDestroy", "excludePlatformTenant", excludePlatformTenant);
 
   /**
    * Soft-delete a tenant. Sets is_deleted = true and persists.

@@ -214,13 +214,15 @@ describe("A-66 — QMS mutations audit inside their transaction", () => {
     );
   });
 
-  it("with no actor, the approval and the audit row carry no user — never a body id", async () => {
-    await service.updateCapa("tenant-1", "capa-1", { approvedBy: "someone-else" });
+  // A-124 (ADR-051 Q-13): with no actor the audit row cannot name one, so the
+  // change is refused inside its transaction — and a body id never stands in.
+  it("with no actor, the approval is refused and nothing commits — never a body id", async () => {
+    await expect(
+      service.updateCapa("tenant-1", "capa-1", { approvedBy: "someone-else" }),
+    ).rejects.toThrow(/must name its actor/);
 
-    expect(mockRef.ledger.committed("capas")[0].approvedBy).toBeNull();
-    expect(mockRef.ledger.auditRows()[0]).toEqual(
-      expect.objectContaining({ userId: null, ipAddress: null, userAgent: null }),
-    );
+    expect(mockRef.ledger.committed("capas")).toEqual([]);
+    expect(mockRef.ledger.auditRows()).toEqual([]);
   });
 
   it("createNC attributes the row to the reporter even without an actor, and records absent optionals as null", async () => {
@@ -239,7 +241,7 @@ describe("A-66 — QMS mutations audit inside their transaction", () => {
   });
 
   it("createCapa records absent optionals as null and names the NC it answers", async () => {
-    await service.createCapa("tenant-1", { ncId: "nc-1", title: "Recal" });
+    await service.createCapa("tenant-1", { ncId: "nc-1", title: "Recal" }, actor);
 
     expect(mockRef.ledger.auditRows()[0].changes.after).toEqual({
       capaNumber: "CAPA-00001",

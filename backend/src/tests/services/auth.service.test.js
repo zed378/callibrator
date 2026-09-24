@@ -678,7 +678,11 @@ describe("auth.service", () => {
           password: "new-hashed-password",
           otpCode: null,
           otpExpiredAt: null,
+          // ADR-051 Q-11 / A-123
+          isEmailVerified: true,
+          mustChangePassword: false,
         }),
+        expect.objectContaining({ transaction: expect.anything() }),
       );
       expect(revokeAllSessions).toHaveBeenCalledWith(
         "user-1",
@@ -832,7 +836,9 @@ describe("auth.service", () => {
         expect.objectContaining({
           password: "new-hashed-password",
           passwordChangedAt: expect.any(Date),
+          mustChangePassword: false,
         }),
+        expect.objectContaining({ transaction: expect.anything() }),
       );
       expect(revokeAllSessions).toHaveBeenCalledWith(
         "user-1",
@@ -1163,7 +1169,11 @@ describe("auth.service", () => {
     });
 
     it("should enable MFA with valid code", async () => {
-      const mockTotp = { consumeCode: jest.fn().mockResolvedValue(true) };
+      const mockTotp = {
+        consumeCode: jest.fn().mockResolvedValue(true),
+        createRecoveryCodes: jest.fn(() => ["AAAA-BBBB-CCCC-DDDD"]),
+        hashRecoveryCodes: jest.fn(() => ["hash-1"]),
+      };
       jest.doMock("../../services/mfa.service", () => mockTotp);
       jest.doMock("../../config", () => ({
         db: { transaction: jest.fn(async (fn) => fn("TX")) },
@@ -1192,9 +1202,13 @@ describe("auth.service", () => {
           mfaEnabled: true,
           mfaPendingSecret: null,
           mfaPendingCreatedAt: null,
+          // A-141: only the hashes are stored...
+          mfaRecoveryCodes: ["hash-1"],
         },
         { transaction: "TX" },
       );
+      // ...and the codes are returned once.
+      expect(result.recoveryCodes).toEqual(["AAAA-BBBB-CCCC-DDDD"]);
       expect(mockTotp.consumeCode).toHaveBeenCalledWith(mockUser, "123456", {
         secret: "test-secret",
         transaction: "TX",
@@ -1202,7 +1216,10 @@ describe("auth.service", () => {
     });
 
     it("should reject invalid MFA code", async () => {
-      const mockTotp = { consumeCode: jest.fn().mockResolvedValue(false) };
+      const mockTotp = {
+        consumeCode: jest.fn().mockResolvedValue(false),
+        createRecoveryCodes: jest.fn(() => []),
+      };
       jest.doMock("../../services/mfa.service", () => mockTotp);
       jest.doMock("../../config", () => ({
         db: { transaction: jest.fn(async (fn) => fn("TX")) },

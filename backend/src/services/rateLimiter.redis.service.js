@@ -324,8 +324,11 @@ async function recordAuthFailure({ userId = null, tokenHash = null, ip = null, a
       results.allowed = false;
       results.lockoutUntil = new Date(now + config.lockoutMs);
       results.lockoutReason = `Too many failed attempts on ${config.description}`;
+    }
 
-      // Persist lockout to DB
+    // Persist lockout to DB — the sign-in lock. Not for an endpoint whose
+    // lock must stay its own (A-142, `persistUserLockout: false`).
+    if (count >= config.maxAttempts && config.persistUserLockout !== false) {
       try {
         await Users.update(
           { failedLoginAttempts: count, lockedUntil: results.lockoutUntil },
@@ -430,6 +433,10 @@ async function resetAuthFailures({ userId = null, tokenHash = null, endpoint }) 
   if (userId) {
     const userKey = makeKey("auth", endpoint, `user:${userId}`);
     await storeDel(userKey);
+  }
+  // A success on an endpoint that never writes the sign-in lock must not
+  // clear it either (A-142).
+  if (userId && getAuthConfig(endpoint).persistUserLockout !== false) {
     try {
       await Users.update({ failedLoginAttempts: 0, lockedUntil: null }, { where: { id: userId } });
     } catch (err) {
@@ -767,6 +774,57 @@ function mfaLoginPreCheck() {
   };
 }
 
+/**
+ * A-142 — the lockout check for the SIGNED-IN MFA endpoints: POST
+ * /auth/mfa/setup, /auth/mfa/verify and /auth/mfa/disable.
+ *
+ * Each checks a code (and setup-as-rotation and disable a password) for
+ * whoever holds the session, and none was throttled: a stolen session could
+ * guess the current code for a rotation or a disable without limit. Mounted
+ * AFTER `auth`, so the principal is the authenticated user (`req.user.id`) —
+ * never a body field. Keys:
+ *   - the USER — one `mfaManage` bucket across all three endpoints;
+ *   - the ADDRESS, only when AUTH_RATE_LIMIT_BY_IP is "true" (see THE IP
+ *     IDENTIFIER): until a deployment's req.ip is known to be the client, a
+ *     per-IP lock could lock every user behind one proxy address.
+ * There is no per-token key: the access token is the session, and the user
+ * key already covers every session of that user.
+ *
+ * The handler records the outcome (auth.controller.js `withAuthOutcome`).
+ *
+ * @returns {import("express").RequestHandler}
+ */
+function mfaManagePreCheck() {
+  const endpoint = "mfaManage";
+  return async (req, res, next) => {
+    try {
+      const context = {
+        userId: req.user?.id || null,
+        tokenHash: null,
+        ip: process.env.AUTH_RATE_LIMIT_BY_IP === "true" ? clientAddress(req) : null,
+        alsoByIp: true,
+        endpoint,
+      };
+      const lockout = await checkAuthLockout(context);
+      if (lockout.locked) {
+        return res.status(429).json({
+          success: false,
+          status: 429,
+          message: "Too many failed MFA attempts. Try again later.",
+          lockoutUntil: lockout.lockoutUntil.toISOString(),
+          retryAfter: Math.ceil((lockout.lockoutUntil - Date.now()) / 1000),
+        });
+      }
+
+      req.rateLimitContext = context;
+      next();
+    } catch (err) {
+      logger.error(`MFA management pre-check error: ${err.message}`);
+      next();
+    }
+  };
+}
+
 // A-67 — RECORDING THE OUTCOME
 //
 // This used to be two middlewares, `authPostFailure` mounted BEFORE the
@@ -845,6 +903,7 @@ module.exports = {
   // Auth route middleware
   authPreCheck,
   mfaLoginPreCheck,
+  mfaManagePreCheck,
   noteAuthFailure,
   noteAuthSuccess,
 

@@ -7,8 +7,12 @@ const {
   signDocument,
   verifySignature,
   revokeSignature,
+  cancelWorkflow,
   validate,
 } = require("../../validators/eSignature.validator");
+
+const SIGNER_1 = "3f2504e0-4f89-41d3-9a0c-0305e82c3311";
+const SIGNER_2 = "3f2504e0-4f89-41d3-9a0c-0305e82c3312";
 
 describe("E-Signature Validators", () => {
   describe("createKeyPair", () => {
@@ -64,7 +68,7 @@ describe("E-Signature Validators", () => {
             documentId: "doc-123",
             signers: [
               {
-                userId: "user-1",
+                userId: SIGNER_1,
                 email: "signer@example.com",
                 name: "John Doe",
               },
@@ -83,12 +87,12 @@ describe("E-Signature Validators", () => {
             documentId: "doc-123",
             signers: [
               {
-                userId: "user-1",
+                userId: SIGNER_1,
                 email: "signer1@example.com",
                 name: "John Doe",
               },
               {
-                userId: "user-2",
+                userId: SIGNER_2,
                 email: "signer2@example.com",
                 name: "Jane Smith",
               },
@@ -107,7 +111,7 @@ describe("E-Signature Validators", () => {
             documentId: "doc-123",
             signers: [
               {
-                userId: "user-1",
+                userId: SIGNER_1,
                 email: "signer@example.com",
                 name: "John Doe",
               },
@@ -127,7 +131,7 @@ describe("E-Signature Validators", () => {
             documentId: "doc-123",
             signers: [
               {
-                userId: "user-1",
+                userId: SIGNER_1,
                 email: "signer@example.com",
                 name: "John Doe",
               },
@@ -147,7 +151,7 @@ describe("E-Signature Validators", () => {
             documentId: "doc-123",
             signers: [
               {
-                userId: "user-1",
+                userId: SIGNER_1,
                 email: "signer@example.com",
                 name: "John Doe",
               },
@@ -166,7 +170,7 @@ describe("E-Signature Validators", () => {
           {
             signers: [
               {
-                userId: "user-1",
+                userId: SIGNER_1,
                 email: "signer@example.com",
                 name: "John Doe",
               },
@@ -203,41 +207,48 @@ describe("E-Signature Validators", () => {
       ).toThrow();
     });
 
-    it("should reject signer missing email", () => {
+    // A-129 / F-10 — the signer's name and email come from the user record,
+    // so the body's are stripped: not trusted, not required, not rejected.
+    it("strips a signer's body name and email (F-10)", () => {
+      const value = validate(
+        {
+          documentId: "doc-123",
+          signers: [{ userId: SIGNER_1, email: "forged@example.com", name: "Someone Else" }],
+          subject: "Please sign",
+        },
+        createWorkflow,
+      );
+
+      expect(value.signers).toEqual([{ userId: SIGNER_1 }]);
+    });
+
+    it("a signer needs no email or name in the body", () => {
       expect(() =>
         validate(
-          {
-            documentId: "doc-123",
-            signers: [
-              {
-                userId: "user-1",
-                name: "John Doe",
-              },
-            ],
-            subject: "Please sign",
-          },
+          { documentId: "doc-123", signers: [{ userId: SIGNER_1 }], subject: "Please sign" },
+          createWorkflow,
+        ),
+      ).not.toThrow();
+    });
+
+    it("a signer userId must be a uuid (a non-uuid would reach Postgres as a 500)", () => {
+      expect(() =>
+        validate(
+          { documentId: "doc-123", signers: [{ userId: "user-1" }], subject: "Please sign" },
           createWorkflow,
         ),
       ).toThrow();
     });
 
-    it("should reject invalid email", () => {
-      expect(() =>
-        validate(
-          {
-            documentId: "doc-123",
-            signers: [
-              {
-                userId: "user-1",
-                email: "not-an-email",
-                name: "John Doe",
-              },
-            ],
-            subject: "Please sign",
-          },
-          createWorkflow,
-        ),
-      ).toThrow();
+    // A-86 — an email-only signer passes the schema on purpose, so the service
+    // answers it with the explanation (400, "invite them as a user").
+    it("an email-only signer reaches the service, which refuses it with its explanation", () => {
+      const value = validate(
+        { documentId: "doc-123", signers: [{ email: "vendor@example.com" }], subject: "Please sign" },
+        createWorkflow,
+      );
+
+      expect(value.signers).toEqual([{}]);
     });
 
     it("should reject missing subject", () => {
@@ -247,7 +258,7 @@ describe("E-Signature Validators", () => {
             documentId: "doc-123",
             signers: [
               {
-                userId: "user-1",
+                userId: SIGNER_1,
                 email: "signer@example.com",
                 name: "John Doe",
               },
@@ -267,9 +278,11 @@ describe("E-Signature Validators", () => {
 
     // A-65 — every signing request carries the signer's credential.
     const PW = "the-signers-password";
+    // A-129 — and the meaning of the signature.
+    const MEANING = "Reviewed and approved";
 
     it("should validate with default authentication method", () => {
-      const value = validate({ stepId: STEP_ID, authPayload: PW }, signDocument);
+      const value = validate({ stepId: STEP_ID, authPayload: PW, reason: MEANING }, signDocument);
 
       expect(value.authenticationMethod).toBe("password");
       expect(value.stepId).toBe(STEP_ID);
@@ -291,13 +304,13 @@ describe("E-Signature Validators", () => {
 
     it("should validate with password method", () => {
       expect(() =>
-        validate({ stepId: STEP_ID, authenticationMethod: "password", authPayload: PW }, signDocument),
+        validate({ stepId: STEP_ID, authenticationMethod: "password", authPayload: PW, reason: MEANING }, signDocument),
       ).not.toThrow();
     });
 
     it("should validate with mfa method", () => {
       expect(() =>
-        validate({ stepId: STEP_ID, authenticationMethod: "mfa", authPayload: "123456" }, signDocument),
+        validate({ stepId: STEP_ID, authenticationMethod: "mfa", authPayload: "123456", reason: MEANING }, signDocument),
       ).not.toThrow();
     });
 
@@ -305,7 +318,7 @@ describe("E-Signature Validators", () => {
       "should reject %s — only password and MFA can be re-verified at signing (A-65)",
       (method) => {
         expect(() =>
-          validate({ stepId: STEP_ID, authenticationMethod: method, authPayload: PW }, signDocument),
+          validate({ stepId: STEP_ID, authenticationMethod: method, authPayload: PW, reason: MEANING }, signDocument),
         ).toThrow();
       },
     );
@@ -313,7 +326,7 @@ describe("E-Signature Validators", () => {
     it("should validate with polygon data", () => {
       expect(() =>
         validate(
-          { stepId: STEP_ID, authPayload: PW, polygon: { x: 10, y: 20, width: 100, height: 50 } },
+          { stepId: STEP_ID, authPayload: PW, reason: MEANING, polygon: { x: 10, y: 20, width: 100, height: 50 } },
           signDocument,
         ),
       ).not.toThrow();
@@ -321,13 +334,13 @@ describe("E-Signature Validators", () => {
 
     it("should validate with null polygon", () => {
       expect(() =>
-        validate({ stepId: STEP_ID, authPayload: PW, polygon: null }, signDocument),
+        validate({ stepId: STEP_ID, authPayload: PW, reason: MEANING, polygon: null }, signDocument),
       ).not.toThrow();
     });
 
     it("should validate with biometric data", () => {
       expect(() =>
-        validate({ stepId: STEP_ID, authPayload: PW, biometricData: "abc123" }, signDocument),
+        validate({ stepId: STEP_ID, authPayload: PW, reason: MEANING, biometricData: "abc123" }, signDocument),
       ).not.toThrow();
     });
 
@@ -340,6 +353,22 @@ describe("E-Signature Validators", () => {
       ).toThrow();
     });
 
+    // A-129 (ADR-051 Q-19) — the meaning is mandatory (21 CFR 11.50(a)(3)).
+    it.each([
+      ["missing", undefined],
+      ["empty", ""],
+      ["blank", "   "],
+      ["null", null],
+    ])("should reject a %s meaning (A-129)", (_label, reason) => {
+      expect(() => validate({ stepId: STEP_ID, authPayload: PW, reason }, signDocument)).toThrow();
+    });
+
+    it("trims the meaning", () => {
+      expect(validate({ stepId: STEP_ID, authPayload: PW, reason: "  Verified  " }, signDocument).reason).toBe(
+        "Verified",
+      );
+    });
+
     it("should strip a body ipAddress / userAgent — they come from the connection (A-65)", () => {
       const value = validate(
         {
@@ -348,6 +377,7 @@ describe("E-Signature Validators", () => {
           biometricData: "xyz",
           authenticationMethod: "mfa",
           authPayload: "123456",
+          reason: MEANING,
           ipAddress: "192.168.1.1",
           userAgent: "Forged/1.0",
         },
@@ -376,6 +406,18 @@ describe("E-Signature Validators", () => {
       expect(() =>
         validate({ signatureId: "nope" }, verifySignature),
       ).toThrow();
+    });
+  });
+
+  describe("cancelWorkflow (A-130)", () => {
+    it("accepts no body, and an optional trimmed reason", () => {
+      expect(validate({}, cancelWorkflow)).toEqual({});
+      expect(validate({ reason: "  superseded  " }, cancelWorkflow).reason).toBe("superseded");
+      expect(() => validate({ reason: "" }, cancelWorkflow)).not.toThrow();
+    });
+
+    it("rejects a reason over 500 characters", () => {
+      expect(() => validate({ reason: "a".repeat(501) }, cancelWorkflow)).toThrow();
     });
   });
 

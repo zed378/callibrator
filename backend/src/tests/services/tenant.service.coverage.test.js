@@ -90,6 +90,7 @@ const { AppError } = require("../../utils/appError.util");
 const auditService = require("../../services/audit.service");
 
 const tenantService = require("../../services/tenant.service");
+const { PLATFORM_TENANT_ID } = require("../../constants/platformTenant");
 
 /**
  * Mirrors sequelize's Transaction: once commit()/rollback() resolves, the
@@ -1067,16 +1068,19 @@ describe("tenant.service - branch & error coverage", () => {
   // with a null actor, never undefined. A null tenant fails the NOT NULL
   // insert and rolls the change back, which is the fail-closed intent.
   describe("A-95 — audit rows without an actor", () => {
-    it("createTenant with no createdBy and no actor audits userId/tenantId null", async () => {
+    // A-125: a platform operation is recorded under PLATFORM whoever acts.
+    // A-124: a null user reaches logAction, which refuses it inside the
+    // transaction (tests/services/audit.actor.a124.test.js) — the create rolls back.
+    it("createTenant with no createdBy and no actor passes a null user, under PLATFORM", async () => {
       await tenantService.createTenant({ name: "New", code: "NEW" });
 
       expect(auditService.logAction).toHaveBeenCalledWith(
-        expect.objectContaining({ action: "CREATE", userId: null, tenantId: null }),
+        expect.objectContaining({ action: "CREATE", userId: null, tenantId: PLATFORM_TENANT_ID }),
         expect.objectContaining({ transaction: expect.any(Object) }),
       );
     });
 
-    it("deleteTenant with no actor audits userId/tenantId null", async () => {
+    it("deleteTenant with no actor passes a null user, under PLATFORM", async () => {
       Tenants.findByPk.mockResolvedValue(makeTenant());
 
       await tenantService.deleteTenant("t-1");
@@ -1086,7 +1090,7 @@ describe("tenant.service - branch & error coverage", () => {
           action: "DELETE",
           resourceId: "t-1",
           userId: null,
-          tenantId: null,
+          tenantId: PLATFORM_TENANT_ID,
           ipAddress: null,
           userAgent: null,
         }),
@@ -1106,7 +1110,8 @@ describe("tenant.service - branch & error coverage", () => {
 
       expect(auditService.logAction.mock.calls[0][0]).toMatchObject({
         userId: "u-1",
-        tenantId: "home-1",
+        // A-125: PLATFORM, never the actor's home tenant (F-7).
+        tenantId: PLATFORM_TENANT_ID,
         ipAddress: "10.1.1.1",
         userAgent: "ua",
       });

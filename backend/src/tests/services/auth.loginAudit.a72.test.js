@@ -122,6 +122,9 @@ describe("A-72: a successful login writes one LOGIN audit row", () => {
     expect(audit.row).toEqual({
       tenantId: TENANT_ID,
       userId: USER_ID,
+      // A-124: the actor columns, derived by logAction.
+      actorType: "user",
+      actorName: null,
       action: "LOGIN",
       resourceType: "Session",
       resourceId: SESSION_ID,

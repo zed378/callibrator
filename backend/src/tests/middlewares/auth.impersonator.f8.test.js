@@ -29,6 +29,8 @@
 const { EventEmitter } = require("events");
 const { Sequelize, DataTypes } = require("sequelize");
 const { createLedger } = require("../fixtures/auditLedger");
+const { PLATFORM_TENANT_ID } = require("../../constants/platformTenant");
+const { SYSTEM_ACTORS } = require("../../constants/systemActors");
 
 const mockRef = { ledger: null };
 
@@ -169,7 +171,8 @@ describe("F-8: a change made while impersonating names the impersonator", () => 
     // The actor is still the principal the token names — the hospital user —
     // and the row now also names who was really at the keyboard.
     expect(rows[0]).toMatchObject({
-      tenantId: TENANT,
+      // A-125: a global role change is recorded under PLATFORM (ADR-051 Q-14).
+      tenantId: PLATFORM_TENANT_ID,
       userId: HOSPITAL_USER,
       impersonatorId: SUPER_ADMIN,
       action: "CREATE",
@@ -284,7 +287,7 @@ describe("F-8: a change made while impersonating names the impersonator", () => 
     expect(currentImpersonatorId()).toBeNull();
     await auditService.logAction({
       tenantId: TENANT,
-      userId: null,
+      systemActor: SYSTEM_ACTORS.RETENTION_PURGE, // A-124: a job is a system actor
       action: "DELETE",
       resourceType: "RetentionPurge",
     });

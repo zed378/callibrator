@@ -318,3 +318,21 @@ exports.getAllUsersSimple = asyncHandler(async (req, res) => {
 
   success(res, users, null, "Users fetched successfully", 200);
 });
+
+/**
+ * A-141. POST /users/:userId/mfa/reset — a tenant administrator clears
+ * another user's second factor. The target comes from the PATH; tenant,
+ * privilege and role level come from the authenticated principal, never the
+ * body.
+ */
+exports.resetUserMfa = asyncHandler(async (req, res) => {
+  const result = await userService.resetUserMfa({
+    userId: req.params.userId,
+    resetBy: req.user.id,
+    // rbac() ran first and refused a principal without a role.
+    actorRoleLevel: req.user.role.roleLevel,
+    ...getActor(req),
+  });
+
+  success(res, result.data, null, result.message, result.status);
+});
