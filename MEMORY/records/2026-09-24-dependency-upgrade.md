@@ -67,6 +67,26 @@ sure the change causes no bug, problem or vulnerability before deploying."
 Runtime behaviour is unchanged: `picture()` still returns `null` for the placeholder, so the UI keeps
 its initials fallback.
 
+## Install Scripts (npm 12)
+
+npm 12 blocks dependency install scripts unless `allowScripts` in the root `package.json` covers
+them, and every install warned about the seven that were skipped. Each one was reviewed and
+recorded:
+
+- **Approved, pinned to the reviewed version:** `esbuild` and `unrs-resolver`. Their postinstalls
+  only verify or select a native binary.
+- **Denied:**
+  - `core-js` — a donation banner;
+  - `@scarf/scarf` — install telemetry;
+  - `puppeteer` — a Chrome download; the backend image uses the system Chromium through
+    `PUPPETEER_EXECUTABLE_PATH`;
+  - `next-bun-compile` — needs `bun`, which the frontend Dockerfile supplies itself;
+  - `@parcel/watcher` — a build from source, when its prebuilt binaries already arrive as optional
+    dependencies;
+  - the `prepare` entries, which never run for registry packages anyway.
+
+All tests and both image builds had already passed with every one of these skipped.
+
 ## Not Covered
 
 - **The frontend image still installs without a lockfile** (S-29). Its `npm install` resolves the

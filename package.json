@@ -35,5 +35,28 @@
     "sequelize": {
       "uuid": "11.1.1"
     }
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "unrs-resolver@1.12.2": true,
+    "@parcel/watcher": false,
+    "@scarf/scarf": false,
+    "brace-expansion": false,
+    "cliui": false,
+    "content-type": false,
+    "core-js": false,
+    "eslint-visitor-keys": false,
+    "glob": false,
+    "globals": false,
+    "jackspeak": false,
+    "lru-cache": false,
+    "next-bun-compile": false,
+    "path-scurry": false,
+    "puppeteer": false,
+    "signal-exit": false,
+    "undici": false,
+    "yallist": false,
+    "yargs": false,
+    "yargs-parser": false
   }
 }
