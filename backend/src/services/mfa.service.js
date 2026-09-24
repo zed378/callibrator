@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 const { logger } = require("../middlewares/activityLog.middleware");
 
 /**
@@ -190,7 +191,148 @@ class MfaService {
     }
     return this.consumeCode(user, token);
   }
+
+  // ----------------------------------------------------------------
+  // A-141 — ONE-TIME RECOVERY CODES
+  //
+  // Without them a lost phone was a locked-out account: there was no MFA
+  // disable and no other way past the second factor. RECOVERY_CODE_COUNT codes
+  // are issued when MFA is enabled or its authenticator replaced, shown once,
+  // and stored only as hashes (users.mfa_recovery_codes, migration 0031).
+  //
+  // Each code is 80 random bits (16 base32 characters, shown as four groups
+  // of four). At that entropy a fast hash is the right one: there is nothing
+  // for a slow KDF to protect that 2^80 does not. The hash is salted with the
+  // user id, so equal codes on two accounts do not hash alike and one
+  // precomputed table does not serve every account.
+  // ----------------------------------------------------------------
+
+  /**
+   * RECOVERY_CODE_COUNT fresh codes, formatted "ABCD-EFGH-IJKL-MNOP".
+   * @returns {string[]}
+   */
+  createRecoveryCodes() {
+    const codes = [];
+    for (let i = 0; i < RECOVERY_CODE_COUNT; i += 1) {
+      const raw = base32(crypto.randomBytes(RECOVERY_CODE_BYTES));
+      codes.push(raw.match(/.{4}/g).join("-"));
+    }
+    return codes;
+  }
+
+  /**
+   * The canonical form of a submitted recovery code — upper case, without
+   * spaces or hyphens — or null when it cannot be one.
+   * @param {unknown} input
+   * @returns {string|null}
+   */
+  normalizeRecoveryCode(input) {
+    if (typeof input !== "string") {
+      return null;
+    }
+    const canonical = input.replace(/[\s-]/g, "").toUpperCase();
+    return RECOVERY_CODE_SHAPE.test(canonical) ? canonical : null;
+  }
+
+  /**
+   * The stored form of a code for `userId`. The code must already be
+   * normalized (normalizeRecoveryCode).
+   * @param {string} userId
+   * @param {string} canonical
+   * @returns {string} hex SHA-256
+   */
+  hashRecoveryCode(userId, canonical) {
+    return crypto.createHash("sha256").update(`${userId}:${canonical}`).digest("hex");
+  }
+
+  /**
+   * The hashes to store for `codes`.
+   * @param {string} userId
+   * @param {string[]} codes - as createRecoveryCodes returned them
+   * @returns {string[]}
+   */
+  hashRecoveryCodes(userId, codes) {
+    return codes.map((code) => this.hashRecoveryCode(userId, this.normalizeRecoveryCode(code)));
+  }
+
+  /**
+   * How many unused recovery codes the account has.
+   * @param {{mfaRecoveryCodes?: string[]|null}} user
+   * @returns {number}
+   */
+  recoveryCodesRemaining(user) {
+    return Array.isArray(user.mfaRecoveryCodes) ? user.mfaRecoveryCodes.length : 0;
+  }
+
+  /**
+   * A-141 — accept `input` as the second factor ONCE, in place of a TOTP code.
+   *
+   * The same replay-safe shape as consumeCode: a CONDITIONAL update removes
+   * the code's hash only `WHERE mfa_recovery_codes @> ARRAY[hash]`, and the
+   * code is accepted only if exactly one row changed. Two requests racing
+   * with the same code both find the hash in memory, but PostgreSQL
+   * re-evaluates the WHERE for the second after the first commits, finds the
+   * hash gone, and updates nothing.
+   *
+   * @param {object} user - the user row (id, mfaRecoveryCodes)
+   * @param {unknown} input - the code as submitted
+   * @param {object} [options]
+   * @param {object} [options.transaction]
+   * @returns {Promise<boolean>} true when the code was unused and is now spent
+   */
+  async consumeRecoveryCode(user, input, { transaction } = {}) {
+    const canonical = this.normalizeRecoveryCode(input);
+    if (!canonical || !Array.isArray(user.mfaRecoveryCodes)) {
+      return false;
+    }
+    const hash = this.hashRecoveryCode(user.id, canonical);
+    if (!user.mfaRecoveryCodes.includes(hash)) {
+      return false;
+    }
+
+    // Required here, not at the top — see consumeCode.
+    const { Op, fn, col } = require("sequelize");
+    const { Users } = require("../models");
+    const [affected] = await Users.update(
+      { mfaRecoveryCodes: fn("array_remove", col("mfa_recovery_codes"), hash) },
+      {
+        where: { id: user.id, mfaRecoveryCodes: { [Op.contains]: [hash] } },
+        transaction,
+      },
+    );
+    if (affected !== 1) {
+      logger.warn("MFA recovery code refused: used concurrently", { userId: user.id });
+      return false;
+    }
+
+    user.mfaRecoveryCodes = user.mfaRecoveryCodes.filter((stored) => stored !== hash);
+    return true;
+  }
 }
+
+const RECOVERY_CODE_COUNT = 10;
+// 10 bytes = 80 bits = exactly 16 base32 characters.
+const RECOVERY_CODE_BYTES = 10;
+const RECOVERY_CODE_SHAPE = /^[A-Z2-7]{16}$/;
+const BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+
+/**
+ * RFC 4648 base32, no padding. Only ever called with 10 bytes, so the bit
+ * count is a multiple of 5 and there is never a partial final group.
+ * @param {Buffer} bytes
+ * @returns {string}
+ */
+const base32 = (bytes) => {
+  let bits = "";
+  for (const byte of bytes) {
+    bits += byte.toString(2).padStart(8, "0");
+  }
+  let out = "";
+  for (let i = 0; i < bits.length; i += 5) {
+    out += BASE32_ALPHABET[parseInt(bits.slice(i, i + 5), 2)];
+  }
+  return out;
+};
 
 // A-114: `generateSecret`, `verifyAndEnable` and `disable` were removed. No
 // code called them; they kept an enrolment in `user.mfaSecretTemp`, which was
@@ -198,3 +340,15 @@ class MfaService {
 // rotation live in auth.service.js (setupMfa / verifyMfaSetup).
 
 module.exports = new MfaService();
+module.exports.RECOVERY_CODE_COUNT = RECOVERY_CODE_COUNT;
+// A-141: every MFA column back to "never enrolled" — what a disable
+// (auth.service disableMfa) and an administrator's reset (user.service
+// resetUserMfa) write.
+module.exports.MFA_CLEARED = Object.freeze({
+  mfaEnabled: false,
+  mfaSecret: null,
+  mfaPendingSecret: null,
+  mfaPendingCreatedAt: null,
+  mfaLastUsedStep: null,
+  mfaRecoveryCodes: null,
+});

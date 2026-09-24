@@ -33,8 +33,8 @@ jest.mock("crypto", () => ({
     update: jest.fn(),
     digest: jest.fn(() => "mock-checksum"),
   })),
-  // restoreBackup draws the unusable credential for a re-created account from
-  // randomBytes.
+  // Not drawn by the restore since A-120 (it no longer creates accounts);
+  // kept so a module that does draw it is not handed undefined.
   randomBytes: jest.fn(() => Buffer.from("0123456789abcdef0123456789abcdef")),
 }));
 
@@ -387,10 +387,24 @@ describe("Tenant Backup Service", () => {
         models: mockModels,
       });
 
-      // Password hashes must never be selected into the export.
+      // A-139: an allow-list, never a deny-list. The full claim - no
+      // credential or second factor reaches the archive - is measured against
+      // the real model in tenantBackup.secrets.a139.test.js.
       expect(mockUsers.findAll).toHaveBeenCalledWith({
         where: { tenantId: mockTenantId },
-        attributes: { exclude: ["password", "createdAt", "updatedAt", "deleted_at"] },
+        attributes: [
+          "id",
+          "tenantId",
+          "roleId",
+          "username",
+          "email",
+          "firstName",
+          "lastName",
+          "phone",
+          "avatarUrl",
+          "isActive",
+          "status",
+        ],
       });
 
       const payload = JSON.parse(mockZipFile.mock.calls[0][1]);
@@ -609,7 +623,6 @@ describe("Tenant Backup Service", () => {
     // additive, tenant-pinned reconciliation that refuses unsafe states with a
     // 409 carrying a state explanation.
     const { Op } = require("sequelize");
-    const { UniqueConstraintError } = require("sequelize");
 
     let mockTransaction;
 
@@ -704,58 +717,103 @@ describe("Tenant Backup Service", () => {
       await expect(run()).rejects.toThrow("Backup file not found on storage");
     });
 
-    it("re-creates an account missing from the tenant inactive, in the backup's own tenant, with a credential no password satisfies", async () => {
-      mockTenantBackup.findByPk.mockResolvedValue(restorableBackup());
-      // A crafted entry: it names another tenant and carries credential and
-      // privilege fields. None of them may reach the write.
-      stubArchive(
-        archive({
-          users: [
-            backedUpUser({
-              id: "old-id",
-              tenantId: "tenant-other",
-              password: "$2a$12$attacker-chosen-hash",
-              mfaSecret: "attacker-seed",
-              isActive: true,
-              status: "ACTIVE",
-              isDeleted: false,
-              phone: null,
-              roleId: "role-1",
-            }),
-          ],
-        }),
-      );
+    describe("A-120 (ADR-051 Q-09) - a restore never creates an account", () => {
+      it("a restore never re-creates an account missing from the tenant (e.g. GDPR-erased)", async () => {
+        // F-1: gdpr.service#anonymizeUser rewrites the username and email IN
+        // PLACE, so the natural-key lookup finds nothing and the old restore
+        // re-created the erased person - real name, email and phone - from the
+        // archive. The archive entry below is exactly that person.
+        const erasedId = "0b7c9a3e-5d2f-4c1a-9e8b-7a6d5c4b3a21";
+        mockTenantBackup.findByPk.mockResolvedValue(restorableBackup());
+        stubArchive(
+          archive({
+            users: [
+              backedUpUser({
+                id: erasedId,
+                username: "jane.erased",
+                email: "jane@hospital.test",
+                firstName: "Jane",
+                lastName: "Doe",
+                phone: "+62 811 000 000",
+              }),
+            ],
+          }),
+        );
+        // No account carries the archived username or email any more ...
+        mockUsers.findOne.mockImplementation(async ({ where }) =>
+          // ... but the id still resolves to the anonymised row.
+          where.id === erasedId ? { id: erasedId, status: "erased" } : null,
+        );
 
-      const result = await run();
+        const result = await run();
 
-      expect(mockUsers.create).toHaveBeenCalledTimes(1);
-      const [values, options] = mockUsers.create.mock.calls[0];
-      expect(values).toEqual({
-        username: "test1",
-        email: "test1@example.com",
-        firstName: "Test",
-        lastName: "One",
-        roleId: "role-1",
-        tenantId: mockTenantId,
-        password: expect.stringMatching(/^!restore-reset-required:[0-9a-f]+$/),
-        isActive: false,
-        status: "INACTIVE",
-        isEmailVerified: false,
-        isDeleted: false,
+        expect(mockUsers.create).not.toHaveBeenCalled();
+        expect(mockUsers.bulkCreate).not.toHaveBeenCalled();
+        expect(result.data.notRestored).toEqual([
+          { entry: 0, username: "jane.erased", reason: "erased" },
+        ]);
+        expect(result.data).not.toHaveProperty("created");
+        expect(result.data).not.toHaveProperty("pendingActivation");
+
+        // Reported in the audit row too - by archive entry and reason, never
+        // by the erased person's username (audit_logs is never purged, Q-12).
+        const [entry, options] = mockAuditLog.create.mock.calls[0];
+        expect(options).toEqual({ transaction: mockTransaction });
+        expect(entry.changes.notRestored).toEqual([{ entry: 0, reason: "erased" }]);
+        expect(JSON.stringify(entry)).not.toMatch(/jane/i);
+        expect(mockTransaction.commit).toHaveBeenCalled();
       });
-      expect(options).toEqual({ transaction: mockTransaction });
-      expect(result.data).toEqual(
-        expect.objectContaining({
-          tenantId: mockTenantId,
-          recordsProcessed: 1,
-          created: 1,
-          updated: 0,
-          unchanged: 0,
-          skippedDeleted: 0,
-          pendingActivation: ["test1"],
-        }),
-      );
-      expect(mockTransaction.commit).toHaveBeenCalled();
+
+      it("reports an account whose key and id are both gone as absent, and never creates it", async () => {
+        mockTenantBackup.findByPk.mockResolvedValue(restorableBackup());
+        stubArchive(
+          archive({
+            users: [
+              backedUpUser({ id: "5f0e4d3c-2b1a-4098-8f7e-6d5c4b3a2918" }),
+              // An id the archive mangled never reaches the query: a malformed
+              // uuid would abort the transaction.
+              backedUpUser({ id: "not-a-uuid", username: "u2", email: "u2@example.com" }),
+              backedUpUser({ id: undefined, username: "u3", email: "u3@example.com" }),
+            ],
+          }),
+        );
+
+        const result = await run();
+
+        expect(mockUsers.create).not.toHaveBeenCalled();
+        expect(result.data.notRestored).toEqual([
+          { entry: 0, username: "test1", reason: "absent" },
+          { entry: 1, username: "u2", reason: "absent" },
+          { entry: 2, username: "u3", reason: "absent" },
+        ]);
+        // One natural-key lookup per entry, plus one id lookup for the only
+        // well-formed id.
+        const idLookups = mockUsers.findOne.mock.calls.filter(([o]) => o.where.id);
+        expect(idLookups).toHaveLength(1);
+        expect(idLookups[0][0]).toEqual({
+          where: { id: "5f0e4d3c-2b1a-4098-8f7e-6d5c4b3a2918", tenantId: mockTenantId },
+          attributes: ["id", "status"],
+          paranoid: false,
+          transaction: mockTransaction,
+        });
+      });
+
+      it("an id that resolves to a live, un-erased account whose key changed is still absent, and is not touched", async () => {
+        mockTenantBackup.findByPk.mockResolvedValue(restorableBackup());
+        const renamedId = "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d";
+        stubArchive(archive({ users: [backedUpUser({ id: renamedId })] }));
+        const renamed = liveAccount({ id: renamedId, status: "ACTIVE" });
+        mockUsers.findOne.mockImplementation(async ({ where }) =>
+          where.id === renamedId ? renamed : null,
+        );
+
+        const result = await run();
+
+        expect(renamed.update).not.toHaveBeenCalled();
+        expect(result.data.notRestored).toEqual([
+          { entry: 0, username: "test1", reason: "absent" },
+        ]);
+      });
     });
 
     it("never deletes a live account and never touches its credential, role or state (mergeData=false)", async () => {
@@ -790,7 +848,7 @@ describe("Tenant Backup Service", () => {
         { transaction: mockTransaction },
       );
       expect(result.data).toEqual(
-        expect.objectContaining({ updated: 1, created: 0, retained: 2 }),
+        expect.objectContaining({ updated: 1, notRestored: [], retained: 2 }),
       );
     });
 
@@ -879,12 +937,11 @@ describe("Tenant Backup Service", () => {
             operation: "RESTORE",
             mergeData: false,
             recordsProcessed: 1,
-            created: 1,
             updated: 0,
             unchanged: 0,
             skippedDeleted: 0,
             retained: 0,
-            pendingActivation: ["test1"],
+            notRestored: [{ entry: 0, reason: "absent" }],
           },
           // Written through audit.service#logAction (A-41), which fills the
           // request-origin columns; a restore has none.
@@ -1090,26 +1147,6 @@ describe("Tenant Backup Service", () => {
         expectNothingWritten();
       });
 
-      it("refuses, rolls back and leaves the backup COMPLETED when a re-created account's key is held outside the tenant", async () => {
-        mockTenantBackup.findByPk.mockResolvedValue(restorableBackup());
-        stubArchive(archive({ users: [backedUpUser()] }));
-        mockUsers.create.mockRejectedValue(new UniqueConstraintError({}));
-
-        const error = await run().catch((e) => e);
-
-        expect(error.status).toBe(409);
-        expect(error.message).toMatch(
-          /user entry 0 \("test1"\).*already held by an account this restore cannot see/,
-        );
-        expect(mockTransaction.rollback).toHaveBeenCalled();
-        expect(mockTransaction.commit).not.toHaveBeenCalled();
-        expect(mockAuditLog.create).not.toHaveBeenCalled();
-        expect(mockTenantBackup.updateStatus).toHaveBeenLastCalledWith(
-          mockBackupId,
-          { status: "COMPLETED" },
-          mockModels,
-        );
-      });
     });
 
     describe("failures — 500, backup marked FAILED", () => {
@@ -1134,7 +1171,9 @@ describe("Tenant Backup Service", () => {
       it("should roll back and mark FAILED when a restore write fails", async () => {
         mockTenantBackup.findByPk.mockResolvedValue(restorableBackup());
         stubArchive(archive({ users: [backedUpUser()] }));
-        mockUsers.create.mockRejectedValue(new Error("connection reset"));
+        mockUsers.findOne.mockResolvedValue(
+          liveAccount({ update: jest.fn().mockRejectedValue(new Error("connection reset")) }),
+        );
 
         await expect(run()).rejects.toMatchObject({
           status: 500,

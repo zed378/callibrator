@@ -11,6 +11,8 @@ const { logger } = require("../middlewares/activityLog.middleware");
 // Who did it, from where — for the audit row the service writes inside its
 // transaction (A-104).
 const { auditActor } = require("../utils/auditActor.util");
+const { principalHasMenuPermission } = require("../middlewares/dynamicAccess.middleware");
+const { MENU_SLUGS } = require("../constants");
 
 /**
  * Get all key pairs for the tenant
@@ -72,13 +74,19 @@ exports.createWorkflow = asyncHandler(async (req, res) => {
   const { tenantId } = req.user;
   const { documentId, signers, subject, message, expiresAt } = req.body;
 
-  const result = await eSignatureService.createSignatureWorkflow(tenantId, {
-    documentId,
-    signers,
-    subject,
-    message,
-    expiresAt,
-  });
+  // A-129 — the service writes the CREATE audit row inside its transaction,
+  // so it needs who did it (auditActor), as every other workflow mutation.
+  const result = await eSignatureService.createSignatureWorkflow(
+    tenantId,
+    {
+      documentId,
+      signers,
+      subject,
+      message,
+      expiresAt,
+    },
+    auditActor(req),
+  );
 
   return success(res, result, null, "Signature workflow created", 201);
 });
@@ -99,6 +107,18 @@ exports.getWorkflow = asyncHandler(async (req, res) => {
 });
 
 /**
+ * A-129 — GET /signers: the users a new workflow may name as signers (active,
+ * holding `esignature:write`). Rows in `data`, the count in a top-level `meta`.
+ */
+exports.getEligibleSigners = asyncHandler(async (req, res) => {
+  const { tenantId } = req.user;
+
+  const signers = await eSignatureService.getEligibleSigners(tenantId);
+
+  return success(res, signers, { total: signers.length }, "Eligible signers retrieved");
+});
+
+/**
  * A-91 — GET /my-workflows: the workflows naming the caller as a signer.
  * Rows in `data`, the count in a top-level `meta` (the envelope rule).
  */
@@ -116,6 +136,18 @@ exports.getSignerWorkflows = asyncHandler(async (req, res) => {
     { total: workflows.length },
     "Signer workflows retrieved",
   );
+});
+
+/**
+ * A-129 — GET /signers: the users a new workflow may name as signers (active,
+ * holding `esignature:write`). Rows in `data`, the count in a top-level `meta`.
+ */
+exports.getEligibleSigners = asyncHandler(async (req, res) => {
+  const { tenantId } = req.user;
+
+  const signers = await eSignatureService.getEligibleSigners(tenantId);
+
+  return success(res, signers, { total: signers.length }, "Eligible signers retrieved");
 });
 
 /**
@@ -217,14 +249,19 @@ exports.verifySignature = asyncHandler(async (req, res) => {
  * wrapped as `data.signatures`.
  */
 exports.getSignatureHistory = asyncHandler(async (req, res) => {
-  const { tenantId } = req.user;
+  const { id: callerId, tenantId } = req.user;
   const { userId, startDate, endDate } = req.query;
 
-  const history = await eSignatureService.getSignatureHistory(tenantId, {
-    userId,
-    startDate,
-    endDate,
-  });
+  // A-129 (ADR-051 Q-19, F-9) — the tenant's history is workflow management
+  // (`qms` read). Without it the route still answers, with the caller's own
+  // signatures only and without their IP address, user agent or biometrics.
+  const canManage = await principalHasMenuPermission(req.user, MENU_SLUGS.QMS, "read");
+
+  const history = await eSignatureService.getSignatureHistory(
+    tenantId,
+    { userId, startDate, endDate },
+    { callerId, canManage },
+  );
 
   return success(res, history, { total: history.length }, "Signature history retrieved");
 });
@@ -237,7 +274,16 @@ exports.cancelWorkflow = asyncHandler(async (req, res) => {
   // req.user exposes `id`, not `userId`.
   const { id: userId, tenantId } = req.user;
 
-  await eSignatureService.cancelWorkflow(workflowId, userId, tenantId, auditActor(req));
+  // A-130 — `reason` is optional and goes into the CANCEL audit row.
+  const { reason } = req.body || {};
+
+  await eSignatureService.cancelWorkflow(
+    workflowId,
+    userId,
+    tenantId,
+    auditActor(req),
+    reason,
+  );
 
   return success(res, null, "Workflow cancelled");
 });

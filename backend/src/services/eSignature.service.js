@@ -155,6 +155,26 @@ function explainClosedWorkflow(status, verb) {
   return `This signature workflow is "${status}" and cannot be ${verb}: ${why[status]}.`;
 }
 
+/**
+ * A-130 / A-144 — the state explanation for deleting a workflow that carries
+ * signatures, with the way forward.
+ *
+ * @param {string} status - the workflow's current status
+ * @param {number} count - signatures made against it
+ * @returns {string}
+ */
+function explainSignedWorkflowDeletion(status, count) {
+  const way =
+    status === "completed" || status === "cancelled"
+      ? "it stays as the record of what was signed"
+      : "cancel it instead (POST /esignature/workflows/:workflowId/cancel), which keeps the signatures";
+  return (
+    `This signature workflow is "${status}" and has ${count} signature${count === 1 ? "" : "s"}, ` +
+    "so it cannot be deleted: a signature stays linked to the record it signs " +
+    `(21 CFR 11.70); ${way}.`
+  );
+}
+
 // ==========================================
 // KEY PAIR MANAGEMENT
 // ==========================================
@@ -365,12 +385,106 @@ exports.deleteKeyPair = async (keyPairId, tenantId) => {
 // ==========================================
 
 /**
- * Create a signature workflow
+ * A-86 (ADR-051) — the explanation for a signer named by email alone.
+ */
+const EXTERNAL_SIGNER_REFUSAL =
+  "Signers must be users of this organisation: an email-only (external) signer " +
+  "has no way to authenticate, so the workflow could never complete. To have an " +
+  "external party sign, invite them as a user with e-signature permission.";
+
+/** A-129 — a signer the tenant does not have: missing, deleted or another tenant's, alike. */
+const SIGNER_NOT_FOUND = "Signer not found";
+
+/** The printed name a signature manifests (21 CFR 11.50(a)(1)), from the user row. */
+const displayName = (user) =>
+  [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || user.username || user.email;
+
+/**
+ * A-129 (ADR-051 Q-19, F-10) — resolve every named signer to a user of the
+ * tenant who may sign, BEFORE anything is written.
+ *
+ *  - A signer with no `userId` is refused (400, A-86).
+ *  - A `userId` that is not a user of this tenant — missing, soft-deleted or
+ *    another tenant's — is 404, one message for all three (the A-75
+ *    convention: a distinguishable answer is a cross-tenant existence oracle).
+ *    The tenant predicate is explicit, not left to the hooks.
+ *  - A user of the tenant who is inactive, or who does not hold
+ *    `esignature:write`, is 400 naming the signer: the workflow could never
+ *    complete (the /sign gate would refuse them), so it is not created.
+ *
+ * The name and email written onto the step come from the user row; any value
+ * the body carried is ignored (F-10).
+ *
+ * @param {string} tenantId
+ * @param {Array<{userId?: string}>} signers - as validated
+ * @param {object} transaction
+ * @returns {Promise<Array<{userId: string, email: string, name: string}>>}
+ */
+const resolveSigners = async (tenantId, signers, transaction) => {
+  const { User, Role } = require("../models");
+  const { principalHasMenuPermission } = require("../middlewares/dynamicAccess.middleware");
+  const { MENU_SLUGS } = require("../constants");
+
+  const resolved = [];
+  for (let i = 0; i < signers.length; i++) {
+    const userId = signers[i] && signers[i].userId;
+    if (!userId) {
+      throw new AppError(400, `Signer ${i + 1}: ${EXTERNAL_SIGNER_REFUSAL}`);
+    }
+
+    const user = await User.findOne({ where: { id: userId, tenantId }, transaction });
+    if (!user) {
+      throw new AppError(404, SIGNER_NOT_FOUND);
+    }
+
+    const name = displayName(user);
+    if (!user.isActive || user.status !== USER_STATUS.ACTIVE) {
+      throw new AppError(
+        400,
+        `Signer ${i + 1} (${name}) is not an active user, so they could not sign. ` +
+          "Choose an active user, or reactivate the account first.",
+      );
+    }
+
+    const role = user.roleId
+      ? await Role.findByPk(user.roleId, { attributes: ["id", "name"], transaction })
+      : null;
+    const maySign = await principalHasMenuPermission(
+      { id: user.id, role: role ? { id: role.id, name: role.name } : null },
+      MENU_SLUGS.ESIGNATURE,
+      "write",
+    );
+    if (!maySign) {
+      throw new AppError(
+        400,
+        `Signer ${i + 1} (${name}) does not hold the e-signature signing permission, so ` +
+          "they could not sign. Grant it to their role or to them, or choose another signer.",
+      );
+    }
+
+    resolved.push({ userId: user.id, email: user.email, name });
+  }
+  return resolved;
+};
+
+/**
+ * Create a signature workflow.
+ *
+ * A-129 / A-130 (ADR-051 Q-19, A-86; F-10). Every signer is a user of the
+ * tenant who may sign (resolveSigners). The workflow, its steps and the audit
+ * row commit together or not at all; the first signer is notified only after
+ * the commit.
+ *
  * @param {string} tenantId - Tenant ID
  * @param {Object} data - Workflow data
+ * @param {Array<{userId: string}>} data.signers - in signing order
+ * @param {{userId?: string, ipAddress?: string, userAgent?: string}} [actor] -
+ *   auditActor(req)
  * @returns {Promise<{workflowId: string, signers: Array}>}
+ * @throws {AppError} 400 for an email-only, inactive or unauthorised signer;
+ *   404 for a signer who is not a user of this tenant
  */
-exports.createSignatureWorkflow = async (tenantId, data) => {
+exports.createSignatureWorkflow = async (tenantId, data, actor = {}) => {
   if (!ESIGN_ENABLED) {
     throw new AppError(400, "E-signature is disabled");
   }
@@ -382,60 +496,73 @@ exports.createSignatureWorkflow = async (tenantId, data) => {
   }
 
   try {
-    const {
-      SignatureWorkflow,
-      SignatureWorkflowStep,
-      SignatureRecord,
-    } = require("../models");
+    const { SignatureWorkflow, SignatureWorkflowStep } = require("../models");
 
-    // Create workflow
-    const workflow = await SignatureWorkflow.create({
-      tenantId,
-      documentId,
-      subject: subject || "Please sign this document",
-      message: message || "",
-      status: "pending",
-      expiresAt: expiresAt || new Date(Date.now() + 7 * 86400000),
-      signatureAlgorithm: SIGNATURE_ALGORITHM,
-    });
+    const { workflow, steps, resolved } = await db.transaction(async (transaction) => {
+      const named = await resolveSigners(tenantId, signers, transaction);
 
-    // Create steps for each signer
-    for (let i = 0; i < signers.length; i++) {
-      const signer = signers[i];
-      const step = await SignatureWorkflowStep.create({
-        // tenantId is required for isolation AND is read back by signDocument
-        // (step.tenantId) when it writes the SignatureRecord/AuditLog rows.
-        tenantId,
-        workflowId: workflow.id,
-        stepNumber: i + 1,
-        signerId: signer.userId,
-        signerEmail: signer.email,
-        signerName: signer.name,
-        status: i === 0 ? "pending" : "waiting",
-        signedAt: null,
-        ipAddress: signer.ipAddress,
-        userAgent: signer.userAgent,
+      const created = await SignatureWorkflow.create(
+        {
+          tenantId,
+          documentId,
+          subject: subject || "Please sign this document",
+          message: message || "",
+          status: "pending",
+          expiresAt: expiresAt || new Date(Date.now() + 7 * 86400000),
+          signatureAlgorithm: SIGNATURE_ALGORITHM,
+        },
+        { transaction },
+      );
+
+      const createdSteps = [];
+      for (let i = 0; i < named.length; i++) {
+        createdSteps.push(
+          await SignatureWorkflowStep.create(
+            {
+              // tenantId is required for isolation AND is read back by
+              // signDocument (step.tenantId) when it writes the
+              // SignatureRecord/AuditLog rows.
+              tenantId,
+              workflowId: created.id,
+              stepNumber: i + 1,
+              signerId: named[i].userId,
+              signerEmail: named[i].email,
+              signerName: named[i].name,
+              status: i === 0 ? "pending" : "waiting",
+              signedAt: null,
+            },
+            { transaction },
+          ),
+        );
+      }
+
+      await auditWorkflowChange(transaction, tenantId, actor, "CREATE", created.id, {
+        after: {
+          documentId,
+          subject: created.subject,
+          status: created.status,
+          signers: named.map((s, i) => ({ stepNumber: i + 1, userId: s.userId })),
+        },
       });
 
-      // Send notification to first signer
-      if (i === 0) {
-        await sendSignatureRequest(signer.email, workflow, step);
-      }
-    }
+      return { workflow: created, steps: createdSteps, resolved: named };
+    });
+
+    await sendSignatureRequest(resolved[0].email, workflow, steps[0]);
 
     logger.info("Signature workflow created", {
       tenantId,
       workflowId: workflow.id,
-      signerCount: signers.length,
+      signerCount: resolved.length,
     });
 
     return {
       workflowId: workflow.id,
-      signers: signers.map((s) => ({
+      signers: resolved.map((s, i) => ({
         userId: s.userId,
         email: s.email,
         name: s.name,
-        status: "pending",
+        status: steps[i].status,
       })),
     };
   } catch (err) {
@@ -500,6 +627,19 @@ async function sendSignatureRequest(email, workflow, step) {
 exports.signDocument = async (stepId, userId, signatureData) => {
   const { polygon, biometricData, authenticationMethod, authPayload } = signatureData;
 
+  // A-129 (ADR-051 Q-19) — the meaning of the signature is part of what is
+  // signed (21 CFR 11.50(a)(3)), so a signature without one is refused before
+  // anything is looked up. It used to be optional and stored as NULL.
+  const reason =
+    typeof signatureData.reason === "string" ? signatureData.reason.trim() : "";
+  if (!reason) {
+    throw new AppError(
+      400,
+      "The meaning of the signature is required (for example \"Reviewed and approved\"): " +
+        "it is recorded with, and bound into, the signature (21 CFR 11.50).",
+    );
+  }
+
   try {
     const {
       SignatureWorkflowStep,
@@ -561,6 +701,11 @@ exports.signDocument = async (stepId, userId, signatureData) => {
     if (!workflow) {
       throw new AppError(404, "Workflow not found");
     }
+    // A-130 — a cancelled workflow keeps its pending step as it was, so the
+    // step's own status does not stop a signature. Cancellation is final.
+    if (workflow.status === "cancelled") {
+      throw new AppError(409, explainClosedWorkflow(workflow.status, "signed"));
+    }
 
     // Everything the signature binds is fixed HERE, before anything is signed,
     // and the same values are what gets persisted. signedAt in particular is
@@ -568,7 +713,6 @@ exports.signDocument = async (stepId, userId, signatureData) => {
     // column, so a second `new Date()` would make every signature unverifiable
     // (that was the original defect, with Date.now() inside the payload).
     const signedAt = new Date();
-    const reason = signatureData.reason || null;
 
     const { keyId, privateKeyPem } = await loadSigningKey(step.tenantId);
 
@@ -1225,13 +1369,26 @@ exports.updateWorkflow = async (workflowId, tenantId, updates = {}, actor = {}) 
  *   auditActor(req)
  */
 exports.deleteWorkflow = async (workflowId, tenantId, actor = {}) => {
+  const { SignatureRecord } = require("../models");
   try {
     await db.transaction(async (transaction) => {
       const workflow = await findWorkflowForMutation(workflowId, tenantId, transaction);
-      // A-113 — a completed workflow is a signed record (21 CFR 11.70: the
-      // signatures are linked to the record they sign). Soft-deleting it hid
-      // that record from every list with no state check. A state conflict
-      // (409), explained — as editing or cancelling it already is (A-92).
+      // A-130 / A-144 (ADR-051 A-107) — a workflow with ANY signature is a
+      // signed record (21 CFR 11.70: signatures stay linked to the record they
+      // sign). A-113 refused only `completed`, so an in_progress workflow with
+      // some steps signed could be deleted, hiding those signatures from every
+      // list. Counted with paranoid: false — a revoked or soft-deleted
+      // signature is still a signature that was made.
+      const signatures = await SignatureRecord.count({
+        where: { workflowId, tenantId },
+        paranoid: false,
+        transaction,
+      });
+      if (signatures > 0) {
+        throw new AppError(409, explainSignedWorkflowDeletion(workflow.status, signatures));
+      }
+      // A completed workflow has signatures; this stays for one whose rows
+      // were removed outside the application.
       if (workflow.status === "completed") {
         throw new AppError(409, explainClosedWorkflow(workflow.status, "deleted"));
       }
@@ -1253,22 +1410,46 @@ exports.deleteWorkflow = async (workflowId, tenantId, actor = {}) => {
 };
 
 /**
- * Signature history / audit trail for a tenant, optionally filtered by signer
- * and signed-at date range.
+ * A-129 (F-9) — what a caller without workflow management (`qms` read) is
+ * never shown in the signature history: the Part 11 capture of where and how a
+ * signature was made. They see only their own signatures in any case.
+ */
+const HISTORY_REDACTED_ATTRIBUTES = ["biometricData", "ipAddress", "userAgent"];
+
+/**
+ * Signature history / audit trail, optionally filtered by signed-at range.
+ *
+ * A-129 (ADR-051 Q-19, F-9). `/history` was gated on `esignature:read`, which
+ * every signing role holds, and returned every signature in the tenant with
+ * its IP address, user agent and biometric capture, filtered by whatever
+ * `userId` the caller passed.
+ *  - `canManage` (the caller holds `qms` read): the tenant's history, the
+ *    `userId` filter honoured, every column.
+ *  - otherwise: the caller's own signatures only — `filters.userId` is
+ *    ignored, not honoured — without biometricData, ipAddress or userAgent.
+ *
  * @param {string} tenantId
  * @param {Object} filters
- * @param {string} [filters.userId]
+ * @param {string} [filters.userId] - honoured only when canManage
  * @param {string} [filters.startDate]
  * @param {string} [filters.endDate]
+ * @param {{callerId: string, canManage: boolean}} scope - from the controller
  * @returns {Promise<Array>}
  */
-exports.getSignatureHistory = async (tenantId, filters = {}) => {
+exports.getSignatureHistory = async (tenantId, filters = {}, scope = {}) => {
   try {
     const { SignatureRecord } = require("../models");
     const { Op } = require("sequelize");
     const where = { tenantId };
-    if (filters.userId) {
-      where.userId = filters.userId;
+    const options = { order: [["signedAt", "DESC"]] };
+    if (scope.canManage) {
+      if (filters.userId) {
+        where.userId = filters.userId;
+      }
+    } else {
+      // Deny by default: no caller id, no rows.
+      where.userId = scope.callerId || null;
+      options.attributes = { exclude: HISTORY_REDACTED_ATTRIBUTES };
     }
     if (filters.startDate || filters.endDate) {
       where.signedAt = {};
@@ -1279,10 +1460,7 @@ exports.getSignatureHistory = async (tenantId, filters = {}) => {
         where.signedAt[Op.lte] = new Date(filters.endDate);
       }
     }
-    return await SignatureRecord.findAll({
-      where,
-      order: [["signedAt", "DESC"]],
-    });
+    return await SignatureRecord.findAll({ where, ...options });
   } catch (err) {
     logger.error("Failed to get signature history", {
       tenantId,
@@ -1290,6 +1468,44 @@ exports.getSignatureHistory = async (tenantId, filters = {}) => {
     });
     throw new AppError(500, "Failed to get signature history");
   }
+};
+
+/**
+ * A-129 — the users a workflow may name as signers: active users of the
+ * tenant who hold `esignature:write`, exactly the rule createSignatureWorkflow
+ * enforces. For the workflow-creation picker, so a creator chooses from users
+ * instead of typing an email (A-86). Only id, name and email are returned.
+ *
+ * @param {string} tenantId - the caller's tenant (from req.user)
+ * @returns {Promise<Array<{id: string, name: string, email: string}>>} by name
+ */
+exports.getEligibleSigners = async (tenantId) => {
+  const { User, Role } = require("../models");
+  const { principalHasMenuPermission } = require("../middlewares/dynamicAccess.middleware");
+  const { MENU_SLUGS } = require("../constants");
+
+  const users = await User.findAll({
+    where: { tenantId, isActive: true, status: USER_STATUS.ACTIVE },
+    attributes: ["id", "username", "email", "firstName", "lastName", "roleId"],
+  });
+  const roleIds = [...new Set(users.map((u) => u.roleId).filter(Boolean))];
+  const roles = roleIds.length
+    ? await Role.findAll({ where: { id: roleIds }, attributes: ["id", "name"] })
+    : [];
+  const roleById = new Map(roles.map((r) => [r.id, { id: r.id, name: r.name }]));
+
+  const eligible = [];
+  for (const user of users) {
+    const maySign = await principalHasMenuPermission(
+      { id: user.id, role: roleById.get(user.roleId) || null },
+      MENU_SLUGS.ESIGNATURE,
+      "write",
+    );
+    if (maySign) {
+      eligible.push({ id: user.id, name: displayName(user), email: user.email });
+    }
+  }
+  return eligible.sort((a, b) => a.name.localeCompare(b.name));
 };
 
 /**
@@ -1303,14 +1519,19 @@ exports.getSignatureHistory = async (tenantId, filters = {}) => {
  * @param {string} tenantId
  * @param {{ipAddress?: string, userAgent?: string}} [actor] - auditActor(req);
  *   the audit row's user is always `userId`
+ * @param {string} [reason] - why it was cancelled; recorded in the audit row
+ * @throws {AppError} 404 when the workflow is not in the tenant; 409 when it
+ *   is completed or already cancelled
  */
-exports.cancelWorkflow = async (workflowId, userId, tenantId, actor = {}) => {
+exports.cancelWorkflow = async (workflowId, userId, tenantId, actor = {}, reason) => {
   try {
     await db.transaction(async (transaction) => {
       const workflow = await findWorkflowForMutation(workflowId, tenantId, transaction);
 
       // A-92 — a state conflict (409), explained, not a malformed request.
-      if (workflow.status === "completed") {
+      // A-130 — cancelling a cancelled workflow is the same conflict: it used
+      // to succeed again and write a second CANCEL audit row.
+      if (workflow.status === "completed" || workflow.status === "cancelled") {
         throw new AppError(409, explainClosedWorkflow(workflow.status, "cancelled"));
       }
 
@@ -1325,7 +1546,7 @@ exports.cancelWorkflow = async (workflowId, userId, tenantId, actor = {}) => {
         {
           operation: "CANCEL",
           before: { status: previousStatus },
-          after: { status: "cancelled" },
+          after: { status: "cancelled", ...(reason ? { reason } : {}) },
         },
       );
     });

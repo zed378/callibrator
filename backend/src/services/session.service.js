@@ -124,6 +124,45 @@ exports.revokeAllSessions = async (userId, reason = "LOGOUT_ALL") => {
 };
 
 // ==========================================
+// REVOKE EVERY SESSION BUT ONE (A-141)
+// ==========================================
+
+/**
+ * Revoke every live session of `userId` except `keepSessionId` — the one the
+ * caller is using. Replacing or disabling an authenticator must sign out
+ * whoever else holds a session: if the change is a response to a stolen
+ * phone or a stolen session, the thief's session is exactly the one to end.
+ *
+ * `skipTenantScope`: the user id is server-derived (the authenticated caller,
+ * or a user an administrator's tenant-scoped lookup already returned); a
+ * tenant-less principal's scope would otherwise match NO_TENANT_UUID and
+ * revoke nothing.
+ *
+ * @param {string} userId
+ * @param {string|null} keepSessionId - null revokes every session
+ * @param {string} reason - sessions.revoked_reason
+ * @param {object} [options]
+ * @param {object} [options.transaction]
+ * @returns {Promise<number>} how many sessions were revoked
+ */
+exports.revokeOtherSessions = async (userId, keepSessionId, reason, { transaction } = {}) => {
+  const where = { user_id: userId, is_revoked: false };
+  if (keepSessionId) {
+    where.id = { [Op.ne]: keepSessionId };
+  }
+  const [affected] = await Sessions.update(
+    {
+      is_revoked: true,
+      revoked_at: new Date(),
+      revoked_reason: reason,
+      is_active: false,
+    },
+    { where, transaction, skipTenantScope: true },
+  );
+  return affected;
+};
+
+// ==========================================
 // ROTATE REFRESH TOKEN
 // ==========================================
 
