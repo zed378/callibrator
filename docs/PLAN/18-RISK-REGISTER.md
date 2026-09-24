@@ -22,7 +22,7 @@ One tenant seeing another hospital device register, calibration history and staf
 
 ### PR-2 — The append-only guarantee is a convention, not a constraint
 
-**Severity:** critical · **Likelihood:** medium · **Status:** **open**
+**Severity:** critical · **Likelihood:** medium · **Status:** **mitigated 2026-09-24** (P6-03) — residual below
 
 `calibration_records` is `paranoid`. A sufficiently privileged caller can soft-delete evidence. `audit_logs` is protected by having no delete path; `calibration_records` has one.
 
@@ -30,19 +30,27 @@ Under 21 CFR Part 11, originality of the record is not optional, and a control t
 
 **Mitigation:** `REVOKE UPDATE, DELETE ON calibration_records` for the application role, matching what `audit_logs` gets by construction. Tracked in [`../../TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md).
 
+**2026-09-24 — mitigated as a constraint (P6-03, ADR-PENDING-data):** migration 0057 adds a trigger that refuses a delete, a truncate or a content change for **every** role, and creates the application role with `UPDATE`/`DELETE`/`TRUNCATE` revoked (lifecycle columns granted back). The `PUT`/`DELETE` routes are replaced by correct (a superseding record) and void. **Residual:** the backend runs as the owner until `DB_APP_ROLE` is set, and a superuser can still drop the trigger — DDL, visible in the log. Details: [`../DATABASE/07-CALIBRATION-TABLES.md`](../DATABASE/07-CALIBRATION-TABLES.md). Finding A-240: every `REVOKE` in these documents assumed an application role that did not exist.
+
 ### PR-3 — Super-admin credential compromise
 
 **Severity:** critical · **Likelihood:** low · **Status:** partially mitigated
 
 `SUPERADMIN` bypasses every permission check and every tenant predicate. There is no second gate.
 
-**Mitigation in place:** MFA and WebAuthn available; failed-login lockout; all actions audited.
+**Mitigation in place:** MFA **required** for level 10 since P6-07 (ADR-059, 2026-09-24): an
+operator without MFA gets an enrolment-only session (403 `MFA_ENROLMENT_REQUIRED` on everything but
+enrolment, enforced in `auth.middleware`), and with MFA the password alone opens no session; an
+operator is refused SSO through a tenant's IdP (A-210); break-glass is an audited, CLI-only reset of
+the enrolment that does not switch the requirement off (`scripts/breakGlassMfaReset.js`). Sign-in
+failures are throttled per identifier and address (A-185); all actions audited.
 
 This read "sessions bound to IP and user agent" until **2026-09-23**. That binding does not exist — the middleware claiming it was imported by nothing and was deleted under audit finding A-12.
 
-**Residual risk:** MFA is available, not enforced. A super-admin account without a second factor is one credential away from total compromise. Nothing binds a stolen super-admin session to where it was issued, and `auth` does not consult the `sessions` table, so revoking one takes effect only when the access token expires.
-
-**Mitigation to add:** mandatory MFA for level 10, enforced at login rather than requested at onboarding.
+**Residual risk:** until an operator has enrolled, whoever holds the password can enrol THEIR
+authenticator first (the bootstrap of any enrol-on-first-login scheme); the enrolment is audited and
+the real operator then cannot sign in, which surfaces it. Nothing binds a stolen super-admin session
+to where it was issued. (*"MFA is available, not enforced" was the residual until 2026-09-24.*)
 
 ## High
 
@@ -60,7 +68,7 @@ An instruction document that disagrees with the code produces confidently wrong 
 
 ### PR-5 — Silent migration no-op
 
-**Severity:** high · **Likelihood:** medium · **Status:** known, not mechanised
+**Severity:** high · **Likelihood:** medium · **Status:** mechanised 2026-09-24 (P6-05)
 
 A migration wrapped in a blanket `try/catch` around `describeTable` is **recorded as applied while doing nothing**. The column never appears; the failure surfaces weeks later as a runtime error.
 
@@ -69,6 +77,8 @@ The Umzug context **is** the QueryInterface — `context.sequelize.getQueryInter
 **Mitigation:** verify columns in the database after migrating; never trust the migration log alone.
 
 **Mitigation to add:** a post-migration assertion step comparing expected columns against `information_schema`.
+
+**2026-09-24 — mechanised (P6-05, ADR-PENDING-data):** every boot compares each model's columns and the migration-only control objects with the database and refuses to start on a mismatch; `make migrate` ends with `make migrate-verify`. See [`../DATABASE/13-MIGRATIONS.md`](../DATABASE/13-MIGRATIONS.md).
 
 ### PR-6 — Fail-open regressions in optional subsystems
 

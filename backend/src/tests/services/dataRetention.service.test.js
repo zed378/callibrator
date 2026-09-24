@@ -29,6 +29,7 @@ jest.mock("../../models", () => {
 
   return {
     AuditLog: { destroy: jest.fn() },
+    IotReading: { destroy: jest.fn() },
     Notification: { destroy: jest.fn() },
     Session: { destroy: jest.fn() },
     Tenant: { findAll: jest.fn() },
@@ -43,7 +44,7 @@ jest.mock("../../models", () => {
 });
 
 const dataRetention = require("../../services/dataRetention.service");
-const { AuditLog, Notification, Session, Tenant, TenantSettings, User } = require("../../models");
+const { AuditLog, IotReading, Notification, Session, Tenant, TenantSettings, User } = require("../../models");
 const auditService = require("../../services/audit.service");
 
 describe("dataRetention.service", () => {
@@ -53,8 +54,9 @@ describe("dataRetention.service", () => {
     it("returns defaults when no overrides exist", async () => {
       TenantSettings.findAll.mockResolvedValue([]);
       const result = await dataRetention.getRetentionPolicy("t1");
-      // A-121: audit_logs is not a purgeable entity.
-      expect(result).toEqual({ notifications: 90, sessions: 30 });
+      // A-121: audit_logs is not a purgeable entity. D-19: iot_readings is,
+      // and is kept (0) unless a tenant or the environment opts in.
+      expect(result).toEqual({ notifications: 90, sessions: 30, iot_readings: 0 });
     });
 
     it("returns custom policies when overrides exist", async () => {
@@ -242,6 +244,48 @@ describe("dataRetention.service", () => {
 
       expect(result.purged).toEqual({ notifications: 3, sessions: 10 });
       expect(AuditLog.destroy).not.toHaveBeenCalled();
+      // D-19: telemetry is kept by default — the purge never reaches it.
+      expect(IotReading.destroy).not.toHaveBeenCalled();
+    });
+
+    it("D-19: purges a tenant's IoT readings older than its opted-in period, by tenant and timestamp, in the transaction", async () => {
+      TenantSettings.findOne.mockResolvedValue(null);
+      TenantSettings.findAll.mockResolvedValue([
+        { key: "retention_policy_iot_readings", value: "1000" },
+      ]);
+      Notification.destroy.mockResolvedValue(0);
+      Session.destroy.mockResolvedValue(0);
+      IotReading.destroy.mockResolvedValue(42);
+
+      const result = await dataRetention.purgeExpiredRecords("t1");
+
+      expect(result.purged).toEqual({ iot_readings: 42 });
+      const { where, transaction } = IotReading.destroy.mock.calls[0][0];
+      expect(where.tenantId).toBe("t1");
+      expect(transaction).toBe("TX");
+      const ageDays = (Date.now() - where.timestamp[Op.lt].getTime()) / 86400000;
+      expect(Math.round(ageDays)).toBe(1000);
+    });
+
+    it("D-19: an IoT period below the 730-day floor purges at the floor", async () => {
+      TenantSettings.findOne.mockResolvedValue(null);
+      TenantSettings.findAll.mockResolvedValue([
+        { key: "retention_policy_iot_readings", value: "30" },
+      ]);
+      Notification.destroy.mockResolvedValue(0);
+      Session.destroy.mockResolvedValue(0);
+      IotReading.destroy.mockResolvedValue(0);
+
+      await dataRetention.purgeExpiredRecords("t1");
+
+      const cutoff = IotReading.destroy.mock.calls[0][0].where.timestamp[Op.lt];
+      expect(Math.round((Date.now() - cutoff.getTime()) / 86400000)).toBe(730);
+    });
+
+    it("D-19: setting an IoT period below the floor is refused with 400", async () => {
+      await expect(
+        dataRetention.setRetentionPolicy("t1", "iot_readings", 90, { userId: "u1" }),
+      ).rejects.toMatchObject({ status: 400 });
     });
 
     it("never purges sooner than an entity's floor, whatever is stored", async () => {

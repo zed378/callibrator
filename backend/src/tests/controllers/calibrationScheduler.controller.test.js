@@ -61,6 +61,7 @@ describe("calibrationScheduler Controller", () => {
       expect(calibrationSchedulerService.runCalibrationScan).toHaveBeenCalledWith({
         tenantId: VALID_TENANT_ID,
         leadDays: undefined,
+        actor: expect.objectContaining({ userId: VALID_USER_ID }),
       });
       expect(success).toHaveBeenCalled();
     });
@@ -77,6 +78,7 @@ describe("calibrationScheduler Controller", () => {
       expect(calibrationSchedulerService.runCalibrationScan).toHaveBeenCalledWith({
         tenantId: VALID_TENANT_ID,
         leadDays: 7,
+        actor: expect.objectContaining({ userId: VALID_USER_ID }),
       });
     });
 
@@ -93,6 +95,7 @@ describe("calibrationScheduler Controller", () => {
       expect(calibrationSchedulerService.runCalibrationScan).toHaveBeenCalledWith({
         tenantId: null,
         leadDays: undefined,
+        actor: expect.objectContaining({ userId: VALID_USER_ID }),
       });
     });
 
@@ -109,6 +112,7 @@ describe("calibrationScheduler Controller", () => {
       expect(calibrationSchedulerService.runCalibrationScan).toHaveBeenCalledWith({
         tenantId: "550e8400-e29b-41d4-a716-446655440099",
         leadDays: undefined,
+        actor: expect.objectContaining({ userId: VALID_USER_ID }),
       });
     });
   });
@@ -179,6 +183,7 @@ describe("calibrationScheduler Controller", () => {
       expect(calibrationSchedulerService.runCalibrationScan).toHaveBeenCalledWith({
         tenantId: VALID_TENANT_ID,
         leadDays: 30,
+        actor: expect.objectContaining({ userId: VALID_USER_ID }),
       });
     });
 
@@ -203,6 +208,7 @@ describe("calibrationScheduler Controller", () => {
       expect(calibrationSchedulerService.runCalibrationScan).toHaveBeenCalledWith({
         tenantId: VALID_TENANT_ID,
         leadDays: undefined,
+        actor: expect.objectContaining({ userId: VALID_USER_ID }),
       });
     });
   });

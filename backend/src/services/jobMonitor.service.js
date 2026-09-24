@@ -45,6 +45,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const cron = require("node-cron");
+const { scheduleSetting } = require("../utils/schedulerSwitch.util"); // W-02: one switch for every singleton scheduler
 const storagePath = require("../utils/storagePath.util");
 const { logger } = require("../middlewares/activityLog.middleware");
 const { raiseAlert, SEVERITY } = require("./alert.service");
@@ -539,7 +540,7 @@ function startWatchdog() {
   if (watchdogTask) {
     return;
   }
-  let schedule = process.env.JOB_WATCHDOG_SCHEDULER || DEFAULT_WATCHDOG_SCHEDULE;
+  let schedule = scheduleSetting("JOB_WATCHDOG_SCHEDULER", DEFAULT_WATCHDOG_SCHEDULE);
   if (schedule === "disabled" || schedule === "off") {
     logger.warn("Job watchdog disabled via JOB_WATCHDOG_SCHEDULER: missed runs will NOT alert");
     watchdogTask = { disabled: true };

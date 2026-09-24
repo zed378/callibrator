@@ -1,4 +1,5 @@
 const cron = require("node-cron");
+const { scheduleSetting } = require("../utils/schedulerSwitch.util"); // W-02: one switch for every singleton scheduler
 const { logger } = require("./activityLog.middleware");
 const { runScheduledBackup } = require("../services/scheduledBackup.service");
 const {
@@ -34,7 +35,7 @@ const DEFAULT_SCHEDULE = "0 0 * * *"; // daily at 00:00
  * @returns {boolean} true when the job was scheduled
  */
 const cronBackup = () => {
-  const schedule = process.env.BACKUP_SCHEDULER || DEFAULT_SCHEDULE;
+  const schedule = scheduleSetting("BACKUP_SCHEDULER", DEFAULT_SCHEDULE);
 
   if (schedule === "disabled" || schedule === "off") {
     logger.info("Scheduled tenant backup disabled via BACKUP_SCHEDULER");

@@ -71,19 +71,43 @@ BR-7: calibration records are append-only. A wrong result is corrected by writin
 
 The reason is not fastidiousness. A record that can be edited after the fact has no evidential value at all, because an auditor cannot distinguish "this was always the result" from "this became the result once somebody noticed the problem".
 
-### The gap, stated plainly
+### The gap — closed as a constraint (P6-03, 2026-09-24)
 
-**This table is `paranoid`, and `PUT` / `DELETE` endpoints exist for it.**
+Until P6-03 this table was `paranoid`, `PUT` / `DELETE` endpoints existed for it, and the append-only property was
+a service-layer convention. It is now enforced by the database, twice over (ADR-PENDING-data; migration `0057`):
 
-Contrast `audit_logs`, which is protected by having **no delete path at all** — the absence is the control. `calibration_records` has one, and the append-only property is enforced by service-layer convention and code review rather than by the schema.
+1. **A trigger, for every role — the owner and a superuser included.** `calibration_records_append_only` refuses
+   `DELETE`, and refuses any `UPDATE` that changes a column other than the lifecycle columns
+   (`superseded_by_id`, `superseded_at`, `void_reason`, `voided_by`, `is_deleted`, `deleted_at`, `updated_at`).
+   Each lifecycle column moves one way only: set once, never changed, `is_deleted` never back to false.
+   `calibration_records_no_truncate` refuses `TRUNCATE`. Only DDL (dropping or disabling the trigger) or
+   `session_replication_role = replica` gets past it — both owner/superuser acts, visible in the database log.
+2. **A grant, for the application role.** `callibrator_app` (or `DB_APP_ROLE`) has DML on every table, but on this
+   one `UPDATE`, `DELETE` and `TRUNCATE` are **revoked**, with `UPDATE` granted back on the lifecycle columns only.
 
-Under 21 CFR Part 11 scrutiny this is the finding an auditor raises first.
+**Why both.** The backend logs in as the database **owner** — in compose, `POSTGRES_USER`, a superuser — because it
+runs `db.sync()` and the migrations at boot. A superuser bypasses every privilege check, so a `REVOKE` alone would
+have protected nothing (A-240). The trigger is the guarantee in every deployment; the grant bites once the backend
+runs as the application role, which it does after migrating when `DB_APP_ROLE` is set (the compose template sets it;
+a deployment without it logs a warning at every boot). The stronger form — a separate LOGIN role with no path back to
+the owner — needs a second credential in the deployment and is not built.
 
-**The fix:** `REVOKE UPDATE, DELETE ON calibration_records` for the application role, and remove the routes. Tested as the **application role**, not as the database owner — as the owner the test passes whether the grant is right or not, which makes it worthless.
+Both are **tested as the application role, not the owner**, with a mutation check that re-grants `DELETE` and
+disables the trigger and shows each assertion then fails: `backend/src/tests/services/dataIntegrity.p6.live.test.js`
+(PostgreSQL 16). `make migrate-verify` (P6-05) refuses a boot where the trigger is missing.
 
-Tracked in [`../../TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md), named as PR-2 in [`../PLAN/18-RISK-REGISTER.md`](../PLAN/18-RISK-REGISTER.md), and named again in [`../PLAN/15-COMPLIANCE-STANDARDS.md`](../PLAN/15-COMPLIANCE-STANDARDS.md).
+### Correct and void — the only writes after insert
 
-Documented in three places on purpose. A compliance claim the code does not support is worse than a named gap — it stops anyone looking again.
+| Operation | What happens |
+|---|---|
+| `POST /:id/corrections` | a **new** row with the corrected content, `supersedes_id` → the original, `correction_reason` (required); the original gains `superseded_by_id` / `superseded_at`. A record is corrected at most once (partial unique index on `supersedes_id`), so the history is a single line |
+| `POST /:id/void` | `is_deleted`, `void_reason` (required — CHECK), `voided_by`. Final: no restore |
+
+Lists show the records **in force** (`superseded_by_id IS NULL`); `?includeSuperseded=true` adds the originals.
+Who *performed* a calibration is carried to its correction unchanged; who *corrected* it is the audit row's actor.
+
+**Not changed by P6-03:** a correction does not move the device's `nextCalibrationDate` (the old `PUT` did not
+either); correcting the date of the latest calibration leaves the device's due date to be fixed by the next record.
 
 ## Write Side Effects
 

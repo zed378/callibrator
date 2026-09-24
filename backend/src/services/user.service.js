@@ -230,9 +230,11 @@ const assertConflictBudget = async (input, actorId) => {
  * never the value, and never whose it was.
  *
  * @param {object} input - the service input
- * @param {{actorId: string, field: string, action: string, resourceId: (string|null)}} conflict
+ * @param {{actorId: string, field: string, action: string, resourceId: (string|null),
+ *   outcome?: string}} conflict - `outcome` is "refused" for a create or edit,
+ *   "reported_taken" for the username probe (A-258)
  */
-const recordIdentityConflict = async (input, { actorId, field, action, resourceId }) => {
+const recordIdentityConflict = async (input, { actorId, field, action, resourceId, outcome = "refused" }) => {
   if (input.actorIsSuperAdmin) {
     return;
   }
@@ -245,7 +247,7 @@ const recordIdentityConflict = async (input, { actorId, field, action, resourceI
         action,
         resourceType: "User",
         resourceId,
-        changes: { operation: "IDENTITY_CONFLICT", outcome: "refused", field },
+        changes: { operation: "IDENTITY_CONFLICT", outcome, field },
         ipAddress: input.ipAddress || null,
         userAgent: input.userAgent || null,
       },
@@ -578,30 +580,61 @@ exports.fetchSpecificUser = async (userId) => {
 // ------------------------------------------------------------------
 // CHECK USERNAME AVAILABILITY
 // ------------------------------------------------------------------
+/**
+ * Whether a username is free, for the create-user form.
+ *
+ * A-258 — this was a `LIKE` on the raw input under the tenant hooks, while
+ * `users.username` is unique ACROSS tenants: a name held by another tenant
+ * (or by a soft-deleted account) was reported "available" and the create then
+ * failed; and a case variant ("Alice" for "alice") was "available" too. It now
+ * asks exactly the question userCreate's own check asks —
+ * assertIdentityFree("username"): the same scope, the same soft-delete rule,
+ * an exact, case-insensitive match — so the probe and the create can never
+ * disagree, whatever Q-18 settles the uniqueness scope to be (that function is
+ * the one place it is encoded).
+ *
+ * Because the answer can disclose that another tenant holds a name, a "taken"
+ * answer to a tenant administrator is the A-128 residual oracle and is treated
+ * as one: the conflict budget is checked BEFORE the lookup (429 once spent, so
+ * a spent budget learns nothing) and each "taken" is counted and audited, as a
+ * refused create is. A super admin is neither limited nor audited.
+ *
+ * @param {{username: string, actorId?: string, actorTenantId?: string,
+ *   actorIsSuperAdmin?: boolean, ipAddress?: string, userAgent?: string}} input
+ * @returns {Promise<object>} the envelope; `data.available`
+ */
 exports.checkUsernameAvailability = async (input) => {
-  const { username } = input;
+  const { username, actorId } = input;
 
   try {
     const normalizedUsername = username.trim().toLowerCase();
 
-    const existingUser = await Users.findOne({
-      where: {
-        username: {
-          [Op.like]: normalizedUsername,
-        },
-      },
-      attributes: ["id", "username"],
-    });
+    await assertConflictBudget(input, actorId);
+
+    let available = true;
+    try {
+      await assertIdentityFree("username", normalizedUsername, {});
+    } catch (err) {
+      if (!err.identityConflict) {
+        throw err;
+      }
+      available = false;
+      await recordIdentityConflict(input, {
+        actorId,
+        field: "username",
+        action: "CREATE",
+        resourceId: null,
+        outcome: "reported_taken",
+      });
+    }
 
     return {
       success: true,
       status: 200,
-      message: existingUser
-        ? "Username is already taken"
-        : "Username is available",
+      message: available ? "Username is available" : "Username is already taken",
       data: {
         username: normalizedUsername,
-        available: !existingUser,
+        available,
       },
     };
   } catch (err) {

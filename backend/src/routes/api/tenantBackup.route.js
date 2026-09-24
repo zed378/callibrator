@@ -173,7 +173,7 @@ router.post(
  *         name: status
  *         schema:
  *           type: string
- *           enum: [PENDING, IN_PROGRESS, COMPLETED, FAILED, RESTORING, RESTORED, DELETING]
+ *           enum: [PENDING, IN_PROGRESS, COMPLETED, FAILED, DELETED]
  *       - in: query
  *         name: backupType
  *         schema:

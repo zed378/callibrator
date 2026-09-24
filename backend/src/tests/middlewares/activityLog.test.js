@@ -280,10 +280,11 @@ describe("activityLog.middleware — redaction (A-14)", () => {
 
   it("A-14: the real logger applies the redaction before any transport sees the record", () => {
     const { records, done } = capture(mod.logger);
-    mod.logger.info("login", { body: { email: "a@b.c", password: "pw-plain" } });
+    mod.logger.info("login", { body: { email: "alice@hospital.example", password: "pw-plain" } });
     done();
     expect(records).toHaveLength(1);
-    expect(records[0].body).toEqual({ email: "a@b.c", password: "[REDACTED]" });
+    // A-228: the address is masked as well.
+    expect(records[0].body).toEqual({ email: "a***@hospital.example", password: "[REDACTED]" });
     expect(typeof records[0].timestamp).toBe("string");
   });
 

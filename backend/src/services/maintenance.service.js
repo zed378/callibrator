@@ -153,12 +153,18 @@ const pick = (source, keys) =>
  * A-190 — the audit row of a work-order change, in the tenant's trail and in
  * the change's transaction. A failed insert is re-thrown by logAction and
  * rolls the change back.
+ *
+ * W-30 — the actor is a user (`actor.userId`) or a job (`actor.systemActor`,
+ * from constants/systemActors.js): the calibration scan has no user, and
+ * logAction refuses an entry that names neither — which rolled back every
+ * work order the scan tried to create.
  */
 const auditWorkOrder = (transaction, tenantId, actor, { action, resourceId, changes }) =>
   auditService.logAction(
     {
       tenantId,
       userId: actor.userId,
+      systemActor: actor.systemActor,
       action,
       resourceType: "MaintenanceWorkOrder",
       resourceId,
@@ -230,6 +236,15 @@ exports.createWorkOrder = async (tenantId, data, actor = {}) => {
       data: transformWorkOrder(newOrder),
     };
   } catch (error) {
+    // W-03 — the partial unique index of migration 0060 allows one open
+    // auto-scheduled work order per device. A second one is a state conflict
+    // (a concurrent scan got there first), not a server error.
+    if (error.name === "SequelizeUniqueConstraintError") {
+      throw {
+        status: 409,
+        message: "This device already has an open auto-scheduled calibration work order",
+      };
+    }
     throw {
       status: error.status || 500,
       message: error.message || "Failed to create maintenance work order",

@@ -97,6 +97,9 @@ export const useUserStore = create<UserState>()((set) => ({
       const message =
         error instanceof Error ? error.message : "Failed to update user";
       set({ isLoading: false, error: message });
+      // F-64: a failed write reaches the caller. Swallowed, the edit modal
+      // closed as if saved and refetchUsers() then cleared this error.
+      throw error;
     }
   },
 

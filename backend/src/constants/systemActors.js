@@ -64,6 +64,13 @@ const SYSTEM_ACTORS = Object.freeze({
    * person is named in `changes.requestedBy`; they are not a principal here.
    */
   BREAK_GLASS: "system:break-glass",
+  /**
+   * W-04 / W-30 (ADR-PENDING-async) — the scheduled calibration scan
+   * (services/calibrationScheduler.service.js), which creates Preventative
+   * work orders for due devices. A manual run from the API is attributed to
+   * the requesting user instead.
+   */
+  CALIBRATION_SCAN: "system:calibration-scan",
 });
 
 const SYSTEM_ACTOR_NAMES = Object.freeze(Object.values(SYSTEM_ACTORS));

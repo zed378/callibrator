@@ -8,28 +8,53 @@ Domain rules: [`../PLAN/07-CALIBRATION-PROGRAM.md`](../PLAN/07-CALIBRATION-PROGR
 
 ## `/api/v1/calibration-records` — 5 endpoints
 
+As-built since P6-03 (2026-09-24, ADR-PENDING-data). Source: `backend/src/routes/api/calibrationRecords.route.js`.
+
 | Method | Path | Permission | Purpose |
 |---|---|---|---|
-| GET | `/` | `equipment` read | list records |
-| POST | `/` | `equipment` write | record a calibration |
-| GET | `/:calibrationRecordId` | `equipment` read | one record |
-| **PUT** | `/:calibrationRecordId` | `equipment` write | update — see below |
-| DELETE | `/:calibrationRecordId` | `equipment` write | soft delete — see below |
+| GET | `/` | `calibration` read | list the records **in force** (`?includeSuperseded=true` adds the corrected originals) |
+| POST | `/` | `calibration` write | record a calibration |
+| GET | `/:calibrationRecordId` | `calibration` read | one record, superseded or not |
+| POST | `/:calibrationRecordId/corrections` | `calibration` write | **correct** — writes a NEW record that supersedes this one |
+| POST | `/:calibrationRecordId/void` | `calibration` write | **void** a record entered in error — final |
 
-### The two endpoints that contradict the rule
+There is **no `PUT` and no `DELETE`**. Both existed until P6-03 and were the mechanism by which BR-7 (append-only)
+could be broken.
 
-BR-7 says calibration records are append-only: a wrong result is corrected by writing a new record, never by editing the original.
+### Correct
 
-`PUT` and `DELETE` exist anyway. They are the mechanism by which the stated rule can be broken.
+```json
+{ "reason": "reference standard was out of calibration", "isCompliant": false }
+```
 
-**This is the widest gap between what the compliance documentation claims and what the API permits.** The rule is enforced by service-layer convention and review, not by the schema, and unlike `audit_logs` — which is protected by having no delete path at all — `calibration_records` has one.
+`reason` is required (3–2000 characters after trimming; blank is refused). Any content field may be sent — omitted
+fields are carried over from the original. The response is **201 with the new record**; the original is kept,
+gains `supersededById`, and drops out of the default list. Two audit rows are written in the same transaction: the
+new record's `CREATE` and the original's `UPDATE` (superseded).
 
-Two things follow:
+| Status | When |
+|---|---|
+| 404 | not found — including another tenant's record |
+| 409 | the record was voided, or already corrected (the message names the correction to correct instead) |
 
-1. Anything routed through `PUT` or `DELETE` here must be treated as an exceptional, audited correction, not ordinary editing.
-2. The fix is a database-level `REVOKE UPDATE, DELETE` for the application role, plus removing these routes. Tracked in [`../../TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md) and named in [`../PLAN/18-RISK-REGISTER.md`](../PLAN/18-RISK-REGISTER.md) as PR-2.
+### Void
 
-Documented rather than omitted, because a compliance claim the code does not support is worse than a named gap — it stops anyone looking again.
+```json
+{ "reason": "entered against the wrong device" }
+```
+
+Sets `isDeleted`, `voidReason`, `voidedBy` once. The record is hidden from ordinary reads and **kept**. There is no
+restore. 409 if already voided, or if it has been corrected (void the latest correction).
+
+### Why these are the only writes — the database says so
+
+Migration 0057 installs a trigger that refuses, **for every role including the owner**, a `DELETE`, a `TRUNCATE`,
+and any `UPDATE` that changes a content column; the lifecycle columns (`superseded_by_id`, `superseded_at`,
+`void_reason`, `voided_by`, `is_deleted`, `deleted_at`, `updated_at`) may each be set once, one way. It also
+creates the application role (`DB_APP_ROLE`, default `callibrator_app`) with `UPDATE`, `DELETE` and `TRUNCATE` on
+the table revoked and `UPDATE` granted back on the lifecycle columns only; the backend drops to that role after
+migrating when `DB_APP_ROLE` is set. Proved as the application role on PostgreSQL 16:
+`backend/src/tests/services/dataIntegrity.p6.live.test.js`.
 
 ## Create
 

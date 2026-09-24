@@ -57,6 +57,7 @@ describe("A-124 — system actors", () => {
       "system:scheduled-backup",
       "system:auth-lockout", // A-126
       "system:break-glass", // P6-07
+      "system:calibration-scan", // W-04 / W-30
     ]);
     for (const name of SYSTEM_ACTOR_NAMES) {
       expect(name).toMatch(/^system:[a-z][a-z-]*$/);

@@ -2,6 +2,7 @@ const { createLogger, format, transports } = require("winston");
 const DailyRotateFile = require("winston-daily-rotate-file");
 const storagePath = require("../utils/storagePath.util");
 const crypto = require("crypto");
+const { AsyncLocalStorage } = require("async_hooks");
 const { combine, timestamp, errors, json } = format;
 const logDir = storagePath("log/activity");
 const isProduction = process.env.NODE_ENV === "production";
@@ -44,7 +45,11 @@ const MAX_DEPTH = 8;
  * `x-api-key`, `refreshToken` and `mfa_secret` all match).
  */
 const SENSITIVE_KEY =
-  /password|passwd|passphrase|^pass$|secret|token|authorization|cookie|apikey|privatekey|publickey|masterkey|encryptionkey|credential|^otp|otp$|^totp|mfacode|recoverycode|backupcode|sessionid|^sid$/;
+  /password|passwd|passphrase|^pass$|secret|token|authorization|cookie|apikey|privatekey|publickey|masterkey|encryptionkey|credential|^otp|otp$|^totp|mfacode|recoverycode|backupcode|sessionid|^sid$|link$/;
+// A-228 — `link$`: a generated link (`activationLink`, `resetLink`,
+// `verificationLink`, `inviteLink`, `magicLink`, ...) carries its capability
+// token in the URL, so the whole value is a credential. The template data
+// handed to the mailer is logged under exactly these keys.
 
 /** A one-time code under a generic key (`code`, `pin`): redacted when it looks like one. */
 const CODE_KEY = /^(code|pin|verificationcode)$/;
@@ -54,12 +59,27 @@ const ONE_TIME_CODE = /^\s*\d{4,10}\s*$/;
 const BEARER = /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi;
 const JWT = /\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]*/g;
 
+/**
+ * A-228 — an email address anywhere in a logged string. It is personal data
+ * (GDPR Art. 4(1)), and a log line is kept, shipped and read far more widely
+ * than the users table. The address is masked, not removed: the first
+ * character of the local part and the domain stay, so an operator can still
+ * tell "the hospital-b.example user" from another without learning who.
+ * The domain must end in a label of two or more letters, which keeps
+ * `user@host` fragments of stack traces and ids out of it.
+ */
+const EMAIL = /\b([A-Za-z0-9._%+-])[A-Za-z0-9._%+-]*@((?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,})\b/g;
+
 const normaliseKey = (key) => String(key).toLowerCase().replace(/[-_]/g, "");
 
 const isSensitiveKey = (key) => SENSITIVE_KEY.test(normaliseKey(key));
 
-const scrubString = (value) =>
-  value.replace(BEARER, `$1 ${REDACTED}`).replace(JWT, REDACTED);
+const scrubString = (value) => {
+  const scrubbed = value.replace(BEARER, `$1 ${REDACTED}`).replace(JWT, REDACTED);
+  // The includes() guard keeps the email pass off the (long, @-free) strings
+  // that are most of what is logged.
+  return scrubbed.includes("@") ? scrubbed.replace(EMAIL, "$1***@$2") : scrubbed;
+};
 
 /**
  * Returns a redacted COPY of `value`; never mutates what the caller logged.
@@ -187,6 +207,32 @@ const redactFormat = format((info) => {
 });
 
 // ======================================================
+// REQUEST CORRELATION (P7-03)
+// ======================================================
+
+/**
+ * The request a log line was written on behalf of. activityLogger runs the
+ * rest of the request inside `requestContext.run({ requestId })`, and every
+ * continuation of it (awaits, callbacks, the service and model layers) sees
+ * the same store — so a service's `logger.error(...)` carries the request's
+ * id without being handed it. Before P7-03 only the two per-request lines
+ * did; correlating a client's X-Request-Id with a failure deeper down meant
+ * matching timestamps.
+ */
+const requestContext = new AsyncLocalStorage();
+
+/** winston format: add `requestId` from the request context, never overwrite one. */
+const requestIdFormat = format((info) => {
+  if (info.requestId === undefined) {
+    const store = requestContext.getStore();
+    if (store && store.requestId) {
+      info.requestId = store.requestId;
+    }
+  }
+  return info;
+});
+
+// ======================================================
 // LOGGER
 // ======================================================
 
@@ -195,6 +241,7 @@ const baseFormat = combine(
   // ISO-8601 with an offset, so a line from a container whose TZ nobody
   // recorded can still be placed in time.
   timestamp(),
+  requestIdFormat(),
   redactFormat(),
   json(),
 );
@@ -313,14 +360,17 @@ const activityLogger = (req, res, next) => {
     });
   }
 
-  next();
+  // P7-03: everything downstream of this request logs with its requestId.
+  requestContext.run({ requestId }, next);
 };
 
 module.exports = {
   activityLogger,
   logger,
+  requestContext,
   // exported for tests and for any caller that must log a request-shaped value
   redactFormat,
+  requestIdFormat,
   sanitizeUrl,
   isSensitiveKey,
 };

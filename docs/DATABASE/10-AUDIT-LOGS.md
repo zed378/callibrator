@@ -47,6 +47,12 @@ The stronger form is a database grant:
 REVOKE UPDATE, DELETE ON audit_logs FROM <application_role>;
 ```
 
+> **2026-09-24 (P6-03):** the application role now exists — `callibrator_app` (`DB_APP_ROLE`), created by
+> migration 0057 — but it still holds `UPDATE, DELETE` on `audit_logs`: the GDPR masking path (A-135) is an
+> `UPDATE`, and revoking it before that path is designed would break it silently. Note also that the backend
+> connects as the owner (a superuser in compose), so a REVOKE alone bites only once `DB_APP_ROLE` is set; the
+> `calibration_records` pattern pairs it with a trigger that holds for every role.
+
 **Test it as the application role, not as the database owner.** As the owner the test passes whether the grant exists or not, which makes it worse than no test — it produces a green tick for an absent control.
 
 ## `resourceId` is a `STRING`

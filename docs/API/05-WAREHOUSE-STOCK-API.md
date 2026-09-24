@@ -136,4 +136,4 @@ Every quantity change goes through a transaction, and every path writes a row th
 | Transfer | `stock_transfers` with the state transition |
 | Opname | `stock_opnames` reconciliation |
 
-A direct `PATCH /:stockId` that changes `quantity` without one of these bypasses the explanation. That is a real hole in the current API — the endpoint exists and does not force a reason. Tracked in [`../../TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md).
+**Closed 2026-09-24 (P6-09, ADR-PENDING-data).** `PATCH /:stockId` refuses a `quantity` that differs from the stored one — **400**, naming `POST /stocks/adjustment` — and accepts the same value as a no-op. `POST /stocks/adjustment` requires a `reason` (3–255 characters after trimming; blank is refused, and the database has a `CHECK` too), records the item (`stockId`) and the level before and after, and writes an audit row in the same transaction. Creating an item with stock on hand records an opening-balance adjustment. See [`../DATABASE/05-WAREHOUSE-TABLES.md`](../DATABASE/05-WAREHOUSE-TABLES.md).

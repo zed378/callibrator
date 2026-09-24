@@ -91,6 +91,11 @@ const migrationModules = [
   ["0057-calibration-records-append-only.js", require("../migrations/0057-calibration-records-append-only")],
   ["0058-tenant-keys-kms-envelope.js", require("../migrations/0058-tenant-keys-kms-envelope")],
   ["0059-stock-adjustment-reason-and-item.js", require("../migrations/0059-stock-adjustment-reason-and-item")],
+  ["0060-work-order-auto-scheduled-unique.js", require("../migrations/0060-work-order-auto-scheduled-unique")],
+  ["0062-audit-log-indexes.js", require("../migrations/0062-audit-log-indexes")],
+  ["0063-user-identity-case-insensitive.js", require("../migrations/0063-user-identity-case-insensitive")],
+  ["0066-signature-records-step-restrict.js", require("../migrations/0066-signature-records-step-restrict")],
+  ["0067-foreign-key-and-tenant-indexes.js", require("../migrations/0067-foreign-key-and-tenant-indexes")],
 ];
 
 const migrator = new Umzug({

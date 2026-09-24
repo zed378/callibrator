@@ -27,7 +27,7 @@ The strictest of the four, and the one that shaped the schema most.
 
 **Originality of calibration records is a service-layer convention, not a database constraint.** `calibration_records` is `paranoid`, so a sufficiently privileged caller can soft-delete a row. `audit_logs` is protected by having no delete path at all; `calibration_records` is not.
 
-Under Part 11 scrutiny this is the finding an auditor would raise first. The fix is a database-level `REVOKE UPDATE, DELETE` for the application role on `calibration_records`, matching what `audit_logs` gets by construction. Tracked in [`../../TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md).
+Under Part 11 scrutiny this is the finding an auditor would raise first. The fix is a database-level `REVOKE UPDATE, DELETE` for the application role on `calibration_records`, matching what `audit_logs` gets by construction. Tracked in [`../../TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md). **Done 2026-09-24 (P6-03, ADR-PENDING-data):** a trigger for every role plus the application-role REVOKE — see [`../DATABASE/07-CALIBRATION-TABLES.md`](../DATABASE/07-CALIBRATION-TABLES.md).
 
 Stating it here rather than omitting it is the point: a compliance document that claims a control it does not have is worse than one that names the gap, because it stops anyone looking again.
 

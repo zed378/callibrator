@@ -89,6 +89,17 @@ module.exports = (sequelize) => {
           key: "id",
         },
       },
+      // W-03 — true only for a work order the calibration scan created. At
+      // most ONE such order per device may be open (Open/InProgress, not
+      // soft-deleted): migration 0060's partial unique index, which is what
+      // makes two concurrent scans create one work order, not two. The index
+      // lives only in the migration — declared here, db.sync() would try to
+      // build it before the migration adds this column on an existing DB.
+      autoScheduled: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+      },
     },
     {
       sequelize,

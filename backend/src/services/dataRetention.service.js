@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { Notification, Session, TenantSettings } = require('../models');
+const { IotReading, Notification, Session, TenantSettings } = require('../models');
 const { AppError } = require('../utils/appError.util');
 const { logger } = require('../middlewares/activityLog.middleware');
 const auditService = require('./audit.service');
@@ -22,6 +22,12 @@ const RETENTION_ACTOR = 'system:retention-purge';
 const DEFAULT_RETENTION_DAYS = {
   notifications: parseInt(process.env.NOTIFICATION_RETENTION_DAYS || '90', 10),
   sessions: parseInt(process.env.SESSION_RETENTION_DAYS || '30', 10),
+  // D-19: device telemetry, one row per device per interval. The platform
+  // default is 0 — kept — because readings are the environmental record a
+  // calibration relies on (ISO 17025 6.3.3; 0037 made their device link
+  // RESTRICT for that reason). A tenant, or IOT_READING_RETENTION_DAYS, opts
+  // in to a period, never shorter than the floor below.
+  iot_readings: parseInt(process.env.IOT_READING_RETENTION_DAYS || '0', 10),
 };
 
 /**
@@ -41,6 +47,10 @@ const DEFAULT_RETENTION_DAYS = {
 const MIN_RETENTION_DAYS = Object.freeze({
   notifications: 30,
   sessions: 30,
+  // - iot_readings, 730 days: two annual calibration intervals — the readings
+  //   behind the current calibration and the one before it stay available to
+  //   an assessor asking about the conditions a device was used in.
+  iot_readings: 730,
 });
 
 const isPurgeable = (entity) =>
@@ -332,6 +342,17 @@ exports.purgeExpiredRecords = async (tenantId) => {
               // so querying by `tenantId` throws "column tenantId does not exist".
               tenant_id: tenantId,
               createdAt: { [Op.lt]: cutoff },
+            },
+            transaction,
+          });
+          break;
+
+        case 'iot_readings':
+          // D-19: served by iot_readings_tenant_id_timestamp (migration 0067).
+          deletedCount = await IotReading.destroy({
+            where: {
+              tenantId,
+              timestamp: { [Op.lt]: cutoff },
             },
             transaction,
           });

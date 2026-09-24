@@ -10,18 +10,21 @@ export const parseXmlMetadata = (xmlText: string) => {
       throw new Error("Invalid XML formatting");
     }
 
+    // F-66: match by LOCAL name in any namespace. SAML metadata is usually
+    // prefixed (md:, ds:). getElementsByTagName matches the qualified name,
+    // and an HTMLCollection is always truthy, so the old
+    // `byTag("X") || byTag("md:X")` never reached its fallback: for prefixed
+    // metadata the SSO URL and the signing certificate came back empty.
+    const byLocalName = (name: string) => xmlDoc.getElementsByTagNameNS("*", name);
+
     let entityId = "";
-    const entityDescriptor =
-      xmlDoc.getElementsByTagName("EntityDescriptor")[0] ||
-      xmlDoc.getElementsByTagName("md:EntityDescriptor")[0];
+    const entityDescriptor = byLocalName("EntityDescriptor")[0];
     if (entityDescriptor) {
       entityId = entityDescriptor.getAttribute("entityID") || "";
     }
 
     let entryPoint = "";
-    const ssoServices =
-      xmlDoc.getElementsByTagName("SingleSignOnService") ||
-      xmlDoc.getElementsByTagName("md:SingleSignOnService");
+    const ssoServices = byLocalName("SingleSignOnService");
     for (let i = 0; i < ssoServices.length; i++) {
       const binding = ssoServices[i].getAttribute("Binding") || "";
       if (binding.includes("HTTP-Redirect")) {
@@ -34,9 +37,7 @@ export const parseXmlMetadata = (xmlText: string) => {
     }
 
     let cert = "";
-    const certNodes =
-      xmlDoc.getElementsByTagName("X509Certificate") ||
-      xmlDoc.getElementsByTagName("ds:X509Certificate");
+    const certNodes = byLocalName("X509Certificate");
     if (certNodes.length > 0) {
       cert = certNodes[0].textContent?.trim() || "";
       if (cert && !cert.includes("-----BEGIN CERTIFICATE-----")) {

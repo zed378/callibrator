@@ -51,7 +51,7 @@ const token = generatePurposeToken(
 ```
 
 - The payload carries `id` and the caller's session id `sid`. No tenant, role or permissions: everything the connection is authorized with is re-read from the database at handshake time.
-- It is signed as `typ: "socket"` through the same key registry as every other token (`jwt.util.js#generatePurposeToken`). `verifyAccessToken` refuses it, so **a socket token is not an HTTP access token**. The handshake calls `verifyPurposeToken(token, "socket")`, so **an access token is not a handshake token**. Before 2026-09-24 the claim was `purpose: "socket"` and nothing read it.
+- It is signed as `typ: "socket"` with the same access key as every other token (the key ring of S-26) (`jwt.util.js#generatePurposeToken`). `verifyAccessToken` refuses it, so **a socket token is not an HTTP access token**. The handshake calls `verifyPurposeToken(token, "socket")`, so **an access token is not a handshake token**. Before 2026-09-24 the claim was `purpose: "socket"` and nothing read it.
 
 ### What the handshake gate does
 

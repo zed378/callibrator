@@ -181,8 +181,10 @@ const applyUserAttribute = async (updates, attribute, value) => {
       break;
     }
     case "userName": {
-      // createUser writes the email to both columns; keep them in step.
-      const email = toScimString(value, "userName");
+      // createUser writes the email to both columns; keep them in step. Stored
+      // lowercased, as every other identity path stores it (D-06, migration
+      // 0063): SCIM userName is caseExact=false (RFC 7643 §4.1.1).
+      const email = toScimString(value, "userName").toLowerCase();
       updates.email = email;
       updates.username = email;
       break;
@@ -265,12 +267,12 @@ const parseUserFilter = (filter) => {
     // IdP's pre-create probe then found nothing and POSTed a duplicate.
     const userNameMatch = trimmed.match(USER_FILTER_USERNAME);
     if (userNameMatch) {
-      where[Op.or] = [{ email: userNameMatch[1] }, { username: userNameMatch[1] }];
+      where[Op.or] = [{ email: userNameMatch[1].toLowerCase() }, { username: userNameMatch[1] }];
       continue;
     }
     const emailMatch = trimmed.match(USER_FILTER_EMAIL);
     if (emailMatch) {
-      where.email = emailMatch[1];
+      where.email = emailMatch[1].toLowerCase(); // stored lowercased (D-06)
       continue;
     }
     const activeMatch = trimmed.match(USER_FILTER_ACTIVE);
@@ -379,7 +381,13 @@ const provisioningFailed = (tenantId, cause) => {
 };
 
 exports.createUser = async (tenantId, scimData) => {
-  const email = (scimData.emails && scimData.emails[0]?.value) || scimData.userName;
+  // D-06: lowercased, as every other identity path stores an address. Sign-in
+  // is by username or email across every tenant (ADR-051 Q-18), and an address
+  // stored as the IdP happened to case it could sit beside another tenant's
+  // identical address — two accounts for one mailbox. Migration 0063 makes the
+  // database refuse that; this keeps SCIM from attempting it.
+  const rawEmail = (scimData.emails && scimData.emails[0]?.value) || scimData.userName;
+  const email = typeof rawEmail === "string" ? rawEmail.trim().toLowerCase() : rawEmail;
   const firstName = scimData.name?.givenName || "SCIM";
   const lastName = scimData.name?.familyName || "User";
 

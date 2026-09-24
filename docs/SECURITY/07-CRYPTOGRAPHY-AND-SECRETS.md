@@ -8,10 +8,12 @@ The application **exits rather than starting** without these:
 
 | Variable | Protects | Loss consequence |
 |---|---|---|
-| `CERT_SIGNING_SECRET` | HMAC for certificate QR verification | **every issued certificate fails public verification, permanently** — the old key cannot be re-derived |
-| `ENCRYPT_KEY` | e-signature private keys and tenant storage credentials at rest | **every stored private key and credential becomes undecryptable** |
+| `CERT_SIGNING_SECRET` | the HMAC `generateCertificatePdf` returns, the public-document capability links (`mintDocumentUrl`), and signed download URLs when `ATTACHMENT_URL_SECRET` is unset | short-lived links in flight stop validating. **No issued certificate depends on it** — the HMAC is neither stored, printed nor verified (A-241, 2026-09-24); public verification is the unkeyed integrity hash plus the database |
+| `ENCRYPT_KEY` | **legacy only** since migration 0058 (P6-10): e-signature private keys written before it were AES-CBC under this key; 0058 re-wraps them as KMS envelopes | a legacy row restored from an old backup cannot be read. Required at startup only while a legacy row exists; the deploy templates still carry it |
 | `ATTACHMENT_URL_SECRET` | HMAC for signed attachment download URLs | existing signed URLs stop validating |
-| `KMS_MASTER_KEY` | wraps tenant storage credentials (`src/services/kms.service.js`) | **every wrapped credential becomes undecryptable** — the same consequence as losing `ENCRYPT_KEY` |
+| `KMS_MASTER_KEY` | wraps every tenant secret at rest — `tenant_settings` secret keys (SSO/OIDC/Stripe/storage/AI credentials), `webhooks.secret`, and since 0058 `tenant_keys.private_key` (`src/services/kms.service.js`) | **every wrapped value becomes undecryptable**. Rotatable since P6-10: see `KMS_MASTER_KEY_PREVIOUS` and [`13-KEY-ROTATION.md`](13-KEY-ROTATION.md) |
+
+**Since P6-10 `ENCRYPT_KEY` is no longer checked at startup** (`eSignature.service.js` refused to load without it). Migration 0058 refuses instead, naming the rows, if a legacy signing key exists and no `ENCRYPT_KEY` opens it. Keep it configured and backed up until `npm run keys:rotate -- --dry-run` reports `converted from legacy 0` on the production database.
 
 Generate each with:
 
@@ -93,8 +95,8 @@ The same shape applies to `ACME_DIRECTORY_URL`, which **defaults to the Let's En
 | Passwords | hashed, adaptive function — never reversible |
 | Session tokens | **hash only** (`sessions.token_hash`) |
 | API keys | **hash only**, plus a display `keyPrefix`; plaintext returned once at creation |
-| Tenant private keys | encrypted with `ENCRYPT_KEY` |
-| Tenant storage credentials | encrypted with `ENCRYPT_KEY` |
+| Tenant private keys | KMS envelope — AES-256-GCM, tenant id as AAD, `v2:<keyId>:…` (P6-10, migration 0058; was AES-CBC under `ENCRYPT_KEY`, unauthenticated) |
+| Tenant storage credentials | KMS envelope, as above (`tenant_settings.storage_credentials`) — never `ENCRYPT_KEY`, whatever earlier versions of this table said |
 | MFA secrets | stored; returned once at enrolment |
 | OTP codes | stored with an expiry; must be **cleared on use** |
 | Certificate signatures | detached, in `certificates.digitalSignature` |
@@ -138,18 +140,21 @@ A secret in `audit_logs` is a permanent secret in a table designed to be undelet
 
 ## Rotation
 
-| Secret | Rotatable | Cost |
+As-built since P6-10 / S-08 / S-26 (2026-09-24, ADR-PENDING-data). The procedure for each is [`13-KEY-ROTATION.md`](13-KEY-ROTATION.md).
+
+| Secret | Rotatable | How, and the cost |
 |---|---|---|
-| `JWT_ACCESS_SECRET` | yes | all sessions invalidated |
-| `JWT_REFRESH_SECRET` | yes | all refresh tokens invalidated |
+| `JWT_ACCESS_SECRET` (HS\*) / `JWT_PRIVATE_KEY` (RS\*, ES\*) | **yes, without logging anyone out** | new key current, old key in `JWT_ACCESS_SECRET_PREVIOUS` / `JWT_PUBLIC_KEY_PREVIOUS` for one access-token lifetime, then removed. Every token names its key (`kid` = fingerprint). The in-process "key registry" that claimed to rotate and expired after 30 days of uptime is deleted (S-26) |
+| `JWT_REFRESH_SECRET` | yes | legacy JWT refresh tokens only; the refresh tokens the login flow issues are opaque and stored, so rotating it invalidates nothing in use |
+| **`KMS_MASTER_KEY`** | **yes** | new key current, old key in `KMS_MASTER_KEY_PREVIOUS`, `npm run keys:rotate` until it reports zero, then drop the old key. Every envelope names its key (`v2:<keyId>:`); v1 envelopes (no id) are read by trying each key of the ring |
+| **`ENCRYPT_KEY`** | **retired by re-encryption** | migration 0058 moves every signing key it protected into a KMS envelope; after that it is read only for a restored legacy row. `ENCRYPT_KEY_PREVIOUS` lets a restored row under an older value still be read |
+| **`CERT_SIGNING_SECRET`** | **yes** | nothing persisted depends on it (A-241): rotating invalidates only links in flight (minutes). The certificate HMAC now names its key (`hmac-sha256:<keyId>`), so anything that starts storing it can verify against the key it was made with |
 | API keys | yes | re-issue per key |
 | OIDC client secrets | yes | `POST /clients/:clientId/rotate-secret` — rotation without re-registration is what makes it happen |
 | Webhook secrets | yes | receiver must be updated |
-| `tenant_keys` | yes | old certificates keep their old key id |
-| **`CERT_SIGNING_SECRET`** | **effectively no** | rotating breaks verification of every certificate issued under the old key |
-| **`ENCRYPT_KEY`** | **only with re-encryption** | requires decrypting and re-encrypting every wrapped value |
+| `tenant_keys` (e-signature key pairs) | yes | a new pair per tenant; old signatures keep their `keyId` and verify against the (soft-deleted) old public key |
 
-The last two are the ones to think about before an incident rather than during one. There is no rotation procedure for them today; designing one is in [`../../TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md).
+**Rehearsed on PostgreSQL 16 against seeded data, not a copy of production** (`backend/src/tests/services/keyRotation.s08.live.test.js`). The P6-10 DoD asks for a rehearsal against a production copy; that is still owed, and the runbook says so.
 
 ## Where Secrets Live
 

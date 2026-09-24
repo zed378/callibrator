@@ -69,7 +69,7 @@ QMS (non-conformances, CAPA, SOP) · risk register · vendor scorecards · workf
 | **P6-04** | Build guard: no route without a permission gate | 🟡 **PARTIAL** 2026-09-25 — guard test green (ADR-058); runs only in `npm test` until CI | the likeliest authorization defect |
 | **P6-05** | Post-migration column verification | ⏳ TODO | silent no-op migrations (PR-5) |
 | **P6-06** | Composite unique on `(tenant_id, serial_number)` | ⏳ TODO | a cross-tenant oracle |
-| **P6-07** | Mandatory MFA at role level 10 | ⏳ TODO | PR-3 |
+| **P6-07** | Mandatory MFA at role level 10 | ✅ **DONE** 2026-09-25 — enrolment-only session + audited break-glass (ADR-059); E2E harness change not run live | PR-3 |
 | **P6-08** | Align Swagger with the GDPR validators | ✅ **DONE** 2026-09-25 — `swaggerValidatorAlignment.p608.test.js`; 33 other drifts pinned | AC-29 |
 | **P6-09** | Reason required on every stock quantity change | ⏳ TODO | an unexplained quantity change |
 | **P6-10** | Rotation procedure for the two unrotatable secrets | ⏳ TODO | "rotate the key" is not currently available |

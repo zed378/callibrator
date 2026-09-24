@@ -136,6 +136,9 @@ data:
   # the calibration sweep and tenant offboarding still ran on every API pod
   # at their defaults (S-40). The webhook dispatcher is the exception — its
   # claim is FOR UPDATE SKIP LOCKED, safe on every replica (ADR-054).
+  # W-02: the one switch the code reads for every singleton job, so a
+  # scheduler added later is off here even if nobody lists its variable.
+  SCHEDULERS_ENABLED: "false"
   SESSION_CLEANUP_SCHEDULER: "disabled"
   BACKUP_SCHEDULER: "disabled"
   RETENTION_SCHEDULER: "disabled"

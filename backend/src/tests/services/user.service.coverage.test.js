@@ -471,25 +471,36 @@ describe("user.service - branch & error coverage", () => {
   // checkUsernameAvailability
   // ==============================================================
   describe("checkUsernameAvailability", () => {
-    it("should normalise the username before querying and in the response", async () => {
-      const { Op } = require("sequelize");
+    // A-258: the lookup is assertIdentityFree's — global, soft-deleted
+    // included, exact and case-insensitive. The budget and audit paths of a
+    // tenant administrator are in user.usernameCheck.a258.test.js.
+    it("should normalise the username and look it up exactly as userCreate's check does", async () => {
       Users.findOne.mockResolvedValue(null);
 
-      const result = await checkUsernameAvailability({ username: "  MiXeD  " });
+      const result = await checkUsernameAvailability({ username: "  MiXeD  ", actorIsSuperAdmin: true });
 
-      expect(Users.findOne).toHaveBeenCalledWith({
-        where: { username: { [Op.like]: "mixed" } },
-        attributes: ["id", "username"],
-      });
+      const options = Users.findOne.mock.calls[0][0];
+      expect(options.skipTenantScope).toBe(true);
+      expect(options.paranoid).toBe(false);
+      expect(Object.values(options.where.username)).toEqual(["mixed"]);
       expect(result.data.username).toBe("mixed");
       expect(result.data.available).toBe(true);
       expect(result.message).toBe("Username is available");
     });
 
+    it("should answer taken, without auditing, when a super admin probes a held name", async () => {
+      Users.findOne.mockResolvedValue({ id: "holder" });
+
+      const result = await checkUsernameAvailability({ username: "held", actorIsSuperAdmin: true });
+
+      expect(result.data.available).toBe(false);
+      expect(result.message).toBe("Username is already taken");
+    });
+
     it("should map a lookup failure to a 500", async () => {
       Users.findOne.mockRejectedValue(new Error("db gone"));
 
-      const err = await catchErr(checkUsernameAvailability({ username: "x" }));
+      const err = await catchErr(checkUsernameAvailability({ username: "x", actorIsSuperAdmin: true }));
 
       expect(err).toEqual({ status: 500, message: "db gone" });
       expect(logger.error).toHaveBeenCalledWith(

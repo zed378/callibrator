@@ -6,33 +6,61 @@ Endpoints: [`../API/01-AUTHENTICATION-API.md`](../API/01-AUTHENTICATION-API.md).
 
 ## Password Login
 
+*As-built after ADR-059 (A-185, 2026-09-24).*
+
 ```
 POST /auth/login
   ├─ Express rate limit          20 / 15 min
-  ├─ Redis endpoint limit        5 / 15 min, with lockout
-  ├─ resolve user by email
-  ├─ reject if tenants.status = 'suspended'         (BR-3)
-  ├─ reject if users.lockedUntil is in the future
-  ├─ verify password
-  │    fail → failedLoginAttempts++ → maybe lockedUntil → 401
-  ├─ reset failedLoginAttempts
-  ├─ if mfaEnabled → return a challenge, no token
+  ├─ sign-in throttle (Redis)    identifier+address: 5 failures / 15 min → 429
+  │                              identifier, any address: 100 / hour → 429
+  │                              (checked BEFORE the account is looked up)
+  ├─ resolve user by username or email
+  ├─ verify password — an unknown identifier is compared against a dummy
+  │    bcrypt hash, so the timing matches
+  │    fail (unknown, wrong password, suspended, locked — all alike)
+  │       → count against the throttle → 401 "Invalid credentials"
+  ├─ — below here only for the holder of the password —
+  ├─ reject a deactivated/suspended/erased account          403
+  ├─ reject while users.lockedUntil is in the future        423  (set by the MFA step only)
+  ├─ reject if the tenant is suspended or deleted (BR-3)    403
+  ├─ clear this identifier+address throttle
+  ├─ if mfaEnabled → return an "mfa" purpose token, no session
   ├─ create sessions row: token hash, IP, user agent, device
   ├─ audit_logs LOGIN
-  └─ return { data, token, session }
+  └─ return { data, token, session }   — `data.mfaEnrolmentRequired` for an operator without MFA (P6-07)
 ```
 
 ### Uniform failure
 
-Bad credentials always return the same 401 regardless of whether the account exists. Distinguishing them is an account-existence oracle.
+Every failure without the right password returns the same 401 "Invalid credentials" — an unknown
+identifier, a wrong password, a suspended or deactivated account, an account the MFA step locked.
+Until A-185 a suspended account answered 403 to *any* password, and the fifth wrong password of a
+**real** account answered 423 while an unknown one answered 401 forever: two account-existence
+oracles.
 
 The same applies to `/send-otp`, which must return an identical response whether or not the address is known.
 
-### Lockout
+### Throttling, not lockout (A-185)
 
-`failedLoginAttempts` and `lockedUntil` on the user row, plus a Redis counter that can lock and revoke.
+A password sign-in never locks an **account**. The fifth failure of one identifier from one address
+pauses that identifier **from that address** for fifteen minutes; a hundred failures of one identifier
+from any addresses in an hour (NIST SP 800-63B §5.2.2's ceiling) pause it everywhere for an hour. The
+keys are the SHA-256 of the identifier as typed (trimmed, lower-cased) plus `req.ip`, so an invented
+identifier is paused exactly like a real one. A pause of a real account writes one `ACCOUNT_LOCKED`
+audit row (`changes.scope` = `identifier+address` or `identifier`) in that account's tenant.
 
-Lockout is a denial-of-service vector against a known account — an attacker who knows an email can keep that user locked out. The counter is per account **and** per source; a lockout that only counts by account hands an attacker a cheap denial tool.
+Until A-185 the fifth wrong password wrote `users.lockedUntil`: anyone who knew a username could lock
+its owner out, everywhere, indefinitely. `lockedUntil` is now written only by the MFA step's
+per-user budget (A-81), whose attempts already required the password, and it is disclosed (423) only
+to a caller who has just proved the password.
+
+**Residuals, accepted:**
+- the identifier ceiling can still be triggered on purpose by a distributed attacker (100 requests
+  per hour per targeted identifier) — the alternative, no ceiling, gives a botnet unbounded guesses;
+- where a deployment's `req.ip` is one proxy address shared by every browser (A-16), the pair
+  collapses to the identifier, bounded to fifteen minutes;
+- the request that fills a pair for a real account also writes the audit row, a few milliseconds
+  of extra work once per window.
 
 ## Tokens
 
@@ -46,6 +74,17 @@ Authorization: Bearer <jwt>
 | `JWT_ACCESS_EXPIRED` | access lifetime |
 | `JWT_REFRESH_SECRET` | **must differ from the access secret** |
 | `JWT_REFRESH_EXPIRED` | refresh lifetime |
+
+### The browser never holds the access token (A-71)
+
+The backend answers a sign-in with the access token in the body (`token`): its callers are
+server-side — the Next.js route handlers, the E2E suite, integrations. The browser reaches only
+Next.js (nginx sends `/api/` there), and **no response Next returns to the browser carries an access
+token**: `app/api/v1/auth/login` (F-62) and the catch-all proxy (for `/auth/mfa/login` and
+`/auth/impersonate`, A-71) write it into the httpOnly `auth_token` cookie and remove `token` and
+`refreshToken` from the body. The one token the browser does receive at sign-in is the short-lived
+`mfa` purpose token, which works only at `/auth/mfa/login`. A client that needs a bearer credential
+of its own uses an API key.
 
 ### The `maxAge` defect
 
@@ -86,13 +125,47 @@ With MFA enabled, `POST /login` returns a **challenge and no token**; the client
 
 `mfaSecret` must never be returned after enrolment. It is returned once, during `/mfa/setup`, so the user can scan it.
 
-### The gap
+### Platform operators must have MFA (P6-07, ADR-059)
 
-**MFA is available, not enforced — including for `SUPERADMIN`.**
+A role at level 10 (`SUPERADMIN`) bypasses every permission check and every tenant predicate, so it
+may not work without a second factor. Enforcement is **server-side**, in `auth.middleware`
+(`utils/mfaPolicy.util.js#mfaEnrolmentRequired`):
 
-`SUPERADMIN` bypasses every permission check and every tenant predicate, and there is no second gate behind it. A super-admin account without a second factor is one credential away from total compromise of every tenant.
+- an operator **without** MFA signs in with the password to an **enrolment-only session**: every route
+  but `/auth/mfa/setup`, `/auth/mfa/verify`, `/auth/just-update-password`, `/auth/verify` and the
+  two sign-outs answers **403 `MFA_ENROLMENT_REQUIRED`** — impersonation included. The login
+  response carries `data.mfaEnrolmentRequired: true` and the frontend goes to the MFA page;
+- an operator **with** MFA gets the ordinary challenge; the password alone opens no session;
+- an operator never signs in through a tenant's SSO (A-210, `sso.service#provisionUser`, 403): the
+  tenant's own administrators configure that IdP.
 
-Mandatory MFA at role level 10, enforced at login rather than requested at onboarding, is in [`../../TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md) and named as PR-3.
+**Enrolment path for the seeded super admin** (`sys@mail.com`, and any operator created without MFA):
+sign in with the password → the MFA page → scan the secret → confirm a code → store the ten recovery
+codes. Nothing else works until that is done, and nothing is locked.
+
+**Break-glass** (the only operator lost both the authenticator and every recovery code), in order:
+1. the operator's own recovery codes ("use a recovery code" at sign-in);
+2. another super admin: `POST /users/:userId/mfa/reset`;
+3. last: `node src/scripts/breakGlassMfaReset.js --user <username|email> --requested-by "<name>"
+   --ticket <ref>` on the backend host (it needs the database credentials). It clears the enrolment,
+   revokes every session and writes an audit row (actor `system:break-glass`, with the name and the
+   ticket) in one transaction. **It does not turn the requirement off**: the next sign-in is the
+   enrolment-only session again.
+
+The E2E suite signs in as the seeded operator; `src/tests/e2e/setup.js` enrols it on first use and
+completes the TOTP step (state file per identifier, `E2E_SUPERADMIN_TOTP_SECRET` to supply a known
+secret).
+
+### Tenant "MFA required" policy (A-160) — the two owner questions, decided
+
+- **A passkey does not count.** WebAuthn here is a step-up check inside an existing session; no
+  sign-in asks for it. Counting it would let an account satisfy the policy with a factor its
+  sign-in never uses. Revisit when WebAuthn becomes a sign-in factor.
+- **An SSO session answers to its identity provider's MFA.** A SAML/OIDC session is marked
+  (`sessions.auth_method`, migration `0052`; the access token's `amr` claim, kept through a refresh)
+  and is not asked to enrol a local TOTP that its sign-in would never ask for. A tenant that
+  requires MFA must require it at its IdP. Password sessions of the same users are still held to the
+  policy.
 
 ## WebAuthn
 
@@ -126,6 +199,14 @@ Storing `webauthnSignCount` without comparing it is storing a defence nobody app
 | OTP request | 5 / hour (Express), 3 / 15 min with lockout (Redis) |
 | Reset attempt | 5 / 5 min |
 
+An activation link verifies **the address it was mailed to** (A-191): the token carries the SHA-256
+of that address (`eh`, `utils/activationToken.util.js`), and `activateAccount` refuses it once the
+account's address has changed — a registration link never followed no longer verifies an address
+rectified after it was sent. Verifying is audited (`EMAIL_VERIFIED`). Verification stays
+informational at login (ADR-051 Q-11): every provisioning path the platform controls marks the
+address verified, and historic admin-created rows were stored unverified by a defect, so enforcing
+it would lock out real users with no way to tell them apart.
+
 An OTP must be single-use and cleared on use. An OTP that remains valid until expiry after being consumed is a replayable credential.
 
 ## Federation
@@ -134,7 +215,21 @@ An OTP must be single-use and cleared on use. An OTP that remains valid until ex
 
 SAML and OIDC, with **per-tenant callbacks** (`/sso/callback/:tenantCode`) because each tenant may federate with its own identity provider and a shared callback cannot tell which IdP an assertion came from.
 
-Trust configuration is per tenant. A misconfigured tenant IdP compromises that tenant, not the platform — which is the correct blast radius and worth preserving.
+Trust configuration is per tenant. A misconfigured tenant IdP compromises that tenant, not the platform — which is the correct blast radius and worth preserving. That is also why a platform operator never signs in through one (A-210).
+
+**OIDC endpoints come from discovery (A-188).** `oidc_authority` is the issuer base; the endpoints,
+the JWKS location and the issuer the ID token is checked against are read from
+`<authority>/.well-known/openid-configuration` (cached an hour). For Microsoft Entra ID configure
+`https://login.microsoftonline.com/<directory-id>/v2.0` (the older
+`…/<directory-id>/oauth2/v2.0` form is read the same way). A **multi-tenant** authority (`/common`,
+`/organizations`) is refused: through JIT provisioning it would admit any directory's users into the
+hospital. An IdP that answers the discovery URL with 404 gets the endpoints this client always
+derived. A **public client** (no `oidc_client_secret`) sends no `client_secret` — PKCE is its proof.
+
+A refused callback (state, IdP answer, suspended account, SSO not enabled) redirects the browser to
+`/login?error=<code>` — `sso_state`, `sso_unavailable`, `sso_account_refused`, `sso_failed`,
+`sso_error` — and the reason is logged; the JSON envelope is never rendered as a page. An SSO
+sign-in stamps `users.last_login_at`.
 
 ### As a provider
 
@@ -160,10 +255,13 @@ The access token is not handed to a transport that keeps it in memory for the li
 
 | Situation | Response |
 |---|---|
-| Bad credentials | 401, uniform |
+| Bad credentials — unknown identifier, wrong password, suspended or locked account | 401 "Invalid credentials", uniform (A-185) |
+| The right password, account suspended | 403 "Account is suspended" |
+| The right password, account locked by the MFA step | 423 "Account temporarily locked" |
+| Sign-in paused (identifier+address, or identifier) | 429, identical for unknown identifiers (A-185) |
 | Expired token | 401 **"Invalid token"** |
-| Locked account | 401 with a lockout message |
 | Suspended tenant | 403 "Tenant account is suspended" |
+| Operator without MFA, or tenant policy | 403 `MFA_ENROLMENT_REQUIRED` (P6-07, A-160) |
 | Rate limited | 429 with `X-RateLimit-*` |
 
 An expired token reporting "Invalid token" rather than a distinct message is a known cosmetic wart, left alone deliberately: changing it churns a fully-covered unit suite for no security or usability gain. Recorded so the next reader does not treat it as a bug to chase.

@@ -102,7 +102,13 @@ exports.checkUsernameAvailability = asyncHandler(async (req, res) => {
     validateUser(req.body, checkUsernameSchema),
     res,
   );
-  const result = await userService.checkUsernameAvailability(validated);
+  // A-258: the probe answers what userCreate would, so it carries the same
+  // actor — its "taken" answers are counted and audited as A-128 conflicts.
+  const result = await userService.checkUsernameAvailability({
+    ...validated,
+    actorId: req.user.id,
+    ...getActor(req),
+  });
 
   success(
     res,

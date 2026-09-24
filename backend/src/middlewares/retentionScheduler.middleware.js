@@ -1,4 +1,5 @@
 const cron = require("node-cron");
+const { scheduleSetting } = require("../utils/schedulerSwitch.util"); // W-02: one switch for every singleton scheduler
 const { logger } = require("./activityLog.middleware");
 const { runRetentionSweep } = require("../services/dataRetention.service");
 const {
@@ -27,7 +28,7 @@ const DEFAULT_SCHEDULE = "0 2 * * *"; // daily at 2:00 AM
  * is now a failed run that wakes somebody.
  */
 const initRetentionScheduler = () => {
-  const schedule = process.env.RETENTION_SCHEDULER || DEFAULT_SCHEDULE;
+  const schedule = scheduleSetting("RETENTION_SCHEDULER", DEFAULT_SCHEDULE);
 
   if (schedule === "disabled" || schedule === "off") {
     logger.info("Retention scheduler disabled via RETENTION_SCHEDULER");

@@ -1,4 +1,5 @@
 const cron = require("node-cron");
+const { scheduleSetting } = require("../utils/schedulerSwitch.util"); // W-02: one switch for every singleton scheduler
 const { logger } = require("./activityLog.middleware");
 const { sweepQuarantine } = require("../services/quarantineSweep.service");
 const {
@@ -18,7 +19,7 @@ const DEFAULT_SCHEDULE = "17 * * * *"; // hourly, off the top of the hour
  * like every scheduled job (P7-02).
  */
 const initQuarantineSweep = () => {
-  const schedule = process.env.QUARANTINE_SWEEP_SCHEDULER || DEFAULT_SCHEDULE;
+  const schedule = scheduleSetting("QUARANTINE_SWEEP_SCHEDULER", DEFAULT_SCHEDULE);
 
   if (schedule === "disabled" || schedule === "off") {
     logger.info("Quarantine sweep disabled via QUARANTINE_SWEEP_SCHEDULER");
