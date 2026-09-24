@@ -117,6 +117,22 @@ describe("POST /api/v1/auth/sso-session (A-60)", () => {
     expect(JSON.stringify(json)).not.toContain("access-jwt");
   });
 
+  it("A-16: the SSO proxy does not forward a browser-supplied X-Forwarded-For verbatim", async () => {
+    backendAnswers(401, { success: false, message: "Invalid or expired SSO code" });
+
+    await post({ code: CODE }, { "x-forwarded-for": "6.6.6.6, 203.0.113.9" });
+
+    const sent = (global.fetch as jest.Mock).mock.calls[0][1].headers;
+    expect(sent["X-Forwarded-For"]).toBe("203.0.113.9");
+
+    (global.fetch as jest.Mock).mockClear();
+    backendAnswers(401, { success: false });
+    await post({ code: CODE }, { "x-forwarded-for": "forged" });
+    expect((global.fetch as jest.Mock).mock.calls[0][1].headers).not.toHaveProperty(
+      "X-Forwarded-For",
+    );
+  });
+
   it("sets no cookie when the backend refuses the code", async () => {
     backendAnswers(401, { success: false, message: "Invalid or expired SSO code" });
 

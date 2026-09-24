@@ -1,8 +1,16 @@
 // auth.controller.js
 const { AppError } = require("../utils/appError.util");
 const authService = require("../services/auth.service");
-const { asyncHandlerWithMapping } = require("../utils/controllerWrapper.util");
+const {
+  asyncHandlerWithMapping,
+  resolveErrorStatus,
+} = require("../utils/controllerWrapper.util");
 const { success, login } = require("../utils/response.util");
+const {
+  noteAuthFailure,
+  noteAuthSuccess,
+} = require("../services/rateLimiter.redis.service");
+const { logger } = require("../middlewares/activityLog.middleware");
 const {
   registerSchema,
   loginSchema,
@@ -10,8 +18,64 @@ const {
   validate,
 } = require("../validators/auth.validator");
 
+// ------------------------------------------------------------------
+// A-67 — RATE-LIMIT OUTCOME
+//
+// authPreCheck (auth.route.js) refuses a locked-out caller and attaches
+// `req.rateLimitContext`; only the handler knows how the attempt ended, so the
+// handler records it. A 4xx other than 429 counts as a failure and is recorded
+// BEFORE the error response goes out; a 5xx is our fault and is not held
+// against the caller; a success clears the per-user/per-token counters.
+//
+// The status is resolved from the SAME error map asyncHandlerWithMapping uses,
+// so what is counted is exactly what the client is answered with.
+//
+// The failure is also logged (winston, `warn`) with its real reason — the
+// client sees only the mapped message. audit_logs has no failure action
+// (ENUM: CREATE, UPDATE, DELETE, LOGIN, APPROVE, EXPORT), and an unknown
+// username has no tenant to write the NOT NULL tenant_id with, so a failed
+// attempt writes no audit row (A-72).
+// ------------------------------------------------------------------
+
+/**
+ * @param {string} endpoint - AUTH_ENDPOINTS key
+ * @param {Record<string, number>} errorMap - the map the handler is wrapped with
+ * @param {(req: object, res: object) => Promise<unknown>} handler
+ * @returns {(req: object, res: object) => Promise<unknown>}
+ */
+const withAuthOutcome = (endpoint, errorMap, handler) => async (req, res) => {
+  let result;
+  try {
+    result = await handler(req, res);
+  } catch (error) {
+    const status = resolveErrorStatus(error, errorMap);
+    if (status >= 400 && status < 500 && status !== 429) {
+      await noteAuthFailure(req, endpoint);
+      logger.warn("Authentication attempt failed", {
+        endpoint,
+        status,
+        reason: error.message,
+        ip: req.ip || null,
+      });
+    }
+    throw error;
+  }
+  await noteAuthSuccess(req, endpoint);
+  return result;
+};
+
+const REGISTER_ERRORS = { registered: 409, used: 409 };
+const LOGIN_ERRORS = {
+  credentials: 401,
+  verify: 403,
+  suspended: 403,
+  locked: 423,
+};
+const SEND_OTP_ERRORS = { wait: 429, verified: 403 };
+const RESET_PASSWORD_ERRORS = {};
+
 exports.register = asyncHandlerWithMapping(
-  async (req, res) => {
+  withAuthOutcome("register", REGISTER_ERRORS, async (req, res) => {
     validate(req.body, registerSchema);
 
     const origin = req.headers.origin || req.headers.host || "";
@@ -25,11 +89,8 @@ exports.register = asyncHandlerWithMapping(
       "Registration successful. Please check your email for activation.",
       201,
     );
-  },
-  {
-    registered: 409,
-    used: 409,
-  },
+  }),
+  REGISTER_ERRORS,
 );
 
 exports.activation = asyncHandlerWithMapping(
@@ -49,7 +110,7 @@ exports.activation = asyncHandlerWithMapping(
 );
 
 exports.login = asyncHandlerWithMapping(
-  async (req, res) => {
+  withAuthOutcome("login", LOGIN_ERRORS, async (req, res) => {
     validate(req.body, loginSchema);
 
     const result = await authService.loginUser({
@@ -59,34 +120,29 @@ exports.login = asyncHandlerWithMapping(
     });
 
     login(res, result.data, result.token, result.session);
-  },
-  {
-    credentials: 401,
-    verify: 403,
-    suspended: 403,
-    locked: 423,
-  },
+  }),
+  LOGIN_ERRORS,
 );
 
 exports.sendOTP = asyncHandlerWithMapping(
-  async (req, res) => {
+  withAuthOutcome("forgotPassword", SEND_OTP_ERRORS, async (req, res) => {
     await authService.requestOTP(req.body);
 
     success(res, null, null, "If the account exists, OTP has been sent", 200);
-  },
-  {
-    wait: 429,
-    verified: 403,
-  },
+  }),
+  SEND_OTP_ERRORS,
 );
 
-exports.resetPassword = asyncHandlerWithMapping(async (req, res) => {
-  validate(req.body, resetPasswordSchema);
+exports.resetPassword = asyncHandlerWithMapping(
+  withAuthOutcome("resetPassword", RESET_PASSWORD_ERRORS, async (req, res) => {
+    validate(req.body, resetPasswordSchema);
 
-  await authService.processResetPassword(req.body);
+    await authService.processResetPassword(req.body);
 
-  success(res, null, null, "Password reset successful", 200);
-}, {});
+    success(res, null, null, "Password reset successful", 200);
+  }),
+  RESET_PASSWORD_ERRORS,
+);
 
 exports.logout = asyncHandlerWithMapping(async (req, res) => {
   await authService.logoutSession();
@@ -178,38 +234,44 @@ exports.verifyMfaSetup = asyncHandlerWithMapping(async (req, res) => {
   "Invalid MFA code": 400,
 });
 
-exports.loginMfa = asyncHandlerWithMapping(async (req, res) => {
-  const { code, token } = req.body || {};
-  if (!code || !token) {
-    throw new AppError(400, "MFA code and temporary token are required");
-  }
-  
-  // Verify the temporary MFA token. A-59: only an "mfa" purpose token is
-  // accepted here — an access token, an activation token or a socket token
-  // is refused, and the mfa token is refused everywhere else.
-  const { verifyPurposeToken } = require("../utils/jwt.util");
-  let decoded;
-  try {
-    decoded = verifyPurposeToken(token, "mfa");
-  } catch (err) {
-    throw new AppError(401, "Invalid or expired login token");
-  }
+// A-81: wrong codes count against the user, the MFA token and (when enabled)
+// the address that mfaLoginPreCheck attached; a success clears the user and
+// token counters.
+const MFA_LOGIN_ERRORS = { "Invalid MFA code": 401 };
 
-  if (!decoded.mfaRequired || !decoded.id) {
-    throw new AppError(401, "Invalid token payload");
-  }
+exports.loginMfa = asyncHandlerWithMapping(
+  withAuthOutcome("mfaLogin", MFA_LOGIN_ERRORS, async (req, res) => {
+    const { code, token } = req.body || {};
+    if (!code || !token) {
+      throw new AppError(400, "MFA code and temporary token are required");
+    }
 
-  const result = await authService.loginMfa(
-    decoded.id,
-    code,
-    req.ip,
-    req.headers["user-agent"]
-  );
+    // Verify the temporary MFA token. A-59: only an "mfa" purpose token is
+    // accepted here — an access token, an activation token or a socket token
+    // is refused, and the mfa token is refused everywhere else.
+    const { verifyPurposeToken } = require("../utils/jwt.util");
+    let decoded;
+    try {
+      decoded = verifyPurposeToken(token, "mfa");
+    } catch (err) {
+      throw new AppError(401, "Invalid or expired login token");
+    }
 
-  login(res, result.data, result.token, result.session);
-}, {
-  "Invalid MFA code": 401,
-});
+    if (!decoded.mfaRequired || !decoded.id) {
+      throw new AppError(401, "Invalid token payload");
+    }
+
+    const result = await authService.loginMfa(
+      decoded.id,
+      code,
+      req.ip,
+      req.headers["user-agent"]
+    );
+
+    login(res, result.data, result.token, result.session);
+  }),
+  MFA_LOGIN_ERRORS,
+);
 
 // ------------------------------------------------------------------
 // IMPERSONATION

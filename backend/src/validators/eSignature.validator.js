@@ -45,15 +45,22 @@ exports.createWorkflow = Joi.object({
  * param — the controller previously read req.params.stepId, which was always
  * undefined.
  */
+// A-65 — signing re-authenticates: `authPayload` is the signer's password or
+// current MFA code, checked the way certificate approval checks it. Only
+// "password" and "mfa" can be verified at signing time, so "webauthn" and
+// "totp" are no longer accepted (a method nothing verifies is no method).
+// `ipAddress` / `userAgent` are gone: they come from the connection, never
+// the body — a body value is stripped (stripUnknown), not rejected, so an
+// older client keeps working but cannot choose what is recorded.
+// `reason` is the meaning of the signature (21 CFR 11.50), bound into the
+// signed payload; it fits signature_records.signature_reason (255).
 exports.signDocument = Joi.object({
   stepId: Joi.string().uuid().required(),
   polygon: Joi.object().optional().allow(null),
   biometricData: Joi.string().optional().allow(null),
-  authenticationMethod: Joi.string()
-    .valid("password", "mfa", "webauthn", "totp")
-    .default("password"),
-  ipAddress: Joi.string().optional(),
-  userAgent: Joi.string().optional(),
+  authenticationMethod: Joi.string().valid("password", "mfa").default("password"),
+  authPayload: Joi.string().required(),
+  reason: Joi.string().max(255).optional().allow("", null),
 }).options({ abortEarly: false, stripUnknown: true });
 
 /**

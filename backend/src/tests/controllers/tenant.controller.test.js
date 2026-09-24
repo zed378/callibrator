@@ -426,8 +426,33 @@ describe("tenant Controller", () => {
           name: "Updated Tenant",
         }),
         VALID_USER_ID,
+        expect.objectContaining({ actorIsSuperAdmin: false, userId: VALID_USER_ID }),
       );
       expect(success).toHaveBeenCalled();
+    });
+
+    // A-63: the actor is the authenticated principal — never a request field.
+    it.each([
+      ["SUPERADMIN", true],
+      ["SUPER_ADMIN", true],
+      ["HEALTHCARE ADMIN", false],
+    ])("passes the authenticated actor (%s -> actorIsSuperAdmin %s) to the service", async (roleName, expected) => {
+      req.params = { tenantId: VALID_TENANT_ID };
+      req.body = { name: "Updated Tenant", actorIsSuperAdmin: true, tenantId: VALID_TENANT_ID };
+      req.user = { id: VALID_USER_ID, tenantId: "t-home", role: { name: roleName } };
+      req.ip = "10.0.0.9";
+      req.headers = { "user-agent": "jest-agent" };
+      tenantService.updateTenant.mockResolvedValue({ data: {}, status: 200 });
+
+      await tenantController.updateTenant(req, res, next);
+
+      expect(tenantService.updateTenant.mock.calls[0][3]).toEqual({
+        userId: VALID_USER_ID,
+        tenantId: "t-home",
+        ipAddress: "10.0.0.9",
+        userAgent: "jest-agent",
+        actorIsSuperAdmin: expected,
+      });
     });
 
     it("should return 404 when tenant not found", async () => {
@@ -467,6 +492,7 @@ describe("tenant Controller", () => {
           logo: "logo-updated.png",
         }),
         VALID_USER_ID,
+        expect.objectContaining({ actorIsSuperAdmin: false }),
       );
     });
 

@@ -41,15 +41,21 @@ exports.getAllSessions = asyncHandlerWithMapping(async (req, res) => {
   const { count, rows } = await Sessions.findAndCountAll({
     where,
     include: [
+      // A-90: LEFT JOINs. User and Role have a defaultScope `where`, so
+      // without `required: false` a session of a deleted user, or of a user
+      // outside the tenant (the super admin acting inside it), vanished; the
+      // mapping below already reads a missing user as "Unknown".
       {
         model: Users,
         as: "user",
         attributes: ["id", "username", "email", "firstName", "lastName"],
+        required: false,
         include: [
           {
             model: Roles,
             as: "role",
             attributes: ["id", "name", "nameToShow"],
+            required: false,
           },
         ],
       },
@@ -121,15 +127,21 @@ exports.getSessionById = asyncHandlerWithMapping(async (req, res) => {
 
   const session = await Sessions.findByPk(id, {
     include: [
+      // A-90: LEFT JOINs. User and Role have a defaultScope `where`, so
+      // without `required: false` a session of a deleted user, or of a user
+      // outside the tenant (the super admin acting inside it), vanished; the
+      // mapping below already reads a missing user as "Unknown".
       {
         model: Users,
         as: "user",
         attributes: ["id", "username", "email", "firstName", "lastName"],
+        required: false,
         include: [
           {
             model: Roles,
             as: "role",
             attributes: ["id", "name", "nameToShow"],
+            required: false,
           },
         ],
       },
@@ -188,10 +200,13 @@ exports.revokeSession = asyncHandlerWithMapping(async (req, res) => {
   const isAdmin = req.user.role?.name === "SUPER_ADMIN";
 
   const session = await Sessions.findByPk(id, {
+    // A-90: LEFT JOIN — the session of a deleted user must still be
+    // revocable, not a 404. The user row is not read below.
     include: [
       {
         model: Users,
         as: "user",
+        required: false,
       },
     ],
   });

@@ -10,7 +10,8 @@ interface TenantCardProps {
   tenant: Tenant;
   onEdit: (tenant: Tenant) => void;
   onSsoConfig: (tenant: Tenant) => void;
-  onDelete: (id: string) => void;
+  /** Omitted for anyone but a super admin: deleting a tenant is a platform operation (A-76). */
+  onDelete?: (id: string) => void;
 }
 
 const getStatusVariant = (status: string): "success" | "danger" | "default" | "warning" => {
@@ -97,13 +98,15 @@ export const TenantCard: React.FC<TenantCardProps> = ({
           <Button variant="ghost" size="sm" onClick={() => onEdit(tenant)}>
             <Edit2 className="h-4 w-4" />
           </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onDelete(tenant.id)}
-          >
-             <Trash2 className="h-4 w-4 text-destructive" />
-          </Button>
+          {onDelete && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onDelete(tenant.id)}
+            >
+              <Trash2 className="h-4 w-4 text-destructive" />
+            </Button>
+          )}
         </div>
       </div>
     </Card>

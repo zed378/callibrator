@@ -62,6 +62,7 @@ const {
 } = require("./src/middlewares/activityLog.middleware");
 
 const { WINDOW } = require("./src/constants/rateLimitConstants");
+const { TRUST_PROXY_HOPS } = require("./src/constants/appConstants");
 
 const storagePath = require("./src/utils/storagePath.util");
 const appPath = require("./src/utils/appPath.util");
@@ -86,13 +87,12 @@ const app = express();
 // GLOBAL SETTINGS
 // ======================================================
 
-// Trust Proxy
-// Required for:
-// - Kubernetes
-// - Nginx
-// - Cloudflare
-// - Rate limiter
-app.set("trust proxy", 1);
+// Trust Proxy — ONE hop (A-16). req.ip is the rightmost X-Forwarded-For entry,
+// the one the directly-connected proxy (nginx or the Next.js proxy) wrote; each
+// of them sends exactly one entry, the client address. Read the note on
+// TRUST_PROXY_HOPS (src/constants/appConstants.js) before changing this: a
+// count above the real number of proxies lets a client choose req.ip.
+app.set("trust proxy", TRUST_PROXY_HOPS);
 
 // Pretty JSON in development
 if (process.env.NODE_ENV !== "production") {

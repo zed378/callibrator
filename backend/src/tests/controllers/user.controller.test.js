@@ -246,6 +246,21 @@ describe("user Controller", () => {
       );
       expect(success).toHaveBeenCalled();
     });
+
+    // A-77: the service writes the audit row inside its transaction, so the
+    // controller must hand it the request's IP and user agent.
+    it("passes the request IP and user agent for the audit row", async () => {
+      req.ip = "10.1.2.3";
+      req.headers = { "user-agent": "audit-agent" };
+      req.body = { userId: VALID_USER_ID, status: "SUSPENDED" };
+      userService.editUser.mockResolvedValue({ data: { id: VALID_USER_ID } });
+
+      await userController.editUser(req, res, next);
+
+      expect(userService.editUser).toHaveBeenCalledWith(
+        expect.objectContaining({ ipAddress: "10.1.2.3", userAgent: "audit-agent" }),
+      );
+    });
   });
 
   describe("deleteUser", () => {
@@ -420,12 +435,14 @@ describe("user Controller", () => {
 
       await userController.deleteUser(req, res, next);
 
-      expect(userService.deleteUser).toHaveBeenCalledWith({
-        userId: VALID_USER_ID,
-        deletedBy: null,
-        actorTenantId: VALID_TENANT_ID,
-        actorIsSuperAdmin: false,
-      });
+      expect(userService.deleteUser).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: VALID_USER_ID,
+          deletedBy: null,
+          actorTenantId: VALID_TENANT_ID,
+          actorIsSuperAdmin: false,
+        }),
+      );
       expect(success).toHaveBeenCalled();
     });
   });

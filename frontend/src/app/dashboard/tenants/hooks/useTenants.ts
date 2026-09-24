@@ -1,6 +1,7 @@
 // src/app/dashboard/tenants/hooks/useTenants.ts
 import { useState, useEffect } from "react";
 import { useTenantStore } from "@/stores/tenantStore";
+import { useAuthStore } from "@/stores/authStore";
 import { Tenant } from "@/types";
 
 export const initialCreateForm = {
@@ -48,6 +49,15 @@ export function useTenants() {
     deleteTenant,
   } = useTenantStore();
 
+  // A-76: listing, creating and deleting tenants are platform operations —
+  // super admin only on the backend. Everyone else manages their own tenant
+  // (read, edit, SSO, backups), so the list is scoped to it and the create and
+  // delete controls are not offered.
+  const user = useAuthStore((state) => state.user);
+  const canManagePlatform =
+    user?.role?.name === "SUPERADMIN" || user?.role?.name === "SUPER_ADMIN";
+  const ownTenantId = canManagePlatform ? null : (user?.tenantId ?? null);
+
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -69,8 +79,11 @@ export function useTenants() {
   const [editLogoPreview, setEditLogoPreview] = useState("");
 
   useEffect(() => {
-    fetchTenants(currentPage, pageSize, searchTerm);
-  }, [fetchTenants, searchTerm, currentPage, pageSize]);
+    // Wait for the principal: without it we cannot tell which list to ask for,
+    // and guessing "all" is a guaranteed 403 for a tenant admin.
+    if (!user) return;
+    fetchTenants(currentPage, pageSize, searchTerm, ownTenantId);
+  }, [fetchTenants, searchTerm, currentPage, pageSize, user, ownTenantId]);
 
   const handleDelete = async (id: string) => {
     await deleteTenant(id);
@@ -195,6 +208,7 @@ export function useTenants() {
   };
 
   return {
+    canManagePlatform,
     tenants,
     isLoading,
     error,

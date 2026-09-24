@@ -24,8 +24,12 @@ const auditService = require("./audit.service");
 const ESIGN_ENABLED = process.env.ESIGN_ENABLED !== "false";
 const SIGNATURE_ALGORITHM = process.env.SIGNATURE_ALGORITHM || "RS256";
 const SIGNATURE_KEY_SIZE = parseInt(process.env.SIGNATURE_KEY_SIZE) || 2048;
-const REQUIRE_REAUTHENTICATION =
-  process.env.REQUIRE_REAUTHENTICATION !== "false";
+// A-65 — signing ALWAYS re-authenticates the signer (21 CFR 11.200(a)).
+// REQUIRE_REAUTHENTICATION used to switch that off, and even when on it
+// checked only that the user was active. It is no longer read: a
+// configuration switch that removes the signature's authentication is the
+// same bypass as a missing check. Certificate approval never had one.
+const REQUIRE_REAUTHENTICATION = true;
 const SIGNATURE_TTL_MS = parseInt(process.env.SIGNATURE_TTL_MS) || 300000; // 5 min
 
 // AES-256 key for encrypting signer private keys at rest. Required — no
@@ -112,6 +116,42 @@ function canonicalizeSignaturePayload(fields) {
 function canonicalTimestamp(value) {
   const date = value instanceof Date ? value : new Date(value);
   return date.toISOString();
+}
+
+/**
+ * A-85 — the state explanation for signing a workflow step that is not
+ * pending. Keyed by the step statuses in signatureWorkflowStep.model.js; an
+ * unknown status still gets the generic sentence rather than a bare 409.
+ *
+ * @param {string} status - the step's current status
+ * @returns {string}
+ */
+function explainUnsignableStep(status) {
+  const why = {
+    waiting:
+      "an earlier signer in this workflow has not signed yet; it becomes signable when the previous step is signed",
+    signed: "it has already been signed, and a step is signed once",
+    declined: "it was declined, which ends the step",
+  };
+  const reason = why[status] || "only a pending step can be signed";
+  return `This signature step is "${status}" and cannot be signed: ${reason}.`;
+}
+
+/**
+ * A-92 — the state explanation for changing a workflow that is closed.
+ * Only the closed statuses are keyed: callers refuse exactly these two.
+ *
+ * @param {string} status - the workflow's current status
+ * @param {string} verb - what was attempted, as a past participle ("edited")
+ * @returns {string}
+ */
+function explainClosedWorkflow(status, verb) {
+  const why = {
+    completed:
+      "every signer has signed, and the signatures cover the workflow as it was signed",
+    cancelled: "cancellation is final; create a new workflow instead",
+  };
+  return `This signature workflow is "${status}" and cannot be ${verb}: ${why[status]}.`;
 }
 
 // ==========================================
@@ -457,7 +497,7 @@ async function sendSignatureRequest(email, workflow, step) {
  * @returns {Promise<{signatureId: string, certificate: Object}>}
  */
 exports.signDocument = async (stepId, userId, signatureData) => {
-  const { polygon, biometricData, authenticationMethod } = signatureData;
+  const { polygon, biometricData, authenticationMethod, authPayload } = signatureData;
 
   try {
     const {
@@ -472,9 +512,19 @@ exports.signDocument = async (stepId, userId, signatureData) => {
       throw new AppError(404, "Signature step not found");
     }
 
-    // Verify step is pending
+    // A-65 — only the step's own signer may sign it. The step is already
+    // tenant-scoped (another tenant's step is the 404 above), so this is a
+    // permission failure inside the caller's tenant: 403. It is checked before
+    // the step's state, so a non-signer learns nothing about it. A step with
+    // no internal signer (signerId null) cannot be signed by any user.
+    if (!step.signerId || step.signerId !== userId) {
+      throw new AppError(403, "Only the assigned signer can sign this step");
+    }
+
+    // Verify step is pending. A-85: a step in any other state is a state
+    // conflict (409), explained — not a malformed request.
     if (step.status !== "pending") {
-      throw new AppError(400, `Step is not pending (status: ${step.status})`);
+      throw new AppError(409, explainUnsignableStep(step.status));
     }
 
     // Verify this signer's turn
@@ -489,14 +539,15 @@ exports.signDocument = async (stepId, userId, signatureData) => {
       );
     }
 
-    // Re-authenticate if required
-    if (REQUIRE_REAUTHENTICATION) {
-      // Verify session/token is valid and recent
-      const user = await require("../models").User.findByPk(userId);
-      if (!user || user.status !== "active") {
-        throw new AppError(401, "Re-authentication required");
-      }
+    // A-65 — re-authenticate the signer with their own password or MFA code,
+    // exactly as certificate approval does (the same function), BEFORE
+    // anything is signed or persisted.
+    const method = authenticationMethod || "password";
+    const user = await require("../models").User.findByPk(userId);
+    if (!user || user.status !== "active") {
+      throw new AppError(401, "Re-authentication required");
     }
+    await require("./certificate.service").verifySignerCredentials(userId, method, authPayload);
 
     // Get workflow
     const workflow = await SignatureWorkflow.findByPk(step.workflowId);
@@ -510,7 +561,6 @@ exports.signDocument = async (stepId, userId, signatureData) => {
     // column, so a second `new Date()` would make every signature unverifiable
     // (that was the original defect, with Date.now() inside the payload).
     const signedAt = new Date();
-    const method = authenticationMethod || "password";
     const reason = signatureData.reason || null;
 
     const { keyId, privateKeyPem } = await loadSigningKey(step.tenantId);
@@ -911,6 +961,136 @@ exports.getWorkflows = async (tenantId, filters = {}) => {
   }
 };
 
+// ==========================================
+// SIGNER VIEW (A-91)
+// ==========================================
+//
+// GET /workflows and GET /workflows/:id are workflow MANAGEMENT and stay on
+// `qms`. A signer is whoever a workflow names — commonly a TECHNICIAN with no
+// `qms` menu — so without these a named signer could not open the workflow
+// they alone can sign (A-65), and the workflow could never complete.
+//
+// What a signer sees is deliberately narrower than the management view:
+//  - only workflows in which a step names them (`signerId`);
+//  - the fields needed to decide and sign — never another signer's recorded
+//    IP address or user agent (Part 11 capture, not the signer's business).
+//
+// Tenant: every query carries the caller's tenantId explicitly as well as
+// through the global hooks, so a signer id from another tenant matches nothing.
+
+const SIGNER_WORKFLOW_ATTRIBUTES = [
+  "id",
+  "documentId",
+  "subject",
+  "message",
+  "status",
+  "expiresAt",
+  "createdAt",
+  "updatedAt",
+];
+const SIGNER_STEP_ATTRIBUTES = [
+  "id",
+  "workflowId",
+  "stepNumber",
+  "signerId",
+  "signerName",
+  "signerEmail",
+  "status",
+  "signedAt",
+];
+const SIGNER_STEP_STATUSES = ["waiting", "pending", "signed", "declined"];
+
+/**
+ * The steps of a workflow, as the signer view includes them. `required:
+ * false` — an INNER JOIN here would drop a workflow whose steps it could not
+ * join (CLAUDE.md, the first trap).
+ */
+const signerStepsInclude = (SignatureWorkflowStep, tenantId) => ({
+  model: SignatureWorkflowStep,
+  as: "steps",
+  attributes: SIGNER_STEP_ATTRIBUTES,
+  where: { tenantId },
+  required: false,
+});
+
+/**
+ * List the workflows in which `userId` is a named signer.
+ *
+ * @param {string} tenantId - the caller's tenant (from req.user)
+ * @param {string} userId - the caller (from req.user)
+ * @param {Object} [filters]
+ * @param {string} [filters.stepStatus] - only workflows where the caller's own
+ *   step has this status; "pending" is "waiting for my signature"
+ * @returns {Promise<Array>} workflows, newest first, each with its `steps`
+ *   ordered by stepNumber
+ * @throws {AppError} 400 on an unknown stepStatus
+ */
+exports.getSignerWorkflows = async (tenantId, userId, filters = {}) => {
+  const { stepStatus } = filters;
+  if (stepStatus !== undefined && !SIGNER_STEP_STATUSES.includes(stepStatus)) {
+    throw new AppError(
+      400,
+      `stepStatus must be one of: ${SIGNER_STEP_STATUSES.join(", ")}`,
+    );
+  }
+
+  const { SignatureWorkflow, SignatureWorkflowStep } = require("../models");
+
+  const stepWhere = { tenantId, signerId: userId };
+  if (stepStatus) {
+    stepWhere.status = stepStatus;
+  }
+  const mySteps = await SignatureWorkflowStep.findAll({
+    where: stepWhere,
+    attributes: ["workflowId"],
+  });
+  const workflowIds = [...new Set(mySteps.map((step) => step.workflowId))];
+  if (workflowIds.length === 0) {
+    return [];
+  }
+
+  return SignatureWorkflow.findAll({
+    where: { id: workflowIds, tenantId },
+    attributes: SIGNER_WORKFLOW_ATTRIBUTES,
+    include: [signerStepsInclude(SignatureWorkflowStep, tenantId)],
+    order: [
+      ["createdAt", "DESC"],
+      [{ model: SignatureWorkflowStep, as: "steps" }, "stepNumber", "ASC"],
+    ],
+  });
+};
+
+/**
+ * One workflow, for a caller who is named in it as a signer.
+ *
+ * A workflow in another tenant, a deleted one, and one that does not name the
+ * caller are all the same 404: a 403 for "exists but you are not a signer"
+ * would let any user in the tenant probe which workflow ids exist, and the
+ * management route (qms) is the way to read a workflow one is not named in.
+ *
+ * @param {string} workflowId
+ * @param {string} tenantId - the caller's tenant (from req.user)
+ * @param {string} userId - the caller (from req.user)
+ * @returns {Promise<Object>} the workflow with its ordered `steps`
+ * @throws {AppError} 404 when the caller is not a signer of it
+ */
+exports.getSignerWorkflow = async (workflowId, tenantId, userId) => {
+  const { SignatureWorkflow, SignatureWorkflowStep } = require("../models");
+
+  const workflow = await SignatureWorkflow.findOne({
+    where: { id: workflowId, tenantId },
+    attributes: SIGNER_WORKFLOW_ATTRIBUTES,
+    include: [signerStepsInclude(SignatureWorkflowStep, tenantId)],
+    order: [[{ model: SignatureWorkflowStep, as: "steps" }, "stepNumber", "ASC"]],
+  });
+
+  const steps = (workflow && workflow.steps) || [];
+  if (!steps.some((step) => step.signerId === userId)) {
+    throw new AppError(404, "Workflow not found");
+  }
+  return workflow;
+};
+
 /**
  * Update a workflow's editable metadata (subject/message/expiry). A completed or
  * cancelled workflow is immutable.
@@ -928,8 +1108,10 @@ exports.updateWorkflow = async (workflowId, tenantId, updates = {}) => {
     if (!workflow) {
       throw new AppError(404, "Workflow not found");
     }
+    // A-92 — editing a closed workflow is a state conflict (409), explained;
+    // the same body is accepted while the workflow is open.
     if (workflow.status === "completed" || workflow.status === "cancelled") {
-      throw new AppError(400, `Cannot update a ${workflow.status} workflow`);
+      throw new AppError(409, explainClosedWorkflow(workflow.status, "edited"));
     }
     // Only a safe subset of fields is mutable — the client cannot force a status
     // (e.g. "completed") or re-point the document.
@@ -1034,8 +1216,9 @@ exports.cancelWorkflow = async (workflowId, userId, tenantId) => {
       throw new AppError(404, "Workflow not found");
     }
 
+    // A-92 — a state conflict (409), explained, not a malformed request.
     if (workflow.status === "completed") {
-      throw new AppError(400, "Cannot cancel completed workflow");
+      throw new AppError(409, explainClosedWorkflow(workflow.status, "cancelled"));
     }
 
     await workflow.update({ status: "cancelled" });

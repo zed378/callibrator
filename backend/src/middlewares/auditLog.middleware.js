@@ -24,8 +24,9 @@ const AUDIT_ACTIONS = new Set(AUDIT_ACTION_LIST);
  * e-signatures, attachment deletion, SOP publication, role and permission
  * changes, tenant restore, the retention purge) write their own row inside
  * their transaction in the service — see
- * MEMORY/specs/A-41-audit-inside-transaction.md, which also lists what is still
- * left on this middleware (today: user create/update/delete).
+ * MEMORY/specs/A-41-audit-inside-transaction.md. User create, edit, role
+ * change and delete left this middleware under A-77: userService writes their
+ * rows inside its own transactions.
  *
  * @param {string} action        One of CREATE|UPDATE|DELETE|LOGIN|APPROVE|EXPORT.
  * @param {string} resourceType  Logical entity name, e.g. "User", "Certificate".
@@ -62,7 +63,8 @@ const recordAudit = (action, resourceType, opts = {}) => {
           action,
           resourceType,
           resourceId,
-          ipAddress: req.ip || req.headers?.["x-forwarded-for"] || null,
+          // A-16: req.ip, never a raw X-Forwarded-For a client can write.
+          ipAddress: req.ip || req.socket?.remoteAddress || null,
           userAgent:
             (typeof req.get === "function" && req.get("User-Agent")) || null,
         })

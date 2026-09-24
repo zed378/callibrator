@@ -387,9 +387,8 @@ describe("ProfilePage", () => {
 
       await waitFor(() => {
         expect(api.patch).toHaveBeenCalledWith(
-          "/api/v1/users/edit",
+          "/api/v1/users/123/profile",
           expect.objectContaining({
-            userId: "123",
             firstName: "Updated",
           }),
         );

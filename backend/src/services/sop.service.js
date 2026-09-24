@@ -41,7 +41,10 @@ exports.getDocuments = async (tenantId, page = 1, limit = 10, status) => {
     limit,
     offset,
     include: [
-      { model: User, as: "author", attributes: ["id", "firstName", "lastName"] },
+      // LEFT JOIN (A-90): User's defaultScope makes this INNER otherwise, and a
+      // document whose author was deleted, or is outside the tenant (the super
+      // admin authoring inside it), vanished from the list.
+      { model: User, as: "author", attributes: ["id", "firstName", "lastName"], required: false },
     ],
     order: [["createdAt", "DESC"]],
   });

@@ -6,6 +6,7 @@ const { logger } = require("../middlewares/activityLog.middleware");
 const { hashPassword } = require("../utils/password.util");
 const { deleteUpload, getUploadUrl } = require("../utils/upload.util");
 const { AppError } = require("../utils/appError.util");
+const auditService = require("./audit.service");
 const {
   SUPER_ADMIN_ROLE_ID,
   DEFAULT_LIMIT,
@@ -76,6 +77,52 @@ const assertSameTenantOrNotFound = (operation, user, actor) => {
 
   throw userNotFound();
 };
+
+// ==========================================
+// AUDIT (A-77)
+// ==========================================
+
+/**
+ * A-77. Write a user mutation's audit row INSIDE its transaction (A-41): a
+ * failed insert re-throws from logAction and rolls the change back, so no user
+ * change commits unattributed and no row records a change that did not happen.
+ *
+ * `audit_logs.tenantId` is NOT NULL (BR-A41-4): the row is recorded under the
+ * TARGET user's tenant, falling back to the actor's home tenant for a
+ * tenant-less account. The actor, IP and user agent come from the controller's
+ * trusted request context (`getActor`), never from the body.
+ *
+ * @param {object} transaction - the mutation's transaction
+ * @param {object} input - the service input (carries actorTenantId, ipAddress, userAgent)
+ * @param {{action: string, actorUserId: (string|null|undefined), user: {id: string, tenantId: (string|null)},
+ *   changes: object}} entry
+ * @returns {Promise<object>}
+ */
+const auditUserChange = (transaction, input, { action, actorUserId, user, changes }) =>
+  auditService.logAction(
+    {
+      tenantId: user.tenantId || input.actorTenantId,
+      userId: actorUserId,
+      action,
+      resourceType: "User",
+      resourceId: user.id,
+      changes,
+      ipAddress: input.ipAddress || null,
+      userAgent: input.userAgent || null,
+    },
+    { transaction },
+  );
+
+/** The user columns editUser can write, for the audit row's before/after. */
+const AUDITED_USER_FIELDS = Object.freeze([
+  "username",
+  "firstName",
+  "lastName",
+  "email",
+  "status",
+  "isEmailVerified",
+  "isActive",
+]);
 
 // Permission assignment moved to role-based model (RoleMenuPermission)
 // userMenuGrant.service removed - now using role_menu_permissions table directly
@@ -456,6 +503,8 @@ exports.userRoleUpdate = async (input) => {
       };
     }
 
+    const previousRoleId = user.roleId || user.role_id || null;
+
     await user.update(
       {
         roleId: role.id,
@@ -464,6 +513,14 @@ exports.userRoleUpdate = async (input) => {
         transaction,
       },
     );
+
+    // A-77: a role change is an authorization change — audited in the tx.
+    await auditUserChange(transaction, input, {
+      action: "UPDATE",
+      actorUserId: input.updatedBy,
+      user,
+      changes: { roleId: { before: previousRoleId, after: role.id } },
+    });
 
     await transaction.commit();
 
@@ -619,6 +676,22 @@ exports.userCreate = async (input) => {
       },
     );
 
+    // A-77: audited inside the transaction. Never the password or its hash.
+    await auditUserChange(transaction, input, {
+      action: "CREATE",
+      actorUserId: input.createdBy,
+      user: { id: user.id, tenantId: effectiveTenantId },
+      changes: {
+        after: {
+          tenantId: effectiveTenantId,
+          username: username.trim(),
+          email: email.trim().toLowerCase(),
+          roleId,
+          status: user.status,
+        },
+      },
+    });
+
     await transaction.commit();
     await transaction.finished;
 
@@ -764,6 +837,11 @@ exports.editUser = async (input) => {
       }
     }
 
+    const before = {};
+    for (const field of AUDITED_USER_FIELDS) {
+      before[field] = user[field];
+    }
+
     await user.update(
       {
         tenantId: tenantId !== undefined ? tenantId : user.tenantId,
@@ -782,6 +860,21 @@ exports.editUser = async (input) => {
         transaction,
       },
     );
+
+    // A-77: a status change is an authorization change, and any edit must be
+    // attributable — audited inside the transaction, before the commit.
+    const changes = {};
+    for (const field of AUDITED_USER_FIELDS) {
+      if (user[field] !== before[field]) {
+        changes[field] = { before: before[field], after: user[field] };
+      }
+    }
+    await auditUserChange(transaction, input, {
+      action: "UPDATE",
+      actorUserId: input.updatedBy,
+      user,
+      changes,
+    });
 
     await transaction.commit();
 
@@ -922,12 +1015,14 @@ exports.removeUserAvatar = async (userId, updatedBy) => {
 // ------------------------------------------------------------------
 // DELETE USER
 // ------------------------------------------------------------------
-exports.deleteUser = async ({
-  userId,
-  deletedBy,
-  actorIsSuperAdmin = false,
-  actorTenantId = null,
-}) => {
+exports.deleteUser = async (input) => {
+  const {
+    userId,
+    deletedBy,
+    actorIsSuperAdmin = false,
+    actorTenantId = null,
+  } = input;
+  let transaction;
   try {
     if (!userId) {
       throw {
@@ -992,6 +1087,22 @@ exports.deleteUser = async ({
       };
     }
 
+    // A-77: the delete and its audit row commit together or not at all.
+    transaction = await db.transaction();
+    await user.destroy({ transaction });
+    await auditUserChange(transaction, input, {
+      action: "DELETE",
+      actorUserId: deletedBy,
+      user,
+      changes: {
+        before: { username: user.username, email: user.email, roleId: user.roleId },
+      },
+    });
+    await transaction.commit();
+
+    // The avatar file goes only AFTER the commit: removed before it, a
+    // rolled-back delete (a failed audit insert included) would leave a live
+    // user whose avatar is gone.
     if (user.picture) {
       const avatarFilename = user.picture.split("/").pop();
       if (avatarFilename && avatarFilename !== "default.svg") {
@@ -1002,8 +1113,6 @@ exports.deleteUser = async ({
         }
       }
     }
-
-    await user.destroy();
 
     logger.info("User deleted", {
       userId: user.id,
@@ -1022,6 +1131,10 @@ exports.deleteUser = async ({
       },
     };
   } catch (err) {
+    if (transaction && !transaction.finished) {
+      await transaction.rollback();
+    }
+
     logger.error("Error deleting user", {
       err: err.message,
       stack: err.stack,

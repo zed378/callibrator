@@ -158,27 +158,31 @@ describe("eSignature Controller", () => {
       expect(next).not.toHaveBeenCalled();
     });
 
-    it("should fall back to the connection ip/user-agent for the audit trail", async () => {
-      req.body = { stepId: "step-1" };
+    it("should record the connection ip/user-agent, and pass the credential through", async () => {
+      req.body = { stepId: "step-1", authPayload: "pw", reason: "Reviewed" };
       req.ip = "203.0.113.9";
       req.get = jest.fn().mockReturnValue("Mozilla/5.0");
       eSignatureService.signDocument.mockResolvedValue({ signatureId: "sig-1" });
 
       await eSignatureController.signDocument(req, res, next);
 
+      expect(req.get).toHaveBeenCalledWith("user-agent");
       expect(eSignatureService.signDocument).toHaveBeenCalledWith(
         "step-1",
         "user-1",
         expect.objectContaining({
           ipAddress: "203.0.113.9",
           userAgent: "Mozilla/5.0",
+          authPayload: "pw",
+          reason: "Reviewed",
         }),
       );
     });
 
-    it("should prefer an explicitly supplied ip/user-agent", async () => {
+    it("should ignore a body ip/user-agent — the connection's are the only source (A-65)", async () => {
       req.body = {
         stepId: "step-1",
+        authPayload: "pw",
         ipAddress: "198.51.100.4",
         userAgent: "Custom/1.0",
       };
@@ -192,8 +196,8 @@ describe("eSignature Controller", () => {
         "step-1",
         "user-1",
         expect.objectContaining({
-          ipAddress: "198.51.100.4",
-          userAgent: "Custom/1.0",
+          ipAddress: "203.0.113.9",
+          userAgent: "Mozilla/5.0",
         }),
       );
     });

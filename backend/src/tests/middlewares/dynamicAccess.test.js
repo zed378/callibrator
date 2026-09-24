@@ -57,6 +57,7 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
 const {
   dynamicAccess,
   hasDynamicPermission,
+  selfOwnerIdFromPath,
 } = require("../../middlewares/dynamicAccess.middleware");
 const RolesService = require("../../services/roles.service");
 const { scopeAllows } = require("../../services/apiKey.service");
@@ -240,21 +241,91 @@ describe("dynamicAccess middleware", () => {
   });
 
   describe("checkSelf", () => {
-    it("should allow when acting on own resource", async () => {
-      await run(dynamicAccess("Home", "read", { checkSelf: true }));
-      expect(next).toHaveBeenCalled();
+    // The matrix grants NOTHING in these tests, so `next()` can only come from
+    // the self bypass — a pass via the permission matrix cannot mask it.
+    beforeEach(() => {
+      RolesService.getRolePermissionsMatrix.mockResolvedValue({});
     });
 
-    it("should allow self via body.userId", async () => {
-      req.body = { userId: "user-1" };
-      await run(dynamicAccess("Home", "read", { checkSelf: true }));
-      expect(next).toHaveBeenCalled();
+    it("allows the caller when the path :userId names them, without the menu grant", async () => {
+      req.params = { userId: "user-1" };
+      await run(dynamicAccess("users", "update", { checkSelf: true }));
+      expect(next).toHaveBeenCalledWith();
+      expect(req.dynamicAccessContext.reason).toBe("self");
     });
 
-    it("should fall through to permissions when owner id does not match", async () => {
+    it("allows the caller when the path :id names them", async () => {
+      req.params = { id: "user-1" };
+      await run(dynamicAccess("users", "update", { checkSelf: true }));
+      expect(next).toHaveBeenCalledWith();
+      expect(req.dynamicAccessContext.reason).toBe("self");
+    });
+
+    // A-63 DoD — named test.
+    it("the self bypass reads no body or query field", async () => {
+      // Every non-path place a caller could put their own id.
+      req.body = { userId: "user-1", id: "user-1" };
+      req.query = { userId: "user-1", id: "user-1" };
+      req.params = {};
+
+      await run(dynamicAccess("users", "update", { checkSelf: true }));
+
+      // Not treated as self: the matrix (empty) decides, and refuses.
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(next).not.toHaveBeenCalled();
+      expect(req.dynamicAccessContext).toBeUndefined();
+
+      // And the helper the bypass uses cannot see them either.
+      expect(
+        selfOwnerIdFromPath({
+          params: {},
+          body: { userId: "user-1" },
+          query: { userId: "user-1" },
+        }),
+      ).toBeUndefined();
+      expect(selfOwnerIdFromPath({ params: { userId: "u" } })).toBe("u");
+      expect(selfOwnerIdFromPath({ params: { id: "i" } })).toBe("i");
+      expect(selfOwnerIdFromPath({})).toBeUndefined();
+    });
+
+    it("falls through to the matrix when the path names someone else", async () => {
       req.params = { userId: "other-user" };
-      await run(dynamicAccess("Home", "read", { checkSelf: true }));
-      expect(next).toHaveBeenCalled();
+      await run(dynamicAccess("users", "update", { checkSelf: true }));
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    // A-63: the bypass used to run BEFORE checkTenant and return next(), so a
+    // "self" match skipped tenant isolation entirely.
+    it("never skips checkTenant: self in the path with a foreign tenantId in the body is 404", async () => {
+      Tenants.findByPk.mockResolvedValueOnce({ id: "tenant-999" });
+      req.params = { userId: "user-1" };
+      req.body = { tenantId: "tenant-999" };
+
+      await run(
+        dynamicAccess("users", "update", { checkSelf: true, checkTenant: true }),
+      );
+
+      expect(Tenants.findByPk).toHaveBeenCalledWith("tenant-999", {
+        attributes: ["id"],
+      });
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it("self with checkTenant passes once the owner is confirmed in the caller's tenant", async () => {
+      User.findByPk.mockResolvedValueOnce({ tenantId: "tenant-123" });
+      req.params = { userId: "user-1" };
+
+      await run(
+        dynamicAccess("users", "update", { checkSelf: true, checkTenant: true }),
+      );
+
+      expect(User.findByPk).toHaveBeenCalledWith("user-1", {
+        attributes: ["tenantId"],
+      });
+      expect(next).toHaveBeenCalledWith();
+      expect(req.dynamicAccessContext.reason).toBe("self");
     });
   });
 

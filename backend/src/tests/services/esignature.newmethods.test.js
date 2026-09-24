@@ -191,17 +191,23 @@ describe("eSignature.service — implemented workflow/key methods", () => {
       );
     });
 
-    it.each(["completed", "cancelled"])(
-      "refuses to update a %s workflow",
-      async (status) => {
-        const findOne = jest.fn().mockResolvedValue({ status, update: jest.fn() });
-        const { updateWorkflow } = load({ SignatureWorkflow: { findOne } });
+    // A-92 — a closed workflow is a state conflict: 409 with the state and why,
+    // not a 400 (the same body is accepted while the workflow is open).
+    it.each([
+      ["completed", "every signer has signed"],
+      ["cancelled", "cancellation is final; create a new workflow instead"],
+    ])("refuses to update a %s workflow with a 409 that explains the state", async (status, why) => {
+      const update = jest.fn();
+      const findOne = jest.fn().mockResolvedValue({ status, update });
+      const { updateWorkflow } = load({ SignatureWorkflow: { findOne } });
 
-        await expect(updateWorkflow("wf-1", "tenant-1", {})).rejects.toThrow(
-          `Cannot update a ${status} workflow`,
-        );
-      },
-    );
+      const err = await updateWorkflow("wf-1", "tenant-1", { subject: "x" }).catch((e) => e);
+
+      expect(err.status).toBe(409);
+      expect(err.message).toContain(`This signature workflow is "${status}" and cannot be edited`);
+      expect(err.message).toContain(why);
+      expect(update).not.toHaveBeenCalled();
+    });
 
     it("wraps an unexpected failure as 500", async () => {
       const findOne = jest.fn().mockRejectedValue(new Error("boom"));

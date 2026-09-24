@@ -59,8 +59,13 @@ exports.fetchStocks = async ({ tenantId, warehouseId, locationId, find, page = 1
 
     const { rows, count } = await Stock.findAndCountAll({
       where: whereClause,
+      // Every Warehouse and User include in this file is `required: false`
+      // (A-90): both models have a defaultScope `where`, which makes an
+      // include without it an INNER JOIN that drops the stock row, adjustment,
+      // transfer or opname when the warehouse is soft-deleted or the user is
+      // deleted or outside the tenant. The relation reads as null instead.
       include: [
-        { model: Warehouse, as: "warehouse", attributes: ["id", "name", "code"] },
+        { model: Warehouse, as: "warehouse", attributes: ["id", "name", "code"], required: false },
         { model: StorageLocation, as: "location", attributes: ["id", "name", "code"] },
       ],
       order: [["itemName", "ASC"]],
@@ -94,7 +99,7 @@ exports.fetchSpecificStock = async (tenantId, stockId) => {
     const stock = await Stock.findOne({
       where: { id: stockId, tenantId, isDeleted: false },
       include: [
-        { model: Warehouse, as: "warehouse", attributes: ["id", "name", "code"] },
+        { model: Warehouse, as: "warehouse", attributes: ["id", "name", "code"], required: false },
         { model: StorageLocation, as: "location", attributes: ["id", "name", "code"] },
       ],
     });
@@ -355,8 +360,8 @@ exports.fetchAdjustments = async ({ tenantId, warehouseId, type, page = 1, limit
     const { rows, count } = await StockAdjustment.findAndCountAll({
       where: whereClause,
       include: [
-        { model: Warehouse, as: "warehouse", attributes: ["id", "name", "code"] },
-        { model: User, as: "adjuster", attributes: ["id", "username", "firstName", "lastName"] },
+        { model: Warehouse, as: "warehouse", attributes: ["id", "name", "code"], required: false },
+        { model: User, as: "adjuster", attributes: ["id", "username", "firstName", "lastName"], required: false },
       ],
       order: [["createdAt", "DESC"]],
       limit: Number(limit),
@@ -577,10 +582,10 @@ exports.fetchTransfers = async ({ tenantId, fromWarehouseId, toWarehouseId, stat
     const { rows, count } = await StockTransfer.findAndCountAll({
       where: whereClause,
       include: [
-        { model: Warehouse, as: "fromWarehouse", attributes: ["id", "name", "code"] },
-        { model: Warehouse, as: "toWarehouse", attributes: ["id", "name", "code"] },
-        { model: User, as: "requester", attributes: ["id", "username", "firstName", "lastName"] },
-        { model: User, as: "approver", attributes: ["id", "username", "firstName", "lastName"] },
+        { model: Warehouse, as: "fromWarehouse", attributes: ["id", "name", "code"], required: false },
+        { model: Warehouse, as: "toWarehouse", attributes: ["id", "name", "code"], required: false },
+        { model: User, as: "requester", attributes: ["id", "username", "firstName", "lastName"], required: false },
+        { model: User, as: "approver", attributes: ["id", "username", "firstName", "lastName"], required: false },
       ],
       order: [["createdAt", "DESC"]],
       limit: Number(limit),
@@ -713,8 +718,8 @@ exports.fetchOpnames = async ({ tenantId, warehouseId, status, page = 1, limit =
     const { rows, count } = await StockOpname.findAndCountAll({
       where: whereClause,
       include: [
-        { model: Warehouse, as: "warehouse", attributes: ["id", "name", "code"] },
-        { model: User, as: "performer", attributes: ["id", "username", "firstName", "lastName"] },
+        { model: Warehouse, as: "warehouse", attributes: ["id", "name", "code"], required: false },
+        { model: User, as: "performer", attributes: ["id", "username", "firstName", "lastName"], required: false },
       ],
       order: [["scheduledAt", "DESC"]],
       limit: Number(limit),
@@ -747,7 +752,7 @@ exports.getInventoryReport = async (tenantId) => {
     const stocks = await Stock.findAll({
       where: { tenantId, isDeleted: false },
       include: [
-        { model: Warehouse, as: "warehouse", attributes: ["id", "name", "code"] },
+        { model: Warehouse, as: "warehouse", attributes: ["id", "name", "code"], required: false },
       ],
     });
 
@@ -804,7 +809,7 @@ exports.exportInventoryCsv = async (tenantId) => {
     const stocks = await Stock.findAll({
       where: { tenantId, isDeleted: false },
       include: [
-        { model: Warehouse, as: "warehouse", attributes: ["name"] },
+        { model: Warehouse, as: "warehouse", attributes: ["name"], required: false },
         { model: StorageLocation, as: "location", attributes: ["name"] },
       ],
       order: [["itemName", "ASC"]],

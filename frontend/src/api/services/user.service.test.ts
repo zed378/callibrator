@@ -198,6 +198,31 @@ describe("userService", () => {
     });
   });
 
+  describe("updateProfile", () => {
+    // A-63: the self-service path puts the target in the URL and does NOT send
+    // a body userId — the backend's self bypass trusts the path only.
+    it("patches /users/:userId/profile with only the profile fields", async () => {
+      (api.patch as jest.Mock).mockResolvedValue({
+        success: true,
+        data: { id: "user-uuid-1", firstName: "Ada" },
+      });
+
+      const result = await userService.updateProfile({
+        userId: "user-uuid-1",
+        firstName: "Ada",
+        lastName: "Lovelace",
+        username: "ada",
+      });
+
+      expect(api.patch).toHaveBeenCalledWith("/api/v1/users/user-uuid-1/profile", {
+        firstName: "Ada",
+        lastName: "Lovelace",
+        username: "ada",
+      });
+      expect(result.firstName).toBe("Ada");
+    });
+  });
+
   describe("updateRole", () => {
     it("should update user role", async () => {
       (api.post as jest.Mock).mockResolvedValue({

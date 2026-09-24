@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { API_BASE_URL } from "@/constants";
+import { clientIpHeader } from "@/lib/clientIp";
 
 export async function POST(req: NextRequest) {
   try {
@@ -13,7 +14,8 @@ export async function POST(req: NextRequest) {
       headers: {
         "Content-Type": "application/json",
         "User-Agent": req.headers.get("user-agent") || "",
-        "X-Forwarded-For": req.headers.get("x-forwarded-for") || "",
+        // A-16: the one address nginx forwarded, never the header as received.
+        ...clientIpHeader(req.headers),
       },
       body: JSON.stringify(body),
     });

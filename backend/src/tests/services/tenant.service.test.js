@@ -93,6 +93,10 @@ jest.mock("../../config", () => {
   };
 });
 
+jest.mock("../../services/audit.service", () => ({
+  logAction: jest.fn().mockResolvedValue({}),
+}));
+
 // Mock models with proper jest mock functions
 const mockFindAll = jest.fn();
 const mockFindOne = jest.fn();
@@ -410,9 +414,12 @@ describe("tenant Service", () => {
       set.mockResolvedValue(undefined);
       delPattern.mockResolvedValue(undefined);
 
-      const result = await tenantService.updateTenant("t-1", {
-        name: "New",
-      });
+      const result = await tenantService.updateTenant(
+        "t-1",
+        { name: "New" },
+        "user-1",
+        { actorIsSuperAdmin: true, tenantId: null },
+      );
 
       expect(mockTenant.update).toHaveBeenCalled();
       expect(result).toBeDefined();

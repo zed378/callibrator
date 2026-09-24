@@ -229,6 +229,9 @@ async function createBackup({
             model: models.Users,
             as: "creator",
             attributes: ["id", "username", "email"],
+            // A-90: LEFT JOIN — a backup whose creator is deleted or outside
+            // the tenant (the super admin) is still returned.
+            required: false,
           },
         ],
       }),
@@ -259,14 +262,19 @@ async function createBackup({
  */
 async function downloadBackup(backupId, models) {
   const backup = await TenantBackup.findByPk(backupId, {
+    // A-90: LEFT JOINs, as in restoreBackup — a backup whose creator is
+    // deleted or outside the tenant, or whose tenant row is soft-deleted, is
+    // still downloadable; neither relation is read below.
     include: [
       {
         model: models.Tenants,
         as: "tenant",
+        required: false,
       },
       {
         model: models.Users,
         as: "creator",
+        required: false,
       },
     ],
   });

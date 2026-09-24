@@ -58,6 +58,40 @@ const auditCertificate = (
   );
 
 /**
+ * A-64 — what a caller who tried to edit `status` should do instead, keyed by
+ * the certificate's current status. Signed and revoked certificates are not
+ * editable at all and are refused before this is consulted.
+ */
+const NEXT_TRANSITION = {
+  draft: "Submit it for approval with POST /certificates/:id/submit.",
+  pending_approval:
+    "Approve it with POST /certificates/:id/approve, which requires re-authentication.",
+  approved:
+    "Sign it with POST /certificates/:id/sign, or revoke it with POST /certificates/:id/revoke; both require re-authentication.",
+};
+
+/**
+ * A-85 — why a signed or revoked certificate refuses an edit, keyed by status.
+ * These are state conflicts (409), not malformed requests: the same body is
+ * accepted while the certificate is a draft.
+ */
+const LOCKED_EDIT_EXPLANATION = {
+  signed:
+    'This certificate is "signed" and can no longer be edited: its signature covers the content as signed. ' +
+    "To correct it, revoke it with POST /certificates/:id/revoke and issue a new certificate.",
+  revoked:
+    'This certificate is "revoked" and can no longer be edited: revocation is final. ' +
+    "Issue a new certificate instead.",
+};
+
+/**
+ * A-92 — why a signed certificate refuses deletion (a state conflict, 409).
+ */
+const DELETE_SIGNED_EXPLANATION =
+  'This certificate is "signed" and cannot be deleted: a signed certificate is a controlled record ' +
+  "whose signature must stay verifiable. Revoke it with POST /certificates/:id/revoke instead.";
+
+/**
  * Re-authenticate the signer. MUST be called BEFORE the state change it
  * authorises.
  *
@@ -76,21 +110,52 @@ const verifySignatureAuth = async (userId, authOptions) => {
     throw new AppError(400, "Missing required E-signature authentication payload.");
   }
 
+  await verifySignerCredentials(userId, authMethod, authPayload);
+};
+
+/**
+ * Check the signer's own credential — their password, or a current code from
+ * their authenticator — at the moment of signing (21 CFR 11.200(a)).
+ *
+ * Shared by certificate approve / sign / revoke and by e-signature workflow
+ * signing (A-65), so every signature in the system re-authenticates the same
+ * way. It checks the credential only; the caller decides who `userId` is, and
+ * it must be the authenticated caller, never a body field (A-62).
+ *
+ * @param {string} userId - the authenticated caller
+ * @param {"password"|"mfa"} authMethod
+ * @param {string} authPayload - the password or the MFA code
+ * @throws {AppError} 400 on an unknown method or an account without MFA,
+ *   401 when the credential is wrong or missing.
+ */
+const verifySignerCredentials = async (userId, authMethod, authPayload) => {
+  if (authMethod !== "password" && authMethod !== "mfa") {
+    throw new AppError(400, "Invalid auth method.");
+  }
+  if (!authPayload) {
+    throw new AppError(401, "Re-authentication is required to sign.");
+  }
+
   if (authMethod === "password") {
     const valid = await authService.passIsValid(userId, authPayload);
     if (!valid || !valid.data.valid) {
       throw new AppError(401, "Invalid password for e-signature.");
     }
-  } else if (authMethod === "mfa") {
-    const user = await User.findByPk(userId);
-    const valid = mfaService.verifyLogin(user, authPayload);
-    if (!valid) {
-      throw new AppError(401, "Invalid MFA code for e-signature.");
-    }
-  } else {
-    throw new AppError(400, "Invalid auth method.");
+    return;
+  }
+
+  const user = await User.findByPk(userId);
+  // mfaService.verifyLogin throws a plain Error for an account without MFA,
+  // which surfaced as a 500. It is a request the account cannot satisfy: 400.
+  if (!user || !user.mfaEnabled || !user.mfaSecret) {
+    throw new AppError(400, "MFA is not enabled for this account; sign with your password.");
+  }
+  if (!mfaService.verifyLogin(user, authPayload)) {
+    throw new AppError(401, "Invalid MFA code for e-signature.");
   }
 };
+
+exports.verifySignerCredentials = verifySignerCredentials;
 
 /**
  * Write the Part 11 compliance record. Called AFTER the state change so the
@@ -419,33 +484,50 @@ exports.updateCertificate = async (tenantId, certificateId, inputData, actor = {
       };
     }
 
-    // Cannot update signed or revoked certificates
+    // Cannot update signed or revoked certificates. A-85: a state conflict,
+    // so 409 with the state and the way forward — not a 400.
     if (
       certificate.status === Certificate.STATUS.SIGNED ||
       certificate.status === Certificate.STATUS.REVOKED
     ) {
       return {
         success: false,
-        status: 400,
-        message: `Cannot update ${certificate.status} certificate`,
+        status: 409,
+        message: LOCKED_EDIT_EXPLANATION[certificate.status],
         data: null,
       };
     }
 
+    // A-64 — status is not editable. It changes only through its own
+    // transitions (submit / approve / sign / revoke), each of which
+    // re-authenticates where Part 11 requires it and writes its own audit row.
+    // The schema still accepts `status` so an attempted transition can be
+    // REFUSED with a state explanation rather than silently dropped; the
+    // current status repeated back (a client round-tripping the record) is not
+    // a transition and is simply removed from the edit.
+    const { status: requestedStatus, ...edit } = validated;
+    if (requestedStatus && requestedStatus !== certificate.status) {
+      throw new AppError(
+        409,
+        `This certificate is in "${certificate.status}" and editing it cannot change its status. ` +
+          `${NEXT_TRANSITION[certificate.status]}`,
+      );
+    }
+
     const updatedBy = inputData.updatedBy || null;
     const before = Object.fromEntries(
-      Object.keys(validated).map((key) => [key, certificate[key]]),
+      Object.keys(edit).map((key) => [key, certificate[key]]),
     );
 
     await db.transaction(async (transaction) => {
-      await certificate.update({ ...validated, updatedBy }, { transaction });
+      await certificate.update({ ...edit, updatedBy }, { transaction });
       await auditCertificate(transaction, certificate, {
         tenantId,
         userId: updatedBy,
         action: "UPDATE",
         operation: "UPDATE",
         before,
-        after: validated,
+        after: edit,
         ipAddress: actor.ipAddress,
         userAgent: actor.userAgent,
       });
@@ -488,15 +570,12 @@ exports.deleteCertificate = async (tenantId, certificateId, actor = {}) => {
       };
     }
 
-    // Cannot delete signed certificates (must revoke instead)
+    // Cannot delete signed certificates (must revoke instead). A-92: a state
+    // conflict, so 409 with the state and the way forward — not a 400. Thrown,
+    // not returned: the controller renders a returned result through
+    // success(), which would have sent `success: true` with the 409.
     if (certificate.status === Certificate.STATUS.SIGNED) {
-      return {
-        success: false,
-        status: 400,
-        message:
-          "Cannot delete signed certificate. Use revoke endpoint instead.",
-        data: null,
-      };
+      throw new AppError(409, DELETE_SIGNED_EXPLANATION);
     }
 
     await db.transaction(async (transaction) => {

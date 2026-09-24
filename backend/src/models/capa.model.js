@@ -1,4 +1,5 @@
 const { Model } = require("sequelize");
+const { CAPA_STATUSES } = require("../constants/qmsConstants");
 
 module.exports = (sequelize, DataTypes) => {
   class Capa extends Model {
@@ -42,7 +43,7 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
       },
       status: {
-        type: DataTypes.ENUM("DRAFT", "OPEN", "IN_PROGRESS", "VERIFICATION", "CLOSED"),
+        type: DataTypes.ENUM(...CAPA_STATUSES),
         defaultValue: "DRAFT",
         allowNull: false,
       },

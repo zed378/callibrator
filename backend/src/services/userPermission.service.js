@@ -70,6 +70,10 @@ exports.getUserPermissions = async (userId) => {
         model: Role,
         as: "role",
         attributes: ["id", "name", "nameToShow", "status"],
+        // LEFT JOIN (A-90): a user with no role, or a soft-deleted one, is
+        // still a user — `user.role` is read as optional below. Without this
+        // Role's defaultScope made the join INNER and the user a 404.
+        required: false,
       },
     ],
   });

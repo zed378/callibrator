@@ -1,6 +1,7 @@
 const { Op } = require("sequelize");
 const { Users, Role } = require("../models");
 const { AppError } = require("../utils/appError.util");
+const { logger } = require("../middlewares/activityLog.middleware");
 
 const { ROLE_IDS } = require("../constants");
 
@@ -322,6 +323,53 @@ exports.getUserById = async (tenantId, userId) => {
   return formatScimUser(user);
 };
 
+// ---------------------------------------------------------------------------
+// A-37 — the insert failure is answered generically.
+//
+// `users.email` and `users.username` are unique ACROSS TENANTS (user.model.js),
+// while the duplicate check above is narrowed to the caller's tenant by the
+// global tenant hooks. So an address held by ANOTHER tenant passes the check
+// and is rejected by the database. That rejection used to surface as its own
+// response (a 500 carrying Sequelize's "Validation error"), distinguishable
+// from every other failure — a cross-tenant existence oracle reachable with
+// nothing but an API key.
+//
+// Every failure of the insert now produces ONE response, built here: the same
+// status and the same body whether the cause is a unique violation against
+// another tenant's row, a lost connection, or anything else. What actually
+// happened goes to the log only. The in-tenant duplicate keeps its 409: the
+// caller can list its own tenant's users, so that answer discloses nothing.
+//
+// This hides the oracle's SIGNAL; it does not remove the constraint behind it.
+// An address that belongs to another tenant still cannot be provisioned here —
+// whether identities should be unique per tenant (D-06) is an open decision,
+// not something this function decides.
+// ---------------------------------------------------------------------------
+const PROVISIONING_FAILED_STATUS = 500;
+const PROVISIONING_FAILED_MESSAGE = "The user could not be provisioned";
+
+/**
+ * Log why a SCIM user insert failed and return the one generic error every
+ * insert failure is answered with. The address is not logged (it is personal
+ * data); the constraint, the columns and the tenant are enough to diagnose.
+ *
+ * @param {string} tenantId - the caller's tenant
+ * @param {Error & {name?: string, fields?: object, parent?: {constraint?: string}}} cause
+ * @returns {AppError} always the same status and message
+ */
+const provisioningFailed = (tenantId, cause) => {
+  const isUniqueViolation = cause?.name === "SequelizeUniqueConstraintError";
+  logger.warn("scim: user provisioning failed", {
+    tenantId,
+    reason: isUniqueViolation ? "unique-violation" : "insert-error",
+    errorName: cause?.name,
+    constraint: cause?.parent?.constraint,
+    fields: cause?.fields ? Object.keys(cause.fields) : undefined,
+    error: isUniqueViolation ? undefined : cause?.message,
+  });
+  return new AppError(PROVISIONING_FAILED_STATUS, PROVISIONING_FAILED_MESSAGE);
+};
+
 exports.createUser = async (tenantId, scimData) => {
   const email = (scimData.emails && scimData.emails[0]?.value) || scimData.userName;
   const firstName = scimData.name?.givenName || "SCIM";
@@ -341,18 +389,23 @@ exports.createUser = async (tenantId, scimData) => {
   const randomPassword = require("crypto").randomBytes(16).toString("hex");
   const hashedPassword = await require("../utils/password.util").hashPassword(randomPassword);
 
-  const user = await Users.create({
-    tenantId,
-    email,
-    username: email,
-    firstName,
-    lastName,
-    password: hashedPassword,
-    roleId: scimData.roleId || ROLE_IDS.USER,
-    isActive: scimData.active !== false,
-    status: scimData.active === false ? "SUSPENDED" : "ACTIVE",
-    isEmailVerified: true,
-  });
+  let user;
+  try {
+    user = await Users.create({
+      tenantId,
+      email,
+      username: email,
+      firstName,
+      lastName,
+      password: hashedPassword,
+      roleId: scimData.roleId || ROLE_IDS.USER,
+      isActive: scimData.active !== false,
+      status: scimData.active === false ? "SUSPENDED" : "ACTIVE",
+      isEmailVerified: true,
+    });
+  } catch (error) {
+    throw provisioningFailed(tenantId, error);
+  }
 
   return formatScimUser(user);
 };

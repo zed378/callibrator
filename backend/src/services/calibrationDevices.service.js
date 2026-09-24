@@ -73,6 +73,10 @@ exports.fetchCalibrationDevices = async ({
         {
           association: "warehouse",
           attributes: ["id", "name", "code"],
+          // LEFT JOIN (A-90) — a device may have no warehouse. Warehouse has a
+          // defaultScope `where`, so without this the list dropped every such
+          // device, and every device whose warehouse was soft-deleted.
+          required: false,
         },
       ],
     });

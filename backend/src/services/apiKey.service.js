@@ -121,6 +121,10 @@ exports.verifyApiKey = async (raw) => {
   }
   const key = await ApiKey.findOne({
     where: { keyHash: hashKey(raw) },
+    // INNER JOIN on purpose (A-90): Tenant's defaultScope makes this include
+    // required, so a key whose tenant is soft-deleted is not found and does
+    // not authenticate. Do not add `required: false` — the tenant would read
+    // as null and auth.middleware's suspended/deleted check would pass it.
     include: [{ model: Tenant, as: "tenant", attributes: ["id", "status", "plan"] }],
   });
   if (!key || !key.isActive) {

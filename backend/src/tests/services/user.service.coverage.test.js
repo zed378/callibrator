@@ -16,6 +16,10 @@
 // MOCKS
 // ================================================================
 
+// A-77: user mutations write their audit row inside the transaction.
+jest.mock("../../services/audit.service", () => ({
+  logAction: jest.fn().mockResolvedValue({}),
+}));
 jest.mock("sequelize", () => ({
   Sequelize: { fn: jest.fn(), col: jest.fn() },
   Op: {
@@ -1210,7 +1214,9 @@ describe("user.service - branch & error coverage", () => {
       });
     });
 
-    it("should delete the avatar file before destroying the user", async () => {
+    // A-77: the file goes AFTER the delete commits (it used to go before the
+    // destroy, so a failed delete lost the avatar of a still-live user).
+    it("should delete the avatar file after destroying the user", async () => {
       const user = makeUser({ picture: "/uploads/profile/mine.png" });
       Users.findByPk.mockResolvedValue(user);
 
@@ -1218,6 +1224,9 @@ describe("user.service - branch & error coverage", () => {
 
       expect(deleteUpload).toHaveBeenCalledWith("mine.png", "uploads/profile");
       expect(user.destroy).toHaveBeenCalled();
+      expect(user.destroy.mock.invocationCallOrder[0]).toBeLessThan(
+        deleteUpload.mock.invocationCallOrder[0],
+      );
     });
 
     it("should not delete the shared default avatar", async () => {

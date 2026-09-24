@@ -341,9 +341,10 @@ describe("auditLog middleware", () => {
       );
     });
 
-    it("should use x-forwarded-for when req.ip is missing", async () => {
+    it("A-16: never records a client-supplied x-forwarded-for; falls back to the socket address", async () => {
       delete req.ip;
-      req.headers = { "x-forwarded-for": "10.0.0.1" };
+      req.headers = { "x-forwarded-for": "6.6.6.6" };
+      req.socket = { remoteAddress: "10.0.0.1" };
       const middleware = recordAudit("CREATE", "User");
       await middleware(req, res, next);
 
@@ -353,6 +354,23 @@ describe("auditLog middleware", () => {
       expect(logActionSpy).toHaveBeenCalledWith(
         expect.objectContaining({
           ipAddress: "10.0.0.1",
+        }),
+      );
+    });
+
+    it("A-16: records null when neither req.ip nor a socket address exists", async () => {
+      delete req.ip;
+      req.headers = { "x-forwarded-for": "6.6.6.6" };
+      delete req.socket;
+      const middleware = recordAudit("CREATE", "User");
+      await middleware(req, res, next);
+
+      res.statusCode = 200;
+      res.emitFinish();
+
+      expect(logActionSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ipAddress: null,
         }),
       );
     });

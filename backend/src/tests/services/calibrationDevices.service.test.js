@@ -62,6 +62,19 @@ describe("calibrationDevices.service", () => {
   });
 
   describe("fetchCalibrationDevices", () => {
+    // A-90: a device may have no warehouse; the list LEFT-joins it (SQL
+    // asserted in includes.a90.test.js) and returns the device with null.
+    it("A-90: lists a device with no warehouse, asking for a LEFT join", async () => {
+      const homeless = { id: "device-1", name: "Device 1", warehouse: null };
+      CalibrationDevice.findAndCountAll.mockResolvedValueOnce({ rows: [homeless], count: 1 });
+
+      const result = await fetchCalibrationDevices({ tenantId: "tenant-1" });
+
+      expect(result.data.rows).toEqual([homeless]);
+      const { include } = CalibrationDevice.findAndCountAll.mock.calls[0][0];
+      expect(include).toEqual([expect.objectContaining({ association: "warehouse", required: false })]);
+    });
+
     it("should fetch calibration devices successfully without query params", async () => {
       CalibrationDevice.findAndCountAll.mockResolvedValueOnce({
         rows: [{ id: "device-1", name: "Device 1" }],

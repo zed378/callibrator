@@ -52,6 +52,17 @@ const AUTH_ENDPOINTS = {
     lockoutMs: WINDOW.FIVE_MIN,
     description: "SSO hand-off code exchange",
   },
+  // A-81: the TOTP step of an MFA login. Five wrong codes for one user lock
+  // that user for fifteen minutes (and write users.locked_until, which both
+  // login steps honour), however many MFA tokens the attempts were spread
+  // over. Five guesses at a 10^6 space per quarter hour is noise; the
+  // unlimited endpoint it replaces was a brute force.
+  mfaLogin: {
+    maxAttempts: 5,
+    windowMs: WINDOW.FIFTEEN_MIN,
+    lockoutMs: WINDOW.FIFTEEN_MIN,
+    description: "MFA login (TOTP code)",
+  },
 };
 
 /**

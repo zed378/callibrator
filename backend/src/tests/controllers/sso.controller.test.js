@@ -18,6 +18,10 @@ jest.mock("../../models", () => ({
   Tenants: {
     findOne: jest.fn(),
   },
+  // A-83: the exchange re-reads the user (and its tenant) before any session.
+  Users: {
+    findByPk: jest.fn(),
+  },
   // A-60: the exchange writes the session and its audit row in one
   // transaction; the fake hands the callback a recognisable transaction.
   sequelize: {
@@ -88,7 +92,7 @@ jest.mock("../../utils/appError.util", () => {
   return { AppError };
 });
 
-const { Tenants } = require("../../models");
+const { Tenants, Users } = require("../../models");
 const tenantService = require("../../services/tenant.service");
 const ssoService = require("../../services/sso.service");
 const ssoController = require("../../controllers/sso.controller");
@@ -127,6 +131,14 @@ describe("sso.controller", () => {
     jest.clearAllMocks();
     mockRedisUp = true;
     redis.mockHandoffStore.clear();
+    // A-83: an active user in an active tenant unless a case says otherwise.
+    Users.findByPk.mockResolvedValue({
+      id: "user-1",
+      tenantId: "tenant-1",
+      isActive: true,
+      status: "ACTIVE",
+      tenant: { id: "tenant-1", status: "active" },
+    });
     req = {
       body: {},
       query: {},

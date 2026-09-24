@@ -14,8 +14,10 @@ const mockCapa = {
   findOne: jest.fn(),
 };
 
-const mockUser = {};
-const mockCalibrationDevice = {};
+const mockUser = { findOne: jest.fn() };
+const mockCalibrationDevice = { findOne: jest.fn() };
+// A-73: numbers come from the per-tenant counter upsert (db.query), not count().
+const mockQuery = jest.fn();
 
 const mockModels = {
   NonConformance: mockNonConformance,
@@ -25,6 +27,18 @@ const mockModels = {
 };
 
 jest.mock("../../models", () => mockModels);
+// A-66: mutations run in a transaction and write an audit row inside it. The
+// transactional behaviour itself is proved against the auditLedger fixture in
+// qms.audit.a66.test.js; here the transaction is a pass-through handle.
+jest.mock("../../config", () => ({
+  db: {
+    transaction: jest.fn(async (cb) => cb("TX")),
+    query: (...args) => mockQuery(...args),
+  },
+}));
+jest.mock("../../services/audit.service", () => ({
+  logAction: jest.fn().mockResolvedValue({}),
+}));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: {
     info: jest.fn(),
@@ -38,12 +52,19 @@ const qmsService = require("../../services/qms.service");
 describe("qms.service", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockQuery.mockResolvedValue([[{ seq: 1 }]]);
+    // The referenced device / user belongs to the tenant unless a test says not.
+    mockCalibrationDevice.findOne.mockResolvedValue({ id: "device-1" });
+    mockUser.findOne.mockResolvedValue({ id: "user-2" });
   });
+
+  /** The counter upsert's options for the Nth claim. */
+  const claim = (n = 0) => mockQuery.mock.calls[n][1];
 
   describe("Non-Conformance (NC)", () => {
     describe("createNC", () => {
-      it("should create a non-conformance with formatted ncNumber", async () => {
-        mockNonConformance.count.mockResolvedValue(2);
+      it("should create a non-conformance with the counter's number, formatted", async () => {
+        mockQuery.mockResolvedValue([[{ seq: 3 }]]);
         mockNonConformance.create.mockImplementation((data) =>
           Promise.resolve({ id: "nc-1", ...data }),
         );
@@ -55,8 +76,16 @@ describe("qms.service", () => {
           deviceId: "device-1",
         });
 
-        expect(mockNonConformance.count).toHaveBeenCalledWith({
-          where: { tenantId: "tenant-1" },
+        expect(mockNonConformance.count).not.toHaveBeenCalled();
+        expect(claim()).toEqual({
+          replacements: { tenantId: "tenant-1", kind: "NC", pattern: "^NC-([0-9]{1,9})$" },
+          transaction: "TX",
+        });
+        // A-75: the device is looked up in the caller's tenant, in the transaction.
+        expect(mockCalibrationDevice.findOne).toHaveBeenCalledWith({
+          where: { id: "device-1", tenantId: "tenant-1" },
+          attributes: ["id"],
+          transaction: "TX",
         });
         expect(mockNonConformance.create).toHaveBeenCalledWith({
           tenantId: "tenant-1",
@@ -67,13 +96,13 @@ describe("qms.service", () => {
           severity: "HIGH",
           deviceId: "device-1",
           dateIdentified: expect.any(Date),
+          rootCause: null,
           status: "OPEN",
-        });
+        }, { transaction: "TX" });
         expect(result.id).toBe("nc-1");
       });
 
       it("should default severity to MEDIUM and dateIdentified to now", async () => {
-        mockNonConformance.count.mockResolvedValue(0);
         mockNonConformance.create.mockImplementation((data) =>
           Promise.resolve({ id: "nc-2", ...data }),
         );
@@ -85,14 +114,42 @@ describe("qms.service", () => {
             ncNumber: "NC-00001",
             severity: "MEDIUM",
             status: "OPEN",
+            deviceId: null,
             dateIdentified: expect.any(Date),
           }),
+          { transaction: "TX" },
         );
+        // No device named, nothing to look up.
+        expect(mockCalibrationDevice.findOne).not.toHaveBeenCalled();
+      });
+
+      it("stores a rootCause supplied at creation", async () => {
+        mockNonConformance.create.mockImplementation((data) => Promise.resolve({ id: "nc-4", ...data }));
+
+        await qmsService.createNC("tenant-1", "user-1", { title: "t", rootCause: "worn probe" });
+
+        expect(mockNonConformance.create).toHaveBeenCalledWith(
+          expect.objectContaining({ rootCause: "worn probe" }),
+          { transaction: "TX" },
+        );
+      });
+
+      it("refuses a deviceId outside the tenant with 404 and creates nothing", async () => {
+        mockCalibrationDevice.findOne.mockResolvedValue(null);
+
+        const err = await qmsService
+          .createNC("tenant-1", "user-1", { title: "t", deviceId: "foreign" })
+          .catch((e) => e);
+
+        expect(err).toBeInstanceOf(AppError);
+        expect(err.status).toBe(404);
+        expect(err.message).toBe("Device not found");
+        expect(mockQuery).not.toHaveBeenCalled();
+        expect(mockNonConformance.create).not.toHaveBeenCalled();
       });
 
       it("should honour an explicitly supplied dateIdentified", async () => {
         const when = new Date("2026-01-15T00:00:00Z");
-        mockNonConformance.count.mockResolvedValue(0);
         mockNonConformance.create.mockImplementation((data) =>
           Promise.resolve({ id: "nc-3", ...data }),
         );
@@ -104,6 +161,7 @@ describe("qms.service", () => {
 
         expect(mockNonConformance.create).toHaveBeenCalledWith(
           expect.objectContaining({ dateIdentified: when }),
+          { transaction: "TX" },
         );
       });
     });
@@ -156,16 +214,21 @@ describe("qms.service", () => {
           where: { tenantId: "tenant-1", status: "OPEN" },
           limit: 10,
           offset: 0,
+          // A-75: LEFT OUTER JOINs, each carrying the tenant predicate.
           include: [
             {
               model: mockUser,
               as: "reporter",
               attributes: ["id", "firstName", "lastName", "email"],
+              required: false,
+              where: { tenantId: "tenant-1" },
             },
             {
               model: mockCalibrationDevice,
               as: "device",
               attributes: ["id", "name", "serialNumber"],
+              required: false,
+              where: { tenantId: "tenant-1" },
             },
           ],
           order: [["createdAt", "DESC"]],
@@ -191,6 +254,7 @@ describe("qms.service", () => {
 
         expect(mockNonConformance.findOne).toHaveBeenCalledWith({
           where: { id: "nc-1", tenantId: "tenant-1" },
+          transaction: "TX",
         });
         expect(mockNc.title).toBe("New Title");
         expect(mockNc.status).toBe("CLOSED");
@@ -212,7 +276,7 @@ describe("qms.service", () => {
     describe("createCapa", () => {
       it("should create CAPA if associated NC exists", async () => {
         mockNonConformance.findOne.mockResolvedValue({ id: "nc-1" });
-        mockCapa.count.mockResolvedValue(4);
+        mockQuery.mockResolvedValue([[{ seq: 5 }]]);
         mockCapa.create.mockImplementation((data) =>
           Promise.resolve({ id: "capa-1", ...data }),
         );
@@ -227,9 +291,17 @@ describe("qms.service", () => {
 
         expect(mockNonConformance.findOne).toHaveBeenCalledWith({
           where: { id: "nc-1", tenantId: "tenant-1" },
+          transaction: "TX",
         });
-        expect(mockCapa.count).toHaveBeenCalledWith({
-          where: { tenantId: "tenant-1" },
+        expect(mockCapa.count).not.toHaveBeenCalled();
+        expect(claim()).toEqual({
+          replacements: { tenantId: "tenant-1", kind: "CAPA", pattern: "^CAPA-([0-9]{1,9})$" },
+          transaction: "TX",
+        });
+        expect(mockUser.findOne).toHaveBeenCalledWith({
+          where: { id: "user-2", tenantId: "tenant-1" },
+          attributes: ["id"],
+          transaction: "TX",
         });
         expect(mockCapa.create).toHaveBeenCalledWith({
           tenantId: "tenant-1",
@@ -240,7 +312,7 @@ describe("qms.service", () => {
           assignedTo: "user-2",
           dueDate: "2026-08-01",
           status: "DRAFT",
-        });
+        }, { transaction: "TX" });
         expect(result.id).toBe("capa-1");
       });
 
@@ -250,6 +322,33 @@ describe("qms.service", () => {
         await expect(
           qmsService.createCapa("tenant-1", { ncId: "nc-1" }),
         ).rejects.toThrow("Non-Conformance not found");
+      });
+
+      it("an unassigned CAPA stores null assignee and due date, and looks up no user", async () => {
+        mockNonConformance.findOne.mockResolvedValue({ id: "nc-1", ncNumber: "NC-00001" });
+        mockCapa.create.mockImplementation((data) => Promise.resolve({ id: "capa-2", ...data }));
+
+        await qmsService.createCapa("tenant-1", { ncId: "nc-1", title: "t", actionPlan: "p" });
+
+        expect(mockUser.findOne).not.toHaveBeenCalled();
+        expect(mockCapa.create).toHaveBeenCalledWith(
+          expect.objectContaining({ capaNumber: "CAPA-00001", assignedTo: null, dueDate: null }),
+          { transaction: "TX" },
+        );
+      });
+
+      it("refuses an assignedTo outside the tenant with 404 and creates nothing", async () => {
+        mockNonConformance.findOne.mockResolvedValue({ id: "nc-1" });
+        mockUser.findOne.mockResolvedValue(null);
+
+        const err = await qmsService
+          .createCapa("tenant-1", { ncId: "nc-1", title: "t", actionPlan: "p", assignedTo: "foreign" })
+          .catch((e) => e);
+
+        expect(err.status).toBe(404);
+        expect(err.message).toBe("Assignee not found");
+        expect(mockQuery).not.toHaveBeenCalled();
+        expect(mockCapa.create).not.toHaveBeenCalled();
       });
     });
 
@@ -298,11 +397,15 @@ describe("qms.service", () => {
               model: mockNonConformance,
               as: "nonConformance",
               attributes: ["id", "ncNumber", "title"],
+              required: false,
+              where: { tenantId: "tenant-1" },
             },
             {
               model: mockUser,
               as: "assignee",
               attributes: ["id", "firstName", "lastName", "email"],
+              required: false,
+              where: { tenantId: "tenant-1" },
             },
           ],
           order: [["createdAt", "DESC"]],
@@ -323,14 +426,15 @@ describe("qms.service", () => {
 
         const result = await qmsService.updateCapa("tenant-1", "capa-1", {
           title: "New Title",
-          status: "COMPLETED",
+          status: "CLOSED",
         });
 
         expect(mockCapa.findOne).toHaveBeenCalledWith({
           where: { id: "capa-1", tenantId: "tenant-1" },
+          transaction: "TX",
         });
         expect(mockCapaInstance.title).toBe("New Title");
-        expect(mockCapaInstance.status).toBe("COMPLETED");
+        expect(mockCapaInstance.status).toBe("CLOSED");
         expect(mockCapaInstance.save).toHaveBeenCalled();
         expect(result.id).toBe("capa-1");
       });
@@ -344,7 +448,7 @@ describe("qms.service", () => {
           "tenant-1",
           "capa-1",
           { approvedBy: "someone-else", verificationNotes: "ok" },
-          "caller-1",
+          { userId: "caller-1" },
         );
 
         expect(capa.approvedBy).toBe("caller-1");
@@ -355,10 +459,10 @@ describe("qms.service", () => {
         const capa = { id: "capa-1", approvedBy: "prior", save: jest.fn().mockResolvedValue(true) };
         mockCapa.findOne.mockResolvedValue(capa);
 
-        await qmsService.updateCapa("tenant-1", "capa-1", { title: "t" }, "caller-1");
+        await qmsService.updateCapa("tenant-1", "capa-1", { title: "t" }, { userId: "caller-1" });
         expect(capa.approvedBy).toBe("prior");
 
-        await qmsService.updateCapa("tenant-1", "capa-1", { approvedBy: null }, "caller-1");
+        await qmsService.updateCapa("tenant-1", "capa-1", { approvedBy: null }, { userId: "caller-1" });
         expect(capa.approvedBy).toBeNull();
       });
 
@@ -368,6 +472,39 @@ describe("qms.service", () => {
 
         await qmsService.updateCapa("tenant-1", "capa-1", { approvedBy: "someone-else" });
         expect(capa.approvedBy).toBeNull();
+      });
+
+      it("a new assignedTo must be a user of the tenant — 404 and nothing saved", async () => {
+        const capa = { id: "capa-1", assignedTo: null, save: jest.fn() };
+        mockCapa.findOne.mockResolvedValue(capa);
+        mockUser.findOne.mockResolvedValue(null);
+
+        const err = await qmsService
+          .updateCapa("tenant-1", "capa-1", { assignedTo: "foreign" }, { userId: "caller-1" })
+          .catch((e) => e);
+
+        expect(err.status).toBe(404);
+        expect(err.message).toBe("Assignee not found");
+        expect(mockUser.findOne).toHaveBeenCalledWith({
+          where: { id: "foreign", tenantId: "tenant-1" },
+          attributes: ["id"],
+          transaction: "TX",
+        });
+        expect(capa.assignedTo).toBeNull();
+        expect(capa.save).not.toHaveBeenCalled();
+      });
+
+      it("an in-tenant assignedTo is saved, and null unassigns without a lookup", async () => {
+        const capa = { id: "capa-1", assignedTo: null, save: jest.fn().mockResolvedValue(true) };
+        mockCapa.findOne.mockResolvedValue(capa);
+
+        await qmsService.updateCapa("tenant-1", "capa-1", { assignedTo: "user-2" });
+        expect(capa.assignedTo).toBe("user-2");
+
+        mockUser.findOne.mockClear();
+        await qmsService.updateCapa("tenant-1", "capa-1", { assignedTo: null });
+        expect(capa.assignedTo).toBeNull();
+        expect(mockUser.findOne).not.toHaveBeenCalled();
       });
 
       it("should throw 404 AppError if CAPA not found", async () => {

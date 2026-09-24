@@ -8,6 +8,7 @@ const eSignatureService = require("../services/eSignature.service");
 const { success, error } = require("../utils/response.util");
 const { asyncHandler } = require("../utils/controllerWrapper.util");
 const { logger } = require("../middlewares/activityLog.middleware");
+const { AppError } = require("../utils/appError.util");
 
 /**
  * Get all key pairs for the tenant
@@ -82,6 +83,45 @@ exports.getWorkflow = asyncHandler(async (req, res) => {
   const { workflowId } = req.params;
 
   const workflow = await eSignatureService.getWorkflow(workflowId);
+  // A-91 — the service answers null for a workflow it cannot find (another
+  // tenant's included, through the tenant hooks). That used to go out as a
+  // 200 with `data: null`; not-found is 404.
+  if (!workflow) {
+    throw new AppError(404, "Workflow not found");
+  }
+
+  return success(res, workflow, "Workflow retrieved");
+});
+
+/**
+ * A-91 — GET /my-workflows: the workflows naming the caller as a signer.
+ * Rows in `data`, the count in a top-level `meta` (the envelope rule).
+ */
+exports.getSignerWorkflows = asyncHandler(async (req, res) => {
+  const { id: userId, tenantId } = req.user;
+  const { stepStatus } = req.query;
+
+  const workflows = await eSignatureService.getSignerWorkflows(tenantId, userId, {
+    stepStatus,
+  });
+
+  return success(
+    res,
+    workflows,
+    { total: workflows.length },
+    "Signer workflows retrieved",
+  );
+});
+
+/**
+ * A-91 — GET /my-workflows/:workflowId: one workflow the caller is named in.
+ * 404 when it is not theirs to sign, whatever the reason.
+ */
+exports.getSignerWorkflow = asyncHandler(async (req, res) => {
+  const { workflowId } = req.params;
+  const { id: userId, tenantId } = req.user;
+
+  const workflow = await eSignatureService.getSignerWorkflow(workflowId, tenantId, userId);
 
   return success(res, workflow, "Workflow retrieved");
 });
@@ -128,8 +168,8 @@ exports.signDocument = asyncHandler(async (req, res) => {
     polygon,
     biometricData,
     authenticationMethod,
-    ipAddress,
-    userAgent,
+    authPayload,
+    reason,
   } = req.body;
   // req.user exposes `id`; there is no `userId` on it.
   const { id: userId } = req.user;
@@ -138,10 +178,15 @@ exports.signDocument = asyncHandler(async (req, res) => {
     polygon,
     biometricData,
     authenticationMethod,
-    // Fall back to the real connection details when the client omits them —
-    // 21 CFR Part 11 expects these on the signature record.
-    ipAddress: ipAddress || req.ip,
-    userAgent: userAgent || req.get("user-agent"),
+    // The signer's password or MFA code: re-authentication at the moment of
+    // signing (A-65). Checked by the service, never persisted.
+    authPayload,
+    reason,
+    // A-65 — the Part 11 record's IP address and user agent come from the
+    // CONNECTION only. They used to be taken from the body first, so a client
+    // could write whatever origin it liked onto a signature.
+    ipAddress: req.ip,
+    userAgent: req.get("user-agent"),
   });
 
   return success(res, result, "Document signed");

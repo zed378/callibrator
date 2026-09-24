@@ -1595,6 +1595,144 @@ else.
 
 ---
 
+## ADR-047: Signing Always Re-Authenticates — `REQUIRE_REAUTHENTICATION` Is Removed as a Switch
+
+**Date:** 2026-09-24 · **Finding:** A-65 · **Relates to:** ADR-040
+
+**Context**
+
+`REQUIRE_REAUTHENTICATION` (default on) let an operator turn off the credential check on signing.
+Workflow signing never actually re-authenticated anyway: it checked only that the user was active.
+Under 21 CFR Part 11 §11.200, an electronic signature needs its identification components at signing
+time. A signature that the signer's credentials did not authorise is not attributable, whatever the
+RSA layer (ADR-040) says about the bytes.
+
+**Decision**
+
+Every signature — certificate approve, sign and revoke, and workflow steps — goes through one
+`verifySignerCredentials(userId, method, payload)`, by password or MFA code. The environment variable
+no longer disables it, and `getStatus()` always reports re-authentication as on.
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| Keep the switch, default on | a configuration value that disables the signature's authentication is the same bypass as a missing check — just harder to see in review |
+| Keep it only for development | development deployments share the code path; tests can fake the password comparison, as the A-65 tests do |
+
+**Implications — including the bad ones**
+
+- **An operator who set `REQUIRE_REAUTHENTICATION=false` will now be prompted for credentials** at
+  every signature. That is a visible change, and it is deliberate.
+- **`webauthn` and `totp` as signing methods are refused.** Nothing verifies them at signing time.
+  Adding WebAuthn signing is a feature, not a flag.
+- **External (email-only) signers can no longer sign at all** (A-86).
+- **Workflow signing now depends on `authService.passIsValid`.** A change to its return shape breaks
+  both certificate approval and workflow signing.
+
+**Status:** Accepted — implemented 2026-09-24.
+
+---
+
+## ADR-048: Tenant Isolation Reaches Includes, and Never Changes a Join Type
+
+**Date:** 2026-09-24 · **Findings:** A-87, A-75 · **Amends:** ADR-029
+
+**Context**
+
+ADR-029's global hooks added the tenant predicate to the **root** model's `WHERE` only. `beforeFind`
+fires once, so an `include` of a tenant-scoped model joined whatever row its foreign key pointed at,
+in any tenant. Proven on PostgreSQL 18.6: tenant A's non-conformance list returned tenant B's device
+name and user email. CLAUDE.md's "you do not opt in" was true for root queries and false for every
+include.
+
+**Decision**
+
+`beforeFind` and `beforeCount` also walk the include tree (`tenantScope.util.js#applyTenantToIncludes`):
+
+1. Includes are normalised with Sequelize's own `_conformIncludes` and `_expandIncludeAll`, which are
+   idempotent, and the tree is walked, `through` models included.
+2. Every tenant-scoped include gets the **same** predicate the root would get, from the same
+   `resolveScope`, with the same exemptions (super admin, system task, `skipTenantScope`). It is placed
+   in the ON clause and forced over any caller value; a non-plain `where` is `Op.and`-ed.
+3. **`required` is pinned first, to Sequelize's own default** — `!!(own where || defaultScope where)` —
+   so adding a `where` never turns a LEFT JOIN into an INNER JOIN.
+4. `separate` includes are left to their own `findAll`, which the root hook scopes.
+5. `skipTenantScope: true` on one include is the only opt-out: explicit, and greppable.
+6. The hook does **not** force `required: false` on a `defaultScope`-implicit INNER include. That is
+   a per-call-site decision (A-90).
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| A lint or test that refuses an include without an explicit tenant `where` | opt-in again; cannot follow string aliases or `{ all: true }`; a missed site is a leak |
+| `include.where = { tenantId }` | turns every LEFT JOIN into an INNER JOIN — the mutation test breaks 46 association joins |
+| Also force `required: false` on implicit INNER joins | result sets would differ between a tenant user and a super admin, and soft-delete semantics would change silently at about 20 sites |
+| Database row-level security | rejected in ADR-039 |
+
+**Implications — including the bad ones**
+
+- **Good:** every include is scoped without opting in, and a data-driven test covers every current
+  and future association (743 tests).
+- **It depends on private Sequelize statics** on 6.37.8. The test fails if an upgrade changes them;
+  that is the alarm, not a guarantee.
+- **A cross-tenant reference now reads as `null`** on a LEFT include, and **removes the parent row**
+  on an INNER include. That includes legitimate references authored by the super admin inside a
+  tenant (Q-17), and the implicit-INNER sites need `required: false` (A-90).
+- An include of a model **with no tenant key** is still unscoped. That is correct today, and it means
+  a new tenant-owned model that forgets its tenant column is silently global — exactly as for root
+  queries.
+- `aggregate`, `max` and `sum` remain unhooked.
+- A-88 — the `foreignKey: "tenant_id"` shape — is a separate decision (Q-16).
+
+**Status:** Accepted — implemented 2026-09-24.
+
+---
+
+## ADR-049: Device Serials Are Unique Per Tenant; Signing Is Its Own Permission
+
+**Date:** 2026-09-24 · **Findings:** D-04, A-84
+
+**Context**
+
+`calibration_devices.serial_number` was globally unique. A serial number is printed on the
+instrument, so a caller could learn whether any other hospital owned a given device, and two
+hospitals genuinely owning the same instrument — after a sale or a loan — could not both register it.
+Separately, the signing routes had no permission gate at all (A-84).
+
+**Decision**
+
+1. **Serial numbers are unique per tenant:** `UNIQUE (tenant_id, serial_number)`, created by
+   migration `0026`, which **refuses** rather than resolves any existing in-tenant duplicate. The
+   composite index lives only in the migration, never on the model, so `sync()` cannot build it
+   before the duplicate check has run — the same pattern as `0024`.
+2. **Signing is gated on a new `esignature` slug**, not `qms`. A signer is whoever a workflow names,
+   and most roles have no `qms` menu. Every seeded role gets `write` by default (Q-19 asks the owner
+   to confirm), and migration `0025` backfills seeded databases without overwriting a grant.
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| Keep the global serial unique and mask the error | the oracle remains a timing and statistics question, and the legitimate collision stays blocked |
+| Renumber or merge in-tenant duplicates in the migration | a serial identifies a physical instrument; a migration must not decide which record is right |
+| Gate signing on `qms` | technicians and every other non-admin role named as signers would be locked out of their own step |
+
+**Implications — including the bad ones**
+
+- **A database holding an in-tenant serial duplicate refuses to boot** until someone resolves it by
+  hand. That could only have happened if the global constraint was never there.
+- **`down` is refused** once two tenants share a serial.
+- **Permission caches** hold a role's matrix for up to an hour: flush `permissions:*` at deploy, or
+  signers see 403 until it expires.
+- **The e-signature menu item** now gives roles that have no other management menu a "Management"
+  root in the sidebar.
+
+**Status:** Accepted — implemented 2026-09-24.
+
+---
+
 ## Open Decisions
 
 Recorded so a future reader can tell whether their idea was evaluated and rejected, or genuinely never considered.

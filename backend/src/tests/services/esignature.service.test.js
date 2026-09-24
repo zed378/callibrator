@@ -166,6 +166,7 @@ describe("eSignature.service", () => {
           status: "pending",
           workflowId: "wf-1",
           tenantId: "tenant-1",
+          signerId: "u-1",
           stepNumber: 1,
           update: jest.fn().mockResolvedValue(true),
         }),
@@ -206,6 +207,10 @@ describe("eSignature.service", () => {
       };
 
       jest.doMock("../../models", () => mockModels);
+      // A-65 — signing re-authenticates the signer's password.
+      jest.doMock("../../services/auth.service", () => ({
+        passIsValid: async () => ({ data: { valid: true } }),
+      }));
 
       jest.resetModules();
       const {
@@ -215,6 +220,7 @@ describe("eSignature.service", () => {
       const result = await sd("step-1", "u-1", {
         polygon: { x: 10, y: 20 },
         authenticationMethod: "password",
+        authPayload: "pw",
       });
 
       expect(result.signatureId).toBeDefined();
@@ -355,9 +361,14 @@ describe("eSignature.service", () => {
         cancelWorkflow: cw2,
       } = require("../../services/eSignature.service");
 
-      await expect(cw2("wf-1", "u-1", "tenant-1")).rejects.toThrow(
-        "Cannot cancel completed workflow",
+      // A-92 — a state conflict: 409, explained, and nothing written.
+      const err = await cw2("wf-1", "u-1", "tenant-1").catch((e) => e);
+      expect(err.status).toBe(409);
+      expect(err.message).toBe(
+        'This signature workflow is "completed" and cannot be cancelled: every signer has signed, ' +
+          "and the signatures cover the workflow as it was signed.",
       );
+      expect(mockUpdate).not.toHaveBeenCalled();
     });
 
     it("should cancel pending workflow", async () => {

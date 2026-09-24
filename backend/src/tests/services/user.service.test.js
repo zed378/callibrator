@@ -15,6 +15,10 @@
 // The service does: const { Op, Sequelize } = require("sequelize")
 // so we must supply Op here. We avoid require("sequelize") in the factory
 // because Jest resolves "sequelize" to this mock → infinite recursion.
+// A-77: user mutations write their audit row inside the transaction.
+jest.mock("../../services/audit.service", () => ({
+  logAction: jest.fn().mockResolvedValue({}),
+}));
 jest.mock("sequelize", () => ({
   Sequelize: { fn: jest.fn(), col: jest.fn() },
   Op: {
@@ -532,6 +536,8 @@ describe("user.service", () => {
       };
       Users.findByPk.mockResolvedValueOnce(mockUser);
       deleteUpload.mockResolvedValue(undefined);
+      // A-77: the delete and its audit row run in one transaction.
+      db.transaction.mockResolvedValueOnce(mockTransaction());
 
       const result = await deleteUser({
         userId: "u1",

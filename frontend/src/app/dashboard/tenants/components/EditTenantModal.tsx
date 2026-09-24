@@ -40,6 +40,12 @@ interface EditTenantModalProps {
   logoKeep: boolean;
   setLogoKeep: React.Dispatch<React.SetStateAction<boolean>>;
   onSubmit: (e: React.FormEvent) => void;
+  /**
+   * Status and the seat limit (maxUsers) belong to the platform: the backend
+   * refuses a change to either from anyone but a super admin (A-63). false
+   * shows them read-only instead of letting the save fail with a 403.
+   */
+  platformFieldsEditable?: boolean;
 }
 
 const statusOptions = [
@@ -56,6 +62,7 @@ export const EditTenantModal: React.FC<EditTenantModalProps> = ({
   onChange,
   error,
   isSubmitting,
+  platformFieldsEditable = true,
   logoFile,
   setLogoFile,
   logoPreview,
@@ -160,6 +167,7 @@ export const EditTenantModal: React.FC<EditTenantModalProps> = ({
                   options={statusOptions}
                   placeholder="Select status"
                   className="w-full"
+                  disabled={!platformFieldsEditable}
                 />
                 <Input
                   label="Max Users"
@@ -167,6 +175,7 @@ export const EditTenantModal: React.FC<EditTenantModalProps> = ({
                   value={form.maxUsers}
                   onChange={(e) => update("maxUsers", e.target.value)}
                   placeholder="100"
+                  disabled={!platformFieldsEditable}
                 />
                 <Input
                   label="Email"

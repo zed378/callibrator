@@ -3,7 +3,7 @@ const { AppError } = require("../utils/appError.util");
 const crypto = require("crypto");
 const { Op } = require("sequelize");
 const { db } = require("../config");
-const { Users, Role } = require("../models");
+const { Users, Role, Tenants } = require("../models");
 const { hashPassword, comparePassword } = require("../utils/password.util");
 const {
   generateAccessToken,
@@ -42,6 +42,68 @@ const {
   getCurrentSessionId,
 } = require("../services/session.service");
 const { PASSWORD_MIN_LENGTH, ROLE_IDS } = require("../constants");
+const auditService = require("./audit.service");
+
+// User statuses auth.middleware refuses on every request (and config/socket.js
+// at the handshake). A login is refused for the same set, so no session or
+// LOGIN audit row is created for a principal that could never use it.
+const REFUSED_STATUSES = ["INACTIVE", "SUSPENDED"];
+
+// ------------------------------------------------------------------
+// A-83 — THE TENANT IS CHECKED AT SIGN-IN, NOT ONLY AFTER IT
+//
+// auth.middleware refuses every request from a user whose tenant is suspended
+// or deleted, but password login, the MFA step and the SSO exchange did not
+// ask — so each created a session and a LOGIN audit row for a sign-in whose
+// token no request would accept. Each sign-in point now loads the tenant with
+// the user (tenantInclude()) and refuses through tenantRefusal().
+//
+// A user whose tenantId names no tenant the include can see is refused as
+// deleted: the Tenant model's default scope hides a soft-deleted tenant
+// (isDeleted) and paranoid hides a destroyed one, so that is what "not found"
+// means here. (auth.middleware treats the same case as no tenant at all and
+// lets the request through — reported separately, not changed here.)
+// ------------------------------------------------------------------
+
+const REFUSED_TENANT_STATUSES = ["suspended", "deleted"];
+
+/**
+ * The tenant projection every sign-in point loads with the user. A fresh
+ * object per query: Sequelize annotates include options in place.
+ *
+ * @returns {object} a Sequelize include
+ */
+const tenantInclude = () => ({
+  model: Tenants,
+  as: "tenant",
+  attributes: ["id", "status"],
+  // An optional include without `required: false` is an INNER JOIN, and a
+  // user whose tenant is gone would come back as "no such user".
+  required: false,
+});
+
+/**
+ * Why this user's tenant may not sign in, or null when it may.
+ *
+ * @param {{tenantId?: string|null, tenant?: {status?: string}|null}} user -
+ *   loaded with tenantInclude()
+ * @returns {string|null} the refusal message (answered with 403)
+ */
+const tenantRefusal = (user) => {
+  if (!user.tenantId) {
+    return null;
+  }
+  if (!user.tenant) {
+    return "Tenant account is deleted";
+  }
+  const status = String(user.tenant.status || "").toLowerCase();
+  return REFUSED_TENANT_STATUSES.includes(status)
+    ? `Tenant account is ${status}`
+    : null;
+};
+
+exports.tenantInclude = tenantInclude;
+exports.tenantRefusal = tenantRefusal;
 
 const validate = (data, schema) => {
   const { error, value } = validateInput(data, schema);
@@ -153,6 +215,66 @@ exports.registerUser = async (input, origin) => {
 };
 
 // ------------------------------------------------------------------
+// A-72 — A LOGIN IS A SESSION AND ITS AUDIT ROW, OR NEITHER
+//
+// SSO sign-in has written a LOGIN audit row since A-60; password and MFA login
+// wrote none, so "who accessed the system, when" (21 CFR 11.10(e), ISO 27001
+// A.8.15) existed for SSO users only. The session and the row are written in
+// ONE transaction — the same shape as sso.controller's issueSsoTokens: CLS
+// (config/index.js) carries the transaction into createSession, and logAction
+// takes it explicitly, so a failed audit insert rolls the session back and the
+// login fails rather than succeeding unattributed.
+//
+// A user with no tenant cannot be audited — audit_logs.tenant_id is NOT NULL —
+// so that login proceeds with an `error` log instead of a row. Refusing it
+// would lock such an account out on an audit-schema constraint; the log is the
+// evidence that it happened.
+// ------------------------------------------------------------------
+
+/**
+ * @param {object} params
+ * @param {{id: string, tenantId: string|null}} params.user
+ * @param {string} params.refreshToken
+ * @param {string} [params.ipAddress]
+ * @param {string} [params.userAgent]
+ * @param {"password"|"password+totp"} params.method
+ * @returns {Promise<object>} the session row
+ */
+const openLoginSession = ({ user, refreshToken, ipAddress, userAgent, method }) =>
+  db.transaction(async (transaction) => {
+    const session = await createSession({
+      tenantId: user.tenantId,
+      userId: user.id,
+      refreshToken,
+      ipAddress: ipAddress || "",
+      userAgent: userAgent || "",
+      expiredAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+    });
+    if (!user.tenantId) {
+      logger.error("LOGIN not audited: the user has no tenant", {
+        userId: user.id,
+        sessionId: session.id,
+        method,
+      });
+      return session;
+    }
+    await auditService.logAction(
+      {
+        tenantId: user.tenantId,
+        userId: user.id,
+        action: "LOGIN",
+        resourceType: "Session",
+        resourceId: session.id,
+        changes: { method },
+        ipAddress: ipAddress || null,
+        userAgent: userAgent || null,
+      },
+      { transaction },
+    );
+    return session;
+  });
+
+// ------------------------------------------------------------------
 // LOGIN USER
 // ------------------------------------------------------------------
 exports.loginUser = async (input) => {
@@ -183,12 +305,17 @@ exports.loginUser = async (input) => {
         attributes: ["id", "name", "roleLevel"],
         required: false,
       },
+      tenantInclude(),
     ],
   });
   if (!dbUser) {
     throw new AppError(401, "Invalid credentials");
   }
-  if (!dbUser.isActive) {
+  // Refuse exactly what auth.middleware refuses. `isActive` alone let a user
+  // whose `status` is SUSPENDED — which is what SCIM deprovisioning sets
+  // (scim.service.js) — through to a session, and (A-72) a LOGIN audit row,
+  // for a token no request would then accept.
+  if (!dbUser.isActive || REFUSED_STATUSES.includes(dbUser.status)) {
     throw new AppError(403, "Account is suspended");
   }
 
@@ -209,6 +336,14 @@ exports.loginUser = async (input) => {
       throw new AppError(423, "Account locked due to too many failed attempts");
     }
     throw new AppError(401, "Invalid credentials");
+  }
+
+  // A-83: refused AFTER the password, so the tenant's state is disclosed only
+  // to someone who already holds the account's password — and before the MFA
+  // token, the session and the LOGIN row.
+  const refusal = tenantRefusal(dbUser);
+  if (refusal) {
+    throw new AppError(403, refusal);
   }
 
   // Reset failed attempts on success
@@ -252,14 +387,13 @@ exports.loginUser = async (input) => {
 
   const refreshToken = generateOpaqueRefreshToken();
 
-  // Create session
-  const session = await createSession({
-    tenantId: dbUser.tenantId,
-    userId: dbUser.id,
+  // Create session — and its LOGIN audit row, in one transaction (A-72).
+  const session = await openLoginSession({
+    user: dbUser,
     refreshToken,
-    ipAddress: ip || "",
-    userAgent: userAgent || "",
-    expiredAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+    ipAddress: ip,
+    userAgent,
+    method: "password",
   });
 
   // A-48: the access token names its session (`sid`), so revoking the session
@@ -676,11 +810,33 @@ exports.loginMfa = async (userId, tokenCode, inputIp, inputUserAgent) => {
         // ADR-043 — see loginUser.
         attributes: ["id", "name", "roleLevel"],
       },
+      tenantInclude(),
     ],
   });
   
   if (!dbUser || !dbUser.mfaEnabled || !dbUser.mfaSecret) {
     throw new AppError(400, "MFA is not enabled for this account");
+  }
+
+  // The mfa token is good for five minutes after the password step; an account
+  // suspended inside that window is refused here, before any session or LOGIN
+  // row exists — the same rule loginUser applies.
+  if (!dbUser.isActive || REFUSED_STATUSES.includes(dbUser.status)) {
+    throw new AppError(403, "Account is suspended");
+  }
+
+  // A-83: the lock loginUser honours. It used to be ignored here, so an
+  // account locked after its MFA token was issued — including by wrong codes
+  // on this very step (A-81, which persists locked_until) — still signed in.
+  // Checked before the code, so a locked account learns nothing from a guess.
+  if (dbUser.lockedUntil && new Date(dbUser.lockedUntil) > new Date()) {
+    throw new AppError(423, "Account temporarily locked");
+  }
+
+  // A-83: the tenant may have been suspended since the password step.
+  const refusal = tenantRefusal(dbUser);
+  if (refusal) {
+    throw new AppError(403, refusal);
   }
 
   const isValid = authenticator.check(tokenCode, dbUser.mfaSecret);
@@ -693,14 +849,13 @@ exports.loginMfa = async (userId, tokenCode, inputIp, inputUserAgent) => {
 
   const refreshToken = generateOpaqueRefreshToken();
 
-  // Create session
-  const session = await createSession({
-    tenantId: dbUser.tenantId,
-    userId: dbUser.id,
+  // Create session — and its LOGIN audit row, in one transaction (A-72).
+  const session = await openLoginSession({
+    user: dbUser,
     refreshToken,
-    ipAddress: inputIp || "",
-    userAgent: inputUserAgent || "",
-    expiredAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+    ipAddress: inputIp,
+    userAgent: inputUserAgent,
+    method: "password+totp",
   });
 
   const accessToken = generateAccessToken({
@@ -828,15 +983,47 @@ exports.impersonateUser = async (superAdminId, targetTenantId, targetUserId, inp
 
   const refreshToken = generateOpaqueRefreshToken();
 
-  // Create a session for the target user, but we should track that it's an impersonated session
-  // For now, we just create a normal session for them
-  const session = await createSession({
-    tenantId: targetUser.tenantId,
-    userId: targetUser.id,
-    refreshToken,
-    ipAddress: inputIp || "",
-    userAgent: (inputUserAgent || "") + " (Impersonated by " + superAdmin.email + ")",
-    expiredAt: new Date(Date.now() + 1 * 60 * 60 * 1000), // 1 hour for impersonation
+  // A-82: the session and its audit row, in ONE transaction. Impersonation
+  // used to call only logger.info — a super admin acting as a hospital user,
+  // the act an audit trail exists to record, left no row. The row is written
+  // in the TARGET's tenant (whose trail it belongs in) with the SUPER ADMIN as
+  // `userId`, the actor; `changes` names who was impersonated. A failed insert
+  // rolls the session back and the impersonation fails rather than proceeding
+  // unrecorded. Same wiring as openLoginSession: CLS carries the transaction
+  // into createSession, logAction takes it explicitly.
+  //
+  // audit_logs.action has no IMPERSONATE member (AUDIT_ACTIONS), so it is a
+  // LOGIN with `changes.operation` naming it, as the closed ENUM prescribes.
+  const session = await db.transaction(async (transaction) => {
+    // The session row is still the target's, marked in its user agent.
+    const created = await createSession({
+      tenantId: targetUser.tenantId,
+      userId: targetUser.id,
+      refreshToken,
+      ipAddress: inputIp || "",
+      userAgent: (inputUserAgent || "") + " (Impersonated by " + superAdmin.email + ")",
+      expiredAt: new Date(Date.now() + 1 * 60 * 60 * 1000), // 1 hour for impersonation
+    });
+    await auditService.logAction(
+      {
+        tenantId: targetUser.tenantId,
+        userId: superAdmin.id,
+        action: "LOGIN",
+        resourceType: "Session",
+        resourceId: created.id,
+        changes: {
+          operation: "impersonate",
+          method: "impersonation",
+          impersonatorId: superAdmin.id,
+          targetUserId: targetUser.id,
+          targetTenantId: targetUser.tenantId,
+        },
+        ipAddress: inputIp || null,
+        userAgent: inputUserAgent || null,
+      },
+      { transaction },
+    );
+    return created;
   });
 
   // Issue tokens for the target user, but with the impersonator claim. The

@@ -27,7 +27,9 @@ exports.getScorecards = async (tenantId, query) => {
     order: [["evaluationDate", "DESC"]],
     include: [
       { model: Vendor, as: "vendor", attributes: ["id", "name"] },
-      { model: User, as: "evaluator", attributes: ["id", "firstName", "lastName", "email"] }
+      // LEFT JOIN (A-90): without it User's defaultScope makes this INNER, and
+      // a scorecard whose evaluator was deleted or is outside the tenant vanished.
+      { model: User, as: "evaluator", attributes: ["id", "firstName", "lastName", "email"], required: false }
     ]
   });
 
@@ -44,7 +46,9 @@ exports.getScorecardById = async (tenantId, id) => {
     where: { id, tenantId },
     include: [
       { model: Vendor, as: "vendor", attributes: ["id", "name"] },
-      { model: User, as: "evaluator", attributes: ["id", "firstName", "lastName", "email"] }
+      // LEFT JOIN (A-90): without it User's defaultScope makes this INNER, and
+      // a scorecard whose evaluator was deleted or is outside the tenant vanished.
+      { model: User, as: "evaluator", attributes: ["id", "firstName", "lastName", "email"], required: false }
     ]
   });
   if (!scorecard) throw new AppError(404, "Scorecard not found");

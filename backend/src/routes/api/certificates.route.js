@@ -277,9 +277,14 @@ router.get(
  *                 data:
  *                   $ref: "#/components/schemas/Certificate"
  *       400:
- *         description: Validation error or invalid UUID
+ *         description: Validation error or invalid UUID, or the certificate is signed/revoked
  *       404:
  *         description: Certificate not found
+ *       409:
+ *         description: >-
+ *           The body tried to change `status`. Status changes only through
+ *           /submit, /approve, /sign and /revoke (A-64); the message names the
+ *           certificate's state and the route to use.
  */
 router.put(
   "/:certificateId",

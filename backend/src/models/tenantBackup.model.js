@@ -269,6 +269,15 @@ const defineModel = (db, DataTypes) => {
       foreignKey: "tenant_id",
       as: "tenant",
     });
+    // TenantBackup -> User (creator). createBackup, downloadBackup and the
+    // getBackup controller all include `creator`, but the association was
+    // never defined, so each of them threw "User is not associated to
+    // TenantBackup!" against the real models (A-90; unit tests mocked the
+    // models and never saw it). The column already exists: `created_by`.
+    TenantBackup.belongsTo(models.User, {
+      foreignKey: "createdBy",
+      as: "creator",
+    });
   };
 
   // Attach constants to the model

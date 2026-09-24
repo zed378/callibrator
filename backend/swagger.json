@@ -2072,6 +2072,15 @@
           },
           "401": {
             "description": "Invalid MFA code, or invalid/expired login token"
+          },
+          "403": {
+            "description": "The account or its tenant is suspended"
+          },
+          "423": {
+            "description": "The account is locked"
+          },
+          "429": {
+            "description": "Too many wrong codes — for this user (5 per 15 minutes, across any number of MFA tokens), for this MFA token (3), or from this IP when per-IP counting is enabled\n"
           }
         }
       }
@@ -3591,10 +3600,13 @@
             }
           },
           "400": {
-            "description": "Validation error or invalid UUID"
+            "description": "Validation error or invalid UUID, or the certificate is signed/revoked"
           },
           "404": {
             "description": "Certificate not found"
+          },
+          "409": {
+            "description": "The body tried to change `status`. Status changes only through /submit, /approve, /sign and /revoke (A-64); the message names the certificate's state and the route to use."
           }
         }
       },
@@ -5786,10 +5798,87 @@
         }
       }
     },
+    "/api/v1/esignature/my-workflows": {
+      "get": {
+        "summary": "Workflows in which the caller is a named signer",
+        "description": "Lists the tenant's signature workflows in which one of the steps names the caller as its signer, newest first, each with its steps ordered by stepNumber. Steps carry no IP address or user agent. Requires read access to `esignature` (not `qms`).",
+        "tags": [
+          "ESignature"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "stepStatus",
+            "description": "Only workflows where the caller's own step has this status (\"pending\" = awaiting my signature).",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "waiting",
+                "pending",
+                "signed",
+                "declined"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rows in `data`, `meta.total` the count"
+          },
+          "400": {
+            "description": "Unknown stepStatus"
+          },
+          "403": {
+            "description": "The caller lacks `esignature` read"
+          }
+        }
+      }
+    },
+    "/api/v1/esignature/my-workflows/{workflowId}": {
+      "get": {
+        "summary": "One workflow in which the caller is a named signer",
+        "description": "The workflow and its ordered steps, for a caller named as a signer in it. Requires read access to `esignature` (not `qms`).",
+        "tags": [
+          "ESignature"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workflowId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The workflow in `data`"
+          },
+          "403": {
+            "description": "The caller lacks `esignature` read"
+          },
+          "404": {
+            "description": "Not found — including a workflow in another tenant, and one that does not name the caller as a signer"
+          }
+        }
+      }
+    },
     "/api/v1/e-signature/sign": {
       "post": {
-        "summary": "Sign a document",
-        "description": "Signs a document using the user's key pair and records the signature. Complies with 21 CFR Part 11 Section 11.10(a). Requires write access to ESignature.",
+        "summary": "Sign a workflow step",
+        "description": "Signs one workflow step with the tenant's key pair (21 CFR Part 11). Only the step's assigned signer may sign it (403 otherwise; a step in another tenant is 404), and the signer re-authenticates with their password or MFA code (401 when wrong). The IP address and user agent recorded are the connection's; body values are ignored (A-65).",
         "tags": [
           "ESignature"
         ],
@@ -5805,27 +5894,38 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "workflowId",
-                  "documentId"
+                  "stepId",
+                  "authPayload"
                 ],
                 "properties": {
-                  "workflowId": {
+                  "stepId": {
                     "type": "string",
                     "format": "uuid"
                   },
-                  "documentId": {
+                  "authenticationMethod": {
                     "type": "string",
-                    "format": "uuid"
+                    "enum": [
+                      "password",
+                      "mfa"
+                    ],
+                    "default": "password"
                   },
-                  "keyPairId": {
+                  "authPayload": {
                     "type": "string",
-                    "format": "uuid"
+                    "description": "The signer's password, or a current MFA code. Never stored."
                   },
-                  "signatureReason": {
-                    "type": "string"
+                  "reason": {
+                    "type": "string",
+                    "maxLength": 255,
+                    "description": "The meaning of the signature (21 CFR 11.50)."
                   },
-                  "signatureLocation": {
-                    "type": "string"
+                  "polygon": {
+                    "type": "object",
+                    "nullable": true
+                  },
+                  "biometricData": {
+                    "type": "string",
+                    "nullable": true
                   }
                 }
               }
@@ -5859,8 +5959,17 @@
               }
             }
           },
+          "400": {
+            "description": "Validation failed, or MFA requested for an account without MFA"
+          },
           "401": {
-            "description": "Unauthorized"
+            "description": "Unauthenticated, or re-authentication failed"
+          },
+          "403": {
+            "description": "The caller is not this step's signer"
+          },
+          "404": {
+            "description": "Step not found (including a step in another tenant)"
           }
         }
       }
@@ -9554,6 +9663,12 @@
           },
           "401": {
             "description": "Unauthorized"
+          },
+          "403": {
+            "description": "No permission on the qms menu in the caller's tenant"
+          },
+          "404": {
+            "description": "deviceId is not a device of the caller's tenant (another tenant's, deleted or non-existent — indistinguishable)"
           }
         }
       },
@@ -9584,6 +9699,9 @@
           },
           "401": {
             "description": "Unauthorized"
+          },
+          "403": {
+            "description": "No permission on the qms menu in the caller's tenant"
           }
         }
       }
@@ -9655,6 +9773,9 @@
           "401": {
             "description": "Unauthorized"
           },
+          "403": {
+            "description": "No permission on the qms menu in the caller's tenant"
+          },
           "404": {
             "description": "Non-conformance not found"
           }
@@ -9695,9 +9816,6 @@
                   "actionPlan": {
                     "type": "string"
                   },
-                  "status": {
-                    "type": "string"
-                  },
                   "assignedTo": {
                     "type": "string",
                     "format": "uuid"
@@ -9720,6 +9838,12 @@
           },
           "401": {
             "description": "Unauthorized"
+          },
+          "403": {
+            "description": "No permission on the qms menu in the caller's tenant"
+          },
+          "404": {
+            "description": "ncId or assignedTo is not a record of the caller's tenant (another tenant's, deleted or non-existent — indistinguishable)"
           }
         }
       },
@@ -9750,6 +9874,9 @@
           },
           "401": {
             "description": "Unauthorized"
+          },
+          "403": {
+            "description": "No permission on the qms menu in the caller's tenant"
           }
         }
       }
@@ -9828,8 +9955,11 @@
           "401": {
             "description": "Unauthorized"
           },
+          "403": {
+            "description": "No permission on the qms menu in the caller's tenant"
+          },
           "404": {
-            "description": "CAPA not found"
+            "description": "CAPA not found, or assignedTo is not a user of the caller's tenant"
           }
         }
       }
@@ -13923,7 +14053,7 @@
     "/api/v1/tenants/all": {
       "get": {
         "summary": "Retrieve a paginated list of tenants",
-        "description": "Requires read access to Tenant model with tenant scope. Uses dynamic RBAC/ABAC.",
+        "description": "Super admin only (A-76) — a platform operation. A tenant reads its own row through POST /tenants/detail.",
         "tags": [
           "Tenants"
         ],
@@ -14223,7 +14353,7 @@
     "/api/v1/tenants/create": {
       "post": {
         "summary": "Create a new tenant",
-        "description": "Requires create access to Tenant model with tenant scope. Uses dynamic RBAC/ABAC. Supports multipart/form-data for file upload.",
+        "description": "Super admin only (A-76) — a platform operation. Supports multipart/form-data for file upload.",
         "tags": [
           "Tenants"
         ],
@@ -14385,7 +14515,7 @@
     "/api/v1/tenants/edit": {
       "patch": {
         "summary": "Update an existing tenant's details",
-        "description": "Requires update access to Tenant model. Self-check enabled. Uses dynamic RBAC/ABAC. Supports multipart/form-data for file upload.",
+        "description": "Requires Management update access. A non-super-admin may update only their own tenant (any other tenantId answers 404, as a missing one does); only a super admin may change status or maxUsers (403 otherwise). Supports multipart/form-data for file upload.",
         "tags": [
           "Tenants"
         ],
@@ -14584,7 +14714,7 @@
     "/api/v1/tenants/delete": {
       "delete": {
         "summary": "Delete a tenant",
-        "description": "Requires delete access to Tenant model with tenant scope. Uses dynamic RBAC/ABAC.",
+        "description": "Super admin only (A-76) — a platform operation.",
         "tags": [
           "Tenants"
         ],
@@ -17292,7 +17422,7 @@
     "/api/v1/users/edit": {
       "patch": {
         "summary": "Update an existing user's details",
-        "description": "Requires update access to User model. Self-check enabled. Uses dynamic RBAC/ABAC.",
+        "description": "Requires users update access. There is no self bypass on this route (A-63) — the target is a body field; a user editing their own profile uses PATCH /api/v1/users/{userId}/profile.",
         "tags": [
           "Users"
         ],
@@ -17381,6 +17511,69 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/users/{userId}/profile": {
+      "patch": {
+        "summary": "Update a user's profile fields (username, first and last name)",
+        "description": "The caller may edit their own profile (the path names them) without users update access; editing anyone else's requires users update access and the same tenant (another tenant's user answers 404). Status and email are not editable here — use PATCH /api/v1/users/edit.",
+        "tags": [
+          "Users"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "userId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "username": {
+                    "type": "string"
+                  },
+                  "firstName": {
+                    "type": "string"
+                  },
+                  "lastName": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Profile updated successfully"
+          },
+          "400": {
+            "description": "Validation failed"
+          },
+          "403": {
+            "description": "Forbidden - editing another user without users update access"
+          },
+          "404": {
+            "description": "User not found (including a user of another tenant)"
+          },
+          "409": {
+            "description": "Username already used"
           }
         }
       }

@@ -249,7 +249,11 @@ exports.provisionUser = async (tenantId, { email, firstName, lastName }) => {
     }
   }
 
-  if (user.status !== "ACTIVE") {
+  // A-70: `status` alone was checked, so a user switched off by `isActive`
+  // (the flag auth.middleware reports as "Account banned") signed in: a
+  // hand-off code, a session and a LOGIN audit row for a login that should
+  // have been refused. Both are checked here, before any of those exist.
+  if (!user.isActive || user.status !== "ACTIVE") {
     throw new AppError(403, "Account is suspended");
   }
 

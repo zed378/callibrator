@@ -67,6 +67,29 @@ const asyncHandler = (fn) => {
 };
 
 /**
+ * The status asyncHandlerWithMapping answers an error with: the error's own
+ * status, overridden by the first `errorMap` pattern its message contains
+ * (case-insensitive), 500 when neither says anything.
+ *
+ * Exported so a handler that must act on the outcome BEFORE the response is
+ * sent (auth.controller records rate-limit failures, A-67) resolves the status
+ * exactly as the wrapper will, from the same map.
+ *
+ * @param {Error & {status?: number, statusCode?: number}} error
+ * @param {Record<string, number>} errorMap
+ * @returns {number}
+ */
+const resolveErrorStatus = (error, errorMap) => {
+  const errorMessage = error.message || "Internal server error";
+  for (const [pattern, code] of Object.entries(errorMap)) {
+    if (errorMessage.toLowerCase().includes(pattern.toLowerCase())) {
+      return code;
+    }
+  }
+  return error.status || error.statusCode || 500;
+};
+
+/**
  * Wraps a controller with custom error mapping
  * Use this when service errors use string matching instead of status codes
  *
@@ -100,16 +123,8 @@ const asyncHandlerWithMapping = (fn, errorMap = {}) => {
         return res.status(status).json(result);
       })
       .catch((error) => {
-        let statusCode = error.status || error.statusCode || 500;
+        const statusCode = resolveErrorStatus(error, errorMap);
         const errorMessage = error.message || "Internal server error";
-
-        // Map error message patterns to status codes
-        for (const [pattern, code] of Object.entries(errorMap)) {
-          if (errorMessage.toLowerCase().includes(pattern.toLowerCase())) {
-            statusCode = code;
-            break;
-          }
-        }
 
         const { error: sendError } = require("./response.util");
         return sendError(res, errorMessage, statusCode);
@@ -120,4 +135,5 @@ const asyncHandlerWithMapping = (fn, errorMap = {}) => {
 module.exports = {
   asyncHandler,
   asyncHandlerWithMapping,
+  resolveErrorStatus,
 };

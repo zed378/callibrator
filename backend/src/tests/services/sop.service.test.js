@@ -160,6 +160,7 @@ describe("sop.service", () => {
             model: mockUser,
             as: "author",
             attributes: ["id", "firstName", "lastName"],
+            required: false, // A-90: LEFT JOIN — see includes.a90.test.js
           },
         ],
         order: [["createdAt", "DESC"]],

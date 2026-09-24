@@ -63,6 +63,10 @@ const migrationModules = [
   ["0021-metered-billing-grants.js", require("../migrations/0021-metered-billing-grants")],
   ["0022-encrypt-webhook-secrets.js", require("../migrations/0022-encrypt-webhook-secrets")],
   ["0023-tenant-lifecycle-columns.js", require("../migrations/0023-tenant-lifecycle-columns")],
+  ["0024-qms-number-uniqueness.js", require("../migrations/0024-qms-number-uniqueness")],
+  ["0025-esignature-menu-grants.js", require("../migrations/0025-esignature-menu-grants")],
+  ["0026-calibration-device-serial-per-tenant.js", require("../migrations/0026-calibration-device-serial-per-tenant")],
+  ["0027-profile-page-grants.js", require("../migrations/0027-profile-page-grants")],
 ];
 
 const migrator = new Umzug({

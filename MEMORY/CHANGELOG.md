@@ -20,6 +20,11 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ### Fixed
 
+- **Tenant isolation did not reach includes.** A tenant's list could return another tenant's device name and user email through a join. Fixed for every include without changing any join type. (A-87, ADR-048)
+- **Any authenticated user could edit or suspend any tenant.** (A-63) **A certificate could be approved or signed by a plain edit.** (A-64) **Anyone in a tenant could sign someone else's step**, and signing now always re-authenticates. (A-65, ADR-047)
+- **QMS had no permission gate, no audit trail, colliding numbers, and a screen that had always rendered empty.** (A-66, A-73, A-74, A-75) Technicians and other non-admin roles no longer see QMS.
+- **Device serial numbers are unique per tenant**, not globally. (D-04, ADR-049)
+
 - **Logout never revoked a session, and a revoked session's token kept working for a day.** Tokens now carry `sid` and are checked on every request. (A-48)
 - **The emailed activation token, the MFA-pending token and the socket token were valid bearer access tokens.** (A-59, A-52)
 - **SSO put access and refresh tokens in the redirect URL.** Now a single-use 60-second code. **Deploy the frontend and backend together.** (A-60)

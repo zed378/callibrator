@@ -732,7 +732,7 @@ beforeEach(() => {
       expect(status.ip.count).toBe(1);
     });
 
-    it("should fall back to x-forwarded-for then socket.remoteAddress for the IP", async () => {
+    it("should fall back to socket.remoteAddress for the IP", async () => {
       const middleware = rl.endpointRateLimiter("tenantCreate", {
         maxRequests: 10,
         windowMs: 60000,
@@ -928,17 +928,20 @@ beforeEach(() => {
   });
 
   // ==============================================================
-  // authPostFailure
+  // noteAuthFailure / noteAuthSuccess (A-67)
+  //
+  // These replace authPostFailure/authPostSuccess, two middlewares that could
+  // not work where they were mounted (before the handler: status still 200;
+  // after it: never reached). The handler now decides the outcome and calls
+  // these; the route-level proof is tests/routes/auth.rateLimit.a67.test.js.
   // ==============================================================
-  describe("authPostFailure", () => {
+  describe("noteAuthFailure", () => {
     const { logger } = require("../../middlewares/activityLog.middleware");
 
-    it("should record a failure for a 4xx response", async () => {
-      const middleware = rl.authPostFailure("login");
+    it("counts one failure against the attached context", async () => {
       const req = { rateLimitContext: { userId: "pf-user", tokenHash: null, ip: null } };
-      const next = jest.fn();
 
-      await middleware(req, { statusCode: 401 }, next);
+      await rl.noteAuthFailure(req, "login");
 
       const status = await rl.getRateLimitStatus({
         userId: "pf-user",
@@ -946,61 +949,15 @@ beforeEach(() => {
         type: "auth",
       });
       expect(status.user.count).toBe(1);
-      expect(next).toHaveBeenCalled();
     });
 
-    it("should not record a failure for a 2xx response", async () => {
-      const middleware = rl.authPostFailure("login");
-      const req = { rateLimitContext: { userId: "pf-ok", tokenHash: null, ip: null } };
-      const next = jest.fn();
-
-      await middleware(req, { statusCode: 200 }, next);
-
-      const status = await rl.getRateLimitStatus({
-        userId: "pf-ok",
-        endpoint: "login",
-        type: "auth",
-      });
-      expect(status.user).toBeNull();
-      expect(next).toHaveBeenCalled();
+    it("counts nothing, and does not throw, without a context", async () => {
+      await expect(rl.noteAuthFailure({}, "login")).resolves.toBeUndefined();
     });
 
-    it("should not double-count a 429 emitted by the pre-check", async () => {
-      const middleware = rl.authPostFailure("login");
-      const req = { rateLimitContext: { userId: "pf-429", tokenHash: null, ip: null } };
-      const next = jest.fn();
-
-      await middleware(req, { statusCode: 429 }, next);
-
-      const status = await rl.getRateLimitStatus({
-        userId: "pf-429",
-        endpoint: "login",
-        type: "auth",
-      });
-      expect(status.user).toBeNull();
-      expect(next).toHaveBeenCalled();
-    });
-
-    it("should not record a failure for a 5xx response", async () => {
-      const middleware = rl.authPostFailure("login");
-      const req = { rateLimitContext: { userId: "pf-500", tokenHash: null, ip: null } };
-      const next = jest.fn();
-
-      await middleware(req, { statusCode: 500 }, next);
-
-      const status = await rl.getRateLimitStatus({
-        userId: "pf-500",
-        endpoint: "login",
-        type: "auth",
-      });
-      expect(status.user).toBeNull();
-      expect(next).toHaveBeenCalled();
-    });
-
-    it("should swallow recording errors and still call next", async () => {
-      const middleware = rl.authPostFailure("login");
+    it("swallows and logs a recording error", async () => {
       // A userId whose string coercion throws makes makeKey() blow up inside
-      // recordAuthFailure, so the middleware's catch is exercised.
+      // recordAuthFailure, so the catch is exercised.
       const req = {
         rateLimitContext: {
           userId: {
@@ -1010,35 +967,26 @@ beforeEach(() => {
           },
         },
       };
-      const next = jest.fn();
 
-      await middleware(req, { statusCode: 401 }, next);
+      await expect(rl.noteAuthFailure(req, "login")).resolves.toBeUndefined();
 
-      expect(next).toHaveBeenCalledTimes(1);
       expect(logger.error).toHaveBeenCalledWith(
-        expect.stringContaining("Auth post-failure recording error:"),
+        "Auth failure recording error on login: boom",
       );
     });
   });
 
-  // ==============================================================
-  // authPostSuccess
-  // ==============================================================
-  describe("authPostSuccess", () => {
+  describe("noteAuthSuccess", () => {
     const { logger } = require("../../middlewares/activityLog.middleware");
 
-    it("should reset counters on a 200 response", async () => {
+    it("clears the per-user counter and the persisted lockout", async () => {
       await rl.recordAuthFailure({ userId: "ps-user", endpoint: "login" });
       expect(
         (await rl.getRateLimitStatus({ userId: "ps-user", endpoint: "login", type: "auth" }))
           .user.count,
       ).toBe(1);
 
-      const middleware = rl.authPostSuccess("login");
-      const req = { rateLimitContext: { userId: "ps-user", tokenHash: null } };
-      const next = jest.fn();
-
-      await middleware(req, { statusCode: 200 }, next);
+      await rl.noteAuthSuccess({ rateLimitContext: { userId: "ps-user", tokenHash: null } }, "login");
 
       const status = await rl.getRateLimitStatus({
         userId: "ps-user",
@@ -1050,40 +998,28 @@ beforeEach(() => {
         { failedLoginAttempts: 0, lockedUntil: null },
         { where: { id: "ps-user" } },
       );
-      expect(next).toHaveBeenCalled();
     });
 
-    it("should not reset counters on a non-200 response", async () => {
-      await rl.recordAuthFailure({ userId: "ps-401", endpoint: "login" });
+    it("does not clear the per-IP counter", async () => {
+      await rl.recordAuthFailure({ ip: "203.0.113.9", endpoint: "login" });
 
-      const middleware = rl.authPostSuccess("login");
-      const req = { rateLimitContext: { userId: "ps-401", tokenHash: null } };
-      const next = jest.fn();
-
-      await middleware(req, { statusCode: 401 }, next);
+      await rl.noteAuthSuccess({ rateLimitContext: { ip: "203.0.113.9" } }, "login");
 
       const status = await rl.getRateLimitStatus({
-        userId: "ps-401",
+        ip: "203.0.113.9",
         endpoint: "login",
         type: "auth",
       });
-      expect(status.user.count).toBe(1);
-      expect(mockUsers.update).not.toHaveBeenCalled();
-      expect(next).toHaveBeenCalled();
+      expect(status.ip.count).toBe(1);
     });
 
-    it("should do nothing when there is no rateLimitContext", async () => {
-      const middleware = rl.authPostSuccess("login");
-      const next = jest.fn();
-
-      await middleware({}, { statusCode: 200 }, next);
+    it("does nothing when there is no rateLimitContext", async () => {
+      await rl.noteAuthSuccess({}, "login");
 
       expect(mockUsers.update).not.toHaveBeenCalled();
-      expect(next).toHaveBeenCalled();
     });
 
-    it("should swallow reset errors and still call next", async () => {
-      const middleware = rl.authPostSuccess("login");
+    it("swallows and logs a reset error", async () => {
       const req = {
         rateLimitContext: {
           userId: {
@@ -1093,14 +1029,10 @@ beforeEach(() => {
           },
         },
       };
-      const next = jest.fn();
 
-      await middleware(req, { statusCode: 200 }, next);
+      await expect(rl.noteAuthSuccess(req, "login")).resolves.toBeUndefined();
 
-      expect(next).toHaveBeenCalledTimes(1);
-      expect(logger.error).toHaveBeenCalledWith(
-        expect.stringContaining("Auth post-success reset error:"),
-      );
+      expect(logger.error).toHaveBeenCalledWith("Auth success reset error on login: boom");
     });
   });
 
@@ -1471,9 +1403,12 @@ beforeEach(() => {
       json: jest.fn(),
     });
 
-    it("should fall back to x-forwarded-for when req.ip is absent", async () => {
+    it("A-16: a client-supplied x-forwarded-for cannot choose the limiter's key", async () => {
       const middleware = rl.authPreCheck("login");
-      const req = { headers: { "x-forwarded-for": "6.6.6.6" }, socket: {} };
+      const req = {
+        headers: { "x-forwarded-for": "6.6.6.6" },
+        socket: { remoteAddress: "4.4.4.5" },
+      };
       const next = jest.fn();
 
       await middleware(req, makeRes(), next);
@@ -1482,9 +1417,20 @@ beforeEach(() => {
       expect(req.rateLimitContext).toEqual({
         userId: null,
         tokenHash: null,
-        ip: "6.6.6.6",
+        ip: "4.4.4.5",
         endpoint: "login",
       });
+    });
+
+    it("has no address — never the header's — when there is neither req.ip nor a socket", async () => {
+      const middleware = rl.authPreCheck("login");
+      const req = { headers: { "x-forwarded-for": "6.6.6.6" } };
+      const next = jest.fn();
+
+      await middleware(req, makeRes(), next);
+
+      expect(next).toHaveBeenCalled();
+      expect(req.rateLimitContext.ip).toBeUndefined();
     });
 
     it("should fall back to socket.remoteAddress when req.ip and the header are absent", async () => {

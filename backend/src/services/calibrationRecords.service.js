@@ -92,13 +92,20 @@ exports.fetchCalibrationRecords = async ({
       limit: Number(limit),
       offset: (Number(page) - 1) * Number(limit),
       include: [
+        // LEFT JOINs (A-90): User and CalibrationDevice have a defaultScope
+        // `where`, so an include without `required: false` is an INNER JOIN
+        // that drops the RECORD when its device is soft-deleted or its
+        // performer is deleted or outside the tenant (the super admin acting
+        // inside a tenant). The relation reads as null instead.
         {
           association: "device",
           attributes: ["id", "name", "serialNumber", "manufacturer", "model"],
+          required: false,
         },
         {
           association: "performer",
           attributes: ["id", "firstName", "lastName"],
+          required: false,
         },
       ],
     });
@@ -147,10 +154,12 @@ exports.fetchSpecificCalibrationRecord = async (
             "model",
             "category",
           ],
+          required: false, // A-90: a record outlives its device's soft delete
         },
         {
           association: "performer",
           attributes: ["id", "firstName", "lastName", "email"],
+          required: false, // A-90: nor does a missing performer hide the record
         },
       ],
     });

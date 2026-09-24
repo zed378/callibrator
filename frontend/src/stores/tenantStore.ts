@@ -21,12 +21,20 @@ interface TenantState {
   isLoading: boolean;
   error: string | null;
   settings: TenantSettingsResponse | null;
+  /**
+   * A-76: whose tenant list this store holds. null = every tenant (super
+   * admin, GET /tenants/all); an id = that one tenant (everyone else — the
+   * platform-wide list answers them 403). Set by fetchTenants and reused by
+   * every refetch below, so a refetch never widens the list.
+   */
+  listTenantId: string | null;
 
   // Actions
   fetchTenants: (
     page?: number,
     limit?: number,
     search?: string,
+    ownTenantId?: string | null,
   ) => Promise<void>;
   fetchTenantById: (id: string) => Promise<void>;
   selectTenant: (tenant: Tenant | null) => void;
@@ -77,11 +85,12 @@ export const useTenantStore = create<TenantState>()((set) => ({
   isLoading: false,
   error: null,
   settings: null,
+  listTenantId: null,
 
-  fetchTenants: async (page = 1, limit = 25, search?: string) => {
-    set({ isLoading: true, error: null });
+  fetchTenants: async (page = 1, limit = 25, search?: string, ownTenantId = null) => {
+    set({ isLoading: true, error: null, listTenantId: ownTenantId ?? null });
     try {
-      const tenants = await tenantService.getAll(page, limit, search);
+      const tenants = await tenantService.getVisible(page, limit, search, ownTenantId);
       set({ tenants, isLoading: false, error: null });
     } catch (error: unknown) {
       const message =
@@ -122,9 +131,11 @@ export const useTenantStore = create<TenantState>()((set) => ({
       const tenant = await tenantService.create(data);
       // Re-fetch tenants after successful creation
       const state = useTenantStore.getState();
-      const tenants = await tenantService.getAll(
+      const tenants = await tenantService.getVisible(
         state.tenants?.meta?.page || 1,
         state.tenants?.meta?.limit || 25,
+        undefined,
+        state.listTenantId,
       );
       set({ tenants, isLoading: false, error: null });
       return tenant;
@@ -148,9 +159,11 @@ export const useTenantStore = create<TenantState>()((set) => ({
       }
       // Re-fetch tenants after successful update
       const state = useTenantStore.getState();
-      const tenants = await tenantService.getAll(
+      const tenants = await tenantService.getVisible(
         state.tenants?.meta?.page || 1,
         state.tenants?.meta?.limit || 25,
+        undefined,
+        state.listTenantId,
       );
       set({ tenants, isLoading: false, error: null });
     } catch (error: unknown) {
@@ -164,9 +177,11 @@ export const useTenantStore = create<TenantState>()((set) => ({
     const state = useTenantStore.getState();
     set({ isLoading: true, error: null });
     try {
-      const tenants = await tenantService.getAll(
+      const tenants = await tenantService.getVisible(
         state.tenants?.meta?.page || 1,
         state.tenants?.meta?.limit || 25,
+        undefined,
+        state.listTenantId,
       );
       set({ tenants, isLoading: false, error: null });
     } catch (error: unknown) {
@@ -186,9 +201,11 @@ export const useTenantStore = create<TenantState>()((set) => ({
         set({ currentTenant: null });
         deleteCookie("x_tenant_id");
       }
-      const tenants = await tenantService.getAll(
+      const tenants = await tenantService.getVisible(
         state.tenants?.meta?.page || 1,
         state.tenants?.meta?.limit || 25,
+        undefined,
+        state.listTenantId,
       );
       set({ tenants, isLoading: false, error: null });
     } catch (error: unknown) {

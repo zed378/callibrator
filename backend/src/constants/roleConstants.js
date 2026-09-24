@@ -124,7 +124,12 @@ const MENU_SLUGS = {
   ACCOUNT: "account",
   MANAGEMENT: "management",
   SECURITY: "security",
-  PROFILE: "profile",
+  // A-80: the seeded slug of the Profile page (seedMenuGroups.util.js, a child
+  // of Account; menuGroup.service maps it to /dashboard/profile). This said
+  // "profile", which no menu group has, so the seed skipped the grant for
+  // every role. The boot assertion now refuses an assignment slug the seed
+  // does not create (authorizationWiring.util.js#checkRoleMenuAssignments).
+  PROFILE: "profile-page",
   WAREHOUSE: "warehouse",
   EQUIPMENT: "equipment",
   CONTENT: "content",
@@ -152,6 +157,11 @@ const MENU_SLUGS = {
   // platform; a responder role (or the super admin) works the response queue.
   TICKETS_RAISE: "tickets-raise",
   TICKETS_RESPONSE: "tickets-response",
+  // A-84: the e-signature signing surface (POST /esignature/sign, /verify,
+  // /history). Separate from QMS on purpose: a signer is whoever a workflow
+  // names, commonly a role with no `qms` menu. Granted `write` to every seeded
+  // role below — see ROLE_MENU_ASSIGNMENTS.
+  ESIGNATURE: "esignature",
 };
 
 /**
@@ -175,7 +185,7 @@ const PERMISSION_TYPES = {
  * Role-to-menu permission assignments
  *
  * Default menu access for each role. Every role gets access to:
- * - profile: User profile management (includes profile page and change password)
+ * - profile-page: the user's own Profile page (MENU_SLUGS.PROFILE)
  *
  * Additional menu access is granted based on role privilege level.
  *
@@ -183,9 +193,11 @@ const PERMISSION_TYPES = {
  * - "read": View-only access to the menu group
  * - "write": Full access (view + edit) to the menu group
  *
- * Note: Profile sub-routes (profile page, change password) are contained
- * within the "profile" menu group. Assigning "write" permission to "profile"
- * grants access to both the profile page and change password functionality.
+ * Note (A-80): `profile-page` and `change-password` are SIBLING children of
+ * the `account` menu group in the seed. A grant on `profile-page` does not
+ * include `change-password`; a grant on `account` cascades to both.
+ * Every key here must be a slug the seed creates — the boot assertion refuses
+ * to start otherwise.
  */
 const ROLE_MENU_ASSIGNMENTS = [
   {
@@ -193,6 +205,12 @@ const ROLE_MENU_ASSIGNMENTS = [
     description: "Full access to all system menus",
     menus: {
       [MENU_SLUGS.PROFILE]: PERMISSION_TYPES.WRITE,
+      // A-84: every seeded role may sign. A workflow can name any user in the
+      // tenant as a signer, and signDocument already refuses anyone but the
+      // named signer (A-65); withholding this from a role would make every
+      // workflow naming one of its users uncompletable. Narrow it per role
+      // in the permissions screen if a tenant wants to.
+      [MENU_SLUGS.ESIGNATURE]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.HOME]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.DASHBOARD]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.ACCOUNT]: PERMISSION_TYPES.WRITE,
@@ -231,6 +249,7 @@ const ROLE_MENU_ASSIGNMENTS = [
     description: "Healthcare admin with management access",
     menus: {
       [MENU_SLUGS.PROFILE]: PERMISSION_TYPES.WRITE,
+      [MENU_SLUGS.ESIGNATURE]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.HOME]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.DASHBOARD]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.ACCOUNT]: PERMISSION_TYPES.WRITE,
@@ -273,6 +292,7 @@ const ROLE_MENU_ASSIGNMENTS = [
     description: "Calibrator admin with management access",
     menus: {
       [MENU_SLUGS.PROFILE]: PERMISSION_TYPES.WRITE,
+      [MENU_SLUGS.ESIGNATURE]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.HOME]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.DASHBOARD]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.ACCOUNT]: PERMISSION_TYPES.WRITE,
@@ -305,6 +325,7 @@ const ROLE_MENU_ASSIGNMENTS = [
     description: "Engineering manager with management access",
     menus: {
       [MENU_SLUGS.PROFILE]: PERMISSION_TYPES.WRITE,
+      [MENU_SLUGS.ESIGNATURE]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.HOME]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.DASHBOARD]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.ACCOUNT]: PERMISSION_TYPES.READ,
@@ -329,6 +350,7 @@ const ROLE_MENU_ASSIGNMENTS = [
     description: "Supervisor with dashboard and account access",
     menus: {
       [MENU_SLUGS.PROFILE]: PERMISSION_TYPES.WRITE,
+      [MENU_SLUGS.ESIGNATURE]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.HOME]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.DASHBOARD]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.ACCOUNT]: PERMISSION_TYPES.READ,
@@ -345,6 +367,7 @@ const ROLE_MENU_ASSIGNMENTS = [
     description: "Technician with basic operational access",
     menus: {
       [MENU_SLUGS.PROFILE]: PERMISSION_TYPES.WRITE,
+      [MENU_SLUGS.ESIGNATURE]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.HOME]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.DASHBOARD]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.WAREHOUSE]: PERMISSION_TYPES.READ,
@@ -359,6 +382,7 @@ const ROLE_MENU_ASSIGNMENTS = [
     description: "Healthcare technician with basic access",
     menus: {
       [MENU_SLUGS.PROFILE]: PERMISSION_TYPES.WRITE,
+      [MENU_SLUGS.ESIGNATURE]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.HOME]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.DASHBOARD]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.WAREHOUSE]: PERMISSION_TYPES.READ,
@@ -372,6 +396,7 @@ const ROLE_MENU_ASSIGNMENTS = [
     description: "Facility maintenance staff with home access",
     menus: {
       [MENU_SLUGS.PROFILE]: PERMISSION_TYPES.WRITE,
+      [MENU_SLUGS.ESIGNATURE]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.HOME]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.WAREHOUSE]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.EQUIPMENT]: PERMISSION_TYPES.READ,
@@ -384,6 +409,7 @@ const ROLE_MENU_ASSIGNMENTS = [
     description: "Warehouse staff with home access",
     menus: {
       [MENU_SLUGS.PROFILE]: PERMISSION_TYPES.WRITE,
+      [MENU_SLUGS.ESIGNATURE]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.HOME]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.WAREHOUSE]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.EQUIPMENT]: PERMISSION_TYPES.READ,
@@ -396,6 +422,7 @@ const ROLE_MENU_ASSIGNMENTS = [
     description: "Room user with home and dashboard access",
     menus: {
       [MENU_SLUGS.PROFILE]: PERMISSION_TYPES.WRITE,
+      [MENU_SLUGS.ESIGNATURE]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.HOME]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.DASHBOARD]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.WAREHOUSE]: PERMISSION_TYPES.READ,
@@ -409,6 +436,7 @@ const ROLE_MENU_ASSIGNMENTS = [
     description: "Basic user with minimal access",
     menus: {
       [MENU_SLUGS.PROFILE]: PERMISSION_TYPES.WRITE,
+      [MENU_SLUGS.ESIGNATURE]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.HOME]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.DASHBOARD]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.ACCOUNT]: PERMISSION_TYPES.READ,

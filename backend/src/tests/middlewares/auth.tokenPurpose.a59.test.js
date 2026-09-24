@@ -376,6 +376,7 @@ const firstFactorOfMfaAccount = async () => {
     password: "hashed:Str0ng!Passw0rd",
     isActive: true,
     tenantId: TENANT_ID,
+    tenant: { id: TENANT_ID, status: "active" }, // A-83
     failedLoginAttempts: 0,
     lockedUntil: null,
     mfaEnabled: true,
@@ -423,6 +424,14 @@ const ssoLogin = async (kind) => {
   // The LOGIN audit row is not under test here, and the fake pg wire knows
   // only the sessions table.
   jest.spyOn(auditService, "logAction").mockResolvedValue({ id: "audit" });
+  // A-83: the exchange re-reads the user and its tenant before the session.
+  jest.spyOn(Users, "findByPk").mockResolvedValue({
+    id: USER_ID,
+    tenantId: TENANT_ID,
+    isActive: true,
+    status: "ACTIVE",
+    tenant: { id: TENANT_ID, status: "active" },
+  });
   const exRes = mockRes();
   await ssoController.ssoExchange(
     { body: { code }, headers: {}, rateLimitContext: {} },

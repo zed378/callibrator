@@ -30,10 +30,13 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.STRING(255),
         allowNull: false,
       },
+      // Unique PER TENANT (D-04): UNIQUE (tenant_id, serial_number), created
+      // by migration 0026 — not here, so db.sync() cannot build it before the
+      // migration has checked for duplicates. It used to be `unique: true`, a
+      // GLOBAL constraint: a cross-tenant existence oracle (CLAUDE.md traps).
       serialNumber: {
         type: DataTypes.STRING(100),
         allowNull: true,
-        unique: true,
       },
       manufacturer: {
         type: DataTypes.STRING(255),
@@ -118,7 +121,6 @@ const defineModel = (db, DataTypes) => {
       underscored: true,
       indexes: [
         { fields: ["tenant_id"] },
-        { fields: ["serial_number"], unique: true },
         { fields: ["status"] },
         { fields: ["next_calibration_date"] },
         { fields: ["is_deleted"] },

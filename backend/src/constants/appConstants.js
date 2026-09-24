@@ -128,6 +128,32 @@ const TIME = {
 };
 
 // =============================================================================
+// CLIENT ADDRESS — `trust proxy` (A-16)
+// =============================================================================
+// req.ip is what sessions.ip_address, audit_logs.ipAddress,
+// e_signature_records.ipAddress (21 CFR Part 11 evidence) and the per-IP auth
+// limiter record. Express derives it from X-Forwarded-For, walking in from the
+// RIGHT and trusting TRUST_PROXY_HOPS entries: with 1, req.ip is the rightmost
+// entry — the one the directly-connected proxy wrote — and every entry to its
+// left, which a client could have typed, is ignored.
+//
+// That is correct because EVERY proxy adjacent to the backend sends exactly
+// one entry, the client address, and never forwards a client's own value:
+//
+//   /api/*       edge -> nginx -> Next.js -> backend
+//                nginx OVERWRITES X-Forwarded-For with $remote_addr (after the
+//                realip module has resolved the edge's header, VM only); Next's
+//                proxy routes forward ONE sanitized address (frontend
+//                src/lib/clientIp.ts) and drop every other address header.
+//   /socket.io/, /uploads/, /oidc/, /health
+//                edge -> nginx -> backend — nginx overwrites, as above.
+//
+// So one hop is right for both paths, and it must not be raised: a count above
+// the real number of proxies hands req.ip to whatever the client put in the
+// header. See deploy/compose/nginx/*.conf.
+const TRUST_PROXY_HOPS = 1;
+
+// =============================================================================
 // DEFAULT TENANT CONSTANT
 // =============================================================================
 const DEFAULT_TENANT = {
@@ -142,6 +168,9 @@ const DEFAULT_TENANT = {
 
 module.exports = {
   DEFAULT_TENANT,
+
+  // Client address (A-16)
+  TRUST_PROXY_HOPS,
 
   // HTTP Status codes
   HTTP_STATUS,
