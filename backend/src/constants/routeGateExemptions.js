@@ -273,14 +273,13 @@ const ROUTE_GATE_EXEMPTIONS = {
   // Registered directly on the app, outside src/routes. Read from source text.
   "index.js": {
     "GET /": { kind: PUBLIC, reason: "root liveness banner: a fixed string" },
-    "GET /documentation": { kind: PUBLIC, reason: "static HTML documentation page (A-253: disclosure reviewed as low)" },
-    "GET /standards": { kind: PUBLIC, reason: "static HTML coding-standards page (A-253)" },
-    "GET /tab-permissions": { kind: PUBLIC, reason: "static HTML permission documentation (A-253)" },
-    "GET /error": { kind: PUBLIC, reason: "test route that always answers the generic 500 (A-253)" },
   },
   "docs/swagger.js": {
     "GET /docs.json": { kind: PUBLIC, reason: "the published OpenAPI contract" },
     "USE /docs": { kind: PUBLIC, reason: "Swagger UI over the published contract" },
+    // A-253: moved here from index.js; not registered in production unless SWAGGER_ENABLED=true.
+    "GET /documentation": { kind: PUBLIC, reason: "developer HTML documentation; registered only where the API contract is published (off in production, A-253)" },
+    "GET /standards": { kind: PUBLIC, reason: "developer coding-standards page; registered only where the API contract is published (off in production, A-253)" },
   },
 };
 

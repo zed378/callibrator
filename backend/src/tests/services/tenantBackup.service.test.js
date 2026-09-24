@@ -25,6 +25,7 @@ jest.mock("path", () => ({
   join: jest.fn((...args) => "/mock/" + args.join("/")),
   dirname: jest.fn(() => "/mock"),
   resolve: jest.fn(() => "/mock/resolved"),
+  basename: jest.fn((p) => String(p).split("/").pop()),
 }));
 
 // Mock crypto module
@@ -69,6 +70,8 @@ jest.mock("moment", () => {
 
 // Mock models
 const mockTenantBackup = {
+  // S-32: restoreBackup claims the backup with a conditional update.
+  update: jest.fn(),
   createBackup: jest.fn(),
   updateStatus: jest.fn(),
   findByPk: jest.fn(),
@@ -87,14 +90,14 @@ const mockTenantBackup = {
     PARTIAL: "PARTIAL",
     USER_ONLY: "USER_ONLY",
   },
+  // S-32: the real model's STATUS is exactly its ENUM — no RESTORING,
+  // RESTORED or DELETING (tests/models/tenantBackup.status.s32.test.js).
   STATUS: {
     PENDING: "PENDING",
     IN_PROGRESS: "IN_PROGRESS",
     COMPLETED: "COMPLETED",
     FAILED: "FAILED",
-    RESTORING: "RESTORING",
-    RESTORED: "RESTORED",
-    DELETING: "DELETING",
+    DELETED: "DELETED",
   },
 };
 
@@ -181,11 +184,17 @@ const mockSequelize = {
     fn: jest.fn((name, col) => `${name}(${col})`),
     col: jest.fn((col) => col),
   },
-  transaction: jest.fn().mockResolvedValue({
-    commit: jest.fn(),
-    rollback: jest.fn(),
-  }),
+  // Both forms Sequelize offers: unmanaged (no callback — restoreBackup) and
+  // managed (a callback run with the transaction — createBackup's COMPLETED
+  // step and deleteBackup, S-32).
+  transaction: jest.fn(),
 };
+
+const bothTransactionForms = (callback) => {
+  const tx = { commit: jest.fn(), rollback: jest.fn() };
+  return typeof callback === "function" ? callback(tx) : Promise.resolve(tx);
+};
+mockSequelize.transaction.mockImplementation(bothTransactionForms);
 
 jest.mock("../../models", () => ({
   TenantBackup: mockTenantBackup,
@@ -260,6 +269,12 @@ describe("Tenant Backup Service", () => {
     mockUsers.findAll.mockReset();
     mockUsers.findAll.mockResolvedValue([]);
     mockZipGenerateAsync.mockResolvedValue(Buffer.from("mock-zip-data"));
+    mockTenantBackup.update.mockReset();
+    mockTenantBackup.update.mockResolvedValue([1]);
+    // A test that stubs the transaction must not leak into the next.
+    mockSequelize.transaction.mockImplementation(bothTransactionForms);
+    mockAuditLog.create.mockReset();
+    mockAuditLog.create.mockResolvedValue({});
   });
 
   describe("createBackup", () => {
@@ -420,7 +435,65 @@ describe("Tenant Backup Service", () => {
           status: "COMPLETED",
           recordCount: 2,
           metadata: expect.objectContaining({ checksum: "mock-checksum" }),
+          retentionDays: 30, // S-32: stamps expiresAt
         }),
+        mockModels,
+        { transaction: expect.any(Object) },
+      );
+    });
+
+    // S-32: the HTTP path wrote no audit row and never set expiresAt.
+    it("S-32: a user's backup is COMPLETED with its expiry and its CREATE audit row in one transaction", async () => {
+      mockTenantBackup.createBackup.mockResolvedValue({ id: mockBackupId });
+      mockTenant.findByPk.mockResolvedValue({ toJSON: () => ({ id: mockTenantId }) });
+      mockTenantBackup.findByPk.mockResolvedValue({ id: mockBackupId });
+
+      await createBackup({
+        tenantId: mockTenantId,
+        createdById: mockUserId,
+        backupType: "USER_ONLY",
+        retentionDays: 7,
+        models: mockModels,
+      });
+
+      const [, updates, , options] = mockTenantBackup.updateStatus.mock.calls.at(-1);
+      expect(updates).toEqual(expect.objectContaining({ status: "COMPLETED", retentionDays: 7 }));
+      expect(mockAuditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: mockTenantId,
+          userId: mockUserId,
+          action: "CREATE",
+          resourceType: "TenantBackup",
+          resourceId: mockBackupId,
+          changes: expect.objectContaining({ operation: "BACKUP", backupType: "USER_ONLY", retentionDays: 7 }),
+        }),
+        expect.objectContaining({ transaction: options.transaction }),
+      );
+    });
+
+    it("S-32: a system backup (no user) writes no audit row here — the scheduled job writes its own", async () => {
+      mockTenantBackup.createBackup.mockResolvedValue({ id: mockBackupId });
+      mockTenant.findByPk.mockResolvedValue({ toJSON: () => ({ id: mockTenantId }) });
+      mockTenantBackup.findByPk.mockResolvedValue({ id: mockBackupId });
+
+      // No models.sequelize: the barrel's instance runs the transaction.
+      await createBackup({ tenantId: mockTenantId, createdById: null, backupType: "USER_ONLY", models: {} });
+
+      expect(mockSequelize.transaction).toHaveBeenCalledWith(expect.any(Function));
+      expect(mockAuditLog.create).not.toHaveBeenCalled();
+    });
+
+    it("S-32: an audit failure rolls the COMPLETED step back into a FAILED backup", async () => {
+      mockTenantBackup.createBackup.mockResolvedValue({ id: mockBackupId });
+      mockTenant.findByPk.mockResolvedValue({ toJSON: () => ({ id: mockTenantId }) });
+      mockAuditLog.create.mockRejectedValue(new Error("audit insert failed"));
+
+      await expect(
+        createBackup({ tenantId: mockTenantId, createdById: mockUserId, backupType: "USER_ONLY", models: mockModels }),
+      ).rejects.toThrow("Failed to create backup");
+      expect(mockTenantBackup.updateStatus).toHaveBeenLastCalledWith(
+        mockBackupId,
+        expect.objectContaining({ status: "FAILED" }),
         mockModels,
       );
     });
@@ -443,6 +516,7 @@ describe("Tenant Backup Service", () => {
         mockBackupId,
         expect.objectContaining({ status: "COMPLETED", recordCount: 0 }),
         mockModels,
+        { transaction: expect.any(Object) },
       );
     });
 
@@ -924,7 +998,9 @@ describe("Tenant Backup Service", () => {
       expect(mockTenantBackup.updateStatus).toHaveBeenLastCalledWith(
         mockBackupId,
         expect.objectContaining({
-          status: "RESTORED",
+          // S-32: "restored" is COMPLETED with restoredAt — the ENUM has no RESTORED.
+          status: "COMPLETED",
+          restoredAt: expect.any(Date),
           metadata: expect.objectContaining({
             checksum: "mock-checksum",
             recordsProcessed: 1,
@@ -1064,18 +1140,42 @@ describe("Tenant Backup Service", () => {
         expect(mockTenantBackup.updateStatus).not.toHaveBeenCalled();
       };
 
+      // S-32: RESTORING and RESTORED were never in the status ENUM (every
+      // restore failed on PostgreSQL). A running restore is IN_PROGRESS; a
+      // restored backup is COMPLETED with restoredAt.
       it.each([
-        ["IN_PROGRESS", /is IN_PROGRESS and cannot be restored.*Wait for it to complete/],
-        ["RESTORING", /is RESTORING and cannot be restored.*already running/],
-        ["RESTORED", /is RESTORED and cannot be restored.*already been restored/],
-      ])("refuses a backup in state %s", async (status, message) => {
+        ["PENDING", {}, /is PENDING and cannot be restored.*Wait for it to complete/],
+        ["IN_PROGRESS", {}, /is IN_PROGRESS and cannot be restored.*already running/],
+        [
+          "COMPLETED",
+          { restoredAt: new Date("2026-09-20T10:00:00Z") },
+          /has already been restored \(at 2026-09-20T10:00:00.000Z\).*take a new backup/,
+        ],
+      ])("refuses a backup in state %s %o", async (status, extra, message) => {
         // Previously a bare 400 "Backup is not ready for restore".
-        mockTenantBackup.findByPk.mockResolvedValue(restorableBackup({ status }));
+        mockTenantBackup.findByPk.mockResolvedValue(restorableBackup({ status, ...extra }));
 
         const error = await run().catch((e) => e);
 
         expect(error.status).toBe(409);
         expect(error.message).toMatch(message);
+        expectNothingWritten();
+        expect(mockTenantBackup.update).not.toHaveBeenCalled();
+      });
+
+      it("S-32: claims the backup conditionally; a concurrent restore that lost the claim gets the 409", async () => {
+        mockTenantBackup.findByPk.mockResolvedValue(restorableBackup());
+        stubArchive(archive({ users: [] }));
+        mockTenantBackup.update.mockResolvedValue([0]); // another restore claimed it first
+
+        const error = await run().catch((e) => e);
+
+        expect(mockTenantBackup.update).toHaveBeenCalledWith(
+          { status: "IN_PROGRESS" },
+          { where: { id: mockBackupId, status: "COMPLETED", restoredAt: null } },
+        );
+        expect(error.status).toBe(409);
+        expect(error.message).toMatch(/is IN_PROGRESS and cannot be restored.*already running/);
         expectNothingWritten();
       });
 
@@ -1235,25 +1335,59 @@ describe("Tenant Backup Service", () => {
   });
 
   describe("deleteBackup", () => {
-    it("should delete a backup successfully", async () => {
-      const mockBackup = {
-        id: mockBackupId,
-        filePath: "/mock/backups/backup.zip",
-        status: "COMPLETED",
-        destroy: jest.fn().mockResolvedValue(true),
-      };
+    // S-32: this wrote a DELETING status first — not in the status ENUM, so
+    // every delete failed on PostgreSQL — and wrote no audit row. Now the row
+    // is marked DELETED, soft-deleted and audited in one transaction, and the
+    // file goes only after that commits.
+    const deletable = (overrides = {}) => ({
+      id: mockBackupId,
+      tenantId: mockTenantId,
+      filePath: "/mock/backups/backup.zip",
+      status: "COMPLETED",
+      update: jest.fn().mockResolvedValue(true),
+      destroy: jest.fn().mockResolvedValue(true),
+      ...overrides,
+    });
 
+    it("marks DELETED, soft-deletes and audits in ONE transaction, then removes the file", async () => {
+      const mockBackup = deletable();
       mockTenantBackup.findByPk.mockResolvedValue(mockBackup);
       mockFs.existsSync.mockReturnValue(true);
+      const order = [];
+      mockBackup.update.mockImplementation(async () => order.push("update"));
+      mockBackup.destroy.mockImplementation(async () => order.push("destroy"));
+      mockAuditLog.create.mockImplementation(async () => order.push("audit"));
+      mockFs.unlinkSync.mockImplementation(() => order.push("unlink"));
 
       const result = await deleteBackup(mockBackupId, mockUserId, mockModels);
 
-      expect(result.success).toBe(true);
-      expect(result.message).toBe("Backup deleted successfully");
-      expect(mockFs.unlinkSync).toHaveBeenCalledWith(
-        "/mock/backups/backup.zip",
+      expect(result).toEqual({ success: true, status: 200, message: "Backup deleted successfully", data: null });
+      expect(order).toEqual(["update", "destroy", "audit", "unlink"]);
+      const tx = mockBackup.update.mock.calls[0][1].transaction;
+      expect(tx).toBeDefined();
+      expect(mockBackup.update).toHaveBeenCalledWith(
+        { status: "DELETED", deletedBy: mockUserId },
+        { transaction: tx },
       );
-      expect(mockBackup.destroy).toHaveBeenCalled();
+      expect(mockBackup.destroy).toHaveBeenCalledWith({ transaction: tx });
+      expect(mockAuditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: mockTenantId,
+          userId: mockUserId,
+          action: "DELETE",
+          resourceType: "TenantBackup",
+          resourceId: mockBackupId,
+          changes: {
+            operation: "BACKUP_DELETE",
+            fileName: "backup.zip",
+            before: { status: "COMPLETED" },
+            after: { status: "DELETED" },
+          },
+        }),
+        expect.objectContaining({ transaction: tx }),
+      );
+      // No intermediate status the ENUM does not have.
+      expect(mockTenantBackup.updateStatus).not.toHaveBeenCalled();
     });
 
     it("should throw error if backup not found", async () => {
@@ -1264,19 +1398,73 @@ describe("Tenant Backup Service", () => {
       ).rejects.toThrow("Backup not found");
     });
 
-    it("should handle file deletion failure gracefully", async () => {
-      const mockBackup = {
-        id: mockBackupId,
-        filePath: null,
-        status: "COMPLETED",
-        destroy: jest.fn().mockResolvedValue(true),
-      };
-
+    it("a backup with no file is deleted and audited; nothing is unlinked", async () => {
+      const mockBackup = deletable({ filePath: null });
       mockTenantBackup.findByPk.mockResolvedValue(mockBackup);
 
       const result = await deleteBackup(mockBackupId, mockUserId, mockModels);
 
       expect(result.success).toBe(true);
+      expect(mockFs.unlinkSync).not.toHaveBeenCalled();
+      expect(mockAuditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({ changes: expect.objectContaining({ fileName: null }) }),
+        expect.any(Object),
+      );
+    });
+
+    it("a delete with no actor is refused by the audit and rolls back (ADR-051 Q-13)", async () => {
+      const mockBackup = deletable();
+      mockTenantBackup.findByPk.mockResolvedValue(mockBackup);
+
+      await expect(deleteBackup(mockBackupId, null, mockModels)).rejects.toThrow(
+        /Failed to delete backup: An audit entry must name its actor/,
+      );
+      expect(mockBackup.update).toHaveBeenCalledWith(
+        { status: "DELETED", deletedBy: null },
+        expect.any(Object),
+      );
+      expect(mockFs.unlinkSync).not.toHaveBeenCalled();
+    });
+
+    it("a file already gone from disk is not an error", async () => {
+      mockTenantBackup.findByPk.mockResolvedValue(deletable());
+      mockFs.existsSync.mockReturnValue(false);
+
+      await expect(deleteBackup(mockBackupId, mockUserId, mockModels)).resolves.toEqual(
+        expect.objectContaining({ success: true }),
+      );
+      expect(mockFs.unlinkSync).not.toHaveBeenCalled();
+    });
+
+    it("a backup IN_PROGRESS is a 409 with a state explanation, and nothing is written", async () => {
+      const mockBackup = deletable({ status: "IN_PROGRESS" });
+      mockTenantBackup.findByPk.mockResolvedValue(mockBackup);
+
+      const error = await deleteBackup(mockBackupId, mockUserId, mockModels).catch((e) => e);
+
+      expect(error.status).toBe(409);
+      expect(error.message).toMatch(/is IN_PROGRESS and cannot be deleted: a backup or a restore of it is running/);
+      expect(mockBackup.update).not.toHaveBeenCalled();
+      expect(mockBackup.destroy).not.toHaveBeenCalled();
+      expect(mockAuditLog.create).not.toHaveBeenCalled();
+      expect(mockFs.unlinkSync).not.toHaveBeenCalled();
+    });
+
+    it("a file that cannot be unlinked after the commit is logged, and the delete still succeeds", async () => {
+      mockTenantBackup.findByPk.mockResolvedValue(deletable());
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.unlinkSync.mockImplementation(() => {
+        throw new Error("EACCES");
+      });
+      const { logger } = require("../../middlewares/activityLog.middleware");
+
+      const result = await deleteBackup(mockBackupId, mockUserId, mockModels);
+
+      expect(result.success).toBe(true);
+      expect(logger.error).toHaveBeenCalledWith(
+        "Tenant backup deleted; its file could not be removed and is left on disk",
+        expect.objectContaining({ backupId: mockBackupId, error: "EACCES" }),
+      );
     });
   });
 
@@ -1460,11 +1648,13 @@ describe("Tenant Backup Service", () => {
   });
 
   describe("deleteBackup failure handling", () => {
-    it("should handle deletion failure and revert status", async () => {
+    it("a failure inside the transaction is a 500 and the file is NOT removed", async () => {
       const mockBackup = {
         id: mockBackupId,
+        tenantId: mockTenantId,
         filePath: "/mock/backups/backup.zip",
         status: "COMPLETED",
+        update: jest.fn().mockResolvedValue(true),
         destroy: jest.fn().mockRejectedValue(new Error("Database deletion error")),
       };
 
@@ -1473,13 +1663,12 @@ describe("Tenant Backup Service", () => {
 
       await expect(
         deleteBackup(mockBackupId, mockUserId, mockModels),
-      ).rejects.toThrow("Failed to delete backup");
+      ).rejects.toThrow("Failed to delete backup: Database deletion error");
 
-      expect(mockTenantBackup.updateStatus).toHaveBeenCalledWith(
-        mockBackupId,
-        { status: "COMPLETED" },
-        mockModels,
-      );
+      // The row, the soft delete and the audit roll back together; the file
+      // is untouched, so the backup is still whole.
+      expect(mockFs.unlinkSync).not.toHaveBeenCalled();
+      expect(mockAuditLog.create).not.toHaveBeenCalled();
     });
   });
 });

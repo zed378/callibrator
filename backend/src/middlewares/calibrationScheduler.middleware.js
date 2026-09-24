@@ -1,4 +1,5 @@
 const cron = require("node-cron");
+const { scheduleSetting } = require("../utils/schedulerSwitch.util"); // W-02: one switch for every singleton scheduler
 const { logger } = require("./activityLog.middleware");
 const {
   runCalibrationScan,
@@ -24,7 +25,7 @@ const DEFAULT_SCHEDULE = "0 1 * * *"; // daily at 1:00 AM
  * run — "overdue devices got no work order" must not read as success.
  */
 const initCalibrationScheduler = () => {
-  const schedule = process.env.CALIBRATION_SCHEDULER || DEFAULT_SCHEDULE;
+  const schedule = scheduleSetting("CALIBRATION_SCHEDULER", DEFAULT_SCHEDULE);
 
   if (schedule === "disabled" || schedule === "off") {
     logger.info("Calibration scheduler disabled via CALIBRATION_SCHEDULER");

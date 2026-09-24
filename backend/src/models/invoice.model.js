@@ -1,5 +1,8 @@
 const { Model, DataTypes } = require("sequelize");
 
+/** D-21: a NUMERIC read back from pg (a string) as a number; null/undefined kept. */
+const toNumber = (value) => (value === null || value === undefined ? value : Number(value));
+
 module.exports = (sequelize) => {
   class Invoice extends Model {
     static associate(models) {
@@ -44,11 +47,23 @@ module.exports = (sequelize) => {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: false,
         defaultValue: 0.00,
+        // D-21: node-postgres returns NUMERIC as a string ("1250.00"), so
+        // `a + b` concatenated and `>` compared lexicographically. Read as a
+        // number; NULL stays NULL. `raw: true` queries and SUM() bypass this.
+        get() {
+          return toNumber(this.getDataValue("amountDue"));
+        },
       },
       amountPaid: {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: false,
         defaultValue: 0.00,
+        // D-21: node-postgres returns NUMERIC as a string ("1250.00"), so
+        // `a + b` concatenated and `>` compared lexicographically. Read as a
+        // number; NULL stays NULL. `raw: true` queries and SUM() bypass this.
+        get() {
+          return toNumber(this.getDataValue("amountPaid"));
+        },
       },
       currency: {
         type: DataTypes.STRING,

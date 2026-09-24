@@ -143,9 +143,15 @@ describe("user Controller", () => {
 
       await userController.checkUsernameAvailability(req, res, next);
 
-      expect(userService.checkUsernameAvailability).toHaveBeenCalledWith({
-        username: "john",
-      });
+      // A-258: with the actor, so a "taken" answer is budgeted and audited.
+      expect(userService.checkUsernameAvailability).toHaveBeenCalledWith(
+        expect.objectContaining({
+          username: "john",
+          actorId: VALID_USER_ID,
+          actorTenantId: VALID_TENANT_ID,
+          actorIsSuperAdmin: false,
+        }),
+      );
       expect(success).toHaveBeenCalled();
     });
 

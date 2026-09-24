@@ -2,6 +2,7 @@ const calibrationScheduler = require("../services/calibrationScheduler.service")
 const { asyncHandler } = require("../utils/controllerWrapper.util");
 const { success } = require("../utils/response.util");
 const { ROLE_NAMES } = require("../constants/roleConstants");
+const { auditActor } = require("../utils/auditActor.util");
 
 // Determines which tenant(s) the scan targets. Super admins may target all
 // tenants (allTenants=true) or a specific tenant (body.tenantId); everyone else
@@ -35,6 +36,8 @@ exports.runScan = asyncHandler(async (req, res) => {
   const summary = await calibrationScheduler.runCalibrationScan({
     tenantId,
     leadDays,
+    // W-30: a manual run's work orders are the user's, audited as theirs.
+    actor: auditActor(req),
   });
   success(res, summary, null, "Calibration scan completed", 200);
 });

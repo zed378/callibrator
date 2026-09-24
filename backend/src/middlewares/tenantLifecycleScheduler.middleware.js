@@ -1,4 +1,5 @@
 const cron = require("node-cron");
+const { scheduleSetting } = require("../utils/schedulerSwitch.util"); // W-02: one switch for every singleton scheduler
 const { logger } = require("./activityLog.middleware");
 const {
   processExpiredGracePeriods,
@@ -26,7 +27,7 @@ const DEFAULT_SCHEDULE = "30 2 * * *"; // daily at 2:30 AM
  * than daily meant it never fired at all.
  */
 const initTenantLifecycleScheduler = () => {
-  const schedule = process.env.TENANT_LIFECYCLE_SCHEDULER || DEFAULT_SCHEDULE;
+  const schedule = scheduleSetting("TENANT_LIFECYCLE_SCHEDULER", DEFAULT_SCHEDULE);
 
   if (schedule === "disabled" || schedule === "off") {
     logger.info("Tenant lifecycle scheduler disabled via TENANT_LIFECYCLE_SCHEDULER");

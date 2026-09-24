@@ -529,36 +529,12 @@ app.get("/", (req, res) => {
 // DOCUMENTATION (HTML)
 // ======================================================
 
-// appPath (execPath-relative when packaged) so these are read from the docs
-// folder shipped next to the binary — res.sendFile cannot serve a file embedded
-// under __dirname inside a compiled single-file binary.
-const htmlDocPath = appPath("docs", "DOCUMENTATION.html");
-const codingStandardsPath = appPath("docs", "CODING_STANDARDS.html");
-const tablePermissionsDocPath = appPath("docs", "TABLE_PERMISSIONS.html");
-
-app.get("/documentation", (req, res) => {
-  return res.sendFile(htmlDocPath);
-});
-
-app.get("/standards", (req, res) => {
-  return res.sendFile(codingStandardsPath);
-});
-
-app.get("/tab-permissions", (req, res) => {
-  return res.sendFile(tablePermissionsDocPath);
-});
-
-// ======================================================
-// TEST ERROR ROUTE
-// ======================================================
-
-app.get("/error", (req, res, next) => {
-  const err = new Error("This is a test error");
-
-  err.status = 500;
-
-  next(err);
-});
+// A-253 — /documentation and /standards are registered by swaggerDocs() above
+// (src/docs/swagger.js): developer documentation, published under the same
+// switch as the API contract, so not in production unless SWAGGER_ENABLED=true.
+// Removed outright: /tab-permissions (it sent docs/TABLE_PERMISSIONS.html,
+// which does not exist — every request was an error) and /error (a test route
+// that answered a 500 to anyone, production included).
 
 // ======================================================
 // NOT FOUND

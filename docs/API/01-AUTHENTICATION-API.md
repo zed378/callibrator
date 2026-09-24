@@ -63,6 +63,11 @@ With MFA enabled, `POST /login` returns a challenge rather than a token; the cli
 
 Per-tenant variants exist because each tenant may federate with its own identity provider; a single shared callback cannot tell which IdP an assertion came from.
 
+OIDC endpoints are read from the IdP's discovery document at `<oidc_authority>/.well-known/openid-configuration`
+(A-188; a multi-tenant authority such as Entra's `/common` is refused with 400). The callbacks are
+reached by the browser: a refusal redirects to `/login?error=<code>`, never a JSON body. A platform
+operator is refused SSO (A-210). An SSO session's access token carries `amr` = `saml` / `oidc`.
+
 ### Impersonation
 
 | Method | Path | Auth | Purpose |
@@ -142,29 +147,38 @@ The discovery document advertises endpoints at `<issuer>/oidc/...` where the iss
 
 ## Authentication Flow
 
+*As-built after ADR-059 (A-185, P6-07). The security treatment is
+[`../SECURITY/03-AUTHENTICATION-SECURITY.md`](../SECURITY/03-AUTHENTICATION-SECURITY.md).*
+
 ```
 POST /auth/login
-  ├─ rate limit (20 / 15 min at Express, 5 / 15 min with lockout at Redis)
-  ├─ resolve user by email
-  ├─ reject if tenants.status = 'suspended'          (BR-3)
-  ├─ reject if users.lockedUntil is in the future
-  ├─ verify password
-  │    fail → failedLoginAttempts++ → maybe set lockedUntil → 401
-  ├─ reset failedLoginAttempts
-  ├─ if mfaEnabled → return an MFA challenge, no token
+  ├─ rate limit (20 / 15 min at Express)
+  ├─ sign-in throttle: identifier+address 5 failures / 15 min, identifier 100 / hour → 429
+  ├─ resolve user by username or email
+  ├─ verify password (an unknown identifier against a dummy hash)
+  │    any failure → counted → 401 "Invalid credentials" (unknown, wrong, suspended, locked: alike)
+  ├─ with the right password only: 403 suspended account · 423 locked by the MFA step · 403 tenant (BR-3)
+  ├─ if mfaEnabled → return an MFA challenge, no session
   ├─ create a sessions row: token hash, IP, user agent, device
   ├─ write audit_logs LOGIN
-  └─ return { data, token, session }
+  └─ return { data, token, session }   (data.mfaEnrolmentRequired for an operator without MFA)
 ```
+
+`token` in this body is for server-side callers; the Next.js layer moves it into the httpOnly cookie
+and removes it before the browser sees the response (A-71).
 
 ## Error Semantics
 
 | Situation | Response |
 |---|---|
-| Bad credentials | 401 "Invalid credentials" — never distinguishing unknown user from wrong password |
+| Bad credentials — unknown user, wrong password, suspended or locked account | 401 "Invalid credentials", uniform (A-185) |
+| The right password, suspended account | 403 "Account is suspended" |
+| The right password, account locked by the MFA step | 423 "Account temporarily locked" |
+| Sign-in paused after repeated failures | 429 — the same for an unknown identifier (A-185) |
 | Expired token | 401 **"Invalid token"** |
-| Locked account | 401 with a lockout message |
 | Suspended tenant | 403 "Tenant account is suspended" |
+| Operator (level 10) without MFA; tenant MFA policy | 403 `MFA_ENROLMENT_REQUIRED` (P6-07, A-160) |
+| SSO callback refused | 302 to `/login?error=sso_state\|sso_unavailable\|sso_account_refused\|sso_failed\|sso_error` (A-188) |
 | Rate limited | 429 with `X-RateLimit-*` |
 
 An expired token reporting "Invalid token" rather than a distinct "token expired" is a known cosmetic wart. It was left alone deliberately: changing the message churns a fully-covered unit suite for no security or usability gain. Recorded so the next reader does not treat it as a bug to chase.

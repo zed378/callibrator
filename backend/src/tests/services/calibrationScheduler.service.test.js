@@ -1,6 +1,6 @@
 jest.mock("../../models", () => ({
   CalibrationDevice: { findAll: jest.fn() },
-  MaintenanceWorkOrder: { findOne: jest.fn() },
+  MaintenanceWorkOrder: { findAll: jest.fn() },
 }));
 jest.mock("../../services/maintenance.service", () => ({ createWorkOrder: jest.fn() }));
 jest.mock("../../services/notification.service", () => ({ emitNotification: jest.fn() }));
@@ -29,7 +29,7 @@ describe("calibrationScheduler.service", () => {
     CalibrationDevice.findAll.mockResolvedValue([
       { id: "d1", tenantId: "t1", name: "Dev", serialNumber: "s", nextCalibrationDate: new Date("2020-01-01") },
     ]);
-    MaintenanceWorkOrder.findOne.mockResolvedValue(null);
+    MaintenanceWorkOrder.findAll.mockResolvedValue([]);
 
     const summary = await scheduler.runCalibrationScan({ tenantId: "t1" });
 
@@ -49,7 +49,7 @@ describe("calibrationScheduler.service", () => {
     CalibrationDevice.findAll.mockResolvedValue([
       { id: "d1", tenantId: "t1", name: "Dev", nextCalibrationDate: new Date("2020-01-01") },
     ]);
-    MaintenanceWorkOrder.findOne.mockResolvedValue({ id: "existing" });
+    MaintenanceWorkOrder.findAll.mockResolvedValue([{ id: "existing", deviceId: "d1" }]);
 
     const summary = await scheduler.runCalibrationScan({ tenantId: "t1" });
 
@@ -69,7 +69,7 @@ describe("calibrationScheduler.service", () => {
     CalibrationDevice.findAll.mockResolvedValue([
       { id: "d1", tenantId: "t1", name: "Dev", serialNumber: "SN9", nextCalibrationDate: new Date("2025-01-05") },
     ]);
-    MaintenanceWorkOrder.findOne.mockResolvedValue(null);
+    MaintenanceWorkOrder.findAll.mockResolvedValue([]);
 
     const summary = await scheduler.runCalibrationScan({ tenantId: "t1", now, leadDays: 30 });
 
@@ -83,6 +83,7 @@ describe("calibrationScheduler.service", () => {
         status: "Open",
         description: expect.stringContaining("(S/N SN9) is due for calibration (scheduled 2025-01-05)"),
       }),
+      { systemActor: "system:calibration-scan" },
     );
     expect(notificationService.emitNotification).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -109,7 +110,7 @@ describe("calibrationScheduler.service", () => {
     CalibrationDevice.findAll.mockResolvedValue([
       { id: "d1", tenantId: "t1", name: "Dev", serialNumber: null, nextCalibrationDate: null },
     ]);
-    MaintenanceWorkOrder.findOne.mockResolvedValue(null);
+    MaintenanceWorkOrder.findAll.mockResolvedValue([]);
 
     await scheduler.runCalibrationScan({ tenantId: "t1" });
 
@@ -123,7 +124,7 @@ describe("calibrationScheduler.service", () => {
     CalibrationDevice.findAll.mockResolvedValue([
       { id: "d1", tenantId: "t1", name: "Dev", nextCalibrationDate: new Date("2020-01-01") },
     ]);
-    MaintenanceWorkOrder.findOne.mockResolvedValue(null);
+    MaintenanceWorkOrder.findAll.mockResolvedValue([]);
     notificationService.emitNotification.mockResolvedValue(null);
 
     const summary = await scheduler.runCalibrationScan({ tenantId: "t1" });
@@ -136,7 +137,7 @@ describe("calibrationScheduler.service", () => {
     CalibrationDevice.findAll.mockResolvedValue([
       { id: "d1", tenantId: "t1", name: "Dev", nextCalibrationDate: new Date("2020-01-01") },
     ]);
-    MaintenanceWorkOrder.findOne.mockResolvedValue(null);
+    MaintenanceWorkOrder.findAll.mockResolvedValue([]);
     maintenanceService.createWorkOrder.mockResolvedValue(null);
 
     const summary = await scheduler.runCalibrationScan({ tenantId: "t1" });
@@ -154,7 +155,7 @@ describe("calibrationScheduler.service", () => {
       { id: "d1", tenantId: "t1", name: "Bad", nextCalibrationDate: new Date("2020-01-01") },
       { id: "d2", tenantId: "t1", name: "Good", nextCalibrationDate: new Date("2020-01-01") },
     ]);
-    MaintenanceWorkOrder.findOne.mockResolvedValue(null);
+    MaintenanceWorkOrder.findAll.mockResolvedValue([]);
     maintenanceService.createWorkOrder
       .mockRejectedValueOnce(new Error("boom"))
       .mockResolvedValue({ data: { id: "wo2" } });

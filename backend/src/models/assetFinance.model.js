@@ -8,6 +8,9 @@
  * One financial record per device (unique device_id).
  */
 
+/** D-21: a NUMERIC read back from pg (a string) as a number; null/undefined kept. */
+const toNumber = (value) => (value === null || value === undefined ? value : Number(value));
+
 /**
  * Define the AssetFinance model.
  * @param {import("sequelize").Sequelize} db - The Sequelize instance
@@ -39,6 +42,12 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.DECIMAL(14, 2),
         allowNull: false,
         validate: { min: 0 },
+        // D-21: node-postgres returns NUMERIC as a string ("1250.00"), so
+        // `a + b` concatenated and `>` compared lexicographically. Read as a
+        // number; NULL stays NULL. `raw: true` queries and SUM() bypass this.
+        get() {
+          return toNumber(this.getDataValue("purchasePrice"));
+        },
       },
       purchaseDate: {
         type: DataTypes.DATEONLY,
@@ -49,6 +58,12 @@ const defineModel = (db, DataTypes) => {
         allowNull: false,
         defaultValue: 0,
         validate: { min: 0 },
+        // D-21: node-postgres returns NUMERIC as a string ("1250.00"), so
+        // `a + b` concatenated and `>` compared lexicographically. Read as a
+        // number; NULL stays NULL. `raw: true` queries and SUM() bypass this.
+        get() {
+          return toNumber(this.getDataValue("salvageValue"));
+        },
       },
       usefulLifeYears: {
         type: DataTypes.INTEGER,

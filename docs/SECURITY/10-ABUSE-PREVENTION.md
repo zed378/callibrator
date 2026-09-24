@@ -10,17 +10,23 @@ Distinct from [`08-API-SECURITY.md`](./08-API-SECURITY.md), which defends the ed
 
 | Vector | Control |
 |---|---|
-| Credential stuffing | Redis counter: 5 attempts / 15 min, then lockout |
-| Password spraying | the counter is per account **and** per source |
+| Credential stuffing | sign-in throttle (A-185): 5 failures per identifier **and address** / 15 min, then 429 for that pair; 100 per identifier from any address / hour, then 429 everywhere. Never an account lock |
+| Password spraying | per-address limit when `AUTH_RATE_LIMIT_BY_IP` is on (A-16); the identifier ceiling otherwise |
 | OTP flooding | 3 / 15 min with lockout; 5 / hour at Express |
 | Reset-token brute force | 5 / 5 min |
-| Account enumeration | uniform responses on login and `/send-otp` |
+| Account enumeration | uniform responses on login (401 for unknown, wrong, suspended and locked alike; the same 429 for an unknown identifier — A-185) and `/send-otp` |
 
 ### Lockout is itself an abuse vector
 
 An attacker who knows an email address can keep that user locked out indefinitely by failing logins on purpose.
 
 Counting per source as well as per account is what prevents a single actor locking many accounts. A counter keyed only on the account hands an attacker a cheap denial tool aimed at named people — which, in a hospital, can mean the person who needs to sign a calibration before a device goes back into service.
+
+**As-built after A-185 (ADR-059):** the password step no longer writes `users.lockedUntil`.
+Failures pause the typed identifier from the failing address only; the owner signing in from
+anywhere else is unaffected. The residual is the identifier-wide ceiling (100 failures an hour), which
+a distributed attacker can still trigger on purpose; without it a botnet guesses without bound.
+`lockedUntil` is written only by the MFA step, whose attempts already needed the password.
 
 ## Resource Abuse
 

@@ -56,6 +56,18 @@ const swaggerDocs = (app) => {
       },
     }),
   );
+
+  // A-253 — the developer HTML pages. index.js served them unconditionally
+  // and unauthenticated, production included: DOCUMENTATION.html and
+  // CODING_STANDARDS.html describe the internals (middleware order, the
+  // tenant hooks, where authorization lives) — reconnaissance, not product.
+  // They are developer documentation of the same class as the API contract,
+  // so they are published under the same switch: off in production unless
+  // SWAGGER_ENABLED=true. appPath (execPath-relative when packaged) reads
+  // them from the docs folder shipped next to a compiled binary, where
+  // res.sendFile cannot reach a file embedded under __dirname.
+  app.get("/documentation", (req, res) => res.sendFile(appPath("docs", "DOCUMENTATION.html")));
+  app.get("/standards", (req, res) => res.sendFile(appPath("docs", "CODING_STANDARDS.html")));
   return true;
 };
 

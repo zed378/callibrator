@@ -18,23 +18,26 @@ const mockRef = { ledger: null };
 
 // registerUser opens an UNMANAGED transaction (no callback) — a stand-in with
 // the shape it uses; every managed one goes through the ledger.
-jest.mock("../../config", () => ({
-  db: {
-    transaction: (...args) =>
-      typeof args[0] === "function"
-        ? mockRef.ledger.transaction(...args)
-        : Promise.resolve({
-            LOCK: { UPDATE: "UPDATE" },
-            finished: undefined,
-            commit() {
-              this.finished = "commit";
-            },
-            rollback() {
-              this.finished = "rollback";
-            },
-          }),
-  },
-}));
+jest.mock("../../config", () => {
+  const unmanaged = () => ({
+    LOCK: { UPDATE: "UPDATE" },
+    finished: undefined,
+    commit() {
+      this.finished = "commit";
+    },
+    rollback() {
+      this.finished = "rollback";
+    },
+  });
+  return {
+    db: {
+      transaction: (...args) =>
+        typeof args[0] === "function"
+          ? mockRef.ledger.transaction(...args)
+          : Promise.resolve(unmanaged()),
+    },
+  };
+});
 
 jest.mock("../../models", () => ({
   Users: { findOne: jest.fn(), findByPk: jest.fn(), create: jest.fn() },

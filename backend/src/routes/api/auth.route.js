@@ -543,8 +543,8 @@ router.post("/sso/login", ssoController.ssoLogin);
  * /api/v1/auth/sso/callback:
  *   post:
  *     tags: [SSO]
- *     summary: Handle SSO callback from OIDC provider
- *     description: Receives the authorization code from the OIDC provider, exchanges it for tokens, and establishes a session.
+ *     summary: SAML assertion consumer (browser POST from the IdP)
+ *     description: Verifies the SAML response, provisions the user and hands off a one-time code (A-60). Reached by the browser, so it always answers with a redirect.
  *     requestBody:
  *       required: true
  *       content:
@@ -559,30 +559,8 @@ router.post("/sso/login", ssoController.ssoLogin);
  *                 type: string
  *                 description: State parameter for CSRF protection
  *     responses:
- *       '200':
- *         description: SSO authentication successful
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 data:
- *                   type: object
- *                   properties:
- *                     token:
- *                       type: string
- *                     refreshToken:
- *                       type: string
- *                     user:
- *                       $ref: '#/components/schemas/User'
- *       '400':
- *         description: Invalid authorization code or state mismatch
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
+ *       '302':
+ *         description: "A-60/A-188 - the browser is redirected: on success to FRONTEND_URL/sso-callback?code=<one-time code>; on any refusal to FRONTEND_URL/login?error=<sso_state|sso_unavailable|sso_account_refused|sso_failed|sso_error>. No JSON body is ever sent."
  */
 router.post("/sso/callback", ssoController.ssoCallback);
 
@@ -612,23 +590,8 @@ router.post("/sso/callback", ssoController.ssoCallback);
  *               state:
  *                 type: string
  *     responses:
- *       '200':
- *         description: SSO authentication successful
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 data:
- *                   type: object
- *       '404':
- *         description: Tenant not found
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
+ *       '302':
+ *         description: "A-60/A-188 - the browser is redirected: on success to FRONTEND_URL/sso-callback?code=<one-time code>; on any refusal to FRONTEND_URL/login?error=<sso_state|sso_unavailable|sso_account_refused|sso_failed|sso_error>. No JSON body is ever sent."
  */
 router.post("/sso/callback/:tenantCode", ssoController.ssoCallback);
 
@@ -673,8 +636,8 @@ router.post("/sso/oidc/login", ssoController.oidcLogin);
  *               state:
  *                 type: string
  *     responses:
- *       '200':
- *         description: OIDC authentication successful
+ *       '302':
+ *         description: "A-60/A-188 - the browser is redirected: on success to FRONTEND_URL/sso-callback?code=<one-time code>; on any refusal to FRONTEND_URL/login?error=<sso_state|sso_unavailable|sso_account_refused|sso_failed|sso_error>. No JSON body is ever sent."
  */
 router.post("/sso/oidc/callback", ssoController.oidcCallback);
 
@@ -702,8 +665,8 @@ router.post("/sso/oidc/callback", ssoController.oidcCallback);
  *               state:
  *                 type: string
  *     responses:
- *       '200':
- *         description: OIDC authentication successful
+ *       '302':
+ *         description: "A-60/A-188 - the browser is redirected: on success to FRONTEND_URL/sso-callback?code=<one-time code>; on any refusal to FRONTEND_URL/login?error=<sso_state|sso_unavailable|sso_account_refused|sso_failed|sso_error>. No JSON body is ever sent."
  */
 router.post("/sso/oidc/callback/:tenantCode", ssoController.oidcCallback);
 

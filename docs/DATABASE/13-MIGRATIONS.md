@@ -87,7 +87,39 @@ FROM information_schema.columns
 WHERE table_name = 'calibration_devices';
 ```
 
-A post-migration assertion step comparing expected columns against `information_schema` is in [`../../TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md) as the mechanical fix.
+### The mechanical fix — every boot verifies the schema (P6-05)
+
+As-built 2026-09-24 (ADR-PENDING-data). After `db.sync()` and the migrator, the backend compares **every model's
+columns** with `information_schema.columns`, and checks the **control objects that exist only in migrations** by
+name — the `calibration_records` append-only trigger and void CHECK (0057), the per-tenant serial index (0026), the
+stock-adjustment reason CHECK (0059) — and **refuses to start** on a mismatch, naming each one
+(`backend/src/utils/schemaVerify.util.js`, called from `backend/index.js`):
+
+- a model table or column the database lacks — the silent no-op migration;
+- a column the model does **not** declare that is `NOT NULL` with no default — every insert would fail on it
+  (an undeclared nullable column is only a note);
+- a missing control object.
+
+It runs before the backend drops to the application role, because `information_schema` shows a role only the
+columns it holds privileges on. It is not wrapped in a catch; `SCHEMA_VERIFY=warn` downgrades a mismatch to error
+logs on every boot — for a recovery, not a steady state.
+
+```bash
+make migrate               # restarts the backend (which migrates at boot), then:
+make migrate-verify        # prints the last boot's [schema-verify] verdict; fails unless OK
+make migrate-verify-host   # HOST: npm run migrate:verify against backend/.env's database, exit 1 on a mismatch
+```
+
+Proved against PostgreSQL 16 — a synced and migrated database passes; a dropped column, a dropped trigger and an
+undeclared `NOT NULL` column each fail it: `backend/src/tests/services/dataIntegrity.p6.live.test.js`.
+
+**Blanket catches still in existing migrations** (audited 2026-09-24, A-243). All ran long ago on every database;
+the verifier now catches their failure mode, so they are recorded rather than rewritten:
+`0001`, `0002`, `0004`, `0005`, `0013` wrap `describeTable` in a catch that skips on **any** error; `0014` swallows
+any `addIndex`/`removeIndex` error; `0017` swallows `DROP TYPE` errors and its `down`'s `dropTable`; `0018` swallows
+`CREATE EXTENSION vector` and the ivfflat index (deliberate — pgvector is optional there, and the `ALTER TABLE …
+vector` after it fails loudly without the extension). `0014`/`0023`/`0028`/`0029`/`0031` narrow their catch to
+"table does not exist" and re-throw everything else — the correct shape.
 
 ## Writing a Migration
 
@@ -113,4 +145,9 @@ The same router carries the demo seeder behind `SEED_DEMO=true` — roughly 80 r
 The backend runs `db.sync()` and migrations **at boot**. Two consequences:
 
 - Compose must gate the backend on `postgres: service_healthy` (`pg_isready`), not on `service_started`. Starting against a database that is not accepting connections produces a crash loop that looks like a code fault.
+- After migrating, the backend verifies the schema (above) and, when `DB_APP_ROLE` is set, drops every pooled
+  connection to that role with `SET ROLE` (P6-03, `backend/src/utils/dbRole.util.js`). The owner login is used for
+  sync and migrations only. One consequence: the internal `/api/v1/migration` "migrate" and "drop" endpoints run
+  `db.sync()` as the application role and now **fail** — creating or dropping tables is not something the running
+  application may do. Migrate by restarting the backend (`make migrate`).
 - On more than one replica, two instances will attempt migrations simultaneously. Exactly one should run them, or migrations need to be advisory-locked. This is a prerequisite for horizontal scaling, alongside the two in [`../ARCHITECTURE/08-DEPLOYMENT-ARCHITECTURE.md`](../ARCHITECTURE/08-DEPLOYMENT-ARCHITECTURE.md).

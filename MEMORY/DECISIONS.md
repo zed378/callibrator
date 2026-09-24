@@ -2257,6 +2257,81 @@ to be claims the guard can verify.
 
 ---
 
+## ADR-059: Sign-In Is Throttled, Never Locked; the Browser Never Holds the Access Token; OIDC Is Discovered; the Operator Must Enrol MFA
+
+**Date:** 2026-09-25 · **Findings:** A-185, A-71, A-188, A-210, P6-07, A-160, A-191, A-162 · **Extends:** ADR-047, ADR-051
+
+**Decision**
+
+1. **Sign-in failures are throttled per identifier and address. An account is never locked by
+   anonymous attempts (A-185).**
+   - The key is the SHA-256 of the normalised identifier plus `req.ip`: 5 failures in 15 minutes
+     pause that pair.
+   - 100 failures in an hour pause the identifier from every address. 100 is NIST 800-63B's ceiling.
+   - The throttle is checked before the account is looked up, so an unknown identifier is throttled,
+     and timed, exactly like a real one: it pays for a dummy bcrypt comparison.
+   - Every failure answers 401 "Invalid credentials". A 403 or 423 is disclosed only after the right
+     password.
+   - `locked_until` is written only by the MFA step.
+2. **The BFF strips access tokens before a response reaches the browser (A-71).** The Next proxy
+   removes top-level `token` and `refreshToken` after it sets the httpOnly cookie. The backend still
+   returns `token` to server-side callers. The guarantee depends on nginx never routing `/api/`
+   straight to the backend.
+3. **OIDC is configured by discovery (A-188, A-210).**
+   - The provider is read from `/.well-known/openid-configuration`, cached for an hour, with Entra's
+     authority form mapped.
+   - Multi-tenant authorities such as `/common` are refused, because JIT provisioning would admit
+     any directory's users.
+   - Public clients send no secret.
+   - A refused callback redirects to `/login?error=<fixed code>`.
+   - SSO stamps `last_login_at`.
+   - A level-10 operator cannot sign in through SSO.
+4. **A level-10 account without MFA receives an enrolment-only session (P6-07).**
+   - Every route except MFA setup, change-password, `/verify` and logout answers
+     403 `MFA_ENROLMENT_REQUIRED`.
+   - Break-glass recovery is an audited CLI (`scripts/breakGlassMfaReset.js`) that needs database
+     access and clears the enrolment. It never disables the check.
+5. **Passkeys do not satisfy the tenant MFA policy. SSO sessions are exempt from it; the IdP's MFA
+   governs them (A-160).** Migration `0052` adds `sessions.auth_method`. The access token carries an
+   `amr` claim, which survives a refresh.
+6. **The activation token is bound to the address it was mailed to (A-191).** Login does not check
+   `isEmailVerified`, which reaffirms ADR-051 Q-11.
+7. **Admin-created users keep a temporary password with a forced change, not a reset link (A-162).**
+   A reset link needs working mail, which on-premises hospitals may lack, and a link can be
+   intercepted. The temporary password carries 93 bits, is audited, and revokes all sessions.
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| Lock the account after N failures | an enumeration oracle, and a denial of service anyone can aim at a named person |
+| Progressive delay | holds connections open, and can still be aimed at a person |
+| CAPTCHA | there is no infrastructure for it |
+| Per-IP limits only | a botnet evades them |
+| Remove the token from the backend response | breaks the Next cookie writing and every E2E spec |
+| Allow `/common` with a `tid` allow-list | more configuration; deferred |
+| Refuse the operator at login until MFA exists | locks out the seeded operator with no recovery path |
+| An environment switch to skip the MFA requirement | that is simply disabling the check |
+| Count a passkey toward the MFA policy | a passkey is never asked at sign-in, so the compliance would be fake |
+| Enforce `isEmailVerified` at login | locks out admin-created users that a past bug stored as unverified; they cannot be told apart |
+
+**Implications, including the bad ones**
+
+- **A distributed attacker can still pause one identifier**, at 100 attempts an hour. Behind a shared
+  proxy address, the pair limit collapses into the identifier limit.
+- **Every super-admin automation now has to complete TOTP.** Until the operator enrols, the account
+  gets only an enrolment session.
+- **The E2E harness now enrols and answers MFA itself.** It has never run against a live server.
+- **OIDC tenants configured with `/common`, or with no authority,** stop working until they are
+  reconfigured.
+- **A tenant whose IdP has no MFA** has SSO users without MFA.
+- **Open follow-ups:** temporary passwords never expire (A-215), and JIT-SSO users cannot change a
+  password they never knew (A-216).
+
+**Status:** Accepted, implemented 2026-09-25 (batch 6).
+
+---
+
 ## Open Decisions
 
 Recorded so a future reader can tell whether their idea was evaluated and rejected, or genuinely never considered.

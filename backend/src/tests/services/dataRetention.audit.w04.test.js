@@ -62,7 +62,7 @@ describe("W-04 — the retention purge audits what it destroyed", () => {
           operation: "RETENTION_PURGE",
           actor: "system:retention-purge",
           before: {
-            retentionDays: { notifications: 90, sessions: 30 },
+            retentionDays: { notifications: 90, sessions: 30, iot_readings: 0 },
           },
           after: {
             purged: { notifications: 7, sessions: 3 },

@@ -1,4 +1,5 @@
 const cron = require("node-cron");
+const { scheduleSetting } = require("../utils/schedulerSwitch.util"); // W-02: one switch for every singleton scheduler
 const { logger } = require("../middlewares/activityLog.middleware");
 const {
   cleanupExpiredSessions,
@@ -59,7 +60,7 @@ const revokeUserSessions = async (userId, reason = "ACCOUNT_SECURITY") => {
  * refused, logged and alerted like the other schedulers.
  */
 const initSessionCleanup = () => {
-  const schedule = process.env.SESSION_CLEANUP_SCHEDULER || "0 2 * * *";
+  const schedule = scheduleSetting("SESSION_CLEANUP_SCHEDULER", "0 2 * * *");
   const helpers = {
     cleanupExpiredSessions: cleanupExpiredSessionsJob,
     revokeUserSessions,

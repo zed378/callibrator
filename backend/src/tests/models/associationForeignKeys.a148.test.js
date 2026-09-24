@@ -75,7 +75,7 @@ const UNCHANGED = Object.freeze({
   "post_categories.post_id": "posts CASCADE",
   "post_categories.category_id": "categories CASCADE",
   "sessions.user_id": "users CASCADE",
-  "signature_records.workflow_step_id": "signature_workflow_steps CASCADE",
+  "signature_records.workflow_step_id": "signature_workflow_steps RESTRICT", // D-18, migration 0066
   "tenant_backups.created_by": "users SET NULL",
   "tenant_backups.deleted_by": "users NO ACTION",
   "webhooks.created_by": "users SET NULL",

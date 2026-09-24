@@ -1,0 +1,83 @@
+# Log shipping for the compose stack (P7-03) — a TEMPLATE, not yet run.
+#
+# Vector (https://vector.dev) reads every container's stdout through the
+# Docker socket, parses the backend's JSON lines, re-applies redaction as a
+# second line of defence, and ships to Loki. Swap the sink for Elasticsearch,
+# OpenSearch, Datadog or a plain HTTP endpoint without touching the rest.
+#
+# Run it beside the stack (compose file: docker-compose.logging.yml, same
+# directory), or install the agent on the host with this file as its config.
+# Docs: docs/DEVOPS/06-LOGGING.md § Shipping.
+#
+# NOT VERIFIED BY RUNNING: written 2026-09-24 without Docker or Vector at
+# hand. `vector validate --no-environment deploy/observability/vector.toml`
+# is the first thing to run.
+
+[sources.containers]
+type = "docker_logs"
+# Only this project's containers (compose names them callibrator-<service>-N).
+include_labels = ["com.docker.compose.project=callibrator"]
+
+# ---------------------------------------------------------------------------
+# Parse. The backend writes one JSON object per line in production (A-14);
+# nginx, Postgres, Redis and friends write text, which is kept as `message`.
+# ---------------------------------------------------------------------------
+[transforms.parse]
+type = "remap"
+inputs = ["containers"]
+source = '''
+.service = .label."com.docker.compose.service"
+parsed, err = parse_json(.message)
+if err == null && is_object(parsed) {
+  . = merge(., object!(parsed))
+  .structured = true
+} else {
+  .structured = false
+}
+del(.label)
+'''
+
+# ---------------------------------------------------------------------------
+# Redaction, AGAIN. The application redacts before it writes (activityLog
+# redactFormat, A-14/A-228); this is defence in depth against a line that
+# escaped it — a console.* call, a third-party library, a future regression.
+# An aggregator with its own parsing can re-expose what the application
+# hid, and a leak into a third-party store is a leak (P7-03 DoD). The key
+# list mirrors the application's SENSITIVE_KEY; keep them in step.
+# ---------------------------------------------------------------------------
+[transforms.redact]
+type = "remap"
+inputs = ["parse"]
+source = '''
+. = map_values(., recursive: true) -> |v| {
+  if is_string(v) {
+    v = replace(string!(v), r'\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+', "$$1 [REDACTED]")
+    replace(v, r'\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]*', "[REDACTED]")
+  } else { v }
+}
+. = map_keys(., recursive: true) -> |k| { k }
+sensitive = r'(?i)password|passwd|passphrase|secret|token|authorization|cookie|api[-_]?key|private[-_]?key|master[-_]?key|credential|otp|mfa[-_]?code|recovery[-_]?code|session[-_]?id'
+for_each(object!(.)) -> |k, _v| {
+  if match(k, sensitive) { . = set!(., [k], "[REDACTED]") }
+}
+'''
+
+# ---------------------------------------------------------------------------
+# Alerts ride on the logs (P7-02): every alert line carries alert.key. Route
+# them to their own stream so a Loki ruler / Grafana alert can match exactly.
+# ---------------------------------------------------------------------------
+[transforms.route]
+type = "route"
+inputs = ["redact"]
+route.alerts = 'exists(.alert.key)'
+
+[sinks.loki]
+type = "loki"
+inputs = ["route._unmatched", "route.alerts"]
+endpoint = "${LOKI_URL:-http://loki:3100}"
+encoding.codec = "json"
+# Low-cardinality labels only; requestId, tenantId and userId stay in the body.
+labels.service = "{{ service }}"
+labels.level = "{{ level }}"
+labels.alert = "{{ alert.key }}"
+out_of_order_action = "accept"

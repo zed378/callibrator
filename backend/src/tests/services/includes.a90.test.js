@@ -210,6 +210,9 @@ describe("A-90 — a row with a null, soft-deleted or foreign reference is still
   it("tenantBackup service: createBackup's re-read and downloadBackup LEFT-join creator (and tenant)", async () => {
     jest.spyOn(models.Tenant, "findByPk").mockResolvedValue({ id: TENANT, toJSON: () => ({ id: TENANT }) });
     jest.spyOn(models.TenantBackup, "createBackup").mockResolvedValue({ id: ID });
+    // S-32: the COMPLETED step and its audit row commit in one managed
+    // transaction; there is no database here, so run the callback directly.
+    jest.spyOn(models.sequelize, "transaction").mockImplementation(async (callback) => callback({}));
     jest.spyOn(models.TenantBackup, "updateStatus").mockResolvedValue(undefined);
     jest.spyOn(models.Users, "findAll").mockResolvedValue([]);
     jest.spyOn(fs, "existsSync").mockReturnValue(true);

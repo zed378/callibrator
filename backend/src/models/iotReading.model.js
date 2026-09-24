@@ -51,6 +51,11 @@ const defineModel = (db, DataTypes) => {
         { fields: ["device_id"] },
         { fields: ["timestamp"] },
         { fields: ["device_id", "timestamp"] },
+        // D-19 (migration 0067 creates the same names on an existing
+        // database): a device's telemetry window inside its tenant, and the
+        // tenant time range the retention purge deletes by.
+        { fields: ["tenant_id", "device_id", "timestamp"] },
+        { fields: ["tenant_id", "timestamp"] },
       ],
     }
   );

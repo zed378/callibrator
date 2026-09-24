@@ -134,10 +134,13 @@ describe("E2E Authentication Flow (HTTP)", () => {
     expect(body.message).toContain("Activation token is required");
   });
 
-  test("GET /auth/activation — 500 or 404 with invalid token", async () => {
-    // May return 404 (user not found) or 500 (if bug in activation handler)
-    const { status } = await httpGet("/auth/activation?token=invalidtoken123");
-    expect([404, 500]).toContain(status);
+  test("GET /auth/activation — 400 with an invalid token", async () => {
+    // A-59: only a valid activation purpose token is looked up; anything else
+    // is "Invalid or expired activation token" (400) — never a 500. A-191: a
+    // valid token for an address the account no longer has is 400 too.
+    const { status, body } = await httpGet("/auth/activation?token=invalidtoken123");
+    expect(status).toBe(400);
+    expect(body.message).toBe("Invalid or expired activation token");
   });
 
   test("GET /auth/activation — 400 with empty token", async () => {

@@ -65,8 +65,15 @@ A stock row carries both `sku` (a fungible item type) and `serialNumber` (a spec
 | `locationId` | `UUID` | |
 | `type` | ENUM | `addition`, `subtraction`, `write_off` — indexed |
 | `quantity` | `INTEGER` | |
-| **`reason`** | `STRING` | |
+| **`reason`** | `STRING` | **NOT NULL, `CHECK (btrim(reason) <> '')`** — migration 0059 (P6-09) |
 | **`adjustedBy`** | `UUID` | |
+| `stockId` | `UUID` | the item adjusted — FK `stocks`, RESTRICT (0059). NULL only on rows older than 0059 |
+| `quantityBefore` / `quantityAfter` | `INTEGER` | the stock level either side (0059). NULL only on rows older than 0059 |
+
+Before 0059 an adjustment did not even record **which item** it adjusted — only the warehouse — nor what the level
+moved from and to, so a stock level could not be reconciled against its adjustments. Rows older than 0059 keep
+`stockId` NULL (the migration will not guess) and those with no reason read *"Not recorded (adjustment made before
+P6-09, 2026-09-24)."*
 
 `reason` and `adjustedBy` are the point of the table. An adjustment without them is an unexplained quantity change, which is exactly what an inventory audit looks for.
 
@@ -113,16 +120,22 @@ Opname is the Indonesian term for a physical stock count, used throughout the pr
 
 Three tables for movement rather than one generic ledger, because the three have genuinely different lifecycles: an adjustment is instantaneous, a transfer is a multi-step process spanning two locations, and an opname is a scheduled event reconciling many rows at once.
 
-## The Integrity Gap
+## Every Quantity Change Is Explained (P6-09)
 
-Every quantity change is supposed to go through one of the three explanation paths:
+As-built 2026-09-24 (ADR-PENDING-data; `backend/src/services/stock.service.js`). A stock quantity changes in exactly
+these places, and each names an actor and a reason and writes an audit row inside its transaction:
 
 | Path | Explanation row |
 |---|---|
-| Adjustment | `stock_adjustments` with `reason` and `adjustedBy` |
-| Transfer | `stock_transfers` with the state transition |
-| Opname | `stock_opnames` reconciliation |
+| Item created with stock on hand | a `stock_adjustments` `addition` with reason *"Opening balance recorded when the stock item was created"* |
+| Adjustment | `stock_adjustments` with `stockId`, `quantityBefore`/`quantityAfter`, a **required, non-blank** `reason`, and `adjustedBy` |
+| Transfer completed | `stock_transfers` with the state transition; the audit row records both levels, from and to |
+| Opname | records a count; it does not change `stocks.quantity` |
 
-**`PATCH /api/v1/stocks/:stockId` can change `quantity` directly**, bypassing all three. That is a real hole: the endpoint exists and does not force a reason.
+**`PATCH /api/v1/stocks/:stockId` no longer changes `quantity`.** A value that differs from the stored one is refused
+with **400**, naming `POST /api/v1/stocks/adjustment`; the same value (an edit form echoing it) is accepted and not
+written. Until P6-09 that endpoint changed the quantity with no reason, no actor and no trace, and the UI's disabled
+field was the only thing standing in the way. The web edit form no longer sends it.
 
-Recorded rather than glossed over. Tracked in [`../../TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md).
+The database enforces the reason (`NOT NULL` + `CHECK`); it does **not** enforce that `stocks.quantity` only moves
+with an adjustment — that is the service's job, and a direct SQL `UPDATE` would bypass it.

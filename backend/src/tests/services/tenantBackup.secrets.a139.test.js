@@ -170,6 +170,9 @@ const tenantRow = () => ({
 const takeBackup = async () => {
   let written = null;
   jest.spyOn(models.TenantBackup, "createBackup").mockResolvedValue({ id: BACKUP });
+  // S-32: the COMPLETED step and its audit row commit in one managed
+  // transaction; there is no database here, so run the callback directly.
+  jest.spyOn(models.sequelize, "transaction").mockImplementation(async (callback) => callback({}));
   jest.spyOn(models.TenantBackup, "updateStatus").mockResolvedValue(undefined);
   jest.spyOn(models.TenantBackup, "findByPk").mockResolvedValue({ id: BACKUP });
   jest.spyOn(fs, "existsSync").mockReturnValue(true);

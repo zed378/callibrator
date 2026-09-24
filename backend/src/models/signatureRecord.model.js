@@ -32,7 +32,10 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.UUID,
         allowNull: false,
         references: { model: "signature_workflow_steps", key: "id" },
-        onDelete: "CASCADE",
+        // D-18 (migration 0066): the step a Part 11 signature executes. Was
+        // CASCADE — a hard delete of the step erased its signatures.
+        onDelete: "RESTRICT",
+        onUpdate: "CASCADE",
       },
       userId: {
         type: DataTypes.UUID,
