@@ -80,6 +80,14 @@ dump.rdb
 # Uploads
 uploads/
 public/uploads/
+# ...except the default avatar, which is tracked (owner request, 2026-09-24).
+# git cannot re-include a file inside an ignored directory, so each level is
+# re-opened and then closed again.
+!backend/uploads/
+backend/uploads/*
+!backend/uploads/profile/
+backend/uploads/profile/*
+!backend/uploads/profile/default.svg
 
 # Cache
 .turbo/

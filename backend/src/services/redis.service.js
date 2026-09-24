@@ -114,6 +114,10 @@ const getRedisConnection = () => {
     maxRetriesPerRequest: 3,
     retryStrategy,
     lazyConnect: true,
+    // ioredis 6 defaults to RESP3. The eval scripts, scan cursors and SET NX
+    // replies below were written and tested against RESP2 shapes, so the v5
+    // wire protocol is kept explicitly (2026-09-24 dependency upgrade).
+    protocol: 2,
   });
 
   redis.on("error", (err) => {

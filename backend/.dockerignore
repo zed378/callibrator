@@ -22,6 +22,7 @@ USER.md
 memory
 # S-13 / S-25: never send these to a builder.
 uploads
+!uploads/profile/default.svg
 local.env
 *.env
 .env.*

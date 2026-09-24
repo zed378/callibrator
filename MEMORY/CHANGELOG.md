@@ -20,6 +20,10 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 - **ADR-039 — PostgreSQL is the only supported database.** MySQL support was a claim, never a capability: `mysql2` was not a dependency, and search, webhooks and RAG used PostgreSQL-only SQL. The dialect is now fixed in `src/config/index.js`; any other `DB_DIALECT` refuses to start. ADR-029's tenant-isolation mechanism stands.
 - **ADR-038 — the backend moves to TypeScript, strict, incrementally.** Supersedes ADR-030. Plan: `TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`. Until it completes the backend is still JavaScript, and backend documents state TypeScript as the target, never as fact.
 
+### Changed
+
+- **Every dependency upgraded to its latest release**, with a fresh `package-lock.json`. TypeScript is held at 6.0.3 and ESLint at 9.39.5, because the tooling around them does not yet accept 7 and 10. `npm audit` now reports 0 vulnerabilities, down from 20. ([record](./records/2026-09-24-dependency-upgrade.md))
+
 ### Fixed
 
 - **MFA did not work at all** on the installed otplib 13; a global test mock that accepted any code hid it. Rotation now requires re-authentication, and codes cannot be replayed. (A-99, A-114, A-115)

@@ -10,7 +10,7 @@
 
 const axios = require("axios");
 const jwt = require("jsonwebtoken");
-const jwkToPem = require("jwk-to-pem");
+const crypto = require("crypto");
 const { logger } = require("../middlewares/activityLog.middleware");
 const { AppError } = require("../utils/appError.util");
 
@@ -199,8 +199,14 @@ exports.verifyIdToken = async (idToken, issuer, clientId) => {
     // Find matching key
     const jwk = findJwkByKeyId(jwks, kid);
 
-    // Convert JWK to PEM
-    const pem = jwkToPem(jwk);
+    // Convert JWK to PEM with Node's own crypto. This replaced the jwk-to-pem
+    // package, whose elliptic dependency carries an unfixed advisory
+    // (GHSA-848j-6mx2-7j84). A malformed key throws here and propagates as a
+    // server error, exactly as jwk-to-pem's throw did: it is an IdP
+    // configuration fault, not a bad token.
+    const pem = crypto
+      .createPublicKey({ key: jwk, format: "jwk" })
+      .export({ type: "spki", format: "pem" });
 
     // Verify token
     const decoded = jwt.verify(idToken, pem, {

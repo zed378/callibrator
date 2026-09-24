@@ -19,6 +19,8 @@
 # binary, so a local attachment could ship inside the artefact.
 backend/node_modules
 backend/uploads
+# ...except the default avatar (owner request, 2026-09-24).
+!backend/uploads/profile/default.svg
 backend/backup
 backend/log
 backend/data
