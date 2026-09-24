@@ -1,3 +1,5 @@
+// D-17 — NO tenant column, so the global tenant hooks never scope this model: belongs to a tenant THROUGH its KanbanProject / cards (scoped). Every query names a card or project id.
+// Held by tests/models/unscopedModels.d17.test.js.
 /**
  * Kanban Card Relation
  *

@@ -22,13 +22,27 @@ const config = {
     '!src/**/*.d.ts',
     '!src/app/layout.tsx',
     '!src/app/page.tsx',
+    // Test infrastructure (helpers under src/tests), not product code.
+    '!src/tests/**',
   ],
+  // F-03 / F-04 (AUDIT-2026-09-FRONTEND): the gate that runs.
+  //
+  // This block used to say 70% while nothing evaluated it — `npm test` ran
+  // plain `jest` — and the real figure was 28% (2026-09-24, 986 tests). It is
+  // now evaluated on every `npm test` (package.json: `jest --coverage`), set
+  // just under what the suite measures today, so it passes honestly and fails
+  // on any regression. Measured 2026-09-24 after F-03/F-04 work: statements
+  // 42.13%, branches 36.61%, functions 35.80%, lines 42.45%.
+  //
+  // Ratchet to the 70% target — docs/FRONTEND/10-TESTING.md § Coverage gate.
+  // Raise these numbers in the same change that raises the coverage; never
+  // lower them, and never reach them by excluding product code.
   coverageThreshold: {
     global: {
-      branches: 70,
-      functions: 70,
-      lines: 70,
-      statements: 70,
+      statements: 41,
+      branches: 35,
+      functions: 34,
+      lines: 41,
     },
   },
 };

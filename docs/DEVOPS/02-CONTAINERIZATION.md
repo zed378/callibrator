@@ -73,7 +73,21 @@ This replaced bootstrapping `ca-certificates` with `Verify-Peer=false` (S-13), w
 
 ### Non-root
 
-A dedicated `app` user with `/usr/sbin/nologin`. Persistent directories are created and chowned at build, because a container running as non-root cannot create them at runtime.
+A dedicated `app` user (uid **997**, pinned) with `/usr/sbin/nologin`. Persistent directories are created and chowned at build, because a container running as non-root cannot create them at runtime: `/app/backup/tenant-backups`, `/app/log`, `/app/uploads/{profile,tenant}`, and — since 2026-09-24 (S-40) — **`/app/storage`** (the `local` storage driver's root) and **`/app/.well-known`** (ACME HTTP-01). S-12 was recorded as done while those two were still neither created nor on a volume.
+
+### Which services are non-root, and what each may do (S-19)
+
+This used to say only "non-root". Precisely, in the compose stack (`deploy/compose/docker-compose.yml`, the `x-hardened` block):
+
+| Service | Runs as | Capabilities | Read-only root | CPU limit (prod) |
+|---|---|---|---|---|
+| backend | uid 997 (image `USER`) | **none** (`cap_drop: [ALL]`) | no — pkg native-addon extraction and Chromium's profile writes are not mapped yet | 2.0 |
+| frontend | uid 1001 (image `USER`) | none | no | 1.0 |
+| postgres, redis, rabbitmq, clamav | root **at start**, then their own user (the official entrypoints chown the data directory and drop privileges) | CHOWN, FOWNER, DAC_OVERRIDE, SETUID, SETGID only | redis: **yes** (+ `/tmp` tmpfs) | 2.0 / 0.5 / 1.0 / 1.0 |
+| nginx | master root (binds 80/443), workers `nginx` | CHOWN, SETUID, SETGID, NET_BIND_SERVICE, DAC_OVERRIDE | **yes** (tmpfs `/var/cache/nginx`, `/var/run`, `/tmp`) | 0.5 |
+| volume-init | root, runs once | CHOWN, FOWNER, DAC_OVERRIDE | — | — |
+
+Every service has `no-new-privileges`. **Not verified by running** — no Docker where it was written; the first `make up` must show every container healthy, and a missing capability appears as an entrypoint "Operation not permitted" in `docker compose logs <service>`.
 
 ## Frontend Image
 
@@ -163,31 +177,53 @@ The one exception is **`<Dockerfile>.dockerignore`**: BuildKit (every `docker bu
 
 A frontend that is healthy while the API is down is correct: it renders error states, which is the right behaviour.
 
-## Compose Service Images
+## Compose Service Images — every third-party image pinned (P7-07)
 
-| Service | Image | Why not the obvious one |
+Pinned **by version and digest** on 2026-09-24 (digests read from Docker Hub's registry API; manifest-list digests, so every architecture resolves to the same pinned index):
+
+| Service | Image | Pin |
 |---|---|---|
-| postgres | **`pgvector/pgvector:pg18`** | plain `postgres:18-alpine` lacks the `vector` extension; migration `0018` fails |
-| redis | `redis:8.6-alpine` | |
-| rabbitmq | `rabbitmq:3.13-management-alpine` | the management UI is worth the size on-premise |
-| clamav | `clamav/clamav:latest` | **unpinned** — see below |
-| pgadmin | `dpage/pgadmin4:latest` | **unpinned**, development only |
+| backend builder | `node:24.21.0-alpine` | `@sha256:ebfe2f90…c1c1` (same as the frontend) |
+| backend runtime | `debian:bookworm-slim` | `@sha256:3783cc01…6251` |
+| frontend (both stages) | `node:24.21.0-alpine` | `@sha256:ebfe2f90…c1c1` |
+| postgres | **`pgvector/pgvector:pg18`** — plain `postgres:18-alpine` lacks the `vector` extension; migration `0018` fails | `@sha256:2ba9ca5f…67e7a` |
+| redis | `redis:8.6-alpine` | `@sha256:bb2e2e3a…de67` |
+| rabbitmq | `rabbitmq:3.13-management-alpine` — the management UI is worth the size on-premise | `@sha256:606d8c0d…e281` |
+| clamav | `clamav/clamav:1.4` — the image S-04's client was verified against | `@sha256:a5f03c12…9303` |
+| nginx | `nginx:1.27-alpine` | `@sha256:65645c7b…2a10` |
+| volume-init | `alpine:3.20` | `@sha256:d9e853e8…b6bc` |
+| pgadmin (dev) | `dpage/pgadmin4:8.14` | `@sha256:8a68677a…be7` |
+| minio (dev) | `minio/minio:RELEASE.2024-11-07T00-52-20Z` | release tag (immutable by MinIO's convention); not digest-pinned |
+| vector (optional shipper) | `timberio/vector:0.58.0-alpine` | version only — pin the digest on first pull |
 
-Two `:latest` tags are a supply-chain risk (T42). Pinning them is in [`../../TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md).
+The two `:latest` tags T42 named were in **`backend/docker-compose.yaml`** (the source-checkout datastores file) — `clamav/clamav:latest` and `dpage/pgadmin4:latest` — and `frontend/docker-compose.yaml` used `nginx:stable-alpine`. All three now match the table. The full digests are in the files.
+
+### Moving a pinned base image
+
+A digest moves **deliberately**, as a reviewed change — never as a side effect of a rebuild.
+
+1. Read the new digest from the registry (`docker buildx imagetools inspect <image>:<tag>`, or `docker pull` then `docker inspect --format '{{index .RepoDigests 0}}'`).
+2. Change it in **every** file that names the image — `grep -rn '<image>:' deploy backend frontend .github` — including the CI service containers in `.github/workflows/ci.yml`, which use the deployment's images on purpose.
+3. For postgres, read the minor-version release notes (a `pg18` digest bump can be an 18.x minor upgrade). For clamav, re-run the EICAR check S-04 used.
+4. Let CI run: `boot-and-migrate` boots on the new postgres/redis/rabbitmq images. Record the move in the change record.
+
+Security updates arrive the same way: a base-image advisory is a digest bump, reviewed like any other change.
 
 ## Volumes
 
 | Volume | Holds | Losing it means |
 |---|---|---|
-| `./data/postgres` | the database | everything |
-| `./data/redis` | rate-limit counters, WebAuthn challenges, OIDC state, caches | sign-ins in progress fail; lockout counters reset |
-| `./data/rabbitmq` | queued messages | queued work |
-| `./data/clamav` | signature database | a slow first boot |
-| `./uploads` | attachments when `STORAGE_DRIVER=local` | files |
-| `./backup` | tenant backups | |
-| `./log` | application logs | |
+| `./volumes/postgres` | the database | everything |
+| `./volumes/redis` | rate-limit counters, WebAuthn challenges, OIDC state, caches | sign-ins in progress fail; lockout counters reset |
+| `./volumes/rabbitmq` | queued messages | queued work |
+| `./volumes/clamav` | signature database | a slow first boot |
+| `./volumes/uploads` | attachments and the upload quarantine (always local disk — the attachment path does not use the storage module) | files |
+| `./volumes/storage` | the `local` storage driver's objects (S-40) | stored objects |
+| `./volumes/well-known` | ACME HTTP-01 challenges (S-40) | a validation in flight (it retries) |
+| `./volumes/backup` | tenant backups + `last-scheduled-backup.json` | restorable tenant backups |
+| `./volumes/log` | log files when `LOG_TO_FILE=true`, and `log/jobs/*.json` — scheduled-job status (P7-02) | the missed-run memory across a restart |
 
-`./data/redis` matters more than it looks.
+`./volumes/redis` matters more than it looks.
 
 ## Startup Ordering
 
@@ -205,7 +241,7 @@ Requiring ClamAV to be healthy would block the whole stack on an optional compon
 ## Image Hygiene
 
 - multi-stage everywhere; build tooling never reaches the runtime layer
-- non-root
-- pin every base tag — the two `:latest` above are outstanding
+- non-root, no capabilities beyond the entrypoint's, `no-new-privileges` (S-19, table above)
+- every base image pinned by digest (P7-07); moving one is a reviewed change
 - no secrets in the image; configuration arrives at runtime
 - scan images for advisories before promoting

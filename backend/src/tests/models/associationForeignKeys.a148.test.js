@@ -91,6 +91,14 @@ const UNCHANGED = Object.freeze({
   "signature_workflows.requested_by": "users RESTRICT", // A-170
   "sessions.impersonator_id": "users CASCADE",
   "scim_groups.role_id": "roles RESTRICT",
+  // P6-03 (migration 0057): the correction/void lifecycle. RESTRICT — a
+  // record that corrects, or was corrected by, another cannot lose the link,
+  // and who voided a record is a Part 11 attribution.
+  "calibration_records.supersedes_id": "calibration_records RESTRICT",
+  "calibration_records.superseded_by_id": "calibration_records RESTRICT",
+  "calibration_records.voided_by": "users RESTRICT",
+  // P6-09 (migration 0059): which item an adjustment moved outlives nothing.
+  "stock_adjustments.stock_id": "stocks RESTRICT",
 });
 
 /** { field: "<column DDL>" } exactly as createTable renders it. */

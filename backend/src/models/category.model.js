@@ -1,3 +1,5 @@
+// D-17 — NO tenant column, so the global tenant hooks never scope this model: platform CMS taxonomy, global by design.
+// Held by tests/models/unscopedModels.d17.test.js.
 /**
  * Category Model — Content CMS
  *

@@ -80,7 +80,11 @@ describe("useSsoSettings", () => {
   });
 
   it("an imported metadata file fills the IdP fields and returns to the config tab; save persists them", async () => {
-    const { result } = renderHook(() => useSsoSettings({ id: "tA", code: "A" } as Tenant, () => {}));
+    // A stable tenant, as the real caller passes: an inline object would be a
+    // new dependency of the load effect on every render.
+    const tenant = { id: "tA", code: "A" } as Tenant;
+    const onClose = () => {};
+    const { result } = renderHook(() => useSsoSettings(tenant, onClose));
     await waitFor(() => expect(tenantService.getSettings).toHaveBeenCalled());
     act(() => {
       result.current.setActiveTab("xml");

@@ -51,13 +51,13 @@ inputs = ["parse"]
 source = '''
 . = map_values(., recursive: true) -> |v| {
   if is_string(v) {
-    v = replace(string!(v), r'\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+', "$$1 [REDACTED]")
+    v = replace(string!(v), r'\bBearer\s+[A-Za-z0-9._~+/=-]+', "Bearer [REDACTED]")
+    v = replace(v, r'\bBasic\s+[A-Za-z0-9._~+/=-]+', "Basic [REDACTED]")
     replace(v, r'\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]*', "[REDACTED]")
   } else { v }
 }
-. = map_keys(., recursive: true) -> |k| { k }
 sensitive = r'(?i)password|passwd|passphrase|secret|token|authorization|cookie|api[-_]?key|private[-_]?key|master[-_]?key|credential|otp|mfa[-_]?code|recovery[-_]?code|session[-_]?id'
-for_each(object!(.)) -> |k, _v| {
+for_each(.) -> |k, _v| {
   if match(k, sensitive) { . = set!(., [k], "[REDACTED]") }
 }
 '''
@@ -74,7 +74,9 @@ route.alerts = 'exists(.alert.key)'
 [sinks.loki]
 type = "loki"
 inputs = ["route._unmatched", "route.alerts"]
-endpoint = "${LOKI_URL:-http://loki:3100}"
+# Point at your Loki. (Vector interpolates ${VAR} from its environment if you
+# prefer: endpoint = "${LOKI_URL}".)
+endpoint = "http://loki:3100"
 encoding.codec = "json"
 # Low-cardinality labels only; requestId, tenantId and userId stay in the body.
 labels.service = "{{ service }}"

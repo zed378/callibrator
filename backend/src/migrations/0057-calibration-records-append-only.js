@@ -48,6 +48,17 @@
  *     lifecycle columns alone. The migrating role is made a member so it can
  *     `SET ROLE` to it.
  *
+ *  0. PREREQUISITE — row level security left behind (A-242). Migration 0012
+ *     ran ENABLE + FORCE ROW LEVEL SECURITY on every table, then a CREATE
+ *     POLICY naming tenant_id — which failed, inside a swallowed catch, on the
+ *     five tables with no tenant_id (categories, posts, post_categories,
+ *     workflow_steps, workflow_actions). 0015 undid RLS only where the policy
+ *     existed. RLS on with no policy denies every row to every role that is
+ *     not a superuser — FORCE includes the owner. Invisible in compose, where
+ *     the backend is a superuser; fatal for the application role (and for a
+ *     non-superuser owner on managed PostgreSQL). ADR-029 removed RLS, so RLS
+ *     is switched off on every table that has it and carries no policy.
+ *
  * The trigger is the guarantee in every deployment; the grant is the second,
  * independent layer, and the one an auditor asks for by name. Either alone
  * refuses a DELETE; `make migrate-verify` (P6-05) checks both exist.
@@ -170,7 +181,7 @@ const columnNames = async (sequelize, transaction) => {
 /** @returns {Promise<Set<string>>} the table's constraint names */
 const constraintNames = async (sequelize, transaction) => {
   const [rows] = await sequelize.query(
-    `SELECT conname FROM pg_constraint WHERE conrelid = (current_schema() || '.' || :table)::regclass`,
+    "SELECT conname FROM pg_constraint WHERE conrelid = (current_schema() || '.' || :table)::regclass",
     { transaction, replacements: { table: TABLE } },
   );
   return new Set(rows.map((r) => r.conname));
@@ -270,6 +281,20 @@ module.exports = {
           `0057: table ${TABLE} does not exist. Run db.sync() first (the backend does at boot); ` +
             "skipping would record this migration as applied with no append-only trigger.",
         );
+      }
+
+      // 0. RLS left on with no policy (A-242) — before the role can use the tables.
+      const [orphans] = await sequelize.query(
+        `SELECT c.relname AS table_name
+           FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE n.nspname = current_schema() AND c.relkind = 'r' AND c.relrowsecurity
+            AND NOT EXISTS (SELECT 1 FROM pg_policies p
+                             WHERE p.schemaname = n.nspname AND p.tablename = c.relname)`,
+        { transaction },
+      );
+      for (const { table_name: table } of orphans) {
+        await sequelize.query(`ALTER TABLE "${table}" NO FORCE ROW LEVEL SECURITY`, { transaction });
+        await sequelize.query(`ALTER TABLE "${table}" DISABLE ROW LEVEL SECURITY`, { transaction });
       }
 
       // 1. Columns.

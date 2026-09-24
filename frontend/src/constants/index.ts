@@ -1,17 +1,4 @@
 // Application constants
-import React from "react";
-import {
-  LayoutGrid,
-  User,
-  Settings,
-  Users,
-  Shield,
-  Building2,
-  Activity,
-  Wrench,
-  PenTool,
-  Key,
-} from "lucide-react";
 
 export const APP_NAME = "Hospital Device Callibrator";
 export const APP_VERSION = "1.0.0";
@@ -68,25 +55,6 @@ export const DASHBOARD_PATH = "/dashboard";
 // Routes
 export const PUBLIC_ROUTES = ["/", "/login"];
 export const PROTECTED_ROUTES = ["/dashboard"];
-
-// Dashboard menu items
-export interface MenuItem {
-  label: string;
-  path: string;
-  icon: React.ReactNode;
-  /** Required table permission: modelName:action (e.g., 'User:read') */
-  requiredPermission?: string;
-}
-
-export interface MenuGroup {
-  label: string;
-  icon: React.ReactNode;
-  path?: string;
-  children?: MenuGroup[];
-  items?: MenuItem[];
-  /** Required table permission for the group itself */
-  requiredPermission?: string;
-}
 
 // F-15: there is no static dashboard menu. The sidebar is built only from the
 // menu tree the server resolved for the caller's role (stores/menuStore.ts);

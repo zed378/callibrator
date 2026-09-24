@@ -1,6 +1,6 @@
 # 10 — Frontend Testing
 
-Jest 30 · Testing Library · jsdom. Coverage gate: **70%**.
+Jest 30 · Testing Library · jsdom · axe-core. Coverage gate: **target 70%; enforced today at 41/35/34/41** (statements/branches/functions/lines) — see [§ Coverage gate](#coverage-gate). *(Amended 2026-09-24, F-03/F-04, ADR-PENDING-fe.)*
 
 Overall strategy: [`../TESTING/00-TEST-STRATEGY.md`](../TESTING/00-TEST-STRATEGY.md).
 
@@ -104,7 +104,13 @@ expect(screen.getByText("Billing")).not.toBeVisible();            // ✗
 
 ## Accessibility Tests
 
-`axe` in the component suite. Plus assertions that automated tools cannot make:
+`axe` in the component suite: `axe-core` is a devDependency and
+`src/tests/a11y/axe.ts` (`axeViolations(container)`) runs it on the rendered DOM.
+Colour contrast and page-level rules (landmarks, one `<h1>`) are off there —
+jsdom has no layout, and a lone component has no page; they belong to the
+browser suite. First users: `src/components/ui/a11y.f12.test.tsx` (Input,
+Textarea, FormField, Select, Dialog, ConfirmDialog, AccessDeniedModal) and
+`ErrorState.f07.test.tsx`. *(F-12, 2026-09-24.)* Plus assertions that automated tools cannot make:
 
 | Assertion |
 |---|
@@ -152,12 +158,59 @@ The tenant-create marker was the reverse case: it was a `test.fail()` whose own 
 
 The three in bold are the ones that were missing when 3,863 tests passed over 13 broken endpoints.
 
+## What the service tests prove, and what they do not
+
+*(F-04, 2026-09-24.)* The `src/api/services/*.service.test.ts` files mock
+`api/client.ts`. They prove the URL, the method, the payload the service
+builds, and how it unwraps the body **we told the mock to return**. They cannot
+fail when the endpoint is missing, when the backend changes the envelope, or
+when a screen reads the wrong field. A green service suite is evidence about
+the frontend's beliefs, not about the API — only the live E2E suite checks
+those against the server.
+
+What sits above them now, and runs the real code:
+
+| Layer | Suites | Proves |
+|---|---|---|
+| API client interceptors | `api/client.session.f05.test.ts` (fake axios adapter — the real interceptors run) | 401 → one refresh → retry; unrenewable session → `/login` once; 403 modal on refused writes only; `X-Request-Id` and status on every rejection; FormData header; client timeout > server |
+| Next route handlers | `app/api/v1/auth/{login,logout,logout-all,refresh,sso-session}/**/*.test.ts`, `[...path]/*.test.ts` | the cookies each handler writes and clears; the exact backend body shapes (fixtures copied from the controllers) |
+| Route guard | `src/proxy.test.ts` | each redirect, cookie clearing on a dead token, the matcher |
+| Stores | `stores/__tests__/*` incl. `dataStores.contract.test.ts` (`src/tests/support/storeContract.ts`) | every data store's success/failure contract; writes rethrow |
+| Screen hooks | `app/dashboard/**/hooks/__tests__/*` | the screen logic (guards, payloads, failure paths) with services mocked |
+
+## Coverage gate
+
+`npm test` is `jest --coverage`, so the threshold in `frontend/jest.config.js`
+is evaluated by `make test` / `make verify`. Until 2026-09-24 the script was
+plain `jest`: the 70% threshold was never evaluated, and the real figure was
+**28.13% statements** (986 tests).
+
+Measured 2026-09-24, after F-03/F-04: **42.13% statements, 36.61% branches,
+35.80% functions, 42.45% lines** (145 suites, 1,309 tests). The gate is set a
+point under that — **41 / 35 / 34 / 41** — so it passes honestly and fails on a
+regression.
+
+**Ratchet to 70%.** Each step raises the four numbers in `jest.config.js` in
+the same change that earns them; none is reached by excluding product code
+(`collectCoverageFrom` excludes only `*.d.ts`, the two root layout/page files
+and the test helpers under `src/tests/`).
+
+| Step | Gate (stmts / branches / funcs / lines) | Where the coverage comes from |
+|---|---|---|
+| now | 41 / 35 / 34 / 41 | client, route handlers, proxy, stores, 12 screen hooks |
+| 1 | 50 / 42 / 42 / 50 | the remaining screen hooks (`useStock`, `useMenuGroups`, `useWarehouse`, `useDevices`, `useTenants`, `useBoard`, …) and `lib/certificatePdf.ts` |
+| 2 | 60 / 52 / 52 / 60 | the three-state tests for every list screen (loading / empty / **failed**) |
+| 3 | 70 / 60 / 60 / 70 | page-level tests of the screens that carry a compliance figure; branches last |
+
+Branch coverage trails because the pages' render branches are the least
+tested; the target for branches stays behind the others until step 3.
+
 ## Running
 
 ```bash
-npm test              # jest
+npm test              # jest --coverage — the gate
+npm run typecheck     # tsc --noEmit (turbo runs it for `make typecheck`)
 npm run test:watch
-npm run test:coverage # 70% gate
 npx playwright test   # browser suite
 ```
 

@@ -1,0 +1,31 @@
+# Optional log shipper for the compose stack (P7-03). NOT RUN YET — see
+# vector.toml's header and docs/DEVOPS/06-LOGGING.md § Shipping.
+#
+#   docker compose -f deploy/compose/docker-compose.yml \
+#                  -f deploy/compose/docker-compose.prod.yml \
+#                  -f deploy/observability/docker-compose.logging.yml up -d
+#
+# Reads container stdout through the Docker socket (read-only). The socket is
+# root-equivalent on the host — this container is trusted infrastructure, not
+# application code, and gets nothing else.
+services:
+  vector:
+    # Pin by digest on first pull (docs/DEVOPS/02-CONTAINERIZATION.md
+    # § Moving a pinned base image); the config was validated with 0.58.0.
+    image: timberio/vector:0.58.0-alpine
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    read_only: true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ../observability/vector.toml:/etc/vector/vector.toml:ro
+    tmpfs:
+      - /var/lib/vector
+    command: ["--config", "/etc/vector/vector.toml"]
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M

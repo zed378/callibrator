@@ -175,6 +175,22 @@ const verifySchema = async (sequelize) => {
     }
   }
 
+  // A-242 / ADR-029: no table uses row level security. RLS left ENABLED with
+  // no policy denies every row to any role that is not a superuser — the
+  // application role included — while the owner-superuser never notices.
+  const rlsRows = await sequelize.query(
+    `SELECT c.relname AS table_name
+       FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = current_schema() AND c.relkind = 'r' AND c.relrowsecurity`,
+    { type: "SELECT" },
+  );
+  for (const row of rlsRows) {
+    problems.push(
+      `row level security is enabled on ${row.table_name} — ADR-029 removed RLS, and with no policy it ` +
+        "hides every row from the application role",
+    );
+  }
+
   const has = (rows, table, name) => rows.some((r) => r.table_name === table && r.name === name);
   for (const object of EXPECTED_OBJECTS) {
     const rows = { trigger: triggerRows, index: indexRows, constraint: constraintRows }[object.kind];

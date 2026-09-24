@@ -18,6 +18,8 @@ export interface SubscriptionForm {
   planId: string;
   billingCycle: BillingCycle;
   status: SubscriptionStatus;
+  /** A-225: why a status is overridden by hand — required by the API when it changes. */
+  reason: string;
 }
 
 export function useBilling() {
@@ -37,6 +39,7 @@ export function useBilling() {
     planId: "basic",
     billingCycle: "Monthly",
     status: "Active",
+    reason: "",
   });
 
   // Invoices state
@@ -67,6 +70,7 @@ export function useBilling() {
         planId: data.planId || "basic",
         billingCycle: data.billingCycle || "Monthly",
         status: data.status || "Active",
+        reason: "",
       });
     } catch (err) {
       setSubscriptionError(
@@ -113,6 +117,7 @@ export function useBilling() {
         planId: form.planId,
         billingCycle: form.billingCycle,
         status: form.status,
+        ...(form.reason.trim() ? { reason: form.reason.trim() } : {}),
       };
       const updated = await billingService.updateSubscription(payload);
       setSubscription(updated);
@@ -120,6 +125,7 @@ export function useBilling() {
         planId: updated.planId || "basic",
         billingCycle: updated.billingCycle || "Monthly",
         status: updated.status || "Active",
+        reason: "",
       });
       addToast({ type: "success", title: "Subscription updated" });
     } catch (err) {

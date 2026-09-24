@@ -27,27 +27,40 @@ compression
 
 ## Headers
 
-`helmet`, with a deliberately conservative policy:
+`helmet`, with the directives in [`backend/src/utils/csp.util.js`](../../backend/src/utils/csp.util.js) (P7-08, 2026-09-24):
 
 ```
-default-src 'self'
-script-src  'self' 'unsafe-inline'
-style-src   'self' 'unsafe-inline' https:
-img-src     'self' data: https:
-font-src    'self' data: https:
-object-src  'none'
-frame-ancestors 'none'
+default-src      'self'
+script-src       'self'                       ← no 'unsafe-inline' (was: 'self' 'unsafe-inline')
+script-src-attr  'none'                       ← no inline event handlers
+style-src        'self' 'unsafe-inline' https:
+img-src          'self' data: https:
+font-src         'self' data: https:
+object-src       'none'
+base-uri         'self'
+form-action      'self'
+frame-ancestors  'none'
 ```
 
 `crossOriginResourcePolicy: cross-origin` so the separate-origin frontend can load `/uploads` images. `crossOriginEmbedderPolicy: false`.
 
-### `'unsafe-inline'` is a known weakening
+### Swagger has its own policy (P7-08)
 
-It is there because the bundled swagger-ui injects inline assets. `object-src 'none'` and `frame-ancestors 'none'` still provide meaningful XSS and clickjacking mitigation, but inline script is permitted on the API origin.
+The API policy used to allow `'unsafe-inline'` for **scripts** on the whole origin "because the bundled swagger-ui injects inline assets". That premise was wrong for scripts: swagger-ui-express loads `swagger-ui-bundle.js`, `swagger-ui-standalone-preset.js` and `swagger-ui-init.js` as **external** files; only its CSS is inline. So:
 
-**The reasoning does not transfer to the frontend.** The pages that render user-supplied `posts.contentHtml` are served by Next.js on a different origin and should carry a stricter policy. Relaxing one origin for swagger is not a reason to relax the other.
+- the origin default drops `'unsafe-inline'` for scripts (above);
+- `/docs` gets `SWAGGER_CSP_DIRECTIVES` — the same policy plus `connect-src 'self'` for "Try it out" — set by the `swaggerCsp` middleware mounted **only** on `/docs` (`backend/src/docs/swagger.js`);
+- both keep `'unsafe-inline'` for **styles**: `/documentation` (`docs/DOCUMENTATION.html`) has a `<style>` block and ~250 `style=` attributes, and Swagger UI's components set inline styles. Inline style is a far smaller risk than inline script; removing it is separate work on those pages.
 
-Splitting swagger onto its own path with its own policy, or serving it with a nonce, is the proper fix. Tracked in [`../../TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md).
+Test: `backend/src/tests/utils/csp.p708.test.js` — real express + helmet + the real swagger-ui-express page over HTTP: the API response has `script-src 'self'` and `script-src-attr 'none'`; `/docs/` carries the Swagger policy and **every `<script>` it serves has a `src`** (the fact that makes the strict policy safe); other paths keep the default.
+
+### Swagger is not published in production (S-23)
+
+`/docs` and `/docs.json` were mounted unconditionally and unauthenticated, reachable in production only because no nginx location happened to route them. Now `swaggerDocs` mounts them outside production, and **in production only with `SWAGGER_ENABLED=true`** (`SWAGGER_ENABLED=false` turns them off everywhere). Same test file: `NODE_ENV=production` → both 404. Decision: ADR-PENDING-infra (P7-08/S-23) — *off* rather than *behind a super-admin session*, because the UI is fetched by a browser navigation that carries no bearer token, and a spec gated by a session cookie the API does not issue would be a gate in name only.
+
+### The content origin — still open
+
+**The reasoning never transferred to the frontend.** The pages that render user-supplied `posts.contentHtml` (and ticket descriptions) through `dangerouslySetInnerHTML` are served by Next.js on a different origin, and **that origin sends no Content-Security-Policy at all** (`frontend/next.config.ts` and `frontend/proxy.ts` set none — checked 2026-09-24). A nonce-based policy there needs the Next.js proxy to mint a nonce per request and the inline theme script (`ThemeInitScript.tsx`) to carry it. P7-08's last two Definition-of-Done items — the content origin verified against a stricter policy, and a test that an inline script in `contentHtml` does not execute — are **not done**; they belong to the frontend and are recorded as S-43.
 
 ## CORS
 

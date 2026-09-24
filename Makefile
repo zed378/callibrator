@@ -426,8 +426,8 @@ check-env: ## Verify .env exists and carries the required secrets
 	@if [ -n "$$missing" ]; then
 		echo -e "$(C_ERR)Required secrets not set:$$missing$(C_OFF)"
 		echo -e "$(C_DIM)The application exits without them, by design. Run: make secrets$(C_OFF)"
-		echo -e "$(C_DIM)KMS_MASTER_KEY fails LOUDLY nowhere: the container crash-loops with an$(C_OFF)"
-		echo -e "$(C_DIM)empty docker-logs output: production writes nothing to stdout. Read log/activity/exception/.$(C_OFF)"
+		echo -e "$(C_DIM)Without KMS_MASTER_KEY the backend crash-loops at boot; the reason is in$(C_OFF)"
+		echo -e "$(C_DIM)docker compose logs backend (JSON on stdout since A-14).$(C_OFF)"
 		exit 1
 	fi
 	# S-09: the broker is CREATED from RABBITMQ_USER/RABBITMQ_PASS and the

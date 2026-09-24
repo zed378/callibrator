@@ -550,7 +550,14 @@ exports.createCertificate = async (tenantId, userId, inputData, actor = {}) => {
 
     // Get tenant for certificate number generation
     const tenant = await Tenant.findByPk(tenantId);
-    const tenantCode = tenant?.code || "T";
+    // D-40: certificate_number is unique PLATFORM-wide — it is the key the
+    // public verification page resolves (ADR-PENDING-dbA). The prefix must
+    // therefore be distinct per tenant. `tenants.code` is globally unique but
+    // nullable; every code-less tenant used to share the prefix "T", and the
+    // generator's tenant-scoped lookup could not see the other tenant's
+    // numbers, so the second code-less tenant to issue a certificate on a
+    // given day collided with the first and failed with a unique violation.
+    const tenantCode = tenant?.code || `T${String(tenantId).replace(/-/g, "").slice(0, 8).toUpperCase()}`;
 
     // Generate unique certificate number
     const certificateNumber = await Certificate.generateCertificateNumber(

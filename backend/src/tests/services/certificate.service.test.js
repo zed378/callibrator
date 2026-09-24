@@ -294,17 +294,18 @@ describe("certificate.service", () => {
     it.each([
       ["the tenant cannot be loaded", null],
       ["the tenant has no code", {}],
-    ])("falls back to the 'T' certificate-number prefix when %s", async (_case, tenant) => {
+    ])("D-40: falls back to a per-tenant 'T<tenant id>' certificate-number prefix when %s", async (_case, tenant) => {
       validator.validate.mockReturnValueOnce({ deviceId: "dev-1" });
       CalibrationDevice.findOne.mockResolvedValueOnce({ id: "dev-1" });
       Tenant.findByPk.mockResolvedValueOnce(tenant);
       Certificate.generateCertificateNumber.mockResolvedValueOnce("T-CERT-001");
       Certificate.create.mockResolvedValueOnce({ id: "cert-1" });
 
-      const result = await createCertificate("tenant-1", "user-1", { deviceId: "dev-1" });
+      const result = await createCertificate("0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d", "user-1", { deviceId: "dev-1" });
 
+      // Not the shared "T" every code-less tenant used to collide on.
       expect(Certificate.generateCertificateNumber).toHaveBeenCalledWith(
-        "T",
+        "T0A1B2C3D",
         expect.any(Object),
       );
       expect(result.status).toBe(201);

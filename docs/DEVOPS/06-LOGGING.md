@@ -4,15 +4,17 @@
 
 ## What Logs Exist
 
+> Rewritten 2026-09-24 (batch 6, P7-03) — this table described the pre-A-14 logger (files only, empty `docker logs`). As-built detail: [`../OBSERVABILITY/01-LOGGING.md`](../OBSERVABILITY/01-LOGGING.md).
+
 | Source | Written by | Holds |
 |---|---|---|
-| `accessLog` | `accessLog.middleware.js` | every request |
-| `activityLog` | `activityLog.middleware.js` | user activity |
-| **`audit_logs`** | `auditLog.middleware.js` | the **compliance trail** — a database table |
-| stdout | **nothing in production** | winston's Console transport is added only when `NODE_ENV !== "production"` |
-| `./log` volume | every log the application writes | `log/access/` (morgan) and `log/activity/{combined,error,exception,rejection}/` (winston) |
-
-**In production `docker logs` is empty by design of the code, not by accident of the deployment.** Every log line goes to files. See [`../OBSERVABILITY/01-LOGGING.md`](../OBSERVABILITY/01-LOGGING.md) for what that costs and what is lost.
+| **stdout (JSON)** | winston, `activityLog.middleware.js` | **everything the application logs, in production included** (A-14): one JSON object per line, redacted, with `requestId` on every line written during a request |
+| `request completed` line | `activityLogger` | the per-request record: `requestId, method, url, statusCode, durationMs, userId, tenantId` at `info` |
+| alert lines | `alert.service` (P7-02) | scheduled-job failures, missed runs, stuck batch jobs — level `error`, field `alert.key` |
+| `log/activity/*` files | winston | only with `LOG_TO_FILE=true` (default: on outside production, off in production); bounded |
+| `log/access/` | morgan, `accessLog.middleware.js` | a text line per request — a local fallback |
+| `log/jobs/*.json` | `jobMonitor.service` (P7-02) | each scheduled job's last-run state — status, not a log |
+| **`audit_logs`** | services, inside their transactions | the **compliance trail** — a database table |
 
 ## `audit_logs` Is Not a Log
 
@@ -33,15 +35,16 @@ Detail: [`../DATABASE/10-AUDIT-LOGS.md`](../DATABASE/10-AUDIT-LOGS.md).
 
 `crypto.randomUUID()` per request → `req.requestId` → `X-Request-Id`, exposed through CORS.
 
+Since 2026-09-24 (P7-03) that is literally true of the **log lines**, not only of the response: `activityLogger` runs the request inside an `AsyncLocalStorage` and the logger's `requestIdFormat` stamps the id on every line written on the request's behalf — a service's `logger.error` included. `console.*` output (24 sites) does not carry it.
+
 It is the only thing tying a client-side symptom to a server-side line, and the one piece of information a user can safely quote in a bug report. Every error state in the UI surfaces it.
 
 ## Redaction
 
-> **As-built, 2026-09-23: there is no redactor.** Nothing in `backend/src` implements the walk
-> described below — the only `redact`-shaped code is GDPR anonymisation, retention masking and
-> per-response secret hiding. This section states the **target**. It matters because
-> `auditLog.middleware.js#auditAction` logs full request and response bodies unredacted; it has no
-> caller today, which is the only reason it is not an active leak (A-43).
+> **As-built since A-14/A-228: the redactor exists** — `redactFormat` in `activityLog.middleware.js`
+> walks every record at any depth on a copy, as described below (details and tests:
+> [`../OBSERVABILITY/01-LOGGING.md`](../OBSERVABILITY/01-LOGGING.md) § Redaction). `auditAction`, which
+> logged whole bodies, was deleted (A-43). *(This note said "there is no redactor" until 2026-09-24.)*
 
 **Redaction is a key-name walk at any depth, not a fixed path list.**
 
@@ -146,22 +149,23 @@ Log the **full** error server-side. Return the safe one.
 
 ## Rotation
 
-Rotation is built in: winston uses `winston-daily-rotate-file` (20 MB per file, 30 days, gzipped) and the access log uses `rotating-file-stream` (daily, 30 files, gzip).
-
-> Corrected 2026-09-23. The access log was **not** pruned at all until then: the option passed was
-> `history: "30d"`, and in `rotating-file-stream` `history` names the rotation-history *file* —
-> retention is `maxFiles`/`maxSize`. It now passes `maxFiles: 30`. Note also that the exception and
-> rejection transports still have **no** `maxSize`, `maxFiles` or `zippedArchive` at all (A-14). Rotation bounds file count, not disk: the volume still needs monitoring, because a full disk stops writes — including `audit_logs`, which is the one thing that must never fail to write.
-
 | Log | Retention (as coded) |
 |---|---|
-| Access (`log/access/`) | 30 days |
-| Activity combined / error (`log/activity/`) | 30 days |
-| Exception / rejection | **no `maxFiles` — unbounded** |
+| stdout (compose) | the Docker `json-file` driver: `max-size`/`max-file` per service in the prod overlay (50 MB × 5 backend) |
+| stdout (Kubernetes) | the node's container-log rotation |
+| `log/activity/*` (only with `LOG_TO_FILE`) | daily, 20 MB, gzip, **30 days — all four, exception and rejection included** (A-14) |
+| Access (`log/access/`) | daily, gzip, `maxFiles: 30` (A-44 — it was `history: "30d"`, which pruned nothing) |
 | **`audit_logs`** | **indefinite — a compliance decision, not an ops one** |
 
-## Aggregation
+Rotation bounds file count, not disk: the volume still needs monitoring, because a full disk stops writes — including `audit_logs`.
 
-Not currently in place. Logs live **only** in the `./log` volume — not stdout — so a collector that reads container output collects nothing.
+## Shipping (P7-03)
 
-The winston logs are already JSON. Shipping them is in [`../../TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md). Whatever ships them must not undo the redaction — an aggregator with its own parsing can re-expose a field the application redacted, and a leak into a third-party log store is a leak.
+**Nothing ships today; the pieces to do it exist.** Production writes JSON to stdout, so any collector of container output works with no application change.
+
+- **compose:** [`deploy/observability/docker-compose.logging.yml`](../../deploy/observability/docker-compose.logging.yml) adds a Vector container reading the Docker socket with [`deploy/observability/vector.toml`](../../deploy/observability/vector.toml): parse the JSON lines, keep text lines as `message`, **redact again**, ship to Loki with low-cardinality labels (`service`, `level`, `alert`). `vector validate` passes and the transforms were exercised on sample lines; it has **not** been run against a Docker socket or a Loki (no Docker where it was written).
+- **Kubernetes:** the cluster's node agent collects stdout; apply the same second redaction pass there. The chart sets no `LOG_TO_FILE`, so no files are written in the pod.
+
+**Whatever ships them must not undo the redaction** — an aggregator with its own parsing can re-expose a field the application redacted, and a leak into a third-party log store is a leak. Hence the second pass, and hence the open DoD item: *redaction verified after shipping* means reading a line back **from the aggregator**, which has not been done.
+
+**Alert on logs:** match `alert.key` (P7-02) — e.g. a Loki rule on `{service="backend", alert=~"job\\..*"}`. See [`07-ALERTING.md`](./07-ALERTING.md).

@@ -8,7 +8,7 @@ Charts: [`../../deploy/helm/callibrator/`](../../deploy/helm/callibrator/). An u
 
 **The manifests render. They are not known to be accepted by a cluster**, because no cluster has been reachable to validate against.
 
-That distinction should not be smoothed over in a status report. `helm template` and `helm lint` pass; `kubectl apply --dry-run=server` has not been run.
+That distinction should not be smoothed over in a status report. `helm template` and `helm lint` pass, and since 2026-09-24 every render is also **validated against the Kubernetes 1.33 JSON schemas with kubeconform** (in CI, `deploy-config`) — a schema check, still not an admission check. `kubectl apply --dry-run=server` has not been run.
 
 Compose is the primary deployment path (ADR-032). These charts exist as the **escape route from the single-host risk** (PR-12), written while it was still cheap.
 
@@ -26,6 +26,8 @@ deploy/helm/callibrator/
 │   ├── configmap.yaml
 │   ├── secret.yaml
 │   ├── ingress.yaml
+│   ├── networkpolicy.yaml  ← default-deny + the flows the app uses (S-18)
+│   ├── pdb.yaml            ← a PDB per component with replicaCount > 1 (S-18)
 │   └── guards.tpl          ← render-time refusals
 └── charts/
     ├── backend/
@@ -48,7 +50,7 @@ Pods run with numeric ids matching the images: backend 997 (`backend/Dockerfile`
 
 ## Configurations the Chart Refuses to Render
 
-Guard rails that fail the **render** rather than the cluster. Six, in [`templates/guards.tpl`](../../deploy/helm/callibrator/templates/guards.tpl): a missing image tag, cron with more than one replica, a missing required secret, production with no CORS origin, a value that moved (and would otherwise be ignored), and `VIRUS_SCAN_PROVIDER=clamav` with no `backend.clamav.host` (S-31 — the chart runs no ClamAV; clamd is external, like PostgreSQL, and since S-04 a clamav provider without `CLAMAV_ENABLED` refuses every upload). The first two:
+Guard rails that fail the **render** rather than the cluster. Nine, in [`templates/guards.tpl`](../../deploy/helm/callibrator/templates/guards.tpl): a missing image tag, cron with more than one replica, a missing required secret, production with no CORS origin, a value that moved (and would otherwise be ignored), `VIRUS_SCAN_PROVIDER=clamav` with no `backend.clamav.host` (S-31 — the chart runs no ClamAV; clamd is external, like PostgreSQL, and since S-04 a clamav provider without `CLAMAV_ENABLED` refuses every upload), and since 2026-09-24: **(7)** `cron.enabled` with the backup scheduler on and no backup volume, **(8)** `NODE_ENV=production` with `backend.persistence.enabled=false`, **(9)** a `redis.url`/`rabbitmq.url` carrying `user:password@` — it would land in the ConfigMap (S-09). CI asserts that each of 1, 2, 3, 6, 7, 8 and 9 really refuses. The first two:
 
 ### 1. A missing `image.tag`
 
@@ -73,6 +75,37 @@ Guard rails that fail the **render** rather than the cluster. Six, in [`template
 Turning that into a **render failure** rather than a silently double-running stack is the whole point of the guard.
 
 The intended shape is a separate single-replica deployment with `cron.enabled: true`, and the API deployment scaled with `cron.enabled: false`.
+
+**`cron.enabled: false` now turns off every scheduler** (S-40). It used to set only `RETENTION_SCHEDULER=disabled`, so session cleanup, the tenant backup, the calibration sweep and tenant offboarding still ran on every API pod at their defaults. The webhook dispatcher is the exception: its claim is `FOR UPDATE SKIP LOCKED`, safe on any number of replicas (ADR-054).
+
+Since P7-02/S-33 every singleton job also **claims its scheduled minute in Redis** before it runs, so a second replica skips it. The guard stays anyway: the claim is not enforced while Redis is down (a duplicate backup beats a missing one), and "two replicas, schedulers on" should remain a decision rather than a default.
+
+## Persistence (S-18)
+
+| Mount | Claim | When | Holds |
+|---|---|---|---|
+| `/app/uploads` | `<base>-storage` | `backend.persistence.enabled` (**default true**) | attachments and `uploads/.quarantine` — **local disk whatever `STORAGE_DRIVER` says**: the attachment path does not use the storage module |
+| `/app/storage` | `<base>-objects` | persistence on **and** `storage.driver=local` | the `local` driver's objects. Before S-18 the claim covered only `/app/uploads`, so these were written to the container layer |
+| `/app/backup` | `<base>-backup` | `backend.backupPersistence.enabled` (**default true**) | tenant backup ZIPs, `last-scheduled-backup.json`. Before S-18 there was no mount: a backup taken in-cluster vanished on the next rollout while its row said `completed` |
+| `/app/log` | `emptyDir` | always | job-status files (P7-02); logs go to stdout |
+| `/app/.well-known` | `emptyDir` | always | ACME HTTP-01 challenges — **ephemeral on purpose**: a challenge lives for one validation and is retried after a restart |
+
+Separate claims, not `subPath`s of one: a kubelet-created `subPath` directory is root-owned and not writable by uid 997. Every claim carries `helm.sh/resource-policy: keep`, so `helm uninstall` leaves the data. All are `ReadWriteOnce` — which is exactly why local storage and more than one replica do not mix. Production values previously left persistence **off**: every upload would have been lost on the first rollout. Guard 8 now refuses that.
+
+## NetworkPolicy (S-18)
+
+`networkPolicy.enabled` (default true) renders a **default-deny** for every pod of the release, then:
+
+| Pod | Ingress from | Egress to |
+|---|---|---|
+| backend | the ingress controller (`networkPolicy.ingressController` selectors, default namespace `ingress-nginx`), the frontend pods, `extraBackendIngressFrom` (e.g. a Prometheus namespace for `/api/v1/health/metrics`) | DNS; `backendEgressPorts` to **any** destination — 5432, 6379, 5672, 3310, 587, 465, 443, 80 — narrowed with `backendEgressTo` peers when you know the datastore CIDRs; `mqttEgressPorts` when MQTT is used |
+| frontend | the ingress controller | DNS; the backend pods on the service port |
+
+Egress is by port because Postgres, Redis, RabbitMQ and clamd are external to the chart and it cannot know a selector for them; webhooks and IdPs are arbitrary HTTPS hosts. **A wrong NetworkPolicy fails closed** — the pod cannot reach its database — and on a CNI that does not enforce NetworkPolicy these objects are accepted and do nothing. Both are first-install checks (P7-06).
+
+## PodDisruptionBudget (S-18)
+
+`podDisruptionBudget.enabled` (default true) renders `minAvailable: 1` for each component whose `replicaCount > 1` — the frontend in production (3). None for a single replica: `minAvailable: 1` there blocks every node drain.
 
 ## Horizontal Scaling Prerequisites
 
@@ -111,9 +144,20 @@ Four are **required** — the application exits without them, and the chart refu
 CERT_SIGNING_SECRET  ENCRYPT_KEY  ATTACHMENT_URL_SECRET  KMS_MASTER_KEY
 ```
 
-`KMS_MASTER_KEY` was missing from the chart until S-05, although compose and the Makefile already required it. `backend/src/services/kms.service.js` throws at startup in production without it, and because production writes nothing to stdout the pod crash-loops with **empty logs**. Values key: `secrets.kmsMasterKey`.
+`KMS_MASTER_KEY` was missing from the chart until S-05, although compose and the Makefile already required it. `backend/src/services/kms.service.js` throws at startup in production without it. (Since A-14 production logs to stdout, so the crash is at least visible in `kubectl logs`; before, the pod crash-looped with empty logs.) Values key: `secrets.kmsMasterKey`.
 
-Kubernetes Secrets, chart-managed (`<base>-secrets`) or external via a secrets operator: `global.secrets.external.enabled` and `global.secrets.external.secretName`. The switch lives under **`global`** because the backend subchart must compute the same Secret name the umbrella creates, and a subchart sees only its own values and `global` (S-06). The old `secrets.external` key refuses to render rather than being ignored. An external Secret must carry the same keys [`templates/secret.yaml`](../../deploy/helm/callibrator/templates/secret.yaml) writes.
+Kubernetes Secrets, chart-managed (`<base>-secrets`) or external via a secrets operator: `global.secrets.external.enabled` and `global.secrets.external.secretName`. **The switch moved from `secrets.external` to `global.secrets.external` in batch 5 (S-06)** because the backend subchart must compute the same Secret name the umbrella creates, and a subchart sees only its own values and `global`. The old `secrets.external` key **refuses to render** (guard 5) rather than being silently ignored — an operator upgrading a values file gets an error naming the new key. Decision: ADR-PENDING-infra (helm secrets), drafted in the batch-6 record. An external Secret must carry the same keys [`templates/secret.yaml`](../../deploy/helm/callibrator/templates/secret.yaml) writes:
+
+| Key | Required | Since |
+|---|---|---|
+| `CERT_SIGNING_SECRET`, `ENCRYPT_KEY`, `ATTACHMENT_URL_SECRET`, `KMS_MASTER_KEY` | **yes** — the app exits | S-05 for the fourth |
+| `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` (must differ), `DB_PASS` | yes in practice | |
+| `REDIS_PASSWORD` | when Redis has `requirepass`/ACL | S-09 |
+| `RABBITMQ_URL` | when the broker has credentials — overrides the ConfigMap's credential-free URL | S-09 |
+| `ALERT_WEBHOOK_URL`, `METRICS_TOKEN` | optional | P7-02 |
+| `MAIL_PASSWORD`, `STRIPE_*`, `OPENAI_API_KEY`, `STORAGE_S3_*` | when used | |
+
+`redis.url` and `rabbitmq.url` remain in the **ConfigMap** and must be credential-free: guard 9 refuses a URL with `user:password@`, because `kubectl get cm -o yaml` prints the ConfigMap to anyone who can read it.
 
 **`CERT_SIGNING_SECRET`, `ENCRYPT_KEY` and `KMS_MASTER_KEY` must be backed up separately from the cluster and from the database.** A cluster rebuild that recreates everything except these produces a system that starts cleanly and is permanently broken — every certificate fails verification, every wrapped credential is undecryptable ([`../SECURITY/07-CRYPTOGRAPHY-AND-SECRETS.md`](../SECURITY/07-CRYPTOGRAPHY-AND-SECRETS.md)).
 
@@ -175,9 +219,10 @@ The chart takes an image tag; it cannot configure these at runtime.
 ```bash
 make helm-lint
 make helm-template ENV=prod
+helm template r deploy/helm/callibrator … | kubeconform -strict -kubernetes-version 1.33.0 -   # as CI does
 ```
 
-Both run today. What has **not** run:
+All three run (2026-09-24: default, staging and prod renders valid — 14, 11 and 12 resources; the seven guards refuse). What has **not** run:
 
 ```bash
 kubectl apply --dry-run=server -f -    # needs a cluster

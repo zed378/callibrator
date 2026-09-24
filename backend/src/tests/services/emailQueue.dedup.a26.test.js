@@ -79,7 +79,7 @@ describe("email consumer deduplication (A-26)", () => {
       assertQueue: jest.fn().mockResolvedValue(true),
       sendToQueue: jest.fn().mockReturnValue(true),
       prefetch: jest.fn(),
-      consume: jest.fn(),
+      consume: jest.fn().mockResolvedValue({ consumerTag: "ctag-1" }),
       ack: jest.fn(),
       nack: jest.fn(),
       close: jest.fn().mockResolvedValue(true),
@@ -163,7 +163,14 @@ describe("email consumer deduplication (A-26)", () => {
     await processJob(msgFor({ ...job, retries: 1 }));
 
     expect(sendActivationEmail).toHaveBeenCalledTimes(2);
-    expect(channel.ack).toHaveBeenCalledTimes(1);
+    // W-09: the failed attempt went to the delay queue and was ACKED — not
+    // dead-lettered — and the successful retry was acked too.
+    expect(channel.sendToQueue).toHaveBeenCalledWith("email_retry_2000", expect.any(Buffer), {
+      persistent: true,
+      messageId: "job-retry",
+    });
+    expect(channel.nack).not.toHaveBeenCalled();
+    expect(channel.ack).toHaveBeenCalledTimes(2);
   });
 
   it("processes a message with no id and says it was not deduplicated", async () => {
@@ -188,7 +195,9 @@ describe("email consumer deduplication (A-26)", () => {
       msgFor({ type: "activation", data: { email: "a@mail.com" } }),
     );
 
-    expect(channel.nack).toHaveBeenCalledTimes(1);
+    // W-09: a first failure is a retry (delay queue + ack), not a DLQ entry.
+    expect(channel.nack).not.toHaveBeenCalled();
+    expect(channel.ack).toHaveBeenCalledTimes(1);
     expect(require("../../services/redis.service").del).not.toHaveBeenCalled();
   });
 

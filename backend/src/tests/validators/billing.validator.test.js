@@ -29,6 +29,14 @@ describe("Billing Validators", () => {
       expect(error).toBeDefined();
     });
 
+    it("A-225: accepts a reason with a status change, and refuses a body with nothing to change", () => {
+      expect(validate({ status: "Active", reason: "bank transfer ref 42" }, updateSubscription).error).toBeUndefined();
+      expect(validate({ reason: "only a reason" }, updateSubscription).error).toBeDefined();
+      expect(validate({}, updateSubscription).error).toBeDefined();
+      expect(validate(undefined, updateSubscription).error).toBeDefined();
+      expect(validate({ status: "Active", reason: "x" }, updateSubscription).error).toBeDefined();
+    });
+
     it("should reject an invalid billing cycle", () => {
       const { error } = validate(
         { billingCycle: "Weekly" },

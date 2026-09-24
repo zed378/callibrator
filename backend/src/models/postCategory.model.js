@@ -1,3 +1,5 @@
+// D-17 — NO tenant column, so the global tenant hooks never scope this model: join of two global CMS tables.
+// Held by tests/models/unscopedModels.d17.test.js.
 /**
  * PostCategory Model — join table for the Post ↔ Category many-to-many.
  * Used as the `through` model for belongsToMany on both sides.

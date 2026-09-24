@@ -20,10 +20,18 @@ const defineModel = (db, DataTypes) => {
         references: { model: "tenants", key: "id" },
         onDelete: "CASCADE",
       },
+      // A-223 — NOT unique on its own. It was, globally: a removed domain is a
+      // soft delete (status `deleted`, kept for the audit trail), so removing a
+      // domain and adding it again — by the same tenant or its new owner — hit
+      // the index and answered 500. Uniqueness is two partial indexes, created
+      // by migration 0070 (a model cannot declare an expression index that
+      // db.sync() would build before the migrations run):
+      //   custom_domains_domain_active_uq        (lower(domain)) WHERE status = 'active'
+      //   custom_domains_tenant_domain_live_uq   (tenant_id, lower(domain)) WHERE status <> 'deleted'
+      // Stored lower-case (customDomains.service#addDomain).
       domain: {
         type: DataTypes.STRING(255),
         allowNull: false,
-        unique: true,
       },
       domainType: {
         type: DataTypes.ENUM("custom", "subdomain", "vanity"),
@@ -70,7 +78,6 @@ const defineModel = (db, DataTypes) => {
       underscored: true,
       indexes: [
         { fields: ["tenant_id"] },
-        { fields: ["domain"], unique: true },
         { fields: ["status"] },
       ],
     },

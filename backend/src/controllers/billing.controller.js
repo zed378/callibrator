@@ -3,6 +3,7 @@ const stripeWebhookService = require("../services/stripeWebhook.service");
 const { asyncHandler } = require("../utils/controllerWrapper.util");
 const { success } = require("../utils/response.util");
 const { logger } = require("../middlewares/activityLog.middleware");
+const { auditActor } = require("../utils/auditActor.util");
 
 exports.getSubscription = asyncHandler(async (req, res) => {
   const { tenantId } = req.user;
@@ -15,7 +16,8 @@ exports.updateSubscription = asyncHandler(async (req, res) => {
   const { tenantId } = req.user;
   const data = req.body;
 
-  const result = await billingService.updateSubscription(tenantId, data);
+  // A-225: the override is audited under the acting user.
+  const result = await billingService.updateSubscription(tenantId, data, auditActor(req));
   success(res, result.data, null, result.message, result.status);
 });
 

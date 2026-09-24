@@ -46,6 +46,9 @@ const fakeSequelize = (models, columns, objects = ALL_OBJECTS) => ({
     if (sql.includes("pg_constraint")) {
       return objects.constraints || [];
     }
+    if (sql.includes("relrowsecurity")) {
+      return objects.rls || [];
+    }
     return objects.indexes || [];
   }),
 });
@@ -113,6 +116,15 @@ describe("verifySchema", () => {
     expect(result.problems).toEqual(
       EXPECTED_OBJECTS.map((o) => `${o.kind} ${o.name} on ${o.table} does not exist — ${o.why}`),
     );
+  });
+
+  it("A-242: a table with row level security enabled is a problem (ADR-029 removed RLS)", async () => {
+    const result = await verifySchema(
+      fakeSequelize([devices], HEALTHY, { ...ALL_OBJECTS, rls: [{ table_name: "workflow_steps" }] }),
+    );
+    expect(result.problems).toEqual([
+      expect.stringMatching(/^row level security is enabled on workflow_steps — ADR-029 removed RLS/),
+    ]);
   });
 
   it("an object of the same name on ANOTHER table does not count", async () => {

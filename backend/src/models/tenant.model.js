@@ -1,3 +1,5 @@
+// D-17 — NO tenant column, so the global tenant hooks never scope this model: it IS the tenant. Reached by id only behind ownTenantGuard / superAdminOnly (A-01).
+// Held by tests/models/unscopedModels.d17.test.js.
 /**
  * Tenant Model
  *

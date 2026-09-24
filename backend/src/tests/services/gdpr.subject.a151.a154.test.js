@@ -239,6 +239,16 @@ describe("A-154 — anonymising an account removes everything that identifies or
       "webauthn_sign_count",
       "otp_code",
       "otp_expired_at",
+      // D-11: the password hash and the sign-in history go too.
+      "password",
+      "password_changed_at",
+      "must_change_password",
+      "last_login_at",
+      "failed_login_attempts",
+      "locked_until",
+      "otp_request_count",
+      "otp_last_requested_at",
+      "is_email_verified",
     ]) {
       expect({ column, set: sql.includes(`"${column}"=`) }).toEqual({ column, set: true });
     }
@@ -341,22 +351,23 @@ describe("A-154 — anonymising an account removes everything that identifies or
     expect(auditService.logAction).not.toHaveBeenCalled();
   });
 
-  it("a soft delete and a hard delete are audited in their transaction too", async () => {
+  it("a soft delete is audited in its transaction too; a hardDelete request is refused before any transaction (D-11)", async () => {
     await asTenant(() =>
       gdprService.eraseUserData(TENANT, USER, { requestedBy: DPO, anonymize: false }),
     );
-    await asTenant(() =>
-      gdprService.eraseUserData(TENANT, USER, {
-        requestedBy: DPO,
-        anonymize: false,
-        hardDelete: true,
-      }),
-    );
+    await expect(
+      asTenant(() =>
+        gdprService.eraseUserData(TENANT, USER, {
+          requestedBy: DPO,
+          anonymize: false,
+          hardDelete: true,
+        }),
+      ),
+    ).rejects.toMatchObject({ status: 400 });
 
     expect(auditService.logAction.mock.calls.map(([e]) => e.changes)).toEqual([
       { operation: "GDPR_ERASURE", method: "soft_deleted", sessionsRevoked: 0, avatarRemoved: false },
-      { operation: "GDPR_ERASURE", method: "hard_deleted", sessionsRevoked: 0, avatarRemoved: false },
     ]);
-    expect(mockDb.events.filter((e) => e === "commit")).toHaveLength(2);
+    expect(mockDb.events.filter((e) => e === "commit")).toHaveLength(1);
   });
 });

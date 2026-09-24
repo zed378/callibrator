@@ -1,3 +1,5 @@
+// D-17 — NO tenant column, so the global tenant hooks never scope this model: platform CMS, global by design; slugs are unique platform-wide on purpose.
+// Held by tests/models/unscopedModels.d17.test.js.
 /**
  * Post Model — Content CMS (Blog & News)
  *

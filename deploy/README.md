@@ -49,9 +49,9 @@ The base compose file is **not deployable on its own** — it has no port publis
 CERT_SIGNING_SECRET   ENCRYPT_KEY   ATTACHMENT_URL_SECRET   KMS_MASTER_KEY
 ```
 
-**`KMS_MASTER_KEY` was found by deploying**, not by reading anything: it was absent from `.env.example` and from the configuration document. `src/services/kms.service.js` throws at module load in production, and the failure is easy to misread — the container crash-loops and `docker logs` shows **nothing**, because **in production the application writes nothing to stdout at all**: `activityLog.middleware.js` adds winston's Console transport only when `NODE_ENV !== "production"`, and winston's `exceptionHandlers` catch the throw and write it to `log/activity/exception/<date>.log`. (An earlier version of this document blamed the timing of winston's initialisation. The real cause is general, not specific to this secret — see [`../docs/OBSERVABILITY/01-LOGGING.md`](../docs/OBSERVABILITY/01-LOGGING.md).)
+**`KMS_MASTER_KEY` was found by deploying**, not by reading anything: it was absent from `.env.example` and from the configuration document. `src/services/kms.service.js` throws at module load in production and the container crash-loops. Until A-14 that crash was invisible — production wrote nothing to stdout and the throw went to `log/activity/exception/<date>.log` only. **Since A-14 production logs JSON to stdout, including uncaught exceptions**, so `docker compose logs backend` shows it ([`../docs/OBSERVABILITY/01-LOGGING.md`](../docs/OBSERVABILITY/01-LOGGING.md)).
 
-Read that file first when a container exits silently.
+Read `docker compose logs backend` first when a container exits.
 
 **The application exits without these.** Failing fast is correct: starting without a signing secret produces certificates that cannot be verified and attachment URLs that cannot be validated — failures that appear days later, in front of an auditor.
 
@@ -70,7 +70,7 @@ Both stacks fail **at configuration time** rather than deploying something that 
 | `IMAGE_TAG` required in staging and prod | a **presence** check (`${IMAGE_TAG:?}`) — it rejects unset or empty, and **cannot** reject the value `latest`. `.env.example` therefore ships it **empty** (S-10); the value check is `make preflight` / `make deploy`, which refuse `TAG=latest`. A direct `docker compose … -f docker-compose.prod.yml up` with `IMAGE_TAG=latest` in `.env` is **not** refused |
 | `CORS_ORIGIN` required in staging and prod | with no origins in production the app rejects everything |
 | `ACME_DIRECTORY_URL` required in prod | the **default is Let's Encrypt staging** — certificates no browser trusts |
-| `make preflight` | rejects `TAG=latest`, `NODE_ENV != production`, `SEED_DEMO=true`, a wildcard CORS origin, a staging ACME URL, and an empty / `guest` / `CHANGE_ME` `RABBITMQ_PASS` |
+| `make preflight` | rejects `TAG=latest`, `NODE_ENV != production`, `SEED_DEMO=true`, a wildcard CORS origin, a staging ACME URL, an empty / `guest` / `CHANGE_ME` `RABBITMQ_PASS`, and (S-09) a `REDIS_PASSWORD` that is empty or shorter than 16 characters, or set alongside a credentialed `REDIS_URL` |
 | `make check-env` (every `make up`) | rejects missing required secrets, and a `RABBITMQ_URL` whose credentials differ from `RABBITMQ_USER`/`RABBITMQ_PASS` (S-09) |
 
 ### Helm
@@ -80,6 +80,9 @@ Both stacks fail **at configuration time** rather than deploying something that 
 | Missing `image.tag` | **refuses to render** |
 | `cron.enabled` with `replicaCount > 1` | **refuses to render** |
 | Missing required secret (inline mode) | refuses to render |
+| `cron.enabled` without a backup volume (S-18) | refuses to render |
+| production without upload persistence (S-18) | refuses to render |
+| a `redis.url` / `rabbitmq.url` with `user:password@` (S-09) | refuses to render — credentials belong in the Secret (`secrets.redisPassword`, `secrets.rabbitmqUrl`) |
 | Equal JWT access and refresh secrets | refuses to render |
 | `NODE_ENV=production` with no `corsOrigin` | refuses to render |
 
@@ -158,8 +161,21 @@ All five fail confusingly. See [`../docs/DEVOPS/03-REVERSE-PROXY.md`](../docs/DE
 | `volumes/postgres` | everything |
 | `volumes/redis` | WebAuthn challenges, OIDC authorisation state, rate-limit counters and caches — sign-ins in progress fail; no data is lost |
 | `volumes/rabbitmq` | queued work |
-| `volumes/uploads` | attachments, when `STORAGE_DRIVER=local` |
+| `volumes/uploads` | attachments and the upload quarantine — local disk whatever `STORAGE_DRIVER` says |
+| `volumes/storage` | the `local` storage driver's objects (S-40) |
+| `volumes/well-known` | an ACME HTTP-01 challenge in flight (it retries) |
 | `volumes/backup` | tenant backups |
+| `volumes/log` | scheduled-job status (`log/jobs/*.json`, P7-02) and, with `LOG_TO_FILE=true`, log files |
+
+`volume-init` creates and chowns every application volume to uid 997 on each `up`.
+
+## Redis Authentication (S-09)
+
+Set `REDIS_PASSWORD` in `.env` (`make secrets` prints one). The compose Redis starts with `--requirepass` from that variable and the backend sends `AUTH` with the same value — one variable, read by both, so they cannot disagree. Keep `REDIS_URL` credential-free. Unset, nothing changes: no authentication, as before. An existing stack picks the password up on its next `up`; Redis stores no password in its data volume. Verified against a local `redis-server` 7.0: an unauthenticated `PING` answers `NOAUTH`, the healthcheck command authenticates, and the backend client with `REDIS_PASSWORD` connects.
+
+## Container Hardening (S-19)
+
+Every service: `no-new-privileges`, `cap_drop: [ALL]` plus only the capabilities its entrypoint needs; nginx and redis run read-only; CPU limits beside the memory limits in the prod, staging and vm overlays. The dev overlay binds every port to `127.0.0.1` except nginx. Table and reasoning: [`../docs/DEVOPS/02-CONTAINERIZATION.md`](../docs/DEVOPS/02-CONTAINERIZATION.md). **Not verified by running** — confirm every container reaches healthy on the first `make up`.
 
 `volumes/redis` matters more than it looks.
 

@@ -301,8 +301,8 @@ secrets:
   encryptKey: ""
   attachmentUrlSecret: ""
   # KMS_MASTER_KEY (S-05): 64 hex chars. backend/src/services/kms.service.js
-  # throws at startup in production without it, and the pod crash-loops with
-  # EMPTY logs because production writes nothing to stdout.
+  # throws at startup in production without it, and the pod crash-loops (the
+  # error is on stdout since A-14 — `kubectl logs`).
   kmsMasterKey: ""
   jwtAccessSecret: ""
   # MUST differ from jwtAccessSecret — equal secrets mean an access token can

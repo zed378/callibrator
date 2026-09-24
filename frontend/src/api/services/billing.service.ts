@@ -46,6 +46,8 @@ export interface SubscriptionUpdateInput {
   planId?: string;
   billingCycle?: BillingCycle;
   status?: SubscriptionStatus;
+  /** A-225: required by the API when `status` changes (a manual override). */
+  reason?: string;
 }
 
 export interface ListMeta {

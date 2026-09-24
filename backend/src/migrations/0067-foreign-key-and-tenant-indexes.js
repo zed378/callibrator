@@ -155,7 +155,7 @@ const existingIndexes = async (sequelize, transaction) => {
             array(SELECT a.attname
                     FROM unnest(x.indkey::int2[]) WITH ORDINALITY k(attnum, ord)
                     LEFT JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum
-                   ORDER BY k.ord) AS columns
+                   ORDER BY k.ord)::text[] AS columns -- name[] would reach JS as a string
        FROM pg_index x
        JOIN pg_class t ON t.oid = x.indrelid
        JOIN pg_class i ON i.oid = x.indexrelid

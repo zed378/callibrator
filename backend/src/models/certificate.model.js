@@ -203,6 +203,11 @@ const defineModel = (db, DataTypes) => {
         // constraint still covers paranoid-deleted certificates, so the next
         // sequence must step past them to avoid a duplicate-key error.
         paranoid: false,
+        // Every tenant's rows (D-40): the constraint is platform-wide — the
+        // number is the public verification key — so the sequence must step
+        // past a number another tenant holds under the same prefix. Only the
+        // highest number is read, and it is never returned to the caller.
+        skipTenantScope: true,
         raw: true,
       })
       : null;

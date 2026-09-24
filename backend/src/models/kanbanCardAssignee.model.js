@@ -1,3 +1,5 @@
+// D-17 — NO tenant column, so the global tenant hooks never scope this model: join row of a scoped KanbanCard. Every query names cardId.
+// Held by tests/models/unscopedModels.d17.test.js.
 /**
  * Kanban Card Assignee (join)
  *
