@@ -607,16 +607,61 @@ describe("gdprService", () => {
       expect(result.purged).toBe(0);
     });
 
-    it("purges a policy with no tenant scope without checking legal hold", async () => {
-      AuditLog.destroy.mockResolvedValue(2);
+    // D-03. This test used to be "purges a policy with no tenant scope without
+    // checking legal hold" and asserted `result.purged` of 2 — i.e. that a
+    // global (tenantId null) policy ran `AuditLog.destroy` with NO tenant
+    // predicate, from a cron with no tenant context, past every tenant's legal
+    // hold. That was the defect: one global row deleted every tenant's audit
+    // trail. A global policy now purges nothing.
+    it.each([
+      ["null", null],
+      ["absent", undefined],
+    ])(
+      "never purges for a global policy (tenantId %s) — no tenant's rows are touched",
+      async (_label, tenantId) => {
+        AuditLog.destroy.mockResolvedValue(2);
+        DataRetentionPolicy.findAll.mockResolvedValueOnce([
+          { id: "p1", entityType: "AuditLog", tenantId, retentionDays: 10, isActive: true },
+        ]);
+
+        const result = await gdprService.enforceDataRetention();
+
+        expect(AuditLog.destroy).not.toHaveBeenCalled();
+        expect(dataRetentionService.isOnLegalHold).not.toHaveBeenCalled();
+        expect(result).toEqual({ enforced: true, purged: 0 });
+      },
+    );
+
+    it("confines every purge to the policy's tenant with an explicit predicate", async () => {
+      dataRetentionService.isOnLegalHold.mockResolvedValue(false);
+      AuditLog.destroy.mockResolvedValue(3);
       DataRetentionPolicy.findAll.mockResolvedValueOnce([
-        { id: "p1", entityType: "AuditLog", retentionDays: 10, isActive: true },
+        { id: "p1", entityType: "AuditLog", tenantId: "t1", retentionDays: 10, isActive: true },
+      ]);
+
+      await gdprService.enforceDataRetention();
+
+      const { Op } = require("sequelize");
+      expect(AuditLog.destroy).toHaveBeenCalledWith({
+        where: { createdAt: { [Op.lt]: expect.any(Date) }, tenantId: "t1" },
+      });
+    });
+
+    it("uses the snake_case tenant key on Session, whose attribute is tenant_id", async () => {
+      const { Session } = require("../../models");
+      dataRetentionService.isOnLegalHold.mockResolvedValue(false);
+      Session.destroy.mockResolvedValue(5);
+      DataRetentionPolicy.findAll.mockResolvedValueOnce([
+        { id: "p1", entityType: "sessions", tenantId: "t1", retentionDays: 10, isActive: true },
       ]);
 
       const result = await gdprService.enforceDataRetention();
 
-      expect(dataRetentionService.isOnLegalHold).not.toHaveBeenCalled();
-      expect(result.purged).toBe(2);
+      const { Op } = require("sequelize");
+      expect(Session.destroy).toHaveBeenCalledWith({
+        where: { createdAt: { [Op.lt]: expect.any(Date) }, tenant_id: "t1" },
+      });
+      expect(result.purged).toBe(5);
     });
 
     it("treats a null destroy result as zero purged", async () => {

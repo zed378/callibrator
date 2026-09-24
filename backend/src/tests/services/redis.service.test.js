@@ -2,9 +2,11 @@
  * Tests for redis.service.js
  */
 
-
 let mockStatus = "ready";
 let mockOnErrorCallback = null;
+// Every listener the service registers, by event name — the lifecycle
+// events (ready/close/end) are ones real ioredis emits (README "Events").
+let mockListeners = {};
 
 const mockConnect = jest.fn().mockResolvedValue(undefined);
 const mockGet = jest.fn().mockResolvedValue(null);
@@ -18,6 +20,7 @@ const mockOn = jest.fn().mockImplementation((event, callback) => {
   if (event === "error") {
     mockOnErrorCallback = callback;
   }
+  mockListeners[event] = callback;
 });
 const mockOnce = jest.fn();
 
@@ -58,6 +61,8 @@ describe("redis.service", () => {
     jest.clearAllMocks();
     mockStatus = "ready";
     mockOnErrorCallback = null;
+    mockListeners = {};
+    mockConnect.mockResolvedValue(undefined);
     mockGet.mockResolvedValue(null);
     mockSet.mockResolvedValue("OK");
     mockSetex.mockResolvedValue("OK");
@@ -89,7 +94,7 @@ describe("redis.service", () => {
 
     it("should wait for 'ready' without calling connect() while already connecting", async () => {
       mockStatus = "connecting";
-      
+
       let readyCallback;
       mockOnce.mockImplementation((event, callback) => {
         if (event === "ready") {
@@ -98,10 +103,10 @@ describe("redis.service", () => {
       });
 
       const initPromise = redisService.initRedis();
-      
+
       // Yield control to the event loop to let initRedis advance past connect()
       await new Promise(resolve => setImmediate(resolve));
-      
+
       expect(readyCallback).toBeDefined();
       readyCallback();
 
@@ -122,7 +127,7 @@ describe("redis.service", () => {
         expect.objectContaining({
           status: "Redis Initialization Failed",
           message: "Connect failed",
-        })
+        }),
       );
     });
   });
@@ -138,9 +143,8 @@ describe("redis.service", () => {
       redisService.getRedisConnection();
       const mockRedisConstructor = require("ioredis");
       const options = mockRedisConstructor.mock.calls[0][1];
-      expect(options.retryStrategy).toBeDefined();
+      expect(options.retryStrategy).toBe(redisService.retryStrategy);
       expect(options.retryStrategy(2)).toBe(400);
-      expect(options.retryStrategy(5)).toBeNull();
     });
   });
 
@@ -148,10 +152,10 @@ describe("redis.service", () => {
     it("should trigger error callback and log redis connection errors", () => {
       // Trigger connection initialization to register the error listener
       redisService.getRedisConnection();
-      
+
       expect(mockOnErrorCallback).toBeDefined();
       expect(typeof mockOnErrorCallback).toBe("function");
-      
+
       mockOnErrorCallback(new Error("Some Redis Error"));
 
       const { logger } = require("../../middlewares/activityLog.middleware");
@@ -159,7 +163,7 @@ describe("redis.service", () => {
         expect.objectContaining({
           status: "Redis Connection Error",
           message: "Some Redis Error",
-        })
+        }),
       );
     });
   });
@@ -192,7 +196,7 @@ describe("redis.service", () => {
         expect.objectContaining({
           status: "Redis GET Error",
           message: "GET failed",
-        })
+        }),
       );
     });
   });
@@ -225,7 +229,7 @@ describe("redis.service", () => {
         expect.objectContaining({
           status: "Redis SET Error",
           message: "SET failed",
-        })
+        }),
       );
     });
   });
@@ -252,7 +256,7 @@ describe("redis.service", () => {
         expect.objectContaining({
           status: "Redis DEL Error",
           message: "DEL failed",
-        })
+        }),
       );
     });
   });
@@ -285,7 +289,7 @@ describe("redis.service", () => {
         expect.objectContaining({
           status: "Redis DEL Pattern Error",
           message: "SCAN failed",
-        })
+        }),
       );
     });
   });
@@ -307,7 +311,7 @@ describe("redis.service", () => {
         result,
         "EX",
         5,
-        "NX"
+        "NX",
       );
     });
 
@@ -326,7 +330,7 @@ describe("redis.service", () => {
         expect.objectContaining({
           status: "Redis Lock Error",
           message: "Lock SET failed",
-        })
+        }),
       );
     });
   });
@@ -360,7 +364,7 @@ describe("redis.service", () => {
         expect.objectContaining({
           status: "Redis Unlock Error",
           message: "EVAL failed",
-        })
+        }),
       );
     });
   });
@@ -386,7 +390,7 @@ describe("redis.service", () => {
     it("should quit and close Redis connection", async () => {
       // Initialize internal connection
       await redisService.initRedis();
-      
+
       await redisService.closeRedis();
       expect(mockQuit).toHaveBeenCalled();
       const { logger } = require("../../middlewares/activityLog.middleware");
@@ -403,7 +407,7 @@ describe("redis.service", () => {
         expect.objectContaining({
           status: "Redis Close Error",
           message: "Quit failed",
-        })
+        }),
       );
     });
 
@@ -437,7 +441,7 @@ describe("redis.service", () => {
 
       expect(Redis).toHaveBeenCalledWith(
         "redis://cache.internal:6380",
-        expect.objectContaining({ lazyConnect: true, maxRetriesPerRequest: 3 })
+        expect.objectContaining({ lazyConnect: true, maxRetriesPerRequest: 3 }),
       );
     });
 
@@ -453,7 +457,7 @@ describe("redis.service", () => {
 
       expect(Redis).toHaveBeenCalledWith(
         "redis://redis-host:6399",
-        expect.any(Object)
+        expect.any(Object),
       );
     });
 
@@ -469,7 +473,7 @@ describe("redis.service", () => {
 
       expect(Redis).toHaveBeenCalledWith(
         "redis://localhost:6379",
-        expect.any(Object)
+        expect.any(Object),
       );
     });
 
@@ -500,7 +504,11 @@ describe("redis.service", () => {
       });
     });
 
-    it("retries up to 3 times then gives up", () => {
+    // W-05. ioredis 5 ends the client for good when retryStrategy returns a
+    // non-number (event_handler.js closeHandler: `typeof retryDelay !==
+    // "number"` → setStatus("end")). The old strategy returned null after the
+    // third attempt, which is what these two tests pin against.
+    it("never gives up: returns a numeric delay long after the third attempt (W-05)", () => {
       jest.resetModules();
       const Redis = require("ioredis");
       const fresh = require("../../services/redis.service");
@@ -510,8 +518,118 @@ describe("redis.service", () => {
 
       expect(retryStrategy(1)).toBe(200);
       expect(retryStrategy(3)).toBe(600);
-      // Capped at 1000ms, and null after 3 attempts = stop retrying.
-      expect(retryStrategy(4)).toBeNull();
+      for (const attempt of [4, 5, 10, 100, 10_000]) {
+        expect(typeof retryStrategy(attempt)).toBe("number");
+      }
+    });
+
+    it("caps the reconnect delay (W-05)", () => {
+      jest.resetModules();
+      const Redis = require("ioredis");
+      const fresh = require("../../services/redis.service");
+      fresh.getRedisConnection();
+
+      const { retryStrategy } = Redis.mock.calls[0][1];
+
+      expect(fresh.RETRY_DELAY_CAP_MS).toBe(2000);
+      expect(retryStrategy(10)).toBe(2000);
+      expect(retryStrategy(10_000)).toBe(2000);
+      for (let attempt = 1; attempt < 50; attempt++) {
+        expect(retryStrategy(attempt)).toBeLessThanOrEqual(2000);
+        expect(retryStrategy(attempt + 1)).toBeGreaterThanOrEqual(retryStrategy(attempt));
+      }
+    });
+  });
+
+  // ================================================================
+  // W-05: connection lifecycle — transitions are logged, and a client
+  // that ends without closeRedis() is dialled again.
+  // ================================================================
+  describe("connection lifecycle (W-05)", () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    const log = () => require("../../middlewares/activityLog.middleware").logger;
+
+    it("logs one warning when a live connection is lost, and one when it returns", () => {
+      redisService.getRedisConnection();
+
+      mockListeners.close();
+      mockListeners.close(); // each failed reconnect closes again — still one line
+      expect(log().warn).toHaveBeenCalledTimes(1);
+      expect(log().warn).toHaveBeenCalledWith(
+        expect.stringContaining("Redis connection lost"),
+      );
+
+      mockListeners.ready();
+      expect(log().warn).toHaveBeenCalledTimes(2);
+      expect(log().warn).toHaveBeenLastCalledWith(
+        expect.stringContaining("Redis reconnected"),
+      );
+    });
+
+    it("does not log a recovery on the first ready", () => {
+      redisService.getRedisConnection();
+      mockListeners.ready();
+      expect(log().warn).not.toHaveBeenCalled();
+    });
+
+    it("dials again when the client ends without closeRedis()", async () => {
+      redisService.getRedisConnection();
+      mockStatus = "end";
+      mockConnect.mockRejectedValue(new Error("ECONNREFUSED"));
+
+      mockListeners.end();
+      expect(log().error).toHaveBeenCalledWith(
+        expect.objectContaining({ status: "Redis Connection Ended" }),
+      );
+      expect(mockConnect).not.toHaveBeenCalled();
+
+      jest.advanceTimersByTime(redisService.RETRY_DELAY_CAP_MS);
+      expect(mockConnect).toHaveBeenCalledTimes(1);
+      // A failed dial is swallowed: ioredis's own retry loop takes over.
+      await Promise.resolve();
+    });
+
+    it("does not dial if the client already left `end` before the timer fired", () => {
+      redisService.getRedisConnection();
+      mockStatus = "end";
+      mockListeners.end();
+      mockStatus = "connecting";
+      jest.advanceTimersByTime(redisService.RETRY_DELAY_CAP_MS);
+      expect(mockConnect).not.toHaveBeenCalled();
+    });
+
+    it("stays quiet and does not dial after closeRedis()", async () => {
+      redisService.getRedisConnection();
+      const listeners = mockListeners;
+      await redisService.closeRedis();
+
+      // ioredis emits these on a later tick than quit() resolves.
+      mockStatus = "end";
+      listeners.close();
+      listeners.end();
+      jest.advanceTimersByTime(redisService.RETRY_DELAY_CAP_MS * 2);
+
+      expect(log().warn).not.toHaveBeenCalled();
+      expect(log().error).not.toHaveBeenCalled();
+      expect(mockConnect).not.toHaveBeenCalled();
+    });
+
+    it("does not dial if closeRedis() runs between `end` and the timer", async () => {
+      redisService.getRedisConnection();
+      mockStatus = "end";
+      mockListeners.end();
+
+      await redisService.closeRedis();
+      jest.advanceTimersByTime(redisService.RETRY_DELAY_CAP_MS);
+
+      expect(mockConnect).not.toHaveBeenCalled();
     });
   });
 
@@ -577,7 +695,7 @@ describe("redis.service", () => {
         lockId,
         "EX",
         3,
-        "NX"
+        "NX",
       );
     });
   });
@@ -587,7 +705,7 @@ describe("redis.service", () => {
       mockEval.mockResolvedValue(0);
 
       await expect(redisService.releaseLock("resource", "lock-1")).resolves.toBe(
-        false
+        false,
       );
     });
   });

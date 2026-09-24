@@ -33,6 +33,9 @@ jest.mock("crypto", () => ({
     update: jest.fn(),
     digest: jest.fn(() => "mock-checksum"),
   })),
+  // restoreBackup draws the unusable credential for a re-created account from
+  // randomBytes.
+  randomBytes: jest.fn(() => Buffer.from("0123456789abcdef0123456789abcdef")),
 }));
 
 // Mock JSZip
@@ -99,12 +102,22 @@ const mockTenant = {
   findByPk: jest.fn(),
 };
 
+// The restore reads through Users.unscoped().findOne(...) so it can see
+// soft-deleted rows; unscoped() hands back this same object.
 const mockUsers = {
   findAll: jest.fn(),
   findByPk: jest.fn(),
+  findOne: jest.fn(),
+  create: jest.fn(),
+  count: jest.fn(),
   bulkCreate: jest.fn(),
   destroy: jest.fn(),
   findOrCreate: jest.fn(),
+  unscoped: jest.fn(),
+};
+
+const mockAuditLog = {
+  create: jest.fn(),
 };
 
 const mockTenantSettings = {
@@ -184,6 +197,7 @@ jest.mock("../../models", () => ({
   UserPermissions: mockUserPermissions,
   TenantAuditLog: mockTenantAuditLog,
   Sessions: mockSessions,
+  AuditLog: mockAuditLog,
   // The models barrel really does export `sequelize`; restoreBackup falls back
   // to it when the caller passes no models.sequelize.
   sequelize: mockSequelize,
@@ -449,8 +463,8 @@ describe("Tenant Backup Service", () => {
         const payload = JSON.parse(mockZipFile.mock.calls[0][1]);
         expect(payload.metadata.applicationVersion).toBe("1.0.0");
       } finally {
-        if (original === undefined) delete process.env.npm_package_version;
-        else process.env.npm_package_version = original;
+        if (original === undefined) {delete process.env.npm_package_version;}
+        else {process.env.npm_package_version = original;}
       }
     });
 
@@ -585,145 +599,45 @@ describe("Tenant Backup Service", () => {
   });
 
   describe("restoreBackup", () => {
-    it("should restore a backup successfully", async () => {
-      const mockBackup = {
-        id: mockBackupId,
-        status: "COMPLETED",
-        filePath: "/mock/backups/backup.zip",
-        metadata: {},
-        tenant: { id: mockTenantId },
-      };
+    // S-02 / D-02. The restore used to be:
+    //   await Users.destroy({ where: { tenantId: targetTenantId }, transaction });
+    //   // Preserve password hashes from backup for non-merge restores
+    //   await Users.bulkCreate(data.users.map((u) => ({ ...u, id: undefined })), { transaction });
+    // with `targetTenantId = data.tenant.id` taken from the archive. Every live
+    // account was deleted and re-created from an export that omits passwords,
+    // into whatever tenant the file named. These tests pin the replacement: an
+    // additive, tenant-pinned reconciliation that refuses unsafe states with a
+    // 409 carrying a state explanation.
+    const { Op } = require("sequelize");
+    const { UniqueConstraintError } = require("sequelize");
 
-      const mockZipData = Buffer.from("mock-zip");
-      mockTenantBackup.findByPk.mockResolvedValue(mockBackup);
-      mockFs.existsSync.mockReturnValue(true);
-      mockFs.readFileSync.mockReturnValue(mockZipData);
+    let mockTransaction;
 
-      // Mock JSZip loadAsync
-      const MockJSZip = require("jszip");
-      const mockZipInstance = {
-        loadAsync: jest.fn().mockResolvedValue({
-          files: {
-            "tenant_data_full.json": {
-              async: jest.fn().mockResolvedValue(
-                JSON.stringify({
-                  metadata: { version: "1.0" },
-                  tenant: { id: mockTenantId },
-                  settings: [],
-                  tenantRoles: [],
-                  tenantFeatures: [],
-                  users: [{ username: "test1", email: "test1@example.com" }],
-                  userPermissions: [],
-                  auditLogs: [],
-                }),
-              ),
-            },
-          },
-        }),
-      };
-      MockJSZip.mockImplementation(() => mockZipInstance);
-
-      // Mock transaction
-      const mockTransaction = { commit: jest.fn(), rollback: jest.fn() };
-      mockSequelize.transaction.mockResolvedValue(mockTransaction);
-
-      mockTenantBackup.updateStatus.mockResolvedValue({
-        ...mockBackup,
-        status: "RESTORED",
-      });
-
-      const result = await restoreBackup({
-        backupId: mockBackupId,
-        restoredById: mockUserId,
-        models: mockModels,
-      });
-
-      expect(result.success).toBe(true);
-      expect(result.message).toBe("Backup restored successfully");
+    const restorableBackup = (overrides = {}) => ({
+      id: mockBackupId,
+      tenantId: mockTenantId,
+      status: "COMPLETED",
+      filePath: "/mock/backups/backup.zip",
+      metadata: {},
+      ...overrides,
     });
 
-    it("should throw error if backup not found", async () => {
-      mockTenantBackup.findByPk.mockResolvedValue(null);
-
-      await expect(
-        restoreBackup({
-          backupId: "nonexistent",
-          restoredById: mockUserId,
-          models: mockModels,
-        }),
-      ).rejects.toThrow("Backup not found");
+    const archive = (overrides = {}) => ({
+      metadata: { version: "1.0", backupType: "FULL" },
+      tenant: { id: mockTenantId },
+      users: [],
+      ...overrides,
     });
 
-    it("should throw error if backup file missing", async () => {
-      const mockBackup = {
-        id: mockBackupId,
-        status: "COMPLETED",
-        filePath: "/mock/backups/missing.zip",
-        metadata: {},
-        tenant: { id: mockTenantId },
-      };
-
-      mockTenantBackup.findByPk.mockResolvedValue(mockBackup);
-      mockFs.existsSync.mockReturnValue(false);
-
-      await expect(
-        restoreBackup({
-          backupId: mockBackupId,
-          restoredById: mockUserId,
-          models: mockModels,
-        }),
-      ).rejects.toThrow("Backup file not found on storage");
+    const backedUpUser = (overrides = {}) => ({
+      username: "test1",
+      email: "test1@example.com",
+      firstName: "Test",
+      lastName: "One",
+      ...overrides,
     });
 
-    it("should restore a backup successfully with mergeData=false", async () => {
-      const mockBackup = {
-        id: mockBackupId,
-        status: "COMPLETED",
-        filePath: "/mock/backups/backup.zip",
-      };
-
-      mockTenantBackup.findByPk.mockResolvedValue(mockBackup);
-      mockFs.existsSync.mockReturnValue(true);
-      mockFs.readFileSync.mockReturnValue(Buffer.from("mock-zip-data"));
-
-      const MockJSZip = require("jszip");
-      const mockZipInstance = {
-        loadAsync: jest.fn().mockResolvedValue({
-          files: {
-            "tenant_data_full.json": {
-              async: jest.fn().mockResolvedValue(
-                JSON.stringify({
-                  metadata: { version: "1.0" },
-                  tenant: { id: mockTenantId },
-                  users: [{ username: "test1", email: "test1@example.com" }],
-                }),
-              ),
-            },
-          },
-        }),
-      };
-      MockJSZip.mockImplementation(() => mockZipInstance);
-
-      const mockTransaction = { commit: jest.fn(), rollback: jest.fn() };
-      mockSequelize.transaction.mockResolvedValue(mockTransaction);
-      mockTenantBackup.updateStatus.mockResolvedValue({
-        ...mockBackup,
-        status: "RESTORED",
-      });
-
-      const result = await restoreBackup({
-        backupId: mockBackupId,
-        restoredById: mockUserId,
-        models: mockModels,
-        mergeData: false,
-      });
-
-      expect(result.success).toBe(true);
-      expect(mockUsers.destroy).toHaveBeenCalled();
-      expect(mockUsers.bulkCreate).toHaveBeenCalled();
-    });
-
-    // Builds a JSZip stub whose archive yields `payload` for the tenant data file.
+    // Builds a JSZip stub whose archive yields `files`.
     const stubZipWith = (files) => {
       const MockJSZip = require("jszip");
       MockJSZip.mockImplementation(() => ({
@@ -733,194 +647,504 @@ describe("Tenant Backup Service", () => {
       }));
     };
     const tenantDataFile = (payload) => ({
-      "tenant_data_full.json": { async: jest.fn().mockResolvedValue(JSON.stringify(payload)) },
+      "tenant_data_full.json": {
+        async: jest.fn().mockResolvedValue(JSON.stringify(payload)),
+      },
     });
+    const stubArchive = (payload) => stubZipWith(tenantDataFile(payload));
 
-    it("should throw 400 when the backup is not COMPLETED", async () => {
-      mockTenantBackup.findByPk.mockResolvedValue({ id: mockBackupId, status: "IN_PROGRESS" });
-
-      await expect(
-        restoreBackup({ backupId: mockBackupId, restoredById: mockUserId, models: mockModels }),
-      ).rejects.toMatchObject({ status: 400, message: "Backup is not ready for restore" });
-
-      expect(mockTenantBackup.updateStatus).not.toHaveBeenCalled();
-    });
-
-    it("should fail when the archive contains no tenant data file", async () => {
-      mockTenantBackup.findByPk.mockResolvedValue({
-        id: mockBackupId,
-        status: "COMPLETED",
-        filePath: "/mock/backups/backup.zip",
-      });
-      mockFs.existsSync.mockReturnValue(true);
-      mockFs.readFileSync.mockReturnValue(Buffer.from("zip"));
-      stubZipWith({ "backup_metadata.json": { async: jest.fn() } });
-
-      await expect(
-        restoreBackup({ backupId: mockBackupId, restoredById: mockUserId, models: mockModels }),
-      ).rejects.toMatchObject({
-        status: 500,
-        message: "Failed to restore backup: Invalid backup file: no tenant data found",
-      });
-
-      expect(mockTenantBackup.updateStatus).toHaveBeenLastCalledWith(
-        mockBackupId,
-        { status: "FAILED", errorMessage: "Invalid backup file: no tenant data found" },
-        mockModels,
-      );
-    });
-
-    it("should fail when the backup data structure is invalid", async () => {
-      mockTenantBackup.findByPk.mockResolvedValue({
-        id: mockBackupId,
-        status: "COMPLETED",
-        filePath: "/mock/backups/backup.zip",
-      });
-      mockFs.existsSync.mockReturnValue(true);
-      mockFs.readFileSync.mockReturnValue(Buffer.from("zip"));
-      stubZipWith(tenantDataFile({ metadata: { version: "1.0" } })); // no tenant
-
-      await expect(
-        restoreBackup({ backupId: mockBackupId, restoredById: mockUserId, models: mockModels }),
-      ).rejects.toMatchObject({
-        status: 500,
-        message: "Failed to restore backup: Invalid backup data structure",
-      });
-    });
-
-    it("should merge users with findOrCreate when mergeData is true", async () => {
-      mockTenantBackup.findByPk.mockResolvedValue({
-        id: mockBackupId,
-        status: "COMPLETED",
-        filePath: "/mock/backups/backup.zip",
-        metadata: { checksum: "abc" },
-      });
-      mockFs.existsSync.mockReturnValue(true);
-      mockFs.readFileSync.mockReturnValue(Buffer.from("zip"));
-      stubZipWith(
-        tenantDataFile({
-          metadata: { version: "1.0" },
-          tenant: { id: mockTenantId },
-          users: [{ id: "old-id", username: "test1", email: "test1@example.com" }],
-        }),
-      );
-      const mockTransaction = { commit: jest.fn(), rollback: jest.fn() };
-      mockSequelize.transaction.mockResolvedValue(mockTransaction);
-      mockUsers.findOrCreate.mockResolvedValue([{}, true]);
-
-      const result = await restoreBackup({
+    const run = (args = {}) =>
+      restoreBackup({
         backupId: mockBackupId,
         restoredById: mockUserId,
-        mergeData: true,
         models: mockModels,
+        ...args,
       });
 
-      expect(result.data.recordsProcessed).toBe(1);
-      expect(mockUsers.destroy).not.toHaveBeenCalled();
-      // The backed-up primary key must not be reused.
-      expect(mockUsers.findOrCreate).toHaveBeenCalledWith(
+    const liveAccount = (overrides = {}) => ({
+      id: "live-1",
+      isDeleted: false,
+      deletedAt: null,
+      update: jest.fn().mockResolvedValue({}),
+      ...overrides,
+    });
+
+    beforeEach(() => {
+      mockTransaction = { commit: jest.fn(), rollback: jest.fn() };
+      mockSequelize.transaction.mockReset();
+      mockSequelize.transaction.mockResolvedValue(mockTransaction);
+      mockTenantBackup.findByPk.mockReset();
+      mockTenantBackup.updateStatus.mockReset();
+      mockTenantBackup.updateStatus.mockResolvedValue({});
+      mockFs.readFileSync.mockReturnValue(Buffer.from("zip"));
+      mockUsers.unscoped.mockReset();
+      mockUsers.unscoped.mockReturnValue(mockUsers);
+      mockUsers.findOne.mockReset();
+      mockUsers.findOne.mockResolvedValue(null);
+      mockUsers.create.mockReset();
+      mockUsers.create.mockResolvedValue({});
+      mockUsers.count.mockReset();
+      mockUsers.count.mockResolvedValue(0);
+      mockAuditLog.create.mockReset();
+      mockAuditLog.create.mockResolvedValue({});
+    });
+
+    it("should throw error if backup not found", async () => {
+      mockTenantBackup.findByPk.mockResolvedValue(null);
+
+      await expect(run({ backupId: "nonexistent" })).rejects.toThrow(
+        "Backup not found",
+      );
+    });
+
+    it("should throw error if backup file missing", async () => {
+      mockTenantBackup.findByPk.mockResolvedValue(restorableBackup());
+      mockFs.existsSync.mockReturnValue(false);
+
+      await expect(run()).rejects.toThrow("Backup file not found on storage");
+    });
+
+    it("re-creates an account missing from the tenant inactive, in the backup's own tenant, with a credential no password satisfies", async () => {
+      mockTenantBackup.findByPk.mockResolvedValue(restorableBackup());
+      // A crafted entry: it names another tenant and carries credential and
+      // privilege fields. None of them may reach the write.
+      stubArchive(
+        archive({
+          users: [
+            backedUpUser({
+              id: "old-id",
+              tenantId: "tenant-other",
+              password: "$2a$12$attacker-chosen-hash",
+              mfaSecret: "attacker-seed",
+              isActive: true,
+              status: "ACTIVE",
+              isDeleted: false,
+              phone: null,
+              roleId: "role-1",
+            }),
+          ],
+        }),
+      );
+
+      const result = await run();
+
+      expect(mockUsers.create).toHaveBeenCalledTimes(1);
+      const [values, options] = mockUsers.create.mock.calls[0];
+      expect(values).toEqual({
+        username: "test1",
+        email: "test1@example.com",
+        firstName: "Test",
+        lastName: "One",
+        roleId: "role-1",
+        tenantId: mockTenantId,
+        password: expect.stringMatching(/^!restore-reset-required:[0-9a-f]+$/),
+        isActive: false,
+        status: "INACTIVE",
+        isEmailVerified: false,
+        isDeleted: false,
+      });
+      expect(options).toEqual({ transaction: mockTransaction });
+      expect(result.data).toEqual(
         expect.objectContaining({
-          defaults: expect.objectContaining({ id: undefined, username: "test1" }),
-          transaction: mockTransaction,
+          tenantId: mockTenantId,
+          recordsProcessed: 1,
+          created: 1,
+          updated: 0,
+          unchanged: 0,
+          skippedDeleted: 0,
+          pendingActivation: ["test1"],
         }),
       );
       expect(mockTransaction.commit).toHaveBeenCalled();
+    });
+
+    it("never deletes a live account and never touches its credential, role or state (mergeData=false)", async () => {
+      // Replaces the old test that asserted the destructive restore:
+      //   expect(mockUsers.destroy).toHaveBeenCalled();
+      //   expect(mockUsers.bulkCreate).toHaveBeenCalled();
+      mockTenantBackup.findByPk.mockResolvedValue(restorableBackup());
+      stubArchive(
+        archive({
+          users: [
+            backedUpUser({
+              firstName: "Restored",
+              roleId: "role-super",
+              isActive: false,
+              password: "x",
+            }),
+          ],
+        }),
+      );
+      const live = liveAccount();
+      mockUsers.findOne.mockResolvedValue(live);
+      // Three live accounts: the matched one plus two created after the backup.
+      mockUsers.count.mockResolvedValue(3);
+
+      const result = await run({ mergeData: false });
+
+      expect(mockUsers.destroy).not.toHaveBeenCalled();
+      expect(mockUsers.bulkCreate).not.toHaveBeenCalled();
+      expect(mockUsers.create).not.toHaveBeenCalled();
+      expect(live.update).toHaveBeenCalledWith(
+        { firstName: "Restored", lastName: "One" },
+        { transaction: mockTransaction },
+      );
+      expect(result.data).toEqual(
+        expect.objectContaining({ updated: 1, created: 0, retained: 2 }),
+      );
+    });
+
+    it("matches a backed-up user by username or email inside the owning tenant, including soft-deleted rows", async () => {
+      mockTenantBackup.findByPk.mockResolvedValue(restorableBackup());
+      stubArchive(archive({ users: [backedUpUser()] }));
+
+      await run();
+
+      expect(mockUsers.unscoped).toHaveBeenCalled();
+      expect(mockUsers.findOne).toHaveBeenCalledWith({
+        where: {
+          tenantId: mockTenantId,
+          [Op.or]: [{ username: "test1" }, { email: "test1@example.com" }],
+        },
+        paranoid: false,
+        transaction: mockTransaction,
+      });
+    });
+
+    it("leaves a live account completely untouched when mergeData is true (the merge path executes)", async () => {
+      mockTenantBackup.findByPk.mockResolvedValue(
+        restorableBackup({ metadata: { checksum: "mock-checksum" } }),
+      );
+      stubArchive(archive({ users: [backedUpUser({ firstName: "Changed" })] }));
+      const live = liveAccount();
+      mockUsers.findOne.mockResolvedValue(live);
+      mockUsers.count.mockResolvedValue(1);
+
+      const result = await run({ mergeData: true });
+
+      expect(live.update).not.toHaveBeenCalled();
+      expect(mockUsers.create).not.toHaveBeenCalled();
+      expect(result.data).toEqual(
+        expect.objectContaining({ unchanged: 1, retained: 0 }),
+      );
       expect(mockTenantBackup.updateStatus).toHaveBeenLastCalledWith(
         mockBackupId,
         expect.objectContaining({
           status: "RESTORED",
-          metadata: expect.objectContaining({ checksum: "abc", recordsProcessed: 1, restoredById: mockUserId }),
+          metadata: expect.objectContaining({
+            checksum: "mock-checksum",
+            recordsProcessed: 1,
+            restoredById: mockUserId,
+            unchanged: 1,
+          }),
         }),
         mockModels,
       );
     });
 
-    it("should commit with no work when the backup holds no users", async () => {
-      mockTenantBackup.findByPk.mockResolvedValue({
-        id: mockBackupId,
-        status: "COMPLETED",
-        filePath: "/mock/backups/backup.zip",
-        metadata: {},
-      });
-      mockFs.existsSync.mockReturnValue(true);
-      mockFs.readFileSync.mockReturnValue(Buffer.from("zip"));
-      stubZipWith(
-        tenantDataFile({ metadata: { version: "1.0" }, tenant: { id: mockTenantId }, users: [] }),
-      );
-      const mockTransaction = { commit: jest.fn(), rollback: jest.fn() };
-      mockSequelize.transaction.mockResolvedValue(mockTransaction);
+    it.each([
+      ["isDeleted", { isDeleted: true }],
+      ["deletedAt", { deletedAt: new Date("2026-01-01") }],
+    ])(
+      "does not revive an account an administrator deleted (%s)",
+      async (_label, deletedState) => {
+        mockTenantBackup.findByPk.mockResolvedValue(restorableBackup());
+        stubArchive(archive({ users: [backedUpUser()] }));
+        const deleted = liveAccount(deletedState);
+        mockUsers.findOne.mockResolvedValue(deleted);
 
-      const result = await restoreBackup({
-        backupId: mockBackupId,
-        restoredById: mockUserId,
-        models: mockModels,
-      });
+        const result = await run();
+
+        expect(deleted.update).not.toHaveBeenCalled();
+        expect(mockUsers.create).not.toHaveBeenCalled();
+        expect(result.data.skippedDeleted).toBe(1);
+      },
+    );
+
+    it("writes one audit row naming the backup and the actor, inside the restore transaction", async () => {
+      mockTenantBackup.findByPk.mockResolvedValue(restorableBackup());
+      stubArchive(archive({ users: [backedUpUser()] }));
+
+      await run();
+
+      expect(mockAuditLog.create).toHaveBeenCalledWith(
+        {
+          tenantId: mockTenantId,
+          userId: mockUserId,
+          // audit_logs.action is a closed ENUM with no RESTORE member.
+          action: "UPDATE",
+          resourceType: "TenantBackup",
+          resourceId: mockBackupId,
+          changes: {
+            operation: "RESTORE",
+            mergeData: false,
+            recordsProcessed: 1,
+            created: 1,
+            updated: 0,
+            unchanged: 0,
+            skippedDeleted: 0,
+            retained: 0,
+            pendingActivation: ["test1"],
+          },
+        },
+        { transaction: mockTransaction },
+      );
+      // The audit row precedes the commit.
+      expect(mockAuditLog.create.mock.invocationCallOrder[0]).toBeLessThan(
+        mockTransaction.commit.mock.invocationCallOrder[0],
+      );
+    });
+
+    it("records a null actor when none is supplied", async () => {
+      mockTenantBackup.findByPk.mockResolvedValue(restorableBackup());
+      stubArchive(archive());
+
+      await run({ restoredById: undefined });
+
+      expect(mockAuditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: null }),
+        expect.anything(),
+      );
+    });
+
+    it("targets the included tenant when the backup row carries no tenantId column value", async () => {
+      mockTenantBackup.findByPk.mockResolvedValue(
+        restorableBackup({ tenantId: undefined, tenant: { id: mockTenantId } }),
+      );
+      stubArchive(archive({ users: [backedUpUser()] }));
+
+      const result = await run();
+
+      expect(result.data.tenantId).toBe(mockTenantId);
+    });
+
+    it("commits with no work when the backup holds no users", async () => {
+      mockTenantBackup.findByPk.mockResolvedValue(restorableBackup());
+      stubArchive(archive({ users: [] }));
+
+      const result = await run();
 
       expect(result.data.recordsProcessed).toBe(0);
-      expect(mockUsers.destroy).not.toHaveBeenCalled();
-      expect(mockUsers.bulkCreate).not.toHaveBeenCalled();
+      expect(mockUsers.create).not.toHaveBeenCalled();
       expect(mockTransaction.commit).toHaveBeenCalled();
     });
 
-    it("should roll back and mark FAILED when a restore write fails", async () => {
-      mockTenantBackup.findByPk.mockResolvedValue({
-        id: mockBackupId,
-        status: "COMPLETED",
-        filePath: "/mock/backups/backup.zip",
-        metadata: {},
-      });
-      mockFs.existsSync.mockReturnValue(true);
-      mockFs.readFileSync.mockReturnValue(Buffer.from("zip"));
-      stubZipWith(
-        tenantDataFile({
-          metadata: { version: "1.0" },
-          tenant: { id: mockTenantId },
-          users: [{ username: "test1", email: "test1@example.com" }],
-        }),
+    it("restores a non-full backup whose archive has no users section", async () => {
+      mockTenantBackup.findByPk.mockResolvedValue(restorableBackup());
+      stubArchive(
+        archive({ metadata: { version: "1.0", backupType: "PARTIAL" }, users: undefined }),
       );
-      const mockTransaction = { commit: jest.fn(), rollback: jest.fn() };
-      mockSequelize.transaction.mockResolvedValue(mockTransaction);
-      mockUsers.bulkCreate.mockRejectedValue(new Error("constraint violation"));
 
-      await expect(
-        restoreBackup({ backupId: mockBackupId, restoredById: mockUserId, models: mockModels }),
-      ).rejects.toMatchObject({
-        status: 500,
-        message: "Failed to restore backup: constraint violation",
-      });
+      const result = await run();
 
-      expect(mockTransaction.rollback).toHaveBeenCalled();
-      expect(mockTransaction.commit).not.toHaveBeenCalled();
-      expect(mockTenantBackup.updateStatus).toHaveBeenLastCalledWith(
-        mockBackupId,
-        { status: "FAILED", errorMessage: "constraint violation" },
-        mockModels,
-      );
+      expect(result.data.recordsProcessed).toBe(0);
     });
 
     it("should fall back to the models barrel sequelize when none is supplied", async () => {
-      mockTenantBackup.findByPk.mockResolvedValue({
-        id: mockBackupId,
-        status: "COMPLETED",
-        filePath: "/mock/backups/backup.zip",
-        metadata: {},
-      });
-      mockFs.existsSync.mockReturnValue(true);
-      mockFs.readFileSync.mockReturnValue(Buffer.from("zip"));
-      stubZipWith(
-        tenantDataFile({ metadata: { version: "1.0" }, tenant: { id: mockTenantId }, users: [] }),
-      );
-      const mockTransaction = { commit: jest.fn(), rollback: jest.fn() };
-      mockSequelize.transaction.mockResolvedValue(mockTransaction);
+      mockTenantBackup.findByPk.mockResolvedValue(restorableBackup());
+      stubArchive(archive());
 
-      const result = await restoreBackup({
-        backupId: mockBackupId,
-        restoredById: mockUserId,
-        models: { Sequelize: mockSequelize.Sequelize }, // no sequelize property
-      });
+      const result = await run({ models: { Sequelize: mockSequelize.Sequelize } });
 
       expect(result.success).toBe(true);
       expect(mockSequelize.transaction).toHaveBeenCalled();
+    });
+
+    describe("refusals — 409 with a state explanation, nothing written", () => {
+      const expectNothingWritten = () => {
+        expect(mockSequelize.transaction).not.toHaveBeenCalled();
+        expect(mockUsers.create).not.toHaveBeenCalled();
+        expect(mockUsers.destroy).not.toHaveBeenCalled();
+        expect(mockAuditLog.create).not.toHaveBeenCalled();
+        // The backup is not marked FAILED: nothing was attempted.
+        expect(mockTenantBackup.updateStatus).not.toHaveBeenCalled();
+      };
+
+      it.each([
+        ["IN_PROGRESS", /is IN_PROGRESS and cannot be restored.*Wait for it to complete/],
+        ["RESTORING", /is RESTORING and cannot be restored.*already running/],
+        ["RESTORED", /is RESTORED and cannot be restored.*already been restored/],
+      ])("refuses a backup in state %s", async (status, message) => {
+        // Previously a bare 400 "Backup is not ready for restore".
+        mockTenantBackup.findByPk.mockResolvedValue(restorableBackup({ status }));
+
+        const error = await run().catch((e) => e);
+
+        expect(error.status).toBe(409);
+        expect(error.message).toMatch(message);
+        expectNothingWritten();
+      });
+
+      it("refuses a backup whose archive names another tenant, and writes nothing", async () => {
+        mockTenantBackup.findByPk.mockResolvedValue(restorableBackup());
+        stubArchive(
+          archive({
+            tenant: { id: "tenant-other" },
+            users: [backedUpUser({ tenantId: "tenant-other" })],
+          }),
+        );
+
+        const error = await run().catch((e) => e);
+
+        expect(error.status).toBe(409);
+        expect(error.message).toBe(
+          `Backup ${mockBackupId} belongs to tenant ${mockTenantId}, but its archive was taken from tenant tenant-other. ` +
+            "A backup can only be restored into the tenant that owns it; nothing has been written.",
+        );
+        expectNothingWritten();
+      });
+
+      it("refuses a backup row with no owning tenant", async () => {
+        mockTenantBackup.findByPk.mockResolvedValue(
+          restorableBackup({ tenantId: null }),
+        );
+        stubArchive(archive());
+
+        const error = await run().catch((e) => e);
+
+        expect(error.status).toBe(409);
+        expect(error.message).toMatch(/has no owning tenant recorded/);
+        expectNothingWritten();
+      });
+
+      it("refuses an archive that no longer matches its recorded checksum", async () => {
+        mockTenantBackup.findByPk.mockResolvedValue(
+          restorableBackup({ metadata: { checksum: "recorded-at-backup-time" } }),
+        );
+        stubArchive(archive({ users: [backedUpUser()] }));
+
+        const error = await run().catch((e) => e);
+
+        expect(error.status).toBe(409);
+        expect(error.message).toMatch(/no longer matches the checksum/);
+        expectNothingWritten();
+      });
+
+      it("refuses an archive that contains no tenant data file", async () => {
+        // Previously a 500 "Invalid backup file: no tenant data found" that
+        // also marked the backup FAILED.
+        mockTenantBackup.findByPk.mockResolvedValue(restorableBackup());
+        stubZipWith({ "backup_metadata.json": { async: jest.fn() } });
+
+        const error = await run().catch((e) => e);
+
+        expect(error.status).toBe(409);
+        expect(error.message).toMatch(/contains no tenant data file/);
+        expectNothingWritten();
+      });
+
+      it.each([
+        ["metadata", { metadata: undefined }],
+        ["tenant", { tenant: undefined }],
+      ])("refuses an archive missing its %s section", async (section, overrides) => {
+        // Previously a 500 "Invalid backup data structure".
+        mockTenantBackup.findByPk.mockResolvedValue(restorableBackup());
+        stubArchive(archive(overrides));
+
+        const error = await run().catch((e) => e);
+
+        expect(error.status).toBe(409);
+        expect(error.message).toMatch(`missing the ${section} section`);
+        expectNothingWritten();
+      });
+
+      it("refuses a users section that is not a list", async () => {
+        mockTenantBackup.findByPk.mockResolvedValue(restorableBackup());
+        stubArchive(archive({ users: { test1: {} } }));
+
+        const error = await run().catch((e) => e);
+
+        expect(error.status).toBe(409);
+        expect(error.message).toMatch(/"users" section that is not a list/);
+        expectNothingWritten();
+      });
+
+      it("refuses a full backup with no users section, reading the type from the row when the archive omits it", async () => {
+        mockTenantBackup.findByPk.mockResolvedValue(
+          restorableBackup({ backupType: "FULL" }),
+        );
+        stubArchive(archive({ metadata: { version: "1.0" }, users: undefined }));
+
+        const error = await run().catch((e) => e);
+
+        expect(error.status).toBe(409);
+        expect(error.message).toMatch(/recorded as a "full" backup/);
+        expectNothingWritten();
+      });
+
+      it("refuses a user entry missing the fields it is matched and written by", async () => {
+        mockTenantBackup.findByPk.mockResolvedValue(restorableBackup());
+        // The shape the old tests used — no firstName/lastName, both NOT NULL.
+        stubArchive(
+          archive({ users: [{ username: "test1", email: "test1@example.com" }] }),
+        );
+
+        const error = await run().catch((e) => e);
+
+        expect(error.status).toBe(409);
+        expect(error.message).toMatch(/user entry 0 is missing firstName, lastName/);
+        expectNothingWritten();
+      });
+
+      it("refuses, rolls back and leaves the backup COMPLETED when a re-created account's key is held outside the tenant", async () => {
+        mockTenantBackup.findByPk.mockResolvedValue(restorableBackup());
+        stubArchive(archive({ users: [backedUpUser()] }));
+        mockUsers.create.mockRejectedValue(new UniqueConstraintError({}));
+
+        const error = await run().catch((e) => e);
+
+        expect(error.status).toBe(409);
+        expect(error.message).toMatch(
+          /user entry 0 \("test1"\).*already held by an account this restore cannot see/,
+        );
+        expect(mockTransaction.rollback).toHaveBeenCalled();
+        expect(mockTransaction.commit).not.toHaveBeenCalled();
+        expect(mockAuditLog.create).not.toHaveBeenCalled();
+        expect(mockTenantBackup.updateStatus).toHaveBeenLastCalledWith(
+          mockBackupId,
+          { status: "COMPLETED" },
+          mockModels,
+        );
+      });
+    });
+
+    describe("failures — 500, backup marked FAILED", () => {
+      it("marks FAILED when the archive cannot be parsed", async () => {
+        mockTenantBackup.findByPk.mockResolvedValue(restorableBackup());
+        stubZipWith({
+          "tenant_data_full.json": { async: jest.fn().mockResolvedValue("{not json") },
+        });
+
+        const error = await run().catch((e) => e);
+
+        expect(error.status).toBe(500);
+        expect(error.message).toMatch(/^Failed to restore backup: /);
+        expect(mockTenantBackup.updateStatus).toHaveBeenLastCalledWith(
+          mockBackupId,
+          expect.objectContaining({ status: "FAILED" }),
+          mockModels,
+        );
+        expect(mockSequelize.transaction).not.toHaveBeenCalled();
+      });
+
+      it("should roll back and mark FAILED when a restore write fails", async () => {
+        mockTenantBackup.findByPk.mockResolvedValue(restorableBackup());
+        stubArchive(archive({ users: [backedUpUser()] }));
+        mockUsers.create.mockRejectedValue(new Error("connection reset"));
+
+        await expect(run()).rejects.toMatchObject({
+          status: 500,
+          message: "Failed to restore backup: connection reset",
+        });
+
+        expect(mockTransaction.rollback).toHaveBeenCalled();
+        expect(mockTransaction.commit).not.toHaveBeenCalled();
+        expect(mockTenantBackup.updateStatus).toHaveBeenLastCalledWith(
+          mockBackupId,
+          { status: "FAILED", errorMessage: "connection reset" },
+          mockModels,
+        );
+      });
     });
   });
 

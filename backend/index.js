@@ -582,6 +582,20 @@ let server;
 
 async function startServer() {
   try {
+    // ADR-043 step 5 — refuse to start on broken authorization wiring, naming
+    // the offender, the way config/index.js and jwt.util.js refuse bad config.
+    //
+    // Phase 1 runs BEFORE the database is touched. It reads route source text
+    // and constants only, so it cannot fail for a database reason: a
+    // `dynamicAccess` name that matches no seeded menu slug (A-58) or a role
+    // name with no ROLE_LEVELS entry refuses the boot on its own terms, DB up
+    // or down. It throws into the catch below -> process.exit(1).
+    const {
+      assertStaticAuthorizationWiring,
+      assertSeededRoles,
+    } = require("./src/utils/authorizationWiring.util");
+    assertStaticAuthorizationWiring();
+
     // Database Connection
     await Connection();
 
@@ -607,6 +621,20 @@ async function startServer() {
           .join(", ")}`,
       );
     }
+
+    // ADR-043 step 5, phase 2 — the roles table against the role constants.
+    // It needs the database, so it runs only here: after Connection() (a down
+    // database has already refused the boot above, for that reason and with
+    // its own message) and after migrator.up() (0020 backfills role_level;
+    // checking earlier would flag every seeded role as level 1).
+    //
+    // What it does when it cannot run is deliberate: a query that throws, or a
+    // roles table holding none of the seeded roles (a fresh install, seeded
+    // later via GET /api/v1/migration/seeding), is a logged WARNING and boot
+    // continues — refusing there would make the seeding endpoint unreachable
+    // and deadlock the install. Only a check that RAN and found a disagreement
+    // (a wrong role_level, a partially missing seed) refuses the boot.
+    await assertSeededRoles({ sequelize: db });
 
     // Redis Connection
     await initRedis();

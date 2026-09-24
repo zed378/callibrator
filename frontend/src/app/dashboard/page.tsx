@@ -155,8 +155,8 @@ export default function DashboardPage() {
         {/* Quick Actions */}
         <DashboardQuickActions />
 
-        {/* System Health */}
-        <DashboardSystemHealth />
+        {/* System Health — SUPERADMIN only; live probes from GET /api/v1/health */}
+        <DashboardSystemHealth isSuperAdmin={isSuperAdmin} />
       </div>
     </DashboardLayout>
   );

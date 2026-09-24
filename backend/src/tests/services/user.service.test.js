@@ -566,7 +566,7 @@ describe("user.service", () => {
       await expectRejectsWithMessage(deleteUser({ userId: null, deletedBy: "admin" }), "User ID is required");
     });
 
-    it("should deny cross-tenant delete for a non-super-admin", async () => {
+    it("should refuse cross-tenant delete as not-found for a non-super-admin (AZ-04)", async () => {
       const mockUser = {
         get: () => ({ id: "u2", username: "victim" }),
         id: "u2",
@@ -582,7 +582,7 @@ describe("user.service", () => {
           actorIsSuperAdmin: false,
           actorTenantId: "tenant-A",
         }),
-        "resource belongs to a different tenant",
+        "User not found", // AZ-04: cross-tenant is indistinguishable from missing
       );
     });
   });
@@ -616,7 +616,7 @@ describe("user.service", () => {
       );
     });
 
-    it("userRoleUpdate denies cross-tenant modification", async () => {
+    it("userRoleUpdate refuses cross-tenant modification as not-found (AZ-04)", async () => {
       const mockUser = {
         get: () => ({ id: "u1", role_id: "old-role" }),
         tenantId: "tenant-B",
@@ -632,7 +632,7 @@ describe("user.service", () => {
           actorIsSuperAdmin: false,
           actorTenantId: "tenant-A",
         }),
-        "resource belongs to a different tenant",
+        "User not found", // AZ-04: cross-tenant is indistinguishable from missing
       );
     });
 

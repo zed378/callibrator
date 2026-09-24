@@ -21,7 +21,7 @@ cards below are about the gap between rendering and working, and none of them up
 | Id | Finding | Severity | Status |
 |---|---|---|---|
 | S-01 | **`/uploads` is a public static mount** — every certificate PDF is enumerable, unauthenticated, cross-tenant | **critical** | TODO |
-| S-02 | **A tenant backup restore deletes every user in the tenant and recreates them without passwords** | **critical** | TODO |
+| S-02 | **A tenant backup restore deletes every user in the tenant and recreates them without passwords** | **critical** | **DONE** 2026-09-24 |
 | S-03 | **`BACKUP_SCHEDULER` backs up nothing** — it zips two directories inside the read-only pkg snapshot | **critical** | TODO |
 | S-04 | ClamAV is wired in but cannot scan: no `STANDBY` command, unframed `INSTREAM`, and "not FOUND" read as clean | **high** | TODO |
 | S-05 | `KMS_MASTER_KEY` does not exist anywhere in the Helm chart | **high** | TODO |
@@ -125,7 +125,7 @@ the object, or the soft delete must be documented as *not* a revocation.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24 |
 | **Severity** | **critical — data loss and total tenant lockout** |
 | **Verified** | from code; the `sequelize.Op` half **executed** |
 
@@ -183,6 +183,43 @@ A `full` backup must either cover the tenant's business data or be renamed to wh
 - [ ] the restore writes an audit row naming the backup id and the actor, in the same transaction
 
 ---
+
+**What was changed (2026-09-24)** — `tenantBackup.service.js`, 59 tests, 100 %.
+
+A restore **never deletes a live account** and never touches a live password, role, active flag or
+status. A user present in both the backup and the tenant keeps their account; with `mergeData:
+false` (the default) only profile fields are updated from the backup, and with `mergeData: true` the
+account is left entirely alone. Accounts created after the backup are kept and reported `retained`;
+soft-deleted ones are not revived and are reported `skippedDeleted`. Every row is stamped with the
+target tenant **from the database, never from the file**, and a backup naming another tenant is
+refused with a **409** before any transaction opens.
+
+**The rewrite this finished had a defect that would have broken every real restore**, and the
+mocked tests could not see it: its audit row used `action: "RESTORE"`, and `audit_logs.action` is an
+ENUM of `CREATE, UPDATE, DELETE, LOGIN, APPROVE, EXPORT`. On PostgreSQL that insert throws, and the
+transaction rolls back — so **every** restore would have failed, and the suite was green because the
+mock accepted any string. It now writes `UPDATE` with `changes.operation: "RESTORE"`. This is the
+fourth instance this month of a mock inventing the contract.
+
+Three more found and fixed in the same pass: a username or email that collides with **another
+tenant's** account (D-06 — both are globally unique) was a 500 and is now a 409 that rolls back; a
+backup in the wrong state was a bare 400 and is now a 409 naming the state; and an archive altered
+after it was taken was accepted — it is now refused when it no longer matches the SHA-256 recorded
+at backup time.
+
+**Proof:** the original service fails **22** of the new tests; the half-finished rewrite fails **7**.
+The 8 tests that failed in `36205df` were all **old tests asserting the destructive behaviour** —
+one asserted `Users.destroy` then `bulkCreate`, one asserted the never-working merge — and are
+replaced, with the old assertions quoted beside their replacements.
+
+**Decision taken, recorded as Q-09:** an account in the backup but missing from the tenant is
+re-created **inactive, with a random password nobody holds**, and listed in `pendingActivation`; the
+holder resets it through the existing email OTP. That meets "never left with an empty or guessable
+credential" but not "usable immediately". The strict alternative is not to re-create at all.
+
+**Still open:** a `full` backup still contains only the tenant row and its users — no devices,
+calibrations or certificates. And nothing here has run against a real database; the requirement to
+prove login works before and after a restore is unmet.
 
 ## S-03 — `BACKUP_SCHEDULER` backs up nothing
 

@@ -150,6 +150,14 @@ class RolesService {
     if (status !== undefined) {updates.status = status;}
 
     await role.update(updates);
+
+    // A status change decides whether the role grants anything at all
+    // (getRolePermissionsMatrix returns {} for a non-active role), so the
+    // cached matrix must go with it (W-11). Name/description do not change a
+    // grant — the matrix is keyed by menu, not by role name.
+    if (status !== undefined) {
+      await del(cacheKeys.permissions(id));
+    }
     return role;
   }
 
@@ -164,14 +172,20 @@ class RolesService {
       throw error;
     }
 
+    // Both branches revoke everything the role granted, so both drop the
+    // cached matrix that dynamicAccess and abac read on every gated request.
+    // Without this a deleted or deactivated role kept granting for the rest
+    // of the 3600 s TTL, on every replica (W-11).
     if (role.is_system) {
       // Deactivate instead of delete for system roles
       await role.update({ status: "inactive" });
       await RoleMenuPermission.destroy({ where: { roleId: id } });
+      await del(cacheKeys.permissions(id));
       return { message: "System role deactivated" };
     }
 
     await role.destroy();
+    await del(cacheKeys.permissions(id));
     return { message: "Role deleted successfully" };
   }
 
@@ -313,11 +327,26 @@ class RolesService {
 
   /**
    * Get cached role permissions matrix for fast middleware checks
+   *
+   * A role that no longer exists (destroyed — `Role` is paranoid, so its
+   * RoleMenuPermission rows survive the soft delete) or is not `active`
+   * grants nothing: the same rule `hasPermission` applies. Without it,
+   * `updateRole(id, { status: "inactive" })` left the role's rows in place
+   * and the matrix rebuilt from them kept granting (W-11). That denial is
+   * not cached, so a reactivated or restored role is honoured at once.
+   *
+   * @param {string} roleId
+   * @returns {Promise<Record<string, string[]>>} menu name/slug → permission types
    */
   static async getRolePermissionsMatrix(roleId) {
     const cacheKey = cacheKeys.permissions(roleId);
     const cached = await get(cacheKey);
     if (cached) {return cached;}
+
+    const role = await Role.findByPk(roleId, { attributes: ["id", "status"] });
+    if (!role || role.status !== "active") {
+      return {};
+    }
 
     const permissions = await RoleMenuPermission.findAll({
       where: { roleId },
@@ -543,7 +572,7 @@ class RolesService {
    * Create menu group
    */
   static async createMenu(data) {
-    return MenuGroup.create({
+    const menu = await MenuGroup.create({
       name: data.name.trim(),
       slug:
         data.slug?.trim() ||
@@ -553,6 +582,14 @@ class RolesService {
       sort_order: data.sort_order || 0,
       is_active: data.is_active !== undefined ? data.is_active : true,
     });
+
+    // A child menu inherits its parent's grant (getRolePermissionsMatrix
+    // copies a parent's permission to its children), so a new child of a
+    // granted parent changes what those roles grant.
+    if (data.parent_id) {
+      await delPattern("permissions:role:*");
+    }
+    return menu;
   }
 
   /**

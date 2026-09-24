@@ -64,15 +64,29 @@ describe("abac middleware", () => {
     expect(next).toHaveBeenCalled();
   });
 
-  it("should return 403 if tenant ID does not match", async () => {
+  // AZ-04. This test used to read "should return 403 if tenant ID does not
+  // match" and asserted `expect(res.status).toHaveBeenCalledWith(403)` — it
+  // encoded the tenant-membership oracle as the specification. A tenant that
+  // exists but is not the caller's must be indistinguishable from one that
+  // does not exist.
+  it("should return 404 (not 403) if tenant ID belongs to another tenant", async () => {
     req.params.tenantId = "tenant-999";
     spyGetTenant.mockResolvedValue({ id: "tenant-999" });
 
     const middleware = abac(["tenant:read"], { checkTenant: true });
     await middleware(req, res, next);
 
-    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.status).not.toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith({
+      success: false,
+      status: 404,
+      message: "Tenant not found",
+      data: null,
+    });
     expect(next).not.toHaveBeenCalled();
+    // The permission matrix is never consulted for a foreign tenant.
+    expect(spyMatrix).not.toHaveBeenCalled();
   });
 
   it("should return 404 if tenant not found", async () => {
@@ -104,20 +118,20 @@ describe("abac middleware", () => {
     expect(res.status).toHaveBeenCalledWith(403);
   });
 
-  it("should return 500 when an error is thrown in the middleware", async () => {
-    spyMatrix.mockRejectedValue(new Error("Database connection failed"));
+  // A-13 / AZ-04 DoD. This test used to assert a hand-rolled 500 whose body
+  // carried the raw `error.message` ("Database connection failed") to the
+  // client. The error now goes to the global error handler, which sanitizes it.
+  it("should hand a thrown error to next() instead of leaking its message", async () => {
+    const err = new Error("Database connection failed");
+    spyMatrix.mockRejectedValue(err);
 
     const middleware = abac(["tenant:read"]);
     await middleware(req, res, next);
 
-    expect(res.status).toHaveBeenCalledWith(500);
-    expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({
-        success: false,
-        message: "Database connection failed",
-      })
-    );
-    expect(next).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(next).toHaveBeenCalledWith(err);
+    expect(res.status).not.toHaveBeenCalled();
+    expect(res.json).not.toHaveBeenCalled();
   });
 
   it("should handle checkSelf with non-self userId from body", async () => {
@@ -176,20 +190,15 @@ describe("abac middleware", () => {
     expect(req.abacContext.reason).toBe("self");
   });
 
-  it("should return 500 with fallback message when error has no message property", async () => {
-    spyMatrix.mockRejectedValue({});
+  it("should hand a message-less rejection to next() unchanged", async () => {
+    const rejection = {};
+    spyMatrix.mockRejectedValue(rejection);
 
     const middleware = abac(["tenant:read"]);
     await middleware(req, res, next);
 
-    expect(res.status).toHaveBeenCalledWith(500);
-    expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({
-        success: false,
-        message: "Internal Server Error",
-      })
-    );
-    expect(next).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledWith(rejection);
+    expect(res.status).not.toHaveBeenCalled();
   });
 
   it("should return 401 when user exists but role is missing", async () => {
@@ -253,12 +262,118 @@ describe("abac middleware", () => {
     const middleware = abac(["tenant:read"]);
     await middleware(req, res, next);
 
+    // In-tenant permission failure: 403 is CORRECT and stays 403. Only the
+    // body changed — the ad-hoc `required` key moved to the log and the body
+    // is the house envelope.
     expect(res.status).toHaveBeenCalledWith(403);
     expect(res.json).toHaveBeenCalledWith({
       success: false,
+      status: 403,
       message: "Forbidden: Insufficient permissions",
-      required: ["tenant:read"],
+      data: null,
     });
     expect(next).not.toHaveBeenCalled();
+  });
+
+  describe("AZ-04 — tenant isolation refusals are indistinguishable", () => {
+    const { logger } = require("../../middlewares/activityLog.middleware");
+
+    const refuse = async (tenantLookupResult) => {
+      const r = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn().mockReturnThis(),
+      };
+      const n = jest.fn();
+      spyGetTenant.mockResolvedValue(tenantLookupResult);
+      const rq = {
+        user: {
+          id: "user-123",
+          tenantId: "tenant-123",
+          role: { id: "role-123", name: "TENANT_ADMIN" },
+        },
+        params: { tenantId: "tenant-999" },
+        body: {},
+        query: {},
+      };
+      await abac(["tenant:read"], { checkTenant: true })(rq, r, n);
+      expect(n).not.toHaveBeenCalled();
+      return {
+        status: r.status.mock.calls[0][0],
+        body: JSON.stringify(r.json.mock.calls[0][0]),
+      };
+    };
+
+    it("a foreign tenant id and a non-existent tenant id produce byte-identical responses", async () => {
+      const foreign = await refuse({ id: "tenant-999" });
+      const missing = await refuse(null);
+
+      expect(foreign.status).toBe(404);
+      expect(missing.status).toBe(404);
+      expect(foreign.body).toBe(missing.body);
+      expect(foreign.body).toBe(
+        '{"success":false,"status":404,"message":"Tenant not found","data":null}',
+      );
+    });
+
+    it("logs the reason against the request id, not in the response", async () => {
+      const warn = jest.spyOn(logger, "warn").mockImplementation(() => {});
+      req.requestId = "req-abc";
+      req.params.tenantId = "tenant-999";
+      spyGetTenant.mockResolvedValue({ id: "tenant-999" });
+
+      await abac(["tenant:read"], { checkTenant: true })(req, res, next);
+
+      expect(warn).toHaveBeenCalledWith(
+        "abac: tenant isolation refusal",
+        expect.objectContaining({
+          requestId: "req-abc",
+          reason: "cross-tenant",
+          resourceTenantId: "tenant-999",
+          callerTenantId: "tenant-123",
+          userId: "user-123",
+        }),
+      );
+      const body = JSON.stringify(res.json.mock.calls[0][0]);
+      expect(body).not.toMatch(/cross-tenant|different tenant/);
+    });
+
+    it("logs 'unknown' when the request carries no id, and 'no-such-tenant' for a missing tenant", async () => {
+      const warn = jest.spyOn(logger, "warn").mockImplementation(() => {});
+      req.params.tenantId = "tenant-404";
+      spyGetTenant.mockResolvedValue(null);
+
+      await abac(["tenant:read"], { checkTenant: true })(req, res, next);
+
+      expect(warn).toHaveBeenCalledWith(
+        "abac: tenant isolation refusal",
+        expect.objectContaining({
+          requestId: "unknown",
+          reason: "no-such-tenant",
+        }),
+      );
+    });
+
+    it("an in-tenant permission failure is 403, not 404, and logs what was required", async () => {
+      const warn = jest.spyOn(logger, "warn").mockImplementation(() => {});
+      req.requestId = "req-perm";
+      req.params.tenantId = "tenant-123";
+      spyGetTenant.mockResolvedValue({ id: "tenant-123" });
+      spyMatrix.mockResolvedValue({ management: [] });
+
+      // A single string permission exercises the non-array normalization.
+      await abac("tenant:update", { checkTenant: true })(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.status).not.toHaveBeenCalledWith(404);
+      expect(warn).toHaveBeenCalledWith(
+        "abac: permission refusal",
+        expect.objectContaining({
+          requestId: "req-perm",
+          required: ["tenant:update"],
+          requiredAction: "write",
+        }),
+      );
+      expect(next).not.toHaveBeenCalled();
+    });
   });
 });

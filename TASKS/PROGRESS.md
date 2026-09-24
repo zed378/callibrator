@@ -2,7 +2,7 @@
 
 **The single status board.** History lives in [`../MEMORY/`](../MEMORY/README.md); this is state.
 
-Last updated: 2026-09-23 (counts re-derived from the code the same day)
+Last updated: 2026-09-24
 
 ---
 
@@ -78,8 +78,9 @@ QMS (non-conformances, CAPA, SOP) · risk register · vendor scorecards · workf
 
 | Gate | State |
 |---|---|
-| Backend unit coverage (100%) | ✅ **passing** — 305 suites, 6,039 tests, 100% statements, branches, functions and lines as of 2026-09-23 |
+| Backend unit coverage (100%) | ✅ **passing** — 315 suites, 6,359 tests, 100% statements, branches, functions and lines (2026-09-24). **But `models/` is excluded from the gate twice, so it has never measured a model** |
 | Backend lint | 🔴 **red, and it had never run at all** — a version mismatch crashed ESLint before it linted a file (A-34). It runs now and reports 1,319 errors, all formatting, none logic |
+| Frontend coverage (70%) | 🔴 **red, and never run** — about 14%; `npm test` does not pass `--coverage`, so nothing evaluates the threshold |
 | Live E2E in one uninterrupted run | 🔴 **never achieved** — every fix verified individually; the rate-limit window kept resetting |
 
 `make verify` runs lint first, so it has **never** passed on any machine. That is not a new

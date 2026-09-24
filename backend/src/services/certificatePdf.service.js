@@ -13,7 +13,6 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const QRCode = require("qrcode");
-const { v4: uuidv4 } = require("uuid");
 const {
   Certificate,
   CalibrationDevice,
@@ -71,9 +70,12 @@ const fmtDate = (d) => (d ? new Date(d).toISOString().slice(0, 10) : "—");
 // The shape is the one utils/upload.util.js already uses for uploads
 // (timestamp + small counter + uuid v4) rather than a second scheme. The
 // timestamp and counter are only there for that consistency — the 122 random
-// bits of the uuid are what make the name unguessable.
+// bits of the uuid are what make the name unguessable, so they come from
+// crypto.randomUUID (a CSPRNG-backed v4) rather than the `uuid` package: that
+// package is replaced by a constant in the Jest environment (__mocks__/uuid.js),
+// which would make the one property this name exists for untestable.
 const randomPdfFileName = () =>
-  `${Date.now()}-${Math.floor(Math.random() * 10000)}-${uuidv4()}.pdf`;
+  `${Date.now()}-${Math.floor(Math.random() * 10000)}-${crypto.randomUUID()}.pdf`;
 
 // The name a browser should save a download as. This is a Content-Disposition
 // label only — it is never used as a path, and the file on disk keeps the

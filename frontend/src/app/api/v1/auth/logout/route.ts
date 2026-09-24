@@ -26,6 +26,12 @@ export async function POST() {
     cookieStore.delete("auth_token");
     cookieStore.delete("auth_session");
     cookieStore.delete("auth_logged_in");
+    // F-06: the tenant override and the impersonation marker end with the
+    // session. The proxy sends x_tenant_id as X-Tenant-ID and the backend
+    // honours it for a super admin, so a surviving one silently scopes the
+    // next sign-in to another tenant.
+    cookieStore.delete("x_tenant_id");
+    cookieStore.delete("impersonating");
   }
 
   return NextResponse.json({ success: true, message: "Logged out successfully" }, { status: 200 });

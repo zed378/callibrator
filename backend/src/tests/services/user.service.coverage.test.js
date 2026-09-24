@@ -805,7 +805,7 @@ describe("user.service - branch & error coverage", () => {
       ...overrides,
     });
 
-    it("should deny a cross-tenant edit for a non-super-admin", async () => {
+    it("should refuse a cross-tenant edit with the not-found 404 (AZ-04)", async () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValue(tx);
       Users.findByPk.mockResolvedValue(makeUser({ tenantId: "tenant-B" }));
@@ -819,10 +819,8 @@ describe("user.service - branch & error coverage", () => {
         }),
       );
 
-      expect(err).toEqual({
-        status: 403,
-        message: "Access denied: resource belongs to a different tenant",
-      });
+      // AZ-04: indistinguishable from a user that does not exist.
+      expect(err).toEqual({ status: 404, message: "User not found" });
       expect(tx.rollback).toHaveBeenCalled();
     });
 

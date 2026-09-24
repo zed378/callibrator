@@ -56,7 +56,16 @@
  *
  * Two of the three checks (route gates, role levels) are static: they read
  * source text and constants, they never touch the database, and they are always
- * fatal.
+ * fatal. Boot runs them FIRST (`assertStaticAuthorizationWiring`, before
+ * `Connection()` in `index.js`), so a gate typo refuses the boot and names
+ * itself even when the database is down — and a database outage can never be
+ * misreported as an authorization defect, because these checks cannot fail
+ * for a database reason.
+ *
+ * The roles-table check (`assertSeededRoles`) runs only after `Connection()`,
+ * `db.sync()` and `migrator.up()` have succeeded. If the database is down,
+ * `Connection()` has already refused the boot for THAT reason, with its own
+ * message, before this check exists.
  *
  * The third needs the `roles` table. It distinguishes two outcomes that a naive
  * check would conflate:
@@ -255,7 +264,10 @@ function splitTopLevel(text) {
 function resolveNames(expression, source, depth) {
   const text = expression.trim();
 
-  const literal = text.match(/^"([^"]*)"$/) || text.match(/^'([^']*)'$/);
+  // A template literal counts only when it interpolates nothing; `${…}` is
+  // computed and falls through to "unverified".
+  const literal =
+    text.match(/^"([^"]*)"$/) || text.match(/^'([^']*)'$/) || text.match(/^`([^`$]*)`$/);
   if (literal) {
     return [literal[1]];
   }
@@ -561,26 +573,57 @@ async function checkSeededRoles(sequelize) {
 // ---------------------------------------------------------------------------
 
 /**
- * Validate the authorization wiring. Throws — and so refuses the boot — when a
- * route gate can never be satisfied, a role has no level, or the roles table
- * disagrees with the constants.
+ * Log every error, then throw one Error naming all of them. The throw is what
+ * refuses the boot; the message is what the operator reads.
+ *
+ * @param {string[]} errors - findings
+ * @param {object} log - logger
+ */
+function refuse(errors, log) {
+  const message =
+    `AUTHZ_WIRING_FAILURE: refusing to start — ${errors.length} authorization wiring defect(s):\n` +
+    errors.map((e) => `  - ${e}`).join("\n");
+  log.error(message);
+  throw new Error(message);
+}
+
+/**
+ * Phase 1 — the checks that need NO database: every route gate against the
+ * seeded menu vocabulary, and every role name against `ROLE_LEVELS`.
+ *
+ * Synchronous and database-free on purpose, so boot can run it BEFORE the
+ * connection is attempted: a gate typo then refuses the boot for that reason
+ * and names itself, whether or not the database is reachable.
  *
  * @param {object} [options] - options
- * @param {object|null} [options.sequelize] - connected Sequelize instance; when
- *   absent the roles-table check is skipped, loudly
  * @param {object} [options.log] - logger (injectable for tests)
- * @returns {Promise<{gates: number, warnings: string[]}>} what was checked
+ * @param {Function} [options.collect] - gate collector (injectable for tests)
+ * @param {Function} [options.vocabulary] - vocabulary loader (injectable for tests)
+ * @returns {{gates: number, warnings: string[]}} what was checked
+ * @throws {Error} AUTHZ_WIRING_FAILURE when any gate or role level is broken
  */
-async function validateAuthorizationWiring({ sequelize = null, log = logger } = {}) {
+function assertStaticAuthorizationWiring({
+  log = logger,
+  collect = collectRouteGates,
+  vocabulary = seededMenuVocabulary,
+} = {}) {
   const errors = [];
   const warnings = [];
   let gates = [];
 
   try {
-    gates = collectRouteGates();
-    const gateFindings = checkRouteGates(gates, seededMenuVocabulary());
+    gates = collect();
+    const gateFindings = checkRouteGates(gates, vocabulary());
     errors.push(...gateFindings.errors);
     warnings.push(...gateFindings.warnings);
+    if (gates.length === 0) {
+      // A scan that finds nothing is not a scan that passed. A build whose
+      // sources read back empty (bytecode-only snapshot) lands here, and must
+      // say so rather than log "0 gates validated" as though that were good.
+      warnings.push(
+        "the route sources were scanned but no dynamicAccess gate was found — no gate was verified in this build",
+      );
+    }
   } catch (err) {
     // The sources could not be read (a packaged snapshot, a moved directory).
     // The gates are then unchecked — which is said out loud, not crashed over.
@@ -591,22 +634,12 @@ async function validateAuthorizationWiring({ sequelize = null, log = logger } = 
 
   errors.push(...checkRoleLevels());
 
-  const roleFindings = await checkSeededRoles(sequelize);
-  errors.push(...roleFindings.errors);
-  if (roleFindings.skipped !== null) {
-    log.warn(`AUTHZ_WIRING_SKIPPED: ${roleFindings.skipped}`);
-  }
-
   for (const warning of warnings) {
     log.warn(`AUTHZ_WIRING_WARNING: ${warning}`);
   }
 
   if (errors.length > 0) {
-    const message =
-      `AUTHZ_WIRING_FAILURE: refusing to start — ${errors.length} authorization wiring defect(s):\n` +
-      errors.map((e) => `  - ${e}`).join("\n");
-    log.error(message);
-    throw new Error(message);
+    refuse(errors, log);
   }
 
   log.info(
@@ -617,7 +650,56 @@ async function validateAuthorizationWiring({ sequelize = null, log = logger } = 
   return { gates: gates.length, warnings };
 }
 
+/**
+ * Phase 2 — the `roles` table against the role constants. Needs a connected,
+ * MIGRATED database (migration 0020 backfills `role_level`; checking before it
+ * runs would report every seeded role as level 1). See DESIGN POINT 2 for why
+ * "could not run" warns and "found a disagreement" refuses.
+ *
+ * @param {object} [options] - options
+ * @param {object|null} [options.sequelize] - connected Sequelize instance
+ * @param {object} [options.log] - logger (injectable for tests)
+ * @returns {Promise<{skipped: string|null}>} whether the check ran
+ * @throws {Error} AUTHZ_WIRING_FAILURE when the table disagrees with the constants
+ */
+async function assertSeededRoles({ sequelize = null, log = logger } = {}) {
+  const roleFindings = await checkSeededRoles(sequelize);
+  if (roleFindings.skipped !== null) {
+    log.warn(`AUTHZ_WIRING_SKIPPED: ${roleFindings.skipped}`);
+  }
+  if (roleFindings.errors.length > 0) {
+    refuse(roleFindings.errors, log);
+  }
+  if (roleFindings.skipped === null) {
+    // Say that it RAN. A silent pass is indistinguishable from a check that was
+    // never wired, which is the state this module sat in when it was found.
+    log.info(
+      `Authorization wiring validated: roles table agrees with ROLE_LEVELS for ${
+        Object.keys(ROLE_IDS).length
+      } seeded role(s)`,
+    );
+  }
+  return { skipped: roleFindings.skipped };
+}
+
+/**
+ * Both phases in one call, for callers that already hold a migrated database.
+ * Boot (`index.js`) calls the phases separately so the static one runs first.
+ *
+ * @param {object} [options] - options
+ * @param {object|null} [options.sequelize] - connected Sequelize instance
+ * @param {object} [options.log] - logger (injectable for tests)
+ * @returns {Promise<{gates: number, warnings: string[], rolesSkipped: string|null}>}
+ */
+async function validateAuthorizationWiring({ sequelize = null, log = logger } = {}) {
+  const { gates, warnings } = assertStaticAuthorizationWiring({ log });
+  const { skipped } = await assertSeededRoles({ sequelize, log });
+  return { gates, warnings, rolesSkipped: skipped };
+}
+
 module.exports = {
+  assertStaticAuthorizationWiring,
+  assertSeededRoles,
   validateAuthorizationWiring,
   collectRouteGates,
   seededMenuVocabulary,

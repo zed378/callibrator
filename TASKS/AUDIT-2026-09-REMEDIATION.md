@@ -76,8 +76,8 @@ Task ids are `A-nn`. They are referenced from [`PHASE-9-TYPESCRIPT-MIGRATION.md`
 | A-54 | no Socket.IO adapter — a second replica splits the fan-out | medium | 2 | TODO |
 | A-55 | `createTwoTenants()` does not exist. `CLAUDE.md` and eight documents cite it as the fixture that makes the 404 test one line | medium | 0 | **corrected** 2026-09-23 |
 | A-56 | search swallows every query error into an empty list | low | 1 | TODO |
-| A-57 | the **public** verification endpoint returns the PDF path of a `draft` certificate | **high** | 0 | TODO |
-| A-58 | five workflow routes gate on `"workflow"`; the slug is `"workflows"` — they deny everyone but SUPERADMIN | **high** | 0 | TODO |
+| A-57 | the **public** verification endpoint returns the PDF path of a `draft` certificate | **high** | 0 | **DONE** 2026-09-24 |
+| A-58 | five workflow routes gate on `"workflow"`; the slug is `"workflows"` — they deny everyone but SUPERADMIN | **high** | 0 | **DONE** 2026-09-24 |
 
 ---
 
@@ -1870,7 +1870,7 @@ request id, and log both causes.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24 |
 | **Severity** | **high** |
 | **Verified** | from code, 2026-09-23, during the file-serving debate |
 | **Decision** | [ADR-042](../MEMORY/DECISIONS.md) |
@@ -1911,11 +1911,25 @@ that is a decision to record, not to infer. The status gate already exists one l
 
 ---
 
+**What was changed (2026-09-24)** — ADR-042 steps 1 and 2, `certificatePdf.service.js`, 41 tests, 100 %.
+
+The public verification endpoint returns `documentUrl` **only for a `signed` certificate**. A `draft`
+returns `null`; so does a **revoked** one — the decision recorded in a comment at
+`verifyByCertificateNumber` is that the PDF on disk is the unwatermarked signed version, so
+publishing it would present a revoked certificate as valid, while `status`, `revoked` and `valid`
+already say it was revoked. Expired certificates still return their document.
+
+The certificate filename is no longer the sequential certificate number: it is a random UUID, so
+enumeration no longer works. **The half-finished version of this fix could never have passed** — it
+used the `uuid` package, and the Jest setup replaces that package with a constant
+(`__mocks__/uuid.js`), so "two filenames differ" was unsatisfiable. It now uses
+`crypto.randomUUID()`. Against the pre-fix service, 13 tests fail.
+
 ### A-58 — Five workflow routes gate on a slug that does not exist
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24 |
 | **Severity** | **high — a live lockout, and the proof that A-07 is not theoretical** |
 | **Verified** | 2026-09-23, by executing the constant rather than reading it |
 | **Decision** | [ADR-043](../MEMORY/DECISIONS.md) |
@@ -1952,3 +1966,47 @@ same way.
 - [ ] the five routes use `workflows`, and a named test proves an admin role reaches them
 - [ ] a startup assertion fails, naming the offender, when any `dynamicAccess` name matches no seeded slug
 - [ ] the assertion is proven by temporarily reintroducing the typo — a check nobody has watched fail is not a check
+
+**What was changed (2026-09-24)** — the typo and, more importantly, the check that makes the next one loud.
+
+All five gates in `workflows.route.js` now read `workflows`. `workflows.access.a58.test.js` (17 tests)
+drives the **real** `dynamicAccess` against the matrix built from `ROLE_MENU_ASSIGNMENTS`: both admin
+roles reach all five routes, ENGINEERING MANAGER gets reads only, a role without the grant gets 403.
+With the typo restored, **12 of 17 fail**.
+
+**The boot assertion (ADR-043 step 5) is wired into `backend/index.js`, in two phases**:
+
+| Phase | Runs | Refuses to start when |
+|---|---|---|
+| 1 | **before** the database connection — it reads route source and constants only, so it cannot fail for a database reason | a `dynamicAccess` name matches no seeded menu name or slug, or a `ROLE_NAMES` key has no `ROLE_LEVELS` entry |
+| 2 | **after** `db.sync()` and migrations, so migration 0020 has already backfilled levels | a seeded role's `role_level` disagrees with `ROLE_LEVELS` |
+
+If phase 2 **cannot** run — the query throws, or nothing is seeded yet — it warns and boot continues,
+because refusing there would make the seeding endpoint unreachable and deadlock a fresh install. Only a
+check that ran **and found a disagreement** refuses. That distinction is recorded in the code.
+
+**Both phases were watched failing**, against a throwaway PostgreSQL with seeded data:
+
+```
+[error]: AUTHZ_WIRING_FAILURE: refusing to start — 5 authorization wiring defect(s):
+  - src/routes/api/workflows.route.js:149 dynamicAccess("workflow", …) matches no seeded menu
+    group name or slug — the gate grants nobody but SUPERADMIN, silently (A-58)
+  …
+```
+
+and, with `HEALTHCARE ADMIN` set to `role_level = 1`, boot exits on
+`roles."HEALTHCARE ADMIN".role_level is 1, ROLE_LEVELS.HEALTCARE_ADMIN is 8`. Restored, it boots and
+logs `133 dynamicAccess gate(s), 12 role name(s)` and `roles table agrees with ROLE_LEVELS for 11
+seeded role(s)` — a silent pass is indistinguishable from a check that never ran, so it says so.
+
+**What the scan surfaced, left unchanged by decision:** `"AuditLogs"` and `"Finance"` match nothing,
+but each sits in an OR gate that still resolves through another name, so they warn rather than
+refuse. `search.route.js` passes a computed list and cannot be checked statically; resolved by hand,
+all three are seeded.
+
+**Known limits, stated in the code:** under a packaged binary (`pkg` bytecode or `bun --compile`)
+the source scan cannot run, so phase 1 **only warns** — a packaged deploy runs with the gate check
+off, said loudly in the log. The check validates against the seed file, not the live `menu_groups`
+table. Two workflow routes (`GET /instances/pending`, `POST /instances/:instanceId/action`) carry
+`auth` alone — the P6-04 class, unchanged here.
+

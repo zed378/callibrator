@@ -25,13 +25,13 @@ describes the hooks and the raw-SQL rule more confidently than the code supports
 
 | Id | Finding | Severity | Verified | Status |
 |---|---|---|---|---|
-| D-01 | **`bulkCreate` and `upsert` are outside the tenant hooks entirely** — no predicate, no stamping | **critical** | from code | TODO |
+| D-01 | **`bulkCreate` and `upsert` are outside the tenant hooks entirely** — no predicate, no stamping | **critical** | from code | **DONE** 2026-09-24 |
 | D-02 | tenant-backup restore writes `users` rows straight from a caller-supplied payload | **high** | from code | TODO |
-| D-03 | the GDPR retention purge deletes across **every tenant** when the policy is global | **high** | from code | TODO |
+| D-03 | the GDPR retention purge deletes across **every tenant** when the policy is global | **high** | from code | **DONE** 2026-09-24 |
 | D-04 | `calibration_devices.serial_number` is **globally unique** — a cross-tenant device oracle, and a real collision between two hospitals | **high** | from code | TODO |
 | D-05 | one `sequelize.query` carries no tenant predicate; `CLAUDE.md` says they all do | medium | from code | TODO |
 | D-06 | `users.email` **and `users.username`** are globally unique — A-37 is wider than SCIM | **high** | from code | TODO |
-| D-07 | `restoreStatic()` on six models is a **silent no-op** — `is_deleted` written where the attribute is `isDeleted` | **high** | from code | TODO |
+| D-07 | `restoreStatic()` on **seven** models (the card first said six) was a **silent no-op** — `is_deleted` written where the attribute is `isDeleted` | **high** | from code | **DONE** 2026-09-24 |
 | D-08 | `audit_logs` has **no indexes at all** — and it is the fastest-growing table | **high** | from code | TODO |
 | D-09 | migration 0011 **unconditionally drops `e_signature_records` with `CASCADE`** on `up` | **high** | from code | TODO |
 | D-10 | `calibration_records.performed_by` → `users` **ON DELETE CASCADE** — deleting a user deletes the calibration evidence | **high** | from code | TODO |
@@ -221,7 +221,7 @@ symptoms of tables that have no tenant column at all.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24 |
 | **Severity** | **critical** |
 | **Verified** | from code, 2026-09-23. **Not exploited** — no database was reachable |
 
@@ -285,6 +285,35 @@ overstates what the hooks cover.
 
 ---
 
+**What was changed (2026-09-24)** — `tenantScope.util.js` now registers `beforeBulkCreate` and
+`beforeUpsert`. A write naming another tenant is **refused**, not re-stamped; a principal with no
+resolvable tenant writes nothing; the system-task path (seeding, migrations) is unaffected.
+
+**Refusing is the only correct answer for `upsert`, and this was checked in Sequelize's source
+rather than reasoned about:** in 6.37.8, `Model.upsert` snapshots its values at `model.js:1511-1513`
+and only then runs `beforeUpsert` at `:1531`, so a hook **cannot** change what an upsert writes. A
+hook that tried to "correct" the tenant would have been silently ignored.
+
+**The two failures in `36205df` were a broken test stub, not a broken fix.** `upsert` sends its SQL
+as `{ query, bind }` with `$1…$6` placeholders; the stub kept `query` and dropped `bind`, so "the
+statement contains tenant B" could never be observed. `bulkCreate` inlines its values, which is why
+those tests passed. The stub now records the bind values. **Mutation check:** with both hook bodies
+disabled, 5 of the 10 tests fail — the refusal and stamping ones; the other 5 cover pass-through.
+
+**Verified live, not only in tests**, against a throwaway PostgreSQL container with two demo
+tenants: as tenant A, an `upsert` naming B, a `bulkCreate` naming B, and a `bulkCreate` with
+`updateOnDuplicate` on B were all refused, and **B's row stayed `B-ORIGINAL`**. With no tenant, both
+were refused. `seedAll()` and `seedDemoData()` ran with `errors: []` — the hooks broke no seeding.
+
+**Call-site audit: none broken.** 26 `bulkCreate`/`upsert` sites outside tests (not 27 — one moved
+with the backup rewrite). Only three models they touch carry a tenant column. All twelve
+`TenantSettings.upsert` sites pass an explicit tenant that is either the caller's own or behind
+`superAdminOnly`, where scoping is skipped.
+
+**Not covered:** the live check ran on PostgreSQL 16, the only cached image, not 18. The refusals
+are plain `Error`s, so they surface as 500 — no legitimate caller reaches them today, but a 500 is
+the wrong code for "you may not write another tenant's row".
+
 ### D-02 — Tenant-backup restore writes `users` rows straight from a caller-supplied payload
 
 | | |
@@ -335,7 +364,7 @@ mismatch with a 409 that explains it.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24 |
 | **Severity** | **high** — it deletes audit rows |
 | **Verified** | from code, 2026-09-23 |
 
@@ -379,6 +408,22 @@ audit row, rather than a `where` clause that is missing a key.
 - [ ] audit rows deleted by retention are counted and recorded, per tenant
 
 ---
+
+**What was changed (2026-09-24)** — `gdpr.service.js`, 50 tests, 100 %.
+
+A retention policy with no tenant (`tenantId` null or absent) now purges **nothing**; per-tenant
+policies carry the tenant filter, including `tenant_id` on the snake_case `Session` model. The
+platform-wide sweep in `dataRetention.service.js#runRetentionSweep` already purges each tenant under
+its own filter, so the tenant-less branch in `gdpr.service.js` was both redundant and the unsafe one
+of the two implementations.
+
+**The failing test encoded the defect.** `"purges a policy with no tenant scope without checking
+legal hold"` asserted `result.purged === 2` — that a global policy deleted rows with no tenant filter
+**and ignored legal hold**. It is replaced by tests asserting a global policy destroys nothing.
+Against the pre-fix service, 3 fail.
+
+**Decision needed, recorded as Q-10:** should tenant-less retention policies exist at all? They are
+now inert, and a policy row that does nothing is its own kind of confusion.
 
 ### D-04 — `calibration_devices.serial_number` is globally unique
 
@@ -559,7 +604,7 @@ SELECT lower(email), count(DISTINCT tenant_id) FROM users
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24 |
 | **Severity** | **high** — the undelete path does nothing and reports success |
 | **Verified** | from code, 2026-09-23 |
 
@@ -612,6 +657,35 @@ assert the default scope returns it.
 - [ ] a lint gate: `is_deleted` as a key in an `update()` **values** object is an error
 
 ---
+
+**What was changed (2026-09-24)** — correcting this card first: it says **six** models. There are
+**seven**; its evidence table omitted `warehouse.model.js:89`. All seven are fixed.
+
+Each `restoreStatic` now reads `this.unscoped().update({ isDeleted: false }, { where: { id, isDeleted: true } })`.
+`unscoped()` is deliberate: the `defaultScope` is `{ is_deleted: false }`, and a restore must not
+inherit it. A probe against real Sequelize showed that a plain `this.update(…)` does produce the
+right SQL — but only because field mapping happens to overwrite the scope's `false` with `true`
+after the merge. That is a second "works by accident" layered on the first, so the intent is now
+explicit. The paranoid `deleted_at IS NULL` clause and the global tenant hooks both still apply.
+`session.model.js` is untouched: it declares `is_deleted` as a snake_case attribute, so its
+`restoreStatic` was always correct.
+
+**Verification** — `src/tests/models/restoreStatic.test.js`, **42 tests** (6 per model). The test
+spies on `queryInterface.bulkUpdate` and applies the update to an in-memory row stored under the
+**real column names**, so Sequelize's attribute resolution, scope injection and field mapping all
+run for real; it asserts the stored row flips, that it passes the model's own `defaultScope` again,
+and that the call reports **one** affected row. **Proved to fail**: with all seven models reverted,
+`21 failed, 21 passed`; with one reverted, exactly that model's three effect-tests fail. It also
+guards the other direction — a row that is not soft-deleted is left alone, and a different id is not
+restored.
+
+**A finding this surfaced, filed against A-32:** `models/` is excluded from the coverage gate
+**twice** — omitted from `collectCoverageFrom` *and* listed in `coveragePathIgnorePatterns`. The
+"100 %" figure has never measured one line of any of the 71 models. Measured directly, the seven
+fixed models sit at **44–62 % statements**; `softDelete` and `associate` are exercised by nothing.
+
+**Not covered:** the test does not run against PostgreSQL, and does not run the tenant hooks.
+
 
 ### D-08 — `audit_logs` has no indexes at all
 

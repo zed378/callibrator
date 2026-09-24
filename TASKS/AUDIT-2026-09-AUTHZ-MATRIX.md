@@ -234,7 +234,7 @@ type. The first is correct; the second is honest and cheap. Whichever is chosen,
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24 — both middlewares and `user.service.js`. The `dynamicAccess` 500 leak is **still open**, deliberately, see below |
 | **Severity** | **high — it is the tenant-membership oracle the 404 rule exists to prevent** |
 | **Verified** | from code, 2026-09-23 |
 
@@ -275,6 +275,69 @@ message to the client, which is finding A-13's shape and is still open.
 - [ ] `abac`'s 500 path stops returning `error.message` (folded into A-13)
 
 ---
+
+**What was changed (2026-09-24)**
+
+Both middlewares now route cross-tenant and not-found through one helper, so the two responses are
+**byte-identical**:
+
+| Case | Body |
+|---|---|
+| foreign tenant id, or nonexistent (abac, and `dynamicAccess`'s tenant branch) | `{"success":false,"status":404,"message":"Tenant not found","data":null}` |
+| foreign owner, or missing owner (`dynamicAccess`'s owner branch) | `{"success":false,"status":404,"message":"Resource not found","data":null}` |
+| permission failure **inside the caller's own tenant** | `{"success":false,"status":403,"message":"Forbidden: Insufficient permissions","data":null}` — still 403, correctly |
+
+The two 404 branches carry different messages, but the caller already knows which branch ran from
+the parameter it sent, so that distinguishes nothing. The reason is logged against the request id.
+`abac`'s error path now calls `next(error)` instead of writing `error.message` to the client.
+
+**Five existing tests had encoded the oracle** and asserted the old 403 for a cross-tenant id — one
+in `abac.test.js` (`"should return 403 if tenant ID does not match"`) and four in
+`dynamicAccess.test.js`. They now assert the full 404 body. Every in-tenant 403 test was left
+untouched and still passes; flattening those to 404 would have been a new bug.
+
+**Verification** — 5 suites, 128 tests, **100 %** on both middlewares. Named: byte-identical
+foreign-vs-nonexistent tests for `abac` and for both `dynamicAccess` branches; in-tenant 403 tests on
+a `checkTenant` route whose tenant is the caller's own.
+
+**Still open, found while fixing:** `user.service.js` repeats the oracle at three sites — `404 "User
+not found"` immediately followed by `403 "resource belongs to a different tenant"` — and
+`dynamicAccess`'s own `catch` still writes `error.message` in a 500. Both are being closed now.
+
+**Closed 2026-09-24 — the `user.service.js` instance.** All three sites (`userRoleUpdate`,
+`editUser`, `deleteUser`) now throw the same `404 "User not found"` for a user in another tenant as for
+a user that does not exist, and log the reason. `user.service.crossTenant.az04.test.js`: **7 of 11
+fail** against the old code, 11 pass with the fix.
+
+The branch was **latent, not live** — checked per site rather than assumed. `Users` carries a
+`tenantId`, the `beforeFind` hook covers `findByPk`, none of the three lookups uses `.unscoped()` or
+`skipTenantScope`, and the routes also run `dynamicAccess(…, {checkTenant: true})`, which turns a
+foreign id into a 404 first. So a foreign user already came back `null`. The 403 would have become a
+live oracle the moment anyone added `.unscoped()` to one of those lookups, or called the service
+without a request context.
+
+One behaviour change beyond the brief, and it is the right one: in `deleteUser` the tenant check now
+runs **before** the system-account guard. A tenant admin who reached another tenant's `sys` account
+used to get `403 "cannot be deleted"` — confirming that id exists. Now it is a 404. A super-admin
+still gets the explicit 403.
+
+**Still open — the `dynamicAccess` internal-error leak (A-13 shape), and why it was not landed.**
+Its `catch` still writes `res.status(500).json({ success: false, message: error.message })`. Routing it
+through `next(error)`, as `abac` now does, **was written, tested, and then reverted**, because on its
+own it makes **search fail open**. `search.controller.js:19-25` probes each searchable type by running
+the real `dynamicAccess` gate with a callback of `() => resolve(true)` — it treats **any** call to
+`next` as "allowed" and ignores the argument. With `next(error)`, a failure of the permission store
+would read as "allowed for every type". `search.permissions.a04.test.js` › *"returns no rows when the
+permission store itself fails"* caught it, with three search queries run.
+
+That is a seam between two changes that are each correct, the same shape as V-01. **To land it**, the
+patches are ready and one line must change with them: `search.controller.js:24`, `() => resolve(true)`
+→ `(err) => resolve(!err)`, so a failed check denies. The safety of `next(error)` itself was verified
+by running the real `errorHandler` under `NODE_ENV=production`: the client receives
+`"An unexpected error occurred. Please try again later."` and none of the internal text. One caveat
+for whoever lands it — `sanitizeError` copies `err.errors` in every environment, so a Sequelize
+`ValidationError` would still carry detail.
+
 
 ### AZ-03 — P6-04's premise needs changing before it is built
 

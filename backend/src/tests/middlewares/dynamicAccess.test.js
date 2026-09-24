@@ -265,12 +265,24 @@ describe("dynamicAccess middleware", () => {
       expect(next).not.toHaveBeenCalled();
     });
 
-    it("should 403 when the resource belongs to a different tenant", async () => {
+    // AZ-04. Was "should 403 when the resource belongs to a different tenant"
+    // asserting `expect(res.status).toHaveBeenCalledWith(403)` — the test
+    // encoded the tenant-membership oracle. Foreign must equal not-found.
+    it("should 404 (not 403) when the resource belongs to a different tenant", async () => {
       Tenants.findByPk.mockResolvedValueOnce({ id: "tenant-999" });
       req.params = { tenantId: "tenant-999" };
       await run(dynamicAccess("Home", "read", { checkTenant: true }));
-      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.status).not.toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        status: 404,
+        message: "Tenant not found",
+        data: null,
+      });
       expect(next).not.toHaveBeenCalled();
+      // The matrix is never reached for a foreign tenant.
+      expect(RolesService.getRolePermissionsMatrix).not.toHaveBeenCalled();
     });
 
     it("should allow when the resource belongs to the user tenant", async () => {
@@ -288,12 +300,16 @@ describe("dynamicAccess middleware", () => {
       expect(res.status).toHaveBeenCalledWith(404);
     });
 
-    it("should 403 when the resource owner is in another tenant", async () => {
+    // AZ-04. Was "should 403 when the resource owner is in another tenant"
+    // asserting `expect(res.status).toHaveBeenCalledWith(403)`.
+    it("should 404 (not 403) when the resource owner is in another tenant", async () => {
       Tenants.findByPk.mockResolvedValueOnce(null);
       User.findByPk.mockResolvedValueOnce({ tenantId: "tenant-999" });
       req.params = { userId: "other-user" };
       await run(dynamicAccess("Home", "read", { checkTenant: true }));
-      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.status).not.toHaveBeenCalledWith(403);
+      expect(next).not.toHaveBeenCalled();
     });
 
     it("should allow when the resource owner shares the tenant", async () => {
@@ -410,12 +426,15 @@ describe("dynamicAccess middleware", () => {
       expect(next).toHaveBeenCalled();
     });
 
-    it("should 403 when resource owner via query has different tenant", async () => {
+    // AZ-04. Was "should 403 when resource owner via query has different
+    // tenant" asserting `expect(res.status).toHaveBeenCalledWith(403)`.
+    it("should 404 (not 403) when resource owner via query has different tenant", async () => {
       Tenants.findByPk.mockResolvedValueOnce(null);
       User.findByPk.mockResolvedValueOnce({ tenantId: "tenant-999" });
       req.query = { userId: "other-user" };
       await run(dynamicAccess("Home", "read", { checkTenant: true }));
-      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(next).not.toHaveBeenCalled();
     });
   });
 
@@ -629,32 +648,39 @@ describe("dynamicAccess — remaining branches", () => {
       expect(res.status).not.toHaveBeenCalled();
     });
 
-    it("should 403 when user.tenant.id fallback does not match the owner tenant", async () => {
+    // AZ-04. Was "should 403 when user.tenant.id fallback does not match the
+    // owner tenant" asserting `expect(res.status).toHaveBeenCalledWith(403)`.
+    it("should 404 (not 403) when user.tenant.id fallback does not match the owner tenant", async () => {
       req.user = makeUser({ tenantId: undefined, tenant: { id: "tenant-123" } });
       req.params = { userId: "other-user" };
       User.findByPk.mockResolvedValue({ tenantId: "tenant-999" });
 
       await dynamicAccess("Home", "read", { checkTenant: true })(req, res, next);
 
-      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.status).toHaveBeenCalledWith(404);
       expect(next).not.toHaveBeenCalled();
     });
   });
 
   describe("empty permission type list", () => {
-    it("should 403 and report permTypes when no permission type is denied by name", async () => {
+    it("should 403 and log permTypes when no permission type is denied by name", async () => {
       // Degenerate config: with an empty permTypes list nothing can be
-      // allowed under OR logic, and deniedTypes is empty so the response
-      // falls back to echoing permTypes.
+      // allowed under OR logic, and deniedTypes is empty so the log falls
+      // back to permTypes. In-tenant permission failure: stays 403. The
+      // `required` / `menuGroups` keys moved from the body to the log.
       await dynamicAccess("Home", [])(req, res, next);
 
       expect(res.status).toHaveBeenCalledWith(403);
       expect(res.json).toHaveBeenCalledWith({
         success: false,
+        status: 403,
         message: "Forbidden: Insufficient permissions",
-        required: [],
-        menuGroups: ["Home"],
+        data: null,
       });
+      expect(logger.warn).toHaveBeenCalledWith(
+        "dynamicAccess: permission refusal",
+        expect.objectContaining({ required: [], menuGroups: ["Home"] }),
+      );
       expect(next).not.toHaveBeenCalled();
     });
 
@@ -677,9 +703,129 @@ describe("dynamicAccess — remaining branches", () => {
 
       await dynamicAccess("Home", "read")(req, res, next);
 
+      // In-tenant permission failure: stays 403; what was required is in
+      // the log, not the body.
       expect(res.status).toHaveBeenCalledWith(403);
       expect(res.json).toHaveBeenCalledWith(
-        expect.objectContaining({ required: ["read"] }),
+        expect.not.objectContaining({ required: expect.anything() }),
+      );
+      expect(logger.warn).toHaveBeenCalledWith(
+        "dynamicAccess: permission refusal",
+        expect.objectContaining({
+          requestId: "unknown",
+          required: ["read"],
+          menuGroups: ["Home"],
+        }),
+      );
+      expect(next).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("AZ-04 — tenant isolation refusals are indistinguishable", () => {
+    // Drive the middleware once and return the exact status and serialized
+    // body the client would receive.
+    const capture = async (setup) => {
+      const r = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn().mockReturnThis(),
+      };
+      const n = jest.fn();
+      const rq = {
+        user: makeUser(),
+        params: {},
+        body: {},
+        query: {},
+        method: "GET",
+      };
+      setup(rq);
+      await dynamicAccess("Home", "read", { checkTenant: true })(rq, r, n);
+      expect(n).not.toHaveBeenCalled();
+      return {
+        status: r.status.mock.calls[0][0],
+        body: JSON.stringify(r.json.mock.calls[0][0]),
+      };
+    };
+
+    it("tenant branch: a foreign tenant id and a non-existent one are byte-identical", async () => {
+      const foreign = await capture((rq) => {
+        Tenants.findByPk.mockResolvedValueOnce({ id: "tenant-999" });
+        rq.params = { tenantId: "tenant-999" };
+      });
+      const missing = await capture((rq) => {
+        Tenants.findByPk.mockResolvedValueOnce(null);
+        rq.params = { tenantId: "tenant-000" };
+      });
+
+      expect(foreign.status).toBe(404);
+      expect(missing.status).toBe(404);
+      expect(foreign.body).toBe(missing.body);
+      expect(foreign.body).toBe(
+        '{"success":false,"status":404,"message":"Tenant not found","data":null}',
+      );
+    });
+
+    it("owner branch: a foreign owner and a non-existent owner are byte-identical", async () => {
+      const foreign = await capture((rq) => {
+        User.findByPk.mockResolvedValueOnce({ tenantId: "tenant-999" });
+        rq.params = { userId: "foreign-user" };
+      });
+      const missing = await capture((rq) => {
+        User.findByPk.mockResolvedValueOnce(null);
+        rq.params = { userId: "ghost-user" };
+      });
+
+      expect(foreign.status).toBe(404);
+      expect(missing.status).toBe(404);
+      expect(foreign.body).toBe(missing.body);
+      expect(foreign.body).toBe(
+        '{"success":false,"status":404,"message":"Resource not found","data":null}',
+      );
+    });
+
+    it("logs the refusal reason against the request id, never in the body", async () => {
+      Tenants.findByPk.mockResolvedValueOnce({ id: "tenant-999" });
+      req.params = { tenantId: "tenant-999" };
+      req.requestId = "req-xyz";
+      req.originalUrl = "/api/v1/things/tenant-999";
+
+      await dynamicAccess("Home", "read", { checkTenant: true })(req, res, next);
+
+      expect(logger.warn).toHaveBeenCalledWith(
+        "dynamicAccess: tenant isolation refusal",
+        expect.objectContaining({
+          requestId: "req-xyz",
+          userId: "user-1",
+          reason: "cross-tenant",
+          resourceTenantId: "tenant-999",
+          url: "/api/v1/things/tenant-999",
+        }),
+      );
+      expect(JSON.stringify(res.json.mock.calls[0][0])).not.toMatch(
+        /cross-tenant|different tenant/,
+      );
+    });
+
+    it("an in-tenant permission failure on a checkTenant route stays 403", async () => {
+      // Own tenant, but the role lacks the menu: this is NOT an isolation
+      // refusal and must not be flattened to 404.
+      Tenants.findByPk.mockResolvedValueOnce({ id: "tenant-123" });
+      RolesService.getRolePermissionsMatrix.mockResolvedValue({ Home: [] });
+      req.params = { tenantId: "tenant-123" };
+      req.requestId = "req-perm";
+
+      await dynamicAccess("Home", "write", { checkTenant: true })(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.status).not.toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        status: 403,
+        message: "Forbidden: Insufficient permissions",
+        data: null,
+      });
+      expect(logger.warn).toHaveBeenCalledWith(
+        "dynamicAccess: permission refusal",
+        expect.objectContaining({ requestId: "req-perm", required: ["write"] }),
       );
       expect(next).not.toHaveBeenCalled();
     });

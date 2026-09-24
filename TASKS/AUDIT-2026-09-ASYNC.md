@@ -25,13 +25,13 @@ needs one to settle says so in its own card.
 | W-02 | `CALIBRATION_SCHEDULER` is set in **no** deployment file, and the chart's "not the scheduler" branch disables only one of four jobs | **high** | latent (1 replica today), live on the documented scale-out |
 | W-03 | the calibration scan's idempotency guard is a check-then-create race with no lock and no constraint | **high** | latent — needs a second replica |
 | W-04 | **no background mutation writes an audit row** — including the purge that destroys `audit_logs` | **high** | **live** |
-| W-05 | one Redis blip disables Redis **permanently** for that process, silently, restoring the whole A-24 symptom set | **high** | **live** |
+| W-05 | one Redis blip disables Redis **permanently** for that process, silently, restoring the whole A-24 symptom set | **high** | **DONE** 2026-09-24 |
 | W-06 | a RabbitMQ consumer is never re-registered: a broker restart ends both workers for the life of the process | **high** | **live** |
 | W-07 | a batch job interrupted by SIGTERM is **acked on redelivery and never runs again** — stuck `PROCESSING`, no DLQ row | **medium–high** | **live** |
 | W-08 | batch jobs do nothing: the handler registry is empty and every job reports `COMPLETED`, progress 100, with a download URL | **medium–high** | **live** |
 | W-09 | the email retry both re-publishes **and** dead-letters the same message, from an in-process timer that can take the server down | medium | **live** |
 | W-10 | the nightly "tenant backup" backs up two local folders and not the database; the real backup service is scheduled by nothing | medium | **live** |
-| W-11 | a deleted or deactivated role keeps its permissions for up to an hour — cached authorization with no invalidation on that path | medium | **live** |
+| W-11 | a deleted or deactivated role keeps its permissions for up to an hour — cached authorization with no invalidation on that path | medium | **DONE** 2026-09-24 |
 | W-12 | every scheduled job runs with **no tenant predicate at all**, and `beforeCreate` does not stamp `tenantId` | medium | **live** |
 | W-13 | silent failure is the norm: every job's failure path ends at `logger.error`, and production writes no stdout (A-14) | medium | **live** |
 | W-14 | MQTT ingest fans out to every replica — N duplicate readings and N duplicate alerts per message — with no backpressure | medium | latent (MQTT off) |
@@ -340,7 +340,7 @@ record of the deletion can be lost by the same crash that half-completed it (**W
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24 |
 | **Severity** | **high** |
 | **Verified** | from code. **Needs a running Redis to demonstrate** — restart it and watch the client never come back |
 
@@ -402,6 +402,30 @@ third failure.
       be restarted
 
 ---
+
+**What was changed (2026-09-24)** — `redis.service.js`, 100 %.
+
+Read from the source rather than assumed: in ioredis 5.11.1, `event_handler.js#closeHandler` calls
+`retryStrategy(++retryAttempts)` and, **if the result is not a number, calls `close()`** —
+`setStatus("end")` and a flushed queue, with no timer and no later retry. The README says it plainly:
+*"the connection will be lost forever if the user doesn't call `redis.connect()` manually."* So the
+old strategy's `return null` after three attempts ended the client for good after about 1.2 seconds.
+
+`retryStrategy` now always returns a number, capped at 2000 ms — ioredis's own default. The counter
+resets on every `ready`, so backoff starts short again after each recovery. An **unintended** `end`
+schedules a single re-dial, which puts the client back into the normal retry loop; a deliberate
+`closeRedis()` is marked and never re-dialled. Losing and regaining the connection are logged through
+the project logger, naming what degrades.
+
+**Proof** — `redis.service.reconnect.test.js` drives **real ioredis** against an in-process RESP
+server that drops every socket and refuses connections for 2.5 s, longer than the old ~1.2 s budget.
+Against the old code: `expect(client.status).not.toBe("end")` fails. Two old tests that asserted the
+bug — `retryStrategy(5)).toBeNull()` and "retries up to 3 times then gives up" — are removed.
+
+**Not covered:** a real Redis restart. The fake server proves the client lifecycle, not Redis. The DoD
+item "kill a real Redis for 10 s and assert the rate limiter resumes shared counting" stays open.
+Also: during an outage the existing error listener logs every reconnect attempt — about 30 lines a
+minute at the 2 s cap, where the old code logged four and then died. Not throttled.
 
 ## W-06 — A RabbitMQ consumer is never re-registered
 
@@ -689,7 +713,7 @@ one constant.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24 |
 | **Severity** | medium |
 | **Verified** | from code, 2026-09-23 |
 
@@ -750,6 +774,33 @@ or `Role` in the service and asserts each one invalidates.
 - [ ] a data-driven test over the service's mutations fails when a new one forgets
 
 ---
+
+**What was changed (2026-09-24)** — `roles.service.js`, 100 %.
+
+`deleteRole` (both branches), `updateRole` when it changes `status`, and `createMenu` for a child menu
+now invalidate the permission cache. The last one was a second instance: a child inherits its
+parent's grant, so a stale matrix **denied** a newly created child menu for up to an hour.
+
+**Invalidating the cache alone would not have revoked anything**, which is the part worth recording.
+`updateRole(id, {status: "inactive"})` leaves the role's permission rows in place, `Role` is
+`paranoid` so `destroy()` is a soft delete that also leaves them, and `getRolePermissionsMatrix` never
+checked status — so the rebuilt matrix granted exactly what the stale one did. On a cache miss it now
+returns `{}` for a role that is missing or not `active`, the same rule `hasPermission` already
+applied. The denial is not cached, so a reactivated role works again immediately.
+
+**That new check was verified against the data before being accepted**, because it would silently
+strip grants from any role whose status is anything other than exactly `"active"`: the column is
+`STRING(20)`, not an ENUM. But every writer in the code uses lowercase `"active"`/`"inactive"`,
+`roles.validator.js:18` restricts the API to `"active" | "inactive" | "deleted"`, and all 11 roles on
+the running deployment are `active`. The only reachable non-active values are exactly the ones that
+should deny.
+
+**Proof** — a stateful Map-backed Redis mock, so each test reads, mutates and reads again: after
+`deleteRole` the next read grants nothing (against the old code: `Expected: false, Received: true`),
+and the same for deactivation and for `updateRole` to inactive.
+
+**Not covered:** if Redis is down at the moment of revocation, `del` returns `false` and the old
+matrix returns with Redis for the rest of its hour. `deleteRole` does not fail or retry.
 
 ## W-12 — Every scheduled job runs with no tenant predicate
 

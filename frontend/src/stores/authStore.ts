@@ -2,6 +2,9 @@ import { create } from "zustand";
 import { User } from "@/types";
 import { authService } from "@/api/services/auth.service";
 import { useMenuStore } from "./menuStore";
+import { useTenantStore } from "./tenantStore";
+import { useTenantBrandingStore } from "./tenantBrandingStore";
+import { disconnectSocket } from "@/lib/socket";
 
 const setCookie = (name: string, value: string, days = 7) => {
   if (typeof document === "undefined") return;
@@ -42,6 +45,28 @@ interface AuthState {
   fetchUser: () => Promise<void>;
   setError: (error: string | null) => void;
 }
+
+/**
+ * Client-side state that must not survive from one session to the next in the
+ * same tab (F-01, F-06). Sign-out and sign-in are client-side navigations, so
+ * nothing here is reset by a page load.
+ *
+ * - x_tenant_id: the proxy sends it as X-Tenant-ID on every request and the
+ *   backend honours it for a super admin, so a stale one silently scopes the
+ *   next session to another tenant — with no banner, because `impersonating`
+ *   is gone.
+ * - the selected tenant and the tenant branding cache, which would otherwise
+ *   show the previous tenant's name, logo and colour to the next user.
+ *
+ * The socket is closed separately, and FIRST, by every caller: see
+ * disconnectSocket().
+ */
+const clearTenantContext = () => {
+  deleteCookie("impersonating");
+  deleteCookie("x_tenant_id");
+  useTenantStore.setState({ currentTenant: null });
+  useTenantBrandingStore.getState().clearBranding();
+};
 
 const readCookie = (name: string): string | null => {
   if (typeof document === "undefined") return null;
@@ -94,12 +119,15 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
           isImpersonating: readCookie("impersonating") === "true",
         });
       } catch (error: unknown) {
-        // Token invalid or expired - clear server-side session/cookies
+        // Token invalid or expired: this session is over. Close its socket
+        // before anything else, then clear server-side session/cookies.
+        disconnectSocket();
         try {
           await authService.logout();
         } catch {
           // ignore
         }
+        clearTenantContext();
         const message =
           error instanceof Error ? error.message : "Session expired";
         set({
@@ -116,6 +144,11 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
 
   login: async (username: string, password: string) => {
     set({ isLoading: true, error: null });
+    // A password login establishes the caller's OWN tenant. Drop any tenant
+    // override left by a path that never ran logout (e.g. the 401 redirect,
+    // which is a full page load straight to /login).
+    deleteCookie("x_tenant_id");
+    deleteCookie("impersonating");
     try {
       const response = await authService.login({ user: username, password });
       // Actual backend response: { success, status, message, data: user, token, session }
@@ -292,15 +325,16 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
   exitImpersonation: async () => {
     // Backend maps exit → logout: the impersonation session is revoked and the
     // operator signs back in as themselves.
+    // The socket was authenticated as the impersonated user; close it first.
+    disconnectSocket();
     useMenuStore.getState().clearMenu();
     try {
       await authService.exitImpersonation();
     } catch {
       // ignore
     } finally {
-      deleteCookie("impersonating");
       deleteCookie("auth_logged_in");
-      deleteCookie("x_tenant_id");
+      clearTenantContext();
       set({
         token: null,
         user: null,
@@ -313,6 +347,13 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
   },
 
   logout: async () => {
+    // Close the realtime connection FIRST (F-01). The page does not unload on
+    // sign-out, so the socket singleton would otherwise be handed, still
+    // authenticated and still joined to this tenant's rooms, to whoever signs
+    // in next in this tab. Doing it before the request means no event for the
+    // departing user can arrive while the request is in flight.
+    disconnectSocket();
+
     // Clear the menu store so the next user gets a fresh menu fetch
     useMenuStore.getState().clearMenu();
 
@@ -322,8 +363,10 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
       // Ignore logout errors
     } finally {
       // The httpOnly auth cookies are cleared server-side by the logout route;
-      // just reset in-memory state here.
-      deleteCookie("impersonating");
+      // the client-visible ones and the tenant context are cleared here, even
+      // when that request fails.
+      deleteCookie("auth_logged_in");
+      clearTenantContext();
       set({
         token: null,
         user: null,

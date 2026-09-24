@@ -220,17 +220,17 @@ async function exportCalibrationData(exportDir, tenantId, userId) {
     const records =
       deviceIds.length > 0
         ? await CalibrationRecord.findAll({
-            where: { deviceId: deviceIds },
-            raw: true,
-          })
+          where: { deviceId: deviceIds },
+          raw: true,
+        })
         : [];
 
     const certificates =
       deviceIds.length > 0
         ? await Certificate.findAll({
-            where: { deviceId: deviceIds },
-            raw: true,
-          })
+          where: { deviceId: deviceIds },
+          raw: true,
+        })
         : [];
 
     await fs.promises.writeFile(

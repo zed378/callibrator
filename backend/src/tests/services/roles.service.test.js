@@ -412,6 +412,37 @@ describe("RolesService", () => {
   });
 
   describe("getRolePermissionsMatrix", () => {
+    beforeEach(() => {
+      // The role exists and is active unless a test says otherwise.
+      mockRole.findByPk.mockResolvedValue({ id: "r", status: "active" });
+    });
+
+    it("grants nothing for a role that no longer exists, and does not cache that", async () => {
+      const redis = require("../../services/redis.service");
+      redis.get.mockResolvedValue(null);
+      mockRole.findByPk.mockResolvedValue(null);
+      mockRoleMenuPermission.findAll.mockResolvedValue([
+        { menu: { name: "Dashboard", slug: "dash" }, permissionType: "write" },
+      ]);
+
+      await expect(RolesService.getRolePermissionsMatrix("gone")).resolves.toEqual({});
+      expect(mockRole.findByPk).toHaveBeenCalledWith("gone", { attributes: ["id", "status"] });
+      expect(mockRoleMenuPermission.findAll).not.toHaveBeenCalled();
+      expect(redis.set).not.toHaveBeenCalled();
+    });
+
+    it("grants nothing for an inactive role even though its permission rows remain (W-11)", async () => {
+      const redis = require("../../services/redis.service");
+      redis.get.mockResolvedValue(null);
+      mockRole.findByPk.mockResolvedValue({ id: "r", status: "inactive" });
+      mockRoleMenuPermission.findAll.mockResolvedValue([
+        { menu: { name: "Dashboard", slug: "dash" }, permissionType: "write" },
+      ]);
+
+      await expect(RolesService.getRolePermissionsMatrix("r")).resolves.toEqual({});
+      expect(redis.set).not.toHaveBeenCalled();
+    });
+
     it("should return cached matrix if available", async () => {
       require("../../services/redis.service").get.mockResolvedValue({ Dashboard: ["read"] });
       const result = await RolesService.getRolePermissionsMatrix("r1");
@@ -502,6 +533,106 @@ describe("RolesService", () => {
       ]);
       const result = await RolesService.getRolePermissionsMatrix("r7");
       expect(result).toEqual({ Leaf: ["write"], leaf: ["write"] });
+    });
+  });
+
+  // ================================================================
+  // W-11 — revoking a role must reach the cached matrix.
+  //
+  // Redis is an in-memory Map here so the cache has state: a read, a
+  // mutation, and the next read. The question each test asks is the one
+  // that matters on a gated request: after the mutation, does the next
+  // matrix read go to the database, or serve the old grant from cache?
+  // ================================================================
+  describe("revocation reaches the permission cache (W-11)", () => {
+    let store;
+    const rows = [{ menu: { name: "Dashboard", slug: "dash" }, permissionType: "write" }];
+    const granted = { Dashboard: ["write"], dash: ["write"] };
+
+    beforeEach(() => {
+      const redis = require("../../services/redis.service");
+      store = new Map();
+      redis.get.mockImplementation(async (k) => (store.has(k) ? store.get(k) : null));
+      redis.set.mockImplementation(async (k, v) => { store.set(k, v); return true; });
+      redis.del.mockImplementation(async (k) => { store.delete(k); return true; });
+      mockRoleMenuPermission.findAll.mockResolvedValue(rows);
+    });
+
+    afterEach(() => {
+      const redis = require("../../services/redis.service");
+      redis.get.mockReset();
+      redis.set.mockReset();
+      redis.del.mockReset();
+    });
+
+    /** Prime the cache: the first read builds from the DB, the second is served from cache. */
+    const prime = async (roleId, roleRow) => {
+      mockRole.findByPk.mockResolvedValue(roleRow);
+      await expect(RolesService.getRolePermissionsMatrix(roleId)).resolves.toEqual(granted);
+      await expect(RolesService.getRolePermissionsMatrix(roleId)).resolves.toEqual(granted);
+      expect(mockRoleMenuPermission.findAll).toHaveBeenCalledTimes(1);
+      expect(store.has(`permissions:role:${roleId}`)).toBe(true);
+      mockRoleMenuPermission.findAll.mockClear();
+      mockRole.findByPk.mockClear();
+    };
+
+    it("deleting a regular role: the next matrix read goes to the database and grants nothing", async () => {
+      const role = { id: "reg1", is_system: false, status: "active", destroy: jest.fn() };
+      await prime("reg1", role);
+
+      await RolesService.deleteRole("reg1");
+      expect(store.has("permissions:role:reg1")).toBe(false);
+
+      // Role is paranoid: after destroy() the lookup finds nothing, though
+      // the soft delete leaves the RoleMenuPermission rows in place.
+      mockRole.findByPk.mockResolvedValue(null);
+      await expect(RolesService.getRolePermissionsMatrix("reg1")).resolves.toEqual({});
+      expect(mockRole.findByPk).toHaveBeenCalledWith("reg1", { attributes: ["id", "status"] });
+    });
+
+    it("deactivating a system role via deleteRole: the next matrix read goes to the database", async () => {
+      const role = { id: "sys1", is_system: true, status: "active" };
+      role.update = jest.fn(async (u) => Object.assign(role, u));
+      await prime("sys1", role);
+
+      await RolesService.deleteRole("sys1");
+      expect(store.has("permissions:role:sys1")).toBe(false);
+
+      mockRoleMenuPermission.findAll.mockResolvedValue([]); // rows destroyed
+      await expect(RolesService.getRolePermissionsMatrix("sys1")).resolves.toEqual({});
+      expect(mockRole.findByPk).toHaveBeenCalledWith("sys1", { attributes: ["id", "status"] });
+    });
+
+    it("updateRole to inactive: the next matrix read goes to the database and grants nothing", async () => {
+      const role = { id: "r1", is_system: false, status: "active" };
+      role.update = jest.fn(async (u) => Object.assign(role, u));
+      await prime("r1", role);
+
+      await RolesService.updateRole("r1", { status: "inactive" });
+      expect(store.has("permissions:role:r1")).toBe(false);
+
+      // updateRole leaves the permission rows alone; the status alone revokes.
+      await expect(RolesService.getRolePermissionsMatrix("r1")).resolves.toEqual({});
+      expect(mockRole.findByPk).toHaveBeenCalledWith("r1", { attributes: ["id", "status"] });
+    });
+
+    it("updateRole back to active: the grant returns on the next read", async () => {
+      const role = { id: "r2", is_system: false, status: "inactive" };
+      role.update = jest.fn(async (u) => Object.assign(role, u));
+      mockRole.findByPk.mockResolvedValue(role);
+      await expect(RolesService.getRolePermissionsMatrix("r2")).resolves.toEqual({});
+
+      await RolesService.updateRole("r2", { status: "active" });
+      await expect(RolesService.getRolePermissionsMatrix("r2")).resolves.toEqual(granted);
+    });
+
+    it("renaming a role leaves the cached matrix alone", async () => {
+      const role = { id: "r3", is_system: false, status: "active" };
+      role.update = jest.fn(async (u) => Object.assign(role, u));
+      await prime("r3", role);
+
+      await RolesService.updateRole("r3", { name: "Renamed", description: "d" });
+      expect(store.has("permissions:role:r3")).toBe(true);
     });
   });
 
@@ -638,6 +769,20 @@ describe("RolesService", () => {
           sort_order: 0,
           is_active: true,
         });
+      });
+
+      it("does not touch the permission cache for a top-level menu", async () => {
+        const { delPattern } = require("../../services/redis.service");
+        await RolesService.createMenu({ name: "Top" });
+        expect(delPattern).not.toHaveBeenCalled();
+      });
+
+      it("invalidates every role matrix when the new menu is a child (it inherits its parent's grant)", async () => {
+        const { delPattern } = require("../../services/redis.service");
+        mockMenuGroup.create.mockResolvedValue({ id: "child" });
+        const menu = await RolesService.createMenu({ name: "Child", parent_id: "p1" });
+        expect(menu).toEqual({ id: "child" });
+        expect(delPattern).toHaveBeenCalledWith("permissions:role:*");
       });
 
       it("should use provided slug and is_active", async () => {

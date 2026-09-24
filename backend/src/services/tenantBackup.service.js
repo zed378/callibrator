@@ -466,7 +466,7 @@ function assertRestorable({ backupId, backup, data, targetTenantId }) {
  * @param {string} args.targetTenantId - the tenant every row is stamped with
  * @param {boolean} args.mergeData - true to add only, false to also update profiles
  * @param {object} args.transaction - the enclosing transaction
- * @returns {Promise<{created: number, updated: number, unchanged: number, skippedDeleted: number}>} per-account outcome counts
+ * @returns {Promise<{outcome: {created: number, updated: number, unchanged: number, skippedDeleted: number}, pendingActivation: Array<string>}>} per-account outcome counts, and the usernames created inactive
  */
 async function reconcileUsers({
   users,
@@ -475,8 +475,12 @@ async function reconcileUsers({
   transaction,
 }) {
   const outcome = { created: 0, updated: 0, unchanged: 0, skippedDeleted: 0 };
+  // Usernames of the accounts this restore CREATED. They exist, inactive, with
+  // no credential anyone knows; the operator is told exactly which ones so
+  // they can be activated deliberately rather than discovered later.
+  const pendingActivation = [];
 
-  for (const user of users) {
+  for (const [index, user] of users.entries()) {
     // The natural key. `Op` here is the STATIC operator set from the sequelize
     // package (imported at the top of this file). The previous merge branch
     // read `sequelize.Op.or` off a Sequelize INSTANCE, where `.Op` is
@@ -497,24 +501,41 @@ async function reconcileUsers({
     });
 
     if (!live) {
-      await Users.create(
-        {
-          ...pickFields(user, RESTORE_CREATE_FIELDS),
-          // Stamped server-side from the backup row. Whatever tenant the
-          // archive names is irrelevant (D-02).
-          tenantId: targetTenantId,
-          // The archive has no hash, so the account is created in a state that
-          // forces an administrator reset rather than in one anyone can
-          // authenticate into.
-          password: unusableCredential(),
-          isActive: false,
-          status: USER_STATUS.INACTIVE,
-          isEmailVerified: false,
-          isDeleted: false,
-        },
-        { transaction },
-      );
+      try {
+        await Users.create(
+          {
+            ...pickFields(user, RESTORE_CREATE_FIELDS),
+            // Stamped server-side from the backup row. Whatever tenant the
+            // archive names is irrelevant (D-02).
+            tenantId: targetTenantId,
+            // The archive has no hash, so the account is created in a state
+            // no password can enter. Its holder sets a real credential through
+            // the ordinary email-OTP reset (auth.service requestOTP ->
+            // processResetPassword), and an administrator activates it.
+            password: unusableCredential(),
+            isActive: false,
+            status: USER_STATUS.INACTIVE,
+            isEmailVerified: false,
+            isDeleted: false,
+          },
+          { transaction },
+        );
+      } catch (error) {
+        // `users.username` and `users.email` are GLOBALLY unique (D-06). The
+        // lookup above is confined to this tenant, so an account elsewhere
+        // holding the same key is invisible to it and surfaces here as a
+        // constraint violation. That is a state conflict between the backup
+        // and the database, not a server fault — the whole restore rolls back.
+        if (error instanceof Sequelize.UniqueConstraintError) {
+          throw new ConflictError(
+            `Backup cannot be restored: user entry ${index} ("${user.username}") would be re-created, but its username or email ` +
+              "is already held by an account this restore cannot see or change. Nothing has been written.",
+          );
+        }
+        throw error;
+      }
       outcome.created += 1;
+      pendingActivation.push(user.username);
       continue;
     }
 
@@ -532,7 +553,7 @@ async function reconcileUsers({
     outcome.updated += 1;
   }
 
-  return outcome;
+  return { outcome, pendingActivation };
 }
 
 /**
@@ -569,12 +590,37 @@ async function restoreBackup({
     throw new AppError(404, "Backup not found");
   }
 
+  // A restore is a state transition COMPLETED -> RESTORING -> RESTORED, so a
+  // backup in any other state is a 409 that names the state, not a 400: the
+  // request is well formed, the backup is simply not somewhere a restore can
+  // start from (CLAUDE.md, "Status Codes That Carry Meaning").
   if (backup.status !== TenantBackup.STATUS.COMPLETED) {
-    throw new AppError(400, "Backup is not ready for restore");
+    throw new ConflictError(
+      `Backup ${backupId} is ${backup.status} and cannot be restored: only a ${TenantBackup.STATUS.COMPLETED} backup can be. ` +
+        (backup.status === TenantBackup.STATUS.RESTORING
+          ? "A restore of it is already running."
+          : backup.status === TenantBackup.STATUS.RESTORED
+            ? "It has already been restored; take a new backup to restore again."
+            : "Wait for it to complete, or take a new backup."),
+    );
   }
 
   if (!backup.filePath || !fs.existsSync(backup.filePath)) {
     throw new AppError(404, "Backup file not found on storage");
+  }
+
+  // The archive on disk must be the archive that was written. createBackup
+  // records its SHA-256; a file that no longer matches has been altered or
+  // replaced since, and its contents are not the tenant's backup (D-02).
+  const recordedChecksum = backup.metadata?.checksum;
+  if (recordedChecksum) {
+    const actualChecksum = await calculateChecksum(backup.filePath);
+    if (actualChecksum !== recordedChecksum) {
+      throw new ConflictError(
+        `Backup ${backupId} cannot be restored: its archive no longer matches the checksum recorded when it was taken, ` +
+          "so it has been altered or replaced since. Nothing has been written.",
+      );
+    }
   }
 
   // Server-side truth for where this restore may write: the tenant that owns
@@ -648,7 +694,7 @@ async function restoreBackup({
     const transaction = await sequelize.transaction();
 
     try {
-      const outcome = await reconcileUsers({
+      const { outcome, pendingActivation } = await reconcileUsers({
         users: backedUpUsers,
         targetTenantId,
         mergeData,
@@ -669,18 +715,25 @@ async function restoreBackup({
       const recordsProcessed = backedUpUsers.length;
 
       // Every mutation writes an audit row, inside the same transaction.
+      // `audit_logs.action` is a closed ENUM (CREATE, UPDATE, DELETE, LOGIN,
+      // APPROVE, EXPORT — auditLog.model.js) with no RESTORE member: writing
+      // "RESTORE" is rejected by the ENUM and would roll back every restore.
+      // A restore updates the tenant's accounts, so it is recorded as UPDATE
+      // with the operation named in `changes`.
       await AuditLog.create(
         {
           tenantId: targetTenantId,
           userId: restoredById || null,
-          action: "RESTORE",
+          action: "UPDATE",
           resourceType: "TenantBackup",
           resourceId: backupId,
           changes: {
+            operation: "RESTORE",
             mergeData,
             recordsProcessed,
             ...outcome,
             retained,
+            pendingActivation,
           },
         },
         { transaction },
@@ -724,6 +777,7 @@ async function restoreBackup({
           recordsProcessed,
           ...outcome,
           retained,
+          pendingActivation,
           restoredAt: new Date().toISOString(),
         },
       };
@@ -732,6 +786,18 @@ async function restoreBackup({
       throw error;
     }
   } catch (error) {
+    // A refusal raised during reconciliation (see reconcileUsers) has already
+    // been rolled back: nothing was written and the backup itself is intact,
+    // so it goes back to COMPLETED and the caller gets the 409 unchanged.
+    if (error instanceof AppError) {
+      await TenantBackup.updateStatus(
+        backupId,
+        { status: TenantBackup.STATUS.COMPLETED },
+        models,
+      );
+      throw error;
+    }
+
     // Update backup status with error
     await TenantBackup.updateStatus(
       backupId,
