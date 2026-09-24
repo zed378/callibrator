@@ -9,6 +9,19 @@ import {
 } from "@/api/services/webhook.service";
 import { PaginatedResponse } from "@/types";
 
+/** Why a signing secret is being shown — decides the dialog's wording. */
+export type SecretRevealReason = "created" | "rotated" | "url_changed";
+
+/**
+ * A signing secret the backend returned once (A-51). It lives only in this
+ * state until the reveal dialog closes, and is never fetched again.
+ */
+export interface RevealedSecret {
+  secret: string;
+  reason: SecretRevealReason;
+  webhookUrl: string;
+}
+
 export interface WebhookFormState {
   url: string;
   events: string[];
@@ -45,8 +58,15 @@ export function useWebhooks() {
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [webhookToDelete, setWebhookToDelete] = useState<Webhook | null>(null);
 
-  // Create-flow: signing secret revealed exactly once after creation.
-  const [createdSecret, setCreatedSecret] = useState<string | null>(null);
+  // Signing secret revealed exactly once — after create, rotate, or a url
+  // change. Cleared when the reveal dialog closes.
+  const [revealedSecret, setRevealedSecret] = useState<RevealedSecret | null>(
+    null,
+  );
+
+  // Rotate-secret confirmation
+  const [webhookToRotate, setWebhookToRotate] = useState<Webhook | null>(null);
+  const [isRotating, setIsRotating] = useState(false);
 
   // Test action
   const [testingId, setTestingId] = useState<string | null>(null);
@@ -81,7 +101,17 @@ export function useWebhooks() {
   }, [currentPage, pageSize]);
 
   useEffect(() => {
-    fetchWebhooks();
+    // Defer past the synchronous effect body: fetchWebhooks writes state, and doing
+    // that synchronously in an effect cascades renders
+    // (react-hooks/set-state-in-effect). Same pattern as useNotifications.
+    let active = true;
+    (async () => {
+      await Promise.resolve();
+      if (active) await fetchWebhooks();
+    })();
+    return () => {
+      active = false;
+    };
   }, [fetchWebhooks]);
 
   const fetchDeliveries = useCallback(async () => {
@@ -105,7 +135,17 @@ export function useWebhooks() {
   }, [deliveriesWebhook, deliveriesPage, deliveriesPageSize]);
 
   useEffect(() => {
-    fetchDeliveries();
+    // Defer past the synchronous effect body: fetchDeliveries writes state, and doing
+    // that synchronously in an effect cascades renders
+    // (react-hooks/set-state-in-effect). Same pattern as useNotifications.
+    let active = true;
+    (async () => {
+      await Promise.resolve();
+      if (active) await fetchDeliveries();
+    })();
+    return () => {
+      active = false;
+    };
   }, [fetchDeliveries]);
 
   const toggleDeliveries = (webhook: Webhook) => {
@@ -128,7 +168,6 @@ export function useWebhooks() {
     setForm(emptyForm);
     setModalType("create");
     setSelectedWebhook(null);
-    setCreatedSecret(null);
     setIsWebhookModalOpen(true);
   };
 
@@ -141,17 +180,19 @@ export function useWebhooks() {
     });
     setModalType("edit");
     setSelectedWebhook(webhook);
-    setCreatedSecret(null);
     setIsWebhookModalOpen(true);
   };
 
   const closeWebhookModal = () => {
-    // If a webhook was just created, refresh the list on close.
-    const shouldRefresh = createdSecret !== null;
     setIsWebhookModalOpen(false);
-    setCreatedSecret(null);
     setForm(emptyForm);
-    if (shouldRefresh) fetchWebhooks();
+  };
+
+  // The secret is dropped from memory here; the list is refreshed because
+  // every path that reveals a secret has also changed a row.
+  const closeSecretReveal = () => {
+    setRevealedSecret(null);
+    fetchWebhooks();
   };
 
   const toggleEvent = (event: string) => {
@@ -194,18 +235,38 @@ export function useWebhooks() {
           description: form.description.trim() || undefined,
         };
         const created = await webhookService.create(payload);
-        setCreatedSecret(created.secret);
+        setIsWebhookModalOpen(false);
+        setForm(emptyForm);
+        setRevealedSecret({
+          secret: created.secret,
+          reason: "created",
+          webhookUrl: created.url,
+        });
         addToast({ type: "success", title: "Webhook created" });
       } else if (modalType === "edit" && selectedWebhook) {
-        await webhookService.update(selectedWebhook.id, {
+        const updated = await webhookService.update(selectedWebhook.id, {
           url: form.url.trim(),
           events: form.events,
           description: form.description.trim() || undefined,
           isActive: form.isActive,
         });
-        addToast({ type: "success", title: "Webhook updated" });
         setIsWebhookModalOpen(false);
-        fetchWebhooks();
+        setForm(emptyForm);
+        if (updated.secret) {
+          // The url changed, so the backend rotated the secret (A-51).
+          setRevealedSecret({
+            secret: updated.secret,
+            reason: "url_changed",
+            webhookUrl: updated.url,
+          });
+          addToast({
+            type: "success",
+            title: "Webhook updated — new signing secret issued",
+          });
+        } else {
+          addToast({ type: "success", title: "Webhook updated" });
+          fetchWebhooks();
+        }
       }
     } catch (err) {
       addToast({
@@ -271,10 +332,41 @@ export function useWebhooks() {
     }
   };
 
-  const copyCreatedSecret = async () => {
-    if (!createdSecret) return;
+  const handleRotateClick = (webhook: Webhook) => {
+    setWebhookToRotate(webhook);
+  };
+
+  const cancelRotate = () => {
+    if (isRotating) return;
+    setWebhookToRotate(null);
+  };
+
+  const confirmRotate = async () => {
+    if (!webhookToRotate) return;
+    setIsRotating(true);
     try {
-      await navigator.clipboard.writeText(createdSecret);
+      const rotated = await webhookService.rotateSecret(webhookToRotate.id);
+      setWebhookToRotate(null);
+      setRevealedSecret({
+        secret: rotated.secret,
+        reason: "rotated",
+        webhookUrl: rotated.url,
+      });
+      addToast({ type: "success", title: "Signing secret rotated" });
+    } catch (err) {
+      addToast({
+        type: "error",
+        title: err instanceof Error ? err.message : "Failed to rotate secret",
+      });
+    } finally {
+      setIsRotating(false);
+    }
+  };
+
+  const copyRevealedSecret = async () => {
+    if (!revealedSecret) return;
+    try {
+      await navigator.clipboard.writeText(revealedSecret.secret);
       addToast({ type: "success", title: "Secret copied to clipboard" });
     } catch {
       addToast({ type: "error", title: "Failed to copy — copy it manually" });
@@ -295,7 +387,13 @@ export function useWebhooks() {
     isDeleteConfirmOpen,
     setIsDeleteConfirmOpen,
     webhookToDelete,
-    createdSecret,
+    revealedSecret,
+    closeSecretReveal,
+    webhookToRotate,
+    isRotating,
+    handleRotateClick,
+    cancelRotate,
+    confirmRotate,
     testingId,
     deliveriesWebhook,
     deliveries,
@@ -318,7 +416,7 @@ export function useWebhooks() {
     handleTestClick,
     toggleDeliveries,
     closeDeliveries,
-    copyCreatedSecret,
+    copyRevealedSecret,
   };
 }
 

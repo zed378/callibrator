@@ -61,6 +61,8 @@ const migrationModules = [
   ["0019-add-signature-crypto-fields.js", require("../migrations/0019-add-signature-crypto-fields")],
   ["0020-backfill-role-levels.js", require("../migrations/0020-backfill-role-levels")],
   ["0021-metered-billing-grants.js", require("../migrations/0021-metered-billing-grants")],
+  ["0022-encrypt-webhook-secrets.js", require("../migrations/0022-encrypt-webhook-secrets")],
+  ["0023-tenant-lifecycle-columns.js", require("../migrations/0023-tenant-lifecycle-columns")],
 ];
 
 const migrator = new Umzug({

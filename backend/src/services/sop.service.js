@@ -2,11 +2,11 @@ const {
   SopDocument,
   SopTrainingAcknowledgment,
   User,
-  AuditLog,
 } = require("../models");
 // NOT `db` from the models barrel (that export is the registry's own handle) —
 // the config module is what exports the Sequelize instance.
 const { db } = require("../config");
+const auditService = require("./audit.service");
 const { AppError } = require("../utils/appError.util");
 
 // A-28. Statuses from which an SOP can be released. PUBLISHED and ARCHIVED are
@@ -114,7 +114,7 @@ exports.publishDocument = async (tenantId, documentId, publisherId) => {
       await SopTrainingAcknowledgment.bulkCreate(acks, { transaction });
     }
 
-    await AuditLog.create(
+    await auditService.logAction(
       {
         tenantId,
         userId: publisherId,

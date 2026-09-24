@@ -15,6 +15,7 @@ const generateKeyPairAsync = promisify(crypto.generateKeyPair);
 const { logger } = require("../middlewares/activityLog.middleware");
 const { AppError } = require("../utils/appError.util");
 const { db } = require("../config");
+const auditService = require("./audit.service");
 
 // ==========================================
 // CONFIGURATION
@@ -463,7 +464,6 @@ exports.signDocument = async (stepId, userId, signatureData) => {
       SignatureWorkflowStep,
       SignatureWorkflow,
       SignatureRecord,
-      AuditLog,
     } = require("../models");
 
     // Get step
@@ -539,67 +539,90 @@ exports.signDocument = async (stepId, userId, signatureData) => {
       .update(payloadBuffer)
       .digest("hex");
 
-    // Create signature record
-    const signature = await SignatureRecord.create({
-      workflowId: workflow.id,
-      workflowStepId: step.id,
-      userId,
-      tenantId: step.tenantId,
-      signatureHash,
-      signatureValue,
-      signingKeyId: keyId,
-      signatureScheme: SIGNATURE_SCHEME_V2,
-      signatureReason: reason,
-      signatureAlgorithm: SIGNATURE_ALGORITHM,
-      polygon: polygon || null,
-      biometricData: biometricData || null,
-      authenticationMethod: method,
-      signedAt,
-      ipAddress: signatureData.ipAddress || null,
-      userAgent: signatureData.userAgent || null,
-      status: "signed",
-    });
+    // A-41 — the signature, the step and workflow transitions and the audit
+    // row commit together or not at all. Before this, the audit insert used
+    // an action outside the ENUM ("DOCUMENT_SIGNED") and columns that do not
+    // exist, so it failed on every signing — after the signature had already
+    // committed with no transaction: a signature with no audit row, and a 500
+    // to the signer. Notifications go out only after the commit.
+    const { signature, allSigned, nextStep } = await db.transaction(async (transaction) => {
+      const created = await SignatureRecord.create(
+        {
+          workflowId: workflow.id,
+          workflowStepId: step.id,
+          userId,
+          tenantId: step.tenantId,
+          signatureHash,
+          signatureValue,
+          signingKeyId: keyId,
+          signatureScheme: SIGNATURE_SCHEME_V2,
+          signatureReason: reason,
+          signatureAlgorithm: SIGNATURE_ALGORITHM,
+          polygon: polygon || null,
+          biometricData: biometricData || null,
+          authenticationMethod: method,
+          signedAt,
+          ipAddress: signatureData.ipAddress || null,
+          userAgent: signatureData.userAgent || null,
+          status: "signed",
+        },
+        { transaction },
+      );
 
-    // Update step status
-    await step.update({
-      status: "signed",
-      signedAt: signature.signedAt,
-    });
+      await step.update({ status: "signed", signedAt: created.signedAt }, { transaction });
 
-    // Log the signature action
-    await AuditLog.create({
-      tenantId: step.tenantId,
-      userId,
-      action: "DOCUMENT_SIGNED",
-      entityType: "SignatureWorkflow",
-      entityId: workflow.id,
-      before: { stepId, status: "pending" },
-      after: {
-        signatureId: signature.id,
-        signatureHash,
-        signingKeyId: keyId,
-        signatureScheme: SIGNATURE_SCHEME_V2,
-        signedAt: signature.signedAt,
-      },
-    });
+      // Check if all signers have signed
+      const allSteps = await SignatureWorkflowStep.findAll({
+        where: { workflowId: workflow.id },
+        transaction,
+      });
+      const everyoneSigned = allSteps.every((s) => s.status === "signed");
+      const next = everyoneSigned ? null : allSteps.find((s) => s.status === "waiting");
 
-    // Check if all signers have signed
-    const allSteps = await SignatureWorkflowStep.findAll({
-      where: { workflowId: workflow.id },
-    });
+      if (everyoneSigned) {
+        await workflow.update({ status: "completed" }, { transaction });
+      } else if (next) {
+        await next.update({ status: "pending" }, { transaction });
+      }
 
-    const allSigned = allSteps.every((s) => s.status === "signed");
+      // A signature is a decision: APPROVE, with the operation named
+      // (audit_logs.action has no SIGN member).
+      await auditService.logAction(
+        {
+          tenantId: step.tenantId,
+          userId,
+          action: "APPROVE",
+          resourceType: "SignatureWorkflow",
+          resourceId: workflow.id,
+          changes: {
+            operation: "SIGN",
+            before: { stepId, status: "pending" },
+            after: {
+              stepId,
+              status: "signed",
+              signatureId: created.id,
+              signatureHash,
+              signingKeyId: keyId,
+              signatureScheme: SIGNATURE_SCHEME_V2,
+              signedAt: created.signedAt,
+              reason,
+              workflowStatus: everyoneSigned ? "completed" : workflow.status,
+            },
+          },
+          ipAddress: signatureData.ipAddress || null,
+          userAgent: signatureData.userAgent || null,
+        },
+        { transaction },
+      );
+
+      return { signature: created, allSigned: everyoneSigned, nextStep: next };
+    });
 
     if (allSigned) {
-      await workflow.update({ status: "completed" });
       await completeWorkflow(workflow.id);
-    } else {
+    } else if (nextStep) {
       // Notify next signer
-      const nextStep = allSteps.find((s) => s.status === "waiting");
-      if (nextStep) {
-        await nextStep.update({ status: "pending" });
-        await sendSignatureRequest(nextStep.signerEmail, workflow, nextStep);
-      }
+      await sendSignatureRequest(nextStep.signerEmail, workflow, nextStep);
     }
 
     logger.info("Document signed", {
@@ -1038,7 +1061,7 @@ exports.cancelWorkflow = async (workflowId, userId, tenantId) => {
  */
 exports.revokeSignature = async (signatureId, userId, tenantId, reason) => {
   try {
-    const { SignatureRecord, AuditLog } = require("../models");
+    const { SignatureRecord } = require("../models");
 
     const signature = await SignatureRecord.findOne({
       where: { id: signatureId, tenantId },
@@ -1048,21 +1071,37 @@ exports.revokeSignature = async (signatureId, userId, tenantId, reason) => {
       throw new AppError(404, "Signature not found");
     }
 
-    await signature.update({
-      status: "revoked",
-      revokedAt: new Date(),
-      revokedBy: userId,
-      revocationReason: reason,
-    });
+    const previousStatus = signature.status;
 
-    await AuditLog.create({
-      tenantId,
-      userId,
-      action: "SIGNATURE_REVOKED",
-      entityType: "SignatureRecord",
-      entityId: signatureId,
-      before: { status: "signed" },
-      after: { status: "revoked", reason },
+    // A-41 — the revocation and its audit row commit together. The previous
+    // row ("SIGNATURE_REVOKED", entityType/entityId) was outside the ENUM and
+    // the schema, so it failed after the revocation had committed.
+    await db.transaction(async (transaction) => {
+      await signature.update(
+        {
+          status: "revoked",
+          revokedAt: new Date(),
+          revokedBy: userId,
+          revocationReason: reason,
+        },
+        { transaction },
+      );
+
+      await auditService.logAction(
+        {
+          tenantId,
+          userId,
+          action: "UPDATE",
+          resourceType: "SignatureRecord",
+          resourceId: signatureId,
+          changes: {
+            operation: "REVOKE",
+            before: { status: previousStatus },
+            after: { status: "revoked", reason },
+          },
+        },
+        { transaction },
+      );
     });
 
     logger.info("Signature revoked", {

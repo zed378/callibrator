@@ -12,6 +12,11 @@ jest.mock("../../models", () => ({
     findByPk: jest.fn(),
     findAndCountAll: jest.fn(),
   },
+  AuditLog: { create: jest.fn() },
+}));
+
+jest.mock("../../config", () => ({
+  db: { transaction: jest.fn((cb) => cb({ id: "tx" })) },
 }));
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
@@ -70,7 +75,9 @@ describe("webhook.service", () => {
 
   describe("CRUD", () => {
     describe("createWebhook", () => {
-      it("creates a webhook and returns secret", async () => {
+      // A-51: the secret in the response is the server-generated one; the
+      // caller's `secret` is ignored (see webhook.secret.a51.test.js).
+      it("creates a webhook and returns the server-generated secret", async () => {
         Webhook.create.mockResolvedValue({
           id: "w1",
           tenantId: "t1",
@@ -90,7 +97,8 @@ describe("webhook.service", () => {
           createdBy: "user-1",
         });
 
-        expect(result.secret).toBe("super-secret");
+        expect(result.secret).not.toBe("super-secret");
+        expect(result.secret).toMatch(/^[0-9a-f]{64}$/);
         expect(result.url).toBe("https://test.com");
       });
 
@@ -197,12 +205,23 @@ describe("webhook.service", () => {
     });
 
     describe("updateWebhook", () => {
-      it("updates webhook parameters", async () => {
+      it("updates webhook parameters (a url change also rotates the secret)", async () => {
         const mockUpdate = jest.fn();
         Webhook.findOne.mockResolvedValue({ id: "w1", tenantId: "t1", update: mockUpdate });
 
         await webhookService.updateWebhook("t1", "w1", { url: "https://new.com", events: ["event1"] });
-        expect(mockUpdate).toHaveBeenCalledWith({ url: "https://new.com", events: ["event1"] });
+        expect(mockUpdate).toHaveBeenCalledWith(
+          { url: "https://new.com", events: ["event1"], secret: expect.stringMatching(/^v1:/) },
+          { transaction: { id: "tx" } },
+        );
+      });
+
+      it("updates without a transaction or a secret when the url is unchanged", async () => {
+        const mockUpdate = jest.fn();
+        Webhook.findOne.mockResolvedValue({ id: "w1", tenantId: "t1", url: "https://same.com", update: mockUpdate });
+
+        await webhookService.updateWebhook("t1", "w1", { url: "https://same.com", isActive: false });
+        expect(mockUpdate).toHaveBeenCalledWith({ url: "https://same.com", isActive: false });
       });
 
       it("throws 400 if updating events with invalid array", async () => {

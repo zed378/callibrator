@@ -18,6 +18,49 @@ jest.mock("../../models", () => ({
   Tenants: {
     findOne: jest.fn(),
   },
+  // A-60: the exchange writes the session and its audit row in one
+  // transaction; the fake hands the callback a recognisable transaction.
+  sequelize: {
+    transaction: jest.fn(async (fn) => fn("mock-transaction")),
+  },
+}));
+
+// A-60: the hand-off store. An in-memory Redis with the helper API the
+// controller uses; `mockRedisUp` switches it to "unavailable", which is how
+// redis.service answers when the client is not ready (set → false, getDel → null).
+let mockRedisUp = true;
+jest.mock("../../services/redis.service", () => {
+  const mockHandoffStore = new Map();
+  return {
+    mockHandoffStore,
+    set: jest.fn(async (key, value) => {
+      if (!mockRedisUp) {
+        return false;
+      }
+      mockHandoffStore.set(key, JSON.stringify(value));
+      return true;
+    }),
+    getDel: jest.fn(async (key) => {
+      if (!mockRedisUp || !mockHandoffStore.has(key)) {
+        return null;
+      }
+      const raw = mockHandoffStore.get(key);
+      mockHandoffStore.delete(key);
+      return JSON.parse(raw);
+    }),
+  };
+});
+
+jest.mock("../../services/audit.service", () => ({
+  logAction: jest.fn().mockResolvedValue({ id: "audit-1" }),
+}));
+
+jest.mock("../../services/rateLimiter.redis.service", () => ({
+  recordAuthFailure: jest.fn().mockResolvedValue({ allowed: true }),
+}));
+
+jest.mock("../../middlewares/activityLog.middleware", () => ({
+  logger: { warn: jest.fn(), error: jest.fn(), info: jest.fn() },
 }));
 
 jest.mock("../../utils/jwt.util", () => ({
@@ -32,6 +75,7 @@ jest.mock("../../services/session.service", () => ({
 jest.mock("../../utils/response.util", () => ({
   success: jest.fn(),
   error: jest.fn(),
+  login: jest.fn(),
 }));
 
 jest.mock("../../utils/appError.util", () => {
@@ -48,13 +92,41 @@ const { Tenants } = require("../../models");
 const tenantService = require("../../services/tenant.service");
 const ssoService = require("../../services/sso.service");
 const ssoController = require("../../controllers/sso.controller");
-const { success, error } = require("../../utils/response.util");
+const { success, error, login } = require("../../utils/response.util");
+const redis = require("../../services/redis.service");
+const auditService = require("../../services/audit.service");
+const { recordAuthFailure } = require("../../services/rateLimiter.redis.service");
+const { logger } = require("../../middlewares/activityLog.middleware");
+const { createSession } = require("../../services/session.service");
+const { generateAccessToken } = require("../../utils/jwt.util");
+
+const CODE_SHAPE = /^[A-Za-z0-9_-]{43}$/;
+
+/** The one-time code in a callback's redirect, or null. */
+const codeFrom = (response) =>
+  new URL(response.redirect.mock.calls[0][0]).searchParams.get("code");
+
+/** Post `code` to the exchange handler; return the response mock. */
+const exchange = async (code, rateLimitContext = { ip: "10.9.9.9" }) => {
+  const exRes = {
+    status: jest.fn().mockReturnThis(),
+    json: jest.fn(),
+  };
+  await ssoController.ssoExchange(
+    { body: { code }, headers: {}, rateLimitContext },
+    exRes,
+    jest.fn(),
+  );
+  return exRes;
+};
 
 describe("sso.controller", () => {
   let req, res, next;
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockRedisUp = true;
+    redis.mockHandoffStore.clear();
     req = {
       body: {},
       query: {},
@@ -169,9 +241,20 @@ describe("sso.controller", () => {
 
       await ssoController.ssoCallback(req, res, next);
 
-      expect(res.redirect).toHaveBeenCalledWith(
-        expect.stringContaining("sso-callback?token=mock-access-token&refreshToken=mock-refresh-token"),
-      );
+      // A-60: the redirect carries a one-time code; the session and its token
+      // are created when the code is exchanged.
+      expect(codeFrom(res)).toMatch(CODE_SHAPE);
+      expect(createSession).not.toHaveBeenCalled();
+
+      await exchange(codeFrom(res));
+
+      // A-59: the access token names the session created for it, so it can be
+      // revoked (A-48). It used to be signed {id, email} with no sid.
+      expect(generateAccessToken).toHaveBeenCalledWith({
+        id: "user-1",
+        email: "user@acme.com",
+        sid: "session-123",
+      });
     });
 
     it("should call error response with 400 if tenantCode is not provided", async () => {
@@ -333,9 +416,18 @@ describe("sso.controller", () => {
 
       await ssoController.oidcCallback(req, res, next);
 
-      expect(res.redirect).toHaveBeenCalledWith(
-        expect.stringContaining("sso-callback?token=mock-access-token&refreshToken=mock-refresh-token"),
-      );
+      expect(codeFrom(res)).toMatch(CODE_SHAPE);
+      expect(createSession).not.toHaveBeenCalled();
+
+      await exchange(codeFrom(res));
+
+      // A-59: the access token names the session created for it, so it can be
+      // revoked (A-48). It used to be signed {id, email} with no sid.
+      expect(generateAccessToken).toHaveBeenCalledWith({
+        id: "user-1",
+        email: "user@acme.com",
+        sid: "session-123",
+      });
     });
 
     it("should call error with 400 if tenantCode and code are not provided", async () => {
@@ -498,11 +590,10 @@ describe("sso.controller", () => {
     });
   });
 
-  // Sessions record the caller's IP/user-agent, defaulting to "" when Express
-  // did not populate them; the post-login redirect honours FRONTEND_URL.
+  // Sessions record the BROWSER's IP/user-agent — the callback request's, not
+  // the exchange's (which comes from the frontend server) — defaulting to ""
+  // when Express did not populate them; the redirect honours FRONTEND_URL.
   describe("session recording and frontend redirect", () => {
-    const { createSession } = require("../../services/session.service");
-
     it("defaults ipAddress and userAgent to empty strings on ssoCallback", async () => {
       req.body = { SAMLResponse: "b64", RelayState: "acme" };
       req.ip = undefined;
@@ -512,6 +603,7 @@ describe("sso.controller", () => {
       });
 
       await ssoController.ssoCallback(req, res, next);
+      await exchange(codeFrom(res));
 
       expect(createSession).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -533,6 +625,7 @@ describe("sso.controller", () => {
       });
 
       await ssoController.oidcCallback(req, res, next);
+      await exchange(codeFrom(res));
 
       expect(createSession).toHaveBeenCalledWith(
         expect.objectContaining({ ipAddress: "", userAgent: "" }),
@@ -550,15 +643,16 @@ describe("sso.controller", () => {
 
         await ssoController.ssoCallback(req, res, next);
 
+        expect(res.redirect.mock.calls[0][0]).toMatch(
+          /^https:\/\/app\.acme\.com\/sso-callback\?code=[A-Za-z0-9_-]{43}$/,
+        );
+        await exchange(codeFrom(res));
         expect(createSession).toHaveBeenCalledWith(
           expect.objectContaining({ ipAddress: "127.0.0.1", userAgent: "mock-agent" }),
         );
-        expect(res.redirect).toHaveBeenCalledWith(
-          "https://app.acme.com/sso-callback?token=mock-access-token&refreshToken=mock-refresh-token",
-        );
       } finally {
-        if (prev === undefined) delete process.env.FRONTEND_URL;
-        else process.env.FRONTEND_URL = prev;
+        if (prev === undefined) {delete process.env.FRONTEND_URL;}
+        else {process.env.FRONTEND_URL = prev;}
       }
     });
 
@@ -573,12 +667,12 @@ describe("sso.controller", () => {
 
         await ssoController.oidcCallback(req, res, next);
 
-        expect(res.redirect).toHaveBeenCalledWith(
-          "https://app.acme.com/sso-callback?token=mock-access-token&refreshToken=mock-refresh-token",
+        expect(res.redirect.mock.calls[0][0]).toMatch(
+          /^https:\/\/app\.acme\.com\/sso-callback\?code=[A-Za-z0-9_-]{43}$/,
         );
       } finally {
-        if (prev === undefined) delete process.env.FRONTEND_URL;
-        else process.env.FRONTEND_URL = prev;
+        if (prev === undefined) {delete process.env.FRONTEND_URL;}
+        else {process.env.FRONTEND_URL = prev;}
       }
     });
   });
@@ -609,6 +703,199 @@ describe("sso.controller", () => {
         "Tenant identifier and authorization code are required",
         400,
         expect.any(String),
+      );
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // A-60 — the callbacks used to redirect to
+  // `/sso-callback?token=<access>&refreshToken=<refresh>`. They now redirect
+  // with a one-time code the frontend server exchanges for the session.
+  // -------------------------------------------------------------------------
+  describe("A-60: the SSO hand-off", () => {
+    const callback = async (kind) => {
+      const response = { redirect: jest.fn() };
+      const request =
+        kind === "saml"
+          ? {
+            params: { tenantCode: "acme" },
+            body: { SAMLResponse: "b64" },
+            headers: { "user-agent": "browser-agent" },
+            ip: "203.0.113.7",
+          }
+          : {
+            params: { tenantCode: "acme" },
+            body: { code: "idp-code" },
+            headers: { "user-agent": "browser-agent" },
+            ip: "203.0.113.7",
+          };
+      const handler = kind === "saml" ? ssoController.ssoCallback : ssoController.oidcCallback;
+      await handler(request, response, jest.fn());
+      expect(response.redirect).toHaveBeenCalledTimes(1);
+      return response;
+    };
+
+    const refused = (exRes) => {
+      expect(error).toHaveBeenCalledWith(exRes, "Invalid or expired SSO code", 401, expect.any(String));
+      expect(login).not.toHaveBeenCalled();
+    };
+
+    it.each(["saml", "oidc"])("no token appears in the SSO redirect URL (%s)", async (kind) => {
+      const response = await callback(kind);
+      const url = new URL(response.redirect.mock.calls[0][0]);
+
+      expect(url.pathname).toBe("/sso-callback");
+      expect([...url.searchParams.keys()]).toEqual(["code"]);
+      expect(url.searchParams.get("code")).toMatch(CODE_SHAPE);
+      expect(url.toString()).not.toMatch(/token/i);
+      expect(url.toString()).not.toContain("mock-access-token");
+      expect(url.toString()).not.toContain("mock-refresh-token");
+
+      // No token exists yet: neither was minted, and no session was created.
+      expect(generateAccessToken).not.toHaveBeenCalled();
+      const { generateOpaqueRefreshToken } = require("../../utils/jwt.util");
+      expect(generateOpaqueRefreshToken).not.toHaveBeenCalled();
+      expect(createSession).not.toHaveBeenCalled();
+
+      // The store holds the verified identity under the code's HASH, for 60s.
+      expect(redis.set).toHaveBeenCalledWith(
+        expect.stringMatching(/^sso:handoff:[0-9a-f]{64}$/),
+        {
+          userId: "user-1",
+          email: "user@test.com",
+          tenantId: "tenant-1",
+          ipAddress: "203.0.113.7",
+          userAgent: "browser-agent",
+          method: kind,
+        },
+        ssoController.HANDOFF_TTL_SECONDS,
+      );
+      expect(ssoController.HANDOFF_TTL_SECONDS).toBe(60);
+      const [storedKey] = redis.set.mock.calls[0];
+      expect(storedKey).not.toContain(url.searchParams.get("code"));
+    });
+
+    it("a one-time code can be exchanged once only", async () => {
+      const code = codeFrom(await callback("oidc"));
+
+      const first = await exchange(code);
+      expect(login).toHaveBeenCalledWith(
+        first,
+        { id: "user-1", email: "user@test.com", tenantId: "tenant-1" },
+        "mock-access-token",
+        { id: "session-123" },
+      );
+      expect(createSession).toHaveBeenCalledTimes(1);
+      expect(redis.getDel).toHaveBeenCalledWith(expect.stringMatching(/^sso:handoff:[0-9a-f]{64}$/));
+
+      login.mockClear();
+      const second = await exchange(code);
+      refused(second);
+      expect(createSession).toHaveBeenCalledTimes(1);
+    });
+
+    it("an expired or unknown code is refused", async () => {
+      // Unknown: well-formed, never issued.
+      const unknown = await exchange("A".repeat(43), { ip: "10.9.9.9" });
+      refused(unknown);
+      expect(recordAuthFailure).toHaveBeenCalledWith({ ip: "10.9.9.9", endpoint: "ssoExchange" });
+      expect(createSession).not.toHaveBeenCalled();
+
+      // Expired: Redis drops the key at its TTL (asserted above as 60s); the
+      // memory fallback enforces the same TTL itself.
+      mockRedisUp = false;
+      const now = Date.now();
+      const clock = jest.spyOn(Date, "now").mockReturnValue(now);
+      try {
+        const code = codeFrom(await callback("saml"));
+        clock.mockReturnValue(now + 60 * 1000 + 1);
+        refused(await exchange(code));
+        expect(createSession).not.toHaveBeenCalled();
+      } finally {
+        clock.mockRestore();
+      }
+    });
+
+    it("writes the session and its LOGIN audit row in one transaction", async () => {
+      const { sequelize } = require("../../models");
+      await exchange(codeFrom(await callback("saml")));
+
+      expect(sequelize.transaction).toHaveBeenCalledTimes(1);
+      expect(auditService.logAction).toHaveBeenCalledWith(
+        {
+          tenantId: "tenant-1",
+          userId: "user-1",
+          action: "LOGIN",
+          resourceType: "Session",
+          resourceId: "session-123",
+          changes: { method: "saml" },
+          ipAddress: "203.0.113.7",
+          userAgent: "browser-agent",
+        },
+        { transaction: "mock-transaction" },
+      );
+    });
+
+    it("records a missing ip/user-agent as null in the audit row", async () => {
+      const response = { redirect: jest.fn() };
+      await ssoController.oidcCallback(
+        { params: { tenantCode: "acme" }, body: { code: "c" }, headers: {} },
+        response,
+        jest.fn(),
+      );
+      await exchange(codeFrom(response));
+      expect(auditService.logAction).toHaveBeenCalledWith(
+        expect.objectContaining({ ipAddress: null, userAgent: null }),
+        { transaction: "mock-transaction" },
+      );
+    });
+
+    it("keeps the code in process memory when Redis is unavailable — still single-use", async () => {
+      mockRedisUp = false;
+      const code = codeFrom(await callback("saml"));
+      expect(logger.warn).toHaveBeenCalledWith(
+        "SSO hand-off code held in process memory: Redis unavailable",
+      );
+      expect(redis.mockHandoffStore.size).toBe(0);
+
+      await exchange(code);
+      expect(login).toHaveBeenCalledTimes(1);
+
+      login.mockClear();
+      refused(await exchange(code));
+    });
+
+    it("prunes expired memory entries when a new one is stored", async () => {
+      mockRedisUp = false;
+      const now = Date.now();
+      const clock = jest.spyOn(Date, "now").mockReturnValue(now);
+      try {
+        const stale = codeFrom(await callback("saml"));
+        clock.mockReturnValue(now + 61 * 1000);
+        const fresh = codeFrom(await callback("saml")); // prunes `stale`
+        const newest = codeFrom(await callback("saml")); // `fresh` is kept
+
+        refused(await exchange(stale));
+        login.mockClear();
+        error.mockClear();
+        await exchange(fresh);
+        await exchange(newest);
+        expect(login).toHaveBeenCalledTimes(2);
+      } finally {
+        clock.mockRestore();
+      }
+    });
+
+    it("treats a store value that is not an entry as unknown", async () => {
+      redis.getDel.mockResolvedValueOnce("not-an-entry");
+      refused(await exchange("B".repeat(43)));
+    });
+
+    it("still refuses, and logs, when the failure cannot be recorded", async () => {
+      recordAuthFailure.mockRejectedValueOnce(new Error("limiter down"));
+      refused(await exchange("C".repeat(43)));
+      expect(logger.error).toHaveBeenCalledWith(
+        "SSO exchange failure recording error: limiter down",
       );
     });
   });

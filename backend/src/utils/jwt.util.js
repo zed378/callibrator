@@ -72,6 +72,40 @@ const assertTokenType = (decoded, expected) => {
   }
   return decoded;
 };
+
+// A-59. Single-purpose tokens. Each is signed with the access key (so key
+// rotation applies) but carries its own `typ`, which does two things:
+//   - verifyAccessToken refuses it (assertTokenType above: a `typ` that is not
+//     "access" is refused), so none of these works as a bearer credential;
+//   - verifyPurposeToken accepts it ONLY for its own type, and — unlike the
+//     access check — requires the claim to be PRESENT. A token with no `typ`
+//     is never a purpose token.
+// Until A-59 the activation token (sent by email) and the MFA-pending token
+// were minted by generateAccessToken, so both were full access tokens; the
+// socket handshake token carried no `typ` at all, so it was one too.
+//
+// `ttl` is the lifetime when the caller does not pass one. The activation
+// token used to inherit JWT_ACCESS_EXPIRED (15m documented, 1d deployed); an
+// activation link is now valid for a day whatever the access lifetime is.
+const PURPOSE_TOKEN_TYPES = Object.freeze({
+  activation: { ttl: "24h" },
+  mfa: { ttl: "5m" },
+  socket: { ttl: 300 },
+});
+
+const assertPurposeType = (typ) => {
+  if (!Object.prototype.hasOwnProperty.call(PURPOSE_TOKEN_TYPES, typ)) {
+    throw new Error(`Unknown token purpose "${typ}"`);
+  }
+};
+
+const assertExactTokenType = (decoded, expected) => {
+  if (!decoded || typeof decoded !== "object" || decoded.typ !== expected) {
+    throw new Error(`Expected a ${expected} token`);
+  }
+  return decoded;
+};
+
 const JWT_KEY_VERSION = process.env.JWT_KEY_VERSION || "1";
 const JWT_ROTATION_INTERVAL_HOURS =
   parseInt(process.env.JWT_ROTATION_INTERVAL) || 720; // 30 days default
@@ -182,12 +216,16 @@ const keyRegistry = new JwtKeyRegistry();
 // ACCESS TOKEN
 // ==========================================
 
-const generateAccessToken = (payload, options = {}) => {
-  const basePayload =
-    typeof payload === "object" && payload !== null ? payload : { id: payload };
-  const signPayload = { ...basePayload, typ: TOKEN_TYPE_ACCESS };
+/**
+ * Sign with the current access key. Shared by access and purpose tokens.
+ * @param {object} signPayload - claims, `typ` already set
+ * @param {string|number} expiresIn
+ * @param {string} [algorithmOverride]
+ * @returns {string}
+ */
+const signWithAccessKey = (signPayload, expiresIn, algorithmOverride) => {
   const key = keyRegistry.getCurrentKey();
-  const algorithm = options.algorithm || key.algorithm;
+  const algorithm = algorithmOverride || key.algorithm;
 
   // For HS* algorithms, use the secret directly
   // For RS*/ES* algorithms, a private key file path would be used
@@ -199,17 +237,46 @@ const generateAccessToken = (payload, options = {}) => {
       );
     }
     return jwt.sign(signPayload, privateKey, {
-      expiresIn: options.expiresIn || process.env.JWT_ACCESS_EXPIRED || "15m",
+      expiresIn,
       algorithm,
       keyid: keyRegistry._currentKeyId,
     });
   }
 
   return jwt.sign(signPayload, key.secret, {
-    expiresIn: options.expiresIn || process.env.JWT_ACCESS_EXPIRED || "15m",
+    expiresIn,
     algorithm,
     keyid: keyRegistry._currentKeyId,
   });
+};
+
+const generateAccessToken = (payload, options = {}) => {
+  const basePayload =
+    typeof payload === "object" && payload !== null ? payload : { id: payload };
+  return signWithAccessKey(
+    { ...basePayload, typ: TOKEN_TYPE_ACCESS },
+    options.expiresIn || process.env.JWT_ACCESS_EXPIRED || "15m",
+    options.algorithm,
+  );
+};
+
+/**
+ * A-59. Mint a single-purpose token (activation, mfa, socket). It is refused
+ * by verifyAccessToken and accepted only by verifyPurposeToken for the same
+ * type.
+ *
+ * @param {object} payload - claims (identifiers only)
+ * @param {"activation"|"mfa"|"socket"} typ
+ * @param {{expiresIn?: string|number, algorithm?: string}} [options]
+ * @returns {string}
+ */
+const generatePurposeToken = (payload, typ, options = {}) => {
+  assertPurposeType(typ);
+  return signWithAccessKey(
+    { ...payload, typ },
+    options.expiresIn || PURPOSE_TOKEN_TYPES[typ].ttl,
+    options.algorithm,
+  );
 };
 
 // ==========================================
@@ -245,11 +312,18 @@ const generateRefreshToken = (payload) => {
 // VERIFY ACCESS TOKEN
 // ==========================================
 
-const verifyAccessToken = (token) => {
+/**
+ * Verify against the access-key registry, then apply `checkType` to the
+ * payload. Shared by access and purpose tokens.
+ * @param {string} token
+ * @param {(decoded: object) => object} checkType - throws on the wrong type
+ * @param {string} failureMessage
+ * @returns {object}
+ */
+const verifyWithAccessKeys = (token, checkType, failureMessage) => {
   const activeKeys = keyRegistry.getActiveKeys();
 
   // Try each active key until one succeeds
-  const lastError = null;
   for (const keyInfo of activeKeys) {
     try {
       const algorithm = keyInfo.algorithm;
@@ -263,19 +337,17 @@ const verifyAccessToken = (token) => {
         // expiresIn = JWT_ACCESS_EXPIRED (1d by default). jwt.verify already
         // enforces the token's own `exp`; a hardcoded maxAge:"15m" silently
         // rejected every token 15 min after issuance regardless of exp.
-        return assertTokenType(
+        return checkType(
           jwt.verify(token, publicKey, {
             algorithms: [algorithm],
           }),
-          TOKEN_TYPE_ACCESS,
         );
       }
 
-      return assertTokenType(
+      return checkType(
         jwt.verify(token, keyInfo.secret, {
           algorithms: [algorithm],
         }),
-        TOKEN_TYPE_ACCESS,
       );
     } catch (err) {
       // Try next key
@@ -288,15 +360,39 @@ const verifyAccessToken = (token) => {
 
   // If no active keys matched, try the default secret as fallback (backward compat)
   try {
-    return assertTokenType(
+    return checkType(
       jwt.verify(token, ACCESS_SECRET, {
         algorithms: ["HS256"],
       }),
-      TOKEN_TYPE_ACCESS,
     );
   } catch {
-    throw new Error("Invalid or expired access token");
+    throw new Error(failureMessage);
   }
+};
+
+const verifyAccessToken = (token) =>
+  verifyWithAccessKeys(
+    token,
+    (decoded) => assertTokenType(decoded, TOKEN_TYPE_ACCESS),
+    "Invalid or expired access token",
+  );
+
+/**
+ * A-59. Verify a single-purpose token. Accepts ONLY a token whose `typ` is
+ * exactly `typ` — an access token, a refresh token, a token of another purpose
+ * and a token with no `typ` are all refused.
+ *
+ * @param {string} token
+ * @param {"activation"|"mfa"|"socket"} typ
+ * @returns {object} the verified payload
+ */
+const verifyPurposeToken = (token, typ) => {
+  assertPurposeType(typ);
+  return verifyWithAccessKeys(
+    token,
+    (decoded) => assertExactTokenType(decoded, typ),
+    `Invalid or expired ${typ} token`,
+  );
 };
 
 // ==========================================
@@ -414,9 +510,11 @@ module.exports = {
   generateToken,
   verifyToken,
   generateAccessToken,
+  generatePurposeToken,
   generateOpaqueRefreshToken,
   generateRefreshToken,
   verifyAccessToken,
+  verifyPurposeToken,
   verifyRefreshToken,
   decodeToken,
   rotateKeys,

@@ -32,7 +32,9 @@ jest.mock("../../utils/password.util", () => ({
 
 jest.mock("../../utils/jwt.util", () => ({
   generateAccessToken: jest.fn(),
+  generatePurposeToken: jest.fn(),
   verifyAccessToken: jest.fn(),
+  verifyPurposeToken: jest.fn(),
   generateOpaqueRefreshToken: jest.fn(),
   generateRefreshToken: jest.fn(),
 }));
@@ -78,6 +80,7 @@ const { Users } = require("../../models");
 const { hashPassword, comparePassword } = require("../../utils/password.util");
 const {
   generateAccessToken,
+  generatePurposeToken,
   generateOpaqueRefreshToken,
 } = require("../../utils/jwt.util");
 const {
@@ -140,6 +143,7 @@ describe("auth.service (coverage)", () => {
     del.mockResolvedValue(true);
     hashPassword.mockResolvedValue("hashed");
     generateAccessToken.mockReturnValue("access-token");
+    generatePurposeToken.mockReturnValue("purpose-token");
     generateOpaqueRefreshToken.mockReturnValue("opaque-refresh");
     createSession.mockResolvedValue({ id: "session-1" });
     queueActivationEmail.mockResolvedValue(true);
@@ -314,7 +318,12 @@ describe("auth.service (coverage)", () => {
         "user-1",
         86400,
       );
-      expect(generateAccessToken).toHaveBeenCalledWith({ id: "user-1" });
+      // A-59: an activation purpose token, never an access token.
+      expect(generatePurposeToken).toHaveBeenCalledWith(
+        { id: "user-1" },
+        "activation",
+      );
+      expect(generateAccessToken).not.toHaveBeenCalled();
       expect(logger.info).toHaveBeenCalledWith("User registered", {
         userId: "user-1",
         email: "ada@example.com",
@@ -572,9 +581,7 @@ describe("auth.service (coverage)", () => {
       };
       Users.findOne.mockResolvedValue(user);
       comparePassword.mockResolvedValue(true);
-      generateAccessToken
-        .mockReturnValueOnce("access-token")
-        .mockReturnValueOnce("mfa-token");
+      generatePurposeToken.mockReturnValueOnce("mfa-token");
 
       const result = await loginUser({
         username: "adalovelace",
@@ -594,13 +601,14 @@ describe("auth.service (coverage)", () => {
         token: "mfa-token",
         refreshToken: null,
       });
-      expect(generateAccessToken).toHaveBeenNthCalledWith(
-        2,
+      // A-59: an "mfa" purpose token, not an access token.
+      expect(generatePurposeToken).toHaveBeenCalledWith(
         { id: "user-1", email: "ada@example.com", mfaRequired: true },
-        { expiresIn: "5m" },
+        "mfa",
       );
-      // a session is still created before the second factor is checked
-      expect(createSession).toHaveBeenCalled();
+      expect(generateAccessToken).not.toHaveBeenCalled();
+      // No session before the second factor: loginMfa creates it.
+      expect(createSession).not.toHaveBeenCalled();
     });
 
     it("defaults ip/userAgent to empty strings and maps the role association", async () => {
@@ -834,10 +842,13 @@ describe("auth.service (coverage)", () => {
       expect(result.status).toBe(200);
       expect(result.data.role).toBeNull();
       expect(result.data.isImpersonating).toBe(true);
+      // A-48: the token names the impersonation session, so the session's
+      // one-hour expiry (and a revoke) binds the access token too.
       expect(generateAccessToken).toHaveBeenCalledWith({
         id: "user-2",
         email: "target@example.com",
         impersonatorId: "sa-1",
+        sid: "session-1",
       });
       // impersonated sessions are attributed back to the super admin
       expect(createSession).toHaveBeenCalledWith(

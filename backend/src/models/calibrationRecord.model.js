@@ -112,10 +112,11 @@ const defineModel = (db, DataTypes) => {
 
   /**
    * Soft-delete a calibration record. Sets is_deleted = true and persists.
+   * @param {object} [options] - merged into save(), e.g. { transaction } (A-41)
    */
-  CalibrationRecord.prototype.softDelete = async function () {
+  CalibrationRecord.prototype.softDelete = async function (options) {
     this.isDeleted = true;
-    return this.save({ hooks: false });
+    return this.save({ ...options, hooks: false });
   };
 
   /**

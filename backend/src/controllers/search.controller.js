@@ -18,10 +18,13 @@ const { success } = require("../utils/response.util");
 // does not reach this controller -- the route gate refuses the request.
 const canRead = (req, menuSlug) =>
   new Promise((resolve) => {
-    // A probe response: dynamicAccess answers either by calling next()
-    // (allowed) or by writing a 401/403/500 (denied).
+    // A probe response: dynamicAccess answers by calling a bare next()
+    // (allowed), by writing a 401/403/404 (denied), or -- when the check
+    // itself fails -- by calling next(err) (A-13). ONLY a bare next() means
+    // allowed: next(err) must deny, or a failure of the permission store
+    // would read as "allowed for every type" and search would fail open.
     const probe = { status: () => ({ json: () => resolve(false) }) };
-    dynamicAccess(menuSlug, "read")(req, probe, () => resolve(true));
+    dynamicAccess(menuSlug, "read")(req, probe, (err) => resolve(!err));
   });
 
 const permittedTypes = async (req, requested) => {

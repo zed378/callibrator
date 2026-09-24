@@ -21,10 +21,10 @@ needs one to settle says so in its own card.
 
 | Id | Finding | Severity | Live or latent |
 |---|---|---|---|
-| W-01 | the tenant-lifecycle processor has **never run**: it filters on a column the model does not define, and on an enum value that does not exist | **high** | **live** |
+| W-01 | the tenant-lifecycle processor has **never run**: it filters on a column the model does not define, and on an enum value that does not exist | **high** | **DONE** 2026-09-24 — verified on PostgreSQL 18.6 |
 | W-02 | `CALIBRATION_SCHEDULER` is set in **no** deployment file, and the chart's "not the scheduler" branch disables only one of four jobs | **high** | latent (1 replica today), live on the documented scale-out |
 | W-03 | the calibration scan's idempotency guard is a check-then-create race with no lock and no constraint | **high** | latent — needs a second replica |
-| W-04 | **no background mutation writes an audit row** — including the purge that destroys `audit_logs` | **high** | **live** |
+| W-04 | **no background mutation writes an audit row** — including the purge that destroys `audit_logs` | **high** | **partial** — purge audited 2026-09-24 |
 | W-05 | one Redis blip disables Redis **permanently** for that process, silently, restoring the whole A-24 symptom set | **high** | **DONE** 2026-09-24 |
 | W-06 | a RabbitMQ consumer is never re-registered: a broker restart ends both workers for the life of the process | **high** | **live** |
 | W-07 | a batch job interrupted by SIGTERM is **acked on redelivery and never runs again** — stuck `PROCESSING`, no DLQ row | **medium–high** | **live** |
@@ -36,10 +36,12 @@ needs one to settle says so in its own card.
 | W-13 | silent failure is the norm: every job's failure path ends at `logger.error`, and production writes no stdout (A-14) | medium | **live** |
 | W-14 | MQTT ingest fans out to every replica — N duplicate readings and N duplicate alerts per message — with no backpressure | medium | latent (MQTT off) |
 | W-15 | the GDPR export ZIP is deleted by a 168-hour in-process timer; a restart leaves exported personal data on disk forever | medium | **live** |
-| W-16 | the retention purge has no transaction, and one malformed setting makes a tenant silently never purge | medium | **live** |
+| W-16 | the retention purge has no transaction, and one malformed setting makes a tenant silently never purge | medium | **partial** — transaction added 2026-09-24 |
 | W-17 | unbounded result sets and N+1 inside the per-tenant and per-device loops | low–medium | **live** |
 | W-18 | connection and timer lifecycle: two AMQP connections per process, one never closed, no in-flight memo on either getter | low–medium | **live** |
 | W-19 | the rate limiter's memory fallback has lazy expiry only — no sweep, unbounded growth | low | **live** |
+| W-20 | `hardDeleteOffboardedTenant` would **cascade-delete the tenant's audit trail** (`audit_logs.tenant_id ON DELETE CASCADE`), with no transaction and no audit row | **high** | latent — not routed |
+| W-21 | `enterGracePeriod` accepts a tenant that is not suspended; a later suspension past the deadline is offboarded immediately | medium | live |
 
 **By severity:** 6 high · 2 medium–high · 8 medium · 3 low/low–medium. **19 total.**
 
@@ -98,7 +100,7 @@ scaled with cron.enabled false" — because of W-02.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24 |
 | **Severity** | **high** |
 | **Verified** | from code, 2026-09-23. Confirming the Postgres error text needs a running database |
 
@@ -157,6 +159,39 @@ a scheduled job that throws nightly is worse than no job, because the board says
       throwing
 - [ ] a suspended tenant past its grace period is offboarded, and the row shows it
 - [ ] the failure path reaches something a human sees (W-13)
+
+**What was changed (2026-09-24, ADR-045).**
+
+- **The card undercounted.** `suspendTenant` also wrote `suspensionReason`, `suspendedAt` and
+  `suspendedBy`, which were dropped the same silent way — so **six** columns were missing, not four.
+  Migration `0023-tenant-lifecycle-columns` adds all six plus an index on
+  `(status, grace_period_expires_at)`. It has one catch, which re-throws anything but "table does not
+  exist".
+- **The scheduled query** uses `status: 'suspended'` and does the date comparison in SQL.
+- **The job** runs on `node-cron` under `TENANT_LIFECYCLE_SCHEDULER`, and the `setInterval` is gone.
+- **Offboarding** commits the tenant update, the settings row and its audit row in one transaction.
+- **Isolation:** each tenant runs inside its **own** tenant context — never as a system task or super
+  admin — and one tenant's failure does not stop the next.
+- **Resume and cancel now clear the grace deadline.** Otherwise, once the column persists, a stale
+  deadline would offboard a re-suspended tenant with no grace at all.
+
+**Tests.** `tenantLifecycle.w01.test.js` runs the real model's SQL generation and the audit ledger.
+It includes a data-driven check that every `tenant.X =` in the service is a model attribute. **23 of
+its 27 tests failed against the old code.** There are also `0023-tenant-lifecycle-columns.test.js`
+and `tenantLifecycleScheduler.middleware.test.js`.
+
+**Verified on real PostgreSQL 18.6**, in a throwaway container:
+- **The old query fails** with `invalid input value for enum enum_tenants_status: "SUSPENDED"`.
+- **Upgrade path:** `sync()` then `migrator.up()` adds the columns. `down` and a second `up` both
+  work.
+- **A real run:** `processExpiredGracePeriods()` against three tenants offboarded exactly the
+  expired one. It wrote one audit row, and the tenant still in its grace period and the active tenant
+  were untouched.
+
+**Still open:**
+- The Postgres run was a script, not a jest test: no database-backed harness exists.
+- A failure reaches only `logger.error` (W-13).
+- W-20 and W-21.
 
 ---
 
@@ -333,6 +368,14 @@ record of the deletion can be lost by the same crash that half-completed it (**W
 - [ ] a test asserts a retention purge of N rows leaves an `audit_logs` row naming N and the tenant,
       and that rolling the transaction back leaves **neither**
 - [ ] a decision recorded on the 365-day audit-log window against the compliance claim
+
+**Partly fixed (2026-09-24, under A-41).** The retention purge's three deletes and one audit row are
+now a single transaction. The row is `DELETE` / `DataRetention`, with counts per table, the cutoffs
+and `changes.actor: "system:retention-purge"`. Test: `dataRetention.audit.w04.test.js`. 4 of its 6
+tests failed against the old code.
+
+**Still live:** tenant offboarding (W-01, which never runs), scheduler-created work orders, and IoT
+ingest. They wait on Q-13, the system actor.
 
 ---
 
@@ -1064,6 +1107,9 @@ stored through the supported path.
 - [ ] a failure mid-purge rolls back, asserted by a test
 - [ ] `setRetentionPolicy` rejects a non-numeric value with 400
 
+**Transaction half fixed (2026-09-24, under A-41);** see W-04. One malformed setting still silently
+stops a tenant's purge.
+
 ---
 
 ## W-17 — Unbounded result sets and N+1 inside the per-tenant loops
@@ -1196,3 +1242,37 @@ Stated plainly, because the difference between "renders" and "works" is the poin
 | **Anything about running jobs** | no job was executed. This is a code audit, as the evidence standard above says |
 
 **No code was changed.** This file is the only thing written.
+
+---
+
+## W-20 — A hard delete would erase the tenant's audit trail
+
+| | |
+|---|---|
+| **Status** | TODO — **owner decision** |
+| **Severity** | **high** — latent; the function is not routed or scheduled |
+| **Verified** | on PostgreSQL 18.6, `\d tenants`, 2026-09-24 (W-01) |
+
+`hardDeleteOffboardedTenant` destroys the tenant's users, subscription, invoices, settings and the
+tenant row. It runs with no transaction and writes no audit row. And `audit_logs.tenant_id` is
+`ON DELETE CASCADE`, so deleting the tenant row **deletes every audit row the tenant ever had** —
+including the record of its own offboarding. That contradicts the 21 CFR Part 11 retention claim, and
+it joins Q-12: can audit rows be deleted at all?
+
+**Fix direction:** change the audit foreign key so it no longer cascades — either `RESTRICT`, or no FK,
+keeping the tenant id as a value. Then give the hard delete a transaction and an audit row. Decide
+this before anyone routes the function.
+
+---
+
+## W-21 — A grace period can be set on a tenant that is not suspended
+
+| | |
+|---|---|
+| **Status** | TODO |
+| **Severity** | medium |
+| **Verified** | from code, 2026-09-24 (W-01) |
+
+`enterGracePeriod` accepts an active tenant and sets the deadline. If that tenant is suspended after
+the deadline has passed, the next scheduled run offboards it at once, with no grace. **Fix
+direction:** a 409 with a state explanation when the tenant is not suspended.

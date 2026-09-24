@@ -1,7 +1,7 @@
 // src/app/dashboard/webhooks/components/WebhookModal.tsx
 import React, { useState } from "react";
 import { Dialog, Input, Button, Badge, Alert } from "@/components/ui";
-import { Copy, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import type { WebhookFormState } from "../hooks/useWebhooks";
 
 interface WebhookModalProps {
@@ -15,8 +15,11 @@ interface WebhookModalProps {
   addEvent: (event: string) => void;
   removeEvent: (event: string) => void;
   onSubmit: (e: React.FormEvent) => void;
-  createdSecret: string | null;
-  onCopySecret: () => void;
+  /**
+   * The saved url when editing. Changing it makes the backend issue a new
+   * signing secret (A-51), so the form says so before the user saves.
+   */
+  originalUrl?: string | null;
 }
 
 const PREDEFINED_EVENTS = [
@@ -37,8 +40,7 @@ export const WebhookModal: React.FC<WebhookModalProps> = ({
   addEvent,
   removeEvent,
   onSubmit,
-  createdSecret,
-  onCopySecret,
+  originalUrl,
 }) => {
   const [customEvent, setCustomEvent] = useState("");
 
@@ -51,54 +53,12 @@ export const WebhookModal: React.FC<WebhookModalProps> = ({
     (event) => !PREDEFINED_EVENTS.includes(event),
   );
 
-  // ── Secret reveal state (after successful creation) ────────────────────────
-  if (createdSecret) {
-    return (
-      <Dialog isOpen={isOpen} onClose={onClose} title="Webhook Created">
-        <div className="space-y-4 pt-2">
-          <Alert variant="warning" title="Store this secret securely">
-            This signing secret is shown only once — it cannot be retrieved
-            again. Store it securely before closing this dialog.
-          </Alert>
+  const urlWillRotateSecret =
+    modalType === "edit" &&
+    !!originalUrl &&
+    form.url.trim() !== "" &&
+    form.url.trim() !== originalUrl;
 
-          <div>
-            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
-              Signing Secret
-            </label>
-            <div className="flex items-center gap-2">
-              <code className="flex-1 block font-mono text-sm bg-muted text-foreground rounded-lg px-3 py-2.5 break-all select-all border border-border">
-                {createdSecret}
-              </code>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={onCopySecret}
-                className="shrink-0 flex items-center gap-1.5"
-              >
-                <Copy className="h-4 w-4" />
-                Copy
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              Each delivery includes an{" "}
-              <code className="font-mono">X-Webhook-Signature</code> header —
-              an HMAC-SHA256 of the request body computed with this secret.
-              Use it to verify payload authenticity.
-            </p>
-          </div>
-
-          <div className="flex justify-end pt-2">
-            <Button type="button" onClick={onClose}>
-              Done
-            </Button>
-          </div>
-        </div>
-      </Dialog>
-    );
-  }
-
-  // ── Create / Edit form state ───────────────────────────────────────────────
   return (
     <Dialog
       isOpen={isOpen}
@@ -118,6 +78,17 @@ export const WebhookModal: React.FC<WebhookModalProps> = ({
             onChange={(e) => setForm({ ...form, url: e.target.value })}
             placeholder="https://example.com/webhooks/calibrator"
           />
+          {urlWillRotateSecret && (
+            <Alert
+              variant="warning"
+              title="Changing the URL issues a new signing secret"
+              className="mt-2"
+            >
+              The current secret stops working as soon as you save. The new
+              one is shown once, after saving — configure it on the new
+              endpoint.
+            </Alert>
+          )}
         </div>
 
         <div>

@@ -31,6 +31,9 @@ describe("audit.service", () => {
   beforeEach(() => { jest.clearAllMocks(); });
 
   // ================================================================
+  // audit_logs.action is a closed ENUM (CREATE|UPDATE|DELETE|LOGIN|APPROVE|EXPORT).
+  // These tests used lowercase values, which PostgreSQL rejects; the mock
+  // accepted them. See audit.service.a42.test.js for the ENUM-enforcing tests.
   describe("logAction", () => {
     it("should create an audit log entry", async () => {
       const mockLog = { id: "log-1", tenantId: "t-1" };
@@ -39,7 +42,7 @@ describe("audit.service", () => {
       const result = await auditService.logAction({
         tenantId: "t-1",
         userId: "user-1",
-        action: "create",
+        action: "CREATE",
         resourceType: "tenant",
         resourceId: "t-1",
       });
@@ -49,10 +52,11 @@ describe("audit.service", () => {
         expect.objectContaining({
           tenantId: "t-1",
           userId: "user-1",
-          action: "create",
+          action: "CREATE",
           resourceType: "tenant",
           resourceId: "t-1",
         }),
+        { transaction: undefined },
       );
     });
 
@@ -62,7 +66,7 @@ describe("audit.service", () => {
       await auditService.logAction({
         tenantId: "t-1",
         userId: "user-1",
-        action: "login",
+        action: "LOGIN",
         resourceType: "session",
         ipAddress: "192.168.1.1",
         userAgent: "Mozilla/5.0",
@@ -73,6 +77,7 @@ describe("audit.service", () => {
           ipAddress: "192.168.1.1",
           userAgent: "Mozilla/5.0",
         }),
+        { transaction: undefined },
       );
     });
 
@@ -82,7 +87,7 @@ describe("audit.service", () => {
       const result = await auditService.logAction({
         tenantId: "t-1",
         userId: "user-1",
-        action: "delete",
+        action: "DELETE",
         resourceType: "user",
         resourceId: "u-1",
       });
@@ -96,12 +101,13 @@ describe("audit.service", () => {
       await auditService.logAction({
         tenantId: "t-1",
         userId: "user-1",
-        action: "update",
+        action: "UPDATE",
         resourceType: "tenant",
       });
 
       expect(AuditLog.create).toHaveBeenCalledWith(
         expect.objectContaining({ resourceId: null }),
+        { transaction: undefined },
       );
     });
   });
@@ -222,7 +228,7 @@ describe("audit.service", () => {
       const result = await auditService.logAction({
         tenantId: "t-1",
         userId: "u-1",
-        action: "create",
+        action: "CREATE",
         resourceType: "tenant",
       });
 
@@ -235,7 +241,7 @@ describe("audit.service", () => {
       const result = await auditService.logAction({
         tenantId: "t-1",
         userId: "u-1",
-        action: "create",
+        action: "CREATE",
         resourceType: "tenant",
       });
 
@@ -251,7 +257,7 @@ describe("audit.service", () => {
       const result = await auditService.logAction({
         tenantId: "t-1",
         userId: "u-1",
-        action: "create",
+        action: "CREATE",
         resourceType: "tenant",
       });
 

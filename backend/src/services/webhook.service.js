@@ -13,7 +13,10 @@
 
 const crypto = require("crypto");
 const { Op } = require("sequelize");
-const { Webhook, WebhookDelivery } = require("../models");
+// `db` from config, NOT from the models barrel (CLAUDE.md, traps).
+const { db } = require("../config");
+const { Webhook, WebhookDelivery, AuditLog } = require("../models");
+const { encryptData, decryptData } = require("./kms.service");
 const { AppError } = require("../utils/appError.util");
 const { DEFAULT_LIMIT, MAX_LIMIT } = require("../constants");
 const { logger } = require("../middlewares/activityLog.middleware");
@@ -27,6 +30,41 @@ const TIMEOUT_MS = Number(process.env.WEBHOOK_TIMEOUT_MS) || 8000;
 
 const sign = (secret, body) =>
   crypto.createHmac("sha256", secret).update(body).digest("hex");
+
+// ------------------------------------------------------------------
+// THE SIGNING SECRET (A-51)
+// ------------------------------------------------------------------
+// Generated here and nowhere else — never accepted from a caller. 32 random
+// bytes as 64 lowercase hex characters; the HMAC key is that hex STRING's
+// UTF-8 bytes, exactly as before (docs/WEBHOOK/03-WEBHOOK-SECURITY.md).
+const generateSecret = () => crypto.randomBytes(32).toString("hex");
+
+// At rest the column holds a kms.service envelope (`v1:...`), with the tenant
+// id as additional authenticated data — the same treatment as the tenant
+// secrets in tenantSettings.model.js. The plaintext exists only in the
+// response that issues it and, transiently, in the signing call below.
+const sealSecret = (tenantId, plaintext) => encryptData(tenantId, plaintext);
+
+// decryptData returns a value that is not a `v1:` envelope unchanged, so a row
+// written before migration 0022 still signs with its plaintext secret.
+const secretForSigning = (webhook) => decryptData(webhook.tenantId, webhook.secret);
+
+// The audit row for a secret change. It records THAT the secret changed and
+// why, never the secret itself — old or new.
+const auditSecretRotation = (webhook, actor, reason, extra, transaction) =>
+  AuditLog.create(
+    {
+      tenantId: webhook.tenantId,
+      userId: actor.userId || null,
+      action: "UPDATE",
+      resourceType: "Webhook",
+      resourceId: webhook.id,
+      changes: { secretRotated: true, reason, ...extra },
+      ipAddress: actor.ipAddress || null,
+      userAgent: actor.userAgent || null,
+    },
+    { transaction },
+  );
 
 const publicWebhook = (w) => ({
   id: w.id,
@@ -43,7 +81,10 @@ const publicWebhook = (w) => ({
 // ------------------------------------------------------------------
 // CRUD
 // ------------------------------------------------------------------
-exports.createWebhook = async (tenantId, { url, events, description, isActive, secret, createdBy }) => {
+// A-51: there is no `secret` parameter. Until 2026-09-24 one was honoured, and
+// the controller spread the request body into it — `{"secret":"a"}` created a
+// webhook whose signatures anyone could forge.
+exports.createWebhook = async (tenantId, { url, events, description, isActive, createdBy }) => {
   if (!url) {
     throw new AppError(400, "url is required");
   }
@@ -52,17 +93,18 @@ exports.createWebhook = async (tenantId, { url, events, description, isActive, s
   if (!Array.isArray(events) || events.length === 0) {
     throw new AppError(400, "events must be a non-empty array");
   }
+  const secret = generateSecret();
   const webhook = await Webhook.create({
     tenantId,
     url,
     events,
     description: description || null,
     isActive: isActive !== undefined ? isActive : true,
-    ...(secret ? { secret } : {}),
+    secret: sealSecret(tenantId, secret),
     createdBy: createdBy || null,
   });
-  // Return the secret exactly once, at creation time.
-  return { ...publicWebhook(webhook), secret: webhook.secret };
+  // Return the plaintext secret exactly once, at creation time.
+  return { ...publicWebhook(webhook), secret };
 };
 
 exports.listWebhooks = async (tenantId, { page = 1, limit = DEFAULT_LIMIT } = {}) => {
@@ -94,7 +136,12 @@ const loadOwned = async (tenantId, id) => {
 
 exports.getWebhook = async (tenantId, id) => publicWebhook(await loadOwned(tenantId, id));
 
-exports.updateWebhook = async (tenantId, id, data) => {
+// A url change ROTATES the secret, in the same transaction, and the new secret
+// is returned once in this response. Keeping it would sign the new host with a
+// key the old host already holds; refusing the change unless a rotation came
+// with it would add a second step that can be forgotten, for no benefit — the
+// new receiver has to be configured with a secret either way.
+exports.updateWebhook = async (tenantId, id, data, actor = {}) => {
   const webhook = await loadOwned(tenantId, id);
   const patch = {};
   for (const k of ["url", "events", "description", "isActive"]) {
@@ -109,8 +156,39 @@ exports.updateWebhook = async (tenantId, id, data) => {
   if (patch.events && (!Array.isArray(patch.events) || patch.events.length === 0)) {
     throw new AppError(400, "events must be a non-empty array");
   }
-  await webhook.update(patch);
-  return publicWebhook(webhook);
+  const urlChanged = patch.url !== undefined && patch.url !== webhook.url;
+  if (!urlChanged) {
+    await webhook.update(patch);
+    return publicWebhook(webhook);
+  }
+
+  const previousUrl = webhook.url;
+  const secret = generateSecret();
+  await db.transaction(async (transaction) => {
+    await webhook.update({ ...patch, secret: sealSecret(tenantId, secret) }, { transaction });
+    await auditSecretRotation(
+      webhook,
+      actor,
+      "url_changed",
+      { before: { url: previousUrl }, after: { url: patch.url } },
+      transaction,
+    );
+  });
+  return { ...publicWebhook(webhook), secret };
+};
+
+// Issue a new secret, invalidating the old one immediately. There is no
+// overlap window: a delivery signed after this call carries the new secret,
+// so the receiver must be updated before the next event (or it rejects it and
+// the delivery retries — see 04-WEBHOOK-RETRY.md).
+exports.rotateSecret = async (tenantId, id, actor = {}) => {
+  const webhook = await loadOwned(tenantId, id);
+  const secret = generateSecret();
+  await db.transaction(async (transaction) => {
+    await webhook.update({ secret: sealSecret(tenantId, secret) }, { transaction });
+    await auditSecretRotation(webhook, actor, "rotated", {}, transaction);
+  });
+  return { ...publicWebhook(webhook), secret };
 };
 
 exports.deleteWebhook = async (tenantId, id) => {
@@ -150,7 +228,7 @@ const attemptDelivery = async (webhook, delivery) => {
     data: delivery.payload,
   };
   const body = JSON.stringify(bodyObj);
-  const signature = sign(webhook.secret, body);
+  const signature = sign(secretForSigning(webhook), body);
 
   // SSRF backstop: resolve the host and block internal addresses immediately
   // before dispatch (defends against a hostname that resolves internally, or

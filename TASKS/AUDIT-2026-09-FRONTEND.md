@@ -41,6 +41,7 @@ below is read from code, and the cards say where that leaves a doubt.
 | F-15 | `menuStore` falls back to the **full static menu** when `roleId` is missing | low | rbac-in-ui | TODO |
 | F-16 | The proxy buffers every request and response whole; uploads and downloads are held twice in the Next process | low | performance | TODO |
 | F-17 | Unread badge drifts; two unused dependencies | low | hygiene | TODO |
+| F-18 | the webhook screen cannot show a server-generated or rotated secret | **high** | 0 | **DONE** 2026-09-24 |
 
 ---
 
@@ -854,3 +855,39 @@ threshold is never evaluated.
 `CLAUDE.md` describes only the backend's 100 % gate. The frontend's gate exists in configuration,
 has never passed, and has never been run by anything that would notice. That is the same shape as
 the backend lint gate (A-34): a gate that looks enforced because it is written down.
+
+---
+
+### F-18 — The webhook screen cannot show the secret the backend now generates
+
+| | |
+|---|---|
+| **Status** | **DONE** 2026-09-24 |
+| **Severity** | **high** — a webhook created from the UI is unusable |
+| **Verified** | from the backend change, 2026-09-24 (A-51) |
+
+Since A-51, the backend generates each webhook's signing secret and returns it **exactly once**, in
+the create response and in `POST /webhooks/:id/rotate-secret`. Changing the URL rotates it as well.
+It also **rejects** a `secret` field in the request body.
+
+*(Corrected 2026-09-24: this card first said a sent `secret` fails with a 400. It does not — the
+validator strips unknown keys.)* The create flow already showed the secret once. The secret returned
+by a URL-changing edit was discarded, and there was no rotate action.
+
+**Definition of Done**
+- [x] the modal sends no `secret`
+- [x] after create, rotate, or a URL change, the returned secret is shown once, with a copy button and a
+      clear "you will not see this again"
+- [x] a rotate action, behind a confirmation
+- [x] a test against the **real** response shape, not an invented one
+
+**What was changed (2026-09-24).** A new `SecretRevealDialog` handles create, rotate and URL change
+in one place: the secret is shown once, with a copy button and *"You will not see this secret
+again"*. `WebhookModal` warns before saving a changed URL that a new secret will be issued. The table
+has a rotate button behind a `ConfirmDialog`, which says the old secret stops working immediately.
+Two `set-state-in-effect` lint errors that were already in `useWebhooks.ts` are fixed without
+disabling the rule.
+
+**Tests:** `webhooks/__tests__/page.test.tsx` › *"WebhooksPage — signing secret (F-18)"* (5 tests), and
+3 new tests in `webhook.service.test.ts`, with fixtures built from `publicWebhook()`'s real shape.
+**These are mocked-client tests** — nothing has been verified against a live backend yet.

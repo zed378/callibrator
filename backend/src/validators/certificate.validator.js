@@ -75,7 +75,10 @@ const updateCertificateSchema = Joi.object({
     .allow("", null),
   validUntil: Joi.date().allow("", null),
   standard: Joi.string().max(100).allow("", null),
-  approvedBy: Joi.string().uuid().allow("", null),
+  // No `approvedBy` (A-62): the approver is recorded only by POST
+  // /:certificateId/approve, as the re-authenticated caller. Accepting it here
+  // let a plain update name anyone as the approver, with no e-signature at all.
+  // An `approvedBy` in the body is stripped (stripUnknown), not rejected.
 });
 
 /**
@@ -88,8 +91,13 @@ const certificateIdSchema = Joi.object({
 /**
  * Schema for approving a certificate
  */
+// A-62 — no `approvedBy`. The approver is the authenticated caller
+// (req.user.id), always, and re-authentication checks the caller's own
+// credentials. The body used to name the approver, so a caller who knew
+// another approver's password recorded the approval in that person's name.
+// A body `approvedBy` is stripped (stripUnknown), not rejected, so a client
+// still sending its own id keeps working.
 const approveCertificateSchema = Joi.object({
-  approvedBy: Joi.string().uuid().required(),
   authMethod: Joi.string().valid("password", "mfa").required(),
   authPayload: Joi.string().required(),
   meaning: Joi.string().min(1).max(255).required(),

@@ -197,11 +197,11 @@ sequenceDiagram
 *   **Lockout:** 5 failed logins → `lockedUntil = now + 15 min` (HTTP 423); attempts/lock cleared on success.
 *   **Refresh rotation:** each refresh issues a new opaque token and revokes the prior session (reason `TOKEN_ROTATION`); a session/token mismatch revokes *all* the user's sessions (reason `TOKEN_MISMATCH`).
 *   **Password change/reset** sets `passwordChangedAt` and revokes all sessions (`PASSWORD_CHANGED` / `PASSWORD_RESET`).
-*   **Registration** uses a Redis distributed lock + DB row-lock transaction; assigns the default `USER` role; activation token is a JWT of `{id}`; activation email queued asynchronously.
+*   **Registration** uses a Redis distributed lock + DB row-lock transaction; assigns the default `USER` role; activation token is a purpose token `typ: "activation"` of `{id}`, 24 h, accepted only by the activation route (A-59, 2026-09-24); activation email queued asynchronously.
 *   **OTP** is 6 digits, SHA-256 stored, 5-minute expiry; `sendOTP` returns a generic message to avoid user enumeration.
-*   **MFA:** if enabled, login returns `202` + 5-minute `mfaToken`; `loginMfa` verifies the TOTP before issuing real tokens.
+*   **MFA:** if enabled, login returns `202` + a 5-minute `typ: "mfa"` token, issued before any session exists; `loginMfa` accepts only that type and verifies the TOTP before issuing real tokens.
 *   **Impersonation:** SUPERADMIN only, target must exist in tenant, no self-impersonation; 1-hour session, `impersonatorId` claim, user-agent annotated.
-*   The `auth` middleware performs **RBAC-only** verification (no per-request DB session lookup); blocks banned/inactive users and suspended/deleted tenants; only SUPERADMIN may override tenant via `x-tenant-code`/`x-tenant-id`.
+*   Access tokens carry `sid`; the `auth` middleware checks the session is live on every request through `session.service.js#isSessionLive` (Redis, ≤60 s TTL, falling back to one primary-key read) — A-48, 2026-09-24. Sid-less tokens are still accepted while `SIDLESS_ACCESS_TOKENS_ACCEPTED` is `true`. It also blocks banned/inactive users and suspended/deleted tenants; only SUPERADMIN may override tenant via `x-tenant-code`/`x-tenant-id`.
 
 ### 12. Access Rights
 | Endpoint group | SUPERADMIN | Authenticated user | Public |
@@ -894,7 +894,7 @@ stateDiagram-v2
 | suspend / resume / grace-period / offboard / cancel / export | ✓ (`superAdminOnly`) | ✗ |
 
 ### 13. Database
-*   Uses the **`tenants`** table plus lifecycle fields (`suspensionReason`, `suspendedAt`, `gracePeriodExpiresAt`, `offboardedAt`, `offboardRetentionExpiresAt`) — ⚠️ these columns are referenced by the service but not defined in the current model (§23).
+*   Uses the **`tenants`** table plus lifecycle fields (`suspensionReason`, `suspendedAt`, `suspendedBy`, `gracePeriodExpiresAt`, `offboardedAt`, `offboardRetentionExpiresAt`), added by migration `0023` on 2026-09-24 (W-01, ADR-045). Before that the model lacked them and Sequelize dropped every write silently.
 *   **`tenant_settings`** stores `lifecycle_status`. Reads `User`, `Subscription`, `Invoice` for export/hard-delete.
 
 ### 14. API
@@ -909,19 +909,20 @@ Base: `/api/v1/tenants` (tenantLifecycle routes) — see [tenantLifecycle.route.
 | GET | `/tenants/:tenantId/export` | Export tenant data |
 
 ### 15. Integration
-*   **Scheduled processor** via `setInterval` (daily) in [index.js](../../backend/index.js#L606-L619); PostgreSQL RLS; `featureFlag.service` imported (unused).
+*   **Scheduled processor** via `node-cron` (`middlewares/tenantLifecycleScheduler.middleware.js`, `TENANT_LIFECYCLE_SCHEDULER`, default `30 2 * * *`). Each tenant is offboarded inside its own tenant context, so the tenant hooks confine every scoped write to that tenant. `featureFlag.service` is imported and unused.
 
 ### 16. Error Handling
 *   `404` Tenant not found; `400` Tenant is not offboarded / Retention period has not expired yet / validation. Via `AppError`.
 
 ### 17. Log and Audit
-*   `logger.warn` on suspend/offboard/hard-delete; `logger.info` on resume/grace/cancel/processed. No dedicated audit table.
+*   **Offboarding** writes an `audit_logs` row inside its transaction: `DELETE` / `Tenant`, with `changes.operation: "TENANT_OFFBOARD"` and the before and after state. From the scheduler it writes `userId: null` and `changes.actor: "system:tenant-lifecycle"` (Q-13). The other transitions are still audited only by the request middleware. `logger.warn`/`info` as before.
 
 ### 18. Configuration
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `TENANT_GRACE_PERIOD_DAYS` | 7 | Grace window |
 | `TENANT_OFFBOARD_RETENTION_DAYS` | 30 | Retention before hard delete |
+| `TENANT_LIFECYCLE_SCHEDULER` | `30 2 * * *` | cron expression; `disabled`/`off` turns it off |
 
 ### 19. Dependency
 `sequelize`, `joi`; internal `tenantLifecycle.service`, models User/Subscription/Invoice/TenantSettings.
@@ -937,9 +938,10 @@ Base: `/api/v1/tenants` (tenantLifecycle routes) — see [tenantLifecycle.route.
 *   **Auditability:** every transition is logged with actor and reason.
 
 ### 23. Known Limitations
-*   **Lifecycle columns are not defined in the Tenant model** (`suspendedAt`, `gracePeriodExpiresAt`, etc.) — writes would fail on Postgres.
-*   Service writes UPPERCASE statuses (`ACTIVE`/`SUSPENDED`/`OFFBOARDED`) but the Tenant `status` ENUM only permits lowercase `active`/`suspended`/`deleted` (no `OFFBOARDED`/`TRIAL`) — enum conflict.
-*   Scheduler uses a plain `setInterval` (not cron); `featureFlag.service.isEnabled` imported but unused.
+*   ~~Lifecycle columns missing, UPPERCASE status in the scheduled query, `setInterval`~~ — fixed 2026-09-24 (W-01). `OFFBOARDED` lives in `tenant_settings.lifecycle_status`; the tenant row goes to `deleted`.
+*   **`hardDeleteOffboardedTenant`** has no transaction and no audit row, and `audit_logs.tenant_id` is `ON DELETE CASCADE` — a hard delete would erase the tenant's audit trail, the offboarding record included (W-20).
+*   **`enterGracePeriod` accepts a tenant that is not suspended** (W-21).
+*   Every replica runs the job, and `offboardTenant` takes no row lock (W-02).
 
 ### 24. Change Log
 | Version | Date | Description |

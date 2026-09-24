@@ -7,7 +7,8 @@ const { Users, Role } = require("../models");
 const { hashPassword, comparePassword } = require("../utils/password.util");
 const {
   generateAccessToken,
-  verifyAccessToken,
+  generatePurposeToken,
+  verifyPurposeToken,
   generateOpaqueRefreshToken,
 } = require("../utils/jwt.util");
 // Email service (sendOtpEmail/sendActivationEmail not used — emailQueue.service is used instead)
@@ -37,6 +38,8 @@ const {
   validateSession,
   revokeSession,
   revokeAllSessions,
+  revokeSessionById,
+  getCurrentSessionId,
 } = require("../services/session.service");
 const { PASSWORD_MIN_LENGTH, ROLE_IDS } = require("../constants");
 
@@ -117,8 +120,10 @@ exports.registerUser = async (input, origin) => {
     await set(cacheKeys.userByEmail(email), user.id, 86400);
     await set(cacheKeys.userByUsername(username), user.id, 86400);
 
-    // Generate activation token
-    const activationToken = generateAccessToken({ id: user.id });
+    // Generate activation token. A-59: a purpose token, not an access token —
+    // it travels by email (forwarded, archived, logged), so it must not work
+    // as a bearer credential. Only activateAccount accepts it.
+    const activationToken = generatePurposeToken({ id: user.id }, "activation");
     const activationLink = baseOrigin + "/activation?token=" + activationToken;
 
     // Queue activation email (async, non-blocking).
@@ -214,29 +219,21 @@ exports.loginUser = async (input) => {
   // Update last login
   await dbUser.update({ lastLoginAt: new Date() });
 
-  const accessToken = generateAccessToken({
-    id: dbUser.id,
-    email: dbUser.email,
-  });
-  const refreshToken = generateOpaqueRefreshToken();
-
-  // Create session
-  const session = await createSession({
-    tenantId: dbUser.tenantId,
-    userId: dbUser.id,
-    refreshToken,
-    ipAddress: ip || "",
-    userAgent: userAgent || "",
-    expiredAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
-  });
-
-  // If MFA is enabled, issue a temporary token and require the second factor
+  // If MFA is enabled, issue a temporary token and require the second factor.
+  // A-59: this is an "mfa" purpose token, accepted ONLY by POST /auth/mfa/login
+  // — it used to be minted by generateAccessToken, i.e. it was an access
+  // token for a login that had not finished. It is issued BEFORE any session
+  // exists: loginMfa creates the session once the second factor passes (this
+  // used to create one here too, and leave it live and unused).
   if (dbUser.mfaEnabled) {
-    const mfaToken = generateAccessToken({
-      id: dbUser.id,
-      email: dbUser.email,
-      mfaRequired: true
-    }, { expiresIn: '5m' });
+    const mfaToken = generatePurposeToken(
+      {
+        id: dbUser.id,
+        email: dbUser.email,
+        mfaRequired: true,
+      },
+      "mfa",
+    );
 
     return {
       success: true,
@@ -252,6 +249,26 @@ exports.loginUser = async (input) => {
       refreshToken: null
     };
   }
+
+  const refreshToken = generateOpaqueRefreshToken();
+
+  // Create session
+  const session = await createSession({
+    tenantId: dbUser.tenantId,
+    userId: dbUser.id,
+    refreshToken,
+    ipAddress: ip || "",
+    userAgent: userAgent || "",
+    expiredAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+  });
+
+  // A-48: the access token names its session (`sid`), so revoking the session
+  // stops the token on the next request (auth.middleware.js).
+  const accessToken = generateAccessToken({
+    id: dbUser.id,
+    email: dbUser.email,
+    sid: session.id,
+  });
 
   // Include role info with the user data
   const role = dbUser.role
@@ -290,7 +307,15 @@ exports.loginUser = async (input) => {
 // ACTIVATE ACCOUNT
 // ------------------------------------------------------------------
 exports.activateAccount = async (token) => {
-  const decoded = verifyAccessToken(token);
+  // A-59: only an activation token activates. An access token (or any other
+  // purpose token) is refused, and an activation token is refused everywhere
+  // else (verifyAccessToken rejects its `typ`).
+  let decoded;
+  try {
+    decoded = verifyPurposeToken(token, "activation");
+  } catch {
+    throw new AppError(400, "Invalid or expired activation token");
+  }
   const user = await Users.findByPk(decoded.id);
   if (!user) {
     throw new AppError(404, "User not found");
@@ -536,10 +561,18 @@ exports.passIsValid = async (userId, password) => {
 // ------------------------------------------------------------------
 // LOGOUT SESSION
 // ------------------------------------------------------------------
+// A-48. This used to read `req.token` — the ACCESS token — and revoke the
+// session whose token_hash matched its hash. token_hash is the hash of the
+// REFRESH token, so that matched no row; and auth.controller.js calls this
+// with no arguments, so `req.token` threw and logout answered 500 (which the
+// frontend's logout route swallows). Logout revoked nothing either way.
+//
+// The session is now the one the access token names (`sid`), taken from `req`
+// when given and otherwise from the request context auth.middleware.js sets.
 exports.logoutSession = async (req) => {
-  const token = req.token || null;
-  if (token) {
-    await revokeSession(token, "LOGOUT");
+  const sessionId = (req && req.sessionId) || getCurrentSessionId();
+  if (sessionId) {
+    await revokeSessionById(sessionId, "LOGOUT");
   }
   return { success: true, status: 200, message: "Logout successful" };
 };
@@ -578,12 +611,8 @@ exports.refreshUserToken = async (
     throw new AppError(401, "User not found");
   }
 
-  const newAccessToken = generateAccessToken({
-    id: user.id,
-    email: user.email,
-  });
-
-  // 5. Revoke old session (token rotation)
+  // 5. Revoke old session (token rotation). The access token issued with it
+  //    stops working too (A-48): it names the old session.
   await revokeSession(refreshToken, "TOKEN_ROTATION");
 
   // 6. Create new session with new token
@@ -595,6 +624,12 @@ exports.refreshUserToken = async (
     userAgent: userAgent || session.user_agent,
     device: session.device,
     expiredAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+  });
+
+  const newAccessToken = generateAccessToken({
+    id: user.id,
+    email: user.email,
+    sid: newSession.id,
   });
 
   return {
@@ -656,10 +691,6 @@ exports.loginMfa = async (userId, tokenCode, inputIp, inputUserAgent) => {
   // Update last login
   await dbUser.update({ lastLoginAt: new Date() });
 
-  const accessToken = generateAccessToken({
-    id: dbUser.id,
-    email: dbUser.email,
-  });
   const refreshToken = generateOpaqueRefreshToken();
 
   // Create session
@@ -670,6 +701,12 @@ exports.loginMfa = async (userId, tokenCode, inputIp, inputUserAgent) => {
     ipAddress: inputIp || "",
     userAgent: inputUserAgent || "",
     expiredAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+  });
+
+  const accessToken = generateAccessToken({
+    id: dbUser.id,
+    email: dbUser.email,
+    sid: session.id,
   });
 
   const role = dbUser.role
@@ -789,13 +826,6 @@ exports.impersonateUser = async (superAdminId, targetTenantId, targetUserId, inp
     throw new AppError(400, "Cannot impersonate yourself");
   }
 
-  // Issue tokens for the target user, but with the impersonator claim
-  const accessToken = generateAccessToken({
-    id: targetUser.id,
-    email: targetUser.email,
-    impersonatorId: superAdmin.id, // THE CRITICAL CLAIM
-  });
-  
   const refreshToken = generateOpaqueRefreshToken();
 
   // Create a session for the target user, but we should track that it's an impersonated session
@@ -807,6 +837,16 @@ exports.impersonateUser = async (superAdminId, targetTenantId, targetUserId, inp
     ipAddress: inputIp || "",
     userAgent: (inputUserAgent || "") + " (Impersonated by " + superAdmin.email + ")",
     expiredAt: new Date(Date.now() + 1 * 60 * 60 * 1000), // 1 hour for impersonation
+  });
+
+  // Issue tokens for the target user, but with the impersonator claim. The
+  // `sid` makes the session's one-hour expiry bind the access token too
+  // (A-48); without it the token lasted JWT_ACCESS_EXPIRED.
+  const accessToken = generateAccessToken({
+    id: targetUser.id,
+    email: targetUser.email,
+    impersonatorId: superAdmin.id, // THE CRITICAL CLAIM
+    sid: session.id,
   });
 
   const { logger } = require("../middlewares/activityLog.middleware");

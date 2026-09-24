@@ -25,6 +25,10 @@ jest.mock("../../services/roles.service", () => {
 const rolesService = require("../../services/roles.service");
 const rolesController = require("../../controllers/roles.controller");
 
+// A-41: every role/permission mutation passes the actor to the service, which
+// writes the audit row inside its transaction.
+const ACTOR = { userId: "admin-1", tenantId: "tenant-1", ipAddress: "10.0.0.9", userAgent: "jest-agent" };
+
 describe("roles Controller", () => {
   let req, res, next;
 
@@ -34,6 +38,9 @@ describe("roles Controller", () => {
       query: {},
       params: {},
       body: {},
+      user: { id: "admin-1", tenantId: "tenant-1" },
+      ip: "10.0.0.9",
+      headers: { "user-agent": "jest-agent" },
     };
     res = {
       status: jest.fn().mockReturnThis(),
@@ -156,7 +163,9 @@ describe("roles Controller", () => {
       expect(rolesService.createRole).toHaveBeenCalledWith({
         name: "MANAGER",
         description: "Manager role",
-      });
+      },
+        ACTOR,
+      );
       expect(rolesService.getRoleById).toHaveBeenCalledWith("role-new");
       expect(res.status).toHaveBeenCalledWith(201);
     });
@@ -181,7 +190,9 @@ describe("roles Controller", () => {
         name: "ADMIN_UPDATED",
         description: "Updated",
         status: "active",
-      });
+      },
+        ACTOR,
+      );
       expect(res.status).toHaveBeenCalledWith(200);
     });
   });
@@ -195,7 +206,7 @@ describe("roles Controller", () => {
 
       await rolesController.deleteRole(req, res, next);
 
-      expect(rolesService.deleteRole).toHaveBeenCalledWith("role-1");
+      expect(rolesService.deleteRole).toHaveBeenCalledWith("role-1", ACTOR);
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
@@ -220,6 +231,7 @@ describe("roles Controller", () => {
         "role-1",
         "mg-1",
         "read",
+        ACTOR,
       );
       expect(res.status).toHaveBeenCalledWith(201);
     });
@@ -237,6 +249,7 @@ describe("roles Controller", () => {
         "role-1",
         "mg-1",
         "read",
+        ACTOR,
       );
     });
   });
@@ -253,6 +266,7 @@ describe("roles Controller", () => {
       expect(rolesService.removeMenuFromRole).toHaveBeenCalledWith(
         "role-1",
         "mg-1",
+        ACTOR,
       );
       expect(res.status).toHaveBeenCalledWith(200);
     });
@@ -271,6 +285,7 @@ describe("roles Controller", () => {
       expect(rolesService.assignRoleToUser).toHaveBeenCalledWith(
         "user-1",
         "role-1",
+        ACTOR,
       );
       expect(res.status).toHaveBeenCalledWith(200);
     });
@@ -285,7 +300,7 @@ describe("roles Controller", () => {
 
       await rolesController.removeRoleFromUser(req, res, next);
 
-      expect(rolesService.removeRoleFromUser).toHaveBeenCalledWith("user-1");
+      expect(rolesService.removeRoleFromUser).toHaveBeenCalledWith("user-1", ACTOR);
       expect(res.status).toHaveBeenCalledWith(200);
     });
   });

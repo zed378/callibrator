@@ -13,6 +13,7 @@ const mockGet = jest.fn().mockResolvedValue(null);
 const mockSet = jest.fn().mockResolvedValue("OK");
 const mockSetex = jest.fn().mockResolvedValue("OK");
 const mockDel = jest.fn().mockResolvedValue(1);
+const mockGetdel = jest.fn().mockResolvedValue(null);
 const mockScan = jest.fn().mockResolvedValue(["0", []]);
 const mockEval = jest.fn().mockResolvedValue(1);
 const mockQuit = jest.fn().mockResolvedValue(undefined);
@@ -31,6 +32,7 @@ jest.mock("ioredis", () => {
     set: mockSet,
     setex: mockSetex,
     del: mockDel,
+    getdel: mockGetdel,
     scan: mockScan,
     eval: mockEval,
     quit: mockQuit,
@@ -67,6 +69,7 @@ describe("redis.service", () => {
     mockSet.mockResolvedValue("OK");
     mockSetex.mockResolvedValue("OK");
     mockDel.mockResolvedValue(1);
+    mockGetdel.mockResolvedValue(null);
     mockScan.mockResolvedValue(["0", []]);
     mockEval.mockResolvedValue(1);
     mockQuit.mockResolvedValue(undefined);
@@ -257,6 +260,40 @@ describe("redis.service", () => {
           status: "Redis DEL Error",
           message: "DEL failed",
         }),
+      );
+    });
+  });
+
+  // A-60: GETDEL is what makes the SSO hand-off code single-use across
+  // replicas — one command, so two racing redemptions cannot both read it.
+  describe("getDel", () => {
+    it("returns null without touching the client when it is not ready", async () => {
+      mockStatus = "reconnecting";
+      expect(await redisService.getDel("key")).toBeNull();
+      expect(mockGetdel).not.toHaveBeenCalled();
+    });
+
+    it("returns null on a miss", async () => {
+      expect(await redisService.getDel("key")).toBeNull();
+      expect(mockGetdel).toHaveBeenCalledWith("key");
+    });
+
+    it("parses a JSON value", async () => {
+      mockGetdel.mockResolvedValue(JSON.stringify({ a: 1 }));
+      expect(await redisService.getDel("key")).toEqual({ a: 1 });
+    });
+
+    it("returns a non-JSON value as the raw string", async () => {
+      mockGetdel.mockResolvedValue("plain");
+      expect(await redisService.getDel("key")).toBe("plain");
+    });
+
+    it("returns null and logs when GETDEL throws", async () => {
+      mockGetdel.mockRejectedValue(new Error("GETDEL failed"));
+      expect(await redisService.getDel("key")).toBeNull();
+      const { logger } = require("../../middlewares/activityLog.middleware");
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.objectContaining({ status: "Redis GETDEL Error", message: "GETDEL failed" }),
       );
     });
   });

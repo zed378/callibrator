@@ -52,6 +52,8 @@ describe("calibrationRecordsController", () => {
       query: {},
       params: {},
       body: {},
+      headers: { "user-agent": "jest-agent" },
+      ip: "10.0.0.9",
     };
 
     res = {
@@ -130,6 +132,7 @@ describe("calibrationRecordsController", () => {
         "tenant-1",
         "user-1",
         { notes: "Created record" },
+        { userId: "user-1", tenantId: "tenant-1", ipAddress: "10.0.0.9", userAgent: "jest-agent" },
       );
       expect(success).toHaveBeenCalled();
     });
@@ -152,6 +155,7 @@ describe("calibrationRecordsController", () => {
         "tenant-1",
         "rec-1",
         { notes: "Updated record" },
+        { userId: "user-1", tenantId: "tenant-1", ipAddress: "10.0.0.9", userAgent: "jest-agent" },
       );
       expect(success).toHaveBeenCalled();
     });
@@ -172,6 +176,7 @@ describe("calibrationRecordsController", () => {
       expect(calibrationRecordsService.deleteCalibrationRecord).toHaveBeenCalledWith(
         "tenant-1",
         "rec-1",
+        { userId: "user-1", tenantId: "tenant-1", ipAddress: "10.0.0.9", userAgent: "jest-agent" },
       );
       expect(success).toHaveBeenCalled();
     });

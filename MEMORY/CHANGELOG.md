@@ -10,12 +10,24 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ### Decided
 
+- **ADR-046 — the backend image builds from the repository root, and `/api/` belongs to the frontend** in every manifest. Makes `npm ci` against the committed lockfile possible. ([record](./records/2026-09-24-phase0-batch2.md))
+- **ADR-045 — tenant lifecycle is a real feature.** It gets the schema it was written against (migration `0023`).
+
 - **ADR-040 — electronic signatures are RSA-signed over a canonical payload, and verification verifies.** Until 2026-09-23 the "signature" was a SHA-256 of `documentId:userId:tenantId:Date.now()`, recomputed at verification — so **no genuine signature could ever verify** — and the per-tenant RSA key pairs signed nothing at all. Signing now uses the tenant's private key over a deterministic payload binding the document, signer, timestamp, authentication method and the signature's meaning; a soft-deleted key still verifies its past signatures; records signed under the old scheme are reported `unverifiable_legacy` rather than as valid or as forgeries. Signing without a provisioned key pair is now a 409. The reference deployment has **no** signatures (0 rows), so nothing in the archive is affected.
 
 - **ADR-039 — PostgreSQL is the only supported database.** MySQL support was a claim, never a capability: `mysql2` was not a dependency, and search, webhooks and RAG used PostgreSQL-only SQL. The dialect is now fixed in `src/config/index.js`; any other `DB_DIALECT` refuses to start. ADR-029's tenant-isolation mechanism stands.
 - **ADR-038 — the backend moves to TypeScript, strict, incrementally.** Supersedes ADR-030. Plan: `TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`. Until it completes the backend is still JavaScript, and backend documents state TypeScript as the target, never as fact.
 
 ### Fixed
+
+- **Logout never revoked a session, and a revoked session's token kept working for a day.** Tokens now carry `sid` and are checked on every request. (A-48)
+- **The emailed activation token, the MFA-pending token and the socket token were valid bearer access tokens.** (A-59, A-52)
+- **SSO put access and refresh tokens in the redirect URL.** Now a single-use 60-second code. **Deploy the frontend and backend together.** (A-60)
+- **Every e-signature committed without its audit row and returned a 500.** (A-61) Twenty-five compliance mutations now write their audit row inside their transaction; a failed audit write rolls the change back. (A-41, A-42)
+- **A certificate's approver was whoever the request body named.** (A-62)
+- **Webhook signing secrets were caller-chosen and stored in plaintext.** Now generated, KMS-encrypted and rotatable. (A-51, F-18)
+- **The tenant grace-period and offboarding job had never run.** (W-01)
+- **The backend container crash-looped on a fresh VM** because the bind-mounted log directory was root-owned. (S-12)
 
 - **Tenant isolation did not cover `bulkCreate` or `upsert`.** Twelve `TenantSettings.upsert` sites resolve on `(tenant_id, key)`, so a wrong tenant id overwrote another tenant's storage credentials or OIDC configuration. Both verbs now refuse a write naming another tenant. Verified against a real PostgreSQL. (D-01)
 - **Tenant administrators were locked out of API keys, webhooks, storage settings and tenant backup.** The role level was never loaded and never seeded. (V-01)

@@ -144,12 +144,33 @@ describe("tenantLifecycle Controller", () => {
   describe("offboardTenant", () => {
     it("should offboard a tenant", async () => {
       req.params = { tenantId: TENANT_ID };
+      req.ip = "10.0.0.7";
+      req.headers = { "user-agent": "ops-console" };
       tenantLifecycleService.offboardTenant.mockResolvedValue({ id: TENANT_ID, status: "OFFBOARDED" });
 
       await tenantLifecycleController.offboardTenant(req, res, next);
 
-      expect(tenantLifecycleService.offboardTenant).toHaveBeenCalledWith(TENANT_ID, false);
+      // The operator is passed through as the audit actor (W-04).
+      expect(tenantLifecycleService.offboardTenant).toHaveBeenCalledWith(TENANT_ID, false, {
+        userId: "user-1",
+        ipAddress: "10.0.0.7",
+        userAgent: "ops-console",
+      });
       expect(success).toHaveBeenCalled();
+    });
+
+    it("passes a null actor when the request carries no user", async () => {
+      req.params = { tenantId: TENANT_ID };
+      req.user = undefined;
+      tenantLifecycleService.offboardTenant.mockResolvedValue({ id: TENANT_ID });
+
+      await tenantLifecycleController.offboardTenant(req, res, next);
+
+      expect(tenantLifecycleService.offboardTenant).toHaveBeenCalledWith(
+        TENANT_ID,
+        false,
+        expect.objectContaining({ userId: null }),
+      );
     });
   });
 

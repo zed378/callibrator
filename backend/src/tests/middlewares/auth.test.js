@@ -24,6 +24,11 @@ jest.mock("../../services/apiKey.service", () => ({
   verifyApiKey: jest.fn(),
 }));
 
+jest.mock("../../services/session.service", () => ({
+  isSessionLive: jest.fn(),
+  runWithSession: jest.fn((sessionId, fn) => fn()),
+}));
+
 jest.mock("../../constants", () => ({
   ROLE_NAMES: { SUPER_ADMIN: "SUPER_ADMIN" },
 }));
@@ -140,6 +145,47 @@ describe("auth middleware", () => {
       await auth(req, res, next);
 
       expect(forbidden).toHaveBeenCalled();
+    });
+
+    it("A-48: rejects a token whose session is no longer live, before loading the user", async () => {
+      const sessionService = require("../../services/session.service");
+      req.headers.authorization = "Bearer revoked-session-token";
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
+      sessionService.isSessionLive.mockResolvedValue(false);
+
+      await auth(req, res, next);
+
+      expect(sessionService.isSessionLive).toHaveBeenCalledWith("sess-1", "user-123");
+      expect(unauthorized).toHaveBeenCalledWith(
+        res,
+        "Session has been revoked or has expired",
+      );
+      expect(authService.getAuthUserWithTenant).not.toHaveBeenCalled();
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it("A-48: admits a live session and carries its id on req and in the request context", async () => {
+      const sessionService = require("../../services/session.service");
+      req.headers.authorization = "Bearer live-session-token";
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
+      sessionService.isSessionLive.mockResolvedValue(true);
+      authService.getAuthUserWithTenant.mockResolvedValue({
+        id: "user-123",
+        tenantId: "tenant-123",
+        isActive: true,
+        status: "ACTIVE",
+        role: { name: "TENANT_ADMIN" },
+        tenant: { id: "tenant-123", status: "active" },
+      });
+
+      await auth(req, res, next);
+
+      expect(req.sessionId).toBe("sess-1");
+      expect(sessionService.runWithSession).toHaveBeenCalledWith(
+        "sess-1",
+        expect.any(Function),
+      );
+      expect(next).toHaveBeenCalled();
     });
 
     it("should attach user to request on success", async () => {
@@ -592,6 +638,20 @@ describe("auth middleware", () => {
       await optionalAuth(req, res, next);
 
       expect(req.user).toBeDefined();
+    });
+
+    it("A-48: treats a token whose session is revoked as no token", async () => {
+      const sessionService = require("../../services/session.service");
+      req.headers.authorization = "Bearer revoked-session-token";
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
+      sessionService.isSessionLive.mockResolvedValue(false);
+
+      await optionalAuth(req, res, next);
+
+      expect(sessionService.isSessionLive).toHaveBeenCalledWith("sess-1", "user-123");
+      expect(authService.getAuthUserWithTenant).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalled();
+      expect(req.user).toBeNull();
     });
 
     it("should continue without user when token is invalid", async () => {

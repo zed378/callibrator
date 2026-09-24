@@ -9,6 +9,15 @@ jest.mock("sequelize", () => ({
   },
 }));
 
+// A-41: mutations run in a managed transaction and audit through logAction.
+// In-transaction effects are asserted in calibrationRecords.audit.a41.test.js.
+jest.mock("../../config", () => ({
+  db: { transaction: jest.fn(async (cb) => cb("TX")) },
+}));
+jest.mock("../../services/audit.service", () => ({
+  logAction: jest.fn().mockResolvedValue({}),
+}));
+
 jest.mock("../../models", () => ({
   CalibrationRecord: {
     findAndCountAll: jest.fn(),
@@ -246,6 +255,7 @@ describe("calibrationRecords.service", () => {
         expect.objectContaining({
           nextCalibrationDate: expect.any(Date),
         }),
+        { transaction: "TX" },
       );
     });
 
@@ -309,7 +319,7 @@ describe("calibrationRecords.service", () => {
 
       expect(result.success).toBe(true);
       expect(result.status).toBe(200);
-      expect(mockRecord.update).toHaveBeenCalledWith({ notes: "some notes" });
+      expect(mockRecord.update).toHaveBeenCalledWith({ notes: "some notes" }, { transaction: "TX" });
     });
 
     it("should handle error during update", async () => {

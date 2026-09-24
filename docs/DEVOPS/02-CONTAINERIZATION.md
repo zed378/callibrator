@@ -12,34 +12,39 @@ A single executable plus a reverse proxy is far easier to get through a hospital
 
 ## Backend Image
 
+Built from the **repository root** — `docker build -f backend/Dockerfile .` — because the only committed lockfile is the root `package-lock.json` (ADR-044). The context is filtered by `backend/Dockerfile.dockerignore`, an allow-list. Abridged from `backend/Dockerfile`, which is the source of truth:
+
 ```dockerfile
 # ── builder ──────────────────────────────────
 FROM node:24-alpine AS builder
 WORKDIR /app
-COPY package*.json ./
+COPY package.json package-lock.json ./
+COPY backend/package.json backend/package.json
+COPY frontend/package.json frontend/package.json
 ENV PUPPETEER_SKIP_DOWNLOAD=true
-RUN npm install
-COPY . .
+RUN npm ci --workspace backend --no-audit --no-fund
+COPY backend/ backend/
+WORKDIR /app/backend
 RUN npm run swagger:generate
-RUN npx @yao-pkg/pkg . --targets node24-linux-x64 --output /app/backend
+RUN npx --no-install pkg . --targets node24-linux-x64 --output /out/backend
 
 # ── runtime ──────────────────────────────────
 FROM debian:bookworm-slim
 WORKDIR /app
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 RUN set -eux; \
     sed -i 's|http://|https://|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || true; \
-    apt-get -o Acquire::https::Verify-Peer=false update; \
-    apt-get -o Acquire::https::Verify-Peer=false install -y --no-install-recommends ca-certificates; \
     apt-get update; \
-    apt-get install -y --no-install-recommends openssl chromium fonts-liberation; \
+    apt-get install -y --no-install-recommends ca-certificates openssl chromium fonts-liberation wget; \
     rm -rf /var/lib/apt/lists/*
-RUN useradd -r -s /usr/sbin/nologin app
+RUN useradd -r -u 997 -s /usr/sbin/nologin app
 RUN mkdir -p /app/backup/tenant-backups /app/log /app/uploads/profile /app/uploads/tenant && \
     chown -R app:app /app/backup /app/log /app/uploads
-COPY --from=builder /app/backend ./backend
-COPY --from=builder /app/swagger.json ./swagger.json
-COPY --from=builder /app/src/templates ./src/templates
-COPY --from=builder /app/docs ./docs
+COPY --from=builder /out/backend ./backend
+COPY --from=builder /app/backend/swagger.json ./swagger.json
+COPY --from=builder /app/backend/src/templates ./src/templates
+COPY --from=builder /app/backend/docs ./docs
+COPY --from=builder /app/backend/public ./public
 ENV NODE_ENV=production APP_STORAGE_PATH=/app \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 RUN chmod +x ./backend && chown app:app ./backend
@@ -54,9 +59,11 @@ CMD ["./backend"]
 
 **2. `PUPPETEER_SKIP_DOWNLOAD=true` at build.** The packager cannot embed a browser. The runtime uses system Chromium via `PUPPETEER_EXECUTABLE_PATH`.
 
-**3. The apt HTTPS dance.** Plain HTTP to the Debian mirrors is blocked in the deployment subnet, and `bookworm-slim` ships no CA bundle yet. So: point apt at HTTPS, bootstrap `ca-certificates` with peer verification disabled **for that one step**, then install everything else with verification back on.
+**3. The CA bundle comes from the builder stage.** Plain HTTP to the Debian mirrors is blocked in the deployment subnet, and `bookworm-slim` ships no CA bundle, so apt over HTTPS cannot verify the mirror. The bundle is copied from `node:24-alpine` (which arrived over the registry's verified TLS) to the path apt reads by default, so **every** apt request is verified; Debian's `ca-certificates` package then regenerates it.
 
-Ugly, deliberate, and documented so nobody "cleans it up".
+This replaced bootstrapping `ca-certificates` with `Verify-Peer=false` (S-13), which let anything on the build network serve the trust store everything afterwards verified against.
+
+**3a. `npm ci` against the root lockfile.** Dependencies install **hoisted** to `/app/node_modules` — the same tree the tests run against. `pkg.assets` in `backend/package.json` therefore also names `../node_modules/swagger-ui-dist/**/*`; without it the Swagger UI's static files are not embedded. `uploads/**/*` was removed from `pkg.assets`: it embedded whatever developer uploads were on disk into the binary.
 
 **4. Runtime assets are copied explicitly.** `swagger.json`, `src/templates` and `docs/` are read from disk **next to the binary** via `appPath()`, not from the embedded snapshot.
 
@@ -126,14 +133,16 @@ Anything genuinely runtime-configurable must come from the API.
 
 A `.dockerignore` sitting next to a Dockerfile in a subdirectory is **silently ignored**, and the symptom — a slow build, or `node_modules` leaking into the image — points nowhere near the cause.
 
+The one exception is **`<Dockerfile>.dockerignore`**: BuildKit (every `docker build` and `docker compose build` today) reads `backend/Dockerfile.dockerignore` for a build using `backend/Dockerfile`, whatever the context. That is how the backend image — whose context is the repository root — is filtered. `backend/.dockerignore` is **not** consulted by that build.
+
 ## Health Checks
 
 | Image | Check | Proves |
 |---|---|---|
-| Backend | `GET /health` | 200 with `database: "connected"`; **503** when the database is unreachable |
+| Backend | `GET /health` | 200 `{"status":"ok"}`; **503** `{"status":"unavailable"}` when PostgreSQL, Redis or RabbitMQ is unreachable |
 | Frontend | `wget --spider :3000` | the server is serving |
 
-`/health` calls `db.authenticate()`, so it is a genuine **readiness** probe. Using it as a liveness probe would restart a healthy process during a database blip ([`09-KUBERNETES.md`](./09-KUBERNETES.md)).
+`/health` probes the required datastores, so it is a genuine **readiness** probe (the dependency-free liveness probe is `/live`). Using it as a liveness probe would restart a healthy process during a database blip ([`09-KUBERNETES.md`](./09-KUBERNETES.md)).
 
 A frontend that is healthy while the API is down is correct: it renders error states, which is the right behaviour.
 

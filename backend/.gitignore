@@ -1,8 +1,13 @@
 # Dependencies
 node_modules/
 
-# Environment
+# Environment — every env filename, not just .env (S-25). The committed
+# templates (.env.example, and the legacy local.env) are already tracked, so
+# these patterns do not untrack them; they stop a NEW env file being added.
 .env
+.env.*
+!.env.example
+*.env
 
 # Build
 dist/

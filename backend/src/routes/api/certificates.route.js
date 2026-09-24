@@ -6,6 +6,8 @@ const { dynamicAccess } = require("../../middlewares/dynamicAccess.middleware");
 const { validateUuid } = require("../../middlewares/validateUuid.middleware");
 const certificateController = require("../../controllers/certificate.controller");
 const certificatePdfController = require("../../controllers/certificatePdf.controller");
+const { validate } = require("../../middlewares/validation.middleware");
+const { approveCertificateSchema } = require("../../validators/certificate.validator");
 
 /* ------------------------------------------------------------------ */
 /* CERTIFICATE ROUTES                                                 */
@@ -380,6 +382,10 @@ router.post(
   auth,
   validateUuid("certificateId"),
   dynamicAccess("certificate", "approve"),
+  // A-62: strips a body `approvedBy` before the controller sees it. The schema
+  // is body-only — the certificateId path param is validated separately
+  // (validateUuid here, certificateIdSchema in the controller).
+  validate(approveCertificateSchema),
   certificateController.approveCertificate,
 );
 

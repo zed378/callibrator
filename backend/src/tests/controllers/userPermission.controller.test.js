@@ -40,6 +40,8 @@ describe("userPermission Controller", () => {
       params: {},
       body: {},
       user: { id: "user-1", tenantId: "tenant-1" },
+      ip: "10.0.0.9",
+      headers: { "user-agent": "jest-agent" },
     };
     res = {
       status: jest.fn().mockReturnThis(),
@@ -99,6 +101,8 @@ describe("userPermission Controller", () => {
         "read",
         "user-1",
         "test",
+        // A-41: the actor, for the audit row written in the service transaction.
+        { userId: "user-1", tenantId: "tenant-1", ipAddress: "10.0.0.9", userAgent: "jest-agent" },
       );
       expect(success).toHaveBeenCalled();
     });
@@ -146,6 +150,7 @@ describe("userPermission Controller", () => {
         "read",
         null,
         null,
+        { userId: null, tenantId: null, ipAddress: "10.0.0.9", userAgent: "jest-agent" },
       );
     });
   });
@@ -165,6 +170,7 @@ describe("userPermission Controller", () => {
       expect(userPermissionService.removeUserPermission).toHaveBeenCalledWith(
         USER_ID,
         MENU_GROUP_ID,
+        { userId: "user-1", tenantId: "tenant-1", ipAddress: "10.0.0.9", userAgent: "jest-agent" },
       );
       expect(success).toHaveBeenCalled();
     });

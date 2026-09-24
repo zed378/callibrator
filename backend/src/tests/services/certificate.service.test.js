@@ -10,7 +10,15 @@ const mockStatus = {
   REVOKED: "revoked",
 };
 
-jest.mock("../../config");
+// A-41: mutations run in a managed transaction and audit through logAction.
+// The callback executes with a sentinel transaction; the in-transaction effects
+// themselves are asserted in certificate.audit.a41.test.js against a ledger.
+jest.mock("../../config", () => ({
+  db: { transaction: jest.fn(async (cb) => cb("TX")) },
+}));
+jest.mock("../../services/audit.service", () => ({
+  logAction: jest.fn().mockResolvedValue({}),
+}));
 
 jest.mock("sequelize", () => {
   const mockSequelize = jest.fn();
@@ -350,6 +358,7 @@ describe("certificate.service", () => {
           summary: "New summary",
           updatedBy: "user-2",
         }),
+        { transaction: "TX" },
       );
     });
 
@@ -364,10 +373,10 @@ describe("certificate.service", () => {
 
       await updateCertificate("tenant-1", "cert-1", { summary: "New summary" });
 
-      expect(mockCert.update).toHaveBeenCalledWith({
-        summary: "New summary",
-        updatedBy: null,
-      });
+      expect(mockCert.update).toHaveBeenCalledWith(
+        { summary: "New summary", updatedBy: null },
+        { transaction: "TX" },
+      );
     });
 
     it("should return 400 for a revoked certificate", async () => {
@@ -547,6 +556,7 @@ describe("certificate.service", () => {
           authMethod: "password",
           documentHash: expect.any(String),
         }),
+        { transaction: "TX" },
       );
     });
 
@@ -631,7 +641,7 @@ describe("certificate.service", () => {
 
       expect(result.success).toBe(true);
       expect(result.status).toBe(200);
-      expect(mockCert.sign).toHaveBeenCalledWith("sig", "k1");
+      expect(mockCert.sign).toHaveBeenCalledWith("sig", "k1", { transaction: "TX" });
       expect(mockCert.signedBy).toBe("user-2");
     });
 
@@ -666,7 +676,7 @@ describe("certificate.service", () => {
 
       expect(result.success).toBe(true);
       expect(result.status).toBe(200);
-      expect(mockCert.revoke).toHaveBeenCalledWith("reason");
+      expect(mockCert.revoke).toHaveBeenCalledWith("reason", { transaction: "TX" });
     });
 
     it("should handle error during revocation", async () => {
@@ -808,7 +818,7 @@ describe("certificate.service", () => {
         documentHash: expect.stringMatching(/^[0-9a-f]{64}$/),
         ipAddress: "10.0.0.1",
         userAgent: "jest",
-      });
+      }, { transaction: "TX" });
     });
 
     it("rejects with 401 when the MFA code is invalid", async () => {
@@ -853,6 +863,7 @@ describe("certificate.service", () => {
 
       expect(ESignatureRecord.create).toHaveBeenCalledWith(
         expect.objectContaining({ ipAddress: "unknown", userAgent: "unknown" }),
+        { transaction: "TX" },
       );
     });
 
@@ -873,6 +884,7 @@ describe("certificate.service", () => {
 
       expect(ESignatureRecord.create).toHaveBeenCalledWith(
         expect.objectContaining({ action: "sign", meaning: "Signed by approver" }),
+        { transaction: "TX" },
       );
     });
 
@@ -892,6 +904,7 @@ describe("certificate.service", () => {
 
       expect(ESignatureRecord.create).toHaveBeenCalledWith(
         expect.objectContaining({ action: "revoke", meaning: "Revoked" }),
+        { transaction: "TX" },
       );
     });
 

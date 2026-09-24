@@ -203,8 +203,9 @@ describe("A-04 — search returns only the types the caller may read", () => {
   });
 
   it("returns no rows when the permission store itself fails", async () => {
-    // dynamicAccess answers 500 on a matrix lookup failure; a failed check
-    // must deny, never fall through to "allowed".
+    // dynamicAccess hands a matrix lookup failure to next(err) (A-13); the
+    // search probe must read that as a denial, never fall through to
+    // "allowed". This case is the guard that caught the fail-open.
     RolesService.getRolePermissionsMatrix.mockRejectedValue(
       new Error("permission store down"),
     );

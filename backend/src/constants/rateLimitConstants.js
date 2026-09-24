@@ -42,6 +42,16 @@ const AUTH_ENDPOINTS = {
     lockoutMs: WINDOW.FIVE_MIN,
     description: "Reset password with OTP",
   },
+  // A-60: the SSO hand-off code exchange. The code is 256 random bits, so this
+  // is not what stops guessing — it stops a client hammering the endpoint. No
+  // user id is known before a code redeems, so only the per-IP counter applies,
+  // and it locks at maxAttempts * 3 failures (rateLimiter.redis.service.js).
+  ssoExchange: {
+    maxAttempts: 10,
+    windowMs: WINDOW.FIVE_MIN,
+    lockoutMs: WINDOW.FIVE_MIN,
+    description: "SSO hand-off code exchange",
+  },
 };
 
 /**

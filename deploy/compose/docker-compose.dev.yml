@@ -9,8 +9,10 @@
 services:
   backend:
     build:
-      context: ../../backend
-      dockerfile: Dockerfile
+      # Context is the REPOSITORY ROOT so the build can `npm ci` against the
+      # committed root package-lock.json (ADR-044, S-13). See backend/Dockerfile.
+      context: ../..
+      dockerfile: backend/Dockerfile
     environment:
       NODE_ENV: development
       # No broker needed locally — jobs run in-process.

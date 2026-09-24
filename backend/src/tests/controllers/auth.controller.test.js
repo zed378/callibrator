@@ -29,9 +29,11 @@ jest.mock("../../services/mfa.service", () => ({
   verifyAndEnable: jest.fn(),
 }));
 
-// Mock JWT utils for loginMfa
+// Mock JWT utils for loginMfa and socketToken
 jest.mock("../../utils/jwt.util", () => ({
   verifyAccessToken: jest.fn(),
+  verifyPurposeToken: jest.fn(),
+  generatePurposeToken: jest.fn(() => "socket-purpose-token"),
 }));
 
 // Mock response helper FIRST
@@ -400,28 +402,41 @@ describe("authController", () => {
   });
 
   describe("socketToken", () => {
-    it("should return socket JWT token successfully", async () => {
+    const { generatePurposeToken } = require("../../utils/jwt.util");
+
+    it("should return a socket purpose token bound to the caller's session", async () => {
       req.user = { id: "user-1" };
-      process.env.JWT_ACCESS_SECRET = "test-secret-key-for-jwt-signing";
+      req.sessionId = "sess-1";
 
       await authController.socketToken(req, res);
 
       expect(success).toHaveBeenCalled();
       const callArgs = success.mock.calls[0];
-      expect(callArgs[1]).toHaveProperty("token");
-      expect(callArgs[1]).toHaveProperty("expiresIn", 300);
+      expect(callArgs[1]).toEqual({
+        token: "socket-purpose-token",
+        expiresIn: 300,
+      });
+      // A-52 / A-59: typ "socket", never an access token.
+      expect(generatePurposeToken).toHaveBeenCalledWith(
+        { id: "user-1", sid: "sess-1" },
+        "socket",
+        { expiresIn: 300 },
+      );
     });
 
-    it("should return socket JWT token without sessionId", async () => {
+    it("should return a socket purpose token without a sid when the access token named no session", async () => {
       req.user = { id: "user-2" };
-      process.env.JWT_ACCESS_SECRET = "test-secret-key-for-jwt-signing";
 
       await authController.socketToken(req, res);
 
-      expect(success).toHaveBeenCalled();
       const callArgs = success.mock.calls[0];
-      expect(callArgs[1].token).toBeDefined();
+      expect(callArgs[1].token).toBe("socket-purpose-token");
       expect(callArgs[1].expiresIn).toBe(300);
+      expect(generatePurposeToken).toHaveBeenCalledWith(
+        { id: "user-2", sid: undefined },
+        "socket",
+        { expiresIn: 300 },
+      );
     });
   });
 
@@ -484,11 +499,11 @@ describe("authController", () => {
   });
 
   describe("loginMfa", () => {
-    const { verifyAccessToken } = require("../../utils/jwt.util");
+    const { verifyPurposeToken } = require("../../utils/jwt.util");
 
     it("should complete the MFA login and issue a session", async () => {
       req.body = { code: "123456", token: "temp-mfa-token" };
-      verifyAccessToken.mockReturnValue({ id: "user-1", mfaRequired: true });
+      verifyPurposeToken.mockReturnValue({ id: "user-1", mfaRequired: true });
       authService.loginMfa.mockResolvedValue({
         data: { id: "user-1" },
         token: "jwt",
@@ -497,7 +512,8 @@ describe("authController", () => {
 
       await authController.loginMfa(req, res);
 
-      expect(verifyAccessToken).toHaveBeenCalledWith("temp-mfa-token");
+      // A-59: only an "mfa" purpose token is accepted here.
+      expect(verifyPurposeToken).toHaveBeenCalledWith("temp-mfa-token", "mfa");
       expect(authService.loginMfa).toHaveBeenCalledWith(
         "user-1",
         "123456",
@@ -539,7 +555,7 @@ describe("authController", () => {
 
     it("should return 401 for an unverifiable temporary token", async () => {
       req.body = { code: "123456", token: "bad" };
-      verifyAccessToken.mockImplementation(() => {
+      verifyPurposeToken.mockImplementation(() => {
         throw new Error("jwt malformed");
       });
 
@@ -556,7 +572,7 @@ describe("authController", () => {
     it("should return 401 when the token is not an MFA-stage token", async () => {
       req.body = { code: "123456", token: "full-token" };
       // A normal access token has no mfaRequired flag.
-      verifyAccessToken.mockReturnValue({ id: "user-1" });
+      verifyPurposeToken.mockReturnValue({ id: "user-1" });
 
       await authController.loginMfa(req, res);
 
@@ -566,7 +582,7 @@ describe("authController", () => {
 
     it("should return 401 when the token carries no user id", async () => {
       req.body = { code: "123456", token: "t" };
-      verifyAccessToken.mockReturnValue({ mfaRequired: true });
+      verifyPurposeToken.mockReturnValue({ mfaRequired: true });
 
       await authController.loginMfa(req, res);
 
@@ -575,7 +591,7 @@ describe("authController", () => {
 
     it("should map an invalid MFA code to 401", async () => {
       req.body = { code: "000000", token: "temp-mfa-token" };
-      verifyAccessToken.mockReturnValue({ id: "user-1", mfaRequired: true });
+      verifyPurposeToken.mockReturnValue({ id: "user-1", mfaRequired: true });
       authService.loginMfa.mockRejectedValue(new Error("Invalid MFA code"));
 
       await authController.loginMfa(req, res);

@@ -4,6 +4,9 @@
 const calibrationRecordsService = require("../services/calibrationRecords.service");
 const { asyncHandler } = require("../utils/controllerWrapper.util");
 const { success } = require("../utils/response.util");
+// Who did it, from where — for the audit row the service writes inside its
+// transaction (A-41).
+const { auditActor } = require("../utils/auditActor.util");
 const {
   getCalibrationRecordsQuery,
   calibrationRecordIdSchema,
@@ -71,6 +74,7 @@ exports.createCalibrationRecord = asyncHandler(async (req, res) => {
     tenantId,
     userId,
     validated,
+    auditActor(req),
   );
 
   success(res, result.data, null, result.message, result.status);
@@ -87,6 +91,7 @@ exports.updateCalibrationRecord = asyncHandler(async (req, res) => {
     tenantId,
     calibrationRecordId,
     validated,
+    auditActor(req),
   );
 
   success(res, result.data, null, result.message, result.status);
@@ -101,6 +106,7 @@ exports.deleteCalibrationRecord = asyncHandler(async (req, res) => {
   const result = await calibrationRecordsService.deleteCalibrationRecord(
     tenantId,
     calibrationRecordId,
+    auditActor(req),
   );
 
   success(res, result.data, null, result.message, result.status);

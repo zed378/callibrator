@@ -12,6 +12,42 @@ const { Op } = require("sequelize");
  */
 const { get, set, del, delPattern, cacheKeys } = require("./redis.service");
 const { ROLE_LEVELS } = require("../constants");
+const auditService = require("./audit.service");
+const { db } = require("../config");
+
+/**
+ * A-41 — a role or grant change decides who may do what, so each one writes
+ * its audit row inside the SAME transaction as the change
+ * (MEMORY/specs/A-41-audit-inside-transaction.md, rows 16-22). A failed audit
+ * insert is re-thrown by logAction and rolls the change back.
+ *
+ * BR-A41-4 — roles are global, but audit_logs.tenantId is NOT NULL: a change to
+ * a role is recorded under the ACTOR's tenant; a change to a user's role under
+ * that USER's tenant, falling back to the actor's. If neither resolves the
+ * insert fails and the change is refused (fail-closed).
+ *
+ * Cache invalidation runs after the commit, never inside the transaction:
+ * invalidating before the commit lets a concurrent request re-cache the old
+ * matrix for the full TTL.
+ *
+ * @param {object} transaction
+ * @param {object} actor - { userId, tenantId, ipAddress, userAgent }
+ * @param {object} row - { tenantId?, action, resourceType, resourceId, changes }
+ */
+const auditAccessChange = (transaction, actor, { tenantId, action, resourceType, resourceId, changes }) =>
+  auditService.logAction(
+    {
+      tenantId: tenantId || actor.tenantId,
+      userId: actor.userId,
+      action,
+      resourceType,
+      resourceId,
+      changes,
+      ipAddress: actor.ipAddress,
+      userAgent: actor.userAgent,
+    },
+    { transaction },
+  );
 
 /**
  * The highest level a tenant-created role may hold (ADR-043).
@@ -38,20 +74,36 @@ class RolesService {
    * @param {string} [input.description] - description
    * @param {boolean} [input.is_system] - system role flag
    * @param {number} [input.roleLevel] - requested privilege level (1–8)
+   * @param {object} [actor] - who, from where (A-41)
    * @returns {Promise<object>} the created role
    */
-  static async createRole({ name, description, is_system = false, roleLevel }) {
+  static async createRole({ name, description, is_system = false, roleLevel }, actor = {}) {
     const requested = Number.isInteger(roleLevel) ? roleLevel : 1;
     const level = Math.min(Math.max(requested, 1), MAX_TENANT_ROLE_LEVEL);
 
-    const role = await Role.create({
-      name: name.trim(),
-      description: description?.trim(),
-      is_system,
-      roleLevel: level,
-      status: "active",
+    return db.transaction(async (transaction) => {
+      const role = await Role.create(
+        {
+          name: name.trim(),
+          description: description?.trim(),
+          is_system,
+          roleLevel: level,
+          status: "active",
+        },
+        { transaction },
+      );
+      await auditAccessChange(transaction, actor, {
+        action: "CREATE",
+        resourceType: "Role",
+        resourceId: role.id,
+        changes: {
+          operation: "CREATE_ROLE",
+          before: {},
+          after: { name: role.name, roleLevel: level, is_system, status: "active" },
+        },
+      });
+      return role;
     });
-    return role;
   }
 
   /**
@@ -130,7 +182,7 @@ class RolesService {
   /**
    * Update role
    */
-  static async updateRole(id, { name, description, status }) {
+  static async updateRole(id, { name, description, status }, actor = {}) {
     const role = await Role.findByPk(id);
     if (!role) {
       const error = new Error("Role not found");
@@ -149,7 +201,16 @@ class RolesService {
     if (description !== undefined) {updates.description = description?.trim();}
     if (status !== undefined) {updates.status = status;}
 
-    await role.update(updates);
+    const before = Object.fromEntries(Object.keys(updates).map((key) => [key, role[key]]));
+    await db.transaction(async (transaction) => {
+      await role.update(updates, { transaction });
+      await auditAccessChange(transaction, actor, {
+        action: "UPDATE",
+        resourceType: "Role",
+        resourceId: id,
+        changes: { operation: "UPDATE_ROLE", before, after: updates },
+      });
+    });
 
     // A status change decides whether the role grants anything at all
     // (getRolePermissionsMatrix returns {} for a non-active role), so the
@@ -164,7 +225,7 @@ class RolesService {
   /**
    * Delete role (or deactivate if system role)
    */
-  static async deleteRole(id) {
+  static async deleteRole(id, actor = {}) {
     const role = await Role.findByPk(id);
     if (!role) {
       const error = new Error("Role not found");
@@ -178,13 +239,40 @@ class RolesService {
     // of the 3600 s TTL, on every replica (W-11).
     if (role.is_system) {
       // Deactivate instead of delete for system roles
-      await role.update({ status: "inactive" });
-      await RoleMenuPermission.destroy({ where: { roleId: id } });
+      await db.transaction(async (transaction) => {
+        await role.update({ status: "inactive" }, { transaction });
+        const revokedGrants = await RoleMenuPermission.destroy({
+          where: { roleId: id },
+          transaction,
+        });
+        await auditAccessChange(transaction, actor, {
+          action: "DELETE",
+          resourceType: "Role",
+          resourceId: id,
+          changes: {
+            operation: "DEACTIVATE_SYSTEM_ROLE",
+            before: { name: role.name, status: "active" },
+            after: { status: "inactive", revokedGrants },
+          },
+        });
+      });
       await del(cacheKeys.permissions(id));
       return { message: "System role deactivated" };
     }
 
-    await role.destroy();
+    await db.transaction(async (transaction) => {
+      await role.destroy({ transaction });
+      await auditAccessChange(transaction, actor, {
+        action: "DELETE",
+        resourceType: "Role",
+        resourceId: id,
+        changes: {
+          operation: "DELETE_ROLE",
+          before: { name: role.name, status: role.status },
+          after: { deleted: true },
+        },
+      });
+    });
     await del(cacheKeys.permissions(id));
     return { message: "Role deleted successfully" };
   }
@@ -195,7 +283,7 @@ class RolesService {
    * @param {string} menuGroupId - Menu Group ID
    * @param {string} permissionType - "read" or "write"
    */
-  static async assignMenuToRole(roleId, menuGroupId, permissionType = "read") {
+  static async assignMenuToRole(roleId, menuGroupId, permissionType = "read", actor = {}) {
     const role = await Role.findByPk(roleId);
     if (!role) {
       const error = new Error("Role not found");
@@ -210,16 +298,33 @@ class RolesService {
       throw error;
     }
 
-    const [permission, created] = await RoleMenuPermission.findOrCreate({
-      where: { roleId: roleId, menuGroupId: menuGroupId },
-      defaults: { permissionType: permissionType },
+    const permission = await db.transaction(async (transaction) => {
+      const [grant, created] = await RoleMenuPermission.findOrCreate({
+        where: { roleId: roleId, menuGroupId: menuGroupId },
+        defaults: { permissionType: permissionType },
+        transaction,
+      });
+      const previous = created ? null : grant.permissionType;
+
+      if (!created) {
+        await grant.update({ permissionType: permissionType }, { transaction });
+      }
+
+      await auditAccessChange(transaction, actor, {
+        action: "UPDATE",
+        resourceType: "Role",
+        resourceId: roleId,
+        changes: {
+          operation: "GRANT_MENU",
+          menuGroupId,
+          before: { permissionType: previous },
+          after: { permissionType },
+        },
+      });
+      return grant;
     });
 
-    if (!created) {
-      await permission.update({ permissionType: permissionType });
-    }
-
-    // Invalidate role permissions cache
+    // Invalidate role permissions cache (after the commit)
     await del(cacheKeys.permissions(roleId));
 
     return permission;
@@ -228,11 +333,28 @@ class RolesService {
   /**
    * Remove menu permission from role
    */
-  static async removeMenuFromRole(roleId, menuGroupId) {
-    await RoleMenuPermission.destroy({
-      where: { roleId: roleId, menuGroupId: menuGroupId },
+  static async removeMenuFromRole(roleId, menuGroupId, actor = {}) {
+    await db.transaction(async (transaction) => {
+      const removed = await RoleMenuPermission.destroy({
+        where: { roleId: roleId, menuGroupId: menuGroupId },
+        transaction,
+      });
+      // Nothing removed, nothing changed — and nothing to attribute.
+      if (removed > 0) {
+        await auditAccessChange(transaction, actor, {
+          action: "UPDATE",
+          resourceType: "Role",
+          resourceId: roleId,
+          changes: {
+            operation: "REVOKE_MENU",
+            menuGroupId,
+            before: { granted: true },
+            after: { granted: false },
+          },
+        });
+      }
     });
-    // Invalidate role permissions cache
+    // Invalidate role permissions cache (after the commit)
     await del(cacheKeys.permissions(roleId));
     return { message: "Menu permission removed" };
   }
@@ -457,7 +579,7 @@ class RolesService {
   /**
    * Assign role to user
    */
-  static async assignRoleToUser(userId, roleId) {
+  static async assignRoleToUser(userId, roleId, actor = {}) {
     const user = await User.findByPk(userId);
     if (!user) {
       const error = new Error("User not found");
@@ -478,8 +600,22 @@ class RolesService {
       throw error;
     }
 
-    user.role_id = roleId;
-    await user.save();
+    const previousRoleId = user.role_id;
+    await db.transaction(async (transaction) => {
+      user.role_id = roleId;
+      await user.save({ transaction });
+      await auditAccessChange(transaction, actor, {
+        tenantId: user.tenantId,
+        action: "UPDATE",
+        resourceType: "User",
+        resourceId: userId,
+        changes: {
+          operation: "ASSIGN_ROLE",
+          before: { roleId: previousRoleId },
+          after: { roleId },
+        },
+      });
+    });
 
     return user;
   }
@@ -487,7 +623,7 @@ class RolesService {
   /**
    * Remove role from user
    */
-  static async removeRoleFromUser(userId) {
+  static async removeRoleFromUser(userId, actor = {}) {
     const user = await User.findByPk(userId);
     if (!user) {
       const error = new Error("User not found");
@@ -495,8 +631,22 @@ class RolesService {
       throw error;
     }
 
-    user.role_id = null;
-    await user.save();
+    const previousRoleId = user.role_id;
+    await db.transaction(async (transaction) => {
+      user.role_id = null;
+      await user.save({ transaction });
+      await auditAccessChange(transaction, actor, {
+        tenantId: user.tenantId,
+        action: "UPDATE",
+        resourceType: "User",
+        resourceId: userId,
+        changes: {
+          operation: "REMOVE_ROLE",
+          before: { roleId: previousRoleId },
+          after: { roleId: null },
+        },
+      });
+    });
 
     return { message: "Role removed from user" };
   }

@@ -58,6 +58,8 @@ describe("A-02 — webhook routes are tenant-admin only", () => {
     ["/:id", "delete"],
     ["/:id/deliveries", "get"],
     ["/:id/test", "post"],
+    // A-51: rotation issues a new signing secret — same gate as the rest.
+    ["/:id/rotate-secret", "post"],
   ];
 
   it.each(routes)("%s %s carries auth, denyApiKey and a TENANT_ADMIN gate", (path, method) => {

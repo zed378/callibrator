@@ -55,9 +55,10 @@ It deletes `deploy/compose/volumes` — the database, uploads, backups, and Redi
 
 | Target | Does |
 |---|---|
-| `make migrate` | runs pending migrations, then tells you to verify |
-| `make migrate-status` | pending list |
-| `make migrate-undo` | rolls back the last |
+| `make migrate` | restarts the backend, which applies pending migrations **at boot** (the compiled binary has no migration CLI), waits for healthy, then tells you to verify |
+| `make migrate-host` | **host**, from a source checkout: applies pending migrations to the database in `backend/.env` — not necessarily the compose stack's |
+| `make migrate-status` | **host**: pending list for `backend/.env`'s database |
+| `make migrate-undo` | **host**: rolls back the last migration on `backend/.env`'s database |
 | **`make migrate-verify`** | **queries `information_schema` for the real column counts** |
 | `make seed-demo` | demo data — **refuses outside `ENV=dev`** |
 | `make backup` | `pg_dump` into `./backups`, then tells you what a dump is not |

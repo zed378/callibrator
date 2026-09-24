@@ -6,6 +6,30 @@ const { CalibrationRecord, CalibrationDevice } = require("../models");
 const { logger } = require("../middlewares/activityLog.middleware");
 const { AppError } = require("../utils/appError.util");
 const { DEFAULT_LIMIT } = require("../constants");
+const auditService = require("./audit.service");
+const { db } = require("../config");
+
+/**
+ * A-41 — a calibration record is an ISO 17025 §7.5 technical record. Every
+ * create/update/delete writes its audit row inside the SAME transaction as the
+ * change (MEMORY/specs/A-41-audit-inside-transaction.md, rows 8-10): a
+ * rollback takes the row with it, and a failed audit insert (re-thrown by
+ * logAction) rolls the change back.
+ */
+const auditRecord = (transaction, tenantId, recordId, action, before, after, actor) =>
+  auditService.logAction(
+    {
+      tenantId,
+      userId: actor.userId,
+      action,
+      resourceType: "CalibrationRecord",
+      resourceId: recordId,
+      changes: { before, after },
+      ipAddress: actor.ipAddress,
+      userAgent: actor.userAgent,
+    },
+    { transaction },
+  );
 
 // ==========================================
 // VALIDATION HELPERS
@@ -158,7 +182,7 @@ exports.fetchSpecificCalibrationRecord = async (
 /**
  * Create a new calibration record
  */
-exports.createCalibrationRecord = async (tenantId, userId, inputData) => {
+exports.createCalibrationRecord = async (tenantId, userId, inputData, actor = {}) => {
   try {
     const validated = validate(
       inputData,
@@ -180,18 +204,31 @@ exports.createCalibrationRecord = async (tenantId, userId, inputData) => {
       };
     }
 
-    const record = await CalibrationRecord.create({
-      ...validated,
-      tenantId,
-      performedBy: userId,
-    });
+    const record = await db.transaction(async (transaction) => {
+      const created = await CalibrationRecord.create(
+        {
+          ...validated,
+          tenantId,
+          performedBy: userId,
+        },
+        { transaction },
+      );
 
-    // Update the device's nextCalibrationDate based on the record
-    if (validated.calibrationDate && device.calibrationIntervalDays) {
-      const nextDate = new Date(validated.calibrationDate);
-      nextDate.setDate(nextDate.getDate() + device.calibrationIntervalDays);
-      await device.update({ nextCalibrationDate: nextDate });
-    }
+      // Update the device's nextCalibrationDate based on the record — in the
+      // same transaction, so the due date never moves for a record that
+      // did not commit.
+      if (validated.calibrationDate && device.calibrationIntervalDays) {
+        const nextDate = new Date(validated.calibrationDate);
+        nextDate.setDate(nextDate.getDate() + device.calibrationIntervalDays);
+        await device.update({ nextCalibrationDate: nextDate }, { transaction });
+      }
+
+      await auditRecord(transaction, tenantId, created.id, "CREATE", {}, validated, {
+        ...actor,
+        userId,
+      });
+      return created;
+    });
 
     return {
       success: true,
@@ -214,6 +251,7 @@ exports.updateCalibrationRecord = async (
   tenantId,
   calibrationRecordId,
   inputData,
+  actor = {},
 ) => {
   try {
     const validated = validate(
@@ -235,7 +273,13 @@ exports.updateCalibrationRecord = async (
       };
     }
 
-    await record.update(validated);
+    const before = Object.fromEntries(
+      Object.keys(validated).map((key) => [key, record[key]]),
+    );
+    await db.transaction(async (transaction) => {
+      await record.update(validated, { transaction });
+      await auditRecord(transaction, tenantId, record.id, "UPDATE", before, validated, actor);
+    });
 
     return {
       success: true,
@@ -254,7 +298,7 @@ exports.updateCalibrationRecord = async (
 /**
  * Soft-delete a calibration record
  */
-exports.deleteCalibrationRecord = async (tenantId, calibrationRecordId) => {
+exports.deleteCalibrationRecord = async (tenantId, calibrationRecordId, actor = {}) => {
   try {
     const record = await CalibrationRecord.findOne({
       where: { id: calibrationRecordId, tenantId },
@@ -269,7 +313,18 @@ exports.deleteCalibrationRecord = async (tenantId, calibrationRecordId) => {
       };
     }
 
-    await record.softDelete();
+    await db.transaction(async (transaction) => {
+      await record.softDelete({ transaction });
+      await auditRecord(
+        transaction,
+        tenantId,
+        record.id,
+        "DELETE",
+        { isDeleted: false },
+        { isDeleted: true },
+        actor,
+      );
+    });
 
     return {
       success: true,

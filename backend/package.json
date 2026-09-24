@@ -13,7 +13,7 @@
     "assets": [
       "src/templates/**/*",
       "node_modules/swagger-ui-dist/**/*",
-      "uploads/**/*",
+      "../node_modules/swagger-ui-dist/**/*",
       "swagger.json",
       "docs"
     ],

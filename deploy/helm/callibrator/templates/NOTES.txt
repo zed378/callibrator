@@ -13,9 +13,11 @@ VERIFY THE DEPLOYMENT
   kubectl -n {{ .Release.Namespace }} rollout status deploy/{{ include "callibrator.fullname" . }}-backend
   kubectl -n {{ .Release.Namespace }} exec deploy/{{ include "callibrator.fullname" . }}-backend -- wget -qO- localhost:3000/health
 
-  /health returns 503 when the database is unreachable — it is a READINESS
-  check, which is why liveness uses / instead. A liveness probe on /health
-  would restart a healthy process during a database blip.
+  /health answers {"status":"ok"}, or 503 {"status":"unavailable"} when
+  PostgreSQL, Redis or RabbitMQ is unreachable — a READINESS verdict that names
+  no dependency (the breakdown is GET /api/v1/health, super admin only). That
+  is why liveness uses the dependency-free /live instead: a liveness probe on
+  /health would restart a healthy process during a datastore blip.
 
 {{ if gt (int .Values.backend.replicaCount) 1 }}
 ────────────────────────────────────────────────────────────────────────────

@@ -24,9 +24,11 @@
 | `settings` | `JSONB` | structured configuration read as a unit |
 | `limitSeats`, `limitStorageMb` | `INTEGER` | hard entitlement, enforced pre-handler |
 | `parentId` | `UUID` | self-reference (migration `0013`) |
+| `suspensionReason`, `suspendedAt`, `suspendedBy` | `TEXT`, `TIMESTAMPTZ`, `UUID` | lifecycle, migration `0023` (W-01). `suspendedBy` has no FK, so the record outlives the user |
+| `gracePeriodExpiresAt`, `offboardedAt`, `offboardRetentionExpiresAt` | `TIMESTAMPTZ` | lifecycle, migration `0023` (W-01) |
 | `isDeleted` | `BOOLEAN` | |
 
-Indexes: `status`, `subdomain`, `domain`, `email`, `code`, `is_deleted`.
+Indexes: `status`, `subdomain`, `domain`, `email`, `code`, `is_deleted`, and `(status, grace_period_expires_at)`. The last is created **only by migration `0023`** and is deliberately not declared on the model: `db.sync()` runs before migrations and would try to index a column that does not exist yet.
 
 ### Three columns worth explaining
 

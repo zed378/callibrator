@@ -1,5 +1,15 @@
 const { Op } = require("sequelize");
 
+// W-04: the purge runs in a managed transaction and records itself through
+// logAction. Its in-transaction effects are asserted against a
+// schema-enforcing ledger in dataRetention.audit.w04.test.js.
+jest.mock("../../config", () => ({
+  db: { transaction: jest.fn(async (cb) => cb("TX")) },
+}));
+jest.mock("../../services/audit.service", () => ({
+  logAction: jest.fn().mockResolvedValue({}),
+}));
+
 jest.mock("../../models", () => {
   const mockUser = {
     findAll: jest.fn(),

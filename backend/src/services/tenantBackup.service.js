@@ -5,7 +5,8 @@ const JSZip = require("jszip");
 const moment = require("moment");
 
 // Simplified tenant backup service - removed deprecated models (TenantSettings, TenantRoles, TenantFeatures, TenantAuditLog, UserPermissions)
-const { TenantBackup, Tenant, Users, AuditLog } = require("../models");
+const { TenantBackup, Tenant, Users } = require("../models");
+const auditService = require("./audit.service");
 // Sequelize helpers come from the package directly (not the models barrel) so
 // they are available even when `../models` is mocked in unit tests.
 const Sequelize = require("sequelize");
@@ -720,7 +721,7 @@ async function restoreBackup({
       // "RESTORE" is rejected by the ENUM and would roll back every restore.
       // A restore updates the tenant's accounts, so it is recorded as UPDATE
       // with the operation named in `changes`.
-      await AuditLog.create(
+      await auditService.logAction(
         {
           tenantId: targetTenantId,
           userId: restoredById || null,

@@ -21,6 +21,29 @@ const {
 } = require("../models");
 const { get, set, del, cacheKeys } = require("./redis.service");
 const { AppError } = require("../utils/appError.util");
+const auditService = require("./audit.service");
+const { db } = require("../config");
+
+/**
+ * A-41 — a per-user override grants or REVOKES access, so it writes its audit
+ * row inside the same transaction as the change
+ * (MEMORY/specs/A-41-audit-inside-transaction.md, rows 23-24). Recorded under
+ * the target user's tenant, falling back to the actor's (BR-A41-4).
+ */
+const auditOverride = (transaction, { userId, tenantId, actor, grantedBy, changes }) =>
+  auditService.logAction(
+    {
+      tenantId: tenantId || actor.tenantId,
+      userId: grantedBy,
+      action: "UPDATE",
+      resourceType: "User",
+      resourceId: userId,
+      changes,
+      ipAddress: actor.ipAddress,
+      userAgent: actor.userAgent,
+    },
+    { transaction },
+  );
 
 const CACHE_TTL_SECONDS = 300;
 
@@ -143,6 +166,7 @@ exports.setUserPermission = async (
   permissionType,
   grantedBy = null,
   notes = null,
+  actor = {},
 ) => {
   if (!["read", "write", "none"].includes(permissionType)) {
     throw new AppError(
@@ -151,7 +175,7 @@ exports.setUserPermission = async (
     );
   }
 
-  const user = await User.findByPk(userId, { attributes: ["id"] });
+  const user = await User.findByPk(userId, { attributes: ["id", "tenantId"] });
   if (!user) {
     throw new AppError(404, "User not found");
   }
@@ -160,14 +184,32 @@ exports.setUserPermission = async (
     throw new AppError(404, "Menu group not found");
   }
 
-  const [perm, created] = await UserMenuPermission.findOrCreate({
-    where: { userId, menuGroupId },
-    defaults: { permissionType, grantedBy, notes },
+  const { perm, created } = await db.transaction(async (transaction) => {
+    const [override, wasCreated] = await UserMenuPermission.findOrCreate({
+      where: { userId, menuGroupId },
+      defaults: { permissionType, grantedBy, notes },
+      transaction,
+    });
+    const previous = wasCreated ? null : override.permissionType;
+    if (!wasCreated) {
+      await override.update({ permissionType, grantedBy, notes }, { transaction });
+    }
+    await auditOverride(transaction, {
+      userId,
+      tenantId: user.tenantId,
+      actor,
+      grantedBy,
+      changes: {
+        operation: "SET_PERMISSION_OVERRIDE",
+        menuGroupId,
+        before: { permissionType: previous },
+        after: { permissionType, notes },
+      },
+    });
+    return { perm: override, created: wasCreated };
   });
-  if (!created) {
-    await perm.update({ permissionType, grantedBy, notes });
-  }
 
+  // After the commit (see roles.service.js#auditAccessChange).
   await del(cacheKeys.userPermissions(userId));
 
   return {
@@ -183,8 +225,29 @@ exports.setUserPermission = async (
 /**
  * Remove a custom override — the user falls back to role inheritance.
  */
-exports.removeUserPermission = async (userId, menuGroupId) => {
-  await UserMenuPermission.destroy({ where: { userId, menuGroupId } });
+exports.removeUserPermission = async (userId, menuGroupId, actor = {}) => {
+  const user = await User.findByPk(userId, { attributes: ["id", "tenantId"] });
+  await db.transaction(async (transaction) => {
+    const removed = await UserMenuPermission.destroy({
+      where: { userId, menuGroupId },
+      transaction,
+    });
+    // Nothing removed, nothing changed — and nothing to attribute.
+    if (removed > 0) {
+      await auditOverride(transaction, {
+        userId,
+        tenantId: user && user.tenantId,
+        actor,
+        grantedBy: actor.userId,
+        changes: {
+          operation: "REMOVE_PERMISSION_OVERRIDE",
+          menuGroupId,
+          before: { overridden: true },
+          after: { overridden: false },
+        },
+      });
+    }
+  });
   await del(cacheKeys.userPermissions(userId));
   return {
     success: true,

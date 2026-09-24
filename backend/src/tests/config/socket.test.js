@@ -10,7 +10,11 @@
 jest.mock("socket.io", () => ({ Server: jest.fn() }));
 
 jest.mock("../../utils/jwt.util", () => ({
-  verifyAccessToken: jest.fn(),
+  verifyPurposeToken: jest.fn(),
+}));
+
+jest.mock("../../services/session.service", () => ({
+  isSessionLive: jest.fn(),
 }));
 
 jest.mock("../../services/auth.service", () => ({
@@ -22,8 +26,9 @@ jest.mock("../../services/kanban.service", () => ({
 }));
 
 const { Server } = require("socket.io");
-const { verifyAccessToken } = require("../../utils/jwt.util");
+const { verifyPurposeToken } = require("../../utils/jwt.util");
 const authService = require("../../services/auth.service");
+const sessionService = require("../../services/session.service");
 const kanban = require("../../services/kanban.service");
 const { tenantStorage } = require("../../middlewares/tenantContext.middleware");
 
@@ -131,14 +136,14 @@ describe("socket handshake authentication", () => {
       handshakeSocket({ auth: {}, query: { token: "valid-token" } }),
       next,
     );
-    expect(verifyAccessToken).not.toHaveBeenCalled();
+    expect(verifyPurposeToken).not.toHaveBeenCalled();
     expect(next.mock.calls[0][0].message).toBe(AUTH_ERROR);
   });
 
   it("ignores a non-string auth token", async () => {
     const next = jest.fn();
     await authenticateHandshake(handshakeSocket({ auth: { token: 42 } }), next);
-    expect(verifyAccessToken).not.toHaveBeenCalled();
+    expect(verifyPurposeToken).not.toHaveBeenCalled();
     expect(next.mock.calls[0][0].message).toBe(AUTH_ERROR);
   });
 
@@ -148,23 +153,51 @@ describe("socket handshake authentication", () => {
       handshakeSocket({ auth: { token: "  " } }),
       next,
     );
-    expect(verifyAccessToken).not.toHaveBeenCalled();
+    expect(verifyPurposeToken).not.toHaveBeenCalled();
     expect(next.mock.calls[0][0].message).toBe(AUTH_ERROR);
   });
 
-  it("rejects an MFA-pending token", async () => {
-    verifyAccessToken.mockReturnValue({ id: "user-1", mfaRequired: true });
+  it("A-59: rejects a token that is not a socket token (an access, MFA-pending or activation token)", async () => {
+    verifyPurposeToken.mockImplementation(() => {
+      throw new Error("Invalid or expired socket token");
+    });
+    const next = jest.fn();
+    await authenticateHandshake(
+      handshakeSocket({ auth: { token: "an-access-token" } }),
+      next,
+    );
+    expect(verifyPurposeToken).toHaveBeenCalledWith("an-access-token", "socket");
+    expect(authService.getAuthUserWithTenant).not.toHaveBeenCalled();
+    expect(next.mock.calls[0][0].message).toBe(AUTH_ERROR);
+  });
+
+  it("A-59: rejects a socket token whose session has been revoked", async () => {
+    verifyPurposeToken.mockReturnValue({ id: "user-1", sid: "sess-1" });
+    sessionService.isSessionLive.mockResolvedValue(false);
     const next = jest.fn();
     await authenticateHandshake(
       handshakeSocket({ auth: { token: "t" } }),
       next,
     );
+    expect(sessionService.isSessionLive).toHaveBeenCalledWith("sess-1", "user-1");
     expect(authService.getAuthUserWithTenant).not.toHaveBeenCalled();
     expect(next.mock.calls[0][0].message).toBe(AUTH_ERROR);
   });
 
+  it("A-59: accepts a socket token whose session is live", async () => {
+    verifyPurposeToken.mockReturnValue({ id: "user-1", sid: "sess-1" });
+    sessionService.isSessionLive.mockResolvedValue(true);
+    authService.getAuthUserWithTenant.mockResolvedValue(activeUser());
+    const next = jest.fn();
+    await authenticateHandshake(
+      handshakeSocket({ auth: { token: "t" } }),
+      next,
+    );
+    expect(next).toHaveBeenCalledWith();
+  });
+
   it("rejects a token whose user no longer exists", async () => {
-    verifyAccessToken.mockReturnValue({ id: "ghost" });
+    verifyPurposeToken.mockReturnValue({ id: "ghost" });
     authService.getAuthUserWithTenant.mockResolvedValue(null);
     const next = jest.fn();
     await authenticateHandshake(
@@ -175,7 +208,7 @@ describe("socket handshake authentication", () => {
   });
 
   it("rejects a banned user (isActive false)", async () => {
-    verifyAccessToken.mockReturnValue({ id: "user-1" });
+    verifyPurposeToken.mockReturnValue({ id: "user-1" });
     authService.getAuthUserWithTenant.mockResolvedValue(
       activeUser({ isActive: false }),
     );
@@ -190,7 +223,7 @@ describe("socket handshake authentication", () => {
   it.each(["INACTIVE", "SUSPENDED"])(
     "rejects a user whose status is %s",
     async (status) => {
-      verifyAccessToken.mockReturnValue({ id: "user-1" });
+      verifyPurposeToken.mockReturnValue({ id: "user-1" });
       authService.getAuthUserWithTenant.mockResolvedValue(
         activeUser({ status }),
       );
@@ -206,7 +239,7 @@ describe("socket handshake authentication", () => {
   it.each(["suspended", "SUSPENDED", "deleted", "DELETED"])(
     "rejects a valid token whose tenant is %s",
     async (status) => {
-      verifyAccessToken.mockReturnValue({ id: "user-1" });
+      verifyPurposeToken.mockReturnValue({ id: "user-1" });
       authService.getAuthUserWithTenant.mockResolvedValue(
         activeUser({ tenant: { id: "tenant-1", status } }),
       );
@@ -219,7 +252,7 @@ describe("socket handshake authentication", () => {
   );
 
   it("does not disclose why a handshake was rejected", async () => {
-    verifyAccessToken.mockReturnValue({ id: "user-1" });
+    verifyPurposeToken.mockReturnValue({ id: "user-1" });
     authService.getAuthUserWithTenant.mockResolvedValue(
       activeUser({ tenant: { id: "tenant-1", status: "suspended" } }),
     );
@@ -234,7 +267,7 @@ describe("socket handshake authentication", () => {
   });
 
   it("rejects a handshake whose token fails verification", async () => {
-    verifyAccessToken.mockImplementation(() => {
+    verifyPurposeToken.mockImplementation(() => {
       throw new Error("jwt expired");
     });
     const next = jest.fn();
@@ -246,7 +279,7 @@ describe("socket handshake authentication", () => {
   });
 
   it("accepts a valid token for an active user in an active tenant", async () => {
-    verifyAccessToken.mockReturnValue({ id: "user-1" });
+    verifyPurposeToken.mockReturnValue({ id: "user-1" });
     const user = activeUser();
     authService.getAuthUserWithTenant.mockResolvedValue(user);
     const socket = handshakeSocket({ auth: { token: " t " } });
@@ -254,7 +287,9 @@ describe("socket handshake authentication", () => {
 
     await authenticateHandshake(socket, next);
 
-    expect(verifyAccessToken).toHaveBeenCalledWith("t");
+    expect(verifyPurposeToken).toHaveBeenCalledWith("t", "socket");
+    // No `sid` (issued from a pre-A-48 access token): not session-checked.
+    expect(sessionService.isSessionLive).not.toHaveBeenCalled();
     expect(next).toHaveBeenCalledWith();
     expect(socket.user).toBe(user);
     expect(socket.tenantContext).toEqual({
@@ -265,7 +300,7 @@ describe("socket handshake authentication", () => {
   });
 
   it("accepts a tenant-bound user whose tenant row is missing", async () => {
-    verifyAccessToken.mockReturnValue({ id: "user-1" });
+    verifyPurposeToken.mockReturnValue({ id: "user-1" });
     authService.getAuthUserWithTenant.mockResolvedValue(
       activeUser({ tenant: null }),
     );
@@ -279,7 +314,7 @@ describe("socket handshake authentication", () => {
   it.each(["SUPER_ADMIN", "SUPERADMIN"])(
     "marks a %s connection as cross-tenant in the context",
     async (roleName) => {
-      verifyAccessToken.mockReturnValue({ id: "user-1" });
+      verifyPurposeToken.mockReturnValue({ id: "user-1" });
       authService.getAuthUserWithTenant.mockResolvedValue(
         activeUser({ tenantId: null, tenant: null, role: { name: roleName } }),
       );
@@ -296,7 +331,7 @@ describe("socket handshake authentication", () => {
   );
 
   it("treats a user with no role as not a super admin", async () => {
-    verifyAccessToken.mockReturnValue({ id: "user-1" });
+    verifyPurposeToken.mockReturnValue({ id: "user-1" });
     authService.getAuthUserWithTenant.mockResolvedValue(
       activeUser({ role: null }),
     );

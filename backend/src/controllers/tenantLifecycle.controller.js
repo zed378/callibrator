@@ -1,6 +1,7 @@
 const tenantLifecycleService = require("../services/tenantLifecycle.service");
 const { asyncHandler } = require("../utils/controllerWrapper.util");
 const { success, error } = require("../utils/response.util");
+const { auditActor } = require("../utils/auditActor.util");
 const {
   tenantIdSchema,
   suspendTenantSchema,
@@ -39,9 +40,14 @@ exports.enterGracePeriod = asyncHandler(async (req, res) => {
 
 exports.offboardTenant = asyncHandler(async (req, res) => {
   const validated = validate(req.params, tenantIdSchema);
+  // The operator is the audit row's actor (W-04); without one it would be
+  // recorded as the scheduler. Not auditActor's tenantId: the row belongs to
+  // the tenant being offboarded, not to the operator's home tenant.
+  const { userId, ipAddress, userAgent } = auditActor(req);
   const result = await tenantLifecycleService.offboardTenant(
     validated.tenantId,
     validated.force || false,
+    { userId, ipAddress, userAgent },
   );
 
   success(res, result, null, "Tenant offboarded");

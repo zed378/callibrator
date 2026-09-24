@@ -1,6 +1,7 @@
 const role = require("./roleConstants");
 const app = require("./appConstants");
 const tenant = require("./tenantConstants");
+const { AUDIT_ACTIONS } = require("./auditActions");
 
 module.exports = {
   // Role constants
@@ -33,4 +34,6 @@ module.exports = {
   DEFAULT_BACKUP_RETENTION_DAYS: app.DEFAULT_BACKUP_RETENTION_DAYS,
   MAX_BACKUP_RETENTION_DAYS: app.MAX_BACKUP_RETENTION_DAYS,
   BACKUP_DIR: app.BACKUP_DIR,
+  // audit_logs.action ENUM
+  AUDIT_ACTIONS,
 };

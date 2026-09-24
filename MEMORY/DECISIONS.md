@@ -1494,6 +1494,107 @@ tree for an unknown one on a day when four gates are already red.
 
 ---
 
+## ADR-045: Tenant Lifecycle Is a Real Feature — Give It the Schema It Was Written Against
+
+**Date:** 2026-09-24 · **Finding:** W-01 ([`../TASKS/AUDIT-2026-09-ASYNC.md`](../TASKS/AUDIT-2026-09-ASYNC.md))
+
+**Context**
+
+`tenantLifecycle.service.js` suspends a tenant, holds it in a grace period, then offboards it and
+keeps its data until a retention deadline. It has never done any of that. Its scheduled query
+compares the lowercase `status` ENUM to `'SUSPENDED'`, and filters on `gracePeriodExpiresAt` — a
+column that does not exist. Either defect makes the query throw, nightly, into a log nothing reads.
+Its write side assigns `gracePeriodExpiresAt`, `offboardedAt` and `offboardRetentionExpiresAt` to a
+model that has none of those attributes, so Sequelize drops them **without an error**.
+
+W-01 asked for a decision before a fix: is this a feature, or a module to delete?
+
+**Decision**
+
+It is a feature. `docs/PLAN/10-TENANCY-AND-ONBOARDING.md`, `docs/API/04-TENANT-API.md` and
+`docs/DATABASE/02-TENANCY-TABLES.md` all describe the grace period and offboarding, and a SaaS
+serving hospitals needs a defined end-of-contract path. So:
+
+1. a migration adds the columns the service writes, and the model gains the attributes;
+2. the scheduled query uses the ENUM's own values;
+3. the job moves onto `node-cron` beside the other scheduled jobs, configurable like them, instead
+   of a 24-hour `setInterval` that depends on a process living a day;
+4. the destructive step writes its audit row **inside** its transaction (A-41), under a system actor
+   named in `changes.actor` until Q-13 decides the first-class form;
+5. a data-driven test asserts that every key the service writes is a model attribute, so the next
+   added field cannot reintroduce the silent drop.
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| Delete the module and the interval | three documents describe the feature, and the product needs an end-of-contract path; deleting it moves the gap rather than closing it |
+| Fix the query only | the write side would still drop the grace period silently — the worse half, because nothing reports it |
+| Keep `setInterval` | a job that runs only if the process stays up for 24 hours never runs on a deployment that is redeployed daily, which is this one |
+
+**Implications — including the bad ones**
+
+- **The job becomes live for the first time.** An offboarding path that has never run will run in
+  production on its first scheduled tick after deploy. There are no suspended tenants on the reference
+  deployment today, so the first real exercise is controlled — but it is a first exercise.
+- **Offboarding deletes data.** A defect in it is irreversible in a way the old silent failure was
+  not. The audit row inside the transaction is the minimum; a dry-run mode is worth adding before the
+  first real tenant is offboarded.
+- **Retention periods are now enforced** where before they were fictional. That is a behaviour
+  change a customer will notice only when it matters.
+
+**Status:** Accepted — implemented under W-01.
+
+---
+
+## ADR-046: The Backend Image Builds From the Repository Root, and `/api/` Belongs to the Frontend
+
+**Date:** 2026-09-24 · **Findings:** S-13, S-07 · **Amends:** ADR-044 (lockfile)
+
+**Context**
+
+ADR-044 committed one lockfile: the **root** workspace `package-lock.json`. `backend/package-lock.json`
+stays ignored. The backend image was built with `backend/` as its context, so it could never see a
+lockfile, and it resolved dependencies with `npm install`, a different tree on every build. S-13 said
+to use `npm ci`, which in that context is impossible.
+
+Separately, `nginx/default.conf` and the Helm ingress sent `/api/` to the backend. The VM config,
+`docs/DEVOPS/03` and the frontend's own proxy route all send it to the frontend, because Next owns the
+httpOnly auth cookie and injects `Authorization` from it. Two manifests disagreed with everything
+else.
+
+**Decision**
+
+1. The backend build context is the **repository root**, with `dockerfile: backend/Dockerfile` in
+   every compose file and the Makefile, and `npm ci --workspace backend` against the root lockfile.
+   `backend/Dockerfile.dockerignore` is an allow-list: Docker reads a per-Dockerfile ignore file in
+   preference to `.dockerignore`.
+2. `/api/` is routed to the **frontend** in every manifest. The frontend receives
+   `BACKEND_INTERNAL_URL` explicitly in compose and Helm.
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| Commit a second lockfile in `backend/` | two lockfiles drift; ADR-044 rejected exactly that |
+| Keep the `backend/` context and `npm install` | the build is not reproducible, and S-13 stays open |
+| Route `/api/` to the backend and move cookie handling there | a redesign of authentication, for no gain, contradicting the deployment that works |
+
+**Implications — including the bad ones**
+
+- **A root context is larger.** The allow-list keeps it to about 0.7 MB under compose, but a file
+  added at the root is excluded until someone lists it. That is the safe failure.
+- **Every backend build needs the frontend's `package.json`** because of the workspace, so a
+  frontend dependency change can invalidate the backend's install layer.
+- **The VM's next pull and rebuild use the new context.** It was validated with a local
+  `compose build` and a boot, and **not yet on the VM**.
+- **`npm ci` under npm 11 skips unapproved install scripts** (puppeteer, esbuild). That is harmless
+  for this build, and it will surprise the first person who needs one of them.
+
+**Status:** Accepted — implemented 2026-09-24.
+
+---
+
 ## Open Decisions
 
 Recorded so a future reader can tell whether their idea was evaluated and rejected, or genuinely never considered.

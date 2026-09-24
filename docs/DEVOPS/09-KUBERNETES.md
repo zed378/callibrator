@@ -78,14 +78,14 @@ The chart guards prerequisite 2. Prerequisites 1, 3 and the migration race are c
 
 ```yaml
 livenessProbe:
-  httpGet: { path: /, port: 3000 }
+  httpGet: { path: /live, port: 3000 }
 readinessProbe:
   httpGet: { path: /health, port: 3000 }
 ```
 
-**`/health` calls `db.authenticate()` and returns 503 when the database is unreachable.**
+**`/health` answers `{"status":"ok"}`, or 503 `{"status":"unavailable"}` when PostgreSQL, Redis or RabbitMQ is unreachable** (A-06, A-15). It is a verdict only; the per-dependency breakdown is `GET /api/v1/health`, super admin only. **`/live`** is dependency-free.
 
-Using it as a **liveness** probe would restart a healthy process during a database blip, turning a brief outage into a crash loop. Liveness gets `/`; readiness gets `/health`.
+Using `/health` as a **liveness** probe would restart a healthy process during a datastore blip, turning a brief outage into a crash loop. Liveness gets `/live`; readiness gets `/health`.
 
 A pod returning 503 on readiness is correctly kept out of rotation, which is exactly what you want when the database is unreachable.
 
@@ -105,7 +105,7 @@ Kubernetes Secrets, optionally external via a secrets operator.
 
 | Path | Service | Note |
 |---|---|---|
-| `/api/*` | backend | |
+| `/api/*` | **frontend** | Next.js owns `/api/v1/*` and the httpOnly auth cookie — see [`03-REVERSE-PROXY.md`](./03-REVERSE-PROXY.md). The frontend reaches the backend via `BACKEND_INTERNAL_URL` |
 | `/socket.io/*` | backend | **needs WebSocket annotations** |
 | `/oidc/*` | backend | **at the root**, not under `/api/v1` |
 | `/.well-known/*` | backend | ACME challenges |

@@ -248,6 +248,36 @@ const del = async (key) => {
 };
 
 /**
+ * Read a key and delete it in ONE command (Redis GETDEL, 6.2+), so a value can
+ * be consumed exactly once even when two requests race for it across replicas.
+ * A get() followed by a del() lets both readers see the value.
+ *
+ * Returns null on a miss AND when Redis is unavailable — callers that need a
+ * fallback keep their own (see sso.controller.js's handoff store).
+ *
+ * @param {string} key
+ * @returns {Promise<any|null>} the parsed value (JSON, else the raw string), or null
+ */
+const getDel = async (key) => {
+  try {
+    const client = getRedisConnection();
+    if (!isReady(client)) {return null;}
+
+    const value = await client.getdel(key);
+    if (!value) {return null;}
+
+    try {
+      return JSON.parse(value);
+    } catch {
+      return value;
+    }
+  } catch (error) {
+    logger.error({ status: "Redis GETDEL Error", message: error.message });
+    return null;
+  }
+};
+
+/**
  * Delete keys matching pattern — processes ALL batches via SCAN cursor
  * @param {string} pattern
  * @returns {Promise<number>}
@@ -389,6 +419,7 @@ module.exports = {
   get,
   set,
   del,
+  getDel,
   delPattern,
   acquireLock,
   releaseLock,

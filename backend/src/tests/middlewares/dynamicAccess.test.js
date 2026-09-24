@@ -149,12 +149,14 @@ describe("dynamicAccess middleware", () => {
       expect(next).toHaveBeenCalled();
     });
 
-    it("should return 500 when the permission lookup throws", async () => {
-      RolesService.getRolePermissionsMatrix.mockRejectedValue(
-        new Error("boom"),
-      );
+    it("should hand a thrown permission lookup to next(err) (A-13)", async () => {
+      const boom = new Error("boom");
+      RolesService.getRolePermissionsMatrix.mockRejectedValue(boom);
       await run(dynamicAccess("Home", "read"));
-      expect(res.status).toHaveBeenCalledWith(500);
+      expect(next).toHaveBeenCalledTimes(1);
+      expect(next).toHaveBeenCalledWith(boom);
+      expect(res.status).not.toHaveBeenCalled();
+      expect(res.json).not.toHaveBeenCalled();
       expect(logger.error).toHaveBeenCalled();
     });
   });
@@ -449,22 +451,30 @@ describe("dynamicAccess middleware", () => {
   });
 
   describe("error handling in dynamicAccess", () => {
-    it("should return 500 when tenant lookup throws", async () => {
-      Tenants.findByPk.mockRejectedValueOnce(new Error("DB error"));
+    it("should hand a thrown tenant lookup to next(err) (A-13)", async () => {
+      const dbError = new Error("DB error");
+      Tenants.findByPk.mockRejectedValueOnce(dbError);
       req.params = { tenantId: "tenant-123" };
       const middleware = dynamicAccess("Home", "read", { checkTenant: true });
       await middleware(req, res, next);
-      expect(res.status).toHaveBeenCalledWith(500);
+      expect(next).toHaveBeenCalledTimes(1);
+      expect(next).toHaveBeenCalledWith(dbError);
+      expect(res.status).not.toHaveBeenCalled();
+      expect(res.json).not.toHaveBeenCalled();
       expect(logger.error).toHaveBeenCalled();
     });
 
-    it("should return 500 when user lookup throws in checkTenant", async () => {
+    it("should hand a thrown owner lookup in checkTenant to next(err) (A-13)", async () => {
+      const dbError = new Error("DB error");
       Tenants.findByPk.mockResolvedValueOnce(null);
-      User.findByPk.mockRejectedValueOnce(new Error("DB error"));
+      User.findByPk.mockRejectedValueOnce(dbError);
       req.params = { userId: "other-user" };
       const middleware = dynamicAccess("Home", "read", { checkTenant: true });
       await middleware(req, res, next);
-      expect(res.status).toHaveBeenCalledWith(500);
+      expect(next).toHaveBeenCalledTimes(1);
+      expect(next).toHaveBeenCalledWith(dbError);
+      expect(res.status).not.toHaveBeenCalled();
+      expect(res.json).not.toHaveBeenCalled();
     });
   });
 });
@@ -832,16 +842,67 @@ describe("dynamicAccess — remaining branches", () => {
   });
 
   describe("error without a message", () => {
-    it("should fall back to a generic 500 message", async () => {
-      RolesService.getRolePermissionsMatrix.mockRejectedValue(new Error(""));
+    it("should hand a message-less error to next(err) untouched (A-13)", async () => {
+      const blank = new Error("");
+      RolesService.getRolePermissionsMatrix.mockRejectedValue(blank);
 
       await dynamicAccess("Home", "read")(req, res, next);
 
+      expect(next).toHaveBeenCalledTimes(1);
+      expect(next).toHaveBeenCalledWith(blank);
+      expect(res.status).not.toHaveBeenCalled();
+      expect(res.json).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("A-13: an internal error reaches the client only through the global error handler", () => {
+    // Drives the real errorHandlers.middleware (and the real
+    // fileValidation.util#sanitizeError behind it) with whatever
+    // dynamicAccess passed to next(), so the claim "production clients get a
+    // generic message" is checked end to end rather than assumed.
+    const { errorHandler } = require("../../middlewares/errorHandlers.middleware");
+    const SECRET = 'relation "role_menu_permissions" does not exist at 10.1.2.3:5432';
+    let savedEnv;
+
+    beforeEach(() => {
+      savedEnv = process.env.NODE_ENV;
+      req.requestId = "req-a13";
+      req.originalUrl = "/api/users";
+    });
+
+    afterEach(() => {
+      process.env.NODE_ENV = savedEnv;
+    });
+
+    const driveThroughHandler = async () => {
+      RolesService.getRolePermissionsMatrix.mockRejectedValue(new Error(SECRET));
+      await dynamicAccess("Home", "read")(req, res, next);
+      expect(res.json).not.toHaveBeenCalled();
+      const [err] = next.mock.calls[0];
+      errorHandler(err, req, res, jest.fn());
+      return res.json.mock.calls[0][0];
+    };
+
+    it("production: 500 with a generic message, no stack, no internal detail", async () => {
+      process.env.NODE_ENV = "production";
+      const body = await driveThroughHandler();
+
       expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith({
+      expect(body).toEqual({
         success: false,
-        message: "Internal Server Error",
+        status: 500,
+        message: "An unexpected error occurred. Please try again later.",
+        requestId: "req-a13",
       });
+      expect(JSON.stringify(body)).not.toContain("role_menu_permissions");
+    });
+
+    it("non-production: the handler still shows the message (developer aid, unchanged)", async () => {
+      process.env.NODE_ENV = "development";
+      const body = await driveThroughHandler();
+
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(body.message).toBe(SECRET);
     });
   });
 

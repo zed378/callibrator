@@ -30,6 +30,8 @@ const updateCapaSchema = Joi.object({
   assignedTo: Joi.string().uuid().allow(null),
   dueDate: Joi.date().allow(null),
   completedDate: Joi.date().allow(null),
+  // A-62: accepted for compatibility, but the id is IGNORED — a value records
+  // the authenticated caller as approver (qms.service#updateCapa), null clears.
   approvedBy: Joi.string().uuid().allow(null),
   verificationNotes: Joi.string().allow("", null),
 }).min(1);

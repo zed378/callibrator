@@ -95,6 +95,11 @@ secrets: ## Generate the four required secrets
 	@echo "KMS_MASTER_KEY=$$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")"
 	@echo "JWT_ACCESS_SECRET=$$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")"
 	@echo "JWT_REFRESH_SECRET=$$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")"
+	@rmq=$$(node -e "console.log(require('crypto').randomBytes(24).toString('hex'))")
+	@echo "RABBITMQ_PASS=$$rmq"
+	@echo "RABBITMQ_URL=amqp://callibrator:$$rmq@rabbitmq:5672"
+	@echo -e "$(C_DIM)(The two RabbitMQ lines carry ONE password and must stay together — the$(C_OFF)"
+	@echo -e "$(C_DIM) broker is created from RABBITMQ_USER/PASS and the backend connects with the URL.)$(C_OFF)"
 	@echo ""
 	@echo -e "$(C_WARN)BACK UP CERT_SIGNING_SECRET, ENCRYPT_KEY AND KMS_MASTER_KEY SEPARATELY$(C_OFF)"
 	@echo -e "$(C_WARN)FROM THE DATABASE.$(C_OFF)"
@@ -164,8 +169,9 @@ wait-healthy: ## Block until the backend reports healthy
 		sleep 2
 	done
 	@echo -e "$(C_ERR)backend did not become healthy.$(C_OFF)"
-	@echo -e "$(C_DIM)/health calls db.authenticate() and returns 503 when the database is$(C_OFF)"
-	@echo -e "$(C_DIM)unreachable — check the database before the application.$(C_OFF)"
+	@echo -e "$(C_DIM)/health answers 503 ({\"status\":\"unavailable\"}) when PostgreSQL, Redis or$(C_OFF)"
+	@echo -e "$(C_DIM)RabbitMQ is down — check the datastores before the application. It names no$(C_OFF)"
+	@echo -e "$(C_DIM)dependency; the per-dependency breakdown is GET /api/v1/health (super admin).$(C_OFF)"
 	@$(DC) logs --tail=50 backend
 	@exit 1
 
@@ -173,20 +179,46 @@ wait-healthy: ## Block until the backend reports healthy
 ## Database
 # =============================================================================
 
+# The compiled backend has NO migration CLI: it applies every pending migration
+# itself at boot (index.js: db.sync() then migrator.up()), and the migrations
+# ship inside the image. So "migrate the deployed stack" means "boot the
+# backend": a new image's migrations run on `make up` / `make deploy`, and
+# `make migrate` restarts the backend to re-run the pending set.
+#
+# This used to be `exec backend ./backend --migrate up || cd backend && npm run
+# migrate`, which was wrong twice (S-16): `A || B && C` is `(A || B) && C`, so
+# the HOST migration ran even when the container one succeeded — against
+# whatever backend/.env points at, possibly a different database — and
+# `./backend --migrate up` is not a CLI at all: it booted a second server inside
+# the container, which migrated as a side effect of booting and then died on
+# EADDRINUSE. The host path is now its own, explicit target.
 .PHONY: migrate
-migrate: ## Run pending migrations
-	$(DC) exec backend ./backend --migrate up || cd backend && npm run migrate
+migrate: ## Apply pending migrations to the compose stack (restarts the backend, which migrates at boot)
+	$(DC) restart backend || exit 1
+	@$(MAKE) --no-print-directory wait-healthy || exit 1
+	@echo -e "$(C_DIM)Applied migrations are logged by the backend as \"Applied N migration(s): …\".$(C_OFF)"
 	@echo ""
 	@echo -e "$(C_WARN)Now VERIFY THE COLUMNS.$(C_OFF)"
 	@echo -e "$(C_DIM)A migration wrapped in a blanket try/catch is recorded as applied while doing$(C_OFF)"
 	@echo -e "$(C_DIM)nothing. The migration log is not evidence — run: make migrate-verify$(C_OFF)"
 
+# The three targets below run on the HOST, from a source checkout, against the
+# database backend/.env points at — NOT necessarily the compose stack's. The
+# image has no Node and the binary has no migration CLI, so there is no
+# in-container path for them. Point backend/.env at the stack you mean first.
+.PHONY: migrate-host
+migrate-host: ## HOST: apply pending migrations against backend/.env's database
+	@echo -e "$(C_WARN)Host migration: targets the database in backend/.env, not the compose stack.$(C_OFF)"
+	cd backend && npm run migrate
+
 .PHONY: migrate-status
-migrate-status: ## Show pending migrations
+migrate-status: ## HOST: show pending migrations for backend/.env's database
+	@echo -e "$(C_WARN)Host command: reads the database in backend/.env, not the compose stack.$(C_OFF)"
 	cd backend && npm run migrate:status
 
 .PHONY: migrate-undo
-migrate-undo: ## Roll back the last migration
+migrate-undo: ## HOST: roll back the last migration on backend/.env's database
+	@echo -e "$(C_WARN)Host command: rolls back the database in backend/.env, not the compose stack.$(C_OFF)"
 	cd backend && npm run migrate:undo
 
 .PHONY: migrate-verify
@@ -263,7 +295,9 @@ verify: lint typecheck test build ## The full gate (run by hand; nothing runs it
 
 .PHONY: images
 images: ## Build both images (TAG=<sha>)
-	docker build -t $(BACKEND_IMAGE):$(TAG)  -f backend/Dockerfile  backend
+	@echo -e "$(C_DIM)Backend: the build context is the REPOSITORY ROOT, so npm ci can read the$(C_OFF)"
+	@echo -e "$(C_DIM)committed root package-lock.json (ADR-044, S-13).$(C_OFF)"
+	docker build -t $(BACKEND_IMAGE):$(TAG)  -f backend/Dockerfile  .
 	@echo -e "$(C_DIM)Frontend: NEXT_PUBLIC_* values are INLINED AT BUILD TIME — a different API URL$(C_OFF)"
 	@echo -e "$(C_DIM)or a tenant-pinned build is a DIFFERENT IMAGE.$(C_OFF)"
 	docker build -t $(FRONTEND_IMAGE):$(TAG) -f frontend/Dockerfile frontend \
@@ -354,6 +388,23 @@ check-env: ## Verify .env exists and carries the required secrets
 		echo -e "$(C_DIM)empty docker-logs output: production writes nothing to stdout. Read log/activity/exception/.$(C_OFF)"
 		exit 1
 	fi
+	# S-09: the broker is CREATED from RABBITMQ_USER/RABBITMQ_PASS and the
+	# backend CONNECTS with RABBITMQ_URL. If they disagree the backend cannot
+	# authenticate, and nothing else says why.
+	@rmq_user=$$(grep '^RABBITMQ_USER=' $(COMPOSE_DIR)/.env | cut -d= -f2-)
+	@rmq_pass=$$(grep '^RABBITMQ_PASS=' $(COMPOSE_DIR)/.env | cut -d= -f2-)
+	@rmq_url=$$(grep '^RABBITMQ_URL=' $(COMPOSE_DIR)/.env | cut -d= -f2-)
+	@if [ -n "$$rmq_url" ] && [ -n "$$rmq_user$$rmq_pass" ]; then
+		case "$$rmq_url" in
+			"amqp://$${rmq_user:-guest}:$${rmq_pass:-guest}@"*) ;;
+			*)
+				echo -e "$(C_ERR)RABBITMQ_URL does not carry RABBITMQ_USER:RABBITMQ_PASS.$(C_OFF)"
+				echo -e "$(C_DIM)The broker is created with USER/PASS; the backend connects with the URL.$(C_OFF)"
+				echo -e "$(C_DIM)Make them agree (make secrets prints a matching pair).$(C_OFF)"
+				exit 1
+				;;
+		esac
+	fi
 
 .PHONY: preflight
 preflight: check-env ## Pre-deployment checks for staging and production
@@ -364,6 +415,11 @@ preflight: check-env ## Pre-deployment checks for staging and production
 		echo -e "$(C_ERR)NODE_ENV is \"$$env\", not \"production\".$(C_OFF)"
 		echo -e "$(C_DIM)NODE_ENV gates CORS, the rate limit (100,000/15min outside production!) and$(C_OFF)"
 		echo -e "$(C_DIM)error detail in responses.$(C_OFF)"
+		exit 1
+	fi
+	@if grep -Eq '^RABBITMQ_PASS=(|guest|CHANGE_ME.*)$$' $(COMPOSE_DIR)/.env; then
+		echo -e "$(C_ERR)RABBITMQ_PASS is empty, guest or a CHANGE_ME placeholder.$(C_OFF)"
+		echo -e "$(C_DIM)Run make secrets and paste BOTH RabbitMQ lines (password and URL).$(C_OFF)"
 		exit 1
 	fi
 	@if grep -q '^SEED_DEMO=true' $(COMPOSE_DIR)/.env; then
@@ -387,12 +443,13 @@ preflight: check-env ## Pre-deployment checks for staging and production
 postdeploy: ## Post-deployment verification
 	@echo ""
 	@echo -e "$(C_BOLD)Verify before calling this done:$(C_OFF)"
-	@echo "  [ ] /health returns 200 with database: \"connected\""
+	@echo "  [ ] /health returns 200 with {\"status\":\"ok\"}  (a verdict only — it names no dependency)"
+	@echo "  [ ] GET /api/v1/health (super-admin token) shows every required dependency healthy"
 	@echo "  [ ] a user can log in"
 	@echo "  [ ] a tenant-scoped list returns that tenant's rows AND NO OTHERS"
 	@echo "  [ ] a certificate issued BEFORE this deploy still verifies at its public URL"
 	@echo "  [ ] an attachment uploaded before this deploy still downloads"
-	@echo "  [ ] migrate-status reports nothing unexpected"
+	@echo "  [ ] migrate-status reports nothing unexpected  (a HOST command: point backend/.env at this stack)"
 	@echo "  [ ] schedulers run on EXACTLY ONE instance"
 	@echo ""
 	@echo -e "$(C_DIM)The certificate check is the one that catches a deploy that lost a secret —$(C_OFF)"

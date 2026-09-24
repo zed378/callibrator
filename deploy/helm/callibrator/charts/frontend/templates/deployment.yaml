@@ -47,6 +47,13 @@ spec:
               value: "0.0.0.0"
             - name: PORT
               value: "3000"
+            # The ingress routes /api to THIS service (Next owns the auth
+            # cookie), and the Next proxy routes forward server-side to the
+            # backend here. Unset, they fall back to NEXT_PUBLIC_API_BASE_URL —
+            # the public origin — which re-enters the ingress and loops.
+            # Matches the backend subchart's Service name and its default port.
+            - name: BACKEND_INTERNAL_URL
+              value: "http://{{ .Release.Name }}-callibrator-backend:3000"
 
           # Both probes hit / — this server has no database dependency.
           #

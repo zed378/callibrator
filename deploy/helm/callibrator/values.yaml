@@ -48,14 +48,17 @@ backend:
     type: ClusterIP
     port: 3000
 
-  # Liveness gets /, readiness gets /health.
+  # Liveness gets /live, readiness gets /health (S-21).
   #
-  # /health calls db.authenticate() and returns 503 when the database is
-  # unreachable. Using it as a LIVENESS probe would restart a healthy process
-  # during a database blip, turning a brief outage into a crash loop.
+  # /live is dependency-free: 200 "OK" whenever the process can serve.
+  # /health answers {"status":"ok"} (200) or {"status":"unavailable"} (503)
+  # from probes of PostgreSQL, Redis and RabbitMQ — a verdict only, with no
+  # dependency named (the breakdown is GET /api/v1/health, super admin only).
+  # Using /health as a LIVENESS probe would restart a healthy process during a
+  # datastore blip, turning a brief outage into a crash loop.
   probes:
     liveness:
-      path: /
+      path: /live
       initialDelaySeconds: 20
       periodSeconds: 20
     readiness:

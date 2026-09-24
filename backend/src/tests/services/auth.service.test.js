@@ -119,6 +119,7 @@ const { hashPassword, comparePassword } = require("../../utils/password.util");
 const {
   generateAccessToken,
   verifyAccessToken,
+  verifyPurposeToken,
   generateRefreshToken,
   generateOpaqueRefreshToken,
 } = require("../../utils/jwt.util");
@@ -127,6 +128,8 @@ const {
   validateSession,
   revokeSession,
   revokeAllSessions,
+  revokeSessionById,
+  getCurrentSessionId,
 } = require("../../services/session.service");
 const {
   queueActivationEmail,
@@ -256,6 +259,10 @@ describe("auth.service", () => {
       expect(result.refreshToken).toBe("opaque-refresh-token");
       expect(generateOpaqueRefreshToken).toHaveBeenCalled();
       expect(generateRefreshToken).not.toHaveBeenCalled(); // should NOT use JWT refresh
+      // A-48: the access token names the session it was issued with.
+      expect(generateAccessToken).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "user-1", sid: "session-1" }),
+      );
     });
 
     it("should reject inactive user", async () => {
@@ -292,26 +299,35 @@ describe("auth.service", () => {
   // ========================
   // LOGOUT
   // ========================
+  // A-48. The previous version hashed `req.token` — the ACCESS token — and
+  // revoked the row whose token_hash (a REFRESH-token hash) matched it, which
+  // is no row; and the controller calls logoutSession() with no argument.
   describe("logoutSession", () => {
-    it("should revoke the current session token", async () => {
-      const mockReq = {
-        token: "some-refresh-token",
-      };
-      const result = await logoutSession(mockReq);
+    it("revokes the session the access token names (req.sessionId)", async () => {
+      const result = await logoutSession({ sessionId: "sess-1", token: "a.b.c" });
 
       expect(result.status).toBe(200);
       expect(result.message).toBe("Logout successful");
-      expect(revokeSession).toHaveBeenCalledWith(
-        "some-refresh-token",
-        "LOGOUT",
-      );
+      expect(revokeSessionById).toHaveBeenCalledWith("sess-1", "LOGOUT");
+      expect(revokeSession).not.toHaveBeenCalled();
     });
 
-    it("should not fail if no token present", async () => {
-      const mockReq = { token: null };
-      const result = await logoutSession(mockReq);
+    it("revokes the request's session when called with no argument, as auth.controller.js does", async () => {
+      getCurrentSessionId.mockReturnValue("sess-ctx");
+
+      const result = await logoutSession();
 
       expect(result.status).toBe(200);
+      expect(revokeSessionById).toHaveBeenCalledWith("sess-ctx", "LOGOUT");
+    });
+
+    it("revokes nothing, and still succeeds, for a token that names no session", async () => {
+      getCurrentSessionId.mockReturnValue(null);
+
+      const result = await logoutSession({ token: "legacy-token" });
+
+      expect(result.status).toBe(200);
+      expect(revokeSessionById).not.toHaveBeenCalled();
       expect(revokeSession).not.toHaveBeenCalled();
     });
   });
@@ -365,6 +381,10 @@ describe("auth.service", () => {
           refreshToken: "new-opaque-token",
           userId: "user-1",
         }),
+      );
+      // A-48: the new access token names the NEW session; the old one is revoked.
+      expect(generateAccessToken).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "user-1", sid: "session-2" }),
       );
     });
 
@@ -485,7 +505,7 @@ describe("auth.service", () => {
   describe("activateAccount", () => {
     it("should activate an unverified user account", async () => {
       const decodedToken = { id: "user-1" };
-      verifyAccessToken.mockReturnValue(decodedToken);
+      verifyPurposeToken.mockReturnValue(decodedToken);
 
       const mockUser = {
         id: "user-1",
@@ -500,6 +520,11 @@ describe("auth.service", () => {
 
       expect(result.status).toBe(200);
       expect(result.message).toBe("Account activated successfully");
+      // A-59: only an activation purpose token is accepted here.
+      expect(verifyPurposeToken).toHaveBeenCalledWith(
+        "valid-token",
+        "activation",
+      );
       expect(mockUser.update).toHaveBeenCalledWith({ isEmailVerified: true });
       expect(del).toHaveBeenCalledWith(
         cacheKeys.userByEmail("test@example.com"),
@@ -508,7 +533,7 @@ describe("auth.service", () => {
     });
 
     it("should return success for already activated account", async () => {
-      verifyAccessToken.mockReturnValue({ id: "user-1" });
+      verifyPurposeToken.mockReturnValue({ id: "user-1" });
 
       const mockUser = {
         id: "user-1",
@@ -523,12 +548,24 @@ describe("auth.service", () => {
     });
 
     it("should reject when user not found", async () => {
-      verifyAccessToken.mockReturnValue({ id: "nonexistent" });
+      verifyPurposeToken.mockReturnValue({ id: "nonexistent" });
       Users.findByPk.mockResolvedValue(null);
 
       await expect(activateAccount("valid-token")).rejects.toThrow(
         "User not found",
       );
+    });
+
+    it("A-59: rejects a token that is not an activation token with 400, before any lookup", async () => {
+      verifyPurposeToken.mockImplementationOnce(() => {
+        throw new Error("Expected a activation token");
+      });
+
+      await expect(activateAccount("an-access-token")).rejects.toMatchObject({
+        status: 400,
+        message: "Invalid or expired activation token",
+      });
+      expect(Users.findByPk).not.toHaveBeenCalled();
     });
   });
 

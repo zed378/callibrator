@@ -102,6 +102,21 @@ const defineModel = (db, DataTypes) => {
         defaultValue: false,
         allowNull: false,
       },
+      // ---- Lifecycle (services/tenantLifecycle.service.js; migration 0023) ----
+      // The service always wrote these, but they were not attributes, so
+      // Sequelize dropped every one of them without a word and the scheduled
+      // grace-period query filtered on a column that did not exist (W-01).
+      // Columns are snake_case via `underscored: true`.
+      /** Why the tenant was suspended (operator-entered free text). */
+      suspensionReason: { type: DataTypes.TEXT, allowNull: true },
+      suspendedAt: { type: DataTypes.DATE, allowNull: true },
+      /** The user who suspended it. No FK: the record outlives the user. */
+      suspendedBy: { type: DataTypes.UUID, allowNull: true },
+      /** A suspended tenant past this instant is offboarded by the scheduler. */
+      gracePeriodExpiresAt: { type: DataTypes.DATE, allowNull: true },
+      offboardedAt: { type: DataTypes.DATE, allowNull: true },
+      /** Data is held until this instant; only then may it be hard-deleted. */
+      offboardRetentionExpiresAt: { type: DataTypes.DATE, allowNull: true },
     },
     {
       tableName: "tenants",
@@ -115,6 +130,10 @@ const defineModel = (db, DataTypes) => {
         { fields: ["email"] },
         { fields: ["code"], unique: true },
         { fields: ["is_deleted"] },
+        // NOT declared here: (status, grace_period_expires_at), the scheduler's
+        // index. db.sync() adds a model's missing indexes to an EXISTING table
+        // and runs before migrations — on an upgraded database it would index
+        // a column 0023 has not added yet and refuse the boot. 0023 creates it.
       ],
       defaultScope: {
         where: { is_deleted: false },

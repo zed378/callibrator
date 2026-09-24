@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, Suspense } from "react";
+import React, { useEffect, useRef, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthStore } from "@/stores/authStore";
 import { Shield, AlertCircle, ArrowLeft } from "lucide-react";
@@ -26,25 +26,34 @@ function AnimatedBackground() {
 function SsoCallbackHandler() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { loginWithSSOToken, error: authError } = useAuthStore();
+  const { loginWithSSOCode, error: authError } = useAuthStore();
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<"processing" | "success" | "error">(
     "processing",
   );
 
+  // A-60: the backend redirects here with a one-time `code`, never a token.
+  // It redeems once, so the exchange must run once — React's development
+  // double-invoke of effects would otherwise spend it and then report the
+  // second attempt's refusal.
+  const started = useRef(false);
+
   useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+
     const processSso = async () => {
-      const token = searchParams.get("token");
-      if (!token) {
-        setError(
-          "SSO Authentication failed: token query parameter is missing.",
-        );
+      const code = searchParams.get("code");
+      // Single-use and short-lived, but it still has no business in history.
+      window.history.replaceState(null, "", window.location.pathname);
+      if (!code) {
+        setError("SSO Authentication failed: code query parameter is missing.");
         setStatus("error");
         return;
       }
 
       try {
-        await loginWithSSOToken(token);
+        await loginWithSSOCode(code);
         setStatus("success");
         router.push("/dashboard");
       } catch (err) {
@@ -58,7 +67,7 @@ function SsoCallbackHandler() {
     };
 
     processSso();
-  }, [searchParams, loginWithSSOToken, router]);
+  }, [searchParams, loginWithSSOCode, router]);
 
   const cardBg =
     "bg-white backdrop-blur-xl shadow-xl";

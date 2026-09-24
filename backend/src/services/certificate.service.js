@@ -19,7 +19,43 @@ const { AppError } = require("../utils/appError.util");
 const { DEFAULT_LIMIT } = require("../constants");
 const authService = require("./auth.service");
 const mfaService = require("./mfa.service");
+const auditService = require("./audit.service");
+const { db } = require("../config");
 const crypto = require("crypto");
+
+/**
+ * A-41 — every certificate mutation writes its audit row inside the SAME
+ * transaction as the change (MEMORY/specs/A-41-audit-inside-transaction.md,
+ * rows 1-7). A rollback takes the row with it; a failed audit insert is
+ * re-thrown by logAction and rolls the change back — a certificate is never
+ * issued, approved, signed or revoked unattributed.
+ *
+ * `changes` carries statuses and identifiers only. Never the re-authentication
+ * payload (password / MFA code): audit_logs is permanent.
+ */
+const auditCertificate = (
+  transaction,
+  certificate,
+  { tenantId, userId, action, operation, before, after, ipAddress, userAgent },
+) =>
+  auditService.logAction(
+    {
+      tenantId,
+      userId,
+      action,
+      resourceType: "Certificate",
+      resourceId: certificate.id,
+      changes: {
+        operation,
+        certificateNumber: certificate.certificateNumber,
+        before,
+        after,
+      },
+      ipAddress,
+      userAgent,
+    },
+    { transaction },
+  );
 
 /**
  * Re-authenticate the signer. MUST be called BEFORE the state change it
@@ -60,7 +96,7 @@ const verifySignatureAuth = async (userId, authOptions) => {
  * Write the Part 11 compliance record. Called AFTER the state change so the
  * document hash captures the state that was actually signed.
  */
-const logSignature = async (tenantId, certificate, userId, action, authOptions) => {
+const logSignature = async (tenantId, certificate, userId, action, authOptions, transaction) => {
   // No `|| {}` guard: this only runs after verifySignatureAuth, which throws
   // 400 unless authMethod/authPayload/meaning are all present.
   const { authMethod, meaning, ipAddress, userAgent } = authOptions;
@@ -87,7 +123,7 @@ const logSignature = async (tenantId, certificate, userId, action, authOptions) 
     documentHash,
     ipAddress: ipAddress || "unknown",
     userAgent: userAgent || "unknown",
-  });
+  }, { transaction });
 };
 
 /**
@@ -275,7 +311,7 @@ exports.fetchSpecificCertificate = async (tenantId, certificateId) => {
 /**
  * Create a new certificate
  */
-exports.createCertificate = async (tenantId, userId, inputData) => {
+exports.createCertificate = async (tenantId, userId, inputData, actor = {}) => {
   try {
     const {
       validate,
@@ -307,12 +343,32 @@ exports.createCertificate = async (tenantId, userId, inputData) => {
       { Certificate, Sequelize },
     );
 
-    const certificate = await Certificate.create({
-      ...validated,
-      tenantId,
-      certificateNumber,
-      issueDate: new Date(),
-      createdBy: userId,
+    const certificate = await db.transaction(async (transaction) => {
+      const created = await Certificate.create(
+        {
+          ...validated,
+          tenantId,
+          certificateNumber,
+          issueDate: new Date(),
+          createdBy: userId,
+        },
+        { transaction },
+      );
+      await auditCertificate(transaction, created, {
+        tenantId,
+        userId,
+        action: "CREATE",
+        operation: "ISSUE",
+        before: {},
+        after: {
+          status: created.status,
+          deviceId: created.deviceId,
+          calibrationRecordId: created.calibrationRecordId,
+        },
+        ipAddress: actor.ipAddress,
+        userAgent: actor.userAgent,
+      });
+      return created;
     });
 
     logger.info("Certificate created", {
@@ -342,7 +398,7 @@ exports.createCertificate = async (tenantId, userId, inputData) => {
 /**
  * Update an existing certificate
  */
-exports.updateCertificate = async (tenantId, certificateId, inputData) => {
+exports.updateCertificate = async (tenantId, certificateId, inputData, actor = {}) => {
   try {
     const {
       validate,
@@ -376,9 +432,23 @@ exports.updateCertificate = async (tenantId, certificateId, inputData) => {
       };
     }
 
-    await certificate.update({
-      ...validated,
-      updatedBy: inputData.updatedBy || null,
+    const updatedBy = inputData.updatedBy || null;
+    const before = Object.fromEntries(
+      Object.keys(validated).map((key) => [key, certificate[key]]),
+    );
+
+    await db.transaction(async (transaction) => {
+      await certificate.update({ ...validated, updatedBy }, { transaction });
+      await auditCertificate(transaction, certificate, {
+        tenantId,
+        userId: updatedBy,
+        action: "UPDATE",
+        operation: "UPDATE",
+        before,
+        after: validated,
+        ipAddress: actor.ipAddress,
+        userAgent: actor.userAgent,
+      });
     });
 
     logger.info("Certificate updated", {
@@ -403,7 +473,7 @@ exports.updateCertificate = async (tenantId, certificateId, inputData) => {
 /**
  * Soft-delete a certificate
  */
-exports.deleteCertificate = async (tenantId, certificateId) => {
+exports.deleteCertificate = async (tenantId, certificateId, actor = {}) => {
   try {
     const certificate = await Certificate.findOne({
       where: { id: certificateId, tenantId },
@@ -429,7 +499,19 @@ exports.deleteCertificate = async (tenantId, certificateId) => {
       };
     }
 
-    await certificate.destroy();
+    await db.transaction(async (transaction) => {
+      await certificate.destroy({ transaction });
+      await auditCertificate(transaction, certificate, {
+        tenantId,
+        userId: actor.userId,
+        action: "DELETE",
+        operation: "DELETE",
+        before: { status: certificate.status },
+        after: { deleted: true },
+        ipAddress: actor.ipAddress,
+        userAgent: actor.userAgent,
+      });
+    });
 
     logger.info("Certificate deleted", {
       certificateId,
@@ -481,13 +563,27 @@ exports.approveCertificate = async (tenantId, certificateId, approvedBy, authOpt
     // Re-authenticate BEFORE mutating: the signature authorises the approval.
     await verifySignatureAuth(approvedBy, authOptions);
 
-    await certificate.approve();
-    certificate.approvedBy = approvedBy;
-    certificate.issueDate = new Date();
-    await certificate.save();
+    const previousStatus = certificate.status;
+    await db.transaction(async (transaction) => {
+      await certificate.approve({ transaction });
+      certificate.approvedBy = approvedBy;
+      certificate.issueDate = new Date();
+      await certificate.save({ transaction });
 
-    // Logged after the save so the hash captures the approved state.
-    await logSignature(tenantId, certificate, approvedBy, "approve", authOptions);
+      // Logged after the save so the hash captures the approved state.
+      await logSignature(tenantId, certificate, approvedBy, "approve", authOptions, transaction);
+
+      await auditCertificate(transaction, certificate, {
+        tenantId,
+        userId: approvedBy,
+        action: "APPROVE",
+        operation: "APPROVE",
+        before: { status: previousStatus },
+        after: { status: certificate.status, approvedBy, meaning: authOptions.meaning },
+        ipAddress: authOptions.ipAddress,
+        userAgent: authOptions.userAgent,
+      });
+    });
 
     logger.info("Certificate approved", {
       certificateId,
@@ -514,7 +610,7 @@ exports.approveCertificate = async (tenantId, certificateId, approvedBy, authOpt
  * Submit a DRAFT certificate for approval (DRAFT -> PENDING_APPROVAL) so it can
  * then be approved. Without this transition, approve() is unreachable and 500s.
  */
-exports.submitCertificateForApproval = async (tenantId, certificateId) => {
+exports.submitCertificateForApproval = async (tenantId, certificateId, actor = {}) => {
   const certificate = await Certificate.findOne({
     where: { id: certificateId, tenantId },
   });
@@ -530,7 +626,20 @@ exports.submitCertificateForApproval = async (tenantId, certificateId) => {
     );
   }
 
-  await certificate.submitForApproval();
+  const previousStatus = certificate.status;
+  await db.transaction(async (transaction) => {
+    await certificate.submitForApproval({ transaction });
+    await auditCertificate(transaction, certificate, {
+      tenantId,
+      userId: actor.userId,
+      action: "UPDATE",
+      operation: "SUBMIT_FOR_APPROVAL",
+      before: { status: previousStatus },
+      after: { status: certificate.status },
+      ipAddress: actor.ipAddress,
+      userAgent: actor.userAgent,
+    });
+  });
 
   logger.info("Certificate submitted for approval", {
     certificateId,
@@ -574,12 +683,28 @@ exports.signCertificate = async (
     // Re-authenticate BEFORE mutating: the signature authorises the signing.
     await verifySignatureAuth(signedBy, authOptions);
 
-    await certificate.sign(signatureData, keyId);
-    certificate.signedBy = signedBy;
-    await certificate.save();
+    const previousStatus = certificate.status;
+    await db.transaction(async (transaction) => {
+      await certificate.sign(signatureData, keyId, { transaction });
+      certificate.signedBy = signedBy;
+      await certificate.save({ transaction });
 
-    // Logged after the save so the hash captures the signed state.
-    await logSignature(tenantId, certificate, signedBy, "sign", authOptions);
+      // Logged after the save so the hash captures the signed state.
+      await logSignature(tenantId, certificate, signedBy, "sign", authOptions, transaction);
+
+      // A signature is a decision, not a field change: APPROVE, with the
+      // operation named (audit_logs.action has no SIGN member).
+      await auditCertificate(transaction, certificate, {
+        tenantId,
+        userId: signedBy,
+        action: "APPROVE",
+        operation: "SIGN",
+        before: { status: previousStatus },
+        after: { status: certificate.status, signedBy, keyId, meaning: authOptions.meaning },
+        ipAddress: authOptions.ipAddress,
+        userAgent: authOptions.userAgent,
+      });
+    });
 
     // Publish certificate signed event to message queue
     // This would be handled by the event publisher
@@ -632,10 +757,25 @@ exports.revokeCertificate = async (
     // Re-authenticate BEFORE mutating: the signature authorises the revocation.
     await verifySignatureAuth(revokedBy, authOptions);
 
-    await certificate.revoke(reason);
+    const previousStatus = certificate.status;
+    await db.transaction(async (transaction) => {
+      await certificate.revoke(reason, { transaction });
 
-    // Logged after the mutation so the hash captures the revoked state.
-    await logSignature(tenantId, certificate, revokedBy, "revoke", authOptions);
+      // Logged after the mutation so the hash captures the revoked state.
+      await logSignature(tenantId, certificate, revokedBy, "revoke", authOptions, transaction);
+
+      // No REVOKE member in audit_logs.action: UPDATE, with the operation named.
+      await auditCertificate(transaction, certificate, {
+        tenantId,
+        userId: revokedBy,
+        action: "UPDATE",
+        operation: "REVOKE",
+        before: { status: previousStatus },
+        after: { status: certificate.status, reason },
+        ipAddress: authOptions.ipAddress,
+        userAgent: authOptions.userAgent,
+      });
+    });
 
     logger.info("Certificate revoked", {
       certificateId,
