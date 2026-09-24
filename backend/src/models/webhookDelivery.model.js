@@ -3,6 +3,10 @@
  *
  * Audit log of individual webhook delivery attempts (one row per webhook per
  * event). Tracks status, attempt count, and the last response/error.
+ *
+ * Since A-10 (ADR-054) this row is also the durable delivery queue (an
+ * outbox): `status` pending|failed + `nextAttemptAt` is the retry schedule,
+ * and `exhausted` is the dead letter. See services/webhook.service.js.
  */
 
 const defineModel = (db, DataTypes) => {
@@ -57,6 +61,14 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.DATE,
         allowNull: true,
       },
+      // A-10 / migration 0043: when the delivery is next due. The dispatcher
+      // claims rows with status pending|failed and nextAttemptAt <= now(),
+      // pushing it forward by a lease while an attempt is in flight. NULL on a
+      // row that is finished (success / exhausted).
+      nextAttemptAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
     },
     {
       tableName: "webhook_deliveries",
@@ -77,8 +89,9 @@ const defineModel = (db, DataTypes) => {
       onDelete: "CASCADE",
     });
     WebhookDelivery.belongsTo(models.Webhook, {
-      foreignKey: "webhook_id",
+      foreignKey: "webhookId",
       as: "webhook",
+      onDelete: "CASCADE",
     });
   };
 

@@ -12,6 +12,14 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 .ONESHELL:
+# -e is REQUIRED with .ONESHELL (S-28). One shell runs the whole recipe, and
+# make only sees that shell's final exit status — so without -e a failing
+# middle line is ignored: a failed `pull` in `deploy` still ran `up`. With -e
+# the recipe stops at the first failing command, the way a recipe without
+# .ONESHELL does. Deliberately NOT -o pipefail: several recipes read .env with
+# `grep ... | cut`, where "no such line" is a normal answer, not a failure.
+# A line that may fail on purpose says so with `|| true` or an `if`.
+.SHELLFLAGS := -ec
 
 # --- configuration -----------------------------------------------------------
 
@@ -295,12 +303,12 @@ verify: lint typecheck test build ## The full gate (run by hand; nothing runs it
 
 .PHONY: images
 images: ## Build both images (TAG=<sha>)
-	@echo -e "$(C_DIM)Backend: the build context is the REPOSITORY ROOT, so npm ci can read the$(C_OFF)"
-	@echo -e "$(C_DIM)committed root package-lock.json (ADR-044, S-13).$(C_OFF)"
+	@echo -e "$(C_DIM)Both images build from the REPOSITORY ROOT, so npm ci can read the committed$(C_OFF)"
+	@echo -e "$(C_DIM)root package-lock.json (ADR-044, ADR-046; S-13, S-29).$(C_OFF)"
 	docker build -t $(BACKEND_IMAGE):$(TAG)  -f backend/Dockerfile  .
 	@echo -e "$(C_DIM)Frontend: NEXT_PUBLIC_* values are INLINED AT BUILD TIME — a different API URL$(C_OFF)"
 	@echo -e "$(C_DIM)or a tenant-pinned build is a DIFFERENT IMAGE.$(C_OFF)"
-	docker build -t $(FRONTEND_IMAGE):$(TAG) -f frontend/Dockerfile frontend \
+	docker build -t $(FRONTEND_IMAGE):$(TAG) -f frontend/Dockerfile . \
 		--build-arg NEXT_PUBLIC_API_BASE_URL="$(NEXT_PUBLIC_API_BASE_URL)" \
 		--build-arg NEXT_PUBLIC_TENANT_ID="$(NEXT_PUBLIC_TENANT_ID)"
 

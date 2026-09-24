@@ -717,17 +717,19 @@ describe("user.service - branch & error coverage", () => {
       expect(Users.create.mock.calls[0][0].tenantId).toBe("tenant-client");
     });
 
-    it("should fall back to the client tenantId when a non-super-admin has none", async () => {
+    // A-125 follow-up: this used to assert the bug — a non-super-admin with
+    // no tenant took the tenant from the body. It is now refused.
+    it("should refuse a non-super-admin that has no tenant, instead of taking the client tenantId", async () => {
       db.transaction.mockResolvedValue(mockTransaction());
       Users.findOne.mockResolvedValue(null);
       Roles.findByPk.mockResolvedValue(activeRole);
-      const created = { id: "u-new" };
-      Users.create.mockResolvedValue(created);
-      Users.findByPk.mockResolvedValue(created);
 
-      await userCreate({ ...baseInput, actorIsSuperAdmin: false, actorTenantId: null });
+      const err = await catchErr(
+        userCreate({ ...baseInput, actorIsSuperAdmin: false, actorTenantId: null }),
+      );
 
-      expect(Users.create.mock.calls[0][0].tenantId).toBe("tenant-client");
+      expect(err).toEqual({ status: 403, message: "Forbidden: your account cannot create users" });
+      expect(Users.create).not.toHaveBeenCalled();
     });
 
     it("should null out blank first/last names, lowercase the email and hash the password", async () => {
@@ -757,7 +759,7 @@ describe("user.service - branch & error coverage", () => {
           lastName: null,
           email: "mixed@test.com",
           password: "$2b$hashed",
-          role_id: "role-1",
+          roleId: "role-1", // the attribute; `role_id` is dropped since the FK became roleId
           status: "ACTIVE", // defaulted
           isEmailVerified: true, // the attribute; `is_email_verified` was silently dropped
         }),
@@ -1385,8 +1387,8 @@ describe("user.service - branch & error coverage", () => {
 
       const err = await catchErr(userCreate());
 
-      // No username to trim -> the guard clause fails and is mapped to a 500
-      expect(err.status).toBe(500);
+      // No actor at all: refused before anything is read (A-125 follow-up).
+      expect(err.status).toBe(403);
       expect(Users.create).not.toHaveBeenCalled();
     });
 

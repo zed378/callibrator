@@ -29,7 +29,7 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.UUID,
         allowNull: false,
         references: { model: "warehouses", key: "id" },
-        onDelete: "CASCADE",
+        onDelete: "RESTRICT",
       },
       status: {
         type: DataTypes.ENUM("draft", "in_progress", "completed"),
@@ -47,7 +47,7 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.UUID,
         allowNull: false,
         references: { model: "users", key: "id" },
-        onDelete: "CASCADE",
+        onDelete: "RESTRICT",
       },
       notes: {
         type: DataTypes.TEXT,
@@ -79,13 +79,15 @@ const defineModel = (db, DataTypes) => {
     });
     // StockOpname -> Warehouse
     StockOpname.belongsTo(models.Warehouse, {
-      foreignKey: "warehouse_id",
+      foreignKey: "warehouseId",
       as: "warehouse",
+      onDelete: "RESTRICT",
     });
     // StockOpname -> User (performedBy)
     StockOpname.belongsTo(models.User, {
-      foreignKey: "performed_by",
+      foreignKey: "performedBy",
       as: "performer",
+      onDelete: "RESTRICT",
     });
   };
 

@@ -29,13 +29,13 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.UUID,
         allowNull: false,
         references: { model: "warehouses", key: "id" },
-        onDelete: "CASCADE",
+        onDelete: "RESTRICT",
       },
       toWarehouseId: {
         type: DataTypes.UUID,
         allowNull: false,
         references: { model: "warehouses", key: "id" },
-        onDelete: "CASCADE",
+        onDelete: "RESTRICT",
       },
       status: {
         type: DataTypes.ENUM("pending", "in_transit", "completed", "cancelled"),
@@ -45,7 +45,7 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.UUID,
         allowNull: false,
         references: { model: "users", key: "id" },
-        onDelete: "CASCADE",
+        onDelete: "RESTRICT",
       },
       approvedBy: {
         type: DataTypes.UUID,
@@ -96,23 +96,27 @@ const defineModel = (db, DataTypes) => {
     });
     // StockTransfer -> Warehouse (from)
     StockTransfer.belongsTo(models.Warehouse, {
-      foreignKey: "from_warehouse_id",
+      foreignKey: "fromWarehouseId",
       as: "fromWarehouse",
+      onDelete: "RESTRICT",
     });
     // StockTransfer -> Warehouse (to)
     StockTransfer.belongsTo(models.Warehouse, {
-      foreignKey: "to_warehouse_id",
+      foreignKey: "toWarehouseId",
       as: "toWarehouse",
+      onDelete: "RESTRICT",
     });
     // StockTransfer -> User (requestedBy)
     StockTransfer.belongsTo(models.User, {
-      foreignKey: "requested_by",
+      foreignKey: "requestedBy",
       as: "requester",
+      onDelete: "RESTRICT",
     });
     // StockTransfer -> User (approvedBy)
     StockTransfer.belongsTo(models.User, {
-      foreignKey: "approved_by",
+      foreignKey: "approvedBy",
       as: "approver",
+      onDelete: "SET NULL",
     });
   };
 

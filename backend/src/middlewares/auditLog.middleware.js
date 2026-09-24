@@ -80,54 +80,6 @@ const recordAudit = (action, resourceType, opts = {}) => {
 };
 
 /**
- * Audit Logging Middleware
- * Logs role and permission changes for compliance and debugging.
- *
- * Usage:
- *   router.post("/roles", auditAction("role_create", "Role"), createRole);
- *   router.delete("/roles/:id", auditAction("role_delete", "Role"), deleteRole);
- */
-
-const auditAction = (action, resource) => {
-  return async (req, res, next) => {
-    const start = Date.now();
-    const userId = req.user?.id || "anonymous";
-    const tenantId = req.user?.tenantId || null;
-
-    // Log the action before it happens
-    logger.info(`AUDIT: ${action}`, {
-      userId,
-      tenantId,
-      resource,
-      action,
-      ip: req.ip,
-      userAgent: req.get("User-Agent"),
-      body: req.body,
-      params: req.params,
-    });
-
-    // Intercept res.json to log the result after the response
-    const originalJson = res.json.bind(res);
-    res.json = (body) => {
-      const duration = Date.now() - start;
-      logger.info(`AUDIT: ${action} complete`, {
-        userId,
-        tenantId,
-        resource,
-        action,
-        statusCode: res.statusCode,
-        durationMs: duration,
-        success: res.statusCode < 400,
-        response: body,
-      });
-      return originalJson(body);
-    };
-
-    next();
-  };
-};
-
-/**
  * Audit middleware that wraps any existing middleware
  * Logs the action before and after the wrapped handler
  */
@@ -174,4 +126,8 @@ const withAudit = (action, resource) => (handler) => {
   };
 };
 
-module.exports = { auditAction, withAudit, recordAudit };
+// A-43: `auditAction` was deleted. It logged the full request body and the
+// full response body, unredacted, at `info` (a login route would have written
+// plaintext passwords), and it had no caller outside its own tests. Nothing
+// here logs a body; `withAudit` logs actor, ip and user agent only.
+module.exports = { withAudit, recordAudit };

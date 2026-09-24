@@ -49,6 +49,8 @@ jest.mock("../../utils/appError.util", () => {
 });
 
 jest.mock("../../utils/upload.util", () => ({
+  // S-17: the service promotes the scanned file out of quarantine.
+  promoteFromQuarantine: jest.fn(async (file) => file.path),
   getUploadUrl: (fileName, folder) => "/uploads/" + folder + "/" + fileName,
 }));
 

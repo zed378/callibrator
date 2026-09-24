@@ -25,7 +25,19 @@ jest.mock("../../services/kanban.service", () => ({
   assertAccess: jest.fn(),
 }));
 
+// A-54: no Redis by default, so initSocket takes the in-memory fallback. The
+// live suite (socket.redisAdapter.live.test.js) proves the real adapter.
+jest.mock("../../services/redis.service", () => ({
+  getRedisConnection: jest.fn(() => ({ status: "wait" })),
+}));
+
+jest.mock("@socket.io/redis-adapter", () => ({
+  createAdapter: jest.fn(() => "redis-adapter-factory"),
+}));
+
 const { Server } = require("socket.io");
+const redisService = require("../../services/redis.service");
+const { createAdapter } = require("@socket.io/redis-adapter");
 const { verifyPurposeToken } = require("../../utils/jwt.util");
 const authService = require("../../services/auth.service");
 const sessionService = require("../../services/session.service");
@@ -220,7 +232,8 @@ describe("socket handshake authentication", () => {
     expect(next.mock.calls[0][0].message).toBe(AUTH_ERROR);
   });
 
-  it.each(["INACTIVE", "SUSPENDED"])(
+  // A-180: "erased" is what a GDPR anonymisation writes.
+  it.each(["INACTIVE", "SUSPENDED", "erased"])(
     "rejects a user whose status is %s",
     async (status) => {
       verifyPurposeToken.mockReturnValue({ id: "user-1" });
@@ -513,6 +526,90 @@ describe("initSocket", () => {
     expect(() =>
       socketModule.emitToBoard("proj-1", "card:updated", {}),
     ).not.toThrow();
+  });
+});
+
+describe("attachAdapter (A-54)", () => {
+  const { attachAdapter, IN_MEMORY_WARNING } = socketModule.__testables;
+
+  const fakeRedis = () => {
+    const duplicates = [];
+    const shared = {
+      status: "ready",
+      duplicate: jest.fn(() => {
+        const dup = { on: jest.fn() };
+        duplicates.push(dup);
+        return dup;
+      }),
+    };
+    return { shared, duplicates };
+  };
+
+  it("A-54: installs the Redis adapter on two duplicated connections when Redis is ready", () => {
+    const { shared, duplicates } = fakeRedis();
+    redisService.getRedisConnection.mockReturnValueOnce(shared);
+    const server = { adapter: jest.fn() };
+
+    expect(attachAdapter(server)).toBe(true);
+
+    expect(shared.duplicate).toHaveBeenCalledTimes(2);
+    expect(shared.duplicate).toHaveBeenCalledWith({ lazyConnect: false });
+    expect(createAdapter).toHaveBeenCalledWith(duplicates[0], duplicates[1]);
+    expect(server.adapter).toHaveBeenCalledWith("redis-adapter-factory");
+  });
+
+  it("A-54: logs, and does not throw on, an adapter connection error", () => {
+    const { shared, duplicates } = fakeRedis();
+    redisService.getRedisConnection.mockReturnValueOnce(shared);
+    attachAdapter({ adapter: jest.fn() });
+
+    for (const dup of duplicates) {
+      const [event, handler] = dup.on.mock.calls[0];
+      expect(event).toBe("error");
+      expect(() => handler(new Error("ECONNRESET"))).not.toThrow();
+    }
+    expect(console.warn).toHaveBeenCalledWith(
+      "[Socket] Redis adapter connection error: ECONNRESET",
+    );
+  });
+
+  it("A-54: falls back to the in-memory adapter, with a warning, when Redis is not ready", () => {
+    redisService.getRedisConnection.mockReturnValueOnce({ status: "reconnecting" });
+    const server = { adapter: jest.fn() };
+
+    expect(attachAdapter(server)).toBe(false);
+    expect(server.adapter).not.toHaveBeenCalled();
+    expect(console.warn).toHaveBeenCalledWith(IN_MEMORY_WARNING);
+  });
+
+  it("A-54: falls back when there is no Redis client at all", () => {
+    redisService.getRedisConnection.mockReturnValueOnce(null);
+    expect(attachAdapter({ adapter: jest.fn() })).toBe(false);
+  });
+
+  it("A-54: falls back when creating the Redis client throws", () => {
+    redisService.getRedisConnection.mockImplementationOnce(() => {
+      throw new Error("bad REDIS_URL");
+    });
+    const server = { adapter: jest.fn() };
+
+    expect(attachAdapter(server)).toBe(false);
+    expect(server.adapter).not.toHaveBeenCalled();
+    expect(console.warn).toHaveBeenCalledWith(
+      "[Socket] Redis client unavailable: bad REDIS_URL",
+    );
+    expect(console.warn).toHaveBeenCalledWith(IN_MEMORY_WARNING);
+  });
+
+  it("A-54: initSocket attaches the adapter to the server it builds", () => {
+    const { shared } = fakeRedis();
+    redisService.getRedisConnection.mockReturnValueOnce(shared);
+    const fakeIo = { use: jest.fn(), on: jest.fn(), adapter: jest.fn() };
+    Server.mockImplementation(() => fakeIo);
+
+    socketModule.initSocket({ fake: "http server" });
+
+    expect(fakeIo.adapter).toHaveBeenCalledWith("redis-adapter-factory");
   });
 });
 

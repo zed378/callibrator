@@ -38,8 +38,11 @@ services:
 
   frontend:
     build:
-      context: ../../frontend
-      dockerfile: Dockerfile
+      # Context is the REPOSITORY ROOT so the build can `npm ci --workspace
+      # frontend` against the committed root package-lock.json (ADR-044, S-29).
+      # See frontend/Dockerfile and frontend/Dockerfile.dockerignore.
+      context: ../..
+      dockerfile: frontend/Dockerfile
       args:
         NEXT_PUBLIC_API_BASE_URL: http://localhost:${BACKEND_PORT:-3000}
     ports:

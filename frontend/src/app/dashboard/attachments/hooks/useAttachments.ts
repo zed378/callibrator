@@ -6,6 +6,7 @@ import {
   attachmentService,
 } from "@/api/services/attachment.service";
 import { PaginatedResponse } from "@/types";
+import { isLinkableResourceType } from "../components/UploadAttachmentModal";
 
 export interface AttachmentFormState {
   resourceType: string;
@@ -87,7 +88,11 @@ export function useAttachments() {
       await attachmentService.upload({
         file,
         resourceType: form.resourceType.trim() || "generic",
-        resourceId: form.resourceId.trim() || undefined,
+        // A-118: only a linkable type carries a record id (the backend 400s
+        // any other); the modal hides the field, this keeps a stale one out.
+        resourceId: isLinkableResourceType(form.resourceType)
+          ? form.resourceId.trim() || undefined
+          : undefined,
       });
       addToast({ type: "success", title: "File uploaded" });
       closeUploadModal();

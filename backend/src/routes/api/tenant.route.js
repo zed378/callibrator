@@ -204,7 +204,7 @@ router.get("/all", auth, superAdminOnly, tenantController.getAllTenants);
 router.post(
   "/detail",
   auth,
-  dynamicAccess("Management", "read", { checkTenant: true }),
+  dynamicAccess("management", "read", { checkTenant: true }),
   tenantController.getSpecificTenant,
 );
 
@@ -541,7 +541,7 @@ router.patch(
   // checkTenant here sees a JSON body's tenantId but NOT a multipart one
   // (multer parses that later, in upload()), so the ownership rule that
   // actually holds is in tenantService.updateTenant.
-  dynamicAccess("Management", "update", { checkTenant: true }),
+  dynamicAccess("management", "update", { checkTenant: true }),
   enforceStorageQuota(),
   upload({
     folder: "uploads/tenant",
@@ -687,7 +687,7 @@ router.delete("/delete", auth, superAdminOnly, tenantController.deleteTenant);
 router.post(
   "/settings",
   auth,
-  dynamicAccess("Management", "read", { checkTenant: true }),
+  dynamicAccess("management", "read", { checkTenant: true }),
   tenantController.getTenantSettings,
 );
 
@@ -696,7 +696,12 @@ router.post(
  * /api/v1/tenants/settings:
  *   patch:
  *     summary: Update tenant settings
- *     description: Updates the settings for a tenant. Requires Management write access.
+ *     description: >
+ *       Updates the settings for a tenant. Requires Management write access.
+ *       A-176 - only the keys in constants/tenantAdminSettings.js (SSO/OIDC,
+ *       MFA policy, AI vendor), each with a scalar value; any other key is a
+ *       400 naming it. Retention, legal hold, lifecycle, feature flags,
+ *       network policy, OIDC clients and storage have their own endpoints.
  *     tags: [Tenants]
  *     security:
  *       - bearerAuth: []
@@ -722,7 +727,7 @@ router.post(
 router.patch(
   "/settings",
   auth,
-  dynamicAccess("Management", "write", { checkTenant: true }),
+  dynamicAccess("management", "write", { checkTenant: true }),
   tenantController.updateTenantSettings,
 );
 
@@ -755,7 +760,7 @@ router.patch(
 router.post(
   "/user-count",
   auth,
-  dynamicAccess("Management", "read", { checkTenant: true }),
+  dynamicAccess("management", "read", { checkTenant: true }),
   tenantController.getTenantUserCount,
 );
 
@@ -794,7 +799,7 @@ router.post(
 router.post(
   "/:tenantId/logo",
   auth,
-  dynamicAccess("Management", "update", { checkTenant: true }),
+  dynamicAccess("management", "update", { checkTenant: true }),
   upload({
     folder: "uploads/tenant",
     allowedMimes: [
@@ -835,7 +840,7 @@ router.post(
 router.delete(
   "/:tenantId/logo",
   auth,
-  dynamicAccess("Management", "update", { checkTenant: true }),
+  dynamicAccess("management", "update", { checkTenant: true }),
   tenantController.removeTenantLogo,
 );
 

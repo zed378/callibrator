@@ -29,6 +29,25 @@ interface BackendUserItem {
   };
   pictureUrl?: string;
   avatarUrl?: string;
+  // A-162: the list carries these (safeUserAttributes excludes only secrets),
+  // so the users page can offer "Reset MFA" only where there is MFA.
+  mfaEnabled?: boolean;
+  mustChangePassword?: boolean;
+}
+
+/** A-162: POST /users/:userId/mfa/reset → data. */
+export interface MfaResetResult {
+  id: string;
+  mfaEnabled: false;
+  sessionsRevoked: number;
+}
+
+/** A-162: POST /users/:userId/password/reset → data. The password is shown once. */
+export interface PasswordResetResult {
+  id: string;
+  temporaryPassword: string;
+  mustChangePassword: true;
+  sessionsRevoked: number;
 }
 
 // Actual backend response: { success, status, message, data: User[], meta: {...} }
@@ -72,9 +91,36 @@ const transformUser = (item: BackendUserItem): User => ({
     : undefined,
   createdAt: item.createdAt,
   updatedAt: item.createdAt,
+  mfaEnabled: item.mfaEnabled === true,
+  mustChangePassword: item.mustChangePassword === true,
 });
 
 export const userService = {
+  /**
+   * A-141 / A-162: a tenant administrator clears another user's MFA. The
+   * backend signs out every session of theirs; they sign in with the password
+   * and enrol again. 404 for a user outside the caller's tenant, 400 for the
+   * caller, 403 for a higher role, 409 when the user has no MFA.
+   */
+  resetMfa: async (userId: string): Promise<MfaResetResult> => {
+    const response = await api.post<{ success: boolean; data: MfaResetResult }>(
+      `/api/v1/users/${encodeURIComponent(userId)}/mfa/reset`,
+    );
+    return response.data;
+  },
+
+  /**
+   * A-162: a tenant administrator replaces another user's password with a
+   * temporary one, returned ONCE — show it, never store it. The user must
+   * change it at their next sign-in; every session of theirs is signed out.
+   */
+  resetPassword: async (userId: string): Promise<PasswordResetResult> => {
+    const response = await api.post<{ success: boolean; data: PasswordResetResult }>(
+      `/api/v1/users/${encodeURIComponent(userId)}/password/reset`,
+    );
+    return response.data;
+  },
+
   getAll: async (
     page = 1,
     limit = 50,

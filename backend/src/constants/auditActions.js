@@ -17,6 +17,11 @@ const AUDIT_ACTIONS = Object.freeze([
   "LOGIN",
   "APPROVE",
   "EXPORT",
+  // A-126 (ADR-051 Q-15) — appended, in this order, by migration
+  // 0049-audit-actions-lockout-signature. Recorded as themselves, never as an
+  // UPDATE, so every query that looks for them finds them.
+  "ACCOUNT_LOCKED", // a brute-force lockout engaged on an account
+  "SIGNATURE_AUTH_FAILED", // a wrong password / MFA code at signing (21 CFR 11.300(d))
 ]);
 
 module.exports = { AUDIT_ACTIONS };

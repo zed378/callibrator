@@ -103,33 +103,39 @@ const defineModel = (db, DataTypes) => {
   Warehouse.associate = (models) => {
     // Warehouse -> StorageLocation (hasMany)
     Warehouse.hasMany(models.StorageLocation, {
-      foreignKey: "warehouse_id",
+      foreignKey: "warehouseId",
       as: "locations",
+      onDelete: "RESTRICT",
     });
     // Warehouse -> Stock (hasMany)
     Warehouse.hasMany(models.Stock, {
-      foreignKey: "warehouse_id",
+      foreignKey: "warehouseId",
       as: "stocks",
+      onDelete: "RESTRICT",
     });
     // Warehouse -> StockTransfer (fromWarehouse)
     Warehouse.hasMany(models.StockTransfer, {
-      foreignKey: "from_warehouse_id",
+      foreignKey: "fromWarehouseId",
       as: "outgoingTransfers",
+      onDelete: "RESTRICT",
     });
     // Warehouse -> StockTransfer (toWarehouse)
     Warehouse.hasMany(models.StockTransfer, {
-      foreignKey: "to_warehouse_id",
+      foreignKey: "toWarehouseId",
       as: "incomingTransfers",
+      onDelete: "RESTRICT",
     });
     // Warehouse -> StockAdjustment (hasMany)
     Warehouse.hasMany(models.StockAdjustment, {
-      foreignKey: "warehouse_id",
+      foreignKey: "warehouseId",
       as: "adjustments",
+      onDelete: "RESTRICT",
     });
     // Warehouse -> StockOpname (hasMany)
     Warehouse.hasMany(models.StockOpname, {
-      foreignKey: "warehouse_id",
+      foreignKey: "warehouseId",
       as: "opnames",
+      onDelete: "RESTRICT",
     });
   };
 

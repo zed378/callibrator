@@ -10,11 +10,12 @@ const constantsBarrel = require("../../constants");
 const USER = { actorType: "user", userId: "u-1" };
 
 describe("auditLedger fixture", () => {
-  it("takes the action ENUM from models/auditLog.model.js — the six documented values", () => {
+  it("takes the action ENUM from models/auditLog.model.js — the eight documented values", () => {
     const ledger = createLedger();
-    // Independent list: docs/DATABASE/10-AUDIT-LOGS.md § The Six Actions.
+    // Independent list: docs/DATABASE/10-AUDIT-LOGS.md § The Eight Actions
+    // (the last two from ADR-051 Q-15, A-126).
     expect([...ledger.AUDIT_ACTIONS].sort()).toEqual(
-      ["APPROVE", "CREATE", "DELETE", "EXPORT", "LOGIN", "UPDATE"],
+      ["ACCOUNT_LOCKED", "APPROVE", "CREATE", "DELETE", "EXPORT", "LOGIN", "SIGNATURE_AUTH_FAILED", "UPDATE"],
     );
   });
 

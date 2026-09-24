@@ -48,7 +48,7 @@ const vendorController = require("../../controllers/vendor.controller");
 router.get(
   "/",
   auth,
-  dynamicAccess("Vendors", "read", { checkTenant: true }),
+  dynamicAccess("vendors", "read", { checkTenant: true }),
   vendorController.fetchVendors
 );
 
@@ -78,7 +78,7 @@ router.get(
   "/:vendorId",
   auth,
   validateUuid("vendorId"),
-  dynamicAccess("Vendors", "read", { checkTenant: true }),
+  dynamicAccess("vendors", "read", { checkTenant: true }),
   vendorController.getVendorById
 );
 
@@ -124,7 +124,7 @@ router.get(
 router.post(
   "/",
   auth,
-  dynamicAccess("Vendors", "create", { checkTenant: true }),
+  dynamicAccess("vendors", "create", { checkTenant: true }),
   validate(vendorValidator.createVendor),
   vendorController.createVendor
 );
@@ -180,7 +180,7 @@ router.patch(
   "/:vendorId",
   auth,
   validateUuid("vendorId"),
-  dynamicAccess("Vendors", "update", { checkTenant: true }),
+  dynamicAccess("vendors", "update", { checkTenant: true }),
   validate(vendorValidator.updateVendor),
   vendorController.updateVendor
 );
@@ -211,7 +211,7 @@ router.delete(
   "/:vendorId",
   auth,
   validateUuid("vendorId"),
-  dynamicAccess("Vendors", "delete", { checkTenant: true }),
+  dynamicAccess("vendors", "delete", { checkTenant: true }),
   vendorController.deleteVendor
 );
 
@@ -255,7 +255,7 @@ router.delete(
 router.patch(
   "/:vendorId/qualify",
   auth,
-  dynamicAccess("Vendors", "update"),
+  dynamicAccess("vendors", "update"),
   validateUuid("vendorId"),
   vendorController.qualifyVendor
 );

@@ -3,6 +3,7 @@ import { useRouter } from "next/navigation";
 import {
   tenantBackupService,
   TenantBackup,
+  RestoreOutcome,
 } from "@/api/services/tenantBackup.service";
 
 export function useTenantBackups(tenantId?: string, tenantName?: string) {
@@ -30,6 +31,12 @@ export function useTenantBackups(tenantId?: string, tenantName?: string) {
 
   // Restore/download actions
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  // The outcome of the last restore, including the accounts it did NOT
+  // re-create (A-156). Null until a restore succeeds.
+  const [restoreOutcome, setRestoreOutcome] = useState<RestoreOutcome | null>(
+    null,
+  );
 
   const fetchBackups = useCallback(async () => {
     if (!tenantId) return;
@@ -131,9 +138,11 @@ export function useTenantBackups(tenantId?: string, tenantName?: string) {
     if (!tenantId) return;
     setActionLoading(backupId);
     setError("");
+    setRestoreOutcome(null);
     try {
       const result = await tenantBackupService.restore(tenantId, backupId);
       setSuccess(result.message || "Restore initiated successfully");
+      setRestoreOutcome(result.outcome);
       fetchBackups();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to restore backup");
@@ -164,6 +173,8 @@ export function useTenantBackups(tenantId?: string, tenantName?: string) {
     createForm,
     setCreateForm,
     actionLoading,
+    restoreOutcome,
+    setRestoreOutcome,
     handleCreateBackup,
     handleDeleteBackup,
     handleDownloadBackup,

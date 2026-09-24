@@ -18,6 +18,19 @@ jest.mock("../../models", () => ({
   },
 }));
 
+// A-173: create/update/delete run in a managed transaction, audit through
+// logAction and clear the permissions cache after the commit; those effects
+// are asserted against the schema-enforcing ledger in menuGroup.audit.a173.test.js.
+jest.mock("../../config", () => ({
+  db: { transaction: jest.fn(async (cb) => cb("TX")) },
+}));
+jest.mock("../../services/audit.service", () => ({
+  logAction: jest.fn().mockResolvedValue({}),
+}));
+jest.mock("../../services/redis.service", () => ({
+  delPattern: jest.fn().mockResolvedValue(0),
+}));
+
 jest.mock("../../utils/appError.util", () => {
   class AppError extends Error {
     constructor(status, message) {
@@ -216,6 +229,7 @@ describe("menuGroup.service", () => {
           name: "New Group",
           slug: "new-group",
         }),
+        { transaction: "TX" },
       );
     });
 
@@ -226,6 +240,7 @@ describe("menuGroup.service", () => {
       await createMenuGroup({ name: "Custom", slug: "custom-slug", icon: "i" });
       expect(MenuGroup.create).toHaveBeenCalledWith(
         expect.objectContaining({ slug: "custom-slug" }),
+        { transaction: "TX" },
       );
     });
   });
@@ -270,11 +285,12 @@ describe("menuGroup.service", () => {
       MenuGroup.findByPk.mockResolvedValueOnce(group);
       RoleMenuPermission.destroy.mockResolvedValueOnce(1);
       MenuGroup.destroy.mockResolvedValueOnce(0);
+      MenuGroup.findAll.mockResolvedValueOnce([]);
 
       await deleteMenuGroup("mg-1");
-      expect(RoleMenuPermission.destroy).toHaveBeenCalledWith({ where: { menuGroupId: "mg-1" } });
-      expect(MenuGroup.destroy).toHaveBeenCalledWith({ where: { parentId: "mg-1" } });
-      expect(group.destroy).toHaveBeenCalled();
+      expect(RoleMenuPermission.destroy).toHaveBeenCalledWith({ where: { menuGroupId: ["mg-1"] }, transaction: "TX" });
+      expect(MenuGroup.destroy).toHaveBeenCalledWith({ where: { parentId: "mg-1" }, transaction: "TX" });
+      expect(group.destroy).toHaveBeenCalledWith({ transaction: "TX" });
     });
 
     it("should throw 404 when group not found", async () => {
@@ -503,6 +519,7 @@ describe("menuGroup.service", () => {
 
       expect(MenuGroup.create).toHaveBeenCalledWith(
         expect.objectContaining({ slug: "my-new-group" }),
+        { transaction: "TX" },
       );
     });
 
@@ -513,6 +530,7 @@ describe("menuGroup.service", () => {
 
       expect(MenuGroup.create).toHaveBeenCalledWith(
         expect.objectContaining({ slug: "custom" }),
+        { transaction: "TX" },
       );
     });
   });
@@ -540,7 +558,7 @@ describe("menuGroup.service", () => {
         parentId: "p1",
         sortOrder: 7,
         isActive: true,
-      });
+      }, { transaction: "TX" });
     });
 
     it("applies falsy-but-defined values rather than falling back", async () => {
@@ -560,6 +578,7 @@ describe("menuGroup.service", () => {
 
       expect(update).toHaveBeenCalledWith(
         expect.objectContaining({ parentId: null, sortOrder: 0, isActive: false }),
+        { transaction: "TX" },
       );
     });
   });
@@ -888,7 +907,7 @@ describe("menuGroup.service", () => {
         parentId: null,
         sortOrder: 1,
         isActive: true,
-      });
+      }, { transaction: "TX" });
     });
   });
 });

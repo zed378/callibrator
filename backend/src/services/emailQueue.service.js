@@ -177,10 +177,12 @@ const addEmailJob = async (job) => {
       error: error.message,
       job,
     });
-    // Fallback: send synchronously
+    // Fallback: send synchronously.
+    // A-158 — the fallback's own outcome is returned. This returned `true`
+    // even when the direct send failed, so a caller that checks the result
+    // (e-signature requests) was told a mail that went nowhere was sent.
     logger.warn("RabbitMQ unavailable, sending email synchronously");
-    await sendEmailDirectly(job);
-    return true;
+    return sendEmailDirectly(job);
   }
 };
 

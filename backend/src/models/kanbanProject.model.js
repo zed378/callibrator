@@ -70,31 +70,32 @@ const defineModel = (db, DataTypes) => {
       onDelete: "CASCADE",
     });
     KanbanProject.belongsTo(models.User, {
-      foreignKey: "created_by",
+      foreignKey: "createdBy",
       as: "creator",
+      onDelete: "SET NULL",
     });
     KanbanProject.hasMany(models.KanbanProjectMember, {
-      foreignKey: "project_id",
+      foreignKey: "projectId",
       as: "members",
       onDelete: "CASCADE",
     });
     KanbanProject.hasMany(models.KanbanColumn, {
-      foreignKey: "project_id",
+      foreignKey: "projectId",
       as: "columns",
       onDelete: "CASCADE",
     });
     KanbanProject.hasMany(models.KanbanCard, {
-      foreignKey: "project_id",
+      foreignKey: "projectId",
       as: "cards",
       onDelete: "CASCADE",
     });
     KanbanProject.hasMany(models.KanbanLabel, {
-      foreignKey: "project_id",
+      foreignKey: "projectId",
       as: "labels",
       onDelete: "CASCADE",
     });
     KanbanProject.hasMany(models.KanbanSprint, {
-      foreignKey: "project_id",
+      foreignKey: "projectId",
       as: "sprints",
       onDelete: "CASCADE",
     });

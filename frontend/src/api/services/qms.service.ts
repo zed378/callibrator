@@ -113,7 +113,8 @@ export interface QmsPage<T> {
 
 export interface NcCreateInput {
   title: string;
-  description?: string;
+  /** Required (A-89): NOT NULL, and the backend validator refuses it empty (A-74). */
+  description: string;
   /** Server defaults to "MEDIUM". */
   severity?: NcSeverity;
   deviceId?: string;
@@ -134,7 +135,8 @@ export interface CapaCreateInput {
   /** Required — the backend 404s if the NC does not exist. */
   ncId: string;
   title: string;
-  actionPlan?: string;
+  /** Required (A-89): NOT NULL, and the backend validator refuses it empty (A-74). */
+  actionPlan: string;
   assignedTo?: string;
   dueDate?: string;
 }

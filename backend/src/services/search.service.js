@@ -8,6 +8,7 @@
 const { db } = require("../config");
 const { QueryTypes } = require("sequelize");
 const { logger } = require("../middlewares/activityLog.middleware");
+const { AppError } = require("../utils/appError.util");
 
 // Per-type config: table, searchable columns, selected fields, soft-delete cond,
 // and the menu slug whose `read` permission a caller needs to see the type.
@@ -66,18 +67,45 @@ const ilikeSearch = async (cfg, tenantId, q, limit) => {
   });
 };
 
+// A-23. The FTS -> ILIKE fallback used to warn on EVERY search call, which on a
+// database without the search_vector column (the unit-test database always)
+// is every request. It now warns once per table per process; later fallbacks
+// for the same table log at debug.
+const ftsFallbackWarned = new Set();
+
 const searchType = async (type, tenantId, q, limit) => {
   const cfg = TYPES[type];
   try {
     return await ftsSearch(cfg, tenantId, q, limit);
-  } catch (err) {
+  } catch (ftsErr) {
     // Most likely the FTS column isn't present — fall back to ILIKE.
-    logger.warn(`FTS unavailable for ${cfg.table} (${err.message}); using ILIKE`);
+    const note = `FTS unavailable for ${cfg.table} (${ftsErr.message}); using ILIKE`;
+    if (ftsFallbackWarned.has(cfg.table)) {
+      logger.debug(note);
+    } else {
+      ftsFallbackWarned.add(cfg.table);
+      logger.warn(note);
+    }
     try {
       return await ilikeSearch(cfg, tenantId, q, limit);
-    } catch (err2) {
-      logger.error(`Search failed for ${cfg.table}: ${err2.message}`);
-      return [];
+    } catch (ilikeErr) {
+      // A-56. This used to `return []`, so a statement failing for ANY
+      // reason — missing column, type error, missing grant — rendered as
+      // "no results". A second failure now fails the request: it is a 500
+      // the error handler shapes (generic message + request id in
+      // production), with both causes logged here. See the A-56 card for the
+      // alternatives weighed (partial results with a per-type marker).
+      logger.error(`Search failed for ${cfg.table}`, {
+        type,
+        ftsError: ftsErr.message,
+        ilikeError: ilikeErr.message,
+      });
+      throw new AppError(
+        500,
+        `Search failed for ${type}`,
+        false,
+        { ftsError: ftsErr.message, ilikeError: ilikeErr.message },
+      );
     }
   }
 };
@@ -92,17 +120,26 @@ exports.search = async (tenantId, { q, types, limit = 10 } = {}) => {
   // absent list means "every type". The caller of this service filters the
   // list by permission (A-04); if an empty allow-list meant "everything", a
   // principal permitted nothing would be handed the lot.
+  // De-duplicated, so `types=device,device` cannot run a type twice.
   const requested = Array.isArray(types)
-    ? types.filter((t) => TYPES[t])
+    ? [...new Set(types)].filter((t) => TYPES[t])
     : Object.keys(TYPES);
+
+  // A-23. The per-type queries run concurrently. The fan-out is bounded by
+  // construction: `requested` is a de-duplicated subset of TYPES, so at most
+  // Object.keys(TYPES).length (3) statements are in flight per request —
+  // well inside the connection pool. A failing type rejects the whole search
+  // (A-56) rather than being dropped.
+  const rowsPerType = await Promise.all(
+    requested.map((type) => searchType(type, tenantId, term, safeLimit)),
+  );
 
   const byType = {};
   const results = [];
-  for (const type of requested) {
-    const rows = await searchType(type, tenantId, term, safeLimit);
-    byType[type] = rows.map((r) => ({ type, ...r }));
+  requested.forEach((type, i) => {
+    byType[type] = rowsPerType[i].map((r) => ({ type, ...r }));
     results.push(...byType[type]);
-  }
+  });
 
   // Merge + rank across types (ILIKE fallback rows have rank 0 → stable order).
   results.sort((a, b) => (Number(b.rank) || 0) - (Number(a.rank) || 0));

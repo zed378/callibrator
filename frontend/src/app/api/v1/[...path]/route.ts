@@ -3,6 +3,18 @@ import { cookies } from "next/headers";
 import { API_BASE_URL } from "@/constants";
 import { CLIENT_ADDRESS_HEADERS, forwardedClientIp } from "@/lib/clientIp";
 
+/**
+ * A-68/A-69 — the one backend cookie this proxy carries, in both directions.
+ *
+ * The backend binds an OIDC sign-in to the browser that started it with this
+ * httpOnly cookie (sso.controller, beginOidcFlow): set by
+ * POST /auth/sso/oidc/login, read and cleared by the callback. Every other
+ * backend Set-Cookie is still dropped and no other browser cookie is
+ * forwarded — Next owns the session cookies.
+ */
+const SSO_BINDING_COOKIE = "sso_oidc_binding";
+const SSO_BINDING_PATH_PREFIX = "auth/sso/oidc/";
+
 async function handleProxy(
   req: NextRequest,
   { params }: { params: Promise<{ path: string[] }> }
@@ -46,6 +58,14 @@ async function handleProxy(
     headers.set("X-Forwarded-For", clientIp);
   }
 
+  // A-68: the OIDC routes need the browser's sign-in binding (and only those).
+  const ssoBinding = pathStr.startsWith(SSO_BINDING_PATH_PREFIX)
+    ? cookieStore.get(SSO_BINDING_COOKIE)?.value
+    : undefined;
+  if (ssoBinding) {
+    headers.set("Cookie", `${SSO_BINDING_COOKIE}=${ssoBinding}`);
+  }
+
   // Inject authentication and tenant context headers
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
@@ -69,10 +89,16 @@ async function handleProxy(
   }
 
   try {
+    // A-69: a redirect is the BROWSER's to follow. fetch follows 3xx by
+    // default, so the OIDC callback's 302 to /sso-callback was followed here,
+    // on the server: the browser got that page's HTML under the callback URL
+    // and never the one-time code. `manual` hands the 3xx and its Location
+    // (copied with the other headers below) back to the browser.
     const res = await fetch(url, {
       method: req.method,
       headers,
       body,
+      redirect: "manual",
     });
 
     const responseData = await res.arrayBuffer();
@@ -96,6 +122,12 @@ async function handleProxy(
       }
       responseHeaders.set(key, value);
     });
+    // A-68: ...except the OIDC sign-in binding, which must reach the browser.
+    for (const line of res.headers.getSetCookie()) {
+      if (line.startsWith(`${SSO_BINDING_COOKIE}=`)) {
+        responseHeaders.append("set-cookie", line);
+      }
+    }
 
     // Check if response contains a rotated token/session in JSON
     const isJson = res.headers.get("content-type")?.includes("application/json");

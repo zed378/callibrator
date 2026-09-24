@@ -3,6 +3,8 @@ const { db } = require("../config");
 const { MaintenanceWorkOrder, CalibrationDevice, Vendor, User } = require("../models");
 const { AppError } = require("../utils/appError.util");
 const { DEFAULT_LIMIT, MAX_LIMIT } = require("../constants");
+const webhookService = require("./webhook.service");
+const { WEBHOOK_EVENTS } = require("../constants/webhookEvents");
 
 // ------------------------------------------------------------------
 // HELPERS
@@ -145,6 +147,10 @@ exports.createWorkOrder = async (tenantId, data) => {
       ...toModelFields(data),
       tenantId,
     });
+    // A-11: no transaction here — the insert has already autocommitted.
+    webhookService.emitAfterCommit(null, tenantId, WEBHOOK_EVENTS.WORK_ORDER_CREATED, {
+      workOrderId: newOrder.id, deviceId: newOrder.deviceId, type: newOrder.type, status: newOrder.status, priority: newOrder.priority,
+    });
 
     return {
       success: true,
@@ -173,7 +179,14 @@ exports.updateWorkOrder = async (tenantId, orderId, data) => {
       throw new AppError(404, "Maintenance work order not found");
     }
 
+    const previousStatus = order.status;
     await order.update(toModelFields(data));
+    // A-11: the update has autocommitted; announce the transition into Completed once.
+    if (order.status === "Completed" && previousStatus !== "Completed") {
+      webhookService.emitAfterCommit(null, tenantId, WEBHOOK_EVENTS.WORK_ORDER_COMPLETED, {
+        workOrderId: order.id, deviceId: order.deviceId, type: order.type, status: order.status,
+      });
+    }
 
     return {
       success: true,

@@ -33,6 +33,10 @@ const EC_JWK = crypto
   .publicKey.export({ format: "jwk" });
 const { AppError } = require("../../utils/appError.util");
 const axios = require("axios");
+
+// A-68: every callback verification carries the sign-in's stored nonce and PKCE
+// verifier; the ID token must carry the same nonce.
+const FLOW = Object.freeze({ nonce: "nonce-123", codeVerifier: "verifier-123" });
 const jwt = require("jsonwebtoken");
 
 describe("oidcJwks", () => {
@@ -303,6 +307,7 @@ describe("oidcJwks", () => {
           "auth-code",
           {},
           "http://localhost/callback",
+          FLOW,
         ),
       ).rejects.toThrow("No id_token returned from token endpoint");
     });
@@ -356,6 +361,7 @@ describe("oidcJwks", () => {
         "auth-code",
         ssoSettings,
         "http://localhost/callback",
+        FLOW,
       );
 
       expect(result.email).toBe("user@example.com");
@@ -368,6 +374,7 @@ describe("oidcJwks", () => {
     it("should use default values when name fields are missing", async () => {
       const decodedToken = {
         email: "test@example.com",
+        nonce: FLOW.nonce,
       };
 
       axios.post.mockResolvedValueOnce({
@@ -403,6 +410,7 @@ describe("oidcJwks", () => {
         "auth-code",
         ssoSettings,
         "http://localhost/callback",
+        FLOW,
       );
 
       expect(result.email).toBe("test@example.com");
@@ -432,6 +440,7 @@ describe("oidcJwks", () => {
           "auth-code",
           ssoSettings,
           "http://localhost/callback",
+          FLOW,
         ),
       ).rejects.toThrow("Failed to fetch IdP public keys");
     });
@@ -629,6 +638,7 @@ describe("oidcJwks", () => {
           "code-1",
           { oidc_client_id: "c1", oidc_client_secret: "s1" },
           "https://sp/callback",
+          FLOW,
         ),
       ).rejects.toMatchObject({ status: 401, message: "OIDC authentication failed" });
 
@@ -650,6 +660,7 @@ describe("oidcJwks", () => {
           "code-1",
           { oidc_client_id: "c1", oidc_client_secret: "s1" },
           "https://sp/callback",
+          FLOW,
         ),
       ).rejects.toMatchObject({ status: 401, message: "OIDC authentication failed" });
     });
@@ -665,13 +676,13 @@ describe("oidcJwks", () => {
       axios.get.mockResolvedValue({
         data: { keys: [{ kid: "k1", kty: "RSA", n: RSA_JWK.n, e: RSA_JWK.e }] },
       });
-      jwt.verify.mockReturnValue(claims);
+      jwt.verify.mockReturnValue({ nonce: FLOW.nonce, ...claims });
     };
 
     it("falls back to preferred_username when email is absent", async () => {
       withClaims({ preferred_username: "Bob@Example.COM" });
 
-      const result = await oidcJwks.verifyOidcCallback("c", settings, "https://cb");
+      const result = await oidcJwks.verifyOidcCallback("c", settings, "https://cb", FLOW);
 
       expect(result.email).toBe("bob@example.com");
     });
@@ -679,7 +690,7 @@ describe("oidcJwks", () => {
     it("falls back to upn when email and preferred_username are absent", async () => {
       withClaims({ upn: "Carol@Example.COM" });
 
-      const result = await oidcJwks.verifyOidcCallback("c", settings, "https://cb");
+      const result = await oidcJwks.verifyOidcCallback("c", settings, "https://cb", FLOW);
 
       expect(result.email).toBe("carol@example.com");
     });
@@ -687,7 +698,7 @@ describe("oidcJwks", () => {
     it("yields an empty email when no email-ish claim is present", async () => {
       withClaims({ sub: "abc" });
 
-      const result = await oidcJwks.verifyOidcCallback("c", settings, "https://cb");
+      const result = await oidcJwks.verifyOidcCallback("c", settings, "https://cb", FLOW);
 
       expect(result.email).toBe("");
     });
@@ -695,7 +706,7 @@ describe("oidcJwks", () => {
     it("derives firstName from the name claim when given_name is absent", async () => {
       withClaims({ email: "d@e.com", name: "Dave Smith" });
 
-      const result = await oidcJwks.verifyOidcCallback("c", settings, "https://cb");
+      const result = await oidcJwks.verifyOidcCallback("c", settings, "https://cb", FLOW);
 
       expect(result.firstName).toBe("Dave");
       expect(result.lastName).toBe("User");
@@ -704,7 +715,7 @@ describe("oidcJwks", () => {
     it("defaults firstName/lastName when neither given_name nor name is present", async () => {
       withClaims({ email: "d@e.com" });
 
-      const result = await oidcJwks.verifyOidcCallback("c", settings, "https://cb");
+      const result = await oidcJwks.verifyOidcCallback("c", settings, "https://cb", FLOW);
 
       expect(result.firstName).toBe("SSO");
       expect(result.lastName).toBe("User");
@@ -715,20 +726,20 @@ describe("oidcJwks", () => {
         email: "d@e.com",
         given_name: "Dave",
         family_name: "Smith",
-        nonce: "n1",
+        nonce: FLOW.nonce,
         auth_time: 1700000000,
         acr: "1",
         amr: ["pwd"],
         sub: "sub-1",
       });
 
-      const result = await oidcJwks.verifyOidcCallback("c", settings, "https://cb");
+      const result = await oidcJwks.verifyOidcCallback("c", settings, "https://cb", FLOW);
 
       expect(result).toEqual({
         email: "d@e.com",
         firstName: "Dave",
         lastName: "Smith",
-        nonce: "n1",
+        nonce: FLOW.nonce,
         authTime: 1700000000,
         acr: "1",
         amr: ["pwd"],
@@ -743,6 +754,7 @@ describe("oidcJwks", () => {
         "code-9",
         { ...settings, oidc_authority: "https://login.example.com/t1/oauth2/v2.0" },
         "https://cb",
+        FLOW,
       );
 
       expect(axios.post).toHaveBeenCalledWith(
@@ -750,6 +762,58 @@ describe("oidcJwks", () => {
         expect.stringContaining("code=code-9"),
         expect.any(Object),
       );
+    });
+  });
+
+  describe("A-68: nonce and PKCE", () => {
+    const settings = { oidc_client_id: "c1", oidc_client_secret: "s1" };
+    const withClaims = (claims) => {
+      axios.post.mockResolvedValue({ data: { id_token: "tok" } });
+      jwt.decode.mockReturnValue({ header: { kid: "k1", alg: "RS256" } });
+      axios.get.mockResolvedValue({
+        data: { keys: [{ kid: "k1", kty: "RSA", n: RSA_JWK.n, e: RSA_JWK.e }] },
+      });
+      jwt.verify.mockReturnValue(claims);
+    };
+
+    it.each([
+      ["no flow at all", undefined],
+      ["no nonce", { codeVerifier: "v" }],
+      ["no code_verifier", { nonce: "n" }],
+    ])("refuses a callback with %s before any request to the IdP", async (_label, flow) => {
+      await expect(
+        oidcJwks.verifyOidcCallback("c", settings, "https://cb", flow),
+      ).rejects.toMatchObject({ status: 401, message: "OIDC sign-in state is incomplete" });
+      expect(axios.post).not.toHaveBeenCalled();
+    });
+
+    it("sends the PKCE code_verifier to the token endpoint", async () => {
+      withClaims({ email: "d@e.com", nonce: FLOW.nonce });
+
+      await oidcJwks.verifyOidcCallback("code-9", settings, "https://cb", FLOW);
+
+      const body = new URLSearchParams(axios.post.mock.calls[0][1]);
+      expect(body.get("code_verifier")).toBe(FLOW.codeVerifier);
+      expect(body.get("code")).toBe("code-9");
+    });
+
+    it("an id_token whose nonce does not match the sign-in is refused", async () => {
+      withClaims({ email: "d@e.com", nonce: "someone-elses-nonce" });
+
+      await expect(
+        oidcJwks.verifyOidcCallback("c", settings, "https://cb", FLOW),
+      ).rejects.toMatchObject({
+        status: 401,
+        message: "id_token nonce does not match the sign-in request",
+      });
+    });
+
+    it("an id_token with no nonce is refused", async () => {
+      withClaims({ email: "d@e.com" });
+
+      await expect(
+        oidcJwks.verifyOidcCallback("c", settings, "https://cb", FLOW),
+      ).rejects.toMatchObject({ status: 401 });
     });
   });
 });

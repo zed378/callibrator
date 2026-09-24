@@ -368,13 +368,17 @@ describe("sso.service", () => {
   // OIDC
   // ================================================================
   describe("generateOidcAuthRequest", () => {
+    // A-68: state, nonce and the PKCE challenge are minted and stored by the
+    // controller (beginOidcFlow); this function only puts them in the URL.
+    const FLOW = { state: "state-1", nonce: "nonce-1", codeChallenge: "challenge-1" };
+
     it("builds an authorize URL from the configured authority and redirect URI", () => {
       const url = new URL(
         ssoService.generateOidcAuthRequest("acme", {
           oidc_client_id: "client-123",
           oidc_authority: "https://login.example.com/tenant/oauth2/v2.0",
           oidc_redirect_uri: "https://app.example.com/callback",
-        }),
+        }, FLOW),
       );
 
       expect(url.origin + url.pathname).toBe(
@@ -391,7 +395,7 @@ describe("sso.service", () => {
 
     it("defaults the authority to the Entra ID common endpoint", () => {
       const url = new URL(
-        ssoService.generateOidcAuthRequest("acme", { oidc_client_id: "client-123" }),
+        ssoService.generateOidcAuthRequest("acme", { oidc_client_id: "client-123" }, FLOW),
       );
 
       expect(url.origin + url.pathname).toBe(
@@ -401,7 +405,7 @@ describe("sso.service", () => {
 
     it("defaults the redirect URI to the per-tenant callback route", () => {
       const url = new URL(
-        ssoService.generateOidcAuthRequest("acme", { oidc_client_id: "client-123" }),
+        ssoService.generateOidcAuthRequest("acme", { oidc_client_id: "client-123" }, FLOW),
       );
 
       expect(url.searchParams.get("redirect_uri")).toBe(
@@ -409,21 +413,30 @@ describe("sso.service", () => {
       );
     });
 
-    it("suffixes the state with the tenant code so the callback can route it", () => {
+    it("A-68: sends the stored state, the nonce and an S256 PKCE challenge — never a verifier", () => {
       const url = new URL(
-        ssoService.generateOidcAuthRequest("acme", { oidc_client_id: "client-123" }),
+        ssoService.generateOidcAuthRequest("acme", { oidc_client_id: "client-123" }, FLOW),
       );
-      const state = url.searchParams.get("state");
 
-      expect(state).toMatch(/^[0-9a-f]{32}_acme$/);
+      expect(url.searchParams.get("state")).toBe("state-1");
+      expect(url.searchParams.get("nonce")).toBe("nonce-1");
+      expect(url.searchParams.get("code_challenge")).toBe("challenge-1");
+      expect(url.searchParams.get("code_challenge_method")).toBe("S256");
+      expect(url.searchParams.has("code_verifier")).toBe(false);
     });
 
-    it("generates a fresh state on every call (no replay)", () => {
-      const settings = { oidc_client_id: "client-123" };
-      const a = new URL(ssoService.generateOidcAuthRequest("acme", settings));
-      const b = new URL(ssoService.generateOidcAuthRequest("acme", settings));
+    it("A-68: the caller's redirect_uri wins, so authorize and token exchange send the same one", () => {
+      const url = new URL(
+        ssoService.generateOidcAuthRequest(
+          "acme",
+          { oidc_client_id: "client-123", oidc_redirect_uri: "https://ignored.example.com/cb" },
+          { ...FLOW, redirectUri: "https://app.example.com/api/v1/auth/sso/oidc/callback/acme" },
+        ),
+      );
 
-      expect(a.searchParams.get("state")).not.toBe(b.searchParams.get("state"));
+      expect(url.searchParams.get("redirect_uri")).toBe(
+        "https://app.example.com/api/v1/auth/sso/oidc/callback/acme",
+      );
     });
   });
 
@@ -435,16 +448,19 @@ describe("sso.service", () => {
         .mockResolvedValue({ email: "user@example.com", firstName: "A", lastName: "B" });
 
       const settings = { oidc_client_id: "c1", oidc_client_secret: "s1" };
+      const flow = { nonce: "n", codeVerifier: "v" };
       const result = await ssoService.verifyOidcCallback(
         "code-1",
         settings,
         "https://app.example.com/callback",
+        flow,
       );
 
       expect(spy).toHaveBeenCalledWith(
         "code-1",
         settings,
         "https://app.example.com/callback",
+        flow,
       );
       expect(result).toEqual({
         email: "user@example.com",

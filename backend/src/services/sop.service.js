@@ -139,19 +139,71 @@ exports.publishDocument = async (tenantId, documentId, publisherId) => {
   return doc;
 };
 
+/**
+ * Record that the caller has read an SOP — their ISO 13485 §6.2 training
+ * record for that revision.
+ *
+ * A-145 — the acknowledgement and its audit row commit together, and a
+ * completed acknowledgement is never rewritten. Until 2026-09-24 this saved
+ * the row with no audit entry at all (an unattributable training record), and
+ * a second click silently moved `acknowledgedAt` to "now" — the date the
+ * training record attests could be changed after the fact. A repeat is now a
+ * 409 that names the recorded date.
+ *
+ * The route carries denyPlatformAuthoring (ADR-051 Q-17): only the member
+ * themselves may attest their own training.
+ *
+ * @param {string} tenantId
+ * @param {string} userId - the caller; only their own acknowledgement is found
+ * @param {string} documentId
+ * @returns {Promise<object>} the completed acknowledgement
+ * @throws {AppError} 404 when no training is assigned to the caller for this
+ *   document in this tenant (another tenant's document reads the same); 409
+ *   when it was already acknowledged
+ */
 exports.acknowledgeTraining = async (tenantId, userId, documentId) => {
   const ack = await SopTrainingAcknowledgment.findOne({
     where: { tenantId, userId, documentId },
   });
 
   if (!ack) {
-    // If not required or generated, let's assume valid
     throw new AppError(404, "Training acknowledgment not found");
   }
 
-  ack.status = "COMPLETED";
-  ack.acknowledgedAt = new Date();
-  await ack.save();
+  if (ack.status === "COMPLETED") {
+    const when = ack.acknowledgedAt ? new Date(ack.acknowledgedAt).toISOString() : "an earlier date";
+    throw new AppError(
+      409,
+      `You already acknowledged this SOP on ${when}. A training record is not overwritten; if the procedure changed, a new revision must be published and acknowledged.`,
+    );
+  }
+
+  const previousStatus = ack.status;
+
+  await db.transaction(async (transaction) => {
+    ack.status = "COMPLETED";
+    ack.acknowledgedAt = new Date();
+    await ack.save({ transaction });
+
+    await auditService.logAction(
+      {
+        tenantId,
+        userId,
+        // No ENUM member of its own: the nearest action, with the operation
+        // named in `changes` (constants/auditActions.js).
+        action: "UPDATE",
+        resourceType: "SopTrainingAcknowledgment",
+        resourceId: ack.id,
+        changes: {
+          operation: "ACKNOWLEDGE_TRAINING",
+          documentId,
+          before: { status: previousStatus },
+          after: { status: "COMPLETED", acknowledgedAt: ack.acknowledgedAt },
+        },
+      },
+      { transaction },
+    );
+  });
 
   return ack;
 };

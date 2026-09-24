@@ -7,6 +7,7 @@
 const gdprService = require("../services/gdpr.service");
 const { success } = require("../utils/response.util");
 const { asyncHandler } = require("../utils/controllerWrapper.util");
+const { auditActor } = require("../utils/auditActor.util");
 
 /**
  * Resolve the authenticated actor. tenantId comes from the auth-middleware
@@ -93,7 +94,9 @@ exports.getProcessingActivities = asyncHandler(async (req, res) => {
 exports.rectifyData = asyncHandler(async (req, res) => {
   const { tenantId, userId } = actor(req);
   const { field, value } = req.body;
-  const result = await gdprService.rectifyData(tenantId, userId, field, value);
+  // A-153: the request's IP / user agent go on the audit row the service
+  // writes inside its transaction.
+  const result = await gdprService.rectifyData(tenantId, userId, field, value, auditActor(req));
   return success(res, result, "Data rectified");
 });
 

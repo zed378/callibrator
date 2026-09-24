@@ -30,6 +30,8 @@ jest.mock("../../services/redis.service", () => ({
 jest.mock("../../utils/upload.util", () => ({
   getUploadUrl: (fileName, folder) => `/${folder}/${fileName}`,
   deleteUpload: jest.fn(),
+  // S-17: the service promotes the scanned file out of quarantine.
+  promoteFromQuarantine: jest.fn(async (file) => file.path),
 }));
 
 jest.mock("../../services/virusScan.service", () => ({
@@ -184,14 +186,14 @@ describe("A-117 — updateTenantSettings is audited in its transaction", () => {
     const existingSame = { value: "id", update: jest.fn().mockResolvedValue(undefined) };
     const existingChanged = { value: "light", update: jest.fn().mockResolvedValue(undefined) };
     models.TenantSettings.findOrCreate.mockImplementation(async ({ where }) => {
-      if (where.key === "locale") {return [existingSame, false];}
-      if (where.key === "theme") {return [existingChanged, false];}
+      if (where.key === "sso_idp_entity_id") {return [existingSame, false];}
+      if (where.key === "ai_vendor") {return [existingChanged, false];}
       return [{ value: "x" }, true];
     });
 
     await tenantService.updateTenantSettings(
       TENANT,
-      { theme: "dark", locale: "id", smtpPassword: "hunter2" },
+      { ai_vendor: "dark", sso_idp_entity_id: "id", ai_api_key: "hunter2" },
       "u-admin",
       { userId: "u-admin", ipAddress: "203.0.113.7", userAgent: "jest" },
     );
@@ -205,7 +207,7 @@ describe("A-117 — updateTenantSettings is audited in its transaction", () => {
       action: "UPDATE",
       resourceType: "TenantSettings",
       resourceId: TENANT,
-      changes: { operation: "UPDATE_SETTINGS", created: ["smtpPassword"], changed: ["theme"] },
+      changes: { operation: "UPDATE_SETTINGS", created: ["ai_api_key"], changed: ["ai_vendor"] },
       ipAddress: "203.0.113.7",
       userAgent: "jest",
     });
@@ -222,7 +224,7 @@ describe("A-117 — updateTenantSettings is audited in its transaction", () => {
     auditService.logAction.mockRejectedValueOnce(new Error("audit insert failed"));
 
     await expect(
-      tenantService.updateTenantSettings(TENANT, { theme: "dark" }, "u-admin", { userId: "u-admin" }),
+      tenantService.updateTenantSettings(TENANT, { ai_vendor: "dark" }, "u-admin", { userId: "u-admin" }),
     ).rejects.toThrow("audit insert failed");
 
     expect(mockTx.commit).not.toHaveBeenCalled();
@@ -232,7 +234,7 @@ describe("A-117 — updateTenantSettings is audited in its transaction", () => {
   it("without an actor object the row falls back to updatedBy as the actor", async () => {
     models.TenantSettings.findOrCreate.mockResolvedValue([{ value: "x" }, true]);
 
-    await tenantService.updateTenantSettings(TENANT, { theme: "dark" }, "u-admin");
+    await tenantService.updateTenantSettings(TENANT, { ai_vendor: "dark" }, "u-admin");
 
     expect(auditService.logAction).toHaveBeenCalledWith(
       expect.objectContaining({ userId: "u-admin", ipAddress: null, userAgent: null }),

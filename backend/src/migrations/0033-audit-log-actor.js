@@ -223,7 +223,7 @@ module.exports = {
         const { cutoff } = await one(
           sequelize,
           transaction,
-          `SELECT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cutoff`,
+          "SELECT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS cutoff",
         );
         await sequelize.query(
           `ALTER TABLE ${TABLE} ADD CONSTRAINT ${CONSTRAINT} CHECK (${checkExpression(cutoff)})`,

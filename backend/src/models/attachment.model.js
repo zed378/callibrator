@@ -115,8 +115,9 @@ const defineModel = (db, DataTypes) => {
       onDelete: "RESTRICT",
     });
     Attachment.belongsTo(models.User, {
-      foreignKey: "uploaded_by",
+      foreignKey: "uploadedBy",
       as: "uploader",
+      onDelete: "SET NULL",
     });
   };
 

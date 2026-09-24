@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Search, Loader2, Cpu, Package, FileText } from "lucide-react";
 import {
   searchService,
+  searchErrorMessage,
   SearchResult,
   SearchResponse,
 } from "@/api/services/search.service";
@@ -80,7 +81,8 @@ export const GlobalSearch: React.FC<{ className?: string }> = ({
     } catch (err) {
       if (requestId === requestIdRef.current) {
         setResponse(null);
-        setError(err instanceof Error ? err.message : "Search failed");
+        // A-56: a failed search is shown as a failure, never as "no results".
+        setError(searchErrorMessage(err));
         setIsOpen(true);
       }
     } finally {
@@ -90,20 +92,27 @@ export const GlobalSearch: React.FC<{ className?: string }> = ({
     }
   }, []);
 
-  // Debounced search on input change
-  useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-
-    const trimmed = query.trim();
-    if (trimmed.length < 2) {
+  // A-22. Clearing the results used to happen inside the debounce effect —
+  // a synchronous setState in an effect body, which renders twice for one
+  // keystroke (react-hooks/set-state-in-effect). The reset belongs to the
+  // event that causes it, so it runs here, in the change handler.
+  const handleQueryChange = useCallback((value: string) => {
+    setQuery(value);
+    if (value.trim().length < 2) {
       // Invalidate in-flight requests and reset
       requestIdRef.current += 1;
       setResponse(null);
       setError(null);
       setIsLoading(false);
       setIsOpen(false);
-      return;
     }
+  }, []);
+
+  // Debounced search on input change. The effect only schedules the request
+  // (an external timer); every state update happens in the timer callback.
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (trimmed.length < 2) return;
 
     debounceRef.current = setTimeout(() => {
       runSearch(trimmed);
@@ -130,12 +139,10 @@ export const GlobalSearch: React.FC<{ className?: string }> = ({
 
   const handleSelect = useCallback(
     (result: SearchResult) => {
-      setIsOpen(false);
-      setQuery("");
-      setResponse(null);
+      handleQueryChange("");
       router.push(TYPE_CONFIG[result.type].href);
     },
-    [router],
+    [router, handleQueryChange],
   );
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -172,7 +179,7 @@ export const GlobalSearch: React.FC<{ className?: string }> = ({
         <input
           type="text"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => handleQueryChange(e.target.value)}
           onKeyDown={handleKeyDown}
           onFocus={() => {
             if (query.trim().length >= 2 && (response || error)) {

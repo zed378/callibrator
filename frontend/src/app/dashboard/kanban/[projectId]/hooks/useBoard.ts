@@ -1,6 +1,6 @@
 // src/app/dashboard/kanban/[projectId]/hooks/useBoard.ts
 import { useEffect, useState, useCallback } from "react";
-import { getSocket } from "@/lib/socket";
+import { getSocket, joinBoardRoom } from "@/lib/socket";
 import { useKanbanStore } from "@/stores/kanbanStore";
 import {
   kanbanService,
@@ -56,7 +56,11 @@ export function useBoard(projectId: string) {
       const socket = await getSocket();
       if (!socket || disposed) return;
 
-      socket.emit("kanban:join", projectId);
+      // Joined now AND after every reconnect (A-53); a refusal is shown, not
+      // swallowed.
+      const leaveRoom = joinBoardRoom(socket, projectId, (reason) =>
+        setError(`Live updates are unavailable: ${reason}`),
+      );
 
       const onCardCreated = (p: { card: KanbanCard }) => upsertCard(p.card);
       const onCardUpdated = (p: { card: KanbanCard }) => upsertCard(p.card);
@@ -85,7 +89,7 @@ export function useBoard(projectId: string) {
       socket.on("kanban:cards:migrated", onMigrated);
 
       cleanup = () => {
-        socket.emit("kanban:leave", projectId);
+        leaveRoom();
         socket.off("kanban:card:created", onCardCreated);
         socket.off("kanban:card:updated", onCardUpdated);
         socket.off("kanban:card:moved", onCardMoved);
@@ -112,6 +116,7 @@ export function useBoard(projectId: string) {
     removeCard,
     upsertSprint,
     removeSprint,
+    setError,
   ]);
 
   // ---- Card actions ----

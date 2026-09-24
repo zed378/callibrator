@@ -12,7 +12,7 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom";
-import { AuditTable, PLATFORM_OPERATOR } from "../AuditTable";
+import { AuditTable, PLATFORM_OPERATOR, UNKNOWN_ACTOR } from "../AuditTable";
 import type { AuditLog } from "@/api/services/audit.service";
 
 const META = { total: 1, page: 1, limit: 10, totalPages: 1 };
@@ -93,5 +93,44 @@ describe("AuditTable — who acted (A-127, F-8)", () => {
     expect(screen.getByText("tech.one")).toBeInTheDocument();
     expect(screen.getByText("tech@hospital.test")).toBeInTheDocument();
     expect(screen.queryByTestId("audit-impersonator")).not.toBeInTheDocument();
+  });
+});
+
+describe("AuditTable — system actors (A-124, ADR-051 Q-13)", () => {
+  it("names the retention purge as a system job, with its registered name", () => {
+    renderRows([
+      row({ userId: null, user: null, actorType: "system", actorName: "system:retention-purge" }),
+    ]);
+    const cell = screen.getByTestId("audit-system-actor");
+    expect(cell).toHaveTextContent("Retention purge");
+    expect(cell).toHaveTextContent("system:retention-purge");
+    expect(screen.queryByText("System")).not.toBeInTheDocument();
+    expect(screen.queryByText(PLATFORM_OPERATOR)).not.toBeInTheDocument();
+  });
+
+  it("names the tenant-lifecycle scheduler", () => {
+    renderRows([
+      row({ userId: null, user: null, actorType: "system", actorName: "system:tenant-lifecycle" }),
+    ]);
+    expect(screen.getByTestId("audit-system-actor")).toHaveTextContent("Tenant lifecycle");
+  });
+
+  it("shows a system name it has no label for as a generic job, still with the name", () => {
+    renderRows([row({ userId: null, user: null, actorType: "system", actorName: "system:new-job" })]);
+    const cell = screen.getByTestId("audit-system-actor");
+    expect(cell).toHaveTextContent("System job");
+    expect(cell).toHaveTextContent("system:new-job");
+  });
+
+  it("says a pre-migration row's actor is unknown, rather than guessing 'System'", () => {
+    renderRows([row({ userId: null, user: null, actorType: "unknown", actorName: null })]);
+    expect(screen.getByText(UNKNOWN_ACTOR)).toBeInTheDocument();
+    expect(screen.queryByText("System")).not.toBeInTheDocument();
+  });
+
+  it("a user row with actorType 'user' still names the user", () => {
+    renderRows([row({ userId: member.id, user: member, actorType: "user", actorName: null })]);
+    expect(screen.getByText("tech.one")).toBeInTheDocument();
+    expect(screen.queryByTestId("audit-system-actor")).not.toBeInTheDocument();
   });
 });

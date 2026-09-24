@@ -712,7 +712,8 @@ describe("RolesService", () => {
       mockUser.findByPk.mockResolvedValue({ save: mockSave });
       mockRole.findByPk.mockResolvedValue({ status: "active" });
       const res = await RolesService.assignRoleToUser("u1", "r1");
-      expect(res.role_id).toBe("r1");
+      // The attribute (A-148): `role_id` is no longer an attribute of User.
+      expect(res.roleId).toBe("r1");
       expect(mockSave).toHaveBeenCalled();
     });
   });
@@ -723,10 +724,12 @@ describe("RolesService", () => {
       await expect(RolesService.removeRoleFromUser("u1")).rejects.toThrow("User not found");
     });
 
-    it("should set role_id to null and save", async () => {
+    it("should set roleId to null and save", async () => {
       const mockSave = jest.fn();
-      mockUser.findByPk.mockResolvedValue({ save: mockSave, role_id: "r1" });
+      const user = { save: mockSave, roleId: "r1" };
+      mockUser.findByPk.mockResolvedValue(user);
       await RolesService.removeRoleFromUser("u1");
+      expect(user.roleId).toBeNull();
       expect(mockSave).toHaveBeenCalled();
     });
   });
@@ -772,16 +775,20 @@ describe("RolesService", () => {
     });
 
     describe("createMenu", () => {
+      beforeEach(() => {
+        mockMenuGroup.create.mockResolvedValue({ id: "m-new" });
+      });
+
       it("should create a new menu group", async () => {
         await RolesService.createMenu({ name: " Dash Board " });
         expect(mockMenuGroup.create).toHaveBeenCalledWith({
           name: "Dash Board",
           slug: "dash-board",
           icon: undefined,
-          parent_id: undefined,
+          parentId: undefined, // the attribute (A-148); the API field stays parent_id
           sort_order: 0,
           is_active: true,
-        });
+        }, { transaction: "TX" });
       });
 
       it("does not touch the permission cache for a top-level menu", async () => {
@@ -803,7 +810,7 @@ describe("RolesService", () => {
         expect(mockMenuGroup.create).toHaveBeenCalledWith(expect.objectContaining({
           slug: "custom-slug",
           is_active: false,
-        }));
+        }), { transaction: "TX" });
       });
     });
 
@@ -820,7 +827,7 @@ describe("RolesService", () => {
         expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({
           name: "NewName",
           is_active: false,
-        }));
+        }), { transaction: "TX" });
         expect(require("../../services/redis.service").delPattern).toHaveBeenCalledWith("permissions:role:*");
       });
 
@@ -841,10 +848,10 @@ describe("RolesService", () => {
           name: "Reports",
           slug: "custom-slug",
           icon: "chart",
-          parent_id: "p1",
+          parentId: "p1", // the attribute (A-148)
           sort_order: 5,
           is_active: true,
-        });
+        }, { transaction: "TX" });
       });
 
       it("should derive the slug from the name when slug is supplied but blank", async () => {
@@ -853,7 +860,7 @@ describe("RolesService", () => {
 
         await RolesService.updateMenu("m1", { name: " Dash Board ", slug: "" });
 
-        expect(mockUpdate).toHaveBeenCalledWith({ name: "Dash Board", slug: "dash-board" });
+        expect(mockUpdate).toHaveBeenCalledWith({ name: "Dash Board", slug: "dash-board" }, { transaction: "TX" });
       });
 
       it("should leave the slug undefined when both slug and name are blank", async () => {
@@ -862,7 +869,7 @@ describe("RolesService", () => {
 
         await RolesService.updateMenu("m1", { slug: null });
 
-        expect(mockUpdate).toHaveBeenCalledWith({ slug: undefined });
+        expect(mockUpdate).toHaveBeenCalledWith({ slug: undefined }, { transaction: "TX" });
       });
 
       it("should update nothing when no fields are supplied", async () => {
@@ -871,7 +878,7 @@ describe("RolesService", () => {
 
         await RolesService.updateMenu("m1", {});
 
-        expect(mockUpdate).toHaveBeenCalledWith({});
+        expect(mockUpdate).toHaveBeenCalledWith({}, { transaction: "TX" });
       });
     });
 
@@ -885,8 +892,8 @@ describe("RolesService", () => {
         const mockDestroy = jest.fn();
         mockMenuGroup.findByPk.mockResolvedValue({ destroy: mockDestroy });
         await RolesService.deleteMenu("m1");
-        expect(mockRoleMenuPermission.destroy).toHaveBeenCalledWith({ where: { menuGroupId: "m1" } });
-        expect(mockDestroy).toHaveBeenCalled();
+        expect(mockRoleMenuPermission.destroy).toHaveBeenCalledWith({ where: { menuGroupId: "m1" }, transaction: "TX" });
+        expect(mockDestroy).toHaveBeenCalledWith({ transaction: "TX" });
         expect(require("../../services/redis.service").delPattern).toHaveBeenCalledWith("permissions:role:*");
       });
     });

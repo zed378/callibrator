@@ -201,5 +201,36 @@ describe("email.service", () => {
       expect(mockSendMail.mock.calls[0][0].html).toContain("Hi there");
       expect(mockSendMail.mock.calls[0][0].html).not.toContain("View details");
     });
+
+    describe("A-172 — the footer is the deployment's brand", () => {
+      const footer = (html) => html.match(/<p style="color:#6b7280;font-size:12px">([^<]*)<\/p>/)[1];
+      let saved;
+      beforeEach(() => {
+        saved = process.env.APP_NAME;
+      });
+      afterEach(() => {
+        if (saved === undefined) {delete process.env.APP_NAME;} else {process.env.APP_NAME = saved;}
+      });
+
+      it("names APP_NAME, escaped, and never the hard-coded boilerplate name", async () => {
+        process.env.APP_NAME = "RS Sehat <Kalibrasi> & Co";
+        const mockSendMail = require("nodemailer").createTransport().sendMail;
+
+        await sendNotificationEmail({ email: "r@test.com", title: "T", message: "M" });
+
+        const { html } = mockSendMail.mock.calls[0][0];
+        expect(footer(html)).toBe("RS Sehat &lt;Kalibrasi&gt; &amp; Co");
+        expect(html).not.toContain("Calibration Management System");
+      });
+
+      it("falls back to the default brand the other templates use", async () => {
+        delete process.env.APP_NAME;
+        const mockSendMail = require("nodemailer").createTransport().sendMail;
+
+        await sendNotificationEmail({ email: "r@test.com", title: "T", message: "M" });
+
+        expect(footer(mockSendMail.mock.calls[0][0].html)).toBe("Device Calibrator");
+      });
+    });
   });
 });

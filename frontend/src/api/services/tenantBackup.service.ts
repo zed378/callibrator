@@ -78,6 +78,49 @@ export interface BackupCreateInput {
   tag?: string;
 }
 
+/**
+ * Why an archived account was not restored (backend `NOT_RESTORED_REASONS`,
+ * tenantBackup.service.js). A restore never creates an account (ADR-051 Q-09).
+ *  - `absent`: no such account in the tenant; it may be re-invited through the
+ *    ordinary user-create path.
+ *  - `erased`: the person was erased under GDPR; they must NOT be re-invited.
+ */
+export type NotRestoredReason = "absent" | "erased";
+
+export interface NotRestoredEntry {
+  /** Index of the account in the backup archive. */
+  entry: number;
+  username: string;
+  reason: NotRestoredReason;
+}
+
+/**
+ * `data` of POST /:backupId/restore, as `restoreBackup` in
+ * backend/src/services/tenantBackup.service.js returns it. The restore
+ * response has no `meta`.
+ */
+export interface RestoreOutcome {
+  tenantId: string;
+  recordsProcessed: number;
+  /** Matched accounts whose profile was updated from the backup. */
+  updated: number;
+  /** Matched accounts left untouched (merge mode). */
+  unchanged: number;
+  /** Matched accounts that are deleted in the tenant and were not revived. */
+  skippedDeleted: number;
+  /** Live accounts not in the archive, left alone. */
+  retained: number;
+  notRestored: NotRestoredEntry[];
+  restoredAt: string;
+}
+
+export interface RestoreResult {
+  success: boolean;
+  message: string;
+  /** Null only if the backend sent no data (never on a 200 today). */
+  outcome: RestoreOutcome | null;
+}
+
 export const tenantBackupService = {
   /** POST /:tenantId/backups — `name` is required. */
   create: async (
@@ -160,17 +203,29 @@ export const tenantBackupService = {
    * POST /:tenantId/backups/:backupId/restore
    * The backend reads a single `mergeData` flag: merge (keep existing rows)
    * vs overwrite.
+   *
+   * Returns the per-account outcome too, including `notRestored` — the
+   * archived accounts the restore did not re-create (A-156). Dropping it left
+   * the operator with "Backup restored successfully" and no way to see who is
+   * missing.
    */
   restore: async (
     tenantId: string,
     backupId: string,
     options?: { overwriteExisting?: boolean },
-  ): Promise<{ success: boolean; message: string }> => {
-    const response = await api.post<BackendResponse<unknown>>(
+  ): Promise<RestoreResult> => {
+    const response = await api.post<BackendResponse<RestoreOutcome | null>>(
       `/api/v1/tenants/${tenantId}/backups/${backupId}/restore`,
       { mergeData: options?.overwriteExisting === false },
     );
-    return { success: response.success, message: response.message };
+    const outcome = response.data ?? null;
+    return {
+      success: response.success,
+      message: response.message,
+      outcome: outcome
+        ? { ...outcome, notRestored: outcome.notRestored ?? [] }
+        : null,
+    };
   },
 
   /** DELETE /:tenantId/backups/:backupId */

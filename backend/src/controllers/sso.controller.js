@@ -39,6 +39,14 @@ const { logger } = require("../middlewares/activityLog.middleware");
 // finds nothing and is refused. It never fails open: no entry, no redemption.
 // ---------------------------------------------------------------------------
 
+/**
+ * A-150: getTenantSettings masks secret values by default (it also answers
+ * `POST /tenants/settings`). The SSO flows need the real IdP certificate and
+ * OIDC client secret to talk to the identity provider, so they ask for them;
+ * nothing here returns them to the caller.
+ */
+const SSO_SETTINGS = Object.freeze({ includeSecrets: true });
+
 const HANDOFF_TTL_SECONDS = 60;
 const handoffKey = (code) =>
   `sso:handoff:${crypto.createHash("sha256").update(code).digest("hex")}`;
@@ -112,6 +120,122 @@ const handoffRedirect = async (req, res, tenant, user, method) => {
   res.redirect(target.toString());
 };
 
+// ---------------------------------------------------------------------------
+// A-68 — OIDC SIGN-IN STATE: `state`, `nonce` and PKCE
+//
+// The authorize request used to carry a `state` that was stored nowhere and a
+// callback that only split it to find the tenant, with no nonce and no PKCE —
+// so the callback accepted ANY authorization code with ANY state: login CSRF
+// (a victim signed into the attacker's account) and code injection.
+//
+// Now each OIDC sign-in begins by minting four random values:
+//   state         — goes to the IdP and comes back; the store key (hashed)
+//   nonce         — goes to the IdP; must come back inside the ID token
+//   code_verifier — stays HERE; the IdP gets only its S256 challenge, and the
+//                   token endpoint demands the verifier (RFC 7636)
+//   binding       — goes to the BROWSER only, in an httpOnly cookie
+// The store entry holds the tenant, redirect_uri, nonce, verifier and the
+// binding's hash, for OIDC_FLOW_TTL_SECONDS. The callback consumes it with one
+// GETDEL (single use across replicas), then requires the browser's cookie to
+// hash to the stored binding. A state that is missing, unknown, expired, used,
+// or presented by a browser that did not start the sign-in is refused before
+// the code is ever sent to the IdP.
+//
+// REDIS DOWN — held in process memory with the same TTL and single use, as the
+// hand-off codes are. It never fails open.
+//
+// The cookie is SameSite=Lax: the IdP returns with a top-level GET
+// (response_mode=query), which Lax cookies accompany. A form_post return (a
+// cross-site POST) would NOT carry it, and is therefore refused.
+// ---------------------------------------------------------------------------
+
+const OIDC_FLOW_TTL_SECONDS = 600;
+const OIDC_BINDING_COOKIE = "sso_oidc_binding";
+/** The browser sends it only to the OIDC routes — through the Next proxy too. */
+const OIDC_BINDING_COOKIE_PATH = "/api/v1/auth/sso/oidc";
+
+const sha256Hex = (value) => crypto.createHash("sha256").update(value).digest("hex");
+const oidcFlowKey = (state) => `sso:oidc:state:${sha256Hex(state)}`;
+const randomToken = () => crypto.randomBytes(32).toString("base64url");
+
+/** @type {Map<string, {entry: object, expiresAt: number}>} */
+const memoryOidcFlows = new Map();
+
+const bindingCookieOptions = () => ({
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "lax",
+  path: OIDC_BINDING_COOKIE_PATH,
+});
+
+/**
+ * Start an OIDC sign-in: mint state, nonce, PKCE verifier and browser binding,
+ * and store what the callback will need.
+ *
+ * @param {string} tenantCode
+ * @param {string} redirectUri - the exact redirect_uri sent to the IdP
+ * @returns {Promise<{state: string, nonce: string, codeChallenge: string, binding: string}>}
+ */
+const beginOidcFlow = async (tenantCode, redirectUri) => {
+  const state = randomToken();
+  const nonce = randomToken();
+  const codeVerifier = randomToken();
+  const binding = randomToken();
+  const codeChallenge = crypto.createHash("sha256").update(codeVerifier).digest("base64url");
+
+  const entry = { tenantCode, redirectUri, nonce, codeVerifier, bindingHash: sha256Hex(binding) };
+  const key = oidcFlowKey(state);
+  const stored = await redis.set(key, entry, OIDC_FLOW_TTL_SECONDS);
+  if (!stored) {
+    const now = Date.now();
+    for (const [heldKey, held] of memoryOidcFlows) {
+      if (held.expiresAt <= now) {
+        memoryOidcFlows.delete(heldKey);
+      }
+    }
+    memoryOidcFlows.set(key, { entry, expiresAt: now + OIDC_FLOW_TTL_SECONDS * 1000 });
+    logger.warn("OIDC sign-in state held in process memory: Redis unavailable");
+  }
+  return { state, nonce, codeChallenge, binding };
+};
+
+/**
+ * Consume a state — once — and check it belongs to this browser.
+ *
+ * @param {string} state - from the IdP's redirect
+ * @param {string|null} binding - the browser's binding cookie
+ * @returns {Promise<object|null>} the stored entry, or null (refuse)
+ */
+const consumeOidcFlow = async (state, binding) => {
+  const key = oidcFlowKey(String(state));
+  let entry = await redis.getDel(key);
+  if (!entry || typeof entry !== "object") {
+    const held = memoryOidcFlows.get(key);
+    memoryOidcFlows.delete(key);
+    entry = held && held.expiresAt > Date.now() ? held.entry : null;
+  }
+  if (!entry || !binding) {
+    return null;
+  }
+  const expected = Buffer.from(entry.bindingHash, "hex");
+  const presented = Buffer.from(sha256Hex(binding), "hex");
+  return crypto.timingSafeEqual(expected, presented) ? entry : null;
+};
+
+/**
+ * One cookie's value from a Cookie header. The backend has no cookie parser;
+ * this is the only cookie it reads.
+ */
+const readCookie = (header, name) => {
+  for (const part of String(header || "").split(";")) {
+    const at = part.indexOf("=");
+    if (at > 0 && part.slice(0, at).trim() === name) {
+      return part.slice(at + 1).trim();
+    }
+  }
+  return null;
+};
+
 /**
  * Create the session FIRST, then sign its id into the access token (`sid`) —
  * the same order loginUser uses. A-59: these callbacks used to sign
@@ -167,14 +291,21 @@ const issueSsoTokens = async (entry) => {
  * Handle SSO Login Redirect generation
  */
 exports.ssoLogin = asyncHandler(async (req, res) => {
-  const { tenantCode } = validate(req.body, ssoLoginSchema);
+  // A-68 (found in passing): validate() returns Joi's `{ value, error }`, so
+  // destructuring `tenantCode` from it always gave undefined — and Sequelize
+  // throws on `where: { code: undefined }`: every SSO start was a 500.
+  const { value, error: invalid } = validate(req.body, ssoLoginSchema);
+  if (invalid) {
+    throw new AppError(400, "Tenant code is required");
+  }
+  const { tenantCode } = value;
 
   const tenant = await Tenants.findOne({ where: { code: tenantCode } });
   if (!tenant) {
     throw new AppError(404, "Tenant not found");
   }
 
-  const settingsResult = await tenantService.getTenantSettings(tenant.id);
+  const settingsResult = await tenantService.getTenantSettings(tenant.id, SSO_SETTINGS);
   const ssoSettings = settingsResult.data?.settings || {};
 
   if (ssoSettings.sso_enabled !== "true" && ssoSettings.sso_enabled !== true) {
@@ -206,7 +337,7 @@ exports.ssoCallback = asyncHandler(async (req, res) => {
     throw new AppError(404, "Tenant not found");
   }
 
-  const settingsResult = await tenantService.getTenantSettings(tenant.id);
+  const settingsResult = await tenantService.getTenantSettings(tenant.id, SSO_SETTINGS);
   const ssoSettings = settingsResult.data?.settings || {};
 
   if (ssoSettings.sso_enabled !== "true" && ssoSettings.sso_enabled !== true) {
@@ -256,14 +387,21 @@ exports.ssoMetadata = asyncHandler(async (req, res) => {
  * Handle OIDC Login Redirect generation
  */
 exports.oidcLogin = asyncHandler(async (req, res) => {
-  const { tenantCode } = validate(req.body, ssoLoginSchema);
+  // A-68 (found in passing): validate() returns Joi's `{ value, error }`, so
+  // destructuring `tenantCode` from it always gave undefined — and Sequelize
+  // throws on `where: { code: undefined }`: every SSO start was a 500.
+  const { value, error: invalid } = validate(req.body, ssoLoginSchema);
+  if (invalid) {
+    throw new AppError(400, "Tenant code is required");
+  }
+  const { tenantCode } = value;
 
   const tenant = await Tenants.findOne({ where: { code: tenantCode } });
   if (!tenant) {
     throw new AppError(404, "Tenant not found");
   }
 
-  const settingsResult = await tenantService.getTenantSettings(tenant.id);
+  const settingsResult = await tenantService.getTenantSettings(tenant.id, SSO_SETTINGS);
   const ssoSettings = settingsResult.data?.settings || {};
 
   if (ssoSettings.sso_enabled !== "true" && ssoSettings.sso_enabled !== true) {
@@ -274,8 +412,23 @@ exports.oidcLogin = asyncHandler(async (req, res) => {
     throw new AppError(400, "OIDC is not configured for this tenant");
   }
 
-  const redirectUrl = ssoService.generateOidcAuthRequest(tenant.code, ssoSettings);
+  // A-68: redirect_uri is fixed HERE and stored with the state, so the token
+  // exchange sends exactly the value the authorize request did.
+  const hostUrl = process.env.HOST_URL || "http://localhost:5000";
+  const redirectUri = ssoSettings.oidc_redirect_uri || `${hostUrl}/api/v1/auth/sso/oidc/callback/${tenant.code}`;
+  const flow = await beginOidcFlow(tenant.code, redirectUri);
 
+  const redirectUrl = ssoService.generateOidcAuthRequest(tenant.code, ssoSettings, {
+    state: flow.state,
+    nonce: flow.nonce,
+    codeChallenge: flow.codeChallenge,
+    redirectUri,
+  });
+
+  res.cookie(OIDC_BINDING_COOKIE, flow.binding, {
+    ...bindingCookieOptions(),
+    maxAge: OIDC_FLOW_TTL_SECONDS * 1000,
+  });
   success(res, { redirectUrl }, null, "OIDC redirect URL generated", 200);
 });
 
@@ -283,29 +436,39 @@ exports.oidcLogin = asyncHandler(async (req, res) => {
  * Handle OIDC Callback
  */
 exports.oidcCallback = asyncHandler(async (req, res) => {
-  const { code, state } = req.body || {};
-  const tenantCode = req.params.tenantCode || (state ? state.split("_")[1] : null);
+  // A-68/A-69: the IdP returns with a GET (?code&state, response_mode=query);
+  // a POSTed form body is still read.
+  const { code, state } = { ...req.query, ...req.body };
 
-  if (!tenantCode || !code) {
-    throw new AppError(400, "Tenant identifier and authorization code are required");
+  if (!code || !state) {
+    throw new AppError(400, "Authorization code and state are required");
   }
+
+  // A-68: consume the state once, bound to this browser; the binding cookie is
+  // spent with it whatever the outcome.
+  const flow = await consumeOidcFlow(state, readCookie(req.headers.cookie, OIDC_BINDING_COOKIE));
+  res.clearCookie(OIDC_BINDING_COOKIE, bindingCookieOptions());
+  if (!flow || (req.params.tenantCode && req.params.tenantCode !== flow.tenantCode)) {
+    throw new AppError(401, "Invalid or expired SSO sign-in state");
+  }
+  const { tenantCode } = flow;
 
   const tenant = await Tenants.findOne({ where: { code: tenantCode } });
   if (!tenant) {
     throw new AppError(404, "Tenant not found");
   }
 
-  const settingsResult = await tenantService.getTenantSettings(tenant.id);
+  const settingsResult = await tenantService.getTenantSettings(tenant.id, SSO_SETTINGS);
   const ssoSettings = settingsResult.data?.settings || {};
 
   if (ssoSettings.sso_enabled !== "true" && ssoSettings.sso_enabled !== true) {
     throw new AppError(400, "SSO is not enabled for this tenant");
   }
 
-  const hostUrl = process.env.HOST_URL || "http://localhost:5000";
-  const redirectUri = ssoSettings.oidc_redirect_uri || `${hostUrl}/api/v1/auth/sso/oidc/callback/${tenant.code}`;
-
-  const userData = await ssoService.verifyOidcCallback(code, ssoSettings, redirectUri);
+  const userData = await ssoService.verifyOidcCallback(code, ssoSettings, flow.redirectUri, {
+    nonce: flow.nonce,
+    codeVerifier: flow.codeVerifier,
+  });
   const user = await ssoService.provisionUser(tenant.id, userData);
 
   await handoffRedirect(req, res, tenant, user, "oidc");
@@ -372,3 +535,7 @@ exports.ssoExchange = asyncHandler(async (req, res) => {
 });
 
 exports.HANDOFF_TTL_SECONDS = HANDOFF_TTL_SECONDS;
+exports.OIDC_FLOW_TTL_SECONDS = OIDC_FLOW_TTL_SECONDS;
+exports.OIDC_BINDING_COOKIE = OIDC_BINDING_COOKIE;
+// Exported for tests that need a started sign-in without driving oidcLogin.
+exports.beginOidcFlow = beginOidcFlow;

@@ -1,0 +1,43 @@
+# Build-context filter for frontend/Dockerfile, whose context is the REPOSITORY
+# ROOT (so `npm ci` can read the committed root package-lock.json — ADR-044,
+# S-29; mirrors backend/Dockerfile.dockerignore, ADR-046).
+#
+# BuildKit reads <Dockerfile>.dockerignore in preference to <context>/.dockerignore,
+# which is why this file lives here. frontend/.dockerignore is NOT consulted by
+# this build: a context's .dockerignore is read from the context root only.
+#
+# ALLOW-LIST: exclude everything, then re-include what the build needs.
+*
+
+!package.json
+!package-lock.json
+!backend/package.json
+!frontend
+
+# ...and keep out of frontend/ what the build does not need or must not see.
+# Local env files matter most: a developer's .env.local would otherwise be read
+# by `next build` and its NEXT_PUBLIC_* values inlined into the shipped bundle.
+frontend/node_modules
+frontend/.next
+frontend/dist
+frontend/coverage
+frontend/docs
+frontend/.env
+frontend/.env.*
+frontend/*.env
+frontend/bun.lock
+frontend/package-lock.json
+frontend/tsconfig.tsbuildinfo
+frontend/Dockerfile
+frontend/Dockerfile.dockerignore
+frontend/.dockerignore
+frontend/docker-compose*.yml
+frontend/docker-compose*.yaml
+frontend/nginx.conf
+frontend/entrypoint.sh
+frontend/**/*.md
+frontend/**/__tests__
+frontend/**/*.test.*
+frontend/**/*.spec.*
+frontend/jest.config.js
+frontend/jest.setup.ts

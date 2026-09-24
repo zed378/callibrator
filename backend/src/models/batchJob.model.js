@@ -4,7 +4,7 @@ module.exports = (sequelize, DataTypes) => {
   class BatchJob extends Model {
     static associate(models) {
       BatchJob.belongsTo(models.Tenant, { foreignKey: "tenantId", as: "tenant", onDelete: "CASCADE" });
-      BatchJob.belongsTo(models.User, { foreignKey: "user_id", as: "user" });
+      BatchJob.belongsTo(models.User, { foreignKey: "userId", as: "user", onDelete: "SET NULL" });
     }
   }
   

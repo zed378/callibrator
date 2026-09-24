@@ -1,5 +1,7 @@
-const { Op } = require("sequelize");
-const { Users, Role } = require("../models");
+const { Op, fn, col, where: sqlWhere } = require("sequelize");
+const models = require("../models");
+
+const { Users, Role, ScimGroup, RoleMenuPermission } = models;
 const { AppError } = require("../utils/appError.util");
 const { logger } = require("../middlewares/activityLog.middleware");
 
@@ -24,14 +26,6 @@ const assertAssignableRole = async (roleId) => {
     throw new AppError(403, "SCIM may not assign the SUPERADMIN role");
   }
   return role;
-};
-
-// Renaming or deleting a system role changes behaviour for EVERY tenant: roles
-// are global here, and authorization compares role names.
-const assertMutableGroup = (role) => {
-  if (role.isSystem) {
-    throw new AppError(403, "System roles cannot be renamed or deleted through SCIM");
-  }
 };
 
 const SCIM_USER_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:User";
@@ -83,6 +77,7 @@ const USER_PATH_ATTRIBUTES = {
 const GROUP_PATH_ATTRIBUTES = {
   displayname: "displayName",
   members: "members",
+  roleid: "roleId",
 };
 
 // Okta removes a single member with a value filter rather than a value body.
@@ -147,6 +142,23 @@ const toScimString = (value, attribute) => {
   throw new AppError(400, `SCIM ${attribute} must be a non-empty string`);
 };
 
+// A-49: a patch `value` reaches this module unvalidated — scimPatchSchema types
+// it as any object, array, string, boolean or number — while `roleId` and member
+// ids are compared against UUID columns. PostgreSQL rejects a malformed UUID
+// literal with 22P02 ("invalid input syntax for type uuid"), which surfaced as
+// a 500 where a 400 is owed. Every id that arrives in a patch value is checked
+// here, before any query.
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const isUuid = (value) => typeof value === "string" && UUID_PATTERN.test(value);
+
+const assertUuid = (value, attribute) => {
+  if (!isUuid(value)) {
+    throw new AppError(400, `SCIM ${attribute} must be a UUID`);
+  }
+  return value;
+};
+
 const toMemberIds = (value) => {
   const list = Array.isArray(value) ? value : [value];
   const ids = list
@@ -155,7 +167,7 @@ const toMemberIds = (value) => {
   if (ids.length === 0) {
     throw new AppError(400, "SCIM members value must name at least one member");
   }
-  return ids;
+  return ids.map((id) => assertUuid(id, "member value"));
 };
 
 // The single assignment point for a user attribute. Both patch forms and
@@ -182,6 +194,7 @@ const applyUserAttribute = async (updates, attribute, value) => {
       updates.lastName = toScimString(value, "name.familyName");
       break;
     case "roleId":
+      assertUuid(value, "roleId");
       await assertAssignableRole(value);
       updates.roleId = value;
       break;
@@ -234,32 +247,27 @@ const formatScimUser = (user) => ({
   },
 });
 
-// The `members = []` default is unreachable: all five call sites in this module
-// pass an explicit members array.
-/* istanbul ignore next */
-const formatScimGroup = (group, members = []) => ({
-  schemas: [SCIM_GROUP_SCHEMA],
-  id: group.id,
-  displayName: group.name,
-  members: members.map((m) => ({ value: m.id, display: m.email })),
-  meta: {
-    resourceType: "Group",
-    created: group.createdAt,
-    lastModified: group.updatedAt,
-  },
-});
-
 // RFC 7644 § 3.4.2.2: a filter the service cannot honour is an `invalidFilter`
 // 400. Before 2026-09-23 an unrecognised filter — including the `userName eq`
 // that Okta and Entra ID send to test for an existing user — was dropped, and
 // the caller got the WHOLE tenant back in answer to "does this one user exist?"
-const USER_FILTER_EMAIL = /^(?:userName|email|emails\.value)\s+eq\s+"([^"]*)"$/i;
+const USER_FILTER_USERNAME = /^userName\s+eq\s+"([^"]*)"$/i;
+const USER_FILTER_EMAIL = /^(?:email|emails\.value)\s+eq\s+"([^"]*)"$/i;
 const USER_FILTER_ACTIVE = /^active\s+eq\s+"?(true|false)"?$/i;
 
 const parseUserFilter = (filter) => {
   const where = {};
   for (const term of filter.split(/\s+and\s+/i)) {
     const trimmed = term.trim();
+    // A-49: `userName eq` used to compare `email` only. formatScimUser reports
+    // userName as the email, and createUser writes the email to both columns,
+    // but a user created elsewhere may have a username that differs — and the
+    // IdP's pre-create probe then found nothing and POSTed a duplicate.
+    const userNameMatch = trimmed.match(USER_FILTER_USERNAME);
+    if (userNameMatch) {
+      where[Op.or] = [{ email: userNameMatch[1] }, { username: userNameMatch[1] }];
+      continue;
+    }
     const emailMatch = trimmed.match(USER_FILTER_EMAIL);
     if (emailMatch) {
       where.email = emailMatch[1];
@@ -481,38 +489,256 @@ exports.deleteUser = async (tenantId, userId) => {
   return { status: 204 };
 };
 
-// SCIM Groups map onto Roles. Roles are GLOBAL in this schema — the model has
-// no tenantId column — so a Role query must never be filtered by it (doing so
-// threw `column Role.tenantId does not exist` and 500'd every Group endpoint).
-// Tenant scoping applies to membership instead: the Users lookups below are
-// always constrained by tenantId.
-exports.getGroups = async (tenantId, startIndex = 1, count = 100, filter = null) => {
-  const offset = Math.max(0, startIndex - 1);
-  const limit = Math.max(1, count);
+// ---------------------------------------------------------------------------
+// SCIM Groups (ADR-053; A-38, A-39, A-49)
+//
+// A SCIM Group is a `scim_groups` row OWNED BY ONE TENANT that maps to an
+// existing role. Until 2026-09-24 a group WAS a global `roles` row, so one
+// tenant's IdP listed every tenant's groups, got a 409 for a name another
+// tenant held, and deleted a role for every tenant that used it (A-38). A group
+// it created also carried roleLevel 1 and no menu grants, and nothing said so
+// (A-39). Now:
+//
+//  - SCIM never creates, renames or deletes a ROLE. It creates, renames and
+//    deletes the tenant's group row, and maps it with `roleId` to a role that
+//    already exists and already grants something.
+//  - A group may be created UNMAPPED — standard IdPs send only displayName —
+//    but an unmapped group grants nothing, and says so: every response carries
+//    the mapping in the Callibrator extension, and adding a member to it is a
+//    409 naming the fix. Nothing is granted silently, and nothing is silently
+//    not granted.
+//  - Membership is derived, as it always was: the tenant's users whose roleId
+//    is the group's role. A user holds one role, so joining a group REPLACES
+//    their role and leaving it demotes them to ROLE_IDS.USER.
+//  - displayName is stored as sent and compared case-insensitively, per tenant
+//    (migration 0042's unique index), so another tenant's name is never a 409
+//    and `displayName eq` matches however the IdP capitalises it (A-49).
+//  - Every multi-step write runs in ONE transaction.
+// ---------------------------------------------------------------------------
 
-  const roleWhere = {};
-  if (filter) {
-    const displayNameMatch = filter.match(/displayName eq "([^"]+)"/);
-    if (displayNameMatch) {
-      roleWhere.name = displayNameMatch[1];
+const SCIM_GROUP_EXTENSION = "urn:ietf:params:scim:schemas:extension:callibrator:2.0:Group";
+
+// RFC 7644 § 3.4.2.4 lets a service return fewer results than `count` asks for.
+const MAX_GROUP_PAGE = 200;
+
+const GROUP_FILTER_DISPLAY_NAME = /^displayName\s+eq\s+"([^"]*)"$/i;
+
+const displayNameIs = (displayName) =>
+  sqlWhere(fn("lower", col("display_name")), displayName.toLowerCase());
+
+// A principal with no tenant owns no groups. Without this guard a
+// tenant-less super admin would reach `where: { tenantId: undefined }`, which
+// Sequelize rejects with a thrown error — a 500.
+const assertTenant = (tenantId) => {
+  if (!tenantId) {
+    throw new AppError(403, "SCIM groups require a tenant-bound credential");
+  }
+};
+
+/**
+ * The caller's group, or 404. Another tenant's group, a deleted one, a group
+ * that never existed and a malformed id are indistinguishable (CLAUDE.md).
+ */
+const findGroup = async (tenantId, groupId, transaction) => {
+  assertTenant(tenantId);
+  const group = isUuid(groupId)
+    ? await ScimGroup.findOne({ where: { id: groupId, tenantId }, transaction })
+    : null;
+  if (!group) {
+    throw new AppError(404, "Group not found");
+  }
+  return group;
+};
+
+/**
+ * Validate a role a group is to be mapped to (A-39). It must be a UUID, exist,
+ * pass the A-27 guard (never SUPERADMIN), not be the default role — removing a
+ * member demotes to that role, so a group on it could never remove anyone —
+ * and grant at least one menu permission. A role that grants nothing is exactly
+ * what A-39 was; mapping a group to one would reproduce it by another route.
+ *
+ * @returns {Promise<object>} the role
+ */
+const assertMappableRole = async (roleId) => {
+  assertUuid(roleId, "roleId");
+  if (roleId === ROLE_IDS.USER) {
+    throw new AppError(
+      400,
+      "A group cannot be mapped to the default USER role: removing a member demotes them to it, so removal would do nothing",
+    );
+  }
+  const role = await assertAssignableRole(roleId);
+  const grants = await RoleMenuPermission.count({ where: { roleId } });
+  if (grants === 0) {
+    throw new AppError(
+      400,
+      `Role "${role.nameToShow || role.name}" grants no menu permission; a group mapped to it would grant nothing. Grant the role permissions first`,
+    );
+  }
+  return role;
+};
+
+/** 409 when another group of this tenant already uses the name or the role. */
+const assertGroupUnique = async (tenantId, { displayName, roleId }, exceptId, transaction) => {
+  const notSelf = exceptId ? { id: { [Op.ne]: exceptId } } : {};
+  if (displayName !== undefined) {
+    const clash = await ScimGroup.findOne({
+      where: { tenantId, ...notSelf, [Op.and]: [displayNameIs(displayName)] },
+      transaction,
+    });
+    if (clash) {
+      throw new AppError(409, "Group already exists");
     }
   }
+  if (roleId) {
+    const clash = await ScimGroup.findOne({ where: { tenantId, roleId, ...notSelf }, transaction });
+    if (clash) {
+      throw new AppError(
+        409,
+        `That role is already mapped to the group "${clash.displayName}"; a role backs at most one group per tenant`,
+      );
+    }
+  }
+};
 
-  const { count: total, rows } = await Role.findAndCountAll({
-    where: roleWhere,
+// The unique indexes are the final word under concurrency: a request that lost
+// the race to the check above gets the same 409, not a 500.
+const asGroupConflict = (error) => {
+  if (error?.name === "SequelizeUniqueConstraintError") {
+    return new AppError(409, "Group already exists");
+  }
+  return error;
+};
+
+const groupMembers = async (tenantId, group, transaction) => {
+  if (!group.roleId) {
+    return [];
+  }
+  return Users.findAll({
+    where: { tenantId, roleId: group.roleId },
+    attributes: ["id", "email"],
+    transaction,
+  });
+};
+
+const formatScimGroup = async (tenantId, group, transaction) => {
+  const [members, role] = await Promise.all([
+    groupMembers(tenantId, group, transaction),
+    group.roleId ? Role.findOne({ where: { id: group.roleId }, transaction }) : null,
+  ]);
+  return {
+    schemas: [SCIM_GROUP_SCHEMA, SCIM_GROUP_EXTENSION],
+    id: group.id,
+    displayName: group.displayName,
+    members: members.map((m) => ({ value: m.id, display: m.email })),
+    // A-39: what membership in this group grants, stated in every response.
+    [SCIM_GROUP_EXTENSION]: {
+      roleId: group.roleId || null,
+      roleName: role ? role.nameToShow || role.name : null,
+      grantsAccess: Boolean(role),
+    },
+    meta: {
+      resourceType: "Group",
+      created: group.createdAt,
+      lastModified: group.updatedAt,
+    },
+  };
+};
+
+/** Give the named tenant users the group's role. Refused for an unmapped group. */
+const addMembers = async (tenantId, group, ids, transaction) => {
+  if (!group.roleId) {
+    throw new AppError(
+      409,
+      `Group "${group.displayName}" is not mapped to a role, so membership would grant nothing. ` +
+        "Map it first: PATCH with path \"roleId\"",
+    );
+  }
+  await Users.update(
+    { roleId: group.roleId },
+    { where: { id: { [Op.in]: ids }, tenantId }, transaction },
+  );
+};
+
+/**
+ * Demote members to the default role. `ids` null means every member. Only
+ * users who ARE members are touched: until 2026-09-24 a remove naming a user
+ * demoted them whatever role they held, so removing someone from a group they
+ * were not in stripped their real role. An unmapped group has no members.
+ */
+const removeMembers = async (tenantId, group, ids, transaction) => {
+  if (!group.roleId) {
+    return;
+  }
+  const where = { tenantId, roleId: group.roleId };
+  if (ids) {
+    where.id = { [Op.in]: ids };
+  }
+  await Users.update({ roleId: ROLE_IDS.USER }, { where, transaction });
+};
+
+/**
+ * Point the group at another role, or at none. Membership is derived from the
+ * role, so the current members MOVE with the group: they take the new role, or
+ * — when the group is unmapped — the default one. Leaving them on the old role
+ * would drop them from the group the IdP still believes they are in.
+ */
+const remapGroup = async (tenantId, group, roleId, transaction) => {
+  const next = roleId || null;
+  if (next === (group.roleId || null)) {
+    return;
+  }
+  if (next) {
+    await assertMappableRole(next);
+    await assertGroupUnique(tenantId, { roleId: next }, group.id, transaction);
+  }
+  if (group.roleId) {
+    await Users.update(
+      { roleId: next || ROLE_IDS.USER },
+      { where: { tenantId, roleId: group.roleId }, transaction },
+    );
+  }
+  await group.update({ roleId: next }, { transaction });
+};
+
+const renameGroup = async (tenantId, group, value, transaction) => {
+  const displayName = toScimString(value, "displayName");
+  await assertGroupUnique(tenantId, { displayName }, group.id, transaction);
+  await group.update({ displayName }, { transaction });
+};
+
+const inTransaction = async (work) => {
+  try {
+    return await models.sequelize.transaction(work);
+  } catch (error) {
+    throw asGroupConflict(error);
+  }
+};
+
+exports.getGroups = async (tenantId, startIndex = 1, count = 100, filter = null) => {
+  assertTenant(tenantId);
+  const offset = Math.max(0, startIndex - 1);
+  const limit = Math.min(MAX_GROUP_PAGE, Math.max(1, count));
+
+  const where = { tenantId };
+  if (filter) {
+    // A-49: an unsupported filter is a 400, as it is on GET /Users — never
+    // the whole list in answer to a question about one group.
+    const match = String(filter).trim().match(GROUP_FILTER_DISPLAY_NAME);
+    if (!match) {
+      throw new AppError(400, `Unsupported SCIM filter: ${filter}`);
+    }
+    where[Op.and] = [displayNameIs(match[1])];
+  }
+
+  const { count: total, rows } = await ScimGroup.findAndCountAll({
+    where,
     offset,
     limit,
+    order: [["createdAt", "ASC"]],
   });
 
-  const groups = await Promise.all(
-    rows.map(async (role) => {
-      const members = await Users.findAll({
-        where: { tenantId, roleId: role.id },
-        attributes: ["id", "email"],
-      });
-      return formatScimGroup(role, members);
-    }),
-  );
+  const groups = await Promise.all(rows.map((group) => formatScimGroup(tenantId, group)));
 
   return {
     schemas: ["urn:ietf:params:scim:api:messages:2.0:ListResponse"],
@@ -524,171 +750,118 @@ exports.getGroups = async (tenantId, startIndex = 1, count = 100, filter = null)
 };
 
 exports.getGroupById = async (tenantId, groupId) => {
-  const role = await Role.findOne({ where: { id: groupId } });
-  if (!role) {
-    throw new AppError(404, "Group not found");
-  }
-
-  const members = await Users.findAll({
-    where: { tenantId, roleId: groupId },
-    attributes: ["id", "email"],
-  });
-
-  return formatScimGroup(role, members);
+  const group = await findGroup(tenantId, groupId);
+  return formatScimGroup(tenantId, group);
 };
 
 exports.createGroup = async (tenantId, scimData) => {
-  const { displayName, members } = scimData;
+  assertTenant(tenantId);
+  const displayName = toScimString(scimData.displayName, "displayName");
+  const roleId = scimData.roleId || null;
+  const memberIds = scimData.members && scimData.members.length > 0 ? toMemberIds(scimData.members) : [];
 
-  if (!displayName) {
-    throw new AppError(400, "displayName is required");
+  if (roleId) {
+    await assertMappableRole(roleId);
+  } else if (memberIds.length > 0) {
+    // Refused BEFORE anything is written: a group created with members it
+    // cannot grant anything to is the A-39 failure, not a partial success.
+    throw new AppError(
+      409,
+      `Group "${displayName}" has members but no roleId, so membership would grant nothing. ` +
+        "Create it with a roleId, or create it empty and map it before adding members",
+    );
   }
 
-  const existing = await Role.findOne({ where: { name: displayName.toUpperCase() } });
-  if (existing) {
-    throw new AppError(409, "Group already exists");
-  }
+  return inTransaction(async (transaction) => {
+    await assertGroupUnique(tenantId, { displayName, roleId }, null, transaction);
+    const group = await ScimGroup.create({ tenantId, displayName, roleId }, { transaction });
+    if (memberIds.length > 0) {
+      await addMembers(tenantId, group, memberIds, transaction);
+    }
+    return formatScimGroup(tenantId, group, transaction);
+  });
+};
 
-  const role = await Role.create({
-    // No tenantId: roles are global. Sequelize silently drops unknown
-    // attributes, so passing one here was a no-op that implied isolation
-    // the schema does not provide.
-    name: displayName.toUpperCase(),
-    description: `SCIM-provisioned group: ${displayName}`,
-    nameToShow: displayName,
-    isSystem: false,
-    status: "active",
-    sortOrder: 99,
+// PUT. `roleId` changes only when it is sent: IdPs never send it, and reading
+// its absence as "unmap" would demote every member on an ordinary rename.
+// `members` is additive, as it always was — see docs/DEVELOPER/09.
+exports.updateGroup = async (tenantId, groupId, scimData) =>
+  inTransaction(async (transaction) => {
+    const group = await findGroup(tenantId, groupId, transaction);
+    if (scimData.displayName !== undefined) {
+      await renameGroup(tenantId, group, scimData.displayName, transaction);
+    }
+    if (scimData.roleId) {
+      await remapGroup(tenantId, group, scimData.roleId, transaction);
+    }
+    if (scimData.members && scimData.members.length > 0) {
+      await addMembers(tenantId, group, toMemberIds(scimData.members), transaction);
+    }
+    return formatScimGroup(tenantId, group, transaction);
   });
 
-  if (members && members.length > 0) {
-    await Promise.all(
-      members.map(async (m) => {
-        const userId = typeof m === "string" ? m : m.value;
-        const user = await Users.findOne({ where: { id: userId, tenantId } });
-        if (user) {
-          await user.update({ roleId: role.id });
+const GROUP_VALUE_ATTRIBUTES = ["displayName", "roleId", "members"];
+
+/** One patch operation as [attribute, memberIds, value] tuples. */
+const groupOperationTargets = (op) => {
+  if (op.path) {
+    const { attribute, memberIds } = resolveGroupPath(op.path);
+    return [[attribute, memberIds, op.value]];
+  }
+  if (isPlainObject(op.value)) {
+    // The pre-A-33, non-standard shape: { "op": "add", "value": { members: [] } }.
+    const targets = GROUP_VALUE_ATTRIBUTES
+      .filter((attribute) => op.value[attribute] !== undefined)
+      .map((attribute) => [attribute, null, op.value[attribute]]);
+    if (targets.length === 0) {
+      throw new AppError(400, "SCIM operation names no supported attribute");
+    }
+    return targets;
+  }
+  throw new AppError(400, "SCIM operation requires a path or an object value");
+};
+
+exports.patchGroup = async (tenantId, groupId, patchOps) =>
+  inTransaction(async (transaction) => {
+    const group = await findGroup(tenantId, groupId, transaction);
+
+    for (const op of patchOps) {
+      const operation = assertOp(op);
+
+      for (const [attribute, memberIds, value] of groupOperationTargets(op)) {
+        if (attribute === "displayName") {
+          if (operation === "remove") {
+            throw new AppError(400, "SCIM cannot remove displayName");
+          }
+          await renameGroup(tenantId, group, value, transaction);
+        } else if (attribute === "roleId") {
+          // `remove roleId` unmaps the group; its members are demoted.
+          await remapGroup(tenantId, group, operation === "remove" ? null : value, transaction);
+        } else if (operation === "remove") {
+          // `remove` on `members` with no value clears the whole attribute
+          // (RFC 7644 § 3.5.2), i.e. demotes every member this tenant has.
+          const ids = memberIds
+            ? memberIds.map((id) => assertUuid(id, "member value"))
+            : value === undefined || value === null ? null : toMemberIds(value);
+          await removeMembers(tenantId, group, ids, transaction);
+        } else {
+          // `replace` is deliberately additive, as PUT's member handling is.
+          const ids = memberIds ? memberIds.map((id) => assertUuid(id, "member value")) : toMemberIds(value);
+          await addMembers(tenantId, group, ids, transaction);
         }
-      }),
-    );
-  }
-
-  const memberUsers = await Users.findAll({
-    where: { tenantId, roleId: role.id },
-    attributes: ["id", "email"],
-  });
-
-  return formatScimGroup(role, memberUsers);
-};
-
-exports.updateGroup = async (tenantId, groupId, scimData) => {
-  const role = await Role.findOne({ where: { id: groupId } });
-  if (!role) {
-    throw new AppError(404, "Group not found");
-  }
-  assertMutableGroup(role);
-
-  const updates = {};
-  if (scimData.displayName) {
-    updates.name = scimData.displayName.toUpperCase();
-  }
-  if (scimData.nameToShow) {
-    updates.nameToShow = scimData.nameToShow;
-  }
-
-  await role.update(updates);
-
-  if (scimData.members) {
-    const memberIds = scimData.members.map((m) => (typeof m === "string" ? m : m.value));
-    await assertAssignableRole(groupId);
-    await Users.update(
-      { roleId: groupId },
-      { where: { id: { [Op.in]: memberIds }, tenantId } },
-    );
-  }
-
-  const members = await Users.findAll({
-    where: { tenantId, roleId: groupId },
-    attributes: ["id", "email"],
-  });
-
-  return formatScimGroup(role, members);
-};
-
-exports.patchGroup = async (tenantId, groupId, patchOps) => {
-  const role = await Role.findOne({ where: { id: groupId } });
-  if (!role) {
-    throw new AppError(404, "Group not found");
-  }
-  assertMutableGroup(role);
-
-  for (const op of patchOps) {
-    const operation = assertOp(op);
-
-    let attribute;
-    let memberIds = null;
-    let value;
-
-    if (op.path) {
-      ({ attribute, memberIds } = resolveGroupPath(op.path));
-      value = op.value;
-    } else if (isPlainObject(op.value)) {
-      // The pre-A-33, non-standard shape: { "op": "add", "value": { members: [] } }.
-      if (op.value.displayName !== undefined) {
-        attribute = "displayName";
-      } else if (op.value.members !== undefined) {
-        attribute = "members";
-      } else {
-        throw new AppError(400, "SCIM operation names no supported attribute");
       }
-      value = op.value[attribute];
-    } else {
-      throw new AppError(400, "SCIM operation requires a path or an object value");
     }
 
-    if (attribute === "displayName") {
-      if (operation === "remove") {
-        throw new AppError(400, "SCIM cannot remove displayName");
-      }
-      const displayName = toScimString(value, "displayName");
-      await role.update({ name: displayName.toUpperCase(), nameToShow: displayName });
-    } else if (operation === "remove") {
-      // `remove` on `members` with no value clears the whole attribute
-      // (RFC 7644 § 3.5.2), i.e. demotes every member this tenant can see.
-      const ids = memberIds || (value === undefined || value === null ? null : toMemberIds(value));
-      await Users.update(
-        { roleId: ROLE_IDS.USER },
-        { where: ids ? { id: { [Op.in]: ids }, tenantId } : { roleId: groupId, tenantId } },
-      );
-    } else {
-      const ids = memberIds || toMemberIds(value);
-      // A-27 parity with updateGroup. patchGroup used to assign members with no
-      // role guard at all; the only thing standing in the way was
-      // assertMutableGroup firing first, which is a coincidence, not a control.
-      // `replace` is deliberately additive here, as updateGroup's member
-      // handling is: it does not demote members the IdP omitted.
-      await assertAssignableRole(groupId);
-      await Users.update(
-        { roleId: groupId },
-        { where: { id: { [Op.in]: ids }, tenantId } },
-      );
-    }
-  }
-
-  const members = await Users.findAll({
-    where: { tenantId, roleId: groupId },
-    attributes: ["id", "email"],
+    return formatScimGroup(tenantId, group, transaction);
   });
 
-  return formatScimGroup(role, members);
-};
-
-exports.deleteGroup = async (tenantId, groupId) => {
-  const role = await Role.findOne({ where: { id: groupId } });
-  if (!role) {
-    throw new AppError(404, "Group not found");
-  }
-  assertMutableGroup(role);
-  await role.destroy();
-  return { status: 204 };
-};
+// Deletes the tenant's group row and nothing else on the platform — never the
+// role (A-38). Its members leave it: they are demoted to the default role, as a
+// `remove members` with no value would demote them.
+exports.deleteGroup = async (tenantId, groupId) =>
+  inTransaction(async (transaction) => {
+    const group = await findGroup(tenantId, groupId, transaction);
+    await removeMembers(tenantId, group, null, transaction);
+    await group.destroy({ transaction });
+    return { status: 204 };
+  });

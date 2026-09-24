@@ -43,6 +43,7 @@ import {
   Ticket,
   TicketPlus,
   TicketCheck,
+  Sparkles,
 } from "lucide-react";
 import { BackendMenuGroup, BackendMenuItem } from "@/stores/menuStore";
 
@@ -106,6 +107,8 @@ export const iconMap: Record<string, React.ReactNode> = {
   Ticket: React.createElement(Ticket, { className: "w-5 h-5" }),
   TicketPlus: React.createElement(TicketPlus, { className: "w-5 h-5" }),
   TicketCheck: React.createElement(TicketCheck, { className: "w-5 h-5" }),
+  // A-118: the AI Assistant entry (seeded menu group `ai-assistant`).
+  Sparkles: React.createElement(Sparkles, { className: "w-5 h-5" }),
 };
 
 export const smallIconMap: Record<string, React.ReactNode> = {
@@ -150,6 +153,7 @@ export const smallIconMap: Record<string, React.ReactNode> = {
   Ticket: React.createElement(Ticket, { className: "w-4 h-4" }),
   TicketPlus: React.createElement(TicketPlus, { className: "w-4 h-4" }),
   TicketCheck: React.createElement(TicketCheck, { className: "w-4 h-4" }),
+  Sparkles: React.createElement(Sparkles, { className: "w-4 h-4" }),
 };
 
 // Converts a backend menu item (leaf or sub-group category) recursively so any

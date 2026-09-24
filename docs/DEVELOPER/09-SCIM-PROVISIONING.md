@@ -20,9 +20,11 @@ Implementation: `backend/src/routes/api/scim.route.js` · `backend/src/controlle
 
 > **Until 2026-09-23 that operation was silently dropped.** `patchUser` and `patchGroup` read only `op.value`, as an object — `Object.entries(false)` is `[]` — so the endpoint answered **200 with the user unchanged** and deprovisioning appeared to succeed while the account stayed active. The Joi schema compounded it by rejecting a boolean `value` before the service ever ran. That is finding **A-33** in [`../../TASKS/AUDIT-2026-09-REMEDIATION.md`](../../TASKS/AUDIT-2026-09-REMEDIATION.md), **DONE** 2026-09-23. **If an IdP was pointed at these endpoints before that date, re-run a full sync** — every path-based deactivation and membership change it believes it applied did nothing, and nothing recorded that it did not.
 
-**No SCIM mutation writes an audit row.** `scim.service.js` imports no audit model or service. Create, update, patch and delete — of users and of globally-shared roles — leave no attributed record. For a system under 21 CFR Part 11 and ISO 13485 that is a compliance gap, not a nicety. It was folded into A-33 and is **still open** after A-33 closed; the card lists it as the largest remaining SCIM gap.
+**No SCIM mutation writes an audit row.** `scim.service.js` imports no audit model or service. Create, update, patch and delete — of users and of groups — leave no attributed record. For a system under 21 CFR Part 11 and ISO 13485 that is a compliance gap, not a nicety. It was folded into A-33 and is **still open** after A-33 closed; the card lists it as the largest remaining SCIM gap.
 
-**`PATCH /Groups/:id` is not atomic.** It applies each operation as it goes — a `role.update()` and one or more `Users.update()` calls — **outside any transaction**. A failure partway through a multi-operation patch leaves membership partially changed, with no audit row to reconstruct what happened. `PATCH /Users/:id` is all-or-nothing; this is not.
+**A group grants nothing until it is mapped to a role** (ADR-053). An IdP can create groups as it always could, but adding members to a group with no `roleId` is a **409**; an administrator maps it first — see [§ Groups](#groups). Groups created before 2026-09-24 were global roles and are not carried over; re-push them.
+
+> **Until 2026-09-24 `PATCH /Groups/:id` was not atomic** — it wrote as it went, outside any transaction. Every group write now runs in one transaction (A-38).
 
 ---
 
@@ -146,48 +148,64 @@ Terms joined by ` and ` are combined. **Anything else is a 400** — `Unsupporte
 
 > **The 400 is not a SCIM error.** RFC 7644 § 3.4.2.2 calls for an `Error` response carrying `scimType: "invalidFilter"`; this throws an `AppError(400)` that the global handler renders in the **platform** error envelope. Right status, wrong body — see [§ The response envelope is not SCIM](#the-response-envelope-is-not-scim).
 
-**`userName eq` matches on `email`, not on `username`.** SCIM keeps the two columns in step (`createUser` and a `userName` patch write both), but a user created through the application can have a `username` that differs from their email, and this filter will not find them by it.
+**`userName eq` matches `email` or `username`** (A-49, 2026-09-24). Until then it compared `email` only, so a user created through the application with a different `username` was unfindable by the probe an IdP runs before creating a user.
 
 `startIndex` is 1-based and converted to an offset; `count` defaults to 100, is floored at 1 and has **no upper bound** — a client asking for a million rows gets an unbounded query.
 
-**`GET /Groups` was not changed, and is now inconsistent with `GET /Users`.** It matches `displayName eq "<value>"` with a single regular expression and **ignores anything else**, returning every role on the platform — the behaviour A-33 removed from `GET /Users`. Recorded as still open in the A-33 card. Two further consequences of that same line: the comparison is **case-sensitive** while `createGroup` stores `displayName.toUpperCase()`, so `displayName eq "Engineers"` finds nothing although `ENGINEERS` exists; and `count` is unbounded here too.
+**`GET /Groups`** supports `displayName eq "<value>"`, compared **case-insensitively**, and answers anything else with **400** — as `GET /Users` does. `count` is capped at **200** there (A-49, 2026-09-24). Until then the comparison was case-sensitive against an uppercased column, and an unsupported filter returned every role on the platform.
 
 ## Groups
 
-### SCIM Groups are Roles, and roles are GLOBAL
+### A SCIM Group is a tenant-owned mapping to a role (ADR-053)
 
-This is the single most important thing to understand before letting an IdP manage groups here.
+Since 2026-09-24 a SCIM Group is a row in **`scim_groups`**, owned by one tenant (migration 0042,
+`models/scimGroup.model.js`). It points at an **existing** role through `roleId`; SCIM never creates,
+renames or deletes a role.
 
-`role.model.js` has **no `tenantId` column** — its own header says *"All roles are global (not tenant-scoped) for consistent permission management."* The global Sequelize tenant hooks skip models with no tenant attribute, so a `Role` query is never tenant-filtered. `scim.service.js:431–435` records that filtering one by `tenantId` threw `column Role.tenantId does not exist` and 500'd every Group endpoint.
+> **Until 2026-09-24 a SCIM Group *was* a row in the global `roles` table.** A tenant's IdP saw every
+> tenant's groups, got **409** for a name another tenant held, and `DELETE` destroyed a role for every
+> tenant (A-38). A group it created had `roleLevel` 1 and no menu permissions, so its members got
+> nothing and nothing said so (A-39). Those roles still exist as ordinary global roles; they are not
+> groups any more, and nothing records which tenant made them.
 
-Consequences an integrator must know:
+What an integrator must know:
 
-- **Group names are globally unique.** `Role.name` is `unique: true`. `createGroup` uppercases `displayName`, so tenant B creating "Engineers" after tenant A did gets **409 Group already exists** — about a group it cannot see the members of, but whose name it has just proved exists.
-- **`GET /Groups` lists every role on the platform**, including system roles and groups other tenants' IdPs created. Only the *membership* is scoped: the `Users` lookups are always `where: { tenantId, roleId }`. So a tenant sees foreign group names with empty member lists.
-- **`DELETE /Groups/:id` deletes the role for everyone.** Any non-system role, whoever created it, including one another tenant's IdP owns and has users in. Those users keep a `roleId` pointing at a destroyed role.
-- **Group membership is single-valued.** A user has one `roleId`. Adding a user to a SCIM group **replaces** their role; there is no many-to-many membership. An IdP that treats groups as additive will silently move users between roles.
-- **No write to `members` is an exact sync.** `PUT /Groups/:id` and a `replace` on `members` both **assign** the members they were given and leave the ones the IdP omitted in the group. An IdP that reads `replace` as "these and only these" will find dropped members still holding the role. Only an explicit `remove` demotes anyone.
-
-### A SCIM-created group grants nothing
-
-`createGroup` writes `name` (uppercased), `nameToShow`, `description`, `isSystem: false`, `status: "active"`, `sortOrder: 99` — and nothing else. `roleLevel` therefore takes the model default of **1**, the lowest tier, and the role has no menu-group permissions at all.
-
-So a user moved into a SCIM-provisioned group fails `rbac()` (which compares `role.role_level`) and fails `dynamicAccess` (which reads menu-group permissions). The group is inert until an administrator grants it permissions in this application. It is also invisible to `ROLE_NAMES`/`ROLE_LEVELS` in `constants/roleConstants.js`, so it can never usefully appear in an `rbac([...])` allowlist — the `../../CLAUDE.md` trap *"a new role without a `ROLE_LEVELS` entry fails every privileged gate, silently"*, arrived at from the IdP side.
+- **Groups are per tenant.** `GET /Groups` lists the caller's tenant's groups only. Another tenant's
+  group id, a missing id and a malformed id are the same **404**. `displayName` is stored as sent and
+  unique per tenant **case-insensitively** — another tenant's name never collides.
+- **A group grants its role, or nothing — and says which.** Every group carries
+  `urn:ietf:params:scim:schemas:extension:callibrator:2.0:Group`:
+  `{ "roleId": …, "roleName": …, "grantsAccess": true|false }`.
+- **An unmapped group refuses members.** Standard IdPs send only `displayName`, so a group may be
+  created without `roleId`, but adding a member to it — on `POST`, `PUT` or `PATCH` — is a **409**
+  naming the fix. Map it with `roleId` on `POST`/`PUT`, or `PATCH` `{"op":"replace","path":"roleId","value":"<role id>"}`.
+- **What a group may be mapped to:** an existing role that is not SUPERADMIN (**403**, A-27), not the
+  default USER role, and holds at least one menu permission — otherwise **400**. A role backs at most
+  **one** group per tenant (**409**); another tenant may map the same role.
+- **Membership is derived and single-valued.** Members are the tenant's users whose `roleId` is the
+  group's role — including users an administrator gave that role by hand. Adding a user **replaces**
+  their role; removing one demotes them to `ROLE_IDS.USER`, and only if they are a member.
+- **Re-mapping moves the members** to the new role. `remove roleId` unmaps the group and demotes its
+  members. **`PUT` without `roleId` keeps the mapping** — IdPs never send it.
+- **`DELETE /Groups/:id`** deletes the tenant's group row and demotes its members in that tenant.
+- **No write to `members` is an exact sync.** `PUT` and a `replace` on `members` **assign** the members
+  given and leave the ones omitted. Only an explicit `remove` demotes anyone.
 
 ### Mapping
 
-| SCIM | This system (`roles`) |
+| SCIM | This system |
 |---|---|
-| `id` | `role.id` |
-| `displayName` | `role.name` (**uppercased** on write) and `role.nameToShow` |
-| `members[].value` | `user.id` — applied as `user.roleId = role.id`, tenant-scoped |
+| `id` | `scim_groups.id` |
+| `displayName` | `scim_groups.display_name`, as sent |
+| extension `roleId` | `scim_groups.role_id` → `roles.id` |
+| `members[].value` | `user.id` — applied as `user.roleId = group.roleId`, tenant-scoped |
 | `members[].display` | `user.email` |
 
 ## What SCIM May Not Do
 
 Both guards were added on 2026-09-23 as part of A-27 (`scim.service.js:7–34`).
 
-**`assertAssignableRole(roleId)`** runs on `createUser`, `updateUser` and the `roleId` branches of `patchUser` — in **both** patch shapes, because they share one assignment function — and on the member assignment in `updateGroup` and `patchGroup`:
+**`assertAssignableRole(roleId)`** runs on `createUser`, `updateUser` and the `roleId` branches of `patchUser` — in **both** patch shapes, because they share one assignment function — and — through `assertMappableRole` — whenever a group is mapped to a role:
 
 | Condition | Result |
 |---|---|
@@ -198,15 +216,9 @@ Both guards were added on 2026-09-23 as part of A-27 (`scim.service.js:7–34`).
 
 The second SUPERADMIN check exists because the first compares against a UUID that is **committed to this repository** (`constants/roleConstants.js`). A system role named SUPERADMIN under a different id is refused too.
 
-**`assertMutableGroup(role)`** runs first in `updateGroup`, `patchGroup` and `deleteGroup`:
-
-| Condition | Result |
-|---|---|
-| `role.isSystem` | **403** — `System roles cannot be renamed or deleted through SCIM` |
-
-Renaming or deleting a system role would change behaviour for **every** tenant, because roles are global and authorization compares role names.
-
-> **The asymmetry here was closed on 2026-09-23.** Until then `patchGroup`’s member-assignment branch had **no** `assertAssignableRole` at all. It was unreachable only because `assertMutableGroup` happens to fire first for system roles — an accident of ordering, not a control, and adding path-based member patching would have widened it. `patchGroup` now calls the guard before every member assignment, in both the path form and the value form (`scim.service.js:617`), with a named test for each (A-33, A-27 parity).
+Group mappings are checked by **`assertMappableRole(roleId)`**, which calls `assertAssignableRole` and
+additionally refuses the default USER role and a role with no menu permission (A-39). The former
+`assertMutableGroup` is gone: SCIM no longer writes roles, so there is no role for it to protect.
 
 ## PATCH
 
@@ -244,22 +256,23 @@ Every operation in the request accumulates into one `updates` object that is wri
 | an empty or non-string value where a string is required | `SCIM <attribute> must be a non-empty string` |
 | an `op` outside `add`\|`remove`\|`replace` | `Unsupported SCIM op: <op>` (Joi rejects it first) |
 
-> **Trap — a patch value is not UUID-validated.** `scimUserSchema.roleId` and `scimGroupSchema.members[].value` are `Joi.string().uuid()`, but `scimPatchSchema` types `value` as any object, array, string, boolean or number. A patch naming a malformed id therefore reaches Postgres as `id = 'not-a-uuid'` against a `UUID` column. Read from the schema, not observed against a live database: expect a driver-level error rendered as a **500**, not a clean 400. Not tracked as a finding, and no test covers it.
+Every id in a patch value — `roleId`, each member id, the id in Okta's `members[value eq "…"]` — is UUID-checked by the service before any query: **400** `SCIM … must be a UUID` (A-49, 2026-09-24). Until then a malformed id reached PostgreSQL, which raises 22P02 on a UUID column — a 500.
 
 ### `PATCH /Groups/:id`
 
-`displayName` and `members` are honoured through `path`, and Okta’s filter form `members[value eq "<id>"]` resolves to that one member — which is how Okta removes a single person from a group.
+`displayName`, `roleId` and `members` are honoured through `path`, and Okta’s filter form `members[value eq "<id>"]` resolves to that one member — which is how Okta removes a single person from a group.
 
-- `add` and `replace` on `members` assign `roleId = <group id>` to the named users, tenant-scoped, after `assertAssignableRole`.
-- **`replace` on `members` is deliberately additive.** It assigns the members listed and does **not** demote the ones the IdP omitted — matching the PUT semantics in [§ Groups](#scim-groups-are-roles-and-roles-are-global). An IdP expecting an exact sync will be surprised: members it dropped are still in the group.
-- `remove` on `members`, with a value or with Okta’s filter, demotes exactly those users to `ROLE_IDS.USER`.
+- `add` and `replace` on `members` give the named tenant users the group's role — a **409** if the group is unmapped.
+- **`replace` on `members` is deliberately additive**, as `PUT` is.
+- `remove` on `members`, with a value or with Okta’s filter, demotes exactly those users to `ROLE_IDS.USER` — if they are members.
 - `remove` on `members` with **no** value clears the whole attribute, per RFC 7644 § 3.5.2 — it demotes **every member of that group in the caller’s tenant**.
+- `replace`/`add` on `roleId` maps or re-maps the group; `remove` on `roleId` unmaps it (members demoted).
 - `remove` on `displayName` is a 400 (`SCIM cannot remove displayName`).
-- An unsupported path, a non-string path, a non-string or empty `displayName`, an empty members value, or an operation with neither a path nor an object value is a 400.
+- An unsupported path, a non-string path, a non-string or empty `displayName`, an empty members value, a malformed id, or an operation with neither a path nor an object value is a 400.
 
-The pre-2026-09-23 value-object form still works here too, for `displayName` and `members`.
+The pre-2026-09-23 value-object form still works here too, for `displayName`, `roleId` and `members` — every one present is applied, in that order.
 
-`assertMutableGroup` runs first, so none of this can touch a system role. Unlike `patchUser`, `patchGroup` writes as it goes — see the warning in [§ Before You Wire Up an IdP](#before-you-wire-up-an-idp).
+The whole patch runs in **one transaction**: an operation that fails leaves the group and every membership as they were.
 
 ## Validation
 
@@ -272,7 +285,7 @@ It runs Joi with `abortEarly: false` and `stripUnknown: true`, and on failure th
 | Schema | Requires |
 |---|---|
 | `scimUserSchema` | `userName` (email). Optional: `name.givenName`, `name.familyName`, `emails[]`, `active`, `roleId` (UUID) |
-| `scimGroupSchema` | `displayName`. Optional: `members[].value` (UUID), `members[].display` |
+| `scimGroupSchema` | `displayName` (≤ 255). Optional: `roleId` (UUID), `members[].value` (UUID), `members[].display` |
 | `scimPatchSchema` | `Operations[]`, each with `op` ∈ `add`\|`remove`\|`replace`. Optional `path` (**string** — the service resolves it) and `value` (object, array, string, **boolean** or **number**) |
 
 **Boolean and number were added to `value` on 2026-09-23.** Without them `{"op":"replace","path":"active","value":false}` — the exact payload Okta sends to deactivate a user — was a 400 *before the service ran*. Fixing only the service would have turned a silent 200 into a validation failure on that one payload (A-33).
@@ -281,9 +294,9 @@ It runs Joi with `abortEarly: false` and `stripUnknown: true`, and on failure th
 
 Every `Users` query in the service passes `tenantId` explicitly **and** is narrowed again by the global hooks in `utils/tenantScope.util.js`. The redundancy is intentional; see [`../SECURITY/05-MULTI-TENANCY-SECURITY.md`](../SECURITY/05-MULTI-TENANCY-SECURITY.md).
 
-`Role` queries are not scoped, and cannot be — the model has no tenant column. That is the source of every cross-tenant property in [§ Groups](#scim-groups-are-roles-and-roles-are-global).
+Every `ScimGroup` query passes `tenantId` explicitly too. `Role` queries are not scoped — the model has no tenant column — and SCIM now only **reads** roles, to validate a mapping and to name it.
 
-Cross-tenant user access returns **404** (`User not found`), never 403, as the platform rule requires.
+Cross-tenant user and group access returns **404** (`User not found` / `Group not found`), never 403, as the platform rule requires.
 
 ## Tests
 
@@ -294,7 +307,9 @@ Cross-tenant user access returns **404** (`User not found`), never 403, as the p
 | `backend/src/tests/services/scim.service.test.js` | every service function, plus `describe("scim.service — privileged role guards (A-27)")` (refusing SUPERADMIN on create, update and patch, refusing a system role named SUPERADMIN under another id, refusing to rename a system role) and `describe("scim.service — RFC 7644 patch paths and filters (A-33)")` |
 | `backend/src/tests/controllers/scim.controller.test.js` | the twelve handlers |
 | `backend/src/tests/validators/scim.validator.test.js` | the three schemas and the local `validate`, including `"accepts the boolean value an IdP sends to deactivate a user"` and `"accepts an Okta members value filter as a path"` |
-| `backend/src/tests/e2e/modules/scim.e2e.test.js` | live spec, requires a running server. **No PATCH and no filter coverage** — the live suite would not catch a regression in either. Its header comment and its `body.Resources` / `body.id` assertions also assume the SCIM envelope, which the controller does not send |
+| `backend/src/tests/routes/scim.groups.tenantOwned.a38.test.js` | groups through the real route → controller → service with two tenants (`createTwoTenants()`): cross-tenant 404s, tenant-owned names, what a group grants, case-insensitive names, UUID-checked patch values, atomic patches (A-38, A-39, A-49) |
+| `backend/src/tests/migrations/0042-scim-groups-per-tenant.test.js` | migration 0042's logic; the SQL was run on PostgreSQL 18 (A-38 card) |
+| `backend/src/tests/e2e/modules/scim.e2e.test.js` | live spec, requires a running server. Reads the **as-built** envelope (`body.data`) since 2026-09-24; asserts an unmapped group says it grants nothing and a case-insensitive `displayName eq`. **No PATCH coverage** |
 
 Named assertions behind the 2026-09-23 change, in the service suite: `"deactivates the user given the standard IdP deprovision operation"`, `"refuses a path-form roleId naming SUPERADMIN with 403 and writes nothing"`, `"rejects an unsupported path with 400 rather than ignoring it"`, `"narrows to one user on a userName eq filter"`, `"rejects an unsupported filter with 400 instead of returning the tenant"`, `"runs a path-form member add through the A-27 role guard"`. The A-33 card records the run: `npx jest src/tests/services/scim src/tests/controllers/scim src/tests/routes/scim src/tests/validators/scim` — 5 suites, 195 tests.
 
@@ -304,4 +319,4 @@ These remain unit suites against mocks. Per `../../CLAUDE.md` § Evidence, **a m
 
 - [`../API/13-INTEGRATION-API.md`](../API/13-INTEGRATION-API.md) § `/api/v1/scim/v2` — the endpoint list. Its envelope and deprovisioning claims disagree with the code; see above.
 - [`../SECURITY/04-AUTHORIZATION-RBAC.md`](../SECURITY/04-AUTHORIZATION-RBAC.md) — roles, levels and the menu-permission matrix a SCIM group does not participate in.
-- [`../../TASKS/AUDIT-2026-09-REMEDIATION.md`](../../TASKS/AUDIT-2026-09-REMEDIATION.md) — **A-27** (done, 2026-09-23) and **A-33** (done, 2026-09-23). A-33’s card lists what it did **not** close: no audit row on any SCIM mutation, `patchGroup` writing outside a transaction, and `GET /Groups` still ignoring an unsupported filter.
+- [`../../TASKS/AUDIT-2026-09-REMEDIATION.md`](../../TASKS/AUDIT-2026-09-REMEDIATION.md) — **A-27** (done, 2026-09-23) and **A-33** (done, 2026-09-23). A-33’s card lists what it did **not** close: no audit row on any SCIM mutation (still open). **A-38, A-39, A-49** (done, 2026-09-24; ADR-053) made groups tenant-owned mappings; the SCIM-vs-platform envelope question is still open on A-49.

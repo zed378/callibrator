@@ -21,6 +21,7 @@ const {
 const { hashToken } = require("../utils/session.util");
 const { verifyAccessToken, verifyPurposeToken } = require("../utils/jwt.util");
 const { Users } = require("../models");
+const { recordAccountLock } = require("./audit.service");
 
 // ============================================================
 // REDIS CLIENT — the shared one, never a second one
@@ -288,6 +289,25 @@ function clearMemoryStore() {
 // ============================================================
 
 /**
+ * A-126 — the account a sign-in lock is engaging on, for its ACCOUNT_LOCKED
+ * row. Null when there is no such account, or when it cannot be read: the lock
+ * is then persisted without its row, because the lock must never depend on
+ * the audit trail (audit.service#recordAccountLock).
+ *
+ * @param {string} userId - from a verified token
+ * @returns {Promise<{id: string, tenantId: (string|null)}|null>}
+ */
+async function lockedAccount(userId) {
+  try {
+    // Pre-auth there is no tenant context; the opt-out says so explicitly.
+    return await Users.findByPk(userId, { attributes: ["id", "tenantId"], skipTenantScope: true });
+  } catch (err) {
+    logger.error(`Could not load the account being locked: ${err.message}`);
+    return null;
+  }
+}
+
+/**
  * Check and record a failed auth attempt.
  * Returns lockout status if limit exceeded.
  *
@@ -296,9 +316,19 @@ function clearMemoryStore() {
  * @param {string} [params.tokenHash] - Hashed JWT token
  * @param {string} [params.ip] - Client IP
  * @param {string} endpoint - Endpoint key (login, register, forgotPassword, resetPassword)
+ * @param {{ipAddress?: string, userAgent?: string}} [params.audit] - A-126: the
+ *   request's address and agent for the ACCOUNT_LOCKED row. Separate from `ip`,
+ *   which is a COUNTING key and is null unless AUTH_RATE_LIMIT_BY_IP is on.
  * @returns {Promise<object>} { allowed, remainingAttempts, lockoutUntil, lockoutReason, revokedToken }
  */
-async function recordAuthFailure({ userId = null, tokenHash = null, ip = null, alsoByIp = false, endpoint }) {
+async function recordAuthFailure({
+  userId = null,
+  tokenHash = null,
+  ip = null,
+  alsoByIp = false,
+  endpoint,
+  audit = {},
+}) {
   const config = getAuthConfig(endpoint);
   const now = Date.now();
 
@@ -329,11 +359,29 @@ async function recordAuthFailure({ userId = null, tokenHash = null, ip = null, a
     // Persist lockout to DB — the sign-in lock. Not for an endpoint whose
     // lock must stay its own (A-142, `persistUserLockout: false`).
     if (count >= config.maxAttempts && config.persistUserLockout !== false) {
+      const lock = { failedLoginAttempts: count, lockedUntil: results.lockoutUntil };
+      const persistLock = (transaction) =>
+        Users.update(lock, transaction ? { where: { id: userId }, transaction } : { where: { id: userId } });
       try {
-        await Users.update(
-          { failedLoginAttempts: count, lockedUntil: results.lockoutUntil },
-          { where: { id: userId } },
-        );
+        // A-126 (ADR-051 Q-15): the lock ENGAGES on the attempt that reaches
+        // the budget, and that attempt writes the ACCOUNT_LOCKED row with it.
+        // A racing attempt past the budget re-writes the lock, unaudited. The
+        // id comes from a verified token, never a typed name, and a row is
+        // written only for an account that exists (audit.service#recordAccountLock).
+        const account = count === config.maxAttempts ? await lockedAccount(userId) : null;
+        if (account) {
+          await recordAccountLock({
+            persistLock,
+            user: account,
+            lockedUntil: results.lockoutUntil,
+            failedAttempts: count,
+            endpoint,
+            ipAddress: audit.ipAddress || null,
+            userAgent: audit.userAgent || null,
+          });
+        } else {
+          await persistLock(null);
+        }
       } catch (err) {
         logger.error(`Failed to persist user lockout: ${err.message}`);
       }
@@ -858,7 +906,12 @@ async function noteAuthFailure(req, endpoint) {
     if (process.env.AUTH_RATE_LIMIT_BY_IP !== "true") {
       context.ip = null;
     }
-    await recordAuthFailure({ ...context, endpoint });
+    // A-126: what an ACCOUNT_LOCKED row records — never a counting key.
+    const audit = {
+      ipAddress: clientAddress(req) || null,
+      userAgent: req.headers?.["user-agent"] || null,
+    };
+    await recordAuthFailure({ ...context, endpoint, audit });
   } catch (err) {
     logger.error(`Auth failure recording error on ${endpoint}: ${err.message}`);
   }

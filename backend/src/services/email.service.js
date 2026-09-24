@@ -143,13 +143,16 @@ const sendNotificationEmail = async ({
     actionUrl && /^https?:\/\//i.test(actionUrl)
       ? `<p><a href="${escapeHtml(actionUrl)}" style="color:#4f46e5">View details</a></p>`
       : "";
+  // A-172 — the footer names this deployment's brand (APP_NAME), as the
+  // activation and OTP templates do. It hard-coded "Calibration Management
+  // System", a name no deployment is configured with.
   const html = `<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;color:#111827">
     <h2 style="margin:0 0 12px">${escapeHtml(title)}</h2>
     <p>Hi ${name},</p>
     <p style="white-space:pre-wrap">${escapeHtml(message)}</p>
     ${cta}
     <hr style="border:none;border-top:1px solid #e5e7eb;margin:20px 0"/>
-    <p style="color:#6b7280;font-size:12px">Calibration Management System</p>
+    <p style="color:#6b7280;font-size:12px">${escapeHtml(brandContext().appName)}</p>
   </div>`;
 
   return sendEmail({ to: email, subject: title, html });

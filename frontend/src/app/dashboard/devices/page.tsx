@@ -1,7 +1,7 @@
 // src/app/dashboard/devices/page.tsx
 "use client";
 
-import React, { useRef } from "react";
+import React, { useRef, useState } from "react";
 import DashboardLayout from "@/components/layouts/DashboardLayout";
 import {
   Button,
@@ -16,6 +16,8 @@ import { useDevices } from "./hooks/useDevices";
 import DeviceModal from "./components/DeviceModal";
 import DeleteDeviceModal from "./components/DeleteDeviceModal";
 import DevicesTable from "./components/DevicesTable";
+import IotDeviceModal from "./components/IotDeviceModal";
+import { Device } from "@/api/services/device.service";
 
 export default function DevicesPage() {
   const {
@@ -51,6 +53,8 @@ export default function DevicesPage() {
   } = useDevices();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // A-29 / A-46: the device whose IoT ingest dialog is open.
+  const [iotDevice, setIotDevice] = useState<Device | null>(null);
 
   const onImportFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -186,7 +190,17 @@ export default function DevicesPage() {
           hasWriteAccess={hasWriteAccess}
           openEditModal={openEditModal}
           handleDeleteClick={handleDeleteClick}
+          openIotModal={setIotDevice}
         />
+
+        {iotDevice && (
+          <IotDeviceModal
+            key={iotDevice.id}
+            device={iotDevice}
+            onClose={() => setIotDevice(null)}
+            hasWriteAccess={hasWriteAccess}
+          />
+        )}
 
         <DeviceModal
           isOpen={isDeviceModalOpen}

@@ -8,6 +8,26 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+## 2026-09-25 — Phase 0 batch 5 ([record](./records/2026-09-25-phase0-batch5.md), ADR-053, ADR-054)
+
+### Security
+- Tenant secrets no longer copied into `tenants.settings` in plaintext; `PATCH /tenants/settings` accepts an allow-list only.
+- Tenant export no longer returns password hashes, MFA secrets or decrypted settings.
+- IoT device tokens stored as a hash only; OIDC gains state, nonce and PKCE.
+- ClamAV scanning actually scans (it never had) and fails closed; uploads are quarantined until scanned.
+
+### Changed
+- **Breaking for webhook receivers:** signature is now `v1=` HMAC-SHA256 over `timestamp.body`; delivery is durable with retries up to about 20 h.
+- Production logs JSON lines to stdout; log files only with `LOG_TO_FILE=true`.
+- Tenants can require MFA; admins can reset a user's password or MFA; SCIM groups are per tenant.
+- Search failures surface as errors instead of "No results".
+- Migrations `0035`–`0044`, `0047`, `0049`.
+
+### Fixed
+- SSO had never worked; the finance routes locked out three admin roles.
+- Scheduled backups backed up nothing; admin-created users had no role.
+
+
 ### Decided
 
 - **ADR-051: the owner questions Q-09 to Q-19**, decided by two agents debating opposite positions. Audit rows are never purged; regulated records are protected from cascading deletes; a restore never re-creates a missing account; operators may not author Part 11 records inside a tenant. ADR-052 extends that to super admins in their home tenant. ADR-050: the client IP is resolved once, at the edge.

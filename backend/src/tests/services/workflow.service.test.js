@@ -57,6 +57,11 @@ jest.mock("../../models", () => {
   };
 });
 
+// A-145 — submitAction writes its audit row inside the action's transaction.
+jest.mock("../../services/audit.service", () => ({
+  logAction: jest.fn().mockResolvedValue({}),
+}));
+
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: {
     warn: jest.fn(),
@@ -66,6 +71,7 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
 }));
 
 const workflowService = require("../../services/workflow.service");
+const auditService = require("../../services/audit.service");
 const { Workflow, WorkflowStep, WorkflowInstance, WorkflowAction, Certificate, StockTransfer, MaintenanceWorkOrder } = require("../../models");
 
 describe("Workflow Service", () => {
@@ -438,13 +444,16 @@ describe("Workflow Service", () => {
       ).rejects.toThrow("Workflow instance not found");
     });
 
-    it("should throw 400 if instance status is not PENDING", async () => {
+    it("should throw 409 if instance status is not PENDING (A-145: a state conflict)", async () => {
       const mockInstance = { id: "instance-1", status: "APPROVED" };
       WorkflowInstance.findOne.mockResolvedValue(mockInstance);
 
       await expect(
         workflowService.submitAction("tenant-1", "instance-1", {}, {})
-      ).rejects.toThrow("Workflow instance is already APPROVED");
+      ).rejects.toMatchObject({
+        status: 409,
+        message: expect.stringContaining("Workflow instance is already APPROVED"),
+      });
     });
 
     it("should throw 500 if step configuration is missing", async () => {
@@ -478,7 +487,7 @@ describe("Workflow Service", () => {
       ).rejects.toThrow("You do not have the required role to approve this step");
     });
 
-    it("should throw 400 if user has already acted on this step", async () => {
+    it("should throw 409 if user has already acted on this step", async () => {
       const mockInstance = {
         id: "instance-1",
         status: "PENDING",
@@ -492,7 +501,10 @@ describe("Workflow Service", () => {
 
       await expect(
         workflowService.submitAction("tenant-1", "instance-1", { id: "user-1", roleId: "admin" }, {})
-      ).rejects.toThrow("You have already submitted an action for this step");
+      ).rejects.toMatchObject({
+        status: 409,
+        message: "You have already submitted an action for this step",
+      });
     });
 
     it("should process REJECTED action and update resource status", async () => {
@@ -527,6 +539,23 @@ describe("Workflow Service", () => {
       expect(mockCert.save).toHaveBeenCalled();
       expect(mockTransaction.commit).toHaveBeenCalled();
       expect(result.status).toBe("REJECTED");
+      expect(auditService.logAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: "tenant-1",
+          userId: "user-1",
+          action: "UPDATE",
+          resourceType: "WorkflowInstance",
+          resourceId: "instance-1",
+          changes: expect.objectContaining({
+            operation: "WORKFLOW_REJECT",
+            decision: "REJECTED",
+            comments: "Bad",
+            before: { status: "PENDING", currentStepOrder: 1 },
+            after: { status: "REJECTED", currentStepOrder: 1 },
+          }),
+        }),
+        { transaction: mockTransaction },
+      );
     });
 
     it("should process APPROVED and advance to next step if not final", async () => {
@@ -559,6 +588,17 @@ describe("Workflow Service", () => {
       expect(mockInstance.save).toHaveBeenCalled();
       expect(mockTransaction.commit).toHaveBeenCalled();
       expect(result.status).toBe("PENDING");
+      expect(auditService.logAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "APPROVE",
+          changes: expect.objectContaining({
+            operation: "WORKFLOW_APPROVE",
+            comments: null,
+            after: { status: "PENDING", currentStepOrder: 2 },
+          }),
+        }),
+        { transaction: mockTransaction },
+      );
     });
 
     it("should process APPROVED, finalize workflow and update resource status (StockTransfer, MaintenanceWorkOrder)", async () => {
@@ -878,6 +918,42 @@ describe("Workflow Service", () => {
       expect(mockInstance.save).not.toHaveBeenCalled();
       expect(mockTransaction.commit).toHaveBeenCalled();
       expect(result.status).toBe("PENDING");
+      expect(auditService.logAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "UPDATE",
+          changes: expect.objectContaining({ operation: "WORKFLOW_ACTION", decision: "ESCALATED" }),
+        }),
+        { transaction: mockTransaction },
+      );
+    });
+
+    it("A-145: a failed audit write rolls the action back instead of committing it unattributed", async () => {
+      const mockInstance = {
+        id: "instance-1",
+        status: "PENDING",
+        currentStepOrder: 1,
+        workflow: {
+          resourceType: "StockTransfer",
+          steps: [{ id: "step-1", stepOrder: 1, roleId: "admin", requiredApprovals: 2 }],
+        },
+        actions: [],
+        resourceId: "res-1",
+        save: jest.fn().mockResolvedValue(),
+      };
+      WorkflowInstance.findOne.mockResolvedValue(mockInstance);
+      WorkflowAction.create.mockResolvedValue({});
+      auditService.logAction.mockRejectedValueOnce(new Error("audit insert failed"));
+
+      await expect(
+        workflowService.submitAction(
+          "tenant-1",
+          "instance-1",
+          { id: "user-1", roleId: "admin" },
+          { action: "APPROVED" },
+        ),
+      ).rejects.toThrow("audit insert failed");
+      expect(mockTransaction.rollback).toHaveBeenCalled();
+      expect(mockTransaction.commit).not.toHaveBeenCalled();
     });
   });
 

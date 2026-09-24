@@ -17,6 +17,19 @@ jest.mock("../../models", () => ({
   },
 }));
 
+// A-173: create/update/delete run in a managed transaction and audit through
+// logAction under the PLATFORM tenant (menuGroup.audit.a173.test.js); here
+// the controller is checked to pass the request's actor through.
+jest.mock("../../config", () => ({
+  db: { transaction: jest.fn(async (cb) => cb("TX")) },
+}));
+jest.mock("../../services/audit.service", () => ({
+  logAction: jest.fn().mockResolvedValue({}),
+}));
+jest.mock("../../services/redis.service", () => ({
+  delPattern: jest.fn().mockResolvedValue(0),
+}));
+
 // Mock success and error responses
 jest.mock("../../utils/response.util", () => ({
   success: jest.fn((res, data, meta, message, status) => {
@@ -30,6 +43,7 @@ jest.mock("../../utils/response.util", () => ({
 const { filterMenuGroups, getRoleMenuAssignments, getAvailableRoles, createMenuGroup, updateMenuGroup, deleteMenuGroup, assignMenuGroupToRole, revokeMenuGroupFromRole, bulkAssignMenuGroups, bulkRevokeMenuGroups } = require("../../controllers/menuGroup.controller");
 const { Role, MenuGroup, RoleMenuPermission } = require("../../models");
 const { success } = require("../../utils/response.util");
+const auditService = require("../../services/audit.service");
 
 describe("MenuGroup Controller Tests", () => {
   let req, res;
@@ -428,7 +442,7 @@ describe("MenuGroup Controller Tests", () => {
         parentId: undefined,
         sortOrder: 5,
         isActive: true,
-      });
+      }, { transaction: "TX" });
 
       expect(success).toHaveBeenCalledWith(
         res,
@@ -470,7 +484,7 @@ describe("MenuGroup Controller Tests", () => {
         parentId: undefined,
         sortOrder: 0,
         isActive: true,
-      });
+      }, { transaction: "TX" });
     });
   });
 
@@ -535,7 +549,7 @@ describe("MenuGroup Controller Tests", () => {
         parentId: "3fa85f64-5717-4562-b3fc-2c963f66afa7",
         sortOrder: 10,
         isActive: false,
-      });
+      }, { transaction: "TX" });
 
       expect(success).toHaveBeenCalledWith(
         res,
@@ -588,17 +602,49 @@ describe("MenuGroup Controller Tests", () => {
       MenuGroup.findByPk.mockResolvedValue(mockGroupInstance);
       RoleMenuPermission.destroy.mockResolvedValue(1);
       MenuGroup.destroy.mockResolvedValue(1);
+      MenuGroup.findAll.mockResolvedValue([]);
 
       await deleteMenuGroup(req, res);
 
       expect(RoleMenuPermission.destroy).toHaveBeenCalledWith({
-        where: { menuGroupId: "3fa85f64-5717-4562-b3fc-2c963f66afa6" },
+        where: { menuGroupId: ["3fa85f64-5717-4562-b3fc-2c963f66afa6"] },
+        transaction: "TX",
       });
       expect(MenuGroup.destroy).toHaveBeenCalledWith({
         where: { parentId: "3fa85f64-5717-4562-b3fc-2c963f66afa6" },
+        transaction: "TX",
       });
-      expect(mockGroupInstance.destroy).toHaveBeenCalled();
+      expect(mockGroupInstance.destroy).toHaveBeenCalledWith({ transaction: "TX" });
       expect(success).toHaveBeenCalledWith(res, null, null, "Menu group deleted successfully", 200);
+    });
+  });
+
+  describe("A-173 — the request's actor reaches the audit row", () => {
+    const actorReq = (body) => ({
+      query: {},
+      params: {},
+      body,
+      user: { id: "super-1", tenantId: "home-tenant" },
+      ip: "10.0.0.7",
+      headers: { "user-agent": "UA" },
+    });
+    const actorEntry = expect.objectContaining({ userId: "super-1", ipAddress: "10.0.0.7", userAgent: "UA" });
+
+    it("createMenuGroup, updateMenuGroup and deleteMenuGroup pass auditActor(req) to the service", async () => {
+      const group = { id: "3fa85f64-5717-4562-b3fc-2c963f66afa6", name: "G", slug: "g", children: [], update: jest.fn(), destroy: jest.fn() };
+      MenuGroup.create.mockResolvedValue(group);
+      MenuGroup.findByPk.mockResolvedValue(group);
+      MenuGroup.findAll.mockResolvedValue([]);
+
+      await createMenuGroup(actorReq({ name: "Group G", icon: "i" }), res);
+      await updateMenuGroup(actorReq({ id: group.id, name: "Group H" }), res);
+      await deleteMenuGroup(actorReq({ menuGroupId: group.id }), res);
+
+      expect(auditService.logAction.mock.calls.map(([entry]) => entry.action)).toEqual(["CREATE", "UPDATE", "DELETE"]);
+      for (const [entry, options] of auditService.logAction.mock.calls) {
+        expect(entry).toEqual(actorEntry);
+        expect(options).toEqual({ transaction: "TX" });
+      }
     });
   });
 

@@ -26,14 +26,14 @@ Task ids are `A-nn`. They are referenced from [`PHASE-9-TYPESCRIPT-MIGRATION.md`
 | A-04 | `/search` returns records the caller's role cannot list | medium | 0 | **DONE** 2026-09-23 |
 | A-05 | Socket.IO: `origin: "*"`, token in the query string, no status or suspension check | medium | 0 | **DONE** 2026-09-23 |
 | A-06 | public `/health` discloses Node version, pid and memory | low | 0 | **DONE** 2026-09-23 |
-| A-07 | `dynamicAccess` resource names that match no menu slug | **unverified — possibly high** | 1 | TODO |
+| A-07 | `dynamicAccess` resource names that match no menu slug — **verified: asset finance was SUPERADMIN-only for users while API keys passed**; 31 gates normalised to slugs; five slugs reachable by no seeded role → Q-20 | **high** | 1 | **DONE** 2026-09-24 |
 | A-08 | metered billing read every tenant's usage as **zero** | high | — | **DONE** 2026-09-21 |
 | A-09 | Express 5 undefined `req.body` → 500 — and `validate(schema)` let an absent body straight through | medium | 1 | **DONE** 2026-09-23 |
-| A-10 | webhook delivery: retries lost on restart, ~15 s window, no replay protection | medium | 1 | TODO |
-| A-11 | only two domain events are ever emitted to webhooks | medium | 1 | TODO |
+| A-10 | webhook delivery: retries lost on restart, ~15 s window, no replay protection | medium | 1 | **DONE** 2026-09-24 — DB outbox (ADR-054), not RabbitMQ; signature v1 is a breaking change for receivers |
+| A-11 | only two domain events are ever emitted to webhooks | medium | 1 | **DONE** 2026-09-24 — ten events, emitted from `afterCommit` |
 | A-12 | `sessionSecurity.middleware.js` is dead and its SQL is broken | medium | 1 | **DONE** 2026-09-23 |
 | A-13 | raw internal error messages reach clients in production | medium | 0 | **DONE** 2026-09-24 (asyncHandler half under A-132) |
-| A-14 | production logging: no stdout, per-request lines dropped, unbounded files | medium | 1 | TODO |
+| A-14 | production logging: no stdout, per-request lines dropped, unbounded files | medium | 1 | **DONE** 2026-09-24 |
 | A-15 | `/health` checks only the database | medium | 1 | **DONE** 2026-09-23 |
 | A-16 | whether `req.ip` is the client through a three-proxy chain | **unverified** | 1 | **DONE** 2026-09-24 — verified on the VM: session and audit rows record the real client IP |
 | A-17 | MQTT: public port with nothing behind it; the MQTT path authenticates nobody | low | 0 | **DONE** 2026-09-23 |
@@ -41,14 +41,14 @@ Task ids are `A-nn`. They are referenced from [`PHASE-9-TYPESCRIPT-MIGRATION.md`
 | A-19 | no secret scanner, no hook, no gate of any kind | medium | 2 | TODO |
 | A-20 | the `automate/` Playwright suite is not in the repository | medium | 2 | TODO |
 | A-21 | no lockfile is committed | medium | 2 | **DONE** 2026-09-23 (ADR-044) |
-| A-22 | one React Compiler lint error in `GlobalSearch.tsx` | low | 2 | TODO |
-| A-23 | search runs one query per type, sequentially, and logs a warning per call | low | 2 | TODO |
+| A-22 | one React Compiler lint error in `GlobalSearch.tsx` | low | 2 | **DONE** 2026-09-24 |
+| A-23 | search runs one query per type, sequentially, and logs a warning per call | low | 2 | **DONE** 2026-09-24 |
 | A-24 | every `redis.service` helper was a no-op: **registration, passkeys and the OIDC provider broken** | **high** | — | **DONE** 2026-09-21 |
 | A-25 | Stripe `upsertInvoice` never updates: an invoice that failed and was later paid stays **Open** | medium | 1 | **DONE** 2026-09-23 |
 | A-26 | no consumer deduplicates: a redelivered email is sent twice (documented "idempotency claims" do not exist) | medium | 1 | **DONE** 2026-09-23 |
 | A-27 | **any account could mint a `*` API key and have SCIM make it SUPERADMIN** | **critical** | 0 | **DONE** 2026-09-23 |
 | A-28 | evidence and controlled documents mutable by any role (attachments, signing keys, SOP, risks) | **high** | 0 | **DONE** 2026-09-23 |
-| A-29 | IoT ingest cannot be provisioned; its token would leak in list responses | medium | 1 | TODO |
+| A-29 | IoT ingest cannot be provisioned; its token would leak in list responses | medium | 1 | **DONE** 2026-09-24 |
 | A-30 | the rate limiter never uses Redis — lockouts reset on every deploy | **high** | 0 | **DONE** 2026-09-23 |
 | A-31 | nothing stops JWT access and refresh secrets being equal | low | 1 | **DONE** 2026-09-23 |
 | A-32 | the 100% coverage figure includes 58 `istanbul ignore` exclusions | low | 2 | TODO |
@@ -57,25 +57,25 @@ Task ids are `A-nn`. They are referenced from [`PHASE-9-TYPESCRIPT-MIGRATION.md`
 | A-35 | **every per-user permission override silently did nothing** — including a `none` revocation | **high** | 0 | **DONE** 2026-09-23 |
 | A-36 | RabbitMQ connections are never reused and never closed: `connection.isOpen` does not exist in amqplib | **high** | 0 | **DONE** 2026-09-23 |
 | A-37 | **SCIM user creation is a cross-tenant existence oracle** — global unique email, tenant-scoped duplicate check | **high** | 0 | **PARTIAL** 2026-09-24 — signal hidden; the constraint is Q-18 |
-| A-38 | SCIM Groups are global roles: every tenant's groups are listed, and a delete removes one for everyone | medium | 1 | TODO |
-| A-39 | a SCIM-provisioned group grants nothing, silently — `roleLevel` defaults to 1 and it gets no menu permissions | medium | 1 | TODO |
+| A-38 | SCIM Groups are global roles: every tenant's groups are listed, and a delete removes one for everyone | medium | 1 | **DONE** 2026-09-24 — groups are a tenant-owned `scim_groups` table (ADR-053, migration 0042) |
+| A-39 | a SCIM-provisioned group grants nothing, silently — `roleLevel` defaults to 1 and it gets no menu permissions | medium | 1 | **DONE** 2026-09-24 — a group maps to an existing role that grants something; unmapped says so and refuses members (ADR-053) |
 | A-40 | storage: the driver cache is per process, and a null-checksum migration reports `migrated` unverified | low | 2 | TODO |
 | A-41 | **audit rows are written after the response, outside the transaction** — the rule `CLAUDE.md` calls non-negotiable | **high** | 0 | **DONE** 2026-09-24 for the 25 mutations named in the spec; the rest stay on the middleware |
 | A-42 | a failed audit write is reported to `console.error` only — and production writes no stdout anywhere | **high** | 0 | **PARTIAL** 2026-09-24 — audit path done; 24 other `console.*` sites remain |
-| A-43 | `auditAction` logs full request and response bodies, unredacted — dead code, and a loaded gun | medium | 1 | TODO |
+| A-43 | `auditAction` logs full request and response bodies, unredacted — dead code, and a loaded gun | medium | 1 | **DONE** 2026-09-24 — deleted |
 | A-44 | the access log was never pruned: `history` is a filename, not a retention period | medium | 0 | **DONE** 2026-09-23 |
 | A-45 | a soft-deleted IoT device still ingested; one bad MQTT message shut the server down | **high** | 0 | **DONE** 2026-09-23 |
-| A-46 | IoT anomaly detection is structurally dead — `readingTolerance` cannot be set | medium | 1 | TODO |
+| A-46 | IoT anomaly detection is structurally dead — `readingTolerance` cannot be set | medium | 1 | **DONE** 2026-09-24 |
 | A-47 | **no electronic signature could ever verify** — `Date.now()` was inside the hashed payload, and the key pairs signed nothing | **critical — compliance** | 0 | **DONE** 2026-09-23 (ADR-040) |
 | A-48 | **revocation does not revoke**: nothing in the request path reads `sessions`, and production issues 24-hour access tokens | **high** | 0 | **DONE** 2026-09-24 — tokens without `sid` still accepted, see A-59 |
-| A-49 | SCIM leftovers: a case-sensitive `displayName` oracle, unvalidated patch values, and an e2e spec that cannot pass | medium | 1 | TODO |
+| A-49 | SCIM leftovers: a case-sensitive `displayName` oracle, unvalidated patch values, and an e2e spec that cannot pass | medium | 1 | **DONE** 2026-09-24 — case-insensitive per tenant, ids UUID-checked, spec reads the as-built envelope; the envelope itself stays open |
 | A-50 | webhook deliveries followed redirects, so a 302 walked past the SSRF check | **high** | 0 | **DONE** 2026-09-23 |
 | A-51 | webhook routes have **no validator at all**: the signing secret is caller-supplied, unvalidated, plaintext, and unrotatable | **high** | 0 | **DONE** 2026-09-24 |
 | A-52 | the socket token's `purpose: "socket"` claim is read nowhere — it is an ordinary access token | medium | 1 | **DONE** 2026-09-24 (with A-59) |
-| A-53 | a reconnected socket never re-joins its board rooms: live updates stop, silently | medium | 1 | TODO |
-| A-54 | no Socket.IO adapter — a second replica splits the fan-out | medium | 2 | TODO |
+| A-53 | a reconnected socket never re-joins its board rooms: live updates stop, silently | medium | 1 | **DONE** 2026-09-24 |
+| A-54 | no Socket.IO adapter — a second replica splits the fan-out | medium | 2 | **DONE** 2026-09-24 |
 | A-55 | `createTwoTenants()` does not exist. `CLAUDE.md` and eight documents cite it as the fixture that makes the 404 test one line | medium | 0 | **corrected** 2026-09-23 |
-| A-56 | search swallows every query error into an empty list | low | 1 | TODO |
+| A-56 | search swallows every query error into an empty list | low | 1 | **DONE** 2026-09-24 — a failing type now fails the request (500) |
 | A-57 | the **public** verification endpoint returns the PDF path of a `draft` certificate | **high** | 0 | **DONE** 2026-09-24 |
 | A-58 | five workflow routes gate on `"workflow"`; the slug is `"workflows"` — they deny everyone but SUPERADMIN | **high** | 0 | **DONE** 2026-09-24 |
 | A-59 | the **email activation token** and the MFA-pending token are full bearer access tokens; SSO tokens cannot be revoked | **high** | 0 | **DONE** 2026-09-24 — sid-less tokens still accepted until the switch is flipped |
@@ -102,7 +102,7 @@ Task ids are `A-nn`. They are referenced from [`PHASE-9-TYPESCRIPT-MIGRATION.md`
 | A-86 | external (email-only) signers have no way to sign — a workflow naming one can never complete | medium | 0 | TODO |
 | A-87 | **the global tenant hooks never filter an include** — every include of a tenant-scoped model can reach other tenants' rows; and an include of a `defaultScope`d model is an INNER JOIN even without a `where` | **critical** | 0 | **DONE** 2026-09-24 (mechanism, ADR-048) — implicit-INNER call sites are A-90 |
 | A-88 | several associations declare `foreignKey: "tenant_id"` (the column), adding a second, **nullable** `tenant_id` attribute with `ON DELETE SET NULL` on synced databases | **high** | 0 | **DONE** 2026-09-24 for tenant and regulated user FKs — 64 others are A-148 |
-| A-89 | the QMS form sends `description` / `actionPlan` as optional; both are NOT NULL, so creation now gets a 400 (it used to be a 500) | low | 0 | TODO |
+| A-89 | the QMS form sends `description` / `actionPlan` as optional; both are NOT NULL, so creation now gets a 400 (it used to be a 500) | low | 0 | **DONE** 2026-09-24 — QMS form requires description and action plan (`qms/__tests__/page.a89.test.tsx`) |
 | A-90 | ~20 implicit-INNER includes (`defaultScope`) silently drop rows — and since A-87, also rows that reference a super-admin identity | **high** | 0 | **DONE** 2026-09-24 — sites in user/auth/certificate files are A-109 |
 | A-91 | **most signers cannot reach the signing UI** — the page loads workflows through routes gated on `qms:read` | **high** | 0 | **DONE** 2026-09-24 |
 | A-92 | more state conflicts answering 400 (workflow update and cancel, deleting a signed certificate) and in-tenant unique violations answering 500 (device serial on update, re-creating a soft-deleted serial) | medium | 0 | **DONE** 2026-09-24 |
@@ -115,7 +115,7 @@ Task ids are `A-nn`. They are referenced from [`PHASE-9-TYPESCRIPT-MIGRATION.md`
 | A-99 | **MFA does not work in production:** `otplib` 13 has no `authenticator` export, and a global jest mock that accepts any code hides it | **critical** | 0 | **DONE** 2026-09-24 — MFA setup verified in the deployed pkg binary |
 | A-100 | `ssoExchange` counts failures per IP regardless of `AUTH_RATE_LIMIT_BY_IP` — a shared lockout of SSO until A-16 is deployed | **high** | 0 | **DONE** 2026-09-24 |
 | A-101 | the `auth` middleware admits a user whose tenant was soft-deleted | medium | 0 | **DONE** 2026-09-24 |
-| A-102 | on the VM, nginx sends `X-Forwarded-Proto: http` because Cloudflare terminates TLS; `req.secure` is wrong | low | 0 | TODO |
+| A-102 | on the VM, nginx sends `X-Forwarded-Proto: http` because Cloudflare terminates TLS; `req.secure` is wrong | low | 0 | **DONE** 2026-09-24 — `vm-http.conf` takes the scheme from `CF-Visitor` only when the peer is the tunnel gateway (ADR-050 rule), else `$scheme`; verified on real nginx 1.27.5 before/after. **Not yet deployed** — check on the VM |
 | A-103 | `certificate.controller` sends every returned service result through `success()` — a returned 404 goes out with `success: true` | **high** | 0 | **DONE** 2026-09-24 for certificates — the same pattern in three other controllers is A-112 |
 | A-104 | e-signature `updateWorkflow`, `cancelWorkflow` and `deleteWorkflow` write no audit row and use no transaction | **high** | 0 | **DONE** 2026-09-24 |
 | A-105 | `eSignature.service#getWorkflow` swallows every error as `null`, so a database failure reads as a 404 | medium | 0 | **DONE** 2026-09-24 |
@@ -131,48 +131,83 @@ Task ids are `A-nn`. They are referenced from [`PHASE-9-TYPESCRIPT-MIGRATION.md`
 | A-115 | no TOTP replay protection — a code can be reused within its ~90-second window | medium | 0 | **DONE** 2026-09-24 |
 | A-116 | the global `uuid` mock also replaces Sequelize's internal uuid: every `UUIDV4` default is **one constant** in unit runs, and `UUIDV1` throws | medium | 0 | TODO |
 | A-117 | `createAttachment` and `updateTenantSettings` write no audit row | medium | 0 | **DONE** 2026-09-24 |
-| A-118 | the AI assistant page has no menu entry and now 403s for roles without `certificate` write / `sop` read; the attachment modal offers "General" with a record id, which now 400s | low | 0 | TODO |
+| A-118 | the AI assistant page has no menu entry and now 403s for roles without `certificate` write / `sop` read; the attachment modal offers "General" with a record id, which now 400s | low | 0 | **DONE** 2026-09-24 — AI Assistant menu entry (migration 0038, PG18-checked); 403 shows a permission notice; the upload form hides the record id for General |
 | A-119 | **workflow signing refused every real user**: `status !== "active"` against a stored `"ACTIVE"` — seven test files encoded the lowercase fixture | **critical** | 0 | **DONE** 2026-09-24 |
 | A-120 | a backup restore re-creates a GDPR-erased person from the archive (F-1); ADR-051 Q-09: never re-create | **critical** | 0 | **DONE** 2026-09-24 |
 | A-121 | audit rows are purgeable: the dead second engine (F-4), `setRetentionPolicy` accepts `audit_logs` (F-5), CASCADE on tenant delete; ADR-051 Q-10 and Q-12 | **critical** | 0 | **DONE** 2026-09-24 — FK half is A-122; REVOKE/trigger and partitioning later |
 | A-122 | hard-deleting a user cascades to every calibration record they performed (F-6); ADR-051 Q-16 — the RESTRICT migration | **critical** | 0 | **DONE** 2026-09-24 — verified on PostgreSQL 18.6 |
-| A-123 | an admin-chosen password is never forced to change, and a password signs (F-3); `is_email_verified` is dropped (F-2); ADR-051 Q-11 | **high** | 0 | **PARTIAL** 2026-09-24 — F-2 fixed; forced first-login password change open |
-| A-124 | system actor columns on `audit_logs`; `logAction` requires a user or a system actor; ADR-051 Q-13 | medium | 0 | TODO |
-| A-125 | PLATFORM tenant for platform operations (F-7); ADR-051 Q-14 | **high** | 0 | TODO |
-| A-126 | `ACCOUNT_LOCKED` and `SIGNATURE_AUTH_FAILED` audit rows; password change audited (F-12); ADR-051 Q-15 and A-98 | medium | 0 | TODO |
-| A-127 | operators may not author Part 11 records inside a tenant; impersonator on audit rows (F-8, in progress); ADR-051 Q-17 | **high** | 0 | **DONE** 2026-09-24 (ADR-052) — refresh-token carry-over open |
-| A-128 | a tenant admin's user-create conflicts are rate-limited and audited (the residual oracle); ADR-051 Q-18 | low | 0 | TODO |
-| A-129 | signing restricted to technical roles; eligibility at creation; signer identity from the user record; meaning mandatory; `/history` exposure (F-9, F-10); ADR-051 Q-19 | **high** | 0 | TODO |
-| A-130 | deletion refused for approved, signed and revoked certificates and signed workflows; verification reads deleted rows (F-11); cancel route; email-only signers refused; ADR-051 A-107 and A-86 | **high** | 0 | TODO |
+| A-123 | an admin-chosen password is never forced to change, and a password signs (F-3); `is_email_verified` is dropped (F-2); ADR-051 Q-11 | **high** | 0 | **DONE** 2026-09-24 |
+| A-124 | system actor columns on `audit_logs`; `logAction` requires a user or a system actor; ADR-051 Q-13 | medium | 0 | **DONE** 2026-09-24 — verified on PostgreSQL 18.6 |
+| A-125 | PLATFORM tenant for platform operations (F-7); ADR-051 Q-14 | **high** | 0 | **DONE** 2026-09-24 — verified on PostgreSQL 18.6 |
+| A-126 | `ACCOUNT_LOCKED` and `SIGNATURE_AUTH_FAILED` audit rows; password change audited (F-12); ADR-051 Q-15 and A-98 | medium | 0 | **DONE** 2026-09-24 — both ENUM values (migration `0049`, verified on PostgreSQL 18.6); a lockout is audited with the lock, a wrong signing credential in its own transaction |
+| A-127 | operators may not author Part 11 records inside a tenant; impersonator on audit rows (F-8, in progress); ADR-051 Q-17 | **high** | 0 | **DONE** 2026-09-24 (ADR-052) — refresh-token carry-over done under A-146 |
+| A-128 | a tenant admin's user-create conflicts are rate-limited and audited (the residual oracle); ADR-051 Q-18 | low | 0 | **DONE** 2026-09-24 — create and identity edit: global exact check, 409 (was 500), 10 per admin per hour, one audit row each |
+| A-129 | signing restricted to technical roles; eligibility at creation; signer identity from the user record; meaning mandatory; `/history` exposure (F-9, F-10); ADR-051 Q-19 | **high** | 0 | **DONE** 2026-09-24 |
+| A-130 | deletion refused for approved, signed and revoked certificates and signed workflows; verification reads deleted rows (F-11); cancel route; email-only signers refused; ADR-051 A-107 and A-86 | **high** | 0 | **DONE** 2026-09-24 |
 | A-131 | change password for every user outside the matrix; the signing email links to a hard-coded `app.callibrator.io`; the completion email looks up a non-existent `role` column | medium | 0 | TODO |
 | A-132 | **production hides every thrown 4xx explanation**: `fileValidation.util.js#sanitizeError` replaces any thrown error's message with "An unexpected error occurred…", so today's 409 state explanations never reach a user | **high** | 0 | **DONE** 2026-09-24 |
 | A-133 | calibration-device create, update, delete and bulk import write no audit row; a soft-deleted device cannot be restored (no route calls `restoreStatic`) | **high** | 0 | **PARTIAL** 2026-09-24 — audit rows done; device restore is a decision |
-| A-134 | `tenantHierarchy#cascadeRoles` has never worked (an alias-less include and a `level` attribute that does not exist, the throw swallowed as "non-fatal"); `getUserRolesAcrossTenants` can return at most one row | medium | 0 | TODO |
+| A-134 | `tenantHierarchy#cascadeRoles` has never worked (an alias-less include and a `level` attribute that does not exist, the throw swallowed as "non-fatal"); `getUserRolesAcrossTenants` can return at most one row | medium | 0 | **DONE** 2026-09-24 — **decision: removed, not fixed**: roles are global (no `tenantId`, platform-unique `name`), so a child tenant already has every role; `HIERARCHY_CASCADE_ROLES` no longer read, `getStatus` drops `cascadeRoles`. One row is by design (a user has one tenant). Found: `createSubOrganization` itself fails on the real `Tenant` model (A-134 section) |
 | A-135 | the frontend retention page uses keys the backend has never accepted and still offers an "Audit Logs" row; `maskPII("audit_logs")` has never worked (it looks up a model `Audit_log`) — and Q-12 relies on masking | **high** | 0 | **DONE** 2026-09-24 |
 | A-136 | `GET /data-retention/:tenantId/policy` and `/legal-hold` have no permission gate | medium | 0 | **DONE** 2026-09-24 |
-| A-137 | the `data_retention_policies` table and model serve only the removed engine — drop them through a migration that refuses if rows exist | low | 0 | TODO |
+| A-137 | the `data_retention_policies` table and model serve only the removed engine — drop them through a migration that refuses if rows exist | low | 0 | **DONE** 2026-09-24 — migration `0047-drop-data-retention-policies` (refuses on any row, under lock, one transaction; `down` recreates the shape); model and barrel entries removed; verified on PostgreSQL 18.6 (upgrade, refusal, re-run, down, fresh build from 0001) |
 | A-138 | **`GET /users` and `GET /users/:id` returned every user's TOTP secret**, email OTP, lockout counters and WebAuthn key — the exclusion list named columns, not attributes | **critical** | 0 | **DONE** 2026-09-24 |
 | A-139 | **tenant backup archives contain second-factor secrets** (`mfaSecret`, `mfaPendingSecret`, `otpCode`, `webauthnPublicKey`) — only the password is excluded | **critical** | 0 | **DONE** 2026-09-24 |
 | A-140 | the GDPR profile export always throws (`include: [Role]` with no alias) | **high** | 0 | **DONE** 2026-09-24 |
-| A-141 | no endpoint to disable MFA and no recovery path — a lost authenticator locks the user out; replacing an authenticator does not sign out other sessions | **high** | 0 | TODO |
-| A-142 | `/auth/mfa/setup` and `/auth/mfa/verify` are not rate-limited | medium | 0 | TODO |
-| A-143 | `auth.middleware.js:237` compares `tenant.status === "ACTIVE"` against a lowercase enum, so the super admin's `x-tenant-id` override **never applies** (it fails closed) | medium | 0 | TODO — enabling it is a decision |
-| A-144 | an `in_progress` workflow with some steps signed can be deleted, hiding those signatures | **high** | 0 | TODO — ADR-051 A-107 covers "any workflow with a signature": implement |
-| A-145 | writes outside Q-17's list left unguarded pending review: SOP publish and training acknowledge (arguably Part 11), workflow instance action, predictive-maintenance approve, certificate create/update/delete | medium | 0 | TODO |
-| A-146 | a refreshed impersonation token would lose `impersonatorId` — the session row does not store the impersonator | low | 0 | TODO |
-| A-147 | migration `0011` has a blanket `.catch(() => {})` on `dropTable`, and drops and recreates `e_signature_records` over what `sync()` built | medium | 0 | TODO |
-| A-148 | 64 more duplicate attributes of the A-88 shape on FKs outside Q-16 (e.g. `calibration_records.device_id`, `certificates.calibration_record_id`) | medium | 0 | TODO |
-| A-149 | `signature_records.revoked_by` and `signature_workflow_steps.signer_id` have no foreign key at all | medium | 0 | TODO |
-| A-150 | **`updateTenantSettings` copies decrypted secrets into `tenants.settings` in plaintext**, undoing KMS encryption at rest; APIs returning the tenant row probably expose them; `ai_api_key` is not on the encrypted-keys list | **critical** | 0 | TODO |
-| A-151 | a GDPR subject export includes whole-tenant tables (stocks, calibration records, certificates, notifications) — other people's data; a 404 becomes a 500 | **high** | 0 | TODO |
-| A-152 | `anonymizeDataset("users")` overwrites every text column (password, username, email) with no transaction or audit row, and the page still offers it | **high** | 0 | TODO |
-| A-153 | legal-hold enable/release and `setRetentionPolicy` write no audit row; `rectifyData` audits outside its transaction and writes the new value into the permanent trail | medium | 0 | TODO |
-| A-154 | `anonymizeUser` leaves avatar, sessions and second-factor secrets untouched | **high** | 0 | TODO |
-| A-155 | more ungated reads: `tenantLifecycle GET /:tenantId/status`, `featureFlags GET /:tenantId/:flagKey`, the `networkSecurity` GETs | **high** | 0 | TODO |
-| A-156 | the backup screen does not show the restore's `notRestored` list | low | 0 | TODO |
+| A-141 | no endpoint to disable MFA and no recovery path — a lost authenticator locks the user out; replacing an authenticator does not sign out other sessions | **high** | 0 | **DONE** 2026-09-24 |
+| A-142 | `/auth/mfa/setup` and `/auth/mfa/verify` are not rate-limited | medium | 0 | **DONE** 2026-09-24 |
+| A-143 | `auth.middleware.js:237` compares `tenant.status === "ACTIVE"` against a lowercase enum, so the super admin's `x-tenant-id` override **never applies** (it fails closed) | medium | 0 | **DONE** 2026-09-24 — x-tenant-id override compares the lowercase status (`constants/tenantStatus.js`); `auth.tenantOverride.a143.test.js` — ADR-052 guard now live |
+| A-144 | an `in_progress` workflow with some steps signed can be deleted, hiding those signatures | **high** | 0 | **DONE** 2026-09-24 |
+| A-145 | writes outside Q-17's list left unguarded pending review: SOP publish and training acknowledge (arguably Part 11), workflow instance action, predictive-maintenance approve, certificate create/update/delete | medium | 0 | **DONE** 2026-09-24 — `denyPlatformAuthoring` on certificate create/update/delete, SOP publish/acknowledge, workflow action; predictive approve and e-sign cancel reviewed as not guarded; in-transaction audit rows; `partElevenAuthoring.a145.test.js`, `certificates.twoTenant.a145.test.js` |
+| A-146 | a refreshed impersonation token would lose `impersonatorId` — the session row does not store the impersonator | low | 0 | **DONE** 2026-09-24 — `sessions.impersonator_id` (migration `0040`, verified on PostgreSQL 18.6); the claim, F-8 attribution and the A-127 refusal survive a refresh |
+| A-147 | migration `0011` has a blanket `.catch(() => {})` on `dropTable`, and drops and recreates `e_signature_records` over what `sync()` built | medium | 0 | **DONE** 2026-09-24 — 0011 catch removed; refuses a table that holds rows (PG18-checked) |
+| A-148 | 64 more duplicate attributes of the A-88 shape on FKs outside Q-16 (e.g. `calibration_records.device_id`, `certificates.calibration_record_id`) | medium | 0 | **DONE** 2026-09-24 — migration 0037: 66 reviewed FK decisions, one attribute per column; fresh = migrated catalog on PG18 (156 FKs); `associationForeignKeys.a148.test.js`. **Deploy:** 0037 refuses on NULLs in NOT NULL targets — run its orphan check first |
+| A-149 | `signature_records.revoked_by` and `signature_workflow_steps.signer_id` have no foreign key at all | medium | 0 | **DONE** 2026-09-24 — `signature_records.revoked_by`, `signature_workflow_steps.signer_id` → users RESTRICT (0037) |
+| A-150 | **`updateTenantSettings` copies decrypted secrets into `tenants.settings` in plaintext**, undoing KMS encryption at rest; APIs returning the tenant row probably expose them; `ai_api_key` is not on the encrypted-keys list | **critical** | 0 | **DONE** 2026-09-24 — `updateTenantSettings` no longer writes `tenants.settings`; one secret definition (`constants/tenantSecretSettings.js`); responses redact, only `sso.controller` asks `includeSecrets`; Redis settings cache dropped; nested `{settings}` body read; migration `0035` strips/encrypts (fake-DB tested — PG18 run pending); `tenant.settingsSecrets.a150.test.js` 10/13 and `tenantSettings.secrets.a150.test.js` 12/33 fail at baseline. **Ops:** rotate any secret that was ever in `tenants.settings`; flush `tenant:*`/`tenants:*` |
+| A-151 | a GDPR subject export includes whole-tenant tables (stocks, calibration records, certificates, notifications) — other people's data; a 404 becomes a 500 | **high** | 0 | **DONE** 2026-09-24 — `exportSubjectRecords` filters by tenant + subject columns; a table read failure fails the export; missing subject 404 (`gdpr.subject.a151.a154.test.js`, 19/19 fail at baseline) |
+| A-152 | `anonymizeDataset("users")` overwrites every text column (password, username, email) with no transaction or audit row, and the page still offers it | **high** | 0 | **DONE** 2026-09-24 — **decision:** `anonymizeDataset` refused for every entity (400 → `mask-pii`); UI button removed |
+| A-153 | legal-hold enable/release and `setRetentionPolicy` write no audit row; `rectifyData` audits outside its transaction and writes the new value into the permanent trail | medium | 0 | **DONE** 2026-09-24 — legal hold, retention policy, rectification and erasure audited in-transaction; rectification records changed field names, never values |
+| A-154 | `anonymizeUser` leaves avatar, sessions and second-factor secrets untouched | **high** | 0 | **DONE** 2026-09-24 — avatar reset, MFA/WebAuthn/OTP cleared, `isActive=false`, sessions revoked, all in one transaction with the audit row |
+| A-155 | more ungated reads: `tenantLifecycle GET /:tenantId/status`, `featureFlags GET /:tenantId/:flagKey`, the `networkSecurity` GETs | **high** | 0 | **DONE** 2026-09-24 — lifecycle status, feature-flag (incl. list) and network-security GETs gated, cross-tenant 404 (`readGates.a155.test.js`, 47/58 fail at baseline) |
+| A-156 | the backup screen does not show the restore's `notRestored` list | low | 0 | **DONE** 2026-09-24 — service keeps the restore outcome; the page lists each skipped account with its reason (`page.a156.test.tsx`, 2/3 fail at baseline) |
+| A-157 | `deleteCertificate` reads the status outside its transaction with no lock — a concurrent approval can still be deleted | medium | 0 | **DONE** 2026-09-24 |
+| A-158 | the signing-request email links a hard-coded `https://app.callibrator.io/sign/:id`, and the email-queue export it calls does not exist — **every signing email fails silently** | **high** | 0 | **DONE** 2026-09-24 |
+| A-159 | nothing ever sets a workflow to `expired` or `in_progress`; `signDocument` repeats the pending check (dead code) | low | 0 | **DONE** 2026-09-24 |
+| A-160 | there is no tenant "MFA required" policy — after an admin MFA reset nothing makes the user re-enrol | medium | 0 | **DONE** 2026-09-24 — tenant `mfa_required` / `mfa_required_min_role_level`; 403 `MFA_ENROLMENT_REQUIRED`; frontend redirect + policy panel. Owner questions: passkeys as MFA, SSO users |
+| A-161 | `revokeAllSessions` does not pass `skipTenantScope`; for a principal with no tenant it may revoke nothing | medium | 0 | **DONE** 2026-09-24 — `revokeAllSessions` scoped by `user_id` only (`session.revokeAll.a161.test.js`, PG18-checked) |
+| A-162 | no frontend screen for the admin MFA reset; no admin password-reset endpoint exists | low | 0 | **DONE** 2026-09-24 — `POST /users/:userId/password/reset` + UI for MFA/password reset (`user.passwordReset.a162.test.js`) |
+| A-163 | accounts an admin created **before** A-123 are not flagged. **Decision (orchestrator, per standing instruction):** a migration flags existing accounts that have **never signed in** (`last_login_at IS NULL`) — they certainly still hold an admin-chosen password; accounts that have signed in are not flagged, since whether they changed it is unknowable | medium | 0 | **DONE** 2026-09-24 — migration 0036 flags never-signed-in admin-created accounts (PG18: 3 of 15 fixtures, re-run 0) |
+| A-164 | a non-super-admin could be placed in, or create a user in, the PLATFORM tenant (`createUser` takes `tenantId` from the body when the actor has none; `tenantRefusal` does not refuse PLATFORM) | **high** | 0 | **DONE** 2026-09-24 — `tenantRefusal` refuses a PLATFORM home tenant; non-super-admins create users only in their own tenant (`user.create.tenant.a125.test.js`). **Also fixed:** admin-created users were stored with no role (`role_id` vs `roleId`) |
+| A-165 | `admin.service#updateTenantStatus` / `updateTenantFlags` and global menu create/update/delete write no audit row; no frontend toggle for the platform audit scope | medium | 0 | **DONE** 2026-09-24 — in-transaction rows (PLATFORM + affected tenant for status/flags; PLATFORM for menus), secret-named flag keys masked, menu delete's grant revocation moved into the transaction; "My tenant / Platform" toggle; `admin.service.audit.a165.test.js` (20), `roles.menuAudit.a165.test.js` (14), audit `page.test.tsx` (4); 22/32 + 3/4 fail at baseline |
+| A-166 | `customDomains.service` calls the same non-existent `emailQueueService.queueEmail` — custom-domain e-mails fail silently; its test mocks the invented export | **high** | 0 | **DONE** 2026-09-24 — custom-domain email through the real `queueNotificationEmail` |
+| A-167 | `approveCertificate` reads the status without a lock — an approval can update a certificate a concurrent delete just removed | medium | 0 | **DONE** 2026-09-24 — certificate transitions read status under a row lock; 404/409 (`certificate.transitionLock.a167.test.js`) |
+| A-168 | expired workflows can still be edited (even `expiresAt` extended) and cancelled. **Decision (orchestrator):** expiry is terminal for signing **and editing** — 409; cancelling an expired workflow stays allowed so it can be closed with an audit row; a new workflow is the way to re-request | medium | 0 | **DONE** 2026-09-24 — expired workflow edits 409; cancel allowed and audited |
+| A-169 | the "To sign" list still shows steps of workflows past `expiresAt` that are not yet marked expired | low | 0 | **DONE** 2026-09-24 — expired workflows left out of the To-sign list; `expired` flag |
+| A-170 | a workflow records no requester, so the completion e-mail cannot reach its creator (`requestedBy` column + migration) | medium | 0 | **DONE** 2026-09-24 — `requestedBy` + migration 0039 with audit backfill. **Boot fix (orchestrator):** the model no longer declares the index — sync() ran before 0039 and failed on existing databases |
+| A-171 | `FRONTEND_URL` is missing from both env templates — in local dev e-mail links point at the backend | low | 0 | **DONE** 2026-09-24 — `FRONTEND_URL` in both env templates |
+| A-172 | `sendNotificationEmail` hard-codes the footer "Calibration Management System" instead of the tenant brand | low | 0 | **DONE** 2026-09-24 — email footer uses `APP_NAME` |
+| A-173 | the second global-menu write path — `menuGroup.service` create/update/delete (`/menu-groups`, SUPERADMIN) — writes no audit row and no transaction; `deleteMenuGroup` removes grants and child menus in separate autocommits (found by A-165) | medium | 0 | **DONE** 2026-09-24 — create/update/delete take `auditActor(req)`, run in one `db.transaction` and write one PLATFORM row (`resourceType: MenuGroup`, the A-165 operation names); delete revokes the grants of the group AND its children and removes the children inside that transaction, recording `revokedGrants` and `deletedChildren`; `permissions:role:*` cleared after commit (create only for a child, as A-165). `menuGroup.audit.a173.test.js` (17), `menuGroup.controller.test.js` "A-173 — the request's actor reaches the audit row" (1); `menuGroup.service.test.js` / `menuGroup.controller.test.js` updated for the transaction argument; 13/17 fail at baseline (the 4 that pass are the negative rollback/404 cases). Open: deleting a group still re-parents its grandchildren to top level (FK `SET NULL`), and assign/revoke/bulk grant writes on this path remain unaudited |
+| A-174 | `updateTenantFlags` merges any key into `tenants.settings`, including secret-named keys — a super admin can re-plant the plaintext secrets A-150 moves out; `PATCH /admin/tenants/:id/flags` has no validator (a string is spread key by key) | medium | 0 | **DONE** 2026-09-24 — `validators/admin.validator.js#updateTenantFlagsSchema` on the route via `validate(schema)`; the service refuses too (`flagsToMerge`): `flags` must be a plain object of ≤50 identifier-shaped keys with scalar values (bool, finite number, null, string ≤1000), never an `isRedactedSettingKey` key → 400 naming it; A-165 audit rows unchanged (mask kept as defence in depth). `admin.flags.a174.test.js` 24/25 and `admin.service.flags.a174.test.js` 8/11 fail at baseline |
+| A-175 | admin status/flag changes never invalidate `cacheKeys.tenant(id)` — tenant reads show the old status for up to 600 s (sign-in enforcement reads the DB and is unaffected) | low | 0 | **DONE** 2026-09-24 — after the commit both functions clear `tenant:<id>`, `tenant:code:<code>`, `tenant:branding:<id>` and `tenants:*` (`tenantSettings` is the separate TenantSettings table, not this row, so it is left alone); a rolled-back or 404 change touches no cache. `admin.service.cache.a175.test.js` (5); 2/5 fail at baseline (the 3 that pass are the negative rollback/404 cases) |
+| A-176 | `PATCH /tenants/settings` accepts **any key** — Management write can set `legal_hold_enabled`, `retention_policy_*` (below the minimum), `lifecycle_status`, `feature_flag_*`, `ip_allowlist`, `geofence`, `oidc_rp_*`, `storage_*`, bypassing super-admin-only controls (found by A-150) | **high** | 0 | **DONE** 2026-09-24 — allow-list `constants/tenantAdminSettings.js` (15 keys: the SSO form's six `sso_*`, `oidc_client_id/_secret/_redirect_uri/_authority`, `mfa_required`, `mfa_required_min_role_level` (A-160 panel), `ai_vendor/_base_url/_api_key`), derived from every frontend writer and backend reader; `updateTenantSettings` refuses any other key, or a non-scalar value, with a 400 naming it before opening a transaction — no partial save. Gated keys stay writable only through their own endpoints. `tenantSettings.allowList.a176.test.js` (real route) 22/23 fail at baseline (+3 MFA-panel acceptance tests). **Open:** `ai_base_url` / `oidc_authority` are tenant-chosen URLs the server calls (SSRF surface, pre-existing) |
+| A-177 | `tenantSettings` encryption hook runs only on instance saves — a static `upsert`/`Model.update` of a secret key stores plaintext (latent) | medium | 0 | **DONE** 2026-09-24 — model hooks: `beforeValidate` encrypts the `upsert` instance (Sequelize snapshots values before `beforeUpsert`), `beforeUpsert` refuses plaintext left by `validate:false`, `beforeBulkCreate` per row, `beforeBulkUpdate` encrypts `attributes.value` under the one `where.tenantId` for secret keys and refuses an ambiguous statement; a secret with no tenant id is refused. `tenantSettings.bulkPaths.a177.test.js` (real Sequelize statics, QueryInterface spied) 15 fail at baseline; also verified on PostgreSQL 18 (upsert/bulkCreate/update stored `v1:` envelopes that read back). Only `hooks:false` bypasses, as for tenant scoping |
+| A-178 | `sso_idp_cert` is a public certificate classified as secret — the SSO form shows `[REDACTED]` | low | 0 | **DONE** 2026-09-24 — `sso_idp_cert` removed from `SECRET_SETTING_KEYS` (not matched by the name pattern), so it is stored, copied and returned as given; `LEGACY_ENCRYPTED_SETTING_KEYS` lets the model still decrypt a pre-A-178 envelope. Migration `0035` (unshipped) now keeps it in `tenants.settings` and leaves it plaintext; its header query updated. **0035 run on PostgreSQL 18.6** (`pgvector/pgvector:pg18`, schema via `db.sync()` + the project migrator 0001→0034, then 0035 through the migrator): secrets gone from `tenants.settings`, plaintext secrets enveloped under their own tenant, non-secret keys and an existing envelope untouched, second run byte-identical (md5 of both tables) |
+| A-179 | `tenantLifecycle.exportTenantData` returns decrypted settings and full `User.toJSON()` rows (password/MFA fields unchecked); `POST /network-security/evaluate-login` has no permission gate | **high** | 0 | **DONE** 2026-09-24 — (a) the export leaked every account's `password`, `mfaSecret`/`mfaPendingSecret`, `mfaRecoveryCodes`, `webauthnCredentialId`/`PublicKey`, `otpCode` and lockout state, the DECRYPTED `tenant_settings` secrets, and `tenants.settings` credential keys — on `GET /:tenantId/export` and in every offboarding response. Users are now read through an explicit allow-list (`EXPORTED_USER_ATTRIBUTES`: SELECT + projection); a `tenant_settings` row whose key `isRedactedSettingKey` keeps its key with value `[REDACTED]`; redacted keys are dropped from `tenant.settings` (`tenantLifecycle.export.a179.test.js`, real models, every real `User` attribute populated; 7/8 fail at baseline). (b) `evaluate-login` is not a login-time call (no sign-in path calls it; it needs a token) — it is the network-security screen's dry run and discloses the policy, so it takes the A-155 gate `network-security: read` + `checkTenant` (`networkSecurity.evaluateLogin.a179.test.js`, 11/12 fail at baseline); `assertStaticAuthorizationWiring()` passes |
+| A-180 | GDPR gaps: Art. 15 export omits consent history, DSARs and sessions; `maskPII("users")` leaves username/avatar; `erased` status not in auth's refused list; rectifying `email` unverified and a duplicate gives 500 | medium | 0 | **DONE** 2026-09-24 — Art. 15 export writes `privacy_records.json`: consent history, DSARs and sessions (unscoped, soft-deleted included), each filtered by tenant AND subject; sessions via an allow-list (no `token_hash`), an impersonated session withholds the impersonator's IP/agent/device/id; a failed read fails the export. `maskPII("users")` also masks `username` (`redacted_<id>`) and `avatarUrl` (placeholder; file deleted after commit). `erased` added to `REFUSED_STATUSES` (login/MFA) and to the auth.middleware/socket status checks; a refresh now refuses what a sign-in refuses (it checked no status at all) and revokes the presented session. Rectifying `email`: Joi-validated + lower-cased (400), taken address (case-insensitive, platform-wide, soft-deleted included) or a unique-index race → 409 with a state message; a changed address sets `isEmailVerified=false`, and after commit an activation link (`queueActivationEmail`, FRONTEND_URL/HOST_URL origin) goes to the new address and a notice (`queueNotificationEmail`) to the old. Tests: `gdpr.a180.test.js` (19/22 fail at baseline), `auth.erasedStatus.a180.test.js` (5/6 fail), `dataRetention.service.test.js` maskPII A-180 cases, `auth.test.js`/`socket.test.js` `erased` cases. No migration |
+| A-181 | `menuGroup.service` grant writes — assign, revoke, bulk-assign, bulk-revoke — write no audit row (found by A-173); deleting a group moves its grandchildren to the top level (`SET NULL`) | medium | 0 | TODO |
+| A-182 | a Certificate workflow's final approval (`POST /workflows/instances/:id/action`) sets APPROVED **without the re-authentication** A-62 requires; a rejection resets a certificate to DRAFT from any state (found by A-145) | **high** | 0 | TODO |
+| A-183 | `POST /workflows/instances/:instanceId/action` and `GET /instances/pending` have no `dynamicAccess`; `submitAction` reads "already acted" and the approval count outside the transaction, unlocked (double-count race) | **high** | 0 | TODO |
+| A-184 | `signDocument` reads the workflow before its transaction without a lock — the e-signature form of A-167 | medium | 0 | TODO |
+| A-185 | login answers 423 only for a real, locked account and 401 for an unknown one — an existence oracle that also lets anyone lock an owner out (found by A-126) | **high** | 0 | TODO |
+| A-186 | `emailQueue.service` logs recipient addresses (info and error); the custom-domain email goes to the tenant's oldest user; `addDomain`/`verifyDomain` write no audit rows | medium | 0 | TODO |
+| A-187 | `tenantHierarchy#createSubOrganization` always fails on the real models (NOT NULL `subdomain`/`email` unset → 500); no transaction, no audit row | medium | 0 | TODO |
+| A-188 | OIDC: no discovery — Entra ID's JWKS path and tenant-specific issuer unsupported; a public client sends `client_secret=undefined`; callback refusals render JSON instead of `/login?error=`; SSO sign-in never sets `last_login_at` | medium | 0 | TODO |
+| A-189 | the Next catch-all drops `Host`, so `baseUrlOf(req)` builds `https://backend:3000/...` for certificate QR links unless `CERT_VERIFY_BASE_URL`/`PUBLIC_BASE_URL` is set | medium | 0 | TODO |
+| A-190 | `maintenance.service` writes work orders with no transaction and no audit row; `POST /predictive-maintenance/analyze/:deviceId` mutates unaudited; `createCertificate` starts its workflow after commit (a failure leaves a certificate without one) | medium | 0 | TODO |
+| A-191 | an unused activation link verifies a later rectified email (token not bound to the address); login never checks `isEmailVerified` (owner decision) | low | 0 | TODO |
 | A-67 | the rate limiter's failure recording on login, register, OTP and reset **never runs** — it is mounted before the handler | **high** | 0 | **DONE** 2026-09-24 — `AUTH_RATE_LIMIT_BY_IP=true` enabled on the VM after A-16 was verified |
-| A-68 | OIDC has no `state`, `nonce` or PKCE check — login CSRF and code injection | **high** | 0 | TODO |
-| A-69 | SSO through the Next `/api` proxy cannot work: the proxy follows the backend's 302 server-side | **high** | 0 | TODO |
+| A-68 | OIDC has no `state`, `nonce` or PKCE check — login CSRF and code injection. Now: one-time `state` bound to the browser by an httpOnly cookie, `nonce` checked in the ID token, PKCE S256; also the GET callback route and the SSO-start `validate()` 500 | **high** | 0 | **DONE** 2026-09-24 |
+| A-69 | SSO through the Next `/api` proxy cannot work: the proxy follows the backend's 302 server-side. Now: `redirect: "manual"`, and the OIDC binding cookie is carried both ways. Not yet seen with a live IdP | **high** | 0 | **DONE** 2026-09-24 |
 | A-70 | SSO provisioning signs in a suspended or inactive user (a session and a LOGIN row are created) | medium | 0 | **DONE** 2026-09-24 |
 | A-71 | the login response returns the access token to browser JavaScript, beside the httpOnly cookie | medium | 0 | TODO |
 | A-72 | password and MFA login write no `LOGIN` audit row | medium | 0 | **DONE** 2026-09-24 |
@@ -619,7 +654,7 @@ rather than passing on `auth` alone: intended under A-03, but a behaviour change
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24 |
 | **Severity** | medium — a shipped feature that cannot receive data; a latent credential leak |
 | **Verified** | from code and the reference database (`0` devices with `iot_enabled`, `0` with a token) |
 
@@ -636,9 +671,29 @@ rather than passing on `auth` alone: intended under A-03, but a behaviour change
 **Fix direction:** an admin-only endpoint that issues a random token (≥ 32 bytes, stored **hashed**, shown once — as API keys already are) and toggles `iotEnabled`; the token excluded from default attributes; a UI surface; a rate limit on `/iot/ingest`.
 
 **Verification (DoD)**
-- [ ] a device can be provisioned end to end through the API and ingest succeeds
-- [ ] no device response contains the token
-- [ ] tokens are hashed at rest
+- [x] a device can be provisioned end to end through the API and ingest succeeds
+- [x] no device response contains the token
+- [x] tokens are hashed at rest
+
+---
+
+**What was changed (2026-09-24)**
+
+| | |
+|---|---|
+| provisioning | `routes/api/iot.route.js` → `controllers/iot.controller.js` → new `services/iotDevice.service.js`, validated by new `validators/iot.validator.js`: `GET /iot/devices/:deviceId` (`calibration` read); `PATCH /iot/devices/:deviceId` and `POST`/`DELETE /iot/devices/:deviceId/token` (`auth` + `denyApiKey` + `rbac(TENANT_ADMIN)` + `dynamicAccess("calibration", "write")`). Issue/rotate returns the token **once** (201; `iot_` + 32 random bytes, base64url) and enables ingest; revoke clears it and disables ingest (409 when there is none). Every lookup carries the tenant id and `isDeleted: false`; another tenant's, a deleted and a missing device all answer the same 404. Each mutation locks the row and writes its audit row (`UPDATE` / `CalibrationDevice`, `changes.iot`) in the same transaction, never carrying the token or its hash |
+| hashed at rest | migration **0044-iot-device-token-hash**: adds `iot_token_hash` VARCHAR(64) and `iot_token_issued_at`; hashes any pre-existing plaintext token **deliberately** in SQL (`encode(sha256(convert_to(t, 'UTF8')), 'hex')`, identical to Node's `createHash("sha256")`, so a hand-provisioned device keeps ingesting — '' maps to no token, as it authenticated nothing); refuses if a row already carries a different hash; drops `iot_device_token` and its unique constraint; adds UNIQUE `calibration_devices_iot_token_hash_unique` (global, but over server-generated random values — no caller can probe it). `down` refuses while any device holds a hash. Ingest looks up `iotTokenHash = sha256(token)`; a non-string token is 401, not 500 |
+| no leak | `calibrationDevice.model.js`: `iotDeviceToken` replaced by `iotTokenHash` / `iotTokenIssuedAt`; `defaultScope.attributes.exclude: ["iotTokenHash"]`; `toJSON()` strips it even from an unscoped row |
+| rate limit | `/iot/ingest` has `endpointRateLimiter("iotIngest")`, 600/min per client address, on top of the global limiter |
+| UI | devices page: an IoT action per row opens `IotDeviceModal` (issue/rotate with a one-time copy box, enable/disable, revoke, tolerance editor); `frontend/src/api/services/iot.service.ts` |
+| docs | `docs/DEVELOPER/07-IOT-INGEST.md` — status banner, § Provisioning A Device, tests table; the hand-written-SQL recipe is gone |
+
+**Verification**
+- Backend (`npm test -- <path>`): `src/tests/routes/iot.provisioning.a29.test.js` (34), `src/tests/services/calibrationDevices.tokenLeak.a29.test.js` (3), `src/tests/services/iotDevice.service.test.js` (3), `src/tests/migrations/0044-iot-device-token-hash.test.js` (8), `src/tests/routes/iot.route.test.js` (6), with the existing `iot.controller`, `iot.service` and `bodyless.a09` suites: 100 % on all four measures for `iot.controller.js`, `iot.route.js`, `iot.service.js`, `iotDevice.service.js`, `iot.validator.js`. Named: *"returns the token once and stores only its SHA-256 hash"*, *"a device provisioned through the API ingests with its token (end to end)"*, *"rotating replaces the hash: the old token is refused 401, the new one ingests"*, *"revoking clears the hash and disables ingest; the token is refused 401"*, *"get/patch/post/delete on another tenant's device answers 404, and the device is unchanged (two-tenant)"* (principals from `createTwoTenants()`), *"… on a soft-deleted device answers the same 404 as another tenant's"*, *"the device LIST response never contains the token or its hash"*, *"the device DETAIL response never contains the token or its hash"*, *"every mutation writes its audit row in the same transaction, without the token or its hash"*, *"an API key cannot mint a device token, even one scoped to calibration write"*. Frontend: `src/api/services/iot.service.test.ts`, `src/app/dashboard/devices/components/__tests__/IotDeviceModal.a29.test.tsx` (*"issues a token and shows it once; …"*); `tsc --noEmit` clean.
+- **Fail-before:** the new backend suites copied into `git worktree add <scratchpad>/wt-iot HEAD` (05985ef) — 33 of 43 fail (worktree removed). The list/detail tests fail at HEAD on the real leak: the serialized response contains `"iotDeviceToken":"iot_plaintext-…"`.
+- **PostgreSQL 18.6** (`pgvector/pgvector:pg18`, throwaway container, removed): a table built by the PRE-change model's `sync()` with three rows (a non-ASCII plaintext token, NULL, ''); `up` → `\d calibration_devices` shows `iot_token_hash`, `iot_token_issued_at`, UNIQUE `calibration_devices_iot_token_hash_unique` and no `iot_device_token`; the hashed row is found by Node's `sha256` and by the NEW model's ingest lookup; `findAll()` JSON carries neither hash nor plaintext; the NULL and '' rows have no hash; a re-run is a no-op; `down` refused while the token was held and succeeded after revocation (restoring the 0010 column and its constraint); `up` again clean. The fresh-database path (new model `sync()` → 0010 → 0044) ends with the same columns and index.
+
+**Residual:** the IoT dialog shows its write actions to anyone with `calibration` write, while the backend also requires tenant-admin level — a technician gets the 403 message. The MQTT path still authenticates by topic alone (A-17). Ingest still writes no `audit_logs` row. Nothing here was exercised against a running server or a live broker.
 
 ---
 
@@ -789,13 +844,13 @@ this one hides an authentication boundary.
 
 | | |
 |---|---|
-| **Status** | TODO |
-| **Severity** | **unverified — possibly high** |
+| **Status** | **DONE** 2026-09-24 |
+| **Severity** | **high** — verified 2026-09-24: one live lockout (asset finance), the rest latent |
 | **Evidence** | Resources passed to `dynamicAccess`: `"Management"` (×10), `"Maintenance"` (×7), `"Finance"` (×6), `"Vendors"` (×6), `"Billing"` (×3), `"AuditLogs"` (×1) — beside lowercase slugs `warehouse`, `calibration`, `certificate`. Menu slugs are lowercase (`maintenance`, `finance`, `vendors`, `billing`, `audit`, `management`). `scopeAllows` lower-cases both sides, so API keys match case-insensitively; **whether `checkMenuPermission` does the same for users has not been checked.** `AuditLogs` matches no slug in any case. |
 
 **Definition of Done**
-- [ ] **verify first**: as a `HEALTHCARE ADMIN` (not super-admin), call one route per mismatched name; record 200 or 403
-- [ ] if any is denied: normalise every resource to its slug; add a test that every `dynamicAccess` name exists in `MENU_SLUGS`
+- [x] **verify first**: as a `HEALTHCARE ADMIN` (not super-admin), call one route per mismatched name; record 200 or 403 — done as a test against the real middleware and the real matrix builder, not a live call (below)
+- [x] if any is denied: normalise every resource to its slug; add a test that every `dynamicAccess` name exists in ~~`MENU_SLUGS`~~ **the seed's slugs** (why: below)
 - [ ] Phase 9 P9-19 types the argument as the slug union so this cannot recur
 
 ---
@@ -807,6 +862,76 @@ against `MENU_SLUGS` (A-27), a newly issued API key **cannot** be scoped to `cal
 `certificate:read` at all — so of the three searchable types a key can only ever reach stock. The
 same mismatch is what this card is about; adding the two slugs widens API-key issuance and belongs
 here, with a deliberate decision, not in a search fix.
+
+**What was verified and changed (2026-09-24).**
+
+How the check works, read from the code: `checkMenuPermission` looks the resource up **verbatim,
+case-sensitively** in a matrix keyed by each granted menu's **name and slug**, with the grant
+inherited by **direct children only** (`roles.service.js#getRolePermissionsMatrix`). API keys go
+through `scopeAllows`, which **lower-cases** the resource. So a gate naming a menu by its name works
+for users only by that coincidence, and a gate naming nothing is in nobody's matrix — while an API
+key can still pass it if the lower-cased name happens to be a slug. Two principal types, two
+vocabularies, one gate.
+
+What each non-slug name did (154 gates enumerated; 31 gates in 7 files named something other than a
+seeded slug):
+
+| Gate | Files (gates) | Matched | Effect | Changed to |
+|---|---|---|---|---|
+| `["Finance", "Billing"]` | `finance.route.js` (6) | nothing / a name no seeded role holds | **DENY — live.** The menu is name *"Asset Finance"*, slug `finance`. HEALTHCARE ADMIN, CALIBRATOR ADMIN and ENGINEERING MANAGER hold `finance: read` and were refused on all six routes (SUPERADMIN-only). An API key scoped `finance:read` **passed** (`"Finance"` lower-cases to the slug), and a `billing` grant stood in for `finance` | `"finance"` |
+| `["AuditLogs", "Audit Logs", "audit"]` | `audit.route.js` (1) | name + slug of one menu; `AuditLogs` dead | none (dead alias) | `"audit"` |
+| `"Management"` | `tenant.route.js` (7) | menu name | none — same menu as slug `management` | `"management"` |
+| `"Maintenance"` | `maintenance.route.js` (5) | menu name | none | `"maintenance"` |
+| `"Maintenance"` | `calibrationScheduler.route.js` (2) | menu name | none — kept on `maintenance` because the route's own swagger says "Requires read access to the Maintenance resource"; `calibration-scheduler` is a separate seeded menu that therefore still gates nothing server-side (left open, below) | `"maintenance"` |
+| `"Vendors"` | `vendor.route.js` (6) | menu name | none from the name — but see Q-20 | `"vendors"` |
+| `"Billing"` | `billing.route.js` (3) | menu name | none from the name — but see Q-20 | `"billing"` |
+
+No grant had to be created: the finance fix makes the existing `finance` grant effective, so **no
+migration**. Each route file was changed in the resource string only.
+
+**Why the guard checks the seed's slugs, not `MENU_SLUGS`:** `MENU_SLUGS` holds 33 of the seed's 60
+slugs — `users`, `calibration`, `certificate`, `audit`, `vendors`, `billing`, `maintenance` and
+others are seeded and gated on but absent from it. A `MENU_SLUGS` check would fail on correct gates.
+Closing that gap widens API-key issuance (`assertScopes`, A-27) and is the addendum's decision —
+**left open**.
+
+**Tests (named):**
+
+- `src/tests/routes/dynamicAccessSlugs.a07.test.js` (6) — **the permanent guard.** Replaces
+  `dynamicAccess` with a recorder and requires **every** module under `src/routes`, so each gate is
+  seen with its evaluated argument (including `search.route.js`'s computed `SEARCH_MENUS`); then
+  cross-checks with the boot scanner's `collectRouteGates` (file:line), and asserts both counts agree
+  (154). Fails if any gate names anything but a seeded slug.
+- `src/tests/routes/finance.access.a07.test.js` (22) — real `dynamicAccess` **and** real
+  `getRolePermissionsMatrix` over rows built from `ROLE_MENU_ASSIGNMENTS` and the seed's menu tree:
+  the three roles holding `finance: read` reach the three reads and get 403 on the three writes; a
+  role without the grant gets 403 on all six; a `finance:read` key agrees with the users; a
+  `billing:*` key no longer reaches asset finance.
+- `src/tests/routes/dynamicAccessReach.a07.test.js` (2) — pins the gates **no** seeded role can pass
+  to a reviewed list (below), so a new one fails and a fixed one forces the list to shrink.
+- `src/tests/utils/authorizationWiring.util.test.js` — "reports the computed gate as a warning, and
+  no dead alias remains (A-07)": the boot check's warnings drop from 8 to 1 (the computed search gate).
+
+**Fail-before**, in a worktree of HEAD with only the tests copied in: **13 fail** — both guard tests
+(the 31 gates named by file and line), all 9 admin-read finance tests (403), the `billing:*` key
+test, and the wiring-warning test. The `finance:read` API-key test **passed** before the fix, which is
+the asymmetry itself.
+
+**Found on the way, left open:**
+
+- **Q-20 — five seeded slugs no seeded role can reach.** `audit`, `billing`, `content`, `users`,
+  `vendors` sit two levels under `management`; `ROLE_MENU_ASSIGNMENTS` grants `management` and the
+  matrix inherits one level. So on a fresh seed `/users`, `/vendors`, `/billing`, `/content` and
+  `/audit` are SUPERADMIN-only — HEALTHCARE ADMIN cannot manage its own users. Correcting a name
+  cannot fix that; who should hold these is a privilege decision (BACKLOG Q-20).
+- `calibration-scheduler` is a seeded, assigned menu that no route gates on.
+- The comment above the `audit.route.js` gate still describes the old three-name list, and that
+  file's pre-existing `comma-dangle` lint error at the controller line is untouched — both outside
+  "the resource string only".
+- `abac.middleware.js` falls back to `matrix["Management"]` — a name lookup of the same shape, not a
+  `dynamicAccess` gate, harmless while the name and slug belong to one menu.
+- The boot check still accepts a menu **name**; the test is the strict guard. Tightening the boot
+  check is a one-line change in `checkRouteGates` if wanted.
 
 ### A-09 — Undefined `req.body` under Express 5
 
@@ -865,16 +990,16 @@ installed, so none of this is proved over real HTTP.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24 |
 | **Severity** | medium |
 | **Evidence** | `webhook.service.js#deliverWithRetry` runs in-process with `setTimeout` backoff `min(2^n × 500 ms, 30 s)` for `WEBHOOK_MAX_ATTEMPTS` = 5 — four waits of 1, 2, 4, 8 s, **about 15 s end to end**. A restart loses every pending retry and leaves the row `pending` or `failed` forever. The signature is `HMAC-SHA256(secret, body)` with no timestamp. |
 | **Spec refs** | `docs/WEBHOOK/04-WEBHOOK-RETRY.md` · `docs/WEBHOOK/03-WEBHOOK-SECURITY.md` |
 
 **Definition of Done**
-- [ ] delivery moves onto RabbitMQ with a dead-letter queue (the service's own comment names this as the deferred design)
-- [ ] a retry schedule measured in hours, not seconds
-- [ ] a signed timestamp header, and receivers told to reject stale ones
-- [ ] a restart during delivery resumes it — tested
+- [x] ~~delivery moves onto RabbitMQ with a dead-letter queue~~ — **amended by ADR-054**: a database outbox (`webhook_deliveries` + `next_attempt_at`, claimed `FOR UPDATE SKIP LOCKED`), dead letter = `exhausted`
+- [x] a retry schedule measured in hours, not seconds — 12 attempts, ~20.5 h
+- [x] a signed timestamp header, and receivers told to reject stale ones
+- [x] a restart during delivery resumes it — tested
 
 ---
 
@@ -889,6 +1014,44 @@ attempt additionally carries `WEBHOOK_TIMEOUT_MS` (default 8 s), so the wall clo
 is up to **~55 s**. And the 30 s backoff cap is dead code at the default `MAX_ATTEMPTS = 5` —
 `2**attempt * 500` first exceeds 30,000 at attempt 6.
 
+**What was changed (2026-09-24, ADR-054).** Migration `0043-webhook-durable-delivery` adds
+`webhook_deliveries.next_attempt_at` and the partial index `webhook_deliveries_due`; it resumes
+pre-0043 `pending`/`failed` rows under 24 h old and dead-letters older ones with the reason in
+`last_error`. `webhook.service.js`: a row per webhook per event is the outbox; `claim` is one
+`UPDATE … WHERE id IN (SELECT … FOR UPDATE SKIP LOCKED) RETURNING` that leases the row
+(`WEBHOOK_LEASE_MS`, 5 min); backoff `min(1 min × 2^(n−1), 6 h)`, 12 attempts (~20.5 h), then
+`exhausted`; the webhook is re-read before every attempt (deleted/deactivated → dead letter); a
+`webhook.test` delivery gets one attempt. `webhookDeliveryScheduler.middleware.js` runs a pass at
+boot and every 15 s (`WEBHOOK_DISPATCH_SCHEDULER`), wired in `index.js`. Signing is now
+`X-Webhook-Signature: v1=HMAC(secret, "<X-Webhook-Timestamp>.<body>")`; the receiver recipe (reject
+more than 5 min of skew, constant-time compare, dedupe on `X-Webhook-Delivery`) is in
+`docs/WEBHOOK/03-WEBHOOK-SECURITY.md` and is the code of `tests/fixtures/webhookReceiver.js`.
+
+**Tests** (fail-before: run against HEAD in a worktree, every one below failed; after: all pass):
+`tests/services/webhook.delivery.a10.test.js` — a real in-process HTTP receiver verifying every
+request: "the receiver's recipe accepts the signed delivery…", "replay protection: a captured request
+replayed later is stale; with a swapped timestamp its signature fails; resent at once it is a
+duplicate", "a receiver holding the wrong secret rejects the delivery, and the failure is scheduled
+for retry", "restart survival: a retry the first process scheduled is sent by a freshly loaded one,
+same delivery id", "dead letter: … 12 attempts, then the row is exhausted", "two tenants: each event
+reaches only its own tenant's receiver, and B cannot claim or test A's".
+`tests/services/webhook.durable.a10.live.test.js` — **PostgreSQL 18.6** (`pgvector/pgvector:pg18`,
+opt-in `WEBHOOK_PG_LIVE_TEST=1`): "a retry scheduled before a restart is delivered by the next
+process…", "two replicas dispatching concurrently send each of 30 due deliveries exactly once (SKIP
+LOCKED)", "a claimed (leased) row is invisible to every claimer until the lease expires", "two
+tenants: an event reaches only its own tenant's webhook, and a claim by id is bound to the tenant",
+"emitAfterCommit: a rolled-back transaction emits nothing; a committed one emits exactly once".
+Plus `webhook.service.test.js` (47), `webhookDeliveryScheduler.middleware.test.js` (9),
+`migrations/0043-webhook-durable-delivery.test.js` (6); `webhook.secret.a51.test.js` updated to the
+v1 signature. Migration verified on PG 18.6: up, re-run (no change), down, down again, up after down,
+`\d webhook_deliveries` checked each time.
+
+**Left open.** (1) **Breaking change**: a receiver still verifying `sha256=<HMAC(body)>` rejects every
+delivery — there is no dual-signing window; tenants must update receivers. (2) A crash between the
+business COMMIT and the delivery-row insert loses that event (afterCommit is in-process); closing it
+needs a transactional outbox with a savepoint per emit (ADR-054, alternatives). (3) Delivery is
+at-least-once. (4) No metric/alert on the dead-letter count and no manual redelivery endpoint.
+
 
 ---
 
@@ -896,14 +1059,43 @@ is up to **~55 s**. And the 30 s backoff cap is dead code at the default `MAX_AT
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24 |
 | **Severity** | medium |
 | **Evidence** | The only `emitEvent` call site is `calibrationScheduler.service.js`: `device.calibration_due` and `device.overdue`. Plus the synthetic `webhook.test`. Certificates, work orders, stock transfers and CAPA emit nothing. |
 | **Spec required** | **yes** — which events, with which payloads, before anyone subscribes |
 
 **Definition of Done**
-- [ ] catalogue agreed in `docs/WEBHOOK/01-EVENT-CATALOG.md`
-- [ ] each event emitted **after** the transaction commits, never inside it — a webhook for a rolled-back change announces something that did not happen
+- [x] catalogue agreed in `docs/WEBHOOK/01-EVENT-CATALOG.md`
+- [x] each event emitted **after** the transaction commits, never inside it — a webhook for a rolled-back change announces something that did not happen
+
+**What was changed (2026-09-24).** The catalogue is `backend/src/constants/webhookEvents.js`, and the
+offered list (`WebhookModal.tsx` `PREDEFINED_EVENTS`) now equals `*` plus it. New emit sites, each one
+`webhookService.emitAfterCommit(transaction, …)` call next to the audit row: `certificate.approved`,
+`certificate.signed`, `certificate.revoked` (`certificate.service.js`, inside `runTransition`'s
+mutate); `stock_transfer.completed` (`stock.service.js#updateTransferStatus`, unmanaged transaction);
+`capa.created`, `capa.closed` (`qms.service.js`). `work_order.created` / `work_order.completed`
+(`maintenance.service.js`) emit with `null` because that service opens no transaction — the write has
+already autocommitted. `emitAfterCommit` registers on `transaction.afterCommit`, so a rollback or a
+failed COMMIT discards the emit. Payloads are identifiers, numbers, statuses and the actor's UUID —
+no free text (the revocation reason is deliberately left out).
+
+**Removed from the catalogue:** `webhook.test` — offered by the UI, but it never matched a
+subscription (the test endpoint bypasses matching), so subscribing to it did nothing.
+
+**Tests** (fail-before: against HEAD, 25 of them failed; after: 29/29 pass):
+`tests/services/webhookEmit.a11.test.js` — per event "… is emitted after the … commits", "a
+certificate transition whose COMMIT fails emits nothing", "a transfer whose COMMIT fails emits
+nothing", "a CAPA create whose COMMIT fails emits nothing", "a refused transition (409) emits
+nothing", "editing an already-completed work order, or any other status change, emits nothing",
+"re-saving a CLOSED CAPA, or moving to another status, emits nothing", one "<KEY> has an emit site in a
+service" per catalogue name, and "the frontend offers exactly `*` and the catalogue — and no longer
+the inert webhook.test". On real PostgreSQL: `webhook.durable.a10.live.test.js` "emitAfterCommit: a
+rolled-back transaction emits nothing; a committed one emits exactly once".
+
+**Left open.** Not emitted, by choice (each is a new public contract and data-export decision):
+certificate create/update/delete/submit, NC create/update, stock adjust/opname, e-signature
+workflows, tickets. `maintenance.service` still has no transaction and no audit row on work-order
+writes — its emits are correct because its writes autocommit, but that is a separate defect.
 
 ---
 
@@ -956,15 +1148,40 @@ absent, the `sessions` table is read by **nothing** in the request path. See A-4
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24 |
 | **Severity** | medium |
 | **Evidence** | `activityLog.middleware.js` adds the Console transport only outside production → `docker logs` has **0 lines** on the reference deployment. Per-request lines use `logger.http`, below the production level `info` → **0 `http` lines in 640 combined-log lines**. Exception and rejection transports have no `maxFiles`. |
 | **Spec refs** | `docs/OBSERVABILITY/01-LOGGING.md` · `docs/DEVOPS/06-LOGGING.md` |
 
 **Definition of Done**
-- [ ] JSON logs to stdout in production (files optional)
-- [ ] per-request completion logged at `info`, with request id, status and a **numeric** duration
-- [ ] every file transport bounded
+- [x] JSON logs to stdout in production (files optional)
+- [x] per-request completion logged at `info`, with request id, status and a **numeric** duration
+- [x] every file transport bounded
+
+**What was changed (2026-09-24)** — all in `backend/src/middlewares/activityLog.middleware.js`; `index.js` untouched.
+
+| Piece | Behaviour |
+|---|---|
+| Console transport in **every** environment | production: the logger's JSON format, one object per line, to stdout; development: the colourised one-liner. It sets `handleExceptions` and `handleRejections`, so an uncaught throw at boot (the `KMS_MASTER_KEY` crash loop) now appears in `docker logs` |
+| file logging optional | `LOG_TO_FILE=true`/`false`; **unset → files outside production, stdout only in production**. Every file transport, including the exception and rejection handlers, is daily, 20 MB, gzip, `maxFiles: "30d"` |
+| `LOG_LEVEL` | overrides the default (`info` in production, `debug` elsewhere) |
+| per-request line | the `RESPONSE` record is written at **`info`** with `message: "request completed"`, `requestId`, `method`, `url`, `statusCode`, numeric `durationMs` (hrtime, 2 decimals), `ip`, `userId`, `tenantId`. The arrival record stays at `http`; it now carries a `message`, which fixes it printing `[object Object]` (winston treats a lone object without `message` as the message) |
+| redaction — a winston format ahead of every transport | key-name walk at any depth (lower-cased, `-`/`_` removed): password/passwd/passphrase, secret, token, authorization, cookie, api key, private/public/master/encryption key, credential, otp/totp, mfa/recovery/backup code, session id. `code`/`pin` redacted when the value looks like a one-time code (4–10 digits), so `err.code = "ECONNREFUSED"` survives. `Bearer …`/`Basic …` and JWT-shaped strings are scrubbed from **values and the message**. Errors, `toJSON` (Sequelize instances), arrays, cycles and depth (8) are handled, and the caller's object is **never mutated** |
+| URL | `?token=`, `?code=`, `?state=`, `?api_key=` … are redacted in the logged URL; the path and other parameters are kept |
+| timestamp | ISO-8601 UTC instead of offset-less local time |
+
+**Verification** (named tests, all passing, 100 % on all four measures for `activityLog.middleware.js` and `auditLog.middleware.js`):
+
+- `src/tests/middlewares/activityLog.a14.stdout.test.js` (7) — each case runs the **real** logger and real `activityLogger` on a real Express app in a child process with `NODE_ENV=production`, sends one real HTTP request, and reads the child's **stdout**: "A-14: stdout is not empty in production, and every line is a JSON object"; "A-14: the per-request completion line is emitted at info with request id, status and a NUMERIC duration"; "A-14: the logged URL keeps its path and harmless parameters but redacts ?token="; "A-14: no password, TOTP code, bearer token, JWT, cookie or refresh token reaches stdout" (secrets are an independently written list, not the redactor's key set); "A-14: production writes no log files unless LOG_TO_FILE=true"; "A-14: LOG_TO_FILE=true writes the rotated combined file as well as stdout"; "A-14: an uncaught exception is written to stdout as JSON, redacted, and the process exits non-zero".
+- `src/tests/middlewares/activityLog.test.js` (rewritten, 24, real winston) — configuration, bounded file transports and handlers, redaction branches, `sanitizeUrl`, and the middleware.
+
+**Fail-before:** the three suites run against `HEAD` in a scratch worktree: 25 of 50 fail, including every A-14 stdout case — "stdout is not empty…" receives **0 lines**.
+
+**pkg:** nothing new is bundled — the Console transport and the logform formats are reached through static `require('./console')` / `require('./errors')` in winston and logform. A probe built with `@yao-pkg/pkg` for `node24-win-x64` printed the redacted JSON lines to stdout and created no storage directory.
+
+**Deployment note:** with `LOG_TO_FILE` unset, a production container **stops writing** `log/activity/*`; stdout is the record (bounded by the compose `json-file` driver in `docker-compose.prod.yml`). Set `LOG_TO_FILE=true` to keep the files. The morgan access log (`log/access/`, A-44) is unchanged.
+
+**Left open:** `docs/OBSERVABILITY/01-LOGGING.md` and `docs/DEVOPS/06-LOGGING.md` still describe the file-only logger and "no redactor" as as-built; they need correcting under the deviation protocol (outside this change's boundary). The 25 `console.*` call sites are unchanged and still bypass the redactor.
 
 ---
 
@@ -1194,10 +1411,34 @@ is a one-line change that reviews better on its own — Open Question in `BACKLO
 **Evidence:** `react-hooks/set-state-in-effect` at line 101 — synchronous `setState` inside an effect. Pre-existing since the first commit.
 **Definition of Done:** fixed by restructuring the component, not by disabling the rule (`CLAUDE.md`).
 
+**Done 2026-09-24.** The reset that ran when the query dropped below two characters (four `setState`
+calls in the debounce effect's body) moved into the input's change handler, `handleQueryChange`: the
+event that causes the reset now performs it. The effect only schedules the debounce timer, and every
+state update happens in the timer callback. `handleSelect` clears through the same handler, so it now
+also invalidates an in-flight request (before, a late response could repopulate the list after a
+selection). No rule disabled. Evidence: `npx eslint src/components/layouts/GlobalSearch.tsx` gives 1 error
+(`react-hooks/set-state-in-effect`, 101:7) on a `git worktree` of HEAD `05985ef`, 0 after. Behaviour
+pinned by `frontend/src/components/layouts/__tests__/GlobalSearch.a56.test.tsx` › "A-22 reset on a short
+query": *closes the dropdown when the query is cut below two characters*, *drops a response still in
+flight when the query is cleared*, *does not search at all for a one-character query*. All three pass
+before and after, which is the point: the move changes no behaviour.
+
 ### A-23 — Search efficiency
 
 **Evidence:** `search.service.js` runs one query per requested type, sequentially, and logs a warning on every call where the FTS column is missing (always, in the unit-test database).
 **Definition of Done:** the three queries run concurrently or as one `UNION ALL`; the fallback warning logged once per process.
+
+**Done 2026-09-24.** `search.service.js` issues the per-type statements with `Promise.all`. The bound is
+structural: the requested list is a de-duplicated subset of `TYPES` (new; `types=device,device` used to
+run and return the type twice), so at most three statements are in flight per request, well inside the
+pool. Not `UNION ALL`: the three SELECT lists differ in shape and each type keeps its own FTS → ILIKE
+fallback, which one statement cannot. The fallback warning is logged once per table per process (a
+module-level set); later fallbacks for that table log at `debug`. Tests in
+`backend/src/tests/services/search.service.test.js`: *A-23: runs the per-type queries concurrently, not one
+after another*, *A-23: a duplicated type is searched once*, *A-23: warns about the ILIKE fallback once per
+table per process, then logs at debug*. All three fail on a worktree of HEAD `05985ef` and pass after.
+The controller's per-type permission probes (`permittedTypes`) are still sequential; they hit the
+permission cache, not a search statement, and were left alone.
 
 ---
 
@@ -1493,7 +1734,7 @@ and timing is not addressed. Only per-tenant uniqueness removes the oracle — D
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24 |
 | **Severity** | medium — cross-tenant disclosure and availability, not data leakage |
 | **Verified** | from code, 2026-09-23 |
 
@@ -1511,13 +1752,66 @@ Membership is tenant-scoped, so the users themselves are not disclosed. `assertM
 **Fix direction:** roles need tenant ownership, or SCIM Groups need to be backed by something
 that has it. That is a data-model decision — ADR, not a patch.
 
+**Decision — ADR-053.** SCIM Groups are backed by something that has tenant ownership: a new table,
+`scim_groups` (`tenant_id` NOT NULL RESTRICT, `display_name`, nullable `role_id` RESTRICT). SCIM
+never creates, renames or deletes a role any more. Tenant-owning `roles` itself was rejected: the
+global hooks would hide every seeded (NULL-tenant) role from every tenant user. The A-39 half of the
+decision — what a group grants — is recorded under A-39.
+
+**What was changed (2026-09-24)**
+
+| Change | Where |
+|---|---|
+| `ScimGroup` model, registered in the barrel | `models/scimGroup.model.js`, `models/index.js` |
+| Migration **0042**: creates `scim_groups` when absent, **refuses** (naming them) while duplicates exist, then `UNIQUE (tenant_id, lower(display_name))` and `UNIQUE (tenant_id, role_id)` | `migrations/0042-scim-groups-per-tenant.js`, `config/migrator.js` |
+| Every group read and write is `where: { tenantId }` explicitly (super admins skip the hooks) and goes through `findGroup`: another tenant's id, a missing id and a malformed id are the same 404 | `services/scim.service.js` |
+| `POST /Groups` checks the name only inside the caller's tenant; the unique index backs it, and a lost race is the same 409 | same |
+| `DELETE /Groups/:id` deletes the tenant's row and demotes its members in that tenant; no role is touched | same |
+| Every multi-step group write runs in one transaction (closes the "`PATCH /Groups` is not atomic" warning in the SCIM document) | same |
+| A tenant-less principal gets 403 from the group endpoints instead of a 500 from `where: { tenantId: undefined }` | same |
+
+**Verification**
+
+- `src/tests/routes/scim.groups.tenantOwned.a38.test.js` — real route → controller → service, tenants
+  from `createTwoTenants()`, an in-memory double that behaves as the 0042 schema does (tenant filter,
+  both unique indexes, transaction rollback). 45 tests. The A-38 ones:
+  *"GET /Groups lists only the caller's tenant's groups"*;
+  *"every :id route answers 404 for another tenant's group, byte-identical to an id that does not exist"*
+  (GET, PUT, PATCH, DELETE; tenant B's group and tenant A's user unchanged afterwards);
+  *"POST /Groups with a name another tenant already uses is 201 — not the 409 that disclosed it"*;
+  *"DELETE /Groups/:id removes the tenant's group and no role — another tenant's members keep their role"*;
+  *"SCIM never creates, renames or deletes a role"*;
+  *"a principal with no tenant is refused rather than reaching the database with an undefined tenant"*.
+- `src/tests/migrations/0042-scim-groups-per-tenant.test.js` — 8 tests (manifest, no try/catch,
+  create-when-absent, sync-built table, re-run no-op, both refusals, down).
+- `src/tests/models/tenantForeignKeys.a88.test.js` picks the new table up: `scim_groups.tenant_id`
+  renders `ON DELETE RESTRICT ON UPDATE CASCADE`, NOT NULL.
+- **PostgreSQL 18.6** (`pgvector/pgvector:pg18`, throwaway, removed): `up` on an empty database →
+  both unique indexes and both FKs in `pg_indexes` / `pg_constraint`; `up` again → still 5 indexes;
+  a case variant in one tenant → 23505 on `scim_groups_tenant_id_lower_display_name_unique`; the same
+  name in the other tenant → inserted; a second group on one role → 23505 on
+  `scim_groups_tenant_id_role_id_unique`; two unmapped groups → inserted; tenant delete → 23001;
+  `up` over an in-tenant case duplicate (index dropped) → refused, naming tenant and name; `down` →
+  table gone; a table built by the **real model's** `sync()`, then `up` → same catalog, re-run no-op.
+  The service's `lower("display_name") = …` query was run against it too.
+
+**Fail-before** (a `git worktree` of HEAD `05985ef`, removed afterwards): all 45 route tests fail
+against the old code — but mostly as 500s, because the old code calls `Role.findAndCountAll` /
+`Role.create`, which the new double does not model, and that alone proves nothing. The honest
+fail-before was a scratch probe with a double of the **old** schema (global roles) through the same
+route: tenant B creates "Engineers" → tenant A's `GET /Groups` lists `ENGINEERS`; A's `POST`
+"Engineers" → **409 Group already exists**; A's `DELETE` of B's group id → **204, role destroyed**.
+
+**Not closed:** roles an IdP created through the old code are left as global roles — nothing records
+which tenant made them. See ADR-053.
+
 ---
 
 ### A-39 — A SCIM-provisioned group grants nothing, silently
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24 |
 | **Severity** | medium — the `ROLE_LEVELS` trap, reached from the IdP side |
 | **Verified** | from code, 2026-09-23 |
 
@@ -1535,6 +1829,41 @@ outside the codebase.
 **Fix direction:** either refuse to create a group that carries no permission mapping, or give a
 SCIM-created group an explicit, documented level and an empty-but-real permission set, and return
 something in the response that says what it grants.
+
+**The two sides.**
+
+- *Map to an existing role by an explicit mapping.* Nothing new is invented: a group grants exactly
+  what a role an administrator already configured grants, `roleLevel` and menu matrix included, so the
+  `ROLE_LEVELS` trap cannot be reached from the IdP. Against it: a standard IdP pushes a group with
+  `displayName` only, so if the mapping is required at creation, group push fails for Okta, Entra ID
+  and OneLogin alike — and someone has to create the mapping.
+- *Create a tenant-scoped group with no grants, and say so.* Every IdP works unchanged and the
+  response is honest. Against it: "created, grants nothing" is still the state this card complains
+  about — the admin must read an extension attribute to notice — and a membership write that
+  succeeds while granting nothing is the silent failure again, one step later.
+
+**Decision — ADR-053, a combination.** A group maps to an existing role (`roleId`) and may be created
+unmapped; but an unmapped group **refuses** membership with a 409 that names the fix, and every group
+response states `{ roleId, roleName, grantsAccess }` in
+`urn:ietf:params:scim:schemas:extension:callibrator:2.0:Group`. A role can back a group only if it
+exists, is not SUPERADMIN (A-27), is not the default USER role (removing a member demotes to it, so
+removal would be a no-op), and holds at least one `role_menu_permissions` row — otherwise 400. A group
+never grants nothing without saying so, and a member is never "added" to nothing.
+
+**Verification** — `src/tests/routes/scim.groups.tenantOwned.a38.test.js`, `describe` *"A-39 — a SCIM
+group says what it grants, and never grants nothing silently"*:
+*"an unmapped group is created, and its response says it grants nothing"*;
+*"adding a member to an unmapped group is a 409 naming the fix, and changes no one's role"*;
+*"POST /Groups with members but no roleId is a 409, and no group is created"*;
+*"a group mapped to a role grants it: members take the role and the response names it"*;
+*"mapping to a role that grants no menu permission is refused with 400 — the A-39 role by another route"*;
+*"mapping to SUPERADMIN is 403 (the A-27 guard), to the default USER role 400, to an unknown role 400"*;
+*"an unmapped group can be mapped by PATCH path roleId, then accepts members in the same request"*;
+*"re-mapping a group moves its members to the new role; removing roleId demotes them"*;
+*"PUT without roleId keeps the mapping — an IdP rename never demotes the members"*;
+*"a role backs at most one group per tenant: a second mapping is a 409 naming the first group"*.
+Fail-before: the old-schema probe shows `createGroup` writing a role with no `roleLevel` and no
+permission rows, answered 201.
 
 ---
 
@@ -1668,7 +1997,7 @@ transaction, a failed write is re-thrown"* and *"out-of-ENUM action (RESTORE) is
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24 — deleted |
 | **Severity** | medium — no live leak, because it has no caller |
 | **Verified** | from code, 2026-09-23 |
 
@@ -1683,6 +2012,16 @@ and it is also why nobody has noticed: it is a loaded gun, covered by tests, wai
 **Fix direction:** delete it, or give it a redaction allow-list and a reason to exist. Do not leave
 it as is. `docs/DEVOPS/06-LOGGING.md` § Redaction describes a redactor as as-built; that is a target
 and is corrected.
+
+**What was changed (2026-09-24) — deleted.** A repository-wide search (routes, controllers,
+services, `index.js`, every test, the `jest.mock` factories of `auditLog.middleware`) found no
+reference to `auditAction` outside its own two tests. It is removed from
+`backend/src/middlewares/auditLog.middleware.js` and from the exports, which are now
+`{ withAudit, recordAudit }`. Its two tests in `src/tests/middlewares/auditLog.test.js` were
+replaced by "A-43: is no longer exported — the body-logging helper was deleted", which fails
+against `HEAD`. `withAudit` (actor, ip and user agent, no bodies) also has no caller and was left
+as is. Independently, every winston line now passes through the A-14 redactor, so a body logged by
+any future helper is redacted on its way to stdout or file.
 
 ---
 
@@ -1735,7 +2074,7 @@ the shutdown defect was never reachable there. Not verified against a live broke
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24 |
 | **Severity** | medium — a documented feature that cannot fire |
 | **Verified** | from code, 2026-09-23 |
 
@@ -1755,6 +2094,25 @@ inlines the whole payload, against the "no full bodies" rule; and
 `src/tests/e2e/modules/iot.e2e.test.js` expects **400** for an empty body where the code throws
 **401** first — an E2E assertion that looks like it cannot pass, unverified because the live suite
 has never completed a run (P6-02).
+
+**What was changed (2026-09-24)** — with A-29, in the one admin surface the fix direction asked for.
+`PATCH /api/v1/iot/devices/:deviceId` accepts `readingTolerance` (`validators/iot.validator.js`:
+`{ metric: { min?, max? } }`, at least one bound, `min <= max`, metric names `[A-Za-z0-9_.-]{1,64}`,
+at most 50; `null` clears it; a bad name or a misspelt bound is **refused**, not stripped — a
+tolerance that silently lost a bound would never fire) and `iotEnabled` (enabling a device with no
+token is a 409 state explanation). The devices page's IoT dialog edits it. Of the "also open" items:
+the anomaly log line now carries the metric names and findings, not the payload; the E2E assertion is
+corrected to **401**, with a 401 case for an unknown token added — still not run live (P6-02).
+Ingest still writes no `audit_logs` row (left open).
+
+**Verification** — `src/tests/routes/iot.provisioning.a29.test.js`: *"PATCH sets readingTolerance; an
+out-of-tolerance reading is flagged and notifies (end to end)"* (PATCH, then ingest
+`{ temperature: 42 }` against `max: 30` through the real controller and `iot.service` →
+`isAnomaly: true`, an `IotReading` stored with `isAnomaly`, a `system` notification naming the
+breach), *"a below-min reading is flagged; an in-tolerance reading is not"*, eight *"an invalid PATCH
+is 400 and changes nothing: …"* cases, *"enabling ingest on a device with no token is a 409 state
+explanation"*; frontend `IotDeviceModal.a29.test.tsx` *"A-46: saves the reading tolerance through
+the API"*. Fail-before as A-29 — the route did not exist at HEAD.
 
 ---
 
@@ -1922,7 +2280,7 @@ issued before the deploy. That leaves every SSO token unrevocable (`sso.controll
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24 |
 | **Severity** | medium |
 | **Verified** | from code, 2026-09-23, while amending `docs/DEVELOPER/09-SCIM-PROVISIONING.md` |
 
@@ -1942,6 +2300,42 @@ which is now inconsistent with `GET /Users`, and its `count` is unbounded.
 case-insensitively — pick one and record it); validate patch values against the same UUID rule the
 other schemas use; and decide the envelope question, because the e2e spec and the document
 currently disagree about what this endpoint is supposed to return.
+
+**What was changed (2026-09-24)**
+
+| Item | Resolution |
+|---|---|
+| `displayName` oracle | **stored as given, compared case-insensitively, per tenant** (ADR-053): `lower(display_name)` in the filter and the duplicate check, `UNIQUE (tenant_id, lower(display_name))` in migration 0042. The probe and the create now agree, and another tenant's name is invisible |
+| patch values | every id in a patch value — `roleId` on a user or a group, each member id, the id inside Okta's `members[value eq "…"]` — is UUID-checked in the service before any query: **400** `SCIM … must be a UUID`. Confirmed first on PostgreSQL 18: comparing a UUID column with `'not-a-uuid'` raises **22P02**, which surfaced as a 500. A malformed group id in the URL is the ordinary 404 |
+| e2e spec | fixed to the **as-built** envelope (`body.data.Resources`, `body.data.id`), and extended to assert that an unmapped group says it grants nothing and that an upper-case `displayName eq` finds it. **Not run** — it needs a live server |
+| `userName eq` | matches `email` **or** `username` |
+| `GET /Groups` filter and `count` | an unsupported filter is **400**, as on `/Users`; `count` is capped at 200 |
+| member removal | a `remove` naming a user demotes them **only if they are a member**. Before, removing someone from a group they were not in stripped whatever role they held |
+
+**The envelope is not decided here — Open.** Raw RFC 7644 bodies (and SCIM `Error` bodies) are the
+right target, since no compliant SCIM client can parse the platform envelope, but that changes every
+SCIM response and the error output for these routes; it is not a leftover fix. The spec now tests
+what the server sends; `docs/API/13-INTEGRATION-API.md` still claims otherwise.
+
+**Verification** — `src/tests/routes/scim.groups.tenantOwned.a38.test.js`, `describe` *"A-49 — …"*:
+*"displayName eq finds a group however the IdP capitalises it"*;
+*"a case variant of the caller's own group is a 409 — the probe and the create now agree"*;
+*"a rename onto another group's name is a 409; a rename onto its own name in another case is allowed"*;
+*"an unsupported group filter is a 400, as it is on /Users — not every group"*;
+*"count is bounded at 200"*;
+*"a malformed member id in a patch value is a 400, not a driver error"*;
+*"a malformed roleId in a user patch is a 400, not a driver error"*;
+*"removing a user who is not a member leaves their real role alone"*;
+*"a multi-operation PATCH that fails partway changes nothing"*;
+*"losing the race to the unique index is the same 409, not a 500"*.
+`src/tests/services/scim.service.test.js` › *"narrows to one user on a userName eq filter"* now asserts
+the `email`-or-`username` predicate. Fail-before (old-schema probe on HEAD): `displayName eq
+"Engineers"` → **0 results** while `ENGINEERS` existed; `filter=externalId eq "x"` → **200 with every
+group**.
+
+Coverage: `scim.service.js` and `scim.validator.js` at 100 % statements, functions and lines, and
+`scim.service.js` 100 % branches, across the SCIM suites plus the FK guard and the 0042 test (9 suites,
+464 tests).
 
 ---
 
@@ -2040,7 +2434,7 @@ already there), and mint it through the same registry as every other token.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24 |
 | **Severity** | medium — user-visible, and silent |
 | **Verified** | from code, 2026-09-23 |
 
@@ -2058,13 +2452,39 @@ emitted and listened to by nobody.
 **Fix direction:** re-emit `kanban:join` on the client's `connect` event, and pass the ack so a
 refusal surfaces.
 
+**What was changed (2026-09-24)** — client side; the server contract is unchanged.
+
+- `frontend/src/lib/socket.ts` gains `joinBoardRoom(socket, projectId, onRefused)`. It records the
+  subscription in a module-level set, joins now if connected, and the singleton's `connect`
+  handler — which fires on the first connection **and every reconnection** — replays `kanban:join`
+  for every recorded subscription. The join passes the ack; `{ ok: false }` calls `onRefused`. The
+  returned unsubscribe emits `kanban:leave` only when the last subscriber for that board goes and
+  the socket is connected. `disconnectSocket()` clears the set, so the next principal inherits no
+  subscriptions (F-01), and a `connect` on a socket from an ended session replays nothing.
+- `frontend/src/app/dashboard/kanban/[projectId]/hooks/useBoard.ts` uses it instead of a single
+  `emit`; a refusal sets the board error "Live updates are unavailable: …".
+
+**Verification** — against a **real** in-process Socket.IO server and the real `socket.io-client`
+(not a mock): `useBoard.realtime.test.ts` —
+"A-53: re-joins the board room after a reconnect, so a later board event still arrives" (drops the
+engine with `client.io.engine.close()`, waits for the client's own reconnect, asserts the new
+server-side socket is back in `board_<id>` and that a `kanban:card:created` emitted to the room
+reaches the store), "A-53: a refused join surfaces as a board error instead of silence", and
+"A-53: an unmounted board leaves its room and is not re-joined on reconnect". Bookkeeping branches:
+seven `lib/socket joinBoardRoom (A-53)` cases in `src/lib/socket.test.ts`. **Fail-before**, same
+test file on a `git worktree` of HEAD `05985ef`: the first two fail (room membership after
+reconnect `0`, expected `1`; board error `null`); the third passes on both, as it should.
+
+Not addressed (recorded above, out of this row's scope): the `super_admins` room nothing emits to,
+the `tenant_null` room, and the six `kanban:*` events nobody listens to.
+
 ---
 
 ### A-54 — No Socket.IO adapter: a second replica splits the fan-out
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24 |
 | **Severity** | medium — an architectural constraint, not a live defect |
 | **Verified** | from code and the Helm values, 2026-09-23 |
 
@@ -2076,6 +2496,40 @@ not fix this — the emit happens server-side, not per client.
 
 Worth recording next to A-30, which made the rate limiter replica-safe: the limiter is ready for
 more than one replica now, and the realtime layer is not.
+
+**What was changed (2026-09-24)**
+
+- Dependency: `@socket.io/redis-adapter` `^8.3.0` in `backend/package.json`, installed from the root
+  (`npm install @socket.io/redis-adapter@latest --workspace backend`). Root `package-lock.json`
+  gained exactly four packages: `@socket.io/redis-adapter@8.3.0`, its nested
+  `debug@4.3.7`, `notepack.io@3.0.1` and `uid2@1.0.0`. None has an install script, so
+  `allowScripts` is unchanged; `npm audit` → 0 vulnerabilities. The `pkg` build needs no config
+  change: the adapter is plain CommonJS reached by a literal `require`, which pkg follows.
+- `backend/src/config/socket.js` — `attachAdapter(io)`, called by `initSocket`. When the shared
+  client from `redis.service.js` is `ready` (index.js awaits `initRedis()` before `initSocket()`),
+  it installs `createAdapter(pub, sub)` on two `duplicate({ lazyConnect: false })` connections,
+  which inherit the URL, credentials and `protocol: 2`, each with an `error` listener. Otherwise —
+  no client, client not ready, or client construction throwing — it keeps the in-memory adapter
+  and logs `IN_MEMORY_WARNING` ("… run exactly one backend replica until Redis is configured").
+
+**Verification** — `socket.redisAdapter.live.test.js` (opt-in, `REDIS_LIVE_TEST=1`, the A-30
+convention), run against a real `redis:8.6-alpine` (Redis 8.6.7, ioredis 6.0.0), container removed
+afterwards: "A-54: an emit on replica A reaches a client connected only to replica B" — two
+separately loaded copies of `config/socket.js` + `redis.service.js` on two ports, a real
+`socket.io-client` on B joins a board through the real `kanban:join` handler, `emitToBoard` on A,
+the event arrives; and "A-54: falls back to the in-memory adapter, with a warning, when Redis is not
+ready". Unit branches: six `attachAdapter (A-54)` cases in `socket.test.js`. **Fail-before**, on a
+`git worktree` of HEAD `05985ef`: the adapter is `Adapter`, not `RedisAdapter`; with the adapter
+assertions removed, the event emitted on A **never arrives** at the client on B (3 s timeout).
+
+**Still open:**
+- `backend.replicaCount` stays `1`. Raising it also needs **sticky sessions** at the ingress: the
+  client allows the long-polling transport as a fallback, and Engine.IO polling requests must land
+  on the replica that holds the session. The adapter fixes the fan-out, not that.
+- The adapter's two connections are not closed on graceful shutdown (index.js is outside this
+  change); process exit ends them.
+- A Redis outage after startup is ridden out by ioredis reconnecting the duplicates; events emitted
+  during the outage are lost, which is the same best-effort contract `emitToBoard` already had.
 
 ---
 
@@ -2109,7 +2563,7 @@ the first step. The fixture itself is not written yet — that is the open half.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24 |
 | **Severity** | low |
 | **Verified** | from code, 2026-09-23 |
 
@@ -2122,6 +2576,59 @@ silently returns nothing. The fallback itself is reasonable; swallowing the seco
 
 **Fix direction:** keep the FTS → ILIKE fallback, but let a second failure surface as a 500 with the
 request id, and log both causes.
+
+**Done 2026-09-24. Decision: fail the request (500), not partial results.**
+
+A type that fails on both FTS and ILIKE now throws `AppError(500, "Search failed for <type>",
+isOperational=false)` after logging both causes (`ftsError`, `ilikeError`) with the type. The
+controller's `asyncHandler` answers it: outside production with that message; in production with the
+generic message plus `requestId`, never the SQL text (the A-132 rule). The frontend (`GlobalSearch.tsx`,
+via `searchErrorMessage` in `api/services/search.service.ts`) shows "Search failed: … (reference <id>)",
+not "No results".
+
+*Alternatives considered:*
+
+- **Partial results with a per-type error marker in `meta`** (e.g. `meta.failedTypes: ["certificate"]`
+  on a 200). Better availability: a broken certificates table would not take device search down with it.
+  Rejected because every consumer has to learn to read the marker, and one that does not (the E2E spec,
+  an API client, a future screen) reads a partial list as complete. That is the silent-empty shape this
+  card exists to remove. A statement failing here is a defect (missing column, missing grant), not a
+  runtime condition to degrade around, so it should be loud until fixed.
+- **Keep `[]` and log louder.** Rejected: the user still sees "no results" for a broken query.
+- **Surface the first (FTS) failure too.** Rejected: FTS failing is expected on a database without
+  `search_vector`, and the ILIKE fallback is the designed behaviour.
+
+*Bad implication, accepted:* one broken type fails the whole search, including the types that worked.
+
+*Evidence.* `backend/src/tests/services/search.service.test.js`: *A-56: fails the search with a
+non-operational 500 when BOTH FTS and ILIKE fail, logging both causes* (replaces "degrades to no results
+for a type when BOTH FTS and ILIKE fail", which pinned the defect) and *A-56: one failing type fails the
+whole search instead of returning the others as a complete answer*.
+`backend/src/tests/controllers/search.twoTenants.a56.test.js`: *answers 500 with success:false when a type
+fails on both FTS and ILIKE* and *in production shows the generic message and the request id, never the
+SQL error*. `frontend/src/components/layouts/__tests__/GlobalSearch.a56.test.tsx`: *shows the failure and
+the request id when the backend answers 500*, *shows the failure without a reference when the body has no
+request id*, *still says 'No results' for a search that succeeded with nothing*; and
+`frontend/src/api/services/search.service.test.ts` › `searchErrorMessage` (3 cases). Every A-56 case
+fails on a `git worktree` of HEAD `05985ef` and passes after, except the "still says 'No results'"
+control, which passes on both.
+
+*Two tenants.* Search is raw SQL, so its `tenant_id = :tenantId` predicate is the only isolation.
+`search.twoTenants.a56.test.js` › "search — two tenants" runs the real controller, service and
+`dynamicAccess` with `createTwoTenants()` principals against a database double that returns every
+tenant's rows unless the statement carries the predicate: *returns only tenant A's rows to a tenant-A
+principal, on every type*, *returns only tenant B's rows to a tenant-B principal*, *keeps tenant B out on
+the ILIKE fallback path too*, *ignores a tenantId supplied in the query string*, *scopes a super admin to
+its home tenant, not every tenant*. These pass on HEAD because the predicate was already there. Mutation
+on the worktree showed they catch its removal: deleting the predicate from the FTS statement fails four
+of them, deleting it from the ILIKE statement fails the fallback case. Live check against
+`pgvector/pgvector:pg18` (PostgreSQL 18.6, throwaway container, since removed), with three tables holding
+rows in both tenants and `stocks` without `search_vector`: tenant A got `cert-A, dev-A, stk-A` and tenant B
+got `cert-B, dev-B, stk-B`; three searches logged one `warn` and two `debug`; renaming `certificates`
+away made the search reject with 500 "Search failed for certificate", with both causes logged.
+
+Coverage: `search.service.js`, `search.controller.js` and `search.route.js` are at 100% on all four
+measures (subset run). The full-suite gate was not run for this change.
 
 ---
 
@@ -2391,6 +2898,8 @@ posted raw token"*. Full suites: backend 336 suites and 6,667 tests at 100 %; fr
 
 **Still open:** item 3, which is the owner's decision (Q-11). Also A-69: **SSO has probably never
 worked through the Next `/api` proxy on this deployment**, and this change does not fix that.
+*(2026-09-24: A-69 is fixed in the proxy, and A-68 found three more reasons OIDC never worked. See
+both sections. Neither has yet been seen with a live IdP.)*
 
 ---
 
@@ -2721,9 +3230,9 @@ has more hops than that: Cloudflare tunnel, nginx, then Next. The edge must over
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24 |
 | **Severity** | **high** |
-| **Verified** | from code, 2026-09-24, during A-60 |
+| **Verified** | from code, 2026-09-24, during A-60; fixed and proved against a real in-process IdP, 2026-09-24. **Not seen with a live IdP** |
 
 `sso.service.js` generates a `state` and stores it nowhere. `oidcCallback` only splits it to recover
 the tenant code, and no `nonce` or PKCE verifier exists. So the callback accepts any authorization
@@ -2731,8 +3240,109 @@ code with any `state` — login CSRF (the victim is signed into the attacker's a
 injection.
 
 **Definition of Done**
-- [ ] `state` is bound to the initiating browser and checked once; `nonce` is checked in the ID token; PKCE is used
-- [ ] a callback with a forged `state` is refused, by a named test
+- [x] `state` is bound to the initiating browser and checked once; `nonce` is checked in the ID token; PKCE is used
+- [x] a callback with a forged `state` is refused, by a named test
+
+**Resolution.** `sso.controller.oidcLogin` now mints four 32-byte random values (Node `crypto` only,
+no new dependency):
+
+| Value | Goes to | Checked |
+|---|---|---|
+| `state` | the IdP, and back | the store key (its SHA-256), consumed with one `GETDEL` |
+| `nonce` | the IdP | must equal the ID token's `nonce` claim (`oidcJwks.verifyOidcCallback`) |
+| `code_verifier` | stays on the server | the IdP gets only `code_challenge` = S256 of it; the token request sends the verifier |
+| binding | the **browser only**, httpOnly cookie `sso_oidc_binding` | its SHA-256 must equal the one stored with the state |
+
+The entry — tenant, `redirect_uri`, nonce, verifier, binding hash — lives 600 s under
+`sso:oidc:state:<sha256(state)>`. With Redis down it is held in process memory with the same TTL and
+single use, exactly like the A-60 hand-off codes. The callback refuses with **401 "Invalid or expired
+SSO sign-in state"** when the state is unknown, expired, already used, presented without the binding
+cookie or with another browser's, or started for another tenant than the callback URL names. It is
+refused **before the code is sent to the IdP**. The binding cookie is cleared on every callback.
+`verifyOidcCallback` also refuses (401) when it is not given a nonce and a verifier, so no caller can
+skip the check by omission.
+
+The tenant now comes from the stored entry, not from `state.split("_")[1]`. The `redirect_uri` is
+fixed at the start and stored, so the token request sends exactly what the authorize request did.
+Before, the authorize URL fell back to `http://localhost:5000/…` while the callback used `HOST_URL`,
+so a tenant without `oidc_redirect_uri` would have failed the exchange with a `redirect_uri` mismatch.
+
+**Found and fixed while doing this. OIDC has never worked, for three reasons besides A-69:**
+
+1. **Every SSO start was a 500, SAML as well as OIDC.** `ssoLogin` and `oidcLogin` did
+   `const { tenantCode } = validate(req.body, ssoLoginSchema)`, but `validate` returns Joi's
+   `{ value, error }`, so `tenantCode` was always `undefined`. Sequelize 6 throws
+   `WHERE parameter "code" has invalid "undefined" value` (reproduced against the real model). Both now
+   read `value` and answer 400 "Tenant code is required" on a bad body. The unit tests mocked
+   `Tenants.findOne`, so they never saw it.
+2. **The callback had no GET route.** The authorize request asks for `response_mode=query`, so the IdP
+   returns the browser with a GET, but only `POST /sso/oidc/callback[/:tenantCode]` existed. GET routes
+   are added, and the controller reads `code` and `state` from the query or the body.
+3. The `redirect_uri` mismatch described above.
+
+**Design decision: the binding cookie.** A `state` checked only against the server store stops a
+forged state. It does not stop login CSRF: the attacker's own valid state and code, opened in the
+victim's browser, would pass. So the state is bound to the browser that started the sign-in.
+Alternatives considered:
+- *Put the state itself in the cookie and compare* (the "double-submit" pattern): this also works,
+  but the store is still needed for nonce and verifier, so a separate random binding keeps the cookie
+  meaningless on its own. The state travels through the IdP's logs and the binding never leaves the
+  browser.
+- *Bind to the Next session:* there is no session before sign-in, which is the point.
+- *Let Next own the binding:* possible, but the backend would then have to trust a header from Next
+  saying the browser matched. The backend enforcing its own cookie keeps the check where the state
+  lives. The cost is that the Next proxy must carry this one cookie both ways (A-69).
+
+**SameSite=Lax, which rules out `form_post`.** The IdP's return is a cross-site top-level GET, and
+Lax cookies go with that. A `response_mode=form_post` return is a cross-site POST, which would arrive
+without the cookie and be refused. The POST routes remain, but through a browser they only work for a
+same-site POST. `SameSite=None` would allow `form_post`, but it gives up Lax's CSRF protection for a
+mode this app does not ask for.
+
+**Tests** (fail-before shown in a baseline worktree at `05985ef`):
+- `src/tests/routes/sso.oidcRoundTrip.a68.test.js`: a **real** IdP on an ephemeral port. It has an
+  RSA JWKS, enforces PKCE S256 at `/token` the way RFC 7636 requires, and signs RS256 ID tokens with
+  jsonwebtoken. The backend runs the real auth router, controller, `sso.service`, `oidcJwks` (real
+  axios) and `redis.service` (memory fallback). Tests: *"completes: state, nonce and PKCE S256
+  round-trip, and the browser lands on /sso-callback with a one-time code"*, *"a callback with a
+  forged state is refused, and the code never reaches the IdP"*, *"a callback with no state is
+  refused"*, *"a replayed callback is refused — the state is single-use"*, *"login CSRF: the
+  attacker's callback URL opened in the victim's browser is refused"*, *"a state bound to another
+  browser is refused even when that browser has a binding cookie of its own"*, *"an ID token whose
+  nonce does not match the sign-in is refused"*. **All 7 failed at the baseline:** the start answered
+  404/500 and the GET callback did not exist. A baseline probe (not kept) also POSTed a callback with
+  a forged `state` and an IdP-issued code. The baseline sent that code to the IdP's token endpoint
+  with no `code_verifier`, which shows the state was never checked.
+- `sso.controller.test.js` › *"A-68: OIDC state, nonce and PKCE"*: *"a callback with a forged state
+  is refused"*, *"a replayed state is refused — it is consumed on first use"*, *"a state presented by
+  a browser that did not start the sign-in is refused (login CSRF)"*, *"a state with no binding cookie
+  at all is refused"*, *"a state started for one tenant is refused at another tenant's callback URL"*,
+  *"with Redis down the state is held in memory — still single-use, still bound"*, *"… an expired
+  state is refused …"*, *"oidcLogin stores the state, sends an S256 challenge of a verifier it keeps,
+  and sets the binding cookie"*, *"%s answers 400 without a tenant code, and looks the tenant up by
+  the code it was sent"*. Also: *"reads code and state from the query string — the IdP's GET
+  return"* and *"the callback sends the redirect_uri stored at the start, not one derived again"*.
+- `oidcJwks.test.js` › *"A-68: nonce and PKCE"*: *"an id_token whose nonce does not match the
+  sign-in is refused"*, *"an id_token with no nonce is refused"*, *"sends the PKCE code_verifier to the
+  token endpoint"*, *"refuses a callback with no flow at all / no nonce / no code_verifier before any
+  request to the IdP"*. All 6 failed at the baseline.
+- `sso.service.test.js` › *"A-68: sends the stored state, the nonce and an S256 PKCE challenge — never
+  a verifier"*.
+- Updated for the new contract: `sso.suspendedUser.a70.test.js` and `auth.tokenPurpose.a59.test.js`.
+  Their OIDC callbacks now begin a real flow.
+
+`sso.controller.js`, `sso.service.js`, `oidcJwks.js` and `auth.route.js` are at 100 % on all four
+measures.
+
+**Still open. Only a live IdP can show these:**
+- **The JWKS location.** `oidcJwks` fetches `${oidc_authority}/.well-known/jwks.json` and posts to
+  `${oidc_authority}/token`. Entra ID publishes its keys at `…/discovery/v2.0/keys`, not there. With
+  the default `common` authority the issuer is also tenant-specific. Discovery
+  (`/.well-known/openid-configuration`) is not implemented. This predates A-68.
+- **A public client.** A tenant with no `oidc_client_secret` sends the literal `client_secret=undefined`
+  (A-150 territory).
+- **The refusals render as JSON** in the browser, because the callback is a navigation. Redirecting
+  them to `/login?error=…` would be kinder, and is not done here.
 
 ---
 
@@ -2740,7 +3350,7 @@ injection.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24. The proxy's behaviour is proved against a real HTTP backend. **Not seen with a live IdP** |
 | **Severity** | **high** — SSO likely does not work on this deployment at all |
 | **Verified** | from code and the deployment notes, 2026-09-24. **Not observed** — no IdP is configured |
 
@@ -2750,6 +3360,59 @@ points at `https://<host>/api/v1/auth/sso/...`, the `[...path]` proxy's `fetch` 
 
 **Fix direction:** the proxy passes redirects through (`redirect: "manual"`), or the SSO callback
 paths are routed to the backend directly in nginx. Decide which, and test with a real IdP.
+
+**Resolution.** Two changes to `frontend/src/app/api/v1/[...path]/route.ts`:
+
+1. **`redirect: "manual"` on every proxied fetch.** A 3xx and its `Location` go back to the browser.
+   A reverse proxy should not follow redirects for its client. The backend has two redirecting
+   handlers, the SSO callbacks and `oidcProvider.controller` (consent). Both are browser navigations
+   that were broken the same way. An XHR that receives a 3xx is followed by the browser itself.
+2. **The OIDC binding cookie (A-68) is carried both ways, and nothing else is.** The browser's
+   `sso_oidc_binding` goes to the backend as `Cookie`, and only on `auth/sso/oidc/*` paths. Of the
+   backend's `Set-Cookie` headers, only that cookie passes. All other backend cookies are still
+   dropped, and Next still owns `auth_token`/`auth_session`.
+
+**Decision: pass redirects through in the proxy, instead of routing the SSO paths to the backend in
+nginx.** The nginx route would need a rule in every nginx config and in Helm, and it would break for
+anyone running without the bundled nginx (`next dev`, another ingress). It would also split `/api/`
+between two upstreams, which ADR-046 chose not to do. The cost of the chosen route is that the proxy
+now knows one backend cookie by name.
+
+**The round trip, checked on paper against the code:**
+1. The login page XHRs `POST /api/v1/auth/sso/oidc/login` → Next proxy → backend. The backend
+   stores the state and answers 200 `{redirectUrl}` with `Set-Cookie: sso_oidc_binding` (Path
+   `/api/v1/auth/sso/oidc`, httpOnly, Lax). The proxy passes that one cookie through, and the browser
+   stores it for the public origin.
+2. The browser navigates to `redirectUrl`: the IdP's `/authorize`, with `state`, `nonce` and an S256
+   `code_challenge`.
+3. The IdP sends the browser back with a top-level GET to `redirect_uri`. That is `oidc_redirect_uri`,
+   or else `${HOST_URL}/api/v1/auth/sso/oidc/callback/<tenant>`. On the VM `HOST_URL` is the public
+   origin, so the request reaches Next, and the Lax cookie is sent.
+4. The proxy forwards it with the binding cookie. The backend consumes the state, checks the binding,
+   exchanges the code with its `code_verifier`, verifies the ID token and its nonce, provisions the
+   user, and answers **302 → `${FRONTEND_URL}/sso-callback?code=…`**, clearing the binding cookie.
+5. The proxy, now `manual`, returns that 302 and its `Set-Cookie` to the browser.
+6. `/sso-callback` posts the code to Next's own `POST /api/v1/auth/sso-session`. That route is more
+   specific than `[...path]`, so it is unchanged. It redeems the code server-to-server and sets the
+   httpOnly `auth_token`/`auth_session` (A-60).
+
+**Configuration it depends on:** `HOST_URL`, or the tenant's `oidc_redirect_uri`, must be the
+**public** origin that also served step 1. Otherwise the binding cookie is not sent at step 3 and the
+callback is refused. In local development, cookies ignore the port, so `:3000` → `:5000` still works.
+
+**Tests.** `frontend/src/app/api/v1/[...path]/route.redirect.a69.test.ts`. The "backend" is a real
+HTTP server, so what is asserted is what undici does, with no fetch mock:
+- *"the proxy hands the backend's 302 to the browser instead of following it"*
+- *"forwards the browser's sign-in binding — and no other cookie — to the OIDC callback"*
+- *"passes the backend's binding Set-Cookie to the browser and drops every other backend cookie"*
+- *"passes the callback's clearing of the binding cookie through with the redirect"*
+
+These four failed at the baseline. At the baseline the 302 came back as 200, with the landing page's
+body fetched on the server. *"never forwards the binding cookie to any other route"* is a guard and
+passes either way. The backend half of the round trip is `sso.oidcRoundTrip.a68.test.js` (A-68).
+
+**Still open:** a sign-in with a real IdP through the VM's Cloudflare tunnel → nginx → Next chain.
+The JWKS location noted under A-68 must be solved first for Entra ID.
 
 ---
 
@@ -3857,3 +4520,511 @@ The frontend retention page now uses the backend's real keys, and the "Audit Log
 
 **A-136.** Both reads require `data-retention` read, and another tenant's id answers 404. Test:
 `dataRetention.gate.a136.test.js`, **18 of its 24 tests failed** against the old code.
+
+---
+
+### A-129, A-130, A-144 — What was changed (2026-09-24, ADR-051 Q-19, A-107, A-86)
+
+**Who can sign.** USER, ROOM USER and WAREHOUSE STAFF lose the default `esignature` grant. Migration
+`0032-esignature-technical-roles-only` removes the grant **only where it is still the untouched
+default**: `write`, never updated, and with no audited assign or remove. It reports any grant it keeps
+and any open workflow naming such a signer.
+
+**Workflow creation (`resolveSigners`).**
+
+| Signer | Answer |
+|---|---|
+| no `userId`, e-mail only (A-86) | 400 |
+| not a user of this tenant — missing, deleted or another tenant's | **404**, the same for all three |
+| inactive, or lacking `esignature: write` | 400, naming the signer |
+
+- The signer's name and e-mail come from the user row (F-10).
+- The workflow, its steps and a `CREATE` audit row are written in one transaction.
+
+**Signing.** The meaning is mandatory. A cancelled workflow cannot be signed (409).
+
+**History (F-9).** Without `qms` read, only the caller's own signatures are returned, with no IP
+address, user agent or biometric data.
+
+**Deletion (A-107, A-144).**
+- A workflow with **any** signature, revoked or soft-deleted included, answers **409**.
+- An approved, signed or revoked certificate answers **409**, with an explanation per status.
+- A new `POST /workflows/:id/cancel` answers 409 when the workflow is already cancelled.
+- Public verification reads soft-deleted rows, so a deleted certificate reports **withdrawn**, not
+  "no certificate matches" (F-11).
+
+**Frontend.** Signers are picked from `GET /signers`, not typed as e-mail addresses. There is a Cancel
+action, and 409 explanations are shown as warnings. The verify page has a "withdrawn" verdict.
+
+**Tests.** `eSignature.a129a130.test.js`, 29 tests on the real router with `createTwoTenants`, and
+`esignature.a129a130.service.test.js`. **46 backend and 13 frontend tests failed at `2a157f1`.**
+
+**Migration `0032`** was verified on a throwaway PostgreSQL. Flush `permissions:*` at deploy.
+
+---
+
+### A-123, A-141, A-142 — What was changed (2026-09-24, ADR-051 Q-11, A-98)
+
+**A-123.** Migration `0031` adds `users.must_change_password`, which `userCreate` sets. While the flag
+is set, the auth middleware answers every route **403 `PASSWORD_CHANGE_REQUIRED`**, except these:
+- change password;
+- logout, and logout from all sessions;
+- `/verify`.
+
+Changing the password clears the flag and is audited as `PASSWORD_CHANGE` in its transaction. A new
+password identical to the current one is refused. An e-mail-code reset marks the address verified
+(Q-11) and is audited. The frontend redirects on the 403, and signs the user out after the change.
+
+**A-141.**
+- **Recovery codes.** Enabling or replacing an authenticator issues 10 single-use codes, stored only
+  as salted hashes. A code is spent atomically: live on PostgreSQL, two concurrent uses updated 1
+  row and 0 rows. It is accepted at MFA login.
+- **Disabling MFA** needs the password plus a current code or a recovery code, and revokes the user's
+  other sessions in one audited transaction. So does replacing an authenticator.
+- **Admin reset:** `POST /users/:userId/mfa/reset` requires a tenant admin.
+
+  | Target | Answer |
+  |---|---|
+  | another tenant's user | 404 |
+  | the caller's own account | 400 |
+  | a user with a higher role | 403 |
+  | a user without MFA | 409 |
+- **Frontend:** a turn-off control, the codes shown once, and a "use a recovery code" option at login.
+- `/auth/verify` now returns `mfaEnabled`. It had been missing, so the MFA page thought MFA was off
+  after every reload.
+
+**A-142.** Setup, verify and disable share one budget per user: 5 failures per 15 minutes, then 429.
+It never writes `locked_until`, so it cannot lock anyone out of signing in.
+
+**Tests.** 8 new backend suites and 6 new frontend suites, including two-tenant 404 on the reset
+route and the real otplib. **At `2a157f1`, all 14 new suites failed**: 68 of 81 backend tests and 22
+of 28 frontend tests.
+
+---
+
+### A-124, A-125 — What was changed (2026-09-24, ADR-051 Q-13, Q-14)
+
+**A-124 — migration `0033-audit-log-actor`.** It adds `actor_type` (`user`, `system` or `unknown`,
+NOT NULL, **no default**) and `actor_name`, and backfills honestly:
+
+| Existing row | Backfilled as |
+|---|---|
+| has a `user_id` | `user` |
+| no user, and a `system:` name in `changes.actor` | `system`, with that name |
+| anything else | `unknown` |
+
+A **CHECK constraint** holds the rule in the database itself:
+- a `user` row has a user and no name;
+- a `system` row has no user and a registered `system:` name;
+- `unknown` is allowed **only on rows created before the migration** — the migration's own
+  timestamp is written into the CHECK as a literal.
+
+`logAction` requires exactly one of a user or a registered system actor (`constants/systemActors.js`),
+and refuses anything else with the A-42 semantics. The audit viewer shows "Retention purge", "Tenant
+lifecycle" and "Unknown (not recorded)".
+
+**A-125 — migration `0034-platform-tenant`.** It creates the reserved PLATFORM tenant, and refuses on a
+code or id collision; `down` refuses while anything references the row.
+
+- **Tenant model hooks** exclude PLATFORM from every query, count, bulk update and bulk destroy unless
+  a query passes `includePlatformTenant: true`. Hooks were used rather than a default scope, because a
+  query's own `id` would override a scope.
+- **Where platform operations are recorded:** tenant create and delete, and the six global role and
+  grant operations, are audited **under PLATFORM**, not in "Default Hospital Tenant" (F-7).
+- **Reading the platform trail:** `GET /audit?scope=platform` is for a super admin only.
+
+**Verified on PostgreSQL 18.6.** The backfill split 10 sample rows as expected. Every CHECK probe was
+refused or accepted as intended. `Tenant.count()` returned 1 against a raw count of 2. A bulk
+suspension left PLATFORM active. Both migrations are idempotent, and `0034`'s `down` refused while an
+audit row referenced PLATFORM.
+
+**Tests:**
+- *"a tenant creation is audited under the PLATFORM tenant, not the super admin's home tenant"*;
+- *"a hospital admin cannot read platform audit rows"*;
+- *"the PLATFORM tenant is absent from tenant listings"* (real SQL generation);
+- `audit.actor.a124.test.js`;
+- a test that every `system:` name in the source is registered.
+
+**33 tests failed at `2a157f1`.**
+
+**Still open:** A-164, and A-165.
+
+---
+
+### A-157, A-158, A-159 — What was changed (2026-09-24)
+
+**A-158 — signing e-mails.** Every signing request had thrown a `TypeError`, logged at warn, because
+the code called `emailQueueService.queueEmail`, **which has never existed**. It now sends through the
+real `queueNotificationEmail`, the same path notifications use.
+
+- **The link** is `${FRONTEND_URL || HOST_URL}/dashboard/esignature`, which opens on the "To sign"
+  tab.
+- **A failure is logged at error,** with ids only and no e-mail addresses.
+- **The completion e-mail** looked up a `role` column that does not exist. It now goes to the
+  workflow's signers.
+- **`addEmailJob`** had returned `true` even when its direct-send fallback failed.
+
+The test requires `emailQueue.service` and `email.service` **unmocked**, and doubles only
+`amqplib` and `nodemailer`. It also asserts the real export surface.
+
+**A-157.** `deleteCertificate` reads the certificate `FOR UPDATE` inside its transaction.
+
+**A-159.** The dead duplicate check is removed.
+- The first signature moves a multi-signer workflow to `in_progress`.
+- A signature after `expiresAt` marks the workflow `expired`, with an audit row, and answers 409.
+
+**Tests.** 20 tests failed against `05985ef`, among them all 9 of the A-158 e-mail tests; they had
+recorded no SMTP send and no queue publish.
+
+---
+
+### A-102, A-156 — What was changed (2026-09-24)
+
+**A-156 — the restore's `notRestored` list.** The backend already returned it (`restoreBackup`,
+`tenantBackup.service.js`): `data` holds `tenantId`, `recordsProcessed`, `updated`, `unchanged`,
+`skippedDeleted`, `retained`, `notRestored: [{ entry, username, reason }]` and `restoredAt`. There is
+**no `meta`**. The frontend service kept only `success` and `message`, so the page said "Backup
+restored successfully" and nothing else.
+
+- `tenantBackupService.restore` now returns `outcome` as well (`RestoreOutcome`, `NotRestoredEntry`).
+- The hook keeps the last outcome. The new `RestoreOutcomePanel` shows the counts and each skipped
+  account with its reason:
+  - `absent`: re-invite through Users if the person still needs access.
+  - `erased` (GDPR): do not re-invite.
+- No backend change.
+
+Tests:
+- `frontend/src/app/dashboard/tenants/[tenantId]/backup/__tests__/page.a156.test.tsx`. It runs the
+  real page, hook and service; only the HTTP client is mocked, and it answers with the backend's
+  exact envelopes.
+  - *"lists each account that was not restored, with its reason and what to do"*
+  - *"says every account was matched when notRestored is empty"*
+  - *"shows no restore result before a restore, and none after a failed one"*
+- `tenantBackup.service.test.ts` › *"A-156: returns the restore outcome including notRestored from
+  the real envelope"*. The existing restore test now expects `outcome: null`.
+
+At baseline `05985ef` (worktree), **4 of 13 failed**: the first two page tests and both service
+tests. The third page test passes at baseline, since nothing was shown then either.
+
+**A-102 — the scheme behind Cloudflare.** `deploy/compose/nginx/vm-http.conf` now forwards
+`X-Forwarded-Proto: $client_proto`, in the server block and in `/socket.io/`.
+
+- **The trust rule is ADR-050's.** A map on `$realip_remote_addr` (the peer, before realip rewrites
+  it) takes the scheme from Cloudflare's `CF-Visitor` **only** when the peer is `172.30.19.1`, the
+  tunnel gateway. Every other peer gets its real `$scheme`.
+- **An inbound `X-Forwarded-Proto` is never trusted.**
+- `CF-Visitor` is stripped downstream, like `CF-Connecting-IP`.
+- **`172.30.19.1` now appears twice** in the config and must change together with
+  `set_real_ip_from` and `docker-compose.vm.yml`.
+
+What reads the scheme:
+- **Backend** (`trust proxy` = 1): `req.protocol` builds the QR verify URL
+  (`certificatePdf.controller`, when `CERT_VERIFY_BASE_URL` is unset) and signed attachment URLs
+  (`attachment.controller`). The `FORCE_HTTPS` redirect in `index.js` reads it too, and is `false`
+  on the VM.
+- **Next 16** keeps an inbound `x-forwarded-proto` (`base-server.js`: `??=`), and the `/api/`
+  catch-all copies it to the backend. So the value crosses the Next hop, and `request.url` in
+  `proxy.ts` redirects becomes `https` as well.
+- **No cookie depends on it.** Every `secure` flag, in the backend (`sso.controller`) and in Next
+  (login, sso-session, the catch-all, `proxy.ts`), is `NODE_ENV === "production"`.
+
+**Evidence: real `nginx:1.27-alpine` (1.27.5), `nginx -t` OK.** The HEAD and the new config each ran
+against an nginx echo upstream aliased `backend`/`frontend`, on a network pinned to
+`172.30.19.0/24`. Requests from the host through the published port arrive from the gateway, which
+is the tunnel path; `xff=203.0.113.7` proves realip trusted them.
+
+| request | before | after |
+|---|---|---|
+| tunnel, `CF-Visitor: https`, on `/api/`, `/socket.io/`, `/uploads/`, `/` | `xfp=http`, CF-Visitor leaked | `xfp=https`, CF-Visitor stripped |
+| tunnel, no `CF-Visitor` | `http` | `http` |
+| tunnel, `CF-Visitor: http` | `http` | `http` |
+| direct peer `172.30.19.5`, spoofing `CF-Visitor: https` + `X-Forwarded-Proto: https` + `CF-Connecting-IP` | `xfp=http`, `xff=172.30.19.5` | `xfp=http`, `xff=172.30.19.5` |
+
+The containers and the network were removed afterwards. **The VM was not touched.**
+
+**Open: must be verified on the VM after deploy.**
+- nginx must be restarted to pick the file up.
+- Through `https://kalibrasi.zedth.my.id`, a backend request should see `req.protocol === "https"`.
+  For example, a certificate PDF's QR URL should start with `https://` when `CERT_VERIFY_BASE_URL`
+  is unset.
+- `http://10.1.200.13:19080` directly should still see `http`.
+- Confirm cloudflared really delivers `CF-Visitor`. If it does not, the result is still `http`,
+  which is safe.
+
+**Also open (not fixed):** the Next catch-all drops `Host`. The backend's `req.get("host")` is
+therefore the internal backend host, so `baseUrlOf(req)` builds `https://backend:3000/...` unless
+`CERT_VERIFY_BASE_URL` / `PUBLIC_BASE_URL` are set. **A-102 fixes only the scheme.**
+
+### A-134, A-137 — What was changed (2026-09-24)
+
+**A-134 — fix or remove `cascadeRoles`? Removed.**
+
+- *For fixing it:* a child business unit should start with its parent's roles and menu grants, so
+  a new branch works on day one.
+- *For removing it:* **that is already true.** Roles are global. `role.model.js` has no `tenantId`,
+  `name` is unique across the platform, and `role_menu_permissions` hangs off `roleId` alone. Every
+  role and every grant already applies in every tenant. "Cascading" would have meant creating a
+  second `Role` with the same `name` (a unique violation) carrying a `tenantId` column that does not
+  exist. No route, screen or deployment sets `HIERARCHY_CASCADE_ROLES`. A "working" cascade would
+  first need tenant-scoped roles, which is an architecture change (an ADR) and not a bug fix.
+- *Decision:* removed. `cascadeRoles` and `HIERARCHY_CASCADE_ROLES` are gone, and `getStatus` no
+  longer reports `cascadeRoles`. No mutation remains, so there is nothing to audit.
+  `getUserRolesAcrossTenants` returning at most one row is **by design**: a user belongs to one
+  tenant (`users.tenant_id`). The name promises more than the model has, and A-110 already made it
+  honest (real aliases, LEFT joins, a 500 on failure).
+
+**Found while testing, not fixed (outside the card):** `createSubOrganization` cannot create a
+tenant on the real models. `Tenant.subdomain` and `Tenant.email` are NOT NULL, the function sets
+neither, and the catch turns the validation error into a 500 "Failed to create sub-organization".
+It also writes no audit row and uses no transaction; its max-depth rollback is a manual
+`destroy()`. The only caller of the removed cascade was therefore unreachable too. This needs its
+own card.
+
+**A-137.** Migration **`0047-drop-data-retention-policies`** runs in one transaction. It takes
+`LOCK TABLE … IN ACCESS EXCLUSIVE MODE`, counts rows per tenant, and **refuses** if any exist. The
+refusal names the count and the tenants (a null tenant is shown as a global row) and says what to
+do: carry the intent into `PUT …/:tenantId/policy` or record that it is discarded, export, delete,
+re-run. Only then does it run `DROP TABLE` without CASCADE. A missing table is a no-op. There is no
+try/catch. `down` recreates the empty table exactly as `db.sync()` built it, including the PK, both
+indexes and the `ON UPDATE CASCADE ON DELETE RESTRICT` tenant FK, with `tenant_id` nullable.
+
+`dataRetentionPolicy.model.js` is deleted, along with its two barrel keys and its association (in
+the model). The A-121 model-validation test went with the model.
+
+Migration 0030 **still names** `data_retention_policies` in `TENANT_NULLABLE`, deliberately: on an
+upgraded database 0030 runs before 0047 while the table exists. On a fresh one the name matches no
+constraint and does nothing. `tenantForeignKeys.a88.test.js` exempts that one name from its "every
+listed table has a model" check, reading the name from 0047.
+
+**Tests.**
+
+- `tenantHierarchy.cascade.a134.test.js` (4 tests) runs the real models barrel on an unconnected
+  PostgreSQL Sequelize. Role has no `tenantId` and no `level`, and its `name` is unique. The former
+  `User.findAll({ include: [Role] })` throws on the alias before any SQL. With
+  `HIERARCHY_CASCADE_ROLES=true`, `createSubOrganization` calls no User/Role/RoleMenuPermission
+  method and sends no SQL to those tables. `getStatus` has no `cascadeRoles`.
+- `tenantHierarchy.service.coverage.test.js`: 4 mocked tests that asserted the broken call shape
+  (`include: [Role]`, `level`, `tenantId` on Role) were replaced by one.
+  `tenantHierarchy.service.test.js` and `tenantHierarchy.controller.test.js` were adjusted for
+  `getStatus`.
+- `0047-drop-data-retention-policies.test.js` (12 tests) checks: registered; no try/catch; lock,
+  count and drop in one transaction; refusal naming count and tenants, with nothing dropped; the
+  >20-tenant summary; absent-table no-op; idempotent; failure propagates; `down` DDL; `down` no-op;
+  up/down/up. It also checks that no model file mentions the table.
+- `tenantHierarchy.service.js` and `0047` are at 100% on all four measures.
+
+**Fail-before** (`git worktree add` at `05985ef`, new tests copied in): **5 tests failed and 1 suite
+could not load** (0047 absent).
+
+- a134: `createSubOrganization …` failed. `User.findAll` was called with
+  `{"include":[Role],"where":{"tenantId":…}}`.
+- a134: `getStatus no longer reports a cascade flag` failed. It received `cascadeRoles: true`.
+- The coverage test's A-134 case and both `getStatus` cases failed.
+
+**PostgreSQL 18.6 evidence** (`pgvector/pgvector:pg18`, throwaway container, removed):
+
+1. **Upgrade path.** `05985ef` booted from 0001 (`db.sync()` plus migrations 0001–0034) built
+   `data_retention_policies` with `tenant_id uuid` nullable and the FK
+   `ON UPDATE CASCADE ON DELETE RESTRICT`. One row was inserted.
+2. **Refusal.** This tree's `migrator.up()` applied 0035–0044, then stopped at 0047:
+   `Migration 0047 refused: data_retention_policies has 1 row(s) … tenant 00000000-…-000000000001:
+   1 row(s)`. Afterwards the table still had 1 row and 0047 was not recorded.
+3. **Empty table.** After `DELETE`, the re-run executed `LOCK TABLE …`, then the `SELECT … COUNT`,
+   then `DROP TABLE data_retention_policies`, and 0047 was recorded.
+   `to_regclass('public.data_retention_policies')` is NULL.
+4. **Re-run.** `migrator.up()` found nothing pending. Calling `0047.up()` directly on the absent
+   table was a no-op.
+5. **Down.** `migrator.down({ migrations: ["0047-…"] })` recreated the table. Its `\d` matches
+   step 1 column for column: defaults 365/true, PK, `…_is_active` and `…_tenant_id` indexes, and the
+   FK. The 0047 record was removed. `up` dropped it again.
+6. **Fresh build from 0001 with this tree.** `db.sync()` plus all 45 migrations: 0030 migrated,
+   then 0047 migrated as a no-op, and the table is absent.
+
+**Open (not mine):** on the step-1 database, this tree's `db.sync()` fails with
+`column "requested_by" does not exist` before any migration runs. A model index needs a column
+that only migration 0039 adds, so an upgrade from `05985ef` through the real boot order
+(sync, then migrate) currently fails. Step 2 therefore ran `migrator.up()` alone. The fresh build
+(step 6) is unaffected. The docs still describe `data_retention_policies`
+(`docs/DATABASE/02-TENANCY-TABLES.md`, `00-DATA-MODEL.md`, `SECURITY/09-PRIVACY-DATA-PROTECTION.md`,
+`PLAN/01`, `06`, `15`, `TESTING/07`) and the role cascade and `HIERARCHY_CASCADE_ROLES`
+(`docs/BACKEND/10-MODULE-REFERENCE.md:763,806`). Amending them is a deviation-protocol change
+(ADR, then the docs), and was out of this change's boundary.
+
+---
+
+### A-126 (rest), A-128, A-146 — What was changed (2026-09-24, ADR-051 Q-15, Q-18)
+
+**A-126 — `ACCOUNT_LOCKED` and `SIGNATURE_AUTH_FAILED`.** Both are new `audit_logs.action` values,
+in the model, `AUDIT_ACTIONS` and `docs/DATABASE/10-AUDIT-LOGS.md` § The Eight Actions.
+
+- **Migration `0049-audit-actions-lockout-signature`** appends the two labels. It refuses a type that
+  is absent or does not start with the six known labels. `down` refuses while any row carries a new
+  label, because audit rows are never rewritten (Q-12). Otherwise it rebuilds the type.
+  **`db.sync()` does not add ENUM labels to an existing type** (checked on PostgreSQL 18), so on an
+  existing database this migration is required.
+- **Lockout.** A lock engages in two places: the fifth wrong password in `loginUser`, and the per-user
+  budget of an endpoint that persists the sign-in lock (the MFA step) in `recordAuthFailure`. Both go
+  through `audit.service#recordAccountLock`, which writes the lock and the row in one transaction.
+  - **The actor is `system:auth-lockout`**, a new registered system actor. The locked account is the
+    resource, never the actor.
+  - **The row goes in the account's own tenant**, or PLATFORM if it has none.
+  - **The limiter audits only the attempt that reaches the budget.** A racing attempt past it still
+    writes the lock, but no row.
+  - The row records the request's IP address and user agent. `ip` is only a counting key, and is
+    null unless `AUTH_RATE_LIMIT_BY_IP` is set.
+- **Signing.** `certificate.service#verifySignerCredentials` handles every signature: certificate
+  approve, sign and revoke, and workflow signing. A wrong password or MFA code now writes one row.
+  - The actor is the signed-in caller. The resource is the certificate or the workflow step, and
+    `changes.method` and `changes.operation` are recorded. The credential is never recorded.
+  - A missing credential, or MFA requested for an account without it, writes no row: these are not
+    attempts on a credential.
+
+**Decision (A-126): the lock does not depend on the audit row, but an unrecorded signing attempt gets
+no answer.**
+
+| Case | If the audit row cannot be written | Why |
+|---|---|---|
+| Lockout | The error is logged, and **the lock is still persisted** without its row | Rolling the lock back would turn off brute-force protection while audit writes fail |
+| Signing | **The audit error propagates** (500), not the 401 | While attempts cannot be recorded, a guesser learns nothing from them |
+
+*Alternatives considered:*
+- Write the signing row inside the transition's transaction. Rejected: the 401 rolls it back.
+- Write both rows best-effort, with no transaction. Rejected: an unaudited signing attempt would
+  still be answered.
+- Make the account holder the actor of a lockout row. Rejected: the attempts may not be theirs.
+
+**Decision (A-126): lockout rows are not an enumeration oracle.**
+- A row is written only for an account that exists: `loginUser` found the row, or the limiter's user
+  id came from a verified token, never from a typed name.
+- An unknown account is never locked and gets no row.
+- The row goes in that account's tenant, where the person guessing cannot read it.
+- The HTTP answer does not change.
+
+**Found, not fixed:** the answers themselves are already an oracle. The fifth wrong password for a
+**real** username answers 423, while an unknown username always answers 401. That lets anyone confirm
+an account exists and lock it out, which is a denial of service. It predates this card; see *Still
+open* below.
+
+**A-128 — the residual oracle, rate-limited and audited (Q-18).** This applies to `userCreate`, and to
+`editUser` when it changes a username or an email address. Without the edit path, a limit on create
+alone would be pointless.
+- **The check is now global** (`skipTenantScope`). It includes soft-deleted accounts (`paranoid:
+  false`, with the defaultScope's `is_deleted` key overridden). It is an exact, case-insensitive match
+  (`ILIKE` with `\`, `%` and `_` escaped).
+  - It had been tenant-scoped. Another tenant's holder passed it, and the insert failed on the global
+    unique index with a **500**: the same oracle, unlimited and unaudited.
+  - It had been a `LIKE` on raw input. As a global probe, `%@hospital-b…` would have answered whether
+    any such address exists.
+- **A unique violation that races past the check** also becomes the same 409.
+- **Each conflict answered to a non-super-admin**:
+  - is counted against a budget of **10 per administrator per hour** (`userIdentityConflict`, with
+    `persistUserLockout: false`, so it never touches sign-in);
+  - writes one audit row in the administrator's tenant, in its own transaction. The row is `CREATE`
+    or `UPDATE` with `changes: {operation: "IDENTITY_CONFLICT", outcome: "refused", field}` and a null
+    `resourceId` on create.
+- **Once the budget is spent**, every create, and every edit that changes an identity, answers **429
+  before any lookup**.
+- **A super admin** is neither counted nor audited, because they can read every tenant anyway.
+- **Also fixed:** the actor ids come from `input`. Joi strips `createdBy` and `updatedBy`, so the
+  validated values were always undefined.
+
+**Decision (A-128).**
+- **The row and the 409 say only the field.** They never include the value, which tenant holds it,
+  or whether it was this tenant. This tenant's administrators can read the row, and a "held by
+  another tenant" marker would move the oracle into the audit trail.
+- **The action is the nearest ENUM member** (`CREATE` or `UPDATE`) with `changes.operation`, as
+  `constants/auditActions.js` prescribes. Q-15 fixed the new ENUM set, so a new member would need an
+  ADR.
+
+*Alternatives considered:*
+- A budget per tenant. Rejected: one administrator's typos would lock their colleagues.
+- Also counting successful creates. Rejected: it would limit ordinary work, not probing.
+- A generic 500 for every conflict, as SCIM does since A-37. Rejected: Q-18 chose an honest 409.
+
+**A-146 — impersonation survives a refresh.** Migration **`0040-session-impersonator`** adds
+`sessions.impersonator_id`: uuid, nullable, a foreign key to users `ON DELETE CASCADE`, and an index.
+Its `down` first revokes every open impersonation session (`MIGRATION_0040_DOWN`), so a rollback
+cannot reopen the defect.
+- `impersonateUser` stores the operator on the session row. `refreshUserToken` reads it back:
+  - it re-issues the `impersonatorId` claim;
+  - it records it on the new session, so the next refresh keeps it too;
+  - it **does not extend the hour**. The new session keeps the old `expired_at`, where a refresh used
+    to grant seven days.
+- A refresh is refused with 401, and the session revoked (`IMPERSONATOR_REVOKED`), unless the operator
+  is still an active `SUPER_ADMIN` or `SUPERADMIN`.
+- The impersonation **response** still carries no refresh token (`login(res, …)` drops it). Handing
+  one out is a product decision, not taken here.
+
+**Tests** — every one ran against baseline `05985ef` in a separate worktree:
+
+| Suite | Tests | Failed at `05985ef` |
+|---|---|---|
+| `auth.accountLocked.a126.test.js` | 11 | 7 |
+| `esignature.signatureAuthFailed.a126.test.js` | 8 | 6 |
+| `user.identityConflict.a128.test.js` | 14 | 10 |
+| `auth.impersonationRefresh.a146.test.js` | 12 | 11 |
+| `0049-audit-actions-lockout-signature.test.js` | 12 | cannot load |
+| `0040-session-impersonator.test.js` | 13 | cannot load |
+
+The tests that passed at baseline are guards: a wrong password below the threshold, an unknown
+account, a correct credential, an ordinary refresh.
+
+Tests that failed at baseline include:
+- *"the fifth wrong password writes one ACCOUNT_LOCKED row, committed with the lock"*;
+- *"a wrong password on certificate approval writes one row that survives the refused transition"*;
+- *"an email another tenant holds answers 409 (was 500) … and writes one audit row in the admin's
+  tenant"*;
+- *"inside tenant A's context the SELECT carries no tenant predicate, no soft-delete filter, and
+  escapes `_` and `%`"*: real models, and the SQL is captured;
+- *"a refreshed impersonation token still carries impersonatorId"*;
+- *"signing with the refreshed token is still refused (A-127, ADR-052)"*;
+- *"an audit row written with the refreshed token names the impersonating super admin"*.
+
+The last two run the real auth middleware and `denyPlatformAuthoring` with really signed tokens.
+
+**Existing tests adjusted to the new contract:**
+- `certificates.approve.a62` and `esignature.signer.a65`: a wrong credential now writes exactly one
+  `SIGNATURE_AUTH_FAILED` row;
+- `auth.mfaRateLimit.a81`: engaging the lock loads the account once more;
+- `auth.sessionRevocation.a48` and `auth.tokenPurpose.a59`: the column lists gain `impersonator_id`;
+- `auditLedger.fixture`, `systemActors.a124` and `auth.service.coverage`.
+
+The full backend suite was 10,479 tests, with 1 failure (a62, since adjusted). `audit.service`,
+`certificate.service`, `user.service`, `auth.service`, `session.service`, `rateLimiter.redis.service`
+and `eSignature.service` are at 100/100/100/100.
+
+**PostgreSQL 18.6** (`pgvector/pgvector:pg18`, throwaway, removed):
+- **`0049`:**
+  - before `up`, an `ACCOUNT_LOCKED` insert is refused (`invalid input value for enum`); after it,
+    both labels are appended in order;
+  - a second `up` is a no-op;
+  - `down` refuses while 2 rows carry the labels, and leaves the type untouched;
+  - with those rows gone (throwaway database only), `down` restores the six labels, keeps the `LOGIN`
+    row, and the `audit_logs_action` index survives the rebuild;
+  - a second `down` is a no-op;
+  - a type with an extra `RESTORE` label is refused;
+  - `AuditLog.sync()` on the existing table **left the six labels**, which is why the migration is
+    needed.
+- **`0040`:**
+  - `impersonator_id uuid NULL`, `sessions_impersonator_id_fkey … REFERENCES users(id) ON UPDATE
+    CASCADE ON DELETE CASCADE`, and the index;
+  - a second `up` is a no-op;
+  - `down` revoked the impersonation session and left the ordinary one live; a second `down` is a
+    no-op;
+  - hard-deleting the operator deleted their session.
+- **`ILIKE` escaping:** `'axb@…' ILIKE 'a\_b@…'` is false, `'A_B@…'` is true, and `'abc' ILIKE 'a\%c'`
+  is false.
+
+**Migration numbering:** `0039` was first used here, and collided with `0039-signature-workflow-
+requested-by` (A-170). It was renamed to `0049` and registered last.
+
+**Still open:**
+- **Login answers 423 only for a real account.** That confirms the account exists and lets anyone
+  lock it. It needs its own card. **Fix:** throttle unknown accounts the same way, or answer 401
+  until the correct password is given.
+- **SCIM create (A-37)** still answers its generic 500 with no limit and no audit row. An API key
+  holds tenant-admin power, so Q-18 arguably covers it too.
+- **Guessing a password at signing has no limit.** Each attempt is now audited, but a session holder
+  can still guess without a lockout. The `mfaManage`-style budget is the obvious model.
+- `auth.controller.js` still says the ENUM has no failure action. Individual failed logins are still
+  not audit rows, so the comment is only partly stale. The file belongs to another agent.

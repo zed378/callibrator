@@ -16,6 +16,9 @@ const { logger } = require("../middlewares/activityLog.middleware");
 const { AppError } = require("../utils/appError.util");
 const { Op } = require("sequelize");
 const storagePath = require("../utils/storagePath.util");
+const { deleteUpload } = require("../utils/upload.util");
+const { db } = require("../config");
+const auditService = require("./audit.service");
 
 // ==========================================
 // CONFIGURATION
@@ -53,14 +56,14 @@ exports.exportUserData = async (tenantId, userId, options = {}) => {
     // Export user profile
     await exportUserProfile(exportDir, tenantId, userId);
 
-    // Export tenant data
-    await exportTenantData(exportDir, tenantId, userId);
+    // A-151: the records that name the subject — never whole-tenant tables
+    await exportSubjectRecords(exportDir, tenantId, userId);
+
+    // A-180: the subject's consent history, DSARs and sessions
+    await exportPrivacyRecords(exportDir, tenantId, userId);
 
     // Export audit logs
     await exportAuditLogs(exportDir, tenantId, userId);
-
-    // Export calibration data
-    await exportCalibrationData(exportDir, tenantId, userId);
 
     // Create ZIP archive
     const zipPath = await createZipArchive(exportDir, exportId);
@@ -88,6 +91,13 @@ exports.exportUserData = async (tenantId, userId, options = {}) => {
       userId,
       error: err.message,
     });
+    // A-151: an unpacked export must not linger on disk for 7 days with no
+    // cleanup scheduled; `force` makes a missing directory a no-op.
+    await fs.promises.rm(exportDir, { recursive: true, force: true });
+    // A-151: "no such subject" is a 404 — it was rewritten into a 500.
+    if (err instanceof AppError && err.status < 500) {
+      throw err;
+    }
     throw new AppError(500, "Failed to export user data");
   }
 };
@@ -154,42 +164,162 @@ async function exportUserProfile(exportDir, tenantId, userId) {
 }
 
 /**
- * Export tenant data associated with user
+ * A-151 — the operational records that NAME the data subject, per table, and
+ * the columns that name them. Written out by hand: each entry is a claim that
+ * the column holds a user id, checked against its model.
+ *
+ * The previous export dumped whole-tenant tables into one person's Article 15
+ * archive — every stock row, device, calibration record, certificate and
+ * notification of the hospital (up to 1,000 per table), i.e. other people's
+ * data, sent to whoever asked. `userId` was accepted and never used. Stocks
+ * and calibration devices name no user at all, so they are not here.
  */
-async function exportTenantData(exportDir, tenantId, userId) {
-  const tables = [
-    "Stocks",
-    "StockTransfers",
-    "StockAdjustments",
-    "StockOpnames",
-    "CalibrationDevices",
-    "CalibrationRecords",
-    "Certificates",
-    "MaintenanceWorkOrders",
-    "Notifications",
-  ];
+const SUBJECT_RECORDS = Object.freeze([
+  { model: "StockTransfer", columns: ["requestedBy", "approvedBy"] },
+  { model: "StockAdjustment", columns: ["adjustedBy"] },
+  { model: "StockOpname", columns: ["performedBy"] },
+  { model: "CalibrationRecord", columns: ["performedBy"] },
+  {
+    model: "Certificate",
+    columns: ["calibratedBy", "approvedBy", "signedBy", "createdBy", "updatedBy"],
+  },
+  { model: "MaintenanceWorkOrder", columns: ["assignedTo"] },
+  { model: "Notification", columns: ["userId"] },
+]);
 
-  const allData = {};
+/** The most rows exported per table. */
+const SUBJECT_RECORD_LIMIT = 1000;
 
-  for (const table of tables) {
-    try {
-      const Model = require("../models")[table];
-      if (Model) {
-        const records = await Model.findAll({
-          where: { tenantId },
-          limit: 1000,
-          raw: true,
-        });
-        allData[table] = records;
-      }
-    } catch (err) {
-      logger.warn(`Failed to export ${table}`, { error: err.message });
-    }
+/**
+ * Export the records that name the subject (`SUBJECT_RECORDS`), each filtered
+ * by the tenant AND by the subject's user id in one of its columns.
+ *
+ * A failure is not swallowed: an Article 15 answer that silently omits a
+ * table is an incomplete answer presented as a complete one. The export fails
+ * and the requester can retry.
+ *
+ * @param {string} exportDir - the export's working directory
+ * @param {string} tenantId - the subject's tenant
+ * @param {string} userId - the data subject
+ * @returns {Promise<void>} resolves when subject_records.json is written
+ */
+async function exportSubjectRecords(exportDir, tenantId, userId) {
+  const models = require("../models");
+  const records = {};
+
+  for (const { model, columns } of SUBJECT_RECORDS) {
+    records[model] = await models[model].findAll({
+      where: {
+        tenantId,
+        [Op.or]: columns.map((column) => ({ [column]: userId })),
+      },
+      limit: SUBJECT_RECORD_LIMIT,
+      raw: true,
+    });
   }
 
   await fs.promises.writeFile(
-    path.join(exportDir, "tenant_data.json"),
-    JSON.stringify(allData, null, 2),
+    path.join(exportDir, "subject_records.json"),
+    JSON.stringify(records, null, 2),
+  );
+}
+
+/**
+ * A-180 — the session attributes an Article 15 export carries. `token_hash`
+ * is a credential (the SHA-256 a refresh token is checked against), so it is
+ * not here; the list is an allow-list so a column added later stays out until
+ * someone decides the subject is owed it.
+ */
+const EXPORTED_SESSION_ATTRIBUTES = Object.freeze([
+  "id",
+  "impersonator_id",
+  "ip_address",
+  "user_agent",
+  "device",
+  "created_at",
+  "last_activity_at",
+  "expired_at",
+  "is_active",
+  "is_revoked",
+  "revoked_at",
+  "revoked_reason",
+]);
+
+/** The session fields that describe the impersonator, not the subject. */
+const IMPERSONATOR_SESSION_FIELDS = Object.freeze(["ip_address", "user_agent", "device"]);
+
+/**
+ * Export the privacy records that are about the subject (A-180): their consent
+ * history (GDPR Art. 7(1) — every grant and withdrawal), their data-subject
+ * requests, and their sign-in sessions. Each read is filtered by the tenant
+ * AND the subject. Before A-180 the Article 15 archive omitted all three.
+ *
+ * A session a super admin opened by impersonating the subject records the
+ * IMPERSONATOR's network address, user agent and device — someone else's
+ * personal data. Those fields are withheld on such a row; the row itself
+ * (the fact that the account was used, when, and that it was impersonated)
+ * is the subject's.
+ *
+ * A failure is not swallowed (the A-151 rule): an Article 15 answer that
+ * silently omits a table is an incomplete answer presented as complete.
+ *
+ * @param {string} exportDir - the export's working directory
+ * @param {string} tenantId - the subject's tenant
+ * @param {string} userId - the data subject
+ * @returns {Promise<void>} resolves when privacy_records.json is written
+ */
+async function exportPrivacyRecords(exportDir, tenantId, userId) {
+  const { ConsentRecord, DsarRequest, Session } = require("../models");
+
+  const consentHistory = await ConsentRecord.findAll({
+    where: { tenantId, userId },
+    attributes: [
+      "id",
+      "purpose",
+      "version",
+      "status",
+      "ipAddress",
+      "consentedAt",
+      "withdrawnAt",
+      "createdAt",
+    ],
+    order: [["consentedAt", "DESC"]],
+    limit: SUBJECT_RECORD_LIMIT,
+    raw: true,
+  });
+
+  const dsarRequests = await DsarRequest.findAll({
+    where: { tenantId, userId },
+    attributes: ["id", "type", "status", "details", "requestedAt", "completedAt"],
+    order: [["requestedAt", "DESC"]],
+    limit: SUBJECT_RECORD_LIMIT,
+    raw: true,
+  });
+
+  // `sessions` is snake_case (CLAUDE.md § Traps), and the defaultScope hides
+  // soft-deleted rows — which are still the subject's history, so unscoped.
+  const sessionRows = await Session.unscoped().findAll({
+    where: { tenant_id: tenantId, user_id: userId },
+    attributes: [...EXPORTED_SESSION_ATTRIBUTES],
+    order: [["created_at", "DESC"]],
+    limit: SUBJECT_RECORD_LIMIT,
+    raw: true,
+  });
+  const sessions = sessionRows.map((row) => {
+    if (!row.impersonator_id) {
+      return row;
+    }
+    const withheld = { ...row, impersonated: true };
+    for (const field of IMPERSONATOR_SESSION_FIELDS) {
+      withheld[field] = null;
+    }
+    delete withheld.impersonator_id;
+    return withheld;
+  });
+
+  await fs.promises.writeFile(
+    path.join(exportDir, "privacy_records.json"),
+    JSON.stringify({ consentHistory, dsarRequests, sessions }, null, 2),
   );
 }
 
@@ -223,49 +353,6 @@ async function exportAuditLogs(exportDir, tenantId, userId) {
       path.join(exportDir, "audit_logs.json"),
       JSON.stringify({ error: "Failed to export" }, null, 2),
     );
-  }
-}
-
-/**
- * Export calibration data
- */
-async function exportCalibrationData(exportDir, tenantId, userId) {
-  const {
-    CalibrationDevice,
-    CalibrationRecord,
-    Certificate,
-  } = require("../models");
-
-  try {
-    const devices = await CalibrationDevice.findAll({
-      where: { tenantId },
-      raw: true,
-    });
-
-    const deviceIds = devices.map((d) => d.id);
-
-    const records =
-      deviceIds.length > 0
-        ? await CalibrationRecord.findAll({
-          where: { deviceId: deviceIds },
-          raw: true,
-        })
-        : [];
-
-    const certificates =
-      deviceIds.length > 0
-        ? await Certificate.findAll({
-          where: { deviceId: deviceIds },
-          raw: true,
-        })
-        : [];
-
-    await fs.promises.writeFile(
-      path.join(exportDir, "calibration_data.json"),
-      JSON.stringify({ devices, records, certificates }, null, 2),
-    );
-  } catch (err) {
-    logger.warn("Failed to export calibration data", { error: err.message });
   }
 }
 
@@ -353,51 +440,132 @@ exports.eraseUserData = async (tenantId, userId, options = {}) => {
 
   const hardDelete = options.hardDelete === true;
   const anonymize = options.anonymize !== false;
+  const method = anonymize ? "anonymized" : hardDelete ? "hard_deleted" : "soft_deleted";
+  let avatarFile = null;
 
   try {
-    // Create erasure audit record before deleting
-    await logErasureRequest(tenantId, userId, hardDelete, anonymize, options.requestedBy);
+    // A-153 / A-154: the erasure and the audit row that records it are ONE
+    // transaction. The row used to be written first, on its own, so a failed
+    // erasure left a permanent record of an erasure that did not happen.
+    await db.transaction(async (transaction) => {
+      const { User } = require("../models");
+      const user = await User.findOne({
+        where: { id: userId, tenantId },
+        attributes: ["id", "avatarUrl"],
+        transaction,
+      });
+      if (!user) {
+        throw new AppError(404, "User not found");
+      }
 
-    // Anonymize or delete user
-    if (anonymize) {
-      await anonymizeUser(tenantId, userId);
-    } else if (hardDelete) {
-      await hardDeleteUser(tenantId, userId);
-    } else {
-      await softDeleteUser(tenantId, userId);
-    }
+      let sessionsRevoked = 0;
+      if (anonymize) {
+        ({ avatarFile, sessionsRevoked } = await anonymizeUser(tenantId, user, transaction));
+      } else if (hardDelete) {
+        await hardDeleteUser(tenantId, userId, transaction);
+      } else {
+        await softDeleteUser(tenantId, userId, transaction);
+      }
 
-    logger.info("User data erased", {
-      tenantId,
-      userId,
-      hardDelete,
-      anonymize,
+      await auditService.logAction(
+        {
+          tenantId,
+          // A-124 (ADR-051 Q-13): the requester is the actor — never a null user.
+          userId: options.requestedBy,
+          action: "DELETE",
+          resourceType: "User",
+          resourceId: userId,
+          // Which erasure, not what was erased: the trail is never purged.
+          changes: {
+            operation: "GDPR_ERASURE",
+            method,
+            sessionsRevoked,
+            avatarRemoved: Boolean(avatarFile),
+          },
+        },
+        { transaction },
+      );
     });
-
-    return {
-      erased: true,
-      method: anonymize
-        ? "anonymized"
-        : hardDelete
-          ? "hard_deleted"
-          : "soft_deleted",
-      erasureDate: new Date().toISOString(),
-    };
   } catch (err) {
     logger.error("Data erasure failed", {
       tenantId,
       userId,
       error: err.message,
     });
+    if (err instanceof AppError && err.status < 500) {
+      throw err;
+    }
     throw new AppError(500, "Failed to erase user data");
   }
+
+  // A-154: the avatar file goes AFTER the commit that stopped referencing it.
+  // A rolled-back erasure keeps its file; a leftover file after a committed
+  // one is a storage leak to log, not a reason to report the erasure failed.
+  if (avatarFile) {
+    try {
+      await deleteUpload(avatarFile, AVATAR_FOLDER);
+    } catch (err) {
+      logger.warn("Failed to delete an erased user's avatar file", {
+        userId,
+        error: err.message,
+      });
+    }
+  }
+
+  logger.info("User data erased", {
+    tenantId,
+    userId,
+    hardDelete,
+    anonymize,
+  });
+
+  return {
+    erased: true,
+    method,
+    erasureDate: new Date().toISOString(),
+  };
 };
 
+/** Where avatars are stored (user.service), and its "no photo" sentinel. */
+const AVATAR_FOLDER = "uploads/profile";
+const AVATAR_PLACEHOLDER = "default.svg";
+
 /**
- * Anonymize user data
+ * Every second-factor and one-time-code column back to "never enrolled"
+ * (A-154). The TOTP set is mfa.service's MFA_CLEARED; the WebAuthn and OTP
+ * columns are the account's other authenticators.
  */
-async function anonymizeUser(tenantId, userId) {
+const AUTHENTICATORS_CLEARED = Object.freeze({
+  webauthnEnabled: false,
+  webauthnCredentialId: null,
+  webauthnPublicKey: null,
+  webauthnSignCount: 0,
+  otpCode: null,
+  otpExpiredAt: null,
+});
+
+/**
+ * Anonymize an account in place (A-154), inside the caller's transaction:
+ * identity replaced, avatar reference dropped, every second factor and
+ * one-time code cleared, the account deactivated, and every session revoked.
+ * Before A-154 only the name, email and phone changed: the avatar photo, the
+ * live sessions, the TOTP secret and recovery codes and the passkey stayed.
+ *
+ * @param {string} tenantId - the subject's tenant
+ * @param {{id: string, avatarUrl: (string|null)}} user - the loaded account
+ * @param {object} transaction - the erasure's transaction
+ * @returns {Promise<{avatarFile: (string|null), sessionsRevoked: number}>}
+ *   the avatar file to delete after commit, and how many sessions ended
+ */
+async function anonymizeUser(tenantId, user, transaction) {
   const { User } = require("../models");
+  // Lazily: mfa.service loads otplib, session.service the Session model.
+  const { MFA_CLEARED } = require("./mfa.service");
+  const { revokeOtherSessions } = require("./session.service");
+  const userId = user.id;
+
+  const stored = user.avatarUrl ? String(user.avatarUrl).split("/").pop() : null;
+  const avatarFile = stored && stored !== AVATAR_PLACEHOLDER ? stored : null;
 
   await User.update(
     {
@@ -406,16 +574,28 @@ async function anonymizeUser(tenantId, userId) {
       firstName: "[REDACTED]",
       lastName: "[REDACTED]",
       phone: null,
+      // The column is NOT NULL; the placeholder is its "no photo" value.
+      avatarUrl: AVATAR_PLACEHOLDER,
       status: "erased",
+      // An erased account never signs in again (auth refuses !isActive).
+      isActive: false,
+      ...MFA_CLEARED,
+      ...AUTHENTICATORS_CLEARED,
     },
-    { where: { id: userId, tenantId } },
+    { where: { id: userId, tenantId }, transaction },
   );
+
+  const sessionsRevoked = await revokeOtherSessions(userId, null, "GDPR_ERASURE", {
+    transaction,
+  });
+
+  return { avatarFile, sessionsRevoked };
 }
 
 /**
  * Soft delete user
  */
-async function softDeleteUser(tenantId, userId) {
+async function softDeleteUser(tenantId, userId, transaction) {
   const { User } = require("../models");
 
   await User.update(
@@ -423,44 +603,17 @@ async function softDeleteUser(tenantId, userId) {
       status: "deleted",
       deletedAt: new Date(),
     },
-    { where: { id: userId, tenantId } },
+    { where: { id: userId, tenantId }, transaction },
   );
 }
 
 /**
  * Hard delete user
  */
-async function hardDeleteUser(tenantId, userId) {
+async function hardDeleteUser(tenantId, userId, transaction) {
   const { User } = require("../models");
 
-  await User.destroy({ where: { id: userId, tenantId } });
-}
-
-/**
- * Log erasure request
- */
-async function logErasureRequest(tenantId, userId, hardDelete, anonymize, requestedBy) {
-  const { AuditLog } = require("../models");
-
-  // Map onto the actual AuditLog schema: `action` is an ENUM
-  // (CREATE|UPDATE|DELETE|LOGIN|APPROVE|EXPORT) and before/after live under
-  // the `changes` JSONB column. Using an out-of-enum action or non-existent
-  // columns (the previous "GDPR_ERASURE"/entityType/before/after) would fail
-  // the insert and silently drop the erasure audit record.
-  await AuditLog.create({
-    tenantId,
-    // A-124 (ADR-051 Q-13): the requester is the actor — never a null user.
-    userId: requestedBy,
-    actorType: "user",
-    action: "DELETE",
-    resourceType: "User",
-    resourceId: userId,
-    changes: {
-      reason: "GDPR_ERASURE",
-      before: { userId, hardDelete, anonymize },
-      after: { erasedAt: new Date().toISOString() },
-    },
-  });
+  await User.destroy({ where: { id: userId, tenantId }, transaction });
 }
 
 // ==========================================
@@ -661,7 +814,7 @@ exports.getProcessingActivities = async (tenantId, userId) => {
  * Rectify a personal-data field (GDPR Article 16). Only a whitelist of
  * self-service profile fields may be changed here.
  */
-exports.rectifyData = async (tenantId, userId, field, value) => {
+exports.rectifyData = async (tenantId, userId, field, value, actor = {}) => {
   if (!isGdprEnabled()) {
     throw new AppError(400, "Rectification is disabled");
   }
@@ -673,32 +826,185 @@ exports.rectifyData = async (tenantId, userId, field, value) => {
     );
   }
 
-  const { User, AuditLog } = require("../models");
-  const [count] = await User.update(
-    { [field]: value },
-    { where: { id: userId, tenantId } },
-  );
-  if (count === 0) {
-    throw new AppError(404, "User not found");
-  }
+  const { User } = require("../models");
+  const isEmail = field === "email";
+  const newValue = isEmail ? normalizeRectifiedEmail(value) : value;
+  let emailChange = null;
 
+  // A-153: the change and its audit row are ONE transaction (the row was
+  // written after the commit, and a failure to write it was only logged). The
+  // row names the FIELD, never the new value: audit_logs is permanent and
+  // never purged, so writing the value there put the very personal data being
+  // corrected into a record that can never be corrected or erased.
   try {
-    await AuditLog.create({
-      tenantId,
-      userId,
-      actorType: "user", // A-124: the authenticated requester
-      action: "UPDATE",
-      resourceType: "User",
-      resourceId: userId,
-      changes: { reason: "GDPR_RECTIFICATION", field, after: value },
+    await db.transaction(async (transaction) => {
+      const changes = { [field]: newValue };
+
+      if (isEmail) {
+        const user = await User.findOne({
+          where: { id: userId, tenantId },
+          attributes: ["id", "email", "firstName", "lastName"],
+          transaction,
+        });
+        if (!user) {
+          throw new AppError(404, "User not found");
+        }
+        // A-180: an address the account already has is not a change — no
+        // re-verification, no mail.
+        // `users.email` is NOT NULL.
+        if (String(user.email).toLowerCase() !== newValue) {
+          await assertEmailFree(User, userId, newValue, transaction);
+          // A-180: the new address is unverified until the link sent to it
+          // is followed (auth.service#activateAccount sets it back).
+          changes.isEmailVerified = false;
+          emailChange = { previous: user.email, firstName: user.firstName, lastName: user.lastName };
+        }
+      }
+
+      const [count] = await User.update(changes, {
+        where: { id: userId, tenantId },
+        transaction,
+      });
+      if (count === 0) {
+        throw new AppError(404, "User not found");
+      }
+
+      await auditService.logAction(
+        {
+          tenantId,
+          userId, // self-service: the subject is the actor
+          action: "UPDATE",
+          resourceType: "User",
+          resourceId: userId,
+          changes: {
+            operation: "GDPR_RECTIFICATION",
+            fields: [field],
+            ...(emailChange ? { emailVerificationReset: true } : {}),
+          },
+          ipAddress: actor.ipAddress || null,
+          userAgent: actor.userAgent || null,
+        },
+        { transaction },
+      );
     });
   } catch (err) {
-    logger.warn("Failed to audit rectification", { error: err.message });
+    // A-180: the unique index is the last word under a race between the
+    // pre-check and the write — still a 409, never a 500.
+    if (err && err.name === "SequelizeUniqueConstraintError") {
+      throw new AppError(409, EMAIL_IN_USE);
+    }
+    throw err;
+  }
+
+  if (emailChange) {
+    await sendEmailChangeMail(userId, newValue, emailChange);
   }
 
   logger.info("Personal data rectified", { tenantId, userId, field });
-  return { rectified: true, field };
+  return {
+    rectified: true,
+    field,
+    ...(emailChange ? { emailVerificationRequired: true } : {}),
+  };
 };
+
+/**
+ * A-180 — the 409 a rectification to a taken address answers. It explains the
+ * state and what to do; it names no account and no tenant. (`users.email` is
+ * unique across the platform, so "taken" can mean another tenant's account —
+ * the same disclosure `POST /auth/register` and user creation already make.)
+ */
+const EMAIL_IN_USE =
+  "This email address is already in use by another account. Choose a different address; your current address is unchanged.";
+
+/**
+ * A rectified email, trimmed and lower-cased, or a 400 when it is not an
+ * address. The model's `isEmail` validator would otherwise throw a
+ * SequelizeValidationError inside the transaction — a 500.
+ *
+ * @param {*} value - the requested address
+ * @returns {string} the normalised address
+ */
+function normalizeRectifiedEmail(value) {
+  const Joi = require("joi");
+  const normalised = typeof value === "string" ? value.trim().toLowerCase() : value;
+  const { error } = Joi.string().email({ tlds: { allow: false } }).max(255).required().validate(normalised);
+  if (error) {
+    throw new AppError(400, "email must be a valid email address");
+  }
+  return normalised;
+}
+
+/**
+ * Refuse (409) an address another account already holds, compared without
+ * case — the check user.service makes before creating or editing a user. The
+ * lookup is `unscoped` and crosses tenants on purpose: the unique index it
+ * anticipates is global, and a soft-deleted account still holds its address.
+ *
+ * @param {object} User - the User model
+ * @param {string} userId - the subject, excluded
+ * @param {string} email - the normalised address
+ * @param {object} transaction - the rectification's transaction
+ * @returns {Promise<void>}
+ */
+async function assertEmailFree(User, userId, email, transaction) {
+  const { where, fn, col } = require("sequelize");
+  const taken = await User.unscoped().findOne({
+    where: {
+      [Op.and]: [
+        where(fn("lower", col("email")), email),
+        { id: { [Op.ne]: userId } },
+      ],
+    },
+    attributes: ["id"],
+    paranoid: false,
+    skipTenantScope: true,
+    transaction,
+  });
+  if (taken) {
+    throw new AppError(409, EMAIL_IN_USE);
+  }
+}
+
+/**
+ * After the commit: a verification link to the NEW address (the activation
+ * link registration sends — auth.service#activateAccount marks it verified),
+ * and a notice to the PREVIOUS one, so a change the owner did not make is
+ * seen. Mail is best-effort, as at registration: a queue failure is logged,
+ * and the change — already committed and audited — stands.
+ *
+ * @param {string} userId - the subject
+ * @param {string} email - the new address
+ * @param {{previous: string, firstName: string, lastName: string}} change
+ * @returns {Promise<void>}
+ */
+async function sendEmailChangeMail(userId, email, { previous, firstName, lastName }) {
+  const { generatePurposeToken } = require("../utils/jwt.util");
+  const {
+    queueActivationEmail,
+    queueNotificationEmail,
+  } = require("./emailQueue.service");
+  const origin = (process.env.FRONTEND_URL || process.env.HOST_URL || "").replace(/\/+$/, "");
+
+  try {
+    const token = generatePurposeToken({ id: userId }, "activation");
+    await queueActivationEmail({
+      email,
+      firstName,
+      lastName,
+      activationLink: `${origin}/activation?token=${token}`,
+    });
+    await queueNotificationEmail({
+      email: previous,
+      firstName,
+      title: "Your email address was changed",
+      message:
+        "The email address on your account was changed. If you did not make this change, contact your administrator.",
+    });
+  } catch (err) {
+    logger.warn("Email-change mail could not be queued", { userId, error: err.message });
+  }
+}
 
 /**
  * Restrict processing (GDPR Article 18). Recorded as a DSAR of type

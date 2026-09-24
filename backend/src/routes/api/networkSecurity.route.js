@@ -9,6 +9,8 @@ const express = require("express");
 const router = express.Router();
 const networkSecurityController = require("../../controllers/networkSecurity.controller");
 const { auth, superAdminOnly } = require("../../middlewares/auth.middleware");
+const { dynamicAccess } = require("../../middlewares/dynamicAccess.middleware");
+const { MENU_SLUGS } = require("../../constants/roleConstants");
 
 router.use(auth);
 
@@ -27,7 +29,18 @@ router.use(auth);
  *       401:
  *         description: Unauthorized
  */
-router.get("/ip-allowlist", networkSecurityController.getIpAllowlist);
+/**
+ * A-155: the two reads ran behind a token alone — any role could read its
+ * tenant's IP allowlist and geofence, the map of where sign-in is allowed
+ * from. They need `network-security: read`. They read the caller's OWN tenant
+ * (req.user.tenantId); `checkTenant` additionally answers 404 to a request
+ * that names another tenant's id, rather than silently answering for its own.
+ */
+const canReadNetworkSecurity = dynamicAccess(MENU_SLUGS.NETWORK_SECURITY, "read", {
+  checkTenant: true,
+});
+
+router.get("/ip-allowlist", canReadNetworkSecurity, networkSecurityController.getIpAllowlist);
 /**
  * @swagger
  * /api/v1/network-security/ip-allowlist:
@@ -72,7 +85,7 @@ router.put("/ip-allowlist", superAdminOnly, networkSecurityController.setIpAllow
  *       401:
  *         description: Unauthorized
  */
-router.get("/geofence", networkSecurityController.getGeofence);
+router.get("/geofence", canReadNetworkSecurity, networkSecurityController.getGeofence);
 /**
  * @swagger
  * /api/v1/network-security/geofence:
@@ -133,7 +146,19 @@ router.put("/geofence", superAdminOnly, networkSecurityController.setGeofence);
  *         description: Invalid request body
  *       401:
  *         description: Unauthorized
+ *       403:
+ *         description: Missing the network-security read permission
  */
-router.post("/evaluate-login", networkSecurityController.evaluateLogin);
+/**
+ * A-179: this route ran behind a token alone. It is NOT a login-time call —
+ * no sign-in path calls it (evaluateLoginSecurity has no other caller), and it
+ * needs a token, which a signing-in principal does not have yet. It is the
+ * network-security screen's "test this IP / location" dry run. Its answer
+ * (allowed, the distance to the geofence centre, the radius, the IP verdict)
+ * discloses the same policy the two reads above do — and a few calls
+ * triangulate the geofence centre — so it takes the same gate:
+ * `network-security: read`, checkTenant.
+ */
+router.post("/evaluate-login", canReadNetworkSecurity, networkSecurityController.evaluateLogin);
 
 module.exports = router;

@@ -66,6 +66,9 @@ const fs = require("fs");
 const { validateFileMagicBytes } = require("../../utils/fileValidation.util");
 const { logger } = require("../../middlewares/activityLog.middleware");
 
+// S-17: multer writes every upload to the quarantine (mocked storagePath).
+const Q = "C:/uploads/uploads/.quarantine";
+
 describe("upload utility - comprehensive middleware tests", () => {
   let mockReq, mockRes, mockNext;
 
@@ -85,6 +88,9 @@ describe("upload utility - comprehensive middleware tests", () => {
     // Reset validator default between tests.
     validateFileMagicBytes.mockReset();
     validateFileMagicBytes.mockResolvedValue("image/jpeg");
+    // S-17: promotion out of quarantine touches the disk; not under test here.
+    jest.spyOn(fs.promises, "mkdir").mockResolvedValue();
+    jest.spyOn(fs.promises, "rename").mockResolvedValue();
   });
 
   // ================================================================
@@ -128,19 +134,24 @@ describe("upload utility - comprehensive middleware tests", () => {
   // STORAGE (destination + filename) - lines 18-27
   // ================================================================
   describe("storage configuration", () => {
-    it("should resolve destination using req.uploadFolder", () => {
+    // S-17: whatever the route's folder, multer writes to the quarantine.
+    it("S-17: resolves the destination to the quarantine, not req.uploadFolder", async () => {
       const req = { uploadFolder: "avatars" };
-      const cb = jest.fn();
-      capturedStorage.destination(req, { originalname: "x.jpg" }, cb);
-      expect(cb).toHaveBeenCalledWith(null, "C:/uploads/avatars");
-      expect(storagePath).toHaveBeenCalledWith("avatars");
+      const done = new Promise((resolve) => {
+        capturedStorage.destination(req, { originalname: "x.jpg" }, (...args) => resolve(args));
+      });
+      expect(await done).toEqual([null, Q]);
+      expect(fs.promises.mkdir).toHaveBeenCalledWith(Q, { recursive: true });
+      expect(storagePath).not.toHaveBeenCalledWith("avatars");
     });
 
-    it("should fall back to 'uploads' folder when unset", () => {
-      const req = {};
-      const cb = jest.fn();
-      capturedStorage.destination(req, { originalname: "x.jpg" }, cb);
-      expect(cb).toHaveBeenCalledWith(null, "C:/uploads/uploads");
+    it("S-17: forwards a quarantine mkdir failure to multer", async () => {
+      const mkdirErr = new Error("EACCES");
+      fs.promises.mkdir.mockRejectedValueOnce(mkdirErr);
+      const done = new Promise((resolve) => {
+        capturedStorage.destination({}, { originalname: "x.jpg" }, (...args) => resolve(args));
+      });
+      expect(await done).toEqual([mkdirErr]);
     });
 
     it("should generate a filename with timestamp and uuid", () => {
@@ -215,13 +226,13 @@ describe("upload utility - comprehensive middleware tests", () => {
       mockReq.file = {
         originalname: "test.jpg",
         mimetype: "image/jpeg",
-        path: "/tmp/test.jpg",
+        path: Q + "/test.jpg",
       };
       const result = await runMiddleware(middleware, mockReq);
       expect(result).toBeUndefined();
       expect(mockReq.file.mimetype).toBe("image/jpeg");
       expect(validateFileMagicBytes).toHaveBeenCalledWith(
-        "/tmp/test.jpg",
+        Q + "/test.jpg",
         "image/jpeg",
       );
     });
@@ -239,7 +250,7 @@ describe("upload utility - comprehensive middleware tests", () => {
       mockReq.file = {
         originalname: "test.jpg",
         mimetype: "image/jpeg",
-        path: "/tmp/test.jpg",
+        path: Q + "/test.jpg",
       };
       const result = await runMiddleware(middleware, mockReq);
       expect(result).toBeUndefined();
@@ -252,7 +263,7 @@ describe("upload utility - comprehensive middleware tests", () => {
       mockReq.file = {
         originalname: "test.jpg",
         mimetype: "image/jpeg",
-        path: "/tmp/test.jpg",
+        path: Q + "/test.jpg",
       };
       const err = await runMiddleware(middleware, mockReq);
       expect(err).toBeInstanceOf(AppError);
@@ -270,11 +281,11 @@ describe("upload utility - comprehensive middleware tests", () => {
       mockReq.file = {
         originalname: "test.jpg",
         mimetype: "image/jpeg",
-        path: "/tmp/test.jpg",
+        path: Q + "/test.jpg",
       };
       const err = await runMiddleware(middleware, mockReq);
       expect(err).toBe(validationErr);
-      expect(unlinkSpy).toHaveBeenCalledWith("/tmp/test.jpg");
+      expect(unlinkSpy).toHaveBeenCalledWith(Q + "/test.jpg");
       unlinkSpy.mockRestore();
     });
 
@@ -322,8 +333,8 @@ describe("upload utility - comprehensive middleware tests", () => {
       );
       const middleware = uploadMulti({ validateMagicBytes: true });
       mockReq.files = [
-        { originalname: "a.jpg", mimetype: "image/jpeg", path: "/tmp/a.jpg" },
-        { originalname: "b.png", mimetype: "image/png", path: "/tmp/b.png" },
+        { originalname: "a.jpg", mimetype: "image/jpeg", path: Q + "/a.jpg" },
+        { originalname: "b.png", mimetype: "image/png", path: Q + "/b.png" },
       ];
       const result = await runMiddleware(middleware, mockReq);
       expect(result).toBeUndefined();
@@ -343,22 +354,26 @@ describe("upload utility - comprehensive middleware tests", () => {
     it("should call next with no error when validateMagicBytes is disabled", async () => {
       const middleware = uploadMulti({ validateMagicBytes: false });
       mockReq.files = [
-        { originalname: "a.jpg", mimetype: "image/jpeg", path: "/tmp/a.jpg" },
+        { originalname: "a.jpg", mimetype: "image/jpeg", path: Q + "/a.jpg" },
       ];
       const result = await runMiddleware(middleware, mockReq);
       expect(result).toBeUndefined();
       expect(validateFileMagicBytes).not.toHaveBeenCalled();
     });
 
-    it("should set mimetype to null when magic bytes mismatch (no throw)", async () => {
+    // S-17: this used to keep the file with a null mimetype.
+    it("S-17: refuses a magic-byte mismatch and removes every file", async () => {
       validateFileMagicBytes.mockResolvedValueOnce(null);
+      const unlinkSpy = jest.spyOn(fs.promises, "unlink").mockResolvedValue();
       const middleware = uploadMulti({ validateMagicBytes: true });
       mockReq.files = [
-        { originalname: "a.jpg", mimetype: "image/jpeg", path: "/tmp/a.jpg" },
+        { originalname: "a.jpg", mimetype: "image/jpeg", path: Q + "/a.jpg" },
       ];
-      const result = await runMiddleware(middleware, mockReq);
-      expect(result).toBeUndefined();
-      expect(mockReq.files[0].mimetype).toBeNull();
+      const err = await runMiddleware(middleware, mockReq);
+      expect(err).toBeInstanceOf(AppError);
+      expect(err.status).toBe(400);
+      expect(unlinkSpy).toHaveBeenCalledWith(Q + "/a.jpg");
+      expect(fs.promises.rename).not.toHaveBeenCalled();
     });
 
     it("should delete all files and forward error when validation throws", async () => {
@@ -369,13 +384,13 @@ describe("upload utility - comprehensive middleware tests", () => {
         .mockResolvedValue();
       const middleware = uploadMulti({ validateMagicBytes: true });
       mockReq.files = [
-        { originalname: "a.jpg", mimetype: "image/jpeg", path: "/tmp/a.jpg" },
-        { originalname: "b.png", mimetype: "image/png", path: "/tmp/b.png" },
+        { originalname: "a.jpg", mimetype: "image/jpeg", path: Q + "/a.jpg" },
+        { originalname: "b.png", mimetype: "image/png", path: Q + "/b.png" },
       ];
       const err = await runMiddleware(middleware, mockReq);
       expect(err).toBe(validationErr);
-      expect(unlinkSpy).toHaveBeenCalledWith("/tmp/a.jpg");
-      expect(unlinkSpy).toHaveBeenCalledWith("/tmp/b.png");
+      expect(unlinkSpy).toHaveBeenCalledWith(Q + "/a.jpg");
+      expect(unlinkSpy).toHaveBeenCalledWith(Q + "/b.png");
       unlinkSpy.mockRestore();
     });
 
@@ -387,7 +402,7 @@ describe("upload utility - comprehensive middleware tests", () => {
       });
       const middleware = uploadMulti({ validateMagicBytes: true });
       mockReq.files = [
-        { originalname: "a.jpg", mimetype: "image/jpeg", path: "/tmp/a.jpg" },
+        { originalname: "a.jpg", mimetype: "image/jpeg", path: Q + "/a.jpg" },
       ];
       const err = await runMiddleware(middleware, mockReq);
       expect(err).toBe(validationErr);
@@ -424,6 +439,70 @@ describe("upload utility - comprehensive middleware tests", () => {
   // ================================================================
   // DELETE UPLOAD
   // ================================================================
+  describe("S-17 — promotion out of quarantine", () => {
+    const runMiddleware = (middleware, req) =>
+      new Promise((resolve) => {
+        mockNext.mockImplementationOnce((arg) => resolve(arg));
+        middleware(req, mockRes, mockNext);
+      });
+    const path = require("path");
+
+    it("moves a passed single upload into its folder and repoints req.file", async () => {
+      const middleware = upload({ folder: "uploads/profile" });
+      mockReq.file = { originalname: "a.jpg", mimetype: "image/jpeg", filename: "a.jpg", path: Q + "/a.jpg" };
+      expect(await runMiddleware(middleware, mockReq)).toBeUndefined();
+      const to = path.join("C:/uploads/uploads/profile", "a.jpg");
+      expect(fs.promises.rename).toHaveBeenCalledWith(path.resolve(Q + "/a.jpg"), to);
+      expect(mockReq.file.path).toBe(to);
+      expect(mockReq.file.destination).toBe("C:/uploads/uploads/profile");
+    });
+
+    it("holdInQuarantine leaves the file where it is", async () => {
+      const middleware = upload({ folder: "uploads/attachments", holdInQuarantine: true });
+      mockReq.file = { originalname: "a.jpg", mimetype: "image/jpeg", path: Q + "/a.jpg" };
+      expect(await runMiddleware(middleware, mockReq)).toBeUndefined();
+      expect(fs.promises.rename).not.toHaveBeenCalled();
+      expect(mockReq.file.path).toBe(Q + "/a.jpg");
+    });
+
+    it("a failed single promotion removes the file and forwards the error", async () => {
+      const renameErr = new Error("EXDEV");
+      fs.promises.rename.mockRejectedValueOnce(renameErr);
+      const unlinkSpy = jest.spyOn(fs.promises, "unlink").mockResolvedValue();
+      const middleware = upload({ folder: "uploads/profile" });
+      mockReq.file = { originalname: "a.jpg", mimetype: "image/jpeg", path: Q + "/a.jpg" };
+      expect(await runMiddleware(middleware, mockReq)).toBe(renameErr);
+      expect(unlinkSpy).toHaveBeenCalledWith(Q + "/a.jpg");
+    });
+
+    it("a failed multi promotion removes every file and forwards the error", async () => {
+      const renameErr = new Error("EXDEV");
+      fs.promises.rename.mockResolvedValueOnce().mockRejectedValueOnce(renameErr);
+      const unlinkSpy = jest.spyOn(fs.promises, "unlink").mockResolvedValue();
+      validateFileMagicBytes.mockImplementation((p, m) => Promise.resolve(m));
+      const middleware = uploadMulti({ folder: "uploads/x" });
+      mockReq.files = [
+        { originalname: "a.jpg", mimetype: "image/jpeg", path: Q + "/a.jpg" },
+        { originalname: "b.jpg", mimetype: "image/jpeg", path: Q + "/b.jpg" },
+      ];
+      expect(await runMiddleware(middleware, mockReq)).toBe(renameErr);
+      // the first was already moved: it is removed from where it now is
+      expect(unlinkSpy).toHaveBeenCalledWith(path.join("C:/uploads/uploads/x", "a.jpg"));
+      expect(unlinkSpy).toHaveBeenCalledWith(Q + "/b.jpg");
+    });
+
+    it("a single-upload magic-byte mismatch removes the file", async () => {
+      validateFileMagicBytes.mockResolvedValueOnce(null);
+      const unlinkSpy = jest.spyOn(fs.promises, "unlink").mockResolvedValue();
+      const middleware = upload({});
+      mockReq.file = { originalname: "a.jpg", mimetype: "image/jpeg", path: Q + "/a.jpg" };
+      const err = await runMiddleware(middleware, mockReq);
+      expect(err.status).toBe(400);
+      expect(unlinkSpy).toHaveBeenCalledWith(Q + "/a.jpg");
+      expect(fs.promises.rename).not.toHaveBeenCalled();
+    });
+  });
+
   describe("deleteUpload", () => {
     beforeEach(() => {
       jest.clearAllMocks();

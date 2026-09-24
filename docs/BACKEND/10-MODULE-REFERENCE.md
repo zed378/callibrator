@@ -1934,7 +1934,7 @@ graph TD
 
 ### 11. Business Rules
 *   **API keys:** key = `cbk_<hex>`; stored as SHA-256 hash + 12-char prefix; verified by hash (active + not expired); `lastUsedAt` throttled to 60 s; revoke sets inactive + soft-delete. `denyApiKey` prevents a key from minting/revoking keys.
-*   **Webhooks:** delivery matches `events @> [event]` or `["*"]`; body `{id,event,createdAt,data}` signed `X-Webhook-Signature: sha256=<hmac>`; up to `WEBHOOK_MAX_ATTEMPTS` (5) with backoff `min(2^attempt*500, 30000)` ms and per-request timeout (`WEBHOOK_TIMEOUT_MS`, 8000). `emitEvent` is fire-and-forget (never blocks the caller).
+*   **Webhooks:** delivery matches `events @> [event]` or `["*"]`; body `{id,event,createdAt,data}` signed `X-Webhook-Signature: v1=<HMAC(secret, "<X-Webhook-Timestamp>.<body>")>` (since 2026-09-24, A-10). Durable (ADR-054): `webhook_deliveries` is an outbox claimed with `FOR UPDATE SKIP LOCKED` by `webhookDeliveryScheduler.middleware.js` (boot + every 15 s); up to `WEBHOOK_MAX_ATTEMPTS` (12) with backoff `min(1 min × 2^(n-1), 6 h)` (~20.5 h), then `exhausted`. Domain events are emitted via `emitAfterCommit` (A-11; catalogue `constants/webhookEvents.js`). See `docs/WEBHOOK/`.
 *   Create endpoints gated by `requireFeature("api_keys"/"webhooks")`.
 
 ### 12. Access Rights
@@ -1971,8 +1971,11 @@ Base: `/api/v1/api-keys`, `/api/v1/webhooks`.
 ### 18. Configuration
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `WEBHOOK_MAX_ATTEMPTS` | 5 | Retry attempts |
+| `WEBHOOK_MAX_ATTEMPTS` | 12 | Attempts before the dead letter (A-10) |
 | `WEBHOOK_TIMEOUT_MS` | 8000 | Per-request timeout |
+| `WEBHOOK_BACKOFF_BASE_MS` / `WEBHOOK_BACKOFF_CAP_MS` | 60000 / 21600000 | Backoff base and cap |
+| `WEBHOOK_LEASE_MS` / `WEBHOOK_DISPATCH_BATCH` | 300000 / 50 | Claim lease / rows per dispatcher pass |
+| `WEBHOOK_DISPATCH_SCHEDULER` | `*/15 * * * * *` | Dispatcher cron; `disabled` stops retries |
 | (const) `KEY_PREFIX` / `LAST_USED_THROTTLE_MS` | `cbk_` / 60000 | Key format / usage throttle |
 
 ### 19. Dependency

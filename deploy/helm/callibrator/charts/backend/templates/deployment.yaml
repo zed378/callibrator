@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ .Release.Name }}-callibrator-backend
+  name: {{ include "callibrator.baseName" . }}-backend
   labels:
     app.kubernetes.io/name: callibrator-backend
     app.kubernetes.io/instance: {{ .Release.Name }}
@@ -36,8 +36,17 @@ spec:
         # The image creates a non-root `app` user and chowns its persistent
         # directories at build, because a non-root container cannot create
         # them at runtime.
+        #
+        # NUMERIC ids (S-06). The image's USER is the NAME `app`, and with
+        # runAsNonRoot and no runAsUser the kubelet refuses the container
+        # ("image has non-numeric user (app), cannot verify user is non-root").
+        # 997 is the uid backend/Dockerfile pins (`useradd -r -u 997`); its
+        # group is 997 on the bookworm-slim base (the gid is not pinned in the
+        # Dockerfile). fsGroup was 1000, which matched nothing in the image.
         runAsNonRoot: true
-        fsGroup: 1000
+        runAsUser: {{ .Values.podSecurityContext.runAsUser }}
+        runAsGroup: {{ .Values.podSecurityContext.runAsGroup }}
+        fsGroup: {{ .Values.podSecurityContext.fsGroup }}
       containers:
         - name: backend
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -50,11 +59,14 @@ spec:
             # external broker (MQTT_HOST + MQTT_PORT); a chart value that
             # published 1883 here exposed a port with nothing behind it. A
             # sidecar broker, if ever added, publishes its own port.
+          # Both names come from the umbrella's helpers (templates/_helpers.tpl),
+          # the same ones that NAME the ConfigMap and Secret — so the reference
+          # and the object cannot disagree under any release name (S-06, S-27).
           envFrom:
             - configMapRef:
-                name: {{ .Release.Name }}-callibrator-config
+                name: {{ include "callibrator.configMapName" . }}
             - secretRef:
-                name: {{ .Values.secretName }}
+                name: {{ include "callibrator.secretName" . }}
 
           # ------------------------------------------------------------------
           # Liveness gets /live. Readiness gets /health.
@@ -116,7 +128,7 @@ spec:
         {{- if .Values.persistence.enabled }}
         - name: storage
           persistentVolumeClaim:
-            claimName: {{ .Release.Name }}-callibrator-storage
+            claimName: {{ include "callibrator.baseName" . }}-storage
         {{- end }}
         - name: logs
           emptyDir: {}

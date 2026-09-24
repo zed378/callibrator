@@ -20,7 +20,7 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.UUID,
         allowNull: false,
         references: { model: "vendors", key: "id" },
-        onDelete: "CASCADE",
+        onDelete: "RESTRICT",
       },
       evaluationDate: {
         type: DataTypes.DATE,
@@ -81,12 +81,14 @@ const defineModel = (db, DataTypes) => {
       onDelete: "RESTRICT",
     });
     SupplierScorecard.belongsTo(models.Vendor, {
-      foreignKey: "vendor_id",
+      foreignKey: "vendorId",
       as: "vendor",
+      onDelete: "RESTRICT",
     });
     SupplierScorecard.belongsTo(models.User, {
-      foreignKey: "evaluated_by",
+      foreignKey: "evaluatedBy",
       as: "evaluator",
+      onDelete: "SET NULL",
     });
   };
 

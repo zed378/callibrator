@@ -2,9 +2,13 @@
 #
 # Overridden per environment by values-staging.yaml and values-prod.yaml.
 #
-# Two configurations this chart REFUSES to render (see templates/guards.tpl):
+# Configurations this chart REFUSES to render (see templates/guards.tpl):
 #   1. a missing image.tag
 #   2. cron.enabled with replicaCount > 1
+#   3. a missing required secret (four of them) without an external Secret
+#   4. NODE_ENV=production with no CORS origin
+#   5. a value that moved and would otherwise be silently ignored
+#   6. VIRUS_SCAN_PROVIDER=clamav with no backend.clamav.host (S-31)
 
 global:
   # Explicit, comma-separated. A wildcard is never honoured: the CORS policy
@@ -12,6 +16,22 @@ global:
   # any site make authenticated cross-origin requests.
   corsOrigin: ""
   imagePullSecrets: []
+
+  # Every object in the release is named <base>-<component>, where <base> is
+  # "<release>-callibrator", or just "<release>" when the release name already
+  # contains "callibrator" — the SAME rule in the umbrella and both subcharts
+  # (templates/_helpers.tpl, S-27). Set this to pin <base> explicitly.
+  fullnameOverride: ""
+
+  # The Secret the backend reads. Under `global` because the backend SUBCHART
+  # must compute the same name the umbrella creates, and a subchart sees only
+  # its own values and `global` (S-06). Prefer an external secrets operator:
+  # set enabled=true and name the Secret it creates. That Secret must carry the
+  # same keys templates/secret.yaml writes — all FOUR required ones included.
+  secrets:
+    external:
+      enabled: false
+      secretName: ""
 
 # ============================================================================
 # BACKEND
@@ -87,6 +107,15 @@ backend:
     SEED_DEMO: ""
     VIRUS_SCAN_PROVIDER: clamav
     VIRUS_SCAN_FAIL_OPEN: "false"
+
+  # ClamAV (clamd) — provided EXTERNALLY, like PostgreSQL. This chart runs no
+  # ClamAV service (S-31). With VIRUS_SCAN_PROVIDER=clamav the ConfigMap sets
+  # CLAMAV_ENABLED=true and points CLAMAV_HOST/PORT here; since S-04 a clamav
+  # provider WITHOUT CLAMAV_ENABLED refuses every upload (422). The chart
+  # refuses to render the clamav provider with an empty host (guard 6).
+  clamav:
+    host: ""
+    port: 3310
 
   # local storage is INCOMPATIBLE with replicaCount > 1 — replica A writes an
   # attachment, replica B cannot serve it. The chart does NOT guard this.
@@ -188,22 +217,28 @@ ingress:
 # ============================================================================
 # SECRETS
 # ============================================================================
-# The three below are REQUIRED — the application EXITS without them.
+# Chart-managed Secret values, used only when global.secrets.external.enabled
+# is false. FOUR are REQUIRED — the application EXITS without them, and the
+# chart refuses to render without them (guard 3): certSigningSecret,
+# encryptKey, attachmentUrlSecret, kmsMasterKey.
 #
-# BACK THEM UP SEPARATELY FROM THE CLUSTER AND FROM THE DATABASE. A rebuild
-# that recreates everything except these produces a system that starts cleanly
-# and is permanently broken: every issued certificate fails public
-# verification, and every wrapped credential is undecryptable.
+# BACK UP certSigningSecret, encryptKey AND kmsMasterKey SEPARATELY FROM THE
+# CLUSTER AND FROM THE DATABASE. A rebuild that recreates everything except
+# these produces a system that starts cleanly and is permanently broken: every
+# issued certificate fails public verification, and every wrapped credential is
+# undecryptable.
+#
+# (The external-Secret switch moved to global.secrets.external — S-06. Setting
+# secrets.external here now refuses to render rather than being ignored.)
 secrets:
-  # Prefer an external secrets operator over inline values.
-  external:
-    enabled: false
-    secretName: callibrator-secrets
-
   # Inline values are for development only. Never commit real ones.
   certSigningSecret: ""
   encryptKey: ""
   attachmentUrlSecret: ""
+  # KMS_MASTER_KEY (S-05): 64 hex chars. backend/src/services/kms.service.js
+  # throws at startup in production without it, and the pod crash-loops with
+  # EMPTY logs because production writes nothing to stdout.
+  kmsMasterKey: ""
   jwtAccessSecret: ""
   # MUST differ from jwtAccessSecret — equal secrets mean an access token can
   # be presented as a refresh token.

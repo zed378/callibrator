@@ -4,7 +4,7 @@
  * Handles certificate CRUD operations, approval, signing, and revocation.
  */
 
-const { Op } = require("sequelize");
+const { Op, Transaction } = require("sequelize");
 const {
   Certificate,
   CalibrationDevice,
@@ -20,7 +20,10 @@ const { DEFAULT_LIMIT } = require("../constants");
 const authService = require("./auth.service");
 const mfaService = require("./mfa.service");
 const auditService = require("./audit.service");
+const webhookService = require("./webhook.service");
+const { WEBHOOK_EVENTS } = require("../constants/webhookEvents");
 const { db } = require("../config");
+const { PLATFORM_TENANT_ID } = require("../constants/platformTenant");
 const crypto = require("crypto");
 
 /**
@@ -105,6 +108,78 @@ const DELETE_REFUSAL_EXPLANATIONS = {
 };
 
 /**
+ * A-167 — why a status transition is refused (409), keyed by the transition
+ * and then by the certificate's current status. Only the statuses that refuse
+ * the transition are keys.
+ */
+const TRANSITION_REFUSALS = {
+  submitted: {
+    pending_approval: "it has already been submitted and is waiting for approval",
+    approved: "it has already been approved; sign it with POST /certificates/:id/sign",
+    signed: "it has already been approved and signed",
+    revoked: "revocation is final; issue a new certificate instead",
+  },
+  approved: {
+    draft: "it has not been submitted yet; submit it with POST /certificates/:id/submit first",
+    approved: "it has already been approved; sign it with POST /certificates/:id/sign",
+    signed: "it has already been approved and signed",
+    revoked: "revocation is final; issue a new certificate instead",
+  },
+  signed: {
+    draft:
+      "only an approved certificate can be signed; submit it with POST /certificates/:id/submit, then approve it",
+    pending_approval:
+      "only an approved certificate can be signed; approve it with POST /certificates/:id/approve first",
+    signed: "it has already been signed, and a certificate is signed once",
+    revoked: "revocation is final; issue a new certificate instead",
+  },
+  revoked: {
+    revoked: "it has already been revoked, and revocation is final",
+  },
+};
+
+/**
+ * A-167 — the state explanation for a refused transition.
+ *
+ * @param {string} status - the certificate's current (locked) status
+ * @param {"submitted"|"approved"|"signed"|"revoked"} transition
+ * @returns {string|null} the refusal, or null when the transition is allowed
+ */
+const explainRefusedTransition = (status, transition) => {
+  const reason = TRANSITION_REFUSALS[transition][status];
+  return reason
+    ? `This certificate is "${status}" and cannot be ${transition}: ${reason}.`
+    : null;
+};
+
+/**
+ * A-167 — load a certificate for a status transition INSIDE the transition's
+ * transaction, locked (SELECT ... FOR UPDATE), as A-157 does for
+ * deleteCertificate. The status that decides the transition used to be read
+ * before the transaction with no lock: an approval could update a certificate
+ * that a concurrent delete had just removed, and two concurrent transitions
+ * could both pass the same check. Under the lock a concurrent delete or
+ * transition either commits first — and this read, which waits for it, sees
+ * the row gone (404) or its new status (409) — or waits for this one.
+ *
+ * @returns {Promise<Object|null>} the locked certificate, or null (404)
+ */
+const lockCertificate = (tenantId, certificateId, transaction) =>
+  Certificate.findOne({
+    where: { id: certificateId, tenantId },
+    transaction,
+    lock: Transaction.LOCK.UPDATE,
+  });
+
+/** The 404 result the transitions return (not thrown: the controller renders it). */
+const CERTIFICATE_NOT_FOUND = {
+  success: false,
+  status: 404,
+  message: "Certificate not found",
+  data: null,
+};
+
+/**
  * Re-authenticate the signer. MUST be called BEFORE the state change it
  * authorises.
  *
@@ -114,16 +189,71 @@ const DELETE_REFUSAL_EXPLANATIONS = {
  * approved/signed/revoked in the database, and no ESignatureRecord was
  * written. Under 21 CFR Part 11 the signature must gate the act, not trail it.
  *
+ * @param {string} userId - the authenticated caller
+ * @param {Object} authOptions - authMethod, authPayload, meaning, ipAddress, userAgent
+ * @param {Object} context - A-126: what is being signed (tenantId, resourceType,
+ *   resourceId, operation), for the SIGNATURE_AUTH_FAILED row
  * @throws {AppError} 400 on a missing/invalid payload, 401 on failed re-auth.
  */
-const verifySignatureAuth = async (userId, authOptions) => {
+const verifySignatureAuth = async (userId, authOptions, context) => {
   const { authMethod, authPayload, meaning } = authOptions || {};
 
   if (!authMethod || !authPayload || !meaning) {
     throw new AppError(400, "Missing required E-signature authentication payload.");
   }
 
-  await verifySignerCredentials(userId, authMethod, authPayload);
+  // A-126: `context` says what was being signed, for a SIGNATURE_AUTH_FAILED row.
+  await verifySignerCredentials(userId, authMethod, authPayload, {
+    ...context,
+    ipAddress: authOptions.ipAddress,
+    userAgent: authOptions.userAgent,
+  });
+};
+
+/**
+ * A-126 (ADR-051 Q-15) — a wrong signing credential is an audit row,
+ * `SIGNATURE_AUTH_FAILED`: 21 CFR 11.300(d) wants attempts to use signature
+ * credentials without authority detected and reported.
+ *
+ * Written in its OWN transaction, committed before the 401 is thrown. The
+ * certificate transitions re-authenticate inside the transition's transaction,
+ * which the 401 rolls back — a row written there would vanish with it. If
+ * the row cannot be written the error propagates and the caller gets a 500,
+ * not the 401: an attempt that cannot be recorded is not answered.
+ *
+ * The actor is the signed-in caller (whose session is being used); the row
+ * never carries the payload, only which method failed. It goes in the tenant
+ * of the record being signed; with no context, in the signer's own tenant
+ * (PLATFORM for an account with none, ADR-051 Q-14).
+ *
+ * @param {string} userId - the authenticated caller
+ * @param {"password"|"mfa"} authMethod
+ * @param {{tenantId?: string, resourceType?: string, resourceId?: string,
+ *   operation?: string, ipAddress?: string, userAgent?: string}} context
+ */
+const recordSignatureAuthFailure = async (userId, authMethod, context) => {
+  const tenantId =
+    context.tenantId ||
+    (await User.findByPk(userId, { attributes: ["id", "tenantId"] }))?.tenantId ||
+    PLATFORM_TENANT_ID;
+  // A new, independent transaction: Sequelize never makes db.transaction() a
+  // child of the CLS one unless it is passed as `transaction`.
+  await db.transaction(
+    (transaction) =>
+      auditService.logAction(
+        {
+          tenantId,
+          userId,
+          action: "SIGNATURE_AUTH_FAILED",
+          resourceType: context.resourceType || "User",
+          resourceId: context.resourceId || userId,
+          changes: { method: authMethod, operation: context.operation || null },
+          ipAddress: context.ipAddress || null,
+          userAgent: context.userAgent || null,
+        },
+        { transaction },
+      ),
+  );
 };
 
 /**
@@ -138,10 +268,13 @@ const verifySignatureAuth = async (userId, authOptions) => {
  * @param {string} userId - the authenticated caller
  * @param {"password"|"mfa"} authMethod
  * @param {string} authPayload - the password or the MFA code
+ * @param {object} [context] - A-126: what is being signed, for the
+ *   SIGNATURE_AUTH_FAILED row a wrong credential writes
+ *   (recordSignatureAuthFailure)
  * @throws {AppError} 400 on an unknown method or an account without MFA,
  *   401 when the credential is wrong or missing.
  */
-const verifySignerCredentials = async (userId, authMethod, authPayload) => {
+const verifySignerCredentials = async (userId, authMethod, authPayload, context = {}) => {
   if (authMethod !== "password" && authMethod !== "mfa") {
     throw new AppError(400, "Invalid auth method.");
   }
@@ -152,6 +285,7 @@ const verifySignerCredentials = async (userId, authMethod, authPayload) => {
   if (authMethod === "password") {
     const valid = await authService.passIsValid(userId, authPayload);
     if (!valid || !valid.data.valid) {
+      await recordSignatureAuthFailure(userId, authMethod, context);
       throw new AppError(401, "Invalid password for e-signature.");
     }
     return;
@@ -166,6 +300,7 @@ const verifySignerCredentials = async (userId, authMethod, authPayload) => {
   // A-115: verifyLogin consumes the code — a code that signed once cannot
   // sign (or sign in) again inside its window.
   if (!(await mfaService.verifyLogin(user, authPayload))) {
+    await recordSignatureAuthFailure(userId, authMethod, context);
     throw new AppError(401, "Invalid MFA code for e-signature.");
   }
 };
@@ -572,31 +707,36 @@ exports.updateCertificate = async (tenantId, certificateId, inputData, actor = {
  */
 exports.deleteCertificate = async (tenantId, certificateId, actor = {}) => {
   try {
-    const certificate = await Certificate.findOne({
-      where: { id: certificateId, tenantId },
-    });
+    // A-157 — the status that decides whether a delete is allowed is read
+    // INSIDE the delete's transaction, with the row locked (SELECT ... FOR
+    // UPDATE). It used to be read before the transaction with no lock, so an
+    // approval committing between that read and the destroy was deleted
+    // anyway: the refusal below checked a status that was no longer true.
+    // Under the lock, a concurrent approval either commits first (and this
+    // read, which waits for it, sees "approved") or waits for this delete.
+    // The static Transaction.LOCK is the same constant as transaction.LOCK.
+    const outcome = await db.transaction(async (transaction) => {
+      const certificate = await Certificate.findOne({
+        where: { id: certificateId, tenantId },
+        transaction,
+        lock: Transaction.LOCK.UPDATE,
+      });
 
-    if (!certificate) {
-      return {
-        success: false,
-        status: 404,
-        message: "Certificate not found",
-        data: null,
-      };
-    }
+      if (!certificate) {
+        return null;
+      }
 
-    // Only a draft or a certificate pending approval may be deleted (A-130,
-    // ADR-051 A-107; until then only `signed` was refused, so a revoked
-    // certificate could be deleted and its public verification then answered
-    // "no certificate matches" — F-11). A-92: a state conflict, so 409 with
-    // the state and the way forward — not a 400. Thrown, not returned: the
-    // controller renders a returned result through success(), which would
-    // have sent `success: true` with the 409.
-    if (Object.prototype.hasOwnProperty.call(DELETE_REFUSAL_EXPLANATIONS, certificate.status)) {
-      throw new AppError(409, DELETE_REFUSAL_EXPLANATIONS[certificate.status]);
-    }
+      // Only a draft or a certificate pending approval may be deleted (A-130,
+      // ADR-051 A-107; until then only `signed` was refused, so a revoked
+      // certificate could be deleted and its public verification then answered
+      // "no certificate matches" — F-11). A-92: a state conflict, so 409 with
+      // the state and the way forward — not a 400. Thrown, not returned: the
+      // controller renders a returned result through success(), which would
+      // have sent `success: true` with the 409.
+      if (Object.prototype.hasOwnProperty.call(DELETE_REFUSAL_EXPLANATIONS, certificate.status)) {
+        throw new AppError(409, DELETE_REFUSAL_EXPLANATIONS[certificate.status]);
+      }
 
-    await db.transaction(async (transaction) => {
       await certificate.destroy({ transaction });
       await auditCertificate(transaction, certificate, {
         tenantId,
@@ -608,7 +748,17 @@ exports.deleteCertificate = async (tenantId, certificateId, actor = {}) => {
         ipAddress: actor.ipAddress,
         userAgent: actor.userAgent,
       });
+      return certificate;
     });
+
+    if (!outcome) {
+      return {
+        success: false,
+        status: 404,
+        message: "Certificate not found",
+        data: null,
+      };
+    }
 
     logger.info("Certificate deleted", {
       certificateId,
@@ -630,57 +780,93 @@ exports.deleteCertificate = async (tenantId, certificateId, actor = {}) => {
 };
 
 /**
+ * A-167 — run one status transition: lock the certificate inside the
+ * transaction (lockCertificate), refuse a transition its current status does
+ * not allow (409, explained), re-authenticate when the transition is a
+ * signature, then apply `mutate` to the LOCKED row. Everything, audit row
+ * included, commits together or not at all.
+ *
+ * Re-authentication runs inside the transaction and after the status check:
+ * a refused transition then consumes no one-time MFA code, and the check
+ * still comes BEFORE the state change it authorises (Part 11). With CLS on,
+ * a consumed MFA code (users.mfa_last_used_step) commits or rolls back with
+ * the transition it authorised; the password check writes nothing.
+ *
+ * @param {Object} params
+ * @param {string} params.tenantId
+ * @param {string} params.certificateId
+ * @param {"submitted"|"approved"|"signed"|"revoked"} params.transition
+ * @param {{userId: string, authOptions: Object}|null} params.reauth - who
+ *   re-authenticates, or null for a transition that is not a signature
+ * @param {(transaction: Object, certificate: Object, previousStatus: string) => Promise<void>} params.mutate
+ * @returns {Promise<Object|null>} the transitioned certificate, or null (404)
+ * @throws {AppError} 409 with the state explanation; 400/401 from re-auth
+ */
+const runTransition = ({ tenantId, certificateId, transition, reauth, mutate }) =>
+  db.transaction(async (transaction) => {
+    const certificate = await lockCertificate(tenantId, certificateId, transaction);
+    if (!certificate) {
+      return null;
+    }
+
+    const refusal = explainRefusedTransition(certificate.status, transition);
+    if (refusal) {
+      throw new AppError(409, refusal);
+    }
+
+    if (reauth) {
+      await verifySignatureAuth(reauth.userId, reauth.authOptions, {
+        tenantId,
+        resourceType: "Certificate",
+        resourceId: certificateId,
+        operation: transition,
+      });
+    }
+
+    await mutate(transaction, certificate, certificate.status);
+    return certificate;
+  });
+
+/**
  * Approve a certificate (move from pending_approval to approved)
  */
 exports.approveCertificate = async (tenantId, certificateId, approvedBy, authOptions) => {
   try {
-    const certificate = await Certificate.findOne({
-      where: { id: certificateId, tenantId },
+    const certificate = await runTransition({
+      tenantId,
+      certificateId,
+      transition: "approved",
+      // Re-authenticate BEFORE mutating: the signature authorises the approval.
+      reauth: { userId: approvedBy, authOptions },
+      mutate: async (transaction, locked, previousStatus) => {
+        await locked.approve({ transaction });
+        locked.approvedBy = approvedBy;
+        locked.issueDate = new Date();
+        await locked.save({ transaction });
+
+        // Logged after the save so the hash captures the approved state.
+        await logSignature(tenantId, locked, approvedBy, "approve", authOptions, transaction);
+
+        await auditCertificate(transaction, locked, {
+          tenantId,
+          userId: approvedBy,
+          action: "APPROVE",
+          operation: "APPROVE",
+          before: { status: previousStatus },
+          after: { status: locked.status, approvedBy, meaning: authOptions.meaning },
+          ipAddress: authOptions.ipAddress,
+          userAgent: authOptions.userAgent,
+        });
+        // A-11: announced only after this transaction commits.
+        webhookService.emitAfterCommit(transaction, tenantId, WEBHOOK_EVENTS.CERTIFICATE_APPROVED, {
+          certificateId: locked.id, certificateNumber: locked.certificateNumber, deviceId: locked.deviceId, status: locked.status, approvedBy,
+        });
+      },
     });
 
     if (!certificate) {
-      return {
-        success: false,
-        status: 404,
-        message: "Certificate not found",
-        data: null,
-      };
+      return CERTIFICATE_NOT_FOUND;
     }
-
-    // A certificate must be PENDING_APPROVAL to be approved. Surface an invalid
-    // transition as 409 (not a plain Error → 500). New certificates are DRAFT;
-    // callers must POST /:certificateId/submit first.
-    if (certificate.status !== "pending_approval") {
-      throw new AppError(
-        409,
-        `Cannot approve certificate with status: ${certificate.status}. Submit it for approval first.`,
-      );
-    }
-
-    // Re-authenticate BEFORE mutating: the signature authorises the approval.
-    await verifySignatureAuth(approvedBy, authOptions);
-
-    const previousStatus = certificate.status;
-    await db.transaction(async (transaction) => {
-      await certificate.approve({ transaction });
-      certificate.approvedBy = approvedBy;
-      certificate.issueDate = new Date();
-      await certificate.save({ transaction });
-
-      // Logged after the save so the hash captures the approved state.
-      await logSignature(tenantId, certificate, approvedBy, "approve", authOptions, transaction);
-
-      await auditCertificate(transaction, certificate, {
-        tenantId,
-        userId: approvedBy,
-        action: "APPROVE",
-        operation: "APPROVE",
-        before: { status: previousStatus },
-        after: { status: certificate.status, approvedBy, meaning: authOptions.meaning },
-        ipAddress: authOptions.ipAddress,
-        userAgent: authOptions.userAgent,
-      });
-    });
 
     logger.info("Certificate approved", {
       certificateId,
@@ -708,35 +894,29 @@ exports.approveCertificate = async (tenantId, certificateId, approvedBy, authOpt
  * then be approved. Without this transition, approve() is unreachable and 500s.
  */
 exports.submitCertificateForApproval = async (tenantId, certificateId, actor = {}) => {
-  const certificate = await Certificate.findOne({
-    where: { id: certificateId, tenantId },
+  const certificate = await runTransition({
+    tenantId,
+    certificateId,
+    transition: "submitted",
+    reauth: null,
+    mutate: async (transaction, locked, previousStatus) => {
+      await locked.submitForApproval({ transaction });
+      await auditCertificate(transaction, locked, {
+        tenantId,
+        userId: actor.userId,
+        action: "UPDATE",
+        operation: "SUBMIT_FOR_APPROVAL",
+        before: { status: previousStatus },
+        after: { status: locked.status },
+        ipAddress: actor.ipAddress,
+        userAgent: actor.userAgent,
+      });
+    },
   });
 
   if (!certificate) {
-    return { success: false, status: 404, message: "Certificate not found", data: null };
+    return CERTIFICATE_NOT_FOUND;
   }
-
-  if (certificate.status !== "draft") {
-    throw new AppError(
-      409,
-      `Cannot submit certificate for approval with status: ${certificate.status}`,
-    );
-  }
-
-  const previousStatus = certificate.status;
-  await db.transaction(async (transaction) => {
-    await certificate.submitForApproval({ transaction });
-    await auditCertificate(transaction, certificate, {
-      tenantId,
-      userId: actor.userId,
-      action: "UPDATE",
-      operation: "SUBMIT_FOR_APPROVAL",
-      before: { status: previousStatus },
-      after: { status: certificate.status },
-      ipAddress: actor.ipAddress,
-      userAgent: actor.userAgent,
-    });
-  });
 
   logger.info("Certificate submitted for approval", {
     certificateId,
@@ -753,7 +933,11 @@ exports.submitCertificateForApproval = async (tenantId, certificateId, actor = {
 };
 
 /**
- * Sign a certificate digitally
+ * Sign a certificate digitally.
+ *
+ * A-167 — only an approved certificate can be signed. The model's sign()
+ * refused anything else with a plain Error, which answered 500; the refusal
+ * is now a 409 with the state explanation, decided under the row lock.
  */
 exports.signCertificate = async (
   tenantId,
@@ -761,50 +945,45 @@ exports.signCertificate = async (
   signatureData,
   keyId,
   signedBy,
-  authOptions
+  authOptions,
 ) => {
   try {
-    const certificate = await Certificate.findOne({
-      where: { id: certificateId, tenantId },
+    const certificate = await runTransition({
+      tenantId,
+      certificateId,
+      transition: "signed",
+      // Re-authenticate BEFORE mutating: the signature authorises the signing.
+      reauth: { userId: signedBy, authOptions },
+      mutate: async (transaction, locked, previousStatus) => {
+        await locked.sign(signatureData, keyId, { transaction });
+        locked.signedBy = signedBy;
+        await locked.save({ transaction });
+
+        // Logged after the save so the hash captures the signed state.
+        await logSignature(tenantId, locked, signedBy, "sign", authOptions, transaction);
+
+        // A signature is a decision, not a field change: APPROVE, with the
+        // operation named (audit_logs.action has no SIGN member).
+        await auditCertificate(transaction, locked, {
+          tenantId,
+          userId: signedBy,
+          action: "APPROVE",
+          operation: "SIGN",
+          before: { status: previousStatus },
+          after: { status: locked.status, signedBy, keyId, meaning: authOptions.meaning },
+          ipAddress: authOptions.ipAddress,
+          userAgent: authOptions.userAgent,
+        });
+        // A-11: announced only after this transaction commits.
+        webhookService.emitAfterCommit(transaction, tenantId, WEBHOOK_EVENTS.CERTIFICATE_SIGNED, {
+          certificateId: locked.id, certificateNumber: locked.certificateNumber, deviceId: locked.deviceId, status: locked.status, signedBy,
+        });
+      },
     });
 
     if (!certificate) {
-      return {
-        success: false,
-        status: 404,
-        message: "Certificate not found",
-        data: null,
-      };
+      return CERTIFICATE_NOT_FOUND;
     }
-
-    // Re-authenticate BEFORE mutating: the signature authorises the signing.
-    await verifySignatureAuth(signedBy, authOptions);
-
-    const previousStatus = certificate.status;
-    await db.transaction(async (transaction) => {
-      await certificate.sign(signatureData, keyId, { transaction });
-      certificate.signedBy = signedBy;
-      await certificate.save({ transaction });
-
-      // Logged after the save so the hash captures the signed state.
-      await logSignature(tenantId, certificate, signedBy, "sign", authOptions, transaction);
-
-      // A signature is a decision, not a field change: APPROVE, with the
-      // operation named (audit_logs.action has no SIGN member).
-      await auditCertificate(transaction, certificate, {
-        tenantId,
-        userId: signedBy,
-        action: "APPROVE",
-        operation: "SIGN",
-        before: { status: previousStatus },
-        after: { status: certificate.status, signedBy, keyId, meaning: authOptions.meaning },
-        ipAddress: authOptions.ipAddress,
-        userAgent: authOptions.userAgent,
-      });
-    });
-
-    // Publish certificate signed event to message queue
-    // This would be handled by the event publisher
 
     logger.info("Certificate signed", {
       certificateId,
@@ -828,51 +1007,53 @@ exports.signCertificate = async (
 };
 
 /**
- * Revoke a certificate
+ * Revoke a certificate.
+ *
+ * A-167 — revoking a revoked certificate is a 409. The model's revoke()
+ * returned silently for it, and this then wrote a second REVOKE signature
+ * record and audit row for a revocation that did not happen.
  */
 exports.revokeCertificate = async (
   tenantId,
   certificateId,
   reason,
   revokedBy,
-  authOptions
+  authOptions,
 ) => {
   try {
-    const certificate = await Certificate.findOne({
-      where: { id: certificateId, tenantId },
+    const certificate = await runTransition({
+      tenantId,
+      certificateId,
+      transition: "revoked",
+      // Re-authenticate BEFORE mutating: the signature authorises the revocation.
+      reauth: { userId: revokedBy, authOptions },
+      mutate: async (transaction, locked, previousStatus) => {
+        await locked.revoke(reason, { transaction });
+
+        // Logged after the mutation so the hash captures the revoked state.
+        await logSignature(tenantId, locked, revokedBy, "revoke", authOptions, transaction);
+
+        // No REVOKE member in audit_logs.action: UPDATE, with the operation named.
+        await auditCertificate(transaction, locked, {
+          tenantId,
+          userId: revokedBy,
+          action: "UPDATE",
+          operation: "REVOKE",
+          before: { status: previousStatus },
+          after: { status: locked.status, reason },
+          ipAddress: authOptions.ipAddress,
+          userAgent: authOptions.userAgent,
+        });
+        // A-11: announced only after this transaction commits.
+        webhookService.emitAfterCommit(transaction, tenantId, WEBHOOK_EVENTS.CERTIFICATE_REVOKED, {
+          certificateId: locked.id, certificateNumber: locked.certificateNumber, deviceId: locked.deviceId, status: locked.status, revokedBy,
+        });
+      },
     });
 
     if (!certificate) {
-      return {
-        success: false,
-        status: 404,
-        message: "Certificate not found",
-        data: null,
-      };
+      return CERTIFICATE_NOT_FOUND;
     }
-
-    // Re-authenticate BEFORE mutating: the signature authorises the revocation.
-    await verifySignatureAuth(revokedBy, authOptions);
-
-    const previousStatus = certificate.status;
-    await db.transaction(async (transaction) => {
-      await certificate.revoke(reason, { transaction });
-
-      // Logged after the mutation so the hash captures the revoked state.
-      await logSignature(tenantId, certificate, revokedBy, "revoke", authOptions, transaction);
-
-      // No REVOKE member in audit_logs.action: UPDATE, with the operation named.
-      await auditCertificate(transaction, certificate, {
-        tenantId,
-        userId: revokedBy,
-        action: "UPDATE",
-        operation: "REVOKE",
-        before: { status: previousStatus },
-        after: { status: certificate.status, reason },
-        ipAddress: authOptions.ipAddress,
-        userAgent: authOptions.userAgent,
-      });
-    });
 
     logger.info("Certificate revoked", {
       certificateId,

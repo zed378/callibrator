@@ -28,13 +28,24 @@ jest.mock("../../models", () => ({
   User: { findOne: jest.fn() },
 }));
 
-jest.mock("../../services/emailQueue.service", () => ({
-  emailQueueService: { queueEmail: jest.fn().mockResolvedValue(undefined) },
+// A-166 — emailQueue.service and email.service are NOT mocked. The defect was
+// a call to `emailQueueService.queueEmail`, an export that never existed, and
+// this file used to mock exactly that invented export — so it passed while no
+// verification email was ever sent. Only the two transports are doubled:
+// `amqplib` (the broker) and `nodemailer` (SMTP); the assertions are on what
+// reaches them.
+const mockSendMail = jest.fn();
+const mockConnect = jest.fn();
+jest.mock("amqplib", () => ({ connect: (...args) => mockConnect(...args) }));
+jest.mock("nodemailer", () => ({
+  createTransport: () => ({ sendMail: (...args) => mockSendMail(...args) }),
 }));
 
 jest.mock("dns", () => ({ promises: { resolveTxt: jest.fn() } }));
 
+// The real fs otherwise: email.service reads its templates at load.
 jest.mock("fs", () => ({
+  ...jest.requireActual("fs"),
   promises: {
     mkdir: jest.fn().mockResolvedValue(),
     writeFile: jest.fn().mockResolvedValue(),
@@ -61,7 +72,7 @@ const svc = require("../../services/customDomains.service");
 const { AppError } = require("../../utils/appError.util");
 const { logger } = require("../../middlewares/activityLog.middleware");
 const { CustomDomain, User } = require("../../models");
-const { emailQueueService } = require("../../services/emailQueue.service");
+const emailQueue = require("../../services/emailQueue.service");
 const dns = require("dns").promises;
 const fs = require("fs");
 const acme = require("acme-client");
@@ -104,7 +115,12 @@ describe("customDomainsService", () => {
       status: "pending_verification",
       sslEnabled: true,
     });
-    User.findOne.mockResolvedValue({ email: "admin@example.com" });
+    User.findOne.mockResolvedValue({ email: "admin@example.com", firstName: "Ada" });
+    mockSendMail.mockReset().mockResolvedValue({ messageId: "m-1" });
+    // The broker is down unless a test brings it up: the queue then falls
+    // back to a direct SMTP send, which is what reaches mockSendMail.
+    mockConnect.mockReset().mockRejectedValue(new Error("ECONNREFUSED"));
+    process.env.FRONTEND_URL = "https://kalibrasi.example.test";
     // Default: the DNS TXT record matches makeRecord's default token.
     dns.resolveTxt.mockResolvedValue([["callibrator-verify=abc123"]]);
   });
@@ -138,9 +154,11 @@ describe("customDomainsService", () => {
         }),
       );
       expect(res.verification.cname.value).toBe("cname.callibrator.io.");
-      expect(emailQueueService.queueEmail).toHaveBeenCalledWith(
-        expect.objectContaining({ subject: "Verify domain: app.example.com" }),
-      );
+      expect(mockSendMail).toHaveBeenCalledTimes(1);
+      expect(mockSendMail.mock.calls[0][0]).toMatchObject({
+        to: "admin@example.com",
+        subject: "Verify domain: app.example.com",
+      });
     });
 
     it("adds a domain from the string form", async () => {
@@ -203,7 +221,11 @@ describe("customDomainsService", () => {
       const res = await svc.addDomain("tenant-1", "app.example.com");
 
       expect(res.id).toBe("d-1");
-      expect(emailQueueService.queueEmail).not.toHaveBeenCalled();
+      expect(mockSendMail).not.toHaveBeenCalled();
+      expect(logger.error).toHaveBeenCalledWith(
+        "Domain verification email was not sent: the tenant has no user with an email address",
+        { tenantId: "tenant-1", domain: "app.example.com" },
+      );
     });
 
     it("still adds the domain when the admin user has no email address", async () => {
@@ -212,19 +234,142 @@ describe("customDomainsService", () => {
       const res = await svc.addDomain("tenant-1", "app.example.com");
 
       expect(res.id).toBe("d-1");
-      expect(emailQueueService.queueEmail).not.toHaveBeenCalled();
+      expect(mockSendMail).not.toHaveBeenCalled();
     });
 
-    it("still adds the domain when queueing the verification email fails", async () => {
-      emailQueueService.queueEmail.mockRejectedValueOnce(new Error("queue down"));
+    it("still adds the domain when the verification email cannot be sent, and logs it at ERROR", async () => {
+      mockSendMail.mockRejectedValue(new Error("SMTP 554"));
 
       const res = await svc.addDomain("tenant-1", "app.example.com");
 
       expect(res.id).toBe("d-1");
-      expect(logger.warn).toHaveBeenCalledWith(
-        "Failed to send verification email",
-        expect.objectContaining({ error: "queue down" }),
-      );
+      expect(logger.error).toHaveBeenCalledWith("Domain verification email was not sent", {
+        tenantId: "tenant-1",
+        domain: "app.example.com",
+        error: "the email queue did not accept the message",
+      });
+      expect(logger.info).not.toHaveBeenCalledWith("Domain verification email queued", expect.anything());
+    });
+
+    it("still adds the domain when the admin lookup fails, and logs it at ERROR", async () => {
+      User.findOne.mockRejectedValueOnce(new Error("connection reset"));
+
+      const res = await svc.addDomain("tenant-1", "app.example.com");
+
+      expect(res.id).toBe("d-1");
+      expect(logger.error).toHaveBeenCalledWith("Domain verification email was not sent", {
+        tenantId: "tenant-1",
+        domain: "app.example.com",
+        error: "connection reset",
+      });
+    });
+
+    describe("A-166 — the verification email goes through the real email path", () => {
+      let savedHostUrl;
+      beforeEach(async () => {
+        savedHostUrl = process.env.HOST_URL;
+        // emailQueue caches its broker connection; drop it between tests.
+        await emailQueue.closeRabbitMQ();
+      });
+      afterEach(() => {
+        delete process.env.FRONTEND_URL;
+        if (savedHostUrl === undefined) {delete process.env.HOST_URL;} else {process.env.HOST_URL = savedHostUrl;}
+      });
+
+      it("the module exports queueNotificationEmail, and no `emailQueueService` (the export the old code called)", () => {
+        const real = jest.requireActual("../../services/emailQueue.service");
+        expect(typeof real.queueNotificationEmail).toBe("function");
+        expect(real.emailQueueService).toBeUndefined();
+      });
+
+      it("reaches SMTP with the DNS records to add and a link to the Custom Domains page", async () => {
+        await svc.addDomain("tenant-1", "app.example.com");
+
+        expect(mockSendMail).toHaveBeenCalledTimes(1);
+        const { to, html } = mockSendMail.mock.calls[0][0];
+        expect(to).toBe("admin@example.com");
+        expect(html).toContain("Hi Ada");
+        expect(html).toContain("_domain_verify.app.example.com");
+        const [, token] = html.match(/(callibrator-verify=[0-9a-f]{32})/);
+        expect(CustomDomain.create).toHaveBeenCalledWith(expect.objectContaining({ verificationToken: token }));
+        expect(html).toContain("cname.callibrator.io.");
+        expect(html).toContain('href="https://kalibrasi.example.test/dashboard/custom-domains"');
+        // The old link pointed at the domain that was not yet routed here.
+        expect(html).not.toContain("https://app.example.com/verify");
+        expect(logger.info).toHaveBeenCalledWith("Domain verification email queued", {
+          tenantId: "tenant-1",
+          domain: "app.example.com",
+        });
+      });
+
+      it("greets an admin with no first name generically", async () => {
+        User.findOne.mockResolvedValueOnce({ email: "admin@example.com", firstName: null });
+
+        await svc.addDomain("tenant-1", "app.example.com");
+
+        expect(mockSendMail.mock.calls[0][0].html).toContain("Hi there");
+      });
+
+      it("is published to email_queue as a notification job when the broker is up", async () => {
+        const channel = { on: jest.fn(), sendToQueue: jest.fn(), close: jest.fn() };
+        mockConnect.mockReset().mockResolvedValue({
+          on: jest.fn(),
+          close: jest.fn(),
+          createChannel: async () => channel,
+        });
+
+        await svc.addDomain("tenant-1", "app.example.com");
+
+        expect(channel.sendToQueue).toHaveBeenCalledTimes(1);
+        const [queue, body] = channel.sendToQueue.mock.calls[0];
+        expect(queue).toBe("email_queue");
+        const job = JSON.parse(body.toString());
+        expect(job.type).toBe("notification");
+        expect(job.data).toMatchObject({
+          email: "admin@example.com",
+          title: "Verify domain: app.example.com",
+          actionUrl: "https://kalibrasi.example.test/dashboard/custom-domains",
+        });
+        expect(mockSendMail).not.toHaveBeenCalled();
+      });
+
+      it("falls back to HOST_URL when FRONTEND_URL is not set", async () => {
+        delete process.env.FRONTEND_URL;
+        process.env.HOST_URL = "https://host.example.test/";
+
+        await svc.addDomain("tenant-1", "app.example.com");
+
+        expect(mockSendMail.mock.calls[0][0].html).toContain(
+          'href="https://host.example.test/dashboard/custom-domains"',
+        );
+      });
+
+      it("with no origin configured, still sends the email and logs the missing link at ERROR", async () => {
+        delete process.env.FRONTEND_URL;
+        delete process.env.HOST_URL;
+
+        await svc.addDomain("tenant-1", "app.example.com");
+
+        expect(mockSendMail).toHaveBeenCalledTimes(1);
+        expect(mockSendMail.mock.calls[0][0].html).not.toContain("href=");
+        expect(logger.error).toHaveBeenCalledWith(
+          "Domain verification email has no link: neither FRONTEND_URL nor HOST_URL is set",
+          { tenantId: "tenant-1", domain: "app.example.com" },
+        );
+      });
+
+      it("never logs the recipient's address", async () => {
+        mockSendMail.mockRejectedValue(new Error("SMTP 554"));
+
+        await svc.addDomain("tenant-1", "app.example.com");
+
+        // This service's own lines (emailQueue.service logs job data itself).
+        const mine = [...logger.error.mock.calls, ...logger.info.mock.calls].filter(([message]) =>
+          String(message).startsWith("Domain verification email"),
+        );
+        expect(mine.length).toBeGreaterThan(0);
+        expect(JSON.stringify(mine)).not.toContain("admin@example.com");
+      });
     });
 
     it("advertises Let's Encrypt auto-provisioning in the instructions when TLS auto-provision is on", async () => {

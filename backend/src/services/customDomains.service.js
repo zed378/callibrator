@@ -111,8 +111,40 @@ async function loadOwned(tenantId, domainId) {
   return record;
 }
 
-/** Notify the tenant admin that a domain needs verification (best-effort). */
-async function sendDomainVerificationEmail(tenantId, domain) {
+/**
+ * The page a tenant verifies its domains on: the Custom Domains page of the
+ * public web front end — FRONTEND_URL, else HOST_URL, as the e-signature
+ * emails build theirs (A-158).
+ *
+ * @returns {string|null} absolute URL, or null when no origin is configured
+ */
+function customDomainsPageUrl() {
+  const origin = (process.env.FRONTEND_URL || process.env.HOST_URL || "").replace(/\/+$/, "");
+  return origin ? `${origin}/dashboard/custom-domains` : null;
+}
+
+/**
+ * Notify the tenant admin that a domain needs verification (best-effort).
+ *
+ * A-166 — this called `emailQueueService.queueEmail`, which emailQueue.service
+ * has never exported: every call threw a TypeError that the catch logged at
+ * warn, so no verification email was ever sent. It now sends through the real
+ * `queueNotificationEmail` (the path notifications and e-signature use), with
+ * the DNS records to add in the body. The link it carried,
+ * `https://<domain>/verify`, pointed at the very domain that was not yet
+ * routed here; it is now the Custom Domains page, where "Verify" runs the
+ * check.
+ *
+ * Never throws — the domain has already been added — but every failure is
+ * logged at ERROR, with ids only and no email address.
+ *
+ * @param {string} tenantId
+ * @param {string} domain
+ * @param {string} token - the TXT value the tenant must publish
+ * @returns {Promise<boolean>} whether the email was accepted for delivery
+ */
+async function sendDomainVerificationEmail(tenantId, domain, token) {
+  const context = { tenantId, domain };
   try {
     const { User } = require("../models");
     const admin = await User.findOne({
@@ -120,21 +152,38 @@ async function sendDomainVerificationEmail(tenantId, domain) {
       order: [["createdAt", "ASC"]],
     });
 
-    if (admin && admin.email) {
-      const { emailQueueService } = require("../services/emailQueue.service");
-      await emailQueueService.queueEmail({
-        to: admin.email,
-        subject: `Verify domain: ${domain}`,
-        template: "domain-verification",
-        data: { domain, verificationUrl: `https://${domain}/verify` },
-      });
+    if (!admin || !admin.email) {
+      logger.error("Domain verification email was not sent: the tenant has no user with an email address", context);
+      return false;
     }
-  } catch (err) {
-    logger.warn("Failed to send verification email", {
-      tenantId,
-      domain,
-      error: err.message,
+
+    const actionUrl = customDomainsPageUrl();
+    if (!actionUrl) {
+      logger.error("Domain verification email has no link: neither FRONTEND_URL nor HOST_URL is set", context);
+    }
+
+    const records = getDnsVerificationInstructions(domain, token);
+    const { queueNotificationEmail } = require("./emailQueue.service");
+    const accepted = await queueNotificationEmail({
+      email: admin.email,
+      firstName: admin.firstName || "",
+      title: `Verify domain: ${domain}`,
+      message: [
+        `The domain ${domain} was added to your organisation and is waiting for verification.`,
+        `1. Add a TXT record named ${records.verification.name} with the value ${records.verification.value}`,
+        `2. Add a CNAME record for ${records.cname.name} pointing to ${records.cname.value}`,
+        '3. Once DNS has propagated (up to 48 hours), open Custom Domains and choose "Verify".',
+      ].join("\n\n"),
+      actionUrl,
     });
+    if (!accepted) {
+      throw new Error("the email queue did not accept the message");
+    }
+    logger.info("Domain verification email queued", context);
+    return true;
+  } catch (err) {
+    logger.error("Domain verification email was not sent", { ...context, error: err.message });
+    return false;
   }
 }
 
@@ -205,7 +254,7 @@ exports.addDomain = async (tenantId, domainInput, typeArg = "subdomain") => {
       verificationToken,
     });
 
-    await sendDomainVerificationEmail(tenantId, domain);
+    await sendDomainVerificationEmail(tenantId, domain, verificationToken);
     logger.info("Custom domain added", { tenantId, domain, type });
 
     return {

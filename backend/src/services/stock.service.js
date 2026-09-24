@@ -5,6 +5,8 @@ const { Stock, StockTransfer, StockAdjustment, StockOpname, Warehouse, StorageLo
 const { logger } = require("../middlewares/activityLog.middleware");
 const { AppError } = require("../utils/appError.util");
 const { DEFAULT_LIMIT } = require("../constants");
+const webhookService = require("./webhook.service");
+const { WEBHOOK_EVENTS } = require("../constants/webhookEvents");
 const {
   validate: validateInput,
   formatErrors,
@@ -537,6 +539,10 @@ exports.updateTransferStatus = async (tenantId, transferId, input, userId) => {
         },
         { transaction },
       );
+      // A-11: fires from afterCommit — never for a rolled-back transfer.
+      webhookService.emitAfterCommit(transaction, tenantId, WEBHOOK_EVENTS.STOCK_TRANSFER_COMPLETED, {
+        transferId: transfer.id, itemName: transfer.itemName, quantity: transfer.quantity, fromWarehouseId: transfer.fromWarehouseId, toWarehouseId: transfer.toWarehouseId, approvedBy: userId,
+      });
     } else {
       // Transition to in_transit or cancelled
       await transfer.update(

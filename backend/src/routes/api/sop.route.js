@@ -10,6 +10,8 @@ const router = express.Router();
 const { auth, denyApiKey } = require("../../middlewares/auth.middleware");
 const { dynamicAccess } = require("../../middlewares/dynamicAccess.middleware");
 const { MENU_SLUGS } = require("../../constants");
+const { validateUuid } = require("../../middlewares/validateUuid.middleware");
+const { denyPlatformAuthoring } = require("../../middlewares/denyPlatformAuthoring.middleware"); // A-145, ADR-051 Q-17
 const {
   createDocument,
   getDocuments,
@@ -33,6 +35,17 @@ const {
 // filters by req.user.id), and the roles that must acknowledge an SOP —
 // technicians, warehouse, room users — hold no `sop` menu at all. Gating it
 // would make assigned training impossible to complete.
+//
+// A-145 (ADR-051 Q-17, ADR-052) — publishing and acknowledging are Part 11
+// authoring acts and carry denyPlatformAuthoring:
+//  - publishing releases a controlled procedure under ISO 13485 §4.2.4 document
+//    control; the audit row names the publisher as the approver, and
+//    separation of duties compares that person with the author. A platform
+//    operator impersonating a member would release it in the member's name.
+//  - acknowledging training writes the member's ISO 13485 §6.2 training
+//    record: it attests that THIS person read THIS revision. Nobody may
+//    attest that for someone else — under impersonation the record would name
+//    the member while an operator clicked.
 router.use(auth);
 
 // Document Routes
@@ -117,9 +130,11 @@ router.get("/", dynamicAccess(MENU_SLUGS.SOP, "read"), getDocuments);
  *       401:
  *         description: Unauthorized
  *       403:
- *         description: Insufficient permission
+ *         description: >-
+ *           Insufficient permission, an API key, or a platform operator
+ *           (impersonating, or acting in another tenant — A-145, ADR-051 Q-17)
  *       404:
- *         description: SOP document not found
+ *         description: SOP document not found (including another tenant's)
  *       409:
  *         description: >-
  *           Separation of duties — the caller authored this SOP, or the SOP is
@@ -129,8 +144,10 @@ router.get("/", dynamicAccess(MENU_SLUGS.SOP, "read"), getDocuments);
 // API key may perform it, and the publisher may not be the author.
 router.patch(
   "/:id/publish",
+  validateUuid("id"),
   denyApiKey,
   dynamicAccess(MENU_SLUGS.SOP, "write"),
+  denyPlatformAuthoring,
   publishDocument,
 );
 
@@ -157,9 +174,16 @@ router.patch(
  *         description: Training acknowledged
  *       401:
  *         description: Unauthorized
+ *       403:
+ *         description: >
+ *           A training record attests the caller's own reading — refused to an
+ *           API key and to a platform operator (impersonating, or acting in
+ *           another tenant) (A-145, ADR-051 Q-17)
  *       404:
- *         description: SOP document not found
+ *         description: No training assigned to the caller for this SOP (including another tenant's SOP)
+ *       409:
+ *         description: The caller already acknowledged this SOP — the recorded acknowledgement is not overwritten
  */
-router.post("/:id/acknowledge", acknowledgeTraining);
+router.post("/:id/acknowledge", validateUuid("id"), denyApiKey, denyPlatformAuthoring, acknowledgeTraining);
 
 module.exports = router;

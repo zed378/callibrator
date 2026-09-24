@@ -299,6 +299,33 @@ describe("authController", () => {
 
       expect(success).toHaveBeenCalled();
     });
+
+    // A-160: "who am I" reports the pending MFA enrolment auth.middleware
+    // decided from the tenant's policy, so the frontend can redirect first.
+    it.each([
+      [true, true],
+      [false, false],
+      [undefined, false],
+    ])("reports mfaEnrolmentRequired from the middleware's %p as %p", async (flag, expected) => {
+      req.user = { id: "user-1" };
+      req.mfaEnrolmentRequired = flag;
+      authService.verifyUserSession.mockResolvedValue({
+        success: true,
+        status: 200,
+        message: "Token valid",
+        data: { id: "user-1", mfaEnabled: false },
+      });
+
+      await authController.verify(req, res);
+
+      expect(success).toHaveBeenCalledWith(
+        res,
+        { id: "user-1", mfaEnabled: false, mfaEnrolmentRequired: expected },
+        null,
+        "Token valid",
+        200,
+      );
+    });
   });
 
   describe("justUpdatePassword", () => {

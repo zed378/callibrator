@@ -31,6 +31,8 @@ jest.mock("../../models", () => {
 jest.mock("../../config", () => ({ db: { transaction: jest.fn(async (cb) => cb("TX")) } }));
 
 jest.mock("../../utils/upload.util", () => ({
+  // S-17: the service promotes the scanned file out of quarantine.
+  promoteFromQuarantine: jest.fn(async (file) => file.path),
   getUploadUrl: (fileName, folder) => `/${folder}/${fileName}`,
 }));
 

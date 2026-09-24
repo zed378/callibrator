@@ -198,7 +198,7 @@ describe("eSignature.service — RSA signing and verification", () => {
       ]);
       harness.stored.signatureReason = null;
       harness.stored.signatureValue = crypto
-        .sign("sha256", Buffer.from(payload, "utf8"), keyPair.privateKey)
+        .sign("sha256", Buffer.from(payload, "utf8"), keyPair.privateKeyPem)
         .toString("base64");
 
       await expect(harness.svc.verifySignature("sig-1")).resolves.toMatchObject({

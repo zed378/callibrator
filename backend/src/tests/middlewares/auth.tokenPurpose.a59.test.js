@@ -107,6 +107,7 @@ const SESSION_COLUMNS = new Set([
   "id",
   "user_id",
   "tenant_id",
+  "impersonator_id", // A-146, migration 0040-session-impersonator
   "token_hash",
   "ip_address",
   "user_agent",
@@ -266,6 +267,7 @@ const mockRes = () => ({
   status: jest.fn().mockReturnThis(),
   json: jest.fn().mockReturnThis(),
   cookie: jest.fn().mockReturnThis(),
+  clearCookie: jest.fn().mockReturnThis(),
   redirect: jest.fn(),
 });
 
@@ -415,6 +417,12 @@ const ssoLogin = async (kind) => {
     kind === "saml"
       ? { params: { tenantCode: "rs" }, body: { SAMLResponse: "x" }, headers: {}, ip: "10.0.0.1" }
       : { params: { tenantCode: "rs" }, body: { code: "c" }, headers: {}, ip: "10.0.0.1" };
+  if (kind !== "saml") {
+    // A-68: an OIDC callback needs a sign-in this server started.
+    const flow = await ssoController.beginOidcFlow("rs", "https://sp.example.com/cb");
+    req.body.state = flow.state;
+    req.headers.cookie = `${ssoController.OIDC_BINDING_COOKIE}=${flow.binding}`;
+  }
   const handler = kind === "saml" ? ssoController.ssoCallback : ssoController.oidcCallback;
   await handler(req, res, jest.fn());
 

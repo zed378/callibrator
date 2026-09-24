@@ -147,6 +147,21 @@ describe("auth middleware", () => {
       expect(forbidden).toHaveBeenCalled();
     });
 
+    it("A-180: rejects an erased (GDPR-anonymised) account by its status alone", async () => {
+      req.headers.authorization = "Bearer valid-token";
+      verifyAccessToken.mockReturnValue({ id: "user-123" });
+      authService.getAuthUserWithTenant.mockResolvedValue({
+        id: "user-123",
+        isActive: true,
+        status: "erased",
+      });
+
+      await auth(req, res, next);
+
+      expect(forbidden).toHaveBeenCalledWith(res, "Account is erased");
+      expect(next).not.toHaveBeenCalled();
+    });
+
     it("A-48: rejects a token whose session is no longer live, before loading the user", async () => {
       const sessionService = require("../../services/session.service");
       req.headers.authorization = "Bearer revoked-session-token";

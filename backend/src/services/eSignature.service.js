@@ -151,8 +151,47 @@ function explainClosedWorkflow(status, verb) {
     completed:
       "every signer has signed, and the signatures cover the workflow as it was signed",
     cancelled: "cancellation is final; create a new workflow instead",
+    // A-159 — set by signDocument when a signature is attempted after
+    // expiresAt; like cancellation, final.
+    expired:
+      "its expiry date has passed, and an expired workflow collects no more signatures; " +
+      "create a new workflow for the remaining signers instead",
   };
   return `This signature workflow is "${status}" and cannot be ${verb}: ${why[status]}.`;
+}
+
+/**
+ * A-168 — the state explanation for editing a workflow whose expiry date has
+ * passed, whether or not a signature attempt has marked it "expired" yet.
+ * Expiry is terminal for signing and for editing: extending `expiresAt` would
+ * re-open signing on a request its signers were told had lapsed.
+ *
+ * @param {Date|string} expiresAt
+ * @returns {string}
+ */
+function explainExpiredWorkflowEdit(expiresAt) {
+  return (
+    `This signature workflow is "expired" (its expiry date, ${new Date(expiresAt).toISOString()}, has passed) ` +
+    "and cannot be edited: expiry is final, and its expiry date cannot be extended; " +
+    "create a new workflow for the remaining signers instead."
+  );
+}
+
+/**
+ * A-168 / A-169 — whether a workflow is expired: marked "expired", or still
+ * open (pending / in_progress) with its expiry date passed. A workflow that
+ * completed or was cancelled before its expiry date is closed, not expired.
+ *
+ * @param {{status: string, expiresAt?: Date|string|null}} workflow
+ * @param {number} [now] - ms since the epoch
+ * @returns {boolean}
+ */
+function isExpired(workflow, now = Date.now()) {
+  if (workflow.status === "expired") {
+    return true;
+  }
+  const open = workflow.status === "pending" || workflow.status === "in_progress";
+  return open && Boolean(workflow.expiresAt) && new Date(workflow.expiresAt).getTime() <= now;
 }
 
 /**
@@ -510,6 +549,9 @@ exports.createSignatureWorkflow = async (tenantId, data, actor = {}) => {
           status: "pending",
           expiresAt: expiresAt || new Date(Date.now() + 7 * 86400000),
           signatureAlgorithm: SIGNATURE_ALGORITHM,
+          // A-170 — the requester is the authenticated actor, never a body
+          // field; the completion email goes to them.
+          requestedBy: actor.userId,
         },
         { transaction },
       );
@@ -576,34 +618,94 @@ exports.createSignatureWorkflow = async (tenantId, data, actor = {}) => {
 };
 
 /**
- * Send signature request email to signer
+ * A-158 — the signer's way in: the E-Signature page, whose default "To sign"
+ * tab (A-91) lists the steps waiting on the signed-in user. There is no
+ * per-step page to deep-link to.
+ *
+ * The origin is the public web front end: FRONTEND_URL (as the SSO callback
+ * uses it), else HOST_URL — the origin the deployments publish and the one
+ * email.service already builds its emailed links on. The link used to be a
+ * hard-coded https://app.callibrator.io/sign/:id: a domain this product does
+ * not serve and a route the front end never had.
+ *
+ * @returns {string|null} absolute URL, or null when no origin is configured
+ */
+function signingPageUrl() {
+  const origin = (process.env.FRONTEND_URL || process.env.HOST_URL || "").replace(/\/+$/, "");
+  return origin ? `${origin}/dashboard/esignature` : null;
+}
+
+/**
+ * A-158 — queue one e-signature email through the real email path
+ * (emailQueue.service#queueNotificationEmail → the email_queue consumer →
+ * email.service#sendNotificationEmail). This used to call
+ * `emailQueueService.queueEmail`, which that module has never exported: every
+ * call threw a TypeError that a catch logged as a warning, so no signing
+ * email was ever sent and nothing said so above warn level.
+ *
+ * Never throws — the workflow or signature it reports on has already
+ * committed, so a mail failure must not turn it into a 500 — but every
+ * failure is logged at ERROR with the workflow, step and signer context.
+ *
+ * @param {string} what - log label ("Signature request", "Workflow completion")
+ * @param {Object} context - logged with every outcome (ids only, no address)
+ * @param {Object} email - queueNotificationEmail's argument
+ * @returns {Promise<boolean>} whether the email was accepted for delivery
+ */
+async function queueESignatureEmail(what, context, email) {
+  if (!email.actionUrl) {
+    logger.error(`${what} email has no link: neither FRONTEND_URL nor HOST_URL is set`, context);
+  }
+  try {
+    const { queueNotificationEmail } = require("./emailQueue.service");
+    const accepted = await queueNotificationEmail(email);
+    if (!accepted) {
+      throw new Error("the email queue did not accept the message");
+    }
+    logger.info(`${what} email queued`, context);
+    return true;
+  } catch (err) {
+    logger.error(`${what} email was not sent`, { ...context, error: err.message });
+    return false;
+  }
+}
+
+/**
+ * Send the signature request email to the signer of `step`.
+ *
+ * @param {string} email - the signer's address (the step's signerEmail)
+ * @param {Object} workflow
+ * @param {Object} step
+ * @returns {Promise<boolean>} whether the email was accepted for delivery
  */
 async function sendSignatureRequest(email, workflow, step) {
-  const { emailQueueService } = require("../services/emailQueue.service");
-
-  try {
-    await emailQueueService.queueEmail({
-      to: email,
-      subject: `Signature request: ${workflow.subject}`,
-      template: "signature-request",
-      data: {
-        workflowId: workflow.id,
-        stepId: step.id,
-        signUrl: `https://app.callibrator.io/sign/${step.id}`,
-        expiresAt: workflow.expiresAt,
-      },
-    });
-
-    logger.info("Signature request sent", {
-      workflowId: workflow.id,
-      signerEmail: email,
-    });
-  } catch (err) {
-    logger.warn("Failed to send signature request", {
-      workflowId: workflow.id,
-      error: err.message,
-    });
+  const lines = [
+    `You have been asked to sign "${workflow.subject}" (document ${workflow.documentId}), ` +
+      `as signer ${step.stepNumber || 1} of this workflow.`,
+  ];
+  if (workflow.message) {
+    lines.push(workflow.message);
   }
+  lines.push('Open E-Signature and choose "To sign" to review and sign it.');
+  if (workflow.expiresAt) {
+    lines.push(`This request expires at ${new Date(workflow.expiresAt).toISOString()}.`);
+  }
+  return queueESignatureEmail(
+    "Signature request",
+    {
+      tenantId: workflow.tenantId,
+      workflowId: workflow.id,
+      stepId: step.id,
+      signerId: step.signerId || null,
+    },
+    {
+      email,
+      firstName: step.signerName || "",
+      title: `Signature request: ${workflow.subject}`,
+      message: lines.join("\n\n"),
+      actionUrl: signingPageUrl(),
+    },
+  );
 }
 
 // ==========================================
@@ -668,17 +770,10 @@ exports.signDocument = async (stepId, userId, signatureData) => {
       throw new AppError(409, explainUnsignableStep(step.status));
     }
 
-    // Verify this signer's turn
-    // istanbul ignore next -- unreachable: this repeats the identical
-    // `step.status !== "pending"` check a few lines above, which already threw;
-    // by this point step.status is always "pending". (Likely a copy/paste bug:
-    // the turn check should compare the step number, not the status.)
-    if (step.status !== "pending") {
-      throw new AppError(
-        400,
-        `It's not your turn to sign (step ${step.stepNumber})`,
-      );
-    }
+    // A-159 — a second, identical `step.status !== "pending"` check ("not
+    // your turn", 400) used to follow and could never run. The check above IS
+    // the turn check: a later signer's step is "waiting" until the previous
+    // step is signed.
 
     // A-65 — re-authenticate the signer with their own password or MFA code,
     // exactly as certificate approval does (the same function), BEFORE
@@ -694,7 +789,15 @@ exports.signDocument = async (stepId, userId, signatureData) => {
     if (!user || !user.isActive || user.status !== USER_STATUS.ACTIVE) {
       throw new AppError(401, "Re-authentication required");
     }
-    await require("./certificate.service").verifySignerCredentials(userId, method, authPayload);
+    // A-126: a wrong credential writes SIGNATURE_AUTH_FAILED about this step.
+    await require("./certificate.service").verifySignerCredentials(userId, method, authPayload, {
+      tenantId: step.tenantId,
+      resourceType: "SignatureWorkflowStep",
+      resourceId: step.id,
+      operation: "sign",
+      ipAddress: signatureData.ipAddress,
+      userAgent: signatureData.userAgent,
+    });
 
     // Get workflow
     const workflow = await SignatureWorkflow.findByPk(step.workflowId);
@@ -703,8 +806,16 @@ exports.signDocument = async (stepId, userId, signatureData) => {
     }
     // A-130 — a cancelled workflow keeps its pending step as it was, so the
     // step's own status does not stop a signature. Cancellation is final.
-    if (workflow.status === "cancelled") {
+    if (workflow.status === "cancelled" || workflow.status === "expired") {
       throw new AppError(409, explainClosedWorkflow(workflow.status, "signed"));
+    }
+    // A-159 — expiry. Nothing ever read expiresAt, so a workflow past its
+    // expiry went on collecting signatures, and nothing set "expired". With
+    // no scheduler, the first signature attempted after expiresAt records the
+    // expiry (with its audit row) and is refused with the state explanation.
+    if (workflow.expiresAt && new Date(workflow.expiresAt).getTime() <= Date.now()) {
+      await expireWorkflow(workflow, userId, signatureData);
+      throw new AppError(409, explainClosedWorkflow("expired", "signed"));
     }
 
     // Everything the signature binds is fixed HERE, before anything is signed,
@@ -782,8 +893,16 @@ exports.signDocument = async (stepId, userId, signatureData) => {
 
       if (everyoneSigned) {
         await workflow.update({ status: "completed" }, { transaction });
-      } else if (next) {
-        await next.update({ status: "pending" }, { transaction });
+      } else {
+        if (next) {
+          await next.update({ status: "pending" }, { transaction });
+        }
+        // A-159 — the first signature of a multi-signer workflow moves it
+        // from "pending" to "in_progress"; nothing used to, so a half-signed
+        // workflow read as untouched.
+        if (workflow.status === "pending") {
+          await workflow.update({ status: "in_progress" }, { transaction });
+        }
       }
 
       // A signature is a decision: APPROVE, with the operation named
@@ -820,7 +939,7 @@ exports.signDocument = async (stepId, userId, signatureData) => {
     });
 
     if (allSigned) {
-      await completeWorkflow(workflow.id);
+      await completeWorkflow(workflow);
     } else if (nextStep) {
       // Notify next signer
       await sendSignatureRequest(nextStep.signerEmail, workflow, nextStep);
@@ -869,37 +988,148 @@ function generateSignatureCertificate(signature, workflow) {
 }
 
 /**
- * Complete workflow and notify all parties
+ * A-159 — record that a workflow has expired: status "expired" and its audit
+ * row, in one transaction. Called by signDocument when a signature is
+ * attempted after expiresAt; the caller then refuses the signature (409).
+ *
+ * The audit row names the signer whose attempt found the expiry — the
+ * request that made the write — and says so in `changes.detectedBy`; there is
+ * no expiry job to name as a system actor.
+ *
+ * @param {Object} workflow - the SignatureWorkflow instance
+ * @param {string} userId - the signer who attempted to sign
+ * @param {Object} signatureData - for ipAddress / userAgent
  */
-async function completeWorkflow(workflowId) {
-  const { SignatureWorkflow, User } = require("../models");
-
-  try {
-    const workflow = await SignatureWorkflow.findByPk(workflowId);
-    if (!workflow) return;
-
-    // Notify document owner
-    const owner = await User.findOne({
-      where: { tenantId: workflow.tenantId, role: "TENANT_ADMIN" },
-    });
-
-    if (owner && owner.email) {
-      const { emailQueueService } = require("../services/emailQueue.service");
-      await emailQueueService.queueEmail({
-        to: owner.email,
-        subject: `Document signed: ${workflow.subject}`,
-        template: "document-completed",
-        data: {
-          workflowId: workflow.id,
-          completedAt: new Date().toISOString(),
+async function expireWorkflow(workflow, userId, signatureData) {
+  const previousStatus = workflow.status;
+  await db.transaction(async (transaction) => {
+    await workflow.update({ status: "expired" }, { transaction });
+    await auditService.logAction(
+      {
+        tenantId: workflow.tenantId,
+        userId,
+        action: "UPDATE",
+        resourceType: "SignatureWorkflow",
+        resourceId: workflow.id,
+        changes: {
+          operation: "EXPIRE",
+          before: { status: previousStatus },
+          after: { status: "expired" },
+          expiresAt: new Date(workflow.expiresAt).toISOString(),
+          detectedBy: "signature attempt after expiresAt",
         },
-      });
+        ipAddress: signatureData.ipAddress || null,
+        userAgent: signatureData.userAgent || null,
+      },
+      { transaction },
+    );
+  });
+  logger.info("Signature workflow expired", {
+    tenantId: workflow.tenantId,
+    workflowId: workflow.id,
+  });
+}
+
+/**
+ * Tell the requester and every signer that the workflow is complete.
+ *
+ * A-158 — this used to look for the "document owner" with
+ * `User.findOne({ where: { role: "TENANT_ADMIN" } })`: users carry `roleId`,
+ * there is no `role` column and no TENANT_ADMIN role, so the query failed on
+ * every completion (and, had it run, would have mailed an arbitrary admin).
+ *
+ * A-170 — the workflow now records its requester (`requestedBy`, set at
+ * creation from the actor). The requester is emailed first, then each signer;
+ * every address once. A workflow from before migration 0039 whose requester
+ * could not be backfilled has none, and only its signers are told.
+ *
+ * Never throws: the workflow has already committed as completed.
+ *
+ * @param {Object} workflow - the completed SignatureWorkflow
+ */
+async function completeWorkflow(workflow) {
+  const context = { tenantId: workflow.tenantId, workflowId: workflow.id };
+  const email = {
+    title: `Document signed: ${workflow.subject}`,
+    message:
+      `Every signer has signed "${workflow.subject}" (document ${workflow.documentId}). ` +
+      "The signature workflow is complete.",
+    actionUrl: signingPageUrl(),
+  };
+  const notified = new Set();
+
+  if (workflow.requestedBy) {
+    const requester = await findRequester(workflow, context);
+    if (requester) {
+      notified.add(requester.email);
+      await queueESignatureEmail(
+        "Workflow completion",
+        { ...context, requesterId: requester.id },
+        { ...email, email: requester.email, firstName: requester.firstName || "" },
+      );
     }
+  }
+
+  let steps;
+  try {
+    const { SignatureWorkflowStep } = require("../models");
+    steps = await SignatureWorkflowStep.findAll({
+      where: { workflowId: workflow.id },
+      order: [["stepNumber", "ASC"]],
+    });
   } catch (err) {
-    logger.warn("Failed to notify on workflow completion", {
-      workflowId,
+    logger.error("Workflow completion email was not sent: the signers could not be read", {
+      ...context,
       error: err.message,
     });
+    return;
+  }
+
+  for (const step of steps) {
+    if (!step.signerEmail || notified.has(step.signerEmail)) {
+      continue;
+    }
+    notified.add(step.signerEmail);
+    await queueESignatureEmail(
+      "Workflow completion",
+      { ...context, stepId: step.id, signerId: step.signerId || null },
+      { ...email, email: step.signerEmail, firstName: step.signerName || "" },
+    );
+  }
+}
+
+/**
+ * A-170 — the workflow's requester, for the completion email, read in the
+ * workflow's own tenant. A requester who cannot be read, or has no email
+ * address, is logged at ERROR (ids only) and skipped; the signers are still
+ * told.
+ *
+ * @param {Object} workflow
+ * @param {Object} context - log context
+ * @returns {Promise<Object|null>} the requester, with an email address
+ */
+async function findRequester(workflow, context) {
+  const logContext = { ...context, requesterId: workflow.requestedBy };
+  try {
+    const { User } = require("../models");
+    const requester = await User.findOne({
+      where: { id: workflow.requestedBy, tenantId: workflow.tenantId },
+      attributes: ["id", "email", "firstName"],
+    });
+    if (!requester || !requester.email) {
+      logger.error(
+        "Workflow completion email was not sent to the requester: no email address for them",
+        logContext,
+      );
+      return null;
+    }
+    return requester;
+  } catch (err) {
+    logger.error("Workflow completion email was not sent to the requester: they could not be read", {
+      ...logContext,
+      error: err.message,
+    });
+    return null;
   }
 }
 
@@ -1189,7 +1419,8 @@ const signerStepsInclude = (SignatureWorkflowStep, tenantId) => ({
  * @param {string} [filters.stepStatus] - only workflows where the caller's own
  *   step has this status; "pending" is "waiting for my signature"
  * @returns {Promise<Array>} workflows, newest first, each with its `steps`
- *   ordered by stepNumber
+ *   ordered by stepNumber and a derived `expired` flag; an expired workflow
+ *   the caller has not signed or declined in is left out (A-169)
  * @throws {AppError} 400 on an unknown stepStatus
  */
 exports.getSignerWorkflows = async (tenantId, userId, filters) => {
@@ -1216,7 +1447,7 @@ exports.getSignerWorkflows = async (tenantId, userId, filters) => {
     return [];
   }
 
-  return SignatureWorkflow.findAll({
+  const workflows = await SignatureWorkflow.findAll({
     where: { id: workflowIds, tenantId },
     attributes: SIGNER_WORKFLOW_ATTRIBUTES,
     include: [signerStepsInclude(SignatureWorkflowStep, tenantId)],
@@ -1225,7 +1456,49 @@ exports.getSignerWorkflows = async (tenantId, userId, filters) => {
       [{ model: SignatureWorkflowStep, as: "steps" }, "stepNumber", "ASC"],
     ],
   });
+
+  // A-169 — an expired workflow is not something to sign. It is left out
+  // of the list unless the caller has already acted in it (signed or
+  // declined), which keeps it as their record; asked for "pending" or
+  // "waiting" steps, it is always left out. What remains carries `expired`,
+  // so a workflow past its expiry date that no signature attempt has marked
+  // yet reads as expired. Nothing is written on this read.
+  const now = Date.now();
+  const actionable = stepStatus === "pending" || stepStatus === "waiting";
+  return workflows
+    .filter((workflow) => {
+      if (!isExpired(workflow, now)) {
+        return true;
+      }
+      if (actionable) {
+        return false;
+      }
+      // The steps include is required: false, so `steps` is always an array.
+      return workflow.steps.some(
+        (step) => step.signerId === userId && (step.status === "signed" || step.status === "declined"),
+      );
+    })
+    .map((workflow) => flagExpiry(workflow, now));
 };
+
+/**
+ * A-169 — set the derived `expired` field on a workflow the signer view
+ * returns. On a model instance it is set as a data value, so it is part of
+ * the JSON the route sends (a plain property would not be).
+ *
+ * @param {Object} workflow - a SignatureWorkflow instance (or a plain row)
+ * @param {number} now - ms since the epoch
+ * @returns {Object} the same workflow
+ */
+function flagExpiry(workflow, now) {
+  const expired = isExpired(workflow, now);
+  if (typeof workflow.setDataValue === "function") {
+    workflow.setDataValue("expired", expired);
+  } else {
+    workflow.expired = expired;
+  }
+  return workflow;
+}
 
 /**
  * One workflow, for a caller who is named in it as a signer.
@@ -1255,7 +1528,8 @@ exports.getSignerWorkflow = async (workflowId, tenantId, userId) => {
   if (!steps.some((step) => step.signerId === userId)) {
     throw new AppError(404, "Workflow not found");
   }
-  return workflow;
+  // A-169 — the one workflow says whether it has expired, as the list does.
+  return flagExpiry(workflow, Date.now());
 };
 
 /**
@@ -1304,8 +1578,8 @@ const findWorkflowForMutation = async (workflowId, tenantId, transaction) => {
 };
 
 /**
- * Update a workflow's editable metadata (subject/message/expiry). A completed or
- * cancelled workflow is immutable.
+ * Update a workflow's editable metadata (subject/message/expiry). A completed,
+ * cancelled or expired (A-168) workflow is immutable.
  *
  * A-104 — the update and its audit row commit together, or neither does. A
  * body that changes none of the editable fields writes nothing, audit row
@@ -1326,6 +1600,12 @@ exports.updateWorkflow = async (workflowId, tenantId, updates = {}, actor = {}) 
       // the same body is accepted while the workflow is open.
       if (workflow.status === "completed" || workflow.status === "cancelled") {
         throw new AppError(409, explainClosedWorkflow(workflow.status, "edited"));
+      }
+      // A-168 (decided) — an expired workflow is not edited either, not even
+      // to extend `expiresAt`: a new workflow is the way to re-request. Read
+      // under the lock, so an edit cannot race the expiry being recorded.
+      if (isExpired(workflow)) {
+        throw new AppError(409, explainExpiredWorkflowEdit(workflow.expiresAt));
       }
       // Only a safe subset of fields is mutable — the client cannot force a status
       // (e.g. "completed") or re-point the document.
@@ -1521,7 +1801,8 @@ exports.getEligibleSigners = async (tenantId) => {
  *   the audit row's user is always `userId`
  * @param {string} [reason] - why it was cancelled; recorded in the audit row
  * @throws {AppError} 404 when the workflow is not in the tenant; 409 when it
- *   is completed or already cancelled
+ *   is completed or already cancelled. An expired workflow may be cancelled
+ *   (A-168).
  */
 exports.cancelWorkflow = async (workflowId, userId, tenantId, actor = {}, reason) => {
   try {
@@ -1535,6 +1816,10 @@ exports.cancelWorkflow = async (workflowId, userId, tenantId, actor = {}, reason
         throw new AppError(409, explainClosedWorkflow(workflow.status, "cancelled"));
       }
 
+      // A-168 (decided) — an expired workflow MAY be cancelled: that is how
+      // it is closed, with this audit row, when no signature attempt has
+      // marked it expired. The row says it had expired.
+      const expired = isExpired(workflow);
       const previousStatus = workflow.status;
       await workflow.update({ status: "cancelled" }, { transaction });
       await auditWorkflowChange(
@@ -1545,7 +1830,10 @@ exports.cancelWorkflow = async (workflowId, userId, tenantId, actor = {}, reason
         workflowId,
         {
           operation: "CANCEL",
-          before: { status: previousStatus },
+          before: {
+            status: previousStatus,
+            ...(expired ? { expired: true, expiresAt: new Date(workflow.expiresAt).toISOString() } : {}),
+          },
           after: { status: "cancelled", ...(reason ? { reason } : {}) },
         },
       );

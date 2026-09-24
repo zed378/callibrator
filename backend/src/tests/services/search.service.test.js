@@ -1,6 +1,6 @@
 jest.mock("../../config", () => ({ db: { query: jest.fn() } }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));
 
 const search = require("../../services/search.service");
@@ -42,19 +42,104 @@ describe("search.service", () => {
     expect(r.byType.stock).toBeDefined();
   });
 
-  it("degrades to no results for a type when BOTH FTS and ILIKE fail", async () => {
+  // A-56. This was "degrades to no results for a type when BOTH FTS and ILIKE
+  // fail" — it pinned the defect: a broken statement rendered as "no results".
+  it("A-56: fails the search with a non-operational 500 when BOTH FTS and ILIKE fail, logging both causes", async () => {
     const { logger } = require("../../middlewares/activityLog.middleware");
     db.query
       .mockRejectedValueOnce(new Error("column search_vector does not exist"))
-      .mockRejectedValueOnce(new Error("relation does not exist"));
+      .mockRejectedValueOnce(new Error("permission denied for table calibration_devices"));
 
-    const r = await search.search("t1", { q: "widget", types: ["device"] });
+    const err = await search
+      .search("t1", { q: "widget", types: ["device"] })
+      .then(() => null, (e) => e);
 
-    // A dead type must not fail the whole search — it yields [] and logs.
-    expect(r.total).toBe(0);
+    expect(err).not.toBeNull();
+    expect(err.status).toBe(500);
+    // Non-operational: the production error path shows the generic message
+    // and the request id, never the SQL error text.
+    expect(err.isOperational).toBe(false);
+    expect(err.message).toBe("Search failed for device");
     expect(db.query).toHaveBeenCalledTimes(2);
-    expect(logger.warn).toHaveBeenCalled();
-    expect(logger.error).toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledWith(
+      "Search failed for calibration_devices",
+      expect.objectContaining({
+        type: "device",
+        ftsError: "column search_vector does not exist",
+        ilikeError: "permission denied for table calibration_devices",
+      }),
+    );
+  });
+
+  it("A-56: one failing type fails the whole search instead of returning the others as a complete answer", async () => {
+    db.query.mockImplementation(async (sql) =>
+      sql.includes('"certificates"')
+        ? Promise.reject(new Error("boom"))
+        : [{ id: "x", rank: 0.1 }],
+    );
+
+    await expect(search.search("t1", { q: "widget" })).rejects.toMatchObject({
+      status: 500,
+      message: "Search failed for certificate",
+    });
+  });
+
+  it("A-23: runs the per-type queries concurrently, not one after another", async () => {
+    // Every query is held open until all three have been issued. Sequential
+    // execution would issue only the first and then wait forever on it.
+    const pending = [];
+    db.query.mockImplementation(
+      () => new Promise((resolve) => pending.push(resolve)),
+    );
+
+    const run = search.search("t1", { q: "widget" });
+    await new Promise((r) => setImmediate(r));
+
+    expect(db.query).toHaveBeenCalledTimes(3);
+    pending.forEach((resolve) => resolve([]));
+    await expect(run).resolves.toMatchObject({ total: 0 });
+  });
+
+  it("A-23: a duplicated type is searched once", async () => {
+    db.query.mockResolvedValue([{ id: "d1", name: "X", rank: 0.3 }]);
+
+    const r = await search.search("t1", { q: "widget", types: ["device", "device"] });
+
+    expect(db.query).toHaveBeenCalledTimes(1);
+    expect(r.total).toBe(1);
+  });
+
+  it("A-23: warns about the ILIKE fallback once per table per process, then logs at debug", async () => {
+    // A fresh module instance, so the once-per-process memory starts empty
+    // whatever order the tests above ran in.
+    // The mocked config and logger are re-created in the isolated registry,
+    // so they are taken from it too.
+    let fresh;
+    let freshDb;
+    let logger;
+    jest.isolateModules(() => {
+      fresh = require("../../services/search.service");
+      freshDb = require("../../config").db;
+      ({ logger } = require("../../middlewares/activityLog.middleware"));
+    });
+    freshDb.query.mockImplementation(async (sql) => {
+      if (sql.includes("search_vector")) {
+        throw new Error("column search_vector does not exist");
+      }
+      return [];
+    });
+
+    await fresh.search("t1", { q: "widget", types: ["stock"] });
+    await fresh.search("t1", { q: "widget", types: ["stock"] });
+    await fresh.search("t1", { q: "widget", types: ["stock"] });
+
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(logger.warn.mock.calls[0][0]).toMatch(/FTS unavailable for stocks/);
+    expect(logger.debug).toHaveBeenCalledTimes(2);
+
+    // A different table still gets its own single warning.
+    await fresh.search("t1", { q: "widget", types: ["device"] });
+    expect(logger.warn).toHaveBeenCalledTimes(2);
   });
 
   it("applies the default limit when none is given", async () => {

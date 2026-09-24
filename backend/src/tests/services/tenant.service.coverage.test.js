@@ -1266,11 +1266,8 @@ describe("tenant.service - branch & error coverage", () => {
 
       // The key-value row wins; the JSONB-only key is merged in
       expect(result.data.settings).toEqual({ theme: "dark", locale: "id" });
-      expect(set).toHaveBeenCalledWith(
-        "tenant:settings:t-1",
-        expect.any(Object),
-        900,
-      );
+      // A-150: not cached — the cached copy held decrypted secrets.
+      expect(set).not.toHaveBeenCalled();
     });
 
     it("should ignore a non-object settings column", async () => {
@@ -1288,16 +1285,6 @@ describe("tenant.service - branch & error coverage", () => {
       const result = await tenantService.getTenantSettings("t-1");
 
       expect(result.data.settings).toEqual({});
-    });
-
-    it("should serve cached settings without querying", async () => {
-      get.mockResolvedValue({ tenant: { id: "t-1" }, settings: { theme: "dark" } });
-
-      const result = await tenantService.getTenantSettings("t-1");
-
-      expect(Tenants.findByPk).not.toHaveBeenCalled();
-      expect(result.message).toBe("Fetch tenant settings successful (cached)");
-      expect(result.data.settings).toEqual({ theme: "dark" });
     });
 
     it("should return 404 without caching when the tenant is missing", async () => {
@@ -1339,35 +1326,60 @@ describe("tenant.service - branch & error coverage", () => {
       expect(tx.rollback).toHaveBeenCalledTimes(1);
     });
 
-    it("should skip the internal tenantId and settings keys", async () => {
+    it("should skip tenantId and read the documented nested settings object (A-150)", async () => {
       Tenants.findByPk.mockResolvedValue(makeTenant());
 
       await tenantService.updateTenantSettings(
         "t-1",
-        { tenantId: "hack", settings: { nested: true }, theme: "dark" },
+        {
+          tenantId: "hack",
+          settings: { sso_enabled: true, tenantId: "hack2", settings: "x" },
+          ai_vendor: "openai",
+        },
         "admin",
       );
 
-      expect(TenantSettings.findOrCreate).toHaveBeenCalledTimes(1);
-      expect(TenantSettings.findOrCreate.mock.calls[0][0].where).toEqual({
-        tenantId: "t-1",
-        key: "theme",
-      });
+      expect(TenantSettings.findOrCreate.mock.calls.map((c) => c[0].where)).toEqual([
+        { tenantId: "t-1", key: "ai_vendor" },
+        { tenantId: "t-1", key: "sso_enabled" },
+      ]);
     });
 
-    it("should JSON-stringify object values and String() everything else", async () => {
+    it("should ignore a nested settings value that is not an object", async () => {
       Tenants.findByPk.mockResolvedValue(makeTenant());
 
       await tenantService.updateTenantSettings(
         "t-1",
-        { obj: { a: 1 }, num: 42, bool: false },
+        { settings: ["a"], ai_vendor: "openai" },
+        "admin",
+      );
+
+      expect(TenantSettings.findOrCreate.mock.calls.map((c) => c[0].where.key)).toEqual([
+        "ai_vendor",
+      ]);
+    });
+
+    it("should treat a missing body as no settings", async () => {
+      Tenants.findByPk.mockResolvedValue(makeTenant());
+
+      await tenantService.updateTenantSettings("t-1", undefined, "admin");
+
+      expect(TenantSettings.findOrCreate).not.toHaveBeenCalled();
+    });
+
+    it("should JSON-stringify null and String() every other scalar (A-176: objects are refused)", async () => {
+      Tenants.findByPk.mockResolvedValue(makeTenant());
+
+      await tenantService.updateTenantSettings(
+        "t-1",
+        { sso_idp_cert: null, mfa_required_min_role_level: 42, sso_enabled: false },
         "admin",
       );
 
       const defaults = TenantSettings.findOrCreate.mock.calls.map(
         (c) => c[0].defaults.value,
       );
-      expect(defaults).toEqual(['{"a":1}', "42", "false"]);
+      expect(defaults).toEqual(["null", "42", "false"]);
     });
 
     it("should update an existing setting rather than creating a duplicate", async () => {
@@ -1375,7 +1387,7 @@ describe("tenant.service - branch & error coverage", () => {
       const existing = { update: jest.fn().mockResolvedValue(undefined) };
       TenantSettings.findOrCreate.mockResolvedValue([existing, false]);
 
-      await tenantService.updateTenantSettings("t-1", { theme: "dark" }, "admin");
+      await tenantService.updateTenantSettings("t-1", { ai_vendor: "dark" }, "admin");
 
       expect(existing.update).toHaveBeenCalledWith(
         { value: "dark" },
@@ -1383,7 +1395,7 @@ describe("tenant.service - branch & error coverage", () => {
       );
     });
 
-    it("should sync all settings back to the JSONB column and clear the cache", async () => {
+    it("should not write tenants.settings, and should clear the cache (A-150)", async () => {
       const tenant = makeTenant();
       Tenants.findByPk.mockResolvedValue(tenant);
       TenantSettings.findAll.mockResolvedValue([
@@ -1393,14 +1405,11 @@ describe("tenant.service - branch & error coverage", () => {
 
       const result = await tenantService.updateTenantSettings(
         "t-1",
-        { theme: "dark" },
+        { ai_vendor: "dark" },
         "admin",
       );
 
-      expect(tenant.update).toHaveBeenCalledWith(
-        { settings: { theme: "dark", locale: "id" } },
-        { transaction: expect.any(Object) },
-      );
+      expect(tenant.update).not.toHaveBeenCalled();
       expect(del).toHaveBeenCalledWith("tenant:settings:t-1");
       expect(result.data).toEqual({ theme: "dark", locale: "id" });
     });
@@ -1412,7 +1421,7 @@ describe("tenant.service - branch & error coverage", () => {
       TenantSettings.findOrCreate.mockRejectedValue(new Error("upsert failed"));
 
       const err = await catchErr(
-        tenantService.updateTenantSettings("t-1", { theme: "dark" }, "admin"),
+        tenantService.updateTenantSettings("t-1", { ai_vendor: "dark" }, "admin"),
       );
 
       expect(err.message).toBe("upsert failed");

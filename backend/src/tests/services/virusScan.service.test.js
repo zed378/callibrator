@@ -77,6 +77,28 @@ describe("virusScan.service", () => {
       expect(logger.error).toHaveBeenCalled();
     });
 
+    // S-04: the Helm chart sets VIRUS_SCAN_PROVIDER=clamav and not
+    // CLAMAV_ENABLED, so clamAv.service skipped and every file read clean.
+    it("S-04: a SKIPPED scan (CLAMAV_ENABLED unset) is NOT clean — fail closed", async () => {
+      clamav.scanFile.mockResolvedValue({
+        isClean: true,
+        result: "Skipped (disabled)",
+        code: "SKIPPED",
+      });
+      const result = await scanFile("/uploads/x.pdf");
+      expect(result.clean).toBe(false);
+      expect(result.reason).toContain("CLAMAV_ENABLED is not");
+      expect(logger.error).toHaveBeenCalled();
+    });
+
+    it("S-04: a SKIPPED scan follows VIRUS_SCAN_FAIL_OPEN like any scanner error", async () => {
+      process.env.VIRUS_SCAN_FAIL_OPEN = "true";
+      clamav.scanFile.mockResolvedValue({ isClean: true, code: "SKIPPED" });
+      const result = await scanFile("/uploads/x.pdf");
+      expect(result.clean).toBe(true);
+      expect(result.reason).toContain("scan-error-allowed");
+    });
+
     it("fails OPEN on scanner error when VIRUS_SCAN_FAIL_OPEN=true", async () => {
       process.env.VIRUS_SCAN_FAIL_OPEN = "true";
       clamav.scanFile.mockRejectedValue(new Error("clamd unreachable"));

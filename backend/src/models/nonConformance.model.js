@@ -5,9 +5,9 @@ module.exports = (sequelize, DataTypes) => {
   class NonConformance extends Model {
     static associate(models) {
       NonConformance.belongsTo(models.Tenant, { foreignKey: "tenantId", as: "tenant", onDelete: "RESTRICT" });
-      NonConformance.belongsTo(models.User, { foreignKey: "reported_by", as: "reporter" });
-      NonConformance.belongsTo(models.CalibrationDevice, { foreignKey: "device_id", as: "device" });
-      NonConformance.hasMany(models.Capa, { foreignKey: "nc_id", as: "capas" });
+      NonConformance.belongsTo(models.User, { foreignKey: "reportedBy", as: "reporter", onDelete: "RESTRICT" });
+      NonConformance.belongsTo(models.CalibrationDevice, { foreignKey: "deviceId", as: "device", onDelete: "SET NULL" });
+      NonConformance.hasMany(models.Capa, { foreignKey: "ncId", as: "capas", onDelete: "RESTRICT" });
     }
   }
   

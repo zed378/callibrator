@@ -336,3 +336,23 @@ exports.resetUserMfa = asyncHandler(async (req, res) => {
 
   success(res, result.data, null, result.message, result.status);
 });
+
+/**
+ * A-162. POST /users/:userId/password/reset — a tenant administrator replaces
+ * another user's password with a temporary one, shown once. The target comes
+ * from the PATH; tenant, privilege and role level from the authenticated
+ * principal, never the body. The response carries a credential: it must not
+ * be cached anywhere on the way back.
+ */
+exports.resetUserPassword = asyncHandler(async (req, res) => {
+  const result = await userService.resetUserPassword({
+    userId: req.params.userId,
+    resetBy: req.user.id,
+    // rbac() ran first and refused a principal without a role.
+    actorRoleLevel: req.user.role.roleLevel,
+    ...getActor(req),
+  });
+
+  res.setHeader("Cache-Control", "no-store");
+  success(res, result.data, null, result.message, result.status);
+});

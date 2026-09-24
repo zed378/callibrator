@@ -57,12 +57,14 @@ const defineModel = (db, DataTypes) => {
 
   KanbanSprint.associate = (models) => {
     KanbanSprint.belongsTo(models.KanbanProject, {
-      foreignKey: "project_id",
+      foreignKey: "projectId",
       as: "project",
+      onDelete: "CASCADE",
     });
     KanbanSprint.hasMany(models.KanbanCard, {
-      foreignKey: "sprint_id",
+      foreignKey: "sprintId",
       as: "cards",
+      onDelete: "SET NULL",
     });
   };
 

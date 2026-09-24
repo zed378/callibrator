@@ -22,11 +22,22 @@ interface WebhookModalProps {
   originalUrl?: string | null;
 }
 
+// Mirrors backend/src/constants/webhookEvents.js (A-11) — every name here is
+// emitted; tests/services/webhookEmit.a11.test.js fails if the two drift.
+// `webhook.test` is not offered: the test button sends it regardless of the
+// subscription, so subscribing to it does nothing.
 const PREDEFINED_EVENTS = [
   "*",
   "device.calibration_due",
   "device.overdue",
-  "webhook.test",
+  "certificate.approved",
+  "certificate.signed",
+  "certificate.revoked",
+  "work_order.created",
+  "work_order.completed",
+  "stock_transfer.completed",
+  "capa.created",
+  "capa.closed",
 ];
 
 export const WebhookModal: React.FC<WebhookModalProps> = ({

@@ -9,10 +9,11 @@
  * Nothing here asserts that the module works end-to-end, and passing tests here
  * must not be read as evidence that it does.
  *
- * Deliberately NOT mocked: ../../services/emailQueue.service. The service does
- * `const { emailQueueService } = require("../services/emailQueue.service")`, but
- * that module exports no such key (see the notes on sendSignatureRequest below),
- * so the real module is loaded to exercise the real failure path.
+ * Deliberately NOT mocked: ../../services/emailQueue.service and
+ * email.service. A-158: the service used to call an export the email module
+ * never had (`emailQueueService.queueEmail`), and mocking the module let that
+ * stand. Only the transports are doubled (amqplib: broker down, so the
+ * synchronous fallback runs; nodemailer: mockSendMail).
  */
 
 // This file drives real RSA key generation (SIGNATURE_KEY_SIZE bits). Under a
@@ -65,6 +66,7 @@ const mockLogger = {
  * env must be set before the require.
  */
 const mockPassIsValid = jest.fn(async () => ({ data: { valid: true } }));
+const mockSendMail = jest.fn();
 const mockMaySign = jest.fn(async () => true);
 
 const loadService = ({ models = {}, env = {} } = {}) => {
@@ -80,6 +82,13 @@ const loadService = ({ models = {}, env = {} } = {}) => {
   jest.doMock("../../models", () => withKeys);
   jest.doMock("../../middlewares/activityLog.middleware", () => ({
     logger: mockLogger,
+  }));
+  // A-158 — email transports only; the email modules themselves are real.
+  jest.doMock("amqplib", () => ({
+    connect: jest.fn().mockRejectedValue(new Error("ECONNREFUSED")),
+  }));
+  jest.doMock("nodemailer", () => ({
+    createTransport: () => ({ sendMail: mockSendMail }),
   }));
   // A-65 — signing re-authenticates through certificate.service's shared
   // credential check; the password comparison is the boundary doubled here.
@@ -98,6 +107,7 @@ describe("eSignature.service (facade guard/error branches)", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockSendMail.mockReset().mockResolvedValue({ messageId: "m-1" });
     envBackup = {
       ESIGN_ENABLED: process.env.ESIGN_ENABLED,
       REQUIRE_REAUTHENTICATION: process.env.REQUIRE_REAUTHENTICATION,
@@ -240,26 +250,43 @@ describe("eSignature.service (facade guard/error branches)", () => {
       ).rejects.toMatchObject({ status: 403, message: "nope" });
     });
 
-    it("swallows the (always-failing) signature-request notification", async () => {
-      // sendSignatureRequest destructures `emailQueueService` from
-      // emailQueue.service, which does not export it => TypeError on every call.
-      // The try/catch means workflow creation still succeeds, silently.
+    it("A-158: sends the signature request to the first signer", async () => {
+      const models = buildModels();
+      const svc = loadService({ models });
+
+      await svc.createSignatureWorkflow("tenant-1", {
+        documentId: "doc-1",
+        signers: [{ userId: "u-1" }],
+      }, ADMIN);
+
+      expect(mockSendMail).toHaveBeenCalledWith(
+        expect.objectContaining({ to: "u-1@example.com", subject: "Signature request: Sign me" }),
+      );
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        "Signature request email queued",
+        expect.objectContaining({ workflowId: "wf-1", stepId: "step-1" }),
+      );
+    });
+
+    it("A-158: logs a failed signature request at error; the workflow is still created", async () => {
+      // Fail-before: the send threw a TypeError on every call (the export it
+      // called did not exist) and a catch logged it at warn.
+      mockSendMail.mockRejectedValue(new Error("SMTP 554"));
       const models = buildModels();
       const svc = loadService({ models });
 
       const result = await svc.createSignatureWorkflow("tenant-1", {
         documentId: "doc-1",
-        signers: [{ userId: "u-1", email: "a@b.com", name: "A" }],
+        signers: [{ userId: "u-1" }],
       }, ADMIN);
 
       expect(result.workflowId).toBe("wf-1");
-      expect(mockLogger.warn).toHaveBeenCalledWith(
-        "Failed to send signature request",
-        expect.objectContaining({ workflowId: "wf-1" }),
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        "Signature request email was not sent",
+        expect.objectContaining({ workflowId: "wf-1", stepId: "step-1" }),
       );
-      // No "Signature request sent" info log: the send never actually happened.
       expect(mockLogger.info).not.toHaveBeenCalledWith(
-        "Signature request sent",
+        "Signature request email queued",
         expect.anything(),
       );
     });
@@ -538,12 +565,13 @@ describe("eSignature.service (facade guard/error branches)", () => {
   describe("completeWorkflow (via signDocument)", () => {
     const activeUser = { findByPk: jest.fn().mockResolvedValue({ id: "u-1", status: "ACTIVE", isActive: true }) };
 
-    const buildModels = ({ workflowOnComplete, owner }) => {
+    const buildModels = ({ steps }) => {
       const workflow = {
         id: "wf-1",
         documentId: "doc-1",
         subject: "Sign me",
         tenantId: "tenant-1",
+        status: "pending",
         update: jest.fn().mockResolvedValue(true),
       };
       return {
@@ -558,77 +586,44 @@ describe("eSignature.service (facade guard/error branches)", () => {
               tenantId: "tenant-1",
               update: jest.fn().mockResolvedValue(true),
             }),
-            findAll: jest.fn().mockResolvedValue([{ status: "signed" }]),
+            findAll: jest.fn().mockResolvedValue(steps),
           },
-          SignatureWorkflow: {
-            // 1st call: signDocument's lookup. 2nd: completeWorkflow's re-read.
-            findByPk: jest
-              .fn()
-              .mockResolvedValueOnce(workflow)
-              .mockResolvedValue(workflowOnComplete),
-          },
+          SignatureWorkflow: { findByPk: jest.fn().mockResolvedValue(workflow) },
           SignatureRecord: {
             create: jest.fn().mockResolvedValue({ id: "sig-1", signedAt: new Date() }),
           },
           AuditLog: { create: jest.fn().mockResolvedValue(true) },
-          User: { ...activeUser, findOne: jest.fn().mockResolvedValue(owner) },
+          User: activeUser,
         },
       };
     };
 
-    it("completes the workflow and attempts to notify the tenant owner", async () => {
+    it("A-158: completes the workflow and emails its signers", async () => {
       const { workflow, models } = buildModels({
-        owner: { id: "owner-1", email: "owner@b.com" },
+        steps: [{ id: "step-1", status: "signed", signerId: "u-1", signerEmail: "a@b.com" }],
       });
-      models.SignatureWorkflow.findByPk = jest.fn().mockResolvedValue(workflow);
       const svc = loadService({ models });
 
       const result = await svc.signDocument("step-1", "u-1", { authPayload: "pw", reason: "Approved" });
 
       expect(result.signatureId).toBe("sig-1");
       expect(workflow.update).toHaveBeenCalledWith({ status: "completed" }, { transaction: "TX" });
-      // The owner notification uses the same broken emailQueueService import,
-      // so it is swallowed by completeWorkflow's catch.
-      expect(mockLogger.warn).toHaveBeenCalledWith(
-        "Failed to notify on workflow completion",
-        expect.objectContaining({ workflowId: "wf-1" }),
+      expect(mockSendMail).toHaveBeenCalledWith(
+        expect.objectContaining({ to: "a@b.com", subject: "Document signed: Sign me" }),
       );
-    });
-
-    it("skips the owner notification when no tenant owner is found", async () => {
-      const { workflow, models } = buildModels({ owner: null });
-      models.SignatureWorkflow.findByPk = jest.fn().mockResolvedValue(workflow);
-      const svc = loadService({ models });
-
-      await svc.signDocument("step-1", "u-1", { authPayload: "pw", reason: "Approved" });
-
-      expect(mockLogger.warn).not.toHaveBeenCalledWith(
-        "Failed to notify on workflow completion",
+      expect(mockLogger.error).not.toHaveBeenCalledWith(
+        "Workflow completion email was not sent",
         expect.anything(),
       );
     });
 
-    it("skips the owner notification when the owner has no email", async () => {
-      const { workflow, models } = buildModels({ owner: { id: "owner-1", email: null } });
-      models.SignatureWorkflow.findByPk = jest.fn().mockResolvedValue(workflow);
+    it("A-158: skips a step with no signer email", async () => {
+      const { models } = buildModels({ steps: [{ id: "step-1", status: "signed", signerEmail: null }] });
       const svc = loadService({ models });
 
       await svc.signDocument("step-1", "u-1", { authPayload: "pw", reason: "Approved" });
 
-      expect(mockLogger.warn).not.toHaveBeenCalledWith(
-        "Failed to notify on workflow completion",
-        expect.anything(),
-      );
-    });
-
-    it("returns quietly when the workflow disappears before completion", async () => {
-      const { models } = buildModels({ workflowOnComplete: null, owner: null });
-      const svc = loadService({ models });
-
-      await svc.signDocument("step-1", "u-1", { authPayload: "pw", reason: "Approved" });
-
-      // completeWorkflow bailed at `if (!workflow) return` — no owner lookup.
-      expect(models.User.findOne).not.toHaveBeenCalled();
+      expect(mockSendMail).not.toHaveBeenCalled();
     });
   });
 

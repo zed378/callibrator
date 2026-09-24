@@ -58,7 +58,7 @@ const maintenanceController = require("../../controllers/maintenance.controller"
 router.get(
   "/",
   auth,
-  dynamicAccess("Maintenance", "read", { checkTenant: true }),
+  dynamicAccess("maintenance", "read", { checkTenant: true }),
   maintenanceController.fetchWorkOrders
 );
 
@@ -88,7 +88,7 @@ router.get(
   "/:orderId",
   auth,
   validateUuid("orderId"),
-  dynamicAccess("Maintenance", "read", { checkTenant: true }),
+  dynamicAccess("maintenance", "read", { checkTenant: true }),
   maintenanceController.getWorkOrderById
 );
 
@@ -138,7 +138,7 @@ router.get(
 router.post(
   "/",
   auth,
-  dynamicAccess("Maintenance", "create", { checkTenant: true }),
+  dynamicAccess("maintenance", "create", { checkTenant: true }),
   validate(maintenanceValidator.createWorkOrder),
   maintenanceController.createWorkOrder
 );
@@ -195,7 +195,7 @@ router.patch(
   "/:orderId",
   auth,
   validateUuid("orderId"),
-  dynamicAccess("Maintenance", "update", { checkTenant: true }),
+  dynamicAccess("maintenance", "update", { checkTenant: true }),
   validate(maintenanceValidator.updateWorkOrder),
   maintenanceController.updateWorkOrder
 );
@@ -226,7 +226,7 @@ router.delete(
   "/:orderId",
   auth,
   validateUuid("orderId"),
-  dynamicAccess("Maintenance", "delete", { checkTenant: true }),
+  dynamicAccess("maintenance", "delete", { checkTenant: true }),
   maintenanceController.deleteWorkOrder
 );
 

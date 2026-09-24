@@ -2,15 +2,20 @@
  * ClamAV Virus Scanning Service
  *
  * Scans uploaded files using ClamAV antivirus engine.
- * Supports both socket mode (local ClamAV) and HTTP mode (ClamAV HTTP).
+ * Supports both socket mode (clamd over TCP or a Unix socket) and HTTP mode
+ * (a ClamAV HTTP front end).
  *
  * Usage:
  *   const { scanFile } = require('./services/clamAv.service');
- *   const isClean = await scanFile(filePath);
+ *   const { isClean } = await scanFile(filePath);
+ *
+ * S-04: a reply that is not a verdict is an ERROR, never clean. Only
+ * `stream: OK` is clean and only `stream: <signature> FOUND` is infected.
  */
 
 const net = require("net");
 const fs = require("fs");
+const crypto = require("crypto");
 const { logger } = require("../middlewares/activityLog.middleware");
 const { AppError } = require("../utils/appError.util");
 const { withCircuitBreaker } = require("../utils/circuitBreaker.util");
@@ -42,8 +47,13 @@ const CLAMAV_CODES = {
 };
 
 // ==========================================
-// FILE HASH CACHE (prevent re-scanning)
+// SCAN VERDICT CACHE (S-17: keyed by content hash)
 // ==========================================
+//
+// Keyed by the SHA-256 of the file's CONTENT. It used to be keyed by
+// `${size}:${mtimeMs}` under a heading calling it a hash, so two files of the
+// same length written in the same millisecond shared a verdict (S-17). Only a
+// definitive verdict (clean or FOUND) is cached, never an error.
 
 class ScanCache {
   constructor(maxSize = 10000, ttlMs = 24 * 60 * 60 * 1000) {
@@ -54,7 +64,9 @@ class ScanCache {
 
   get(hash) {
     const entry = this._cache.get(hash);
-    if (!entry) return null;
+    if (!entry) {
+      return null;
+    }
 
     if (Date.now() > entry.expiresAt) {
       this._cache.delete(hash);
@@ -88,98 +100,229 @@ class ScanCache {
 
 const scanCache = new ScanCache();
 
+/**
+ * SHA-256 of a file's content, hex: the scan cache key (S-17).
+ * @param {string} filePath
+ * @returns {Promise<string>}
+ */
+const hashFile = (filePath) =>
+  new Promise((resolve, reject) => {
+    const hash = crypto.createHash("sha256");
+    const stream = fs.createReadStream(filePath);
+    stream.on("data", (d) => hash.update(d));
+    stream.on("end", () => resolve(hash.digest("hex")));
+    stream.on("error", reject);
+  });
+
 // ==========================================
-// SOCKET MODE SCAN
+// CLAMD PROTOCOL (S-04)
 // ==========================================
+//
+// clamd's INSTREAM, per clamd(8):
+//
+//   zINSTREAM\0                    the command. The `z` prefix means the
+//                                  command and the reply are NUL-terminated.
+//   <uint32 BE length><bytes> ...  the file in chunks, each prefixed with its
+//                                  length as 4 bytes in network byte order
+//   \0\0\0\0                       a zero-length chunk ends the stream
+//
+// and the reply is one of
+//
+//   stream: OK
+//   stream: <signature> FOUND
+//   <anything else> ERROR          e.g. "INSTREAM size limit exceeded. ERROR"
+//
+// The previous implementation sent `STANDBY` (not a clamd command: clamd
+// answers `UNKNOWN COMMAND`), then the raw file with no framing, and read any
+// reply without the literal `FOUND` as clean. Here anything that is not
+// exactly OK or FOUND is an error, and an error is never clean.
+
+/** The largest chunk written per INSTREAM frame (clamd's StreamMaxLength caps the total). */
+const INSTREAM_CHUNK_SIZE = 64 * 1024;
+
+/** The command that opens a stream scan: `z` prefix, NUL-terminated. */
+const INSTREAM_COMMAND = Buffer.from("zINSTREAM\0", "latin1");
+
+/** The zero-length chunk that ends a stream. */
+const INSTREAM_TERMINATOR = Buffer.alloc(4);
 
 /**
- * Send STANDBY command to ClamAV
+ * One INSTREAM frame: a 4-byte big-endian length, then the bytes.
+ * @param {Buffer} chunk
+ * @returns {Buffer}
  */
-async function sendStandby(socket) {
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(
-      () => reject(new Error("ClamAV STANDBY timeout")),
-      5000,
-    );
+function frameChunk(chunk) {
+  const header = Buffer.alloc(4);
+  header.writeUInt32BE(chunk.length, 0);
+  return Buffer.concat([header, chunk]);
+}
 
-    socket.write("STANDBY\r\n");
-    socket.once("data", (data) => {
-      clearTimeout(timeout);
-      if (data.toString().trim() === "OK") {
-        resolve();
-      } else {
-        reject(new Error("ClamAV STANDBY failed"));
-      }
-    });
+/** Strip a reply's NUL / CR / LF terminators and surrounding blanks. */
+const cleanReply = (reply) =>
+  String(reply === null || reply === undefined ? "" : reply)
+    .replace(/[\0\r\n]+$/g, "")
+    .trim();
+
+/**
+ * Parse a clamd scan reply. Only two shapes are verdicts; everything else
+ * (`UNKNOWN COMMAND`, `... ERROR`, an empty or truncated reply) throws.
+ *
+ * @param {string} reply - the raw reply (NUL / newline terminators allowed)
+ * @returns {{isClean: boolean, code: string, result: string, signature?: string}}
+ * @throws {Error} with `code: "CLAMAV_NO_VERDICT"` for a reply that is not a verdict
+ */
+function parseClamdReply(reply) {
+  const text = cleanReply(reply);
+  if (/^(?:stream: )?OK$/.test(text)) {
+    return { isClean: true, code: CLAMAV_CODES.OK, result: text };
+  }
+  const found = /^(?:stream: )?(.+) FOUND$/.exec(text);
+  if (found) {
+    return {
+      isClean: false,
+      code: CLAMAV_CODES.FOUND,
+      result: text,
+      signature: found[1],
+    };
+  }
+  const err = new Error(
+    `ClamAV returned no verdict: ${text ? JSON.stringify(text.slice(0, 200)) : "an empty reply"}`,
+  );
+  err.code = "CLAMAV_NO_VERDICT";
+  err.reply = text;
+  throw err;
+}
+
+/**
+ * Write to a socket, respecting back-pressure.
+ * @param {import("net").Socket} socket
+ * @param {Buffer} buf
+ * @returns {Promise<void>}
+ */
+function writeAsync(socket, buf) {
+  return new Promise((resolve, reject) => {
+    if (socket.destroyed) {
+      reject(new Error("ClamAV connection closed while sending"));
+      return;
+    }
+    if (socket.write(buf)) {
+      resolve();
+      return;
+    }
+    const onDrain = () => {
+      socket.off("close", onClose);
+      resolve();
+    };
+    const onClose = () => {
+      socket.off("drain", onDrain);
+      reject(new Error("ClamAV connection closed while sending"));
+    };
+    socket.once("drain", onDrain);
+    socket.once("close", onClose);
   });
 }
 
 /**
- * Scan a file via ClamAV socket
+ * Connect to clamd (TCP, or a Unix socket when CLAMAV_SOCKET_PATH is set), run
+ * `writeBody`, and resolve with the reply up to its NUL terminator, or up to
+ * the connection's end when clamd closes without one.
+ *
+ * @param {(socket: import("net").Socket) => Promise<void>} writeBody
+ * @param {string} label - the command, for error messages
+ * @returns {Promise<string>} the reply text
+ * @throws {Error} a connection error, or a timeout after CLAMAV_TIMEOUT ms
  */
-async function scanViaSocket(filePath) {
+function clamdExchange(writeBody, label) {
   return new Promise((resolve, reject) => {
     const socket = new net.Socket();
-    const timeout = setTimeout(() => {
+    const chunks = [];
+    let settled = false;
+    let timer = null;
+
+    const finish = (err, value) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
       socket.destroy();
-      reject(new Error("ClamAV scan timeout"));
-    }, CLAMAV_TIMEOUT);
-
-    socket.on("error", (err) => {
-      clearTimeout(timeout);
-      reject(err);
-    });
-
-    const connectPromise = new Promise((resolve, reject) => {
-      if (CLAMAV_SOCKET_PATH) {
-        socket.connect(CLAMAV_SOCKET_PATH, () => resolve());
+      if (err) {
+        reject(err);
       } else {
-        socket.connect(CLAMAV_PORT, CLAMAV_HOST, () => resolve());
+        resolve(value);
+      }
+    };
+
+    const replyText = () => Buffer.concat(chunks).toString("latin1");
+
+    timer = setTimeout(
+      () => finish(new Error(`ClamAV ${label} timed out after ${CLAMAV_TIMEOUT}ms`)),
+      CLAMAV_TIMEOUT,
+    );
+
+    socket.on("data", (data) => {
+      chunks.push(data);
+      const text = replyText();
+      const nul = text.indexOf("\0");
+      if (nul !== -1) {
+        finish(null, text.slice(0, nul));
       }
     });
+    // A `z` command's reply ends in NUL, which settles the exchange above
+    // before clamd closes — so a write that fails after clamd has answered
+    // (it stops reading once it has decided, e.g. "INSTREAM size limit
+    // exceeded") is a no-op here: `finish` runs once. A close with no
+    // NUL-terminated reply resolves whatever arrived, possibly "", and
+    // parseClamdReply refuses anything that is not a verdict.
+    socket.on("close", () => finish(null, replyText()));
+    socket.on("error", (err) => finish(err));
 
-    connectPromise
-      .then(async () => {
-        try {
-          // Send STANDBY to ensure server is ready
-          await sendStandby(socket);
-
-          // Read file and send to scanner
-          const fileBuffer = fs.readFileSync(filePath);
-          const fileSize = fileBuffer.length;
-
-          // Send INSTREAM command
-          socket.write("INSTREAM\r\n");
-
-          // Send file data
-          socket.write(fileBuffer);
-          socket.write("\r\n");
-
-          // Read response
-          let response = "";
-          socket.once("data", (data) => {
-            response = data.toString();
-            clearTimeout(timeout);
-            socket.destroy();
-
-            const statusCode = response.includes(CLAMAV_CODES.FOUND)
-              ? CLAMAV_CODES.FOUND
-              : CLAMAV_CODES.OK;
-
-            resolve({
-              isClean: statusCode === CLAMAV_CODES.OK,
-              result: response.trim(),
-              code: statusCode,
-            });
-          });
-        } catch (err) {
-          clearTimeout(timeout);
-          socket.destroy();
-          reject(err);
-        }
-      })
-      .catch(reject);
+    const onConnect = () => {
+      writeBody(socket).catch((err) => finish(err));
+    };
+    if (CLAMAV_SOCKET_PATH) {
+      socket.connect(CLAMAV_SOCKET_PATH, onConnect);
+    } else {
+      socket.connect(CLAMAV_PORT, CLAMAV_HOST, onConnect);
+    }
   });
+}
+
+/**
+ * Scan a file via clamd's INSTREAM command.
+ * @param {string} filePath
+ * @returns {Promise<{isClean: boolean, code: string, result: string, signature?: string}>}
+ * @throws {Error} on a connection failure, a timeout, or a reply that is not a verdict
+ */
+async function scanViaSocket(filePath) {
+  const reply = await clamdExchange(async (socket) => {
+    await writeAsync(socket, INSTREAM_COMMAND);
+    const stream = fs.createReadStream(filePath, {
+      highWaterMark: INSTREAM_CHUNK_SIZE,
+    });
+    try {
+      for await (const chunk of stream) {
+        await writeAsync(socket, frameChunk(chunk));
+      }
+    } finally {
+      stream.destroy();
+    }
+    await writeAsync(socket, INSTREAM_TERMINATOR);
+  }, "INSTREAM");
+  return parseClamdReply(reply);
+}
+
+/**
+ * clamd's readiness probe: `zPING\0`, answered by `PONG`.
+ * @returns {Promise<boolean>} true only for a PONG
+ * @throws {Error} a connection error or a timeout
+ */
+async function ping() {
+  const reply = await clamdExchange(
+    (socket) => writeAsync(socket, Buffer.from("zPING\0", "latin1")),
+    "PING",
+  );
+  return cleanReply(reply) === "PONG";
 }
 
 // ==========================================
@@ -187,7 +330,8 @@ async function scanViaSocket(filePath) {
 // ==========================================
 
 /**
- * Scan a file via ClamAV HTTP interface
+ * Scan a file via a ClamAV HTTP interface. The body is parsed exactly like a
+ * clamd reply (S-04): a body that is neither OK nor FOUND is an error.
  */
 async function scanViaHttp(filePath) {
   const axios = require("axios");
@@ -201,27 +345,21 @@ async function scanViaHttp(filePath) {
     headers["X-HTTP-Key"] = CLAMAV_HTTP_KEY;
   }
 
+  let response;
   try {
-    const response = await axios.post(CLAMAV_HTTP_URL, fileBuffer, {
+    response = await axios.post(CLAMAV_HTTP_URL, fileBuffer, {
       headers,
       timeout: CLAMAV_TIMEOUT,
       responseType: "text",
     });
-
-    const result = response.data.trim();
-    const isClean = !result.includes(CLAMAV_CODES.FOUND);
-
-    return {
-      isClean,
-      result,
-      code: isClean ? CLAMAV_CODES.OK : CLAMAV_CODES.FOUND,
-    };
   } catch (err) {
     if (err.response) {
       throw new AppError(500, `ClamAV HTTP error: ${err.response.status}`);
     }
     throw new AppError(500, "ClamAV HTTP scan failed");
   }
+
+  return parseClamdReply(response.data);
 }
 
 // ==========================================
@@ -229,11 +367,15 @@ async function scanViaHttp(filePath) {
 // ==========================================
 
 /**
- * Scan a file for viruses using ClamAV
+ * Scan a file for viruses using ClamAV.
+ *
  * @param {string} filePath - Path to the file to scan
- * @param {boolean} useCache - Whether to use hash cache
+ * @param {boolean} useCache - Whether to use the content-hash verdict cache
  * @returns {Promise<{isClean: boolean, result: string, code: string}>}
- * @throws {AppError} If scanning fails and CLAMAV_DISABLE_ON_ERROR is false
+ *   `code` is OK, FOUND, CACHE, SKIPPED (CLAMAV_ENABLED is not "true") or
+ *   ALLOWED (a scan error let through by CLAMAV_DISABLE_ON_ERROR)
+ * @throws {AppError} 500 when the scan fails (connection, timeout, a reply
+ *   that is not a verdict) and CLAMAV_DISABLE_ON_ERROR is not set
  */
 exports.scanFile = async (filePath, useCache = true) => {
   if (!CLAMAV_ENABLED) {
@@ -245,18 +387,16 @@ exports.scanFile = async (filePath, useCache = true) => {
     throw new AppError(400, "File path is required for scanning");
   }
 
-  // Check cache
-  if (useCache) {
-    const stat = await fs.promises.stat(filePath);
-    const hash = `${stat.size}:${stat.mtimeMs}`;
-    const cached = scanCache.get(hash);
-    if (cached !== null) {
-      logger.debug("ClamAV cache hit", { filePath, isClean: cached });
-      return { isClean: cached, result: "Cache hit", code: "CACHE" };
-    }
-  }
-
   try {
+    const contentHash = useCache ? await hashFile(filePath) : null;
+    if (contentHash) {
+      const cached = scanCache.get(contentHash);
+      if (cached !== null) {
+        logger.debug("ClamAV cache hit", { filePath, isClean: cached });
+        return { isClean: cached, result: "Cache hit", code: "CACHE" };
+      }
+    }
+
     let result;
 
     if (CLAMAV_HTTP_MODE && CLAMAV_HTTP_URL) {
@@ -267,11 +407,9 @@ exports.scanFile = async (filePath, useCache = true) => {
       );
     }
 
-    // Cache result
-    if (useCache) {
-      const stat = await fs.promises.stat(filePath);
-      const hash = `${stat.size}:${stat.mtimeMs}`;
-      scanCache.set(hash, result.isClean);
+    // Only a verdict reaches here; an error has thrown above.
+    if (contentHash) {
+      scanCache.set(contentHash, result.isClean);
     }
 
     if (!result.isClean) {
@@ -299,10 +437,12 @@ exports.scanFile = async (filePath, useCache = true) => {
     }
 
     logger.error("ClamAV scan error", { error: err.message, filePath });
-    throw new AppError(
+    const unavailable = new AppError(
       500,
       "File scan service unavailable. Please try again later.",
     );
+    unavailable.cause = err;
+    throw unavailable;
   }
 };
 
@@ -380,6 +520,13 @@ exports.getStatus = () => {
     cacheSize: scanCache.size(),
   };
 };
+
+exports.ping = ping;
+exports.parseClamdReply = parseClamdReply;
+exports.frameChunk = frameChunk;
+exports.hashFile = hashFile;
+exports.writeAsync = writeAsync;
+exports.INSTREAM_CHUNK_SIZE = INSTREAM_CHUNK_SIZE;
 
 if (process.env.NODE_ENV === "test") {
   exports.scanCache = scanCache;

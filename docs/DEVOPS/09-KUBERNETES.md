@@ -32,9 +32,23 @@ deploy/helm/callibrator/
     └── frontend/
 ```
 
-## Two Configurations the Chart Refuses to Render
+## Object Names
 
-Guard rails that fail the **render** rather than the cluster.
+Every object is named `<base>-<component>` by one helper, `callibrator.baseName` in [`templates/_helpers.tpl`](../../deploy/helm/callibrator/templates/_helpers.tpl), which the umbrella **and both subcharts** use:
+
+| Release | `<base>` | Objects |
+|---|---|---|
+| `callibrator` (the Makefile default) | `callibrator` | `callibrator-backend`, `callibrator-frontend`, `callibrator-config`, `callibrator-secrets` |
+| `prod` | `prod-callibrator` | `prod-callibrator-backend`, … |
+| any, with `global.fullnameOverride=x` | `x` | `x-backend`, … |
+
+Before S-27/S-06 the umbrella and the subcharts used two different rules, and **no release name rendered a consistent set**: under `callibrator` the ingress targeted services that did not exist and the backend's `envFrom` named a ConfigMap that did not exist; under any other name the backend named a Secret (`callibrator-secrets`) that did not exist. Both render cleanly and fail only in a cluster (`CreateContainerConfigError`).
+
+Pods run with numeric ids matching the images: backend 997 (`backend/Dockerfile`), frontend 1001 (`frontend/Dockerfile`). With `runAsNonRoot` and a **named** image user, the kubelet refuses the container.
+
+## Configurations the Chart Refuses to Render
+
+Guard rails that fail the **render** rather than the cluster. Six, in [`templates/guards.tpl`](../../deploy/helm/callibrator/templates/guards.tpl): a missing image tag, cron with more than one replica, a missing required secret, production with no CORS origin, a value that moved (and would otherwise be ignored), and `VIRUS_SCAN_PROVIDER=clamav` with no `backend.clamav.host` (S-31 — the chart runs no ClamAV; clamd is external, like PostgreSQL, and since S-04 a clamav provider without `CLAMAV_ENABLED` refuses every upload). The first two:
 
 ### 1. A missing `image.tag`
 
@@ -91,15 +105,17 @@ A pod returning 503 on readiness is correctly kept out of rotation, which is exa
 
 ## Secrets
 
-Three are **required** — the application exits without them:
+Four are **required** — the application exits without them, and the chart refuses to render without them (guard 3):
 
 ```
-CERT_SIGNING_SECRET  ENCRYPT_KEY  ATTACHMENT_URL_SECRET
+CERT_SIGNING_SECRET  ENCRYPT_KEY  ATTACHMENT_URL_SECRET  KMS_MASTER_KEY
 ```
 
-Kubernetes Secrets, optionally external via a secrets operator.
+`KMS_MASTER_KEY` was missing from the chart until S-05, although compose and the Makefile already required it. `backend/src/services/kms.service.js` throws at startup in production without it, and because production writes nothing to stdout the pod crash-loops with **empty logs**. Values key: `secrets.kmsMasterKey`.
 
-**They must be backed up separately from the cluster and from the database.** A cluster rebuild that recreates everything except these produces a system that starts cleanly and is permanently broken — every certificate fails verification, every wrapped credential is undecryptable ([`../SECURITY/07-CRYPTOGRAPHY-AND-SECRETS.md`](../SECURITY/07-CRYPTOGRAPHY-AND-SECRETS.md)).
+Kubernetes Secrets, chart-managed (`<base>-secrets`) or external via a secrets operator: `global.secrets.external.enabled` and `global.secrets.external.secretName`. The switch lives under **`global`** because the backend subchart must compute the same Secret name the umbrella creates, and a subchart sees only its own values and `global` (S-06). The old `secrets.external` key refuses to render rather than being ignored. An external Secret must carry the same keys [`templates/secret.yaml`](../../deploy/helm/callibrator/templates/secret.yaml) writes.
+
+**`CERT_SIGNING_SECRET`, `ENCRYPT_KEY` and `KMS_MASTER_KEY` must be backed up separately from the cluster and from the database.** A cluster rebuild that recreates everything except these produces a system that starts cleanly and is permanently broken — every certificate fails verification, every wrapped credential is undecryptable ([`../SECURITY/07-CRYPTOGRAPHY-AND-SECRETS.md`](../SECURITY/07-CRYPTOGRAPHY-AND-SECRETS.md)).
 
 ## Ingress
 

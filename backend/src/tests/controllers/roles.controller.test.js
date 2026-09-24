@@ -420,7 +420,7 @@ describe("roles Controller", () => {
 
       await rolesController.createMenu(req, res, next);
 
-      expect(rolesService.createMenu).toHaveBeenCalledWith(req.body);
+      expect(rolesService.createMenu).toHaveBeenCalledWith(req.body, ACTOR);
       expect(res.status).toHaveBeenCalledWith(201);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
@@ -444,7 +444,7 @@ describe("roles Controller", () => {
 
       await rolesController.updateMenu(req, res, next);
 
-      expect(rolesService.updateMenu).toHaveBeenCalledWith("mg-1", req.body);
+      expect(rolesService.updateMenu).toHaveBeenCalledWith("mg-1", req.body, ACTOR);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
         data: expect.objectContaining({
@@ -461,7 +461,7 @@ describe("roles Controller", () => {
 
       await rolesController.deleteMenu(req, res, next);
 
-      expect(rolesService.deleteMenu).toHaveBeenCalledWith("mg-1");
+      expect(rolesService.deleteMenu).toHaveBeenCalledWith("mg-1", ACTOR);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
         message: expect.stringContaining("deleted")

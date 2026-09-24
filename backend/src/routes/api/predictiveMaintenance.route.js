@@ -84,8 +84,14 @@ router.get(
  *       401:
  *         description: Unauthorized
  *       404:
- *         description: Device not found
+ *         description: Device not found (including another tenant's)
+ *       409:
+ *         description: The device has no pending recommendation
  */
+// A-145 — reviewed and deliberately NOT a Part 11 authoring route (no
+// denyPlatformAuthoring): it sets calibrationIntervalDays, the same field
+// PUT /calibration-devices/:id edits with the same `calibration` write grant.
+// The change and its audit row are written in one transaction.
 router.post(
   "/recommendations/:deviceId/approve",
   validateUuid("deviceId"),

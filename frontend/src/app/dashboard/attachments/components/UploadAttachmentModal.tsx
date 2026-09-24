@@ -23,6 +23,21 @@ const RESOURCE_TYPE_OPTIONS = [
   { value: "calibration", label: "Calibration Record" },
 ];
 
+/**
+ * A-118 — the types a file can be LINKED to a record of. The backend refuses a
+ * record id for any other type with a 400 (attachment.service
+ * LINKABLE_RESOURCES, A-97), so for those the id field is not offered at all.
+ */
+export const LINKABLE_RESOURCE_TYPES: ReadonlySet<string> = new Set([
+  "device",
+  "certificate",
+  "workorder",
+  "calibration",
+]);
+
+export const isLinkableResourceType = (resourceType: string) =>
+  LINKABLE_RESOURCE_TYPES.has(resourceType.trim().toLowerCase());
+
 // Documents + images (must match the backend allowlist).
 const ACCEPT =
   ".jpg,.jpeg,.png,.gif,.webp,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt";
@@ -85,24 +100,41 @@ export const UploadAttachmentModal: React.FC<UploadAttachmentModalProps> = ({
           </label>
           <Select
             value={form.resourceType}
-            onChange={(value) => setForm({ ...form, resourceType: value })}
+            onChange={(value) =>
+              setForm({
+                ...form,
+                resourceType: value,
+                // A stale id typed for a linkable type must not ride along.
+                resourceId: isLinkableResourceType(value) ? form.resourceId : "",
+              })
+            }
             options={RESOURCE_TYPE_OPTIONS}
           />
         </div>
 
-        <div>
-          <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
-            Linked Record ID
-          </label>
-          <Input
-            value={form.resourceId}
-            onChange={(e) => setForm({ ...form, resourceId: e.target.value })}
-            placeholder="Optional — e.g. a device or certificate UUID"
-          />
-          <p className="text-xs text-muted-foreground mt-1">
-            Leave empty for a standalone file.
+        {isLinkableResourceType(form.resourceType) ? (
+          <div>
+            <label
+              htmlFor="attachment-resource-id"
+              className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1"
+            >
+              Linked Record ID
+            </label>
+            <Input
+              id="attachment-resource-id"
+              value={form.resourceId}
+              onChange={(e) => setForm({ ...form, resourceId: e.target.value })}
+              placeholder="Optional — the record's UUID"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Leave empty for a standalone file.
+            </p>
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            A general file is stored on its own and is not linked to a record.
           </p>
-        </div>
+        )}
 
         <div className="flex justify-end gap-3 pt-2">
           <Button type="button" variant="outline" onClick={onClose}>

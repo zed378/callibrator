@@ -2,7 +2,6 @@ const { Op } = require("sequelize");
 const predictiveMaintenanceService = require("../services/predictiveMaintenance.service");
 const { success } = require("../utils/response.util");
 const { CalibrationDevice } = require("../models");
-const { AppError } = require("../utils/appError.util");
 const { tenantStorage } = require("../middlewares/tenantContext.middleware");
 
 exports.analyzeDevice = async (req, res, next) => {
@@ -44,28 +43,18 @@ exports.getRecommendations = async (req, res, next) => {
   }
 };
 
+// A-145 — the interval change and its audit row are written together by the
+// service; the approving user is the caller.
 exports.approveRecommendation = async (req, res, next) => {
   try {
     const { deviceId } = req.params;
     const { tenantId } = tenantStorage.getStore();
 
-    const device = await CalibrationDevice.findOne({
-      where: { id: deviceId, tenantId }
-    });
-
-    if (!device) {
-      throw new AppError(404, "Device not found");
-    }
-
-    if (!device.recommendedCalibrationInterval) {
-      throw new AppError(400, "Device does not have a pending recommendation");
-    }
-
-    await device.update({
-      calibrationIntervalDays: device.recommendedCalibrationInterval,
-      recommendedCalibrationInterval: null,
-      recommendationReason: null
-    });
+    const device = await predictiveMaintenanceService.approveRecommendation(
+      tenantId,
+      deviceId,
+      req.user.id,
+    );
 
     return success(res, device, null, "Recommendation applied successfully");
   } catch (error) {

@@ -65,13 +65,13 @@ const defineModel = (db, DataTypes) => {
   RoleMenuPermission.associate = (models) => {
     // RoleMenuPermission -> Role
     RoleMenuPermission.belongsTo(models.Role, {
-      foreignKey: "role_id",
+      foreignKey: "roleId",
       as: "role",
       onDelete: "CASCADE",
     });
     // RoleMenuPermission -> MenuGroup
     RoleMenuPermission.belongsTo(models.MenuGroup, {
-      foreignKey: "menu_group_id",
+      foreignKey: "menuGroupId",
       as: "menu",
       onDelete: "CASCADE",
     });

@@ -156,7 +156,11 @@ describe("A-81: wrong TOTP codes are counted and lock", () => {
     expect(locked.status).toBe(429);
     expect(locked.body.message).toBe("Account temporarily locked");
     expect(locked.body.retryAfter).toBeGreaterThan(0);
-    expect(Users.findByPk).toHaveBeenCalledTimes(n);
+    // The handler loaded the user n times — never for the refused attempt.
+    // (A-126: engaging the lock loads the account once more, with
+    // skipTenantScope, for its ACCOUNT_LOCKED row.)
+    const handlerLoads = Users.findByPk.mock.calls.filter(([, options]) => !options?.skipTenantScope);
+    expect(handlerLoads).toHaveLength(n);
 
     // The lock is persisted to users.locked_until, which loginUser and (A-83)
     // loginMfa both honour.

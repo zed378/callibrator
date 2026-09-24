@@ -34,6 +34,9 @@ export interface User {
   // A-123: an administrator set this account's password; it must be changed
   // before anything else (the backend answers 403 PASSWORD_CHANGE_REQUIRED).
   mustChangePassword?: boolean;
+  // A-160: the user's tenant requires MFA and this account has none; from
+  // /auth/verify. The backend answers 403 MFA_ENROLMENT_REQUIRED elsewhere.
+  mfaEnrolmentRequired?: boolean;
 }
 
 export interface LoginCredentials {

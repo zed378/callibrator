@@ -6,6 +6,13 @@
 
 global:
   corsOrigin: "https://staging.callibrator.example.com"
+  # Under global, not secrets: the backend subchart reads this name (S-06).
+  # The Secret must carry all FOUR required keys, KMS_MASTER_KEY included
+  # (templates/secret.yaml is the key contract).
+  secrets:
+    external:
+      enabled: true
+      secretName: callibrator-staging-secrets
 
 backend:
   image:
@@ -26,6 +33,12 @@ backend:
     SEED_DEMO: ""
     VIRUS_SCAN_PROVIDER: clamav
     VIRUS_SCAN_FAIL_OPEN: "false"
+
+  # Provided externally, like the database — this chart runs no clamd (S-31).
+  # A placeholder in the same convention as database.host.
+  clamav:
+    host: clamav.staging.svc.cluster.local
+    port: 3310
 
   storage:
     driver: s3
@@ -72,11 +85,6 @@ ingress:
   tls:
     enabled: true
     secretName: callibrator-staging-tls
-
-secrets:
-  external:
-    enabled: true
-    secretName: callibrator-staging-secrets
 
 certificates:
   verifyBaseUrl: "https://staging.callibrator.example.com/verify"

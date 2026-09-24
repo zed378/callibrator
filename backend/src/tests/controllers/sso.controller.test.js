@@ -127,6 +127,24 @@ const exchange = async (code, rateLimitContext = { ip: "10.9.9.9" }) => {
   return exRes;
 };
 
+/**
+ * A-68: start a real OIDC sign-in (the controller's own beginOidcFlow, against
+ * the fake Redis above) and put its state and the browser's binding cookie on
+ * `request` — what the IdP's redirect and the browser bring to the callback.
+ * The flow's own store write is cleared from redis.set's history, so the
+ * hand-off assertions still see the callback's write as the first.
+ */
+const startedOidc = async (request, tenantCode = "acme", redirectUri = "https://app.com/callback") => {
+  const flow = await ssoController.beginOidcFlow(tenantCode, redirectUri);
+  request.body = { ...request.body, state: flow.state };
+  request.headers = {
+    ...request.headers,
+    cookie: `other=1; ${ssoController.OIDC_BINDING_COOKIE}=${flow.binding}`,
+  };
+  redis.set.mockClear();
+  return flow;
+};
+
 describe("sso.controller", () => {
   let req, res, next;
 
@@ -155,6 +173,8 @@ describe("sso.controller", () => {
       set: jest.fn(),
       send: jest.fn(),
       redirect: jest.fn(),
+      cookie: jest.fn(),
+      clearCookie: jest.fn(),
     };
     next = jest.fn();
 
@@ -255,6 +275,12 @@ describe("sso.controller", () => {
       });
 
       await ssoController.ssoCallback(req, res, next);
+
+      // A-150: settings are masked by default; the SAML flow needs the real
+      // IdP certificate, so it asks for secrets (and never returns them).
+      expect(tenantService.getTenantSettings).toHaveBeenCalledWith("tenant-1", {
+        includeSecrets: true,
+      });
 
       // A-60: the redirect carries a one-time code; the session and its token
       // are created when the code is exchanged.
@@ -413,8 +439,9 @@ describe("sso.controller", () => {
 
   describe("oidcCallback", () => {
     it("should verify callback and redirect to frontend with tokens", async () => {
-      req.body = { code: "auth-code", state: "tenant_acme" };
+      req.body = { code: "auth-code" };
       req.params = { tenantCode: "acme" };
+      await startedOidc(req);
       Tenants.findOne.mockResolvedValueOnce({ id: "tenant-1", code: "acme" });
       tenantService.getTenantSettings.mockResolvedValueOnce({
         data: { settings: { sso_enabled: "true", oidc_redirect_uri: "https://app.com/callback" } },
@@ -431,6 +458,10 @@ describe("sso.controller", () => {
 
       await ssoController.oidcCallback(req, res, next);
 
+      // A-150: the token exchange needs the real OIDC client secret.
+      expect(tenantService.getTenantSettings).toHaveBeenCalledWith("tenant-1", {
+        includeSecrets: true,
+      });
       expect(codeFrom(res)).toMatch(CODE_SHAPE);
       expect(createSession).not.toHaveBeenCalled();
 
@@ -445,16 +476,17 @@ describe("sso.controller", () => {
       });
     });
 
-    it("should call error with 400 if tenantCode and code are not provided", async () => {
+    it("should call error with 400 if code and state are not provided", async () => {
       req.body = {};
 
       await ssoController.oidcCallback(req, res, next);
 
-      expect(error).toHaveBeenCalledWith(res, "Tenant identifier and authorization code are required", 400, expect.any(String));
+      expect(error).toHaveBeenCalledWith(res, "Authorization code and state are required", 400, expect.any(String));
     });
 
     it("should call error with 404 if tenant is not found", async () => {
-      req.body = { code: "auth-code", state: "tenant_acme" };
+      req.body = { code: "auth-code" };
+      await startedOidc(req);
       Tenants.findOne.mockResolvedValueOnce(null);
 
       await ssoController.oidcCallback(req, res, next);
@@ -463,7 +495,8 @@ describe("sso.controller", () => {
     });
 
     it("should call error with 400 if SSO is not enabled", async () => {
-      req.body = { code: "auth-code", state: "tenant_acme" };
+      req.body = { code: "auth-code" };
+      await startedOidc(req);
       Tenants.findOne.mockResolvedValueOnce({ id: "tenant-1", code: "acme" });
       tenantService.getTenantSettings.mockResolvedValueOnce({
         data: { settings: { sso_enabled: "false" } },
@@ -474,8 +507,9 @@ describe("sso.controller", () => {
       expect(error).toHaveBeenCalledWith(res, "SSO is not enabled for this tenant", 400, expect.any(String));
     });
 
-    it("should extract tenantCode from state when params is not provided", async () => {
-      req.body = { code: "auth-code", state: "tenant_acme" };
+    it("takes the tenant from the stored sign-in when the URL names none", async () => {
+      req.body = { code: "auth-code" };
+      await startedOidc(req);
       Tenants.findOne.mockResolvedValueOnce({ id: "tenant-1", code: "acme" });
       tenantService.getTenantSettings.mockResolvedValueOnce({
         data: { settings: { sso_enabled: "true", oidc_redirect_uri: "https://app.com/callback" } },
@@ -498,9 +532,12 @@ describe("sso.controller", () => {
       ["ssoLogin", () => ssoController.ssoLogin, { tenantCode: "acme" }, {}],
       ["ssoCallback", () => ssoController.ssoCallback, { SAMLResponse: "b64", RelayState: "acme" }, {}],
       ["oidcLogin", () => ssoController.oidcLogin, { tenantCode: "acme" }, {}],
-      ["oidcCallback", () => ssoController.oidcCallback, { code: "auth-code", state: "tenant_acme" }, {}],
-    ])("%s returns 400 when getTenantSettings resolves with no data", async (_name, getHandler, body) => {
+      ["oidcCallback", () => ssoController.oidcCallback, { code: "auth-code" }, {}],
+    ])("%s returns 400 when getTenantSettings resolves with no data", async (name, getHandler, body) => {
       req.body = body;
+      if (name === "oidcCallback") {
+        await startedOidc(req);
+      }
       tenantService.getTenantSettings.mockResolvedValue({});
 
       await getHandler()(req, res, next);
@@ -566,11 +603,60 @@ describe("sso.controller", () => {
       }
     });
 
+    // A-68: the redirect_uri is fixed when the sign-in STARTS and stored with
+    // its state; the callback sends the stored value to the token endpoint.
     it("derives the OIDC redirect_uri from HOST_URL when oidc_redirect_uri is unset", async () => {
-      req.body = { code: "auth-code", state: "tenant_acme" };
-      req.params = { tenantCode: "acme" };
+      const prev = process.env.HOST_URL;
+      process.env.HOST_URL = "https://kalibrasi.example.com";
+      try {
+        req.body = { tenantCode: "acme" };
+        tenantService.getTenantSettings.mockResolvedValue({
+          data: { settings: { sso_enabled: "true", oidc_client_id: "client-123" } },
+        });
+
+        await ssoController.oidcLogin(req, res, next);
+
+        expect(ssoService.generateOidcAuthRequest).toHaveBeenCalledWith(
+          "acme",
+          expect.any(Object),
+          expect.objectContaining({
+            redirectUri: "https://kalibrasi.example.com/api/v1/auth/sso/oidc/callback/acme",
+          }),
+        );
+      } finally {
+        if (prev === undefined) {delete process.env.HOST_URL;}
+        else {process.env.HOST_URL = prev;}
+      }
+    });
+
+    it("falls back to the built-in host URL for the OIDC redirect_uri when HOST_URL is unset", async () => {
+      const prev = process.env.HOST_URL;
+      delete process.env.HOST_URL;
+      try {
+        req.body = { tenantCode: "acme" };
+        tenantService.getTenantSettings.mockResolvedValue({
+          data: { settings: { sso_enabled: "true", oidc_client_id: "client-123" } },
+        });
+
+        await ssoController.oidcLogin(req, res, next);
+
+        expect(ssoService.generateOidcAuthRequest).toHaveBeenCalledWith(
+          "acme",
+          expect.any(Object),
+          expect.objectContaining({
+            redirectUri: "http://localhost:5000/api/v1/auth/sso/oidc/callback/acme",
+          }),
+        );
+      } finally {
+        if (prev !== undefined) {process.env.HOST_URL = prev;}
+      }
+    });
+
+    it("the callback sends the redirect_uri stored at the start, not one derived again", async () => {
+      req.body = { code: "auth-code" };
+      await startedOidc(req, "acme", "https://stored.example.com/cb");
       tenantService.getTenantSettings.mockResolvedValue({
-        data: { settings: { sso_enabled: "true" } },
+        data: { settings: { sso_enabled: "true", oidc_redirect_uri: "https://changed.example.com/cb" } },
       });
 
       await ssoController.oidcCallback(req, res, next);
@@ -578,30 +664,9 @@ describe("sso.controller", () => {
       expect(ssoService.verifyOidcCallback).toHaveBeenCalledWith(
         "auth-code",
         expect.any(Object),
-        "http://localhost:5000/api/v1/auth/sso/oidc/callback/acme",
+        "https://stored.example.com/cb",
+        { nonce: expect.any(String), codeVerifier: expect.any(String) },
       );
-    });
-
-    it("falls back to the built-in host URL for the OIDC redirect_uri when HOST_URL is unset", async () => {
-      const prev = process.env.HOST_URL;
-      delete process.env.HOST_URL;
-      try {
-        req.body = { code: "auth-code", state: "tenant_acme" };
-        req.params = { tenantCode: "acme" };
-        tenantService.getTenantSettings.mockResolvedValue({
-          data: { settings: { sso_enabled: "true" } },
-        });
-
-        await ssoController.oidcCallback(req, res, next);
-
-        expect(ssoService.verifyOidcCallback).toHaveBeenCalledWith(
-          "auth-code",
-          expect.any(Object),
-          "http://localhost:5000/api/v1/auth/sso/oidc/callback/acme",
-        );
-      } finally {
-        process.env.HOST_URL = prev;
-      }
     });
   });
 
@@ -632,9 +697,10 @@ describe("sso.controller", () => {
     });
 
     it("defaults ipAddress and userAgent to empty strings on oidcCallback", async () => {
-      req.body = { code: "auth-code", state: "tenant_acme" };
+      req.body = { code: "auth-code" };
       req.ip = undefined;
       req.headers = {};
+      await startedOidc(req);
       tenantService.getTenantSettings.mockResolvedValue({
         data: { settings: { sso_enabled: "true" } },
       });
@@ -675,7 +741,8 @@ describe("sso.controller", () => {
       const prev = process.env.FRONTEND_URL;
       process.env.FRONTEND_URL = "https://app.acme.com";
       try {
-        req.body = { code: "auth-code", state: "tenant_acme" };
+        req.body = { code: "auth-code" };
+        await startedOidc(req);
         tenantService.getTenantSettings.mockResolvedValue({
           data: { settings: { sso_enabled: "true" } },
         });
@@ -693,32 +760,255 @@ describe("sso.controller", () => {
   });
 
   describe("oidcCallback tenant identifier", () => {
-    it("returns 400 when state has no tenant segment and no params.tenantCode", async () => {
-      req.body = { code: "auth-code", state: "nostatesegment" };
+    it("returns 400 when the authorization code is missing", async () => {
+      req.params = { tenantCode: "acme" };
+      await startedOidc(req);
 
       await ssoController.oidcCallback(req, res, next);
 
-      // "nostatesegment".split("_")[1] is undefined -> no tenant identifier
       expect(error).toHaveBeenCalledWith(
         res,
-        "Tenant identifier and authorization code are required",
+        "Authorization code and state are required",
         400,
         expect.any(String),
       );
     });
 
-    it("returns 400 when the tenant is known but the authorization code is missing", async () => {
-      req.body = { state: "tenant_acme" };
+    it("reads code and state from the query string — the IdP's GET return (response_mode=query)", async () => {
+      const flow = await startedOidc(req);
+      req.body = undefined;
+      req.query = { code: "auth-code", state: flow.state };
       req.params = { tenantCode: "acme" };
 
       await ssoController.oidcCallback(req, res, next);
 
-      expect(error).toHaveBeenCalledWith(
-        res,
-        "Tenant identifier and authorization code are required",
-        400,
-        expect.any(String),
+      expect(ssoService.verifyOidcCallback).toHaveBeenCalledWith(
+        "auth-code",
+        expect.any(Object),
+        "https://app.com/callback",
+        expect.objectContaining({ nonce: flow.nonce }),
       );
+      expect(codeFrom(res)).toMatch(CODE_SHAPE);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // A-68 — the callback accepted any code with any `state`: the state was
+  // generated and stored nowhere, and there was no nonce and no PKCE.
+  // -------------------------------------------------------------------------
+  describe("A-68: OIDC state, nonce and PKCE", () => {
+    // Found in passing: validate() returns Joi's { value, error }, and both
+    // start handlers destructured `tenantCode` from it — always undefined, so
+    // Sequelize threw on `where: { code: undefined }` and every start was a 500.
+    it.each([
+      ["ssoLogin", () => ssoController.ssoLogin],
+      ["oidcLogin", () => ssoController.oidcLogin],
+    ])("%s answers 400 without a tenant code, and looks the tenant up by the code it was sent", async (_n, handler) => {
+      req.body = {};
+      await handler()(req, res, next);
+      expect(error).toHaveBeenCalledWith(res, "Tenant code is required", 400, expect.any(String));
+      expect(Tenants.findOne).not.toHaveBeenCalled();
+
+      req.body = { tenantCode: "acme" };
+      await handler()(req, res, next);
+      expect(Tenants.findOne).toHaveBeenCalledWith({ where: { code: "acme" } });
+    });
+
+    const refusedState = () => {
+      expect(error).toHaveBeenCalledWith(res, "Invalid or expired SSO sign-in state", 401, expect.any(String));
+      expect(ssoService.verifyOidcCallback).not.toHaveBeenCalled();
+      expect(res.redirect).not.toHaveBeenCalled();
+    };
+
+    it("oidcLogin stores the state, sends an S256 challenge of a verifier it keeps, and sets the binding cookie", async () => {
+      req.body = { tenantCode: "acme" };
+      tenantService.getTenantSettings.mockResolvedValue({
+        data: { settings: { sso_enabled: "true", oidc_client_id: "client-123" } },
+      });
+
+      await ssoController.oidcLogin(req, res, next);
+
+      const [, , sent] = ssoService.generateOidcAuthRequest.mock.calls[0];
+      expect(sent.state).toMatch(CODE_SHAPE);
+      expect(sent.nonce).toMatch(CODE_SHAPE);
+      expect(sent).not.toHaveProperty("codeVerifier");
+
+      const [key, entry, ttl] = redis.set.mock.calls[0];
+      expect(key).toMatch(/^sso:oidc:state:[0-9a-f]{64}$/);
+      expect(key).not.toContain(sent.state);
+      expect(ttl).toBe(ssoController.OIDC_FLOW_TTL_SECONDS);
+      expect(entry).toMatchObject({ tenantCode: "acme", nonce: sent.nonce });
+      const crypto = require("crypto");
+      expect(sent.codeChallenge).toBe(
+        crypto.createHash("sha256").update(entry.codeVerifier).digest("base64url"),
+      );
+
+      const [name, binding, options] = res.cookie.mock.calls[0];
+      expect(name).toBe("sso_oidc_binding");
+      expect(entry.bindingHash).toBe(crypto.createHash("sha256").update(binding).digest("hex"));
+      expect(options).toEqual({
+        httpOnly: true,
+        secure: false,
+        sameSite: "lax",
+        path: "/api/v1/auth/sso/oidc",
+        maxAge: ssoController.OIDC_FLOW_TTL_SECONDS * 1000,
+      });
+    });
+
+    it("marks the binding cookie Secure in production", async () => {
+      const prev = process.env.NODE_ENV;
+      process.env.NODE_ENV = "production";
+      try {
+        req.body = { tenantCode: "acme" };
+        tenantService.getTenantSettings.mockResolvedValue({
+          data: { settings: { sso_enabled: "true", oidc_client_id: "client-123" } },
+        });
+
+        await ssoController.oidcLogin(req, res, next);
+
+        expect(res.cookie.mock.calls[0][2]).toMatchObject({ secure: true });
+      } finally {
+        process.env.NODE_ENV = prev;
+      }
+    });
+
+    it("a callback with a forged state is refused", async () => {
+      req.body = { code: "attacker-code" };
+      await startedOidc(req);
+      req.body.state = "forged-state";
+
+      await ssoController.oidcCallback(req, res, next);
+
+      refusedState();
+    });
+
+    it("a replayed state is refused — it is consumed on first use", async () => {
+      req.body = { code: "auth-code" };
+      req.params = { tenantCode: "acme" };
+      await startedOidc(req);
+
+      await ssoController.oidcCallback(req, res, next);
+      expect(res.redirect).toHaveBeenCalledTimes(1);
+
+      jest.clearAllMocks();
+      await ssoController.oidcCallback(req, res, next);
+
+      refusedState();
+    });
+
+    it("a state presented by a browser that did not start the sign-in is refused (login CSRF)", async () => {
+      req.body = { code: "attacker-code" };
+      await startedOidc(req);
+      // The victim's browser: the attacker's state and code, but not the
+      // attacker's binding cookie.
+      req.headers = { cookie: `${ssoController.OIDC_BINDING_COOKIE}=${"x".repeat(43)}` };
+
+      await ssoController.oidcCallback(req, res, next);
+
+      refusedState();
+    });
+
+    it("a state with no binding cookie at all is refused", async () => {
+      req.body = { code: "attacker-code" };
+      await startedOidc(req);
+      req.headers = {};
+
+      await ssoController.oidcCallback(req, res, next);
+
+      refusedState();
+    });
+
+    it("a state started for one tenant is refused at another tenant's callback URL", async () => {
+      req.body = { code: "auth-code" };
+      await startedOidc(req, "acme");
+      req.params = { tenantCode: "globex" };
+
+      await ssoController.oidcCallback(req, res, next);
+
+      refusedState();
+    });
+
+    it("clears the binding cookie on every callback, refused or not", async () => {
+      req.body = { code: "c", state: "unknown" };
+
+      await ssoController.oidcCallback(req, res, next);
+
+      expect(res.clearCookie).toHaveBeenCalledWith("sso_oidc_binding", {
+        httpOnly: true,
+        secure: false,
+        sameSite: "lax",
+        path: "/api/v1/auth/sso/oidc",
+      });
+    });
+
+    it("passes the stored nonce and verifier to the verifier of the ID token", async () => {
+      req.body = { code: "auth-code" };
+      await startedOidc(req);
+      const [, entry] = [null, [...redis.mockHandoffStore.values()].map((v) => JSON.parse(v))[0]];
+
+      await ssoController.oidcCallback(req, res, next);
+
+      expect(ssoService.verifyOidcCallback).toHaveBeenCalledWith(
+        "auth-code",
+        expect.any(Object),
+        "https://app.com/callback",
+        { nonce: entry.nonce, codeVerifier: entry.codeVerifier },
+      );
+    });
+
+    it("with Redis down the state is held in memory — still single-use, still bound", async () => {
+      mockRedisUp = false;
+      req.body = { code: "auth-code" };
+      await startedOidc(req);
+      expect(logger.warn).toHaveBeenCalledWith(
+        "OIDC sign-in state held in process memory: Redis unavailable",
+      );
+
+      await ssoController.oidcCallback(req, res, next);
+      expect(res.redirect).toHaveBeenCalledTimes(1);
+
+      jest.clearAllMocks();
+      await ssoController.oidcCallback(req, res, next);
+      refusedState();
+    });
+
+    it("with Redis down an expired state is refused, and expired entries are pruned", async () => {
+      mockRedisUp = false;
+      const realNow = Date.now;
+      try {
+        req.body = { code: "auth-code" };
+        await startedOidc(req);
+        const other = {};
+        await startedOidc(other);
+        Date.now = () => realNow() + (ssoController.OIDC_FLOW_TTL_SECONDS + 1) * 1000;
+        // A new sign-in prunes both expired entries.
+        await startedOidc({});
+
+        await ssoController.oidcCallback(req, res, next);
+        refusedState();
+      } finally {
+        Date.now = realNow;
+      }
+    });
+
+    it("treats a store value that is not an entry as unknown", async () => {
+      req.body = { code: "auth-code" };
+      await startedOidc(req);
+      redis.getDel.mockResolvedValueOnce("not-an-entry");
+
+      await ssoController.oidcCallback(req, res, next);
+
+      refusedState();
+    });
+
+    it("ignores a Cookie header entry with no name", async () => {
+      req.body = { code: "auth-code" };
+      await startedOidc(req);
+      req.headers.cookie = `=junk; ${req.headers.cookie}`;
+
+      await ssoController.oidcCallback(req, res, next);
+
+      expect(res.redirect).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -744,6 +1034,10 @@ describe("sso.controller", () => {
             headers: { "user-agent": "browser-agent" },
             ip: "203.0.113.7",
           };
+      if (kind === "oidc") {
+        response.clearCookie = jest.fn();
+        await startedOidc(request);
+      }
       const handler = kind === "saml" ? ssoController.ssoCallback : ssoController.oidcCallback;
       await handler(request, response, jest.fn());
       expect(response.redirect).toHaveBeenCalledTimes(1);
@@ -855,12 +1149,11 @@ describe("sso.controller", () => {
     });
 
     it("records a missing ip/user-agent as null in the audit row", async () => {
-      const response = { redirect: jest.fn() };
-      await ssoController.oidcCallback(
-        { params: { tenantCode: "acme" }, body: { code: "c" }, headers: {} },
-        response,
-        jest.fn(),
-      );
+      const response = { redirect: jest.fn(), clearCookie: jest.fn() };
+      const request = { params: { tenantCode: "acme" }, body: { code: "c" }, headers: {} };
+      await startedOidc(request);
+      delete request.headers["user-agent"];
+      await ssoController.oidcCallback(request, response, jest.fn());
       await exchange(codeFrom(response));
       expect(auditService.logAction).toHaveBeenCalledWith(
         expect.objectContaining({ ipAddress: null, userAgent: null }),

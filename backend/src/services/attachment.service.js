@@ -7,6 +7,7 @@
 
 const crypto = require("crypto");
 const fs = require("fs");
+const path = require("path");
 const { Attachment, Certificate } = require("../models");
 // NOT `db` from the models barrel — that export is the models registry's
 // sequelize handle under a different name; the config module is the one that
@@ -14,7 +15,7 @@ const { Attachment, Certificate } = require("../models");
 const { db } = require("../config");
 const storagePath = require("../utils/storagePath.util");
 const { AppError } = require("../utils/appError.util");
-const { getUploadUrl } = require("../utils/upload.util");
+const { getUploadUrl, promoteFromQuarantine } = require("../utils/upload.util");
 const { DEFAULT_LIMIT, MAX_LIMIT } = require("../constants");
 const virusScan = require("./virusScan.service");
 const auditService = require("./audit.service");
@@ -35,12 +36,26 @@ if (!SIGN_SECRET) {
 }
 const DEFAULT_SIGNED_TTL = Number(process.env.ATTACHMENT_URL_TTL_SEC) || 300;
 
-// Resolve the absolute on-disk path for an attachment (guards traversal).
+/**
+ * Resolve the absolute on-disk path for an attachment, refusing one outside
+ * the uploads tree.
+ *
+ * S-15: the root is FIXED — `storagePath("uploads")`, derived from nothing on
+ * the row. It used to be `storagePath(...folderParts)`, built from the same
+ * `folder` value it was meant to constrain: with `folder = "../../etc"` the
+ * root moved outside storage with it and the prefix check passed. Both sides
+ * are `path.resolve`d, and the prefix carries the separator, so a sibling
+ * such as `uploads-evil` does not pass as inside `uploads`.
+ *
+ * @param {{folder: string, fileName: string}} attachment
+ * @returns {string} the absolute path
+ * @throws {AppError} 400 when the path resolves outside the uploads tree
+ */
 const resolveAbsPath = (attachment) => {
-  const folderParts = attachment.folder.split("/").filter(Boolean);
-  const abs = storagePath(...folderParts, attachment.fileName);
-  const root = storagePath(...folderParts);
-  if (!abs.startsWith(root)) {
+  const root = path.resolve(storagePath("uploads"));
+  const folderParts = String(attachment.folder || "").split(/[\\/]/).filter(Boolean);
+  const abs = path.resolve(storagePath(...folderParts, String(attachment.fileName || "")));
+  if (!abs.startsWith(root + path.sep)) {
     throw new AppError(400, "Invalid attachment path");
   }
   return abs;
@@ -149,7 +164,10 @@ exports.createAttachment = async (tenantId, file, meta = {}) => {
     throw new AppError(400, "No file uploaded (expected multipart field 'file')");
   }
 
-  const absPath = file.path;
+  // S-17: multer wrote the file to the upload QUARANTINE (the attachments
+  // route holds it there), not to the public uploads tree. It is moved into
+  // uploads/attachments only after the link check and the virus scan pass.
+  let absPath = file.path;
 
   // A-97: multer has already written the file. A refused link must not leave
   // it on disk, or in the tenant's storage accounting.
@@ -167,7 +185,15 @@ exports.createAttachment = async (tenantId, file, meta = {}) => {
     throw new AppError(422, `File rejected by virus scan: ${scan.reason || "infected"}`);
   }
 
-  const checksum = await computeChecksum(absPath);
+  let checksum;
+  try {
+    checksum = await computeChecksum(absPath);
+    // S-17: out of quarantine only now that it has been scanned.
+    absPath = await promoteFromQuarantine(file, ATTACH_FOLDER);
+  } catch (err) {
+    await fs.promises.unlink(absPath).catch(() => {});
+    throw err;
+  }
 
   // A-117: the row and its CREATE audit row commit together, or neither does
   // — as deleteAttachment (A-28). An upload used to leave no audit row at
@@ -355,7 +381,8 @@ exports.deleteAttachment = async (tenantId, id, actor = {}) => {
   logger.info("Attachment soft-deleted", {
     attachmentId: attachment.id,
     tenantId,
-    deletedBy: actor.userId || null,
+    // A-124: the audit row above refused a delete with no actor.
+    deletedBy: actor.userId,
   });
 
   return { id };

@@ -46,7 +46,8 @@ jest.mock("../../services/userPermission.service", () => ({
   getUserOverrideMatrix: jest.fn(),
 }));
 jest.mock("../../services/emailQueue.service", () => ({
-  emailQueueService: { queueEmail: jest.fn().mockResolvedValue(true) },
+  // A-158: the real export (emailQueueService never existed).
+  queueNotificationEmail: jest.fn().mockResolvedValue(true),
 }));
 
 const mockRef = { ledger: null };

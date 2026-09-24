@@ -99,13 +99,14 @@ const defineModel = (db, DataTypes) => {
       onDelete: "RESTRICT",
     });
     AssetFinance.belongsTo(models.CalibrationDevice, {
-      foreignKey: "device_id",
+      foreignKey: "deviceId",
       as: "device",
       onDelete: "CASCADE",
     });
     AssetFinance.belongsTo(models.Vendor, {
-      foreignKey: "vendor_id",
+      foreignKey: "vendorId",
       as: "vendor",
+      onDelete: "SET NULL",
     });
   };
 

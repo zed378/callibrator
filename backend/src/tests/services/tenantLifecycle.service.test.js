@@ -409,7 +409,12 @@ describe("tenantLifecycle.service", () => {
       ]);
       expect(result.exportedAt).toBeInstanceOf(Date);
 
-      expect(User.findAll).toHaveBeenCalledWith({ where: { tenantId: "t1" } });
+      // A-179: the users are read through the export allow-list
+      // (tenantLifecycle.export.a179.test.js proves what it excludes).
+      expect(User.findAll).toHaveBeenCalledWith({
+        where: { tenantId: "t1" },
+        attributes: [...tenantLifecycle.EXPORTED_USER_ATTRIBUTES],
+      });
       expect(TenantSettings.findAll).toHaveBeenCalledWith({ where: { tenantId: "t1" } });
       expect(Subscription.findAll).toHaveBeenCalledWith({ where: { tenantId: "t1" } });
       expect(Invoice.findAll).toHaveBeenCalledWith({ where: { tenantId: "t1" } });

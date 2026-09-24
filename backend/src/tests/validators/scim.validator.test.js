@@ -179,6 +179,17 @@ describe("SCIM Validators", () => {
         ),
       ).toThrow();
     });
+
+    // ADR-053 / A-39: a group may name the role it grants.
+    it("accepts a UUID roleId and keeps it", () => {
+      const roleId = "11111111-1111-4111-8111-111111111111";
+      expect(validate({ displayName: "Techs", roleId }, scimGroupSchema)).toEqual({ displayName: "Techs", roleId });
+    });
+
+    it("rejects a malformed roleId, and a displayName longer than its 255-character column", () => {
+      expect(() => validate({ displayName: "Techs", roleId: "not-a-uuid" }, scimGroupSchema)).toThrow();
+      expect(() => validate({ displayName: "x".repeat(256) }, scimGroupSchema)).toThrow();
+    });
   });
 
   describe("scimPatchSchema", () => {

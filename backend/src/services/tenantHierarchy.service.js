@@ -1,8 +1,17 @@
 /**
  * Tenant Hierarchy Service
  *
- * Manages parent-tenant → child business unit relationships with cascading
- * roles, permissions, and data visibility rules.
+ * Manages parent-tenant → child business unit relationships and data
+ * visibility rules.
+ *
+ * There is no role cascade (A-134). Roles are global, not tenant-scoped
+ * (role.model.js: no tenantId, `name` unique across the platform), so every
+ * role and its menu permissions already apply in a child tenant; there is
+ * nothing to copy. The former `cascadeRoles` (HIERARCHY_CASCADE_ROLES) could
+ * never run — an alias-less `include: [Role]`, a `level` attribute and a
+ * `tenantId` on Role that do not exist — and its throw was logged as
+ * "non-fatal". It was removed rather than fixed, and HIERARCHY_CASCADE_ROLES
+ * is no longer read.
  *
  * Usage:
  *   const { createSubOrganization, getTenantTree } = require('./services/tenantHierarchy.service');
@@ -19,7 +28,6 @@ const { db } = require("../config");
 
 const HIERARCHY_ENABLED = process.env.HIERARCHY_ENABLED === "true";
 const MAX_DEPTH = parseInt(process.env.HIERARCHY_MAX_DEPTH) || 5;
-const CASCADE_ROLES = process.env.HIERARCHY_CASCADE_ROLES === "true";
 
 // ==========================================
 // SUB-ORGANIZATION MANAGEMENT
@@ -36,7 +44,7 @@ exports.createSubOrganization = async (parentTenantId, data) => {
     throw new AppError(400, "Tenant hierarchy is disabled");
   }
 
-  const { Tenant, TenantHierarchy, Role, User } = require("../models");
+  const { Tenant, TenantHierarchy } = require("../models");
 
   const parent = await Tenant.findByPk(parentTenantId);
   if (!parent) {
@@ -50,7 +58,7 @@ exports.createSubOrganization = async (parentTenantId, data) => {
   try {
     // Get parent's hierarchy path
     let parentPath = `/${parent.code.toLowerCase()}`;
-    let parentHierarchy = await TenantHierarchy.findOne({
+    const parentHierarchy = await TenantHierarchy.findOne({
       where: { tenantCode: parent.code },
     });
 
@@ -92,11 +100,6 @@ exports.createSubOrganization = async (parentTenantId, data) => {
       );
     }
 
-    // Cascade roles if enabled
-    if (CASCADE_ROLES) {
-      await cascadeRoles(parentTenantId, tenant.id);
-    }
-
     logger.info("Sub-organization created", {
       parentTenantId,
       childTenantId: tenant.id,
@@ -118,69 +121,6 @@ exports.createSubOrganization = async (parentTenantId, data) => {
     throw new AppError(500, "Failed to create sub-organization");
   }
 };
-
-/**
- * Cascade roles from parent to child tenant
- */
-async function cascadeRoles(parentTenantId, childTenantId) {
-  const { Role, RoleMenuPermission, User } = require("../models");
-
-  try {
-    const parentUsers = await User.findAll({
-      where: { tenantId: parentTenantId },
-      include: [Role],
-    });
-
-    const roleIds = [...new Set(parentUsers.map((u) => u.roleId))];
-
-    for (const roleId of roleIds) {
-      const parentRole = await Role.findByPk(roleId);
-      if (!parentRole) continue;
-
-      let childRole = await Role.findOne({
-        where: { name: parentRole.name, tenantId: childTenantId },
-      });
-
-      if (!childRole) {
-        childRole = await Role.create({
-          name: parentRole.name,
-          level: parentRole.level,
-          tenantId: childTenantId,
-          description: `Cascaded from parent: ${parentRole.description}`,
-        });
-      }
-
-      const parentPerms = await RoleMenuPermission.findAll({
-        where: { roleId },
-      });
-
-      for (const perm of parentPerms) {
-        await RoleMenuPermission.findOrCreate({
-          where: {
-            roleId: childRole.id,
-            menuGroupId: perm.menuGroupId,
-          },
-          defaults: {
-            roleId: childRole.id,
-            menuGroupId: perm.menuGroupId,
-            permissionType: perm.permissionType,
-          },
-        });
-      }
-    }
-
-    logger.info("Roles cascaded", {
-      fromTenant: parentTenantId,
-      toTenant: childTenantId,
-    });
-  } catch (err) {
-    logger.warn("Role cascade failed (non-fatal)", {
-      parentTenantId,
-      childTenantId,
-      error: err.message,
-    });
-  }
-}
 
 // ==========================================
 // HIERARCHY QUERIES
@@ -512,7 +452,6 @@ exports.getStatus = () => {
   return {
     enabled: HIERARCHY_ENABLED,
     maxDepth: MAX_DEPTH,
-    cascadeRoles: CASCADE_ROLES,
   };
 };
 

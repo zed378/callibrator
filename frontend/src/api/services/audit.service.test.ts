@@ -50,6 +50,16 @@ describe("auditService", () => {
       });
     });
 
+    it("A-124/A-125: sends actorType and the platform scope when asked", async () => {
+      mockedApi.get.mockResolvedValueOnce(envelope([]));
+
+      await auditService.getAll({ actorType: "system", scope: "platform" });
+
+      expect(mockedApi.get).toHaveBeenCalledWith(BASE, {
+        params: { page: 1, limit: 10, actorType: "system", scope: "platform" },
+      });
+    });
+
     it("adds all optional filter params only when provided", async () => {
       mockedApi.get.mockResolvedValueOnce(envelope([]));
 

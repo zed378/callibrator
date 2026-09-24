@@ -1,5 +1,8 @@
 const adminService = require("../services/admin.service");
 const { asyncHandlerWithMapping } = require("../utils/controllerWrapper.util");
+// Who did it, from where — for the audit rows the service writes inside its
+// transaction (A-165).
+const { auditActor } = require("../utils/auditActor.util");
 
 exports.getAllTenants = asyncHandlerWithMapping(async (req, res) => {
   const { page, limit, search } = req.query;
@@ -14,7 +17,7 @@ exports.getAllTenants = asyncHandlerWithMapping(async (req, res) => {
 
 exports.updateTenantStatus = asyncHandlerWithMapping(async (req, res) => {
   const { status } = req.body || {};
-  const result = await adminService.updateTenantStatus(req.params.id, status);
+  const result = await adminService.updateTenantStatus(req.params.id, status, auditActor(req));
   return {
     success: true,
     status: 200,
@@ -28,7 +31,7 @@ exports.updateTenantStatus = asyncHandlerWithMapping(async (req, res) => {
 
 exports.updateTenantFlags = asyncHandlerWithMapping(async (req, res) => {
   const { flags } = req.body || {};
-  const result = await adminService.updateTenantFlags(req.params.id, flags);
+  const result = await adminService.updateTenantFlags(req.params.id, flags, auditActor(req));
   return {
     success: true,
     status: 200,

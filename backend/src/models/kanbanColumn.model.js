@@ -51,11 +51,12 @@ const defineModel = (db, DataTypes) => {
 
   KanbanColumn.associate = (models) => {
     KanbanColumn.belongsTo(models.KanbanProject, {
-      foreignKey: "project_id",
+      foreignKey: "projectId",
       as: "project",
+      onDelete: "CASCADE",
     });
     KanbanColumn.hasMany(models.KanbanCard, {
-      foreignKey: "column_id",
+      foreignKey: "columnId",
       as: "cards",
       onDelete: "CASCADE",
     });

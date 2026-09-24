@@ -59,12 +59,14 @@ jest.mock("../../config", () => ({
 jest.mock("../../services/auth.service", () => ({
   passIsValid: async () => ({ data: { valid: true } }),
 }));
+// A-158: the real export — emailQueueService.queueEmail never existed. That
+// this module really exports it is asserted in esignature.a158a159.test.js.
 jest.mock("../../services/emailQueue.service", () => ({
-  emailQueueService: { queueEmail: jest.fn(async () => undefined) },
+  queueNotificationEmail: jest.fn(async () => true),
 }));
 
 const eSignatureService = require("../../services/eSignature.service");
-const { emailQueueService } = require("../../services/emailQueue.service");
+const { queueNotificationEmail } = require("../../services/emailQueue.service");
 const { logger } = require("../../middlewares/activityLog.middleware");
 
 const makeStep = (id, status, stepNumber) => {
@@ -97,7 +99,7 @@ describe("A-41 — e-signature audit inside the signing transaction", () => {
     jest.spyOn(logger, "error").mockImplementation(() => logger);
     jest.spyOn(logger, "info").mockImplementation(() => logger);
     jest.spyOn(logger, "warn").mockImplementation(() => logger);
-    emailQueueService.queueEmail.mockClear();
+    queueNotificationEmail.mockClear();
   });
 
   describe("signDocument", () => {
@@ -167,8 +169,8 @@ describe("A-41 — e-signature audit inside the signing transaction", () => {
         expect.objectContaining({ id: "step-2", status: "pending" }),
       ]);
       expect(mockRef.ledger.committed("signature_workflows")).toEqual([]);
-      expect(emailQueueService.queueEmail).toHaveBeenCalledWith(
-        expect.objectContaining({ to: "step-2@x", template: "signature-request" }),
+      expect(queueNotificationEmail).toHaveBeenCalledWith(
+        expect.objectContaining({ email: "step-2@x", title: "Signature request: Sign me" }),
       );
       expect(mockRef.ledger.auditRows()).toHaveLength(1);
     });
@@ -179,7 +181,7 @@ describe("A-41 — e-signature audit inside the signing transaction", () => {
 
       await expect(sign()).rejects.toThrow();
 
-      expect(emailQueueService.queueEmail).not.toHaveBeenCalled();
+      expect(queueNotificationEmail).not.toHaveBeenCalled();
     });
   });
 

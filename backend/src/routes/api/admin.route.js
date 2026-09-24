@@ -14,6 +14,8 @@ const {
   updateTenantStatus,
   updateTenantFlags,
 } = require("../../controllers/admin.controller");
+const { validate } = require("../../middlewares/validation.middleware");
+const { updateTenantFlagsSchema } = require("../../validators/admin.validator");
 
 // All admin routes require SUPER_ADMIN role
 router.use(auth);
@@ -110,6 +112,8 @@ router.patch("/tenants/:id/status", updateTenantStatus);
  *       '200':
  *         description: Tenant flags updated
  */
-router.patch("/tenants/:id/flags", updateTenantFlags);
+// A-174: `flags` is a plain object of flag keys to scalar values, and never a
+// secret-named key (validators/admin.validator.js).
+router.patch("/tenants/:id/flags", validate(updateTenantFlagsSchema), updateTenantFlags);
 
 module.exports = router;

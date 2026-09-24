@@ -80,6 +80,20 @@ const AUTH_ENDPOINTS = {
     description: "MFA setup, verification and disable",
     persistUserLockout: false,
   },
+  // A-128 (ADR-051 Q-18): a tenant administrator's user create / identity edit
+  // that hits a username or email already registered — possibly in another
+  // tenant, the residual existence oracle Q-18 accepts. Keyed by the
+  // administrator (never the target). Ten per hour covers honest typos and
+  // re-invitations; a probe gets ten answers an hour, each one audited.
+  // persistUserLockout: false — it limits user administration only, never
+  // the administrator's own sign-in.
+  userIdentityConflict: {
+    maxAttempts: 10,
+    windowMs: WINDOW.HOUR,
+    lockoutMs: WINDOW.HOUR,
+    description: "User create/edit identity conflicts",
+    persistUserLockout: false,
+  },
 };
 
 /**

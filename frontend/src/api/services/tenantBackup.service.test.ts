@@ -89,7 +89,39 @@ describe("tenantBackupService", () => {
       expect(mockedApi.post).toHaveBeenCalledWith(`${BASE}/b1/restore`, {
         mergeData: true,
       });
-      expect(res).toEqual({ success: true, message: "ok" });
+      expect(res).toEqual({ success: true, message: "ok", outcome: null });
+    });
+
+    // A-156: the restore's per-account outcome, including `notRestored`, was
+    // dropped here, so the page could never show it. The body below is the
+    // exact shape `restoreBackup` (backend tenantBackup.service.js) returns
+    // through `success(res, result.data, null, message, 200)`: rows in `data`,
+    // no `meta` at all.
+    it("A-156: returns the restore outcome including notRestored from the real envelope", async () => {
+      const body = {
+        success: true,
+        status: 200,
+        message: "Backup restored successfully",
+        data: {
+          tenantId: TID,
+          recordsProcessed: 3,
+          updated: 1,
+          unchanged: 0,
+          skippedDeleted: 0,
+          retained: 4,
+          notRestored: [
+            { entry: 1, username: "gone.user", reason: "absent" },
+            { entry: 2, username: "anon_7f3a", reason: "erased" },
+          ],
+          restoredAt: "2026-09-24T10:00:00.000Z",
+        },
+      };
+      mockedApi.post.mockResolvedValueOnce(body);
+      const res = await tenantBackupService.restore(TID, "b1");
+      expect(res.success).toBe(true);
+      expect(res.message).toBe("Backup restored successfully");
+      expect(res.outcome).toEqual(body.data);
+      expect(res.outcome?.notRestored).toHaveLength(2);
     });
 
     it("defaults mergeData to false when no options given", async () => {

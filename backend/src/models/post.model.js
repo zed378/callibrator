@@ -120,7 +120,7 @@ const defineModel = (db, DataTypes) => {
       otherKey: "categoryId",
       as: "categories",
     });
-    Post.belongsTo(models.User, { foreignKey: "created_by", as: "author" });
+    Post.belongsTo(models.User, { foreignKey: "createdBy", as: "author", onDelete: "SET NULL" });
   };
 
   return Post;

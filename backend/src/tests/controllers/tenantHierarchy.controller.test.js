@@ -10,7 +10,7 @@ jest.mock("../../services/tenantHierarchy.service", () => ({
   getDataVisibilityScope: jest.fn(),
   assignRoleToUserAcrossHierarchy: jest.fn(),
   getUserRolesAcrossTenants: jest.fn(),
-  getStatus: jest.fn(() => ({ enabled: true, maxDepth: 5, cascadeRoles: false })),
+  getStatus: jest.fn(() => ({ enabled: true, maxDepth: 5 })),
 }));
 
 jest.mock("../../models", () => ({
@@ -445,7 +445,7 @@ describe("tenantHierarchy Controller", () => {
     it("should return 404 when new parent not found", async () => {
       const { Tenant } = require("../../models");
       Tenant.findByPk.mockImplementation((id) => {
-        if (id === TENANT_ID) return Promise.resolve({ save: () => {} });
+        if (id === TENANT_ID) {return Promise.resolve({ save: () => {} });}
         return Promise.resolve(null);
       });
 

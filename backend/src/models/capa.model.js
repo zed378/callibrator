@@ -5,8 +5,8 @@ module.exports = (sequelize, DataTypes) => {
   class Capa extends Model {
     static associate(models) {
       Capa.belongsTo(models.Tenant, { foreignKey: "tenantId", as: "tenant", onDelete: "RESTRICT" });
-      Capa.belongsTo(models.NonConformance, { foreignKey: "nc_id", as: "nonConformance" });
-      Capa.belongsTo(models.User, { foreignKey: "assigned_to", as: "assignee" });
+      Capa.belongsTo(models.NonConformance, { foreignKey: "ncId", as: "nonConformance", onDelete: "RESTRICT" });
+      Capa.belongsTo(models.User, { foreignKey: "assignedTo", as: "assignee", onDelete: "SET NULL" });
       Capa.belongsTo(models.User, { foreignKey: "approvedBy", as: "approver", onDelete: "RESTRICT" });
     }
   }

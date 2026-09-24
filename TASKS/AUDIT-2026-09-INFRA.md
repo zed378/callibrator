@@ -22,10 +22,10 @@ cards below are about the gap between rendering and working, and none of them up
 |---|---|---|---|
 | S-01 | **`/uploads` is a public static mount** — every certificate PDF is enumerable, unauthenticated, cross-tenant | **critical** | TODO |
 | S-02 | **A tenant backup restore deletes every user in the tenant and recreates them without passwords** | **critical** | **DONE** 2026-09-24 |
-| S-03 | **`BACKUP_SCHEDULER` backs up nothing** — it zips two directories inside the read-only pkg snapshot | **critical** | TODO |
-| S-04 | ClamAV is wired in but cannot scan: no `STANDBY` command, unframed `INSTREAM`, and "not FOUND" read as clean | **high** | TODO |
-| S-05 | `KMS_MASTER_KEY` does not exist anywhere in the Helm chart | **high** | TODO |
-| S-06 | The Helm chart's Secret and ConfigMap names can never both match what the Deployment mounts | **high** | TODO |
+| S-03 | **`BACKUP_SCHEDULER` backs up nothing** — it zips two directories inside the read-only pkg snapshot | **critical** | **DONE** 2026-09-24 — scheduler runs a per-tenant `createBackup` under each tenant's context, audited as `system:scheduled-backup`; status file; invalid cron refuses; zip-slip `extractZip` deleted (PG18-verified) |
+| S-04 | ClamAV is wired in but cannot scan: no `STANDBY` command, unframed `INSTREAM`, and "not FOUND" read as clean | **high** | **DONE** 2026-09-24 — `zINSTREAM` with length-prefixed chunks; only `stream: OK` is clean, everything else fails closed; `clamav`+unset `CLAMAV_ENABLED` fails closed; verified on real `clamav/clamav:1.4` (EICAR FOUND) |
+| S-05 | `KMS_MASTER_KEY` does not exist anywhere in the Helm chart | **high** | **DONE** 2026-09-24 — `KMS_MASTER_KEY` in the chart Secret; guard requires it |
+| S-06 | The Helm chart's Secret and ConfigMap names can never both match what the Deployment mounts | **high** | **DONE** 2026-09-24 — one `baseName` helper; envFrom uses the same helpers that create the objects |
 | S-07 | `nginx/default.conf` routes `/api/` to the backend — the mistake `deploy/README.md` says breaks login | **high** | **DONE** 2026-09-24 — no browser login yet |
 | S-08 | No secret is rotatable: no key id in the KMS payload, `ENCRYPT_KEY` outside the KMS entirely | **high** | TODO |
 | S-09 | RabbitMQ credentials contradict themselves in `.env.example`; Redis has no authentication at all | **high** | **PARTIAL** 2026-09-24 — RabbitMQ template fixed; Redis auth needs a deploy decision |
@@ -33,10 +33,10 @@ cards below are about the gap between rendering and working, and none of them up
 | S-11 | Six of the twelve allowed attachment types are rejected by the magic-byte check | medium | TODO |
 | S-12 | The image never creates or chowns `/app/storage` or `/app/.well-known` | medium | **DONE** 2026-09-24 — proven live |
 | S-13 | The backend build disables TLS verification for apt and resolves npm without a lockfile | medium | **PARTIAL** 2026-09-24 — backend done; frontend image deferred |
-| S-14 | The backup pruner and the backup writer point at different directories; the pruner can delete every tenant backup | medium | TODO |
-| S-15 | The attachment traversal guard derives its root from the same untrusted value it validates | medium | TODO |
+| S-14 | The backup pruner and the backup writer point at different directories; the pruner can delete every tenant backup | medium | **DONE** 2026-09-24 — one `BACKUP_DIR`; row-driven pruning, keep newest `BACKUP_KEEP_MIN`, unlink only inside the dir, audited in-transaction (PG18-verified) |
+| S-15 | The attachment traversal guard derives its root from the same untrusted value it validates | medium | **DONE** 2026-09-24 — fixed root `path.resolve(storagePath("uploads"))`, both separators, empty folder refused (attachment + storage migration) |
 | S-16 | `make migrate` always also runs migrations on the host | medium | **DONE** 2026-09-24 |
-| S-17 | Uploads are written into the public tree before they are scanned; the scan cache key is not a hash | medium | TODO |
+| S-17 | Uploads are written into the public tree before they are scanned; the scan cache key is not a hash | medium | **DONE** 2026-09-24 — **deviation:** quarantine is `uploads/.quarantine` (same mount, avoids EXDEV; not served, `dotfiles: "ignore"`); scan before promote; cache key = SHA-256 of content |
 | S-18 | Helm: no volume for `/app/backup`, persistence mounted at the wrong path, no NetworkPolicy, no PDB | medium | TODO |
 | S-19 | Compose: no `user:`, no `cap_drop`, no `read_only`, no CPU limits; dev publishes five datastores on `0.0.0.0` | medium | TODO |
 | S-20 | Plaintext secrets at rest outside the KMS: TOTP seeds, IoT device tokens, ~~webhook secrets~~ (A-51, 2026-09-24) | medium | TODO — webhook secrets done |
@@ -46,10 +46,14 @@ cards below are about the gap between rendering and working, and none of them up
 | S-24 | `docs/STORAGE/04` says `GET /usage` is `auth` only; the route is tenant-admin gated | low | TODO |
 | S-25 | Three divergent environment templates, one of them committed and unusable | low | **PARTIAL** 2026-09-24 — canonical templates named, not consolidated |
 | S-26 | The JWT key registry is decorative, and non-HS256 deployments stop verifying after 30 days uptime | low | TODO |
-| S-27 | Helm: the default release name `callibrator` breaks every service and ConfigMap reference | **high** | TODO |
-| S-28 | Makefile `.ONESHELL` without `-e`: a failed step does not stop a recipe | medium | TODO |
-| S-29 | `frontend/Dockerfile` uses `npm install` and an unpinned base image | medium | TODO |
-| S-30 | compose sets `HOST`, which Next standalone ignores | low | TODO |
+| S-27 | Helm: the default release name `callibrator` breaks every service and ConfigMap reference | **high** | **DONE** 2026-09-24 — renders consistently for any release name (checked by a script over `helm template`); not known to deploy |
+| S-28 | Makefile `.ONESHELL` without `-e`: a failed step does not stop a recipe | medium | **DONE** 2026-09-24 — `.SHELLFLAGS := -ec` |
+| S-29 | `frontend/Dockerfile` uses `npm install` and an unpinned base image | medium | **DONE** 2026-09-24 — frontend image from the repo root with `npm ci --workspace frontend`, pinned node 24, uid 1001 |
+| S-30 | compose sets `HOST`, which Next standalone ignores | low | **DONE** 2026-09-24 — `HOSTNAME: 0.0.0.0` |
+| S-31 | Helm sets `VIRUS_SCAN_PROVIDER=clamav` but no `CLAMAV_ENABLED`/`HOST`/`PORT` — **since S-04 every Helm upload is refused 422** (fail-closed). **The chart has no ClamAV service**, so none was invented: clamd is treated as external, like PostgreSQL. `backend.clamav.host`/`port` (3310) → ConfigMap `CLAMAV_ENABLED="true"`, `CLAMAV_HOST`, `CLAMAV_PORT` whenever the provider is clamav; guard 6 refuses to render the clamav provider with an empty host; values-prod/-staging carry placeholder hosts in the `database.host` convention (`clamav.<env>.svc.cluster.local`) that must point at a real clamd. Evidence: `helm template` renders the three keys for default (with `--set backend.clamav.host`), prod and staging values; renders none with `VIRUS_SCAN_PROVIDER=none`; refuses with no host; `helm lint` clean on all three. **Renders only — no cluster, no clamd contacted** | **high** | DONE |
+| S-32 | tenant backups: HTTP `createBackup` writes no audit row and never sets `expiresAt`; `STATUS` `deleting`/`restoring`/`restored` are not in the DB ENUM (`deleteBackup` should fail on PG); `backup_path` is VARCHAR(255) (live "value too long" with a long `APP_STORAGE_PATH`) | medium | TODO |
+| S-33 | nothing sweeps `uploads/.quarantine` after a crash mid-scan; two replicas both run the backup cron | low | TODO |
+| S-34 | docs deviation: `docs/STORAGE/04:254` still describes the old traversal root; `docs/DEVOPS/04` lacks `BACKUP_KEEP_MIN`/`BACKUP_RETENTION_DAYS`/`disabled`/status file; S-17 location deviation needs recording | low | TODO |
 
 **What the storage module gets right, and is worth not breaking:** `keys.js` really is
 deny-by-default, `normalizeKey` really does throw rather than clean, `signing.js` really is
@@ -661,9 +665,38 @@ or the overlays must drop the `:-latest` default so the variable is simply requi
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24 |
 | **Severity** | medium |
-| **Verified** | from code |
+| **Verified** | from code; fixed and proven over real files |
+
+**Resolution** (2026-09-24). `backend/src/utils/fileValidation.util.js` only — `upload.util.js`
+already forwards the validator's error unchanged on both the single- and multi-file paths.
+
+- **OLE2** (`D0 CF 11 E0 A1 B1 1A E1`) signature entries for `application/msword` and
+  `application/vnd.ms-excel`.
+- **OOXML** (`.docx`, `.xlsx`): the head must be a ZIP local header **and** the ZIP's central
+  directory — read from the file's own bytes, no new dependency — must list `[Content_Types].xml`
+  and a part under `word/` (docx) or `xl/` (xlsx). A plain archive, a docx declared as xlsx, and a
+  truncated/malformed/ZIP64 directory are refused.
+- **Text** (`text/plain`, `text/csv`): no signature exists, so the first 8 KiB must contain no NUL
+  byte (comment in the source says why). The head read grew from 16 bytes to 8 KiB.
+- The refusal now reads `File content does not match declared type "<declared mime>"`.
+
+Named tests — `backend/src/tests/utils/fileValidation.s11.test.js`, all over real files written to a
+temp dir (OOXML packages built with JSZip; no fs or validator mocks): `S-11: a real .xlsx passes as
+spreadsheetml.sheet`, `S-11: a real .docx passes as wordprocessingml.document`, `S-11: an OLE2 .xls
+passes as application/vnd.ms-excel`, `S-11: an OLE2 .doc passes as application/msword`, `S-11: a .csv
+passes as text/csv`, `S-11: a UTF-8 .txt passes as text/plain`, `S-11: a .txt renamed to .xlsx is
+refused`, `S-11: a plain zip without [Content_Types].xml declared as docx is refused`, `S-11: a docx
+declared as xlsx is refused`, `S-11: a binary with a NUL byte declared as text/plain is refused`, plus
+malformed-ZIP cases. Fail-before: run against the HEAD validator in a throwaway worktree, 19 of 20
+failed (the 7 acceptance cases were rejected outright; the refusal cases failed on the message, which
+did not quote the type); all 20 pass after.
+
+**Still open.** OLE2 does not tell `.doc` from `.xls` (that needs a CFB directory walk), so a `.doc`
+declared as `application/vnd.ms-excel` passes. UTF-16 text is refused (it carries NULs). A macro part
+(`vbaProject.bin`) inside a `.docx`/`.xlsx` is not looked for. The route-level upload path (multer +
+this validator end to end) still has no test over a real file.
 
 **Evidence**
 
@@ -695,10 +728,10 @@ explicitly. Text types have no magic bytes: either exempt them from the check wi
 why, or validate them as "no NUL bytes in the first 16".
 
 **Definition of Done**
-- [ ] a real `.xlsx`, `.docx`, `.csv` and `.txt` each upload successfully — named tests over real
-      fixture files, not mocks
-- [ ] a `.txt` renamed to `.xlsx` is still refused
-- [ ] the error message names the type that was rejected
+- [x] a real `.xlsx`, `.docx`, `.csv` and `.txt` each pass validation — named tests over real
+      fixture files, not mocks (validator level; see "Still open" for the route level)
+- [x] a `.txt` renamed to `.xlsx` is still refused
+- [x] the error message names the type that was rejected
 
 ---
 

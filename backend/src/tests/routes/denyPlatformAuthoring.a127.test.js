@@ -69,6 +69,8 @@ jest.mock("../../controllers/eSignature.controller", () => ({
   getSignatureHistory: mockReached("getSignatureHistory"),
   getSignerWorkflows: mockReached("getSignerWorkflows"),
   getSignerWorkflow: mockReached("getSignerWorkflow"),
+  getEligibleSigners: mockReached("getEligibleSigners"),
+  cancelWorkflow: mockReached("cancelWorkflow"),
 }));
 jest.mock("../../controllers/certificate.controller", () => ({
   getAllCertificates: mockReached("getAllCertificates"),
@@ -87,6 +89,21 @@ jest.mock("../../controllers/certificatePdf.controller", () => ({
   generatePdf: mockReached("generatePdf"),
   downloadPdf: mockReached("downloadPdf"),
   getQrCode: mockReached("getQrCode"),
+}));
+jest.mock("../../controllers/sop.controller", () => ({
+  createDocument: mockReached("createDocument"),
+  getDocuments: mockReached("getDocuments"),
+  publishDocument: mockReached("publishDocument"),
+  acknowledgeTraining: mockReached("acknowledgeTraining"),
+}));
+jest.mock("../../controllers/workflow.controller", () => ({
+  getWorkflows: mockReached("getWorkflows"),
+  getWorkflowById: mockReached("getWorkflowById"),
+  createWorkflow: mockReached("createWorkflowDefinition"),
+  updateWorkflow: mockReached("updateWorkflowDefinition"),
+  deleteWorkflow: mockReached("deleteWorkflowDefinition"),
+  getPendingTasks: mockReached("getPendingTasks"),
+  submitAction: mockReached("submitAction"),
 }));
 jest.mock("../../controllers/calibrationRecords.controller", () => ({
   getAllCalibrationRecords: mockReached("getAllCalibrationRecords"),
@@ -110,6 +127,8 @@ const ROUTERS = {
   esignature: require("../../routes/api/eSignature.route"),
   certificates: require("../../routes/api/certificates.route"),
   "calibration-records": require("../../routes/api/calibrationRecords.route"),
+  sop: require("../../routes/api/sop.route"),
+  workflows: require("../../routes/api/workflows.route"),
 };
 
 const MEMBER = "11111111-1111-4111-8111-111111111111";
@@ -118,6 +137,8 @@ const HOSPITAL = "22222222-2222-4222-8222-222222222222";
 const PLATFORM_HOME = "33333333-3333-4333-8333-333333333333";
 const CERT = "44444444-4444-4444-8444-444444444444";
 const RECORD = "55555555-5555-4555-8555-555555555555";
+const SOP = "66666666-6666-4666-8666-666666666666";
+const INSTANCE = "77777777-7777-4777-8777-777777777777";
 
 /** Drive `router` with `method url`, inside the tenant context auth would open. */
 const http = (mount, method, url, body = {}) =>
@@ -185,7 +206,8 @@ const asOperatorIn = (tenantId) => {
 
 beforeEach(() => asMember());
 
-// Every Part 11 act Q-17 names — the list the middleware is mounted on.
+// Every Part 11 act Q-17 names, and those the A-145 review added — the list
+// the middleware is mounted on.
 const PART11_ACTS = [
   ["esignature", "POST", "/sign", "signDocument"],
   ["certificates", "POST", `/${CERT}/approve`, "approveCertificate"],
@@ -195,6 +217,13 @@ const PART11_ACTS = [
   ["calibration-records", "POST", "/", "createCalibrationRecord"],
   ["calibration-records", "PUT", `/${RECORD}`, "updateCalibrationRecord"],
   ["calibration-records", "DELETE", `/${RECORD}`, "deleteCalibrationRecord"],
+  // A-145
+  ["certificates", "POST", "/", "createCertificate"],
+  ["certificates", "PUT", `/${CERT}`, "updateCertificate"],
+  ["certificates", "DELETE", `/${CERT}`, "deleteCertificate"],
+  ["sop", "PATCH", `/${SOP}/publish`, "publishDocument"],
+  ["sop", "POST", `/${SOP}/acknowledge`, "acknowledgeTraining"],
+  ["workflows", "POST", `/instances/${INSTANCE}/action`, "submitAction"],
 ];
 
 describe("A-127 — the named behaviours", () => {
@@ -274,9 +303,10 @@ describe("A-127 — every Part 11 act, every refused principal", () => {
 
 describe("A-127 — other writes remain allowed to an operator (audited with the impersonator, F-8)", () => {
   it.each([
-    ["certificates", "POST", "/", "createCertificate"],
-    ["certificates", "PUT", `/${CERT}`, "updateCertificate"],
     ["esignature", "POST", "/workflows", "createWorkflow"],
+    ["esignature", "POST", `/workflows/${CERT}/cancel`, "cancelWorkflow"],
+    ["workflows", "POST", "/", "createWorkflowDefinition"],
+    ["sop", "POST", "/", "createDocument"],
   ])("%s %s %s is not refused while impersonating", async (mount, method, url, handler) => {
     asImpersonated();
     const res = await http(mount, method, url);
@@ -333,16 +363,34 @@ const candidates = () => {
   return out;
 };
 
-// Carry denyPlatformAuthoring — ADR-051 Q-17's named acts.
+// Carry denyPlatformAuthoring — ADR-051 Q-17's named acts, and the acts the
+// A-145 review (2026-09-24) found to be Part 11 authoring as well:
+//  - certificate create / update / delete: creation ISSUES a certificate
+//    number and date (audited as operation ISSUE); an edit changes the content
+//    a member's approval attests — APPROVED certificates stay editable, only
+//    signed and revoked ones are locked; a delete withdraws an issued number
+//    from the register. Calibration records, their source, are guarded for the
+//    same three acts.
+//  - SOP publish: releasing a controlled document (ISO 13485 §4.2.4), audited
+//    as an APPROVE by the publisher and checked against the author.
+//  - SOP acknowledge: the member's own training record (ISO 13485 §6.2).
+//  - workflow instance action: an approval or rejection; the final approval
+//    stamps the certificate / transfer / work order as approved by the caller.
 const GUARDED = [
   "calibrationRecords.route.js DELETE /:calibrationRecordId",
   "calibrationRecords.route.js POST /",
   "calibrationRecords.route.js PUT /:calibrationRecordId",
+  "certificates.route.js DELETE /:certificateId",
+  "certificates.route.js POST /",
   "certificates.route.js POST /:certificateId/approve",
   "certificates.route.js POST /:certificateId/revoke",
   "certificates.route.js POST /:certificateId/sign",
   "certificates.route.js POST /:certificateId/submit",
+  "certificates.route.js PUT /:certificateId",
   "eSignature.route.js POST /sign",
+  "sop.route.js PATCH /:id/publish",
+  "sop.route.js POST /:id/acknowledge",
+  "workflows.route.js POST /instances/:instanceId/action",
 ];
 
 // Reviewed 2026-09-24 and deliberately NOT guarded — with the reason. A route
@@ -352,29 +400,23 @@ const NOT_GUARDED = {
   "ai.route.js POST /ocr": "matched on its `certificate` gate; extracts text from a file, authors nothing",
   "apiKeys.route.js DELETE /:id": "API-key revocation — an administrative act, not a Part 11 record",
   "attachments.route.js POST /:id/signed-url": "issues a download URL, authors nothing",
-  "certificates.route.js DELETE /:certificateId":
-    "not a Q-17 act; A-107 refuses approved/signed/revoked with 409; audited (F-8). Owner may widen",
-  "certificates.route.js POST /": "certificate draft creation — not a Q-17 act; audited (F-8). Owner may widen",
   "certificates.route.js POST /:certificateId/pdf": "renders an existing certificate, authors nothing",
-  "certificates.route.js PUT /:certificateId": "draft edit — not a Q-17 act; audited (F-8). Owner may widen",
   "eSignature.route.js DELETE /workflows/:workflowId": "workflow management, audited (F-8); authors no signature",
   "eSignature.route.js POST /workflows": "workflow setup, audited (F-8); the signature itself is POST /sign",
+  "eSignature.route.js POST /workflows/:workflowId/cancel":
+    "A-145 reviewed: withdraws a signing request; authors no signature and no record content, signatures already given stay verifiable; a closed workflow answers 409 and the cancel is audited with the impersonator (F-8, A-130). Unsticking a workflow is a legitimate support act",
   "eSignature.route.js PUT /workflows/:workflowId": "workflow setup, audited (F-8); the signature itself is POST /sign",
+  "iot.route.js DELETE /devices/:deviceId/token":
+    "IoT device credential revocation — an administrative act on a machine credential, not a Part 11 record",
   "menuGroups.route.js POST /bulk-revoke": "menu configuration, not a record",
   "menuGroups.route.js POST /revoke": "menu configuration, not a record",
   "menuGroups.route.js POST /revoke-item": "menu configuration, not a record",
   "predictiveMaintenance.route.js POST /recommendations/:deviceId/approve":
-    "accepting a maintenance recommendation — not named by Q-17; owner to confirm",
+    "A-145 reviewed: sets a device's calibrationIntervalDays — equipment master data that PUT /calibration-devices/:id edits unguarded under the same grant, so guarding here alone would be theatre. Audited in its transaction (APPROVE, APPLY_RECOMMENDED_INTERVAL)",
   "session.route.js POST /:id/revoke": "session revocation, not a record",
   "session.route.js POST /user/:userId/revoke-all": "session revocation, not a record",
-  "sop.route.js PATCH /:id/publish":
-    "SOP publication — arguably a Part 11 approval; OUTSIDE Q-17's named list, owner to decide",
-  "sop.route.js POST /:id/acknowledge":
-    "training acknowledgement — arguably a Part 11 act; OUTSIDE Q-17's named list, owner to decide",
   "workflows.route.js DELETE /:id": "workflow definition management, not a record",
   "workflows.route.js POST /": "workflow definition management, not a record",
-  "workflows.route.js POST /instances/:instanceId/action":
-    "generic workflow action (may be an approval) — OUTSIDE Q-17's named list, owner to decide",
   "workflows.route.js PUT /:id": "workflow definition management, not a record",
 };
 
@@ -385,7 +427,7 @@ describe("A-127 — every regulated-looking write route is enumerated and review
     expect(found.length).toBeGreaterThan(GUARDED.length);
   });
 
-  it("the guarded routes are exactly the Q-17 acts, and each carries denyPlatformAuthoring", () => {
+  it("the guarded routes are exactly the Q-17 and A-145 acts, and each carries denyPlatformAuthoring", () => {
     expect(
       found
         .filter((r) => r.guarded)
@@ -404,14 +446,22 @@ describe("A-127 — every regulated-looking write route is enumerated and review
   });
 
   it("the guard runs after auth on every guarded route (it reads the principal)", () => {
-    for (const file of ["certificates.route.js", "eSignature.route.js", "calibrationRecords.route.js"]) {
+    const files = [...new Set(GUARDED.map((key) => key.split(" ")[0]))];
+    expect(files.length).toBeGreaterThan(3);
+    for (const file of files) {
       const source = fs.readFileSync(path.join(ROUTES_DIR, file), "utf8");
+      // `router.use(auth)` at the top of a router runs before every route in it.
+      const routerWideAuth = /\brouter\.use\(\s*auth\s*\)/.test(stripComments(source));
       for (const call of routeCalls(source)) {
         const guard = call.args.indexOf("denyPlatformAuthoring");
         if (guard === -1) {
           continue;
         }
-        expect({ route: `${file} ${call.method} ${call.path}`, afterAuth: call.args.indexOf("auth") < guard && call.args.indexOf("auth") > 0 }).toEqual({
+        const auth = call.args.indexOf("auth");
+        expect({
+          route: `${file} ${call.method} ${call.path}`,
+          afterAuth: routerWideAuth || (auth > 0 && auth < guard),
+        }).toEqual({
           route: `${file} ${call.method} ${call.path}`,
           afterAuth: true,
         });

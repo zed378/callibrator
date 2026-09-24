@@ -265,17 +265,27 @@ const jwt = require("jsonwebtoken");
 
 /**
  * Generate OIDC Auth Request URL (Specifically tailored for Entra ID, though generic OIDC is similar)
+ *
+ * A-68: the `state`, `nonce` and PKCE `code_challenge` come from the caller
+ * (sso.controller's beginOidcFlow), which stores them for the callback. This
+ * function used to invent a `state` it stored nowhere and send no nonce and no
+ * challenge.
+ *
+ * @param {string} tenantCode
+ * @param {object} ssoSettings
+ * @param {{state: string, nonce: string, codeChallenge: string, redirectUri?: string}} flow
  */
-exports.generateOidcAuthRequest = (tenantCode, ssoSettings) => {
+exports.generateOidcAuthRequest = (tenantCode, ssoSettings, flow) => {
   const clientId = ssoSettings.oidc_client_id;
   const redirectUri =
+    flow.redirectUri ||
     ssoSettings.oidc_redirect_uri ||
     `http://localhost:5000/api/v1/auth/sso/oidc/callback/${tenantCode}`;
   const authority =
     ssoSettings.oidc_authority ||
     "https://login.microsoftonline.com/common/oauth2/v2.0";
 
-  const state = crypto.randomBytes(16).toString("hex") + "_" + tenantCode;
+  const { state, nonce, codeChallenge } = flow;
 
   const authUrl = new URL(`${authority}/authorize`);
   authUrl.searchParams.append("client_id", clientId);
@@ -284,6 +294,9 @@ exports.generateOidcAuthRequest = (tenantCode, ssoSettings) => {
   authUrl.searchParams.append("response_mode", "query");
   authUrl.searchParams.append("scope", "openid profile email");
   authUrl.searchParams.append("state", state);
+  authUrl.searchParams.append("nonce", nonce);
+  authUrl.searchParams.append("code_challenge", codeChallenge);
+  authUrl.searchParams.append("code_challenge_method", "S256");
 
   return authUrl.toString();
 };
@@ -302,7 +315,7 @@ exports.generateOidcAuthRequest = (tenantCode, ssoSettings) => {
  * per-tenant `oidc_authority` to the tenant-specific issuer if strict validation
  * rejects tokens.
  */
-exports.verifyOidcCallback = async (code, ssoSettings, redirectUri) => {
+exports.verifyOidcCallback = async (code, ssoSettings, redirectUri, flow) => {
   const oidcJwks = require("./oidcJwks");
-  return oidcJwks.verifyOidcCallback(code, ssoSettings, redirectUri);
+  return oidcJwks.verifyOidcCallback(code, ssoSettings, redirectUri, flow);
 };

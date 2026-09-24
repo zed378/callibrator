@@ -173,7 +173,16 @@ exports.verify = asyncHandlerWithMapping(
       req.session,
     );
 
-    success(res, result.data, null, result.message, result.status);
+    // A-160: "who am I" is one of the routes an account that must enrol MFA
+    // may call, so this is where the frontend learns it (auth.middleware
+    // decided it from the tenant's policy).
+    success(
+      res,
+      { ...result.data, mfaEnrolmentRequired: req.mfaEnrolmentRequired === true },
+      null,
+      result.message,
+      result.status,
+    );
   },
   {
     banned: 403,

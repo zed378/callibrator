@@ -74,7 +74,7 @@ Redaction happens on the way in, and it must be a key-name walk at any depth rat
 
 A test generated from the redaction key set verifies consistency, never correctness: it cannot catch a key being deleted from the set, because the test derives from the same set. Only an independent list, or a mutation check, catches that.
 
-## The Six Actions
+## The Eight Actions
 
 | Action | Written when |
 |---|---|
@@ -84,6 +84,13 @@ A test generated from the redaction key set verifies consistency, never correctn
 | `LOGIN` | authentication succeeds |
 | `APPROVE` | a workflow or certificate transition is approved |
 | `EXPORT` | data leaves the system |
+| `ACCOUNT_LOCKED` | a brute-force lockout engages on an account — actor `system:auth-lockout`, the account is the resource |
+| `SIGNATURE_AUTH_FAILED` | a signer's password or MFA code is wrong at the moment of signing (21 CFR 11.300(d)) |
+
+The last two were added by ADR-051 Q-15 (A-126, migration `0049-audit-actions-lockout-signature`).
+Individual failed sign-ins are **not** audit rows; they stay in the security log. A lockout row is
+written only for an account that exists, in that account's own tenant, so it is never a signal to the
+person guessing.
 
 `EXPORT` deserves note. Knowing **who extracted what, and when** is itself a compliance requirement — including who exported the audit trail. An audit-log export is audited.
 

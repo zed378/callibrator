@@ -15,6 +15,7 @@ jest.mock("fs", () => {
       mkdir: jest.fn(),
       writeFile: jest.fn(),
       stat: jest.fn(),
+      rm: jest.fn(),
     },
     createWriteStream: jest.fn().mockImplementation(() => {
       const ws = {
@@ -69,9 +70,18 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
 
 jest.mock("../../config", () => ({
   db: {
-    getDialect: jest.fn().mockReturnValue("sqlite"),
-    Sequelize: { Op: { or: "or_symbol" } },
+    // A-153/A-154: the erasure runs in a managed transaction.
+    transaction: jest.fn(async (cb) => cb({ id: "tx" })),
   },
+}));
+
+jest.mock("../../services/audit.service", () => ({ logAction: jest.fn() }));
+jest.mock("../../utils/upload.util", () => ({ deleteUpload: jest.fn() }));
+jest.mock("../../services/session.service", () => ({
+  revokeOtherSessions: jest.fn().mockResolvedValue(0),
+}));
+jest.mock("../../services/mfa.service", () => ({
+  MFA_CLEARED: { mfaEnabled: false, mfaSecret: null },
 }));
 
 jest.mock("../../utils/appError.util", () => ({
@@ -114,25 +124,22 @@ jest.mock("../../models", () => {
     Role: model(),
     AuditLog: model(),
     Notification: model(),
-    Session: model(),
+    // A-180: the export reads the subject's sessions through unscoped().
+    Session: (() => {
+      const m = model();
+      m.unscoped = jest.fn(() => m);
+      return m;
+    })(),
     CalibrationDevice: model(),
     CalibrationRecord: model(),
     Certificate: model(),
     ConsentRecord: model(),
     DsarRequest: model(),
-    // Plural aliases. src/models/index.js really does export these
-    // (`Stocks: models.Stock`, ...), and exportTenantData looks tables up by
-    // their plural name — without them the export loop silently skips every
-    // table and never exercises its body.
-    Stocks: model(),
-    StockTransfers: model(),
-    StockAdjustments: model(),
-    StockOpnames: model(),
-    CalibrationDevices: model(),
-    CalibrationRecords: model(),
-    Certificates: model(),
-    MaintenanceWorkOrders: model(),
-    Notifications: model(),
+    // A-151: the subject-scoped export reads these by their model name.
+    StockTransfer: model(),
+    StockAdjustment: model(),
+    StockOpname: model(),
+    MaintenanceWorkOrder: model(),
   };
 });
 
@@ -156,6 +163,7 @@ describe("gdprService", () => {
     fs.promises.mkdir.mockResolvedValue(undefined);
     fs.promises.writeFile.mockResolvedValue(undefined);
     fs.promises.stat.mockResolvedValue({ size: 1024 });
+    fs.promises.rm.mockResolvedValue(undefined);
     fs.existsSync.mockReturnValue(false);
   });
 
@@ -183,23 +191,16 @@ describe("gdprService", () => {
       expect(result).toHaveProperty("expiresAt");
     });
 
-    it("should fallback to getDialect postgres and still export successfully", async () => {
-      const { db } = require("../../config");
-      db.getDialect.mockReturnValue("postgres");
-
-      const resultPromise = gdprService.exportUserData("tenant-1", "user-1");
-      await jest.runAllTimersAsync();
-      const result = await resultPromise;
-
-      expect(result).toHaveProperty("exportId");
-    });
-
-    it("should throw 404 if user not found", async () => {
+    it("should throw 404 if user not found, and remove the partial export (A-151)", async () => {
       jest.useRealTimers();
       User.findOne.mockResolvedValueOnce(null);
       await expect(
         gdprService.exportUserData("tenant-1", "nonexistent"),
-      ).rejects.toThrow("Failed to export user data");
+      ).rejects.toMatchObject({ status: 404, message: "User not found" });
+      expect(fs.promises.rm).toHaveBeenCalledWith(expect.any(String), {
+        recursive: true,
+        force: true,
+      });
     });
 
     it("should handle warning errors in nested exports blocks and continue", async () => {
@@ -212,16 +213,15 @@ describe("gdprService", () => {
       expect(result).toHaveProperty("exportId");
     });
 
-    it("should handle warning errors in calibration devices export and continue", async () => {
-      const { CalibrationDevice } = require("../../models");
-      CalibrationDevice.findAll.mockRejectedValueOnce(
-        new Error("Calibration device error"),
-      );
+    it("a subject table that cannot be read fails the export, not silently (A-151)", async () => {
+      jest.useRealTimers();
+      const { CalibrationRecord } = require("../../models");
+      CalibrationRecord.findAll.mockRejectedValueOnce(new Error("table gone"));
 
-      const resultPromise = gdprService.exportUserData("tenant-1", "user-1");
-      await jest.runAllTimersAsync();
-      const result = await resultPromise;
-      expect(result).toHaveProperty("exportId");
+      await expect(gdprService.exportUserData("tenant-1", "user-1")).rejects.toMatchObject({
+        status: 500,
+        message: "Failed to export user data",
+      });
     });
 
     it("should handle zip compression failure and reject", async () => {
@@ -258,83 +258,6 @@ describe("gdprService", () => {
       await expect(
         gdprService.exportUserData("tenant-1", "user-1"),
       ).rejects.toThrow("Failed to export user data");
-    });
-
-    it("should export each tenant table and the calibration records of every device", async () => {
-      // Devices present => the `deviceIds.length > 0` arms of exportCalibrationData
-      // run, and the plural-aliased tenant tables are each queried.
-      const {
-        CalibrationDevice,
-        CalibrationRecord,
-        Certificate,
-        Stocks,
-        Notifications,
-      } = require("../../models");
-
-      CalibrationDevice.findAll.mockResolvedValueOnce([{ id: "dev-1" }, { id: "dev-2" }]);
-      CalibrationRecord.findAll.mockResolvedValueOnce([{ id: "rec-1" }]);
-      Certificate.findAll.mockResolvedValueOnce([{ id: "cert-1" }]);
-
-      const resultPromise = gdprService.exportUserData("tenant-1", "user-1");
-      await jest.runAllTimersAsync();
-      const result = await resultPromise;
-
-      expect(result).toHaveProperty("exportId");
-
-      // Tenant tables are looked up by their plural alias and scoped to the tenant.
-      expect(Stocks.findAll).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { tenantId: "tenant-1" }, limit: 1000, raw: true }),
-      );
-      expect(Notifications.findAll).toHaveBeenCalled();
-
-      // Calibration records/certificates are fetched for the collected device ids.
-      expect(CalibrationRecord.findAll).toHaveBeenCalledWith({
-        where: { deviceId: ["dev-1", "dev-2"] },
-        raw: true,
-      });
-      expect(Certificate.findAll).toHaveBeenCalledWith({
-        where: { deviceId: ["dev-1", "dev-2"] },
-        raw: true,
-      });
-    });
-
-    it("should skip a tenant table that is not a registered model", async () => {
-      // exportTenantData guards with `if (Model)` for tables that aren't
-      // registered on the models index. Simulate one going missing.
-      const models = require("../../models");
-      const removed = models.StockOpnames;
-      delete models.StockOpnames;
-
-      try {
-        const resultPromise = gdprService.exportUserData("tenant-1", "user-1");
-        await jest.runAllTimersAsync();
-        const result = await resultPromise;
-
-        expect(result).toHaveProperty("exportId");
-        // Skipped silently — not warned about, and absent from the payload.
-        expect(removed.findAll).not.toHaveBeenCalled();
-        const written = fs.promises.writeFile.mock.calls.find(([p]) =>
-          String(p).endsWith("tenant_data.json"),
-        );
-        expect(Object.keys(JSON.parse(written[1]))).not.toContain("StockOpnames");
-      } finally {
-        models.StockOpnames = removed;
-      }
-    });
-
-    it("should log a warning and continue when a tenant table export fails", async () => {
-      const { Stocks } = require("../../models");
-      const { logger } = require("../../middlewares/activityLog.middleware");
-      Stocks.findAll.mockRejectedValueOnce(new Error("Stocks table gone"));
-
-      const resultPromise = gdprService.exportUserData("tenant-1", "user-1");
-      await jest.runAllTimersAsync();
-      const result = await resultPromise;
-
-      expect(result).toHaveProperty("exportId");
-      expect(logger.warn).toHaveBeenCalledWith("Failed to export Stocks", {
-        error: "Stocks table gone",
-      });
     });
 
     it("should run cleanup on timer expiry and delete files", async () => {
@@ -390,12 +313,13 @@ describe("gdprService", () => {
       expect(User.update).not.toHaveBeenCalled();
     });
 
-    it("records the requester as the erasure's actor", async () => {
-      const { AuditLog } = require("../../models");
+    it("records the requester as the erasure's actor, inside the erasure's transaction", async () => {
+      const auditService = require("../../services/audit.service");
       await gdprService.eraseUserData("tenant-1", "user-1", { requestedBy: "dpo-1" });
 
-      expect(AuditLog.create).toHaveBeenCalledWith(
-        expect.objectContaining({ userId: "dpo-1", actorType: "user", resourceId: "user-1" }),
+      expect(auditService.logAction).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: "dpo-1", resourceId: "user-1", action: "DELETE" }),
+        { transaction: { id: "tx" } },
       );
     });
 

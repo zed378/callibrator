@@ -54,6 +54,17 @@ const defineModel = (db, DataTypes) => {
         allowNull: false,
         defaultValue: "RS256",
       },
+      // A-170: the user who requested the signatures — set once, at creation,
+      // from the authenticated actor (never the body). The completion email
+      // goes to them. Nullable only for workflows created before migration
+      // 0039; RESTRICT, like every other Part 11 attribution (A-149).
+      requestedBy: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: { model: "users", key: "id" },
+        onDelete: "RESTRICT",
+        onUpdate: "CASCADE",
+      },
     },
     {
       tableName: "signature_workflows",
@@ -64,6 +75,9 @@ const defineModel = (db, DataTypes) => {
         { fields: ["tenant_id"] },
         { fields: ["document_id"] },
         { fields: ["status"] },
+        // `signature_workflows_requested_by` is created by migration 0039,
+        // not here: boot runs sync() BEFORE the migrations, and an index on a
+        // column an existing database does not have yet fails the boot.
       ],
     },
   );
@@ -75,12 +89,20 @@ const defineModel = (db, DataTypes) => {
       onDelete: "RESTRICT",
     });
     SignatureWorkflow.hasMany(models.SignatureWorkflowStep, {
-      foreignKey: "workflow_id",
+      foreignKey: "workflowId",
       as: "steps",
+      onDelete: "RESTRICT",
     });
     SignatureWorkflow.hasMany(models.SignatureRecord, {
-      foreignKey: "workflow_id",
+      foreignKey: "workflowId",
       as: "signatures",
+      onDelete: "RESTRICT",
+    });
+    // A-170 — the requester. The attribute (not the column) names the key.
+    SignatureWorkflow.belongsTo(models.User, {
+      foreignKey: "requestedBy",
+      as: "requester",
+      onDelete: "RESTRICT",
     });
   };
 

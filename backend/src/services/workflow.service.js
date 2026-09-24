@@ -14,6 +14,13 @@ const {
 // (`const AppError = require(...)` made `new AppError(...)` throw
 // "AppError is not a constructor".)
 const { AppError } = require("../utils/appError.util");
+const auditService = require("./audit.service");
+
+// A-145 — `changes.operation` of a workflow action's audit row.
+const ACTION_OPERATIONS = Object.freeze({
+  APPROVED: "WORKFLOW_APPROVE",
+  REJECTED: "WORKFLOW_REJECT",
+});
 
 class WorkflowService {
   async getWorkflows(tenantId) {
@@ -247,7 +254,14 @@ class WorkflowService {
     });
 
     if (!instance) throw new AppError(404, "Workflow instance not found");
-    if (instance.status !== "PENDING") throw new AppError(400, `Workflow instance is already ${instance.status}`);
+    // A-145 — a closed instance is a state conflict (409), not a malformed
+    // request: it names the state, and that nothing further can be recorded.
+    if (instance.status !== "PENDING") {
+      throw new AppError(
+        409,
+        `Workflow instance is already ${instance.status}; no further approval or rejection can be recorded on it.`,
+      );
+    }
 
     const currentStep = instance.workflow.steps.find(s => s.stepOrder === instance.currentStepOrder);
     if (!currentStep) throw new AppError(500, "Workflow step configuration error");
@@ -258,8 +272,10 @@ class WorkflowService {
 
     const hasAction = instance.actions.some(a => a.stepId === currentStep.id && a.userId === user.id);
     if (hasAction) {
-      throw new AppError(400, "You have already submitted an action for this step");
+      throw new AppError(409, "You have already submitted an action for this step");
     }
+
+    const before = { status: instance.status, currentStepOrder: instance.currentStepOrder };
 
     const t = await sequelize.transaction();
     try {
@@ -299,6 +315,34 @@ class WorkflowService {
           }
         }
       }
+
+      // A-145 — an approval or rejection is a Part 11 act (the route carries
+      // denyPlatformAuthoring). Its audit row commits with it, or neither does:
+      // logAction re-throws inside a transaction, and the catch below rolls
+      // the action back.
+      await auditService.logAction(
+        {
+          tenantId,
+          userId: user.id,
+          // A rejection has no ENUM member of its own: the nearest action,
+          // with the decision named in `changes` (constants/auditActions.js).
+          action: action === "APPROVED" ? "APPROVE" : "UPDATE",
+          resourceType: "WorkflowInstance",
+          resourceId: instance.id,
+          changes: {
+            operation: ACTION_OPERATIONS[action] || "WORKFLOW_ACTION",
+            decision: action,
+            stepId: currentStep.id,
+            stepOrder: currentStep.stepOrder,
+            targetResourceType: instance.workflow.resourceType,
+            targetResourceId: instance.resourceId,
+            comments: comments || null,
+            before,
+            after: { status: instance.status, currentStepOrder: instance.currentStepOrder },
+          },
+        },
+        { transaction: t },
+      );
 
       await t.commit();
       return { message: "Action submitted successfully", status: instance.status };

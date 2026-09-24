@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { NextConfig } from "next";
 
 const isProd =
@@ -47,9 +48,17 @@ const nextConfig: NextConfig = {
           : {}),
       }
     : {}),
-  // Explicitly set root to silence multi-lockfile warning
+  // The WORKSPACE root, not frontend/. Under the npm workspace (ADR-044) every
+  // dependency — `next` included — is hoisted to <repo>/node_modules, and
+  // Turbopack refuses to resolve anything outside its root: with root set to
+  // frontend/ (the previous `process.cwd()`), `next build` fails with
+  // "couldn't find the Next.js package (next/package.json) from the project
+  // directory". Output-file tracing must use the same root, so the standalone
+  // bundle is emitted as .next/standalone/frontend/server.js with the traced
+  // node_modules beside it (frontend/Dockerfile copies that layout, S-29).
+  outputFileTracingRoot: path.join(__dirname, ".."),
   turbopack: {
-    root: process.cwd(),
+    root: path.join(__dirname, ".."),
   },
   cacheComponents: true,
   // NOTE: API requests are proxied by the app-router route handler at

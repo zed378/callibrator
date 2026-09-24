@@ -9,6 +9,7 @@ import { Pagination } from "@/components/ui/Table";
 import { useTenantBackups } from "./hooks/useTenantBackups";
 import BackupCreateModal from "./components/BackupCreateModal";
 import BackupList from "./components/BackupList";
+import RestoreOutcomePanel from "./components/RestoreOutcomePanel";
 
 function TenantBackupContent() {
   const params = useParams();
@@ -34,6 +35,8 @@ function TenantBackupContent() {
     createForm,
     setCreateForm,
     actionLoading,
+    restoreOutcome,
+    setRestoreOutcome,
     handleCreateBackup,
     handleDeleteBackup,
     handleDownloadBackup,
@@ -114,6 +117,12 @@ function TenantBackupContent() {
           <Alert variant="success" title="Success">
             {success}
           </Alert>
+        )}
+        {restoreOutcome && (
+          <RestoreOutcomePanel
+            outcome={restoreOutcome}
+            onClose={() => setRestoreOutcome(null)}
+          />
         )}
 
         {/* Backups List */}

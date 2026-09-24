@@ -48,6 +48,15 @@ const SYSTEM_ACTORS = Object.freeze({
   RETENTION_PURGE: "system:retention-purge",
   /** services/tenantLifecycle.service.js — the grace-period offboarding (W-01). */
   TENANT_LIFECYCLE: "system:tenant-lifecycle",
+  /** services/scheduledBackup.service.js — the BACKUP_SCHEDULER tenant backup and its pruning (S-03, S-14). */
+  SCHEDULED_BACKUP: "system:scheduled-backup",
+  /**
+   * A-126 (ADR-051 Q-15) — the brute-force lockout (auth.service#loginUser,
+   * rateLimiter.redis.service#recordAuthFailure). The lock is the system's act,
+   * not the account holder's: an ACCOUNT_LOCKED row names the locked account as
+   * its RESOURCE, never as its actor.
+   */
+  AUTH_LOCKOUT: "system:auth-lockout",
 });
 
 const SYSTEM_ACTOR_NAMES = Object.freeze(Object.values(SYSTEM_ACTORS));

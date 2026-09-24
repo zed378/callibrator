@@ -2,42 +2,51 @@
 
 Every event name this system will ever POST to a webhook, and every event name it accepts a subscription for and then never sends.
 
-Source: `backend/src/services/webhook.service.js`, `backend/src/services/calibrationScheduler.service.js`, `backend/src/models/webhook.model.js`.
+Source: `backend/src/constants/webhookEvents.js` (the catalogue), `backend/src/services/webhook.service.js`, and the emit sites named below. Decision: A-11 and **ADR-054** (`MEMORY/DECISIONS.md`).
 
 ---
 
 ## Read This Before The Table
 
-The subscription model accepts **any** string as an event name. `events` on `webhooks` is a JSONB array with no enum, no allowlist and no validator (`webhook.model.js`, `webhooks.route.js` — the router mounts no `validate(schema)` at all). A tenant can subscribe to `certificate.signed`, `workorder.completed`, `capa.raised`, `stock.transferred`, or `banana`. All five are stored. None of them is ever fired.
+> **As-built since 2026-09-24 (A-11).** Until then the only code that called `emitEvent` was the calibration scan, and every other name a tenant could subscribe to — including the `certificate.signed` in the Swagger example — was stored and never fired. The catalogue below lists what the code **emits**; `tests/services/webhookEmit.a11.test.js` fails if a name in `constants/webhookEvents.js` has no emit site, or if the frontend's list differs from it.
 
-**The only code in the repository that calls `webhookService.emitEvent` is the calibration scan.** Two call-sites' worth of event names, on one ternary:
-
-```js
-// calibrationScheduler.service.js:134
-await webhookService.emitEvent(
-  device.tenantId,
-  isOverdue ? "device.overdue" : "device.calibration_due",
-  { ... },
-);
-```
-
-That is the whole catalogue. Certificates, work orders, stock transfers, CAPA, e-signatures and tickets emit nothing. This is recorded as [A-11](../../TASKS/AUDIT-2026-09-REMEDIATION.md).
-
-A catalogue that listed the events a reasonable person would expect this product to send — rather than the events it sends — would be the PR-4 failure this repository opens `CLAUDE.md` with. So the table below is split, and every row says which side it is on.
+The subscription model still accepts any well-formed name (`webhook.validator.js`: lowercase dotted, max 50 per webhook). A name outside this catalogue is stored and **never fires** — the form lets an admin type a custom one, and older subscriptions may hold names from before the catalogue existed.
 
 ## The Catalogue
 
-| Event | Status | Fired by |
-|---|---|---|
-| `device.calibration_due` | **emitted** | `calibrationScheduler.service.js:134` |
-| `device.overdue` | **emitted** | `calibrationScheduler.service.js:134` |
-| `webhook.test` | **emitted, but only on request** — never by domain activity | `webhook.service.js#testWebhook` |
-| `certificate.signed` | **subscribable, never fired** — appears only as the Swagger example on `webhooks.route.js:43` and in `tests/e2e/modules/webhooks.e2e.test.js` | nothing |
-| anything else | **subscribable, never fired** | nothing |
+| Event | Fired when | Emit site | Timing |
+|---|---|---|---|
+| `device.calibration_due` | the calibration scan finds a device due | `calibrationScheduler.service.js#runCalibrationScan` | after the scan's work-order insert (autocommitted) |
+| `device.overdue` | the scan finds a device past its date | same | same |
+| `certificate.approved` | `pending_approval` → `approved` | `certificate.service.js#approveCertificate` | `transaction.afterCommit` |
+| `certificate.signed` | `approved` → `signed` | `certificate.service.js#signCertificate` | `transaction.afterCommit` |
+| `certificate.revoked` | → `revoked` | `certificate.service.js#revokeCertificate` | `transaction.afterCommit` |
+| `work_order.created` | a maintenance work order is created (by a user or by the calibration scan) | `maintenance.service.js#createWorkOrder` | after the insert (autocommitted — the service opens no transaction) |
+| `work_order.completed` | a work order's status changes **into** `Completed` | `maintenance.service.js#updateWorkOrder` | after the update (autocommitted) |
+| `stock_transfer.completed` | a stock transfer is completed and the stock moved | `stock.service.js#updateTransferStatus` | `transaction.afterCommit` |
+| `capa.created` | a CAPA is raised against a non-conformance | `qms.service.js#createCapa` | `transaction.afterCommit` |
+| `capa.closed` | a CAPA's status changes **into** `CLOSED` | `qms.service.js#updateCapa` | `transaction.afterCommit` |
 
-`certificate.signed` is called out by name because it is the one non-existent event a reader will meet before this document: it is the example value in the `POST /api/v1/webhooks` request-body schema, so it is what the Swagger "Try it" button pre-fills. Subscribing to it produces a webhook that is never called, with no error anywhere.
+**Removed from the offered list: `webhook.test`.** The frontend used to offer it as a subscribable event. `POST /webhooks/:id/test` sends it to the named webhook without consulting subscriptions, so subscribing to it did nothing. It remains the event name on a test delivery.
 
-The frontend registration form (`frontend/src/app/dashboard/webhooks/components/WebhookModal.tsx:22`) offers exactly `*`, `device.calibration_due`, `device.overdue` and `webhook.test`, and lets the user type any other string as a custom event. The form is honest about the catalogue; the API example is not.
+**Deliberately not in the catalogue** (no emit site was added, so none is offered): certificate create / update / delete / submit, work-order delete, stock create / adjust / opname, non-conformance create / update, e-signature workflows, tickets. Each is a new public contract and a data-export decision (see [`03-WEBHOOK-SECURITY.md`](./03-WEBHOOK-SECURITY.md) § outbound channel); add them through § Adding An Event when someone needs them.
+
+### Payloads of the A-11 events
+
+`data` carries identifiers, numbers and statuses only — never free text (a revocation reason, a CAPA action plan) and never a name or email. The acting user appears as a UUID.
+
+| Event | `data` |
+|---|---|
+| `certificate.approved` | `certificateId`, `certificateNumber`, `deviceId`, `status` (`approved`), `approvedBy` |
+| `certificate.signed` | `certificateId`, `certificateNumber`, `deviceId`, `status` (`signed`), `signedBy` |
+| `certificate.revoked` | `certificateId`, `certificateNumber`, `deviceId`, `status` (`revoked`), `revokedBy` |
+| `work_order.created` | `workOrderId`, `deviceId`, `type`, `status`, `priority` |
+| `work_order.completed` | `workOrderId`, `deviceId`, `type`, `status` (`Completed`) |
+| `stock_transfer.completed` | `transferId`, `itemName`, `quantity`, `fromWarehouseId`, `toWarehouseId`, `approvedBy` |
+| `capa.created` | `capaId`, `capaNumber`, `ncId`, `ncNumber`, `status` (`DRAFT`), `dueDate` (or `null`) |
+| `capa.closed` | `capaId`, `capaNumber`, `ncId`, `status` (`CLOSED`), `closedBy` (or `null`) |
+
+A transition event fires once, on the transition: re-saving an already-`Completed` work order or an already-`CLOSED` CAPA emits nothing.
 
 ## `device.calibration_due` and `device.overdue`
 
@@ -75,11 +84,11 @@ There is no device status, no location, no assigned owner, no calibration interv
 
 **It bypasses subscription matching entirely.** `testWebhook` constructs the `WebhookDelivery` against the named webhook directly; it never consults `events`. So a webhook subscribed to `["device.overdue"]` still receives the test, and a webhook subscribed to `["webhook.test"]` gains nothing from that subscription — the string is inert.
 
-It also runs **synchronously** with respect to the HTTP request, unlike every other delivery. See [`04-WEBHOOK-RETRY.md`](./04-WEBHOOK-RETRY.md) § The test endpoint is not fire-and-forget.
+It makes **one** attempt, synchronously with the HTTP request, and a failed test is dead-lettered at once rather than retried. It is sent even to a deactivated webhook. See [`04-WEBHOOK-RETRY.md`](./04-WEBHOOK-RETRY.md) § The Test Endpoint.
 
 ## How Subscriptions Match
 
-`emitEvent` selects webhooks with (`webhook.service.js:221`):
+`emitEvent` selects webhooks with:
 
 ```js
 where: {
@@ -96,14 +105,14 @@ Which is `events @> '["device.overdue"]'::jsonb OR events @> '["*"]'::jsonb`.
 
 Consequences worth knowing:
 
-- **`"*"` means all events** — one row in the JSONB array, matched by the second branch. A webhook subscribed to `["*"]` receives both device events and nothing else, because nothing else is emitted.
+- **`"*"` means all events** — one row in the JSONB array, matched by the second branch. A webhook subscribed to `["*"]` receives every event in the catalogue above (not `webhook.test`, which is never matched).
 - **Matching is exact string equality inside the array.** There is no prefix matching. `["device."]` and `["device.*"]` match nothing.
-- **`isActive: false` suppresses delivery at emit time**, not at retry time. A webhook deactivated while a retry is in flight still gets the remaining attempts — see [`04-WEBHOOK-RETRY.md`](./04-WEBHOOK-RETRY.md).
+- **`isActive: false` suppresses delivery at emit time and at every retry.** A webhook deactivated or deleted while a retry is scheduled dead-letters the remaining attempts — see [`04-WEBHOOK-RETRY.md`](./04-WEBHOOK-RETRY.md).
 - **One delivery row per matching webhook**, so `["device.overdue", "*"]` still yields exactly one POST: the `Op.or` is over rows, not over array elements.
 
 ## The Envelope On The Wire
 
-`attemptDelivery` (`webhook.service.js:145`) builds and signs this, and nothing else:
+`attemptDelivery` (`webhook.service.js`) builds and signs this, and nothing else:
 
 ```json
 {
@@ -121,19 +130,21 @@ Consequences worth knowing:
 | `createdAt` | when the delivery row was created, **not** when this attempt was made |
 | `data` | the payload above |
 
-The same object is re-serialized identically on every retry, so the body and its signature are byte-identical across attempts.
+The same object is re-serialized identically on every retry, so the **body** is byte-identical across attempts. The signature is not: it covers `X-Webhook-Timestamp`, which is fresh on every attempt ([`03-WEBHOOK-SECURITY.md`](./03-WEBHOOK-SECURITY.md)).
 
 ## Emission and Transactions
 
 The rule this repository applies to audit rows — write it inside the transaction — inverts for webhooks: an event announced for a change that then rolls back announces something that did not happen, so emission must follow the commit.
 
-> **As-built, 2026-09-23: it does follow the commit, but by accident rather than by design.** `maintenance.service.js#createWorkOrder` opens no transaction at all; the insert autocommits, and `emitEvent` is called afterwards. There is no transaction for the emit to escape. The A-11 Definition of Done — "each event emitted **after** the transaction commits, never inside it" — has nothing to enforce yet, and will have the moment the scan is made transactional. Any new emit site added inside a `sequelize.transaction` callback is a defect.
+> **As-built since 2026-09-24 (A-11): by design.** Inside a transaction, a service calls `webhookService.emitAfterCommit(transaction, tenantId, event, payload)` next to its audit row. That registers the emit on `transaction.afterCommit`: it runs only after a successful COMMIT, and a rollback — a thrown error, a refused transition, a failed COMMIT — discards it. Where a service opens no transaction (`maintenance.service.js`), the write has already autocommitted and `emitAfterCommit(null, …)` emits at once. **Calling `emitEvent` directly inside a transaction callback is a defect.** Proven against PostgreSQL in `tests/services/webhook.durable.a10.live.test.js` ("emitAfterCommit: a rolled-back transaction emits nothing; a committed one emits exactly once") and per service in `tests/services/webhookEmit.a11.test.js`.
 
-`emitEvent` itself is best-effort and **cannot fail its caller**: the whole body is wrapped in `try/catch`, returning `{ matched: 0, error }` and logging at `error` level. A calibration scan never fails because a webhook could not be enqueued. The corollary is that a webhook that was never enqueued leaves no trace except a log line — and in production those go to a file, not stdout (see [`../OBSERVABILITY/01-LOGGING.md`](../OBSERVABILITY/01-LOGGING.md)).
+The emit is not in the transaction, so a process killed between the COMMIT and the delivery-row insert loses that one event. The window is milliseconds; ADR-054 records it.
+
+`emitEvent` itself is best-effort and **cannot fail its caller**: the whole body is wrapped in `try/catch`, returning `{ matched: 0, error }` and logging at `error` level. A calibration scan — or a certificate approval — never fails because a webhook could not be enqueued. The corollary is that a webhook that was never enqueued leaves no trace except a log line — and in production those go to a file, not stdout (see [`../OBSERVABILITY/01-LOGGING.md`](../OBSERVABILITY/01-LOGGING.md)).
 
 ## Tenant Scoping On The Emit Path
 
-The scan runs from cron, outside any request, so there is **no `AsyncLocalStorage` context**. `tenantScope.util.js#resolveScope` returns `{ mode: "skip" }` when there is no context — deliberately, so schedulers and migrations can work — which means the global Sequelize hooks add **no** tenant predicate to the `Webhook.findAll` inside `emitEvent`.
+The scan runs from cron, outside any request (and the delivery dispatcher likewise — see [`04-WEBHOOK-RETRY.md`](./04-WEBHOOK-RETRY.md) § How The Queue Works), so there is **no `AsyncLocalStorage` context**. `tenantScope.util.js#resolveScope` returns `{ mode: "skip" }` when there is no context — deliberately, so schedulers and migrations can work — which means the global Sequelize hooks add **no** tenant predicate to the `Webhook.findAll` inside `emitEvent`.
 
 **On the cron path, the explicit `where: { tenantId }` in `emitEvent` is the entire isolation.** It is not belt-and-braces over the hooks; it is the belt. `emitEvent` is called with `device.tenantId`, one device at a time, and the `WebhookDelivery.create` is given the same `tenantId` explicitly for the same reason.
 
@@ -141,13 +152,13 @@ Anyone refactoring `emitEvent` to drop that predicate as "redundant, the hooks h
 
 ## Adding An Event
 
-There is no registry to add it to; there is no registry at all. The steps are:
+The registry is `backend/src/constants/webhookEvents.js`. The steps are:
 
-1. Add the emit call. `emitEvent(tenantId, "<domain>.<verb>", payload)` — snake_case verb, matching `device.calibration_due`.
-2. Place it **after** the commit of whatever it announces.
-3. Add the row to the table at the top of this document, on the emitted side, with its payload table and its file:line.
-4. Add it to `PREDEFINED_EVENTS` in `WebhookModal.tsx` so it can be subscribed to without typing.
-5. Fix the Swagger example on `webhooks.route.js` if it still advertises an event that does not exist.
+1. Add the name to `WEBHOOK_EVENTS` — `<domain>.<verb>`, snake_case, matching `work_order.completed`.
+2. Emit it with `webhookService.emitAfterCommit(transaction, tenantId, WEBHOOK_EVENTS.X, payload)` inside the mutation's transaction (or with `null` after an autocommitted write). Identifiers and statuses only in the payload.
+3. Add the row and its payload to the tables at the top of this document.
+4. Add it to `PREDEFINED_EVENTS` in `frontend/src/app/dashboard/webhooks/components/WebhookModal.tsx` — `webhookEmit.a11.test.js` fails until the two lists match, and until the name has an emit site.
+5. Add a test that the event fires after commit and not after a rollback.
 
 A new event is an addition to a public contract. Renaming or removing one silently stops deliveries for every subscriber, with no error on either side — the subscription simply stops matching.
 

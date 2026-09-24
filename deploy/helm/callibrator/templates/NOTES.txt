@@ -65,9 +65,12 @@ VERIFY THE DEPLOYMENT
                         public verification; the key cannot be re-derived
   ENCRYPT_KEY           losing it: every tenant private key and every stored
                         storage credential becomes undecryptable
+  KMS_MASTER_KEY        losing it: every wrapped tenant secret (SSO
+                        certificates, OIDC, Stripe and webhook secrets)
+                        becomes undecryptable
 
   A restore that recovers the database and loses these produces a system that
-  starts cleanly and is permanently broken. Neither is practically rotatable.
+  starts cleanly and is permanently broken. None is practically rotatable.
 
   The recovery drill must assert that a PRE-INCIDENT CERTIFICATE STILL
   VERIFIES — that is the check which catches a lost-secrets restore before

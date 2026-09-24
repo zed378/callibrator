@@ -701,6 +701,13 @@ router.post("/sso/oidc/callback", ssoController.oidcCallback);
  */
 router.post("/sso/oidc/callback/:tenantCode", ssoController.oidcCallback);
 
+// A-68/A-69: the authorize request asks for response_mode=query, so the IdP
+// returns the browser here with a GET (?code&state). Only the POST routes
+// existed, so an OIDC return could never reach the callback. Public, like the
+// POSTs: the stored `state`, bound to the browser's cookie, is the credential.
+router.get("/sso/oidc/callback", ssoController.oidcCallback);
+router.get("/sso/oidc/callback/:tenantCode", ssoController.oidcCallback);
+
 /**
  * @swagger
  * /api/v1/auth/sso/metadata:

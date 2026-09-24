@@ -40,6 +40,13 @@ const safeTenantAttributes = {
 
 const { TenantSettings } = require("../models");
 const { DEFAULT_UPLOAD_PLACEHOLDER } = require("../constants/appConstants");
+const {
+  isRedactedSettingKey,
+  SECRET_SETTING_MASK,
+} = require("../constants/tenantSecretSettings");
+const {
+  isTenantAdminSettingKey,
+} = require("../constants/tenantAdminSettings");
 
 const TENANT_LOGO_BASE_URL = `${process.env.HOST_URL || "http://localhost:5000"}/uploads/tenant`;
 
@@ -72,7 +79,84 @@ const transformTenant = (tenant) => {
   if (!tenant) {return null;}
   const data = tenant.toJSON ? tenant.toJSON() : { ...tenant };
   data.logoBaseUrl = logoUrl(data.logo);
+  // A-150: a tenant row never leaves the server carrying a credential, even
+  // one written into `tenants.settings` before migration 0035 scrubbed it.
+  if (data.settings !== undefined) {
+    data.settings = withoutSecretSettings(data.settings);
+  }
   return data;
+};
+
+/**
+ * A-150 — a `tenants.settings` object with every redacted key removed
+ * (constants/tenantSecretSettings.js). A non-object value is returned as is.
+ *
+ * @param {*} settings - the JSONB column value
+ * @returns {*} the same shape, without secret keys
+ */
+function withoutSecretSettings(settings) {
+  if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
+    return settings;
+  }
+  return Object.fromEntries(
+    Object.entries(settings).filter(([key]) => !isRedactedSettingKey(key)),
+  );
+}
+
+/**
+ * A-150 — a settings map for a response: every key is listed, so the caller
+ * can see a secret is configured, but a secret's value reads SECRET_SETTING_MASK.
+ * An empty or null secret stays as it is (nothing is configured).
+ *
+ * @param {Record<string, *>} settings - key -> decrypted value
+ * @returns {Record<string, *>} key -> value or mask
+ */
+const maskSecretSettings = (settings) =>
+  Object.fromEntries(
+    Object.entries(settings).map(([key, value]) => [
+      key,
+      isRedactedSettingKey(key) && value !== null && value !== "" ? SECRET_SETTING_MASK : value,
+    ]),
+  );
+
+/**
+ * The settings a `PATCH /tenants/settings` body names. The documented body is
+ * `{ tenantId, settings: { key: value } }` (the swagger block on the route,
+ * and what the frontend sends); top-level keys are accepted as well, as they
+ * always were. Before A-150 the nested object was skipped as an "internal
+ * property", so a save from the SSO screen wrote nothing.
+ *
+ * @param {object} settingsData - the request body
+ * @returns {Array<[string, *]>} key/value pairs, `tenantId` excluded
+ */
+const settingEntries = (settingsData) => {
+  const { tenantId: _tenantId, settings: nested, ...topLevel } = settingsData || {};
+  const named =
+    nested && typeof nested === "object" && !Array.isArray(nested)
+      ? { ...topLevel, ...nested }
+      : topLevel;
+  return Object.entries(named).filter(([key]) => key !== "tenantId" && key !== "settings");
+};
+
+/**
+ * A-176 — refuse a `PATCH /tenants/settings` body that names a key outside
+ * the tenant-admin allow-list (constants/tenantAdminSettings.js), or gives a
+ * setting a value that is not a scalar. Checked before anything is written:
+ * the whole request is refused, not the offending key skipped, so a caller
+ * never mistakes a partial save for a complete one.
+ *
+ * @param {Array<[string, *]>} entries - from settingEntries
+ * @throws {AppError} 400 naming the first refused key
+ */
+const assertTenantAdminSettings = (entries) => {
+  for (const [key, value] of entries) {
+    if (!isTenantAdminSettingKey(key)) {
+      throw new AppError(400, `Setting "${key}" cannot be changed through tenant settings`);
+    }
+    if (value !== null && !["string", "number", "boolean"].includes(typeof value)) {
+      throw new AppError(400, `Setting "${key}" must be a string, number, boolean or null`);
+    }
+  }
 };
 
 /**
@@ -158,9 +242,10 @@ exports.fetchTenants = async ({ find, page = 1, limit = DEFAULT_LIMIT }) => {
     }, {});
 
     // Transform tenants to include logoBaseUrl and user count
+    // A-150: through transformTenant, like every other tenant response, so a
+    // list row is stripped of secret settings too.
     const transformedRows = tenantRows.map((tenant) => {
-      const data = tenant.toJSON ? tenant.toJSON() : { ...tenant };
-      data.logoBaseUrl = logoUrl(data.logo);
+      const data = transformTenant(tenant);
       data.userCount = countMap[data.id] || 0;
       return data;
     });
@@ -860,20 +945,25 @@ exports.deleteTenant = async (tenantId, actor = {}) => {
 // ------------------------------------------------------------------
 // GET TENANT SETTINGS
 // ------------------------------------------------------------------
-exports.getTenantSettings = async (tenantId) => {
+/**
+ * A tenant's settings: the `tenant_settings` rows, with non-secret keys of the
+ * `tenants.settings` JSONB column as a fallback.
+ *
+ * A-150: secret values are MASKED unless `includeSecrets` is set. This answers
+ * `POST /tenants/settings`, which returned every decrypted credential (OIDC
+ * client secret, storage keys, the AI vendor key) to any Management reader.
+ * Only in-process callers that must USE a secret (the SSO flows) ask for it.
+ * The result is no longer cached in Redis: the cached copy held the decrypted
+ * secrets in plaintext for 15 minutes. A secret is never taken from the JSONB
+ * fallback — it lives only in `tenant_settings`, encrypted.
+ *
+ * @param {string} tenantId - the tenant
+ * @param {{includeSecrets?: boolean}} [options] - includeSecrets: return the
+ *   decrypted values; never pass it on a path that responds with the result
+ * @returns {Promise<object>} the service envelope; data `{ tenant, settings }`
+ */
+exports.getTenantSettings = async (tenantId, { includeSecrets = false } = {}) => {
   try {
-    // Try cache first
-    const cacheKey = cacheKeys.tenantSettings(tenantId);
-    const cached = await get(cacheKey);
-    if (cached) {
-      return {
-        success: true,
-        status: 200,
-        message: "Fetch tenant settings successful (cached)",
-        data: cached,
-      };
-    }
-
     const tenant = await Tenants.findByPk(tenantId);
 
     if (!tenant) {
@@ -887,7 +977,7 @@ exports.getTenantSettings = async (tenantId) => {
 
     const settings = {};
 
-    // 1. Load from TenantSettings key-value table
+    // 1. Load from TenantSettings key-value table (afterFind decrypts)
     const dbSettings = await TenantSettings.findAll({
       where: { tenantId },
     });
@@ -895,26 +985,24 @@ exports.getTenantSettings = async (tenantId) => {
       settings[s.key] = s.value;
     }
 
-    // 2. Merge/fallback from JSONB settings column on Tenant model
+    // 2. Fallback from the JSONB settings column — never for a secret key
     const rawSettings = tenant.settings;
     if (rawSettings && typeof rawSettings === "object") {
       for (const [key, val] of Object.entries(rawSettings)) {
-        if (settings[key] === undefined) {
+        if (settings[key] === undefined && !isRedactedSettingKey(key)) {
           settings[key] = val;
         }
       }
     }
 
-    const result = { tenant, settings };
-
-    // Cache for 15 minutes
-    await set(cacheKey, result, 900);
-
     return {
       success: true,
       status: 200,
       message: "Fetch tenant settings successful",
-      data: result,
+      data: {
+        tenant: transformTenant(tenant),
+        settings: includeSecrets ? settings : maskSecretSettings(settings),
+      },
     };
   } catch (error) {
     logger.error("Error fetching tenant settings", { error: error.message });
@@ -934,13 +1022,34 @@ exports.getTenantSettings = async (tenantId) => {
  * changed, not their values: settings can carry credentials (SMTP, storage),
  * and audit_logs is permanent.
  *
+ * A-150: the settings live in `tenant_settings` ONLY, where the model
+ * envelope-encrypts every secret key. This used to re-read every row — which
+ * the model DECRYPTS — and copy the whole map into `tenants.settings`, the
+ * column every tenant API returns: each save undid the encryption at rest.
+ * Nothing reads that copy (getTenantSettings takes `tenant_settings` first),
+ * so it is no longer written; migration 0035 scrubs the secrets it holds.
+ * A secret sent back as SECRET_SETTING_MASK — what a read returns for it —
+ * means "unchanged" and is skipped, so a form that round-trips the masked
+ * value cannot overwrite the real one with the mask.
+ *
+ * A-176: only the keys in constants/tenantAdminSettings.js are accepted, each
+ * with a scalar value; anything else is a 400 naming the key. Retention,
+ * legal hold, lifecycle, feature flags, network policy, OIDC clients and
+ * storage are written only by their own gated endpoints.
+ *
  * @param {string} tenantId - the tenant whose settings change
- * @param {object} settingsData - key -> value
+ * @param {object} settingsData - `{ settings: { key: value } }` and/or
+ *   top-level key -> value (see settingEntries)
  * @param {string|null} updatedBy - the acting user id
  * @param {{userId?: (string|null), ipAddress?: (string|null),
  *   userAgent?: (string|null)}} [actor] - auditActor(req)
+ * @returns {Promise<object>} the service envelope; data is every setting,
+ *   secrets masked
  */
 exports.updateTenantSettings = async (tenantId, settingsData, updatedBy, actor = {}) => {
+  // A-176: before the transaction — a refused body opens nothing.
+  assertTenantAdminSettings(settingEntries(settingsData));
+
   const transaction = await db.transaction();
 
   try {
@@ -951,11 +1060,11 @@ exports.updateTenantSettings = async (tenantId, settingsData, updatedBy, actor =
       throw new AppError(404, "Tenant not found");
     }
 
-    // Upsert each setting, skipping internal properties
+    // Upsert each setting
     const createdKeys = [];
     const changedKeys = [];
-    for (const [key, value] of Object.entries(settingsData)) {
-      if (key === "tenantId" || key === "settings") {continue;}
+    for (const [key, value] of settingEntries(settingsData)) {
+      if (isRedactedSettingKey(key) && value === SECRET_SETTING_MASK) {continue;}
 
       const stringValue = typeof value === "object" ? JSON.stringify(value) : String(value);
 
@@ -975,7 +1084,7 @@ exports.updateTenantSettings = async (tenantId, settingsData, updatedBy, actor =
       });
     }
 
-    // Fetch all settings to sync back to JSONB column
+    // Read back for the response (decrypted by the model, masked below).
     const allSettings = await TenantSettings.findAll({
       where: { tenantId },
       transaction,
@@ -985,9 +1094,6 @@ exports.updateTenantSettings = async (tenantId, settingsData, updatedBy, actor =
     for (const s of allSettings) {
       settingsJson[s.key] = s.value;
     }
-
-    // Keep the JSONB settings column updated on the Tenant record
-    await tenant.update({ settings: settingsJson }, { transaction });
 
     // A-117: in the transaction; a failed insert throws and rolls it back.
     await auditService.logAction(
@@ -1010,20 +1116,21 @@ exports.updateTenantSettings = async (tenantId, settingsData, updatedBy, actor =
 
     await transaction.commit();
 
-    // Invalidate settings cache
+    // Invalidate the settings cache. getTenantSettings no longer writes it
+    // (A-150); this also clears an entry cached before that change.
     await del(cacheKeys.tenantSettings(tenantId));
 
     logger.info("Tenant settings updated", {
       tenantId,
       updatedBy,
-      keys: Object.keys(settingsData),
+      keys: settingEntries(settingsData).map(([key]) => key),
     });
 
     return {
       success: true,
       status: 200,
       message: "Tenant settings updated successfully",
-      data: settingsJson,
+      data: maskSecretSettings(settingsJson),
     };
   } catch (error) {
     if (transaction && !transaction.finished) {

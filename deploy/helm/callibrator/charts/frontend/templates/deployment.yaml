@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ .Release.Name }}-callibrator-frontend
+  name: {{ include "callibrator.baseName" . }}-frontend
   labels:
     app.kubernetes.io/name: callibrator-frontend
     app.kubernetes.io/instance: {{ .Release.Name }}
@@ -29,7 +29,14 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       securityContext:
+        # Numeric, and matching the uid/gid frontend/Dockerfile pins. With
+        # runAsNonRoot and a NAMED image user the kubelet refuses to start the
+        # container ("non-numeric user"), the same defect S-06 found in the
+        # backend.
         runAsNonRoot: true
+        runAsUser: {{ .Values.podSecurityContext.runAsUser }}
+        runAsGroup: {{ .Values.podSecurityContext.runAsGroup }}
+        fsGroup: {{ .Values.podSecurityContext.fsGroup }}
       containers:
         - name: frontend
           # NEXT_PUBLIC_* values are INLINED AT BUILD TIME. A different API
@@ -43,7 +50,13 @@ spec:
           env:
             - name: NODE_ENV
               value: production
-            - name: HOST
+            # HOSTNAME, not HOST (S-30): Next standalone binds
+            # process.env.HOSTNAME and ignores HOST. Set explicitly here rather
+            # than trusting the image's ENV: container runtimes set HOSTNAME to
+            # the container/pod name, and whether the image value survives is
+            # the runtime's choice. Bound to the pod name, the server is
+            # reachable through the Service and refused on localhost.
+            - name: HOSTNAME
               value: "0.0.0.0"
             - name: PORT
               value: "3000"
@@ -51,9 +64,10 @@ spec:
             # cookie), and the Next proxy routes forward server-side to the
             # backend here. Unset, they fall back to NEXT_PUBLIC_API_BASE_URL —
             # the public origin — which re-enters the ingress and loops.
-            # Matches the backend subchart's Service name and its default port.
+            # The backend Service name comes from the same helper that names it
+            # (callibrator.baseName, S-27); 3000 is its default port.
             - name: BACKEND_INTERNAL_URL
-              value: "http://{{ .Release.Name }}-callibrator-backend:3000"
+              value: "http://{{ include "callibrator.baseName" . }}-backend:3000"
 
           # Both probes hit / — this server has no database dependency.
           #
@@ -79,11 +93,17 @@ spec:
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
-            # The compiled Bun binary serves from memory; nothing is written.
+            # The image is Next standalone on Node (S-29), not a compiled Bun
+            # binary. It writes only to .next/cache (image optimisation and
+            # the ISR/fetch cache), which gets an emptyDir below, and /tmp.
             readOnlyRootFilesystem: true
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            - name: next-cache
+              mountPath: /app/frontend/.next/cache
       volumes:
         - name: tmp
+          emptyDir: {}
+        - name: next-cache
           emptyDir: {}

@@ -5,7 +5,7 @@ module.exports = (sequelize, DataTypes) => {
     static associate(models) {
       SopDocument.belongsTo(models.Tenant, { foreignKey: "tenantId", as: "tenant", onDelete: "RESTRICT" });
       SopDocument.belongsTo(models.User, { foreignKey: "authorId", as: "author", onDelete: "RESTRICT" });
-      SopDocument.hasMany(models.SopTrainingAcknowledgment, { foreignKey: "document_id", as: "acknowledgments" });
+      SopDocument.hasMany(models.SopTrainingAcknowledgment, { foreignKey: "documentId", as: "acknowledgments", onDelete: "RESTRICT" });
     }
   }
   

@@ -82,12 +82,12 @@ Two operational rules for whatever runs it:
 
 ```
 backend:  npm run swagger:generate  →  pkg  →  dist/backend
-frontend: npm install  →  next build  →  .next/standalone
+frontend: npm ci --workspace frontend  →  next build  →  .next/standalone/frontend
 ```
 
 **The backend build regenerates the OpenAPI spec first.** A build that skips it ships a spec describing the previous version, which is worse than shipping none.
 
-**There is no `--frozen-lockfile`, because no lockfile is committed.** `.gitignore` excludes `pnpm-lock.yaml`, `package-lock.json` and `bun.lock`, so every build resolves transitive versions fresh — a build that silently resolves a different dependency version than the one tested is a build that ships something nobody tested, and that is the current state rather than a guarded-against one. Recorded as **W-11**; committing a lockfile is the fix.
+**Both images install with `npm ci` against the committed root `package-lock.json`** (ADR-044): the backend since ADR-046 (S-13), the frontend since S-29. Each builds from the repository root (`docker build -f <workspace>/Dockerfile .`) because a workspace-directory context cannot see the root lockfile. *(This paragraph used to say no lockfile was committed — true before ADR-044, and the reason the frontend image ran `npm install` until S-29.)*
 
 **The frontend ships Next.js standalone output on Node**, not a Bun-compiled binary. The compiled-binary path is still the intended on-premise format — see [`02-CONTAINERIZATION.md`](./02-CONTAINERIZATION.md).
 

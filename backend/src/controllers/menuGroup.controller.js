@@ -2,6 +2,7 @@
 const { success } = require("../utils/response.util");
 const { AppError } = require("../utils/appError.util");
 const { asyncHandlerWithMapping } = require("../utils/controllerWrapper.util");
+const { auditActor } = require("../utils/auditActor.util");
 const menuGroupService = require("../services/menuGroup.service");
 const menuGroupValidator = require("../validators/menuGroup.validator");
 const schemas = menuGroupValidator;
@@ -55,7 +56,7 @@ exports.getAvailableRoles = asyncHandlerWithMapping(async (req, res) => {
 // ==========================================
 exports.createMenuGroup = asyncHandlerWithMapping(async (req, res) => {
   const value = validate(req.body, schemas.createMenuGroupSchema);
-  const data = await menuGroupService.createMenuGroup(value);
+  const data = await menuGroupService.createMenuGroup(value, auditActor(req));
   return success(res, data, null, "Menu group created successfully", 201);
 }, {});
 
@@ -64,7 +65,7 @@ exports.createMenuGroup = asyncHandlerWithMapping(async (req, res) => {
 // ==========================================
 exports.updateMenuGroup = asyncHandlerWithMapping(async (req, res) => {
   const value = validate(req.body, schemas.updateMenuGroupSchema);
-  const data = await menuGroupService.updateMenuGroup(value);
+  const data = await menuGroupService.updateMenuGroup(value, auditActor(req));
   return success(res, data, null, "Menu group updated successfully", 200);
 }, {});
 
@@ -76,7 +77,7 @@ exports.deleteMenuGroup = asyncHandlerWithMapping(async (req, res) => {
   if (!menuGroupId) {
     throw new AppError(400, "menuGroupId is required");
   }
-  await menuGroupService.deleteMenuGroup(menuGroupId);
+  await menuGroupService.deleteMenuGroup(menuGroupId, auditActor(req));
   return success(res, null, null, "Menu group deleted successfully", 200);
 }, {});
 

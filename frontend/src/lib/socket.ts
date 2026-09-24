@@ -20,6 +20,59 @@ let refreshAttempts = 0;
 let generation = 0;
 const MAX_REFRESH_ATTEMPTS = 3;
 
+/** Server reply to `kanban:join` (backend/src/config/socket.js). */
+interface JoinAck {
+  ok: boolean;
+  error?: string;
+}
+
+interface BoardSubscription {
+  projectId: string;
+  onRefused?: (error: string) => void;
+}
+
+// Board rooms this session is subscribed to (A-53). Room membership lives on
+// the SERVER-side socket, and every reconnect gets a new one with no rooms —
+// so the joins are replayed on each `connect`, not sent once.
+const boardSubscriptions = new Set<BoardSubscription>();
+
+const emitJoin = (target: Socket, sub: BoardSubscription): void => {
+  target.emit("kanban:join", sub.projectId, (res?: JoinAck) => {
+    if (res && !res.ok && boardSubscriptions.has(sub) && sub.onRefused) {
+      sub.onRefused(res.error || "Live updates for this board were refused");
+    }
+  });
+};
+
+/**
+ * Subscribe to a kanban board's room on `target` for as long as the caller
+ * wants it: joined now if connected, and joined again after every reconnect.
+ * A refused join (the server's ack says `ok: false`) is reported through
+ * `onRefused` rather than dropped. Returns the unsubscribe function, which
+ * leaves the room once no subscriber for that board remains.
+ */
+export const joinBoardRoom = (
+  target: Socket,
+  projectId: string,
+  onRefused?: (error: string) => void,
+): (() => void) => {
+  const sub: BoardSubscription = { projectId, onRefused };
+  boardSubscriptions.add(sub);
+  // Not connected yet (or reconnecting): the `connect` handler joins it.
+  if (target.connected) emitJoin(target, sub);
+
+  return () => {
+    if (!boardSubscriptions.delete(sub)) return;
+    const stillWanted = [...boardSubscriptions].some(
+      (s) => s.projectId === projectId,
+    );
+    // A disconnected socket is in no room; there is nothing to leave.
+    if (!stillWanted && target.connected) {
+      target.emit("kanban:leave", projectId);
+    }
+  };
+};
+
 /**
  * Lazily create (or return) the shared socket connection.
  * Returns null during SSR, when the token cannot be obtained, or when the
@@ -47,8 +100,11 @@ export const getSocket = async (): Promise<Socket | null> => {
         reconnectionDelay: 2000,
       });
 
+      // Fires on the first connection AND on every reconnection.
       created.on("connect", () => {
         refreshAttempts = 0;
+        if (socket !== created) return;
+        for (const sub of boardSubscriptions) emitJoin(created, sub);
       });
 
       // Handshake failures are most likely an expired short-lived token —
@@ -92,6 +148,8 @@ export const getSocket = async (): Promise<Socket | null> => {
 export const disconnectSocket = (): void => {
   generation += 1;
   connecting = null;
+  // The next principal must not inherit this session's board subscriptions.
+  boardSubscriptions.clear();
   if (socket) {
     socket.disconnect();
     socket = null;

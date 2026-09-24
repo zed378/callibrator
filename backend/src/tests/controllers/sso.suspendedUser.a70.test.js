@@ -95,6 +95,9 @@ const call = (handler, req) =>
       set() {
         return this;
       },
+      clearCookie() {
+        return this;
+      },
     };
     handler({ headers: { "user-agent": "jest" }, ip: "203.0.113.7", ...req }, res, () => {});
   });
@@ -129,11 +132,21 @@ const samlCallback = () =>
     params: { tenantCode: TENANT.code },
   });
 
-const oidcCallback = () =>
-  call(ssoController.oidcCallback, {
-    body: { code: "idp-code" },
+// A-68: an OIDC callback needs a sign-in this server started — its state and
+// the browser's binding cookie. The flow's own store write is then forgotten,
+// so "no hand-off code was issued" below still reads redis.set alone.
+const oidcCallback = async () => {
+  const flow = await ssoController.beginOidcFlow(TENANT.code, "https://sp.example.com/cb");
+  redis.set.mockClear();
+  return call(ssoController.oidcCallback, {
+    body: { code: "idp-code", state: flow.state },
     params: { tenantCode: TENANT.code },
+    headers: {
+      "user-agent": "jest",
+      cookie: `${ssoController.OIDC_BINDING_COOKIE}=${flow.binding}`,
+    },
   });
+};
 
 describe("A-70: SSO refuses a suspended user", () => {
   it("positive control: an active user's SSO sign-in creates one session and one LOGIN row", async () => {

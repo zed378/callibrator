@@ -31,6 +31,8 @@ const inputClass =
 const patchUser = (patch: {
   mfaEnabled: boolean;
   mfaRecoveryCodesRemaining: number;
+  // A-160: enrolling satisfies the tenant's "MFA required" policy.
+  mfaEnrolmentRequired?: boolean;
 }) =>
   useAuthStore.setState((s) => ({ user: s.user ? { ...s.user, ...patch } : s.user }));
 
@@ -100,7 +102,11 @@ export default function MfaPage() {
       setQrCodeUrl("");
       setRecoveryCodes(issued);
       setCodesSaved(false);
-      patchUser({ mfaEnabled: true, mfaRecoveryCodesRemaining: issued.length });
+      patchUser({
+        mfaEnabled: true,
+        mfaRecoveryCodesRemaining: issued.length,
+        mfaEnrolmentRequired: false,
+      });
       setStep(issued.length > 0 ? "codes" : "done");
     } catch (err) {
       addToast({
@@ -208,6 +214,21 @@ export default function MfaPage() {
             factor at sign-in.
           </p>
         </div>
+
+        {/* A-160: the tenant requires MFA; everything else is refused until
+            this account enrols. */}
+        {user?.mfaEnrolmentRequired === true && !alreadyEnabled && (
+          <div
+            role="alert"
+            className="flex items-start gap-3 rounded-xl border border-warning/30 bg-warning/10 p-4 text-sm text-warning"
+          >
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+            <p>
+              Your organisation requires two-factor authentication. Set it up
+              below to continue using the application.
+            </p>
+          </div>
+        )}
 
         <Card className="border-border">
           <CardContent className="pt-6">

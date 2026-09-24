@@ -10,6 +10,8 @@ import { Edit2, Trash2, UserCog } from "lucide-react";
 import { avatarImageProps } from "@/lib/uploadUrl";
 import { useAuthStore } from "@/stores/authStore";
 import { useToastStore } from "@/stores/toastStore";
+import { useUserStore } from "@/stores/userStore";
+import { CredentialResetActions } from "./CredentialResetActions";
 
 const SUPER_ADMIN_ROLES = ["SUPER_ADMIN", "SUPERADMIN"];
 
@@ -45,6 +47,12 @@ export const UserRow: React.FC<UserRowProps> = ({
   const addToast = useToastStore((s) => s.addToast);
   const currentUser = useAuthStore((s) => s.user);
   const impersonate = useAuthStore((s) => s.impersonate);
+  const refetchUsers = useUserStore((s) => s.refetchUsers);
+
+  // A-162: an administrator's credential resets. Never on one's own row —
+  // the backend refuses that (400) and points to the MFA / change-password
+  // pages. Whether the caller may reset THIS user is the backend's decision.
+  const canResetCredentials = !!currentUser && currentUser.id !== user.id;
 
   // Super-admins can impersonate any other user (the backend re-checks this).
   const canImpersonate =
@@ -142,6 +150,9 @@ export const UserRow: React.FC<UserRowProps> = ({
             >
               <UserCog className="h-4 w-4" />
             </Button>
+          )}
+          {canResetCredentials && (
+            <CredentialResetActions user={user} onReset={() => void refetchUsers()} />
           )}
           <Button variant="ghost" size="sm" onClick={() => onEdit(user)}>
             <Edit2 className="h-4 w-4" />

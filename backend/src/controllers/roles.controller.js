@@ -97,19 +97,19 @@ exports.getMenuById = asyncHandler(async (req, res) => {
 });
 
 exports.createMenu = asyncHandler(async (req, res) => {
-  const menu = await rolesService.createMenu(req.body || {});
+  const menu = await rolesService.createMenu(req.body || {}, auditActor(req));
   return res.status(201).json({ success: true, data: menu });
 });
 
 exports.updateMenu = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const menu = await rolesService.updateMenu(id, req.body || {});
+  const menu = await rolesService.updateMenu(id, req.body || {}, auditActor(req));
   return res.status(200).json({ success: true, data: menu });
 });
 
 exports.deleteMenu = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const result = await rolesService.deleteMenu(id);
+  const result = await rolesService.deleteMenu(id, auditActor(req));
   return res.status(200).json({ success: true, ...result });
 });
 

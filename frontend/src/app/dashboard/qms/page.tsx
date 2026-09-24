@@ -155,9 +155,12 @@ export default function QmsPage() {
     }
   };
 
+  // A-89 — title and description are both NOT NULL on non_conformances and
+  // required by the backend validator (A-74); the form asks for both rather
+  // than letting the API answer a 400.
   const createNc = async () => {
-    if (!ncForm.title.trim()) {
-      addToast({ type: "error", title: "A title is required" });
+    if (!ncForm.title.trim() || !ncForm.description.trim()) {
+      addToast({ type: "error", title: "A title and a description are required" });
       return;
     }
     const ok = await run(
@@ -165,7 +168,7 @@ export default function QmsPage() {
       () =>
         qmsService.createNonConformance({
           title: ncForm.title.trim(),
-          description: ncForm.description.trim() || undefined,
+          description: ncForm.description.trim(),
           severity: ncForm.severity,
         }),
       "Non-conformance raised",
@@ -176,9 +179,13 @@ export default function QmsPage() {
     }
   };
 
+  // A-89 — actionPlan is NOT NULL on capas and required by the validator.
   const createCapa = async () => {
-    if (!capaForm.ncId.trim() || !capaForm.title.trim()) {
-      addToast({ type: "error", title: "An NC and a title are required" });
+    if (!capaForm.ncId.trim() || !capaForm.title.trim() || !capaForm.actionPlan.trim()) {
+      addToast({
+        type: "error",
+        title: "An NC, a title and an action plan are required",
+      });
       return;
     }
     const ok = await run(
@@ -187,7 +194,7 @@ export default function QmsPage() {
         qmsService.createCapa({
           ncId: capaForm.ncId,
           title: capaForm.title.trim(),
-          actionPlan: capaForm.actionPlan.trim() || undefined,
+          actionPlan: capaForm.actionPlan.trim(),
           dueDate: capaForm.dueDate || undefined,
         }),
       "CAPA created",
@@ -515,7 +522,7 @@ export default function QmsPage() {
                 placeholder="e.g. Thermometer reading outside tolerance"
               />
             </FormField>
-            <FormField label="Description">
+            <FormField label="Description" required>
               <Textarea
                 rows={3}
                 value={ncForm.description}
@@ -574,7 +581,7 @@ export default function QmsPage() {
                 }
               />
             </FormField>
-            <FormField label="Action plan">
+            <FormField label="Action plan" required>
               <Textarea
                 rows={3}
                 value={capaForm.actionPlan}

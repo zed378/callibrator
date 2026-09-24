@@ -47,11 +47,17 @@ const auditService = require("./audit.service");
 // A-99: the one place TOTP is done, on the otplib 13 API. `authenticator`,
 // which this file used to take from otplib, does not exist in otplib 13.
 const mfaService = require("./mfa.service");
+const {
+  MFA_POLICY_KEYS,
+  NO_POLICY: NO_MFA_POLICY,
+  parseMfaPolicy,
+} = require("../utils/mfaPolicy.util");
 
 // User statuses auth.middleware refuses on every request (and config/socket.js
 // at the handshake). A login is refused for the same set, so no session or
 // LOGIN audit row is created for a principal that could never use it.
-const REFUSED_STATUSES = ["INACTIVE", "SUSPENDED"];
+// A-180: "erased" is what a GDPR anonymisation writes (gdpr.service).
+const REFUSED_STATUSES = ["INACTIVE", "SUSPENDED", "erased"];
 
 // ------------------------------------------------------------------
 // A-83 — THE TENANT IS CHECKED AT SIGN-IN, NOT ONLY AFTER IT
@@ -399,8 +405,18 @@ exports.loginUser = async (input) => {
     await dbUser.update({ failedLoginAttempts: attempts });
 
     if (attempts >= 5) {
-      await dbUser.update({
-        lockedUntil: new Date(Date.now() + 15 * 60 * 1000),
+      const lockedUntil = new Date(Date.now() + 15 * 60 * 1000);
+      // A-126 (ADR-051 Q-15): the lock and its ACCOUNT_LOCKED row commit
+      // together; if the row cannot be written the lock is still persisted.
+      await auditService.recordAccountLock({
+        persistLock: (transaction) =>
+          transaction ? dbUser.update({ lockedUntil }, { transaction }) : dbUser.update({ lockedUntil }),
+        user: dbUser,
+        lockedUntil,
+        failedAttempts: attempts,
+        endpoint: "login",
+        ipAddress: ip || null,
+        userAgent: userAgent || null,
       });
       throw new AppError(423, "Account locked due to too many failed attempts");
     }
@@ -711,8 +727,8 @@ exports.verifyUserSession = async (userId, _session) => {
 // GET AUTH USER (FOR MIDDLEWARE)
 // ------------------------------------------------------------------
 exports.getAuthUserWithTenant = async (userId) => {
-  const { Roles, Tenants } = require("../models");
-  return await Users.findByPk(userId, {
+  const { Roles, Tenants, TenantSettings } = require("../models");
+  const user = await Users.findByPk(userId, {
     include: [
       {
         model: Roles,
@@ -731,6 +747,24 @@ exports.getAuthUserWithTenant = async (userId) => {
       },
     ],
   });
+  if (!user) {
+    return user;
+  }
+  // A-160: the tenant's "MFA required" policy, read only when it could apply
+  // — a user in a tenant, without MFA. auth.middleware decides from it.
+  // skipTenantScope with an explicit tenantId: this runs before any tenant
+  // context exists, and the tenant is the user's own, never request input.
+  user.mfaPolicy = NO_MFA_POLICY;
+  if (user.tenantId && user.mfaEnabled !== true) {
+    const rows = await TenantSettings.findAll({
+      where: { tenantId: user.tenantId, key: MFA_POLICY_KEYS },
+      attributes: ["key", "value"],
+      skipTenantScope: true,
+      raw: true,
+    });
+    user.mfaPolicy = parseMfaPolicy(rows);
+  }
+  return user;
 };
 
 // ------------------------------------------------------------------
@@ -853,6 +887,32 @@ exports.logoutSession = async (req) => {
 // ------------------------------------------------------------------
 // REFRESH USER TOKEN
 // ------------------------------------------------------------------
+/**
+ * A-146 — an impersonation session is refreshed only while its operator is
+ * still an active super admin. Otherwise the impersonation ends here: the
+ * session is revoked and the refresh answered 401. The claim is re-issued
+ * from the SESSION ROW (sessions.impersonator_id), never from the request.
+ *
+ * @param {string} impersonatorId - sessions.impersonator_id
+ * @param {string} refreshToken - the token being refreshed, to revoke its session
+ * @throws {AppError} 401 when the operator may no longer impersonate
+ */
+const assertImpersonatorEntitled = async (impersonatorId, refreshToken) => {
+  const operator = await Users.findByPk(impersonatorId, {
+    // A-109: LEFT — a role-less operator is refused below, not lost to a JOIN.
+    include: [{ model: Role, as: "role", required: false }],
+  });
+  const entitled =
+    Boolean(operator) &&
+    operator.isActive !== false &&
+    !REFUSED_STATUSES.includes(operator.status) &&
+    ["SUPER_ADMIN", "SUPERADMIN"].includes(operator.role?.name);
+  if (!entitled) {
+    await revokeSession(refreshToken, "IMPERSONATOR_REVOKED");
+    throw new AppError(401, "The impersonation has ended: the operator may no longer impersonate");
+  }
+};
+
 exports.refreshUserToken = async (
   refreshToken,
   sessionId = null,
@@ -883,6 +943,22 @@ exports.refreshUserToken = async (
   if (!user) {
     throw new AppError(401, "User not found");
   }
+  // A-180: the statuses a sign-in refuses end a refresh too. An account
+  // suspended, deactivated or erased after its session opened got a fresh
+  // session here — one no request would then accept, but a session all the same.
+  if (user.isActive === false || REFUSED_STATUSES.includes(user.status)) {
+    await revokeSession(refreshToken, "ACCOUNT_REFUSED");
+    throw new AppError(403, "Account is suspended");
+  }
+
+  // A-146: an impersonation session keeps its operator through a refresh —
+  // the claim that F-8 attributes audit rows with and A-127 refuses Part 11
+  // acts on. It used to be dropped here: one refresh made the operator's
+  // requests look like the hospital user's own.
+  const impersonatorId = session.impersonator_id || null;
+  if (impersonatorId) {
+    await assertImpersonatorEntitled(impersonatorId, refreshToken);
+  }
 
   // 5. Revoke old session (token rotation). The access token issued with it
   //    stops working too (A-48): it names the old session.
@@ -896,12 +972,18 @@ exports.refreshUserToken = async (
     ipAddress: ipAddress || session.ip_address,
     userAgent: userAgent || session.user_agent,
     device: session.device,
-    expiredAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+    // A-146: an impersonation is not extended by refreshing it — it keeps the
+    // hour impersonateUser gave it. Any other session gets a fresh 7 days.
+    expiredAt: impersonatorId
+      ? session.expired_at
+      : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    impersonatorId,
   });
 
   const newAccessToken = generateAccessToken({
     id: user.id,
     email: user.email,
+    ...(impersonatorId ? { impersonatorId } : {}),
     sid: newSession.id,
   });
 
@@ -1384,6 +1466,8 @@ exports.impersonateUser = async (superAdminId, targetTenantId, targetUserId, inp
       ipAddress: inputIp || "",
       userAgent: (inputUserAgent || "") + " (Impersonated by " + superAdmin.email + ")",
       expiredAt: new Date(Date.now() + 1 * 60 * 60 * 1000), // 1 hour for impersonation
+      // A-146: recorded on the row, so a refresh re-issues the claim.
+      impersonatorId: superAdmin.id,
     });
     await auditService.logAction(
       {

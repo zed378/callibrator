@@ -23,6 +23,7 @@ exports.createSession = async ({
   userAgent,
   device,
   expiredAt,
+  impersonatorId = null,
 }) => {
   // Provide default expiredAt if not provided (7 days from now)
   const sessionExpiredAt =
@@ -31,6 +32,9 @@ exports.createSession = async ({
   return await Sessions.create({
     tenant_id: tenantId,
     user_id: userId,
+    // A-146: an impersonation session records its operator, so a refresh can
+    // re-issue the `impersonatorId` claim. Absent (NULL) on every other one.
+    ...(impersonatorId ? { impersonator_id: impersonatorId } : {}),
 
     token_hash: hashToken(refreshToken),
 
@@ -106,7 +110,35 @@ exports.revokeSession = async (refreshToken, reason = "LOGOUT") => {
 // REVOKE ALL USER SESSIONS
 // ==========================================
 
+/**
+ * Revoke every live session of one user.
+ *
+ * A-161: `skipTenantScope`, with the user id as the only predicate. Without
+ * it the global tenant hooks AND-ed the CALLER's tenant onto the WHERE, so
+ * the revocation silently missed sessions:
+ *  - a principal with no tenant that is not a super admin resolves to "deny"
+ *    (NO_TENANT_UUID) — its logout-all and password change revoked NOTHING;
+ *  - a session row whose `tenant_id` is not the caller's current tenant — a
+ *    NULL written before sessions carried a tenant, or a user since moved to
+ *    another tenant — survived the caller's own "sign out everywhere" and
+ *    password change.
+ * The id is always server-derived (the authenticated caller, the owner of a
+ * refresh token just validated, or an e-mail-code reset's own account), so
+ * dropping the tenant predicate never widens the update beyond that one
+ * user: `user_id` stays in the WHERE.
+ *
+ * @param {string} userId
+ * @param {string} [reason="LOGOUT_ALL"] - sessions.revoked_reason
+ * @returns {Promise<[number]>} Sequelize's update result
+ */
 exports.revokeAllSessions = async (userId, reason = "LOGOUT_ALL") => {
+  if (userId === undefined || userId === null || userId === "") {
+    // Now that the tenant predicate is gone, `user_id` is the ONLY thing
+    // narrowing this UPDATE. Refuse a missing id outright rather than rely on
+    // what the driver makes of it (Sequelize 6 turns null into IS NULL and
+    // throws on undefined) — a caller that lost its user id is a bug to see.
+    throw new Error("revokeAllSessions: a user id is required");
+  }
   return await Sessions.update(
     {
       is_revoked: true,
@@ -119,6 +151,7 @@ exports.revokeAllSessions = async (userId, reason = "LOGOUT_ALL") => {
         user_id: userId,
         is_revoked: false,
       },
+      skipTenantScope: true,
     },
   );
 };

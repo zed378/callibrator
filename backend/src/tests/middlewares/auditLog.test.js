@@ -1,8 +1,8 @@
 /**
  * Tests for auditLog middleware
  */
+const auditLogMiddleware = require("../../middlewares/auditLog.middleware");
 const {
-  auditAction,
   withAudit,
   recordAudit,
 } = require("../../middlewares/auditLog.middleware");
@@ -47,49 +47,10 @@ describe("auditLog middleware", () => {
     spyError.mockRestore();
   });
 
-  describe("auditAction", () => {
-    it("should log audit action and intercept res.json", async () => {
-      const middleware = auditAction("role_create", "Role");
-      await middleware(req, res, next);
-
-      expect(logger.info).toHaveBeenCalledWith(
-        expect.stringContaining("AUDIT: role_create"),
-        expect.objectContaining({
-          userId: "test-user-id",
-          tenantId: "test-tenant-id",
-          resource: "Role",
-          action: "role_create",
-        }),
-      );
-      expect(next).toHaveBeenCalled();
-
-      // Trigger the intercepted res.json
-      const testBody = { success: true };
-      res.json(testBody);
-
-      expect(logger.info).toHaveBeenCalledWith(
-        expect.stringContaining("AUDIT: role_create complete"),
-        expect.objectContaining({
-          userId: "test-user-id",
-          tenantId: "test-tenant-id",
-          statusCode: 200,
-          success: true,
-        }),
-      );
-    });
-
-    it("should default user info if req.user is missing", async () => {
-      delete req.user;
-      const middleware = auditAction("role_create", "Role");
-      await middleware(req, res, next);
-
-      expect(logger.info).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({
-          userId: "anonymous",
-          tenantId: null,
-        }),
-      );
+  describe("auditAction (A-43)", () => {
+    it("A-43: is no longer exported — the body-logging helper was deleted", () => {
+      expect(auditLogMiddleware.auditAction).toBeUndefined();
+      expect(Object.keys(auditLogMiddleware).sort()).toEqual(["recordAudit", "withAudit"]);
     });
   });
 

@@ -18,7 +18,7 @@ Two consequences follow, and both belong in a threat model before a line of webh
 
 **2. The URL is an SSRF primitive.** The outbound request originates inside the deployment. `http://169.254.169.254/latest/meta-data/`, `http://minio:9000`, `http://postgres:5432` are all addresses the platform can reach and the internet cannot. Destination validation is not a hardening nicety here; it is the boundary.
 
-**3. What leaves the hospital's boundary leaves it in the clear to whoever owns that host.** The payload is device identity — `deviceId`, `name`, `serialNumber`, `nextCalibrationDate`, `workOrderId` ([`01-EVENT-CATALOG.md`](./01-EVENT-CATALOG.md)). No patient data, no user identity. That is a fact about today's two events, not a property of the mechanism: the mechanism will send whatever a future `emitEvent` payload contains, to a third-party host, over a transport the tenant chose. Every new event's payload is a data-export decision, and under GDPR and the hospital's own data-sharing rules it is the tenant's decision to have made knowingly. There is no per-event consent, no field redaction and no data-processing-agreement gate in the code — the only control is that the tenant admin registered the URL.
+**3. What leaves the hospital's boundary leaves it in the clear to whoever owns that host.** The payload is device identity — `deviceId`, `name`, `serialNumber`, `nextCalibrationDate`, `workOrderId` ([`01-EVENT-CATALOG.md`](./01-EVENT-CATALOG.md)). No patient data. Since A-11 (2026-09-24) the certificate, work-order, stock-transfer and CAPA events add record identifiers, numbers and statuses, and the acting **user id** (`approvedBy`, `signedBy`, `revokedBy`, `closedBy` — a UUID, no name or email); free text such as a revocation reason is deliberately left out. That is a fact about today's events, not a property of the mechanism: the mechanism will send whatever a future `emitEvent` payload contains, to a third-party host, over a transport the tenant chose. Every new event's payload is a data-export decision, and under GDPR and the hospital's own data-sharing rules it is the tenant's decision to have made knowingly. There is no per-event consent, no field redaction and no data-processing-agreement gate in the code — the only control is that the tenant admin registered the URL.
 
 ## Who May Manage A Webhook
 
@@ -54,21 +54,20 @@ The guard is asserted by `backend/src/tests/routes/routeGuards.a02.test.js`, whi
 
 ## The Signature
 
+> **Changed 2026-09-24 (A-10, ADR-054) — a breaking change for receivers.** Until then the header was `sha256=<HMAC(secret, body)>` with no timestamp, and a captured delivery was valid forever. A receiver still verifying that scheme now rejects every delivery; the deliveries fail, retry for ~20 h and dead-letter. Move receivers to the recipe below.
+
 ### What the sender does
 
-`webhook.service.js:28`:
+`webhook.service.js`:
 
 ```js
-const sign = (secret, body) =>
-  crypto.createHmac("sha256", secret).update(body).digest("hex");
-```
+const sign = (secret, timestamp, body) =>
+  crypto.createHmac("sha256", secret).update(`${timestamp}.${body}`).digest("hex");
 
-and `webhook.service.js:145`:
-
-```js
 const body = JSON.stringify({ id, event, createdAt, data });
-const signature = sign(webhook.secret, body);
-// header: "X-Webhook-Signature": `sha256=${signature}`
+const timestamp = Math.floor(Date.now() / 1000);          // fresh on every attempt
+const signature = sign(secretForSigning(webhook), timestamp, body);
+// headers: "X-Webhook-Timestamp": String(timestamp), "X-Webhook-Signature": `v1=${signature}`
 ```
 
 Stated exactly:
@@ -76,10 +75,10 @@ Stated exactly:
 | | |
 |---|---|
 | **Algorithm** | HMAC-SHA-256 |
-| **Key** | the UTF-8 bytes of `webhooks.secret` **as stored** — the string itself, *not* hex-decoded. The default is a 48-character lowercase hex string (`crypto.randomBytes(24).toString("hex")`), and the key is those 48 ASCII bytes, not the 24 bytes they encode. Decoding it first produces a different, wrong signature. |
-| **Signed bytes** | the **entire raw HTTP request body**, UTF-8, exactly as transmitted — the output of `JSON.stringify({ id, event, createdAt, data })`. Nothing is prepended, appended, or interposed: no timestamp, no delivery id, no version prefix, no newline, no separator. |
-| **Encoding** | lowercase hex, 64 characters, from `.digest("hex")` |
-| **Header** | `X-Webhook-Signature: sha256=<64 hex chars>` — the literal prefix `sha256=` then the digest |
+| **Key** | the UTF-8 bytes of the signing secret — the 64-character lowercase hex **string** returned once at creation / rotation, *not* hex-decoded. Decoding it first produces a different, wrong signature. |
+| **Signed bytes** | the ASCII decimal timestamp exactly as sent in `X-Webhook-Timestamp`, then one `.` (0x2E), then the **entire raw HTTP request body**, UTF-8, exactly as transmitted. |
+| **Encoding** | lowercase hex, 64 characters |
+| **Header** | `X-Webhook-Signature: v1=<64 hex chars>` — `v1=` names the scheme |
 
 ### The full request
 
@@ -90,12 +89,21 @@ Stated exactly:
 | `Content-Type` | `application/json` |
 | `X-Webhook-Event` | the event name, e.g. `device.overdue` |
 | `X-Webhook-Id` | the **webhook** id (`webhooks.id`) — which subscription this is |
-| `X-Webhook-Delivery` | the **delivery** id (`webhook_deliveries.id`) — stable across every retry of this delivery |
-| `X-Webhook-Signature` | `sha256=<hex>` |
+| `X-Webhook-Delivery` | the **delivery** id (`webhook_deliveries.id`) — unique per delivery, stable across every retry of it, and the `id` inside the body |
+| `X-Webhook-Timestamp` | unix seconds when **this attempt** was signed |
+| `X-Webhook-Signature` | `v1=<hex>` |
 
-Any other header on the wire (`user-agent`, `accept`, `accept-encoding`) comes from the Node runtime's `fetch`, is not configured by this code, and is **not documented here because it has not been observed against a live receiver.** Do not build a receiver that depends on one.
+The body is byte-identical on every retry; the timestamp and the signature are not. Any other header on the wire comes from Node's `fetch` and is not part of the contract.
 
-There is **no** timestamp header and **no** version header.
+### Verifying — the recipe
+
+1. Read `X-Webhook-Timestamp`, `X-Webhook-Signature`, `X-Webhook-Delivery`. Reject if any is missing.
+2. **Reject a stale timestamp:** if `|now − timestamp| > 300` seconds, reject. This is the replay protection.
+3. Compute `v1=` + hex HMAC-SHA256(secret, `timestamp + "." + rawBody`) and compare to the header **in constant time**. Reject on mismatch. Because the timestamp is signed, it cannot be refreshed without the secret.
+4. **Deduplicate on `X-Webhook-Delivery`:** delivery is at-least-once, so the same id can arrive twice (a retry after a lost `2xx`). Keep seen ids for at least the tolerance window (5 min) to stop replays inside it; keep them ~24 h to also absorb retries.
+5. Answer `2xx` quickly and do the work afterwards.
+
+This recipe is the code of `backend/src/tests/fixtures/webhookReceiver.js#verifyWebhook`, which the delivery tests run over real HTTP.
 
 ### Verifying — Node
 
@@ -105,38 +113,56 @@ const crypto = require("crypto");
 // express: app.post("/hook", express.raw({ type: "application/json" }), handler)
 // The signature covers the RAW bytes. Re-serializing a parsed object will not
 // reproduce them — key order, spacing and number formatting all differ.
-function verify(rawBody, header, secret) {
-  const expected = "sha256=" + crypto
-    .createHmac("sha256", secret)   // secret as the stored string
-    .update(rawBody)                // Buffer or UTF-8 string, the raw body
+function verify(req, secret, seen) {
+  const ts = req.get("X-Webhook-Timestamp");
+  const sig = req.get("X-Webhook-Signature") || "";
+  const id = req.get("X-Webhook-Delivery");
+  if (!ts || !id || !/^\d+$/.test(ts)) return false;
+  if (Math.abs(Date.now() / 1000 - Number(ts)) > 300) return false;       // stale: replay
+  const expected = "v1=" + crypto
+    .createHmac("sha256", secret)                                        // secret as the string
+    .update(`${ts}.${req.body.toString("utf8")}`)
     .digest("hex");
   const a = Buffer.from(expected);
-  const b = Buffer.from(header || "");
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
+  const b = Buffer.from(sig);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return false;
+  if (seen.has(id)) return "duplicate";                                  // already processed
+  seen.add(id);
+  return true;
 }
 ```
 
 ### Verifying — Python
 
 ```python
-import hmac, hashlib
+import hmac, hashlib, time
 
-def verify(raw_body: bytes, header: str, secret: str) -> bool:
-    expected = "sha256=" + hmac.new(
-        secret.encode("utf-8"), raw_body, hashlib.sha256
+def verify(raw_body: bytes, headers, secret: str, seen: set):
+    ts = headers.get("X-Webhook-Timestamp", "")
+    sig = headers.get("X-Webhook-Signature", "")
+    delivery = headers.get("X-Webhook-Delivery")
+    if not ts.isdigit() or not delivery:
+        return False
+    if abs(time.time() - int(ts)) > 300:
+        return False                                   # stale: replay
+    expected = "v1=" + hmac.new(
+        secret.encode("utf-8"), ts.encode() + b"." + raw_body, hashlib.sha256
     ).hexdigest()
-    return hmac.compare_digest(expected, header or "")
+    if not hmac.compare_digest(expected, sig):
+        return False
+    if delivery in seen:
+        return "duplicate"
+    seen.add(delivery)
+    return True
 ```
 
-Compare in constant time. A byte-by-byte `==` on a hex digest is a timing oracle that lets an attacker recover a valid signature one nibble at a time.
+Compare in constant time. A byte-by-byte `==` on a hex digest is a timing oracle.
 
 ### What the signature does not give you
 
-**It is not replay protection.** The body contains no timestamp the receiver can bound, the headers contain none, and none is signed. A captured request is valid forever, to anyone who can reach the receiver. This is [A-10](../../TASKS/AUDIT-2026-09-REMEDIATION.md), whose Definition of Done includes "a signed timestamp header, and receivers told to reject stale ones" — **open as of 2026-09-23**.
+**Replay protection is the receiver's check.** The sender signs a timestamp; only a receiver that rejects stale ones (step 2) and remembers delivery ids (step 4) is protected. A receiver that verifies the HMAC alone accepts a captured request replayed within any window it does not bound.
 
-**What you do have is a stable delivery id.** `X-Webhook-Delivery`, and the identical `id` inside the signed body, are the `webhook_deliveries` primary key, and are byte-identical across every retry attempt of the same delivery. That makes the receiver's side of the contract tractable today:
-
-> **Receivers: deduplicate on the delivery id, and treat it as an idempotency key, not as freshness.** Two POSTs with the same `id` are the same event — process once. A POST with an `id` you have never seen is *not* thereby recent; it only means you have not processed it. Until a signed timestamp exists, the receiver's own defences against replay are (a) HTTPS to a host only the platform's egress can reach, and (b) a bounded dedup window that is at least as long as the retry window, and preferably much longer.
+**Clock skew matters.** A receiver whose clock is more than 5 minutes off rejects every delivery as stale. Run NTP.
 
 **It is not transport security.** The URL validator accepts `http:` as well as `https:` (`ssrf.util.js#assertSafeUrl`). A receiver registered over plain HTTP puts the payload, and every header including the signature, on the wire in the clear. Nothing in the platform warns about this. Register `https:` URLs.
 

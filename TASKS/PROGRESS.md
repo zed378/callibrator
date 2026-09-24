@@ -78,7 +78,7 @@ QMS (non-conformances, CAPA, SOP) · risk register · vendor scorecards · workf
 
 | Gate | State |
 |---|---|
-| Backend unit coverage (100%) | ✅ **passing** — 398 suites, 8,521 tests, 100% statements, branches, functions and lines (2026-09-24, batch 4). **But `models/` is excluded from the gate twice, so it has never measured a model** — the A-88 model DDL test now covers foreign keys |
+| Backend unit coverage (100%) | ✅ **passing** — 481 suites, 10,463 tests, 100% statements, branches, functions and lines (2026-09-25, batch 5). **But `models/` is excluded from the gate twice, so it has never measured a model** — the A-88 model DDL test now covers foreign keys |
 | Backend lint | 🔴 **red, and it had never run at all** — a version mismatch crashed ESLint before it linted a file (A-34). It runs now and reports 1,319 errors, all formatting, none logic |
 | Frontend coverage (70%) | 🔴 **red, and never run** — about 14%; `npm test` does not pass `--coverage`, so nothing evaluates the threshold |
 | Live E2E in one uninterrupted run | 🔴 **never achieved** — every fix verified individually; the rate-limit window kept resetting |
@@ -99,18 +99,19 @@ regression; it is a gate nobody could have been running.
 [`2026-09-24-phase0-foundation-repairs`](../MEMORY/records/2026-09-24-phase0-foundation-repairs.md),
 [`2026-09-24-phase0-batch2`](../MEMORY/records/2026-09-24-phase0-batch2.md),
 [`2026-09-24-phase0-batch3-checkpoint`](../MEMORY/records/2026-09-24-phase0-batch3-checkpoint.md),
-[`2026-09-24-phase0-batch4`](../MEMORY/records/2026-09-24-phase0-batch4.md)
+[`2026-09-24-phase0-batch4`](../MEMORY/records/2026-09-24-phase0-batch4.md),
+[`2026-09-25-phase0-batch5`](../MEMORY/records/2026-09-25-phase0-batch5.md)
 
 Started as a documentation task on 2026-09-21 and turned into an audit. The board has grown from
 32 findings to 47, because **fourteen of the new ones were found while fixing or documenting
 something else** — which is the only way defects of this shape are found.
 
-| | Count (2026-09-24, batch 4, main board only) |
+| | Count (2026-09-25, batch 5, main board only) |
 |---|---|
-| Findings recorded | **149** |
-| Done and verified by a named test | **89** |
-| Partly done | 6 |
-| Open | 54 — highest: A-139 (backup archives hold MFA secrets), A-140, A-141, A-120, A-123, A-125, A-129, A-130, A-135 |
+| Findings recorded | **193** |
+| Done and verified by a named test | **164** |
+| Partly done | 4 |
+| Open | 25 — highest: A-182 (workflow approval skips re-authentication), A-183, A-185, A-181, A-184, A-186–A-191 |
 
 ### The ones that matter most, still open
 

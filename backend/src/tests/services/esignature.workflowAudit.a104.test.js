@@ -113,12 +113,15 @@ describe("A-104 — e-signature workflow management audits inside the transactio
       expect(mockRef.ledger.rows).toEqual([]);
     });
 
-    it("an actor-less call still records the row, with a null user", async () => {
-      await eSignatureService.updateWorkflow("wf-1", "tenant-1", { message: "m" });
+    // A-124 (ADR-051 Q-13): an audit row names exactly one actor, so an
+    // actor-less change is refused inside its transaction — not recorded unattributed.
+    it("an actor-less call is refused and nothing commits", async () => {
+      await expect(
+        eSignatureService.updateWorkflow("wf-1", "tenant-1", { message: "m" }),
+      ).rejects.toBeDefined();
 
-      expect(mockRef.ledger.auditRows()).toEqual([
-        expect.objectContaining({ userId: null, ipAddress: null, userAgent: null }),
-      ]);
+      expect(mockRef.ledger.committed("signature_workflows")).toEqual([]);
+      expect(mockRef.ledger.auditRows()).toEqual([]);
     });
   });
 

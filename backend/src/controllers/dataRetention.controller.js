@@ -26,6 +26,7 @@ exports.setRetentionPolicy = asyncHandler(async (req, res) => {
     validated.tenantId,
     validated.policyKey,
     validated.days,
+    auditActor(req), // A-153: audited in the transaction
   );
 
   success(res, result, null, "Retention policy updated");
@@ -40,9 +41,10 @@ exports.isOnLegalHold = asyncHandler(async (req, res) => {
 
 exports.enableLegalHold = asyncHandler(async (req, res) => {
   const validated = validate({ ...req.params, ...req.body }, legalHoldSchema);
+  // A-153: the actor, for the audit row written in the transaction.
   const result = await dataRetentionService.enableLegalHold(
     validated.tenantId,
-    req.user?.id,
+    auditActor(req),
     validated.reason,
   );
 
@@ -53,7 +55,7 @@ exports.disableLegalHold = asyncHandler(async (req, res) => {
   const validated = validate(req.params, tenantIdSchema);
   const result = await dataRetentionService.disableLegalHold(
     validated.tenantId,
-    req.user?.id,
+    auditActor(req),
   );
 
   success(res, result, null, "Legal hold disabled");
@@ -81,10 +83,10 @@ exports.maskPII = asyncHandler(async (req, res) => {
 
 exports.anonymizeDataset = asyncHandler(async (req, res) => {
   const validated = validate({ ...req.params, ...req.body }, anonymizeSchema);
+  // A-152: refused for every entity type (400); see the service.
   const result = await dataRetentionService.anonymizeDataset(
     validated.tenantId,
     validated.entityType,
-    validated.options,
   );
 
   success(res, result, null, "Dataset anonymized");

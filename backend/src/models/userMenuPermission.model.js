@@ -81,18 +81,19 @@ const defineModel = (db, DataTypes) => {
    */
   UserMenuPermission.associate = (models) => {
     UserMenuPermission.belongsTo(models.User, {
-      foreignKey: "user_id",
+      foreignKey: "userId",
       as: "user",
       onDelete: "CASCADE",
     });
     UserMenuPermission.belongsTo(models.MenuGroup, {
-      foreignKey: "menu_group_id",
+      foreignKey: "menuGroupId",
       as: "menu",
       onDelete: "CASCADE",
     });
     UserMenuPermission.belongsTo(models.User, {
-      foreignKey: "granted_by",
+      foreignKey: "grantedBy",
       as: "grantor",
+      onDelete: "SET NULL",
     });
   };
 

@@ -23,7 +23,7 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.UUID,
         allowNull: false,
         references: { model: "users", key: "id" },
-        onDelete: "CASCADE",
+        onDelete: "RESTRICT",
       },
       type: {
         type: DataTypes.ENUM(
@@ -77,8 +77,9 @@ const defineModel = (db, DataTypes) => {
       onDelete: "RESTRICT",
     });
     DsarRequest.belongsTo(models.User, {
-      foreignKey: "user_id",
+      foreignKey: "userId",
       as: "user",
+      onDelete: "RESTRICT",
     });
   };
 

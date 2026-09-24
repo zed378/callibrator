@@ -95,7 +95,7 @@ const defineModel = (db, DataTypes) => {
    */
   Role.associate = (models) => {
     // Role -> User (hasMany)
-    Role.hasMany(models.User, { foreignKey: "roleId", as: "users" });
+    Role.hasMany(models.User, { foreignKey: "roleId", as: "users", onDelete: "SET NULL" });
     // Role -> RoleMenuPermission (hasMany)
     Role.hasMany(models.RoleMenuPermission, {
       foreignKey: "roleId",

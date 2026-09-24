@@ -25,6 +25,27 @@ export const passwordChangeRedirect = (
     ? CHANGE_PASSWORD_PATH
     : null;
 
+/** The backend's 403 `code` for an account its tenant requires to enrol MFA (A-160). */
+export const MFA_ENROLMENT_REQUIRED = "MFA_ENROLMENT_REQUIRED";
+/** Where such an account is sent. */
+export const MFA_PATH = "/dashboard/mfa";
+
+/**
+ * A-160: where a failed request should send the browser because the user's
+ * tenant requires MFA and this account has none — or null. The backend
+ * answers every route but the MFA enrolment ones, change-password, logout
+ * and "who am I" with 403 + `code: MFA_ENROLMENT_REQUIRED` until it enrols.
+ * Not again once on that page (its own background requests would reload it).
+ */
+export const mfaEnrolmentRedirect = (
+  status: number | undefined,
+  code: string | undefined,
+  pathname: string,
+): string | null =>
+  status === 403 && code === MFA_ENROLMENT_REQUIRED && pathname !== MFA_PATH
+    ? MFA_PATH
+    : null;
+
 // Create axios instance
 const apiClient: AxiosInstance = axios.create({
   baseURL: "", // Send requests to current Next.js origin for proxying
@@ -79,11 +100,19 @@ apiClient.interceptors.response.use(
     // A-123: an account that must change its password goes to the one
     // screen that can clear the flag.
     if (typeof window !== "undefined") {
-      const target = passwordChangeRedirect(
-        error.response?.status,
-        responseData?.code,
-        window.location.pathname,
-      );
+      // A-160: likewise an account its tenant requires to enrol MFA goes to
+      // the MFA page.
+      const target =
+        passwordChangeRedirect(
+          error.response?.status,
+          responseData?.code,
+          window.location.pathname,
+        ) ??
+        mfaEnrolmentRedirect(
+          error.response?.status,
+          responseData?.code,
+          window.location.pathname,
+        );
       if (target) {
         window.location.href = target;
       }

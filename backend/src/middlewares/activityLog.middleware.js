@@ -7,80 +7,239 @@ const logDir = storagePath("log/activity");
 const isProduction = process.env.NODE_ENV === "production";
 
 // ======================================================
+// CONFIGURATION (A-14)
+// ======================================================
+
+/**
+ * Production logs JSON lines to stdout, where Docker collects them (and the
+ * compose json-file driver bounds them). Before A-14 the Console transport was
+ * added only outside production, so `docker logs` was empty and a crash at
+ * boot left its stack trace in a file nobody looked at.
+ *
+ * File logging is optional:
+ *   LOG_TO_FILE=true   write the rotated files too
+ *   LOG_TO_FILE=false  never write them
+ *   unset              files outside production, stdout only in production
+ * Every file transport is bounded (daily, 20 MB, gzip, 30 days).
+ *
+ * LOG_LEVEL overrides the level (default: info in production, debug elsewhere).
+ */
+const logToFile =
+  process.env.LOG_TO_FILE === undefined || process.env.LOG_TO_FILE === ""
+    ? !isProduction
+    : process.env.LOG_TO_FILE === "true";
+
+const level = process.env.LOG_LEVEL || (isProduction ? "info" : "debug");
+
+// ======================================================
+// REDACTION (A-14)
+// ======================================================
+
+const REDACTED = "[REDACTED]";
+const MAX_DEPTH = 8;
+
+/**
+ * Key names whose value is never logged, matched at any depth after
+ * lower-casing and removing `-` and `_` (so `set-cookie`, `api_key`,
+ * `x-api-key`, `refreshToken` and `mfa_secret` all match).
+ */
+const SENSITIVE_KEY =
+  /password|passwd|passphrase|^pass$|secret|token|authorization|cookie|apikey|privatekey|publickey|masterkey|encryptionkey|credential|^otp|otp$|^totp|mfacode|recoverycode|backupcode|sessionid|^sid$/;
+
+/** A one-time code under a generic key (`code`, `pin`): redacted when it looks like one. */
+const CODE_KEY = /^(code|pin|verificationcode)$/;
+const ONE_TIME_CODE = /^\s*\d{4,10}\s*$/;
+
+/** Credentials that show up as VALUES under unremarkable key names. */
+const BEARER = /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi;
+const JWT = /\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]*/g;
+
+const normaliseKey = (key) => String(key).toLowerCase().replace(/[-_]/g, "");
+
+const isSensitiveKey = (key) => SENSITIVE_KEY.test(normaliseKey(key));
+
+const scrubString = (value) =>
+  value.replace(BEARER, `$1 ${REDACTED}`).replace(JWT, REDACTED);
+
+/**
+ * Returns a redacted COPY of `value`; never mutates what the caller logged.
+ * @param {*} value
+ * @param {WeakSet<object>} seen  cycle guard
+ * @param {number} depth
+ * @returns {*}
+ */
+const redactValue = (value, seen, depth) => {
+  if (typeof value === "string") {
+    return scrubString(value);
+  }
+  if (value === null || typeof value !== "object") {
+    return value;
+  }
+  if (value instanceof Date) {
+    return value;
+  }
+  if (Buffer.isBuffer(value)) {
+    return `[Buffer ${value.length} bytes]`;
+  }
+  if (seen.has(value)) {
+    return "[Circular]";
+  }
+  if (depth >= MAX_DEPTH) {
+    return "[Truncated]";
+  }
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    return value.map((item) => redactValue(item, seen, depth + 1));
+  }
+
+  let source = value;
+  if (value instanceof Error) {
+    source = { name: value.name, message: value.message, stack: value.stack, ...value };
+  } else if (typeof value.toJSON === "function") {
+    // Sequelize instances and the like: walk what would be serialised.
+    source = value.toJSON();
+    if (source === null || typeof source !== "object") {
+      return redactValue(source, seen, depth + 1);
+    }
+  }
+
+  const out = {};
+  for (const key of Object.keys(source)) {
+    out[key] = redactEntry(key, source[key], seen, depth + 1);
+  }
+  return out;
+};
+
+const redactEntry = (key, value, seen, depth) => {
+  if (value !== undefined && value !== null && value !== "") {
+    if (isSensitiveKey(key)) {
+      return REDACTED;
+    }
+    if (
+      CODE_KEY.test(normaliseKey(key)) &&
+      (typeof value === "string" || typeof value === "number") &&
+      ONE_TIME_CODE.test(String(value))
+    ) {
+      return REDACTED;
+    }
+  }
+  return redactValue(value, seen, depth);
+};
+
+/**
+ * Redacts a query string's sensitive parameters (`?token=`, `?code=`, …) in a
+ * URL that is about to be logged. Keeps the path and non-sensitive parameters.
+ * @param {string} url
+ * @returns {string}
+ */
+const sanitizeUrl = (url) => {
+  if (typeof url !== "string") {
+    return url;
+  }
+  const q = url.indexOf("?");
+  if (q === -1) {
+    return scrubString(url);
+  }
+  const query = url
+    .slice(q + 1)
+    .split("&")
+    .map((pair) => {
+      const eq = pair.indexOf("=");
+      if (eq === -1) {
+        return pair;
+      }
+      let key = pair.slice(0, eq);
+      try {
+        key = decodeURIComponent(key);
+      } catch {
+        /* keep the raw key */
+      }
+      const normalised = normaliseKey(key);
+      return isSensitiveKey(key) || CODE_KEY.test(normalised) || normalised === "state"
+        ? `${pair.slice(0, eq)}=${REDACTED}`
+        : pair;
+    })
+    .join("&");
+  return scrubString(`${url.slice(0, q)}?${query}`);
+};
+
+/**
+ * winston format: redacts every string-keyed field of the log record at any
+ * depth, keeps winston's Symbol keys, and returns a new record so an object
+ * the caller passed in is never modified.
+ */
+const redactFormat = format((info) => {
+  const seen = new WeakSet();
+  seen.add(info);
+  const out = {};
+  for (const sym of Object.getOwnPropertySymbols(info)) {
+    out[sym] = info[sym];
+  }
+  for (const key of Object.keys(info)) {
+    if (key === "level") {
+      out[key] = info[key];
+      continue;
+    }
+    out[key] = redactEntry(key, info[key], seen, 1);
+  }
+  return out;
+});
+
+// ======================================================
 // LOGGER
 // ======================================================
 
-const logger = createLogger({
-  level: isProduction ? "info" : "debug",
+const baseFormat = combine(
+  errors({ stack: true }),
+  // ISO-8601 with an offset, so a line from a container whose TZ nobody
+  // recorded can still be placed in time.
+  timestamp(),
+  redactFormat(),
+  json(),
+);
 
-  format: combine(
-    errors({ stack: true }),
-    timestamp({
-      format: "YYYY-MM-DD HH:mm:ss",
-    }),
-    json(),
-  ),
+const rotated = (dirname, extra = {}) =>
+  new DailyRotateFile({
+    dirname,
+    filename: "%DATE%.log",
+    datePattern: "YYYY-MM-DD",
+    zippedArchive: true,
+    maxSize: "20m",
+    maxFiles: "30d",
+    createDir: true,
+    ...extra,
+  });
 
-  transports: [
-    // Error Logs
-    new DailyRotateFile({
-      level: "error",
-      dirname: `${logDir}/error`,
-      filename: "%DATE%.log",
-      datePattern: "YYYY-MM-DD",
-      zippedArchive: true,
-      maxSize: "20m",
-      maxFiles: "30d",
-      createDir: true,
-    }),
-
-    // Combined Logs
-    new DailyRotateFile({
-      dirname: `${logDir}/combined`,
-      filename: "%DATE%.log",
-      datePattern: "YYYY-MM-DD",
-      zippedArchive: true,
-      maxSize: "20m",
-      maxFiles: "30d",
-      createDir: true,
-    }),
-  ],
-
-  exceptionHandlers: [
-    new DailyRotateFile({
-      dirname: `${logDir}/exception`,
-      filename: "%DATE%.log",
-      datePattern: "YYYY-MM-DD",
-      createDir: true,
-    }),
-  ],
-
-  rejectionHandlers: [
-    new DailyRotateFile({
-      dirname: `${logDir}/rejection`,
-      filename: "%DATE%.log",
-      datePattern: "YYYY-MM-DD",
-      createDir: true,
-    }),
-  ],
-});
-
-// Console Logging
-if (!isProduction) {
-  logger.add(
-    new transports.Console({
+const consoleTransport = new transports.Console({
+  // Uncaught exceptions and unhandled rejections reach stdout too, so a
+  // crash loop is visible in `docker logs`.
+  handleExceptions: true,
+  handleRejections: true,
+  ...(isProduction
+    ? {}
+    : {
       format: combine(
         format.colorize(),
-        timestamp({
-          format: "YYYY-MM-DD HH:mm:ss",
-        }),
-        format.printf(({ timestamp: ts, level, message }) => {
-          return `${ts} [${level}]: ${message}`;
+        format.printf(({ timestamp: ts, level: lvl, message }) => {
+          return `${ts} [${lvl}]: ${message}`;
         }),
       ),
     }),
-  );
-}
+});
+
+const fileTransports = logToFile
+  ? [rotated(`${logDir}/error`, { level: "error" }), rotated(`${logDir}/combined`)]
+  : [];
+
+const logger = createLogger({
+  level,
+  format: baseFormat,
+  transports: [consoleTransport, ...fileTransports],
+  // The console transport handles both itself (above); these add bounded files.
+  exceptionHandlers: logToFile ? [rotated(`${logDir}/exception`)] : undefined,
+  rejectionHandlers: logToFile ? [rotated(`${logDir}/rejection`)] : undefined,
+});
 
 // ======================================================
 // HTTP LOGGER MIDDLEWARE
@@ -102,17 +261,14 @@ const EXCLUDED_PATHS = [
 ];
 
 /**
- * Check if request should be excluded from logging
+ * Check if request should be excluded from logging (exact path match).
+ * @param {string} url
+ * @returns {boolean}
  */
-const shouldExcludeFromLogging = (url) => {
-  // Exact match
-  if (EXCLUDED_PATHS.includes(url)) {
-    return true;
-  }
-};
+const shouldExcludeFromLogging = (url) => EXCLUDED_PATHS.includes(url);
 
 const activityLogger = (req, res, next) => {
-  const start = Date.now();
+  const start = process.hrtime.bigint();
 
   // Reuse the request id assigned by the upstream request-id middleware (in
   // index.js); only generate one if it's somehow missing, so there's a single
@@ -129,29 +285,30 @@ const activityLogger = (req, res, next) => {
 
   // Skip logging for excluded endpoints
   if (!shouldExcludeFromLogging(originalUrl)) {
-    logger.http({
-      requestId,
+    const url = sanitizeUrl(originalUrl);
 
-      type: "REQUEST",
-
-      ip,
-
-      method,
-
-      url: originalUrl,
-    });
+    // The arrival line stays at `http` (development detail); the completion
+    // line below is the per-request record and is written at `info` so it
+    // survives the production level (A-14).
+    // `message` must be set: winston treats a lone object WITHOUT one as the
+    // message itself, which is how this line used to print "[object Object]".
+    logger.http({ message: "request received", requestId, type: "REQUEST", ip, method, url });
 
     res.on("finish", () => {
-      const duration = Date.now() - start;
+      const durationMs =
+        Math.round(Number(process.hrtime.bigint() - start) / 1e4) / 100;
 
-      logger.http({
+      logger.info({
+        message: "request completed",
         requestId,
         type: "RESPONSE",
         ip,
         method,
-        url: originalUrl,
+        url,
         statusCode: res.statusCode,
-        duration: `${duration}ms`,
+        durationMs,
+        userId: req.user?.id || null,
+        tenantId: req.tenantId || req.user?.tenantId || null,
       });
     });
   }
@@ -162,4 +319,8 @@ const activityLogger = (req, res, next) => {
 module.exports = {
   activityLogger,
   logger,
+  // exported for tests and for any caller that must log a request-shaped value
+  redactFormat,
+  sanitizeUrl,
+  isSensitiveKey,
 };

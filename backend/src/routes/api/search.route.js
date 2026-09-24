@@ -30,6 +30,7 @@ const { SEARCH_MENUS } = require("../../services/search.service");
  *     responses:
  *       200: { description: Search results }
  *       403: { description: The caller may read none of the searchable types }
+ *       500: { description: "A searched type failed on both FTS and ILIKE (A-56); never reported as an empty result" }
  */
 // A-04. The route was `auth` alone: any authenticated principal could read
 // every device, stock item and certificate in the tenant through search.

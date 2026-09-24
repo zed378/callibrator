@@ -1729,7 +1729,7 @@ Separately, the signing routes had no permission gate at all (A-84).
 - **The e-signature menu item** now gives roles that have no other management menu a "Management"
   root in the sidebar.
 
-**Status:** Accepted — implemented 2026-09-24.
+**Status:** Accepted — implemented 2026-09-24. **Amended by ADR-051 (Q-19), 2026-09-24:** the default `esignature` grant is for the technical roles only; USER, ROOM USER and WAREHOUSE STAFF no longer sign by default (migration `0032`).
 
 ---
 
@@ -1877,6 +1877,139 @@ On a Part 11 authoring route (`denyPlatformAuthoring`):
   decides whether it is guarded.
 
 **Status:** Accepted — implemented 2026-09-24.
+
+---
+
+## ADR-053: A SCIM Group Is a Tenant-Owned Mapping to an Existing Role
+
+**Date:** 2026-09-24 · **Findings:** A-38, A-39, A-49 · **Migration:** `0042-scim-groups-per-tenant`
+
+**Context**
+
+A SCIM Group **was** a row in `roles`, and roles are global (`role.model.js`; ADR-051 Q-14 files
+global roles under platform operations). So one tenant's IdP could list every tenant's groups, learn
+another tenant's group names from a 409, and delete a role other tenants' users held (A-38). A group
+it created was a role with `roleLevel` 1 and no menu permissions: its members passed neither `rbac`
+nor `dynamicAccess`, and the IdP was told "created" (A-39) — the `ROLE_LEVELS` trap, reachable from
+outside the codebase.
+
+**Decision**
+
+1. SCIM Groups live in a new tenant-scoped table, `scim_groups` (`tenant_id`, `display_name`,
+   nullable `role_id`). **SCIM never creates, renames or deletes a role.**
+2. A group **maps** to an existing role through `roleId` (a Callibrator extension attribute on
+   `POST`/`PUT`, or `PATCH` path `roleId`). The role must exist, must not be SUPERADMIN (A-27), must not
+   be the default USER role, and must hold at least one menu permission — otherwise 400.
+3. A group may be created **unmapped**, because standard IdPs send only `displayName`. An unmapped group
+   grants nothing and **says so**: every group response carries
+   `urn:ietf:params:scim:schemas:extension:callibrator:2.0:Group` `{ roleId, roleName, grantsAccess }`,
+   and adding a member to an unmapped group is a **409** naming the fix.
+4. Membership stays derived from `users.role_id`, so a role backs at most one group per tenant —
+   `UNIQUE (tenant_id, role_id)`. Re-mapping moves the members to the new role; unmapping or deleting
+   the group demotes them to USER.
+5. `display_name` is stored as sent and unique **per tenant, case-insensitively** —
+   `UNIQUE (tenant_id, lower(display_name))`.
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| Add `tenantId` to `roles` | the global tenant hooks would then hide every seeded role (NULL tenant) from every tenant user; every `rbac`, `dynamicAccess` and seed path would need rework. That is the per-tenant-roles redesign, not a SCIM fix |
+| Keep creating a role, but give it a documented level and an empty permission set, and say so in the response | honest, but still writes global rows from a tenant credential, so A-38 stays open; and an empty role is A-39 with a label on it |
+| Require `roleId` on every `POST /Groups` (refuse unmapped groups) | the most explicit, but Okta, Entra ID and OneLogin cannot send it on a group push, so group provisioning would simply fail for every standard IdP |
+| Map groups to roles by a separate admin-configured table (displayName → role) | no admin UI or API for it exists; the SCIM credential can already assign any non-SUPERADMIN role to a user, so letting it map a group grants nothing new |
+
+**Implications — including the bad ones**
+
+- **Roles created by the old code are not migrated.** Nothing records which tenant created them, so
+  they stay as ordinary global roles (level 1, no grants), no longer visible as groups. An IdP re-pushes
+  its groups; an administrator maps them.
+- **An IdP cannot manage membership until an administrator maps the group.** That is the point, but it
+  is an extra step, and it is done through the SCIM API (`PATCH` path `roleId`) — there is no UI.
+- **Membership is still single-valued.** Adding a user to a group replaces their role, and every tenant
+  user who holds the mapped role — however they got it — is listed as a member. Deleting or unmapping the
+  group demotes all of them, including users an administrator assigned by hand.
+- **`PUT` without `roleId` keeps the mapping.** IdPs never send it, and reading its absence as "unmap"
+  would demote everyone on a rename. A client that wants to unmap must say `remove roleId`.
+- **`scim_groups.tenant_id` is `ON DELETE RESTRICT`** (Q-16 default): a hard tenant delete must remove
+  the groups first.
+- **No SCIM mutation writes an audit row yet** — still open from A-33. Group writes are now at least
+  transactional.
+
+**Status:** Accepted — implemented 2026-09-24.
+
+---
+
+## ADR-054: Webhook Delivery Is a Database Outbox, Not a RabbitMQ Queue
+
+**Date:** 2026-09-24 · **Findings:** A-10, A-11 · **Migration:** `0043-webhook-durable-delivery`
+
+**Context**
+
+A-10's Definition of Done said "delivery moves onto RabbitMQ with a dead-letter queue", following the
+old service comment. Retries were `setTimeout` waits in the emitting process (~15 s of backoff); a
+restart lost every one and stranded its row `pending`/`failed` forever. The signature had no timestamp,
+so a captured delivery was valid forever. Separately (A-11), only the calibration scan emitted events.
+
+**Decision**
+
+1. **`webhook_deliveries` is the queue.** A row per webhook per event carries `attempts`,
+   `next_attempt_at` (new, 0043) and the outcome. `pending|failed` + `next_attempt_at <= now()` is due;
+   `exhausted` is the dead letter.
+2. **Claiming is `UPDATE … WHERE id IN (SELECT … FOR UPDATE SKIP LOCKED) RETURNING`**, which also
+   pushes `next_attempt_at` forward by a lease (`WEBHOOK_LEASE_MS`, 5 min). Replicas claim disjoint
+   rows; a sender that dies mid-attempt leaves a row that is due again when the lease expires.
+3. **A dispatcher** (`webhookDeliveryScheduler.middleware.js`, node-cron, 15 s) runs one pass at boot —
+   what makes a restart resume — then on schedule. The first attempt of a new event is made at once,
+   through the same claim.
+4. **Backoff** `min(1 min × 2^(n−1), 6 h)`, 12 attempts — ~20.5 h to the dead letter. Deleted or
+   deactivated webhooks are re-checked before every attempt and dead-letter the row.
+5. **Signature v1:** `X-Webhook-Signature: v1=HMAC-SHA256(secret, "<timestamp>.<raw body>")` with
+   `X-Webhook-Timestamp` (unix seconds, fresh per attempt). Receivers reject timestamps more than
+   5 min off and deduplicate on `X-Webhook-Delivery`.
+6. **Events are emitted from `transaction.afterCommit`** (`webhook.service#emitAfterCommit`), so a
+   rolled-back mutation never fires one. The catalogue is `constants/webhookEvents.js`.
+
+**Alternatives considered**
+
+- **RabbitMQ with a DLQ (the DoD as written).** Rejected for now: the event would have to be published
+  after commit anyway, and a publish that fails after commit loses the event unless it is first
+  written to a table — i.e. an outbox is needed *in front of* the broker. Delayed retries of hours need
+  a delayed-message plugin or a TTL-queue ladder; the delivery log the tenant UI reads would still be
+  the table. The deployment treats RabbitMQ as optional (batch jobs and email fall back inline), and
+  PostgreSQL is already the one hard dependency. Moving the transport to RabbitMQ later remains
+  possible: the dispatcher would publish due rows instead of POSTing them.
+- **Redis sorted set / BullMQ.** Adds a second store of truth beside the delivery row; Redis is not
+  durable by default in this deployment.
+- **Write the delivery row inside the business transaction (a pure transactional outbox).** Strictly
+  stronger — no gap between COMMIT and the row. Not taken now: `emitEvent` inside the transaction
+  could abort it on any error (PostgreSQL aborts the whole transaction on a failed statement), so it
+  would need a savepoint per emit in every service, and the task was to add only minimal emit lines.
+- **Keep `sha256=` over the body and add a timestamp header beside it.** An unsigned timestamp is not
+  replay protection. A second, timestamped signature header kept alongside the old one would leave
+  the replayable signature on the wire for every receiver that never upgrades.
+
+**Implications — including the bad ones**
+
+- **Breaking change for receivers.** A receiver verifying the old `sha256=<HMAC(body)>` rejects every
+  delivery from now on; its deliveries fail, retry for ~20 h and dead-letter. There is no dual-signing
+  window. Receivers must move to the v1 recipe (`docs/WEBHOOK/03-WEBHOOK-SECURITY.md`).
+- **A crash between COMMIT and the row insert loses that event** (afterCommit runs in-process). The
+  gap is milliseconds, but it is not zero; closing it is the transactional-outbox alternative above.
+- **At-least-once, not exactly-once.** A lease that expires while a POST is still in flight (a
+  receiver slower than `WEBHOOK_LEASE_MS`, far above the 8 s timeout) is sent twice, same delivery id.
+- **Polling cost:** one indexed `UPDATE … SKIP LOCKED` every 15 s per replica, on a partial index
+  (`webhook_deliveries_due`) that holds only unfinished rows.
+- **The dispatcher's claim is cross-tenant raw SQL by design** (a system worker, like the calibration
+  scan); every read after it is scoped by the claimed row's own `tenant_id`, and a claim by id carries
+  `tenant_id` explicitly. It is a review item like every raw query.
+- **Rows the old loop abandoned:** 0043 resumes those under 24 h old and dead-letters older ones with
+  the reason in `last_error`. `down` does not un-dead-letter them.
+- **`webhook.test` is removed from the subscribable catalogue** (it never matched a subscription);
+  a test delivery gets exactly one attempt.
+
+**Status:** Accepted — implemented 2026-09-24. Amends A-10's Definition of Done (RabbitMQ → outbox),
+`docs/WEBHOOK/01-EVENT-CATALOG.md`, `03-WEBHOOK-SECURITY.md` and `04-WEBHOOK-RETRY.md`.
 
 ---
 

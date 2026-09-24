@@ -33,6 +33,9 @@ jest.mock("sequelize", () => {
     },
     fn: jest.fn(),
     col: jest.fn(),
+    // A-157: deleteCertificate locks with Transaction.LOCK.UPDATE. The real
+    // constant, so the lock assertion below checks the real value.
+    Transaction: jest.requireActual("sequelize").Transaction,
   };
 });
 
@@ -476,6 +479,36 @@ describe("certificate.service", () => {
       expect(result.success).toBe(true);
       expect(result.status).toBe(200);
       expect(mockCert.destroy).toHaveBeenCalled();
+    });
+
+    // A-157 — the status that gates the delete is read inside the delete's
+    // transaction, locked FOR UPDATE. The double models a concurrent approval:
+    // an unlocked read (outside the transaction) sees the stale
+    // "pending_approval"; the locked read, which in PostgreSQL waits for the
+    // approving transaction and then returns the committed row, sees
+    // "approved". Fail-before: the status was read with no transaction and no
+    // lock, so the approved certificate was destroyed.
+    it("A-157: reads the status inside the transaction under FOR UPDATE, so a concurrent approval is not deleted", async () => {
+      const destroy = jest.fn();
+      Certificate.findOne.mockImplementationOnce(async (options) => ({
+        id: "cert-1",
+        status:
+          options.transaction === "TX" && options.lock === "UPDATE"
+            ? "approved"
+            : "pending_approval",
+        destroy,
+      }));
+
+      const err = await deleteCertificate("tenant-1", "cert-1").catch((e) => e);
+
+      expect(Certificate.findOne).toHaveBeenCalledWith({
+        where: { id: "cert-1", tenantId: "tenant-1" },
+        transaction: "TX",
+        lock: "UPDATE",
+      });
+      expect(err.status).toBe(409);
+      expect(err.message).toContain('This certificate is "approved" and cannot be deleted');
+      expect(destroy).not.toHaveBeenCalled();
     });
 
     it("should handle error during delete", async () => {

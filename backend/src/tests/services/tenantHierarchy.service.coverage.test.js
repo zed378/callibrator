@@ -2,7 +2,7 @@
  * Branch/line coverage tests for tenantHierarchy.service.js
  *
  * Complements tenantHierarchy.service.test.js — targets the max-depth rollback,
- * the role-cascade path (HIERARCHY_CASCADE_ROLES), createSubOrganization's
+ * the absence of a role cascade (A-134), createSubOrganization's
  * failure handling, and the "all" data-visibility scope.
  *
  * HIERARCHY_ENABLED / HIERARCHY_MAX_DEPTH / HIERARCHY_CASCADE_ROLES are read at
@@ -190,169 +190,40 @@ describe("tenantHierarchy.service (coverage)", () => {
   });
 
   // ================================================================
-  describe("createSubOrganization with role cascade enabled", () => {
-    const activeParent = {
-      id: "parent-1",
-      code: "PARENT",
-      status: "active",
-      plan: "free",
-    };
-
-    const baseHierarchy = () => ({
-      findOne: jest.fn().mockResolvedValue(null),
-      count: jest.fn().mockResolvedValue(0),
-      create: jest.fn().mockResolvedValue({ path: "/parent/parent_001", depth: 1 }),
-    });
-
-    it("copies parent roles and menu permissions onto the new child tenant", async () => {
+  // A-134: there is no role cascade. Roles are global, so a child tenant
+  // already has every role; HIERARCHY_CASCADE_ROLES is no longer read.
+  describe("createSubOrganization with HIERARCHY_CASCADE_ROLES set (A-134)", () => {
+    it("creates the child and touches no role, user or permission model", async () => {
       const Tenant = {
-        findByPk: jest.fn().mockResolvedValue(activeParent),
-        create: jest.fn().mockResolvedValue({ id: "child-1" }),
-      };
-      const Role = {
         findByPk: jest.fn().mockResolvedValue({
-          id: "role-1",
-          name: "Manager",
-          level: 3,
-          description: "Runs the branch",
+          id: "parent-1",
+          code: "PARENT",
+          status: "active",
+          plan: "free",
         }),
-        findOne: jest.fn().mockResolvedValue(null), // child has no such role yet
-        create: jest.fn().mockResolvedValue({ id: "child-role-1" }),
-      };
-      const RoleMenuPermission = {
-        findAll: jest
-          .fn()
-          .mockResolvedValue([{ menuGroupId: "mg-1", permissionType: "write" }]),
-        findOrCreate: jest.fn().mockResolvedValue([{}, true]),
-      };
-      const User = {
-        findAll: jest.fn().mockResolvedValue([
-          { id: "u1", roleId: "role-1" },
-          { id: "u2", roleId: "role-1" }, // duplicate roleId → deduped
-        ]),
-      };
-      const svc = loadService(
-        { HIERARCHY_ENABLED: "true", HIERARCHY_CASCADE_ROLES: "true" },
-        { Tenant, TenantHierarchy: baseHierarchy(), Role, User, RoleMenuPermission },
-      );
-
-      const result = await svc.createSubOrganization("parent-1", { name: "Branch A" });
-
-      expect(result.tenantId).toBe("child-1");
-      expect(User.findAll).toHaveBeenCalledWith({
-        where: { tenantId: "parent-1" },
-        include: [Role],
-      });
-      expect(Role.findByPk).toHaveBeenCalledTimes(1); // deduped
-      expect(Role.create).toHaveBeenCalledWith({
-        name: "Manager",
-        level: 3,
-        tenantId: "child-1",
-        description: "Cascaded from parent: Runs the branch",
-      });
-      expect(RoleMenuPermission.findOrCreate).toHaveBeenCalledWith({
-        where: { roleId: "child-role-1", menuGroupId: "mg-1" },
-        defaults: {
-          roleId: "child-role-1",
-          menuGroupId: "mg-1",
-          permissionType: "write",
-        },
-      });
-      expect(logger.info).toHaveBeenCalledWith("Roles cascaded", {
-        fromTenant: "parent-1",
-        toTenant: "child-1",
-      });
-    });
-
-    it("reuses an existing child role instead of creating a duplicate", async () => {
-      const Tenant = {
-        findByPk: jest.fn().mockResolvedValue(activeParent),
         create: jest.fn().mockResolvedValue({ id: "child-1" }),
       };
-      const Role = {
-        findByPk: jest.fn().mockResolvedValue({
-          id: "role-1",
-          name: "Manager",
-          level: 3,
-          description: "d",
-        }),
-        findOne: jest.fn().mockResolvedValue({ id: "existing-child-role" }),
-        create: jest.fn(),
-      };
-      const RoleMenuPermission = {
-        findAll: jest.fn().mockResolvedValue([]),
-        findOrCreate: jest.fn(),
-      };
-      const User = {
-        findAll: jest.fn().mockResolvedValue([{ id: "u1", roleId: "role-1" }]),
-      };
-      const svc = loadService(
-        { HIERARCHY_ENABLED: "true", HIERARCHY_CASCADE_ROLES: "true" },
-        { Tenant, TenantHierarchy: baseHierarchy(), Role, User, RoleMenuPermission },
-      );
-
-      await svc.createSubOrganization("parent-1", { name: "Branch A" });
-
-      expect(Role.findOne).toHaveBeenCalledWith({
-        where: { name: "Manager", tenantId: "child-1" },
-      });
-      expect(Role.create).not.toHaveBeenCalled();
-      expect(RoleMenuPermission.findOrCreate).not.toHaveBeenCalled();
-    });
-
-    it("skips a roleId whose role row has disappeared", async () => {
-      const Tenant = {
-        findByPk: jest.fn().mockResolvedValue(activeParent),
-        create: jest.fn().mockResolvedValue({ id: "child-1" }),
-      };
-      const Role = {
-        findByPk: jest.fn().mockResolvedValue(null), // dangling roleId
-        findOne: jest.fn(),
-        create: jest.fn(),
-      };
-      const RoleMenuPermission = { findAll: jest.fn(), findOrCreate: jest.fn() };
-      const User = {
-        findAll: jest.fn().mockResolvedValue([{ id: "u1", roleId: "ghost-role" }]),
-      };
-      const svc = loadService(
-        { HIERARCHY_ENABLED: "true", HIERARCHY_CASCADE_ROLES: "true" },
-        { Tenant, TenantHierarchy: baseHierarchy(), Role, User, RoleMenuPermission },
-      );
-
-      const result = await svc.createSubOrganization("parent-1", { name: "Branch A" });
-
-      expect(result.tenantId).toBe("child-1");
-      expect(Role.findOne).not.toHaveBeenCalled();
-      expect(Role.create).not.toHaveBeenCalled();
-    });
-
-    it("treats a cascade failure as non-fatal and still returns the new tenant", async () => {
-      const Tenant = {
-        findByPk: jest.fn().mockResolvedValue(activeParent),
-        create: jest.fn().mockResolvedValue({ id: "child-1" }),
+      const TenantHierarchy = {
+        findOne: jest.fn().mockResolvedValue(null),
+        count: jest.fn().mockResolvedValue(0),
+        create: jest.fn().mockResolvedValue({ path: "/parent/parent_001", depth: 1 }),
       };
       const Role = { findByPk: jest.fn(), findOne: jest.fn(), create: jest.fn() };
       const RoleMenuPermission = { findAll: jest.fn(), findOrCreate: jest.fn() };
-      const User = {
-        findAll: jest.fn().mockRejectedValue(new Error("users table locked")),
-      };
+      const User = { findAll: jest.fn() };
       const svc = loadService(
         { HIERARCHY_ENABLED: "true", HIERARCHY_CASCADE_ROLES: "true" },
-        { Tenant, TenantHierarchy: baseHierarchy(), Role, User, RoleMenuPermission },
+        { Tenant, TenantHierarchy, Role, User, RoleMenuPermission },
       );
 
       const result = await svc.createSubOrganization("parent-1", { name: "Branch A" });
 
       expect(result.tenantId).toBe("child-1");
-      expect(logger.warn).toHaveBeenCalledWith("Role cascade failed (non-fatal)", {
-        parentTenantId: "parent-1",
-        childTenantId: "child-1",
-        error: "users table locked",
-      });
-      expect(logger.info).toHaveBeenCalledWith(
-        "Sub-organization created",
-        expect.objectContaining({ childTenantId: "child-1" }),
-      );
+      expect(User.findAll).not.toHaveBeenCalled();
+      expect(Role.findByPk).not.toHaveBeenCalled();
+      expect(Role.create).not.toHaveBeenCalled();
+      expect(RoleMenuPermission.findOrCreate).not.toHaveBeenCalled();
+      expect(logger.warn).not.toHaveBeenCalled();
     });
   });
 
@@ -502,7 +373,6 @@ describe("tenantHierarchy.service (coverage)", () => {
       expect(svc.getStatus()).toEqual({
         enabled: false,
         maxDepth: 5,
-        cascadeRoles: false,
       });
     });
 
