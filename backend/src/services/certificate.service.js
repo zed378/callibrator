@@ -85,24 +85,11 @@ const LOCKED_EDIT_EXPLANATION = {
 };
 
 /**
- * A-92 / A-130 (ADR-051 A-107) — why a certificate refuses deletion (a state
- * conflict, 409), keyed by the statuses that refuse it. `draft` and
- * `pending_approval` are not keys: they may still be deleted. An `approved`
- * certificate has been attested by its approver's re-authenticated signature,
- * a `signed` one is issued, and a `revoked` one is the permanent record that it
- * was withdrawn — which the public verification page must go on reporting.
+ * A-92 — why a signed certificate refuses deletion (a state conflict, 409).
  */
-const DELETE_REFUSAL_EXPLANATIONS = {
-  approved:
-    'This certificate is "approved" and cannot be deleted: its approval is a signed record. ' +
-    "Revoke it with POST /certificates/:id/revoke instead.",
-  signed:
-    'This certificate is "signed" and cannot be deleted: a signed certificate is a controlled record ' +
-    "whose signature must stay verifiable. Revoke it with POST /certificates/:id/revoke instead.",
-  revoked:
-    'This certificate is "revoked" and cannot be deleted: a revoked certificate is the permanent record ' +
-    "that it was withdrawn, and its verification page goes on showing it as revoked.",
-};
+const DELETE_SIGNED_EXPLANATION =
+  'This certificate is "signed" and cannot be deleted: a signed certificate is a controlled record ' +
+  "whose signature must stay verifiable. Revoke it with POST /certificates/:id/revoke instead.";
 
 /**
  * Re-authenticate the signer. MUST be called BEFORE the state change it
@@ -585,15 +572,12 @@ exports.deleteCertificate = async (tenantId, certificateId, actor = {}) => {
       };
     }
 
-    // Only a draft or a certificate pending approval may be deleted (A-130,
-    // ADR-051 A-107; until then only `signed` was refused, so a revoked
-    // certificate could be deleted and its public verification then answered
-    // "no certificate matches" — F-11). A-92: a state conflict, so 409 with
-    // the state and the way forward — not a 400. Thrown, not returned: the
-    // controller renders a returned result through success(), which would
-    // have sent `success: true` with the 409.
-    if (Object.prototype.hasOwnProperty.call(DELETE_REFUSAL_EXPLANATIONS, certificate.status)) {
-      throw new AppError(409, DELETE_REFUSAL_EXPLANATIONS[certificate.status]);
+    // Cannot delete signed certificates (must revoke instead). A-92: a state
+    // conflict, so 409 with the state and the way forward — not a 400. Thrown,
+    // not returned: the controller renders a returned result through
+    // success(), which would have sent `success: true` with the 409.
+    if (certificate.status === Certificate.STATUS.SIGNED) {
+      throw new AppError(409, DELETE_SIGNED_EXPLANATION);
     }
 
     await db.transaction(async (transaction) => {

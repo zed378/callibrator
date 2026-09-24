@@ -70,8 +70,6 @@ const migrationModules = [
   ["0028-user-mfa-pending-and-replay.js", require("../migrations/0028-user-mfa-pending-and-replay")],
   ["0029-audit-log-impersonator.js", require("../migrations/0029-audit-log-impersonator")],
   ["0030-tenant-foreign-keys-restrict.js", require("../migrations/0030-tenant-foreign-keys-restrict")],
-  ["0031-user-must-change-password-and-recovery-codes.js", require("../migrations/0031-user-must-change-password-and-recovery-codes")],
-  ["0032-esignature-technical-roles-only.js", require("../migrations/0032-esignature-technical-roles-only")],
 ];
 
 const migrator = new Umzug({

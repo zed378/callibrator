@@ -23,13 +23,10 @@ const {
   getSignatureHistory,
   getSignerWorkflows,
   getSignerWorkflow,
-  getEligibleSigners,
-  cancelWorkflow,
 } = require("../../controllers/eSignature.controller");
 const {
   createKeyPair: createKeyPairValidator,
   createWorkflow: createWorkflowValidator,
-  cancelWorkflow: cancelWorkflowValidator,
   signDocument: signDocumentValidator,
   verifySignature: verifySignatureValidator,
 } = require("../../validators/eSignature.validator");
@@ -238,13 +235,7 @@ router.get("/workflows", auth, dynamicAccess(MENU_SLUGS.QMS, "read"), getWorkflo
  * /api/v1/e-signature/workflows:
  *   post:
  *     summary: Create a workflow
- *     description: >-
- *       Creates a signature workflow, its steps (one per signer, in order) and
- *       an audit row, in one transaction. Every signer is named by `userId`
- *       and must be an active user of the caller's tenant holding `esignature`
- *       write; the name and email on each step are read from the user record,
- *       and any `name`/`email` in the body is ignored (A-129, F-10). Requires
- *       write access to QMS.
+ *     description: Creates a new digital signature workflow. Defines signers, signing order, and document references. Requires write access to ESignature.
  *     tags: [ESignature]
  *     security:
  *       - bearerAuth: []
@@ -255,38 +246,34 @@ router.get("/workflows", auth, dynamicAccess(MENU_SLUGS.QMS, "read"), getWorkflo
  *           schema:
  *             type: object
  *             required:
- *               - documentId
- *               - subject
+ *               - name
  *               - signers
  *             properties:
- *               documentId:
+ *               name:
  *                 type: string
- *               subject:
+ *                 description: Workflow name
+ *               description:
  *                 type: string
- *                 maxLength: 255
- *               message:
- *                 type: string
+ *                 description: Workflow description
  *               signers:
  *                 type: array
- *                 minItems: 1
- *                 description: In signing order.
  *                 items:
  *                   type: object
- *                   required: [userId]
  *                   properties:
  *                     userId:
  *                       type: string
  *                       format: uuid
+ *                     order:
+ *                       type: integer
+ *                     message:
+ *                       type: string
+ *               keyPairId:
+ *                 type: string
+ *                 format: uuid
  *               expiresAt:
  *                 type: string
  *                 format: date-time
  *     responses:
- *       400:
- *         description: >-
- *           Validation failed; an email-only (external) signer (A-86); or a
- *           signer who is inactive or does not hold `esignature` write
- *       404:
- *         description: A signer is not a user of this tenant
  *       201:
  *         description: Workflow created successfully
  *         content:
@@ -417,11 +404,7 @@ router.put(
  * /api/v1/e-signature/workflows/{workflowId}:
  *   delete:
  *     summary: Delete workflow
- *     description: >-
- *       Soft-deletes a workflow that carries no signature. A workflow with any
- *       signature — completed, or in progress with some steps signed — cannot
- *       be deleted (409); cancel it instead (A-130, A-144). Requires write
- *       access to QMS.
+ *     description: Soft-deletes a workflow. A completed (fully signed) workflow cannot be deleted (409). Requires write access to QMS.
  *     tags: [ESignature]
  *     security:
  *       - bearerAuth: []
@@ -438,7 +421,7 @@ router.put(
  *       404:
  *         description: Workflow not found
  *       409:
- *         description: The workflow has at least one signature
+ *         description: The workflow is completed; its signatures cover it
  *       401:
  *         description: Unauthorized
  */
@@ -450,79 +433,6 @@ router.delete(
   validateUuid("workflowId"),
   deleteWorkflow,
 );
-
-/**
- * @swagger
- * /api/v1/esignature/workflows/{workflowId}/cancel:
- *   post:
- *     summary: Cancel a workflow
- *     description: >-
- *       Cancels an open workflow. Its signatures, if any, are kept and stay
- *       verifiable; no further step can be signed. The cancellation and its
- *       audit row commit together. This is how a workflow with a signature is
- *       withdrawn, since it cannot be deleted (A-130, ADR-051 A-107). Requires
- *       write access to QMS.
- *     tags: [ESignature]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: workflowId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *     requestBody:
- *       required: false
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               reason:
- *                 type: string
- *                 maxLength: 500
- *                 description: Recorded in the audit row.
- *     responses:
- *       200:
- *         description: Workflow cancelled
- *       403:
- *         description: The caller lacks `qms` write
- *       404:
- *         description: Workflow not found (including one in another tenant)
- *       409:
- *         description: The workflow is completed or already cancelled
- */
-router.post(
-  "/workflows/:workflowId/cancel",
-  auth,
-  denyApiKey,
-  dynamicAccess(MENU_SLUGS.QMS, "write"),
-  validateUuid("workflowId"),
-  validate(cancelWorkflowValidator),
-  cancelWorkflow,
-);
-
-/**
- * @swagger
- * /api/v1/esignature/signers:
- *   get:
- *     summary: Users a workflow may name as signers
- *     description: >-
- *       Active users of the caller's tenant who hold `esignature` write — the
- *       rule POST /workflows enforces on every signer (A-129). Each row is
- *       `{ id, name, email }`, sorted by name. Requires write access to QMS
- *       (the permission that creates workflows).
- *     tags: [ESignature]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Rows in `data`, `meta.total` the count
- *       403:
- *         description: The caller lacks `qms` write
- */
-router.get("/signers", auth, dynamicAccess(MENU_SLUGS.QMS, "write"), getEligibleSigners);
 
 // A-91 — the signer's own view. GET /workflows and GET /workflows/:id are
 // management and stay on `qms`, which technicians and most other roles do not
@@ -625,7 +535,6 @@ router.get(
  *             required:
  *               - stepId
  *               - authPayload
- *               - reason
  *             properties:
  *               stepId:
  *                 type: string
@@ -640,7 +549,7 @@ router.get(
  *               reason:
  *                 type: string
  *                 maxLength: 255
- *                 description: The meaning of the signature (21 CFR 11.50). Required (A-129).
+ *                 description: The meaning of the signature (21 CFR 11.50).
  *               polygon:
  *                 type: object
  *                 nullable: true
@@ -673,17 +582,14 @@ router.get(
  *         description: The caller is not this step's signer
  *       404:
  *         description: Step not found (including a step in another tenant)
- *       409:
- *         description: The step is not pending, or the workflow is cancelled
  */
 // A-84 — /sign, /verify and /history carried no permission gate (CLAUDE.md:
 // every route needs one). They are gated on their own menu, `esignature`, NOT
-// on `qms`: a signer is whoever the workflow names. Since A-129 (ADR-051
-// Q-19) the technical roles hold `esignature:write` by default and USER, ROOM
-// USER and WAREHOUSE STAFF do not (migration 0031); a workflow cannot name a
-// signer without it (checked at creation), so no workflow is left unsignable.
-// The gate does not replace the A-65 check in signDocument — only the step's
-// own signer signs.
+// on `qms`: a signer is whoever the workflow names. Every seeded role holds
+// `esignature:write` (ROLE_MENU_ASSIGNMENTS; migration 0025 for databases
+// seeded earlier), so no role that can be named a signer is locked out, and a
+// tenant can now narrow signing per role or per user. The gate does not
+// replace the A-65 check in signDocument — only the step's own signer signs.
 router.post(
   "/sign",
   auth,
@@ -748,12 +654,7 @@ router.post(
  * /api/v1/e-signature/history:
  *   get:
  *     summary: Get signature history
- *     description: >-
- *       Signature history. With `qms` read, the tenant's signatures (the
- *       `userId` filter applies). Without it, only the caller's own
- *       signatures, `userId` ignored, and without `biometricData`,
- *       `ipAddress` or `userAgent` (A-129, F-9). Requires read access to
- *       `esignature`.
+ *     description: Retrieves the complete audit trail of all digital signatures for the tenant. Complies with 21 CFR Part 11 Section 11.10(e). Requires read access to ESignature.
  *     tags: [ESignature]
  *     security:
  *       - bearerAuth: []
@@ -763,7 +664,7 @@ router.post(
  *         schema:
  *           type: string
  *           format: uuid
- *           description: Filter by user ID (honoured only with `qms` read)
+ *           description: Filter by user ID
  *       - in: query
  *         name: startDate
  *         schema:

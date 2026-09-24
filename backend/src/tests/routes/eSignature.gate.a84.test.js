@@ -3,12 +3,10 @@
  *
  * They mounted `auth` (+ `denyApiKey` on /sign) and nothing else — CLAUDE.md:
  * every route needs a gate. They are now gated on their own menu,
- * `esignature`. Gating on `qms` would have locked TECHNICIAN and every other
- * non-admin signer out.
- *
- * A-129 (ADR-051 Q-19) narrowed the default grant: the technical roles hold
- * `esignature: write`; USER, ROOM USER and WAREHOUSE STAFF hold nothing on it,
- * and a workflow can no longer name a signer without the grant.
+ * `esignature`, and every seeded role holds `esignature: write`, because a
+ * workflow may name any user as a signer and signDocument already refuses all
+ * but that signer (A-65). Gating on `qms` would have locked TECHNICIAN and
+ * every other non-admin signer out.
  *
  * Behaviour tests through the real router and the real `dynamicAccess`. Only
  * `auth` (to set the principal) and the controller (where "reached" is
@@ -63,8 +61,6 @@ jest.mock("../../controllers/eSignature.controller", () => ({
   getSignatureHistory: reached("getSignatureHistory"),
   getSignerWorkflows: reached("getSignerWorkflows"),
   getSignerWorkflow: reached("getSignerWorkflow"),
-  getEligibleSigners: reached("getEligibleSigners"),
-  cancelWorkflow: reached("cancelWorkflow"),
 }));
 
 const fs = require("fs");
@@ -140,10 +136,6 @@ const SEEDED_ROLES = Object.keys(ROLE_IDS)
   .map((key) => ROLE_NAMES[key])
   .filter((name) => name !== ROLE_NAMES.SUPER_ADMIN);
 
-// A-129 (ADR-051 Q-19): the roles that do no technical work.
-const NON_SIGNING_ROLES = [ROLE_NAMES.USER, ROLE_NAMES.ROOM_USER, ROLE_NAMES.WAREHOUSE_STAFF];
-const SIGNING_ROLES = SEEDED_ROLES.filter((name) => !NON_SIGNING_ROLES.includes(name));
-
 const SIGN = ["post", "/sign", "signDocument"];
 const READS = [
   ["post", "/verify", "verifySignature"],
@@ -169,32 +161,16 @@ describe("A-84 — the signing routes are gated on `esignature`", () => {
     expect(gates.filter((g) => g.names.includes(MENU_SLUGS.ESIGNATURE))).toHaveLength(5);
   });
 
-  it("A-129: the technical roles hold `esignature: write`; USER, ROOM USER and WAREHOUSE STAFF hold nothing on it", () => {
-    const grants = Object.fromEntries(
-      ROLE_MENU_ASSIGNMENTS.map((a) => [a.roleName, a.menus[MENU_SLUGS.ESIGNATURE]]),
-    );
-    for (const roleName of [ROLE_NAMES.SUPER_ADMIN, ...SIGNING_ROLES]) {
-      expect([roleName, grants[roleName]]).toEqual([roleName, "write"]);
+  it("every seeded role holds `esignature: write` — nobody who can be named a signer is locked out", () => {
+    for (const assignment of ROLE_MENU_ASSIGNMENTS) {
+      expect([assignment.roleName, assignment.menus[MENU_SLUGS.ESIGNATURE]]).toEqual([
+        assignment.roleName,
+        "write",
+      ]);
     }
-    for (const roleName of NON_SIGNING_ROLES) {
-      expect([roleName, grants[roleName]]).toEqual([roleName, undefined]);
-    }
-    expect(SIGNING_ROLES).toHaveLength(7);
   });
 
-  describe.each(NON_SIGNING_ROLES)("%s (A-129)", (roleName) => {
-    it("is refused POST /sign, /verify and /history with 403, and never reaches a handler", async () => {
-      asRole(roleName);
-
-      for (const [method, url, handler] of [SIGN, ...READS]) {
-        const res = await http(method, url, { stepId: ID, signatureId: ID });
-        expect([url, res.status]).toEqual([url, 403]);
-        expect(controller[handler]).not.toHaveBeenCalled();
-      }
-    });
-  });
-
-  describe.each(SIGNING_ROLES)("%s", (roleName) => {
+  describe.each(SEEDED_ROLES)("%s", (roleName) => {
     it("reaches POST /sign", async () => {
       asRole(roleName);
       const res = await http(SIGN[0], SIGN[1], { stepId: ID });

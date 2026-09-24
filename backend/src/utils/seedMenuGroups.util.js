@@ -347,10 +347,9 @@ async function seedMenuGroups() {
       is_active: true,
       parentSlug: "mgmt-quality",
     },
-    // A-84: gates POST /esignature/sign, /verify and /history. The technical
-    // roles hold it (ROLE_MENU_ASSIGNMENTS; A-129, ADR-051 Q-19); migration
-    // 0025 added it to databases seeded before it existed, and 0031 withdrew
-    // the untouched default from USER, ROOM USER and WAREHOUSE STAFF.
+    // A-84: gates POST /esignature/sign, /verify and /history. Every seeded
+    // role holds it (ROLE_MENU_ASSIGNMENTS); migration 0025 adds it to
+    // databases seeded before it existed.
     {
       name: "E-Signatures",
       slug: "esignature",
@@ -839,7 +838,7 @@ async function seedRoleMenuPermissions() {
         "change-password",
         "profile-page",
         "notifications",
-        // No "esignature" for USER (A-129, ADR-051 Q-19).
+        "esignature",
       ],
     },
   ];
