@@ -15,6 +15,11 @@
  * so the real module is loaded to exercise the real failure path.
  */
 
+// This file drives real RSA key generation (SIGNATURE_KEY_SIZE bits). Under a
+// full parallel run that intermittently exceeded the 10 s default — observed
+// once after the 2026-09-24 dependency upgrade, green on re-run.
+jest.setTimeout(60000);
+
 // A-41: signing and revocation run in a managed transaction. The callback runs
 // with a sentinel; the in-transaction effects are asserted against a
 // schema-enforcing ledger in esignature.audit.a41.test.js.

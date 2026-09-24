@@ -20,7 +20,11 @@ dist/
 # 6 files) from the repository. A clean clone then crashed at boot with
 # "Cannot find module './storage'", because the code requiring it IS tracked.
 /storage/
-/uploads/
+/uploads/*
+!/uploads/profile/
+/uploads/profile/*
+# The default avatar is tracked (owner request, 2026-09-24).
+!/uploads/profile/default.svg
 
 # Logs
 /log/

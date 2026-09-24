@@ -10,7 +10,6 @@ jest.mock("jsonwebtoken", () => ({
   decode: jest.fn(),
   verify: jest.fn(),
 }));
-jest.mock("jwk-to-pem", () => jest.fn().mockReturnValue("mock-pem-key"));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: {
     info: jest.fn(),
@@ -20,7 +19,18 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
   },
 }));
 
+const crypto = require("crypto");
 const oidcJwks = require("../../services/oidcJwks");
+
+// Real public keys: the service converts JWK -> PEM with Node's crypto, so the
+// fixtures must be real key material, not placeholder strings (a mock of the
+// old jwk-to-pem package hid that the fixtures were not keys at all).
+const RSA_JWK = crypto
+  .generateKeyPairSync("rsa", { modulusLength: 2048 })
+  .publicKey.export({ format: "jwk" });
+const EC_JWK = crypto
+  .generateKeyPairSync("ec", { namedCurve: "P-256" })
+  .publicKey.export({ format: "jwk" });
 const { AppError } = require("../../utils/appError.util");
 const axios = require("axios");
 const jwt = require("jsonwebtoken");
@@ -95,8 +105,8 @@ describe("oidcJwks", () => {
               kid: "key-1",
               alg: "RS256",
               kty: "RSA",
-              n: "modulus",
-              e: "exponent",
+              n: RSA_JWK.n,
+              e: RSA_JWK.e,
             },
           ],
         },
@@ -127,7 +137,7 @@ describe("oidcJwks", () => {
       axios.get.mockResolvedValueOnce({
         data: {
           keys: [
-            { kid: "key-1", alg: "ES256", kty: "EC", n: "curve", e: "point" },
+            { kid: "key-1", alg: "ES256", kty: "EC", crv: EC_JWK.crv, x: EC_JWK.x, y: EC_JWK.y },
           ],
         },
       });
@@ -153,8 +163,8 @@ describe("oidcJwks", () => {
               kid: "key-1",
               alg: "RS256",
               kty: "RSA",
-              n: "modulus",
-              e: "exponent",
+              n: RSA_JWK.n,
+              e: RSA_JWK.e,
             },
           ],
         },
@@ -177,8 +187,8 @@ describe("oidcJwks", () => {
               kid: "key-1",
               alg: "RS256",
               kty: "RSA",
-              n: "modulus",
-              e: "exponent",
+              n: RSA_JWK.n,
+              e: RSA_JWK.e,
             },
           ],
         },
@@ -205,8 +215,8 @@ describe("oidcJwks", () => {
               kid: "key-1",
               alg: "RS256",
               kty: "RSA",
-              n: "modulus",
-              e: "exponent",
+              n: RSA_JWK.n,
+              e: RSA_JWK.e,
             },
           ],
         },
@@ -235,8 +245,8 @@ describe("oidcJwks", () => {
               kid: "key-1",
               alg: "RS256",
               kty: "RSA",
-              n: "modulus",
-              e: "exponent",
+              n: RSA_JWK.n,
+              e: RSA_JWK.e,
             },
           ],
         },
@@ -265,8 +275,8 @@ describe("oidcJwks", () => {
               kid: "key-1",
               alg: "RS256",
               kty: "RSA",
-              n: "modulus",
-              e: "exponent",
+              n: RSA_JWK.n,
+              e: RSA_JWK.e,
             },
           ],
         },
@@ -327,8 +337,8 @@ describe("oidcJwks", () => {
               kid: "key-1",
               alg: "RS256",
               kty: "RSA",
-              n: "modulus",
-              e: "exponent",
+              n: RSA_JWK.n,
+              e: RSA_JWK.e,
             },
           ],
         },
@@ -375,8 +385,8 @@ describe("oidcJwks", () => {
               kid: "key-1",
               alg: "RS256",
               kty: "RSA",
-              n: "modulus",
-              e: "exponent",
+              n: RSA_JWK.n,
+              e: RSA_JWK.e,
             },
           ],
         },
@@ -485,7 +495,7 @@ describe("oidcJwks", () => {
   // Coverage: cache TTL expiry, JWKS shape validation, error branches
   // ================================================================
   describe("JWKS cache TTL", () => {
-    const validJwks = { keys: [{ kid: "k1", kty: "RSA", n: "n", e: "AQAB" }] };
+    const validJwks = { keys: [{ kid: "k1", kty: "RSA", n: RSA_JWK.n, e: RSA_JWK.e }] };
 
     it("serves the second call from cache without re-fetching", async () => {
       axios.get.mockResolvedValue({ data: validJwks });
@@ -595,7 +605,7 @@ describe("oidcJwks", () => {
     it("rethrows an error that is neither an AppError nor a JWT error", async () => {
       jwt.decode.mockReturnValue({ header: { kid: "k1", alg: "RS256" } });
       axios.get.mockResolvedValue({
-        data: { keys: [{ kid: "k1", kty: "RSA", n: "n", e: "AQAB" }] },
+        data: { keys: [{ kid: "k1", kty: "RSA", n: RSA_JWK.n, e: RSA_JWK.e }] },
       });
       const boom = new TypeError("jwkToPem exploded");
       jwt.verify.mockImplementation(() => {
@@ -653,7 +663,7 @@ describe("oidcJwks", () => {
       axios.post.mockResolvedValue({ data: { id_token: "tok" } });
       jwt.decode.mockReturnValue({ header: { kid: "k1", alg: "RS256" } });
       axios.get.mockResolvedValue({
-        data: { keys: [{ kid: "k1", kty: "RSA", n: "n", e: "AQAB" }] },
+        data: { keys: [{ kid: "k1", kty: "RSA", n: RSA_JWK.n, e: RSA_JWK.e }] },
       });
       jwt.verify.mockReturnValue(claims);
     };
