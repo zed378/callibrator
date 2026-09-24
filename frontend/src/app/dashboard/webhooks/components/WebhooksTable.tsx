@@ -10,7 +10,14 @@ import {
   Button,
   Pagination,
 } from "@/components/ui";
-import { Webhook as WebhookIcon, Edit, Trash2, Send, List } from "lucide-react";
+import {
+  Webhook as WebhookIcon,
+  Edit,
+  Trash2,
+  Send,
+  List,
+  KeyRound,
+} from "lucide-react";
 import { PaginatedResponse } from "@/types";
 
 interface WebhooksTableProps {
@@ -24,6 +31,7 @@ interface WebhooksTableProps {
   toggleDeliveries: (webhook: Webhook) => void;
   openEditModal: (webhook: Webhook) => void;
   handleDeleteClick: (webhook: Webhook) => void;
+  handleRotateClick: (webhook: Webhook) => void;
 }
 
 const asNode = (value: unknown) => value as React.ReactNode;
@@ -41,6 +49,7 @@ export const WebhooksTable: React.FC<WebhooksTableProps> = ({
   toggleDeliveries,
   openEditModal,
   handleDeleteClick,
+  handleRotateClick,
 }) => {
   const renderEvents = (events: string[]) => {
     const visible = events.slice(0, MAX_EVENT_CHIPS);
@@ -142,6 +151,16 @@ export const WebhooksTable: React.FC<WebhooksTableProps> = ({
                       title="Edit webhook"
                     >
                       <Edit className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleRotateClick(webhook)}
+                      className="text-muted-foreground hover:text-foreground hover:bg-muted"
+                      title="Rotate signing secret"
+                      aria-label="Rotate signing secret"
+                    >
+                      <KeyRound className="h-4 w-4" />
                     </Button>
                     <Button
                       variant="ghost"

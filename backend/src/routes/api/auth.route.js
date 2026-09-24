@@ -8,6 +8,8 @@
 const express = require("express");
 const router = express.Router();
 const { auth } = require("../../middlewares/auth.middleware");
+const { validate } = require("../../middlewares/validation.middleware");
+const { ssoExchangeSchema } = require("../../validators/sso.validator");
 const {
   authPreCheck,
   authPostFailure,
@@ -764,7 +766,46 @@ router.get("/sso/metadata", ssoController.ssoMetadata);
  */
 router.get("/sso/metadata/:tenantCode", ssoController.ssoMetadata);
 
-
+/**
+ * @swagger
+ * /api/v1/auth/sso/exchange:
+ *   post:
+ *     tags: [SSO]
+ *     summary: Exchange an SSO hand-off code for a session
+ *     description: >
+ *       The SSO callbacks redirect to the frontend with a one-time `code`, never
+ *       a token (A-60). The frontend's server route posts it here, server to
+ *       server. A code is valid for 60 seconds and redeems once. On success the
+ *       session is created and the response has the /auth/login shape: the
+ *       access token at top-level `token`, the session at `session`. Public —
+ *       the code is the credential. Rate limited per IP.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [code]
+ *             properties:
+ *               code:
+ *                 type: string
+ *                 description: The 43-character base64url code from the SSO redirect.
+ *     responses:
+ *       200:
+ *         description: Session created
+ *       400:
+ *         description: Malformed code
+ *       401:
+ *         description: Unknown, expired or already-used code
+ *       429:
+ *         description: Too many failed exchanges from this IP
+ */
+router.post(
+  "/sso/exchange",
+  authPreCheck("ssoExchange"),
+  validate(ssoExchangeSchema),
+  ssoController.ssoExchange,
+);
 
 /* ------------------------------------------------------------------ */
 /* MFA SETUP */
@@ -809,8 +850,6 @@ router.post("/mfa/setup", auth, setupMfa);
  */
 router.post("/mfa/verify", auth, verifyMfaSetup);
 
-
-
 /* ------------------------------------------------------------------ */
 /* IMPERSONATION */
 /* ------------------------------------------------------------------ */
@@ -841,7 +880,7 @@ router.post("/mfa/verify", auth, verifyMfaSetup);
  *       '200':
  *         description: Successfully impersonated user
  */
-router.post('/impersonate', auth, impersonateUser);
+router.post("/impersonate", auth, impersonateUser);
 
 /**
  * @swagger
@@ -855,7 +894,7 @@ router.post('/impersonate', auth, impersonateUser);
  *       '200':
  *         description: Successfully exited impersonation
  */
-router.post('/impersonate/exit', auth, logout);
+router.post("/impersonate/exit", auth, logout);
 
 // /mfa/setup and /mfa/verify are registered earlier in this file; the
 // duplicate registrations that used to sit here were dead (express matches the

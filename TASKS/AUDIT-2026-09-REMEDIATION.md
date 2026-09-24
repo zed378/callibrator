@@ -32,7 +32,7 @@ Task ids are `A-nn`. They are referenced from [`PHASE-9-TYPESCRIPT-MIGRATION.md`
 | A-10 | webhook delivery: retries lost on restart, ~15 s window, no replay protection | medium | 1 | TODO |
 | A-11 | only two domain events are ever emitted to webhooks | medium | 1 | TODO |
 | A-12 | `sessionSecurity.middleware.js` is dead and its SQL is broken | medium | 1 | **DONE** 2026-09-23 |
-| A-13 | raw internal error messages reach clients in production | medium | 0 | TODO |
+| A-13 | raw internal error messages reach clients in production | medium | 0 | **PARTIAL** 2026-09-24 — `dynamicAccess` done; `asyncHandler` open |
 | A-14 | production logging: no stdout, per-request lines dropped, unbounded files | medium | 1 | TODO |
 | A-15 | `/health` checks only the database | medium | 1 | **DONE** 2026-09-23 |
 | A-16 | whether `req.ip` is the client through a three-proxy chain | **unverified** | 1 | TODO |
@@ -60,24 +60,38 @@ Task ids are `A-nn`. They are referenced from [`PHASE-9-TYPESCRIPT-MIGRATION.md`
 | A-38 | SCIM Groups are global roles: every tenant's groups are listed, and a delete removes one for everyone | medium | 1 | TODO |
 | A-39 | a SCIM-provisioned group grants nothing, silently — `roleLevel` defaults to 1 and it gets no menu permissions | medium | 1 | TODO |
 | A-40 | storage: the driver cache is per process, and a null-checksum migration reports `migrated` unverified | low | 2 | TODO |
-| A-41 | **audit rows are written after the response, outside the transaction** — the rule `CLAUDE.md` calls non-negotiable | **high** | 0 | TODO |
-| A-42 | a failed audit write is reported to `console.error` only — and production writes no stdout anywhere | **high** | 0 | TODO |
+| A-41 | **audit rows are written after the response, outside the transaction** — the rule `CLAUDE.md` calls non-negotiable | **high** | 0 | **DONE** 2026-09-24 for the 25 mutations named in the spec; the rest stay on the middleware |
+| A-42 | a failed audit write is reported to `console.error` only — and production writes no stdout anywhere | **high** | 0 | **PARTIAL** 2026-09-24 — audit path done; 24 other `console.*` sites remain |
 | A-43 | `auditAction` logs full request and response bodies, unredacted — dead code, and a loaded gun | medium | 1 | TODO |
 | A-44 | the access log was never pruned: `history` is a filename, not a retention period | medium | 0 | **DONE** 2026-09-23 |
 | A-45 | a soft-deleted IoT device still ingested; one bad MQTT message shut the server down | **high** | 0 | **DONE** 2026-09-23 |
 | A-46 | IoT anomaly detection is structurally dead — `readingTolerance` cannot be set | medium | 1 | TODO |
 | A-47 | **no electronic signature could ever verify** — `Date.now()` was inside the hashed payload, and the key pairs signed nothing | **critical — compliance** | 0 | **DONE** 2026-09-23 (ADR-040) |
-| A-48 | **revocation does not revoke**: nothing in the request path reads `sessions`, and production issues 24-hour access tokens | **high** | 0 | TODO |
+| A-48 | **revocation does not revoke**: nothing in the request path reads `sessions`, and production issues 24-hour access tokens | **high** | 0 | **DONE** 2026-09-24 — tokens without `sid` still accepted, see A-59 |
 | A-49 | SCIM leftovers: a case-sensitive `displayName` oracle, unvalidated patch values, and an e2e spec that cannot pass | medium | 1 | TODO |
 | A-50 | webhook deliveries followed redirects, so a 302 walked past the SSRF check | **high** | 0 | **DONE** 2026-09-23 |
-| A-51 | webhook routes have **no validator at all**: the signing secret is caller-supplied, unvalidated, plaintext, and unrotatable | **high** | 0 | TODO |
-| A-52 | the socket token's `purpose: "socket"` claim is read nowhere — it is an ordinary access token | medium | 1 | TODO |
+| A-51 | webhook routes have **no validator at all**: the signing secret is caller-supplied, unvalidated, plaintext, and unrotatable | **high** | 0 | **DONE** 2026-09-24 |
+| A-52 | the socket token's `purpose: "socket"` claim is read nowhere — it is an ordinary access token | medium | 1 | **DONE** 2026-09-24 (with A-59) |
 | A-53 | a reconnected socket never re-joins its board rooms: live updates stop, silently | medium | 1 | TODO |
 | A-54 | no Socket.IO adapter — a second replica splits the fan-out | medium | 2 | TODO |
 | A-55 | `createTwoTenants()` does not exist. `CLAUDE.md` and eight documents cite it as the fixture that makes the 404 test one line | medium | 0 | **corrected** 2026-09-23 |
 | A-56 | search swallows every query error into an empty list | low | 1 | TODO |
 | A-57 | the **public** verification endpoint returns the PDF path of a `draft` certificate | **high** | 0 | **DONE** 2026-09-24 |
 | A-58 | five workflow routes gate on `"workflow"`; the slug is `"workflows"` — they deny everyone but SUPERADMIN | **high** | 0 | **DONE** 2026-09-24 |
+| A-59 | the **email activation token** and the MFA-pending token are full bearer access tokens; SSO tokens cannot be revoked | **high** | 0 | **DONE** 2026-09-24 — sid-less tokens still accepted until the switch is flipped |
+| A-60 | SSO tokens travel in the redirect URL; `/auth/sso-session` stores any posted token unverified; login never checks `isEmailVerified` | **high** | 0 | **PARTIAL** 2026-09-24 — items 1 and 2 done; item 3 is Q-11 |
+| A-61 | **every e-signature signing and revocation failed its audit insert** — out-of-ENUM actions, non-existent columns — after the signature had committed | **critical** | 0 | **DONE** 2026-09-24 |
+| A-62 | `approveCertificate` takes `approvedBy` from the request body, so the recorded approver can differ from the caller | **high** | 0 | **DONE** 2026-09-24 |
+| A-63 | **any authenticated user can edit — or suspend — any tenant**: the `checkSelf` bypass trusts a body `userId` and returns before the tenant check | **critical** | 0 | TODO |
+| A-64 | `PUT /certificates/:id` accepts `status: "approved"` / `"signed"`, bypassing re-authentication and the e-signature | **critical** | 0 | TODO |
+| A-65 | `signDocument` never checks the signer is the step's signer, does no re-authentication, and takes the Part 11 IP and user agent from the body | **high** | 0 | TODO |
+| A-66 | the QMS routes have no permission gate and write no audit row | **high** | 0 | TODO |
+| A-67 | the rate limiter's failure recording on login, register, OTP and reset **never runs** — it is mounted before the handler | **high** | 0 | TODO |
+| A-68 | OIDC has no `state`, `nonce` or PKCE check — login CSRF and code injection | **high** | 0 | TODO |
+| A-69 | SSO through the Next `/api` proxy cannot work: the proxy follows the backend's 302 server-side | **high** | 0 | TODO |
+| A-70 | SSO provisioning signs in a suspended or inactive user (a session and a LOGIN row are created) | medium | 0 | TODO |
+| A-71 | the login response returns the access token to browser JavaScript, beside the httpOnly cookie | medium | 0 | TODO |
+| A-72 | password and MFA login write no `LOGIN` audit row | medium | 0 | TODO |
 
 ---
 
@@ -312,7 +326,7 @@ It also closed a real isolation gap the card did not name: `kanban:join` → `ka
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **PARTIAL** 2026-09-24 |
 | **Severity** | medium |
 | **Evidence** | `utils/controllerWrapper.util.js#asyncHandler` (used by **44** controllers) calls `sendError(res, error.message, status, …)` **before** the central `errorHandler` can sanitise, then calls `next(error)` anyway, so the handler runs after headers are sent. Observed on production: `Cannot read properties of undefined (reading 'roleId')` returned verbatim. `dynamicAccess.middleware.js` returns `{ success: false, message: error.message }` with a 500 and no envelope. |
 | **Spec refs** | `docs/ENGINEERING/06-ERROR-RESPONSE-STANDARDS.md` · `docs/API/00-API-STANDARDS.md` |
@@ -324,6 +338,20 @@ It also closed a real isolation gap the card did not name: `kanban:join` → `ka
 - [ ] non-`AppError` errors return a generic message with the request id in production
 - [ ] `dynamicAccess` errors go through the same path
 - [ ] a test throws a raw `Error("SELECT secret FROM …")` in a wrapped controller and asserts the text does not appear in the production response
+
+**What was changed (2026-09-24) — the `dynamicAccess` half only.** Its catch now does
+`return next(error)`, so an internal error reaches the client only through the global handler, which
+sanitises it. This could not land alone, and the earlier attempt was reverted because of that:
+`search.controller.js` probes `dynamicAccess` and treated **any** call to `next` as "allowed", so
+forwarding an error would have made search fail **open** — the menus a caller cannot read would have
+been searched whenever the permission lookup failed. The probe is now `(err) => resolve(!err)`, and
+both changes land together. Tests: `dynamicAccess.test.js` › *"A-13: an internal error reaches the
+client only through the global error handler"*; `search.permissions.a04.test.js` has the
+lookup-failure case, which now denies.
+
+**Still open:** `asyncHandler` in `controllerWrapper.util.js`, which is used by 44 controllers and
+writes `error.message` itself before the central handler can run. That is the larger half, and the
+boxes above stay unticked until it is done.
 
 ---
 
@@ -1404,7 +1432,7 @@ operator cannot miss.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24 — for the covered set |
 | **Severity** | **high — compliance evidence that does not match what happened** |
 | **Verified** | from code, 2026-09-23 |
 
@@ -1427,9 +1455,44 @@ must not be what ISO 17025 / 21 CFR Part 11 attribution depends on. This needs a
 which mutations are in that set, so it starts as a spec, not a patch.
 
 **Verification (DoD)**
-- [ ] a rolled-back mutation leaves **no** audit row (test with a forced rollback)
-- [ ] a failing audit insert rolls the mutation back
-- [ ] the list of mutations covered is written down, not implied
+- [x] a rolled-back mutation leaves **no** audit row (test with a forced rollback)
+- [x] a failing audit insert rolls the mutation back
+- [x] the list of mutations covered is written down, not implied
+
+**What was changed (2026-09-24).** The spec came first:
+[`MEMORY/specs/A-41-audit-inside-transaction.md`](../MEMORY/specs/A-41-audit-inside-transaction.md).
+It names **25 mutations**, and each now writes its row through
+`auditService.logAction(entry, { transaction })` in the same transaction as the change:
+
+- **certificates:** create, update, delete, submit, approve, sign, revoke. For approve, sign and
+  revoke, the `ESignatureRecord` is in the transaction too.
+- **calibration records:** create, update, delete. The create includes the device's
+  `nextCalibrationDate`.
+- **e-signatures:** sign and revoke.
+- **attachment delete, SOP publish and tenant restore:** these were already transactional and are
+  now on the same call.
+- **roles:** all seven role and menu operations.
+- **user permission overrides:** set and remove.
+- **the retention purge** — W-04.
+
+Operations with no action value of their own (revoke, sign, submit, restore, purge) are recorded
+under the nearest one, with `changes.operation` naming them. The action list now lives in one place,
+`constants/auditActions.js`. Cache invalidation happens **after** commit.
+
+**Found while fixing — A-61.**
+
+**Tests.** They run against `tests/fixtures/auditLedger.js`, a transactional ledger that reads the
+**real** ENUM and NOT NULL columns from `auditLog.model.js`. It rolls back on `COMMIT` of an aborted
+transaction, as PostgreSQL does. The tests are `certificate.audit.a41.test.js`,
+`calibrationRecords.audit.a41.test.js`, `esignature.audit.a41.test.js` and
+`roles.audit.a41.test.js`. Of their 81 tests, **58 failed against the old code**.
+
+**Not covered:**
+- **Still best-effort through the middleware:** user create, update and delete.
+- **Still writing no audit row at all:** menu groups, e-signature key pairs, workflows, SOP create
+  and update, training acknowledgement.
+- **Written outside the transaction:** GDPR erasure and rectification.
+- **Open questions:** Q-12 to Q-14.
 
 ---
 
@@ -1437,7 +1500,7 @@ which mutations are in that set, so it starts as a spec, not a patch.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **PARTIAL** 2026-09-24 |
 | **Severity** | **high** |
 | **Verified** | from code, 2026-09-23 |
 
@@ -1455,6 +1518,20 @@ A compliance record that fails to write therefore fails **silently and durably**
 
 **Fix direction:** route it through winston at `error` level so it lands in the file sinks; decide
 whether a failed audit write should also fail the request (see A-41). Sweep the other 24 sites.
+
+**What was changed (2026-09-24).** `logAction` reports a failed write through winston at `error`,
+with the tenant, user, action, resource and stack, and `console.error` is gone.
+
+- **Inside a transaction,** the failure is **re-thrown**, so the mutation rolls back and the client
+  gets an error.
+- **Outside a transaction** (the after-response middleware), it is logged and returns `null`,
+  because the change has already committed.
+- **An out-of-ENUM action** is refused before the insert.
+
+Tests: `audit.service.a42.test.js`. 4 of its tests failed against the old code, including *"inside a
+transaction, a failed write is re-thrown"* and *"out-of-ENUM action (RESTORE) is refused"*.
+
+**Still open:** the sweep of the other 24 `console.*` call sites.
 
 ---
 
@@ -1638,7 +1715,7 @@ provisioned".
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24 |
 | **Severity** | **high** |
 | **Verified** | from code and the **running deployment's** configuration, 2026-09-23 |
 
@@ -1673,6 +1750,44 @@ honest mitigation. Either way, the deployed value and the documented value must 
 - [ ] the same question answered for Socket.IO, whose checks are connect-time only (A-05, Q-08)
 
 ---
+
+**What was changed (2026-09-24) — and this card's own fix direction was wrong.** It said *"the token
+already carries enough to find it"*. It did not: the access token was `{id, email}`, with **no
+session identifier**, and the session row held only the hash of the opaque refresh token. Nothing
+connected the two, so revocation could not have been checked however it was cached.
+
+Access tokens now carry `sid`. Login, MFA login, refresh and impersonation create the session
+**first** and sign its id into the token. On each request the middleware checks that session is live
+through `session.service.isSessionLive`, which reads Redis and falls back to one primary-key read,
+filtering on the **snake_case** `is_revoked` and `is_active` columns. Revocation deletes the cache
+entry — through model hooks, so the admin path in `session.controller.js`, which updates the model
+directly, is covered too. A refresh revokes the previous session, so the old access token dies on its
+next request. An impersonation token is now bounded by its session's one-hour expiry instead of the
+full day.
+
+**Redis down:** every request reads the database and revocation is **still enforced**. It does not
+fail closed — a Redis outage should not sign every user out.
+
+**Logout had never worked server-side**, found while fixing this. `auth.controller.logout` called
+`authService.logoutSession()` with **no argument**, so it threw a TypeError and returned a 500 — which
+the frontend's logout route swallowed. And even given a request, it hashed the **access** token and
+compared it with **refresh**-token hashes, which matches no row. So every logout in this system's
+history revoked nothing.
+
+**Proof** — `auth.sessionRevocation.a48.test.js` runs the real middleware, service, JWT signing and
+the Session model through Sequelize's PostgreSQL SQL generation, against a fake table with
+hardcoded snake_case columns that **rejects unknown columns the way PostgreSQL does** — so a
+camelCase slip fails the test instead of passing it. 29 tests failed against the old code. Named:
+*"a revoked session's access token is rejected on the next request"*, *"a logged-out user's token
+stops working"*, *"Redis down: every request reads the database, and revocation is still enforced"*.
+
+**The suspended-tenant item was already covered** and is unchanged: the user and tenant are read from
+the database on every request with no cache, and a suspended tenant is refused.
+
+**Not closed — A-59:** tokens without a `sid` are still accepted, for compatibility with tokens
+issued before the deploy. That leaves every SSO token unrevocable (`sso.controller.js` signs
+`{id, email}` and discards the session) and the activation-token hole below.
+
 
 ### A-49 — SCIM leftovers after A-33
 
@@ -1733,7 +1848,7 @@ API, not through a redirect.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24 |
 | **Severity** | **high** |
 | **Verified** | from code, 2026-09-23 |
 
@@ -1750,13 +1865,28 @@ Four problems with one root: **none of the seven webhook routes mounts `validate
 accepted from a caller; store it through `kms.service.js` like the other tenant secrets; add a
 rotation endpoint that returns the new secret once, with an overlap window if receivers need one.
 
+**What was changed (2026-09-24).** `validators/webhook.validator.js` mounts on every webhook route,
+and a `secret` key in the body is **stripped** (the validator runs with `stripUnknown: true`), so
+a caller can no longer choose the key. The
+secret is generated server-side, returned exactly once, and stored through `kms.service.js`.
+Migration `0022-encrypt-webhook-secrets` re-encrypts the existing plaintext rows, and it fails loudly
+rather than being skipped. `POST /webhooks/:id/rotate-secret` issues a new secret. **Changing the
+`url` now rotates the secret too**, because a new host must not be signed with a key the old host
+still holds. Tests: `webhook.validator.test.js`; `webhook.service.test.js` › *"creates a webhook and
+returns the server-generated secret"*, *"updates webhook parameters (a url change also rotates the
+secret)"*.
+
+**Not done:** there is no overlap window, so receivers must switch to the new secret at the moment
+of rotation. The frontend `WebhookModal` does not yet show a rotated secret or offer a rotate button
+(**F-18** on the frontend board).
+
 ---
 
 ### A-52 — The socket token's `purpose` claim is read nowhere
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24 — fixed under A-59 |
 | **Severity** | medium |
 | **Verified** | from code, 2026-09-23 |
 
@@ -2010,3 +2140,398 @@ off, said loudly in the log. The check validates against the seed file, not the 
 table. Two workflow routes (`GET /instances/pending`, `POST /instances/:instanceId/action`) carry
 `auth` alone — the P6-04 class, unchanged here.
 
+---
+
+### A-59 — Tokens that are not access tokens are accepted as access tokens
+
+| | |
+|---|---|
+| **Status** | **DONE** 2026-09-24 |
+| **Severity** | **high** |
+| **Verified** | from code, 2026-09-24, while fixing A-48 |
+
+`auth.service.js:123` mints the account-activation token — the one sent **by email** — with
+`generateAccessToken({ id: user.id })`. Since A-31, `generateAccessToken` stamps `typ: "access"`. So
+the activation link carries a token **indistinguishable from a real access token**: the `auth`
+middleware accepts it as a bearer, for the full `JWT_ACCESS_EXPIRED` — a day on the running
+deployment. Activation emails are forwarded, archived and logged. `:241` does the same for the
+MFA-pending token, which exists precisely to represent a login that is **not yet** authenticated.
+
+Neither carries a `sid`, so A-48's revocation check does not apply to them — tokens without `sid` are
+still accepted, for compatibility with tokens issued before that change. The same compatibility gap
+leaves **every SSO token unrevocable**: `sso.controller.js:65` and `:175` sign `{id, email}` and
+discard the session they could have bound to.
+
+The machinery to fix this already exists: A-31 introduced the `typ` claim and `assertTokenType`.
+
+**Fix direction:** mint the activation token as `typ: "activation"` and the MFA token as
+`typ: "mfa"`, and accept each only on the one route that consumes it; give SSO tokens a `sid`; then,
+once every issuer sets one, refuse an access token with no `sid`.
+
+**Definition of Done**
+- [x] an activation token presented as a bearer to an ordinary route is rejected, by a named test
+- [x] an MFA-pending token is accepted only by the MFA completion route
+- [x] an SSO token is revocable
+- [ ] an access token without `sid` is refused — and the change is announced, because it signs out every session issued before it
+
+**What was changed (2026-09-24).** `jwt.util.js` gained `generatePurposeToken` and
+`verifyPurposeToken`, built on the same `typ` machinery A-31 introduced. They sign with the same key
+registry, and each accepts **only** its own purpose; a token with no `typ` is refused. The
+activation token is now `typ: "activation"`, 24h. The MFA-pending token is `typ: "mfa"`, 5 minutes,
+and is issued **before** any session exists. Previously `loginUser` created a live session and
+access token for an MFA account and then discarded them. The socket token is `typ: "socket"`, which
+also closes **A-52**: it goes through the registry instead of `process.env`, and the handshake
+accepts only a socket token and checks that its session is live. `verifyAccessToken` already
+refused any `typ` other than `access`, so all three are refused as bearers. Both SSO callbacks now
+create the session first and sign `sid`, the same order login uses.
+
+**Every access-token issuer now sets `sid`.** `auth.middleware.js` exports
+`SIDLESS_ACCESS_TOKENS_ACCEPTED = true`. Setting it to `false` is safe once one
+`JWT_ACCESS_EXPIRED` has passed since the deploy, which is 1 day on the VM. After that, no valid
+sid-less token remains, so the switch signs nobody out.
+
+**Behaviour at deploy:** activation links emailed before it are refused with a 400. There is no
+resend endpoint, and `loginUser` never checks `isEmailVerified`, so activation gates nothing today
+(**A-60**).
+
+**Tests.** Nine tests failed against the old code; all pass now. They are in
+`auth.tokenPurpose.a59.test.js` and `jwt.purpose.a59.test.js`:
+- *"an activation token presented as a bearer is rejected"*
+- *"an MFA-pending token is accepted only by MFA completion"*
+- *"a socket token presented as a bearer is rejected"*
+- *"an SSO-issued token is revoked when its session is revoked (saml)"*, and the same for *(oidc)*
+- *"logging out of an SSO session stops its token"*
+
+Full backend suite: 331 suites, 6,586 tests.
+
+---
+
+### A-60 — The SSO hand-off, and an activation step that gates nothing
+
+| | |
+|---|---|
+| **Status** | **PARTIAL** 2026-09-24 — items 1 and 2 |
+| **Severity** | **high** |
+| **Verified** | from code, 2026-09-24, while fixing A-59 |
+
+1. **Tokens in the URL.** Both SSO callbacks redirect to `/sso-callback?token=…&refreshToken=…`,
+   which puts an access token and a refresh token into proxy logs, browser history and `Referer`
+   headers. The frontend page then posts only `token` to `/api/v1/auth/sso-session`, so the refresh
+   token and the session behind it are dropped.
+2. **`/api/v1/auth/sso-session` stores whatever it is given.** It writes the posted token into the
+   httpOnly auth cookie **without verifying it** — the shape of a session-fixation endpoint. The JSON
+   content type and `SameSite=Lax` limit how it can be reached; they do not make it correct.
+3. **Activation gates nothing.** `loginUser` never checks `isEmailVerified`, so an account logs in
+   whether or not the emailed link was ever used. There is also no endpoint to resend it.
+
+**Fix direction:** a one-time code in the redirect, exchanged server-to-server for the tokens; verify
+before setting the cookie; decide — owner question — whether unverified accounts may log in.
+
+**Definition of Done**
+- [x] no token appears in any redirect URL
+- [x] `sso-session` refuses a token that does not verify, by a named test
+- [ ] the email-verification policy is decided and enforced, or explicitly recorded as not required
+
+**What was changed (2026-09-24) — items 1 and 2.**
+
+Both callbacks now redirect to `/sso-callback?code=<43-char base64url>`. What is stored under
+`sso:handoff:<sha256(code)>` for 60 seconds is the **verified identity** — never tokens.
+`POST /api/v1/auth/sso/exchange` redeems it:
+
+- **Single use:** it reads with Redis `GETDEL`, so a code works once even across replicas. If Redis
+  is down, it falls back to process memory with the same TTL and single use. That fallback is correct
+  on one replica, and on several it refuses an exchange that lands on another process — it never
+  admits an unknown code.
+- **Session and audit:** it creates the session and writes a `LOGIN` audit row in one transaction,
+  then answers in `/auth/login`'s shape.
+- **Refusals:** an unknown, expired or used code gets one 401. There is an IP lockout at 30 failures
+  in 5 minutes.
+
+The frontend's `sso-session` route accepts only `{code}`. It exchanges the code server-to-server and
+sets exactly the cookies login sets; a posted raw token gets a 400 and no cookie. The callback page
+removes the code from history and cannot spend it twice under React's double effects.
+
+**Tests.** Backend: `sso.controller.test.js` › *"A-60: the SSO hand-off"*, which includes
+*"no token appears in the SSO redirect URL (saml)"* and *"(oidc)"*, *"a one-time code can be
+exchanged once only"* and *"an expired or unknown code is refused"*; and
+`auth.ssoExchange.a60.test.js`. Frontend: `sso-session/route.test.ts` › *"sso-session refuses a
+posted raw token"*. Full suites: backend 336 suites and 6,667 tests at 100 %; frontend 77 suites and
+733 tests.
+
+**At deploy:** both halves must ship together. SSO sign-ins in flight at that moment fail once.
+
+**Still open:** item 3, which is the owner's decision (Q-11). Also A-69: **SSO has probably never
+worked through the Next `/api` proxy on this deployment**, and this change does not fix that.
+
+---
+
+### A-61 — Every e-signature was committed without its audit row, and returned a 500
+
+| | |
+|---|---|
+| **Status** | **DONE** 2026-09-24 |
+| **Severity** | **critical** — a 21 CFR Part 11 signature with no audit trail |
+| **Verified** | against the real schema by the A-41 ledger fixture, 2026-09-24 |
+
+`eSignature.service#signDocument` and `#revokeSignature` wrote an audit row with action
+`"DOCUMENT_SIGNED"` / `"SIGNATURE_REVOKED"`, and neither value is in the `audit_logs` ENUM. The row
+also named columns that do not exist (`entityType`, `entityId`, `before`, `after`) and omitted
+`resourceType`, which is NOT NULL. With no transaction, the `SignatureRecord` and the workflow step
+had **already committed** when the insert threw. The signer got a 500, the signature stood, and
+`audit_logs` never recorded it — on every call.
+
+`esignature.signing.test.js` asserted `"DOCUMENT_SIGNED"` against a mock that accepted any value, so
+it passed. That is the fifth instance this month of a mock inventing the contract, and the second
+inside a single ENUM (S-02's `"RESTORE"` was the first).
+
+**Fixed under A-41:** both are transactional, write valid rows, and send email only after commit.
+Test: `esignature.audit.a41.test.js` — 6 of 8 failed against the old code, the sign path with
+*"Failed to sign document"*.
+
+---
+
+### A-62 — The approver of a certificate is whoever the request body says
+
+| | |
+|---|---|
+| **Status** | **DONE** 2026-09-24 |
+| **Severity** | **high** |
+| **Verified** | from code, 2026-09-24, during A-41 |
+
+`certificate.controller#approveCertificate` reads `approvedBy` from `req.body`. The re-authentication
+step checks **that** user's credentials, so a caller who knows another approver's password can
+record the approval in that person's name. It also means the audit row and the certificate can
+name different people for the same act.
+
+**Fix direction:** the approver is `req.user.id`, always; re-authentication checks the caller's own
+credentials; a body `approvedBy` is stripped by the validator.
+
+**Definition of Done**
+- [x] a body `approvedBy` naming another user has no effect, by a named test
+- [x] the certificate's approver and the audit row's `userId` are the same id
+
+**What was changed (2026-09-24).** `approveCertificate` passes `req.user.id` and nothing else, and
+the service re-authenticates, stamps, signs and audits that one id. `approvedBy` is removed from the
+approve schema **and from the update schema** — a plain `PUT` could name anyone as approver with no
+re-authentication at all. The approve route now mounts `validate(approveCertificateSchema)`. QMS CAPA
+approval had the same shape (`qms.service#updateCapa` copied a body `approvedBy`), so it now records
+the caller.
+
+Test: `certificates.approve.a62.test.js`, which drives the real route, validator, controller and
+service against the audit ledger. It includes *"a body approvedBy naming another user has no
+effect"*, *"re-authentication checks the caller's own credentials"* and *"the certificate's approver
+and the audit row's userId are the same id"*. 4 of its 5 tests failed against the old code.
+
+**Found while fixing:** A-63, A-64, A-65 and A-66.
+
+---
+
+### A-63 — Any authenticated user can edit, or suspend, any tenant
+
+| | |
+|---|---|
+| **Status** | TODO |
+| **Severity** | **critical** — cross-tenant write |
+| **Verified** | from code, 2026-09-24. Not yet exercised against a running server |
+
+`PATCH /api/v1/tenants/edit` (`tenant.route.js`) is gated by
+`dynamicAccess("Management", "update", { checkSelf: true, checkTenant: true })`. In
+`dynamicAccess.middleware.js`, the self-service bypass runs **first**. It takes the owner id from
+`req.params.userId || req.body.userId || …`, and if that equals the caller's id it calls `next()`.
+**The tenant-isolation check below it never runs.**
+
+JSON bodies are parsed globally, so a caller sends:
+
+```json
+{ "userId": "<their own id>", "tenantId": "<any tenant>", "status": "suspended", "maxUsers": 1 }
+```
+
+The controller merges params and body, and `tenantService.updateTenant` loads the tenant with
+`findByPk(tenantId)` — `tenants` is not itself tenant-scoped — then applies name, status, `maxUsers`
+and the rest. Any user holding any token can rename, re-brand or **suspend another hospital**. Within
+their own tenant, the same request lets an ordinary user change the tenant's own plan limits and
+status.
+
+`checkSelf` is meaningless on this route: a tenant is not a user's own resource. The deeper defect
+is that the bypass trusts a **body** field to establish ownership, and that it short-circuits every
+check that follows.
+
+**Fix direction:** remove `checkSelf` from the tenant route. In the middleware, derive ownership only
+from the path, never the body or query, and never let the self bypass skip the tenant check.
+`/users/edit` relies on the body `userId`, so it must move to the authenticated id. Add the two-tenant
+404 test CLAUDE.md requires.
+
+**Definition of Done**
+- [ ] a user of tenant A sending tenant B's id with their own `userId` gets 404, and tenant B is unchanged
+- [ ] an ordinary user cannot change their own tenant's `status` or `maxUsers`
+- [ ] the self bypass reads no body or query field, by a named test
+- [ ] verified against the running server
+
+---
+
+### A-64 — A certificate can be approved or signed by editing its status
+
+| | |
+|---|---|
+| **Status** | TODO |
+| **Severity** | **critical** — a 21 CFR Part 11 bypass |
+| **Verified** | from code, 2026-09-24, during A-62 |
+
+`updateCertificateSchema.status` accepts `approved` and `signed`. A `PUT /certificates/:id` therefore
+moves a certificate into an approved or signed state with no re-authentication, no e-signature
+record and — since A-62 — no approver. The state machine exists in the model
+(`submitForApproval`, `approve`, `sign`, `revoke`), and `update` walks around it.
+
+**Fix direction:** `status` is not updatable through `PUT`. Transitions happen only through their
+routes, and an invalid one is a 409 with a state explanation.
+
+**Definition of Done**
+- [ ] a `PUT` carrying `status` does not change the status, by a named test
+- [ ] every transition goes through its route and writes its audit row
+
+---
+
+### A-65 — Anyone in the tenant can sign someone else's step
+
+| | |
+|---|---|
+| **Status** | TODO |
+| **Severity** | **high** |
+| **Verified** | from code, 2026-09-24, during A-62 |
+
+`eSignature.service#signDocument` does three things wrong:
+
+- It never checks that `step.signerId === userId`, so any user in the tenant can complete another
+  signer's pending step.
+- Its "re-authentication" checks only that the user is active.
+- It takes the Part 11 `ipAddress` and `userAgent` from the request body, and uses the connection's
+  values only as a fallback.
+
+A signature is supposed to be attributable, intentional and non-repudiable. As built, it is none of
+the three.
+
+**Definition of Done**
+- [ ] a user who is not the step's signer gets 403 inside their own tenant, by a named test
+- [ ] signing requires the signer's password (or MFA code), the way certificate approval does
+- [ ] the IP address and user agent come from the connection only
+
+---
+
+### A-66 — QMS has no permission gate and no audit trail
+
+| | |
+|---|---|
+| **Status** | TODO |
+| **Severity** | **high** |
+| **Verified** | from code, 2026-09-24, during A-62 |
+
+`qms.route.js` mounts `auth` and `denyApiKey`, and no `dynamicAccess`. Any authenticated user in a
+tenant can create, change and approve CAPAs and quality records, and none of it writes an audit row.
+CLAUDE.md names a missing permission gate as the single most likely authorization defect in the
+codebase — this is one, on a quality-management surface. `frontend qmsService.approveCapa` also sends
+`status: "APPROVED"`, which the backend enum does not contain; nothing calls it today.
+
+**Definition of Done**
+- [ ] every QMS route has a `dynamicAccess` gate whose slug is seeded (the A-58 boot assertion checks it)
+- [ ] QMS mutations write audit rows inside their transactions
+
+---
+
+### A-67 — The login rate limiter records no failures
+
+| | |
+|---|---|
+| **Status** | TODO |
+| **Severity** | **high** |
+| **Verified** | from code, 2026-09-24, during A-60 — not yet on a running server |
+
+In `auth.route.js`, `authPostFailure` is mounted **before** the handler, while the response status is
+still 200, so it never sees a failure. `authPostSuccess` is mounted after a handler that never calls
+`next`, so it never runs. The limiter's lockouts on login, register, send-OTP and password reset are
+therefore **no-ops**; only the database `failedLoginAttempts` counter locks anything, and that works
+per account, not per source. Credential stuffing across many accounts is unthrottled by the layer
+that exists to throttle it. The new `/sso/exchange` records its failures explicitly for this reason.
+
+**Definition of Done**
+- [ ] N failed logins from one IP lock that IP, by a test that drives the real router
+
+---
+
+### A-68 — OIDC has no `state`, `nonce` or PKCE check
+
+| | |
+|---|---|
+| **Status** | TODO |
+| **Severity** | **high** |
+| **Verified** | from code, 2026-09-24, during A-60 |
+
+`sso.service.js` generates a `state` and stores it nowhere. `oidcCallback` only splits it to recover
+the tenant code, and no `nonce` or PKCE verifier exists. So the callback accepts any authorization
+code with any `state` — login CSRF (the victim is signed into the attacker's account) and code
+injection.
+
+**Definition of Done**
+- [ ] `state` is bound to the initiating browser and checked once; `nonce` is checked in the ID token; PKCE is used
+- [ ] a callback with a forged `state` is refused, by a named test
+
+---
+
+### A-69 — SSO through the Next proxy follows the redirect on the server
+
+| | |
+|---|---|
+| **Status** | TODO |
+| **Severity** | **high** — SSO likely does not work on this deployment at all |
+| **Verified** | from code and the deployment notes, 2026-09-24. **Not observed** — no IdP is configured |
+
+On this deployment `/api/` is served by the frontend (ADR-046). If an IdP's ACS or redirect URL
+points at `https://<host>/api/v1/auth/sso/...`, the `[...path]` proxy's `fetch` follows the backend's
+302 **on the server**, so the browser never receives `/sso-callback?code=…`. This predates A-60.
+
+**Fix direction:** the proxy passes redirects through (`redirect: "manual"`), or the SSO callback
+paths are routed to the backend directly in nginx. Decide which, and test with a real IdP.
+
+---
+
+### A-70 — SSO signs in a suspended user
+
+| | |
+|---|---|
+| **Status** | TODO |
+| **Severity** | medium |
+| **Verified** | from code, 2026-09-24, during A-60 |
+
+`provisionUser` does not check `isActive` or `status`. A suspended user's SSO sign-in creates a
+session and a `LOGIN` audit row. The auth middleware refuses the token on every request, so no data
+is reached, but the audit trail records a login that should have been refused.
+
+---
+
+### A-71 — The login response hands the access token to JavaScript
+
+| | |
+|---|---|
+| **Status** | TODO |
+| **Severity** | medium |
+| **Verified** | from code, 2026-09-24, during A-60 |
+
+The Next login route sets the httpOnly `auth_token` cookie **and** returns the access token in its
+JSON body, and the generic proxy passes through any `token` field. The httpOnly cookie exists so
+script cannot read the token; the response body gives it to script anyway. An XSS anywhere in the app
+therefore yields a bearer token.
+
+**Definition of Done**
+- [ ] no response reaching the browser contains an access token
+
+---
+
+### A-72 — Password and MFA login write no audit row
+
+| | |
+|---|---|
+| **Status** | TODO |
+| **Severity** | medium |
+| **Verified** | from code, 2026-09-24, during A-60 |
+
+Since A-60, SSO sign-in writes a `LOGIN` audit row. Password and MFA login write none, so *who
+accessed the system, when* — basic Part 11 and ISO 27001 evidence — exists for SSO users only.

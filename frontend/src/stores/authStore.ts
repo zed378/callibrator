@@ -37,7 +37,9 @@ interface AuthState {
     password: string,
   ) => Promise<{ mfaRequired: boolean; mfaToken?: string }>;
   completeMfaLogin: (mfaToken: string, code: string) => Promise<void>;
-  loginWithSSOToken: (token: string) => Promise<void>;
+  // A-60: redeems the one-time code from the SSO redirect. The tokens never
+  // reach the browser; the server route sets the httpOnly cookies.
+  loginWithSSOCode: (code: string) => Promise<void>;
   impersonate: (tenantId: string, userId: string) => Promise<void>;
   exitImpersonation: () => Promise<void>;
   logout: () => Promise<void>;
@@ -230,17 +232,22 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     }
   },
 
-  loginWithSSOToken: async (token: string) => {
+  loginWithSSOCode: async (code: string) => {
     set({ isLoading: true, error: null });
     try {
-      if (token) {
-        // Persist the SSO token in an httpOnly cookie via the server route
-        // (never localStorage) so the proxy can attach it server-side.
-        await fetch("/api/v1/auth/sso-session", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token }),
-        });
+      // The server route exchanges the code with the backend and sets the
+      // httpOnly auth cookies itself; a refused code must stop here rather
+      // than fall through to whatever session the cookies already hold.
+      const res = await fetch("/api/v1/auth/sso-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code }),
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as {
+          message?: string;
+        } | null;
+        throw new Error(body?.message || "SSO Login failed");
       }
 
       const user = await authService.verifyAndFetchUser();

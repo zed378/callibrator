@@ -164,7 +164,12 @@ describe("qms Controller", () => {
 
       await qmsController.updateCapa(req, res, next);
 
-      expect(qmsService.updateCapa).toHaveBeenCalledWith(VALID_TENANT_ID, VALID_CAPA_ID, req.body);
+      expect(qmsService.updateCapa).toHaveBeenCalledWith(
+        VALID_TENANT_ID,
+        VALID_CAPA_ID,
+        req.body,
+        req.user.id,
+      );
     });
 
     it("should handle CAPA not found error", async () => {

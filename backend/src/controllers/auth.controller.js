@@ -119,12 +119,17 @@ exports.verify = asyncHandlerWithMapping(
  * it as `auth.token` when opening the socket connection.
  */
 exports.socketToken = asyncHandlerWithMapping(async (req, res) => {
-  const jwt = require("jsonwebtoken");
+  const { generatePurposeToken } = require("../utils/jwt.util");
   const expiresIn = 300; // seconds — shorter than JWT_ACCESS_EXPIRED on purpose
-  const token = jwt.sign(
-    { id: req.user.id, purpose: "socket" },
-    process.env.JWT_ACCESS_SECRET,
-    { expiresIn, algorithm: "HS256" },
+  // A-52 / A-59: a "socket" purpose token. It used to be jwt.sign()ed here with
+  // no `typ`, which verifyAccessToken accepts — so this five-minute handshake
+  // token was also a bearer access token. It now works ONLY at the socket
+  // handshake (config/socket.js), and carries the caller's session (`sid`) so
+  // the handshake refuses a revoked session.
+  const token = generatePurposeToken(
+    { id: req.user.id, sid: req.sessionId || undefined },
+    "socket",
+    { expiresIn },
   );
   success(
     res,
@@ -179,11 +184,13 @@ exports.loginMfa = asyncHandlerWithMapping(async (req, res) => {
     throw new AppError(400, "MFA code and temporary token are required");
   }
   
-  // Verify the temporary MFA token
-  const { verifyAccessToken } = require("../utils/jwt.util");
+  // Verify the temporary MFA token. A-59: only an "mfa" purpose token is
+  // accepted here — an access token, an activation token or a socket token
+  // is refused, and the mfa token is refused everywhere else.
+  const { verifyPurposeToken } = require("../utils/jwt.util");
   let decoded;
   try {
-    decoded = verifyAccessToken(token);
+    decoded = verifyPurposeToken(token, "mfa");
   } catch (err) {
     throw new AppError(401, "Invalid or expired login token");
   }

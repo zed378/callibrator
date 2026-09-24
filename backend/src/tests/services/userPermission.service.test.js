@@ -1,4 +1,14 @@
 // eslint-disable-next-line no-undef
+// A-41: mutations run in a managed transaction and audit through logAction.
+// In-transaction effects are asserted against a schema-enforcing ledger in
+// roles.audit.a41.test.js.
+jest.mock("../../config", () => ({
+  db: { transaction: jest.fn(async (cb) => cb("TX")) },
+}));
+jest.mock("../../services/audit.service", () => ({
+  logAction: jest.fn().mockResolvedValue({}),
+}));
+
 jest.mock("../../models", () => {
   const mockUser = {
     findByPk: jest.fn(),
@@ -432,7 +442,7 @@ describe("userPermission.service", () => {
         permissionType: "write",
         grantedBy: "admin-1",
         notes: "Updated override",
-      });
+      }, { transaction: "TX" });
     });
 
     it("should invalidate cache after setting permission", async () => {
@@ -475,6 +485,7 @@ describe("userPermission.service", () => {
           userId: "user-1",
           menuGroupId: "menu-1",
         },
+        transaction: "TX",
       });
     });
   });

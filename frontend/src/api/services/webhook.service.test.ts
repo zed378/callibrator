@@ -22,6 +22,20 @@ const envelope = <T,>(data: T, meta?: unknown) => ({
 
 const BASE = "/api/v1/webhooks";
 
+// The shape backend/src/services/webhook.service.js#publicWebhook returns.
+// create / rotateSecret / a url-changing update spread `secret` onto it.
+const publicWebhook = {
+  id: "h1",
+  tenantId: "t1",
+  url: "https://receiver.example.com/hook",
+  events: ["device.overdue"],
+  description: null,
+  isActive: true,
+  createdBy: "u1",
+  createdAt: "2026-09-24T08:00:00.000Z",
+};
+const SECRET = "f".repeat(64); // crypto.randomBytes(32).toString("hex")
+
 describe("webhookService", () => {
   beforeEach(() => jest.clearAllMocks());
 
@@ -58,12 +72,13 @@ describe("webhookService", () => {
   });
 
   describe("create", () => {
-    it("POSTs the body and unwraps data (includes one-time secret)", async () => {
-      mockedApi.post.mockResolvedValueOnce(envelope({ id: "h1", secret: "s3cr" }));
-      const input = { url: "https://x", events: ["cert.created"] };
+    it("POSTs the body (no secret) and unwraps data (includes one-time secret)", async () => {
+      mockedApi.post.mockResolvedValueOnce(envelope({ ...publicWebhook, secret: SECRET }));
+      const input = { url: publicWebhook.url, events: ["device.overdue"] };
       const res = await webhookService.create(input);
       expect(mockedApi.post).toHaveBeenCalledWith(BASE, input);
-      expect(res).toEqual({ id: "h1", secret: "s3cr" });
+      expect(mockedApi.post.mock.calls[0][1]).not.toHaveProperty("secret");
+      expect(res).toEqual({ ...publicWebhook, secret: SECRET });
     });
   });
 
@@ -74,6 +89,29 @@ describe("webhookService", () => {
       expect(mockedApi.patch).toHaveBeenCalledWith(`${BASE}/h1`, {
         isActive: false,
       });
+    });
+
+    it("returns no secret when the url is unchanged", async () => {
+      mockedApi.patch.mockResolvedValueOnce(envelope({ ...publicWebhook, isActive: false }));
+      const res = await webhookService.update("h1", { isActive: false });
+      expect(res.secret).toBeUndefined();
+    });
+
+    it("returns the rotated one-time secret when the url changed", async () => {
+      const url = "https://moved.example.com/hook";
+      mockedApi.patch.mockResolvedValueOnce(envelope({ ...publicWebhook, url, secret: SECRET }));
+      const res = await webhookService.update("h1", { url });
+      expect(mockedApi.patch.mock.calls[0][1]).not.toHaveProperty("secret");
+      expect(res).toEqual({ ...publicWebhook, url, secret: SECRET });
+    });
+  });
+
+  describe("rotateSecret", () => {
+    it("POSTs /rotate-secret with an empty body and unwraps the new secret", async () => {
+      mockedApi.post.mockResolvedValueOnce(envelope({ ...publicWebhook, secret: SECRET }));
+      const res = await webhookService.rotateSecret("h1");
+      expect(mockedApi.post).toHaveBeenCalledWith(`${BASE}/h1/rotate-secret`, {});
+      expect(res).toEqual({ ...publicWebhook, secret: SECRET });
     });
   });
 

@@ -66,6 +66,15 @@ describe("Certificate Validators", () => {
       const result = validate(data, updateCertificateSchema);
       expect(result.status).toBe("approved");
     });
+
+    // A-62 — an update cannot name the approver.
+    it("strips approvedBy from an update", () => {
+      const result = validate(
+        { summary: "s", approvedBy: "8c352a92-d6cf-4b71-b0db-6e69622d1b11" },
+        updateCertificateSchema,
+      );
+      expect(result).toEqual({ summary: "s" });
+    });
   });
 
   describe("certificateIdSchema", () => {
@@ -79,7 +88,9 @@ describe("Certificate Validators", () => {
   });
 
   describe("approveCertificateSchema", () => {
-    it("should validate approvedBy is uuid", () => {
+    // A-62 — the approver is the caller; a body approvedBy is stripped, not
+    // rejected (a client still sending its own id keeps working).
+    it("strips a body approvedBy and keeps the e-signature triple", () => {
       const data = {
         approvedBy: "8c352a92-d6cf-4b71-b0db-6e69622d1b11",
         authMethod: "password",
@@ -87,7 +98,20 @@ describe("Certificate Validators", () => {
         meaning: "Approved by supervisor",
       };
       const result = validate(data, approveCertificateSchema);
-      expect(result.approvedBy).toBe("8c352a92-d6cf-4b71-b0db-6e69622d1b11");
+      expect(result).toEqual({
+        authMethod: "password",
+        authPayload: "auth-payload",
+        meaning: "Approved by supervisor",
+      });
+      expect(result).not.toHaveProperty("approvedBy");
+    });
+
+    it("does not require approvedBy", () => {
+      const result = validate(
+        { authMethod: "password", authPayload: "p", meaning: "m" },
+        approveCertificateSchema,
+      );
+      expect(result.authMethod).toBe("password");
     });
   });
 

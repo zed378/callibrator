@@ -9,6 +9,9 @@
 const userPermissionService = require("../services/userPermission.service");
 const { asyncHandler } = require("../utils/controllerWrapper.util");
 const { success } = require("../utils/response.util");
+// Who did it, from where — for the audit row the service writes inside its
+// transaction (A-41).
+const { auditActor } = require("../utils/auditActor.util");
 
 /** GET /api/v1/user-permissions/:userId */
 exports.getUserPermissions = asyncHandler(async (req, res) => {
@@ -36,6 +39,7 @@ exports.setUserPermission = asyncHandler(async (req, res) => {
     permissionType,
     req.user?.id || null,
     notes || null,
+    auditActor(req),
   );
   success(res, result.data, null, result.message, result.status);
 });
@@ -46,6 +50,7 @@ exports.removeUserPermission = asyncHandler(async (req, res) => {
   const result = await userPermissionService.removeUserPermission(
     userId,
     menuGroupId,
+    auditActor(req),
   );
   success(res, result.data, null, result.message, result.status);
 });

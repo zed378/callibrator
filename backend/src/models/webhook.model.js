@@ -5,8 +5,6 @@
  * of domain events and receives HMAC-signed POST deliveries when they occur.
  */
 
-const crypto = require("crypto");
-
 const defineModel = (db, DataTypes) => {
   const Webhook = db.define(
     "Webhook",
@@ -43,11 +41,18 @@ const defineModel = (db, DataTypes) => {
         allowNull: false,
         defaultValue: [],
       },
-      // Shared secret used to HMAC-sign delivery payloads.
+      // Shared secret used to HMAC-sign delivery payloads — stored as a
+      // kms.service envelope (`v1:...`, tenant id as AAD), never plaintext
+      // (A-51). TEXT because the envelope is ~200 characters; migration 0022
+      // widened the column and encrypted the rows that predate it.
+      //
+      // No defaultValue, on purpose: the old default generated a PLAINTEXT
+      // secret the caller never saw. The only writer is webhook.service.js,
+      // which generates, seals and returns it once; a create that bypasses the
+      // service now fails allowNull rather than storing an unencrypted key.
       secret: {
-        type: DataTypes.STRING(128),
+        type: DataTypes.TEXT,
         allowNull: false,
-        defaultValue: () => crypto.randomBytes(24).toString("hex"),
       },
       description: {
         type: DataTypes.STRING(255),

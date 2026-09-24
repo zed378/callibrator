@@ -4,8 +4,41 @@ const { ROLE_NAMES } = require("../constants");
 const authService = require("../services/auth.service");
 const tenantService = require("../services/tenant.service");
 const apiKeyService = require("../services/apiKey.service");
+const sessionService = require("../services/session.service");
 const { logger } = require("./activityLog.middleware");
 const { tenantContextMiddleware } = require("./tenantContext.middleware");
+
+/**
+ * A-59 — TODO: flip to `false` to refuse access tokens that name no session.
+ *
+ * Since A-59 every issuer of an access token sets `sid`: loginUser, loginMfa,
+ * refreshUserToken, impersonateUser (auth.service.js) and both SSO callbacks
+ * (sso.controller.js). The activation, MFA-pending and socket tokens are no
+ * longer access tokens at all (jwt.util.js#generatePurposeToken). So a sid-less
+ * access token can now only be one issued BEFORE that deploy — and it cannot be
+ * revoked, it lasts until its own `exp` (JWT_ACCESS_EXPIRED, 1d deployed).
+ *
+ * It stays `true` because flipping it signs out every session issued before
+ * the deploy. That is an announced change, not a quiet one: flip it once
+ * JWT_ACCESS_EXPIRED has elapsed since the deploy (after which no sid-less
+ * token can still be unexpired, and flipping it costs nobody anything).
+ */
+const SIDLESS_ACCESS_TOKENS_ACCEPTED = true;
+
+exports.SIDLESS_ACCESS_TOKENS_ACCEPTED = SIDLESS_ACCESS_TOKENS_ACCEPTED;
+
+/**
+ * A-48. Whether the session a verified access token was issued with is still
+ * live. A token with no `sid` predates the claim and cannot be tied to a
+ * session; see SIDLESS_ACCESS_TOKENS_ACCEPTED.
+ *
+ * @param {object} decoded - verified access-token payload
+ * @returns {Promise<boolean>}
+ */
+const sessionIsUsable = async (decoded) =>
+  decoded.sid
+    ? sessionService.isSessionLive(decoded.sid, decoded.id)
+    : SIDLESS_ACCESS_TOKENS_ACCEPTED;
 
 // Resolve an `Authorization: ApiKey <key>` header to a synthetic, scoped
 // service-account principal. Returns true if it handled the request (called
@@ -81,8 +114,23 @@ exports.auth = async (req, res, next) => {
     // short-lived token carrying `mfaRequired: true`. That token is ONLY valid
     // for exchange at POST /auth/mfa/login after the second factor — it must
     // never grant access to protected resources. Reject it here.
+    //
+    // Since A-59 that token is typ "mfa", which verifyAccessToken above already
+    // refuses; this check remains for one minted as an access token before
+    // that deploy (they live five minutes).
     if (decoded.mfaRequired) {
       return unauthorized(res, "MFA verification required");
+    }
+
+    // ==========================================
+    // SESSION STILL LIVE (A-48)
+    // ==========================================
+    // Revoking a session (logout, an administrator's revoke, a password
+    // change, refresh-token rotation) must stop the access token issued with
+    // it on the next request, not when the token expires. Cached in Redis;
+    // see session.service.js#isSessionLive for the Redis-down behaviour.
+    if (!(await sessionIsUsable(decoded))) {
+      return unauthorized(res, "Session has been revoked or has expired");
     }
 
     // ==========================================
@@ -108,11 +156,12 @@ exports.auth = async (req, res, next) => {
     }
 
     // ==========================================
-    // ATTACH USER TO REQUEST (RBAC Only - No Session Validation)
+    // ATTACH USER TO REQUEST
     // ==========================================
 
     req.user = user;
     req.token = token;
+    req.sessionId = decoded.sid || null;
 
     // Attach tenant context from user
     if (user.tenantId) {
@@ -164,7 +213,11 @@ exports.auth = async (req, res, next) => {
       }
     }
 
-    tenantContextMiddleware(req, res, next);
+    // The session is carried in a request context as well as on req, because
+    // POST /auth/logout reaches authService.logoutSession() without `req`.
+    sessionService.runWithSession(req.sessionId, () =>
+      tenantContextMiddleware(req, res, next),
+    );
   } catch (error) {
     logger.error(`AUTH MIDDLEWARE ERROR: ${error.message}`, error.stack);
     return unauthorized(res, "Invalid token");
@@ -186,7 +239,10 @@ exports.optionalAuth = async (req, res, next) => {
     const token = authHeader.split(" ")[1];
     const decoded = verifyAccessToken(token);
 
-    const user = await authService.getAuthUserWithTenant(decoded.id);
+    // A revoked session's token is treated as no token at all.
+    const user = (await sessionIsUsable(decoded))
+      ? await authService.getAuthUserWithTenant(decoded.id)
+      : null;
 
     if (
       user &&

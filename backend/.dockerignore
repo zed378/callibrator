@@ -1,3 +1,7 @@
+# NOTE: backend/Dockerfile is built from the REPOSITORY ROOT (ADR-044, S-13),
+# so this file is NOT consulted by that build — backend/Dockerfile.dockerignore
+# is. It is kept, with the same exclusions, for any ad-hoc build whose context
+# is backend/.
 .env
 node_modules
 Dockerfile
@@ -16,3 +20,15 @@ SOUL.md
 TOOLS.md
 USER.md
 memory
+# S-13 / S-25: never send these to a builder.
+uploads
+local.env
+*.env
+.env.*
+coverage
+src/tests
+__tests__
+__mocks__
+.git
+package-lock.json
+bun.lock

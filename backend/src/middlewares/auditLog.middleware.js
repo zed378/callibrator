@@ -1,26 +1,31 @@
 const { Tenants, Users, Roles, MenuGroups, RoleMenuPermissions } = require("../models");
 const { logger } = require("./activityLog.middleware");
 const auditService = require("../services/audit.service");
+const { AUDIT_ACTIONS: AUDIT_ACTION_LIST } = require("../constants/auditActions");
 
 // Valid AuditLog.action ENUM values — passing anything else would fail the insert.
-const AUDIT_ACTIONS = new Set([
-  "CREATE",
-  "UPDATE",
-  "DELETE",
-  "LOGIN",
-  "APPROVE",
-  "EXPORT",
-]);
+const AUDIT_ACTIONS = new Set(AUDIT_ACTION_LIST);
 
 /**
  * recordAudit(action, resourceType, opts?)
  *
- * Persists an immutable row to the `audit_logs` table (via auditService.logAction)
- * for a mutating request, AFTER the response completes successfully (status < 400).
- * This is the DB-backed compliance trail (FDA 21 CFR Part 11 §11.10(e)) — distinct
- * from auditAction/withAudit above, which only write to the rotating file logs.
+ * Persists a row to `audit_logs` (via auditService.logAction) for a mutating
+ * request, AFTER the response completes successfully (status < 400).
  *
- * It is best-effort and non-blocking: a logging failure never affects the response.
+ * A-41 — what this can and cannot guarantee. It runs on `res.on("finish")`,
+ * after the mutation has committed in its own transaction, so it is NOT the
+ * "audit row inside the transaction" that CLAUDE.md requires:
+ *   - a failed insert cannot undo the committed action — it is logged at
+ *     `error` through winston by logAction (A-42) so it can be reconciled, and
+ *     the action stays unattributed in `audit_logs`;
+ *   - it records only that a 2xx/3xx response was sent.
+ * It must therefore never be what 21 CFR Part 11 / ISO 17025 attribution rests
+ * on. The compliance-critical mutations (certificates, calibration records,
+ * e-signatures, attachment deletion, SOP publication, role and permission
+ * changes, tenant restore, the retention purge) write their own row inside
+ * their transaction in the service — see
+ * MEMORY/specs/A-41-audit-inside-transaction.md, which also lists what is still
+ * left on this middleware (today: user create/update/delete).
  *
  * @param {string} action        One of CREATE|UPDATE|DELETE|LOGIN|APPROVE|EXPORT.
  * @param {string} resourceType  Logical entity name, e.g. "User", "Certificate".
@@ -62,7 +67,8 @@ const recordAudit = (action, resourceType, opts = {}) => {
             (typeof req.get === "function" && req.get("User-Agent")) || null,
         })
         .catch(() => {
-          /* best-effort: logAction already logs its own failures */
+          /* logAction without a transaction logs its own failure at `error`
+             and resolves null; this guards the listener against anything else */
         });
     });
     next();

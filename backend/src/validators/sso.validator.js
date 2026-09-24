@@ -4,6 +4,16 @@ exports.ssoLoginSchema = Joi.object({
   tenantCode: Joi.string().trim().min(2).max(100).required(),
 });
 
+// A-60: the one-time code the SSO callback puts in its redirect — 32 random
+// bytes, base64url, so exactly 43 characters of [A-Za-z0-9_-]. Anything else
+// cannot be a code this server issued and is refused before any store lookup.
+exports.ssoExchangeSchema = Joi.object({
+  code: Joi.string()
+    .length(43)
+    .pattern(/^[A-Za-z0-9_-]+$/)
+    .required(),
+});
+
 exports.ssoSettingsSchema = Joi.object({
   sso_enabled: Joi.boolean().required(),
   sso_idp_entry_point: Joi.string().uri().allow(null, ""),

@@ -17,9 +17,17 @@ jest.mock("../../models", () => ({
   Subscription: { destroy: jest.fn(), findAll: jest.fn() },
   Invoice: { destroy: jest.fn(), findAll: jest.fn() },
 }));
+// Offboarding runs in a transaction with an audit row (W-01/W-04). The
+// transactional + audit contract is tested against the real model and the
+// audit ledger in tenantLifecycle.w01.test.js; here they are plumbing.
+jest.mock("../../config", () => ({
+  db: { transaction: jest.fn(async (cb) => cb({ id: "tx" })) },
+}));
+jest.mock("../../services/audit.service", () => ({ logAction: jest.fn() }));
 
 const tenantLifecycle = require("../../services/tenantLifecycle.service");
 const { Tenant, TenantSettings, User, Subscription, Invoice } = require("../../models");
+const auditService = require("../../services/audit.service");
 
 describe("tenantLifecycle.service", () => {
   beforeEach(() => jest.clearAllMocks());
@@ -150,6 +158,43 @@ describe("tenantLifecycle.service", () => {
 
       expect(result.tenant.status).toBe("deleted");
       expect(result.tenant.offboardRetentionExpiresAt).toBeDefined();
+      expect(result.tenant.save).toHaveBeenCalledWith({ transaction: { id: "tx" } });
+      expect(TenantSettings.upsert).toHaveBeenCalledWith(
+        { tenantId: "t1", key: "lifecycle_status", value: "OFFBOARDED" },
+        { transaction: { id: "tx" } },
+      );
+      expect(auditService.logAction).toHaveBeenCalledWith(
+        expect.objectContaining({ tenantId: "t1", userId: null, action: "DELETE" }),
+        { transaction: { id: "tx" } },
+      );
+    });
+
+    it("re-offboards an already-offboarded tenant when forced", async () => {
+      Tenant.findByPk.mockResolvedValue({
+        id: "t1",
+        status: "deleted",
+        gracePeriodExpiresAt: new Date(0),
+        offboardedAt: new Date(0),
+        save: jest.fn(),
+        toJSON: () => ({ id: "t1" }),
+      });
+      User.findAll.mockResolvedValue([]);
+      Subscription.findAll.mockResolvedValue([]);
+      Invoice.findAll.mockResolvedValue([]);
+      TenantSettings.findAll.mockResolvedValue([]);
+
+      await tenantLifecycle.offboardTenant("t1", true, { userId: "admin-1" });
+
+      expect(auditService.logAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId: "admin-1",
+          changes: expect.objectContaining({
+            force: true,
+            before: { status: "deleted", gracePeriodExpiresAt: new Date(0), offboardedAt: new Date(0) },
+          }),
+        }),
+        { transaction: { id: "tx" } },
+      );
     });
 
     it("returns immediately if already offboarded and force is false", async () => {
@@ -313,6 +358,15 @@ describe("tenantLifecycle.service", () => {
       expect(result[0].tenantId).toBe("t1");
       expect(result[0].action).toBe("offboarded");
     });
+
+    it("records a tenant whose offboarding throws, and carries on", async () => {
+      Tenant.findAll.mockResolvedValue([{ id: "t1" }]);
+      Tenant.findByPk.mockResolvedValue(null);
+
+      const result = await tenantLifecycle.processExpiredGracePeriods();
+
+      expect(result).toEqual([{ tenantId: "t1", action: "failed", error: "Tenant not found" }]);
+    });
   });
 
   // ================================================================
@@ -397,15 +451,14 @@ describe("tenantLifecycle.service", () => {
   });
 
   describe("processExpiredGracePeriods no-op paths", () => {
-    it("returns an empty list when no suspended tenant has an expired grace period", async () => {
-      const future = new Date(Date.now() + 86400000);
-      Tenant.findAll.mockResolvedValue([
-        { id: "t1", status: "suspended", gracePeriodExpiresAt: future },
-      ]);
+    it("leaves the expiry comparison to the query — lowercase ENUM value, <= now", async () => {
+      Tenant.findAll.mockResolvedValue([]);
 
-      const result = await tenantLifecycle.processExpiredGracePeriods();
+      await tenantLifecycle.processExpiredGracePeriods();
 
-      expect(result).toEqual([]);
+      const { where } = Tenant.findAll.mock.calls[0][0];
+      expect(where.status).toBe("suspended");
+      expect(where.gracePeriodExpiresAt[Op.lte]).toBeInstanceOf(Date);
       expect(Tenant.findByPk).not.toHaveBeenCalled();
     });
 

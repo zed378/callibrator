@@ -40,21 +40,18 @@ The app JWT lives in an **httpOnly cookie that browser JS cannot read**, so the 
 
 `backend/src/routes/api/auth.route.js:333` mounts it as `router.post("/socket-token", auth, socketToken)` — `auth` and nothing else; any authenticated principal may mint one for itself.
 
-`backend/src/controllers/auth.controller.js:121-136`:
+`backend/src/controllers/auth.controller.js#socketToken` (since 2026-09-24, A-52 / A-59):
 
 ```js
-const expiresIn = 300; // seconds — shorter than JWT_ACCESS_EXPIRED on purpose
-const token = jwt.sign(
-  { id: req.user.id, purpose: "socket" },
-  process.env.JWT_ACCESS_SECRET,
-  { expiresIn, algorithm: "HS256" },
+const token = generatePurposeToken(
+  { id: req.user.id, sid: req.sessionId },
+  "socket",
+  { expiresIn: 300 },
 );
 ```
 
-Two properties of that call are worth stating, because neither is obvious from the name:
-
-- The payload carries **only** `id`. No tenant, no role, no permissions. Everything the connection is authorized with is re-read from the database at handshake time, so a token minted before a role change does not carry the old role.
-- **The `purpose: "socket"` claim is never checked anywhere.** `grep -rn "purpose" backend/src` finds it written in `auth.controller.js:125` and read nowhere outside the GDPR consent module. `verifyAccessToken` (`backend/src/utils/jwt.util.js`) enforces only the `typ` claim, which this token does not set. The consequences run in both directions: the handshake accepts any ordinary access token, and the HTTP `auth` middleware accepts a socket token as an access token for its 300 seconds. See § Known Gaps.
+- The payload carries `id` and the caller's session id `sid`. No tenant, role or permissions: everything the connection is authorized with is re-read from the database at handshake time.
+- It is signed as `typ: "socket"` through the same key registry as every other token (`jwt.util.js#generatePurposeToken`). `verifyAccessToken` refuses it, so **a socket token is not an HTTP access token**. The handshake calls `verifyPurposeToken(token, "socket")`, so **an access token is not a handshake token**. Before 2026-09-24 the claim was `purpose: "socket"` and nothing read it.
 
 ### What the handshake gate does
 
@@ -63,8 +60,8 @@ Two properties of that call are worth stating, because neither is obvious from t
 | Step | Line | Rejects when |
 |---|---|---|
 | read the token | `socket.js:89-95`, `107-115` | absent; **or supplied in the query string**, which is refused with its own log line before the token is ever parsed |
-| `verifyAccessToken` | `socket.js:118` | signature, algorithm or expiry fails |
-| MFA-pending check | `socket.js:121` | the token carries `mfaRequired` — it is only valid for exchange at `/auth/mfa/login` |
+| `verifyPurposeToken(token, "socket")` | `socket.js` | signature, algorithm or expiry fails, or the token is not `typ: "socket"` |
+| session check | `socket.js` | the token's `sid` names a revoked or expired session (`session.service.js#isSessionLive`) — connect-time only |
 | `authService.getAuthUserWithTenant` | `socket.js:125` | the user does not exist |
 | `user.isActive` | `socket.js:131` | the user is banned |
 | `user.status` | `socket.js:135` | `INACTIVE` or `SUSPENDED` |
@@ -196,14 +193,12 @@ This has not been tested with more than one replica. It is stated from the code 
 
 ## Known Gaps
 
-Stated here rather than smoothed over; each one is real as of 2026-09-23.
+Stated here rather than smoothed over; each one is real as of 2026-09-24. The line numbers in this document were taken on 2026-09-23 and may have moved; `socket.js` was edited under A-59.
 
 | Gap | Detail |
 |---|---|
-| **The `purpose: "socket"` claim is unenforced** | `auth.controller.js:125` sets it; nothing verifies it. A socket token is a valid HTTP access token for 300 s, and an ordinary access token is a valid handshake token. Not currently tracked by an `A-nn` card |
-| **The socket token bypasses the key registry** | `auth.controller.js:126` signs with `process.env.JWT_ACCESS_SECRET` directly, while `jwt.util.js` maintains a `JwtKeyRegistry` for rotation. After a rotation the two can disagree. Not verified against a rotation |
 | **Checks are connect-time only** | nothing re-evaluates a live socket. See [`../MULTI-TENANCY/06-REALTIME-ISOLATION.md`](../MULTI-TENANCY/06-REALTIME-ISOLATION.md) § Residual Risk |
-| **Session revocation is not checked** | the handshake does not consult the session store — but neither does `auth.middleware.js` over HTTP. Making sockets stricter than HTTP is an owner decision, recorded as an Open Question by A-05, not a judgement call |
+| **Session revocation is checked at connect only** | since A-48/A-59 (2026-09-24) the handshake refuses a socket token whose session is revoked; a socket already connected is not disconnected when its session is revoked |
 | **Board rooms are not re-joined after a reconnect** | `useBoard.ts:59`; live board updates stop silently |
 | **`disconnectSocket` is never called** | `socket.ts:64`; the connection outlives a logout in the same tab |
 | **`super_admins` is a publisher-less room** | `socket.js:200` |

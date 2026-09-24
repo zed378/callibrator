@@ -1,5 +1,15 @@
 const { Op } = require("sequelize");
 
+// A-41: mutations run in a managed transaction and audit through logAction.
+// In-transaction effects are asserted against a schema-enforcing ledger in
+// roles.audit.a41.test.js.
+jest.mock("../../config", () => ({
+  db: { transaction: jest.fn(async (cb) => cb("TX")) },
+}));
+jest.mock("../../services/audit.service", () => ({
+  logAction: jest.fn().mockResolvedValue({}),
+}));
+
 jest.mock("../../services/redis.service", () => ({
   get: jest.fn(),
   set: jest.fn(),
@@ -55,7 +65,7 @@ describe("RolesService", () => {
         is_system: true,
         roleLevel: 6,
         status: "active",
-      });
+      }, { transaction: "TX" });
       expect(result.id).toBe("role1");
     });
 
@@ -70,7 +80,7 @@ describe("RolesService", () => {
         // so an unspecified level is persisted as the model default, not left out.
         roleLevel: 1,
         status: "active",
-      });
+      }, { transaction: "TX" });
     });
 
     // ADR-043 — the cap is the reason this parameter exists. Level 10 is the
@@ -81,6 +91,7 @@ describe("RolesService", () => {
       await RolesService.createRole({ name: "Sneaky", roleLevel: 10 });
       expect(mockRole.create).toHaveBeenCalledWith(
         expect.objectContaining({ roleLevel: 8 }),
+        { transaction: "TX" },
       );
     });
 
@@ -89,6 +100,7 @@ describe("RolesService", () => {
       await RolesService.createRole({ name: "Negative", roleLevel: -3 });
       expect(mockRole.create).toHaveBeenCalledWith(
         expect.objectContaining({ roleLevel: 1 }),
+        { transaction: "TX" },
       );
     });
 
@@ -97,6 +109,7 @@ describe("RolesService", () => {
       await RolesService.createRole({ name: "Fuzzy", roleLevel: "8" });
       expect(mockRole.create).toHaveBeenCalledWith(
         expect.objectContaining({ roleLevel: 1 }),
+        { transaction: "TX" },
       );
     });
   });
@@ -176,21 +189,21 @@ describe("RolesService", () => {
         name: "NewName",
         description: "NewDesc",
         status: "inactive",
-      });
+      }, { transaction: "TX" });
     });
 
     it("should update nothing when no fields are supplied", async () => {
       const mockUpdate = jest.fn();
       mockRole.findByPk.mockResolvedValue({ is_system: false, update: mockUpdate });
       await RolesService.updateRole("role1", {});
-      expect(mockUpdate).toHaveBeenCalledWith({});
+      expect(mockUpdate).toHaveBeenCalledWith({}, { transaction: "TX" });
     });
 
     it("should allow a system role to be updated to a non-deleted status", async () => {
       const mockUpdate = jest.fn();
       mockRole.findByPk.mockResolvedValue({ is_system: true, update: mockUpdate });
       await RolesService.updateRole("sys1", { status: "inactive" });
-      expect(mockUpdate).toHaveBeenCalledWith({ status: "inactive" });
+      expect(mockUpdate).toHaveBeenCalledWith({ status: "inactive" }, { transaction: "TX" });
     });
   });
 
@@ -204,8 +217,8 @@ describe("RolesService", () => {
       const mockUpdate = jest.fn();
       mockRole.findByPk.mockResolvedValue({ is_system: true, update: mockUpdate, id: "sys1" });
       const result = await RolesService.deleteRole("sys1");
-      expect(mockUpdate).toHaveBeenCalledWith({ status: "inactive" });
-      expect(mockRoleMenuPermission.destroy).toHaveBeenCalledWith({ where: { roleId: "sys1" } });
+      expect(mockUpdate).toHaveBeenCalledWith({ status: "inactive" }, { transaction: "TX" });
+      expect(mockRoleMenuPermission.destroy).toHaveBeenCalledWith({ where: { roleId: "sys1" }, transaction: "TX" });
       expect(result.message).toBe("System role deactivated");
     });
 
@@ -246,14 +259,14 @@ describe("RolesService", () => {
       const mockPerm = { update: jest.fn() };
       mockRoleMenuPermission.findOrCreate.mockResolvedValue([mockPerm, false]);
       await RolesService.assignMenuToRole("r1", "m1", "read");
-      expect(mockPerm.update).toHaveBeenCalledWith({ permissionType: "read" });
+      expect(mockPerm.update).toHaveBeenCalledWith({ permissionType: "read" }, { transaction: "TX" });
     });
   });
 
   describe("removeMenuFromRole", () => {
     it("should delete permission and clear cache", async () => {
       await RolesService.removeMenuFromRole("r1", "m1");
-      expect(mockRoleMenuPermission.destroy).toHaveBeenCalledWith({ where: { roleId: "r1", menuGroupId: "m1" } });
+      expect(mockRoleMenuPermission.destroy).toHaveBeenCalledWith({ where: { roleId: "r1", menuGroupId: "m1" }, transaction: "TX" });
       expect(require("../../services/redis.service").del).toHaveBeenCalledWith("permissions:role:r1");
     });
   });

@@ -335,6 +335,41 @@ describe("qms.service", () => {
         expect(result.id).toBe("capa-1");
       });
 
+      // A-62 — the approver of a CAPA is the caller, never the body.
+      it("a body approvedBy naming another user records the caller as approver", async () => {
+        const capa = { id: "capa-1", approvedBy: null, save: jest.fn().mockResolvedValue(true) };
+        mockCapa.findOne.mockResolvedValue(capa);
+
+        await qmsService.updateCapa(
+          "tenant-1",
+          "capa-1",
+          { approvedBy: "someone-else", verificationNotes: "ok" },
+          "caller-1",
+        );
+
+        expect(capa.approvedBy).toBe("caller-1");
+        expect(capa.verificationNotes).toBe("ok");
+      });
+
+      it("a null approvedBy clears the approval, and an absent one leaves it", async () => {
+        const capa = { id: "capa-1", approvedBy: "prior", save: jest.fn().mockResolvedValue(true) };
+        mockCapa.findOne.mockResolvedValue(capa);
+
+        await qmsService.updateCapa("tenant-1", "capa-1", { title: "t" }, "caller-1");
+        expect(capa.approvedBy).toBe("prior");
+
+        await qmsService.updateCapa("tenant-1", "capa-1", { approvedBy: null }, "caller-1");
+        expect(capa.approvedBy).toBeNull();
+      });
+
+      it("records no approver when no actor is supplied", async () => {
+        const capa = { id: "capa-1", approvedBy: null, save: jest.fn().mockResolvedValue(true) };
+        mockCapa.findOne.mockResolvedValue(capa);
+
+        await qmsService.updateCapa("tenant-1", "capa-1", { approvedBy: "someone-else" });
+        expect(capa.approvedBy).toBeNull();
+      });
+
       it("should throw 404 AppError if CAPA not found", async () => {
         mockCapa.findOne.mockResolvedValue(null);
 

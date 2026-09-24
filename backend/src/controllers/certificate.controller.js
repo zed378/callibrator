@@ -7,6 +7,9 @@
 const certificateService = require("../services/certificate.service");
 const { asyncHandler } = require("../utils/controllerWrapper.util");
 const { success } = require("../utils/response.util");
+// Who did it, from where — for the audit row the service writes inside its
+// transaction (A-41).
+const { auditActor } = require("../utils/auditActor.util");
 const {
   getCertificatesQuery,
   certificateIdSchema,
@@ -75,6 +78,7 @@ exports.createCertificate = asyncHandler(async (req, res) => {
     tenantId,
     userId,
     validated,
+    auditActor(req),
   );
 
   success(res, result.data, null, result.message, result.status);
@@ -92,6 +96,7 @@ exports.updateCertificate = asyncHandler(async (req, res) => {
     tenantId,
     certificateId,
     { ...validated, updatedBy: req.user.id },
+    auditActor(req),
   );
 
   success(res, result.data, null, result.message, result.status);
@@ -107,6 +112,7 @@ exports.deleteCertificate = asyncHandler(async (req, res) => {
   const result = await certificateService.deleteCertificate(
     tenantId,
     certificateId,
+    auditActor(req),
   );
 
   success(res, result.data, null, result.message, result.status);
@@ -120,10 +126,13 @@ exports.approveCertificate = asyncHandler(async (req, res) => {
   const tenantId = req.user.tenantId;
   const { certificateId } = validate(req.params, certificateIdSchema);
   const validated = validate(req.body, approveCertificateSchema);
+  // A-62 — the approver is the caller, never the body: the schema strips any
+  // `approvedBy`, and this is the only id the service re-authenticates, stamps
+  // on the certificate and writes as the audit row's userId.
   const result = await certificateService.approveCertificate(
     tenantId,
     certificateId,
-    validated.approvedBy || req.user.id,
+    req.user.id,
     {
       authMethod: validated.authMethod,
       authPayload: validated.authPayload,
@@ -146,6 +155,7 @@ exports.submitCertificate = asyncHandler(async (req, res) => {
   const result = await certificateService.submitCertificateForApproval(
     tenantId,
     certificateId,
+    auditActor(req),
   );
   success(res, result.data, null, result.message, result.status);
 });

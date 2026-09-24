@@ -14,7 +14,8 @@
  *    rejected, deliberately: query strings are written to proxy and access
  *    logs, so a token there is a credential at rest in plaintext.
  *  - The handshake applies the same principal checks as the HTTP `auth`
- *    middleware — MFA-pending token, user exists, user active, account not
+ *    middleware — socket-purpose token only (A-59), live session, user
+ *    exists, user active, account not
  *    inactive/suspended, tenant not suspended/deleted — via the same
  *    `authService.getAuthUserWithTenant` loader.
  *  - Every rejection returns ONE opaque message. An unauthenticated socket is
@@ -29,8 +30,9 @@
  */
 
 const { Server } = require("socket.io");
-const { verifyAccessToken } = require("../utils/jwt.util");
+const { verifyPurposeToken } = require("../utils/jwt.util");
 const authService = require("../services/auth.service");
+const sessionService = require("../services/session.service");
 const { tenantStorage } = require("../middlewares/tenantContext.middleware");
 
 const isSuperAdminRole = (name) =>
@@ -114,12 +116,16 @@ const authenticateHandshake = async (socket, next) => {
       return deny(next, "token missing");
     }
 
-    // App tokens are signed with JWT_ACCESS_SECRET (HS256).
-    const decoded = verifyAccessToken(token);
+    // A-59: ONLY a "socket" purpose token (POST /auth/socket-token) opens a
+    // socket. An access token, an MFA-pending token and an activation token
+    // are all refused here — and the socket token is refused everywhere else.
+    const decoded = verifyPurposeToken(token, "socket");
 
-    // An MFA-pending token is only valid for exchange at /auth/mfa/login.
-    if (decoded.mfaRequired) {
-      return deny(next, "MFA-pending token presented");
+    // The session the socket token was issued from must still be live, as the
+    // HTTP `auth` middleware requires (A-48). Connect-time only: an open
+    // socket is not re-checked (A-05, Q-08).
+    if (decoded.sid && !(await sessionService.isSessionLive(decoded.sid, decoded.id))) {
+      return deny(next, `session ${decoded.sid} is revoked or expired`);
     }
 
     const user = await authService.getAuthUserWithTenant(decoded.id);

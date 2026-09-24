@@ -17,12 +17,8 @@ spec:
       port: {{ .Values.service.port }}
       targetPort: http
       protocol: TCP
-    {{- if .Values.mqtt.enabled }}
-    - name: mqtt
-      port: 1883
-      targetPort: mqtt
-      protocol: TCP
-    {{- end }}
+    # No MQTT port (S-22): the backend is an MQTT CLIENT of an external broker
+    # (MQTT_HOST/MQTT_PORT); nothing listens on 1883 in this pod.
   selector:
     app.kubernetes.io/name: callibrator-backend
     app.kubernetes.io/instance: {{ .Release.Name }}

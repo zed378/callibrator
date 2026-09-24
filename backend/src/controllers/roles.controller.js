@@ -1,5 +1,8 @@
 const rolesService = require("../services/roles.service");
 const { asyncHandler } = require("../utils/controllerWrapper.util");
+// Who did it, from where — for the audit row the service writes inside its
+// transaction (A-41).
+const { auditActor } = require("../utils/auditActor.util");
 
 // ==========================================
 //                     ROLES
@@ -37,7 +40,7 @@ exports.getRoleById = asyncHandler(async (req, res) => {
 
 exports.createRole = asyncHandler(async (req, res) => {
   const { name, description } = req.body;
-  const role = await rolesService.createRole({ name, description });
+  const role = await rolesService.createRole({ name, description }, auditActor(req));
   const fullRole = await rolesService.getRoleById(role.id);
   return res.status(201).json({ success: true, data: fullRole });
 });
@@ -45,17 +48,17 @@ exports.createRole = asyncHandler(async (req, res) => {
 exports.updateRole = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { name, description, status } = req.body;
-  const role = await rolesService.updateRole(id, {
-    name,
-    description,
-    status,
-  });
+  const role = await rolesService.updateRole(
+    id,
+    { name, description, status },
+    auditActor(req),
+  );
   return res.status(200).json({ success: true, data: role });
 });
 
 exports.deleteRole = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const result = await rolesService.deleteRole(id);
+  const result = await rolesService.deleteRole(id, auditActor(req));
   return res.status(200).json({ success: true, ...result });
 });
 
@@ -116,13 +119,13 @@ exports.deleteMenu = asyncHandler(async (req, res) => {
 
 exports.assignRoleToUser = asyncHandler(async (req, res) => {
   const { userId, roleId } = req.body || {};
-  const user = await rolesService.assignRoleToUser(userId, roleId);
+  const user = await rolesService.assignRoleToUser(userId, roleId, auditActor(req));
   return res.status(200).json({ success: true, data: user });
 });
 
 exports.removeRoleFromUser = asyncHandler(async (req, res) => {
   const { userId } = req.params;
-  const result = await rolesService.removeRoleFromUser(userId);
+  const result = await rolesService.removeRoleFromUser(userId, auditActor(req));
   return res.status(200).json({ success: true, ...result });
 });
 
@@ -137,6 +140,7 @@ exports.assignPermissionToRole = asyncHandler(async (req, res) => {
     roleId,
     menuGroupId,
     permissionType || "read",
+    auditActor(req),
   );
   return res.status(201).json({
     success: true,
@@ -147,6 +151,6 @@ exports.assignPermissionToRole = asyncHandler(async (req, res) => {
 
 exports.removePermissionFromRole = asyncHandler(async (req, res) => {
   const { roleId, menuGroupId } = req.params;
-  const result = await rolesService.removeMenuFromRole(roleId, menuGroupId);
+  const result = await rolesService.removeMenuFromRole(roleId, menuGroupId, auditActor(req));
   return res.status(200).json({ success: true, ...result });
 });

@@ -15,6 +15,13 @@
  * so the real module is loaded to exercise the real failure path.
  */
 
+// A-41: signing and revocation run in a managed transaction. The callback runs
+// with a sentinel; the in-transaction effects are asserted against a
+// schema-enforcing ledger in esignature.audit.a41.test.js.
+jest.mock("../../config", () => ({
+  db: { transaction: async (cb) => cb("TX") },
+}));
+
 const ESIGN_PATH = "../../services/eSignature.service";
 
 const { generateTestKeyPair } = require("../utils/esignatureKey.utils");
@@ -359,6 +366,7 @@ describe("eSignature.service (facade guard/error branches)", () => {
           userAgent: null,
           status: "signed",
         }),
+        { transaction: "TX" },
       );
     });
 
@@ -397,7 +405,7 @@ describe("eSignature.service (facade guard/error branches)", () => {
       expect(result.signatureId).toBe("sig-1");
       // Workflow stays open; the next signer is advanced to pending.
       expect(workflow.update).not.toHaveBeenCalled();
-      expect(nextStep.update).toHaveBeenCalledWith({ status: "pending" });
+      expect(nextStep.update).toHaveBeenCalledWith({ status: "pending" }, { transaction: "TX" });
     });
 
     it("leaves the workflow open when no waiting signer remains to promote", async () => {
@@ -519,7 +527,7 @@ describe("eSignature.service (facade guard/error branches)", () => {
       const result = await svc.signDocument("step-1", "u-1", {});
 
       expect(result.signatureId).toBe("sig-1");
-      expect(workflow.update).toHaveBeenCalledWith({ status: "completed" });
+      expect(workflow.update).toHaveBeenCalledWith({ status: "completed" }, { transaction: "TX" });
       // The owner notification uses the same broken emailQueueService import,
       // so it is swallowed by completeWorkflow's catch.
       expect(mockLogger.warn).toHaveBeenCalledWith(

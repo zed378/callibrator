@@ -113,14 +113,27 @@ exports.getCapas = async (tenantId, page = 1, limit = 10, status) => {
   };
 };
 
-exports.updateCapa = async (tenantId, capaId, data) => {
+/**
+ * @param {string} tenantId
+ * @param {string} capaId
+ * @param {object} data - validated PATCH body
+ * @param {string|null} actorId - the authenticated caller (req.user.id)
+ */
+exports.updateCapa = async (tenantId, capaId, data, actorId = null) => {
   const capa = await Capa.findOne({ where: { id: capaId, tenantId } });
   if (!capa) throw new AppError(404, "CAPA not found");
 
-  const allowedUpdates = ["title", "actionPlan", "status", "assignedTo", "dueDate", "completedDate", "approvedBy", "verificationNotes"];
+  // `approvedBy` is not in this list (A-62). The body used to name the
+  // approver outright, so anyone could record a CAPA as approved by someone
+  // else. The body's `approvedBy` now only says "record an approval": a value
+  // records the CALLER, whatever id it names; `null` clears the approval.
+  const allowedUpdates = ["title", "actionPlan", "status", "assignedTo", "dueDate", "completedDate", "verificationNotes"];
   allowedUpdates.forEach((field) => {
     if (data[field] !== undefined) capa[field] = data[field];
   });
+  if (data.approvedBy !== undefined) {
+    capa.approvedBy = data.approvedBy === null ? null : actorId;
+  }
 
   await capa.save();
   return capa;

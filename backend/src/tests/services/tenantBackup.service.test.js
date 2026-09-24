@@ -886,6 +886,10 @@ describe("Tenant Backup Service", () => {
             retained: 0,
             pendingActivation: ["test1"],
           },
+          // Written through audit.service#logAction (A-41), which fills the
+          // request-origin columns; a restore has none.
+          ipAddress: null,
+          userAgent: null,
         },
         { transaction: mockTransaction },
       );

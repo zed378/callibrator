@@ -97,7 +97,7 @@ The backend runs migrations at boot and will fail against a partially restored d
 4. RESTORE THE SECRETS                    ← the step that ends recoveries
 5. start postgres, redis, rabbitmq; wait for healthy
 6. start the backend; it runs migrations
-7. verify /health returns 200 with database: "connected"
+7. verify /health returns 200 with {"status":"ok"}
 8. start the frontend and nginx
 9. verify — see below
 ```
@@ -106,7 +106,7 @@ The backend runs migrations at boot and will fail against a partially restored d
 
 Restoring without verifying is restoring into hope.
 
-- [ ] `/health` returns 200 with `database: "connected"`
+- [ ] `/health` returns 200 with `{"status":"ok"}` (a verdict over PostgreSQL, Redis and RabbitMQ; the per-dependency breakdown is `GET /api/v1/health`, super admin only)
 - [ ] a user can log in
 - [ ] a tenant-scoped list returns that tenant's rows **and no others**
 - [ ] **a certificate issued before the incident still verifies at its public URL**

@@ -263,10 +263,17 @@ exports.dynamicAccess = (menuGroup, permissionType, options = {}) => {
         logger.error(`Req user.tenantId: ${req.user?.tenantId}`);
         logger.error(`Options: ${JSON.stringify(options)}`);
       }
-      return res.status(500).json({
-        success: false,
-        message: error.message || "Internal Server Error",
-      });
+      // A-13: do not hand-roll a 500 carrying `error.message` (a database or
+      // service error names tables, hosts and internals). Hand the error to
+      // the global error handler (index.js -> errorHandlers.middleware), which
+      // logs it against the request id and, in production, replaces the
+      // message with a generic one via fileValidation.util#sanitizeError —
+      // the same path `abac` and every wrapped controller take.
+      //
+      // Anything that invokes this gate with its own `next` (the search
+      // controller's per-type probe) MUST treat `next(err)` as a denial, not
+      // as "allowed" — only a bare `next()` means the check passed.
+      return next(error);
     }
   };
 };

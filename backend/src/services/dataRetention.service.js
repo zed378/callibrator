@@ -2,6 +2,11 @@ const { Op } = require('sequelize');
 const { AuditLog, Notification, Session, TenantSettings } = require('../models');
 const { AppError } = require('../utils/appError.util');
 const { logger } = require('../middlewares/activityLog.middleware');
+const auditService = require('./audit.service');
+const { db } = require('../config');
+
+/** The actor recorded on the purge's audit row: a job, not a user (W-04). */
+const RETENTION_ACTOR = 'system:retention-purge';
 
 const DEFAULT_RETENTION_DAYS = {
   audit_logs: parseInt(process.env.AUDIT_LOG_RETENTION_DAYS || '365', 10),
@@ -110,54 +115,90 @@ exports.purgeExpiredRecords = async (tenantId) => {
   }
 
   const policies = await exports.getRetentionPolicy(tenantId);
-  const now = new Date();
   const results = {};
+  const cutoffs = {};
 
-  for (const [entity, retentionDays] of Object.entries(policies)) {
-    if (retentionDays <= 0) {
-      continue;
+  // W-04 / W-16 — the deletes and the audit row that records them are ONE
+  // transaction. This is the only code that permanently destroys audit_logs
+  // rows, so what it destroyed is itself recorded — and a purge whose record
+  // cannot be written does not happen (logAction re-throws inside a
+  // transaction). A failure part-way through rolls every table back, instead
+  // of leaving a tenant half-purged.
+  //
+  // Whether audit_logs may be purged at all is an open compliance question:
+  // docs/DATABASE/10-AUDIT-LOGS.md says it has no delete path (BR-6). See the
+  // Open Questions in MEMORY/specs/A-41-audit-inside-transaction.md.
+  await db.transaction(async (transaction) => {
+    for (const [entity, retentionDays] of Object.entries(policies)) {
+      if (retentionDays <= 0) {
+        continue;
+      }
+
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - retentionDays);
+      cutoffs[entity] = cutoff.toISOString();
+
+      let deletedCount = 0;
+
+      switch (entity) {
+        case 'audit_logs':
+          deletedCount = await AuditLog.destroy({
+            where: {
+              tenantId,
+              createdAt: { [Op.lt]: cutoff },
+            },
+            transaction,
+          });
+          break;
+
+        case 'notifications':
+          deletedCount = await Notification.destroy({
+            where: {
+              tenantId,
+              createdAt: { [Op.lt]: cutoff },
+            },
+            transaction,
+          });
+          break;
+
+        case 'sessions':
+          deletedCount = await Session.destroy({
+            where: {
+              // The Session model names this attribute `tenant_id` (not tenantId),
+              // so querying by `tenantId` throws "column tenantId does not exist".
+              tenant_id: tenantId,
+              createdAt: { [Op.lt]: cutoff },
+            },
+            transaction,
+          });
+          break;
+      }
+
+      if (deletedCount > 0) {
+        results[entity] = deletedCount;
+      }
     }
 
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - retentionDays);
-
-    let deletedCount = 0;
-
-    switch (entity) {
-      case 'audit_logs':
-        deletedCount = await AuditLog.destroy({
-          where: {
-            tenantId,
-            createdAt: { [Op.lt]: cutoff },
+    // Nothing destroyed, nothing to record.
+    if (Object.keys(results).length > 0) {
+      await auditService.logAction(
+        {
+          tenantId,
+          userId: null,
+          action: 'DELETE',
+          resourceType: 'DataRetention',
+          resourceId: null,
+          changes: {
+            operation: 'RETENTION_PURGE',
+            actor: RETENTION_ACTOR,
+            before: { retentionDays: policies },
+            after: { purged: results, cutoffs },
           },
-        });
-        break;
-
-      case 'notifications':
-        deletedCount = await Notification.destroy({
-          where: {
-            tenantId,
-            createdAt: { [Op.lt]: cutoff },
-          },
-        });
-        break;
-
-      case 'sessions':
-        deletedCount = await Session.destroy({
-          where: {
-            // The Session model names this attribute `tenant_id` (not tenantId),
-            // so querying by `tenantId` throws "column tenantId does not exist".
-            tenant_id: tenantId,
-            createdAt: { [Op.lt]: cutoff },
-          },
-        });
-        break;
+        },
+        { transaction },
+      );
     }
-
-    if (deletedCount > 0) {
-      results[entity] = deletedCount;
-    }
-  }
+  });
 
   logger.info(`Purge completed for tenant ${tenantId}`, results);
 

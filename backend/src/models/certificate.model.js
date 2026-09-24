@@ -244,37 +244,40 @@ const defineModel = (db, DataTypes) => {
   /**
    * Instance method to submit a DRAFT certificate for approval.
    * Transitions DRAFT -> PENDING_APPROVAL so approve() becomes reachable.
+   * @param {object} [options] - passed to save(), e.g. { transaction } (A-41)
    * @returns {Promise<void>}
    */
-  Certificate.prototype.submitForApproval = async function () {
+  Certificate.prototype.submitForApproval = async function (options) {
     if (this.status !== STATUS.DRAFT) {
       throw new Error(
         `Cannot submit certificate for approval with status: ${this.status}`,
       );
     }
     this.status = STATUS.PENDING_APPROVAL;
-    await this.save();
+    await this.save(options);
   };
 
   /**
    * Instance method to approve the certificate.
+   * @param {object} [options] - passed to save(), e.g. { transaction } (A-41)
    * @returns {Promise<void>}
    */
-  Certificate.prototype.approve = async function () {
+  Certificate.prototype.approve = async function (options) {
     if (this.status !== STATUS.PENDING_APPROVAL) {
       throw new Error(`Cannot approve certificate with status: ${this.status}`);
     }
     this.status = STATUS.APPROVED;
-    await this.save();
+    await this.save(options);
   };
 
   /**
    * Instance method to sign the certificate digitally.
    * @param {string} signatureData - Digital signature data
    * @param {string} keyId - Key ID used for signing
+   * @param {object} [options] - passed to save(), e.g. { transaction } (A-41)
    * @returns {Promise<void>}
    */
-  Certificate.prototype.sign = async function (signatureData, keyId) {
+  Certificate.prototype.sign = async function (signatureData, keyId, options) {
     if (this.status !== STATUS.APPROVED) {
       throw new Error(
         `Cannot sign certificate with status: ${this.status}. Must be approved first.`,
@@ -285,15 +288,16 @@ const defineModel = (db, DataTypes) => {
     this.signedBy = this.signedBy || this.approvedBy;
     this.status = STATUS.SIGNED;
     this.signedAt = new Date();
-    await this.save();
+    await this.save(options);
   };
 
   /**
    * Instance method to revoke the certificate.
    * @param {string} reason - Reason for revocation
+   * @param {object} [options] - passed to save(), e.g. { transaction } (A-41)
    * @returns {Promise<void>}
    */
-  Certificate.prototype.revoke = async function (reason) {
+  Certificate.prototype.revoke = async function (reason, options) {
     if (this.status === STATUS.REVOKED) {
       return; // Already revoked
     }
@@ -301,7 +305,7 @@ const defineModel = (db, DataTypes) => {
     this.notes = this.notes
       ? `${this.notes}\n\nREVOKED: ${reason}`
       : `REVOKED: ${reason}`;
-    await this.save();
+    await this.save(options);
   };
 
   /**

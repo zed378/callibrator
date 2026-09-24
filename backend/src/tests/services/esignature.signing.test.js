@@ -13,6 +13,13 @@
  * verifySignature(); nothing reaches into a private function.
  */
 
+// A-41: signing and revocation run in a managed transaction. The callback runs
+// with a sentinel; the in-transaction effects are asserted against a
+// schema-enforcing ledger in esignature.audit.a41.test.js.
+jest.mock("../../config", () => ({
+  db: { transaction: async (cb) => cb("TX") },
+}));
+
 const { generateTestKeyPair } = require("../utils/esignatureKey.utils");
 
 const ESIGN_PATH = "../../services/eSignature.service";
@@ -180,14 +187,24 @@ describe("eSignature.service — RSA signing and verification", () => {
         signingKeyId: "key-esign-1",
         signatureScheme: "esig-v2-rsa-sha256",
       });
+      // A-41: the audit row is a valid audit_logs row ("DOCUMENT_SIGNED" and
+      // entityType/before/after were outside the ENUM and the schema, and
+      // failed against PostgreSQL on every signing), written in the signing
+      // transaction.
       expect(harness.models.AuditLog.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          action: "DOCUMENT_SIGNED",
-          after: expect.objectContaining({
-            signingKeyId: "key-esign-1",
-            signatureScheme: "esig-v2-rsa-sha256",
+          action: "APPROVE",
+          resourceType: "SignatureWorkflow",
+          resourceId: "wf-1",
+          changes: expect.objectContaining({
+            operation: "SIGN",
+            after: expect.objectContaining({
+              signingKeyId: "key-esign-1",
+              signatureScheme: "esig-v2-rsa-sha256",
+            }),
           }),
         }),
+        { transaction: "TX" },
       );
     });
   });

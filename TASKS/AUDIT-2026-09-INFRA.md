@@ -26,26 +26,30 @@ cards below are about the gap between rendering and working, and none of them up
 | S-04 | ClamAV is wired in but cannot scan: no `STANDBY` command, unframed `INSTREAM`, and "not FOUND" read as clean | **high** | TODO |
 | S-05 | `KMS_MASTER_KEY` does not exist anywhere in the Helm chart | **high** | TODO |
 | S-06 | The Helm chart's Secret and ConfigMap names can never both match what the Deployment mounts | **high** | TODO |
-| S-07 | `nginx/default.conf` routes `/api/` to the backend — the mistake `deploy/README.md` says breaks login | **high** | TODO |
+| S-07 | `nginx/default.conf` routes `/api/` to the backend — the mistake `deploy/README.md` says breaks login | **high** | **DONE** 2026-09-24 — no browser login yet |
 | S-08 | No secret is rotatable: no key id in the KMS payload, `ENCRYPT_KEY` outside the KMS entirely | **high** | TODO |
-| S-09 | RabbitMQ credentials contradict themselves in `.env.example`; Redis has no authentication at all | **high** | TODO |
-| S-10 | `.env.example` ships `IMAGE_TAG=latest`, which satisfies the prod overlay's `:?` guard | **high** | TODO |
+| S-09 | RabbitMQ credentials contradict themselves in `.env.example`; Redis has no authentication at all | **high** | **PARTIAL** 2026-09-24 — RabbitMQ template fixed; Redis auth needs a deploy decision |
+| S-10 | `.env.example` ships `IMAGE_TAG=latest`, which satisfies the prod overlay's `:?` guard | **high** | **DONE** 2026-09-24 |
 | S-11 | Six of the twelve allowed attachment types are rejected by the magic-byte check | medium | TODO |
-| S-12 | The image never creates or chowns `/app/storage` or `/app/.well-known` | medium | TODO |
-| S-13 | The backend build disables TLS verification for apt and resolves npm without a lockfile | medium | TODO |
+| S-12 | The image never creates or chowns `/app/storage` or `/app/.well-known` | medium | **DONE** 2026-09-24 — proven live |
+| S-13 | The backend build disables TLS verification for apt and resolves npm without a lockfile | medium | **PARTIAL** 2026-09-24 — backend done; frontend image deferred |
 | S-14 | The backup pruner and the backup writer point at different directories; the pruner can delete every tenant backup | medium | TODO |
 | S-15 | The attachment traversal guard derives its root from the same untrusted value it validates | medium | TODO |
-| S-16 | `make migrate` always also runs migrations on the host | medium | TODO |
+| S-16 | `make migrate` always also runs migrations on the host | medium | **DONE** 2026-09-24 |
 | S-17 | Uploads are written into the public tree before they are scanned; the scan cache key is not a hash | medium | TODO |
 | S-18 | Helm: no volume for `/app/backup`, persistence mounted at the wrong path, no NetworkPolicy, no PDB | medium | TODO |
 | S-19 | Compose: no `user:`, no `cap_drop`, no `read_only`, no CPU limits; dev publishes five datastores on `0.0.0.0` | medium | TODO |
-| S-20 | Plaintext secrets at rest outside the KMS: TOTP seeds, IoT device tokens, webhook secrets | medium | TODO |
-| S-21 | Six health-check claims describe a `/health` body that no longer exists | low | TODO |
-| S-22 | Two manifests still document things removed or never built (the MQTT port, an embedded broker) | low | TODO |
-| S-23 | `vm-http.conf` proxies two Swagger paths the backend does not serve | low | TODO |
+| S-20 | Plaintext secrets at rest outside the KMS: TOTP seeds, IoT device tokens, ~~webhook secrets~~ (A-51, 2026-09-24) | medium | TODO — webhook secrets done |
+| S-21 | Six health-check claims describe a `/health` body that no longer exists | low | **DONE** 2026-09-24 |
+| S-22 | Two manifests still document things removed or never built (the MQTT port, an embedded broker) | low | **DONE** 2026-09-24 |
+| S-23 | `vm-http.conf` proxies two Swagger paths the backend does not serve | low | **PARTIAL** 2026-09-24 — dead proxy paths removed; Swagger gate open |
 | S-24 | `docs/STORAGE/04` says `GET /usage` is `auth` only; the route is tenant-admin gated | low | TODO |
-| S-25 | Three divergent environment templates, one of them committed and unusable | low | TODO |
+| S-25 | Three divergent environment templates, one of them committed and unusable | low | **PARTIAL** 2026-09-24 — canonical templates named, not consolidated |
 | S-26 | The JWT key registry is decorative, and non-HS256 deployments stop verifying after 30 days uptime | low | TODO |
+| S-27 | Helm: the default release name `callibrator` breaks every service and ConfigMap reference | **high** | TODO |
+| S-28 | Makefile `.ONESHELL` without `-e`: a failed step does not stop a recipe | medium | TODO |
+| S-29 | `frontend/Dockerfile` uses `npm install` and an unpinned base image | medium | TODO |
+| S-30 | compose sets `HOST`, which Next standalone ignores | low | TODO |
 
 **What the storage module gets right, and is worth not breaking:** `keys.js` really is
 deny-by-default, `normalizeKey` really does throw rather than clean, `signing.js` really is
@@ -702,7 +706,7 @@ why, or validate them as "no NUL bytes in the first 16".
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24 — and it stopped a real deployment first |
 | **Severity** | medium |
 | **Verified** | from the Dockerfile |
 
@@ -746,6 +750,44 @@ prepared.
 - [ ] `docs/DEVOPS/02-CONTAINERIZATION.md:69` lists them
 
 ---
+
+**Proven live, 2026-09-24 — this card predicted a real outage.** The first deployment onto empty
+volumes (the owner's instruction was to wipe the stack's containers and volumes before deploying)
+**crash-looped the backend** before it wrote a single log line:
+
+```
+Error: EACCES: permission denied, mkdir '/app/log/activity/'
+```
+
+The mechanism is the one this card describes, now demonstrated:
+
+- `backend/Dockerfile` `chown -R app:app /app/backup /app/log /app/uploads` sets ownership **inside
+  the image** — and the three **bind mounts** shadow those directories with the host's at runtime,
+  so the build-time chown has no effect at all.
+- On a fresh host Docker creates missing bind-mount directories as `root:root 755`.
+- The backend runs as uid 997 and cannot create anything in them.
+- It had only ever worked on the reference VM because those directories were fixed by hand once,
+  long ago. **Any fresh install on any host would have failed identically.**
+
+`docs/DEVOPS/02-CONTAINERIZATION.md` states that "persistent directories are created and chowned at
+build, because a non-root container cannot create them at runtime". True of the image; irrelevant
+under a bind mount.
+
+**Fixed in the repository:**
+
+| Change | File |
+|---|---|
+| a one-shot `volume-init` service that chowns `uploads`, `backup` and `log` to the backend's uid before the backend starts; idempotent, so safe on every `up` | `deploy/compose/docker-compose.yml` |
+| the backend waits on it: `condition: service_completed_successfully` | same |
+| the uid is **pinned**: `useradd -r -u 997`. `-r` alone takes whatever system uid the base image leaves free — 997 today, not guaranteed — which would turn a base-image bump into a silent crash loop | `backend/Dockerfile` |
+
+**Proof, on the VM's real Linux kernel but against scratch directories in `/tmp`, not production:**
+with the directories root-owned, uid 997 gets `Permission denied`; after running the exact
+`volume-init` command, uid 997 gets `WRITE-OK`. Fail before, pass after.
+
+**The reference deployment was unblocked by hand** (the same `chown`, run once) before this fix
+existed; the next deployment exercises `volume-init` for real.
+
 
 ## S-13 — The build trusts the network twice
 
@@ -1362,3 +1404,35 @@ Recorded so the next audit does not re-derive them.
 | Whether bind-mounted `volumes/uploads` is writable by that uid on the live host | `deploy/README.md:207-211` says it must be chowned first; whether it was is a host fact |
 | Whether a restore has ever been performed | `docs/DEVOPS/04-DATABASE-BACKUP.md:135` says no drill has been done, and nothing in the repository contradicts it. S-02 and S-03 say what a first drill would find |
 | Whether `make verify` passes | not run — this was an audit, and the instruction was to change nothing |
+
+---
+
+## Infra batch — 2026-09-24
+
+Every card was checked against the files before it was changed, and **three cards were wrong in
+part**. The record is [`MEMORY/records/2026-09-24-phase0-batch2.md`](../MEMORY/records/2026-09-24-phase0-batch2.md),
+and the build-context decision is **ADR-046**.
+
+| | What was done | Validated by |
+|---|---|---|
+| **S-07** | `nginx/default.conf` and the Helm ingress now send `/api/` to the **frontend**, matching `vm-http.conf`, `docs/DEVOPS/03` and the frontend proxy. The base compose file and the frontend chart now set `BACKEND_INTERNAL_URL`: without it, prod and staging would have looped `/api` back through nginx | `nginx -t` on both configs; a live routing test with a stub frontend. **No browser login against `default.conf`** |
+| **S-10** | `IMAGE_TAG=` ships empty, so a template-copied `.env` fails prod and staging `config`. Compose cannot refuse the literal `latest`; `make preflight` does, and `deploy/README.md` now says the compose guard is presence-only | `docker compose config -q` for all four overlays |
+| **S-13** | **The card was wrong:** `npm ci` cannot run in a `backend/` context, because the committed lockfile is the root workspace one (ADR-044). The build context moved to the repo root (ADR-046), `npm ci --workspace backend`, a `Dockerfile.dockerignore` allow-list, and `Verify-Peer=false` is gone — CA certificates are copied from the builder. Swagger UI assets are now embedded explicitly, because the tree is hoisted | `docker build` exit 0; the image booted against pg18, Redis and RabbitMQ, applied 22 migrations, and served `/health`, `/live`, `/ready` and `/docs/swagger-ui.css` |
+| **S-16** | **The card was incomplete:** the binary has no `--migrate` CLI, so `exec backend ./backend --migrate up` started a second server, which migrated as a side effect of booting and died on EADDRINUSE. `make migrate` now restarts the backend, which migrates at boot, and waits for healthy. `make migrate-host` is explicit, and the host-only targets say so | GNU make in a container: `make -n migrate` stops on failure |
+| **S-21** | every health claim now matches the code: `/health` returns `{"status":"ok"}` or 503, plus `/live` and `/ready`; backend liveness probes `/live` | Helm template and lint; live curl |
+| **S-22** | the MQTT port and "embedded aedes" text are removed from the VM overlay and the backend subchart | `helm template`: no 1883 |
+| **S-23** | the two Swagger locations the backend never served are removed from `vm-http.conf`. **Still open:** gating `/docs` itself | live 404s on the removed paths |
+| **S-25** | `backend/.env.example` (source checkout) and `deploy/compose/.env.example` (stack) are named canonical. `local.env` is marked "NOT A TEMPLATE". It is not deleted, because four docs and a script copy it | — |
+| **S-09** | the template's RabbitMQ user, password and URL now agree; `make check-env` rejects a URL that disagrees; `make preflight` rejects `guest` and `CHANGE_ME`. **Redis `requirepass` is deferred** — it changes every running stack's `REDIS_URL` | make cases in a container: exit 2 on each bad input |
+
+**Found, not fixed:**
+
+- **S-27 — the Helm chart is broken under its own default release name.** `RELEASE ?= callibrator`
+  makes the umbrella `fullname` collapse to `callibrator`. The ingress then targets services that do
+  not exist, and the backend `envFrom` names a ConfigMap that does not exist. Confirmed with
+  `helm template callibrator …`.
+- **S-28 — the Makefile uses `.ONESHELL` without `-e`,** so a failing middle command does not stop a
+  recipe: a failed `pull` in `deploy` still runs `up`. Only the new `migrate` recipe is guarded.
+- **S-29 — `frontend/Dockerfile` still uses `npm install` and an unpinned `oven/bun:1-alpine`.**
+- **S-30 — the compose frontend sets `HOST: 0.0.0.0`,** which Next standalone ignores. It binds
+  correctly only because the Dockerfile sets `HOSTNAME`.

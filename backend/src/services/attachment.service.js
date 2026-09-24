@@ -7,7 +7,7 @@
 
 const crypto = require("crypto");
 const fs = require("fs");
-const { Attachment, Certificate, AuditLog } = require("../models");
+const { Attachment, Certificate } = require("../models");
 // NOT `db` from the models barrel — that export is the models registry's
 // sequelize handle under a different name; the config module is the one that
 // exports the Sequelize instance.
@@ -17,6 +17,7 @@ const { AppError } = require("../utils/appError.util");
 const { getUploadUrl } = require("../utils/upload.util");
 const { DEFAULT_LIMIT, MAX_LIMIT } = require("../constants");
 const virusScan = require("./virusScan.service");
+const auditService = require("./audit.service");
 const { logger } = require("../middlewares/activityLog.middleware");
 
 const ATTACH_FOLDER = "uploads/attachments";
@@ -211,7 +212,7 @@ exports.deleteAttachment = async (tenantId, id, actor = {}) => {
   await db.transaction(async (transaction) => {
     attachment.isDeleted = true;
     await attachment.save({ hooks: false, transaction });
-    await AuditLog.create(
+    await auditService.logAction(
       {
         tenantId,
         userId: actor.userId || null,

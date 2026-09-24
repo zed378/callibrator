@@ -65,7 +65,14 @@ exports.getCapas = asyncHandlerWithMapping(async (req, res) => {
 }, {});
 
 exports.updateCapa = asyncHandlerWithMapping(async (req, res) => {
-  const result = await qmsService.updateCapa(req.user.tenantId, req.params.id, req.body);
+  // A-62 — the caller is passed as the actor: a CAPA's approver is whoever
+  // made the request, never an id named in the body.
+  const result = await qmsService.updateCapa(
+    req.user.tenantId,
+    req.params.id,
+    req.body,
+    req.user.id,
+  );
   return {
     success: true,
     status: 200,

@@ -1,4 +1,21 @@
 # ==========================================
+# BUILD CONTEXT: THE REPOSITORY ROOT, not backend/
+#
+#   docker build -f backend/Dockerfile .
+#
+# The only committed lockfile is the WORKSPACE ROOT's package-lock.json
+# (ADR-044); backend/package-lock.json is deliberately git-ignored. A build
+# whose context is backend/ cannot see the lockfile, so it can only
+# `npm install` — resolving every transitive version afresh on every build
+# (S-13). The context is the root so `npm ci` can honour the committed tree.
+#
+# What is sent is controlled by backend/Dockerfile.dockerignore (BuildKit reads
+# <Dockerfile>.dockerignore in preference to <context>/.dockerignore). It
+# allow-lists the three manifests and backend/, and keeps developer uploads,
+# local.env, tests and coverage out of the builder.
+# ==========================================
+
+# ==========================================
 # STAGE 1 — BUILDER
 # ==========================================
 
@@ -6,27 +23,36 @@ FROM node:24-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+# The workspace manifests, and the lockfile that pins them. frontend/package.json
+# is needed only so the lockfile's workspace entries match — `npm ci` refuses a
+# lockfile that disagrees with the manifests. Its dependencies are not installed.
+COPY package.json package-lock.json ./
+COPY backend/package.json backend/package.json
+COPY frontend/package.json frontend/package.json
 
 # Puppeteer ships its own Chromium download; skip it — the runtime image uses a
 # system Chromium via PUPPETEER_EXECUTABLE_PATH, and the packager can't embed a
 # browser binary anyway.
 ENV PUPPETEER_SKIP_DOWNLOAD=true
 
-# Install dependencies
-RUN npm install
+# Install exactly the committed tree, backend workspace only. Dependencies are
+# HOISTED to /app/node_modules, which is also how every test run and the lint
+# gate see them.
+RUN npm ci --workspace backend --no-audit --no-fund
 
 # Copy source code
-COPY . .
+COPY backend/ backend/
+
+WORKDIR /app/backend
 
 # Generate Swagger JSON
 RUN npm run swagger:generate
 
-# Build standalone Linux binary
-RUN npx @yao-pkg/pkg . \
+# Build standalone Linux binary. @yao-pkg/pkg is a backend devDependency, so
+# npx runs the locked version rather than fetching one.
+RUN npx --no-install pkg . \
     --targets node24-linux-x64 \
-    --output /app/backend
+    --output /out/backend
 
 # ==========================================
 # STAGE 2 — RUNTIME
@@ -40,16 +66,23 @@ WORKDIR /app
 # service (puppeteer), located at runtime via PUPPETEER_EXECUTABLE_PATH.
 #
 # Plain HTTP (port 80) to the Debian mirrors is blocked in the deployment
-# subnet, so point apt at HTTPS. bookworm-slim ships no CA bundle yet, so
-# bootstrap ca-certificates over HTTPS with peer verification disabled for that
-# single step, then install everything else normally (verification back on).
+# subnet, so point apt at HTTPS. bookworm-slim ships no CA bundle, so apt could
+# not verify the mirror. The previous fix disabled peer verification to fetch
+# ca-certificates — which let anything on the build network serve the trust
+# store everything afterwards verifies against (S-13).
+#
+# Instead, seed the bundle from the builder stage (node:24-alpine ships
+# /etc/ssl/certs/ca-certificates.crt, and that image arrived over the
+# registry's own verified TLS). apt's HTTPS transport reads exactly that path by
+# default, so EVERY apt request below is verified. Installing Debian's
+# ca-certificates package then regenerates the bundle from Debian's own set.
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 RUN set -eux; \
     sed -i 's|http://|https://|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || true; \
     sed -i 's|http://|https://|g' /etc/apt/sources.list 2>/dev/null || true; \
-    apt-get -o Acquire::https::Verify-Peer=false update; \
-    apt-get -o Acquire::https::Verify-Peer=false install -y --no-install-recommends ca-certificates; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
+        ca-certificates \
         openssl \
         chromium \
         fonts-liberation \
@@ -57,26 +90,30 @@ RUN set -eux; \
     rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
-RUN useradd -r -s /usr/sbin/nologin app
+# The uid is PINNED. `useradd -r` alone takes whatever system uid the base
+# image happens to leave free — 997 today, not guaranteed tomorrow — and the
+# compose stack's volume-init service must chown the bind mounts to this exact
+# number. An unpinned uid would make a base-image bump a silent crash loop.
+RUN useradd -r -u 997 -s /usr/sbin/nologin app
 
 # Create persistent storage directories
 RUN mkdir -p /app/backup/tenant-backups /app/log /app/uploads/profile /app/uploads/tenant && \
     chown -R app:app /app/backup /app/log /app/uploads
 
 # Copy binary
-COPY --from=builder /app/backend ./backend
+COPY --from=builder /out/backend ./backend
 
 # Runtime assets read via appPath() (execPath-relative → /app). These are read
 # from disk next to the binary, not from the embedded snapshot, so they must be
 # shipped: the API spec, the email/certificate HTML templates, and the docs
 # pages served at /documentation, /standards, /tab-permissions.
-COPY --from=builder /app/swagger.json ./swagger.json
-COPY --from=builder /app/src/templates ./src/templates
-COPY --from=builder /app/docs ./docs
+COPY --from=builder /app/backend/swagger.json ./swagger.json
+COPY --from=builder /app/backend/src/templates ./src/templates
+COPY --from=builder /app/backend/docs ./docs
 # index.js mounts express.static(appPath("public")) at /public, and this COPY
 # was missing — so every request under /public answered 404 in every container
 # while working fine from a source checkout.
-COPY --from=builder /app/public ./public
+COPY --from=builder /app/backend/public ./public
 
 # Environment
 ENV NODE_ENV=production

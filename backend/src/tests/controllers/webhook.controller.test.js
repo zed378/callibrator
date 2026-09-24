@@ -10,6 +10,7 @@ jest.mock("../../services/webhook.service", () => ({
   deleteWebhook: jest.fn(),
   listDeliveries: jest.fn(),
   testWebhook: jest.fn(),
+  rotateSecret: jest.fn(),
   emitEvent: jest.fn(),
 }));
 
@@ -38,6 +39,8 @@ describe("webhook Controller", () => {
       body: {},
       query: {},
       user: { id: "user-1", tenantId: TENANT_ID },
+      ip: "10.0.0.1",
+      get: jest.fn((h) => (h === "user-agent" ? "jest-agent" : undefined)),
     };
     res = {
       status: jest.fn().mockReturnThis(),
@@ -68,6 +71,30 @@ describe("webhook Controller", () => {
         }),
       );
       expect(success).toHaveBeenCalled();
+    });
+
+    // A-51: even if the validator were bypassed, the controller forwards only
+    // the four accepted fields — never a caller's `secret` or `tenantId`.
+    it("never forwards a caller-supplied secret to the service", async () => {
+      req.body = {
+        url: "https://example.com/hook",
+        events: ["*"],
+        description: "d",
+        isActive: true,
+        secret: "a",
+        tenantId: "someone-else",
+      };
+      webhookService.createWebhook.mockResolvedValue({ id: WEBHOOK_ID });
+
+      await webhookController.create(req, res, next);
+
+      expect(webhookService.createWebhook).toHaveBeenCalledWith(TENANT_ID, {
+        url: "https://example.com/hook",
+        events: ["*"],
+        description: "d",
+        isActive: true,
+        createdBy: "user-1",
+      });
     });
   });
 
@@ -119,8 +146,46 @@ describe("webhook Controller", () => {
         TENANT_ID,
         WEBHOOK_ID,
         { url: "https://example.com/new-hook", description: "Updated" },
+        { userId: "user-1", ipAddress: "10.0.0.1", userAgent: "jest-agent" },
       );
       expect(success).toHaveBeenCalled();
+    });
+
+    it("passes an empty patch when there is no body", async () => {
+      req.params = { id: WEBHOOK_ID };
+      req.body = undefined;
+      webhookService.updateWebhook.mockResolvedValue({ id: WEBHOOK_ID });
+
+      await webhookController.update(req, res, next);
+
+      expect(webhookService.updateWebhook).toHaveBeenCalledWith(
+        TENANT_ID,
+        WEBHOOK_ID,
+        {},
+        expect.objectContaining({ userId: "user-1" }),
+      );
+    });
+  });
+
+  describe("rotateSecret", () => {
+    it("rotates the secret with the actor, and returns it", async () => {
+      req.params = { id: WEBHOOK_ID };
+      webhookService.rotateSecret.mockResolvedValue({ id: WEBHOOK_ID, secret: "new" });
+
+      await webhookController.rotateSecret(req, res, next);
+
+      expect(webhookService.rotateSecret).toHaveBeenCalledWith(TENANT_ID, WEBHOOK_ID, {
+        userId: "user-1",
+        ipAddress: "10.0.0.1",
+        userAgent: "jest-agent",
+      });
+      expect(success).toHaveBeenCalledWith(
+        res,
+        { id: WEBHOOK_ID, secret: "new" },
+        null,
+        expect.stringContaining("rotated"),
+        200,
+      );
     });
   });
 

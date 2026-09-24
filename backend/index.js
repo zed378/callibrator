@@ -43,6 +43,9 @@ const {
 const {
   initRetentionScheduler,
 } = require("./src/middlewares/retentionScheduler.middleware");
+const {
+  initTenantLifecycleScheduler,
+} = require("./src/middlewares/tenantLifecycleScheduler.middleware");
 
 const { initRedis, closeRedis } = require("./src/services/redis.service");
 
@@ -647,6 +650,10 @@ async function startServer() {
     initSessionCleanup();
     initCalibrationScheduler();
     initRetentionScheduler();
+    // Tenant lifecycle (grace-period expiry -> offboarding). node-cron, not a
+    // 24h setInterval: configurable, and it fires even if no process lives a
+    // whole day (W-01).
+    initTenantLifecycleScheduler();
 
     // Start the batch-job worker (RabbitMQ consumer). No-op in inline mode.
     require("./src/workers/batchJob.worker")
@@ -654,21 +661,6 @@ async function startServer() {
       .catch((err) =>
         console.error("Failed to start batch job worker:", err.message),
       );
-
-    // Start Tenant Lifecycle Processor (grace period expiry, offboarding)
-    const tenantLifecycleService = require("./src/services/tenantLifecycle.service");
-    setInterval(
-      async () => {
-        try {
-          await tenantLifecycleService.processExpiredGracePeriods();
-        } catch (err) {
-          logger.error("Tenant lifecycle processor failed", {
-            error: err.message,
-          });
-        }
-      },
-      24 * 60 * 60 * 1000,
-    ); // Run daily
 
     // Start Email Queue Worker (background processing) - fire and forget
     // processEmailQueue() starts a persistent RabbitMQ consumer, so we must

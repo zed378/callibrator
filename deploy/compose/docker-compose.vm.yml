@@ -16,15 +16,19 @@
 #   127.0.0.1:19000 backend      direct access for debugging
 #   127.0.0.1:19432 postgres     psql for debugging
 #   127.0.0.1:19673 rabbitmq     management UI
-#   0.0.0.0:19883   mqtt         NOTHING LISTENS HERE — see the note below
+#
+# (19883 was once listed here for MQTT. A-17 removed that mapping — nothing
+# listened on it; see the note under backend.ports.)
 #
 # Everything else stays on the compose network with no host binding.
 
 services:
   backend:
     build:
-      context: ../../backend
-      dockerfile: Dockerfile
+      # Context is the REPOSITORY ROOT so the build can `npm ci` against the
+      # committed root package-lock.json (ADR-044, S-13). See backend/Dockerfile.
+      context: ../..
+      dockerfile: backend/Dockerfile
     environment:
       NODE_ENV: production
       # No TLS at this layer — nginx terminates plain HTTP, so forcing an

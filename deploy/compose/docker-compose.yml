@@ -15,11 +15,40 @@ services:
   # APPLICATION
   # ==========================================================================
 
+  # The backend runs as a non-root user (uid 997, pinned in backend/Dockerfile).
+  # Its three directories are BIND MOUNTS, which shadow the directories the
+  # image chowns at build time — so on a fresh host Docker creates them as
+  # root:root and the backend crash-loops on `EACCES: mkdir /app/log/activity/`
+  # before it logs a single line. That is exactly what happened on 2026-09-24,
+  # the first time the stack was deployed onto empty volumes. It had only ever
+  # worked because the directories on the reference VM had been fixed by hand.
+  #
+  # This runs once, as root, before the backend, and makes the three
+  # directories writable by the backend's uid. It is idempotent, so it is safe
+  # on every `up`. If you change the backend's uid, change APP_UID here too.
+  volume-init:
+    image: alpine:3.20
+    user: "0:0"
+    restart: "no"
+    environment:
+      APP_UID: "997"
+    command:
+      - sh
+      - -c
+      - >-
+        mkdir -p /v/uploads /v/backup /v/log &&
+        chown -R "$${APP_UID}:$${APP_UID}" /v/uploads /v/backup /v/log &&
+        echo "volume-init: uploads, backup and log owned by $${APP_UID}"
+    volumes:
+      - ./volumes:/v
+
   backend:
     image: ${BACKEND_IMAGE:-callibrator/backend}:${IMAGE_TAG:-latest}
     build:
-      context: ../../backend
-      dockerfile: Dockerfile
+      # Context is the REPOSITORY ROOT so the build can `npm ci` against the
+      # committed root package-lock.json (ADR-044, S-13). See backend/Dockerfile.
+      context: ../..
+      dockerfile: backend/Dockerfile
     restart: unless-stopped
     env_file:
       - .env
@@ -39,6 +68,8 @@ services:
     # fault. ClamAV's first-run freshclam takes minutes and scanning is
     # optional, so only require it started.
     depends_on:
+      volume-init:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -48,8 +79,10 @@ services:
       clamav:
         condition: service_started
     healthcheck:
-      # /health calls db.authenticate() and returns 503 when the database is
-      # unreachable — a genuine readiness check, not a liveness ping.
+      # /health returns a verdict only ({"status":"ok"} or 503), computed from
+      # probes of PostgreSQL, Redis and RabbitMQ (A-06, A-15) — a genuine
+      # readiness check. It no longer calls db.authenticate() alone, and it no
+      # longer publishes the Node version, pid or memory.
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
       interval: 30s
       timeout: 10s
@@ -73,6 +106,13 @@ services:
       NODE_ENV: ${NODE_ENV:-production}
       HOST: 0.0.0.0
       PORT: 3000
+      # Server-only, read at RUNTIME. nginx routes /api/ to THIS service (Next
+      # owns the auth cookie — see nginx/default.conf), and the Next proxy
+      # routes forward to the backend at this address. Unset, they fall back to
+      # NEXT_PUBLIC_API_BASE_URL, the public origin, which re-enters nginx's
+      # /api/ location and loops. The frontend has no env_file, so a value in
+      # .env reaches it only through this line.
+      BACKEND_INTERNAL_URL: ${BACKEND_INTERNAL_URL:-http://backend:3000}
     depends_on:
       backend:
         condition: service_healthy

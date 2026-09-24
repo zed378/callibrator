@@ -1878,6 +1878,48 @@
         }
       }
     },
+    "/api/v1/auth/sso/exchange": {
+      "post": {
+        "tags": [
+          "SSO"
+        ],
+        "summary": "Exchange an SSO hand-off code for a session",
+        "description": "The SSO callbacks redirect to the frontend with a one-time `code`, never a token (A-60). The frontend's server route posts it here, server to server. A code is valid for 60 seconds and redeems once. On success the session is created and the response has the /auth/login shape: the access token at top-level `token`, the session at `session`. Public — the code is the credential. Rate limited per IP.\n",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "code"
+                ],
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "description": "The 43-character base64url code from the SSO redirect."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Session created"
+          },
+          "400": {
+            "description": "Malformed code"
+          },
+          "401": {
+            "description": "Unknown, expired or already-used code"
+          },
+          "429": {
+            "description": "Too many failed exchanges from this IP"
+          }
+        }
+      }
+    },
     "/api/v1/auth/mfa/setup": {
       "post": {
         "tags": [
@@ -19094,9 +19136,13 @@
             }
           }
         },
+        "description": "The signing secret is generated server-side and returned once, in this response. A `secret` in the request body is ignored (stripped).\n",
         "responses": {
           "201": {
             "description": "Webhook created (secret returned once)"
+          },
+          "400": {
+            "description": "Validation error"
           },
           "402": {
             "description": "Feature not available on the current plan"
@@ -19171,6 +19217,7 @@
       },
       "patch": {
         "summary": "Update a webhook (url, events, description, isActive)",
+        "description": "Changing `url` rotates the signing secret: the new host is never signed with a key the old host holds. The new secret is returned once, as `secret`, in this response; a patch that leaves the url unchanged returns no secret.\n",
         "tags": [
           "Webhooks"
         ],
@@ -19219,7 +19266,10 @@
         },
         "responses": {
           "200": {
-            "description": "Webhook updated"
+            "description": "Webhook updated (with a new `secret` if the url changed)"
+          },
+          "400": {
+            "description": "Validation error"
           },
           "404": {
             "description": "Webhook not found"
@@ -19311,6 +19361,39 @@
         "responses": {
           "200": {
             "description": "Test delivery attempted"
+          }
+        }
+      }
+    },
+    "/api/v1/webhooks/{id}/rotate-secret": {
+      "post": {
+        "summary": "Rotate a webhook's signing secret (new secret returned once)",
+        "description": "Issues a new server-generated secret and invalidates the old one immediately — there is no overlap window, so update the receiver with the returned secret before the next delivery. Writes an audit row.\n",
+        "tags": [
+          "Webhooks"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Secret rotated (secret returned once)"
+          },
+          "404": {
+            "description": "Webhook not found"
           }
         }
       }

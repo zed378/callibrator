@@ -13,9 +13,26 @@ export interface Webhook {
   createdAt: string;
 }
 
-/** Returned only once, on creation — includes the raw signing secret. */
-export interface CreatedWebhook extends Webhook {
+/**
+ * A webhook carrying its plaintext signing secret. The backend generates the
+ * secret itself (A-51) and returns it exactly once: in the create response, in
+ * `POST /webhooks/:id/rotate-secret`, and in a PATCH that changes the url.
+ * It is never readable again — list and get omit it.
+ */
+export interface WebhookWithSecret extends Webhook {
   secret: string;
+}
+
+/** Returned only once, on creation — includes the raw signing secret. */
+export type CreatedWebhook = WebhookWithSecret;
+
+/**
+ * A PATCH response. `secret` is present only when the url changed — the
+ * backend rotates the secret so the new host is never signed with a key the
+ * old host holds.
+ */
+export interface UpdatedWebhook extends Webhook {
+  secret?: string;
 }
 
 export type WebhookDeliveryStatus =
@@ -39,6 +56,8 @@ export interface WebhookDelivery {
   updatedAt: string;
 }
 
+// There is deliberately no `secret` field on either input: the backend
+// generates it, and a caller-supplied one is stripped by the request schema.
 export interface WebhookCreateInput {
   url: string;
   events: string[];
@@ -135,10 +154,29 @@ export const webhookService = {
     return response.data;
   },
 
-  update: async (id: string, data: WebhookUpdateInput): Promise<Webhook> => {
-    const response = await api.patch<BackendResponse<Webhook>>(
+  /**
+   * Update a webhook. When the url changes the response carries a new
+   * one-time `secret`; otherwise it has none.
+   */
+  update: async (
+    id: string,
+    data: WebhookUpdateInput,
+  ): Promise<UpdatedWebhook> => {
+    const response = await api.patch<BackendResponse<UpdatedWebhook>>(
       `/api/v1/webhooks/${id}`,
       data,
+    );
+    return response.data;
+  },
+
+  /**
+   * Issue a new signing secret. The old one stops working immediately — there
+   * is no overlap window — and the new one is returned only in this response.
+   */
+  rotateSecret: async (id: string): Promise<WebhookWithSecret> => {
+    const response = await api.post<BackendResponse<WebhookWithSecret>>(
+      `/api/v1/webhooks/${id}/rotate-secret`,
+      {},
     );
     return response.data;
   },

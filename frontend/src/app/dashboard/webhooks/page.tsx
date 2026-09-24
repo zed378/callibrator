@@ -3,13 +3,14 @@
 
 import React from "react";
 import DashboardLayout from "@/components/layouts/DashboardLayout";
-import { Button, Alert } from "@/components/ui";
+import { Button, Alert, ConfirmDialog } from "@/components/ui";
 import { Plus } from "lucide-react";
 import { useWebhooks } from "./hooks/useWebhooks";
 import WebhookModal from "./components/WebhookModal";
 import WebhooksTable from "./components/WebhooksTable";
 import DeleteWebhookModal from "./components/DeleteWebhookModal";
 import DeliveriesPanel from "./components/DeliveriesPanel";
+import SecretRevealDialog from "./components/SecretRevealDialog";
 
 export default function WebhooksPage() {
   const {
@@ -21,10 +22,17 @@ export default function WebhooksPage() {
     pageSize,
     isWebhookModalOpen,
     modalType,
+    selectedWebhook,
     isDeleteConfirmOpen,
     setIsDeleteConfirmOpen,
     webhookToDelete,
-    createdSecret,
+    revealedSecret,
+    closeSecretReveal,
+    webhookToRotate,
+    isRotating,
+    handleRotateClick,
+    cancelRotate,
+    confirmRotate,
     testingId,
     deliveriesWebhook,
     deliveries,
@@ -46,7 +54,7 @@ export default function WebhooksPage() {
     handleTestClick,
     toggleDeliveries,
     closeDeliveries,
-    copyCreatedSecret,
+    copyRevealedSecret,
   } = useWebhooks();
 
   return (
@@ -78,6 +86,7 @@ export default function WebhooksPage() {
           toggleDeliveries={toggleDeliveries}
           openEditModal={openEditModal}
           handleDeleteClick={handleDeleteClick}
+          handleRotateClick={handleRotateClick}
         />
 
         {deliveriesWebhook && (
@@ -103,8 +112,36 @@ export default function WebhooksPage() {
           addEvent={addEvent}
           removeEvent={removeEvent}
           onSubmit={handleFormSubmit}
-          createdSecret={createdSecret}
-          onCopySecret={copyCreatedSecret}
+          originalUrl={modalType === "edit" ? selectedWebhook?.url : null}
+        />
+
+        <SecretRevealDialog
+          revealed={revealedSecret}
+          onCopy={copyRevealedSecret}
+          onClose={closeSecretReveal}
+        />
+
+        <ConfirmDialog
+          isOpen={webhookToRotate !== null}
+          title="Rotate signing secret?"
+          description={
+            <>
+              {webhookToRotate && (
+                <code className="font-mono text-xs block max-w-full truncate mb-2">
+                  {webhookToRotate.url}
+                </code>
+              )}
+              A new secret is issued and the current one stops working
+              immediately — there is no overlap. Deliveries will fail
+              signature checks until the endpoint is updated with the new
+              secret, which is shown only once.
+            </>
+          }
+          confirmLabel="Rotate secret"
+          variant="danger"
+          isLoading={isRotating}
+          onConfirm={confirmRotate}
+          onCancel={cancelRotate}
         />
 
         <DeleteWebhookModal

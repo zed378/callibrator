@@ -70,17 +70,18 @@ describe("dynamicAccess without a logger", () => {
     expect(activityLog.logger).toBeUndefined();
   });
 
-  it("should still return 500 when the permission lookup throws", async () => {
-    RolesService.getRolePermissionsMatrix.mockRejectedValue(new Error("boom"));
+  it("should still hand a thrown permission lookup to next(err) when there is no logger", async () => {
+    const boom = new Error("boom");
+    RolesService.getRolePermissionsMatrix.mockRejectedValue(boom);
 
     await dynamicAccess("Home", "read")(req, res, next);
 
-    expect(res.status).toHaveBeenCalledWith(500);
-    expect(res.json).toHaveBeenCalledWith({
-      success: false,
-      message: "boom",
-    });
-    expect(next).not.toHaveBeenCalled();
+    // A-13: the error goes to the global error handler (which sanitizes it in
+    // production); this middleware writes nothing itself.
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(next).toHaveBeenCalledWith(boom);
+    expect(res.status).not.toHaveBeenCalled();
+    expect(res.json).not.toHaveBeenCalled();
   });
 
   it("should still fall back to role permissions when the override lookup fails", async () => {

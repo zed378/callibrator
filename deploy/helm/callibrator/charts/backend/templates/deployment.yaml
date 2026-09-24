@@ -45,13 +45,11 @@ spec:
           ports:
             - name: http
               containerPort: 3000
-            {{- if .Values.mqtt.enabled }}
-            - name: mqtt
-              # Embedded aedes broker for IoT telemetry ingest. Embedded so an
-              # on-premise hospital deployment does not need a separate broker,
-              # where every additional service is a procurement conversation.
-              containerPort: 1883
-            {{- end }}
+            # No MQTT port (S-22). There is no embedded broker — no aedes server
+            # exists in the codebase. The backend is an MQTT CLIENT of an
+            # external broker (MQTT_HOST + MQTT_PORT); a chart value that
+            # published 1883 here exposed a port with nothing behind it. A
+            # sidecar broker, if ever added, publishes its own port.
           envFrom:
             - configMapRef:
                 name: {{ .Release.Name }}-callibrator-config
@@ -59,12 +57,13 @@ spec:
                 name: {{ .Values.secretName }}
 
           # ------------------------------------------------------------------
-          # Liveness gets /. Readiness gets /health.
+          # Liveness gets /live. Readiness gets /health.
           #
-          # /health calls db.authenticate() and returns 503 when the database
-          # is unreachable. Using it as a LIVENESS probe would restart a
-          # healthy process during a database blip, turning a brief outage into
-          # a crash loop. A pod failing readiness is correctly kept out of
+          # /live is dependency-free. /health answers {"status":"ok"} or 503
+          # {"status":"unavailable"} from probes of PostgreSQL, Redis and
+          # RabbitMQ (A-06, A-15). Using it as a LIVENESS probe would restart a
+          # healthy process during a datastore blip, turning a brief outage
+          # into a crash loop. A pod failing readiness is correctly kept out of
           # rotation instead.
           # ------------------------------------------------------------------
           livenessProbe:

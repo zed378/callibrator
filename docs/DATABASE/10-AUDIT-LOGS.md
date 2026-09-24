@@ -25,6 +25,11 @@ One table, and the only one in the schema whose most important property is somet
 
 **`audit_logs` is not `paranoid`. It has no `isDeleted`, no `deletedAt`, and no delete path anywhere in the codebase.**
 
+> **Contradicted by the code (found 2026-09-24):** the retention purge in `dataRetention.service.js`
+> deletes `audit_logs` rows older than 365 days, and has since it was written. Since W-04 it at least
+> records that it did. Which of the two is right is **Q-12** in `TASKS/BACKLOG.md`; this document is
+> amended through an ADR once that is decided, not before.
+
 That absence is the control (BR-6). An audit trail that can be edited or deleted is not an audit trail — it is a log, and a log that the person under investigation could have altered proves nothing.
 
 Every other significant table is soft-deletable. This one is not, deliberately, and any change that adds a delete path here is a compliance regression regardless of how it is justified.
@@ -89,11 +94,19 @@ An audit row that survives a rolled-back action records something that did not h
 
 This means `auditLog.middleware.js` and the service transaction have to cooperate — the middleware cannot open its own connection and write independently.
 
+**As built (2026-09-24, A-41):** this holds for the **25 mutations** listed in
+[`MEMORY/specs/A-41-audit-inside-transaction.md`](../../MEMORY/specs/A-41-audit-inside-transaction.md):
+certificates, calibration records, e-signatures, roles and overrides, attachment delete, SOP publish,
+tenant restore and the retention purge. Each writes through `auditService.logAction(entry, { transaction })`,
+and a failed audit write rolls the change back. **Every other mutation is still audited by
+`auditLog.middleware.js` after the response, outside any transaction, best-effort** — the rule above
+is the target for them, not the current behaviour.
+
 ## Query Surface
 
 Exactly one endpoint: `GET /api/v1/audit`, read-only, gated on `security` read.
 
-No create, no update, no delete. The write path is middleware; the read path is a filter over `action`, `resourceType`, `resourceId`, `userId` and a date range.
+No create, no update, no delete over HTTP. The write path is the services named above, and the middleware for everything else; the read path is a filter over `action`, `resourceType`, `resourceId`, `userId` and a date range.
 
 Large exports run as batch jobs, and are themselves audited.
 

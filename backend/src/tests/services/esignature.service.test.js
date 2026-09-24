@@ -1,3 +1,14 @@
+// A-41: signing and revocation run in a managed transaction. The callback runs
+// with a sentinel; the in-transaction effects are asserted against a
+// schema-enforcing ledger in esignature.audit.a41.test.js.
+// This file also loads the real models barrel, so keep the real config and
+// replace only the transaction runner.
+jest.mock("../../config", () => {
+  const actual = jest.requireActual("../../config");
+  actual.db.transaction = async (cb) => cb("TX");
+  return actual;
+});
+
 // eslint-disable-next-line no-undef
 
 const {

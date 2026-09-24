@@ -1,0 +1,51 @@
+# Build-context filter for backend/Dockerfile, whose context is the REPOSITORY
+# ROOT (so `npm ci` can read the committed root package-lock.json — ADR-044).
+#
+# BuildKit reads <Dockerfile>.dockerignore in preference to <context>/.dockerignore,
+# which is why this file lives here and not at the root. backend/.dockerignore is
+# NOT consulted by this build: a context's .dockerignore is read from the context
+# root only.
+#
+# ALLOW-LIST: exclude everything, then re-include what the build needs.
+*
+
+!package.json
+!package-lock.json
+!frontend/package.json
+!backend
+
+# ...and keep out of backend/ what must never reach the builder (S-13, S-25).
+# Developer uploads matter most: pkg.assets once embedded uploads/** into the
+# binary, so a local attachment could ship inside the artefact.
+backend/node_modules
+backend/uploads
+backend/backup
+backend/log
+backend/data
+backend/storage
+backend/exports
+backend/dist
+backend/coverage
+backend/__tests__
+backend/__mocks__
+backend/src/tests
+backend/.git
+backend/.env
+backend/.env.*
+backend/*.env
+backend/local.env
+backend/package-lock.json
+backend/bun.lock
+backend/Dockerfile
+backend/Dockerfile.dockerignore
+backend/docker-compose.yaml
+backend/plans
+backend/agents
+backend/memory
+backend/.openclaw
+backend/AGENTS.md
+backend/HEARTBEAT.md
+backend/IDENTITY.md
+backend/SOUL.md
+backend/TOOLS.md
+backend/USER.md

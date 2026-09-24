@@ -67,10 +67,11 @@ Both stacks fail **at configuration time** rather than deploying something that 
 
 | Guard | Effect |
 |---|---|
-| `IMAGE_TAG` required in staging and prod | `:latest` means nobody can say what is running |
+| `IMAGE_TAG` required in staging and prod | a **presence** check (`${IMAGE_TAG:?}`) — it rejects unset or empty, and **cannot** reject the value `latest`. `.env.example` therefore ships it **empty** (S-10); the value check is `make preflight` / `make deploy`, which refuse `TAG=latest`. A direct `docker compose … -f docker-compose.prod.yml up` with `IMAGE_TAG=latest` in `.env` is **not** refused |
 | `CORS_ORIGIN` required in staging and prod | with no origins in production the app rejects everything |
 | `ACME_DIRECTORY_URL` required in prod | the **default is Let's Encrypt staging** — certificates no browser trusts |
-| `make preflight` | rejects `NODE_ENV != production`, `SEED_DEMO=true`, a wildcard CORS origin, and a staging ACME URL |
+| `make preflight` | rejects `TAG=latest`, `NODE_ENV != production`, `SEED_DEMO=true`, a wildcard CORS origin, a staging ACME URL, and an empty / `guest` / `CHANGE_ME` `RABBITMQ_PASS` |
+| `make check-env` (every `make up`) | rejects missing required secrets, and a `RABBITMQ_URL` whose credentials differ from `RABBITMQ_USER`/`RABBITMQ_PASS` (S-09) |
 
 ### Helm
 
@@ -227,7 +228,7 @@ A successful seed reports the roles, the menu groups with their permission count
 
 ## After Any Deployment
 
-- [ ] `/health` returns 200 with `database: "connected"`
+- [ ] `/health` returns 200 with `{"status":"ok"}` — a verdict over PostgreSQL, Redis and RabbitMQ that names no dependency; for the per-dependency breakdown, `GET /api/v1/health` with a super-admin token
 - [ ] a user can log in **in a browser** — a 200 from `curl` against the backend proves nothing about the cookie
 - [ ] `ALLOW_SEEDING` is unset and `/migration/seeding` returns **401**
 - [ ] `WEBAUTHN_RP_ID` and `WEBAUTHN_ORIGIN` match the public domain — unset, the server issues passkey challenges for `rp.id: "localhost"`, which every browser on the real domain rejects. The reference deployment ran that way until 2026-09-21, masked by a separate bug that made passkeys fail even earlier (A-24)

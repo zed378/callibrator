@@ -55,7 +55,8 @@ describe("certificateController", () => {
       query: {},
       params: {},
       body: {},
-      headers: {},
+      headers: { "user-agent": "jest-agent" },
+      ip: "10.0.0.9",
     };
 
     res = {
@@ -134,6 +135,7 @@ describe("certificateController", () => {
         "tenant-1",
         "user-1",
         { summary: "New cert" },
+        { userId: "user-1", tenantId: "tenant-1", ipAddress: "10.0.0.9", userAgent: "jest-agent" },
       );
       expect(success).toHaveBeenCalled();
     });
@@ -159,6 +161,7 @@ describe("certificateController", () => {
           summary: "Updated summary",
           updatedBy: "user-1",
         }),
+        { userId: "user-1", tenantId: "tenant-1", ipAddress: "10.0.0.9", userAgent: "jest-agent" },
       );
       expect(success).toHaveBeenCalled();
     });
@@ -179,6 +182,7 @@ describe("certificateController", () => {
       expect(certificateService.deleteCertificate).toHaveBeenCalledWith(
         "tenant-1",
         "c-1",
+        { userId: "user-1", tenantId: "tenant-1", ipAddress: "10.0.0.9", userAgent: "jest-agent" },
       );
       expect(success).toHaveBeenCalled();
     });
@@ -199,13 +203,15 @@ describe("certificateController", () => {
       expect(certificateService.submitCertificateForApproval).toHaveBeenCalledWith(
         "tenant-1",
         "c-1",
+        { userId: "user-1", tenantId: "tenant-1", ipAddress: "10.0.0.9", userAgent: "jest-agent" },
       );
       expect(success).toHaveBeenCalled();
     });
   });
 
   describe("approveCertificate", () => {
-    it("should approve certificate successfully", async () => {
+    // A-62 — the body's approvedBy is ignored; the caller is the approver.
+    it("should approve certificate successfully as the caller, ignoring a body approvedBy", async () => {
       req.params = { certificateId: "c-1" };
       req.body = { approvedBy: "approver-1" };
       certificateService.approveCertificate.mockResolvedValueOnce({
@@ -220,7 +226,7 @@ describe("certificateController", () => {
       expect(certificateService.approveCertificate).toHaveBeenCalledWith(
         "tenant-1",
         "c-1",
-        "approver-1",
+        "user-1",
         expect.any(Object),
       );
       expect(success).toHaveBeenCalled();
