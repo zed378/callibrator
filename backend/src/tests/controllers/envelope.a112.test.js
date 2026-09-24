@@ -21,8 +21,8 @@ jest.mock("../../services/calibrationRecords.service", () => ({
   fetchCalibrationRecords: jest.fn(),
   fetchSpecificCalibrationRecord: jest.fn(),
   createCalibrationRecord: jest.fn(),
-  updateCalibrationRecord: jest.fn(),
-  deleteCalibrationRecord: jest.fn(),
+  correctCalibrationRecord: jest.fn(),
+  voidCalibrationRecord: jest.fn(),
 }));
 
 jest.mock("../../services/tenant.service", () => ({
@@ -115,14 +115,14 @@ const RECORD_HANDLERS = [
     { body: { deviceId: DEVICE_ID } },
   ],
   [
-    "updateCalibrationRecord",
-    "updateCalibrationRecord",
-    { params: { calibrationRecordId: RECORD_ID }, body: { notes: "x" } },
+    "correctCalibrationRecord",
+    "correctCalibrationRecord",
+    { params: { calibrationRecordId: RECORD_ID }, body: { notes: "x", reason: "misread" } },
   ],
   [
-    "deleteCalibrationRecord",
-    "deleteCalibrationRecord",
-    { params: { calibrationRecordId: RECORD_ID } },
+    "voidCalibrationRecord",
+    "voidCalibrationRecord",
+    { params: { calibrationRecordId: RECORD_ID }, body: { reason: "entered twice" } },
   ],
 ];
 

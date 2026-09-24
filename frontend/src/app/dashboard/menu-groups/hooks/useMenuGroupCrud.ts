@@ -1,4 +1,5 @@
 // src/app/dashboard/menu-groups/hooks/useMenuGroupCrud.ts
+import { deferEffect } from "@/lib/deferEffect";
 import { useState, useEffect, useCallback } from "react";
 import { useAuthStore } from "@/stores/authStore";
 import { menuGroupRoleService } from "@/api/services/menuGroupRole.service";
@@ -66,9 +67,7 @@ export function useMenuGroupCrud({
     }
   }, [isSuperAdmin]);
 
-  useEffect(() => {
-    fetchAdminMenuGroups();
-  }, [fetchAdminMenuGroups]);
+  useEffect(() => deferEffect(fetchAdminMenuGroups), [fetchAdminMenuGroups]);
 
   const openCreateModal = () => {
     setCrudForm(emptyForm);

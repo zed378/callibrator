@@ -115,7 +115,7 @@ describe("A-51 — webhook secret handling", () => {
 
     const stored = Webhook.create.mock.calls[0][0].secret;
     expect(typeof stored).toBe("string");
-    expect(stored.startsWith("v1:")).toBe(true);
+    expect(stored.startsWith("v2:")).toBe(true); // P6-10: names its master key
     expect(stored).not.toContain(result.secret);
     // Bound to its tenant: the AAD is the tenant id, so another tenant's
     // context cannot unwrap it.
@@ -158,7 +158,7 @@ describe("A-51 — webhook secret handling", () => {
     expect(result.secret).toMatch(/^[0-9a-f]{64}$/);
     expect(result.secret).not.toBe(oldSecret);
     expect(webhook.update).toHaveBeenCalledWith(
-      { secret: expect.stringMatching(/^v1:/) },
+      { secret: expect.stringMatching(/^v2:/) },
       { transaction: TX },
     );
     expect(AuditLog.create).toHaveBeenCalledWith(
@@ -218,7 +218,7 @@ describe("A-51 — webhook secret handling", () => {
     expect(result.secret).toMatch(/^[0-9a-f]{64}$/);
     expect(result.secret).not.toBe(oldSecret);
     expect(webhook.update).toHaveBeenCalledWith(
-      expect.objectContaining({ url: "https://new.example.com/hook", secret: expect.stringMatching(/^v1:/) }),
+      expect.objectContaining({ url: "https://new.example.com/hook", secret: expect.stringMatching(/^v2:/) }),
       { transaction: TX },
     );
     expect(AuditLog.create).toHaveBeenCalledWith(

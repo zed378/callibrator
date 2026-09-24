@@ -316,7 +316,7 @@ const htmlContent = `<!DOCTYPE html>
             <h3>Quick Start with Docker</h3>
             <pre><code>git clone https://github.com/zed378/boilerplate-pg-mysql.git
 cd boilerplate-pg-mysql
-cp local.env .env
+cp .env.example .env
 docker-compose up -d</code></pre>
         </div>
 

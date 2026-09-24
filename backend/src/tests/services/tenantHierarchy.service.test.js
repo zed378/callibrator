@@ -15,8 +15,11 @@ jest.mock("../../utils/appError.util", () => ({
     }
   },
 }));
+// A-187: createSubOrganization writes in a managed transaction and audits.
+jest.mock("../../services/audit.service", () => ({ logAction: jest.fn(async () => ({})) }));
 jest.mock("../../config", () => ({
   db: {
+    transaction: async (cb) => cb("TX"),
     Sequelize: {
       Op: {
         like: { [Symbol.toStringTag]: "Op.like" },
@@ -88,7 +91,7 @@ describe("tenantHierarchy.service", () => {
         tenantHierarchyService.createSubOrganization("parent-1", {
           name: "Child Org",
         }),
-      ).rejects.toThrow("Parent tenant must be active");
+      ).rejects.toMatchObject({ status: 409, message: expect.stringContaining("inactive") });
     });
 
     it("should create sub-organization successfully", async () => {
@@ -138,6 +141,7 @@ describe("tenantHierarchy.service", () => {
       const result = await tenantHierarchyService.createSubOrganization(
         "parent-1",
         { name: "Child Org" },
+        { userId: "super-1" },
       );
 
       expect(result.tenantId).toBeDefined();

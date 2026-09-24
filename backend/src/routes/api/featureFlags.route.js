@@ -54,7 +54,13 @@ router.get("/", canReadFlags, featureFlagController.getTenantFlags);
  *       401:
  *         description: Unauthorized
  */
-router.get("/definitions", featureFlagController.getAllFlagDefinitions);
+// P6-04: the definitions list backs the feature-flags page only; gate it on
+// the same menu as the flags themselves (no tenant in the path, so no checkTenant).
+router.get(
+  "/definitions",
+  dynamicAccess(MENU_SLUGS.FEATURE_FLAGS, "read"),
+  featureFlagController.getAllFlagDefinitions,
+);
 /**
  * @swagger
  * /api/v1/feature-flags/{tenantId}/{flagKey}:

@@ -1,6 +1,7 @@
 // src/app/dashboard/predictive-maintenance/page.tsx
 "use client";
 
+import { deferEffect } from "@/lib/deferEffect";
 import React, { useCallback, useEffect, useState } from "react";
 import DashboardLayout from "@/components/layouts/DashboardLayout";
 import {
@@ -48,9 +49,7 @@ export default function PredictiveMaintenancePage() {
     }
   }, []);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useEffect(() => deferEffect(load), [load]);
 
   useEffect(() => {
     deviceService

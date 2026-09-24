@@ -35,14 +35,14 @@ Three middlewares run for every route, in this order (`scim.route.js:33–48`):
 ```
 scimAuthShim        rewrite "Bearer <api key>" -> "ApiKey <api key>"
 auth                resolve the principal
-requireApiKeyOrAdmin   API key OR SUPERADMIN, else 403
+requireApiKeyOrAdmin   API key with the `scim` scope OR SUPERADMIN, else 403
 ```
 
-**A plain user JWT does not reach SCIM.** `requireApiKeyOrAdmin` admits `req.user.isApiKey`, or a role named `SUPER_ADMIN`/`SUPERADMIN`. Everything else gets a SCIM-shaped 403:
+**A plain user JWT does not reach SCIM.** `requireApiKeyOrAdmin` admits an API key whose scopes allow `scim` — `scim:read` for `GET`, `scim:write` for every other method (`write` implies `read`) — or a role named `SUPER_ADMIN`/`SUPERADMIN`. Everything else gets a SCIM-shaped 403:
 
 ```json
 { "schemas": ["urn:ietf:params:scim:api:messages:2.0:Error"],
-  "detail": "SCIM endpoints require an API Key", "status": "403" }
+  "detail": "SCIM endpoints require an API key scoped scim:read (GET) or scim:write", "status": "403" }
 ```
 
 > This guard is inline in the route file rather than a named middleware. The 2026-09-21 audit write-up of A-27 said every SCIM route was on `auth` alone; that was wrong, and the correction is recorded in the A-27 card. The scanning script had a fixed list of gate names and a gate it could not see read as no gate. **When you audit this file, read it — do not grep for `rbac(`.**
@@ -55,9 +55,11 @@ Configure the IdP with the API key as its bearer token. No other credential type
 
 ### API keys are the intended credential, and they changed on 2026-09-23
 
-SCIM accepts **any** API key belonging to the tenant as a service account. It does not check the key's scopes — `requireApiKeyOrAdmin` sets `req.apiKeyAuthorized = true`, which is the explicit A-03 opt-in described in `auth.middleware.js#allowApiKey`.
+**Since 2026-09-24 (A-250, ADR-058) a key must carry the `scim` scope.** Until then SCIM accepted **any** API key belonging to the tenant as a service account, whatever its scopes — so a key a tenant admin minted as `stock:read` for an integration could provision users and rewrite group membership. `requireApiKeyOrAdmin` now checks the key's scopes with `apiKey.service#scopeAllows(scopes, "scim", GET ? "read" : "write")` before it sets `req.apiKeyAuthorized = true` (the explicit A-03 opt-in described in `auth.middleware.js#allowApiKey`).
 
-Because any key is a SCIM key, key issuance itself is the real gate. Two changes on 2026-09-23 (commit `e326ae5`, finding **A-27**):
+> **Upgrade note for integrators.** An IdP configured with a key that lacks `scim:write` starts receiving 403 on its first provisioning call after this change. Issue a new key with `scim:write` (`POST /api/v1/api-keys`, TENANT_ADMIN) and replace it in the IdP; a key's scopes cannot be edited in place.
+
+Before A-250, because any key was a SCIM key, key issuance itself was the real gate. Two changes on 2026-09-23 (commit `e326ae5`, finding **A-27**):
 
 | Before | Now |
 |---|---|

@@ -127,7 +127,7 @@ describe("A-96 — updateUserAvatar", () => {
       { transaction: tx },
     );
     expect(mockEvents).toEqual(["update", "audit", "commit", "unlink:old.png"]);
-    expect(deleteUpload).toHaveBeenCalledWith("old.png", "uploads/profile");
+    expect(deleteUpload).toHaveBeenCalledWith("old.png", "uploads/public/profile");
   });
 
   it("a failed audit insert rolls the update back and the old file stays", async () => {
@@ -225,11 +225,11 @@ describe("A-96 — updateUserAvatar edges", () => {
   });
 
   it("an old value stored as a URL is reduced to its filename for the delete", async () => {
-    Users.findByPk.mockResolvedValue(userRow({ avatarUrl: "/uploads/profile/old-url.png" }));
+    Users.findByPk.mockResolvedValue(userRow({ avatarUrl: "/uploads/public/profile/old-url.png" }));
 
     await userService.updateUserAvatar(USER_ID, "new.png", ACTOR_ID, actor());
 
-    expect(deleteUpload).toHaveBeenCalledWith("old-url.png", "uploads/profile");
+    expect(deleteUpload).toHaveBeenCalledWith("old-url.png", "uploads/public/profile");
   });
 
   it("with no acting user id, the audit row's userId is null (a system change), not undefined", async () => {

@@ -44,6 +44,12 @@ function ensureBackupDirExists() {
 }
 
 /**
+ * The Sequelize instance transactions run on: the request's, else the barrel's.
+ * @param {object} [models]
+ */
+const sequelizeOf = (models) => (models && models.sequelize) || require("../models").sequelize;
+
+/**
  * Generate a unique backup filename
  */
 function generateBackupFilename(tenantId, backupId) {
@@ -266,23 +272,53 @@ async function createBackup({
     // Count records (simplified - only users now)
     const recordCount = exportData.users?.length || 0;
 
-    // Update backup record
-    await TenantBackup.updateStatus(
-      backup.id,
-      {
-        status: TenantBackup.STATUS.COMPLETED,
-        filePath,
-        fileSize: zipBuffer.length,
-        recordCount,
-        metadata: {
-          checksum,
-          filename: filenameStr,
-          exportedAt: new Date().toISOString(),
-          dataVersion: exportData.metadata.version,
+    // S-32: COMPLETED, its expiry and its audit row commit together.
+    //  - `retentionDays` makes updateStatus stamp `expiresAt`; the HTTP path
+    //    used to leave it NULL, so the pruner had to guess from createdAt.
+    //  - a backup a USER took is attributed here, inside the transaction. A
+    //    system actor (the scheduled job: createdById null) writes its own
+    //    CREATE row with `systemActor` — scheduledBackup.service#backupTenant —
+    //    so there is exactly one audit row either way.
+    await sequelizeOf(models).transaction(async (transaction) => {
+      await TenantBackup.updateStatus(
+        backup.id,
+        {
+          status: TenantBackup.STATUS.COMPLETED,
+          filePath,
+          fileSize: zipBuffer.length,
+          recordCount,
+          retentionDays,
+          metadata: {
+            checksum,
+            filename: filenameStr,
+            exportedAt: new Date().toISOString(),
+            dataVersion: exportData.metadata.version,
+          },
         },
-      },
-      models,
-    );
+        models,
+        { transaction },
+      );
+      if (createdById) {
+        await auditService.logAction(
+          {
+            tenantId,
+            userId: createdById,
+            action: "CREATE",
+            resourceType: "TenantBackup",
+            resourceId: backup.id,
+            changes: {
+              operation: "BACKUP",
+              backupType,
+              fileName: filenameStr,
+              fileSize: zipBuffer.length,
+              recordCount,
+              retentionDays,
+            },
+          },
+          { transaction },
+        );
+      }
+    });
 
     logger.info("Tenant backup created", {
       backupId: backup.id,
@@ -645,6 +681,28 @@ async function notRestoredReason(user, targetTenantId, transaction) {
  * @param {object} args.models - the request-scoped models bag
  * @returns {Promise<object>} the response envelope
  */
+/**
+ * The 409 message for a backup a restore cannot start from.
+ * @param {string} backupId
+ * @param {{status: string, restoredAt?: Date|null}} backup
+ * @returns {string}
+ */
+function restoreRefusal(backupId, backup) {
+  const { COMPLETED, IN_PROGRESS } = TenantBackup.STATUS;
+  if (backup.status === COMPLETED) {
+    return (
+      `Backup ${backupId} has already been restored (at ${new Date(backup.restoredAt).toISOString()}) and cannot be restored again: ` +
+      "take a new backup to restore again."
+    );
+  }
+  return (
+    `Backup ${backupId} is ${backup.status} and cannot be restored: only a ${COMPLETED} backup can be. ` +
+    (backup.status === IN_PROGRESS
+      ? "A backup or a restore of it is already running."
+      : "Wait for it to complete, or take a new backup.")
+  );
+}
+
 async function restoreBackup({
   backupId,
   restoredById,
@@ -665,19 +723,14 @@ async function restoreBackup({
     throw new AppError(404, "Backup not found");
   }
 
-  // A restore is a state transition COMPLETED -> RESTORING -> RESTORED, so a
-  // backup in any other state is a 409 that names the state, not a 400: the
-  // request is well formed, the backup is simply not somewhere a restore can
-  // start from (CLAUDE.md, "Status Codes That Carry Meaning").
-  if (backup.status !== TenantBackup.STATUS.COMPLETED) {
-    throw new ConflictError(
-      `Backup ${backupId} is ${backup.status} and cannot be restored: only a ${TenantBackup.STATUS.COMPLETED} backup can be. ` +
-        (backup.status === TenantBackup.STATUS.RESTORING
-          ? "A restore of it is already running."
-          : backup.status === TenantBackup.STATUS.RESTORED
-            ? "It has already been restored; take a new backup to restore again."
-            : "Wait for it to complete, or take a new backup."),
-    );
+  // A restore is a state transition COMPLETED -> IN_PROGRESS -> COMPLETED
+  // with `restoredAt` set, so a backup in any other state is a 409 that names
+  // the state, not a 400: the request is well formed, the backup is simply
+  // not somewhere a restore can start from (CLAUDE.md, "Status Codes That
+  // Carry Meaning"). S-32: these used to be RESTORING and RESTORED, which the
+  // status ENUM does not have — every restore failed on PostgreSQL.
+  if (backup.status !== TenantBackup.STATUS.COMPLETED || backup.restoredAt) {
+    throw new ConflictError(restoreRefusal(backupId, backup));
   }
 
   if (!backup.filePath || !fs.existsSync(backup.filePath)) {
@@ -749,15 +802,25 @@ async function restoreBackup({
     throw new InternalServerError("Failed to restore backup: " + error.message);
   }
 
-  // Update backup status to restoring — only now, once the archive is known to
-  // be restorable into this tenant.
-  await TenantBackup.updateStatus(
-    backupId,
+  // Claim the backup for this restore — only now, once the archive is known
+  // to be restorable into this tenant. CONDITIONAL on it still being an
+  // unrestored COMPLETED backup, so of two concurrent restores exactly one
+  // proceeds; the other gets the same 409 a later request would.
+  const [claimed] = await TenantBackup.update(
+    { status: TenantBackup.STATUS.IN_PROGRESS },
     {
-      status: TenantBackup.STATUS.RESTORING,
+      where: {
+        id: backupId,
+        status: TenantBackup.STATUS.COMPLETED,
+        restoredAt: null,
+      },
     },
-    models,
   );
+  if (claimed !== 1) {
+    throw new ConflictError(
+      restoreRefusal(backupId, { status: TenantBackup.STATUS.IN_PROGRESS }),
+    );
+  }
 
   try {
     const backedUpUsers = data.users || [];
@@ -825,11 +888,13 @@ async function restoreBackup({
       // Commit transaction
       await transaction.commit();
 
-      // Update backup status
+      // Back to COMPLETED, now with `restoredAt` — the "restored" state the
+      // ENUM can hold (S-32).
       await TenantBackup.updateStatus(
         backupId,
         {
-          status: TenantBackup.STATUS.RESTORED,
+          status: TenantBackup.STATUS.COMPLETED,
+          restoredAt: new Date(),
           metadata: {
             ...backup.metadata,
             restoredAt: new Date().toISOString(),
@@ -899,7 +964,17 @@ async function restoreBackup({
 }
 
 /**
- * Delete a backup
+ * Delete a backup.
+ *
+ * S-32. This wrote a DELETING status first — not a member of the status ENUM,
+ * so on PostgreSQL every delete failed before touching anything — and it
+ * wrote no audit row. Now: the row is marked DELETED (with `deletedBy`),
+ * soft-deleted and audited in ONE transaction, and the file is unlinked only
+ * after that commits — the order the scheduled prune uses. A file that
+ * outlives a failed unlink is an orphan on disk (logged); never a row
+ * pointing at nothing.
+ *
+ * A backup still IN_PROGRESS (being taken, or being restored) is a 409.
  */
 async function deleteBackup(backupId, deletedById, models) {
   const backup = await TenantBackup.findByPk(backupId);
@@ -908,52 +983,68 @@ async function deleteBackup(backupId, deletedById, models) {
     throw new AppError(404, "Backup not found");
   }
 
-  // Update status to deleting
-  await TenantBackup.updateStatus(
-    backupId,
-    {
-      status: TenantBackup.STATUS.DELETING,
-    },
-    models,
-  );
+  const previousStatus = backup.status;
+  if (previousStatus === TenantBackup.STATUS.IN_PROGRESS) {
+    throw new ConflictError(
+      `Backup ${backupId} is ${previousStatus} and cannot be deleted: a backup or a restore of it is running. Wait for it to finish.`,
+    );
+  }
 
   try {
-    // Delete file from storage
-    if (backup.filePath && fs.existsSync(backup.filePath)) {
-      fs.unlinkSync(backup.filePath);
-    }
-
-    // Soft delete the record
-    await backup.destroy();
-
-    logger.info("Tenant backup deleted", {
-      backupId,
-      deletedById,
+    await sequelizeOf(models).transaction(async (transaction) => {
+      await backup.update(
+        { status: TenantBackup.STATUS.DELETED, deletedBy: deletedById || null },
+        { transaction },
+      );
+      await backup.destroy({ transaction });
+      await auditService.logAction(
+        {
+          tenantId: backup.tenantId,
+          userId: deletedById || null,
+          action: "DELETE",
+          resourceType: "TenantBackup",
+          resourceId: backupId,
+          changes: {
+            operation: "BACKUP_DELETE",
+            fileName: backup.filePath ? path.basename(backup.filePath) : null,
+            before: { status: previousStatus },
+            after: { status: TenantBackup.STATUS.DELETED },
+          },
+        },
+        { transaction },
+      );
     });
-
-    return {
-      success: true,
-      status: 200,
-      message: "Backup deleted successfully",
-      data: null,
-    };
   } catch (error) {
-    // Revert status if deletion fails
-    await TenantBackup.updateStatus(
-      backupId,
-      {
-        status: TenantBackup.STATUS.COMPLETED,
-      },
-      models,
-    );
-
     logger.error("Tenant backup deletion failed", {
       backupId,
       error: error.message,
     });
-
     throw new InternalServerError("Failed to delete backup: " + error.message);
   }
+
+  if (backup.filePath && fs.existsSync(backup.filePath)) {
+    try {
+      fs.unlinkSync(backup.filePath);
+    } catch (error) {
+      logger.error("Tenant backup deleted; its file could not be removed and is left on disk", {
+        backupId,
+        filePath: backup.filePath,
+        error: error.message,
+      });
+    }
+  }
+
+  logger.info("Tenant backup deleted", {
+    backupId,
+    deletedById,
+  });
+
+  return {
+    success: true,
+    status: 200,
+    message: "Backup deleted successfully",
+    data: null,
+  };
 }
 
 /**

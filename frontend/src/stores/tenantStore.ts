@@ -103,12 +103,12 @@ export const useTenantStore = create<TenantState>()((set) => ({
     set({ isLoading: true, error: null });
     try {
       const tenant = await tenantService.getById(id);
+      // F-65: VIEWING a tenant does not switch into it. This used to write
+      // x_tenant_id, which the proxy sends as X-Tenant-ID and the backend
+      // honours for a super admin — so opening tenant B's page silently scoped
+      // every later request to B, with no banner. Only selectTenant (an
+      // explicit switch) writes the cookie.
       set({ currentTenant: tenant, isLoading: false, error: null });
-      if (tenant) {
-        setCookie("x_tenant_id", tenant.id, 7);
-      } else {
-        deleteCookie("x_tenant_id");
-      }
     } catch (error: unknown) {
       const message =
         error instanceof Error ? error.message : "Failed to fetch tenant";
@@ -151,12 +151,9 @@ export const useTenantStore = create<TenantState>()((set) => ({
     set({ isLoading: true, error: null });
     try {
       const tenant = await tenantService.update(data);
+      // F-65: EDITING a tenant does not switch into it either (see
+      // fetchTenantById); x_tenant_id is left as it was.
       set({ currentTenant: tenant, isLoading: false, error: null });
-      if (tenant) {
-        setCookie("x_tenant_id", tenant.id, 7);
-      } else {
-        deleteCookie("x_tenant_id");
-      }
       // Re-fetch tenants after successful update
       const state = useTenantStore.getState();
       const tenants = await tenantService.getVisible(
@@ -170,6 +167,9 @@ export const useTenantStore = create<TenantState>()((set) => ({
       const message =
         error instanceof Error ? error.message : "Failed to update tenant";
       set({ isLoading: false, error: message });
+      // F-64: a failed write reaches the caller (the edit modal stays open
+      // with the message) instead of closing as if it had saved.
+      throw error;
     }
   },
 
@@ -212,6 +212,7 @@ export const useTenantStore = create<TenantState>()((set) => ({
       const message =
         error instanceof Error ? error.message : "Failed to delete tenant";
       set({ isLoading: false, error: message });
+      throw error; // F-64
     }
   },
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { API_BASE_URL } from "@/constants";
+import { clearSessionCookies } from "@/lib/authCookies";
 
 export async function POST() {
   const cookieStore = await cookies();
@@ -21,10 +22,9 @@ export async function POST() {
   } catch (error) {
     console.error("Backend logout-all error:", error);
   } finally {
-    // Always clear the cookies
-    cookieStore.delete("auth_token");
-    cookieStore.delete("auth_session");
-    cookieStore.delete("auth_logged_in");
+    // Always clear the cookies — the refresh token, the tenant override and
+    // the impersonation marker included (F-06, F-05).
+    clearSessionCookies(cookieStore);
   }
 
   return NextResponse.json({ success: true, message: "All sessions revoked successfully" }, { status: 200 });

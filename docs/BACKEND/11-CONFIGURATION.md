@@ -145,6 +145,7 @@ The logo is served from the **public web origin**, not the backend's `/public` m
 |---|---|
 | `CERT_SIGNING_SECRET` | **required**, effectively **not rotatable** |
 | `CERT_VERIFY_BASE_URL` | the QR encodes `<this>/<certificateNumber>` |
+| `PUBLIC_BASE_URL` | the public origin of links the backend hands out — the verify API URL (when `CERT_VERIFY_BASE_URL` is unset) and attachment signed URLs. Falls back to `HOST_URL`. **In production one of the two is required**: with neither, those requests fail with a 500 naming the setting rather than build a link from the request (A-189, ADR-056, `utils/publicBaseUrl.util.js`). Outside production the request's origin is used, as forwarded by the Next proxy (`X-Forwarded-Host`/`-Proto`) and read through the one-hop `trust proxy` (ADR-050) |
 | `PUPPETEER_EXECUTABLE_PATH` | fails at **first PDF**, not at startup, when wrong |
 
 ## Optional Subsystems

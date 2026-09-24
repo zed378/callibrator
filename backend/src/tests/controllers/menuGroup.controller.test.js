@@ -27,7 +27,9 @@ jest.mock("../../services/audit.service", () => ({
   logAction: jest.fn().mockResolvedValue({}),
 }));
 jest.mock("../../services/redis.service", () => ({
+  del: jest.fn().mockResolvedValue(0),
   delPattern: jest.fn().mockResolvedValue(0),
+  cacheKeys: { permissions: (roleId) => `permissions:role:${roleId}` },
 }));
 
 // Mock success and error responses
@@ -592,7 +594,7 @@ describe("MenuGroup Controller Tests", () => {
       );
     });
 
-    it("should delete the menu group and cleanup nested associations successfully", async () => {
+    it("should delete an empty menu group and its grants successfully", async () => {
       req.body.menuGroupId = "3fa85f64-5717-4562-b3fc-2c963f66afa6";
       const mockGroupInstance = {
         id: "3fa85f64-5717-4562-b3fc-2c963f66afa6",
@@ -607,13 +609,11 @@ describe("MenuGroup Controller Tests", () => {
       await deleteMenuGroup(req, res);
 
       expect(RoleMenuPermission.destroy).toHaveBeenCalledWith({
-        where: { menuGroupId: ["3fa85f64-5717-4562-b3fc-2c963f66afa6"] },
+        where: { menuGroupId: "3fa85f64-5717-4562-b3fc-2c963f66afa6" },
         transaction: "TX",
       });
-      expect(MenuGroup.destroy).toHaveBeenCalledWith({
-        where: { parentId: "3fa85f64-5717-4562-b3fc-2c963f66afa6" },
-        transaction: "TX",
-      });
+      // A-181: a delete never removes or orphans child menus.
+      expect(MenuGroup.destroy).not.toHaveBeenCalled();
       expect(mockGroupInstance.destroy).toHaveBeenCalledWith({ transaction: "TX" });
       expect(success).toHaveBeenCalledWith(res, null, null, "Menu group deleted successfully", 200);
     });
@@ -709,6 +709,7 @@ describe("MenuGroup Controller Tests", () => {
           menuGroupId: "3fa85f64-5717-4562-b3fc-2c963f66afa7",
         },
         defaults: { permissionType: "read" },
+        transaction: "TX",
       });
       expect(success).toHaveBeenCalledWith(
         res,
@@ -736,6 +737,7 @@ describe("MenuGroup Controller Tests", () => {
           menuGroupId: "3fa85f64-5717-4562-b3fc-2c963f66afa8",
         },
         defaults: { permissionType: "read" },
+        transaction: "TX",
       });
     });
   });
@@ -762,6 +764,7 @@ describe("MenuGroup Controller Tests", () => {
           roleId: "3fa85f64-5717-4562-b3fc-2c963f66afa6",
           menuGroupId: "3fa85f64-5717-4562-b3fc-2c963f66afa7",
         },
+        transaction: "TX",
       });
       expect(success).toHaveBeenCalledWith(res, null, null, "Menu revoked successfully", 200);
     });
@@ -781,6 +784,7 @@ describe("MenuGroup Controller Tests", () => {
           roleId: "3fa85f64-5717-4562-b3fc-2c963f66afa6",
           menuGroupId: "3fa85f64-5717-4562-b3fc-2c963f66afa8",
         },
+        transaction: "TX",
       });
     });
   });
@@ -804,39 +808,29 @@ describe("MenuGroup Controller Tests", () => {
       expect(res.status).toHaveBeenCalledWith(404);
     });
 
-    it("should process bulk assignment and handle assign, already assigned, not found, and error scenarios", async () => {
+    it("should process bulk assignment and handle assign, already assigned and not found", async () => {
       req.body = {
         roleId: "3fa85f64-5717-4562-b3fc-2c963f66afa6",
         menuGroupIds: [
           "3fa85f64-5717-4562-b3fc-2c963f66afa7", // Success assigned
           "3fa85f64-5717-4562-b3fc-2c963f66afa8", // Already assigned
           "3fa85f64-5717-4562-b3fc-2c963f66afa9", // Not found
-          "3fa85f64-5717-4562-b3fc-2c963f66afb0", // Throws database error
         ],
       };
 
       Role.findByPk.mockResolvedValue({ id: "role-1" });
+      // A-181: the ids are resolved in one read before the transaction.
+      MenuGroup.findAll.mockResolvedValue([
+        { id: "3fa85f64-5717-4562-b3fc-2c963f66afa7" },
+        { id: "3fa85f64-5717-4562-b3fc-2c963f66afa8" },
+      ]);
 
-      // MenuGroup mock outputs
-      MenuGroup.findByPk.mockImplementation(async (id) => {
-        if (id === "3fa85f64-5717-4562-b3fc-2c963f66afa7") {return { id };}
-        if (id === "3fa85f64-5717-4562-b3fc-2c963f66afa8") {return { id };}
-        if (id === "3fa85f64-5717-4562-b3fc-2c963f66afb0") {return { id };}
-        return null; // Not found
-      });
-
-      // RoleMenuPermission mock outputs
       RoleMenuPermission.findOrCreate.mockImplementation(async ({ where }) => {
         const id = where.menuGroupId;
         if (id === "3fa85f64-5717-4562-b3fc-2c963f66afa7") {
           return [{ id: "perm-new" }, true]; // Created
         }
-        if (id === "3fa85f64-5717-4562-b3fc-2c963f66afa8") {
-          return [{ id: "perm-old" }, false]; // Already assigned
-        }
-        if (id === "3fa85f64-5717-4562-b3fc-2c963f66afb0") {
-          throw new Error("DB Error"); // Throws error
-        }
+        return [{ id: "perm-old" }, false]; // Already assigned
       });
 
       await bulkAssignMenuGroups(req, res);
@@ -850,10 +844,6 @@ describe("MenuGroup Controller Tests", () => {
             {
               menuGroupId: "3fa85f64-5717-4562-b3fc-2c963f66afa9",
               error: "Menu group not found",
-            },
-            {
-              menuGroupId: "3fa85f64-5717-4562-b3fc-2c963f66afb0",
-              error: "DB Error",
             },
           ],
         },

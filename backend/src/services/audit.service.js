@@ -208,6 +208,8 @@ exports.logAction = async (
  * @param {string} params.endpoint - where the attempts were made
  * @param {string|null} params.ipAddress - the address of the attempt that tripped the lock (null when unknown)
  * @param {string|null} params.userAgent - null when unknown
+ * @param {string} [params.scope] - A-185: what a password sign-in pause
+ *   covers; absent for a lock of the account itself
  * @returns {Promise<boolean>} true when the row was written, false when the
  *   lock was persisted without it
  * @throws whatever the fallback lock write throws
@@ -220,6 +222,7 @@ exports.recordAccountLock = async ({
   endpoint,
   ipAddress,
   userAgent,
+  scope,
 }) => {
   // Required here, not at the top: this module is loaded by many test files
   // that mock the models and nothing else, and only this function needs `db`.
@@ -238,6 +241,9 @@ exports.recordAccountLock = async ({
             endpoint,
             failedAttempts,
             lockedUntil: lockedUntil.toISOString(),
+            // A-185: a password sign-in pause is not an account lock — it
+            // names what was paused ("identifier+address" or "identifier").
+            ...(scope ? { scope } : {}),
           },
           ipAddress,
           userAgent,

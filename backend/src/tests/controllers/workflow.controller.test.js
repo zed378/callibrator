@@ -99,9 +99,12 @@ describe("workflow Controller", () => {
 
       await workflowController.createWorkflow(req, res, next);
 
-      expect(workflowService.createWorkflow).toHaveBeenCalledWith("tenant-1", {
-        name: "Test",
-      });
+      // A-204 — the caller is the audit row's actor.
+      expect(workflowService.createWorkflow).toHaveBeenCalledWith(
+        "tenant-1",
+        { name: "Test" },
+        expect.objectContaining({ userId: req.user.id }),
+      );
       // 201 must land in statusCode, not in meta.
       expect(success).toHaveBeenCalledWith(
         res,
@@ -126,6 +129,7 @@ describe("workflow Controller", () => {
         "tenant-1",
         "wf-1",
         { name: "Updated" },
+        expect.objectContaining({ userId: req.user.id }),
       );
       expect(res.json).toHaveBeenCalled();
     });
@@ -141,6 +145,7 @@ describe("workflow Controller", () => {
       expect(workflowService.deleteWorkflow).toHaveBeenCalledWith(
         "tenant-1",
         "wf-1",
+        expect.objectContaining({ userId: req.user.id }),
       );
       expect(res.json).toHaveBeenCalled();
     });
@@ -167,15 +172,19 @@ describe("workflow Controller", () => {
         status: "APPROVED",
       });
       req.params = { instanceId: "inst-1" };
-      req.body = { action: "APPROVED" };
+      req.body = { action: "APPROVED", ipAddress: "6.6.6.6", userAgent: "forged" };
+      req.ip = "10.0.0.9";
+      req.headers = { "user-agent": "browser" };
 
       await workflowController.submitAction(req, res, next);
 
+      // A-182 — the Part 11 context comes from the connection; a body value
+      // cannot forge it.
       expect(workflowService.submitAction).toHaveBeenCalledWith(
         "tenant-1",
         "inst-1",
         req.user,
-        { action: "APPROVED" },
+        { action: "APPROVED", ipAddress: "10.0.0.9", userAgent: "browser" },
       );
       expect(success).toHaveBeenCalledWith(
         res,

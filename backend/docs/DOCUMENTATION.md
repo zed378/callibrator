@@ -89,7 +89,7 @@ backend/
 ├── Dockerfile                   # Container build definition
 ├── docker-compose.yaml          # Docker services orchestration
 ├── .env                         # Environment variables (gitignored)
-├── local.env                    # Local development env example
+├── .env.example                 # Local development env template (S-25)
 │
 ├── src/
 │   ├── config/                  # Database, Redis, app configuration

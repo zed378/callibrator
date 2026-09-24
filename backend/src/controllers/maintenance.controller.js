@@ -1,6 +1,7 @@
 const maintenanceService = require("../services/maintenance.service");
 const { asyncHandler } = require("../utils/controllerWrapper.util");
 const { success } = require("../utils/response.util");
+const { auditActor } = require("../utils/auditActor.util");
 
 exports.fetchWorkOrders = asyncHandler(async (req, res) => {
   const { tenantId } = req.user;
@@ -32,7 +33,7 @@ exports.createWorkOrder = asyncHandler(async (req, res) => {
   const { tenantId } = req.user;
   const data = req.body;
 
-  const result = await maintenanceService.createWorkOrder(tenantId, data);
+  const result = await maintenanceService.createWorkOrder(tenantId, data, auditActor(req));
   success(res, result.data, null, result.message, result.status);
 });
 
@@ -41,7 +42,7 @@ exports.updateWorkOrder = asyncHandler(async (req, res) => {
   const { orderId } = req.params;
   const data = req.body;
 
-  const result = await maintenanceService.updateWorkOrder(tenantId, orderId, data);
+  const result = await maintenanceService.updateWorkOrder(tenantId, orderId, data, auditActor(req));
   success(res, result.data, null, result.message, result.status);
 });
 
@@ -49,6 +50,6 @@ exports.deleteWorkOrder = asyncHandler(async (req, res) => {
   const { tenantId } = req.user;
   const { orderId } = req.params;
 
-  const result = await maintenanceService.deleteWorkOrder(tenantId, orderId);
+  const result = await maintenanceService.deleteWorkOrder(tenantId, orderId, auditActor(req));
   success(res, null, null, result.message, result.status);
 });

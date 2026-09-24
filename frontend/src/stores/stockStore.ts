@@ -41,7 +41,7 @@ interface StockState {
     stockId: string;
     type: "addition" | "subtraction" | "write_off";
     quantity: number;
-    reason?: string;
+    reason: string; // P6-09: required
   }) => Promise<StockAdjustment>;
   fetchAdjustments: (params: {
     page?: number;

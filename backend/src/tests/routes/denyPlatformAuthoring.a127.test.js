@@ -86,6 +86,7 @@ jest.mock("../../controllers/certificate.controller", () => ({
 }));
 jest.mock("../../controllers/certificatePdf.controller", () => ({
   verifyCertificate: mockReached("verifyCertificate"),
+  verifyDocument: mockReached("verifyDocument"),
   generatePdf: mockReached("generatePdf"),
   downloadPdf: mockReached("downloadPdf"),
   getQrCode: mockReached("getQrCode"),
@@ -109,8 +110,8 @@ jest.mock("../../controllers/calibrationRecords.controller", () => ({
   getAllCalibrationRecords: mockReached("getAllCalibrationRecords"),
   createCalibrationRecord: mockReached("createCalibrationRecord"),
   getSpecificCalibrationRecord: mockReached("getSpecificCalibrationRecord"),
-  updateCalibrationRecord: mockReached("updateCalibrationRecord"),
-  deleteCalibrationRecord: mockReached("deleteCalibrationRecord"),
+  correctCalibrationRecord: mockReached("correctCalibrationRecord"),
+  voidCalibrationRecord: mockReached("voidCalibrationRecord"),
 }));
 
 const fs = require("fs");
@@ -215,8 +216,9 @@ const PART11_ACTS = [
   ["certificates", "POST", `/${CERT}/sign`, "signCertificate"],
   ["certificates", "POST", `/${CERT}/revoke`, "revokeCertificate"],
   ["calibration-records", "POST", "/", "createCalibrationRecord"],
-  ["calibration-records", "PUT", `/${RECORD}`, "updateCalibrationRecord"],
-  ["calibration-records", "DELETE", `/${RECORD}`, "deleteCalibrationRecord"],
+  // P6-03: PUT/DELETE are gone; correct and void are the Part 11 acts now.
+  ["calibration-records", "POST", `/${RECORD}/corrections`, "correctCalibrationRecord"],
+  ["calibration-records", "POST", `/${RECORD}/void`, "voidCalibrationRecord"],
   // A-145
   ["certificates", "POST", "/", "createCertificate"],
   ["certificates", "PUT", `/${CERT}`, "updateCertificate"],

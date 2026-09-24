@@ -1,4 +1,6 @@
 import React from "react";
+import type { PaginatedResponse } from "@/types";
+import type { Device } from "@/api/services/device.service";
 import { Card, CardContent, Select, Input } from "@/components/ui";
 
 interface RecordsFilterCardProps {
@@ -6,7 +8,7 @@ interface RecordsFilterCardProps {
   setSelectedDeviceFilter: (val: string) => void;
   complianceFilter: boolean | null;
   setComplianceFilter: (val: boolean | null) => void;
-  devices: any;
+  devices: PaginatedResponse<Device> | null;
   setCalibPage: (page: number) => void;
 }
 
@@ -30,7 +32,7 @@ export const RecordsFilterCard: React.FC<RecordsFilterCardProps> = ({
             }}
             options={[
               { value: "", label: "All Calibration Devices" },
-              ...(devices?.data.map((d: any) => ({
+              ...(devices?.data.map((d) => ({
                 value: d.id,
                 label: d.name,
               })) || []),

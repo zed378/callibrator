@@ -37,6 +37,12 @@ Withdrawal is a **state change, not a delete**. Deleting a withdrawn consent des
 
 `dsar_requests`: `type`, `status` (`pending`, `in_progress`, `completed`, `rejected`), `details`, `requestedAt`, `completedAt`.
 
+**Who may read a request** (`GET /api/v1/gdpr/erasure/:requestId`, A-252, 2026-09-24): its data
+subject, or a holder of `gdpr` read — the tenant's privacy officer. An unknown id, another tenant's
+and another member's all answer the same `404`. Before this, the lookup was scoped to the tenant only,
+so any member holding a request id read another member's erasure request, and an unknown id answered
+`200` with `data: null`.
+
 | Right | Article | Type | Implementation |
 |---|---|---|---|
 | Access | 15 | `export` | batch job assembling subject data → `resultUrl` |

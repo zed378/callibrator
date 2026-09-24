@@ -1,6 +1,7 @@
 // src/app/dashboard/custom-domains/page.tsx
 "use client";
 
+import { deferEffect } from "@/lib/deferEffect";
 import React, { useCallback, useEffect, useState } from "react";
 import DashboardLayout from "@/components/layouts/DashboardLayout";
 import {
@@ -65,9 +66,7 @@ export default function CustomDomainsPage() {
     }
   }, []);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useEffect(() => deferEffect(load), [load]);
 
   const run = async (key: string, fn: () => Promise<unknown>, title: string) => {
     setBusy(key);

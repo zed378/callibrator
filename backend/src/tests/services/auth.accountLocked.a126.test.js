@@ -95,37 +95,56 @@ beforeEach(() => {
   );
 });
 
-describe("A-126: the password lockout writes ACCOUNT_LOCKED", () => {
-  it("the fifth wrong password writes one ACCOUNT_LOCKED row, committed with the lock", async () => {
-    Users.findOne.mockResolvedValue(userRow({ failedLoginAttempts: 4 }));
+// A-185 changed what the password step engages: not a lock of the ACCOUNT
+// (users.locked_until, 423 — an existence oracle and a lockout anyone could
+// aim) but a pause of the typed identifier from one address. The pause of a
+// real account is still recorded as ACCOUNT_LOCKED, with `changes.scope`.
+describe("A-126 / A-185: the password sign-in pause writes ACCOUNT_LOCKED", () => {
+  const max = getAuthConfig("login").maxAttempts;
+  const failTimes = async (n, identifier) => {
+    let err;
+    for (let i = 0; i < n; i += 1) {
+      err = await wrongPassword(identifier);
+    }
+    return err;
+  };
 
-    const err = await wrongPassword();
+  it("the fifth wrong password from one address writes one ACCOUNT_LOCKED row, and locks nothing on the account", async () => {
+    Users.findOne.mockResolvedValue(userRow());
 
-    expect(err.status).toBe(423);
+    const err = await failTimes(max);
+
+    expect(err.status).toBe(401);
     expect(lockedRows()).toHaveLength(1);
     const [row] = lockedRows();
     expect(row).toMatchObject({
       tenantId: TENANT_ID,
-      // The lock is the system's act; the account is what it acted on.
+      // The pause is the system's act; the account is what it acted on.
       userId: null,
       actorType: "system",
       actorName: "system:auth-lockout",
       action: "ACCOUNT_LOCKED",
       resourceType: "User",
       resourceId: USER_ID,
-      changes: { endpoint: "login", failedAttempts: 5, lockedUntil: expect.any(String) },
+      changes: {
+        endpoint: "login",
+        failedAttempts: 5,
+        lockedUntil: expect.any(String),
+        scope: "identifier+address",
+      },
       ipAddress: "198.51.100.7",
       userAgent: "probe",
     });
-    // The lock and its row committed together.
-    expect(lockWrites()).toHaveLength(1);
-    expect(new Date(row.changes.lockedUntil).getTime()).toBe(lockWrites()[0].lockedUntil.getTime());
+    expect(lockWrites()).toEqual([]);
+    // The next attempt is paused.
+    expect((await wrongPassword()).status).toBe(429);
+    expect(lockedRows()).toHaveLength(1);
   });
 
   it("a wrong password below the threshold writes no audit row (failed sign-ins stay in the security log)", async () => {
-    Users.findOne.mockResolvedValue(userRow({ failedLoginAttempts: 2 }));
+    Users.findOne.mockResolvedValue(userRow());
 
-    const err = await wrongPassword();
+    const err = await failTimes(max - 1);
 
     expect(err.status).toBe(401);
     expect(mockRef.ledger.auditRows()).toEqual([]);
@@ -134,38 +153,40 @@ describe("A-126: the password lockout writes ACCOUNT_LOCKED", () => {
   it("an unknown account is never locked and never gets a row — no enumeration signal", async () => {
     Users.findOne.mockResolvedValue(null);
 
-    for (let i = 0; i < 6; i += 1) {
+    for (let i = 0; i < max; i += 1) {
       const err = await wrongPassword("nobody@nowhere.example");
       expect(err.status).toBe(401);
     }
+    // Paused exactly as a real account is.
+    expect((await wrongPassword("nobody@nowhere.example")).status).toBe(429);
 
     expect(mockRef.ledger.auditRows()).toEqual([]);
     expect(lockWrites()).toEqual([]);
   });
 
   it("an account with no tenant is recorded under PLATFORM (ADR-051 Q-14)", async () => {
-    Users.findOne.mockResolvedValue(userRow({ tenantId: null, tenant: null, failedLoginAttempts: 4 }));
+    Users.findOne.mockResolvedValue(userRow({ tenantId: null, tenant: null }));
 
-    await wrongPassword();
+    await failTimes(max);
 
     expect(lockedRows()).toHaveLength(1);
     expect(lockedRows()[0].tenantId).toBe(PLATFORM_TENANT_ID);
   });
 
-  it("if the row cannot be written the lock is still persisted — the lock never depends on the audit table", async () => {
-    Users.findOne.mockResolvedValue(userRow({ failedLoginAttempts: 4 }));
+  it("if the row cannot be written the pause still holds — it never depends on the audit table", async () => {
+    Users.findOne.mockResolvedValue(userRow());
+    await failTimes(max - 1);
     mockRef.ledger.failNext("audit_logs", new Error("audit insert failed"));
 
     const err = await wrongPassword();
 
-    expect(err.status).toBe(423);
+    expect(err.status).toBe(401);
     expect(mockRef.ledger.auditRows()).toEqual([]);
-    // Rolled back with the failed row, then written again on its own.
-    expect(lockWrites()).toHaveLength(1);
     expect(logger.error).toHaveBeenCalledWith(
       "ACCOUNT_LOCKED was not recorded; persisting the lock without its audit row",
       { userId: USER_ID, endpoint: "login", error: "audit insert failed" },
     );
+    expect((await wrongPassword()).status).toBe(429);
   });
 });
 

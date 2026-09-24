@@ -31,7 +31,7 @@ const TenantSettings = defineTenantSettings(db, DataTypes);
 const qi = db.getQueryInterface();
 
 const isEnvelopeOf = (tenantId, value, plain) =>
-  typeof value === "string" && value.startsWith("v1:") && kms.decryptData(tenantId, value) === plain;
+  typeof value === "string" && value.startsWith("v2:") && kms.decryptData(tenantId, value) === plain;
 
 let upsertSpy;
 let bulkInsertSpy;

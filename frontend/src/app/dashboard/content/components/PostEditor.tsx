@@ -14,7 +14,6 @@ import {
 import { Button, Input, Textarea, Select, MultiSelect } from "@/components/ui";
 import { useToastStore } from "@/stores/toastStore";
 import RichTextEditor from "@/components/editor/RichTextEditor";
-import { attachmentService } from "@/api/services/attachment.service";
 import {
   contentService,
   type Post,
@@ -136,8 +135,10 @@ export default function PostEditor({ initial }: { initial?: Post }) {
   async function handleCover(file: File) {
     setCoverUploading(true);
     try {
-      const res = await attachmentService.upload({ file, resourceType: "post" });
-      const url = (res as unknown as { url?: string }).url;
+      // ADR-042 step 3: a cover image is published content — the PUBLIC
+      // media class, not an attachment (attachments are gated evidence).
+      const res = await contentService.media.upload(file);
+      const url = res?.url;
       if (url) set("coverImageUrl", url);
       else addToast({ type: "error", title: "Cover upload returned no URL" });
     } catch {
@@ -306,7 +307,7 @@ export default function PostEditor({ initial }: { initial?: Post }) {
             {form.coverImageUrl ? (
               <div className="relative overflow-hidden rounded-xl border border-border">
                 <div className="relative aspect-video w-full">
-                  {/* Plain img: CMS URLs are host-relative /uploads (rewritten to the API). */}
+                  {/* Plain img: CMS URLs are host-relative /uploads/public (rewritten to the API). */}
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={form.coverImageUrl} alt="Cover" className="h-full w-full object-cover" />
                 </div>

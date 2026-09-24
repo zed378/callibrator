@@ -55,7 +55,7 @@ const run = async () => {
   process.exit(summary.failed > 0 ? 1 : 0);
 };
 
-/* istanbul ignore next */
+/* istanbul ignore next -- CLI entry point: runs on `node`, never on require */
 run().catch(async (err) => {
   // eslint-disable-next-line no-console
   console.error("Storage migration crashed:", err.message);

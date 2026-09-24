@@ -92,16 +92,18 @@ Client helper: `frontend/src/lib/uploadUrl.ts`.
 
 ### Static serving headers
 
-`/uploads` is served with two headers on every response:
+**Only `/uploads/public/*` is static** (S-01, ADR-057, 2026-09-24). Until then `/uploads` served the whole uploads tree unauthenticated — certificate PDFs under a sequential name and every attachment under a permanent URL that deletion did not revoke. Now certificates and attachments are reached only through gated or capability routes (see [`../STORAGE/04-TENANT-STORAGE.md`](../STORAGE/04-TENANT-STORAGE.md) § What Is Wired), and the public class — avatars, tenant logos, CMS images, each written by a permissioned upload — is served images-only, **SVG refused**, with:
 
 ```
+Content-Type: <pinned from the extension: image/jpeg|png|gif|webp>
 X-Content-Type-Options: nosniff
 Content-Disposition: inline
+Content-Security-Policy: default-src 'none'; sandbox
 ```
 
 Defence in depth for user-uploaded content: never let the browser sniff an upload into active content, and never let it be treated as a document with its own origin privileges.
 
-`crossOriginResourcePolicy` is set to `cross-origin` in helmet so the separate-origin frontend can load `/uploads` images. That is a deliberate relaxation and the reason the two headers above are not optional.
+`crossOriginResourcePolicy` is set to `cross-origin` in helmet so the separate-origin frontend can load `/uploads/public` images. That is a deliberate relaxation and the reason the two headers above are not optional.
 
 ## The Other Upload Surface: `posts.contentHtml`
 

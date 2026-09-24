@@ -9,6 +9,8 @@ const express = require("express");
 const router = express.Router();
 const oidcController = require("../../controllers/oidcProvider.controller");
 const { auth, superAdminOnly } = require("../../middlewares/auth.middleware");
+const { dynamicAccess } = require("../../middlewares/dynamicAccess.middleware");
+const { MENU_SLUGS } = require("../../constants/roleConstants");
 
 // ==========================================================================
 // PUBLIC OIDC METADATA — registered BEFORE the auth guard.
@@ -151,7 +153,9 @@ router.post("/clients", superAdminOnly, oidcController.registerClient);
  *       401:
  *         description: Unauthorized
  */
-router.get("/clients", oidcController.getClients);
+// AZ-01 (G-01): the client list (ids, redirect URIs) was readable by every
+// authenticated user while registering one is superAdminOnly.
+router.get("/clients", dynamicAccess(MENU_SLUGS.OIDC, "read"), oidcController.getClients);
 /**
  * @swagger
  * /api/v1/oidc/clients/{clientId}/rotate-secret:

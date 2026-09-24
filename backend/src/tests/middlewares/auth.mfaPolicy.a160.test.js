@@ -200,8 +200,13 @@ describe("A-160: who is NOT held back", () => {
     ["a user whose tenant does not require it", principal({ mfaPolicy: policy({ mfa_required: "false" }) })],
     ["a user whose tenant never set it", principal({ mfaPolicy: policy({}) })],
     ["a loader that attached no policy", principal({ mfaPolicy: undefined })],
-    ["the super admin", principal({ role: { name: "SUPERADMIN", roleLevel: 10 } })],
-    ["the super admin (legacy spelling)", principal({ role: { name: "SUPER_ADMIN", roleLevel: 10 } })],
+    // P6-07: an operator is held to MFA by its own rule (auth.superAdminMfa.p607
+    // test), never by a tenant's policy — so an ENROLLED operator passes.
+    ["the super admin, enrolled", principal({ role: { name: "SUPERADMIN", roleLevel: 10 }, mfaEnabled: true })],
+    [
+      "the super admin (legacy spelling), enrolled",
+      principal({ role: { name: "SUPER_ADMIN", roleLevel: 10 }, mfaEnabled: true }),
+    ],
     [
       "a role below the policy's minimum level",
       principal({ mfaPolicy: policy({ mfa_required: "true", mfa_required_min_role_level: "5" }) }),

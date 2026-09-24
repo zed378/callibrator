@@ -36,7 +36,9 @@ services:
       resources:
         limits:
           # Chromium (certificate PDFs) is bursty. A limit sized for the steady
-          # state will OOM-kill the container on the first certificate.
+          # state will OOM-kill the container on the first certificate. A CPU
+          # limit too (S-19): one runaway render must not starve the host.
+          cpus: "2.0"
           memory: 2G
         reservations:
           memory: 512M
@@ -46,6 +48,7 @@ services:
     deploy:
       resources:
         limits:
+          cpus: "1.0"
           memory: 512M
 
   postgres:
@@ -53,21 +56,36 @@ services:
     deploy:
       resources:
         limits:
+          cpus: "1.0"
           memory: 2G
 
   redis:
     deploy:
       resources:
         limits:
+          cpus: "0.5"
           memory: 512M
 
   rabbitmq:
     deploy:
       resources:
         limits:
+          cpus: "1.0"
           memory: 1G
+
+  clamav:
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 2G
 
   nginx:
     ports:
       - "80:80"
       - "443:443"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M

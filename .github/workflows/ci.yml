@@ -1,0 +1,357 @@
+# Callibrator CI (P7-01, A-19)
+#
+# Cheapest signal first. Every stage is a REQUIRED gate: nothing here is
+# `continue-on-error`, and nothing may become so to unblock a release — that is
+# the abuse case P7-01 names. A stage that cannot currently pass is not
+# softened; it is replaced by one that can FAIL honestly (the backend lint
+# ratchet below, until P9-02a).
+#
+# Not yet here, deliberately (see docs/DEVOPS/01-CI-CD.md § What CI does not
+# run yet): the live E2E suite (needs a seeded, running stack and has never
+# passed in one uninterrupted run — P6-02), the browser suite, image build and
+# push (P7-01 "images pushed only from a green run" — a later workflow), the
+# backend typecheck (no tsconfig until P9-01a) and the route-gate check, which
+# runs INSIDE the backend unit suite (routePermissionGuard.p604.test.js).
+#
+# Action and tool versions are pinned: actions by commit SHA (tag in the
+# comment), CLI tools by version with a sha256 checksum.
+
+name: ci
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The version both Dockerfiles build with (node:24.21.0-alpine). The system
+  # Node 22 fails the otplib ESM suites.
+  NODE_VERSION: "24.21.0"
+
+jobs:
+  # --------------------------------------------------------------------------
+  secret-scan:
+    name: secret scan (gitleaks)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the whole history: a secret removed in a later commit is still leaked
+      - name: Install gitleaks 8.30.1 (checksum-verified)
+        run: |
+          set -euo pipefail
+          curl -sSfL -o gitleaks.tgz \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  gitleaks.tgz" | sha256sum -c -
+          tar xzf gitleaks.tgz gitleaks
+          sudo install gitleaks /usr/local/bin/gitleaks
+      - name: Scan every commit
+        # .gitleaks.toml keeps the default rules and adds narrow allowlists;
+        # .gitleaksignore holds reviewed false positives by fingerprint.
+        run: gitleaks git --config .gitleaks.toml --redact --no-banner --verbose .
+
+  # --------------------------------------------------------------------------
+  workflow-lint:
+    name: workflow lint (actionlint)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: actionlint 1.7.12 (checksum-verified)
+        run: |
+          set -euo pipefail
+          curl -sSfL -o actionlint.tgz \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  actionlint.tgz" | sha256sum -c -
+          tar xzf actionlint.tgz actionlint
+          ./actionlint -color
+
+  # --------------------------------------------------------------------------
+  backend-lint:
+    name: backend lint (ratchet)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      # A-21: the committed root lockfile, frozen. `npm install` would resolve
+      # a different tree than the one the tests were proven against.
+      - run: npm ci
+      # Fails when the backend's ESLint error count rises above
+      # backend/.eslint-baseline.json — or falls without the baseline being
+      # lowered with it. See scripts/ci/eslint-ratchet.js.
+      - run: node scripts/ci/eslint-ratchet.js
+
+  # --------------------------------------------------------------------------
+  backend-test:
+    name: backend unit + coverage gate (100%)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Test environment (template + random secrets)
+        # The suites read backend/.env through jest.config.js. The template's
+        # placeholders are overridden by real random values in the process
+        # environment (dotenv never overwrites a variable already set).
+        run: |
+          set -euo pipefail
+          cp backend/.env.example backend/.env
+          for k in CERT_SIGNING_SECRET ENCRYPT_KEY ATTACHMENT_URL_SECRET KMS_MASTER_KEY JWT_ACCESS_SECRET JWT_REFRESH_SECRET; do
+            v="$(openssl rand -hex 32)"
+            echo "::add-mask::$v"
+            echo "$k=$v" >> "$GITHUB_ENV"
+          done
+      # jest.config.js carries the 100% global threshold: below it, jest exits
+      # non-zero. --experimental-vm-modules comes from the npm script (A-99).
+      - name: npm run test:coverage
+        working-directory: backend
+        run: npm run test:coverage -- --ci --forceExit
+
+  # --------------------------------------------------------------------------
+  frontend:
+    name: frontend lint · typecheck · test · build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: lint (errors fail; warnings are reported)
+        working-directory: frontend
+        run: npx eslint
+      - name: typecheck
+        # Run directly: `turbo run typecheck` silently skips a package with no
+        # `typecheck` script and exits 0 — a gate that ran nothing (P7-01).
+        working-directory: frontend
+        run: npx tsc --noEmit
+      - name: test
+        working-directory: frontend
+        run: npx jest --ci
+      - name: build
+        working-directory: frontend
+        env:
+          NEXT_PUBLIC_API_BASE_URL: https://ci.invalid
+          NEXT_PUBLIC_API_VERSION: v1
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: npx next build
+
+  # --------------------------------------------------------------------------
+  dependency-audit:
+    name: npm audit (high and critical fail)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      # Against the committed lockfile, dev dependencies included: the build
+      # toolchain runs in CI and in the image builder.
+      - run: npm audit --audit-level=high
+
+  # --------------------------------------------------------------------------
+  boot-and-migrate:
+    name: boot on PostgreSQL 18 (migrations + schema verification)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        # The deployment's image, digest-pinned in deploy/compose (P7-07).
+        image: pgvector/pgvector:pg18@sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167bab54efd3640516a44ac1a928dd67e7a
+        env:
+          POSTGRES_DB: callibrator
+          POSTGRES_USER: callibrator
+          POSTGRES_PASSWORD: ci-postgres-not-a-secret
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U callibrator -d callibrator"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:8.6-alpine@sha256:bb2e2e3ac0c7295b6f3b1b7ee5438f7320c74483cba1cb195f3fd43dad38de67
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 5s --health-retries 20
+      rabbitmq:
+        image: rabbitmq:3.13-management-alpine@sha256:606d8c0d6b3c18d1da9afc53bc7cdb2a8d5486df91b5a9830e9e07626c9ae281
+        ports: ["5672:5672"]
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q check_port_connectivity"
+          --health-interval 10s --health-timeout 10s --health-retries 20
+    env:
+      NODE_ENV: production
+      PORT: "3000"
+      DB_HOST: localhost
+      DB_PORT: "5432"
+      DB_NAME: callibrator
+      DB_USER: callibrator
+      DB_PASS: ci-postgres-not-a-secret
+      DB_DIALECT: postgres
+      DB_SSL: "false"
+      REDIS_URL: redis://localhost:6379
+      RABBITMQ_URL: amqp://guest:guest@localhost:5672
+      CORS_ORIGIN: http://localhost:3001
+      HOST_URL: http://localhost:3000
+      FRONTEND_URL: http://localhost:3001
+      CERT_VERIFY_BASE_URL: http://localhost:3001/verify
+      VIRUS_SCAN_PROVIDER: none
+      STORAGE_DRIVER: local
+      LOG_TO_FILE: "false"
+      # Schedulers off: this job proves the boot, not a 02:00 cron.
+      SESSION_CLEANUP_SCHEDULER: disabled
+      BACKUP_SCHEDULER: disabled
+      RETENTION_SCHEDULER: disabled
+      CALIBRATION_SCHEDULER: disabled
+      TENANT_LIFECYCLE_SCHEDULER: disabled
+      QUARANTINE_SWEEP_SCHEDULER: disabled
+      WEBHOOK_DISPATCH_SCHEDULER: disabled
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Random application secrets
+        run: |
+          set -euo pipefail
+          for k in CERT_SIGNING_SECRET ENCRYPT_KEY ATTACHMENT_URL_SECRET KMS_MASTER_KEY JWT_ACCESS_SECRET JWT_REFRESH_SECRET; do
+            v="$(openssl rand -hex 32)"
+            echo "::add-mask::$v"
+            echo "$k=$v" >> "$GITHUB_ENV"
+          done
+      - name: Boot the backend (db.sync + every migration + schema verification)
+        # Boot applies every pending migration and then compares every model's
+        # columns with information_schema (P6-05); a mismatch REFUSES the boot.
+        # So "healthy" here means: a fresh PostgreSQL 18 database migrated
+        # end to end, and the schema matches the models.
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          node index.js > boot.log 2>&1 &
+          echo $! > backend.pid
+          for i in $(seq 1 90); do
+            if curl -fsS http://localhost:3000/health >/dev/null 2>&1; then
+              echo "healthy after ${i}s"; exit 0
+            fi
+            if ! kill -0 "$(cat backend.pid)" 2>/dev/null; then
+              echo "::error::the backend exited during boot"; tail -n 200 boot.log; exit 1
+            fi
+            sleep 1
+          done
+          echo "::error::the backend was not healthy after 90s"; tail -n 200 boot.log; exit 1
+      - name: Nothing pending after boot
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          npm run --silent migrate:status | tee pending.txt
+          # umzug's `pending` prints the pending names; the boot applied them all.
+          if grep -Eq '[0-9]{4}-[a-z0-9-]+\.js' pending.txt; then
+            echo "::error::migrations still pending after boot"; exit 1
+          fi
+      - name: Second boot is idempotent
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          kill "$(cat backend.pid)"; sleep 2
+          node index.js > boot2.log 2>&1 &
+          echo $! > backend.pid
+          for i in $(seq 1 60); do
+            curl -fsS http://localhost:3000/health >/dev/null 2>&1 && { echo "healthy again after ${i}s"; exit 0; }
+            sleep 1
+          done
+          tail -n 200 boot2.log; exit 1
+      - name: Boot log
+        if: always()
+        working-directory: backend
+        run: tail -n 300 boot.log boot2.log 2>/dev/null || true
+
+  # --------------------------------------------------------------------------
+  deploy-config:
+    name: deploy config (helm render + schema · compose config)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v3.19.0
+      - name: kubeconform 0.7.0 (checksum-verified)
+        run: |
+          set -euo pipefail
+          curl -sSfL -o kc.tgz https://github.com/yannh/kubeconform/releases/download/v0.7.0/kubeconform-linux-amd64.tar.gz
+          echo "c31518ddd122663b3f3aa874cfe8178cb0988de944f29c74a0b9260920d115d3  kc.tgz" | sha256sum -c -
+          tar xzf kc.tgz kubeconform
+          sudo install kubeconform /usr/local/bin/kubeconform
+      - name: helm lint + template + schema, every values file
+        # RENDERS, and validates against the Kubernetes schemas. It is NOT a
+        # cluster apply: "known to render" is still all the chart can claim
+        # (P7-06).
+        run: |
+          set -euo pipefail
+          chart=deploy/helm/callibrator
+          tags="--set backend.image.tag=ci --set frontend.image.tag=ci"
+          dev="$tags --set global.corsOrigin=https://ci.invalid --set backend.clamav.host=clamd \
+            --set secrets.certSigningSecret=x --set secrets.encryptKey=x \
+            --set secrets.attachmentUrlSecret=x --set secrets.kmsMasterKey=x"
+          for rel in callibrator prod; do
+            helm lint "$chart" $dev
+            helm template "$rel" "$chart" $dev | kubeconform -strict -summary -kubernetes-version 1.33.0 -
+          done
+          for env in staging prod; do
+            helm lint "$chart" -f "$chart/values-$env.yaml" $tags
+            helm template callibrator "$chart" -f "$chart/values-$env.yaml" $tags \
+              | kubeconform -strict -summary -kubernetes-version 1.33.0 -
+          done
+      - name: helm guards refuse what they must (the failing direction)
+        run: |
+          set -uo pipefail
+          chart=deploy/helm/callibrator
+          ok="--set backend.image.tag=ci --set frontend.image.tag=ci --set global.corsOrigin=https://ci.invalid \
+            --set backend.clamav.host=clamd --set secrets.certSigningSecret=x --set secrets.encryptKey=x \
+            --set secrets.attachmentUrlSecret=x --set secrets.kmsMasterKey=x"
+          refuse() { if helm template r "$chart" $ok "$@" >/dev/null 2>&1; then echo "::error::rendered, should refuse: $*"; exit 1; fi; echo "refused as required: $*"; }
+          refuse --set backend.image.tag=
+          refuse --set backend.replicaCount=2
+          refuse --set secrets.kmsMasterKey=
+          refuse --set backend.clamav.host=
+          refuse --set backend.backupPersistence.enabled=false
+          refuse --set backend.persistence.enabled=false
+          refuse --set backend.redis.url=redis://:pw@redis:6379
+      - name: docker compose config, every overlay
+        run: |
+          set -euo pipefail
+          cd deploy/compose
+          cp .env.example .env
+          # A structurally valid .env: the overlays' `:?` guards need values.
+          { echo "IMAGE_TAG=ci"; echo "CORS_ORIGIN=https://ci.invalid"; \
+            echo "ACME_DIRECTORY_URL=https://acme-v02.api.letsencrypt.org/directory"; \
+            echo "PUBLIC_URL=http://ci.invalid"; } >> .env
+          for overlay in dev staging prod vm; do
+            docker compose --env-file .env -f docker-compose.yml -f "docker-compose.$overlay.yml" config -q
+            echo "compose $overlay: ok"
+          done
+          # S-19: in dev only nginx may publish on every interface.
+          docker compose --env-file .env -f docker-compose.yml -f docker-compose.dev.yml config --format json \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin)
+          bad=[(n,p.get("published")) for n,s in d["services"].items() if n!="nginx" for p in s.get("ports",[]) if p.get("host_ip") not in ("127.0.0.1",)]
+          print("dev ports bound to 0.0.0.0 (excluding nginx):", bad or "none"); sys.exit(1 if bad else 0)'

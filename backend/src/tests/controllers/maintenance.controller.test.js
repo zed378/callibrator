@@ -142,7 +142,7 @@ describe("maintenanceController", () => {
 
       await maintenanceController.createWorkOrder(req, res, next);
 
-      expect(maintenanceService.createWorkOrder).toHaveBeenCalledWith(VALID_TENANT_ID, req.body);
+      expect(maintenanceService.createWorkOrder).toHaveBeenCalledWith(VALID_TENANT_ID, req.body, { userId: "user-1", tenantId: VALID_TENANT_ID, ipAddress: "127.0.0.1", userAgent: null });
       expect(success).toHaveBeenCalled();
     });
   });
@@ -160,7 +160,7 @@ describe("maintenanceController", () => {
 
       await maintenanceController.updateWorkOrder(req, res, next);
 
-      expect(maintenanceService.updateWorkOrder).toHaveBeenCalledWith(VALID_TENANT_ID, "wo-1", req.body);
+      expect(maintenanceService.updateWorkOrder).toHaveBeenCalledWith(VALID_TENANT_ID, "wo-1", req.body, { userId: "user-1", tenantId: VALID_TENANT_ID, ipAddress: "127.0.0.1", userAgent: null });
       expect(success).toHaveBeenCalled();
     });
   });
@@ -176,7 +176,7 @@ describe("maintenanceController", () => {
 
       await maintenanceController.deleteWorkOrder(req, res, next);
 
-      expect(maintenanceService.deleteWorkOrder).toHaveBeenCalledWith(VALID_TENANT_ID, "wo-1");
+      expect(maintenanceService.deleteWorkOrder).toHaveBeenCalledWith(VALID_TENANT_ID, "wo-1", { userId: "user-1", tenantId: VALID_TENANT_ID, ipAddress: "127.0.0.1", userAgent: null });
       expect(success).toHaveBeenCalled();
     });
   });

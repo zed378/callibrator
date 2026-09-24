@@ -46,16 +46,16 @@ const fakeQueryInterface = ({ rows, tables = ["webhooks"], secretType = "CHARACT
         const s = sql.replace(/\s+/g, " ").trim();
         const r = opts.replacements || {};
         if (s.startsWith("SELECT id, tenant_id, secret FROM webhooks WHERE secret NOT LIKE")) {
-          return state.rows.filter((x) => !x.secret.startsWith("v1:"));
+          return state.rows.filter((x) => !/^v[12]:/.test(x.secret));
         }
         if (s.startsWith("SELECT id, tenant_id, secret FROM webhooks WHERE secret LIKE")) {
-          return state.rows.filter((x) => x.secret.startsWith("v1:"));
+          return state.rows.filter((x) => /^v[12]:/.test(x.secret));
         }
         if (s.startsWith("SELECT COUNT(*) AS n FROM webhooks WHERE secret NOT LIKE")) {
-          return [{ n: String(state.rows.filter((x) => !x.secret.startsWith("v1:")).length) }];
+          return [{ n: String(state.rows.filter((x) => !/^v[12]:/.test(x.secret)).length) }];
         }
         if (s.startsWith("SELECT COUNT(*) AS n FROM webhooks WHERE secret LIKE")) {
-          return [{ n: String(state.rows.filter((x) => x.secret.startsWith("v1:")).length) }];
+          return [{ n: String(state.rows.filter((x) => /^v[12]:/.test(x.secret)).length) }];
         }
         if (s.startsWith("UPDATE webhooks SET secret = :secret WHERE id = :id AND tenant_id = :tenantId AND secret = :previous")) {
           expect(opts.transaction).toBe(tx);
@@ -97,7 +97,7 @@ describe("migration 0022-encrypt-webhook-secrets", () => {
     expect(qi.state.secretType).toBe("TEXT");
     const [w1, w2, w3, w4] = qi.state.rows;
     for (const r of [w1, w2, w3, w4]) {
-      expect(r.secret.startsWith("v1:")).toBe(true);
+      expect(r.secret.startsWith("v2:")).toBe(true); // P6-10: a new envelope names its key
     }
     expect(kms.decryptData(T1, w1.secret)).toBe("a".repeat(48));
     expect(kms.decryptData(T2, w2.secret)).toBe("b".repeat(48));

@@ -1,7 +1,7 @@
 /**
  * Calibration Record service methods
  */
-const { Op } = require("sequelize");
+const { Op, Transaction } = require("sequelize");
 const { CalibrationRecord, CalibrationDevice } = require("../models");
 const { logger } = require("../middlewares/activityLog.middleware");
 const { AppError } = require("../utils/appError.util");
@@ -68,9 +68,16 @@ exports.fetchCalibrationRecords = async ({
   isCompliant,
   from,
   to,
+  includeSuperseded = false,
 }) => {
   try {
     const whereClause = { tenantId };
+
+    // P6-03: a corrected record stays, but the list shows the record in force
+    // — the latest correction — unless the caller asks for the history too.
+    if (!includeSuperseded) {
+      whereClause.supersededById = null;
+    }
 
     if (deviceId) {
       whereClause.deviceId = deviceId;
@@ -253,51 +260,185 @@ exports.createCalibrationRecord = async (tenantId, userId, inputData, actor = {}
   }
 };
 
+// ==========================================
+// P6-03 — APPEND-ONLY: CORRECT AND VOID
+// ==========================================
+//
+// A calibration record's content never changes after it is written (BR-7,
+// 21 CFR 11.10(e)): the database trigger from migration 0057 refuses it for
+// every role, and the application role has no UPDATE/DELETE on the table
+// except the lifecycle columns. The two operations that replace PUT and
+// DELETE therefore only ever INSERT a row or set a lifecycle column once:
+//
+//   correct — a NEW row carrying the corrected content, `supersedesId` and a
+//             reason; the original gains `supersededById`/`supersededAt`.
+//             Both rows stay, and the audit trail shows both.
+//   void    — `isDeleted`, `voidReason`, `voidedBy` set once.
+//             Final: there is no restore.
+
+/** The content columns a correction may carry; everything else is lifecycle. */
+const CONTENT_FIELDS = Object.freeze([
+  "deviceId",
+  "calibrationDate",
+  "dueDate",
+  "standard",
+  "results",
+  "measurementUncertainty",
+  "isCompliant",
+  "certificateNumber",
+  "certificateFileUrl",
+  "notes",
+]);
+
 /**
- * Update an existing calibration record
+ * The record `id` in the caller's tenant, locked for the transaction, INCLUDING
+ * a voided one (so a void can be explained as a 409 rather than reported as
+ * missing). Another tenant's record is not found: 404, never 403.
  */
-exports.updateCalibrationRecord = async (
+const lockRecord = (tenantId, calibrationRecordId, transaction) =>
+  CalibrationRecord.unscoped().findOne({
+    where: { id: calibrationRecordId, tenantId },
+    paranoid: false,
+    transaction,
+    lock: Transaction.LOCK.UPDATE,
+  });
+
+const notFound = () => ({
+  success: false,
+  status: 404,
+  message: "Calibration record not found",
+  data: null,
+});
+
+/**
+ * @param {object} record - a locked calibration record
+ * @param {"correct"|"void"} operation
+ * @returns {object|null} the 409 explaining why `operation` is refused, or null
+ */
+const lifecycleConflict = (record, operation) => {
+  if (record.isDeleted) {
+    return {
+      success: false,
+      status: 409,
+      message:
+        `This calibration record was voided${record.voidReason ? ` ("${record.voidReason}")` : ""} and ` +
+        `cannot be ${operation === "correct" ? "corrected" : "voided again"}: a void is final.`,
+      data: null,
+    };
+  }
+  if (record.supersededById) {
+    return {
+      success: false,
+      status: 409,
+      message:
+        `This calibration record was already corrected by record ${record.supersededById}. ` +
+        `${operation === "correct" ? "Correct" : "Void"} the latest correction instead — a record is ` +
+        "superseded at most once, so the correction history stays a single line.",
+      data: null,
+    };
+  }
+  return null;
+};
+
+/**
+ * Correct a calibration record: write a new record that supersedes it.
+ *
+ * @param {string} tenantId
+ * @param {string} userId - who is writing the correction (audit actor)
+ * @param {string} calibrationRecordId - the record being corrected
+ * @param {object} inputData - corrected content fields plus a required `reason`
+ * @param {object} [actor] - ipAddress / userAgent for the audit rows
+ * @returns {Promise<object>} service result: 201 with the NEW record, 404, or 409
+ */
+exports.correctCalibrationRecord = async (
   tenantId,
+  userId,
   calibrationRecordId,
   inputData,
   actor = {},
 ) => {
   try {
-    const validated = validate(
+    const { reason, ...changes } = validate(
       inputData,
       require("../validators/calibrationRecords.validator")
-        .updateCalibrationRecordSchema,
+        .correctCalibrationRecordSchema,
     );
 
-    const record = await CalibrationRecord.findOne({
-      where: { id: calibrationRecordId, tenantId },
-    });
-
-    if (!record) {
-      return {
-        success: false,
-        status: 404,
-        message: "Calibration record not found",
-        data: null,
-      };
+    if (changes.deviceId) {
+      const device = await CalibrationDevice.findOne({
+        where: { id: changes.deviceId, tenantId },
+      });
+      if (!device) {
+        return {
+          success: false,
+          status: 404,
+          message: "Device not found or not belonging to this tenant",
+          data: null,
+        };
+      }
     }
 
-    const before = Object.fromEntries(
-      Object.keys(validated).map((key) => [key, record[key]]),
-    );
-    await db.transaction(async (transaction) => {
-      await record.update(validated, { transaction });
-      await auditRecord(transaction, tenantId, record.id, "UPDATE", before, validated, actor);
+    const outcome = await db.transaction(async (transaction) => {
+      const original = await lockRecord(tenantId, calibrationRecordId, transaction);
+      if (!original) {
+        return notFound();
+      }
+      const conflict = lifecycleConflict(original, "correct");
+      if (conflict) {
+        return conflict;
+      }
+
+      const content = Object.fromEntries(
+        CONTENT_FIELDS.map((field) => [
+          field,
+          Object.hasOwn(changes, field) ? changes[field] : original[field],
+        ]),
+      );
+      const correction = await CalibrationRecord.create(
+        {
+          ...content,
+          tenantId,
+          // Who PERFORMED the calibration does not change because someone
+          // corrected its record; who corrected it is the audit row's actor.
+          performedBy: original.performedBy,
+          supersedesId: original.id,
+          correctionReason: reason,
+        },
+        { transaction },
+      );
+      const supersededAt = new Date();
+      await original.update(
+        { supersededById: correction.id, supersededAt },
+        { transaction },
+      );
+
+      const actorWithUser = { ...actor, userId };
+      await auditRecord(transaction, tenantId, correction.id, "CREATE", {}, {
+        ...content,
+        supersedesId: original.id,
+        correctionReason: reason,
+      }, actorWithUser);
+      await auditRecord(
+        transaction,
+        tenantId,
+        original.id,
+        "UPDATE",
+        { supersededById: null },
+        { supersededById: correction.id, supersededAt, correctionReason: reason, changed: Object.keys(changes) },
+        actorWithUser,
+      );
+
+      return {
+        success: true,
+        status: 201,
+        message: "Calibration record corrected: a superseding record was written and the original kept",
+        data: correction,
+      };
     });
 
-    return {
-      success: true,
-      status: 200,
-      message: "Calibration record updated successfully",
-      data: record,
-    };
+    return outcome;
   } catch (error) {
-    logger.error("Error updating calibration record", {
+    logger.error("Error correcting calibration record", {
       error: error.message,
     });
     throw error;
@@ -305,44 +446,63 @@ exports.updateCalibrationRecord = async (
 };
 
 /**
- * Soft-delete a calibration record
+ * Void a calibration record entered in error. Final — there is no restore.
+ *
+ * @param {string} tenantId
+ * @param {string} userId - who voids it
+ * @param {string} calibrationRecordId
+ * @param {object} inputData - `{ reason }`, required
+ * @param {object} [actor] - ipAddress / userAgent for the audit row
+ * @returns {Promise<object>} service result: 200, 404, or 409
  */
-exports.deleteCalibrationRecord = async (tenantId, calibrationRecordId, actor = {}) => {
+exports.voidCalibrationRecord = async (
+  tenantId,
+  userId,
+  calibrationRecordId,
+  inputData,
+  actor = {},
+) => {
   try {
-    const record = await CalibrationRecord.findOne({
-      where: { id: calibrationRecordId, tenantId },
-    });
+    const { reason } = validate(
+      inputData,
+      require("../validators/calibrationRecords.validator")
+        .voidCalibrationRecordSchema,
+    );
 
-    if (!record) {
-      return {
-        success: false,
-        status: 404,
-        message: "Calibration record not found",
-        data: null,
-      };
-    }
+    return await db.transaction(async (transaction) => {
+      const record = await lockRecord(tenantId, calibrationRecordId, transaction);
+      if (!record) {
+        return notFound();
+      }
+      const conflict = lifecycleConflict(record, "void");
+      if (conflict) {
+        return conflict;
+      }
 
-    await db.transaction(async (transaction) => {
-      await record.softDelete({ transaction });
+      // `deletedAt` is not written: Sequelize treats the paranoid timestamp as
+      // read-only on update and would drop it silently. `isDeleted` is what
+      // every read filters on (the defaultScope), as it was for soft deletes.
+      const voided = { isDeleted: true, voidReason: reason, voidedBy: userId };
+      await record.update(voided, { transaction });
       await auditRecord(
         transaction,
         tenantId,
         record.id,
         "DELETE",
         { isDeleted: false },
-        { isDeleted: true },
-        actor,
+        voided,
+        { ...actor, userId },
       );
-    });
 
-    return {
-      success: true,
-      status: 200,
-      message: "Calibration record deleted successfully",
-      data: null,
-    };
+      return {
+        success: true,
+        status: 200,
+        message: "Calibration record voided. The record is kept; a void is final.",
+        data: null,
+      };
+    });
   } catch (error) {
-    logger.error("Error deleting calibration record", {
+    logger.error("Error voiding calibration record", {
       error: error.message,
     });
     throw error;

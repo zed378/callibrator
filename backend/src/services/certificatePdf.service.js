@@ -4,10 +4,18 @@
 // verification QR code, computes a tamper-evident SHA-256 integrity hash + an
 // HMAC signature, and powers the public verification endpoint.
 //
-// The PDF is written under uploads/certificates/<random>.pdf (served statically
-// at /uploads/...), and the certificate row's filePath/fileSize are updated.
-// The file name is deliberately NOT the certificate number — see
-// randomPdfFileName below (ADR-042 step 1, finding S-01).
+// The PDF is written under uploads/certificates/<random>.pdf and the
+// certificate row's filePath/fileSize are updated. The file name is
+// deliberately NOT the certificate number — see randomPdfFileName below
+// (ADR-042 step 1, finding S-01).
+//
+// ADR-042 step 4: that directory is NOT served statically any more. The PDF is
+// reached only through GET /certificates/:id/pdf (auth + certificate:read +
+// tenant) or, for the public verification page, a short-lived HMAC capability
+// minted by the verification endpoint for a SIGNED certificate
+// (GET /certificates/verify/:certificateNumber/document?token=...).
+// `filePath` is therefore a storage locator (`certificates/<file>`), not a
+// URL; only its basename is ever used to find the file.
 
 const fs = require("fs");
 const path = require("path");
@@ -21,6 +29,7 @@ const {
 } = require("../models");
 const storagePath = require("../utils/storagePath.util");
 const appPath = require("../utils/appPath.util");
+const signing = require("./storage/signing");
 const { logger } = require("../middlewares/activityLog.middleware");
 
 // appPath (execPath-relative when packaged) so the template is read from the
@@ -32,7 +41,29 @@ const SIGNING_SECRET = process.env.CERT_SIGNING_SECRET;
 if (!SIGNING_SECRET) {
   throw new Error("CERT_SIGNING_SECRET is required (no insecure default)");
 }
-const SIGNATURE_KEY_ID = "hmac-sha256-v1";
+// P6-10 — the HMAC below names the key that made it: a fingerprint of
+// CERT_SIGNING_SECRET (utils/keyring.util.js), not a fixed label. Today the
+// signature is returned by generateCertificatePdf and neither persisted, nor
+// printed, nor verified anywhere (A-241) — which is why rotating
+// CERT_SIGNING_SECRET breaks no issued certificate. Anything that starts
+// storing it must store this id beside it and verify against the key it
+// names (docs/SECURITY/13-KEY-ROTATION.md § CERT_SIGNING_SECRET).
+const SIGNATURE_KEY_ID = `hmac-sha256:${require("../utils/keyring.util").keyIdOf(Buffer.from(SIGNING_SECRET))}`;
+
+// ADR-042 step 4 — the public verification page's document capability.
+// An hour, not the attachment links' five minutes: the page mints a fresh one
+// on every load, so the TTL only has to outlive one person reading one
+// certificate (an auditor with the tab open), and the bookmark a third party
+// keeps is the verification page, never this URL.
+const DOCUMENT_URL_TTL_SEC = Number(process.env.CERT_DOCUMENT_URL_TTL_SEC) || 3600;
+// Domain-separated from every other HMAC made with the same secret.
+const documentKey = (certificateNumber) => `certificate-document:${certificateNumber}`;
+
+/** A host-relative, expiring URL to a signed certificate's PDF. */
+const mintDocumentUrl = (certificateNumber) => {
+  const { token } = signing.sign(documentKey(certificateNumber), DOCUMENT_URL_TTL_SEC, SIGNING_SECRET);
+  return `/api/v1/certificates/verify/${encodeURIComponent(certificateNumber)}/document?token=${token}`;
+};
 
 const STATUS_COLORS = {
   draft: "#6b7280",
@@ -227,15 +258,16 @@ const generateCertificatePdf = async (tenantId, certificateId, { baseUrl } = {})
   const absPath = path.join(dir, fileName);
   fs.writeFileSync(absPath, pdfBuffer);
 
-  const relPath = `/uploads/certificates/${fileName}`;
+  // A storage locator, not a URL (ADR-042 step 4): nothing serves this path.
+  const relPath = `certificates/${fileName}`;
   await cert.update({ filePath: relPath, fileSize: pdfBuffer.length });
 
-  // Regenerating supersedes the previous document, and unlinking it is the only
-  // revocation the static mount has: express.static serves whatever is on disk,
-  // so a superseded file left behind stays publicly fetchable at its old URL
-  // forever. Done after the row is updated, so a failure here can never leave
-  // the row pointing at a file that was deleted. basename() keeps the unlink
-  // inside the certificates directory whatever the stored value says.
+  // Regenerating supersedes the previous document. It is no longer publicly
+  // reachable (ADR-042 step 4), but a superseded certificate kept on disk is
+  // still a stale copy of a regulated record, so it is removed. Done after the
+  // row is updated, so a failure here can never leave the row pointing at a
+  // file that was deleted. basename() keeps the unlink inside the
+  // certificates directory whatever the stored value says.
   if (previousFilePath) {
     const supersededAbsPath = path.join(dir, path.basename(previousFilePath));
     try {
@@ -243,8 +275,8 @@ const generateCertificatePdf = async (tenantId, certificateId, { baseUrl } = {})
     } catch (err) {
       // Already gone, or not removable. The new file is written and the row is
       // committed either way, so this is not worth failing the generation over
-      // — but it is worth a log line, because a file that survives here is a
-      // document still being served from an unauthenticated path.
+      // — but it is worth a log line: a file that survives here is a stale
+      // copy of a regulated record left on disk.
       logger.warn("Superseded certificate PDF could not be removed", {
         certificateId: cert.id,
         path: supersededAbsPath,
@@ -269,6 +301,7 @@ const generateCertificatePdf = async (tenantId, certificateId, { baseUrl } = {})
       fileSize: pdfBuffer.length,
       integrityHash,
       signature: computeSignature(integrityHash),
+      signatureKeyId: SIGNATURE_KEY_ID,
       verifyUrl,
     },
   };
@@ -402,8 +435,48 @@ const verifyByCertificateNumber = async (certificateNumber, { baseUrl } = {}) =>
       // issued and its document is real history, so it stays published.
       //
       // A withdrawn (soft-deleted) certificate publishes no document either.
-      documentUrl: signed && !withdrawn ? cert.filePath || null : null,
+      //
+      // ADR-042 step 4: what is published is no longer the file's path (that
+      // directory is not served) but a short-lived capability for THIS
+      // certificate's document, verified again — status included — when it is
+      // fetched (getVerifiedDocument).
+      documentUrl: signed && !withdrawn && cert.filePath ? mintDocumentUrl(cert.certificateNumber) : null,
     },
+  };
+};
+
+/**
+ * Resolve the public verification page's document capability.
+ *
+ * The token is checked BEFORE the database is touched. The certificate is then
+ * re-checked as it stands now, not as it stood when the token was minted: a
+ * certificate revoked or withdrawn inside the token's lifetime stops yielding
+ * its document at once. Not found, not signed, withdrawn and never-rendered are
+ * the same 404.
+ *
+ * @param {string} certificateNumber
+ * @param {string} token - `<exp>.<hmac>` from mintDocumentUrl
+ * @returns {Promise<{success: boolean, status: number, message?: string, data?: {absPath: string, fileName: string}}>}
+ */
+const getVerifiedDocument = async (certificateNumber, token) => {
+  if (!signing.verify(documentKey(certificateNumber), token, SIGNING_SECRET)) {
+    return { success: false, status: 403, message: "Invalid or expired document link" };
+  }
+  const cert = await Certificate.findOne({
+    where: { certificateNumber },
+    attributes: ["id", "certificateNumber", "status", "filePath"],
+  });
+  if (!cert || cert.status !== "signed" || !cert.filePath) {
+    return { success: false, status: 404, message: "Certificate document not found" };
+  }
+  const absPath = storagePath("uploads", "certificates", path.basename(cert.filePath));
+  if (!fs.existsSync(absPath)) {
+    return { success: false, status: 410, message: "Certificate document is no longer available" };
+  }
+  return {
+    success: true,
+    status: 200,
+    data: { absPath, fileName: downloadFileName(cert.certificateNumber) },
   };
 };
 
@@ -414,4 +487,6 @@ module.exports = {
   generateCertificatePdf,
   getOrCreatePdf,
   verifyByCertificateNumber,
+  getVerifiedDocument,
+  mintDocumentUrl,
 };

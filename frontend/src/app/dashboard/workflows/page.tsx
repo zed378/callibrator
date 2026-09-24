@@ -1,6 +1,7 @@
 // src/app/dashboard/workflows/page.tsx
 "use client";
 
+import { deferEffect } from "@/lib/deferEffect";
 import React, { useCallback, useEffect, useState } from "react";
 import DashboardLayout from "@/components/layouts/DashboardLayout";
 import {
@@ -23,9 +24,30 @@ import {
   type WorkflowStepInput,
 } from "@/api/services/workflow.service";
 import { roleService } from "@/api/services/role.service";
+import {
+  ESignatureFields,
+  type ESignatureFormFields,
+} from "@/app/dashboard/calibration/components/ESignatureFields";
 import { useToastStore } from "@/stores/toastStore";
 
 type Tab = "definitions" | "pending";
+
+const EMPTY_SIGNATURE: ESignatureFormFields = {
+  authMethod: "password",
+  authPayload: "",
+  meaning: "Reviewed and approved",
+};
+
+/**
+ * A-182 — approving a Certificate through its workflow is an electronic
+ * signature, so the dialog asks for the signer's credentials and the meaning.
+ */
+const approvalNeedsSignature = (
+  instance: WorkflowInstance,
+  action: "APPROVED" | "REJECTED",
+): boolean =>
+  action === "APPROVED" &&
+  (instance.workflow?.resourceType ?? instance.resourceType) === "Certificate";
 
 const RESOURCE_TYPES: WorkflowResourceType[] = [
   "Certificate",
@@ -58,6 +80,9 @@ export default function WorkflowsPage() {
     action: "APPROVED" | "REJECTED";
   } | null>(null);
   const [comments, setComments] = useState("");
+  const [signature, setSignature] = useState<ESignatureFormFields>(EMPTY_SIGNATURE);
+  const needsSignature =
+    actionOn !== null && approvalNeedsSignature(actionOn.instance, actionOn.action);
 
   useEffect(() => {
     roleService
@@ -85,9 +110,7 @@ export default function WorkflowsPage() {
     }
   }, []);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useEffect(() => deferEffect(load), [load]);
 
   const run = async (key: string, fn: () => Promise<unknown>, title: string) => {
     setBusy(key);
@@ -150,18 +173,35 @@ export default function WorkflowsPage() {
 
   const confirmAction = async () => {
     if (!actionOn) return;
+    if (needsSignature && (!signature.authPayload || !signature.meaning.trim())) {
+      addToast({
+        type: "error",
+        title: "Your credentials and the meaning of the signature are required",
+      });
+      return;
+    }
     const ok = await run(
       "action",
       () =>
         workflowService.actionOnInstance(actionOn.instance.id, {
           action: actionOn.action,
           comments: comments.trim() || undefined,
+          ...(needsSignature
+            ? {
+                authMethod: signature.authMethod,
+                authPayload: signature.authPayload,
+                meaning: signature.meaning.trim(),
+              }
+            : {}),
         }),
       actionOn.action === "APPROVED" ? "Approved" : "Rejected",
     );
+    // The credential is never kept, whatever the outcome.
+    setSignature((current) => ({ ...current, authPayload: "" }));
     if (ok) {
       setActionOn(null);
       setComments("");
+      setSignature(EMPTY_SIGNATURE);
     }
   };
 
@@ -522,6 +562,13 @@ export default function WorkflowsPage() {
                 placeholder="Optional note recorded against your decision"
               />
             </FormField>
+            {needsSignature && (
+              <ESignatureFields
+                form={signature}
+                setForm={setSignature}
+                meaningOptions={["Reviewed and approved", "Approved for issue"]}
+              />
+            )}
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setActionOn(null)}>
                 Cancel

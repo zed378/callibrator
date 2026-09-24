@@ -301,7 +301,12 @@ describe("A-180 — rectifying the email", () => {
     // The audit trail never holds the address (A-153).
     expect(JSON.stringify(auditService.logAction.mock.calls)).not.toContain("new.address");
 
-    expect(generatePurposeToken).toHaveBeenCalledWith({ id: USER }, "activation");
+    // A-191: the link is bound to the NEW address, by hash (never the address itself).
+    const { activationEmailHash } = require("../../utils/activationToken.util");
+    expect(generatePurposeToken).toHaveBeenCalledWith(
+      { id: USER, eh: activationEmailHash("new.address@hospital.test") },
+      "activation",
+    );
     expect(emailQueue.queueActivationEmail).toHaveBeenCalledWith({
       email: "new.address@hospital.test",
       firstName: "Jane",

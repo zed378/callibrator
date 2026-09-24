@@ -101,7 +101,7 @@ describe("updateTenantLogo", () => {
       { transaction: tx },
     );
     expect(mockEvents).toEqual(["update", "audit", "commit", "unlink:old-logo.png"]);
-    expect(deleteUpload).toHaveBeenCalledWith("old-logo.png", "uploads/tenant");
+    expect(deleteUpload).toHaveBeenCalledWith("old-logo.png", "uploads/public/tenant");
     expect(result).toEqual({
       data: { logo: "new.png" },
       message: "Tenant logo updated successfully",
@@ -110,11 +110,11 @@ describe("updateTenantLogo", () => {
   });
 
   it("a URL-shaped stored logo is reduced to its filename for the delete", async () => {
-    Tenants.findByPk.mockResolvedValue(tenantRow({ logo: "/uploads/tenant/prev.png" }));
+    Tenants.findByPk.mockResolvedValue(tenantRow({ logo: "/uploads/public/tenant/prev.png" }));
 
     await updateTenantLogo(TENANT, "new.png", "user-1", own);
 
-    expect(deleteUpload).toHaveBeenCalledWith("prev.png", "uploads/tenant");
+    expect(deleteUpload).toHaveBeenCalledWith("prev.png", "uploads/public/tenant");
   });
 
   it.each([null, "default.svg", "new.png"])(

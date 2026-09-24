@@ -28,7 +28,9 @@ jest.mock("../../services/audit.service", () => ({
   logAction: jest.fn().mockResolvedValue({}),
 }));
 jest.mock("../../services/redis.service", () => ({
+  del: jest.fn().mockResolvedValue(0),
   delPattern: jest.fn().mockResolvedValue(0),
+  cacheKeys: { permissions: (roleId) => `permissions:role:${roleId}` },
 }));
 
 jest.mock("../../utils/appError.util", () => {
@@ -277,19 +279,19 @@ describe("menuGroup.service", () => {
 
   // ================================================================
   describe("deleteMenuGroup", () => {
-    it("should delete a menu group and its associations", async () => {
+    it("should delete an empty menu group and its grants", async () => {
       const group = {
         id: "mg-1",
         destroy: jest.fn().mockResolvedValue(1),
       };
       MenuGroup.findByPk.mockResolvedValueOnce(group);
       RoleMenuPermission.destroy.mockResolvedValueOnce(1);
-      MenuGroup.destroy.mockResolvedValueOnce(0);
       MenuGroup.findAll.mockResolvedValueOnce([]);
 
-      await deleteMenuGroup("mg-1");
-      expect(RoleMenuPermission.destroy).toHaveBeenCalledWith({ where: { menuGroupId: ["mg-1"] }, transaction: "TX" });
-      expect(MenuGroup.destroy).toHaveBeenCalledWith({ where: { parentId: "mg-1" }, transaction: "TX" });
+      await deleteMenuGroup("mg-1", { userId: "u1" });
+      expect(RoleMenuPermission.destroy).toHaveBeenCalledWith({ where: { menuGroupId: "mg-1" }, transaction: "TX" });
+      // A-181: children are never removed (or orphaned) by a delete.
+      expect(MenuGroup.destroy).not.toHaveBeenCalled();
       expect(group.destroy).toHaveBeenCalledWith({ transaction: "TX" });
     });
 
@@ -321,11 +323,12 @@ describe("menuGroup.service", () => {
       const perm = { id: "perm-1", roleId: "role-1", menuGroupId: "mg-1" };
       RoleMenuPermission.findOrCreate.mockResolvedValueOnce([perm, true]);
 
-      const result = await assignMenuToRole({ roleId: "role-1", menuGroupId: "mg-1" });
+      const result = await assignMenuToRole({ roleId: "role-1", menuGroupId: "mg-1" }, { userId: "u1" });
       expect(result.id).toBe("perm-1");
       expect(RoleMenuPermission.findOrCreate).toHaveBeenCalledWith({
         where: { roleId: "role-1", menuGroupId: "mg-1" },
         defaults: { permissionType: "read" },
+        transaction: "TX",
       });
     });
 
@@ -343,9 +346,10 @@ describe("menuGroup.service", () => {
   // ================================================================
   describe("revokeMenuFromRole", () => {
     it("should destroy the permission assignment", async () => {
-      await revokeMenuFromRole({ roleId: "role-1", menuGroupId: "mg-1" });
+      await revokeMenuFromRole({ roleId: "role-1", menuGroupId: "mg-1" }, { userId: "u1" });
       expect(RoleMenuPermission.destroy).toHaveBeenCalledWith({
         where: { roleId: "role-1", menuGroupId: "mg-1" },
+        transaction: "TX",
       });
     });
   });
@@ -359,12 +363,11 @@ describe("menuGroup.service", () => {
 
     it("should assign existing and skip already-assigned", async () => {
       Role.findByPk.mockResolvedValueOnce(mockRoleInstance());
-      MenuGroup.findByPk.mockResolvedValueOnce(mockMenuGroupInstance({ id: "mg-1" }));
-      MenuGroup.findByPk.mockResolvedValueOnce(mockMenuGroupInstance({ id: "mg-2" }));
+      MenuGroup.findAll.mockResolvedValueOnce([{ id: "mg-1" }, { id: "mg-2" }]);
       RoleMenuPermission.findOrCreate.mockResolvedValueOnce([{ id: "p1" }, true]); // new
       RoleMenuPermission.findOrCreate.mockResolvedValueOnce([{ id: "p2" }, false]); // existing
 
-      const result = await bulkAssign("role-1", ["mg-1", "mg-2"]);
+      const result = await bulkAssign("role-1", ["mg-1", "mg-2"], { userId: "u1" });
       expect(result.assigned).toEqual(["mg-1"]);
       expect(result.alreadyAssigned).toEqual(["mg-2"]);
       expect(result.failed).toEqual([]);
@@ -372,7 +375,7 @@ describe("menuGroup.service", () => {
 
     it("should report missing groups in failed list", async () => {
       Role.findByPk.mockResolvedValueOnce(mockRoleInstance());
-      MenuGroup.findByPk.mockResolvedValueOnce(null);
+      MenuGroup.findAll.mockResolvedValueOnce([]);
 
       const result = await bulkAssign("role-1", ["missing-mg"]);
       expect(result.failed).toHaveLength(1);
@@ -387,7 +390,7 @@ describe("menuGroup.service", () => {
         .mockResolvedValueOnce(1) // revoked
         .mockResolvedValueOnce(0); // not found
 
-      const result = await bulkRevoke("role-1", ["mg-1", "mg-2"]);
+      const result = await bulkRevoke("role-1", ["mg-1", "mg-2"], { userId: "u1" });
       expect(result.revoked).toEqual(["mg-1"]);
       expect(result.notFound).toEqual(["mg-2"]);
     });
@@ -583,32 +586,42 @@ describe("menuGroup.service", () => {
     });
   });
 
-  describe("bulkAssign error handling", () => {
-    it("records a findOrCreate rejection in the failed list and keeps going", async () => {
-      Role.findByPk.mockResolvedValueOnce({ id: "role-1" });
-      MenuGroup.findByPk
-        .mockResolvedValueOnce({ id: "mg-1" })
-        .mockResolvedValueOnce({ id: "mg-2" });
-      RoleMenuPermission.findOrCreate
-        .mockRejectedValueOnce(new Error("unique constraint violated"))
-        .mockResolvedValueOnce([{ id: "p2" }, true]);
-
-      const result = await bulkAssign("role-1", ["mg-1", "mg-2"]);
-
-      expect(result.failed).toEqual([
-        { menuGroupId: "mg-1", error: "unique constraint violated" },
-      ]);
-      expect(result.assigned).toEqual(["mg-2"]);
-      expect(result.alreadyAssigned).toEqual([]);
+  describe("grant writes with nothing to change need no actor", () => {
+    it("revokeMenuFromRole with no grant to remove writes no audit row", async () => {
+      RoleMenuPermission.destroy.mockResolvedValueOnce(0);
+      await revokeMenuFromRole({ roleId: "role-1", menuGroupId: "mg-1" });
+      expect(require("../../services/audit.service").logAction).not.toHaveBeenCalled();
     });
 
-    it("records a findByPk rejection in the failed list", async () => {
+    it("bulkRevoke with no grant to remove writes no audit row", async () => {
+      RoleMenuPermission.destroy.mockResolvedValueOnce(0);
+      const result = await bulkRevoke("role-1", ["mg-1"]);
+      expect(result).toEqual({ revoked: [], notFound: ["mg-1"] });
+      expect(require("../../services/audit.service").logAction).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("bulkAssign error handling", () => {
+    // A-181: all or nothing. A PostgreSQL transaction cannot continue past a
+    // failed statement, so a write failure now rolls the batch back and
+    // surfaces, rather than being reported as one failed item of a batch
+    // whose other items were already lost.
+    it("a findOrCreate rejection rejects the whole batch", async () => {
       Role.findByPk.mockResolvedValueOnce({ id: "role-1" });
-      MenuGroup.findByPk.mockRejectedValueOnce(new Error("DB down"));
+      MenuGroup.findAll.mockResolvedValueOnce([{ id: "mg-1" }, { id: "mg-2" }]);
+      RoleMenuPermission.findOrCreate.mockRejectedValueOnce(new Error("unique constraint violated"));
 
-      const result = await bulkAssign("role-1", ["mg-1"]);
+      await expect(bulkAssign("role-1", ["mg-1", "mg-2"], { userId: "u1" })).rejects.toThrow(
+        "unique constraint violated",
+      );
+      expect(RoleMenuPermission.findOrCreate).toHaveBeenCalledTimes(1);
+    });
 
-      expect(result.failed).toEqual([{ menuGroupId: "mg-1", error: "DB down" }]);
+    it("a menu-group lookup failure rejects before any write", async () => {
+      Role.findByPk.mockResolvedValueOnce({ id: "role-1" });
+      MenuGroup.findAll.mockRejectedValueOnce(new Error("DB down"));
+
+      await expect(bulkAssign("role-1", ["mg-1"], { userId: "u1" })).rejects.toThrow("DB down");
       expect(RoleMenuPermission.findOrCreate).not.toHaveBeenCalled();
     });
   });

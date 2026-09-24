@@ -120,24 +120,29 @@ describe("calibrationService", () => {
     });
   });
 
-  describe("update", () => {
-    it("strips id and PUTs the rest to /:id", async () => {
-      mockedApi.put.mockResolvedValueOnce(envelope({ id: "c1" }));
-      await calibrationService.update({ id: "c1", notes: "n" });
-      expect(mockedApi.put).toHaveBeenCalledWith(
-        "/api/v1/calibration-records/c1",
-        { notes: "n" },
+  // P6-03: no PUT, no DELETE — the backend has neither for a calibration record.
+  describe("correct", () => {
+    it("strips id and POSTs the correction and its reason to /:id/corrections", async () => {
+      mockedApi.post.mockResolvedValueOnce(envelope({ id: "c2" }));
+      const res = await calibrationService.correct({ id: "c1", notes: "n", reason: "misread" });
+      expect(mockedApi.post).toHaveBeenCalledWith(
+        "/api/v1/calibration-records/c1/corrections",
+        { notes: "n", reason: "misread" },
       );
+      expect(res).toEqual({ id: "c2" });
+      expect(mockedApi.put).not.toHaveBeenCalled();
     });
   });
 
-  describe("delete", () => {
-    it("DELETEs by id", async () => {
-      mockedApi.delete.mockResolvedValueOnce(envelope(null));
-      await calibrationService.delete("c1");
-      expect(mockedApi.delete).toHaveBeenCalledWith(
-        "/api/v1/calibration-records/c1",
+  describe("void", () => {
+    it("POSTs the reason to /:id/void", async () => {
+      mockedApi.post.mockResolvedValueOnce(envelope(null));
+      await calibrationService.void("c1", "entered twice");
+      expect(mockedApi.post).toHaveBeenCalledWith(
+        "/api/v1/calibration-records/c1/void",
+        { reason: "entered twice" },
       );
+      expect(mockedApi.delete).not.toHaveBeenCalled();
     });
   });
 

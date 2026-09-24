@@ -8,6 +8,9 @@ const gdprService = require("../services/gdpr.service");
 const { success } = require("../utils/response.util");
 const { asyncHandler } = require("../utils/controllerWrapper.util");
 const { auditActor } = require("../utils/auditActor.util");
+const { AppError } = require("../utils/appError.util");
+const { principalHasMenuPermission } = require("../middlewares/dynamicAccess.middleware");
+const { MENU_SLUGS } = require("../constants/roleConstants");
 
 /**
  * Resolve the authenticated actor. tenantId comes from the auth-middleware
@@ -46,8 +49,20 @@ exports.requestErasure = asyncHandler(async (req, res) => {
  */
 exports.getErasureStatus = asyncHandler(async (req, res) => {
   const { requestId } = req.params;
-  const { tenantId } = actor(req);
+  const { tenantId, userId } = actor(req);
   const status = await gdprService.getDsarStatus(tenantId, requestId);
+  // A-252: the lookup is tenant-scoped only, so any member who held another
+  // member's request id read that person's erasure request, and an unknown id
+  // answered 200 with null. A data subject reads their OWN request; the
+  // tenant's privacy officer (`gdpr` read) reads any in the tenant. Everything
+  // else — unknown, another tenant's, another member's — is the same 404.
+  const mayRead =
+    status &&
+    (status.userId === userId ||
+      (await principalHasMenuPermission(req.user, MENU_SLUGS.GDPR, "read")));
+  if (!mayRead) {
+    throw new AppError(404, "Erasure request not found");
+  }
   return success(res, status, "Erasure status retrieved");
 });
 

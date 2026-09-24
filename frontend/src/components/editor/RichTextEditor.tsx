@@ -20,6 +20,7 @@ import {
   Redo2,
 } from "lucide-react";
 import { attachmentService } from "@/api/services/attachment.service";
+import { contentService } from "@/api/services/content.service";
 
 interface RichTextEditorProps {
   value: string;
@@ -30,13 +31,25 @@ interface RichTextEditorProps {
   imageResourceType?: string;
 }
 
-// Upload an image blob to the Attachment store and return its permanent,
-// host-relative URL (backend toPublic() now returns `url`).
-async function uploadImage(
+// The resource type whose images are PUBLISHED (the blog/news editor).
+const PUBLIC_POST_RESOURCE = "post";
+
+// Upload an image and return the URL to embed.
+//
+// S-01 / ADR-042: a blog/news image is published content, so it goes to the
+// public media class (`/uploads/public/cms/...`, content:create). Any other
+// editor (e.g. tickets) is tenant-internal: the image is an attachment, and
+// its `url` is the GATED download route — it renders for signed-in members
+// of the tenant (same-origin, through the API proxy) and for nobody else.
+export async function uploadImage(
   file: File,
   resourceType: string,
 ): Promise<string | null> {
   try {
+    if (resourceType === PUBLIC_POST_RESOURCE) {
+      const media = await contentService.media.upload(file);
+      return media?.url ?? null;
+    }
     const res = await attachmentService.upload({ file, resourceType });
     return (res as unknown as { url?: string }).url ?? null;
   } catch (err) {

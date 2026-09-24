@@ -139,40 +139,6 @@ const sendResult = (res, result, meta = null) => {
 };
 
 /**
- * Send a paginated success response
- * @param {import('express').Response} res - Express response object
- * @param {Array} rows - Array of data rows
- * @param {number} count - Total count of records
- * @param {string} message - Success message
- * @param {number} statusCode - HTTP status code (default: 200)
- * @param {Object} customCounts - Additional custom counts (optional)
- */
-const paginated = (
-  res,
-  rows,
-  count,
-  message = "Success",
-  statusCode = 200,
-  customCounts = {},
-) => {
-  const { page = 1, limit = 20 } = res.query || {};
-
-  const meta = {
-    total: count,
-    page: Number(page),
-    limit: Number(limit),
-    totalPages: Math.ceil(count / Number(limit)),
-  };
-
-  // Add custom counts if provided
-  if (Object.keys(customCounts).length > 0) {
-    meta.customCounts = customCounts;
-  }
-
-  return success(res, rows, meta, message, statusCode);
-};
-
-/**
  * Send a not found response
  * @param {import('express').Response} res - Express response object
  * @param {string} message - Not found message
@@ -251,7 +217,6 @@ module.exports = {
   badRequest,
   unauthorized,
   forbidden,
-  paginated,
   paginate,
   login,
   sendResult,

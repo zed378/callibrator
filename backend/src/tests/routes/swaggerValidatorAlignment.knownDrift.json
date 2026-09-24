@@ -1,0 +1,109 @@
+{
+  "PATCH /api/v1/kanban/projects/:projectId": [
+    "no swagger operation documents this route"
+  ],
+  "PATCH /api/v1/kanban/projects/:projectId/cards/:cardId": [
+    "no swagger operation documents this route"
+  ],
+  "PATCH /api/v1/kanban/projects/:projectId/cards/:cardId/move": [
+    "no swagger operation documents this route"
+  ],
+  "PATCH /api/v1/kanban/projects/:projectId/columns/:columnId": [
+    "no swagger operation documents this route"
+  ],
+  "PATCH /api/v1/kanban/projects/:projectId/labels/:labelId": [
+    "no swagger operation documents this route"
+  ],
+  "PATCH /api/v1/kanban/projects/:projectId/members/:memberId": [
+    "no swagger operation documents this route"
+  ],
+  "PATCH /api/v1/kanban/projects/:projectId/sprints/:sprintId": [
+    "no swagger operation documents this route"
+  ],
+  "PATCH /api/v1/maintenance/:orderId": [
+    "documented but stripped by the validator: assignedTo",
+    "accepted by the validator but undocumented: assigneeId, scheduledDate, completedDate, estimatedCost, actualCost, resolutionNotes"
+  ],
+  "PATCH /api/v1/tickets/:ticketId": [
+    "no swagger operation documents this route"
+  ],
+  "PATCH /api/v1/vendors/:vendorId": [
+    "accepted by the validator but undocumented: notes"
+  ],
+  "POST /api/v1/certificates/:certificateId/approve": [
+    "no documented JSON body; the validator requires authMethod, authPayload, meaning"
+  ],
+  "POST /api/v1/custom-domains/domains": [
+    "documented but stripped by the validator: vanitySubdomain",
+    "accepted by the validator but undocumented: type, sslEnabled"
+  ],
+  "POST /api/v1/esignature/key-pairs": [
+    "no swagger operation documents this route"
+  ],
+  "POST /api/v1/esignature/sign": [
+    "no swagger operation documents this route"
+  ],
+  "POST /api/v1/esignature/verify": [
+    "no swagger operation documents this route"
+  ],
+  "POST /api/v1/esignature/workflows": [
+    "no swagger operation documents this route"
+  ],
+  "POST /api/v1/kanban/projects": [
+    "no documented JSON body; the validator requires name"
+  ],
+  "POST /api/v1/kanban/projects/:projectId/cards": [
+    "no swagger operation documents this route"
+  ],
+  "POST /api/v1/kanban/projects/:projectId/cards/:cardId/relations": [
+    "no swagger operation documents this route"
+  ],
+  "POST /api/v1/kanban/projects/:projectId/columns": [
+    "no swagger operation documents this route"
+  ],
+  "POST /api/v1/kanban/projects/:projectId/columns/reorder": [
+    "no swagger operation documents this route"
+  ],
+  "POST /api/v1/kanban/projects/:projectId/labels": [
+    "no swagger operation documents this route"
+  ],
+  "POST /api/v1/kanban/projects/:projectId/members": [
+    "no swagger operation documents this route"
+  ],
+  "POST /api/v1/kanban/projects/:projectId/sprints": [
+    "no swagger operation documents this route"
+  ],
+  "POST /api/v1/kanban/projects/:projectId/sprints/migrate": [
+    "no swagger operation documents this route"
+  ],
+  "POST /api/v1/maintenance/": [
+    "documented but stripped by the validator: assignedTo",
+    "accepted by the validator but undocumented: assigneeId, scheduledDate, estimatedCost",
+    "required: documented [deviceId, priority, title, type], validator [deviceId, title, type]"
+  ],
+  "POST /api/v1/roles/": [
+    "documented but stripped by the validator: menus",
+    "accepted by the validator but undocumented: roleLevel"
+  ],
+  "POST /api/v1/roles/menus": [
+    "documented but stripped by the validator: name, slug, icon, parent_id, sort_order, is_active",
+    "required: documented [name], validator []"
+  ],
+  "POST /api/v1/tickets/": [
+    "no documented JSON body; the validator requires subject"
+  ],
+  "POST /api/v1/tickets/:ticketId/assign": [
+    "no swagger operation documents this route"
+  ],
+  "POST /api/v1/tickets/:ticketId/comments": [
+    "no swagger operation documents this route"
+  ],
+  "POST /api/v1/vendors/": [
+    "documented but stripped by the validator: rating",
+    "accepted by the validator but undocumented: notes"
+  ],
+  "PUT /api/v1/storage/settings": [
+    "accepted by the validator but undocumented: forcePathStyle, prefix, fsync",
+    "required: documented [], validator [provider]"
+  ]
+}

@@ -87,6 +87,47 @@ const defineModel = (db, DataTypes) => {
         defaultValue: false,
         allowNull: false,
       },
+      // ------------------------------------------------------------------
+      // P6-03 — append-only lifecycle (migration 0057, ADR-PENDING-data).
+      // A record's CONTENT never changes after insert: the database trigger
+      // `calibration_records_append_only` refuses it for every role. A wrong
+      // result is CORRECTED by a new row that supersedes it; a record entered
+      // in error is VOIDED. Each lifecycle column below is written once.
+      // ------------------------------------------------------------------
+      supersedesId: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: { model: "calibration_records", key: "id" },
+        onDelete: "RESTRICT",
+        comment: "On a correction: the record this one corrects (immutable)",
+      },
+      correctionReason: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        comment: "On a correction: why the original was wrong (required with supersedesId)",
+      },
+      supersededById: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: { model: "calibration_records", key: "id" },
+        onDelete: "RESTRICT",
+        comment: "On a corrected record: the correction that replaced it (set once)",
+      },
+      supersededAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
+      voidReason: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        comment: "Why the record was voided (set once, with isDeleted)",
+      },
+      voidedBy: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: { model: "users", key: "id" },
+        onDelete: "RESTRICT",
+      },
     },
     {
       tableName: "calibration_records",
@@ -112,29 +153,10 @@ const defineModel = (db, DataTypes) => {
     },
   );
 
-  /**
-   * Soft-delete a calibration record. Sets is_deleted = true and persists.
-   * @param {object} [options] - merged into save(), e.g. { transaction } (A-41)
-   */
-  CalibrationRecord.prototype.softDelete = async function (options) {
-    this.isDeleted = true;
-    return this.save({ ...options, hooks: false });
-  };
-
-  /**
-   * Restore a soft-deleted calibration record by ID. Sets is_deleted = false.
-   */
-  CalibrationRecord.restoreStatic = async function (id) {
-    // `isDeleted` is the ATTRIBUTE (column is_deleted via underscored).
-    // Model.update intersects its values with attribute names, so the former
-    // `{ is_deleted: false }` was dropped and nothing was written (D-07).
-    // unscoped(): the defaultScope pins isDeleted = false, which a restore
-    // must not inherit; paranoid and the global tenant hooks still apply.
-    return this.unscoped().update(
-      { isDeleted: false },
-      { where: { id, isDeleted: true } },
-    );
-  };
+  // P6-03: there is no softDelete() and no restoreStatic() here. A record is
+  // VOIDED with a reason (calibrationRecords.service#voidCalibrationRecord),
+  // and a void is final — the database trigger refuses is_deleted true ->
+  // false, so a restore could only ever fail.
 
   /**
    * Define associations for this model.

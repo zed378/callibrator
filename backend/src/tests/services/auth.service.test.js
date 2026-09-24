@@ -513,8 +513,11 @@ describe("auth.service", () => {
   // ========================
   describe("activateAccount", () => {
     it("should activate an unverified user account", async () => {
-      const decodedToken = { id: "user-1" };
+      // A-191: the token is bound to the account's current address.
+      const { activationClaims } = require("../../utils/activationToken.util");
+      const decodedToken = activationClaims("user-1", "test@example.com");
       verifyPurposeToken.mockReturnValue(decodedToken);
+      require("../../config").db.transaction.mockImplementation(async (fn) => fn({ id: "tx" }));
 
       const mockUser = {
         id: "user-1",
@@ -534,7 +537,10 @@ describe("auth.service", () => {
         "valid-token",
         "activation",
       );
-      expect(mockUser.update).toHaveBeenCalledWith({ isEmailVerified: true });
+      expect(mockUser.update).toHaveBeenCalledWith(
+        { isEmailVerified: true },
+        { transaction: { id: "tx" } },
+      );
       expect(del).toHaveBeenCalledWith(
         cacheKeys.userByEmail("test@example.com"),
       );
@@ -542,10 +548,12 @@ describe("auth.service", () => {
     });
 
     it("should return success for already activated account", async () => {
-      verifyPurposeToken.mockReturnValue({ id: "user-1" });
+      const { activationClaims } = require("../../utils/activationToken.util");
+      verifyPurposeToken.mockReturnValue(activationClaims("user-1", "test@example.com"));
 
       const mockUser = {
         id: "user-1",
+        email: "test@example.com",
         isEmailVerified: true,
       };
       Users.findByPk.mockResolvedValue(mockUser);

@@ -3,6 +3,7 @@ const zlib = require("zlib");
 const { Users, Role } = require("../models");
 const { hashPassword } = require("../utils/password.util");
 const { ROLE_IDS } = require("../constants");
+const { isPlatformOperator } = require("../utils/mfaPolicy.util");
 const { AppError } = require("../utils/appError.util");
 const { logger } = require("../middlewares/activityLog.middleware");
 
@@ -191,11 +192,25 @@ exports.provisionUser = async (tenantId, { email, firstName, lastName }) => {
       {
         model: Role,
         as: "role",
-        attributes: ["id", "name"],
+        // A-210: roleLevel, so a platform operator is recognised below.
+        attributes: ["id", "name", "roleLevel"],
         required: false,
       },
     ],
   });
+
+  // A-210: a platform operator (role level 10) never signs in through a
+  // tenant's identity provider. A tenant's administrators configure that IdP
+  // (PATCH /tenants/settings, the sso_* / oidc_* keys), so honouring it for
+  // the super admin whose home is that tenant would let them mint a platform
+  // session by asserting the operator's address. Operators sign in with a
+  // password and the second factor P6-07 requires.
+  if (user && isPlatformOperator(user)) {
+    throw new AppError(
+      403,
+      "Platform operators sign in with a password and a second factor, not through single sign-on",
+    );
+  }
 
   if (!user) {
     const transaction = await Users.sequelize.transaction();
@@ -273,7 +288,7 @@ const jwt = require("jsonwebtoken");
  *
  * @param {string} tenantCode
  * @param {object} ssoSettings
- * @param {{state: string, nonce: string, codeChallenge: string, redirectUri?: string}} flow
+ * @param {{state: string, nonce: string, codeChallenge: string, redirectUri?: string, authorizationEndpoint?: string}} flow
  */
 exports.generateOidcAuthRequest = (tenantCode, ssoSettings, flow) => {
   const clientId = ssoSettings.oidc_client_id;
@@ -287,7 +302,9 @@ exports.generateOidcAuthRequest = (tenantCode, ssoSettings, flow) => {
 
   const { state, nonce, codeChallenge } = flow;
 
-  const authUrl = new URL(`${authority}/authorize`);
+  // A-188: the discovered authorization_endpoint when the caller has one
+  // (sso.controller always does); the derived path otherwise.
+  const authUrl = new URL(flow.authorizationEndpoint || `${authority}/authorize`);
   authUrl.searchParams.append("client_id", clientId);
   authUrl.searchParams.append("response_type", "code");
   authUrl.searchParams.append("redirect_uri", redirectUri);
@@ -310,10 +327,9 @@ exports.generateOidcAuthRequest = (tenantCode, ssoSettings, flow) => {
  * the token via jwt.decode() without any signature verification — which allowed a
  * forged/unsigned id_token to authenticate an arbitrary user.
  *
- * NOTE: JWKS verification enforces the `iss` claim. For a multi-tenant Entra ID
- * `common` authority the id_token `iss` is tenant-specific, so configure the
- * per-tenant `oidc_authority` to the tenant-specific issuer if strict validation
- * rejects tokens.
+ * A-188: the endpoints, the JWKS location and the issuer the `iss` claim is
+ * checked against come from the IdP's discovery document (oidcJwks#discover).
+ * A multi-tenant authority (Entra ID's /common) is refused there.
  */
 exports.verifyOidcCallback = async (code, ssoSettings, redirectUri, flow) => {
   const oidcJwks = require("./oidcJwks");

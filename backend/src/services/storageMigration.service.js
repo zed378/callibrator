@@ -9,8 +9,11 @@
  *   - **Idempotent / resumable** — a row that already has a `storageKey` is
  *     skipped, so an interrupted run is simply re-run.
  *   - **Verified** — the SHA-256 of the object read back from storage must match
- *     the row's recorded checksum before the key is committed. A byte that
- *     changed in transit fails the row instead of silently corrupting it.
+ *     the row's recorded checksum (or, for a row with none, the source file's
+ *     own hash, taken before the copy — A-40) before the key is committed. A
+ *     byte that changed in transit fails the row instead of silently
+ *     corrupting it, and a source that no longer matches its recorded
+ *     checksum is refused before it is copied.
  *   - **Non-destructive** — the legacy file is left in place. Reclaiming disk is
  *     a separate, deliberate step once the migration is confirmed.
  *   - **Dry-run** — reports exactly what would move without writing anything.
@@ -91,6 +94,23 @@ const migrateAttachment = async (attachment, { dryRun = false } = {}) => {
     return { ...base, status: "would-migrate", key };
   }
 
+  // A-40. The copy is ALWAYS verified. It used to be verified only
+  // `if (attachment.checksum && …)`, so a row with no recorded checksum was
+  // copied unchecked and still reported `migrated` — the operator-facing
+  // claim is "verified copy", and for those rows it was not. The source is
+  // hashed first: it is what the copy must match when there is no recorded
+  // checksum, and when there is one, a source that no longer matches it is
+  // refused BEFORE anything is copied (the file on disk changed since upload,
+  // and copying it would launder the change into the new store).
+  const sourceHash = await hashStream(fs.createReadStream(source));
+  if (attachment.checksum && sourceHash !== attachment.checksum) {
+    throw new AppError(
+      500,
+      `Source file for ${attachment.id} does not match its recorded checksum: on disk ${sourceHash} != recorded ${attachment.checksum}`,
+    );
+  }
+  const expected = attachment.checksum || sourceHash;
+
   // Copy the bytes into storage.
   await scoped.put(key, fs.createReadStream(source), {
     contentType: attachment.mimeType || "application/octet-stream",
@@ -98,19 +118,28 @@ const migrateAttachment = async (attachment, { dryRun = false } = {}) => {
 
   // Verify the round-trip before trusting the copy.
   const readBack = await hashStream(await scoped.get(key));
-  if (attachment.checksum && readBack !== attachment.checksum) {
+  if (readBack !== expected) {
     // Undo the partial copy so a re-run starts clean.
     await scoped.delete(key).catch(() => {});
     throw new AppError(
       500,
-      `Checksum mismatch migrating ${attachment.id}: stored ${readBack} != expected ${attachment.checksum}`,
+      `Checksum mismatch migrating ${attachment.id}: stored ${readBack} != expected ${expected}`,
     );
   }
 
   attachment.storageKey = key;
   await attachment.save({ hooks: false });
 
-  return { ...base, status: "migrated", key, verified: Boolean(attachment.checksum) };
+  return {
+    ...base,
+    status: "migrated",
+    key,
+    verified: true,
+    // What the copy was verified against. `source-file` means the row never
+    // had a checksum: the copy matches the file as it is on disk now, which
+    // is all that can be proven — not that the file is what was uploaded.
+    verifiedAgainst: attachment.checksum ? "recorded-checksum" : "source-file",
+  };
 };
 
 /**

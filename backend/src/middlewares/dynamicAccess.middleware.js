@@ -286,11 +286,10 @@ exports.dynamicAccess = (menuGroup, permissionType, options = {}) => {
       if (!finalAllowed) {
         const deniedTypes = results
           .filter((r) => !r.allowed)
-          // `|| []` is an unreachable defensive guard: results come only from
-          // checkApiKeyScope / checkMenuPermission, each of which has a single
-          // return that always sets deniedTypes to an array (possibly empty,
-          // which is still truthy).
-          .flatMap((r) => /* istanbul ignore next */ r.deniedTypes || []);
+          // A-32: results come only from checkApiKeyScope / checkMenuPermission,
+          // each of which always sets deniedTypes to an array; the `|| []`
+          // fallback that sat here was unreachable and hidden from coverage.
+          .flatMap((r) => r.deniedTypes);
 
         // 403 is CORRECT here and must NOT be flattened to 404: this is a
         // permission failure INSIDE the caller's own tenant and discloses
@@ -330,11 +329,21 @@ exports.dynamicAccess = (menuGroup, permissionType, options = {}) => {
       next();
     } catch (error) {
       if (typeof logger !== "undefined") {
-        logger.error(`DynamicAccess Error: ${error.message}`, error.stack);
-        logger.error(`User: ${JSON.stringify(req.user)}`);
-        logger.error(`Req user.tenant: ${JSON.stringify(req.user?.tenant)}`);
-        logger.error(`Req user.tenantId: ${req.user?.tenantId}`);
-        logger.error(`Options: ${JSON.stringify(options)}`);
+        // A-254: this logged `JSON.stringify(req.user)` — the whole Users row
+        // auth.middleware loads (password hash, MFA secret, recovery codes),
+        // pre-stringified into the message where the logger's key-based
+        // redaction cannot see it. Identify the principal by id only.
+        logger.error("DynamicAccess Error", {
+          error: error.message,
+          stack: error.stack,
+          userId: req.user?.id ?? null,
+          tenantId: req.user?.tenantId ?? null,
+          role: req.user?.role?.name ?? null,
+          isApiKey: !!req.user?.isApiKey,
+          menuGroup,
+          permissionType,
+          options,
+        });
       }
       // A-13: do not hand-roll a 500 carrying `error.message` (a database or
       // service error names tables, hosts and internals). Hand the error to

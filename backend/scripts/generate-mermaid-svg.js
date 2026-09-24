@@ -699,7 +699,7 @@ function generateProjectStructure() {
         Docker[Dockerfile]
         Compose[docker-compose.yaml]
         Swagger[swagger.json]
-        Env[local.env]
+        Env[.env.example]
         Readme[README.md]
         Jest[jest.config.js]
     end

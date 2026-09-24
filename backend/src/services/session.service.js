@@ -24,6 +24,7 @@ exports.createSession = async ({
   device,
   expiredAt,
   impersonatorId = null,
+  authMethod = null,
 }) => {
   // Provide default expiredAt if not provided (7 days from now)
   const sessionExpiredAt =
@@ -35,6 +36,8 @@ exports.createSession = async ({
     // A-146: an impersonation session records its operator, so a refresh can
     // re-issue the `impersonatorId` claim. Absent (NULL) on every other one.
     ...(impersonatorId ? { impersonator_id: impersonatorId } : {}),
+    // A-160: "saml" / "oidc" for an SSO session (migration 0052).
+    ...(authMethod ? { auth_method: authMethod } : {}),
 
     token_hash: hashToken(refreshToken),
 
@@ -221,6 +224,8 @@ exports.rotateRefreshToken = async ({
     ipAddress: session.ip_address,
     userAgent: session.user_agent,
     device: session.device,
+    // A-160: a rotation keeps how the session signed in.
+    authMethod: session.auth_method,
 
     expiredAt,
   });

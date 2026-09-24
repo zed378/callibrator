@@ -71,7 +71,7 @@ describe("A-150 — the tenant settings encrypted at rest", () => {
   it.each(ENCRYPTED)("%s is envelope-encrypted on save and decrypted on read", async (key) => {
     const row = await saveHooks(key, "plain-secret");
 
-    expect(row.value.startsWith("v1:")).toBe(true);
+    expect(row.value.startsWith("v2:")).toBe(true); // P6-10: v2 names its master key
     expect(kms.decryptData(TENANT, row.value)).toBe("plain-secret");
 
     await TenantSettings.runHooks("afterFind", [row], {});

@@ -17,7 +17,6 @@ const {
   verifySignature,
   getWorkflow,
   cancelWorkflow,
-  revokeSignature,
   getStatus,
   SIGNATURE_STATUS,
   WORKFLOW_STATUS,
@@ -426,57 +425,6 @@ describe("eSignature.service", () => {
         expect.objectContaining({ action: "UPDATE", resourceId: "wf-1", userId: "u-1" }),
         { transaction: "TX" },
       );
-    });
-  });
-
-  describe("revokeSignature", () => {
-    it("should throw error when signature not found", async () => {
-      const mockSigRecord = { findOne: jest.fn().mockResolvedValue(null) };
-      const mockAuditLog = { create: jest.fn().mockResolvedValue(true) };
-      const mockModels = {
-        SignatureRecord: mockSigRecord,
-        AuditLog: mockAuditLog,
-      };
-      jest.doMock("../../models", () => mockModels);
-
-      jest.resetModules();
-      const {
-        revokeSignature: rs,
-      } = require("../../services/eSignature.service");
-
-      await expect(
-        rs("sig-1", "u-1", "tenant-1", "wrong signature"),
-      ).rejects.toThrow("Signature not found");
-    });
-
-    it("should revoke signature with reason", async () => {
-      const mockUpdate = jest.fn().mockResolvedValue(true);
-      const mockSigRecord = {
-        findOne: jest.fn().mockResolvedValue({
-          status: "signed",
-          update: mockUpdate,
-        }),
-      };
-      const mockAuditLog = { create: jest.fn().mockResolvedValue(true) };
-      const mockModels = {
-        SignatureRecord: mockSigRecord,
-        AuditLog: mockAuditLog,
-      };
-      jest.doMock("../../models", () => mockModels);
-
-      jest.resetModules();
-      const {
-        revokeSignature: rs2,
-      } = require("../../services/eSignature.service");
-
-      const result = await rs2(
-        "sig-1",
-        "u-1",
-        "tenant-1",
-        "duplicate signature",
-      );
-
-      expect(result.success).toBe(true);
     });
   });
 

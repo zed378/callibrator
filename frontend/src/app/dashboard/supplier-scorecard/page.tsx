@@ -1,6 +1,7 @@
 // src/app/dashboard/supplier-scorecard/page.tsx
 "use client";
 
+import { deferEffect } from "@/lib/deferEffect";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import DashboardLayout from "@/components/layouts/DashboardLayout";
 import {
@@ -112,9 +113,7 @@ export default function SupplierScorecardPage() {
     }
   }, [vendorFilter, statusFilter]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useEffect(() => deferEffect(load), [load]);
 
   // Vendors power the picker + resolve names in the table.
   useEffect(() => {

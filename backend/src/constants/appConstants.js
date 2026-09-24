@@ -145,7 +145,7 @@ const TIME = {
 //                realip module has resolved the edge's header, VM only); Next's
 //                proxy routes forward ONE sanitized address (frontend
 //                src/lib/clientIp.ts) and drop every other address header.
-//   /socket.io/, /uploads/, /oidc/, /health
+//   /socket.io/, /uploads/public/, /oidc/, /health
 //                edge -> nginx -> backend — nginx overwrites, as above.
 //
 // So one hop is right for both paths, and it must not be raised: a count above

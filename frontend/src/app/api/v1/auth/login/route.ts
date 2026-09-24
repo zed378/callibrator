@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { API_BASE_URL } from "@/constants";
 import { clientIpHeader } from "@/lib/clientIp";
+import { writeSessionCookies } from "@/lib/authCookies";
 
 export async function POST(req: NextRequest) {
   try {
@@ -35,32 +36,23 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(responseData, { status: 202 });
     }
 
-    const { token, session } = responseData;
+    const { token, session, refreshToken, ...browserBody } = responseData;
     const cookieStore = await cookies();
 
-    // Set secure httpOnly cookies
-    const cookieOptions = {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax" as const,
-      path: "/",
-      maxAge: 7 * 24 * 60 * 60, // 7 days
-    };
-
+    // httpOnly cookies — including, F-05, the refresh token when the backend
+    // sends one. Both tokens are written ONLY as cookies: the body the browser
+    // gets has them removed (F-62), so no script can read either — the point
+    // of an httpOnly cookie. (The MFA 202 above is different: its token is a
+    // short-lived "mfa" purpose token the client must post back.)
     if (token) {
-      cookieStore.set("auth_token", token, cookieOptions);
-    }
-    if (session?.id) {
-      cookieStore.set("auth_session", session.id, cookieOptions);
+      writeSessionCookies(cookieStore, {
+        token,
+        sessionId: session?.id,
+        refreshToken: typeof refreshToken === "string" ? refreshToken : null,
+      });
     }
 
-    // Set a non-httpOnly cookie so client-side JavaScript knows the user is logged in
-    cookieStore.set("auth_logged_in", "true", {
-      ...cookieOptions,
-      httpOnly: false,
-    });
-
-    return NextResponse.json(responseData, { status: 200 });
+    return NextResponse.json({ ...browserBody, session }, { status: 200 });
   } catch (error: unknown) {
     const message =
       error instanceof Error ? error.message : "Internal login error";

@@ -558,6 +558,7 @@ exports.createCertificate = async (tenantId, userId, inputData, actor = {}) => {
       { Certificate, Sequelize },
     );
 
+    const workflowService = require("./workflow.service");
     const certificate = await db.transaction(async (transaction) => {
       const created = await Certificate.create(
         {
@@ -569,6 +570,17 @@ exports.createCertificate = async (tenantId, userId, inputData, actor = {}) => {
         },
         { transaction },
       );
+      // A-190 — the certificate's approval workflow starts in the SAME
+      // transaction. It used to start after the commit, so a failure there
+      // left a certificate with no workflow: one that could never pass
+      // through the approval chain its tenant had configured. Now a failure
+      // rolls the certificate back with it, and the caller gets the error.
+      const instance = await workflowService.startWorkflow(
+        tenantId,
+        "Certificate",
+        created.id,
+        transaction,
+      );
       await auditCertificate(transaction, created, {
         tenantId,
         userId,
@@ -579,6 +591,7 @@ exports.createCertificate = async (tenantId, userId, inputData, actor = {}) => {
           status: created.status,
           deviceId: created.deviceId,
           calibrationRecordId: created.calibrationRecordId,
+          workflowInstanceId: instance ? instance.id : null,
         },
         ipAddress: actor.ipAddress,
         userAgent: actor.userAgent,
@@ -592,9 +605,6 @@ exports.createCertificate = async (tenantId, userId, inputData, actor = {}) => {
       tenantId,
       userId,
     });
-
-    const workflowService = require("./workflow.service");
-    await workflowService.startWorkflow(tenantId, "Certificate", certificate.id);
 
     return {
       success: true,
@@ -888,6 +898,166 @@ exports.approveCertificate = async (tenantId, certificateId, approvedBy, authOpt
     throw error;
   }
 };
+
+/**
+ * A-182 — why a workflow REJECTION is refused (409), keyed by the statuses that
+ * refuse it. A rejection returns a certificate to `draft` for its author to
+ * rework; that is only meaningful before it is approved. It used to reset the
+ * certificate to `draft` from ANY state — including an approved, signed or
+ * revoked one, silently un-issuing a signed record.
+ */
+const WORKFLOW_REJECTION_REFUSALS = {
+  approved:
+    "its approval is a signed record and a workflow rejection cannot undo it; " +
+    "revoke it with POST /certificates/:id/revoke instead",
+  signed:
+    "a signed certificate is a controlled record and a workflow rejection cannot undo it; " +
+    "revoke it with POST /certificates/:id/revoke instead",
+  revoked: "revocation is final; issue a new certificate instead",
+};
+
+/** A-182 — the certificate a workflow instance decides on was deleted after the workflow started. */
+const WORKFLOW_TARGET_GONE =
+  "The certificate this workflow decides on no longer exists (it was deleted), so it can be " +
+  "neither approved nor rejected. Nothing was recorded.";
+
+/**
+ * A-182 — lock the certificate a workflow decision acts on, INSIDE the
+ * decision's transaction (SELECT ... FOR UPDATE, as runTransition does), and
+ * refuse a decision its current status does not allow: 409 with the state
+ * explanation. Called BEFORE re-authentication, so a refused decision consumes
+ * no one-time MFA code.
+ *
+ * - `approve`: the certificate state machine's own rule (ADR-035) — only a
+ *   `pending_approval` certificate can be approved. The workflow used to set
+ *   APPROVED from any status, a draft included.
+ * - `reject`: only a `draft` or `pending_approval` certificate.
+ *
+ * @param {Object} transaction - the workflow decision's transaction
+ * @param {string} tenantId
+ * @param {string} certificateId - the workflow instance's resourceId
+ * @param {"approve"|"reject"} decision
+ * @returns {Promise<Object>} the locked certificate
+ * @throws {AppError} 409 with the state explanation, or when the certificate is gone
+ */
+exports.lockForWorkflowDecision = async (transaction, tenantId, certificateId, decision) => {
+  const certificate = await lockCertificate(tenantId, certificateId, transaction);
+  if (!certificate) {
+    throw new AppError(409, WORKFLOW_TARGET_GONE);
+  }
+  const refusal =
+    decision === "approve"
+      ? explainRefusedTransition(certificate.status, "approved")
+      : WORKFLOW_REJECTION_REFUSALS[certificate.status] &&
+        `This certificate is "${certificate.status}" and cannot be rejected: ` +
+          `${WORKFLOW_REJECTION_REFUSALS[certificate.status]}.`;
+  if (refusal) {
+    throw new AppError(409, refusal);
+  }
+  return certificate;
+};
+
+/**
+ * A-182 — apply a workflow's FINAL approval to the certificate locked by
+ * lockForWorkflowDecision, exactly as POST /certificates/:id/approve does:
+ * the transition, the approver (the re-authenticated caller — never a body
+ * field, A-62), the Part 11 ESignatureRecord, the audit row and the webhook,
+ * all in the workflow decision's transaction.
+ *
+ * The caller must already have re-authenticated `approverId`
+ * (verifySignatureAuth) inside that transaction.
+ *
+ * The workflow path used to write `approvedById` and `approvedAt`, neither of
+ * which is a Certificate attribute (the column is `approvedBy`), so a
+ * workflow-approved certificate recorded no approver at all (A-200).
+ *
+ * @param {Object} transaction
+ * @param {Object} certificate - locked, status `pending_approval`
+ * @param {Object} params
+ * @param {string} params.tenantId
+ * @param {string} params.approverId - the authenticated caller
+ * @param {Object} params.authOptions - authMethod, authPayload, meaning, ipAddress, userAgent
+ * @param {string} params.workflowInstanceId - recorded in the audit row
+ */
+exports.applyWorkflowApproval = async (
+  transaction,
+  certificate,
+  { tenantId, approverId, authOptions, workflowInstanceId },
+) => {
+  const previousStatus = certificate.status;
+  await certificate.approve({ transaction });
+  certificate.approvedBy = approverId;
+  certificate.issueDate = new Date();
+  await certificate.save({ transaction });
+
+  await logSignature(tenantId, certificate, approverId, "approve", authOptions, transaction);
+
+  await auditCertificate(transaction, certificate, {
+    tenantId,
+    userId: approverId,
+    action: "APPROVE",
+    operation: "APPROVE",
+    before: { status: previousStatus },
+    after: {
+      status: certificate.status,
+      approvedBy: approverId,
+      meaning: authOptions.meaning,
+      workflowInstanceId,
+    },
+    ipAddress: authOptions.ipAddress,
+    userAgent: authOptions.userAgent,
+  });
+  webhookService.emitAfterCommit(transaction, tenantId, WEBHOOK_EVENTS.CERTIFICATE_APPROVED, {
+    certificateId: certificate.id,
+    certificateNumber: certificate.certificateNumber,
+    deviceId: certificate.deviceId,
+    status: certificate.status,
+    approvedBy: approverId,
+  });
+};
+
+/**
+ * A-182 — apply a workflow REJECTION to the certificate locked by
+ * lockForWorkflowDecision: a `pending_approval` certificate returns to
+ * `draft` for rework, with its own audit row in the decision's transaction.
+ * A `draft` is left as it is — nothing about the certificate changes, and
+ * the workflow instance's own audit row records the rejection.
+ *
+ * @param {Object} transaction
+ * @param {Object} certificate - locked, status `draft` or `pending_approval`
+ * @param {Object} params
+ * @param {string} params.tenantId
+ * @param {string} params.userId - the rejecting caller
+ * @param {string} params.workflowInstanceId
+ * @param {string|null} [params.comments]
+ */
+exports.applyWorkflowRejection = async (
+  transaction,
+  certificate,
+  { tenantId, userId, workflowInstanceId, comments },
+) => {
+  if (certificate.status !== "pending_approval") {
+    return;
+  }
+  certificate.status = "draft";
+  await certificate.save({ transaction });
+  await auditCertificate(transaction, certificate, {
+    tenantId,
+    userId,
+    action: "UPDATE",
+    operation: "WORKFLOW_REJECT",
+    before: { status: "pending_approval" },
+    after: { status: "draft", workflowInstanceId, comments: comments || null },
+  });
+};
+
+/**
+ * A-182 — the workflow decision's re-authentication: the same check, and the
+ * same SIGNATURE_AUTH_FAILED row on a wrong credential, as every other
+ * certificate signature (verifySignatureAuth).
+ */
+exports.verifyWorkflowApprovalAuth = (userId, authOptions, context) =>
+  verifySignatureAuth(userId, authOptions, context);
 
 /**
  * Submit a DRAFT certificate for approval (DRAFT -> PENDING_APPROVAL) so it can

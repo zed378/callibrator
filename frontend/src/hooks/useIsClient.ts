@@ -1,13 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 
-export function useIsClient() {
-  const [isClient, setIsClient] = useState(false);
+const subscribe = () => () => {};
 
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
-
-  return isClient;
+/**
+ * True in the browser, false during server rendering and hydration's first
+ * pass. `useSyncExternalStore` with a server snapshot gives exactly that without
+ * a setState in an effect (react-hooks/set-state-in-effect).
+ */
+export function useIsClient(): boolean {
+  return useSyncExternalStore(
+    subscribe,
+    () => true,
+    () => false,
+  );
 }

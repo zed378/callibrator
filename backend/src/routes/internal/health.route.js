@@ -26,7 +26,10 @@ const {
   health,
   readiness,
   readinessDetail,
+  jobStatus,
+  jobMetrics,
 } = require("../../controllers/health.controller");
+const { metricsAuth } = require("../../middlewares/metricsAuth.middleware");
 
 // ======================================================
 // PUBLIC PROBES
@@ -112,5 +115,49 @@ const platformOnly = [auth, denyApiKey, superAdminOnly];
  *         description: One or more required dependencies are unhealthy
  */
 internalHealthRoutes.get("/", ...platformOnly, readinessDetail);
+
+/**
+ * @swagger
+ * /api/v1/health/jobs:
+ *   get:
+ *     summary: Scheduled-job outcomes (super admin only)
+ *     description: >
+ *       The recorded state of every scheduled job — last run, outcome, error,
+ *       consecutive failures, next expected run, overdue flag (P7-02).
+ *       Answers 503 when any job's last run failed or it missed its window.
+ *     tags:
+ *       - Health
+ *     responses:
+ *       '200':
+ *         description: No job failing or overdue
+ *       '401':
+ *         description: Not authenticated
+ *       '403':
+ *         description: Not a super admin, or an API key
+ *       '503':
+ *         description: A job is failing or overdue
+ */
+internalHealthRoutes.get("/jobs", ...platformOnly, jobStatus);
+
+/**
+ * @swagger
+ * /api/v1/health/metrics:
+ *   get:
+ *     summary: Prometheus metrics for scheduled jobs (bearer METRICS_TOKEN)
+ *     description: >
+ *       Text exposition format. Authenticated with `Authorization: Bearer
+ *       <METRICS_TOKEN>`, not a user session. Answers 404 while METRICS_TOKEN
+ *       is unset, so the endpoint does not exist until an operator enables it.
+ *     tags:
+ *       - Health
+ *     responses:
+ *       '200':
+ *         description: Metrics
+ *       '401':
+ *         description: Missing or wrong token
+ *       '404':
+ *         description: METRICS_TOKEN is not configured
+ */
+internalHealthRoutes.get("/metrics", metricsAuth, jobMetrics);
 
 module.exports = { publicHealthRoutes, internalHealthRoutes };

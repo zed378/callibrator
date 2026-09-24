@@ -17,12 +17,17 @@ jest.mock("../../services/content.service", () => ({
   deleteCategory: jest.fn(),
 }));
 
+jest.mock("../../services/contentMedia.service", () => ({
+  recordMediaUpload: jest.fn(),
+}));
+
 jest.mock("../../utils/response.util", () => ({
   success: jest.fn(),
   error: jest.fn(),
 }));
 
 const contentService = require("../../services/content.service");
+const contentMediaService = require("../../services/contentMedia.service");
 const contentController = require("../../controllers/content.controller");
 const { success } = require("../../utils/response.util");
 
@@ -267,6 +272,30 @@ describe("contentController", () => {
 
       expect(contentService.deleteCategory).toHaveBeenCalledWith("cat-1");
       expect(success).toHaveBeenCalled();
+    });
+  });
+
+  describe("uploadMedia (ADR-042 step 3)", () => {
+    it("records the upload with the actor and answers 201 with the public url", async () => {
+      req.file = { filename: "f.png" };
+      req.get = jest.fn().mockReturnValue("jest-agent");
+      contentMediaService.recordMediaUpload.mockResolvedValue({ url: "/uploads/public/cms/f.png" });
+
+      await contentController.uploadMedia(req, res, next);
+
+      expect(contentMediaService.recordMediaUpload).toHaveBeenCalledWith(req.file, {
+        userId: VALID_USER_ID,
+        tenantId: VALID_TENANT_ID,
+        ipAddress: "127.0.0.1",
+        userAgent: "jest-agent",
+      });
+      expect(success).toHaveBeenCalledWith(
+        res,
+        { url: "/uploads/public/cms/f.png" },
+        null,
+        "Media uploaded",
+        201,
+      );
     });
   });
 });

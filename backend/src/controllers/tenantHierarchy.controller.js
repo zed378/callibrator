@@ -13,6 +13,7 @@ const { asyncHandler } = require("../utils/controllerWrapper.util");
 const { AppError, formatErrors } = require("../utils/appError.util");
 const { addChild: addChildValidator } = require("../validators/tenantHierarchy.validator");
 const { logger } = require("../middlewares/activityLog.middleware");
+const { auditActor } = require("../utils/auditActor.util");
 
 /**
  * Create a sub-organization
@@ -24,6 +25,7 @@ exports.createSubOrganization = asyncHandler(async (req, res) => {
   const result = await tenantHierarchyService.createSubOrganization(
     parentTenantId,
     { name },
+    auditActor(req),
   );
 
   return success(res, result, 201, "Sub-organization created");
@@ -185,9 +187,11 @@ exports.addChildTenant = asyncHandler(async (req, res) => {
     throw new AppError(400, formatErrors(error.details) || "Validation failed");
   }
 
+  // A-187: the creation is audited under the acting super admin.
   const result = await tenantHierarchyService.createSubOrganization(
     parentId,
     value,
+    auditActor(req),
   );
 
   // success(res, data, meta, message, statusCode) — passing 201 as the third

@@ -76,6 +76,14 @@ describe("local driver — round trip", () => {
     expect(Buffer.concat(chunks).toString()).toBe("hello world");
   });
 
+  it("ADR-042 step 5: get returns only the inclusive byte range asked for", async () => {
+    await driver.put(KEY, Buffer.from("hello world"));
+    const stream = await driver.get(KEY, { start: 6, end: 10 });
+    const chunks = [];
+    for await (const chunk of stream) chunks.push(chunk);
+    expect(Buffer.concat(chunks).toString()).toBe("world");
+  });
+
   it("stores from a stream", async () => {
     const src = path.join(outside, "src.txt");
     await fsp.writeFile(src, "streamed");

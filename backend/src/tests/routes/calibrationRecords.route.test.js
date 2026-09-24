@@ -56,59 +56,25 @@ describe("Calibration Records Routes", () => {
     expect(routes.length).toBe(1);
   });
 
-  it("should have PUT route for /:calibrationRecordId", () => {
+  // P6-03 — a calibration record is append-only: no PUT, no DELETE.
+  it.each(["put", "patch", "delete"])("has NO %s route on /:calibrationRecordId", (method) => {
     const routes = calibrationRecordsRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-        layer.route.path === "/:calibrationRecordId" &&
-        layer.route.methods &&
-        layer.route.methods.put,
+      (layer) => layer.route && layer.route.path.startsWith("/:calibrationRecordId") && layer.route.methods[method],
     );
-    expect(routes.length).toBe(1);
+    expect(routes).toHaveLength(0);
   });
 
-  it("should have DELETE route for /:calibrationRecordId", () => {
-    const routes = calibrationRecordsRoutes.stack.filter(
-      (layer) =>
-        layer.route &&
-        layer.route.path === "/:calibrationRecordId" &&
-        layer.route.methods &&
-        layer.route.methods.delete,
-    );
-    expect(routes.length).toBe(1);
-  });
-
-  it("should have middleware layers in stack", () => {
-    const routes = calibrationRecordsRoutes.stack.filter(
-      (layer) => layer.route,
-    );
-    expect(routes.length).toBeGreaterThan(0);
-  });
-
-  it("should have router.use() applied before routes", () => {
-    const hasRoutes = calibrationRecordsRoutes.stack.some(
-      (layer) => layer.route,
-    );
-    expect(hasRoutes).toBe(true);
-  });
-
-  it("should have all routes using GET, POST, PUT, or DELETE methods", () => {
-    calibrationRecordsRoutes.stack.forEach((layer) => {
-      if (layer.route) {
-        const methods = layer.route.methods;
-        const hasGet = methods.get === true;
-        const hasPost = methods.post === true;
-        const hasPut = methods.put === true;
-        const hasDelete = methods.delete === true;
-        expect(hasGet || hasPost || hasPut || hasDelete).toBe(true);
-      }
-    });
-  });
-
-  it("should have exactly 5 route endpoints", () => {
-    const routeCount = calibrationRecordsRoutes.stack.filter(
-      (layer) => layer.route,
-    ).length;
-    expect(routeCount).toBe(5);
-  });
+  it.each(["/:calibrationRecordId/corrections", "/:calibrationRecordId/void"])(
+    "has a POST route for %s behind the full middleware chain",
+    (path) => {
+      const routes = calibrationRecordsRoutes.stack.filter(
+        (layer) => layer.route && layer.route.path === path && layer.route.methods.post,
+      );
+      expect(routes).toHaveLength(1);
+      // auth, validateUuid, dynamicAccess("calibration", "write"), denyPlatformAuthoring, controller
+      const names = routes[0].route.stack.map((l) => l.name);
+      expect(names).toHaveLength(5);
+      expect(names[3]).toBe("denyPlatformAuthoring");
+    },
+  );
 });

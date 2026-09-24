@@ -4,6 +4,9 @@
  * setInterval that nothing could configure and that fired only if one process
  * lived a full day.
  */
+jest.mock("../../services/jobMonitor.service", () =>
+  require("../fixtures/jobMonitorMock").create(),
+);
 jest.mock("node-cron", () => ({
   schedule: jest.fn(),
   validate: jest.fn(),
@@ -22,6 +25,7 @@ const path = require("path");
 const cron = require("node-cron");
 const { logger } = require("../../middlewares/activityLog.middleware");
 const { processExpiredGracePeriods } = require("../../services/tenantLifecycle.service");
+const monitor = require("../../services/jobMonitor.service");
 const {
   initTenantLifecycleScheduler,
 } = require("../../middlewares/tenantLifecycleScheduler.middleware");
@@ -112,10 +116,56 @@ describe("tenantLifecycleScheduler middleware", () => {
 
     initTenantLifecycleScheduler();
     const [, callback] = cron.schedule.mock.calls[0];
-    await expect(callback()).resolves.toBeUndefined();
+    // It never rejects; the monitor (P7-02) records the failure and alerts.
+    await expect(callback()).resolves.toEqual({ outcome: "failure", error: "db down" });
 
     expect(logger.error).toHaveBeenCalledWith(
       "Error during scheduled tenant lifecycle run: db down",
+    );
+  });
+
+  it("P7-02: a run in which a tenant failed to offboard is a FAILED run", async () => {
+    cron.validate.mockReturnValue(true);
+    delete process.env[ENV];
+    processExpiredGracePeriods.mockResolvedValue([
+      { tenantId: "t1", action: "offboarded" },
+      { tenantId: "t2", action: "failed" },
+    ]);
+
+    initTenantLifecycleScheduler();
+    const [, callback] = cron.schedule.mock.calls[0];
+    const run = await callback();
+
+    expect(run.outcome).toBe("failure");
+    expect(run.error).toBe("1 tenant(s) failed to offboard");
+    expect(monitor.registerJob).toHaveBeenCalledWith("tenant-lifecycle", undefined, "30 2 * * *");
+  });
+
+  it("P7-02: a clean run succeeds", async () => {
+    cron.validate.mockReturnValue(true);
+    delete process.env[ENV];
+    processExpiredGracePeriods.mockResolvedValue([{ tenantId: "t1", action: "offboarded" }]);
+
+    initTenantLifecycleScheduler();
+    const [, callback] = cron.schedule.mock.calls[0];
+    expect((await callback()).outcome).toBe("success");
+  });
+
+  it("P7-02: disabled is reported, an invalid expression is alerted", () => {
+    process.env[ENV] = "disabled";
+    initTenantLifecycleScheduler();
+    expect(monitor.markDisabled).toHaveBeenCalledWith(
+      "tenant-lifecycle",
+      "disabled via TENANT_LIFECYCLE_SCHEDULER",
+    );
+
+    process.env[ENV] = "bogus";
+    cron.validate.mockReturnValue(false);
+    initTenantLifecycleScheduler();
+    expect(monitor.refuseSchedule).toHaveBeenCalledWith(
+      "tenant-lifecycle",
+      "TENANT_LIFECYCLE_SCHEDULER",
+      "bogus",
     );
   });
 

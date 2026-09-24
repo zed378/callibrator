@@ -79,7 +79,7 @@ Two production defects:
 | `getRisks`, `getRiskById` | risks with no assignee were **invisible** — absent from lists, 404 on get, update and delete |
 | certificate list | returned **zero rows** while rows existed; four includes were INNER JOINs and every draft has null `approvedBy` and `signedBy` |
 
-`maintenance_work_orders` has two nullable actor FKs and is latent.
+`maintenance_work_orders` has two nullable actor FKs; its reads already carry `required: false` on every include, pinned against the generated SQL by `tests/services/maintenance.includes.a190.test.js` (A-190) — not latent.
 
 ## Pagination
 

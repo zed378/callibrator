@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { API_BASE_URL } from "@/constants";
 import { CLIENT_ADDRESS_HEADERS, forwardedClientIp } from "@/lib/clientIp";
+import { FORWARDED_ORIGIN_HEADERS, forwardedOriginHeaders } from "@/lib/forwardedOrigin";
 
 /**
  * A-68/A-69 — the one backend cookie this proxy carries, in both directions.
@@ -45,7 +46,8 @@ async function handleProxy(
       lowercaseKey !== "origin" &&
       lowercaseKey !== "connection" &&
       lowercaseKey !== "cookie" &&
-      !CLIENT_ADDRESS_HEADERS.includes(lowercaseKey)
+      !CLIENT_ADDRESS_HEADERS.includes(lowercaseKey) &&
+      !FORWARDED_ORIGIN_HEADERS.includes(lowercaseKey)
     ) {
       headers.set(key, value);
     }
@@ -56,6 +58,14 @@ async function handleProxy(
   const clientIp = forwardedClientIp(req.headers);
   if (clientIp) {
     headers.set("X-Forwarded-For", clientIp);
+  }
+
+  // A-189: the origin the request arrived on — `Host` is dropped above and
+  // fetch sets the backend's own, so links the backend builds need this.
+  for (const [name, value] of Object.entries(
+    forwardedOriginHeaders(req.headers, req.nextUrl.protocol)
+  )) {
+    headers.set(name, value);
   }
 
   // A-68: the OIDC routes need the browser's sign-in binding (and only those).
@@ -131,11 +141,23 @@ async function handleProxy(
 
     // Check if response contains a rotated token/session in JSON
     const isJson = res.headers.get("content-type")?.includes("application/json");
+    // A-71: what the browser receives. A sign-in answered through this proxy
+    // (POST /auth/mfa/login, /auth/impersonate) carries the access token at
+    // the top-level `token`; it is written to the httpOnly cookie below and
+    // REMOVED from the body — a script (an XSS) must never read it, which is
+    // the point of the httpOnly cookie. The login route does the same (F-62).
+    let browserBody: ArrayBuffer | string = responseData;
     if (isJson && res.ok) {
       try {
         const bodyText = new TextDecoder().decode(responseData);
         const data = JSON.parse(bodyText);
-        
+
+        if (data && typeof data === "object" && ("token" in data || "refreshToken" in data)) {
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { token: _token, refreshToken: _refreshToken, ...withoutTokens } = data;
+          browserBody = JSON.stringify(withoutTokens);
+        }
+
         if (data && (data.token || data.session?.id)) {
           const cookieOptions = {
             httpOnly: true,
@@ -156,7 +178,7 @@ async function handleProxy(
       }
     }
 
-    return new NextResponse(responseData, {
+    return new NextResponse(browserBody, {
       status: res.status,
       headers: responseHeaders,
     });

@@ -4,15 +4,14 @@
 import React from "react";
 import Link from "next/link";
 import { Shield } from "lucide-react";
+import { useClientValue } from "@/hooks/useClientValue";
+
+const currentYear = () => new Date().getFullYear();
 
 export function Footer() {
   // Resolved after mount — reading the current year during render is
   // non-deterministic and not allowed during prerender in Next 16.
-  const [year, setYear] = React.useState<number | null>(null);
-  // Resolve the current year after mount — reading it during render is
-  // disallowed during prerender (Next 16).
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  React.useEffect(() => setYear(new Date().getFullYear()), []);
+  const year = useClientValue<number | null>(currentYear, null);
 
   return (
     <footer className="border-t border-border/60">

@@ -43,6 +43,15 @@ const defineModel = (db, DataTypes) => {
         references: { model: "users", key: "id" },
         onDelete: "CASCADE",
       },
+      // A-160: "saml" or "oidc" for a session opened by single sign-on, NULL
+      // for every other (password, MFA, impersonation, and any session opened
+      // before migration 0052-session-auth-method). The refresh re-issues it as
+      // the access token's `amr` claim, which the tenant MFA policy reads: a
+      // federated session answers to its identity provider's MFA.
+      auth_method: {
+        type: DataTypes.STRING(32),
+        allowNull: true,
+      },
       token_hash: {
         type: DataTypes.STRING(64),
         allowNull: false,

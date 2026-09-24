@@ -10,7 +10,6 @@ const {
   badRequest,
   unauthorized,
   forbidden,
-  paginated,
   login,
   sendResult,
 } = require("../../utils/response.util");
@@ -218,49 +217,6 @@ describe("response utils", () => {
       forbidden(res);
 
       expect(jsonCalls[0].message).toBe("Forbidden");
-    });
-  });
-
-  describe("paginated", () => {
-    it("should send paginated response", () => {
-      res.query = { page: "1", limit: "10" };
-      paginated(res, [{ id: 1 }], 100, "Success", 200);
-
-      expect(res.status).toHaveBeenCalledWith(200);
-      expect(jsonCalls[0].meta).toEqual({
-        total: 100,
-        page: 1,
-        limit: 10,
-        totalPages: 10,
-      });
-    });
-
-    it("should include customCounts", () => {
-      res.query = { page: "1", limit: "10" };
-      paginated(res, [{ id: 1 }], 100, "Success", 200, { active: 50 });
-
-      expect(jsonCalls[0].meta.customCounts).toEqual({ active: 50 });
-    });
-
-    it("should handle default page and limit", () => {
-      res.query = {};
-      paginated(res, [], 0);
-
-      expect(jsonCalls[0].meta.page).toBe(1);
-      expect(jsonCalls[0].meta.limit).toBe(20);
-    });
-
-    it("should handle res.query being missing entirely", () => {
-      const resNoQuery = {
-        status: jest.fn().mockReturnThis(),
-        json: jest.fn().mockImplementation((data) => {
-          jsonCalls.push(data);
-          return { send: jest.fn() };
-        }),
-      };
-      paginated(resNoQuery, [], 0);
-      expect(jsonCalls[jsonCalls.length - 1].meta.page).toBe(1);
-      expect(jsonCalls[jsonCalls.length - 1].meta.limit).toBe(20);
     });
   });
 

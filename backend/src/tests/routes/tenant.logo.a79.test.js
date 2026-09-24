@@ -7,7 +7,7 @@
  *  2. The OLD logo was deleted BEFORE the commit, so a rolled-back edit
  *     (including a failed audit insert) lost the tenant's live logo.
  *  3. Found while fixing: `logo` was accepted from the BODY. A tenant admin
- *     could point their tenant at any filename in uploads/tenant — another
+ *     could point their tenant at any filename in uploads/public/tenant — another
  *     tenant's logo — and the next logo upload then deleted that file as
  *     "the old logo". Only an uploaded file may set the logo now.
  *
@@ -89,7 +89,7 @@ jest.mock("../../utils/upload.util", () => ({
       req.body = { ...req.body, ...mockUpload.fields };
     }
     if (mockUpload.filename) {
-      req.file = { filename: mockUpload.filename, path: `/uploads/tenant/${mockUpload.filename}` };
+      req.file = { filename: mockUpload.filename, path: `/uploads/public/tenant/${mockUpload.filename}` };
       req.uploadFilename = mockUpload.filename;
     }
     next();
@@ -201,7 +201,7 @@ describe("A-79 — a refused edit removes the logo it uploaded", () => {
 
     expect(res.status).toBe(404);
     expect(fx.snapshot(fx.tenantB)).toEqual(before);
-    expect(deleteUpload).toHaveBeenCalledWith(NEW_LOGO, "uploads/tenant");
+    expect(deleteUpload).toHaveBeenCalledWith(NEW_LOGO, "uploads/public/tenant");
     expect(deleteUpload).not.toHaveBeenCalledWith("logo-of-b.png", expect.anything());
   });
 

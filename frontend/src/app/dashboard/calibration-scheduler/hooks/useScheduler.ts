@@ -1,4 +1,5 @@
 // src/app/dashboard/calibration-scheduler/hooks/useScheduler.ts
+import { deferEffect } from "@/lib/deferEffect";
 import { ChangeEvent, useCallback, useEffect, useState } from "react";
 import { useAuthStore } from "@/stores/authStore";
 import { useToastStore } from "@/stores/toastStore";
@@ -42,9 +43,7 @@ export function useScheduler() {
     }
   }, [leadDays, allTenants, isSuperAdmin]);
 
-  useEffect(() => {
-    fetchDue();
-  }, [fetchDue]);
+  useEffect(() => deferEffect(fetchDue), [fetchDue]);
 
   const handleLeadDaysChange = (e: ChangeEvent<HTMLInputElement>) => {
     const parsed = Number(e.target.value);

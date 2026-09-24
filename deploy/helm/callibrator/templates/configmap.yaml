@@ -37,8 +37,14 @@ data:
   DB_DIALECT: {{ .Values.backend.database.dialect | quote }}
   DB_SSL: {{ .Values.backend.database.ssl | quote }}
 
+  # Credential-free by rule (guard 9, S-09): the Redis password is
+  # REDIS_PASSWORD and a credentialed RabbitMQ URL is RABBITMQ_URL, both in the
+  # Secret. When secrets.rabbitmqUrl is set, the Secret's RABBITMQ_URL is the
+  # one the pod sees (envFrom: the Secret is listed after the ConfigMap).
   REDIS_URL: {{ .Values.backend.redis.url | quote }}
+  {{- if not .Values.secrets.rabbitmqUrl }}
   RABBITMQ_URL: {{ .Values.backend.rabbitmq.url | quote }}
+  {{- end }}
 
   # ------------------------------------------------------------------------
   # Object storage
@@ -104,11 +110,47 @@ data:
   # Present only when cron.enabled. They run ONCE PER REPLICA, which is why the
   # chart refuses to render cron.enabled with replicaCount > 1.
   # ------------------------------------------------------------------------
+  #
+  # Every singleton job also claims its scheduled minute in Redis before it
+  # runs (S-33, services/jobMonitor.service.js), so a second replica skips it
+  # — but that claim is skipped when Redis is down, so the replica guard stays.
+  # Each run is recorded and a failure alerts (P7-02): see `alerts` below.
+  # ------------------------------------------------------------------------
   {{- if .Values.backend.cron.enabled }}
   SESSION_CLEANUP_SCHEDULER: {{ .Values.backend.cron.sessionCleanup | quote }}
   BACKUP_SCHEDULER: {{ .Values.backend.cron.backup | quote }}
   RETENTION_SCHEDULER: {{ .Values.backend.cron.retention | quote }}
+  {{- with .Values.backend.cron.calibration }}
+  CALIBRATION_SCHEDULER: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.backend.cron.tenantLifecycle }}
+  TENANT_LIFECYCLE_SCHEDULER: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.backend.cron.quarantineSweep }}
+  QUARANTINE_SWEEP_SCHEDULER: {{ . | quote }}
+  {{- end }}
   {{- else }}
   # Explicitly disabled: this replica is an API pod, not the scheduler.
+  # EVERY scheduler, not only retention: before 2026-09-24 only
+  # RETENTION_SCHEDULER was set here, so session cleanup, the tenant backup,
+  # the calibration sweep and tenant offboarding still ran on every API pod
+  # at their defaults (S-40). The webhook dispatcher is the exception — its
+  # claim is FOR UPDATE SKIP LOCKED, safe on every replica (ADR-054).
+  SESSION_CLEANUP_SCHEDULER: "disabled"
+  BACKUP_SCHEDULER: "disabled"
   RETENTION_SCHEDULER: "disabled"
+  CALIBRATION_SCHEDULER: "disabled"
+  TENANT_LIFECYCLE_SCHEDULER: "disabled"
+  QUARANTINE_SWEEP_SCHEDULER: "disabled"
+  # The watchdog alerts on the scheduler pod; one per release is enough.
+  JOB_WATCHDOG_SCHEDULER: "disabled"
+  {{- end }}
+
+  # ------------------------------------------------------------------------
+  # Alerting (P7-02). The log line (level error, field alert.key) is always
+  # written; these add a push channel. ALERT_WEBHOOK_URL is in the Secret when
+  # set (secrets.alertWebhookUrl) — a Slack/Teams webhook URL is a credential.
+  # ------------------------------------------------------------------------
+  {{- with .Values.alerts.emailTo }}
+  ALERT_EMAIL_TO: {{ . | quote }}
   {{- end }}

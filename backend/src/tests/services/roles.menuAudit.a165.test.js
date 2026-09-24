@@ -33,6 +33,8 @@ jest.mock("../../models", () => ({
       return { id: "menu-new", ...values };
     },
     findByPk: async () => mockRef.menu,
+    // A-181: deleteMenu refuses a menu with children; these menus have none.
+    count: async () => 0,
   },
   RoleMenuPermission: {
     destroy: async ({ where, transaction }) => {

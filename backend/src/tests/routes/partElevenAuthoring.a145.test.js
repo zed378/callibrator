@@ -44,6 +44,9 @@ jest.mock("../../middlewares/auth.middleware", () => {
 });
 jest.mock("../../middlewares/dynamicAccess.middleware", () => ({
   dynamicAccess: () => (req, res, next) => next(),
+  // A-183 — the per-record-type check submitAction makes (not under test here;
+  // workflows.decision.a182a183.test.js covers it).
+  principalHasMenuPermission: async () => true,
 }));
 
 /** A row as a Sequelize instance would present it: save/update write to the ledger. */

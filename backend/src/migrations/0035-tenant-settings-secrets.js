@@ -137,7 +137,7 @@ async function encryptPlaintextSecrets(sequelize) {
   await sequelize.transaction(async (transaction) => {
     const rows = await sequelize.query(
       `SELECT id, tenant_id, key, value FROM tenant_settings
-        WHERE value IS NOT NULL AND value <> '' AND value NOT LIKE 'v1:%'`,
+        WHERE value IS NOT NULL AND value <> '' AND value NOT LIKE 'v1:%' AND value NOT LIKE 'v2:%'`,
       { type: QueryTypes.SELECT, transaction },
     );
     const failed = [];
@@ -189,7 +189,7 @@ async function verify(sequelize, tables) {
   if (tables.has("tenant_settings")) {
     const rows = await sequelize.query(
       `SELECT key FROM tenant_settings
-        WHERE value IS NOT NULL AND value <> '' AND value NOT LIKE 'v1:%'`,
+        WHERE value IS NOT NULL AND value <> '' AND value NOT LIKE 'v1:%' AND value NOT LIKE 'v2:%'`,
       { type: QueryTypes.SELECT },
     );
     const left = rows.filter((r) => isSecretSettingKey(r.key));

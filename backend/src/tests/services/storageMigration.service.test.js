@@ -121,11 +121,40 @@ describe("migrateAttachment", () => {
     expect(row.save).not.toHaveBeenCalled();
   });
 
-  it("still migrates a row that has no recorded checksum (unverified)", async () => {
+  it("A-40: a row with no recorded checksum is verified against the source file, not reported unverified", async () => {
     const row = makeRow({ checksum: null });
     const result = await service.migrateAttachment(row);
-    expect(result).toMatchObject({ status: "migrated", verified: false });
+    expect(result).toMatchObject({
+      status: "migrated",
+      verified: true,
+      verifiedAgainst: "source-file",
+    });
     expect(row.storageKey).toBeTruthy();
+  });
+
+  it("A-40: a row with no recorded checksum whose copy differs from the source is FAILED and rolled back", async () => {
+    // Before A-40 this row was committed and reported `migrated`.
+    scoped.get.mockResolvedValue(Readable.from([Buffer.from("corrupted")]));
+    const row = makeRow({ checksum: null });
+    await expect(service.migrateAttachment(row)).rejects.toThrow("Checksum mismatch");
+    expect(scoped.delete).toHaveBeenCalled();
+    expect(row.storageKey).toBeNull();
+    expect(row.save).not.toHaveBeenCalled();
+  });
+
+  it("A-40: a source that no longer matches its recorded checksum is refused before copying", async () => {
+    fs.createReadStream.mockImplementationOnce(() => Readable.from([Buffer.from("tampered")]));
+    const row = makeRow();
+    await expect(service.migrateAttachment(row)).rejects.toThrow(
+      "does not match its recorded checksum",
+    );
+    expect(scoped.put).not.toHaveBeenCalled();
+    expect(row.save).not.toHaveBeenCalled();
+  });
+
+  it("reports what a recorded-checksum copy was verified against", async () => {
+    const result = await service.migrateAttachment(makeRow());
+    expect(result.verifiedAgainst).toBe("recorded-checksum");
   });
 
   it("defaults the content type when the row has none", async () => {

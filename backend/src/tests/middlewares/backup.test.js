@@ -23,6 +23,9 @@ const mockBackupDir = path.join(mockRoot, "backup", "tenant-backups");
 const mockTable = [];
 let mockSeq = 0;
 
+jest.mock("../../services/jobMonitor.service", () =>
+  require("../fixtures/jobMonitorMock").create(),
+);
 jest.mock("node-cron", () => ({
   schedule: jest.fn(),
   validate: jest.requireActual("node-cron").validate,
@@ -262,5 +265,37 @@ describe("cronBackup — the schedule", () => {
     await expect(tick()).resolves.toBeUndefined();
     expect(stderr).toHaveBeenCalledWith(expect.stringContaining("crashed: boom"));
     jest.dontMock("../../services/scheduledBackup.service");
+  });
+
+  describe("P7-02 job monitoring", () => {
+    const monitor = require("../../services/jobMonitor.service");
+    const { failureOf } = require("../../middlewares/backup.middleware");
+
+    it("a run with ok:false is a FAILED run, and says why", () => {
+      expect(failureOf({ ok: true })).toBeNull();
+      expect(failureOf({ ok: false, error: "db down" })).toBe("db down");
+      expect(failureOf({ ok: false, error: null, failed: [{}], prune: null })).toBe(
+        "1 tenant backup(s) failed, 0 prune error(s), 0 prune refusal(s)",
+      );
+      expect(
+        failureOf({ ok: false, error: null, failed: [], prune: { errors: [{}, {}], refused: [{}] } }),
+      ).toBe("0 tenant backup(s) failed, 2 prune error(s), 1 prune refusal(s)");
+    });
+
+    it("registers the job, and reports disabled / refuses an invalid expression", () => {
+      delete process.env.BACKUP_SCHEDULER;
+      cronBackup();
+      expect(monitor.registerJob).toHaveBeenCalledWith("scheduled-backup", undefined, "0 0 * * *");
+      expect(monitor.runMonitored).not.toHaveBeenCalled();
+
+      process.env.BACKUP_SCHEDULER = "off";
+      cronBackup();
+      expect(monitor.markDisabled).toHaveBeenCalledWith("scheduled-backup", "disabled via BACKUP_SCHEDULER");
+
+      process.env.BACKUP_SCHEDULER = "bad";
+      jest.spyOn(process.stderr, "write").mockImplementation(() => true);
+      cronBackup();
+      expect(monitor.refuseSchedule).toHaveBeenCalledWith("scheduled-backup", "BACKUP_SCHEDULER", "bad");
+    });
   });
 });

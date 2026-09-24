@@ -1,12 +1,12 @@
 import React from "react";
-import { Warehouse } from "@/types";
+import { PaginatedResponse, Warehouse } from "@/types";
 import { Card, CardContent, Table, Pagination, Badge, Button, TableSkeleton } from "@/components/ui";
 import { Warehouse as WarehouseIcon, MapPin, Edit, Trash2, Eye } from "lucide-react";
 
 interface WarehouseTableProps {
   warehouseList: Warehouse[];
   isLoading: boolean;
-  meta: any;
+  meta: PaginatedResponse<Warehouse>["meta"];
   hasWriteAccess: boolean;
   pageSize: number;
   setCurrentPage: (page: number) => void;

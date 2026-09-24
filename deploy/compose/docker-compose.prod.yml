@@ -46,7 +46,10 @@ services:
     deploy:
       resources:
         limits:
-          # Chromium (certificate PDFs) is memory-hungry and bursty.
+          # Chromium (certificate PDFs) is memory-hungry and bursty — and
+          # CPU-hungry: without a CPU limit one runaway render can starve the
+          # host (S-19).
+          cpus: "2.0"
           memory: 4G
         reservations:
           memory: 1G
@@ -63,6 +66,7 @@ services:
     deploy:
       resources:
         limits:
+          cpus: "1.0"
           memory: 1G
 
   postgres:
@@ -75,6 +79,7 @@ services:
     deploy:
       resources:
         limits:
+          cpus: "2.0"
           memory: 8G
         reservations:
           memory: 2G
@@ -83,10 +88,15 @@ services:
     # Persistence matters here beyond caching: losing ./volumes/redis discards
     # in-flight worker idempotency claims and reopens the duplicate window.
     restart: always
-    command: ["redis-server", "--appendonly", "yes"]
+    # AOF persistence through the base file's command, which also applies
+    # --requirepass when REDIS_PASSWORD is set (S-09). Overriding `command`
+    # here, as this file used to, would silently drop the password.
+    environment:
+      REDIS_APPENDONLY: "yes"
     deploy:
       resources:
         limits:
+          cpus: "0.5"
           memory: 1G
 
   rabbitmq:
@@ -94,6 +104,7 @@ services:
     deploy:
       resources:
         limits:
+          cpus: "1.0"
           memory: 2G
 
   clamav:
@@ -101,6 +112,7 @@ services:
     deploy:
       resources:
         limits:
+          cpus: "1.0"
           memory: 2G
 
   nginx:
@@ -111,3 +123,8 @@ services:
     logging:
       driver: json-file
       options: { max-size: "50m", max-file: "5" }
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M

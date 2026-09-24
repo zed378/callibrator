@@ -51,7 +51,7 @@ describe("authStore", () => {
         firstName: "Test",
         lastName: "User",
         email: "test@example.com",
-        picture: "http://localhost:5000/uploads/profile/avatar.jpg",
+        picture: "http://localhost:5000/uploads/public/profile/avatar.jpg",
         createdAt: "2024-01-01T00:00:00Z",
         role: null,
         roleId: null,
@@ -65,7 +65,7 @@ describe("authStore", () => {
       expect(useAuthStore.getState().isAuthenticated).toBe(true);
       expect(useAuthStore.getState().user).toEqual(mockUser);
       expect(useAuthStore.getState().avatarUrl).toBe(
-        "http://localhost:5000/uploads/profile/avatar.jpg",
+        "http://localhost:5000/uploads/public/profile/avatar.jpg",
       );
       expect(useAuthStore.getState().isLoading).toBe(false);
     });
@@ -98,7 +98,7 @@ describe("authStore", () => {
           firstName: "Test",
           lastName: "User",
           email: "test@example.com",
-          picture: "http://localhost:5000/uploads/profile/avatar.jpg",
+          picture: "http://localhost:5000/uploads/public/profile/avatar.jpg",
           createdAt: "2024-01-01T00:00:00Z",
           role: null,
           roleId: null,
@@ -117,7 +117,7 @@ describe("authStore", () => {
       expect(useAuthStore.getState().isAuthenticated).toBe(true);
       expect(useAuthStore.getState().user).toEqual(mockResponse.data);
       expect(useAuthStore.getState().avatarUrl).toBe(
-        "http://localhost:5000/uploads/profile/avatar.jpg",
+        "http://localhost:5000/uploads/public/profile/avatar.jpg",
       );
       expect(useAuthStore.getState().isLoading).toBe(false);
       expect(useAuthStore.getState().error).toBeNull();
@@ -147,10 +147,10 @@ describe("authStore", () => {
           firstName: "Test",
           lastName: "User",
           email: "test@example.com",
-          picture: "http://localhost:5000/uploads/profile/avatar.jpg",
+          picture: "http://localhost:5000/uploads/public/profile/avatar.jpg",
           createdAt: "2024-01-01T00:00:00Z",
         },
-        avatarUrl: "http://localhost:5000/uploads/profile/avatar.jpg",
+        avatarUrl: "http://localhost:5000/uploads/public/profile/avatar.jpg",
         isAuthenticated: true,
       });
 
@@ -171,10 +171,10 @@ describe("authStore", () => {
           firstName: "Test",
           lastName: "User",
           email: "test@example.com",
-          picture: "http://localhost:5000/uploads/profile/avatar.jpg",
+          picture: "http://localhost:5000/uploads/public/profile/avatar.jpg",
           createdAt: "2024-01-01T00:00:00Z",
         },
-        avatarUrl: "http://localhost:5000/uploads/profile/avatar.jpg",
+        avatarUrl: "http://localhost:5000/uploads/public/profile/avatar.jpg",
         isAuthenticated: true,
       });
 
@@ -198,7 +198,7 @@ describe("authStore", () => {
         firstName: "Test",
         lastName: "User",
         email: "test@example.com",
-        picture: "http://localhost:5000/uploads/profile/avatar.jpg",
+        picture: "http://localhost:5000/uploads/public/profile/avatar.jpg",
         createdAt: "2024-01-01T00:00:00Z",
         role: null,
         roleId: null,
@@ -211,7 +211,7 @@ describe("authStore", () => {
       expect(useAuthStore.getState().isAuthenticated).toBe(true);
       expect(useAuthStore.getState().user).toEqual(mockUser);
       expect(useAuthStore.getState().avatarUrl).toBe(
-        "http://localhost:5000/uploads/profile/avatar.jpg",
+        "http://localhost:5000/uploads/public/profile/avatar.jpg",
       );
     });
 
@@ -223,10 +223,10 @@ describe("authStore", () => {
           firstName: "Test",
           lastName: "User",
           email: "test@example.com",
-          picture: "http://localhost:5000/uploads/profile/avatar.jpg",
+          picture: "http://localhost:5000/uploads/public/profile/avatar.jpg",
           createdAt: "2024-01-01T00:00:00Z",
         },
-        avatarUrl: "http://localhost:5000/uploads/profile/avatar.jpg",
+        avatarUrl: "http://localhost:5000/uploads/public/profile/avatar.jpg",
         isAuthenticated: true,
       });
 
@@ -263,7 +263,7 @@ describe("authStore", () => {
           firstName: "Test",
           lastName: "User",
           email: "test@example.com",
-          picture: "http://localhost:5000/uploads/profile/custom-avatar.png",
+          picture: "http://localhost:5000/uploads/public/profile/custom-avatar.png",
           createdAt: "2024-01-01T00:00:00Z",
         },
         token: "test-token",
@@ -278,7 +278,7 @@ describe("authStore", () => {
       await useAuthStore.getState().login("testuser", "password123");
 
       expect(useAuthStore.getState().avatarUrl).toBe(
-        "http://localhost:5000/uploads/profile/custom-avatar.png",
+        "http://localhost:5000/uploads/public/profile/custom-avatar.png",
       );
     });
 

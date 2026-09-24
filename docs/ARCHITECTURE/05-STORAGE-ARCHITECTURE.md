@@ -98,7 +98,7 @@ Three static mounts in `backend/index.js`, each for a different reason:
 | Mount | Source | Notes |
 |---|---|---|
 | `/.well-known` | `storagePath(".well-known")` | ACME HTTP-01 challenges, written at runtime |
-| `/uploads` | `storagePath("uploads")` | `X-Content-Type-Options: nosniff` and `Content-Disposition: inline` on every response |
+| `/uploads/public` | `storagePath("uploads", "public")` | **only the public class** (avatars, logos, CMS images) — images only with a pinned `Content-Type`, `nosniff`, `Content-Disposition: inline`, `Content-Security-Policy: default-src 'none'; sandbox`; SVG refused. Until 2026-09-24 this was `/uploads` over the whole tree, certificates and attachments included, unauthenticated (S-01, ADR-057; see [`../STORAGE/04-TENANT-STORAGE.md`](../STORAGE/04-TENANT-STORAGE.md)) |
 | `/public` | `appPath("public")` | packaged static assets |
 
 `storagePath()` versus `appPath()` matters in a compiled binary:

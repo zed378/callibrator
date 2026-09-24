@@ -1,6 +1,7 @@
 // src/app/dashboard/scim/page.tsx
 "use client";
 
+import { deferEffect } from "@/lib/deferEffect";
 import React, { useCallback, useEffect, useState } from "react";
 import DashboardLayout from "@/components/layouts/DashboardLayout";
 import {
@@ -77,9 +78,7 @@ export default function ScimPage() {
     }
   }, [tab, startIndex, appliedFilter]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useEffect(() => deferEffect(load), [load]);
 
   const switchTab = (next: Tab) => {
     setTab(next);

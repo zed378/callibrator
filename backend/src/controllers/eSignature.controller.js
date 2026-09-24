@@ -277,25 +277,6 @@ exports.cancelWorkflow = asyncHandler(async (req, res) => {
 });
 
 /**
- * Revoke a signature
- */
-exports.revokeSignature = asyncHandler(async (req, res) => {
-  const { signatureId } = req.params;
-  // req.user exposes `id`, not `userId`.
-  const { id: userId, tenantId } = req.user;
-  const { reason } = req.body || {};
-
-  await eSignatureService.revokeSignature(
-    signatureId,
-    userId,
-    tenantId,
-    reason,
-  );
-
-  return success(res, null, "Signature revoked");
-});
-
-/**
  * Get service status
  */
 exports.getStatus = asyncHandler(async (req, res) => {

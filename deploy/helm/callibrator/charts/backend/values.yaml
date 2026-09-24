@@ -60,10 +60,29 @@ resources:
     memory: 4Gi
 
 persistence:
-  # Only meaningful with STORAGE_DRIVER=local, which is single-replica only.
-  enabled: false
+  # /app/uploads (attachments, quarantine) — local disk even with an s3
+  # storage driver, because the attachment path does not use the storage
+  # module — and, with storage.driver=local, /app/storage (S-18). ON by
+  # default: off, every upload is lost on the next rollout.
+  enabled: true
   size: 20Gi
+  # Size of the /app/storage claim; defaults to `size`.
+  objectsSize: ""
   storageClass: ""
+
+# /app/backup — tenant backup ZIPs (S-18). The umbrella refuses to render
+# cron.enabled without it: the scheduled backup would write to the container
+# layer and be lost on the next rollout.
+backupPersistence:
+  enabled: true
+  size: 50Gi
+  storageClass: ""
+
+# Read from the umbrella's backend.storage (the subchart sees backend.* as its
+# own values); only `driver` is used here, to decide whether /app/storage
+# needs a claim.
+storage:
+  driver: local
 
 # Set by the umbrella chart to force a rollout when the ConfigMap changes.
 configChecksum: ""

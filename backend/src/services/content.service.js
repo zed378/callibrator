@@ -82,17 +82,18 @@ const CATEGORY_INCLUDE = {
   as: "categories",
   through: { attributes: [] },
   attributes: ["id", "name", "slug"],
+  // D-12: explicit, like every include of a defaultScoped model; each call
+  // site below still states its own (a category filter makes it INNER).
+  required: false,
 };
 
 const transformPost = (post) => (post && post.toJSON ? post.toJSON() : post || null);
 
-const findPostWithCategories = (id, publicOnly = false) =>
+// A-32/A-18: a `publicOnly` second parameter was never passed by any of the
+// three call sites, and its arm (a no-op `exclude: []`) was hidden from coverage.
+const findPostWithCategories = (id) =>
   Post.findByPk(id, {
     include: [{ ...CATEGORY_INCLUDE, required: false }],
-    // All three call sites invoke findPostWithCategories(id) without the second
-    // argument, so publicOnly is always the false default and the truthy arm
-    // (itself a no-op `exclude: []`) is unreachable.
-    ...(/* istanbul ignore next */ publicOnly ? { attributes: { exclude: [] } } : {}),
   });
 
 const paginate = (page, limit) => {

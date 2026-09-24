@@ -176,7 +176,7 @@ describe("tenant.service - branch & error coverage", () => {
 
       expect(result.data.rows[0].userCount).toBe(7);
       expect(result.data.rows[1].userCount).toBe(0);
-      expect(result.data.rows[0].logoBaseUrl).toContain("/uploads/tenant/a.png");
+      expect(result.data.rows[0].logoBaseUrl).toContain("/uploads/public/tenant/a.png");
       expect(result.data.rows[1].logoBaseUrl).toBeNull();
     });
 
@@ -293,7 +293,7 @@ describe("tenant.service - branch & error coverage", () => {
         id: "t-raw",
         name: "Raw",
         logo: "raw.png",
-        logoBaseUrl: expect.stringContaining("/uploads/tenant/raw.png"),
+        logoBaseUrl: expect.stringContaining("/uploads/public/tenant/raw.png"),
         userCount: 0,
       });
     });
@@ -334,7 +334,7 @@ describe("tenant.service - branch & error coverage", () => {
         expect.objectContaining({ id: "t-1" }),
         600,
       );
-      expect(result.data.logoBaseUrl).toContain("/uploads/tenant/logo.png");
+      expect(result.data.logoBaseUrl).toContain("/uploads/public/tenant/logo.png");
     });
 
     it("should not write to the cache when the tenant is missing", async () => {
@@ -387,7 +387,7 @@ describe("tenant.service - branch & error coverage", () => {
         name: "Acme",
         code: "ACM",
         primaryColor: "#ff0000",
-        logoBaseUrl: expect.stringContaining("/uploads/tenant/brand.png"),
+        logoBaseUrl: expect.stringContaining("/uploads/public/tenant/brand.png"),
       });
       expect(set).toHaveBeenCalledWith("tenant:branding:t-1", result, 300);
     });
@@ -641,7 +641,7 @@ describe("tenant.service - branch & error coverage", () => {
         const result = await freshService.getPublicBranding("t-1");
 
         expect(result.logoBaseUrl).toBe(
-          "http://localhost:5000/uploads/tenant/x.png",
+          "http://localhost:5000/uploads/public/tenant/x.png",
         );
       } finally {
         if (original === undefined) {
@@ -720,7 +720,7 @@ describe("tenant.service - branch & error coverage", () => {
 
       await updateAsSuperAdmin("t-1", { logo: "new-logo.png" });
 
-      expect(deleteUpload).toHaveBeenCalledWith("old-logo.png", "uploads/tenant");
+      expect(deleteUpload).toHaveBeenCalledWith("old-logo.png", "uploads/public/tenant");
       expect(tenant.update.mock.calls[0][0].logo).toBe("new-logo.png");
     });
 
@@ -1159,7 +1159,7 @@ describe("tenant.service - branch & error coverage", () => {
 
       await tenantService.deleteTenant("t-1", "admin");
 
-      expect(deleteUpload).toHaveBeenCalledWith("logo.png", "uploads/tenant");
+      expect(deleteUpload).toHaveBeenCalledWith("logo.png", "uploads/public/tenant");
       expect(tenant.destroy).toHaveBeenCalled();
     });
 

@@ -1,6 +1,7 @@
 // src/app/dashboard/finance/page.tsx
 "use client";
 
+import { deferEffect } from "@/lib/deferEffect";
 import React, { useCallback, useEffect, useState } from "react";
 import DashboardLayout from "@/components/layouts/DashboardLayout";
 import {
@@ -94,9 +95,7 @@ export default function FinancePage() {
     }
   }, [page, methodFilter, asOf]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useEffect(() => deferEffect(load), [load]);
 
   const create = async () => {
     const price = Number(form.purchasePrice);

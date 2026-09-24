@@ -1,6 +1,14 @@
 const cron = require("node-cron");
 const { logger } = require("./activityLog.middleware");
 const { dispatchDue } = require("../services/webhook.service");
+const {
+  runMonitored,
+  registerJob,
+  markDisabled,
+  refuseSchedule,
+} = require("../services/jobMonitor.service");
+
+const JOB = "webhook-dispatch";
 
 // Every 15 seconds (node-cron's optional seconds field). Each tick claims at
 // most WEBHOOK_DISPATCH_BATCH due deliveries; the first attempt of a new event
@@ -23,16 +31,23 @@ const runDispatch = async () => {
   }
   running = true;
   try {
-    const summary = await dispatchDue();
-    if (summary.claimed > 0) {
-      logger.info(
-        `Webhook dispatch: claimed=${summary.claimed}, errors=${summary.errors}`,
-      );
-    }
-    return summary;
-  } catch (error) {
-    logger.error(`Webhook dispatch failed: ${error.message}`);
-    return null;
+    // A pass that throws is a failed run (recorded, alerted once per streak);
+    // deliveries a receiver refused are the dispatcher WORKING, not failing.
+    const run = await runMonitored(JOB, async () => {
+      try {
+        const summary = await dispatchDue();
+        if (summary.claimed > 0) {
+          logger.info(
+            `Webhook dispatch: claimed=${summary.claimed}, errors=${summary.errors}`,
+          );
+        }
+        return summary;
+      } catch (error) {
+        logger.error(`Webhook dispatch failed: ${error.message}`);
+        throw error;
+      }
+    });
+    return run.outcome === "success" ? run.result : null;
   } finally {
     running = false;
   }
@@ -53,6 +68,7 @@ const initWebhookDeliveryScheduler = () => {
     logger.warn(
       "Webhook dispatcher disabled via WEBHOOK_DISPATCH_SCHEDULER: failed deliveries will not be retried",
     );
+    markDisabled(JOB, "disabled via WEBHOOK_DISPATCH_SCHEDULER");
     return;
   }
 
@@ -60,12 +76,13 @@ const initWebhookDeliveryScheduler = () => {
     logger.error(
       `Invalid WEBHOOK_DISPATCH_SCHEDULER cron expression "${schedule}"; webhook dispatcher not started`,
     );
+    refuseSchedule(JOB, "WEBHOOK_DISPATCH_SCHEDULER", schedule);
     return;
   }
 
   logger.info(`Webhook dispatcher scheduled with: ${schedule}`);
   runDispatch();
-  cron.schedule(schedule, runDispatch);
+  registerJob(JOB, cron.schedule(schedule, runDispatch), schedule);
 };
 
 module.exports = { initWebhookDeliveryScheduler, runDispatch };

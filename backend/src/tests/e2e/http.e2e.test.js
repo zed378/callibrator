@@ -18,6 +18,12 @@ const {
   httpGet,
 } = require("./setup");
 
+// A-185: failed sign-ins are throttled per identifier and address (five per
+// fifteen minutes, an unknown identifier exactly like a real one). A fixed
+// address here would be paused by a second run inside that window; each run
+// uses its own.
+const UNKNOWN_EMAIL = `nobody-${Date.now()}@e2e.invalid`;
+
 describe("E2E HTTP Protocol & Error Handling (HTTP)", () => {
   // ─── 1. CONTENT TYPES ──────────────────────────────────────
 
@@ -51,7 +57,7 @@ describe("E2E HTTP Protocol & Error Handling (HTTP)", () => {
 
   test("Auth error returns { status, message }", async () => {
     const { status, body } = await httpPost("/auth/login", {
-      email: "x@y.com",
+      email: UNKNOWN_EMAIL,
       password: "wrong",
     });
     expect(status).toBe(401);
@@ -99,7 +105,7 @@ describe("E2E HTTP Protocol & Error Handling (HTTP)", () => {
   test("POST /auth/login — responds within 5 seconds", async () => {
     const start = Date.now();
     const { status, elapsed } = await httpPost("/auth/login", {
-      email: "x@y.com",
+      email: UNKNOWN_EMAIL,
       password: "wrong",
     });
 
@@ -161,7 +167,7 @@ describe("E2E HTTP Protocol & Error Handling (HTTP)", () => {
 
   test("POST /auth/login includes rate limit headers", async () => {
     const { headers } = await httpPost("/auth/login", {
-      email: "x@y.com",
+      email: UNKNOWN_EMAIL,
       password: "wrong",
     });
 

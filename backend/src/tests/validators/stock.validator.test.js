@@ -114,12 +114,33 @@ describe("Stock Validators", () => {
   });
 
   describe("createAdjustmentSchema", () => {
-    it("should validate a valid adjustment", () => {
-      const { error } = validate(
-        { stockId: UUID, type: "addition", quantity: 5 },
+    it("should validate a valid adjustment, with its reason trimmed", () => {
+      const { error, value } = validate(
+        { stockId: UUID, type: "addition", quantity: 5, reason: "  found in audit  " },
         createAdjustmentSchema,
       );
       expect(error).toBeUndefined();
+      expect(value.reason).toBe("found in audit");
+    });
+
+    // P6-09 — a reason is required, and the abuse case: one that accepts an
+    // empty string is not a reason.
+    it.each([
+      ["missing", {}],
+      ["null", { reason: null }],
+      ["empty", { reason: "" }],
+      ["whitespace", { reason: "     " }],
+      ["too short", { reason: "ok" }],
+      ["too long", { reason: "x".repeat(256) }],
+    ])("P6-09: refuses a %s reason", (_label, extra) => {
+      const { error } = validate({ stockId: UUID, type: "addition", quantity: 5, ...extra }, createAdjustmentSchema);
+      expect(error).toBeDefined();
+      expect(error.details.map((d) => d.path.join("."))).toContain("reason");
+    });
+
+    it("P6-09: a request with no body at all is refused, naming the reason (A-09)", () => {
+      const { error } = validate(undefined, createAdjustmentSchema);
+      expect(error.details.map((d) => d.path.join("."))).toContain("reason");
     });
 
     it("should reject an invalid type", () => {

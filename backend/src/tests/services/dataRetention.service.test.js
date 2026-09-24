@@ -394,7 +394,7 @@ describe("dataRetention.service", () => {
       TenantSettings.findOne.mockResolvedValue(null);
       User.findAll.mockResolvedValue([
         { id: "u1", avatarUrl: "u1-photo.png" },
-        { id: "u2", avatarUrl: "http://host/uploads/profile/u2-photo.jpg" },
+        { id: "u2", avatarUrl: "http://host/uploads/public/profile/u2-photo.jpg" },
         { id: "u3", avatarUrl: "default.svg" },
         { id: "u4", avatarUrl: null },
       ]);
@@ -409,7 +409,7 @@ describe("dataRetention.service", () => {
       });
       // The shared "no photo" placeholder and a null avatar are never deleted.
       expect(order).toEqual(["commit", "delete u1-photo.png", "delete u2-photo.jpg"]);
-      expect(deleteUpload).toHaveBeenCalledWith("u1-photo.png", "uploads/profile");
+      expect(deleteUpload).toHaveBeenCalledWith("u1-photo.png", "uploads/public/profile");
     });
 
     it("A-180: a photo file that cannot be deleted is logged; the masking stands", async () => {

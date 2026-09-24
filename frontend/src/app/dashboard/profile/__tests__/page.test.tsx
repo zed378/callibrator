@@ -190,10 +190,10 @@ const createMockState = () => ({
     firstName: "Test",
     lastName: "User",
     email: "test@example.com",
-    picture: "http://localhost:5000/uploads/profile/avatar.jpg",
+    picture: "http://localhost:5000/uploads/public/profile/avatar.jpg",
     createdAt: "2024-01-01T00:00:00Z",
   },
-  avatarUrl: "http://localhost:5000/uploads/profile/avatar.jpg",
+  avatarUrl: "http://localhost:5000/uploads/public/profile/avatar.jpg",
   isAuthenticated: true,
   isLoading: false,
   error: null,
@@ -227,7 +227,7 @@ const mockUser = {
   firstName: "Test",
   lastName: "User",
   email: "test@example.com",
-  picture: "http://localhost:5000/uploads/profile/avatar.jpg",
+  picture: "http://localhost:5000/uploads/public/profile/avatar.jpg",
   createdAt: "2024-01-01T00:00:00Z",
 };
 

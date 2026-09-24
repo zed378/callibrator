@@ -161,7 +161,8 @@ describe("certificatePdf.service", () => {
       const result = await generateCertificatePdf("t-1", "c-1");
 
       expect(result.success).toBe(true);
-      expect(result.data.filePath).toContain("/uploads/certificates/");
+      // ADR-042 step 4: a storage locator, not a URL under the old static mount.
+      expect(result.data.filePath).toMatch(/^certificates\//);
       expect(result.data.integrityHash).toBe("mock-hash-abc123");
       expect(result.data.signature).toBe("mock-signature-xyz789");
       expect(qrCode.toDataURL).toHaveBeenCalled();
@@ -490,7 +491,10 @@ describe("certificatePdf.service", () => {
       expect(result.data.valid).toBe(true);
       expect(result.data.status).toBe("signed");
       expect(result.data.integrityHash).toBe("mock-hash-abc123");
-      expect(result.data.documentUrl).toBe("/uploads/certificates/CERT-001.pdf");
+      // ADR-042 step 4: a capability for this certificate's document, not a path.
+      expect(result.data.documentUrl).toMatch(
+        /^\/api\/v1\/certificates\/verify\/CERT-001\/document\?token=\d+\./,
+      );
     });
 
     // A-130 (F-11, ADR-051 A-107). The double honours `paranoid` the way
@@ -683,7 +687,7 @@ describe("certificatePdf.service", () => {
       expect(fileName).toMatch(RANDOM_NAME);
       expect(fileName).not.toContain("CERT-20260923-ACME-0001");
       expect(fileName).not.toContain("CERT");
-      expect(result.data.filePath).toBe(`/uploads/certificates/${fileName}`);
+      expect(result.data.filePath).toBe(`certificates/${fileName}`);
       expect(mockCert.update).toHaveBeenCalledWith({
         filePath: result.data.filePath,
         fileSize: expect.any(Number),
@@ -830,16 +834,19 @@ describe("certificatePdf.service", () => {
       expect(result.data.documentUrl).toBeNull();
     });
 
-    it("publishes a working API-relative path for an issued certificate", async () => {
+    it("publishes an API-relative document capability for an issued certificate (ADR-042 step 4)", async () => {
       const cert = withFile({ status: "signed", validUntil: new Date("2099-01-01") });
       Certificate.findOne.mockResolvedValueOnce(cert);
 
       const result = await verifyByCertificateNumber("CERT-20260923-ACME-0001");
 
       expect(result.data.valid).toBe(true);
-      expect(result.data.documentUrl).toBe(cert.filePath);
       // API-origin-relative: the verify page renders `${API_BASE_URL}${documentUrl}`.
-      expect(result.data.documentUrl.startsWith("/uploads/certificates/")).toBe(true);
+      expect(result.data.documentUrl.startsWith(
+        "/api/v1/certificates/verify/CERT-20260923-ACME-0001/document?token=",
+      )).toBe(true);
+      // The file's own path is never published.
+      expect(result.data.documentUrl).not.toContain("uploads");
     });
 
     it("does not publish the document of a revoked certificate", async () => {
@@ -863,7 +870,7 @@ describe("certificatePdf.service", () => {
 
       expect(result.data.expired).toBe(true);
       expect(result.data.valid).toBe(false);
-      expect(result.data.documentUrl).toBe(cert.filePath);
+      expect(result.data.documentUrl).toContain("/document?token=");
     });
 
     it("returns null rather than undefined when an issued certificate has no file yet", async () => {

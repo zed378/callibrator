@@ -82,12 +82,12 @@ describe("kmsService", () => {
 
       expect(result).toBeDefined();
       expect(typeof result).toBe("string");
-      expect(result).toMatch(/^v1:/);
+      expect(result).toMatch(/^v2:/); // P6-10: every new envelope names its master key
 
-      // Verify the result is split into 7 parts
+      // v2:keyId + the six crypto fields
       const parts = result.split(":");
-      expect(parts).toHaveLength(7);
-      expect(parts[0]).toBe("v1");
+      expect(parts).toHaveLength(8);
+      expect(parts[0]).toBe("v2");
     });
 
     it("should use tenantId as AAD for encryption", () => {
@@ -135,9 +135,9 @@ describe("kmsService", () => {
       expect(kmsService.decryptData("tenant-1", "")).toBe("");
     });
 
-    it("should return plaintext for non-v1 payload", () => {
-      expect(kmsService.decryptData("tenant-1", "v2:some:payload")).toBe(
-        "v2:some:payload",
+    it("should return a value that is not a v1/v2 envelope as-is", () => {
+      expect(kmsService.decryptData("tenant-1", "v3:some:payload")).toBe(
+        "v3:some:payload",
       );
     });
 

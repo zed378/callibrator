@@ -133,13 +133,19 @@ class LocalDriver {
     return { key: normalizeKey(key), size: stat.size, etag: null };
   }
 
-  async get(key) {
+  /**
+   * @param {string} key
+   * @param {{start: number, end: number}} [range] - inclusive byte range
+   */
+  async get(key, range) {
     const abs = this._resolve(key);
     await this._assertNoSymlinkEscape(abs);
     if (!fs.existsSync(abs)) {
       throw new AppError(410, "Stored object is no longer available");
     }
-    return fs.createReadStream(abs);
+    return range
+      ? fs.createReadStream(abs, { start: range.start, end: range.end })
+      : fs.createReadStream(abs);
   }
 
   async stat(key) {

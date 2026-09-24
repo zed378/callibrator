@@ -13,6 +13,7 @@
 // per-dependency breakdown is super-admin only (see routes/internal/health.route.js).
 
 const healthService = require("../services/health.service");
+const jobMonitor = require("../services/jobMonitor.service");
 
 /**
  * GET /live — liveness.
@@ -74,9 +75,45 @@ const readinessDetail = async (req, res) => {
   });
 };
 
+/**
+ * GET /api/v1/health/jobs — every scheduled job's recorded state (P7-02).
+ * Super-admin only. Answers 503 when any job's last run failed or it missed
+ * its window, so an on-call script can act on the code alone.
+ */
+const jobStatus = (req, res) => {
+  const jobs = jobMonitor.getJobStates();
+  const failing = jobs.filter(
+    (job) => job.lastOutcome === "failure" || Boolean(job.overdueSince),
+  );
+  const healthy = failing.length === 0;
+  const statusCode = healthy ? 200 : 503;
+
+  return res.status(statusCode).json({
+    success: healthy,
+    status: statusCode,
+    message: healthy
+      ? "No scheduled job is failing or overdue"
+      : `Failing or overdue: ${failing.map((job) => job.job).join(", ")}`,
+    data: jobs,
+  });
+};
+
+/**
+ * GET /api/v1/health/metrics — Prometheus text for the scheduled jobs (P7-02).
+ * Gated by metricsAuth (METRICS_TOKEN), not by a user session, because a
+ * scraper has no user.
+ */
+const jobMetrics = (req, res) =>
+  res
+    .status(200)
+    .type("text/plain; version=0.0.4; charset=utf-8")
+    .send(jobMonitor.renderMetrics());
+
 module.exports = {
   liveness,
   health,
   readiness,
   readinessDetail,
+  jobStatus,
+  jobMetrics,
 };

@@ -71,16 +71,24 @@ describe("the real repository", () => {
     expect(errors).toEqual([]);
   });
 
-  it("the five workflow gates name `workflows`, the seeded slug", () => {
+  it("the workflow gates name seeded slugs: `workflows`, and the action's record types (A-183)", () => {
     const gates = collectRouteGates().filter((g) => /workflows\.route\.js$/.test(g.file));
 
     expect(gates.map((g) => g.names)).toEqual([
+      // A-183 — GET /instances/pending
+      ["workflows"],
+      // A-183 — POST /instances/:instanceId/action: write on a record type a
+      // workflow decides on; the service then requires the instance's own.
+      ["certificate", "warehouse", "maintenance"],
       ["workflows"],
       ["workflows"],
       ["workflows"],
       ["workflows"],
       ["workflows"],
     ]);
+    for (const slug of ["certificate", "warehouse", "maintenance"]) {
+      expect(seededMenuVocabulary().has(slug)).toBe(true);
+    }
     expect(seededMenuVocabulary().has("workflows")).toBe(true);
     expect(seededMenuVocabulary().has("workflow")).toBe(false);
   });

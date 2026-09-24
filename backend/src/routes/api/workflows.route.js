@@ -45,9 +45,11 @@ const {
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
+// A-183 — the inbox is the Workflows page's; it needs that page's grant.
 router.get(
   "/instances/pending",
   auth,
+  dynamicAccess("workflows", "read"),
   workflowController.getPendingTasks,
 );
 
@@ -80,6 +82,16 @@ router.get(
  *               comments:
  *                 type: string
  *                 nullable: true
+ *               authMethod:
+ *                 type: string
+ *                 enum: [password, mfa]
+ *                 description: Required to APPROVE a Certificate (A-182, 21 CFR Part 11 re-authentication)
+ *               authPayload:
+ *                 type: string
+ *                 description: The caller's password or a current MFA code. Required to APPROVE a Certificate
+ *               meaning:
+ *                 type: string
+ *                 description: The meaning of the approval signature. Required to APPROVE a Certificate
  *     responses:
  *       200:
  *         description: Action recorded; instance advances, completes, or is rejected
@@ -88,14 +100,21 @@ router.get(
  *             schema:
  *               $ref: '#/components/schemas/SuccessResponse'
  *       400:
- *         description: Invalid payload
+ *         description: Invalid payload, or a Certificate approval without authMethod, authPayload and meaning
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       401:
+ *         description: Re-authentication failed (Certificate approval)
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  *       403:
  *         description: >-
- *           User's role cannot approve the current step, or a platform operator
+ *           User's role cannot approve the current step, the caller lacks write
+ *           access to the record type the instance decides on (A-183), or a platform operator
  *           (impersonating, or acting in another tenant — A-145, ADR-051 Q-17)
  *         content:
  *           application/json:
@@ -108,7 +127,9 @@ router.get(
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  *       409:
- *         description: The instance is no longer pending, or the caller already acted on this step
+ *         description: >-
+ *           The instance is no longer pending, the caller already acted on this step,
+ *           or the certificate's status does not allow the decision (A-182) — the message explains the state
  *         content:
  *           application/json:
  *             schema:
@@ -119,9 +140,16 @@ router.get(
 // certificate / stock transfer / work order as approved by them. A platform
 // operator may not record one in a member's name (impersonation) or inside
 // another tenant.
+//
+// A-183 — the route gate admits a caller who may approve SOME kind of record a
+// workflow decides on; the service then requires write access to the kind
+// this instance decides on (certificate / warehouse / maintenance), after the
+// 404. A-182 — a Certificate approval re-authenticates (authMethod,
+// authPayload, meaning).
 router.post(
   "/instances/:instanceId/action",
   auth,
+  dynamicAccess(["certificate", "warehouse", "maintenance"], "write"),
   validateUuid("instanceId"),
   denyPlatformAuthoring,
   validate(submitActionSchema),

@@ -169,6 +169,14 @@ const MENU_SLUGS = {
   // by default to exactly the roles that hold one of those (below; migration
   // 0038 for databases seeded before it existed).
   AI_ASSISTANT: "ai-assistant",
+  // Q-20 (ADR-056): four Management pages the seed creates and
+  // route gates name, which no role but SUPERADMIN reached — the matrix
+  // inherits a grant ONE level down, and they sit two below `management`.
+  // Granted by slug to the roles below; migration 0054 for seeded databases.
+  USERS: "users",
+  VENDORS: "vendors",
+  BILLING: "billing",
+  AUDIT: "audit",
 };
 
 /**
@@ -296,6 +304,17 @@ const ROLE_MENU_ASSIGNMENTS = [
       [MENU_SLUGS.TENANT_HIERARCHY]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.TICKETS_RAISE]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.TICKETS_RESPONSE]: PERMISSION_TYPES.WRITE,
+      // Q-20: a tenant administrator manages its own tenant's users and
+      // vendors (every route is tenant-scoped, and user.service refuses to
+      // create or grant SUPERADMIN), reads its own subscription and invoices
+      // (PATCH /billing/subscription can set `status` — a platform override,
+      // so no write), and reviews its own tenant's audit trail
+      // (21 CFR 11.10(e); /audit is tenant-scoped). `content` is the
+      // platform-wide public blog and stays SUPERADMIN-only.
+      [MENU_SLUGS.USERS]: PERMISSION_TYPES.WRITE,
+      [MENU_SLUGS.VENDORS]: PERMISSION_TYPES.WRITE,
+      [MENU_SLUGS.BILLING]: PERMISSION_TYPES.READ,
+      [MENU_SLUGS.AUDIT]: PERMISSION_TYPES.READ,
     },
     permissionType: "write",
   },
@@ -330,6 +349,11 @@ const ROLE_MENU_ASSIGNMENTS = [
       [MENU_SLUGS.KANBAN]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.TICKETS_RAISE]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.TICKETS_RESPONSE]: PERMISSION_TYPES.WRITE,
+      // Q-20: same tier as HEALTHCARE ADMIN, same grants (see there).
+      [MENU_SLUGS.USERS]: PERMISSION_TYPES.WRITE,
+      [MENU_SLUGS.VENDORS]: PERMISSION_TYPES.WRITE,
+      [MENU_SLUGS.BILLING]: PERMISSION_TYPES.READ,
+      [MENU_SLUGS.AUDIT]: PERMISSION_TYPES.READ,
     },
     permissionType: "write",
   },
@@ -356,6 +380,9 @@ const ROLE_MENU_ASSIGNMENTS = [
       [MENU_SLUGS.KANBAN]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.TICKETS_RAISE]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.TICKETS_RESPONSE]: PERMISSION_TYPES.WRITE,
+      // Q-20: reads the vendor list its supplier scorecards and work orders
+      // name; managing vendors stays with the admin roles.
+      [MENU_SLUGS.VENDORS]: PERMISSION_TYPES.READ,
     },
     permissionType: "read",
   },

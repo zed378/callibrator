@@ -10,8 +10,12 @@ jest.mock("../../services/session.service", () => ({
   cleanupExpiredSessions: jest.fn(),
   revokeAllSessions: jest.fn(),
 }));
+jest.mock("../../services/jobMonitor.service", () =>
+  require("../fixtures/jobMonitorMock").create(),
+);
 jest.mock("node-cron", () => ({
-  schedule: jest.fn(),
+  schedule: jest.fn(() => ({ id: "task" })),
+  validate: jest.fn(() => true),
 }));
 
 const {
@@ -177,6 +181,57 @@ describe("sessionCleanup.middleware", () => {
       expect(logger.error).toHaveBeenCalledWith(
         "Error during scheduled session cleanup: Connection refused",
       );
+    });
+
+    // P7-02 — the run goes through the job monitor, which records it and
+    // alerts; a throw inside is what makes it a FAILED run.
+    it("P7-02: runs through the job monitor and registers the task for the watchdog", async () => {
+      const cron = require("node-cron");
+      const monitor = require("../../services/jobMonitor.service");
+      const { cleanupExpiredSessions } = require("../../services/session.service");
+      cleanupExpiredSessions.mockRejectedValue(new Error("Connection refused"));
+
+      initSessionCleanup();
+      expect(monitor.registerJob).toHaveBeenCalledWith("session-cleanup", { id: "task" }, "0 2 * * *");
+      const run = await cron.schedule.mock.calls[0][1]();
+
+      expect(monitor.runMonitored).toHaveBeenCalledWith("session-cleanup", expect.any(Function));
+      expect(run).toEqual({ outcome: "failure", error: "Connection refused" });
+    });
+
+    it.each(["disabled", "off"])("P7-02: %s turns it off and reports it disabled", (value) => {
+      process.env.SESSION_CLEANUP_SCHEDULER = value;
+      const cron = require("node-cron");
+      const monitor = require("../../services/jobMonitor.service");
+      const result = initSessionCleanup();
+
+      expect(cron.schedule).not.toHaveBeenCalled();
+      expect(monitor.markDisabled).toHaveBeenCalledWith(
+        "session-cleanup",
+        "disabled via SESSION_CLEANUP_SCHEDULER",
+      );
+      expect(typeof result.revokeUserSessions).toBe("function");
+    });
+
+    it("P7-02: an invalid expression is refused and alerted instead of throwing at boot", () => {
+      process.env.SESSION_CLEANUP_SCHEDULER = "nonsense";
+      const cron = require("node-cron");
+      const { logger } = require("../../middlewares/activityLog.middleware");
+      const monitor = require("../../services/jobMonitor.service");
+      cron.validate.mockReturnValueOnce(false);
+
+      const result = initSessionCleanup();
+
+      expect(cron.schedule).not.toHaveBeenCalled();
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.stringContaining("Invalid SESSION_CLEANUP_SCHEDULER"),
+      );
+      expect(monitor.refuseSchedule).toHaveBeenCalledWith(
+        "session-cleanup",
+        "SESSION_CLEANUP_SCHEDULER",
+        "nonsense",
+      );
+      expect(typeof result.cleanupExpiredSessions).toBe("function");
     });
   });
 });

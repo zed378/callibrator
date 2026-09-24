@@ -5,7 +5,7 @@ import { useState } from "react";
 import Link from "next/link";
 import Img from "next/image";
 import { useRouter } from "next/navigation";
-import { ChevronDown, Settings, User, LogOut } from "lucide-react";
+import { ChevronDown, Settings, User, LogOut, Key } from "lucide-react";
 import { avatarImageProps } from "@/lib/uploadUrl";
 
 interface UserDropdownProps {
@@ -97,6 +97,19 @@ export function UserDropdown({
             >
               <User className="w-4 h-4 text-muted-foreground" />
               <span>Profile Settings</span>
+            </Link>
+            {/* A-131 (ADR-051 A-98) — changing one's own password is for
+                every signed-in user, outside the permission matrix: the
+                backend route needs only a session. The sidebar's entry comes
+                from the menu grants, which several roles (TECHNICIAN, ROOM
+                USER, …) do not hold, so this is the way in that always shows. */}
+            <Link
+              href="/dashboard/change-password"
+              onClick={() => setIsOpen(false)}
+              className="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 text-muted-foreground hover:text-foreground hover:bg-muted"
+            >
+              <Key className="w-4 h-4 text-muted-foreground" />
+              <span>Change Password</span>
             </Link>
           </div>
 

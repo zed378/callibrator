@@ -1,4 +1,5 @@
 // src/app/dashboard/hooks/useDashboardMetrics.ts
+import { deferEffect } from "@/lib/deferEffect";
 import { useCallback, useEffect, useState } from "react";
 import {
   dashboardService,
@@ -35,9 +36,7 @@ export function useDashboardMetrics() {
     }
   }, []);
 
-  useEffect(() => {
-    fetchMetrics();
-  }, [fetchMetrics]);
+  useEffect(() => deferEffect(fetchMetrics), [fetchMetrics]);
 
   return { user, isSuperAdmin, metrics, isLoading, error, refresh: fetchMetrics };
 }

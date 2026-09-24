@@ -93,7 +93,7 @@ exports.assignMenuGroupToRole = asyncHandlerWithMapping(async (req, res) => {
   const roleId = value.roleId;
   const menuGroupId = isItem ? value.menuItemId : value.menuGroupId;
 
-  const perm = await menuGroupService.assignMenuToRole({ roleId, menuGroupId });
+  const perm = await menuGroupService.assignMenuToRole({ roleId, menuGroupId }, auditActor(req));
   return success(res, perm, null, "Menu assigned successfully", 200);
 }, {});
 
@@ -109,7 +109,7 @@ exports.revokeMenuGroupFromRole = asyncHandlerWithMapping(async (req, res) => {
   const roleId = value.roleId;
   const menuGroupId = isItem ? value.menuItemId : value.menuGroupId;
 
-  await menuGroupService.revokeMenuFromRole({ roleId, menuGroupId });
+  await menuGroupService.revokeMenuFromRole({ roleId, menuGroupId }, auditActor(req));
   return success(res, null, null, "Menu revoked successfully", 200);
 }, {});
 
@@ -121,6 +121,7 @@ exports.bulkAssignMenuGroups = asyncHandlerWithMapping(async (req, res) => {
   const data = await menuGroupService.bulkAssign(
     value.roleId,
     value.menuGroupIds,
+    auditActor(req),
   );
   return success(res, data, null, "Bulk assignment completed", 200);
 }, {});
@@ -133,6 +134,7 @@ exports.bulkRevokeMenuGroups = asyncHandlerWithMapping(async (req, res) => {
   const data = await menuGroupService.bulkRevoke(
     value.roleId,
     value.menuGroupIds,
+    auditActor(req),
   );
   return success(res, data, null, "Bulk revocation completed", 200);
 }, {});

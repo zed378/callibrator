@@ -132,7 +132,7 @@ exports.createTenant = asyncHandler(async (req, res, next) => {
       try {
         await require("../utils/upload.util").deleteUpload(
           req.uploadFilename,
-          "uploads/tenant",
+          "uploads/public/tenant",
         );
       } catch (deleteErr) {
         require("../middlewares/activityLog.middleware").logger.warn(
@@ -156,7 +156,7 @@ const discardUploadedLogo = async (req) => {
     return;
   }
   try {
-    await require("../utils/upload.util").deleteUpload(req.uploadFilename, "uploads/tenant");
+    await require("../utils/upload.util").deleteUpload(req.uploadFilename, "uploads/public/tenant");
   } catch (deleteErr) {
     require("../middlewares/activityLog.middleware").logger.warn(
       `Failed to delete uploaded file after failure: ${req.uploadFilename}`,

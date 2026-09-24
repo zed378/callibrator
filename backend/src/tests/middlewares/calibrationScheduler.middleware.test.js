@@ -2,6 +2,9 @@
  * Tests for calibrationScheduler middleware
  */
 
+jest.mock("../../services/jobMonitor.service", () =>
+  require("../fixtures/jobMonitorMock").create(),
+);
 jest.mock("node-cron", () => ({
   schedule: jest.fn(),
   validate: jest.fn(),
@@ -152,6 +155,43 @@ describe("calibrationScheduler middleware", () => {
       initCalibrationScheduler();
 
       expect(cron.validate).toHaveBeenCalledWith("0 1 * * *");
+    });
+  });
+
+  describe("P7-02 job monitoring", () => {
+    const monitor = require("../../services/jobMonitor.service");
+
+    it("a scan that finishes with per-device errors is a FAILED run", async () => {
+      cron.validate.mockReturnValue(true);
+      delete process.env.CALIBRATION_SCHEDULER;
+      runCalibrationScan.mockResolvedValue({
+        scanned: 5, workOrdersCreated: 0, notificationsCreated: 0, skipped: 0, overdue: 0, errors: 2,
+      });
+      initCalibrationScheduler();
+      const run = await cron.schedule.mock.calls[0][1]();
+      expect(run).toEqual(expect.objectContaining({
+        outcome: "failure", error: "2 device(s) failed during the scan",
+      }));
+      expect(monitor.registerJob).toHaveBeenCalledWith("calibration-scan", undefined, "0 1 * * *");
+    });
+
+    it("a clean scan succeeds; a thrown scan fails", async () => {
+      cron.validate.mockReturnValue(true);
+      runCalibrationScan.mockResolvedValueOnce({ errors: 0 }).mockRejectedValueOnce(new Error("x"));
+      initCalibrationScheduler();
+      const [, callback] = cron.schedule.mock.calls[0];
+      expect((await callback()).outcome).toBe("success");
+      expect((await callback()).outcome).toBe("failure");
+    });
+
+    it("disabled is reported as disabled; an invalid expression is alerted", () => {
+      process.env.CALIBRATION_SCHEDULER = "off";
+      initCalibrationScheduler();
+      expect(monitor.markDisabled).toHaveBeenCalledWith("calibration-scan", "disabled via CALIBRATION_SCHEDULER");
+      process.env.CALIBRATION_SCHEDULER = "bad";
+      cron.validate.mockReturnValue(false);
+      initCalibrationScheduler();
+      expect(monitor.refuseSchedule).toHaveBeenCalledWith("calibration-scan", "CALIBRATION_SCHEDULER", "bad");
     });
   });
 });

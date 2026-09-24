@@ -85,6 +85,12 @@ const migrationModules = [
   ["0044-iot-device-token-hash.js", require("../migrations/0044-iot-device-token-hash")],
   ["0047-drop-data-retention-policies.js", require("../migrations/0047-drop-data-retention-policies")],
   ["0049-audit-actions-lockout-signature.js", require("../migrations/0049-audit-actions-lockout-signature")],
+  ["0052-session-auth-method.js", require("../migrations/0052-session-auth-method")],
+  ["0054-q20-management-page-grants.js", require("../migrations/0054-q20-management-page-grants")],
+  ["0056-uploads-public-class.js", require("../migrations/0056-uploads-public-class")],
+  ["0057-calibration-records-append-only.js", require("../migrations/0057-calibration-records-append-only")],
+  ["0058-tenant-keys-kms-envelope.js", require("../migrations/0058-tenant-keys-kms-envelope")],
+  ["0059-stock-adjustment-reason-and-item.js", require("../migrations/0059-stock-adjustment-reason-and-item")],
 ];
 
 const migrator = new Umzug({

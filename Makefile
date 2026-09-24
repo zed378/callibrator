@@ -3,7 +3,7 @@
 #
 #   make help          list every target
 #   make dev           bring the local stack up
-#   make verify        the full gate (manual — no hook or CI runs it)
+#   make verify        the full gate (CI runs the same stages: .github/workflows/ci.yml)
 #   make deploy ENV=prod TAG=<sha>
 #
 # Reference: docs/DEVOPS/11-MAKEFILE-REFERENCE.md
@@ -108,6 +108,8 @@ secrets: ## Generate the four required secrets
 	@echo "RABBITMQ_URL=amqp://callibrator:$$rmq@rabbitmq:5672"
 	@echo -e "$(C_DIM)(The two RabbitMQ lines carry ONE password and must stay together — the$(C_OFF)"
 	@echo -e "$(C_DIM) broker is created from RABBITMQ_USER/PASS and the backend connects with the URL.)$(C_OFF)"
+	@echo "REDIS_PASSWORD=$$(node -e "console.log(require('crypto').randomBytes(24).toString('hex'))")"
+	@echo -e "$(C_DIM)(S-09: Redis starts with --requirepass and the backend AUTHs with this one value.)$(C_OFF)"
 	@echo ""
 	@echo -e "$(C_WARN)BACK UP CERT_SIGNING_SECRET, ENCRYPT_KEY AND KMS_MASTER_KEY SEPARATELY$(C_OFF)"
 	@echo -e "$(C_WARN)FROM THE DATABASE.$(C_OFF)"
@@ -201,23 +203,21 @@ wait-healthy: ## Block until the backend reports healthy
 # the container, which migrated as a side effect of booting and then died on
 # EADDRINUSE. The host path is now its own, explicit target.
 .PHONY: migrate
-migrate: ## Apply pending migrations to the compose stack (restarts the backend, which migrates at boot)
+migrate: ## Apply pending migrations to the compose stack (restarts the backend, which migrates at boot), then verify
 	$(DC) restart backend || exit 1
 	@$(MAKE) --no-print-directory wait-healthy || exit 1
 	@echo -e "$(C_DIM)Applied migrations are logged by the backend as \"Applied N migration(s): …\".$(C_OFF)"
-	@echo ""
-	@echo -e "$(C_WARN)Now VERIFY THE COLUMNS.$(C_OFF)"
-	@echo -e "$(C_DIM)A migration wrapped in a blanket try/catch is recorded as applied while doing$(C_OFF)"
-	@echo -e "$(C_DIM)nothing. The migration log is not evidence — run: make migrate-verify$(C_OFF)"
+	@$(MAKE) --no-print-directory migrate-verify
 
 # The three targets below run on the HOST, from a source checkout, against the
 # database backend/.env points at — NOT necessarily the compose stack's. The
 # image has no Node and the binary has no migration CLI, so there is no
 # in-container path for them. Point backend/.env at the stack you mean first.
 .PHONY: migrate-host
-migrate-host: ## HOST: apply pending migrations against backend/.env's database
+migrate-host: ## HOST: apply pending migrations against backend/.env's database, then verify
 	@echo -e "$(C_WARN)Host migration: targets the database in backend/.env, not the compose stack.$(C_OFF)"
 	cd backend && npm run migrate
+	cd backend && npm run migrate:verify
 
 .PHONY: migrate-status
 migrate-status: ## HOST: show pending migrations for backend/.env's database
@@ -229,12 +229,28 @@ migrate-undo: ## HOST: roll back the last migration on backend/.env's database
 	@echo -e "$(C_WARN)Host command: rolls back the database in backend/.env, not the compose stack.$(C_OFF)"
 	cd backend && npm run migrate:undo
 
+# P6-05 (PR-5). The backend compares every model's columns — and the control
+# objects that live only in migrations (the calibration_records append-only
+# trigger, the per-tenant serial index) — with information_schema at EVERY
+# boot, after db.sync() and the migrator, and REFUSES to start on a mismatch
+# (utils/schemaVerify.util.js). So a healthy backend is a verified schema,
+# unless SCHEMA_VERIFY=warn is set. This target shows the verdict of the
+# running backend's last boot and fails unless it is OK; the image has no
+# Node, so it reads the log rather than re-running the check.
 .PHONY: migrate-verify
-migrate-verify: ## Inspect the real schema (the migration log is not evidence)
-	@echo "Columns actually present, per table:"
-	$(DC) exec postgres psql -U $$(grep '^DB_USER=' $(COMPOSE_DIR)/.env | cut -d= -f2) \
-		-d $$(grep '^DB_NAME=' $(COMPOSE_DIR)/.env | cut -d= -f2) \
-		-c "SELECT table_name, count(*) AS columns FROM information_schema.columns WHERE table_schema='public' GROUP BY table_name ORDER BY table_name;"
+migrate-verify: ## Show the schema verdict of the backend's last boot (fails unless OK)
+	@verdict=$$($(DC) logs --no-log-prefix --since 24h backend 2>&1 | grep -F '[schema-verify]' | grep -vF '[schema-verify] note:' | tail -n 20); \
+	if [ -z "$$verdict" ]; then \
+		echo -e "$(C_ERR)No [schema-verify] line in the backend log: the running backend predates P6-05, or its log was rotated.$(C_OFF)"; exit 1; \
+	fi; \
+	echo "$$verdict"; \
+	echo "$$verdict" | tail -n 1 | grep -qF '[schema-verify] OK:' || { echo -e "$(C_ERR)The last schema verification did not pass.$(C_OFF)"; exit 1; }
+	@echo -e "$(C_OK)Schema matches the models.$(C_OFF)"
+
+.PHONY: migrate-verify-host
+migrate-verify-host: ## HOST: verify backend/.env's database against the models (exit 1 on a mismatch)
+	@echo -e "$(C_WARN)Host command: reads the database in backend/.env, not the compose stack.$(C_OFF)"
+	cd backend && npm run migrate:verify
 
 .PHONY: seed-demo
 seed-demo: ## Seed demo data (dev only — ~80 rows, idempotent)
@@ -291,8 +307,26 @@ test-browser: ## Playwright browser suite
 build: ## Build both workspaces
 	npm run build
 
+.PHONY: hooks
+hooks: ## Opt in to the pre-push hook (secret scan, lint ratchet, typecheck) — P7-01
+	git config core.hooksPath scripts/git-hooks
+	@echo -e "$(C_OK)pre-push hook enabled$(C_OFF) $(C_DIM)(scripts/git-hooks/pre-push; make hooks-off to undo)$(C_OFF)"
+	@command -v gitleaks >/dev/null || echo -e "$(C_WARN)gitleaks is not installed — the hook will SKIP the secret scan until it is.$(C_OFF)"
+
+.PHONY: hooks-off
+hooks-off: ## Disable the pre-push hook
+	git config --unset core.hooksPath || true
+
+.PHONY: lint-ratchet
+lint-ratchet: ## Backend ESLint ratchet, as CI runs it (fails on NEW errors)
+	node scripts/ci/eslint-ratchet.js
+
+.PHONY: secret-scan
+secret-scan: ## Scan the whole git history for secrets, as CI does (needs gitleaks)
+	gitleaks git --config .gitleaks.toml --redact .
+
 .PHONY: verify
-verify: lint typecheck test build ## The full gate (run by hand; nothing runs it automatically)
+verify: lint typecheck test build ## The full gate (by hand; CI runs the same stages — .github/workflows/ci.yml)
 	@echo ""
 	@echo -e "$(C_OK)Gates passed.$(C_OFF)"
 	@echo -e "$(C_DIM)Not covered here: the live E2E suite (make test-e2e) and the browser suite.$(C_OFF)"
@@ -428,6 +462,17 @@ preflight: check-env ## Pre-deployment checks for staging and production
 	@if grep -Eq '^RABBITMQ_PASS=(|guest|CHANGE_ME.*)$$' $(COMPOSE_DIR)/.env; then
 		echo -e "$(C_ERR)RABBITMQ_PASS is empty, guest or a CHANGE_ME placeholder.$(C_OFF)"
 		echo -e "$(C_DIM)Run make secrets and paste BOTH RabbitMQ lines (password and URL).$(C_OFF)"
+		exit 1
+	fi
+	@if ! grep -Eq '^REDIS_PASSWORD=.{16,}$$' $(COMPOSE_DIR)/.env; then
+		echo -e "$(C_ERR)REDIS_PASSWORD is empty or shorter than 16 characters (S-09).$(C_OFF)"
+		echo -e "$(C_DIM)Redis holds the login lockout counters: unauthenticated, anything on the$(C_OFF)"
+		echo -e "$(C_DIM)network can flush them. Run make secrets and paste the REDIS_PASSWORD line.$(C_OFF)"
+		exit 1
+	fi
+	@if grep -Eq '^REDIS_URL=redis://[^/]*@' $(COMPOSE_DIR)/.env && grep -Eq '^REDIS_PASSWORD=.' $(COMPOSE_DIR)/.env; then
+		echo -e "$(C_ERR)REDIS_URL carries credentials AND REDIS_PASSWORD is set.$(C_OFF)"
+		echo -e "$(C_DIM)The URL's credentials win in the client; keep REDIS_URL credential-free.$(C_OFF)"
 		exit 1
 	fi
 	@if grep -q '^SEED_DEMO=true' $(COMPOSE_DIR)/.env; then

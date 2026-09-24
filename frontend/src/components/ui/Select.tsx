@@ -12,6 +12,13 @@ interface SelectProps {
   placeholder?: string;
   className?: string;
   disabled?: boolean;
+  /**
+   * F-12: put on the trigger button, so a FormField label can target it and
+   * its message is read with it. (A button takes no aria-invalid.)
+   */
+  id?: string;
+  "aria-describedby"?: string;
+  "aria-label"?: string;
 }
 
 export const Select: React.FC<SelectProps> = ({
@@ -21,6 +28,9 @@ export const Select: React.FC<SelectProps> = ({
   placeholder = "Select an option...",
   className = "",
   disabled = false,
+  id,
+  "aria-describedby": ariaDescribedBy,
+  "aria-label": ariaLabel,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -64,6 +74,9 @@ export const Select: React.FC<SelectProps> = ({
     <div ref={containerRef} className={`relative w-full ${className}`}>
       <button
         type="button"
+        id={id}
+        aria-describedby={ariaDescribedBy}
+        aria-label={ariaLabel}
         disabled={disabled}
         onClick={() => !disabled && setIsOpen(!isOpen)}
         onKeyDown={(e) => !disabled && handleKeyDown(e)}

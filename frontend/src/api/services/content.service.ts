@@ -80,7 +80,34 @@ interface ObjEnvelope<T> {
   data: T;
 }
 
+/** A CMS image uploaded to the backend's PUBLIC class (ADR-042 step 3). */
+export interface ContentMedia {
+  /** Host-relative, permanent, public: `/uploads/public/cms/<file>`. */
+  url: string;
+  fileName: string;
+  mimeType: string;
+  size: number;
+}
+
 export const contentService = {
+  media: {
+    /**
+     * POST /api/v1/content/media — upload an image for a post. Unlike an
+     * attachment (tenant evidence, gated, revocable), this is public on
+     * purpose: it is embedded in published blog/news HTML. JPEG/PNG/GIF/WebP
+     * only; SVG is refused. Requires content:create.
+     */
+    upload: async (file: File): Promise<ContentMedia> => {
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await api.post<ObjEnvelope<ContentMedia>>(
+        "/api/v1/content/media",
+        formData,
+      );
+      return response.data;
+    },
+  },
+
   posts: {
     getAll: async (
       page = 1,

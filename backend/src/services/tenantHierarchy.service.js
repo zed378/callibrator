@@ -21,6 +21,8 @@
 const { logger } = require("../middlewares/activityLog.middleware");
 const { AppError } = require("../utils/appError.util");
 const { db } = require("../config");
+const auditService = require("./audit.service");
+const { PLATFORM_TENANT_ID } = require("../constants/platformTenant");
 
 // ==========================================
 // CONFIGURATION
@@ -34,12 +36,48 @@ const MAX_DEPTH = parseInt(process.env.HIERARCHY_MAX_DEPTH) || 5;
 // ==========================================
 
 /**
- * Create a sub-organization (child tenant) under a parent
- * @param {string} parentTenantId - Parent tenant ID
- * @param {Object} data - Sub-org data
- * @returns {Promise<{tenantId: string, path: string}>}
+ * A tenant subdomain derived from a code, the way tenant.service#createTenant
+ * derives one: lower-cased, every character the model's pattern refuses
+ * (`^[a-z0-9][a-z0-9-]*[a-z0-9]$`) turned into `-`, trimmed, at most 63.
+ *
+ * @param {string} code
+ * @returns {string}
  */
-exports.createSubOrganization = async (parentTenantId, data) => {
+const subdomainFromCode = (code) =>
+  String(code)
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, "-")
+    .slice(0, 63)
+    .replace(/^-+|-+$/g, "");
+
+/**
+ * Create a sub-organization (child tenant) under a parent.
+ *
+ * A-187 — this never worked on the real models. `tenants.subdomain` and
+ * `tenants.email` are NOT NULL and it set neither, so every call failed
+ * validation and the catch reported a 500. The depth check ran AFTER both
+ * rows were inserted and undid them with two more autocommits; and nothing
+ * was audited.
+ *
+ * Now:
+ *  - the child's `subdomain` is derived from its code (as createTenant does)
+ *    and its `email` is the parent's — the parent organisation administers
+ *    the sub-organisation until someone gives it its own contact address;
+ *  - the depth limit and the parent's state are checked BEFORE any write;
+ *  - the tenant, its hierarchy row and ONE audit row commit together, the row
+ *    under the PLATFORM tenant (a tenant's creation is a platform operation —
+ *    the route is SUPERADMIN-only, as createTenant, A-95/A-125);
+ *  - a code or subdomain already in use is 409, not 500.
+ *
+ * @param {string} parentTenantId - Parent tenant ID
+ * @param {{name: string, code?: string}} data - Sub-org data (validated)
+ * @param {object} [actor] - auditActor(req)
+ * @returns {Promise<{tenantId: string, code: string, path: string, depth: number}>}
+ * @throws {AppError} 400 when disabled; 404 when the parent does not exist;
+ *   409 when the parent is not active, has no code, the depth limit is
+ *   reached, or the code/subdomain is taken
+ */
+exports.createSubOrganization = async (parentTenantId, data, actor = {}) => {
   if (!HIERARCHY_ENABLED) {
     throw new AppError(400, "Tenant hierarchy is disabled");
   }
@@ -51,69 +89,91 @@ exports.createSubOrganization = async (parentTenantId, data) => {
     throw new AppError(404, "Parent tenant not found");
   }
 
+  // State conflicts, explained (409) — not malformed requests.
   if (parent.status !== "active") {
-    throw new AppError(400, "Parent tenant must be active");
+    throw new AppError(409, `Parent tenant is ${parent.status}; a sub-organization can be created only under an active tenant`);
+  }
+  if (!parent.code) {
+    throw new AppError(409, "Parent tenant has no code; set one before creating a sub-organization (the child's code is derived from it)");
   }
 
-  try {
-    // Get parent's hierarchy path
-    let parentPath = `/${parent.code.toLowerCase()}`;
-    const parentHierarchy = await TenantHierarchy.findOne({
-      where: { tenantCode: parent.code },
-    });
+  const parentHierarchy = await TenantHierarchy.findOne({
+    where: { tenantCode: parent.code },
+  });
+  const parentPath = parentHierarchy ? parentHierarchy.path : `/${parent.code.toLowerCase()}`;
+  const depth = (parentHierarchy ? parentHierarchy.depth : 0) + 1;
+  if (depth > MAX_DEPTH) {
+    throw new AppError(409, `Maximum hierarchy depth (${MAX_DEPTH}) reached: "${parent.name}" cannot have sub-organizations`);
+  }
 
-    if (parentHierarchy) {
-      parentPath = parentHierarchy.path;
-    }
-
-    // Generate child code
+  let childCode = data.code;
+  if (!childCode) {
     const childCount = await TenantHierarchy.count({
       where: { parentCode: parent.code },
     });
-    const childCode = `${parent.code}_${String(childCount + 1).padStart(3, "0")}`;
+    childCode = `${parent.code}_${String(childCount + 1).padStart(3, "0")}`;
+  }
+  const subdomain = subdomainFromCode(childCode);
+  const path = `${parentPath}/${childCode.toLowerCase()}`;
 
-    // Create tenant
-    const tenant = await Tenant.create({
-      name: data.name,
-      code: childCode,
-      status: "active",
-      parentId: parentTenantId,
-      plan: parent.plan,
-    });
-
-    // Create hierarchy record
-    const hierarchy = await TenantHierarchy.create({
-      tenantId: tenant.id,
-      tenantCode: childCode,
-      parentCode: parent.code,
-      path: `${parentPath}/${childCode.toLowerCase()}`,
-      depth: (parentHierarchy ? parentHierarchy.depth : 0) + 1,
-    });
-
-    // Validate depth
-    if (hierarchy.depth > MAX_DEPTH) {
-      await tenant.destroy();
-      await hierarchy.destroy();
-      throw new AppError(
-        400,
-        `Maximum hierarchy depth (${MAX_DEPTH}) exceeded`,
+  try {
+    const tenant = await db.transaction(async (transaction) => {
+      const created = await Tenant.create(
+        {
+          name: data.name,
+          code: childCode,
+          subdomain,
+          email: parent.email,
+          status: "active",
+          parentId: parentTenantId,
+          plan: parent.plan,
+        },
+        { transaction },
       );
-    }
+
+      await TenantHierarchy.create(
+        {
+          tenantId: created.id,
+          tenantCode: childCode,
+          parentCode: parent.code,
+          path,
+          depth,
+        },
+        { transaction },
+      );
+
+      await auditService.logAction(
+        {
+          tenantId: PLATFORM_TENANT_ID,
+          userId: actor.userId,
+          action: "CREATE",
+          resourceType: "Tenant",
+          resourceId: created.id,
+          changes: {
+            operation: "CREATE_SUB_ORGANIZATION",
+            before: {},
+            after: { name: data.name, code: childCode, subdomain, parentId: parentTenantId, path, depth },
+          },
+          ipAddress: actor.ipAddress,
+          userAgent: actor.userAgent,
+        },
+        { transaction },
+      );
+      return created;
+    });
 
     logger.info("Sub-organization created", {
       parentTenantId,
       childTenantId: tenant.id,
       childCode,
-      path: hierarchy.path,
+      path,
     });
 
-    return {
-      tenantId: tenant.id,
-      code: childCode,
-      path: hierarchy.path,
-      depth: hierarchy.depth,
-    };
+    return { tenantId: tenant.id, code: childCode, path, depth };
   } catch (err) {
+    if (err && err.name === "SequelizeUniqueConstraintError") {
+      throw new AppError(409, `A tenant with code "${childCode}" or subdomain "${subdomain}" already exists`);
+    }
     logger.error("Failed to create sub-organization", {
       parentTenantId,
       error: err.message,
@@ -146,6 +206,7 @@ exports.getTenantTree = async (tenantId) => {
           model: Tenant,
           as: "tenant",
           attributes: ["id", "name", "code", "status", "plan"],
+          required: true, // D-12: stated, not inherited from the defaultScope
         },
       ],
     });
@@ -161,6 +222,7 @@ exports.getTenantTree = async (tenantId) => {
           model: Tenant,
           as: "tenant",
           attributes: ["id", "name", "code", "status", "plan"],
+          required: true, // D-12: stated, not inherited from the defaultScope
         },
       ],
     });
@@ -253,6 +315,7 @@ exports.getAncestorTenants = async (tenantId) => {
             model: Tenant,
             as: "tenant",
             attributes: ["id", "name", "code", "status"],
+            required: true, // D-12: stated, not inherited from the defaultScope
           },
         ],
       });

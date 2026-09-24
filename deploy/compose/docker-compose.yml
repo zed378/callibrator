@@ -10,6 +10,46 @@
 
 name: callibrator
 
+# ----------------------------------------------------------------------------
+# HARDENING (S-19) — applied to every service below.
+#
+#   no-new-privileges  a process cannot gain privileges through setuid/setcap
+#                      binaries (the backend's Chromium runs --no-sandbox, so
+#                      it needs no setuid helper).
+#   cap_drop: [ALL]    every service starts with NO Linux capabilities, and
+#                      adds back only what its entrypoint needs. The official
+#                      postgres/redis/rabbitmq/clamav/nginx images start as root
+#                      to chown their data directory and then switch user —
+#                      that is CHOWN, FOWNER, DAC_OVERRIDE, SETUID, SETGID.
+#                      The backend (uid 997) and the frontend (uid 1001) run
+#                      as non-root users and need none.
+#   read_only          only where the image is known to write nowhere but its
+#                      volumes and tmpfs: nginx and redis. The backend and
+#                      frontend images are NOT read-only yet — pkg extracts
+#                      native addons and Chromium writes profile/crash data at
+#                      runtime, and that has not been mapped (a read-only root
+#                      that breaks certificate PDFs on first use is worse than
+#                      a writable one).
+#   CPU limits         in the prod, staging and vm overlays, beside memory.
+#
+# NOT VERIFIED BY RUNNING: docker was unavailable when this was written
+# (2026-09-24). The first `make up` on any host must confirm every container
+# reaches healthy; a missing capability shows as an entrypoint
+# "Operation not permitted" in `docker compose logs <service>`.
+# ----------------------------------------------------------------------------
+x-hardened: &hardened
+  security_opt:
+    - no-new-privileges:true
+
+# The capabilities an official image's root entrypoint needs to chown its data
+# directory and drop to its own user (gosu / su-exec).
+x-root-entrypoint-caps: &root-entrypoint-caps
+  - CHOWN
+  - FOWNER
+  - DAC_OVERRIDE
+  - SETUID
+  - SETGID
+
 services:
   # ==========================================================================
   # APPLICATION
@@ -27,18 +67,25 @@ services:
   # directories writable by the backend's uid. It is idempotent, so it is safe
   # on every `up`. If you change the backend's uid, change APP_UID here too.
   volume-init:
-    image: alpine:3.20
+    # P7-07: digest-pinned (alpine 3.20 on 2026-09-24).
+    image: alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
     user: "0:0"
     restart: "no"
+    <<: *hardened
+    cap_drop: [ALL]
+    cap_add: [CHOWN, FOWNER, DAC_OVERRIDE]
     environment:
       APP_UID: "997"
+    # storage and well-known since S-40: the local storage driver's root
+    # (/app/storage) and the ACME challenge directory (/app/.well-known) were
+    # neither created by the image nor on a volume.
     command:
       - sh
       - -c
       - >-
-        mkdir -p /v/uploads /v/backup /v/log &&
-        chown -R "$${APP_UID}:$${APP_UID}" /v/uploads /v/backup /v/log &&
-        echo "volume-init: uploads, backup and log owned by $${APP_UID}"
+        mkdir -p /v/uploads /v/backup /v/log /v/storage /v/well-known &&
+        chown -R "$${APP_UID}:$${APP_UID}" /v/uploads /v/backup /v/log /v/storage /v/well-known &&
+        echo "volume-init: uploads, backup, log, storage and well-known owned by $${APP_UID}"
     volumes:
       - ./volumes:/v
 
@@ -50,6 +97,8 @@ services:
       context: ../..
       dockerfile: backend/Dockerfile
     restart: unless-stopped
+    <<: *hardened
+    cap_drop: [ALL]
     env_file:
       - .env
     environment:
@@ -62,6 +111,11 @@ services:
       - ./volumes/uploads:/app/uploads
       - ./volumes/backup:/app/backup
       - ./volumes/log:/app/log
+      # S-40 (S-12 follow-up): the local storage driver's root and the ACME
+      # HTTP-01 directory. Before this, both lived in the container layer and
+      # were lost on every recreate.
+      - ./volumes/storage:/app/storage
+      - ./volumes/well-known:/app/.well-known
     # Wait for the datastores to be READY, not merely started. The backend runs
     # db.sync() + migrations against Postgres at boot and connects to Redis and
     # RabbitMQ, so starting early produces a crash loop that looks like a code
@@ -105,6 +159,8 @@ services:
         NEXT_PUBLIC_API_VERSION: ${NEXT_PUBLIC_API_VERSION:-v1}
         NEXT_PUBLIC_TENANT_ID: ${NEXT_PUBLIC_TENANT_ID:-}
     restart: unless-stopped
+    <<: *hardened
+    cap_drop: [ALL]
     environment:
       NODE_ENV: ${NODE_ENV:-production}
       # HOSTNAME, not HOST: Next standalone binds process.env.HOSTNAME and ignores
@@ -132,8 +188,14 @@ services:
     # pgvector-enabled Postgres. The AI/RAG module stores embeddings in a
     # vector(1536) column and migration 0018 runs `CREATE EXTENSION vector`.
     # Plain postgres:18-alpine lacks the extension and that migration fails.
-    image: pgvector/pgvector:pg18
+    # P7-07: digest-pinned. `pg18` moves with every 18.x minor; a minor
+    # upgrade is a deliberate digest bump (docs/DEVOPS/02-CONTAINERIZATION.md
+    # § Moving a pinned base image), never a side effect of a pull.
+    image: pgvector/pgvector:pg18@sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167bab54efd3640516a44ac1a928dd67e7a
     restart: unless-stopped
+    <<: *hardened
+    cap_drop: [ALL]
+    cap_add: *root-entrypoint-caps
     env_file:
       - .env
     environment:
@@ -159,20 +221,49 @@ services:
     # NOT just a cache. Redis holds rate-limit counters, WebAuthn challenges
     # and worker idempotency claims. An outage weakens brute-force protection
     # and permits duplicate side effects — see docs/ARCHITECTURE/06.
-    image: redis:8.6-alpine
+    image: redis:8.6-alpine@sha256:bb2e2e3ac0c7295b6f3b1b7ee5438f7320c74483cba1cb195f3fd43dad38de67
     restart: unless-stopped
+    <<: *hardened
+    cap_drop: [ALL]
+    cap_add: *root-entrypoint-caps
+    read_only: true
+    tmpfs:
+      - /tmp
+    environment:
+      # S-09. With a password the server starts with --requirepass and the
+      # backend (which reads the same REDIS_PASSWORD from .env) sends AUTH.
+      # Empty: no authentication, exactly as before. The password is passed
+      # at RUNTIME from this variable, not written into this file.
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      # The prod and vm overlays set this to yes (AOF persistence). They used
+      # to override `command` for it, which would now discard --requirepass.
+      REDIS_APPENDONLY: ${REDIS_APPENDONLY:-no}
+    command:
+      - sh
+      - -c
+      - >-
+        set -- redis-server --appendonly "$${REDIS_APPENDONLY:-no}";
+        if [ -n "$${REDIS_PASSWORD}" ]; then set -- "$$@" --requirepass "$${REDIS_PASSWORD}"; fi;
+        exec docker-entrypoint.sh "$$@"
     volumes:
       - ./volumes/redis:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      # With a password an unauthenticated PING answers NOAUTH — which is the
+      # point — so the check authenticates through REDISCLI_AUTH, never argv.
+      test:
+        - CMD-SHELL
+        - 'if [ -n "$$REDIS_PASSWORD" ]; then export REDISCLI_AUTH="$$REDIS_PASSWORD"; fi; redis-cli ping | grep -q PONG'
       interval: 5s
       timeout: 5s
       retries: 10
       start_period: 10s
 
   rabbitmq:
-    image: rabbitmq:3.13-management-alpine
+    image: rabbitmq:3.13-management-alpine@sha256:606d8c0d6b3c18d1da9afc53bc7cdb2a8d5486df91b5a9830e9e07626c9ae281
     restart: unless-stopped
+    <<: *hardened
+    cap_drop: [ALL]
+    cap_add: *root-entrypoint-caps
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-guest}
@@ -193,8 +284,14 @@ services:
     # scanner error REJECTS the upload. Fail-closed is inconvenient when ClamAV
     # is down and correct anyway: the alternative silently disables scanning at
     # exactly the moment it is not working.
-    image: clamav/clamav:1.4
+    # P7-07: pinned by DIGEST — the 1.4 image S-04's client was verified
+    # against (EICAR → FOUND). A moving tag here would change the scanner
+    # under a deployment. How to move it: docs/DEVOPS/02-CONTAINERIZATION.md.
+    image: clamav/clamav:1.4@sha256:a5f03c12a79dbe9f6d8a527b6bb1ea053fa8dd061d3738a26897f055ee2d9303
     restart: unless-stopped
+    <<: *hardened
+    cap_drop: [ALL]
+    cap_add: *root-entrypoint-caps
     volumes:
       - ./volumes/clamav:/var/lib/clamav
     healthcheck:
@@ -210,8 +307,17 @@ services:
   # ==========================================================================
 
   nginx:
-    image: nginx:1.27-alpine
+    image: nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10
     restart: unless-stopped
+    <<: *hardened
+    cap_drop: [ALL]
+    # The master process binds 80/443 as root, then workers run as `nginx`.
+    cap_add: [CHOWN, SETUID, SETGID, NET_BIND_SERVICE, DAC_OVERRIDE]
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+      - /tmp
     volumes:
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
       - ./volumes/certs:/etc/nginx/certs:ro

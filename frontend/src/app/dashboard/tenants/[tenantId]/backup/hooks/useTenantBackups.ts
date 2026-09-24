@@ -6,6 +6,15 @@ import {
   RestoreOutcome,
 } from "@/api/services/tenantBackup.service";
 
+/** The "create backup" form (BackupCreateModal). */
+export interface BackupCreateForm {
+  name: string;
+  description: string;
+  backupType: "FULL" | "PARTIAL" | "USER_ONLY";
+  retentionDays: string;
+  tag: string;
+}
+
 export function useTenantBackups(tenantId?: string, tenantName?: string) {
   const router = useRouter();
 
@@ -21,10 +30,10 @@ export function useTenantBackups(tenantId?: string, tenantName?: string) {
 
   // Create backup modal
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [createForm, setCreateForm] = useState({
+  const [createForm, setCreateForm] = useState<BackupCreateForm>({
     name: "",
     description: "",
-    backupType: "FULL" as "FULL" | "PARTIAL" | "USER_ONLY",
+    backupType: "FULL",
     retentionDays: "90",
     tag: "",
   });

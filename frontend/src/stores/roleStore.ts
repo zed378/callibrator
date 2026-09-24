@@ -92,6 +92,10 @@ export const useRoleStore = create<RoleState>()((set) => ({
       const message =
         error instanceof Error ? error.message : 'Failed to update role';
       set({ isLoading: false, error: message });
+      // F-64: a failed write reaches the caller. It used to be swallowed: the
+      // edit modal closed as if saved, and the refetch that followed cleared
+      // the error — the operator was never told the role was unchanged.
+      throw error;
     }
   },
 
@@ -126,6 +130,7 @@ export const useRoleStore = create<RoleState>()((set) => ({
       const message =
         error instanceof Error ? error.message : 'Failed to delete role';
       set({ isLoading: false, error: message });
+      throw error; // F-64, as updateRole
     }
   },
 

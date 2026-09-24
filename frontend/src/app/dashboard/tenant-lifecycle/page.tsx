@@ -1,6 +1,7 @@
 // src/app/dashboard/tenant-lifecycle/page.tsx
 "use client";
 
+import { deferEffect } from "@/lib/deferEffect";
 import React, { useCallback, useEffect, useState } from "react";
 import DashboardLayout from "@/components/layouts/DashboardLayout";
 import {
@@ -88,9 +89,7 @@ export default function TenantLifecyclePage() {
     }
   }, [tenantId]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useEffect(() => deferEffect(load), [load]);
 
   /** Wrap a lifecycle action with busy state + toast + refresh. */
   const run = async (

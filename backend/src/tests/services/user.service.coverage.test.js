@@ -55,7 +55,7 @@ jest.mock("../../utils/password.util", () => ({
 
 jest.mock("../../utils/upload.util", () => ({
   deleteUpload: jest.fn(),
-  getUploadUrl: jest.fn((f) => `/uploads/profile/${f}`),
+  getUploadUrl: jest.fn((f) => `/uploads/public/profile/${f}`),
 }));
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
@@ -1118,12 +1118,12 @@ describe("user.service - branch & error coverage", () => {
     // A-77: the file goes AFTER the delete commits (it used to go before the
     // destroy, so a failed delete lost the avatar of a still-live user).
     it("should delete the avatar file after destroying the user", async () => {
-      const user = makeUser({ picture: "/uploads/profile/mine.png" });
+      const user = makeUser({ picture: "/uploads/public/profile/mine.png" });
       Users.findByPk.mockResolvedValue(user);
 
       await deleteUser({ userId: "u2", deletedBy: "admin", actorIsSuperAdmin: true });
 
-      expect(deleteUpload).toHaveBeenCalledWith("mine.png", "uploads/profile");
+      expect(deleteUpload).toHaveBeenCalledWith("mine.png", "uploads/public/profile");
       expect(user.destroy).toHaveBeenCalled();
       expect(user.destroy.mock.invocationCallOrder[0]).toBeLessThan(
         deleteUpload.mock.invocationCallOrder[0],
@@ -1141,7 +1141,7 @@ describe("user.service - branch & error coverage", () => {
     });
 
     it("should still delete the user when avatar removal fails", async () => {
-      const user = makeUser({ picture: "/uploads/profile/mine.png" });
+      const user = makeUser({ picture: "/uploads/public/profile/mine.png" });
       Users.findByPk.mockResolvedValue(user);
       deleteUpload.mockRejectedValue(new Error("ENOENT"));
 
@@ -1217,7 +1217,7 @@ describe("user.service - branch & error coverage", () => {
       const result = await fetchUsers({ tenantId: "t1" });
 
       expect(result.data.avatarBaseUrl).toBe(
-        "https://cdn.example.com/uploads/profile/",
+        "https://cdn.example.com/uploads/public/profile/",
       );
     });
 
@@ -1227,7 +1227,7 @@ describe("user.service - branch & error coverage", () => {
 
       const result = await fetchUsers({ tenantId: "t1" });
 
-      expect(result.data.avatarBaseUrl).toBe("/uploads/profile/");
+      expect(result.data.avatarBaseUrl).toBe("/uploads/public/profile/");
     });
 
     it("should shape fetchSpecificUser with the HOST_URL-derived picture fields", async () => {

@@ -1,13 +1,16 @@
 import React from "react";
+import type { PaginatedResponse } from "@/types";
+import type { Device } from "@/api/services/device.service";
+import type { RecordCalibrationForm } from "../hooks/useCalibration";
 import { Dialog, Select, Input, Textarea, Button } from "@/components/ui";
 
 interface RecordCalibrationModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (e: React.FormEvent) => void;
-  devices: any;
-  form: any;
-  setForm: React.Dispatch<React.SetStateAction<any>>;
+  devices: PaginatedResponse<Device> | null;
+  form: RecordCalibrationForm;
+  setForm: React.Dispatch<React.SetStateAction<RecordCalibrationForm>>;
   isLoading: boolean;
 }
 
@@ -36,7 +39,7 @@ export const RecordCalibrationModal: React.FC<RecordCalibrationModalProps> = ({
             onChange={(val) => setForm({ ...form, deviceId: val })}
             options={[
               { value: "", label: "Select Equipment" },
-              ...(devices?.data.map((d: any) => ({
+              ...(devices?.data.map((d) => ({
                 value: d.id,
                 label: `${d.name} (SN: ${d.serialNumber || "None"})`,
               })) || []),

@@ -43,6 +43,11 @@
  *                                  principal's (req.user.tenantId in the
  *                                  controller); the multipart body carries only
  *                                  the file. Gated since A-94 (it had no gate).
+ *   POST  /content/media           no checkTenant: CMS content is platform-
+ *                                  global (posts carry no tenant). The file
+ *                                  goes to the PUBLIC class (ADR-042 step 3)
+ *                                  and the actor is audited. Test:
+ *                                  content.media.s01.test.js.
  */
 
 const fs = require("fs");
@@ -98,6 +103,9 @@ const REVIEWED = {
   "ai.route.js POST /ocr": "no checkTenant; tenant from req.user.tenantId (A-94)",
   "attachments.route.js POST /": "no checkTenant; tenant from req.user.tenantId",
   "calibrationDevices.route.js POST /bulk-import": "no checkTenant; tenant from the principal",
+  // ADR-042 step 3 (S-01): CMS images are platform content (posts carry no
+  // tenant), written to the PUBLIC class; the actor is audited.
+  "content.route.js POST /media": "no checkTenant; platform-global content, audited (contentMedia.service)",
   "tenant.route.js PATCH /edit": "service: tenantService.updateTenant (A-63)",
   "tenant.route.js POST /:tenantId/logo": "path param, visible to the gate",
   "user.route.js POST /:userId/avatar": "path param, visible to the gate",

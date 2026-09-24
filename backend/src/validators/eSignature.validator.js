@@ -86,13 +86,6 @@ exports.cancelWorkflow = Joi.object({
 }).options({ abortEarly: false, stripUnknown: true });
 
 /**
- * Validate signature revocation
- */
-exports.revokeSignature = Joi.object({
-  reason: Joi.string().required().max(500),
-}).options({ abortEarly: false, stripUnknown: true });
-
-/**
  * Format validation errors
  */
 // A-09 — Express 5 leaves `req.body` undefined when no body is sent. Joi

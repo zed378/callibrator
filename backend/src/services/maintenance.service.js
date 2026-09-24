@@ -4,6 +4,7 @@ const { MaintenanceWorkOrder, CalibrationDevice, Vendor, User } = require("../mo
 const { AppError } = require("../utils/appError.util");
 const { DEFAULT_LIMIT, MAX_LIMIT } = require("../constants");
 const webhookService = require("./webhook.service");
+const auditService = require("./audit.service");
 const { WEBHOOK_EVENTS } = require("../constants/webhookEvents");
 
 // ------------------------------------------------------------------
@@ -141,15 +142,85 @@ const toModelFields = (data) => {
   return mapped;
 };
 
-exports.createWorkOrder = async (tenantId, data) => {
-  try {
-    const newOrder = await MaintenanceWorkOrder.create({
-      ...toModelFields(data),
+// The work-order columns an audit row records (A-190). Free text
+// (description, resolution notes) is left out: the row is permanent.
+const AUDITED_FIELDS = ["deviceId", "title", "type", "status", "priority", "vendorId", "assignedTo"];
+
+const pick = (source, keys) =>
+  Object.fromEntries(keys.filter((key) => source[key] !== undefined).map((key) => [key, source[key] ?? null]));
+
+/**
+ * A-190 — the audit row of a work-order change, in the tenant's trail and in
+ * the change's transaction. A failed insert is re-thrown by logAction and
+ * rolls the change back.
+ */
+const auditWorkOrder = (transaction, tenantId, actor, { action, resourceId, changes }) =>
+  auditService.logAction(
+    {
       tenantId,
-    });
-    // A-11: no transaction here — the insert has already autocommitted.
-    webhookService.emitAfterCommit(null, tenantId, WEBHOOK_EVENTS.WORK_ORDER_CREATED, {
-      workOrderId: newOrder.id, deviceId: newOrder.deviceId, type: newOrder.type, status: newOrder.status, priority: newOrder.priority,
+      userId: actor.userId,
+      action,
+      resourceType: "MaintenanceWorkOrder",
+      resourceId,
+      changes,
+      ipAddress: actor.ipAddress,
+      userAgent: actor.userAgent,
+    },
+    { transaction },
+  );
+
+/**
+ * A-220 — a work order may reference only its own tenant's device, vendor and
+ * assignee. The foreign keys accept any tenant's id, so until 2026-09-24 a
+ * body naming another hospital's device created a work order pointing into
+ * that tenant (and, since ADR-048, one whose device then reads as null). A
+ * reference that is not in the tenant is 404 — the same answer as one that
+ * does not exist, so the check is not an oracle for other tenants' ids.
+ *
+ * @param {string} tenantId
+ * @param {object} fields - model fields (after toModelFields)
+ * @param {object} transaction
+ * @throws {AppError} 404 naming the reference that was not found
+ */
+const assertReferencesInTenant = async (tenantId, fields, transaction) => {
+  const checks = [
+    [fields.deviceId, CalibrationDevice, "Device not found"],
+    [fields.vendorId, Vendor, "Vendor not found"],
+    [fields.assignedTo, User, "Assignee not found"],
+  ];
+  for (const [id, Model, message] of checks) {
+    if (id) {
+      const found = await Model.findOne({ where: { id, tenantId }, attributes: ["id"], transaction });
+      if (!found) {
+        throw new AppError(404, message);
+      }
+    }
+  }
+};
+
+/**
+ * Create a work order, its audit row and (after the commit) its webhook.
+ *
+ * @param {string} tenantId
+ * @param {object} data - validated body
+ * @param {object} actor - auditActor(req)
+ */
+exports.createWorkOrder = async (tenantId, data, actor = {}) => {
+  try {
+    const fields = toModelFields(data);
+    const newOrder = await db.transaction(async (transaction) => {
+      await assertReferencesInTenant(tenantId, fields, transaction);
+      const created = await MaintenanceWorkOrder.create({ ...fields, tenantId }, { transaction });
+      await auditWorkOrder(transaction, tenantId, actor, {
+        action: "CREATE",
+        resourceId: created.id,
+        changes: { before: {}, after: pick(created, AUDITED_FIELDS) },
+      });
+      // A-11: announced once, and only if the transaction commits.
+      webhookService.emitAfterCommit(transaction, tenantId, WEBHOOK_EVENTS.WORK_ORDER_CREATED, {
+        workOrderId: created.id, deviceId: created.deviceId, type: created.type, status: created.status, priority: created.priority,
+      });
+      return created;
     });
 
     return {
@@ -169,7 +240,7 @@ exports.createWorkOrder = async (tenantId, data) => {
 // ------------------------------------------------------------------
 // UPDATE WORK ORDER
 // ------------------------------------------------------------------
-exports.updateWorkOrder = async (tenantId, orderId, data) => {
+exports.updateWorkOrder = async (tenantId, orderId, data, actor = {}) => {
   try {
     const order = await MaintenanceWorkOrder.findOne({
       where: { id: orderId, tenantId },
@@ -179,14 +250,27 @@ exports.updateWorkOrder = async (tenantId, orderId, data) => {
       throw new AppError(404, "Maintenance work order not found");
     }
 
+    const fields = toModelFields(data);
     const previousStatus = order.status;
-    await order.update(toModelFields(data));
-    // A-11: the update has autocommitted; announce the transition into Completed once.
-    if (order.status === "Completed" && previousStatus !== "Completed") {
-      webhookService.emitAfterCommit(null, tenantId, WEBHOOK_EVENTS.WORK_ORDER_COMPLETED, {
-        workOrderId: order.id, deviceId: order.deviceId, type: order.type, status: order.status,
+    // Read before the update: the instance is mutated in place.
+    const audited = AUDITED_FIELDS.filter((key) => fields[key] !== undefined);
+    const before = Object.fromEntries(audited.map((key) => [key, order[key] ?? null]));
+
+    await db.transaction(async (transaction) => {
+      await assertReferencesInTenant(tenantId, fields, transaction);
+      await order.update(fields, { transaction });
+      await auditWorkOrder(transaction, tenantId, actor, {
+        action: "UPDATE",
+        resourceId: order.id,
+        changes: { before, after: pick(fields, audited) },
       });
-    }
+      // A-11: announce the transition into Completed once, after the commit.
+      if (order.status === "Completed" && previousStatus !== "Completed") {
+        webhookService.emitAfterCommit(transaction, tenantId, WEBHOOK_EVENTS.WORK_ORDER_COMPLETED, {
+          workOrderId: order.id, deviceId: order.deviceId, type: order.type, status: order.status,
+        });
+      }
+    });
 
     return {
       success: true,
@@ -205,7 +289,7 @@ exports.updateWorkOrder = async (tenantId, orderId, data) => {
 // ------------------------------------------------------------------
 // DELETE WORK ORDER
 // ------------------------------------------------------------------
-exports.deleteWorkOrder = async (tenantId, orderId) => {
+exports.deleteWorkOrder = async (tenantId, orderId, actor = {}) => {
   try {
     const order = await MaintenanceWorkOrder.findOne({
       where: { id: orderId, tenantId },
@@ -215,7 +299,15 @@ exports.deleteWorkOrder = async (tenantId, orderId) => {
       throw new AppError(404, "Maintenance work order not found");
     }
 
-    await order.destroy();
+    const before = pick(order, AUDITED_FIELDS);
+    await db.transaction(async (transaction) => {
+      await order.destroy({ transaction });
+      await auditWorkOrder(transaction, tenantId, actor, {
+        action: "DELETE",
+        resourceId: order.id,
+        changes: { before, after: { deleted: true } },
+      });
+    });
 
     return {
       success: true,

@@ -1,0 +1,47 @@
+# gitleaks configuration (P7-01, A-19)
+#
+# The default rule set is kept in full (`useDefault = true`); this file only
+# ADDS allowlist entries, each one narrow and each one with its reason.
+#
+# Abuse case this file must not become (P7-01): "the secret scan is
+# allowlisted into uselessness". So:
+#   - never allowlist a whole directory of source code;
+#   - allowlist a PATH only when every secret-shaped string in it is a
+#     documented placeholder or a test fixture that authenticates nothing;
+#   - allowlist a VALUE (regex) only when it is a placeholder the templates
+#     ship on purpose (CHANGE_ME…), which is exactly what `make check-env` and
+#     `make preflight` refuse at deploy time.
+# A new entry is a review item, like a new raw SQL query.
+#
+# Run locally:   gitleaks git --config .gitleaks.toml --redact .
+# (or scripts/git-hooks/pre-push, which runs it on the commits being pushed)
+
+title = "callibrator"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Placeholders and test fixtures that authenticate nothing"
+regexTarget = "match"
+regexes = [
+  # Template placeholders: the deploy guards refuse these values.
+  '''CHANGE_ME[A-Za-z0-9_]*''',
+  '''change[-_]?me''',
+  # Obvious dummies used across the test suites.
+  '''(?i)(test|dummy|fake|example|placeholder)[-_]?(secret|token|key|password)''',
+]
+paths = [
+  # Environment TEMPLATES: every value is a placeholder (S-25). A real .env is
+  # gitignored and is NOT allowlisted — committing one must fail the scan.
+  '''(^|/)\.env\.example$''',
+  # Jest suites and fixtures: keys generated for the test, JWTs signed with
+  # a test secret, EICAR-style strings.
+  '''^backend/src/tests/''',
+  '''^backend/__tests__/''',
+  '''^backend/__mocks__/''',
+  '''(^|/)__tests__/''',
+  '''\.test\.(js|ts|tsx)$''',
+  # Lockfile integrity hashes look like high-entropy secrets.
+  '''(^|/)package-lock\.json$''',
+]

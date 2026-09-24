@@ -231,6 +231,7 @@ describe("auth middleware", () => {
         isActive: true,
         status: "ACTIVE",
         role: { name: "SUPER_ADMIN" },
+        mfaEnabled: true, // P6-07: a platform operator has enrolled MFA
         tenant: { id: "tenant-123", status: "ACTIVE" },
       };
 
@@ -481,6 +482,7 @@ describe("auth middleware", () => {
         isActive: true,
         status: "ACTIVE",
         role: { name: "SUPER_ADMIN" },
+        mfaEnabled: true, // P6-07: a platform operator has enrolled MFA
         tenant: { id: "tenant-123", status: "ACTIVE" },
       };
 
@@ -505,6 +507,7 @@ describe("auth middleware", () => {
         isActive: true,
         status: "ACTIVE",
         role: { name: "SUPER_ADMIN" },
+        mfaEnabled: true, // P6-07: a platform operator has enrolled MFA
         tenant: { id: "tenant-123", status: "ACTIVE" },
       };
 
@@ -526,6 +529,7 @@ describe("auth middleware", () => {
         isActive: true,
         status: "ACTIVE",
         role: { name: "SUPER_ADMIN" },
+        mfaEnabled: true, // P6-07: a platform operator has enrolled MFA
         tenant: { id: "tenant-123", status: "ACTIVE" },
       };
 
@@ -600,6 +604,7 @@ describe("auth middleware", () => {
         isActive: true,
         status: "ACTIVE",
         role: { name: "SUPERADMIN" },
+        mfaEnabled: true, // P6-07: a platform operator has enrolled MFA
         tenant: { id: "tenant-123", status: "ACTIVE" },
       };
 
@@ -619,6 +624,7 @@ describe("auth middleware", () => {
         isActive: true,
         status: "ACTIVE",
         role: { name: "SUPER_ADMIN" },
+        mfaEnabled: true, // P6-07: a platform operator has enrolled MFA
         tenant: { id: "tenant-123", status: "ACTIVE" },
       };
 

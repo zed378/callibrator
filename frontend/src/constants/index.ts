@@ -39,7 +39,18 @@ export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ||
   "http://localhost:5000";
 export const API_VERSION = "/api/v1";
-export const API_TIMEOUT = 30000; // 30 seconds
+/**
+ * F-14: the client's budget must be LONGER than the server's, so the user sees
+ * the backend's own 408 ("Request timeout", with its X-Request-Id) rather than
+ * axios's "timeout of 30000ms exceeded" — the two used to be equal, and the
+ * client's clock starts first.
+ *
+ *   client 35 s  >  Next proxy (should sit between; see F-14 in the audit)  >  backend 30 s
+ *
+ * The backend's budget is `app.use(timeout("30s"))` in backend/index.js.
+ */
+export const BACKEND_TIMEOUT_MS = 30000;
+export const API_TIMEOUT = 35000;
 
 // Deploy-time tenant binding. When a single-tenant frontend is deployed with
 // NEXT_PUBLIC_TENANT_ID set, the login/register pages fetch that tenant's
@@ -77,84 +88,8 @@ export interface MenuGroup {
   requiredPermission?: string;
 }
 
-export const DASHBOARD_MENU: MenuGroup[] = [
-  {
-    label: "Home",
-    icon: React.createElement(LayoutGrid, { className: "w-5 h-5" }),
-    path: "/dashboard",
-  },
-  {
-    label: "Dashboard",
-    icon: React.createElement(LayoutGrid, { className: "w-5 h-5" }),
-    path: "/dashboard",
-  },
-  {
-    label: "Account",
-    icon: React.createElement(User, { className: "w-5 h-5" }),
-    items: [
-      {
-        label: "Profile",
-        path: "/dashboard/profile",
-        icon: React.createElement(User, { className: "w-4 h-4" }),
-      },
-      {
-        label: "Change Password",
-        path: "/dashboard/change-password",
-        icon: React.createElement(Key, { className: "w-4 h-4" }),
-      },
-    ],
-  },
-  {
-    label: "Management",
-    icon: React.createElement(Settings, { className: "w-5 h-5" }),
-    items: [
-      {
-        label: "Menu Group Assignment",
-        path: "/dashboard/menu-groups",
-        icon: React.createElement(LayoutGrid, { className: "w-4 h-4" }),
-      },
-      {
-        label: "Tenants",
-        path: "/dashboard/tenants",
-        icon: React.createElement(Building2, { className: "w-4 h-4" }),
-      },
-      {
-        label: "Roles",
-        path: "/dashboard/roles",
-        icon: React.createElement(Shield, { className: "w-4 h-4" }),
-      },
-      {
-        label: "Users",
-        path: "/dashboard/users",
-        icon: React.createElement(Users, { className: "w-4 h-4" }),
-      },
-    ],
-  },
-  {
-    label: "Equipment",
-    icon: React.createElement(Wrench, { className: "w-5 h-5" }),
-    items: [
-      {
-        label: "Calibration Devices",
-        path: "/dashboard/devices",
-        icon: React.createElement(Wrench, { className: "w-4 h-4" }),
-      },
-      {
-        label: "Calibration & Certificates",
-        path: "/dashboard/calibration",
-        icon: React.createElement(PenTool, { className: "w-4 h-4" }),
-      },
-    ],
-  },
-  {
-    label: "Security",
-    icon: React.createElement(Shield, { className: "w-5 h-5" }),
-    items: [
-      {
-        label: "Session Management",
-        path: "/dashboard/session-management",
-        icon: React.createElement(Activity, { className: "w-4 h-4" }),
-      },
-    ],
-  },
-];
+// F-15: there is no static dashboard menu. The sidebar is built only from the
+// menu tree the server resolved for the caller's role (stores/menuStore.ts);
+// the static DASHBOARD_MENU that used to live here was the fallback when the
+// role was unknown — a client-side permission array that handed every
+// principal the full administrative navigation.

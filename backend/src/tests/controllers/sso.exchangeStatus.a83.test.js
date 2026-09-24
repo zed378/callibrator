@@ -15,7 +15,8 @@
 
 jest.mock("../../models", () => ({
   Tenants: { findOne: jest.fn() },
-  Users: { findOne: jest.fn(), findByPk: jest.fn(), create: jest.fn() },
+  // A-188: update — the exchange stamps last_login_at.
+  Users: { findOne: jest.fn(), findByPk: jest.fn(), create: jest.fn(), update: jest.fn(async () => [1]) },
   Role: {},
   sequelize: { transaction: jest.fn(async (fn) => fn("mock-transaction")) },
 }));

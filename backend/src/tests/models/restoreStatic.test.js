@@ -65,14 +65,15 @@ const matchesWhere = (row, where) => {
 };
 
 /**
- * The seven models whose `restoreStatic` was the no-op. `session.model.js` is
+ * The six models whose `restoreStatic` was the no-op. CalibrationRecord was
+ * the seventh; P6-03 removed its restore — a void is final, and the database
+ * trigger refuses is_deleted true -> false (see the test at the end). `session.model.js` is
  * deliberately absent: Session uniquely declares its attributes in snake_case
  * (`is_deleted` at :76), so `{ is_deleted: false }` IS its attribute name there
  * and the same three lines are correct. It is left untouched.
  */
 const MODELS = [
   ["CalibrationDevice", "calibrationDevice"],
-  ["CalibrationRecord", "calibrationRecord"],
   ["Role", "role"],
   ["Stock", "stock"],
   ["Tenant", "tenant"],
@@ -183,5 +184,14 @@ describe("restoreStatic (D-07)", () => {
       expect(result[0]).toBe(0);
       expect(row.is_deleted).toBe(true);
     });
+  });
+});
+
+describe("P6-03 — CalibrationRecord has no restore", () => {
+  it("defines neither restoreStatic nor softDelete: a void is final", () => {
+    const sequelize = new Sequelize("callibrator_test", "app", "secret", { dialect: "postgres", logging: false });
+    const Model = require("../../models/calibrationRecord.model")(sequelize, DataTypes);
+    expect(Model.restoreStatic).toBeUndefined();
+    expect(Model.prototype.softDelete).toBeUndefined();
   });
 });

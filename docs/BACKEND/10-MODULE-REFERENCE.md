@@ -1536,7 +1536,7 @@ Base: `/api/v1/certificates`, `/api/v1/esignature`.
 ### 23. Known Limitations
 *   Two parallel, unreconciled e-signature systems (certificate `ESignatureRecord` vs standalone `SignatureWorkflow`).
 *   Standalone e-signature has route/controller param mismatches, validator middleware misuse, and a `verifySignature` that can never match (hash includes `Date.now()`); no permission gate on `/esignature/*`.
-*   Weak default secrets (`CERT_SIGNING_SECRET`, `ENCRYPT_KEY`, `KMS_MASTER_KEY`); KMS is a local mock (no AWS/Azure integration); several controller methods (`cancelWorkflow`, `revokeSignature`, `getStatus`) have no routes.
+*   Weak default secrets (`CERT_SIGNING_SECRET`, `ENCRYPT_KEY`, `KMS_MASTER_KEY`); KMS is a local mock (no AWS/Azure integration); `getStatus` has no route. `cancelWorkflow` is routed since A-130 (`POST /esignature/workflows/:workflowId/cancel`, `qms` write, audited). `revokeSignature` was removed (A-107, ADR-055): revoking a signature is a Part 11 act with no design yet.
 
 ### 24. Change Log
 | Version | Date | Description |
@@ -2264,7 +2264,7 @@ A configurable, role-based approval engine. Tenants define workflows (ordered st
 ### 6. Features
 *   Definition → instance → step → action model with per-step approval quorum.
 *   Single active workflow per resource type; sequential step advancement.
-*   Fail-soft instance start (business op proceeds if no workflow configured).
+*   Instance start: no workflow configured → the business op proceeds without one. Inside a caller's transaction (certificate issue) a failed lookup is thrown and rolls the op back (A-190, ADR-055).
 
 ### 7. Workflow
 ```mermaid
@@ -2280,7 +2280,7 @@ graph TD
 
 ### 8. Input
 *   **Workflow:** `name`, `resourceType` (Certificate/StockTransfer/MaintenanceWorkOrder), `steps[]` (`stepOrder`, `roleId`, `requiredApprovals`).
-*   **Action:** `action` (APPROVED/REJECTED), `comments`.
+*   **Action:** `action` (APPROVED/REJECTED), `comments`; to APPROVE a Certificate also `authMethod` (`password`/`mfa`), `authPayload`, `meaning` — the re-authentication of `POST /certificates/:id/approve` (A-182, ADR-055).
 
 ### 9. Output
 *   Workflow definitions (+ steps), pending task list, instance status, action records; target-resource status side-effects.
@@ -2290,16 +2290,19 @@ graph TD
 
 ### 11. Business Rules
 *   **Single active per resourceType:** creating/activating a workflow deactivates other active ones for the same type (transactional).
-*   **startWorkflow** (internal, called by certificate/stock services): fail-soft — returns null on error/missing config; creates instance PENDING at first step.
-*   **submitAction:** instance must be PENDING; caller's role must match the current step; no double-acting; approvals counted against `requiredApprovals`; sequential advance or finalize.
-*   **Finalize side-effects:** Certificate → approved (approvedById/At) / reject → DRAFT; StockTransfer → Approved/Rejected; MaintenanceWorkOrder → Completed on approve.
+*   **startWorkflow** (internal, called by certificate/stock services): returns null when no active workflow is configured; creates instance PENDING at first step. Called by `createCertificate` **inside** the certificate's transaction (A-190); a lookup error there is thrown, not guessed. `stock.service` still calls it after its commit, fail-soft (A-202, open).
+*   **submitAction** (as-built since 2026-09-24, ADR-055): the instance row is locked (`SELECT … FOR UPDATE`) inside the decision's transaction, and status, step, "already acted" and the approval count are read under that lock (A-183). Then: instance must be PENDING (409); caller's role must match the current step (403); caller must hold **write** on the record type decided — `certificate`, `warehouse` or `maintenance` (403, A-183); no double-acting (409); sequential advance or finalize.
+*   **Certificate decisions (A-182):** every APPROVED action re-authenticates (400 without the fields, 401 on a wrong credential, which writes `SIGNATURE_AUTH_FAILED`). The final approval goes through the certificate state machine — only `pending_approval` can be approved, else 409 with the state explanation — and records `approvedBy`, an `ESignatureRecord` and a Certificate `APPROVE` audit row. A rejection is allowed only for `draft` / `pending_approval` (409 otherwise); `pending_approval` returns to `draft` with its own audit row.
+*   **Other finalize side-effects:** StockTransfer → `Approved`/`Rejected` — **not values of its status ENUM; fails on PostgreSQL** (A-201, open); MaintenanceWorkOrder → Completed on approve.
+*   **Definitions (A-204):** create, update and delete write `CREATE`/`UPDATE`/`DELETE` audit rows (resourceType `Workflow`) in their transaction; update/delete lock the row. Replacing the steps of a workflow that has ever been started is 409 (its actions reference the steps and would cascade away); deleting one with PENDING instances is 409 — deactivate instead.
 
 ### 12. Access Rights
 | Capability | Permission |
 | --- | --- |
-| Workflow read | `dynamicAccess("workflow","read")` |
-| Workflow create/update/delete | `dynamicAccess("workflow","write")` |
-| Pending tasks / submit action | `auth` (role match enforced in service) |
+| Workflow read | `dynamicAccess("workflows","read")` |
+| Workflow create/update/delete | `dynamicAccess("workflows","write")` |
+| Pending tasks | `dynamicAccess("workflows","read")` (A-183) |
+| Submit action | `dynamicAccess(["certificate","warehouse","maintenance"],"write")` at the route, then write on the instance's own record type in the service, plus the step-role match and `denyPlatformAuthoring` (A-183, A-145) |
 
 ### 13. Database
 *   **`workflows`** ([workflow.model.js](../../backend/src/models/workflow.model.js)) — `resourceType`, `isActive`; paranoid.
@@ -2321,10 +2324,10 @@ Base: `/api/v1/workflows` — see [workflows.route.js](../../backend/src/routes/
 *   Invoked by `certificate.service` (Certificate) and `stock.service` (StockTransfer) via `startWorkflow`; updates those target resources on finalize.
 
 ### 16. Error Handling
-*   `404` workflow/instance not found; `400` already-final / already-acted / invalid payload; `403` wrong role; `500` step config error. All paths roll back on error.
+*   `404` workflow/instance not found (including another tenant's); `400` invalid payload or a Certificate approval without re-authentication; `401` wrong signing credential; `403` wrong role or no write on the record type; `409` closed instance, already acted, a certificate state that forbids the decision, step replacement of a started workflow, delete with pending instances; `500` step config error. All paths roll back on error.
 
 ### 17. Log and Audit
-*   Approval decisions captured in `workflow_actions`; `startWorkflow` logs warnings on lookup failure. ⚠️ Not written to the compliance `audit_logs`.
+*   Approval decisions captured in `workflow_actions` and, since A-145, an `audit_logs` row per decision in the same transaction (a Certificate approval also records `meaning` and the re-authentication method, never the credential). Definition changes are audited since A-204.
 
 ### 18. Configuration
 *   No module-specific env vars.

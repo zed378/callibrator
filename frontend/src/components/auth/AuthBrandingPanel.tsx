@@ -6,14 +6,13 @@ import Image from "next/image";
 import { BadgeCheck } from "lucide-react";
 import { useAuthBrand } from "@/hooks/useAuthBrand";
 import { BrandMark } from "./BrandMark";
+import { useClientValue } from "@/hooks/useClientValue";
 
 // Resolved after mount — reading the current year during render is
 // non-deterministic and not allowed during prerender in Next 16.
+const currentYear = () => new Date().getFullYear();
 function useCurrentYear() {
-  const [year, setYear] = React.useState<number | null>(null);
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  React.useEffect(() => setYear(new Date().getFullYear()), []);
-  return year;
+  return useClientValue<number | null>(currentYear, null);
 }
 
 const trustPoints = [

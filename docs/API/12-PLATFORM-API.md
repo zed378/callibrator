@@ -72,8 +72,8 @@ Realtime arrival is over Socket.IO into the tenant room; these endpoints are the
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/instances/pending` | approvals awaiting me |
-| POST | `/instances/:instanceId/action` | approve or reject |
+| GET | `/instances/pending` | approvals awaiting me — `workflows` read (A-183) |
+| POST | `/instances/:instanceId/action` | approve or reject — write on the record type decided; a Certificate approval re-authenticates with `authMethod`, `authPayload`, `meaning` (A-182, ADR-055) |
 | GET | `/` | list workflow definitions |
 | POST | `/` | create |
 | GET | `/:id` | one |

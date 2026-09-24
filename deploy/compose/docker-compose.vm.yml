@@ -51,6 +51,12 @@ services:
       SESSION_CLEANUP_SCHEDULER: "0 2 * * *"
       BACKUP_SCHEDULER: "0 3 * * 0"
       RETENTION_SCHEDULER: "0 2 * * *"
+    deploy:
+      resources:
+        # S-19: CPU as well as memory. Sized for a single shared VM.
+        limits:
+          cpus: "2.0"
+          memory: 4G
     ports:
       - "127.0.0.1:${BACKEND_PORT:-19000}:3000"
       # A-17: the 0.0.0.0:19883 -> 1883 mapping was removed on 2026-09-23. The
@@ -83,25 +89,53 @@ services:
         NEXT_PUBLIC_SITE_URL: ${PUBLIC_URL}
         NEXT_PUBLIC_TENANT_ID: ${NEXT_PUBLIC_TENANT_ID:-}
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
 
   postgres:
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-19432}:5432"
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 4G
 
   redis:
     # Persistence matters beyond caching: losing this volume discards in-flight
     # worker idempotency claims and reopens the duplicate window.
-    command: ["redis-server", "--appendonly", "yes"]
+    # AOF through the base command, which also applies --requirepass when
+    # REDIS_PASSWORD is set (S-09); overriding `command` would drop it.
+    environment:
+      REDIS_APPENDONLY: "yes"
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
 
   rabbitmq:
     ports:
       - "127.0.0.1:${RABBITMQ_MGMT_PORT:-19673}:15672"
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
 
   clamav:
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 2G
 
   nginx:
     volumes:
@@ -111,6 +145,11 @@ services:
     ports:
       - "0.0.0.0:${HTTP_PORT:-19080}:80"
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
 
 # A-16 — the compose network's address is PINNED so nginx can name the one hop
 # it trusts. cloudflared runs on the VM host and reaches nginx through

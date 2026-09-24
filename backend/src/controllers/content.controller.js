@@ -6,6 +6,7 @@
 const { asyncHandler } = require("../utils/controllerWrapper.util");
 const { success } = require("../utils/response.util");
 const contentService = require("../services/content.service");
+const contentMediaService = require("../services/contentMedia.service");
 
 // ---- POSTS (admin) ----
 exports.listPosts = asyncHandler(async (req, res) => {
@@ -68,4 +69,16 @@ exports.updateCategory = asyncHandler(async (req, res) => {
 exports.deleteCategory = asyncHandler(async (req, res) => {
   const result = await contentService.deleteCategory(req.params.id);
   success(res, null, null, result.message, result.status);
+});
+
+// ---- MEDIA (admin) — ADR-042 step 3: CMS images are the public class ----
+// POST /api/v1/content/media (multipart: file)
+exports.uploadMedia = asyncHandler(async (req, res) => {
+  const data = await contentMediaService.recordMediaUpload(req.file, {
+    userId: req.user.id,
+    tenantId: req.user.tenantId,
+    ipAddress: req.ip,
+    userAgent: req.get("user-agent"),
+  });
+  success(res, data, null, "Media uploaded", 201);
 });

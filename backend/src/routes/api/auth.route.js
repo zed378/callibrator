@@ -129,7 +129,7 @@ router.get("/activation", activation);
  *   post:
  *     tags: [Auth]
  *     summary: Log in a user
- *     description: Public endpoint - no authentication or permission required. Rate limited to 5 attempts per 15 minutes. Account will be locked for 15 minutes after too many failed attempts. Token is revoked if brute force is detected.
+ *     description: Public endpoint - no authentication or permission required. A-185 - every failure without the right password (unknown identifier, wrong password, suspended or locked account) is the same 401. Five failures for one identifier from one address pause that identifier and address for 15 minutes (429); 100 failures for one identifier from any addresses pause it everywhere for an hour (429). The pause never locks the account, and an unknown identifier is paused exactly like a real one. The access token in the body is for server-side callers (the Next.js login route, API tests); the browser never receives it (A-71).
  *     requestBody:
  *       required: true
  *       content:
@@ -163,14 +163,20 @@ router.get("/activation", activation);
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
+ *       '403':
+ *         description: The right password, for an account or tenant that is suspended
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  *       '429':
- *         description: Too many login attempts - Rate limited (5 attempts per 15 minutes)
+ *         description: Sign-in paused for this identifier (and address) after repeated failures - identical for unknown identifiers
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  *       '423':
- *         description: Account temporarily locked
+ *         description: The right password, for an account the MFA step locked (A-81)
  *         content:
  *           application/json:
  *             schema:

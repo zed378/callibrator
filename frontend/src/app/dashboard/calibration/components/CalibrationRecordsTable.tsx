@@ -2,9 +2,14 @@ import React from "react";
 import { Calibration } from "@/api/services/calibration.service";
 import { Card, CardContent, Table, TableSkeleton, Badge, Button, Pagination } from "@/components/ui";
 import { Activity, PenTool } from "lucide-react";
+import { PaginatedResponse } from "@/types";
+
+// Table rows arrive as generic records; narrow them back to Calibration.
+const asCalibration = (row: Record<string, unknown>): Calibration =>
+  row as unknown as Calibration;
 
 interface CalibrationRecordsTableProps {
-  calibrations: any;
+  calibrations: PaginatedResponse<Calibration> | null;
   isCalibLoading: boolean;
   pageSize: number;
   onPageChange: (page: number) => void;
@@ -24,8 +29,8 @@ export const CalibrationRecordsTable: React.FC<CalibrationRecordsTableProps> = (
     {
       key: "device",
       header: "Device",
-      render: (_: any, row: any) => {
-        const cal = row as Calibration;
+      render: (_: unknown, row: Record<string, unknown>) => {
+        const cal = asCalibration(row);
         return cal.device ? (
           <div>
             <div className="font-semibold text-foreground">{cal.device.name}</div>
@@ -39,27 +44,27 @@ export const CalibrationRecordsTable: React.FC<CalibrationRecordsTableProps> = (
     {
       key: "date",
       header: "Calibration Date",
-      render: (_: any, row: any) => new Date((row as Calibration).calibrationDate).toLocaleDateString(),
+      render: (_: unknown, row: Record<string, unknown>) => new Date(asCalibration(row).calibrationDate).toLocaleDateString(),
     },
     {
       key: "standard",
       header: "Standard Used",
-      render: (_: any, row: any) => (row as Calibration).standard || "Standard Limits",
+      render: (_: unknown, row: Record<string, unknown>) => asCalibration(row).standard || "Standard Limits",
     },
     {
       key: "isCompliant",
       header: "Status",
-      render: (_: any, row: any) => (
-        <Badge variant={(row as Calibration).isCompliant ? "success" : "danger"}>
-          {(row as Calibration).isCompliant ? "Compliant" : "Non-Compliant"}
+      render: (_: unknown, row: Record<string, unknown>) => (
+        <Badge variant={asCalibration(row).isCompliant ? "success" : "danger"}>
+          {asCalibration(row).isCompliant ? "Compliant" : "Non-Compliant"}
         </Badge>
       ),
     },
     {
       key: "technician",
       header: "Performed By",
-      render: (_: any, row: any) => {
-        const cal = row as Calibration;
+      render: (_: unknown, row: Record<string, unknown>) => {
+        const cal = asCalibration(row);
         return cal.performer ? (
           <span className="text-xs">{cal.performer.firstName} {cal.performer.lastName}</span>
         ) : (
@@ -70,13 +75,13 @@ export const CalibrationRecordsTable: React.FC<CalibrationRecordsTableProps> = (
     {
       key: "notes",
       header: "Remarks",
-      render: (_: any, row: any) => <span className="text-xs max-w-[200px] truncate block">{(row as Calibration).notes || "-"}</span>,
+      render: (_: unknown, row: Record<string, unknown>) => <span className="text-xs max-w-[200px] truncate block">{asCalibration(row).notes || "-"}</span>,
     },
     {
       key: "actions",
       header: "Actions",
-      render: (_: any, row: any) => {
-        const cal = row as Calibration;
+      render: (_: unknown, row: Record<string, unknown>) => {
+        const cal = asCalibration(row);
         return (
           <div className="flex items-center gap-2">
             {hasWriteAccess && cal.isCompliant && (
@@ -109,7 +114,10 @@ export const CalibrationRecordsTable: React.FC<CalibrationRecordsTableProps> = (
           </div>
         ) : (
           <>
-            <Table columns={calibColumns} data={calibrations.data} />
+            <Table
+              columns={calibColumns}
+              data={calibrations.data as unknown as Record<string, unknown>[]}
+            />
             <div className="p-4 border-t border-border flex justify-end">
               <Pagination
                 currentPage={calibrations.meta.page}

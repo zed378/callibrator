@@ -410,7 +410,7 @@ exports.runRetentionSweep = async () => {
 const PII_MASK = "[REDACTED]";
 
 /** Where avatars are stored (user.service), and its "no photo" sentinel (A-180). */
-const AVATAR_FOLDER = "uploads/profile";
+const AVATAR_FOLDER = "uploads/public/profile";
 const AVATAR_PLACEHOLDER = "default.svg";
 
 /**

@@ -45,7 +45,10 @@ const defineModel = (db, DataTypes) => {
       privateKey: {
         type: DataTypes.TEXT,
         allowNull: false,
-        comment: "AES-256 encrypted PEM (iv:ciphertext); never plaintext",
+        // P6-10: a kms.service envelope (v2:<keyId>:…, GCM, tenant id as AAD).
+        // Rows written before migration 0058 were AES-CBC `iv:ciphertext`
+        // under ENCRYPT_KEY; 0058 re-wraps them (services/signingKeyWrap).
+        comment: "KMS envelope of the PEM (tenant AAD); never plaintext",
       },
     },
     {

@@ -50,6 +50,11 @@ jest.mock("../../models", () => ({
   User: {},
 }));
 
+// P6-09: every quantity change audits inside its transaction.
+jest.mock("../../services/audit.service", () => ({
+  logAction: jest.fn().mockResolvedValue({}),
+}));
+
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: {
     info: jest.fn(),
@@ -104,6 +109,7 @@ jest.mock("../../validators/stock.validator", () => {
 const { db } = require("../../config");
 const { Stock, StockTransfer, StockAdjustment, StockOpname, Warehouse, StorageLocation } = require("../../models");
 const { validate: validateInput } = require("../../validators/stock.validator");
+const auditService = require("../../services/audit.service");
 
 const {
   fetchStocks,
@@ -287,6 +293,59 @@ describe("stock.service", () => {
       expect(tx.commit).toHaveBeenCalled();
     });
 
+    it("P6-09: stock on hand at creation is recorded as an opening-balance adjustment, audited", async () => {
+      const tx = mockTransaction();
+      db.transaction.mockResolvedValueOnce(tx);
+      Warehouse.findOne.mockResolvedValueOnce({ id: "wh-1" });
+      Stock.create.mockResolvedValueOnce({
+        id: "st-new",
+        itemName: "Item 1",
+        warehouseId: "wh-1",
+        locationId: null,
+        quantity: 12,
+      });
+      StockAdjustment.create.mockResolvedValueOnce({ id: "adj-open" });
+
+      await createStock(
+        "tenant-1",
+        { warehouseId: "wh-1", itemName: "Item 1", quantity: 12 },
+        { userId: "usr-1", ipAddress: "10.0.0.1" },
+      );
+
+      expect(StockAdjustment.create).toHaveBeenCalledWith(
+        {
+          tenantId: "tenant-1",
+          warehouseId: "wh-1",
+          locationId: null,
+          stockId: "st-new",
+          type: "addition",
+          quantity: 12,
+          quantityBefore: 0,
+          quantityAfter: 12,
+          reason: "Opening balance recorded when the stock item was created",
+          adjustedBy: "usr-1",
+        },
+        { transaction: tx },
+      );
+      expect(auditService.logAction.mock.calls.map(([row]) => [row.action, row.resourceType, row.resourceId])).toEqual([
+        ["CREATE", "Stock", "st-new"],
+        ["CREATE", "StockAdjustment", "adj-open"],
+      ]);
+      expect(auditService.logAction.mock.calls.every(([, opts]) => opts.transaction === tx)).toBe(true);
+    });
+
+    it("P6-09: an item created with no quantity writes no adjustment", async () => {
+      const tx = mockTransaction();
+      db.transaction.mockResolvedValueOnce(tx);
+      Warehouse.findOne.mockResolvedValueOnce({ id: "wh-1" });
+      Stock.create.mockResolvedValueOnce({ id: "st-new", itemName: "Item 1", quantity: 0 });
+
+      await createStock("tenant-1", { warehouseId: "wh-1", itemName: "Item 1" }, { userId: "usr-1" });
+
+      expect(StockAdjustment.create).not.toHaveBeenCalled();
+      expect(auditService.logAction).toHaveBeenCalledTimes(1);
+    });
+
     it("should create stock without location and optional fields successfully", async () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
@@ -393,28 +452,67 @@ describe("stock.service", () => {
       };
       Stock.findOne.mockResolvedValueOnce(mockStock);
 
-      const result = await updateStock("tenant-1", "st-1", {
-        itemName: "New Name",
-        sku: "New SKU",
-        serialNumber: "New SN",
-        quantity: 10,
-        minQuantity: 2,
-        description: "New",
-      });
-
-      expect(result.success).toBe(true);
-      expect(mockStock.update).toHaveBeenCalledWith(
+      const result = await updateStock(
+        "tenant-1",
+        "st-1",
         {
           itemName: "New Name",
           sku: "New SKU",
           serialNumber: "New SN",
-          quantity: 10,
           minQuantity: 2,
           description: "New",
         },
-        expect.any(Object),
+        { userId: "user-1", ipAddress: "10.0.0.1" },
+      );
+
+      expect(result.success).toBe(true);
+      const next = {
+        itemName: "New Name",
+        sku: "New SKU",
+        serialNumber: "New SN",
+        minQuantity: 2,
+        description: "New",
+      };
+      expect(mockStock.update).toHaveBeenCalledWith(next, { transaction: tx });
+      expect(auditService.logAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "UPDATE",
+          resourceType: "Stock",
+          resourceId: "st-1",
+          userId: "user-1",
+          changes: {
+            before: { itemName: "Old Name", sku: "Old SKU", serialNumber: "Old SN", minQuantity: 1, description: "Old" },
+            after: next,
+          },
+        }),
+        { transaction: tx },
       );
       expect(tx.commit).toHaveBeenCalled();
+    });
+
+    // P6-09 — the endpoint that could change a quantity with no reason.
+    it("P6-09: REFUSES a quantity change (400), writes nothing, and names the adjustment endpoint", async () => {
+      const tx = mockTransaction();
+      db.transaction.mockResolvedValueOnce(tx);
+      const mockStock = { id: "st-1", itemName: "Item", quantity: 5, update: jest.fn() };
+      Stock.findOne.mockResolvedValueOnce(mockStock);
+
+      const err = await updateStock("tenant-1", "st-1", { quantity: 50 }).catch((e) => e);
+
+      expect(err.status).toBe(400);
+      expect(err.message).toMatch(/cannot be edited directly \(it is 5; 50 was sent\)/);
+      expect(err.message).toMatch(/POST \/api\/v1\/stocks\/adjustment/);
+      expect(mockStock.update).not.toHaveBeenCalled();
+      expect(auditService.logAction).not.toHaveBeenCalled();
+      expect(tx.rollback).toHaveBeenCalled();
+      expect(tx.commit).not.toHaveBeenCalled();
+    });
+
+    it("P6-09: REFUSES a quantity of 0 on a stocked item — zero is a change too", async () => {
+      const tx = mockTransaction();
+      db.transaction.mockResolvedValueOnce(tx);
+      Stock.findOne.mockResolvedValueOnce({ id: "st-1", quantity: 5, update: jest.fn() });
+      await expect(updateStock("tenant-1", "st-1", { quantity: 0 })).rejects.toMatchObject({ status: 400 });
     });
 
     it("should rollback transaction and throw error on database failure during stock update", async () => {
@@ -525,7 +623,51 @@ describe("stock.service", () => {
 
       expect(result.success).toBe(true);
       expect(mockStock.update).toHaveBeenCalledWith({ quantity: 15 }, expect.any(Object));
+      // P6-09: the adjustment names the item, the before/after and the reason.
+      expect(StockAdjustment.create).toHaveBeenCalledWith(
+        {
+          tenantId: "tenant-1",
+          warehouseId: "wh-1",
+          locationId: "loc-1",
+          stockId: "st-1",
+          type: "addition",
+          quantity: 5,
+          quantityBefore: 10,
+          quantityAfter: 15,
+          reason: "Excess",
+          adjustedBy: "usr-1",
+        },
+        { transaction: tx },
+      );
+      expect(auditService.logAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "CREATE",
+          resourceType: "StockAdjustment",
+          resourceId: "adj-1",
+          userId: "usr-1",
+          changes: {
+            before: { quantity: 10 },
+            after: { stockId: "st-1", type: "addition", quantity: 15, reason: "Excess" },
+          },
+        }),
+        { transaction: tx },
+      );
       expect(tx.commit).toHaveBeenCalled();
+    });
+
+    it("P6-09: a failing audit insert rolls the adjustment back", async () => {
+      const tx = mockTransaction();
+      db.transaction.mockResolvedValueOnce(tx);
+      Stock.findOne.mockResolvedValueOnce({ id: "st-1", warehouseId: "wh-1", quantity: 10, update: jest.fn() });
+      StockAdjustment.create.mockResolvedValueOnce({ id: "adj-1" });
+      auditService.logAction.mockRejectedValueOnce(new Error("audit insert failed"));
+
+      await expectRejectsWithMessage(
+        createAdjustment("tenant-1", { stockId: "st-1", type: "addition", quantity: 5, reason: "Excess" }, "usr-1"),
+        "audit insert failed",
+      );
+      expect(tx.rollback).toHaveBeenCalled();
+      expect(tx.commit).not.toHaveBeenCalled();
     });
 
     it("should throw 400 on subtraction if stock is insufficient", async () => {
@@ -819,6 +961,26 @@ describe("stock.service", () => {
       const result = await updateTransferStatus("tenant-1", "tf-1", { status: "completed" }, "usr-1");
       expect(result.success).toBe(true);
       expect(mockSourceStock.update).toHaveBeenCalledWith({ quantity: 5 }, expect.any(Object));
+      // P6-09: a newly created destination moved from 0.
+      expect(auditService.logAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "UPDATE",
+          resourceType: "StockTransfer",
+          resourceId: "tf-1",
+          userId: "usr-1",
+          changes: {
+            before: { status: "pending", sourceQuantity: 10, destinationQuantity: 0 },
+            after: {
+              status: "completed",
+              sourceStockId: "st-src",
+              sourceQuantity: 5,
+              destinationStockId: "st-dest",
+              destinationQuantity: 5,
+            },
+          },
+        }),
+        { transaction: tx },
+      );
       expect(tx.commit).toHaveBeenCalled();
     });
 
@@ -852,8 +1014,18 @@ describe("stock.service", () => {
         false, // not created, already exists
       ]);
 
-      await updateTransferStatus("tenant-1", "tf-1", { status: "completed" }, "usr-1");
+      await updateTransferStatus("tenant-1", "tf-1", { status: "completed" }, "usr-1", { ipAddress: "10.0.0.2" });
       expect(mockDestStock.update).toHaveBeenCalledWith({ quantity: 13 }, expect.any(Object));
+      expect(auditService.logAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          ipAddress: "10.0.0.2",
+          changes: {
+            before: { status: "pending", sourceQuantity: 10, destinationQuantity: 8 },
+            after: expect.objectContaining({ sourceQuantity: 5, destinationQuantity: 13 }),
+          },
+        }),
+        { transaction: tx },
+      );
       expect(tx.commit).toHaveBeenCalled();
     });
 
@@ -1113,14 +1285,15 @@ describe("stock.service", () => {
       };
       Stock.findOne.mockResolvedValueOnce(stock);
 
-      await updateStock("tenant-1", "st-1", { quantity: 9 });
+      // P6-09: the quantity is echoed unchanged (an edit form does this) —
+      // accepted and not written.
+      await updateStock("tenant-1", "st-1", { quantity: 5 });
 
       expect(stock.update).toHaveBeenCalledWith(
         {
           itemName: "Existing Item",
           sku: "SKU-1",
           serialNumber: "SN-1",
-          quantity: 9,
           minQuantity: 1,
           description: "desc",
         },

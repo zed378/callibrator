@@ -14,7 +14,7 @@ const { AppError } = require("../utils/appError.util");
 const { Role, MenuGroup, RoleMenuPermission } = require("../models");
 const { db } = require("../config");
 const auditService = require("./audit.service");
-const { delPattern } = require("./redis.service");
+const { del, delPattern, cacheKeys } = require("./redis.service");
 const { PLATFORM_TENANT_ID } = require("../constants/platformTenant");
 
 /**
@@ -323,31 +323,59 @@ exports.updateMenuGroup = async (value, actor = {}) => {
 };
 
 // ------------------------------------------------------------------
-// DELETE MENU GROUP (+ cleanup nested associations)
+// DELETE MENU GROUP
 // ------------------------------------------------------------------
+/**
+ * Delete a menu group that has no child menus, with every grant on it.
+ *
+ * A-181 (ADR-056): a group WITH children is refused, 409. The
+ * foreign key on `menu_groups.parent_id` is ON DELETE SET NULL, so until
+ * 2026-09-24 deleting a group removed its direct children here and silently
+ * promoted its GRANDCHILDREN to the top level — pages a role could reach only
+ * through the removed branch reappeared as top-level entries, with their
+ * explicit grants intact. Re-parenting them to the deleted group's parent
+ * instead was rejected: the permission matrix inherits a grant ONE level down
+ * (roles.service#getRolePermissionsMatrix), so a role granted that parent
+ * would silently gain every re-parented page. Deleting the whole subtree was
+ * rejected too: route gates name slugs, and a cascade would take routes away
+ * from every role holding them with one click. The caller deletes (or moves)
+ * the children first; each of those deletes is its own audited operation.
+ *
+ * The children are read inside the transaction. A child created by another
+ * request between that read and the commit would still be SET NULL — the
+ * ordinary read-then-write window, accepted: menu edits are SUPERADMIN-only.
+ *
+ * @param {string} menuGroupId
+ * @param {object} actor - auditActor(req)
+ * @throws {AppError} 404 when the group does not exist; 409 when it has children
+ */
 exports.deleteMenuGroup = async (menuGroupId, actor = {}) => {
   const group = await MenuGroup.findByPk(menuGroupId);
   if (!group) {
     throw new AppError(404, "Menu group not found");
   }
 
-  // A-173: the grants, the child menus and the group go in ONE transaction
-  // with the audit row — before, each was its own autocommit, and a failure
-  // part-way left the group in place with its grants already gone.
+  // A-173: the grants and the group go in ONE transaction with the audit row
+  // — before, each was its own autocommit, and a failure part-way left the
+  // group in place with its grants already gone.
   await db.transaction(async (transaction) => {
     const children = await MenuGroup.findAll({
       where: { parentId: menuGroupId },
-      attributes: ["id"],
+      attributes: ["id", "name"],
       transaction,
     });
-    const childIds = children.map((child) => child.id);
-    // The children's grants would cascade with them (FK, migration 0037);
-    // revoking them here makes the audit row's count the real one.
+    if (children.length > 0) {
+      throw new AppError(
+        409,
+        `Menu group "${group.name}" still has ${children.length} child menu(s) (${children
+          .map((child) => child.name)
+          .join(", ")}). Delete or move them first; a group is deleted only when it is empty.`,
+      );
+    }
     const revokedGrants = await RoleMenuPermission.destroy({
-      where: { menuGroupId: [menuGroupId, ...childIds] },
+      where: { menuGroupId },
       transaction,
     });
-    await MenuGroup.destroy({ where: { parentId: menuGroupId }, transaction });
     await group.destroy({ transaction });
     await auditMenuChange(transaction, actor, {
       action: "DELETE",
@@ -355,7 +383,7 @@ exports.deleteMenuGroup = async (menuGroupId, actor = {}) => {
       changes: {
         operation: "DELETE_MENU",
         before: { name: group.name, slug: group.slug },
-        after: { deleted: true, revokedGrants, deletedChildren: childIds },
+        after: { deleted: true, revokedGrants },
       },
     });
   });
@@ -363,10 +391,44 @@ exports.deleteMenuGroup = async (menuGroupId, actor = {}) => {
   await delPattern("permissions:role:*");
 };
 
+/**
+ * A-181 — a role↔menu grant change on this path, recorded as roles.service
+ * records its own (A-125): ONE row under the PLATFORM tenant (a role is
+ * global), resource the role, `GRANT_MENU` / `REVOKE_MENU`, inside the
+ * change's transaction. A failed insert is re-thrown by logAction and rolls
+ * the grant back.
+ *
+ * @param {object} transaction
+ * @param {object} actor - auditActor(req)
+ * @param {string} roleId
+ * @param {object} changes
+ */
+const auditGrantChange = (transaction, actor, roleId, changes) =>
+  auditService.logAction(
+    {
+      tenantId: PLATFORM_TENANT_ID,
+      userId: actor.userId,
+      action: "UPDATE",
+      resourceType: "Role",
+      resourceId: roleId,
+      changes,
+      ipAddress: actor.ipAddress,
+      userAgent: actor.userAgent,
+    },
+    { transaction },
+  );
+
 // ------------------------------------------------------------------
 // ASSIGN MENU (GROUP OR ITEM) TO ROLE
 // ------------------------------------------------------------------
-exports.assignMenuToRole = async ({ roleId, menuGroupId }) => {
+/**
+ * Grant a menu to a role (`read`). An existing grant is left as it is and is
+ * not recorded — nothing changed.
+ *
+ * @param {{roleId: string, menuGroupId: string}} params
+ * @param {object} actor - auditActor(req)
+ */
+exports.assignMenuToRole = async ({ roleId, menuGroupId }, actor = {}) => {
   const role = await Role.findByPk(roleId);
   if (!role) {
     throw new AppError(404, "Role not found");
@@ -377,79 +439,152 @@ exports.assignMenuToRole = async ({ roleId, menuGroupId }) => {
     throw new AppError(404, "Menu group or item not found");
   }
 
-  const [perm] = await RoleMenuPermission.findOrCreate({
-    where: { roleId, menuGroupId },
-    defaults: { permissionType: "read" },
+  const { perm, created } = await db.transaction(async (transaction) => {
+    const [grant, wasCreated] = await RoleMenuPermission.findOrCreate({
+      where: { roleId, menuGroupId },
+      defaults: { permissionType: "read" },
+      transaction,
+    });
+    if (wasCreated) {
+      await auditGrantChange(transaction, actor, roleId, {
+        operation: "GRANT_MENU",
+        menuGroupId,
+        before: { permissionType: null },
+        after: { permissionType: "read" },
+      });
+    }
+    return { perm: grant, created: wasCreated };
   });
 
+  // After the commit (A-181): the role's cached matrix no longer holds.
+  if (created) {
+    await del(cacheKeys.permissions(roleId));
+  }
   return perm;
 };
 
 // ------------------------------------------------------------------
 // REVOKE MENU (GROUP OR ITEM) FROM ROLE
 // ------------------------------------------------------------------
-exports.revokeMenuFromRole = async ({ roleId, menuGroupId }) => {
-  await RoleMenuPermission.destroy({ where: { roleId, menuGroupId } });
+exports.revokeMenuFromRole = async ({ roleId, menuGroupId }, actor = {}) => {
+  const removed = await db.transaction(async (transaction) => {
+    const count = await RoleMenuPermission.destroy({
+      where: { roleId, menuGroupId },
+      transaction,
+    });
+    // Nothing removed, nothing changed — and nothing to attribute.
+    if (count > 0) {
+      await auditGrantChange(transaction, actor, roleId, {
+        operation: "REVOKE_MENU",
+        menuGroupId,
+        before: { granted: true },
+        after: { granted: false },
+      });
+    }
+    return count;
+  });
+
+  if (removed > 0) {
+    await del(cacheKeys.permissions(roleId));
+  }
 };
 
 // ------------------------------------------------------------------
 // BULK ASSIGN
 // ------------------------------------------------------------------
-exports.bulkAssign = async (roleId, menuGroupIds) => {
+/**
+ * Grant several menus to a role, all or nothing, with ONE audit row naming
+ * every menu actually granted (A-181). An id that names no menu group is
+ * reported in `failed` and skipped; any other failure rolls the whole batch
+ * back — a PostgreSQL transaction cannot carry on past a failed statement, so
+ * the old per-item catch could only ever have reported a batch that was
+ * already lost.
+ *
+ * @param {string} roleId
+ * @param {string[]} menuGroupIds
+ * @param {object} actor - auditActor(req)
+ */
+exports.bulkAssign = async (roleId, menuGroupIds, actor = {}) => {
   const role = await Role.findByPk(roleId);
   if (!role) {
     throw new AppError(404, "Role not found");
   }
 
+  const existing = await MenuGroup.findAll({
+    where: { id: menuGroupIds },
+    attributes: ["id"],
+  });
+  const existingIds = new Set(existing.map((group) => String(group.id)));
+
   const assigned = [];
   const alreadyAssigned = [];
   const failed = [];
 
-  for (const menuGroupId of menuGroupIds) {
-    try {
-      const group = await MenuGroup.findByPk(menuGroupId);
-      if (!group) {
+  await db.transaction(async (transaction) => {
+    for (const menuGroupId of menuGroupIds) {
+      if (!existingIds.has(String(menuGroupId))) {
         failed.push({ menuGroupId, error: "Menu group not found" });
         continue;
       }
-
       const [, created] = await RoleMenuPermission.findOrCreate({
         where: { roleId, menuGroupId },
         defaults: { permissionType: "read" },
+        transaction,
       });
-
-      if (created) {
-        assigned.push(menuGroupId);
-      } else {
-        alreadyAssigned.push(menuGroupId);
-      }
-    } catch (err) {
-      failed.push({ menuGroupId, error: err.message });
+      (created ? assigned : alreadyAssigned).push(menuGroupId);
     }
-  }
+    if (assigned.length > 0) {
+      await auditGrantChange(transaction, actor, roleId, {
+        operation: "GRANT_MENU",
+        menuGroupIds: assigned,
+        before: { permissionType: null },
+        after: { permissionType: "read" },
+      });
+    }
+  });
 
+  if (assigned.length > 0) {
+    await del(cacheKeys.permissions(roleId));
+  }
   return { assigned, alreadyAssigned, failed };
 };
 
 // ------------------------------------------------------------------
 // BULK REVOKE
 // ------------------------------------------------------------------
-exports.bulkRevoke = async (roleId, menuGroupIds) => {
+/**
+ * Revoke several menus from a role, all or nothing, with ONE audit row naming
+ * every grant actually removed (A-181).
+ *
+ * @param {string} roleId
+ * @param {string[]} menuGroupIds
+ * @param {object} actor - auditActor(req)
+ */
+exports.bulkRevoke = async (roleId, menuGroupIds, actor = {}) => {
   const revoked = [];
   const notFound = [];
 
-  for (const menuGroupId of menuGroupIds) {
-    const deleted = await RoleMenuPermission.destroy({
-      where: { roleId, menuGroupId },
-    });
-
-    if (deleted > 0) {
-      revoked.push(menuGroupId);
-    } else {
-      notFound.push(menuGroupId);
+  await db.transaction(async (transaction) => {
+    for (const menuGroupId of menuGroupIds) {
+      const deleted = await RoleMenuPermission.destroy({
+        where: { roleId, menuGroupId },
+        transaction,
+      });
+      (deleted > 0 ? revoked : notFound).push(menuGroupId);
     }
-  }
+    if (revoked.length > 0) {
+      await auditGrantChange(transaction, actor, roleId, {
+        operation: "REVOKE_MENU",
+        menuGroupIds: revoked,
+        before: { granted: true },
+        after: { granted: false },
+      });
+    }
+  });
 
+  if (revoked.length > 0) {
+    await del(cacheKeys.permissions(roleId));
+  }
   return { revoked, notFound };
 };
 

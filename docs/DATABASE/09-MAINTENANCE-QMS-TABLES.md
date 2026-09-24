@@ -115,7 +115,7 @@ Risks with no assignee were completely invisible — absent from the list, 404 o
 
 `getRisks` and `getRiskById` included the optional `identifier` and `assignee` associations without `required: false`, and the `User` model carries a `defaultScope`. Both became INNER JOINs and every unassigned risk was dropped.
 
-Same trap as `certificates`. Same trap latent in `maintenance_work_orders`.
+Same trap as `certificates`. `maintenance_work_orders` has the same two nullable FKs, but its reads carry `required: false` on every include — pinned against the generated SQL by `tests/services/maintenance.includes.a190.test.js` (A-190).
 
 ## `vendors` — `paranoid`
 

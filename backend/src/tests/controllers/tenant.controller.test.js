@@ -415,7 +415,7 @@ describe("tenant Controller", () => {
       await tenantController.createTenant(req, res, next);
 
       expect(next).toHaveBeenCalledWith(mockError);
-      expect(deleteUpload).toHaveBeenCalledWith("logo-uploaded.png", "uploads/tenant");
+      expect(deleteUpload).toHaveBeenCalledWith("logo-uploaded.png", "uploads/public/tenant");
     });
   });
 

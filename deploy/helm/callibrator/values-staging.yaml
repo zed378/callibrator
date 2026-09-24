@@ -55,6 +55,9 @@ backend:
     dialect: postgres
     ssl: true
 
+  # S-09: keep these URLs credential-free — the chart refuses user:pass@ here
+  # (guard 9). The Redis password is REDIS_PASSWORD and a credentialed
+  # RabbitMQ URL is RABBITMQ_URL, both keys of the external Secret.
   redis:
     url: redis://redis.staging.svc.cluster.local:6379
   rabbitmq:

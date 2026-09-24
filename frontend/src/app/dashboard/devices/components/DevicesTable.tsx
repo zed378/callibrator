@@ -1,10 +1,11 @@
 import React from "react";
 import { Device } from "@/api/services/device.service";
+import { PaginatedResponse } from "@/types";
 import { Card, CardContent, TableSkeleton, Table, Badge, Button, Pagination } from "@/components/ui";
 import { ClipboardList, Calendar, Edit, Trash2, Radio } from "lucide-react";
 
 interface DevicesTableProps {
-  devices: any;
+  devices: PaginatedResponse<Device> | null;
   isDevicesLoading: boolean;
   pageSize: number;
   setCurrentPage: (page: number) => void;

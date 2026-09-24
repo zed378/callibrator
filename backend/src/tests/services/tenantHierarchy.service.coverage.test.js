@@ -38,9 +38,15 @@ const mockOp = {
   or: Symbol("Op.or"),
   in: Symbol("Op.in"),
 };
+// A-187: createSubOrganization writes in a managed transaction and audits;
+// the real-model proof is tenantHierarchy.createSub.a187.test.js.
+const mockTransaction = jest.fn(async (cb) => cb("TX"));
+const mockLogAction = jest.fn(async () => ({}));
 jest.mock("../../config", () => ({
-  db: { Sequelize: { Op: mockOp } },
+  db: { Sequelize: { Op: mockOp }, transaction: mockTransaction },
 }));
+jest.mock("../../services/audit.service", () => ({ logAction: mockLogAction }));
+const ACTOR = { userId: "super-1", tenantId: "t-home", ipAddress: null, userAgent: null };
 
 const logger = mockLogger;
 const AppError = MockAppError;
@@ -80,6 +86,7 @@ describe("tenantHierarchy.service (coverage)", () => {
     const activeParent = {
       id: "parent-1",
       code: "PARENT",
+      email: "admin@parent.example",
       status: "active",
       plan: "business",
     };
@@ -99,7 +106,7 @@ describe("tenantHierarchy.service (coverage)", () => {
       };
       const svc = loadService({ HIERARCHY_ENABLED: "true" }, { Tenant, TenantHierarchy });
 
-      const result = await svc.createSubOrganization("parent-1", { name: "Branch C" });
+      const result = await svc.createSubOrganization("parent-1", { name: "Branch C" }, ACTOR);
 
       expect(result).toEqual({
         tenantId: "child-1",
@@ -110,10 +117,12 @@ describe("tenantHierarchy.service (coverage)", () => {
       expect(Tenant.create).toHaveBeenCalledWith({
         name: "Branch C",
         code: "PARENT_003",
+        subdomain: "parent-003",
+        email: "admin@parent.example",
         status: "active",
         parentId: "parent-1",
         plan: "business",
-      });
+      }, { transaction: "TX" });
       // depth falls back to 0 + 1 and the path is derived from the parent code
       expect(TenantHierarchy.create).toHaveBeenCalledWith({
         tenantId: "child-1",
@@ -121,15 +130,20 @@ describe("tenantHierarchy.service (coverage)", () => {
         parentCode: "PARENT",
         path: "/parent/parent_003",
         depth: 1,
-      });
+      }, { transaction: "TX" });
+      expect(mockLogAction).toHaveBeenCalledWith(
+        expect.objectContaining({ action: "CREATE", resourceType: "Tenant", resourceId: "child-1", userId: "super-1" }),
+        { transaction: "TX" },
+      );
     });
 
-    it("rolls back the tenant and hierarchy rows when max depth is exceeded", async () => {
-      const tenantDestroy = jest.fn().mockResolvedValue(true);
-      const hierarchyDestroy = jest.fn().mockResolvedValue(true);
+    // A-187: the depth limit is checked BEFORE anything is written — the
+    // rows used to be inserted and then destroyed, and the 400 was swallowed
+    // into a 500 by the catch.
+    it("refuses (409) past max depth before writing anything", async () => {
       const Tenant = {
         findByPk: jest.fn().mockResolvedValue(activeParent),
-        create: jest.fn().mockResolvedValue({ id: "child-1", destroy: tenantDestroy }),
+        create: jest.fn(),
       };
       const TenantHierarchy = {
         findOne: jest.fn().mockResolvedValue({
@@ -137,29 +151,21 @@ describe("tenantHierarchy.service (coverage)", () => {
           path: "/root/parent",
           depth: 2,
         }),
-        count: jest.fn().mockResolvedValue(0),
-        create: jest.fn().mockResolvedValue({
-          path: "/root/parent/parent_001",
-          depth: 3,
-          destroy: hierarchyDestroy,
-        }),
+        count: jest.fn(),
+        create: jest.fn(),
       };
       const svc = loadService(
         { HIERARCHY_ENABLED: "true", HIERARCHY_MAX_DEPTH: "2" },
         { Tenant, TenantHierarchy },
       );
 
-      // NOTE: only the rollback + rejection are asserted here. The status code
-      // this surfaces is covered by the known defect reported separately
-      // (the depth guard throws inside the try block and is swallowed by the
-      // catch at tenantHierarchy.service.js:113-119), so pinning it would
-      // enshrine the bug.
       await expect(
-        svc.createSubOrganization("parent-1", { name: "Too Deep" }),
-      ).rejects.toBeInstanceOf(AppError);
+        svc.createSubOrganization("parent-1", { name: "Too Deep" }, ACTOR),
+      ).rejects.toMatchObject({ status: 409 });
 
-      expect(tenantDestroy).toHaveBeenCalled();
-      expect(hierarchyDestroy).toHaveBeenCalled();
+      expect(Tenant.create).not.toHaveBeenCalled();
+      expect(TenantHierarchy.create).not.toHaveBeenCalled();
+      expect(mockTransaction).not.toHaveBeenCalled();
     });
 
     it("wraps an unexpected model failure and logs it", async () => {
@@ -175,7 +181,7 @@ describe("tenantHierarchy.service (coverage)", () => {
       const svc = loadService({ HIERARCHY_ENABLED: "true" }, { Tenant, TenantHierarchy });
 
       await expect(
-        svc.createSubOrganization("parent-1", { name: "Boom" }),
+        svc.createSubOrganization("parent-1", { name: "Boom" }, ACTOR),
       ).rejects.toMatchObject({
         status: 500,
         message: "Failed to create sub-organization",
@@ -216,7 +222,7 @@ describe("tenantHierarchy.service (coverage)", () => {
         { Tenant, TenantHierarchy, Role, User, RoleMenuPermission },
       );
 
-      const result = await svc.createSubOrganization("parent-1", { name: "Branch A" });
+      const result = await svc.createSubOrganization("parent-1", { name: "Branch A" }, ACTOR);
 
       expect(result.tenantId).toBe("child-1");
       expect(User.findAll).not.toHaveBeenCalled();

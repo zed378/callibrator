@@ -27,10 +27,12 @@ const b64url = (buf) =>
     .replace(/=+$/, "");
 
 /** PKCE: verify a code_verifier against a stored challenge (S256 or plain). */
+// A-32: the only caller (authenticateClient) calls this only when a challenge
+// was stored. The `if (!codeChallenge) return true` that sat here was
+// unreachable, hidden from coverage — and fail-OPEN: a future caller that
+// forgot the gate would have skipped PKCE. Without it, a missing challenge
+// cannot verify.
 function verifyPkce(codeVerifier, codeChallenge, method) {
-  /* istanbul ignore next -- defensive: the only caller (authenticateClient)
-     already gates on codeChallenge being present, so this is unreachable. */
-  if (!codeChallenge) return true; // no PKCE was requested
   if (!codeVerifier) return false;
   const computed =
     method === "plain"

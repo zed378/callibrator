@@ -47,7 +47,7 @@ const defineModel = (db, DataTypes) => {
         allowNull: true,
         unique: true,
       },
-      // Tenant logo filename, stored under /uploads/tenant/<logo> and served as
+      // Tenant logo filename, stored under /uploads/public/tenant/<logo> and served as
       // `logoBaseUrl`. Nullable = no custom logo (frontend falls back to default).
       logo: {
         type: DataTypes.STRING(255),

@@ -12,7 +12,7 @@ nginx. Configuration: [`../../deploy/compose/nginx/`](../../deploy/compose/nginx
 | `/socket.io/*` | backend | **needs the WebSocket upgrade headers** |
 | `/oidc/*` | backend | **at the root**, not under `/api/v1` |
 | `/.well-known/*` | backend | ACME HTTP-01 challenges |
-| `/uploads/*` | backend | preserve the security headers |
+| `/uploads/public/*` | backend | the public class only; preserve the security headers. **No other `/uploads/` path is proxied** (S-01) |
 | everything else | frontend | |
 
 Three of these are easy to miss and all fail confusingly.
@@ -146,12 +146,15 @@ Match the application's 10 MB limit. A smaller nginx limit produces a 413 from t
 
 ## Static Uploads
 
-`/uploads/*` proxies to the backend, which serves with:
+`/uploads/public/*` proxies to the backend, which serves the public class (avatars, logos, CMS images — images only) with:
 
 ```
 X-Content-Type-Options: nosniff
 Content-Disposition: inline
+Content-Security-Policy: default-src 'none'; sandbox
 ```
+
+Until 2026-09-24 the location was `/uploads/`, and it exposed certificates and attachments to the internet (S-01, ADR-057). Those are now served only through `/api/v1/…` routes; do not widen this location back.
 
 **nginx must not strip or override these.** They are the defence against a browser sniffing an upload into active content, and helmet sets `crossOriginResourcePolicy: cross-origin` so the separate-origin frontend can load these images — which is precisely why the two headers are not optional.
 

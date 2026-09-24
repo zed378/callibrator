@@ -3,7 +3,6 @@ const {
   WorkflowStep,
   WorkflowInstance,
   WorkflowAction,
-  Certificate,
   StockTransfer,
   MaintenanceWorkOrder,
   User,
@@ -14,6 +13,7 @@ const {
 // (`const AppError = require(...)` made `new AppError(...)` throw
 // "AppError is not a constructor".)
 const { AppError } = require("../utils/appError.util");
+const { Transaction } = require("sequelize");
 const auditService = require("./audit.service");
 
 // A-145 — `changes.operation` of a workflow action's audit row.
@@ -21,6 +21,28 @@ const ACTION_OPERATIONS = Object.freeze({
   APPROVED: "WORKFLOW_APPROVE",
   REJECTED: "WORKFLOW_REJECT",
 });
+
+/**
+ * A-183 — the menu whose `write` grant a decision on each resource type
+ * requires: the same grant as the record's own approval route
+ * (POST /certificates/:id/approve is `certificate` approve; stock transfers
+ * are `warehouse` write; work orders `maintenance` update).
+ */
+const RESOURCE_MENUS = Object.freeze({
+  Certificate: "certificate",
+  StockTransfer: "warehouse",
+  MaintenanceWorkOrder: "maintenance",
+});
+
+/** A-182 — a Certificate approval without the re-authentication fields. */
+const CERTIFICATE_APPROVAL_NEEDS_REAUTH =
+  "Approving a certificate is an electronic signature (21 CFR Part 11): re-authenticate by " +
+  'sending authMethod ("password" or "mfa"), authPayload (your password or a current MFA code) ' +
+  'and meaning (for example "Reviewed and approved").';
+
+/** Lazy: the gate's module loads the role services, which must not load first. */
+const principalHasMenuPermission = (...args) =>
+  require("../middlewares/dynamicAccess.middleware").principalHasMenuPermission(...args);
 
 class WorkflowService {
   async getWorkflows(tenantId) {
@@ -63,7 +85,58 @@ class WorkflowService {
     return workflow;
   }
 
-  async createWorkflow(tenantId, data) {
+  /**
+   * A-204 — the audit row of a workflow-definition change, written in the
+   * change's transaction (logAction re-throws inside one, so a failed row
+   * rolls the change back). A workflow definition decides who approves a
+   * Part 11 record; changing it unattributed was the gap.
+   */
+  async _auditDefinition(t, tenantId, actor, action, workflowId, changes) {
+    await auditService.logAction(
+      {
+        tenantId,
+        userId: actor.userId || null,
+        action,
+        resourceType: "Workflow",
+        resourceId: workflowId,
+        changes,
+        ipAddress: actor.ipAddress || null,
+        userAgent: actor.userAgent || null,
+      },
+      { transaction: t },
+    );
+  }
+
+  /**
+   * A-204 — the step definition, as recorded in an audit row. Every caller
+   * passes steps whose requiredApprovals is set (defaulted on write; NOT NULL
+   * in the table).
+   */
+  _stepsOf(steps) {
+    return steps.map((s) => ({
+      stepOrder: s.stepOrder,
+      roleId: s.roleId,
+      requiredApprovals: s.requiredApprovals,
+    }));
+  }
+
+  /**
+   * A-204 — lock a workflow for a definition change, in the change's
+   * transaction: 404 when it is not in the tenant.
+   */
+  async _lockDefinition(t, tenantId, id) {
+    // No include: FOR UPDATE with a LEFT JOIN is refused by PostgreSQL on
+    // the nullable side, and a hasMany include puts the root in a subquery.
+    const workflow = await Workflow.findOne({
+      where: { id, tenantId },
+      transaction: t,
+      lock: Transaction.LOCK.UPDATE,
+    });
+    if (!workflow) throw new AppError(404, "Workflow not found");
+    return workflow;
+  }
+
+  async createWorkflow(tenantId, data, actor = {}) {
     const t = await sequelize.transaction();
     try {
       // Check if a workflow for this resourceType already exists (only one active per resource)
@@ -92,6 +165,15 @@ class WorkflowService {
       }));
 
       await WorkflowStep.bulkCreate(steps, { transaction: t });
+      await this._auditDefinition(t, tenantId, actor, "CREATE", workflow.id, {
+        before: {},
+        after: {
+          name: workflow.name,
+          resourceType: workflow.resourceType,
+          isActive: workflow.isActive,
+          steps: this._stepsOf(steps),
+        },
+      });
       await t.commit();
       return this.getWorkflowById(tenantId, workflow.id);
     } catch (error) {
@@ -100,13 +182,41 @@ class WorkflowService {
     }
   }
 
-  async updateWorkflow(tenantId, id, data) {
-    const workflow = await this.getWorkflowById(tenantId, id);
+  /**
+   * Update a workflow's name, active flag or steps.
+   *
+   * A-204 — read and locked inside the transaction, and audited in it.
+   * Replacing the steps of a workflow that has ever been started is refused
+   * (409): its instances' approvals (workflow_actions) reference those steps
+   * and would be deleted with them (ON DELETE CASCADE), and a pending
+   * instance would be left on a step that no longer exists. Deactivate it and
+   * create a new workflow instead.
+   */
+  async updateWorkflow(tenantId, id, data, actor = {}) {
     const t = await sequelize.transaction();
 
     try {
+      const workflow = await this._lockDefinition(t, tenantId, id);
+      const before = { name: workflow.name, isActive: workflow.isActive };
+      const replaceSteps = Boolean(data.steps && data.steps.length > 0);
+
+      if (replaceSteps) {
+        const instances = await WorkflowInstance.count({
+          where: { workflowId: workflow.id },
+          paranoid: false,
+          transaction: t,
+        });
+        if (instances > 0) {
+          throw new AppError(
+            409,
+            `This workflow has been started ${instances} time(s); its steps are the record its approvals ` +
+              "were made against and cannot be replaced. Deactivate it and create a new workflow instead.",
+          );
+        }
+      }
+
       if (data.name !== undefined) workflow.name = data.name;
-      
+
       if (data.isActive !== undefined && data.isActive !== workflow.isActive) {
         if (data.isActive) {
           await Workflow.update(
@@ -119,7 +229,14 @@ class WorkflowService {
 
       await workflow.save({ transaction: t });
 
-      if (data.steps && data.steps.length > 0) {
+      const after = { name: workflow.name, isActive: workflow.isActive };
+      if (replaceSteps) {
+        const current = await WorkflowStep.findAll({
+          where: { workflowId: workflow.id },
+          order: [["stepOrder", "ASC"]],
+          transaction: t,
+        });
+        before.steps = this._stepsOf(current);
         await WorkflowStep.destroy({ where: { workflowId: workflow.id }, transaction: t });
         const steps = data.steps.map((step) => ({
           workflowId: workflow.id,
@@ -128,8 +245,10 @@ class WorkflowService {
           requiredApprovals: step.requiredApprovals || 1,
         }));
         await WorkflowStep.bulkCreate(steps, { transaction: t });
+        after.steps = this._stepsOf(steps);
       }
 
+      await this._auditDefinition(t, tenantId, actor, "UPDATE", workflow.id, { before, after });
       await t.commit();
       return this.getWorkflowById(tenantId, id);
     } catch (error) {
@@ -138,9 +257,39 @@ class WorkflowService {
     }
   }
 
-  async deleteWorkflow(tenantId, id) {
-    const workflow = await this.getWorkflowById(tenantId, id);
-    await workflow.destroy();
+  /**
+   * Soft-delete a workflow.
+   *
+   * A-204 — refused (409) while any of its instances is PENDING: a pending
+   * instance reads its steps through the workflow, and with the workflow
+   * deleted it could be neither approved nor listed. Audited in the delete's
+   * transaction.
+   */
+  async deleteWorkflow(tenantId, id, actor = {}) {
+    const t = await sequelize.transaction();
+    try {
+      const workflow = await this._lockDefinition(t, tenantId, id);
+      const pending = await WorkflowInstance.count({
+        where: { workflowId: workflow.id, status: "PENDING" },
+        transaction: t,
+      });
+      if (pending > 0) {
+        throw new AppError(
+          409,
+          `This workflow has ${pending} pending approval(s) and cannot be deleted while they are open. ` +
+            "Deactivate it instead: pending approvals finish, and no new ones start.",
+        );
+      }
+      await workflow.destroy({ transaction: t });
+      await this._auditDefinition(t, tenantId, actor, "DELETE", workflow.id, {
+        before: { name: workflow.name, resourceType: workflow.resourceType, isActive: workflow.isActive },
+        after: { deleted: true },
+      });
+      await t.commit();
+    } catch (error) {
+      await t.rollback();
+      throw error;
+    }
   }
 
   /**
@@ -161,6 +310,13 @@ class WorkflowService {
         transaction,
       });
     } catch (err) {
+      // A-190 — inside a caller's transaction the lookup is part of an atomic
+      // create (createCertificate): on PostgreSQL the failed statement has
+      // already aborted that transaction, and "no workflow" would be a guess.
+      // The error goes to the caller, which rolls the whole create back.
+      if (transaction) {
+        throw err;
+      }
       try {
         // eslint-disable-next-line global-require
         const { logger } = require("../middlewares/activityLog.middleware");
@@ -219,6 +375,10 @@ class WorkflowService {
     // 1. Current step requires user.roleId
     // 2. User has not already approved this step
     const pendingTasks = instances.filter(instance => {
+      // A-204 — an instance whose workflow was deleted before deletion was
+      // refused for pending instances has no steps to act on; it must not take
+      // the whole inbox down with a TypeError.
+      if (!instance.workflow) return false;
       const currentStep = instance.workflow.steps.find(s => s.stepOrder === instance.currentStepOrder);
       if (!currentStep) return false;
       if (currentStep.roleId !== user.roleId) return false;
@@ -233,52 +393,146 @@ class WorkflowService {
   }
 
   /**
-   * Submit an approval or rejection for a specific workflow instance
+   * Submit an approval or rejection for a specific workflow instance.
+   *
+   * A-183 — everything the decision depends on is read INSIDE its
+   * transaction, after the instance row is locked (SELECT ... FOR UPDATE):
+   * the instance's status and step, whether the caller already acted on the
+   * step, and the step's approval count. They used to be read before the
+   * transaction with no lock, so two concurrent approvals by the same user
+   * both passed "already acted", and two approvers completing a step could
+   * both count the other as missing (a double count, or a step that never
+   * advanced). Every decision on one instance now serialises on its row.
+   *
+   * A-183 — the caller must hold write access to the record being decided:
+   * `certificate` for a Certificate, `warehouse` for a StockTransfer,
+   * `maintenance` for a MaintenanceWorkOrder — the same grant the record's
+   * own approval route requires. 403 inside the tenant (checked after the
+   * 404, so another tenant's instance stays indistinguishable from none).
+   *
+   * A-182 — a Certificate is a Part 11 record:
+   *  - approving one is an electronic signature, so every APPROVED action on
+   *    a Certificate workflow re-authenticates the caller (authMethod,
+   *    authPayload, meaning), as POST /certificates/:id/approve does (A-62,
+   *    ADR-047). The FINAL approval goes through the certificate's own state
+   *    machine (only `pending_approval` can be approved, else 409) and writes
+   *    its approver, ESignatureRecord and audit row;
+   *  - a rejection returns only a `draft` or `pending_approval` certificate
+   *    to `draft`; an approved, signed or revoked one answers 409 with the
+   *    state explanation. It used to reset a certificate to DRAFT from any
+   *    state.
+   *
+   * @param {string} tenantId
+   * @param {string} instanceId
+   * @param {Object} user - req.user (id, roleId, role)
+   * @param {Object} actionData - action, comments; for a Certificate approval
+   *   also authMethod, authPayload, meaning; ipAddress and userAgent from the
+   *   request
+   * @returns {Promise<{message: string, status: string}>}
    */
   async submitAction(tenantId, instanceId, user, actionData) {
     const { action, comments } = actionData;
 
-    const instance = await WorkflowInstance.findOne({
-      where: { id: instanceId, tenantId },
-      include: [
-        {
-          model: Workflow,
-          as: "workflow",
-          include: [{ model: WorkflowStep, as: "steps" }],
-        },
-        {
-          model: WorkflowAction,
-          as: "actions",
-        }
-      ],
-    });
-
-    if (!instance) throw new AppError(404, "Workflow instance not found");
-    // A-145 — a closed instance is a state conflict (409), not a malformed
-    // request: it names the state, and that nothing further can be recorded.
-    if (instance.status !== "PENDING") {
-      throw new AppError(
-        409,
-        `Workflow instance is already ${instance.status}; no further approval or rejection can be recorded on it.`,
-      );
-    }
-
-    const currentStep = instance.workflow.steps.find(s => s.stepOrder === instance.currentStepOrder);
-    if (!currentStep) throw new AppError(500, "Workflow step configuration error");
-
-    if (currentStep.roleId !== user.roleId) {
-      throw new AppError(403, "You do not have the required role to approve this step");
-    }
-
-    const hasAction = instance.actions.some(a => a.stepId === currentStep.id && a.userId === user.id);
-    if (hasAction) {
-      throw new AppError(409, "You have already submitted an action for this step");
-    }
-
-    const before = { status: instance.status, currentStepOrder: instance.currentStepOrder };
-
     const t = await sequelize.transaction();
     try {
+      const locked = await WorkflowInstance.findOne({
+        where: { id: instanceId, tenantId },
+        transaction: t,
+        lock: Transaction.LOCK.UPDATE,
+      });
+      if (!locked) throw new AppError(404, "Workflow instance not found");
+
+      // Read again with the definition and the actions, under the lock: no
+      // other decision on this instance can commit until this one does.
+      // (FOR UPDATE is not combined with these LEFT JOINs: PostgreSQL refuses
+      // it on the nullable side of an outer join.)
+      const instance = await WorkflowInstance.findOne({
+        where: { id: instanceId, tenantId },
+        include: [
+          {
+            model: Workflow,
+            as: "workflow",
+            include: [{ model: WorkflowStep, as: "steps" }],
+          },
+          {
+            model: WorkflowAction,
+            as: "actions",
+          }
+        ],
+        transaction: t,
+      });
+
+      // A-145 — a closed instance is a state conflict (409), not a malformed
+      // request: it names the state, and that nothing further can be recorded.
+      if (instance.status !== "PENDING") {
+        throw new AppError(
+          409,
+          `Workflow instance is already ${instance.status}; no further approval or rejection can be recorded on it.`,
+        );
+      }
+
+      const { resourceType } = instance.workflow;
+      const currentStep = instance.workflow.steps.find(s => s.stepOrder === instance.currentStepOrder);
+      if (!currentStep) throw new AppError(500, "Workflow step configuration error");
+
+      if (currentStep.roleId !== user.roleId) {
+        throw new AppError(403, "You do not have the required role to approve this step");
+      }
+
+      const menu = RESOURCE_MENUS[resourceType];
+      if (!(await principalHasMenuPermission(user, menu, "write"))) {
+        throw new AppError(
+          403,
+          `Deciding on a ${resourceType} requires write access to "${menu}", the permission its own approval requires.`,
+        );
+      }
+
+      const hasAction = instance.actions.some(a => a.stepId === currentStep.id && a.userId === user.id);
+      if (hasAction) {
+        throw new AppError(409, "You have already submitted an action for this step");
+      }
+
+      const sortedSteps = [...instance.workflow.steps].sort((a, b) => a.stepOrder - b.stepOrder);
+      const currentIndex = sortedSteps.findIndex(s => s.id === currentStep.id);
+      // Counted under the lock (A-183), +1 for this action.
+      const stepApprovals =
+        instance.actions.filter(a => a.stepId === currentStep.id && a.action === "APPROVED").length + 1;
+      const stepComplete = action === "APPROVED" && stepApprovals >= currentStep.requiredApprovals;
+      const finalApproval = stepComplete && currentIndex === sortedSteps.length - 1;
+
+      // A-182 — the certificate is checked and locked, and the approver
+      // re-authenticated, BEFORE anything is written; a refused decision
+      // consumes no one-time MFA code.
+      let certificate = null;
+      const authOptions = {
+        authMethod: actionData.authMethod,
+        authPayload: actionData.authPayload,
+        meaning: actionData.meaning,
+        ipAddress: actionData.ipAddress,
+        userAgent: actionData.userAgent,
+      };
+      if (resourceType === "Certificate") {
+        const certificateService = require("./certificate.service");
+        if (action === "REJECTED") {
+          certificate = await certificateService.lockForWorkflowDecision(t, tenantId, instance.resourceId, "reject");
+        } else {
+          if (!authOptions.authMethod || !authOptions.authPayload || !authOptions.meaning) {
+            throw new AppError(400, CERTIFICATE_APPROVAL_NEEDS_REAUTH);
+          }
+          if (finalApproval) {
+            certificate = await certificateService.lockForWorkflowDecision(t, tenantId, instance.resourceId, "approve");
+          }
+          await certificateService.verifyWorkflowApprovalAuth(user.id, authOptions, {
+            tenantId,
+            resourceType: "Certificate",
+            resourceId: instance.resourceId,
+            operation: "workflow-approve",
+          });
+        }
+      }
+
+      const before = { status: instance.status, currentStepOrder: instance.currentStepOrder };
+
       await WorkflowAction.create(
         {
           instanceId: instance.id,
@@ -293,27 +547,33 @@ class WorkflowService {
       if (action === "REJECTED") {
         instance.status = "REJECTED";
         await instance.save({ transaction: t });
-        await this._updateTargetResourceStatus(tenantId, instance.workflow.resourceType, instance.resourceId, "REJECTED", t);
-      } else if (action === "APPROVED") {
-        // Check if enough approvals are met for the current step
-        const stepApprovals = instance.actions.filter(a => a.stepId === currentStep.id && a.action === "APPROVED").length + 1; // +1 for the current action
-        
-        if (stepApprovals >= currentStep.requiredApprovals) {
-          // Advance to next step or finalize
-          const sortedSteps = instance.workflow.steps.sort((a, b) => a.stepOrder - b.stepOrder);
-          const currentIndex = sortedSteps.findIndex(s => s.id === currentStep.id);
-          
-          if (currentIndex < sortedSteps.length - 1) {
-            // Advance
-            instance.currentStepOrder = sortedSteps[currentIndex + 1].stepOrder;
-            await instance.save({ transaction: t });
-          } else {
-            // Finalize
-            instance.status = "APPROVED";
-            await instance.save({ transaction: t });
-            await this._updateTargetResourceStatus(tenantId, instance.workflow.resourceType, instance.resourceId, "APPROVED", t, user);
-          }
+        if (certificate) {
+          await require("./certificate.service").applyWorkflowRejection(t, certificate, {
+            tenantId,
+            userId: user.id,
+            workflowInstanceId: instance.id,
+            comments,
+          });
+        } else {
+          await this._updateTargetResourceStatus(tenantId, resourceType, instance.resourceId, "REJECTED", t);
         }
+      } else if (finalApproval) {
+        instance.status = "APPROVED";
+        await instance.save({ transaction: t });
+        if (certificate) {
+          await require("./certificate.service").applyWorkflowApproval(t, certificate, {
+            tenantId,
+            approverId: user.id,
+            authOptions,
+            workflowInstanceId: instance.id,
+          });
+        } else {
+          await this._updateTargetResourceStatus(tenantId, resourceType, instance.resourceId, "APPROVED", t, user);
+        }
+      } else if (stepComplete) {
+        // Advance to the next step.
+        instance.currentStepOrder = sortedSteps[currentIndex + 1].stepOrder;
+        await instance.save({ transaction: t });
       }
 
       // A-145 — an approval or rejection is a Part 11 act (the route carries
@@ -334,12 +594,18 @@ class WorkflowService {
             decision: action,
             stepId: currentStep.id,
             stepOrder: currentStep.stepOrder,
-            targetResourceType: instance.workflow.resourceType,
+            targetResourceType: resourceType,
             targetResourceId: instance.resourceId,
             comments: comments || null,
+            // A-182 — never the credential; only that one was checked.
+            ...(resourceType === "Certificate" && action === "APPROVED"
+              ? { meaning: authOptions.meaning, reauthenticated: authOptions.authMethod }
+              : {}),
             before,
             after: { status: instance.status, currentStepOrder: instance.currentStepOrder },
           },
+          ipAddress: authOptions.ipAddress || null,
+          userAgent: authOptions.userAgent || null,
         },
         { transaction: t },
       );
@@ -353,19 +619,12 @@ class WorkflowService {
   }
 
   async _updateTargetResourceStatus(tenantId, resourceType, resourceId, finalStatus, transaction, approverUser = null) {
-    if (resourceType === "Certificate") {
-      const record = await Certificate.findOne({ where: { id: resourceId, tenantId }, transaction });
-      if (record) {
-        if (finalStatus === "APPROVED") {
-          record.status = "APPROVED";
-          record.approvedById = approverUser ? approverUser.id : null;
-          record.approvedAt = new Date();
-        } else if (finalStatus === "REJECTED") {
-          record.status = "DRAFT"; // Or REJECTED if model supports it
-        }
-        await record.save({ transaction });
-      }
-    } else if (resourceType === "StockTransfer") {
+    // A-182 — a Certificate never comes here: its decisions go through the
+    // certificate state machine (certificate.service#applyWorkflowApproval /
+    // #applyWorkflowRejection). This wrote "APPROVED" / "DRAFT" — not values
+    // of the lowercase status ENUM — and `approvedById` / `approvedAt`, which
+    // are not Certificate attributes (A-200).
+    if (resourceType === "StockTransfer") {
       const record = await StockTransfer.findOne({ where: { id: resourceId, tenantId }, transaction });
       if (record) {
         if (finalStatus === "APPROVED") {
@@ -390,3 +649,5 @@ class WorkflowService {
 }
 
 module.exports = new WorkflowService();
+module.exports.RESOURCE_MENUS = RESOURCE_MENUS;
+module.exports.CERTIFICATE_APPROVAL_NEEDS_REAUTH = CERTIFICATE_APPROVAL_NEEDS_REAUTH;

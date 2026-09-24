@@ -34,12 +34,15 @@ jest.mock("../../config", () => {
       return {
         id: "11111111-1111-4111-8111-111111111111",
         code: "PARENT",
+        email: "admin@parent.example",
         status: "active",
         plan: "free",
       };
     }
     return options.plain ? null : [];
   };
+  // A-187: createSubOrganization now writes in a managed transaction.
+  db.transaction = async (cb) => cb({ id: "tx" });
   return { db };
 });
 jest.mock("../../services/redis.service", () => ({
@@ -94,12 +97,9 @@ describe("A-134 — why the role cascade was removed, read from the real models"
 
 describe("A-134 — createSubOrganization with HIERARCHY_CASCADE_ROLES=true", () => {
   it("creates the child tenant and reads or writes no role, user or permission row", async () => {
-    // Tenant.create is the one stub. On the real model it fails validation
-    // (subdomain and email are NOT NULL and createSubOrganization sets
-    // neither) — a separate defect, reported with A-134, not fixed here.
-    jest
-      .spyOn(models.Tenant, "create")
-      .mockResolvedValue({ id: "33333333-3333-4333-8333-333333333333" });
+    // No stub: A-187 made Tenant.create pass the real model's validation
+    // (subdomain and email were NOT NULL and unset — the defect reported with
+    // A-134).
     const warn = jest.spyOn(logger, "warn");
     const spies = [
       jest.spyOn(models.User, "findAll"),
@@ -110,7 +110,7 @@ describe("A-134 — createSubOrganization with HIERARCHY_CASCADE_ROLES=true", ()
       jest.spyOn(models.RoleMenuPermission, "findOrCreate"),
     ];
     const result = await tenantStorage.run({ tenantId: PARENT }, () =>
-      svc.createSubOrganization(PARENT, { name: "Branch A" }),
+      svc.createSubOrganization(PARENT, { name: "Branch A" }, { userId: "44444444-4444-4444-8444-444444444444" }),
     );
 
     expect(result).toMatchObject({ code: "PARENT_001", depth: 1 });

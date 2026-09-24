@@ -1,5 +1,6 @@
 import React from "react";
 import { Eye, EyeOff } from "lucide-react";
+import { useFieldA11y } from "./fieldA11y";
 
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string;
@@ -19,9 +20,16 @@ export const Input: React.FC<InputProps> = ({
   onRightIconClick,
   className = "",
   type = "text",
+  id,
   ...props
 }) => {
   const [showPassword, setShowPassword] = React.useState(false);
+  // F-12: label, control and message are associated.
+  const { controlId, messageId, describedBy, invalid } = useFieldA11y(
+    id,
+    error,
+    helperText,
+  );
 
   const inputType =
     type === "password" ? (showPassword ? "text" : "password") : type;
@@ -29,7 +37,10 @@ export const Input: React.FC<InputProps> = ({
   return (
     <div className="w-full">
       {label && (
-        <label className="block text-sm font-medium mb-2 text-foreground">
+        <label
+          htmlFor={controlId}
+          className="block text-sm font-medium mb-2 text-foreground"
+        >
           {label}
         </label>
       )}
@@ -41,6 +52,9 @@ export const Input: React.FC<InputProps> = ({
           </div>
         )}
         <input
+          id={controlId}
+          aria-invalid={invalid}
+          aria-describedby={describedBy}
           type={inputType}
           className={`w-full px-4 py-3 rounded-xl transition-all duration-200
             focus:outline-none focus:ring-2 focus:ring-ring/50
@@ -78,6 +92,7 @@ export const Input: React.FC<InputProps> = ({
           <button
             type="button"
             onClick={() => setShowPassword(!showPassword)}
+            aria-label={showPassword ? "Hide password" : "Show password"}
             className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-muted-foreground hover:text-foreground focus:outline-none transition-colors"
           >
             {showPassword ? (
@@ -89,10 +104,12 @@ export const Input: React.FC<InputProps> = ({
         )}
       </div>
       {error && (
-        <p className="mt-1 text-sm text-destructive">{error}</p>
+        <p id={messageId} className="mt-1 text-sm text-destructive">
+          {error}
+        </p>
       )}
       {helperText && !error && (
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p id={messageId} className="mt-1 text-sm text-muted-foreground">
           {helperText}
         </p>
       )}

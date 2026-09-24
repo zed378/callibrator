@@ -271,7 +271,7 @@ describe("A-77 — userRoleUpdate", () => {
 
 describe("A-77 — deleteUser", () => {
   it("deletes and audits inside ONE transaction, and removes the avatar file only after the commit", async () => {
-    Users.findByPk.mockResolvedValue(makeUser({ picture: "http://host/uploads/profile/face.png" }));
+    Users.findByPk.mockResolvedValue(makeUser({ picture: "http://host/uploads/public/profile/face.png" }));
 
     await userService.deleteUser({ userId: TARGET_ID, deletedBy: ACTOR_ID, ...actor });
 
@@ -289,7 +289,7 @@ describe("A-77 — deleteUser", () => {
   });
 
   it("a failed audit insert rolls the delete back and keeps the avatar file", async () => {
-    Users.findByPk.mockResolvedValue(makeUser({ picture: "http://host/uploads/profile/face.png" }));
+    Users.findByPk.mockResolvedValue(makeUser({ picture: "http://host/uploads/public/profile/face.png" }));
     auditService.logAction.mockRejectedValue(new Error("audit insert failed"));
 
     await expect(
@@ -302,7 +302,7 @@ describe("A-77 — deleteUser", () => {
   });
 
   it("a commit that fails after finishing the transaction is not rolled back a second time, and keeps the avatar file", async () => {
-    Users.findByPk.mockResolvedValue(makeUser({ picture: "http://host/uploads/profile/face.png" }));
+    Users.findByPk.mockResolvedValue(makeUser({ picture: "http://host/uploads/public/profile/face.png" }));
     tx.commit.mockImplementation(async () => {
       tx.finished = "commit";
       throw new Error("commit failed");

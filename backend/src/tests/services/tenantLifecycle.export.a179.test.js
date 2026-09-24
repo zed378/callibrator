@@ -62,6 +62,7 @@ jest.mock("../../config", () => {
 jest.mock("../../services/kms.service", () => ({
   encryptData: jest.fn((_tenantId, value) => `v1:${value}`),
   decryptData: jest.fn((_tenantId, value) => value.replace(/^v1:ENC-/, "")),
+  isEnvelope: (value) => typeof value === "string" && /^v[12]:/.test(value),
 }));
 jest.mock("../../services/audit.service", () => ({ logAction: jest.fn() }));
 

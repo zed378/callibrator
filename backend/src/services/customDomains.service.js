@@ -18,6 +18,8 @@ const { logger } = require("../middlewares/activityLog.middleware");
 const { AppError } = require("../utils/appError.util");
 const { db } = require("../config");
 const storagePath = require("../utils/storagePath.util");
+const auditService = require("./audit.service");
+const { ROLE_NAMES } = require("../constants/roleConstants");
 
 // ==========================================
 // CONFIGURATION
@@ -124,7 +126,50 @@ function customDomainsPageUrl() {
 }
 
 /**
- * Notify the tenant admin that a domain needs verification (best-effort).
+ * The roles whose holders administer a tenant — who hears about a domain added
+ * to it (A-186).
+ */
+const DOMAIN_ADMIN_ROLES = [ROLE_NAMES.HEALTCARE_ADMIN, ROLE_NAMES.CALIBRATOR_ADMIN];
+
+/**
+ * Who is told that a domain was added (A-186): the user who added it, and
+ * every active administrator of the tenant, each once.
+ *
+ * Until 2026-09-24 this was `User.findOne({ where: { tenantId }, order:
+ * createdAt ASC })` — the tenant's OLDEST user, whoever that was: often the
+ * seeded first account, possibly a technician, possibly someone long gone. A
+ * domain pointed at a tenant is a security event (it is where that tenant's
+ * users will sign in), so it goes to the people who administer the tenant, and
+ * the DNS records go to the person who has to add them.
+ *
+ * @param {string} tenantId
+ * @param {string} requesterId - the acting user (auditActor(req).userId)
+ * @returns {Promise<Array<{email: string, firstName: (string|null)}>>}
+ */
+async function domainNotificationRecipients(tenantId, requesterId) {
+  const { User, Role } = require("../models");
+  const attributes = ["id", "email", "firstName"];
+  const [requester, admins] = await Promise.all([
+    User.findOne({ where: { id: requesterId, tenantId }, attributes }),
+    User.findAll({
+      where: { tenantId, isActive: true },
+      attributes,
+      // required: true on purpose — the role IS the filter.
+      include: [{ model: Role, as: "role", attributes: [], where: { name: DOMAIN_ADMIN_ROLES }, required: true }],
+    }),
+  ]);
+  const byAddress = new Map();
+  for (const user of [requester, ...admins]) {
+    if (user && user.email && !byAddress.has(user.email.toLowerCase())) {
+      byAddress.set(user.email.toLowerCase(), user);
+    }
+  }
+  return [...byAddress.values()];
+}
+
+/**
+ * Tell the requester and the tenant's administrators that a domain needs
+ * verification (best-effort).
  *
  * A-166 — this called `emailQueueService.queueEmail`, which emailQueue.service
  * has never exported: every call threw a TypeError that the catch logged at
@@ -135,25 +180,24 @@ function customDomainsPageUrl() {
  * routed here; it is now the Custom Domains page, where "Verify" runs the
  * check.
  *
+ * A-186 — recipients: see domainNotificationRecipients.
+ *
  * Never throws — the domain has already been added — but every failure is
  * logged at ERROR, with ids only and no email address.
  *
  * @param {string} tenantId
  * @param {string} domain
  * @param {string} token - the TXT value the tenant must publish
- * @returns {Promise<boolean>} whether the email was accepted for delivery
+ * @param {string} requesterId - the user who added the domain
+ * @returns {Promise<boolean>} whether the email was accepted for at least one recipient
  */
-async function sendDomainVerificationEmail(tenantId, domain, token) {
+async function sendDomainVerificationEmail(tenantId, domain, token, requesterId) {
   const context = { tenantId, domain };
   try {
-    const { User } = require("../models");
-    const admin = await User.findOne({
-      where: { tenantId },
-      order: [["createdAt", "ASC"]],
-    });
+    const recipients = await domainNotificationRecipients(tenantId, requesterId);
 
-    if (!admin || !admin.email) {
-      logger.error("Domain verification email was not sent: the tenant has no user with an email address", context);
+    if (recipients.length === 0) {
+      logger.error("Domain verification email was not sent: neither the requester nor any tenant administrator has an email address", context);
       return false;
     }
 
@@ -163,29 +207,66 @@ async function sendDomainVerificationEmail(tenantId, domain, token) {
     }
 
     const records = getDnsVerificationInstructions(domain, token);
+    const message = [
+      `The domain ${domain} was added to your organisation and is waiting for verification.`,
+      `1. Add a TXT record named ${records.verification.name} with the value ${records.verification.value}`,
+      `2. Add a CNAME record for ${records.cname.name} pointing to ${records.cname.value}`,
+      '3. Once DNS has propagated (up to 48 hours), open Custom Domains and choose "Verify".',
+    ].join("\n\n");
     const { queueNotificationEmail } = require("./emailQueue.service");
-    const accepted = await queueNotificationEmail({
-      email: admin.email,
-      firstName: admin.firstName || "",
-      title: `Verify domain: ${domain}`,
-      message: [
-        `The domain ${domain} was added to your organisation and is waiting for verification.`,
-        `1. Add a TXT record named ${records.verification.name} with the value ${records.verification.value}`,
-        `2. Add a CNAME record for ${records.cname.name} pointing to ${records.cname.value}`,
-        '3. Once DNS has propagated (up to 48 hours), open Custom Domains and choose "Verify".',
-      ].join("\n\n"),
-      actionUrl,
-    });
-    if (!accepted) {
+    let accepted = 0;
+    for (const recipient of recipients) {
+      const ok = await queueNotificationEmail({
+        email: recipient.email,
+        firstName: recipient.firstName || "",
+        title: `Verify domain: ${domain}`,
+        message,
+        actionUrl,
+      });
+      accepted += ok ? 1 : 0;
+    }
+    if (accepted === 0) {
       throw new Error("the email queue did not accept the message");
     }
-    logger.info("Domain verification email queued", context);
+    if (accepted < recipients.length) {
+      logger.error("Domain verification email reached only some recipients", {
+        ...context,
+        accepted,
+        recipients: recipients.length,
+      });
+    }
+    logger.info("Domain verification email queued", { ...context, recipients: accepted });
     return true;
   } catch (err) {
     logger.error("Domain verification email was not sent", { ...context, error: err.message });
     return false;
   }
 }
+
+/**
+ * A-186 — a change to a tenant's domains, recorded in the tenant's audit trail
+ * inside the change's transaction. A failed insert is re-thrown by logAction
+ * and rolls the change back.
+ *
+ * @param {object} transaction
+ * @param {string} tenantId
+ * @param {object} actor - auditActor(req)
+ * @param {{action: string, resourceId: string, changes: object}} row
+ */
+const auditDomainChange = (transaction, tenantId, actor, { action, resourceId, changes }) =>
+  auditService.logAction(
+    {
+      tenantId,
+      userId: actor.userId,
+      action,
+      resourceType: "CustomDomain",
+      resourceId,
+      changes,
+      ipAddress: actor.ipAddress,
+      userAgent: actor.userAgent,
+    },
+    { transaction },
+  );
 
 // ==========================================
 // DOMAIN MANAGEMENT
@@ -214,7 +295,7 @@ exports.getTenantDomains = async (tenantId) => {
  * Add a custom domain. Accepts either a string domain or an
  * { domain, type, sslEnabled } object (the controller passes the object form).
  */
-exports.addDomain = async (tenantId, domainInput, typeArg = "subdomain") => {
+exports.addDomain = async (tenantId, domainInput, typeArg = "subdomain", actor = {}) => {
   if (!CUSTOM_DOMAINS_ENABLED()) {
     throw new AppError(400, "Custom domains are disabled");
   }
@@ -245,16 +326,35 @@ exports.addDomain = async (tenantId, domainInput, typeArg = "subdomain") => {
   try {
     const { CustomDomain } = require("../models");
     const verificationToken = generateVerificationToken();
-    const record = await CustomDomain.create({
-      tenantId,
-      domain,
-      domainType: type,
-      sslEnabled,
-      status: DOMAIN_STATUS.PENDING_VERIFICATION,
-      verificationToken,
+    // A-186: the row and its audit row commit together.
+    const record = await db.transaction(async (transaction) => {
+      const created = await CustomDomain.create(
+        {
+          tenantId,
+          domain,
+          domainType: type,
+          sslEnabled,
+          status: DOMAIN_STATUS.PENDING_VERIFICATION,
+          verificationToken,
+        },
+        { transaction },
+      );
+      await auditDomainChange(transaction, tenantId, actor, {
+        action: "CREATE",
+        resourceId: created.id,
+        changes: {
+          operation: "ADD_DOMAIN",
+          before: {},
+          after: { domain, domainType: type, sslEnabled, status: DOMAIN_STATUS.PENDING_VERIFICATION },
+        },
+      });
+      return created;
     });
 
-    await sendDomainVerificationEmail(tenantId, domain, verificationToken);
+    // After the commit: never announce a domain that was rolled back.
+    // The audit row above refused an add with no acting user (A-124), so the
+    // requester is always named here.
+    await sendDomainVerificationEmail(tenantId, domain, verificationToken, actor.userId);
     logger.info("Custom domain added", { tenantId, domain, type });
 
     return {
@@ -279,8 +379,17 @@ exports.addDomain = async (tenantId, domainInput, typeArg = "subdomain") => {
 
 /**
  * Verify a domain (by record id) via its DNS TXT record.
+ *
+ * A-186: the outcome and its audit row commit together. A domain becoming
+ * ACTIVE is the moment it starts resolving to this tenant, so every check is
+ * attributable. A database failure is no longer reported as "not verified":
+ * it propagates (500) and nothing is written.
+ *
+ * @param {string} tenantId
+ * @param {string} domainId
+ * @param {object} actor - auditActor(req)
  */
-exports.verifyDomain = async (tenantId, domainId) => {
+exports.verifyDomain = async (tenantId, domainId, actor = {}) => {
   if (!CUSTOM_DOMAINS_ENABLED()) {
     return { verified: false, reason: "Custom domains disabled" };
   }
@@ -288,48 +397,72 @@ exports.verifyDomain = async (tenantId, domainId) => {
   const record = await loadOwned(tenantId, domainId);
   const token = record.verificationToken || generateVerificationToken();
 
-  try {
-    // Real DNS ownership check; both outcomes are now reachable.
-    const verified = await checkDnsTxtRecord(record.domain, token);
-    await record.update({
-      status: verified
-        ? DOMAIN_STATUS.ACTIVE
-        : DOMAIN_STATUS.VERIFICATION_FAILED,
-      verifiedAt: verified ? new Date() : null,
-      lastCheckedAt: new Date(),
-    });
+  // Real DNS ownership check; both outcomes are reachable. Never throws.
+  const verified = await checkDnsTxtRecord(record.domain, token);
+  const before = { status: record.status };
 
-    return {
-      verified,
-      status: record.status,
-      record: verified ? token : null,
-      dnsRecord: {
-        type: "CNAME",
-        name: `_domain_verify.${record.domain}`,
-        value: token,
+  await db.transaction(async (transaction) => {
+    await record.update(
+      {
+        status: verified ? DOMAIN_STATUS.ACTIVE : DOMAIN_STATUS.VERIFICATION_FAILED,
+        verifiedAt: verified ? new Date() : null,
+        lastCheckedAt: new Date(),
+        // A record with no token had a fresh one generated above; keep it, or
+        // the TXT value the tenant is told to publish could never match.
+        verificationToken: token,
       },
-    };
-  } catch (err) {
-    logger.error("Domain verification failed", {
-      domainId,
-      error: err.message,
+      { transaction },
+    );
+    await auditDomainChange(transaction, tenantId, actor, {
+      action: "UPDATE",
+      resourceId: record.id,
+      changes: {
+        operation: "VERIFY_DOMAIN",
+        domain: record.domain,
+        before,
+        after: { status: record.status, verified },
+      },
     });
-    return { verified: false, reason: err.message };
-  }
+  });
+
+  return {
+    verified,
+    status: record.status,
+    record: verified ? token : null,
+    dnsRecord: {
+      type: "CNAME",
+      name: `_domain_verify.${record.domain}`,
+      value: token,
+    },
+  };
 };
 
 /**
  * Remove a domain (by record id) — soft delete (status = deleted).
  */
-exports.removeDomain = async (tenantId, domainId) => {
+exports.removeDomain = async (tenantId, domainId, actor = {}) => {
   if (!tenantId || !domainId) {
     throw new AppError(400, "tenantId and domainId are required");
   }
 
   const record = await loadOwned(tenantId, domainId);
 
+  const before = { status: record.status, isDefault: record.isDefault };
   try {
-    await record.update({ status: DOMAIN_STATUS.DELETED, isDefault: false });
+    // A-186: the removal and its audit row commit together.
+    await db.transaction(async (transaction) => {
+      await record.update({ status: DOMAIN_STATUS.DELETED, isDefault: false }, { transaction });
+      await auditDomainChange(transaction, tenantId, actor, {
+        action: "DELETE",
+        resourceId: record.id,
+        changes: {
+          operation: "REMOVE_DOMAIN",
+          domain: record.domain,
+          before,
+          after: { status: DOMAIN_STATUS.DELETED, isDefault: false },
+        },
+      });
+    });
     logger.info("Custom domain removed", { tenantId, domainId });
     return { success: true, id: record.id };
   } catch (err) {
@@ -362,15 +495,31 @@ exports.getDomainStatus = async (tenantId, domainId) => {
  * Set a domain (by record id) as the tenant's default, clearing the flag on the
  * tenant's other domains.
  */
-exports.setDefaultDomain = async (tenantId, domainId) => {
+exports.setDefaultDomain = async (tenantId, domainId, actor = {}) => {
   const record = await loadOwned(tenantId, domainId);
   if (record.status === DOMAIN_STATUS.DELETED) {
     throw new AppError(400, "A deleted domain cannot be set as default");
   }
 
   const { CustomDomain } = require("../models");
-  await CustomDomain.update({ isDefault: false }, { where: { tenantId } });
-  await record.update({ isDefault: true });
+  // A-186: clearing the old default, setting the new one and the audit row
+  // commit together — before, a failure between the two updates left the
+  // tenant with no default domain.
+  const before = { isDefault: Boolean(record.isDefault) };
+  await db.transaction(async (transaction) => {
+    await CustomDomain.update({ isDefault: false }, { where: { tenantId }, transaction });
+    await record.update({ isDefault: true }, { transaction });
+    await auditDomainChange(transaction, tenantId, actor, {
+      action: "UPDATE",
+      resourceId: record.id,
+      changes: {
+        operation: "SET_DEFAULT_DOMAIN",
+        domain: record.domain,
+        before,
+        after: { isDefault: true },
+      },
+    });
+  });
 
   logger.info("Default domain set", { tenantId, domainId });
   return { id: record.id, domain: record.domain, isDefault: true };

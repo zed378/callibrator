@@ -3,13 +3,15 @@ const predictiveMaintenanceService = require("../services/predictiveMaintenance.
 const { success } = require("../utils/response.util");
 const { CalibrationDevice } = require("../models");
 const { tenantStorage } = require("../middlewares/tenantContext.middleware");
+const { auditActor } = require("../utils/auditActor.util");
 
 exports.analyzeDevice = async (req, res, next) => {
   try {
     const { deviceId } = req.params;
     const { tenantId } = tenantStorage.getStore();
 
-    const result = await predictiveMaintenanceService.analyzeDevice(tenantId, deviceId);
+    // A-190: the recommendation is audited under the caller.
+    const result = await predictiveMaintenanceService.analyzeDevice(tenantId, deviceId, auditActor(req));
     // success(res, data, meta, message, statusCode) SENDS the response — it is
     // not a body builder. Passing the message as `res` made `res.status`
     // undefined and threw on every call.

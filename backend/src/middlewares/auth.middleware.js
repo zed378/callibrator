@@ -148,10 +148,11 @@ exports.MFA_ENROLMENT_REQUIRED_CODE = MFA_ENROLMENT_REQUIRED_CODE;
  * @param {object} user - req.user
  * @param {object} req
  * @param {string|null} impersonatorId
+ * @param {string|null} method - A-160: the token's `amr` (signInMethodFrom)
  * @returns {boolean}
  */
-const mustEnrolMfaFirst = (user, req, impersonatorId) =>
-  mfaEnrolmentRequired(user, impersonatorId) &&
+const mustEnrolMfaFirst = (user, req, impersonatorId, method) =>
+  mfaEnrolmentRequired(user, impersonatorId, { method }) &&
   !MFA_ENROLMENT_ALLOWED.has(`${req.method} ${req.baseUrl || ""}${req.path || ""}`);
 
 /**
@@ -170,6 +171,16 @@ const mustChangePasswordFirst = (user, req, impersonatorId) =>
   Boolean(user.mustChangePassword) &&
   !impersonatorId &&
   !PASSWORD_CHANGE_ALLOWED.has(`${req.method} ${req.baseUrl || ""}${req.path || ""}`);
+
+/**
+ * A-160: the access token's `amr` claim — how its session signed in
+ * ("password", "password+totp", "saml", "oidc", …) — or null.
+ *
+ * @param {object} decoded
+ * @returns {string|null}
+ */
+const signInMethodFrom = (decoded) =>
+  typeof decoded.amr === "string" && decoded.amr ? decoded.amr : null;
 
 const impersonatorFrom = (decoded) =>
   typeof decoded.impersonatorId === "string" && decoded.impersonatorId
@@ -328,7 +339,10 @@ exports.auth = async (req, res, next) => {
     // enrols, only the enrolment routes, change-password, logout and "who am
     // I" are answered; the frontend sends it to the MFA page on this code.
     const impersonatorId = impersonatorFrom(decoded);
-    if (mustEnrolMfaFirst(user, req, impersonatorId)) {
+    // A-160: how the session signed in (`amr`, set by every issuer of an
+    // access token since 0052) — a federated session answers to its IdP's MFA.
+    const signInMethod = signInMethodFrom(decoded);
+    if (mustEnrolMfaFirst(user, req, impersonatorId, signInMethod)) {
       return errorResponse(
         res,
         "Your organisation requires multi-factor authentication. Set it up before continuing",
@@ -345,7 +359,9 @@ exports.auth = async (req, res, next) => {
     req.user = user;
     // A-160: /auth/verify reports it, so the frontend can go to the MFA page
     // before a request is refused.
-    req.mfaEnrolmentRequired = mfaEnrolmentRequired(user, impersonatorId);
+    req.mfaEnrolmentRequired = mfaEnrolmentRequired(user, impersonatorId, {
+      method: signInMethod,
+    });
     req.token = token;
     req.sessionId = decoded.sid || null;
     // F-8: the super admin acting through this token, when it is an
@@ -435,7 +451,7 @@ exports.optionalAuth = async (req, res, next) => {
       (user.status === "ACTIVE" || user.status === "INACTIVE") &&
       !tenantRefusal(user) &&
       !mustChangePasswordFirst(user, req, impersonatorFrom(decoded)) &&
-      !mustEnrolMfaFirst(user, req, impersonatorFrom(decoded))
+      !mustEnrolMfaFirst(user, req, impersonatorFrom(decoded), signInMethodFrom(decoded))
     ) {
       req.user = user;
       req.impersonatorId = impersonatorFrom(decoded);

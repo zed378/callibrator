@@ -216,6 +216,42 @@ describe("A-41 — certificate mutations audit inside their transaction", () => 
     }
   });
 
+  describe("A-190 — createCertificate starts its workflow in the same transaction", () => {
+    const workflowService = require("../../services/workflow.service");
+    afterEach(() => {
+      workflowService.startWorkflow.mockImplementation(async () => undefined);
+    });
+
+    it("the workflow instance commits with the certificate, and the ISSUE row names it", async () => {
+      workflowService.startWorkflow.mockImplementation(async (tenantId, type, resourceId, transaction) =>
+        mockRef.ledger.write("workflow_instances", { id: "wfi-1", tenantId, resourceId, status: "PENDING" }, { transaction }),
+      );
+
+      await certificateService.createCertificate("tenant-1", "user-1", { deviceId: "dev-1" }, actor);
+
+      const [, , , transaction] = workflowService.startWorkflow.mock.calls[0];
+      expect(transaction).toBeTruthy();
+      expect(mockRef.ledger.committed("workflow_instances")).toEqual([
+        expect.objectContaining({ id: "wfi-1", resourceId: "cert-new" }),
+      ]);
+      const [row] = mockRef.ledger.auditRows();
+      expect(row.changes.after).toEqual(expect.objectContaining({ workflowInstanceId: "wfi-1" }));
+    });
+
+    it("a workflow that cannot start rolls the certificate back: no certificate is left without its workflow", async () => {
+      workflowService.startWorkflow.mockImplementation(async () => {
+        throw new Error("workflow lookup failed");
+      });
+
+      await expect(
+        certificateService.createCertificate("tenant-1", "user-1", { deviceId: "dev-1" }, actor),
+      ).rejects.toThrow("workflow lookup failed");
+
+      expect(mockRef.ledger.committed("certificates")).toEqual([]);
+      expect(mockRef.ledger.auditRows()).toEqual([]);
+    });
+  });
+
   it("an approval audit row records before and after status", async () => {
     mockRef.certificate = makeCertificate({ status: "pending_approval" });
 

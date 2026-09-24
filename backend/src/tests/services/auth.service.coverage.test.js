@@ -157,6 +157,8 @@ const makeTransaction = (overrides = {}) => {
 describe("auth.service (coverage)", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // A-185: the sign-in throttle's in-process store, between cases.
+    require("../../services/rateLimiter.redis.service").clearMemoryStore();
     acquireLock.mockResolvedValue("lock-id");
     releaseLock.mockResolvedValue(true);
     set.mockResolvedValue(true);
@@ -342,7 +344,8 @@ describe("auth.service (coverage)", () => {
       );
       // A-59: an activation purpose token, never an access token.
       expect(generatePurposeToken).toHaveBeenCalledWith(
-        { id: "user-1" },
+        // A-191: bound to the registration address.
+        require("../../utils/activationToken.util").activationClaims("user-1", "ada@example.com"),
         "activation",
       );
       expect(generateAccessToken).not.toHaveBeenCalled();
@@ -489,7 +492,11 @@ describe("auth.service (coverage)", () => {
 
       expect(err.status).toBe(401);
       expect(err.message).toBe("Invalid credentials");
-      expect(comparePassword).not.toHaveBeenCalled();
+      // A-185: an unknown account still pays for a bcrypt comparison.
+      expect(comparePassword).toHaveBeenCalledWith(
+        "Str0ngPassw0rd",
+        require("../../services/auth.service").UNKNOWN_ACCOUNT_HASH,
+      );
     });
   });
 
@@ -510,11 +517,12 @@ describe("auth.service (coverage)", () => {
       ...overrides,
     });
 
-    it("throws 423 while the account is still locked", async () => {
+    it("throws 423 while the account is still locked — to the password holder only (A-185)", async () => {
       const user = lockableUser({
         lockedUntil: new Date(Date.now() + 10 * 60 * 1000),
       });
       Users.findOne.mockResolvedValue(user);
+      comparePassword.mockResolvedValue(true);
 
       const err = await loginUser({
         username: "adalovelace",
@@ -523,7 +531,6 @@ describe("auth.service (coverage)", () => {
 
       expect(err.status).toBe(423);
       expect(err.message).toBe("Account temporarily locked");
-      expect(comparePassword).not.toHaveBeenCalled();
     });
 
     it("allows login once the lock has expired", async () => {
@@ -546,44 +553,47 @@ describe("auth.service (coverage)", () => {
       });
     });
 
-    it("locks the account for 15 minutes on the fifth failed attempt", async () => {
+    it("A-185: the fifth failed attempt pauses the identifier and address, never the account", async () => {
       const user = lockableUser({ failedLoginAttempts: 4 });
       Users.findOne.mockResolvedValue(user);
       comparePassword.mockResolvedValue(false);
-      const nowSpy = jest
-        .spyOn(Date, "now")
-        .mockReturnValue(new Date("2026-01-01T00:00:00Z").getTime());
+      const { recordAccountLock } = require("../../services/audit.service");
 
-      try {
-        const err = await loginUser({
-          username: "adalovelace",
-          password: "wrong",
-        }).catch((e) => e);
-
-        expect(err.status).toBe(423);
-        expect(err.message).toBe("Account locked due to too many failed attempts");
-        expect(user.update).toHaveBeenNthCalledWith(1, { failedLoginAttempts: 5 });
-        expect(user.update).toHaveBeenNthCalledWith(2, {
-          lockedUntil: new Date("2026-01-01T00:15:00Z"),
-        });
-      } finally {
-        nowSpy.mockRestore();
+      const statuses = [];
+      for (let i = 0; i < 6; i += 1) {
+        statuses.push(
+          (await loginUser({ username: "adalovelace", password: "wrong", ip: "192.0.2.1" }).catch((e) => e))
+            .status,
+        );
       }
+
+      expect(statuses).toEqual([401, 401, 401, 401, 401, 429]);
+      expect(user.update).not.toHaveBeenCalled();
+      expect(recordAccountLock).toHaveBeenCalledTimes(1);
+      expect(recordAccountLock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          user,
+          endpoint: "login",
+          scope: "identifier+address",
+          failedAttempts: 5,
+          ipAddress: "192.0.2.1",
+          userAgent: null,
+        }),
+      );
+      // Nothing is written to the account.
+      await expect(recordAccountLock.mock.calls[0][0].persistLock()).resolves.toBeUndefined();
     });
 
-    it("counts a first failed attempt from a null attempt counter", async () => {
-      const user = lockableUser({ failedLoginAttempts: null });
-      Users.findOne.mockResolvedValue(user);
+    it("A-185: a failure with no address is counted under 'unknown'", async () => {
+      Users.findOne.mockResolvedValue(null);
       comparePassword.mockResolvedValue(false);
 
-      const err = await loginUser({
-        username: "adalovelace",
-        password: "wrong",
-      }).catch((e) => e);
+      for (let i = 0; i < 5; i += 1) {
+        await loginUser({ username: "ghost-no-ip", password: "wrong" }).catch((e) => e);
+      }
+      const err = await loginUser({ username: "ghost-no-ip", password: "wrong" }).catch((e) => e);
 
-      expect(err.status).toBe(401);
-      expect(user.update).toHaveBeenCalledWith({ failedLoginAttempts: 1 });
-      expect(user.update).toHaveBeenCalledTimes(1); // not locked yet
+      expect(err.status).toBe(429);
     });
   });
 

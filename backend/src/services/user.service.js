@@ -437,7 +437,7 @@ exports.fetchUsers = async ({
     });
 
     // Shape response
-    const avatarBaseUrl = `${process.env.HOST_URL || ""}/uploads/profile/`;
+    const avatarBaseUrl = `${process.env.HOST_URL || ""}/uploads/public/profile/`;
     const rowsWithAvatars = data.rows.map((user) => {
       const plain = user.get();
       return {
@@ -451,12 +451,9 @@ exports.fetchUsers = async ({
 
     const totalPages = Math.ceil(data.count / safeLimit);
 
-    /* istanbul ignore else -- transaction is assigned from db.transaction()
-       above, which either yields a transaction or throws (that throw path is
-       covered separately), so it is always truthy here. */
-    if (transaction) {
-      await transaction.commit();
-    }
+    // A-32: `transaction` was assigned by db.transaction() above (or it threw),
+    // so the `if (transaction)` guard that sat here was unreachable.
+    await transaction.commit();
 
     // Count users by status (single query with grouping)
     const statusCounts = { ACTIVE: 0, INACTIVE: 0, LOCKED: 0, SUSPENDED: 0 };
@@ -550,7 +547,7 @@ exports.fetchSpecificUser = async (userId) => {
     }
 
     const plain = user.get();
-    const avatarBaseUrl = `${process.env.HOST_URL || ""}/uploads/profile/`;
+    const avatarBaseUrl = `${process.env.HOST_URL || ""}/uploads/public/profile/`;
 
     return {
       success: true,
@@ -1123,7 +1120,7 @@ exports.editUser = async (input) => {
 
 /** The avatar "no photo" sentinel — never a file of this user's to delete. */
 const AVATAR_PLACEHOLDER = "default.svg";
-const AVATAR_FOLDER = "uploads/profile";
+const AVATAR_FOLDER = "uploads/public/profile";
 
 /**
  * The stored avatar filename of a user, or null when there is none of their
@@ -1396,7 +1393,7 @@ exports.deleteUser = async (input) => {
       const avatarFilename = user.picture.split("/").pop();
       if (avatarFilename && avatarFilename !== "default.svg") {
         try {
-          await deleteUpload(avatarFilename, "uploads/profile");
+          await deleteUpload(avatarFilename, "uploads/public/profile");
         } catch (err) {
           logger.warn(`Failed to delete user avatar: ${avatarFilename}`, err);
         }

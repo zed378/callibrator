@@ -99,10 +99,10 @@ The distinction that matters in a compiled binary:
 | Mount | Source | Headers |
 |---|---|---|
 | `/.well-known` | `storagePath(".well-known")` | ACME challenges, written at runtime |
-| `/uploads` | `storagePath("uploads")` | `X-Content-Type-Options: nosniff`, `Content-Disposition: inline` |
+| `/uploads/public` | `storagePath("uploads", "public")` | public class only (avatars, logos, CMS images): pinned image `Content-Type`, `nosniff`, `Content-Disposition: inline`, `Content-Security-Policy: default-src 'none'; sandbox`; SVG refused (S-01, ADR-057). Certificates and attachments are **not** static — see [`../STORAGE/04-TENANT-STORAGE.md`](../STORAGE/04-TENANT-STORAGE.md) |
 | `/public` | `appPath("public")` | packaged assets |
 
-The two headers on `/uploads` are defence in depth: never let the browser sniff an upload into active content.
+The headers on `/uploads/public` are defence in depth: never let the browser sniff an upload into active content.
 
 `crossOriginResourcePolicy` is `cross-origin` in helmet so the separate-origin frontend can load these images — which is exactly why the headers are not optional.
 

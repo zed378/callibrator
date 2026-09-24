@@ -8,15 +8,17 @@ const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
 
 const nextConfig: NextConfig = {
-  // Serve backend-stored uploads (CMS images, attachments) same-origin, so the
-  // host-relative /uploads URLs saved in content work in both dev and prod.
-  // Unlike /api/v1 (see note below), these are static files with no auth
-  // injection, so a rewrite is safe here.
+  // Serve the backend's PUBLIC upload class (avatars, tenant logos, CMS
+  // images) same-origin, so the host-relative /uploads/public URLs saved in
+  // content work in both dev and prod. Unlike /api/v1 (see note below), these
+  // are static files with no auth injection, so a rewrite is safe here.
+  // S-01 / ADR-042: ONLY /uploads/public/ — certificates and attachments are
+  // no longer static files; they are gated /api/v1 routes (through the proxy).
   async rewrites() {
     return [
       {
-        source: "/uploads/:path*",
-        destination: `${API_BASE_URL}/uploads/:path*`,
+        source: "/uploads/public/:path*",
+        destination: `${API_BASE_URL}/uploads/public/:path*`,
       },
     ];
   },
@@ -26,7 +28,7 @@ const nextConfig: NextConfig = {
         protocol: "http" as const,
         hostname: "localhost",
         port: "5000",
-        pathname: "/uploads/**",
+        pathname: "/uploads/public/**",
       },
     ],
   },

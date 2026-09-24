@@ -106,7 +106,8 @@ export const stockService = {
     stockId: string;
     type: "addition" | "subtraction" | "write_off";
     quantity: number;
-    reason?: string;
+    // P6-09: required by the backend, and never blank.
+    reason: string;
   }): Promise<StockAdjustment> => {
     const response = await api.post<{ success: boolean; data: StockAdjustment }>(
       "/api/v1/stocks/adjustment",

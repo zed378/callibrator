@@ -1,5 +1,5 @@
 // src/app/dashboard/api-keys/components/ApiKeysTable.tsx
-import React from "react";
+import React, { useState } from "react";
 import { ApiKey } from "@/api/services/apiKey.service";
 import {
   Card,
@@ -25,6 +25,21 @@ const asNode = (value: unknown) => value as React.ReactNode;
 
 const MAX_SCOPE_CHIPS = 3;
 
+/**
+ * A key's display status at `now` (epoch ms): revoked (inactive) wins over
+ * expired, and a key with no expiry never expires.
+ */
+export const apiKeyStatus = (
+  apiKey: Pick<ApiKey, "isActive" | "expiresAt">,
+  now: number,
+): "active" | "expired" | "revoked" => {
+  if (!apiKey.isActive) return "revoked";
+  if (apiKey.expiresAt && new Date(apiKey.expiresAt).getTime() <= now) {
+    return "expired";
+  }
+  return "active";
+};
+
 export const ApiKeysTable: React.FC<ApiKeysTableProps> = ({
   apiKeys,
   isApiKeysLoading,
@@ -32,19 +47,18 @@ export const ApiKeysTable: React.FC<ApiKeysTableProps> = ({
   setCurrentPage,
   handleRevokeClick,
 }) => {
-  const isKeyActive = (apiKey: ApiKey) =>
-    apiKey.isActive &&
-    (!apiKey.expiresAt || new Date(apiKey.expiresAt).getTime() > Date.now());
+  // The clock is read once, when the table mounts — not on every render
+  // (react-hooks/purity: Date.now() during render is not idempotent). A key
+  // that expires while the page is open shows as expired after the next list
+  // refresh remounts the rows.
+  const [now] = useState(Date.now);
 
   const getStatusBadge = (apiKey: ApiKey) => {
-    if (isKeyActive(apiKey)) {
+    const status = apiKeyStatus(apiKey, now);
+    if (status === "active") {
       return <Badge variant="success">Active</Badge>;
     }
-    if (
-      apiKey.isActive &&
-      apiKey.expiresAt &&
-      new Date(apiKey.expiresAt).getTime() <= Date.now()
-    ) {
+    if (status === "expired") {
       return <Badge variant="danger">Expired</Badge>;
     }
     return <Badge variant="danger">Revoked</Badge>;
@@ -127,7 +141,7 @@ export const ApiKeysTable: React.FC<ApiKeysTableProps> = ({
                 ),
                 actions: (
                   <div className="flex items-center gap-2">
-                    {isKeyActive(apiKey) && (
+                    {apiKeyStatus(apiKey, now) === "active" && (
                       <Button
                         variant="ghost"
                         size="sm"

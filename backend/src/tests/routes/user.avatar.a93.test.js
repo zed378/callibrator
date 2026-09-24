@@ -242,7 +242,7 @@ describe("A-96 — avatar upload: the controller hands over the actor and cleans
     const res = await http("post", `/${user.id}/avatar`, { body: { __file: true } });
 
     expect(res.status).toBe(404);
-    expect(deleteUpload).toHaveBeenCalledWith("uploaded-avatar.png", "uploads/profile");
+    expect(deleteUpload).toHaveBeenCalledWith("uploaded-avatar.png", "uploads/public/profile");
   });
 
   it("a failed clean-up does not mask the refusal", async () => {
@@ -254,7 +254,7 @@ describe("A-96 — avatar upload: the controller hands over the actor and cleans
     const res = await http("post", `/${user.id}/avatar`, { body: { __file: true } });
 
     expect(res.status).toBe(500);
-    expect(deleteUpload).toHaveBeenCalledWith("uploaded-avatar.png", "uploads/profile");
+    expect(deleteUpload).toHaveBeenCalledWith("uploaded-avatar.png", "uploads/public/profile");
   });
 
   it("no file: 400 and nothing to clean up", async () => {

@@ -99,7 +99,8 @@ const CASES = [
     changes: {
       operation: "DELETE_MENU",
       before: { name: "Dashboard", slug: "dashboard" },
-      after: { deleted: true, revokedGrants: 3, deletedChildren: ["mg-child"] },
+      // A-181: a group with children is refused (409), so none are deleted.
+      after: { deleted: true, revokedGrants: 3 },
     },
   },
 ];
@@ -108,7 +109,7 @@ describe("A-173 — menu-group changes audit under PLATFORM inside their transac
   beforeEach(() => {
     mockRef.ledger = createLedger({ cls: false });
     mockRef.group = mockGroupRow({ id: "mg-1", name: "Dashboard", slug: "dashboard", icon: "home", parentId: null, sortOrder: 1, isActive: true });
-    mockRef.children = [{ id: "mg-child" }];
+    mockRef.children = [];
     mockRef.revoked = 3;
     redis.delPattern.mockClear();
     jest.spyOn(logger, "error").mockImplementation(() => logger);
@@ -162,23 +163,22 @@ describe("A-173 — menu-group changes audit under PLATFORM inside their transac
     });
   });
 
-  it("deleting a group revokes its and its children's grants in the same transaction as the delete and its audit row", async () => {
+  it("deleting a group revokes its grants in the same transaction as the delete and its audit row", async () => {
     mockRef.ledger.failNext("audit_logs", new Error("audit insert failed"));
 
     await expect(menuGroupService.deleteMenuGroup("mg-1", actor)).rejects.toThrow("audit insert failed");
 
-    // Before A-173 the grant revocation and the child delete each
-    // autocommitted: a failed delete left the group in place with every
-    // role's grant on it, and its child menus, already gone.
+    // Before A-173 the grant revocation autocommitted: a failed delete left
+    // the group in place with every role's grant on it already gone.
     expect(mockRef.ledger.committed("role_menu_permissions")).toEqual([]);
     expect(mockRef.ledger.committed("menu_groups")).toEqual([]);
   });
 
-  it("deleting a group revokes the grants of the group and of each child it removes", async () => {
+  it("deleting a group revokes the grants on the group", async () => {
     await menuGroupService.deleteMenuGroup("mg-1", actor);
 
     expect(mockRef.ledger.committed("role_menu_permissions")).toEqual([
-      expect.objectContaining({ destroyed: { menuGroupId: ["mg-1", "mg-child"] } }),
+      expect.objectContaining({ destroyed: { menuGroupId: "mg-1" } }),
     ]);
   });
 

@@ -68,10 +68,11 @@ const jwksCache = new JwksCache();
  * @param {string} issuer - OIDC issuer URL
  * @returns {Promise<{keys: Array}>} JWKS document
  */
-async function fetchJwks(issuer) {
-  // Normalize issuer URL
-  const baseUrl = issuer.replace(/\/$/, "");
-  const jwksUrl = `${baseUrl}/.well-known/jwks.json`;
+async function fetchJwks(issuer, jwksUri) {
+  // A-188: the IdP's published `jwks_uri` when discovery found one (Entra ID
+  // keeps its keys at …/discovery/v2.0/keys); otherwise the path this client
+  // always derived from the issuer.
+  const jwksUrl = jwksUri || `${issuer.replace(/\/$/, "")}/.well-known/jwks.json`;
 
   // Check cache first
   const cached = jwksCache.get(jwksUrl);
@@ -153,9 +154,10 @@ function findJwkByKeyId(jwks, kid) {
  * @param {string} idToken - The JWT id_token from OIDC callback
  * @param {string} issuer - OIDC issuer URL
  * @param {string} clientId - Expected client ID
+ * @param {{jwksUri?: string}} [options] - A-188: the discovered `jwks_uri`
  * @returns {Object} Decoded and verified ID token payload
  */
-exports.verifyIdToken = async (idToken, issuer, clientId) => {
+exports.verifyIdToken = async (idToken, issuer, clientId, { jwksUri } = {}) => {
   if (!idToken) {
     throw new AppError(400, "id_token is required");
   }
@@ -194,7 +196,7 @@ exports.verifyIdToken = async (idToken, issuer, clientId) => {
     }
 
     // Fetch JWKS
-    const jwks = await fetchJwks(issuer);
+    const jwks = await fetchJwks(issuer, jwksUri);
 
     // Find matching key
     const jwk = findJwkByKeyId(jwks, kid);
@@ -256,23 +258,30 @@ exports.verifyOidcCallback = async (code, ssoSettings, redirectUri, flow = {}) =
   }
   const clientId = ssoSettings.oidc_client_id;
   const clientSecret = ssoSettings.oidc_client_secret;
-  const authority =
-    ssoSettings.oidc_authority ||
-    "https://login.microsoftonline.com/common/oauth2/v2.0";
-  const issuer = ssoSettings.oidc_authority || authority;
+  // A-188: the endpoints and the issuer come from the IdP's discovery
+  // document (a configuration fault is an AppError and propagates as one).
+  const provider = await exports.discover(ssoSettings);
+  const { issuer } = provider;
+
+  // A-188: a PUBLIC client (no secret configured — PKCE is its proof) sends no
+  // client_secret at all. URLSearchParams turned the missing value into the
+  // literal string "undefined", which an IdP reads as a wrong secret.
+  const tokenRequest = {
+    client_id: clientId,
+    grant_type: "authorization_code",
+    code,
+    redirect_uri: redirectUri,
+    code_verifier: codeVerifier,
+  };
+  if (typeof clientSecret === "string" && clientSecret !== "") {
+    tokenRequest.client_secret = clientSecret;
+  }
 
   try {
     // Exchange code for tokens
     const tokenResponse = await axios.post(
-      `${authority}/token`,
-      new URLSearchParams({
-        client_id: clientId,
-        client_secret: clientSecret,
-        grant_type: "authorization_code",
-        code,
-        redirect_uri: redirectUri,
-        code_verifier: codeVerifier,
-      }).toString(),
+      provider.tokenEndpoint,
+      new URLSearchParams(tokenRequest).toString(),
       {
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
@@ -288,7 +297,9 @@ exports.verifyOidcCallback = async (code, ssoSettings, redirectUri, flow = {}) =
 
     // SECURITY: Verify id_token signature using JWKS
     // This replaces the previous insecure jwt.decode() only verification
-    const decoded = await exports.verifyIdToken(idToken, issuer, clientId);
+    const decoded = await exports.verifyIdToken(idToken, issuer, clientId, {
+      jwksUri: provider.jwksUri,
+    });
 
     // A-68: the nonce binds this ID token to the sign-in THIS server started.
     // A token minted for another request (replayed, or injected with a stolen
@@ -331,6 +342,132 @@ exports.verifyOidcCallback = async (code, ssoSettings, redirectUri, flow = {}) =
 };
 
 // ==========================================
+// A-188 — PROVIDER DISCOVERY
+// ==========================================
+//
+// This client used to DERIVE every endpoint from the configured authority:
+// `${authority}/authorize`, `${authority}/token`,
+// `${authority}/.well-known/jwks.json`, and it expected the ID token's `iss`
+// to equal the authority string. Microsoft Entra ID fits none of that — its
+// keys are at …/discovery/v2.0/keys, and the issuer of a tenant-specific
+// token is https://login.microsoftonline.com/<tenant-id>/v2.0 — so an Entra
+// sign-in could never be verified.
+//
+// Now the endpoints and the issuer come from the IdP's OpenID Provider
+// Metadata (OpenID Connect Discovery 1.0), at
+// `<authority>/.well-known/openid-configuration`, cached for an hour.
+//
+//  - An authority written the way this client used to document it for Entra,
+//    https://login.microsoftonline.com/<tenant>/oauth2/v2.0, is read as the
+//    issuer base https://login.microsoftonline.com/<tenant>/v2.0 — the
+//    document lives there, not under /oauth2.
+//  - A MULTI-TENANT authority (Entra's /common or /organizations) publishes
+//    an issuer with a `{tenantid}` placeholder. It is refused: it would admit
+//    any directory's users into this hospital's tenant through JIT
+//    provisioning. Configure the hospital's own directory.
+//  - An IdP that answers the discovery URL with 404 publishes no metadata;
+//    the endpoints this client always derived are used for it, as before.
+//    Any other failure is a failure — never a silent fallback.
+
+const DISCOVERY_TTL_MS = 60 * 60 * 1000;
+const discoveryCache = new JwksCache(DISCOVERY_TTL_MS);
+
+/** An absolute http(s) URL, or null. */
+const endpointUrl = (value) => {
+  if (typeof value !== "string" || value === "") {
+    return null;
+  }
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * The tenant's OIDC authority, without a trailing slash.
+ *
+ * @param {object} ssoSettings
+ * @returns {string}
+ * @throws {AppError} 400 when none is configured — there is no default: the
+ *   old default was Entra's multi-tenant /common, refused below
+ */
+const authorityOf = (ssoSettings) => {
+  const authority = String(ssoSettings.oidc_authority || "").trim().replace(/\/+$/, "");
+  if (!authority) {
+    throw new AppError(400, "OIDC authority is not configured for this tenant");
+  }
+  return authority;
+};
+
+/**
+ * Resolve the identity provider's endpoints and issuer.
+ *
+ * @param {object} ssoSettings - the tenant's settings (`oidc_authority`)
+ * @returns {Promise<{issuer: string, authorizationEndpoint: string, tokenEndpoint: string, jwksUri: string, discovered: boolean}>}
+ * @throws {AppError} 400 for an unusable configuration, 502 when the IdP
+ *   cannot be read
+ */
+exports.discover = async (ssoSettings) => {
+  const authority = authorityOf(ssoSettings);
+  const base = authority.replace(/\/oauth2\/v2\.0$/i, "/v2.0");
+  const metadataUrl = `${base}/.well-known/openid-configuration`;
+
+  const cached = discoveryCache.get(metadataUrl);
+  if (cached) {
+    return cached;
+  }
+
+  let metadata;
+  try {
+    const response = await axios.get(metadataUrl, {
+      timeout: 10000,
+      headers: { Accept: "application/json", "User-Agent": "Callibrator-OIDC/1.0" },
+    });
+    metadata = response.data;
+  } catch (err) {
+    if (err.response && err.response.status === 404) {
+      logger.warn("OIDC provider publishes no discovery document; deriving its endpoints", {
+        authority,
+      });
+      const derived = {
+        issuer: authority,
+        authorizationEndpoint: `${authority}/authorize`,
+        tokenEndpoint: `${authority}/token`,
+        jwksUri: `${authority}/.well-known/jwks.json`,
+        discovered: false,
+      };
+      discoveryCache.set(metadataUrl, derived);
+      return derived;
+    }
+    logger.error("OIDC discovery failed", { authority, error: err.message });
+    throw new AppError(502, "The identity provider could not be reached");
+  }
+
+  const provider = {
+    issuer: typeof metadata?.issuer === "string" ? metadata.issuer : null,
+    authorizationEndpoint: endpointUrl(metadata?.authorization_endpoint),
+    tokenEndpoint: endpointUrl(metadata?.token_endpoint),
+    jwksUri: endpointUrl(metadata?.jwks_uri),
+    discovered: true,
+  };
+  if (!provider.issuer || !provider.authorizationEndpoint || !provider.tokenEndpoint || !provider.jwksUri) {
+    logger.error("OIDC discovery document is incomplete", { authority });
+    throw new AppError(502, "The identity provider's discovery document is incomplete");
+  }
+  if (/\{tenantid\}/i.test(provider.issuer)) {
+    throw new AppError(
+      400,
+      "The OIDC authority is multi-tenant (for example /common); configure the organisation's own directory",
+    );
+  }
+
+  discoveryCache.set(metadataUrl, provider);
+  return provider;
+};
+
+// ==========================================
 // UTILITY FUNCTIONS
 // ==========================================
 
@@ -358,6 +495,7 @@ exports.getJwksInfo = async (issuer) => {
  */
 exports.clearCache = () => {
   jwksCache.clear();
+  discoveryCache.clear();
   logger.info("JWKS cache cleared");
 };
 

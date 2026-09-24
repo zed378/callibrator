@@ -143,12 +143,9 @@ exports.initializeTenantFlags = async (tenantId) => {
     }
   }
 
-  /* istanbul ignore else -- DEFAULT_FLAGS is a hardcoded module constant with
-     six `defaultValue: true` entries, so `settings` is never empty here; the
-     guard is defensive against a future all-false default set. */
-  if (settings.length > 0) {
-    await TenantSettings.bulkCreate(settings, { ignoreDuplicates: true });
-  }
+  // A-32: no `settings.length > 0` guard — DEFAULT_FLAGS always yields rows,
+  // and bulkCreate([]) is a no-op should that ever change.
+  await TenantSettings.bulkCreate(settings, { ignoreDuplicates: true });
 
   return exports.getTenantFlags(tenantId);
 };

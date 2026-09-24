@@ -2013,6 +2013,250 @@ so a captured delivery was valid forever. Separately (A-11), only the calibratio
 
 ---
 
+## ADR-055: A Workflow Decision on a Certificate Is a Signature; Revocation Is Removed Until Designed; Started Workflows Are Immutable
+
+**Date:** 2026-09-25 · **Findings:** A-182, A-183, A-184, A-107, A-190, A-204 · **Extends:** ADR-035, ADR-047
+
+**Context.** The workflow engine was a second route to `approved` that skipped the re-authentication
+ADR-047 requires and the certificate state machine ADR-035 built. Its decision route carried no
+permission gate, and it counted approvals outside a lock. `revokeSignature` existed in the service,
+controller and validator, but no route called it. It had no re-authentication and no state check.
+Replacing a workflow's steps cascaded into `workflow_actions` and erased approval history.
+
+**Decision**
+
+1. **Every APPROVED action on a Certificate workflow re-authenticates.** It uses the same
+   `verifySignatureAuth` as `POST /certificates/:id/approve`. The **final** approval is the
+   certificate's own `pending_approval → approved` transition: under `FOR UPDATE`, with the
+   `ESignatureRecord`, the audit row and the webhook. A rejection is allowed only from `draft` or
+   `pending_approval`. From any other state it answers 409 with a state explanation. State checks run
+   before re-authentication, so a refused decision does not consume an MFA code.
+2. **Gates on the workflow routes.**
+   - The decision route needs write on a decidable record type (`certificate`, `warehouse` or
+     `maintenance`).
+   - The service then requires write on the instance's own type.
+   - `GET /instances/pending` needs `workflows` read.
+   - The instance row is locked inside the decision transaction. "Already acted" and the approval
+     count are read under that lock.
+   - `signDocument` locks the workflow, then the step, in the same order as cancel, update and delete.
+3. **`createCertificate` starts its workflow inside its own transaction.** A workflow that cannot
+   start rolls the certificate back.
+4. **Signature revocation is removed.** `revokeSignature` is deleted from the service, controller and
+   validator, and a pin test fails if it returns. `verifySignature` keeps its `revoked` status for
+   historical rows. Deleting a revoked, signed or approved certificate stays 409 (A-130).
+5. **Workflow definitions are audited.** Create, update and delete write `Workflow` audit rows
+   inside the transaction. Once any instance exists, including a soft-deleted one, replacing steps
+   is 409. Deleting a workflow with PENDING instances is 409. The inbox skips orphaned instances.
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| Re-authenticate only the final approval | every step approval is an attestation, and which one is "final" depends on a concurrent count |
+| Gate the decision on `workflows` write | that is the definition-admin grant; approvers would gain the power to rewrite the chain |
+| Leave the decision gated by the step-role match only | P6-04 requires a gate; a role can lose `certificate` write and keep its workflow step |
+| Let a rejection revoke | revocation is its own re-authenticated act |
+| Route `revokeSignature` with a gate and an audit row | there is no design for who may revoke or how verification shows it; this would ship a Part 11 act with no specification |
+| Keep `revokeSignature` as dead code | it is the implementation the next route would inherit |
+| Version workflow steps (new rows plus a version column) | better long term, but a schema change; recorded as the successor |
+| Make the steps FK RESTRICT through a migration | PUT would answer 500 instead of 409, and it needs the Q-16 orphan checks |
+
+**Implications, including the bad ones**
+
+- **Approvers type credentials at every Certificate step.** This adds friction.
+- **Some approvers now get 403.** A caller who holds the step role but has no `certificate` write is
+  refused. The default seed grants it; custom roles may need the grant.
+- **A-203, open:** a certificate approved directly while its workflow is PENDING leaves an instance
+  whose final approval is 409. Whether the workflow is mandatory is an owner question.
+- **StockTransfer and MaintenanceWorkOrder decisions are still not signatures.** StockTransfer writes
+  status values that are not in its ENUM (A-201, open).
+- **No signature can be revoked.** A mistaken signature is handled by cancelling the workflow or
+  revoking the certificate.
+- **Changing a started workflow's steps** means deactivating it and creating a new one.
+
+**Status:** Accepted, implemented 2026-09-25 (batch 6).
+
+---
+
+## ADR-056: Menu Deletion, Public Link Origin, the Q-20 Grants, and Tenant Notification Defaults
+
+**Date:** 2026-09-25 · **Findings:** A-181, A-186, A-187, A-189, Q-20 · **Extends:** ADR-050, ADR-043
+
+**Decision**
+
+1. **A menu with children cannot be deleted.** This holds on both paths, `menuGroup.service` and
+   `roles.service#deleteMenu`. The request is refused with 409, the children are named, and nothing
+   is written. An empty group is deleted with its grants and one audit row. Grant writes (assign,
+   revoke, bulk) are transactional and all-or-nothing. Each writes one `GRANT_MENU` or `REVOKE_MENU`
+   row and clears the role's permission cache after commit.
+2. **The public origin of generated links** is `PUBLIC_BASE_URL`, else `HOST_URL`. In production
+   with neither set, the request fails with a 500 naming the setting; it never guesses from a Host
+   header. Outside production, the forwarded origin is read only through the one-hop `trust proxy`
+   (ADR-050). The Next proxy overwrites `X-Forwarded-Host` and `X-Forwarded-Proto` and never copies
+   the browser's values.
+3. **Q-20 grants.** Rationale:
+   - Every route is tenant-scoped, and `user.service` refuses to create or grant SUPERADMIN.
+   - The tenant must be able to review its own audit trail (21 CFR 11.10(e)).
+   - `PATCH /billing/subscription` can override payment state (A-225), so billing stays read-only.
+   - `content` is the platform's public blog, so it stays SUPERADMIN-only.
+
+   | Role | New grants |
+   |---|---|
+   | HEALTHCARE ADMIN | `users` write, `vendors` write, `billing` read, `audit` read |
+   | CALIBRATOR ADMIN | `users` write, `vendors` write, `billing` read, `audit` read |
+   | ENGINEERING MANAGER | `vendors` read |
+   | any role but SUPERADMIN | not `content` |
+
+   Migration `0054` applies the grants to already-seeded databases.
+4. **Tenant notifications and sub-organisations.**
+   - A custom-domain email goes to the requester plus the tenant's active administrators, never to
+     "the oldest user". Recipient addresses are never logged.
+   - A sub-organisation takes the parent's email, a subdomain derived from its code, and the
+     parent's plan. It is created in one transaction with a PLATFORM audit row.
+   - Domain writes are audited in the tenant's trail.
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| Keep SET NULL on menu delete | the grandchildren silently became top-level entries, keeping their grants |
+| Re-parent children to the deleted group's parent | **privilege escalation**: every role granted that parent silently inherits the moved pages |
+| Cascade the whole subtree | one click removes routes from every role, under one audit row |
+| Trust forwarded headers in production | Host-header injection into links printed on official PDFs |
+| Require the configured origin at boot | breaks deployments that set only `CERT_VERIFY_BASE_URL` |
+| Leave Q-20's five resources SUPERADMIN-only | a tenant administrator that cannot manage its own users is a broken product; every route is tenant-scoped |
+| Require an email in the sub-organisation body | changes the validator and UI contract for a field the parent already has |
+
+**Implications, including the bad ones**
+
+- **Deleting a populated menu group** now takes N+1 operations. This reverses A-173's "deletes direct
+  children". A child created concurrently in the read-then-commit window would still be SET NULL;
+  this is accepted because menu edits are SUPERADMIN-only.
+- **A production deployment without `HOST_URL`** answers 500 on signed URLs and on the verify URL
+  when `CERT_VERIFY_BASE_URL` is unset. Every shipped configuration sets `HOST_URL`.
+- **Tenant administrators can now create peer administrators.** `0054`'s `down` also removes
+  identical grants that someone added by hand. Redis permission caches must be flushed after it runs.
+- **More email per domain.** A sub-organisation's contact address must be changed by hand.
+
+**Status:** Accepted, implemented 2026-09-25 (batch 6).
+
+---
+
+## ADR-057: File Serving — ADR-042 Completed (Steps 3–6)
+
+**Date:** 2026-09-25 · **Findings:** S-01, A-40, A-230, A-232 · **Completes:** ADR-042
+
+**Decision**
+
+- **Only `uploads/public/{profile,tenant,cms}` is static.** It serves images only
+  (jpeg, png, gif, webp) with a pinned type, `nosniff` and a sandbox CSP. Any other extension answers
+  404 before the disk is read. **SVG is refused** at upload.
+- **Only permissioned actions write the public class:** `users:update`, `management`, and
+  `content:create` through the new, audited `POST /content/media`.
+- **Certificates and attachments are unreachable statically.**
+  - Attachments are served through `/attachments/:id/download` (gated, tenant-scoped, soft-delete
+    aware) or `/signed` (HMAC, 300 s).
+  - Certificates are served through `/:id/pdf` (gated) or a verification capability,
+    `/certificates/verify/:number/document?token=…`. The capability lasts one hour, is minted only
+    for a signed certificate that has a file, and re-checks status on every fetch.
+  - nginx answers 404 for `/uploads/` outside `/uploads/public/`.
+- **Gated file routes support conditional requests and Range** (ETag/Last-Modified → 304, a single
+  range → 206, unsatisfiable → 416). Disposition is chosen by content type: `inline` only for images
+  and PDF.
+- **Deleting an attachment unlinks its file after commit, not inside the transaction.** An unlink
+  cannot be rolled back. Inside the transaction, a failed audit insert would leave a live row whose
+  evidence is gone. After commit, the worst case is an orphan file that nothing can reach. A storage
+  leak beats a record that lies.
+- **The storage driver cache is invalidated across replicas** through a Redis generation key, with a
+  local TTL bound when Redis is down (A-40). A storage migration verifies every copied object against
+  the recorded checksum, or against the source hash when there is none.
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| Serve SVG as `attachment` with a sandbox | the logo would never display; the public class exists to render images |
+| Unlink inside the transaction | irreversible side effect inside a transaction that can still roll back |
+| Keep a random filename on the static mount (paper B) | a deleted or revoked file stays served |
+| Put a long-lived signed URL in the QR code | the QR encodes the verification page, which mints a fresh capability |
+| Move attachments onto the storage façade now | that path is proven by mocks only; deferred |
+
+**Implications, including the bad ones**
+
+- **Buffering in the frontend proxy.** On `vm-http`, attachment and certificate bytes now pass
+  through the Next proxy, which buffers whole responses (F-16). A 25 MB file sits in Next's heap. This
+  is unmeasured.
+- **Ticket images go through an authenticated request each.** Avatars and logos keep a one-day cache.
+- **The unauthenticated verify page mints a capability per view.** Anyone who knows a signed
+  certificate's number can fetch its PDF for an hour. That is public verification by design, but no
+  audit row is written per mint.
+- **Existing SVG logos go blank** until the tenant uploads a raster image. Old `/uploads/attachments`
+  links break, by design.
+- **Deleting draft evidence destroys the bytes.** Whether deleted drafts are retained is an open
+  owner question.
+
+**Status:** Accepted, implemented 2026-09-25 (batch 6). Migration `0056` moves existing public files
+and rewrites certificate paths.
+
+---
+
+## ADR-058: Route Authorization Is Enforced by a Whole-Tree Guard over an Explicit Exemption List
+
+**Date:** 2026-09-25 · **Findings:** P6-04, AZ-01, AZ-03, A-250, A-251, A-252, A-254 · **Extends:** ADR-043
+
+**Context.** Four live incidents (A-01, A-02, A-03, A-27) were ungated routes. Each was fixed route
+by route, and nothing stopped a fifth. A check that only asks whether a gate is present would
+wrongly fail 56 routes that are correctly authorized by other means (AZ-03), so the exemptions have
+to be claims the guard can verify.
+
+**Decision**
+
+- **Every route carries a gate or an exemption.** A gate is `dynamicAccess`, `rbac`,
+  `checkRoleLevel`, `abac` or `superAdminOnly`. An exemption is an entry in
+  `backend/src/constants/routeGateExemptions.js` with a kind (`public`, `self`, `service`, `inline`,
+  `pending` or `accepted`) and a reason.
+- **`routePermissionGuard.p604.test.js` checks the real route tree.** It tags the gate factories,
+  requires every router, walks the real Express stacks, and parses the routes `index.js` registers
+  on the app directly. It fails on:
+  - a route with no gate and no exemption;
+  - a stale exemption;
+  - an exemption whose kind contradicts the route's chain;
+  - a `service` exemption naming a function that does not exist;
+  - an `inline` exemption whose guard is missing;
+  - a resource that is not a seeded slug;
+  - a router that is not mounted.
+- **Read paths are gated like their writes.** This covers reports, supplier-scorecard (whose writes
+  were ungated), jobs, feature-flag definitions, OIDC clients, username-check, and the menu-group
+  reads (own role only).
+- **SCIM keys need the `scim` scope** (A-250).
+- **A tenant-wide test notification needs `notifications:write`** (A-251).
+- **A DSAR status is visible to the subject, or to `gdpr:read`** (A-252).
+- **`GET /dashboard/metrics` and `GET /quota` stay on `auth`, recorded as `accepted`.** The dashboard
+  is every role's landing page, but FACILITY MAINTENANCE and WAREHOUSE STAFF have no `dashboard`
+  grant. Whether to grant `dashboard` to every role or scope the metrics per role is an open
+  question.
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| A lint or source-text scan | misses factory and inline guards; that is how the first SCIM audit went wrong |
+| A structural `route()` helper that requires a gate argument | the right end state, and it belongs to P9-21, which will read `publicRoutes()` from the same list |
+| A diff-only check | never sees routes that were already wrong |
+
+**Implications, including the bad ones**
+
+- **Every new public, self-service or service-gated route needs an entry in the list.** A `service`
+  entry proves only that the named function exists, not that it authorizes correctly.
+- **The guard runs only inside `npm test`**, until CI exists (P7-01).
+- **SCIM integrators get 403** until they are issued a key with `scim:write`. Scopes cannot be edited
+  on an existing key.
+- **A custom role without the `reports` grant loses the reports pages.**
+
+**Status:** Accepted, implemented 2026-09-25 (batch 6).
+
+---
+
 ## Open Decisions
 
 Recorded so a future reader can tell whether their idea was evaluated and rejected, or genuinely never considered.

@@ -42,7 +42,7 @@ Get `sequelize` from the models barrel by that name. **Destructuring `db` from i
 
 ## Includes
 
-**An optional association needs `required: false`.** Without it Sequelize emits an INNER JOIN and a row whose optional foreign key is null disappears from the result. It is the most repeated defect shape in this codebase — certificates, then risks, and it is latent on `maintenance_work_orders`.
+**An optional association needs `required: false`.** Without it Sequelize emits an INNER JOIN and a row whose optional foreign key is null disappears from the result. It is the most repeated defect shape in this codebase — certificates, then risks. (`maintenance_work_orders` was listed here as latent; its reads are correct, pinned by `tests/services/maintenance.includes.a190.test.js`, A-190.)
 
 ## Attribute Names
 

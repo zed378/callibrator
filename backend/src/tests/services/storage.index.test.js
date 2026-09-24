@@ -12,6 +12,17 @@ jest.mock("../../services/storage/config.service", () => ({
   validateTenantConfig: jest.fn((c) => ({ ...c })),
 }));
 
+// A-40: an in-memory stand-in for Redis, shared by every copy of the façade
+// a test loads — which is what lets one test play two replicas.
+const mockRedisStore = new Map();
+jest.mock("../../services/redis.service", () => ({
+  get: jest.fn(async (k) => (mockRedisStore.has(k) ? mockRedisStore.get(k) : null)),
+  set: jest.fn(async (k, v) => {
+    mockRedisStore.set(k, v);
+    return true;
+  }),
+}));
+
 const mockLocalInstances = [];
 const mockS3Instances = [];
 
@@ -60,6 +71,7 @@ const TENANT_KEY = "t/tenant-1/attachments/report.pdf";
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockRedisStore.clear();
   mockLocalInstances.length = 0;
   mockS3Instances.length = 0;
   storage.invalidateAll();
@@ -170,7 +182,12 @@ describe("storage façade — signed object resolution", () => {
     const { token } = signing.sign(TENANT_KEY, 300, SIGN_SECRET);
 
     const result = await storage.openSignedObject(TENANT_KEY, token);
-    expect(result).toEqual({ stream: "stream", meta: { size: 10 } });
+    expect(result.meta).toEqual({ size: 10 });
+    // ADR-042 step 5: nothing is opened until the route asks, and then only
+    // the byte range it asks for.
+    expect(mockLocalInstances[0].get).not.toHaveBeenCalled();
+    await expect(result.open({ start: 2, end: 4 })).resolves.toBe("stream");
+    expect(mockLocalInstances[0].get).toHaveBeenCalledWith(TENANT_KEY, { start: 2, end: 4 });
     // Resolved through the tenant derived from the key, not from any request.
     expect(mockLocalInstances[0].config.root).toBe("/srv");
   });
@@ -180,10 +197,9 @@ describe("storage façade — signed object resolution", () => {
     const globalKey = "global/branding/logo.png";
     const { token } = signing.sign(globalKey, 300, SIGN_SECRET);
 
-    await expect(storage.openSignedObject(globalKey, token)).resolves.toEqual({
-      stream: "stream",
-      meta: { size: 10 },
-    });
+    const result = await storage.openSignedObject(globalKey, token);
+    expect(result.meta).toEqual({ size: 10 });
+    await expect(result.open()).resolves.toBe("stream");
   });
 
   it("refuses an invalid token before touching storage", async () => {
@@ -222,16 +238,94 @@ describe("storage façade — driver caching", () => {
 
   it("rebuilds after a configuration change is invalidated", async () => {
     await storage.getTenantStorage("tenant-1");
-    storage.invalidate("tenant-1");
+    await storage.invalidate("tenant-1");
     await storage.getTenantStorage("tenant-1");
     expect(mockLocalInstances).toHaveLength(2);
   });
 
   it("invalidates the global driver too", async () => {
     await storage.getGlobalStorage();
-    storage.invalidate(null);
+    await storage.invalidate(null);
     await storage.getGlobalStorage();
     expect(mockLocalInstances).toHaveLength(2);
+  });
+
+  it("A-40: an invalidation on one replica rebuilds the driver on ANOTHER replica", async () => {
+    // A second, independent copy of the façade — its own in-process cache,
+    // the same Redis — is what a second replica is.
+    let replicaB;
+    jest.isolateModules(() => {
+      require("../../services/storage/local.driver").instances = mockLocalInstances;
+      const cfg = require("../../services/storage/config.service");
+      cfg.getTenantConfig.mockResolvedValue(null);
+      cfg.getGlobalConfig.mockReturnValue({ provider: "local", root: "/srv" });
+      replicaB = require("../../services/storage");
+    });
+
+    await storage.getTenantStorage("tenant-1"); // replica A caches
+    await replicaB.getTenantStorage("tenant-1"); // replica B caches
+    expect(mockLocalInstances).toHaveLength(2);
+
+    await replicaB.getTenantStorage("tenant-1"); // B: cache hit
+    expect(mockLocalInstances).toHaveLength(2);
+
+    // The settings change is handled by replica A...
+    await expect(storage.invalidate("tenant-1")).resolves.toBe(true);
+
+    // ...and replica B, which never saw it, rebuilds on its next request.
+    await replicaB.getTenantStorage("tenant-1");
+    expect(mockLocalInstances).toHaveLength(3);
+    // And then caches again.
+    await replicaB.getTenantStorage("tenant-1");
+    expect(mockLocalInstances).toHaveLength(3);
+  });
+
+  it("A-40: with Redis unavailable a cached driver is still rebuilt after the local TTL", async () => {
+    const redisService = require("../../services/redis.service");
+    redisService.get.mockResolvedValue(null); // Redis down: no generation anywhere
+    const now = jest.spyOn(Date, "now").mockReturnValue(1_000_000);
+    try {
+      await storage.getTenantStorage("tenant-1");
+      now.mockReturnValue(1_000_000 + 59_000);
+      await storage.getTenantStorage("tenant-1");
+      expect(mockLocalInstances).toHaveLength(1); // inside the 60s default
+
+      now.mockReturnValue(1_000_000 + 61_000);
+      await storage.getTenantStorage("tenant-1");
+      expect(mockLocalInstances).toHaveLength(2); // bounded staleness
+    } finally {
+      now.mockRestore();
+      redisService.get.mockImplementation(async (k) =>
+        mockRedisStore.has(k) ? mockRedisStore.get(k) : null,
+      );
+    }
+  });
+
+  it("A-40: the local TTL is configurable", async () => {
+    process.env.STORAGE_DRIVER_CACHE_TTL_SEC = "5";
+    const now = jest.spyOn(Date, "now").mockReturnValue(2_000_000);
+    try {
+      await storage.getTenantStorage("tenant-1");
+      now.mockReturnValue(2_000_000 + 6_000);
+      await storage.getTenantStorage("tenant-1");
+      expect(mockLocalInstances).toHaveLength(2);
+    } finally {
+      now.mockRestore();
+      delete process.env.STORAGE_DRIVER_CACHE_TTL_SEC;
+    }
+  });
+
+  it("A-40: invalidate reports false when the generation could not reach Redis", async () => {
+    const redisService = require("../../services/redis.service");
+    redisService.set.mockResolvedValueOnce(false);
+    await expect(storage.invalidate("tenant-1")).resolves.toBe(false);
+  });
+
+  it("A-40: a numeric generation read back from Redis still compares as a string", async () => {
+    mockRedisStore.set("storage:driver-generation:tenant-1", 42);
+    await storage.getTenantStorage("tenant-1");
+    await storage.getTenantStorage("tenant-1");
+    expect(mockLocalInstances).toHaveLength(1);
   });
 });
 
@@ -340,7 +434,7 @@ describe("storage façade — signed URLs", () => {
     const scoped = await storage.getTenantStorage("tenant-1");
     await scoped.signedUrl(TENANT_KEY);
     expect(scoped.driver.signedUrl.mock.calls[0][1].baseUrl).toBe("");
-    if (previous !== undefined) process.env.PUBLIC_BASE_URL = previous;
+    if (previous !== undefined) {process.env.PUBLIC_BASE_URL = previous;}
   });
 
   it("leaves S3 to presign on its own — no HMAC secret involved", async () => {

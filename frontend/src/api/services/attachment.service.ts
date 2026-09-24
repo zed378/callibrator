@@ -12,6 +12,14 @@ export interface Attachment {
   size: number;
   checksum?: string | null;
   uploadedBy?: string | null;
+  /**
+   * The GATED, host-relative download route `/api/v1/attachments/<id>/download`
+   * (S-01, ADR-042 step 4) — never an `/uploads/...` path. It works for a
+   * signed-in member of the attachment's tenant (same-origin, through the API
+   * proxy), inline for images and PDF, and stops working when the attachment
+   * is deleted. For someone without a session, mint a signed URL.
+   */
+  url?: string;
   createdAt: string;
 }
 

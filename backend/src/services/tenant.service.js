@@ -48,14 +48,14 @@ const {
   isTenantAdminSettingKey,
 } = require("../constants/tenantAdminSettings");
 
-const TENANT_LOGO_BASE_URL = `${process.env.HOST_URL || "http://localhost:5000"}/uploads/tenant`;
+const TENANT_LOGO_BASE_URL = `${process.env.HOST_URL || "http://localhost:5000"}/uploads/public/tenant`;
 
 /**
  * Build the public URL for a tenant logo.
  *
  * DEFAULT_UPLOAD_PLACEHOLDER means "no logo uploaded" — the same sentinel the
  * replace paths below already refuse to unlink. Building a URL from it yields
- * /uploads/tenant/default.svg, which 404s: nothing ships that file, and
+ * /uploads/public/tenant/default.svg, which 404s: nothing ships that file, and
  * /app/uploads is a volume that would shadow it. Null lets the UI fall back.
  *
  * @param {string|null|undefined} logo - the stored filename
@@ -157,18 +157,6 @@ const assertTenantAdminSettings = (entries) => {
       throw new AppError(400, `Setting "${key}" must be a string, number, boolean or null`);
     }
   }
-};
-
-/**
- * Transform tenant rows array with logo baseUrl
- * @param {Array} rows - Array of Sequelize tenant instances
- * @returns {Array} - Transformed tenant data
- */
-/* istanbul ignore next -- unreachable: transformTenants is never referenced by
-   any call site in this module or elsewhere in the codebase (dead helper kept
-   alongside transformTenant); it cannot be invoked from a test. */
-const transformTenants = (rows) => {
-  return (rows || []).map(transformTenant);
 };
 
 // ------------------------------------------------------------------
@@ -784,7 +772,7 @@ exports.updateTenant = async (tenantId, input, updatedBy, actor = {}) => {
 
     if (replacedLogo && replacedLogo !== "default.svg") {
       try {
-        await deleteUpload(replacedLogo, "uploads/tenant");
+        await deleteUpload(replacedLogo, "uploads/public/tenant");
       } catch (err) {
         // The update is committed; a leftover file is a storage leak, not a
         // reason to report the update as failed.
@@ -907,7 +895,7 @@ exports.deleteTenant = async (tenantId, actor = {}) => {
       const logoFilename = tenant.logo.split("/").pop();
       if (logoFilename && logoFilename !== "default.svg") {
         try {
-          await deleteUpload(logoFilename, "uploads/tenant");
+          await deleteUpload(logoFilename, "uploads/public/tenant");
         } catch (err) {
           logger.warn(`Failed to delete tenant logo: ${logoFilename}`, err);
         }

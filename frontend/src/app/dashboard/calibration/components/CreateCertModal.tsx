@@ -1,4 +1,5 @@
 import React from "react";
+import type { CreateCertificateForm } from "../hooks/useCalibration";
 import { Dialog, Badge, Select, Input, Textarea, Button } from "@/components/ui";
 import { Sparkles } from "lucide-react";
 import { Calibration } from "@/api/services/calibration.service";
@@ -8,8 +9,8 @@ interface CreateCertModalProps {
   onClose: () => void;
   onSubmit: (e: React.FormEvent) => void;
   selectedRecordForCert: Calibration | null;
-  form: any;
-  setForm: React.Dispatch<React.SetStateAction<any>>;
+  form: CreateCertificateForm;
+  setForm: React.Dispatch<React.SetStateAction<CreateCertificateForm>>;
   isLoading: boolean;
 }
 
@@ -47,7 +48,9 @@ export const CreateCertModal: React.FC<CreateCertModalProps> = ({
             </label>
             <Select
               value={form.type}
-              onChange={(val) => setForm({ ...form, type: val })}
+              onChange={(val) =>
+                setForm({ ...form, type: val as CreateCertificateForm["type"] })
+              }
               options={[
                 { value: "calibration", label: "Calibration Certificate" },
                 { value: "maintenance", label: "Maintenance Certificate" },
