@@ -1,153 +1,52 @@
 const cron = require("node-cron");
 const { logger } = require("./activityLog.middleware");
+const { runScheduledBackup } = require("../services/scheduledBackup.service");
 
-const JSZip = require("jszip");
-const fse = require("fs-extra");
-const path = require("path");
-const storagePath = require("../utils/storagePath.util");
-const moment = require("moment-timezone");
-const cronExp = process.env.BACKUP_SCHEDULER;
+const DEFAULT_SCHEDULE = "0 0 * * *"; // daily at 00:00
 
-const rootDir = path.join(__dirname, "../../");
-const backupFolder = storagePath("backup");
-// const backupFolder = path.join(rootDir, "backup");
-
-async function addFolderToZip(zip, folderPath, folderName = "") {
-  const files = await fse.readdir(folderPath);
-
-  for (const fileName of files) {
-    const fullPath = path.join(folderPath, fileName);
-    const fileStat = await fse.stat(fullPath);
-
-    if (fileStat.isDirectory()) {
-      const subFolderName = path.join(folderName, fileName);
-      await addFolderToZip(zip, fullPath, subFolderName);
-    } else {
-      const fileData = await fse.readFile(fullPath);
-      zip.file(path.join(folderName, fileName), fileData);
-    }
-  }
-}
-
-async function zipFolder(source, out) {
-  const zip = new JSZip();
-  await addFolderToZip(zip, source);
-  const zipContent = await zip.generateAsync({
-    type: "nodebuffer",
-    compression: "DEFLATE",
-  });
-  await fse.writeFile(out, zipContent);
-}
-
-async function backupAndZip() {
-  const prefix = moment().tz("Asia/Jakarta").format("YYYY-MMMM-DD HH~mm~ss");
-
-  const dataSourceDir = path.join(rootDir, "data");
-  const logSourceDir = path.join(rootDir, "log");
-  const backupDir = path.join(rootDir, "backup");
-
-  const dataOutPath = path.join(backupDir, `${prefix}-data.zip`);
-  const logOutPath = path.join(backupDir, `${prefix}-log.zip`);
-
-  const tempDataBackupDir = path.join(backupDir, `${prefix}-data`);
-  const tempLogBackupDir = path.join(backupDir, `${prefix}-log`);
-
-  try {
-    await fse.ensureDir(backupDir);
-
-    // Only backup log folder if it exists
-    if (await fse.pathExists(logSourceDir)) {
-      await fse.copy(logSourceDir, tempLogBackupDir, {
-        overwrite: true,
-        dereference: true,
-      });
-
-      await zipFolder(tempLogBackupDir, logOutPath);
-      logger.info("Log folder successfully zipped!");
-
-      await fse.remove(tempLogBackupDir);
-    } else {
-      logger.info("Log folder does not exist, skipping log backup");
-    }
-
-    await fse.copy(dataSourceDir, tempDataBackupDir, {
-      filter: (src) => !src.endsWith("mysql.sock"),
-    });
-
-    await zipFolder(tempDataBackupDir, dataOutPath);
-    logger.info("Data folder successfully zipped!");
-
-    await fse.remove(tempDataBackupDir);
-
-    logger.info("Temporary folders successfully deleted!");
-  } catch (err) {
-    logger.error(`Error during backup and zipping process: ${err.message}`);
-  }
-}
-
-async function extractZip(filePath, destDir) {
-  const zip = new JSZip();
-  const data = await fse.readFile(filePath);
-  const zipContent = await zip.loadAsync(data);
-
-  await Promise.all(
-    Object.keys(zipContent.files).map(async (fileName) => {
-      const file = zipContent.files[fileName];
-      if (!file.dir) {
-        const content = await file.async("nodebuffer");
-        const filePath = path.join(destDir, fileName);
-        try {
-          await fse.outputFile(filePath, content);
-        } catch (err) {
-          logger.error(
-            `Failed to write file: ${filePath}, Error: ${err.message}`,
-          );
-        }
-      }
-    }),
-  );
-}
-
-async function deleteOldFiles() {
-  try {
-    const files = await fse.readdir(backupFolder);
-
-    const now = moment();
-
-    for (const file of files) {
-      const filePath = path.join(backupFolder, file);
-      const fileStat = await fse.stat(filePath);
-
-      const fileAgeInDays = now.diff(moment(fileStat.mtime), "days");
-
-      if (fileAgeInDays > 30) {
-        await fse.remove(filePath);
-        logger.info(`Deleted: ${filePath}`);
-      }
-    }
-  } catch (error) {
-    logger.error(`Error deleting old files: ${error.message}`);
-  }
-}
-
+/**
+ * Start the BACKUP_SCHEDULER job (S-03): a tenant backup of every tenant that
+ * is not offboarded, then pruning of expired ones (S-14). What it backs up and
+ * why is in services/scheduledBackup.service.js.
+ *
+ * BACKUP_SCHEDULER is a cron expression (default daily at 00:00);
+ * `disabled` / `off` turns the job off. An invalid expression is refused
+ * loudly — on stderr as well as the log — rather than silently scheduling a
+ * default: a backup the operator believes is scheduled and is not is the
+ * failure this job used to be.
+ *
+ * It replaced a job that zipped `data/` and `log/` from inside the pkg
+ * snapshot and wrote nothing (S-03).
+ *
+ * @returns {boolean} true when the job was scheduled
+ */
 const cronBackup = () => {
-  const message =
-    cronExp !== "0 0 * * *"
-      ? `You set cron expression as ${cronExp}`
-      : "Cron job started at 00:00 AM +0700";
-  logger.info(message);
+  const schedule = process.env.BACKUP_SCHEDULER || DEFAULT_SCHEDULE;
 
-  cron.schedule(cronExp ? cronExp : "0 0 * * *", async () => {
-    logger.info("Running backup data folder");
+  if (schedule === "disabled" || schedule === "off") {
+    logger.info("Scheduled tenant backup disabled via BACKUP_SCHEDULER");
+    return false;
+  }
 
-    try {
-      await backupAndZip();
-      await deleteOldFiles();
-      logger.info("Backup completed successfully");
-    } catch (error) {
-      logger.error(`Error during cron backup: ${error.message}`);
-    }
+  if (!cron.validate(schedule)) {
+    const message = `Invalid BACKUP_SCHEDULER cron expression "${schedule}"; scheduled tenant backup NOT started`;
+    logger.error(message);
+    process.stderr.write(`[scheduled-backup] ${message}\n`);
+    return false;
+  }
+
+  logger.info(`Scheduled tenant backup scheduled with: ${schedule}`);
+
+  cron.schedule(schedule, async () => {
+    logger.info("Running scheduled tenant backup");
+    // runScheduledBackup records and surfaces its own outcome, and never
+    // rejects; the catch is for a defect in that promise, not a backup error.
+    await runScheduledBackup().catch((err) => {
+      logger.error(`Scheduled tenant backup crashed: ${err.message}`);
+      process.stderr.write(`[scheduled-backup] crashed: ${err.message}\n`);
+    });
   });
+  return true;
 };
 
-module.exports = { backupAndZip, cronBackup, extractZip, deleteOldFiles };
+module.exports = { cronBackup, DEFAULT_SCHEDULE };

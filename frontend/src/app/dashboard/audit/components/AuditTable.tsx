@@ -34,6 +34,9 @@ const ACTION_BADGES: Record<
   LOGIN: { variant: "default", label: "LOGIN" },
   APPROVE: { variant: "success", label: "APPROVE" },
   EXPORT: { variant: "warning", label: "EXPORT" },
+  // A-126 (ADR-051 Q-15): security events, shown as such.
+  ACCOUNT_LOCKED: { variant: "danger", label: "ACCOUNT LOCKED" },
+  SIGNATURE_AUTH_FAILED: { variant: "danger", label: "SIGNATURE AUTH FAILED" },
 };
 
 const COLUMN_COUNT = 6;
@@ -49,8 +52,18 @@ function displayName(user: AuditLogUser): string {
   return user.username || user.email;
 }
 
+/** A-124: readable labels for the closed list of system actors (backend constants/systemActors.js). */
+export const SYSTEM_ACTOR_LABELS: Record<string, string> = {
+  "system:retention-purge": "Retention purge",
+  "system:tenant-lifecycle": "Tenant lifecycle",
+};
+
+/** A-124: rows written before the actor was recorded. */
+export const UNKNOWN_ACTOR = "Unknown (not recorded)";
+
 /**
- * Who acted. ADR-051 Q-17: a reference to a user outside the reader's tenant
+ * Who acted. A-124: a system job is named from `actorType`/`actorName`, and a
+ * row from before the actor was recorded says so. ADR-051 Q-17: a reference to a user outside the reader's tenant
  * comes back `null` (tenant-scoped include, A-87) — that is a platform
  * operator, shown as such rather than as "System". An impersonated row (F-8)
  * names the operator behind the hospital user.
@@ -61,7 +74,26 @@ export const AuditActor: React.FC<{ log: AuditLog }> = ({ log }) => {
     : null;
 
   let who: React.ReactNode;
-  if (log.user) {
+  if (log.actorType === "system") {
+    const name = log.actorName ?? "";
+    who = (
+      <div data-testid="audit-system-actor">
+        <div className="font-semibold text-foreground">
+          {SYSTEM_ACTOR_LABELS[name] ?? "System job"}
+        </div>
+        <div className="text-xs font-mono text-muted-foreground">{name}</div>
+      </div>
+    );
+  } else if (log.actorType === "unknown") {
+    who = (
+      <span
+        className="text-muted-foreground italic"
+        title="Written before the audit trail recorded who acted"
+      >
+        {UNKNOWN_ACTOR}
+      </span>
+    );
+  } else if (log.user) {
     who = (
       <>
         <div className="font-semibold text-foreground">{log.user.username}</div>

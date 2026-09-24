@@ -143,25 +143,42 @@ describe("migrateAttachment", () => {
 });
 
 describe("legacyPath", () => {
+  const path = require("path");
+
   it("builds the on-disk path from folder + fileName", () => {
     expect(service.legacyPath(makeRow())).toBe(
-      "/srv/root/uploads/attachments/abc.pdf",
+      path.resolve("/srv/root/uploads/attachments/abc.pdf"),
     );
   });
 
-  it("refuses a folder that escapes the storage root", () => {
-    const storagePath = require("../../utils/storagePath.util");
-    // Make the joined path fall outside the folder root.
-    storagePath.mockImplementationOnce(() => "/etc/passwd").mockImplementationOnce(
-      () => "/srv/root/uploads",
-    );
-    expect(() => service.legacyPath(makeRow())).toThrow(
+  // S-15: the guard's root used to be derived from the row's own folder, so
+  // a folder of "../../etc" moved the root with it and passed.
+  it.each([
+    ["../../etc", "passwd"],
+    ["uploads/../../etc", "passwd"],
+    ["uploads/attachments/../../..", "secrets.env"],
+    ["..\\..\\etc", "passwd"],
+    ["backup/tenant-backups", "tenant_x.zip"],
+    ["uploads-evil", "x.pdf"],
+  ])("S-15: refuses folder %j (fileName %j) outside the uploads tree", (folder, fileName) => {
+    expect(() => service.legacyPath(makeRow({ folder, fileName }))).toThrow(
       "Refusing to read outside storage root",
     );
   });
 
-  it("tolerates an empty folder", () => {
-    expect(service.legacyPath(makeRow({ folder: "" }))).toContain("abc.pdf");
+  it("S-15: refuses a traversal in fileName", () => {
+    expect(() =>
+      service.legacyPath(makeRow({ fileName: "../../../etc/passwd" })),
+    ).toThrow("Refusing to read outside storage root");
+  });
+
+  it("S-15: refuses an empty folder (a file at the storage root is not an upload)", () => {
+    expect(() => service.legacyPath(makeRow({ folder: "" }))).toThrow(
+      "Refusing to read outside storage root",
+    );
+    expect(() => service.legacyPath(makeRow({ folder: null, fileName: null }))).toThrow(
+      "Refusing to read outside storage root",
+    );
   });
 });
 

@@ -60,6 +60,7 @@ function getMenuGroupId(slug) {
     "tickets-raise": "a0000000-0000-0000-0000-000000000231",
     "tickets-response": "a0000000-0000-0000-0000-000000000232",
     "esignature": "a0000000-0000-0000-0000-000000000233",
+    "ai-assistant": "a0000000-0000-0000-0000-000000000234",
     "predictive-maintenance": "a0000000-0000-0000-0000-000000000306",
     // Management sub-group categories (level 2 of the 3-level sidebar)
     "mgmt-organization": "a0000000-0000-0000-0000-000000000250",
@@ -356,6 +357,19 @@ async function seedMenuGroups() {
       slug: "esignature",
       icon: "ClipboardCheck",
       sortOrder: 5,
+      is_active: true,
+      parentSlug: "mgmt-quality",
+    },
+    // A-118: the AI Assistant page had no menu entry. Under Quality &
+    // Compliance because it answers from the tenant's SOPs and reads
+    // certificates; granted to the roles holding `sop` (ROLE_MENU_ASSIGNMENTS,
+    // migration 0038). The page's calls stay gated on `certificate` write and
+    // `sop` read — this grant shows the entry, it authorizes nothing.
+    {
+      name: "AI Assistant",
+      slug: "ai-assistant",
+      icon: "Sparkles",
+      sortOrder: 6,
       is_active: true,
       parentSlug: "mgmt-quality",
     },
@@ -737,6 +751,7 @@ async function seedRoleMenuPermissions() {
         "predictive-maintenance",
         "qms",
         "sop",
+        "ai-assistant",
         "workflows",
         "finance",
         "metered-billing",
@@ -782,6 +797,7 @@ async function seedRoleMenuPermissions() {
         "predictive-maintenance",
         "qms",
         "sop",
+        "ai-assistant",
         "workflows",
         "finance",
         "metered-billing",
@@ -824,6 +840,7 @@ async function seedRoleMenuPermissions() {
         "predictive-maintenance",
         "qms",
         "sop",
+        "ai-assistant",
         "workflows",
         "finance",
         "batch-jobs",

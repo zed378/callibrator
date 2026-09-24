@@ -117,6 +117,9 @@ router.post(
     allowedMimes: ATTACH_MIMES,
     allowedExtensions: ATTACH_EXTS,
     maxFileSize: 25 * 1024 * 1024, // 25MB
+    // S-17: the file stays in quarantine until attachment.service has
+    // virus-scanned it; the service moves it into uploads/attachments.
+    holdInQuarantine: true,
   }),
   attachmentController.upload,
 );

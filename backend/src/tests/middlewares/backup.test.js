@@ -1,368 +1,266 @@
 /**
- * Tests for backup middleware
+ * S-03 / S-14 — one BACKUP_SCHEDULER tick, end to end, on a real disk.
+ *
+ * The cron callback registered by cronBackup() is captured and run against a
+ * temporary storage root (storagePath is pointed at it). The tenant-backup
+ * service and the models are stand-ins: what is under test is WHAT THE JOB
+ * DOES — does a tick produce a backup file for every tenant, where the writer
+ * writes; does it attribute it; and does pruning leave the backup directory
+ * alone.
+ *
+ * S-03 before: the tick zipped `data/` and `log/` from beside __dirname
+ * (inside the pkg snapshot in production) and backed up no tenant at all.
+ * S-14 before: the pruner `fse.remove`d every ENTRY of storagePath("backup")
+ * older than 30 days by mtime — including the `tenant-backups` directory and
+ * every backup in it.
  */
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
 
-// Create mock functions for fs-extra
-const mockFse = {
-  readdir: jest.fn(),
-  stat: jest.fn().mockResolvedValue({ isDirectory: () => false }),
-  readFile: jest.fn().mockResolvedValue(Buffer.from("data")),
-  copy: jest.fn(),
-  remove: jest.fn().mockResolvedValue(undefined),
-  pathExists: jest.fn(),
-  ensureDir: jest.fn().mockResolvedValue(undefined),
-  outputJson: jest.fn(),
-  outputFile: jest.fn(),
-  writeFile: jest.fn().mockResolvedValue(undefined),
+const mockRoot = fs.mkdtempSync(path.join(os.tmpdir(), "s03-backup-"));
+const mockBackupDir = path.join(mockRoot, "backup", "tenant-backups");
+const mockTable = [];
+let mockSeq = 0;
+
+jest.mock("node-cron", () => ({
+  schedule: jest.fn(),
+  validate: jest.requireActual("node-cron").validate,
+}));
+jest.mock("../../utils/storagePath.util", () => (...parts) =>
+  require("path").join(mockRoot, ...parts),
+);
+jest.mock("../../middlewares/activityLog.middleware", () => ({
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
+}));
+jest.mock("../../config", () => ({
+  db: { transaction: jest.fn(async (cb) => cb("TX")) },
+}));
+jest.mock("../../services/audit.service", () => ({ logAction: jest.fn() }));
+
+// The writer: a real file under BACKUP_DIR and a row in mockTable, as
+// tenantBackup.service#createBackup produces.
+jest.mock("../../services/tenantBackup.service", () => {
+  const fsm = require("fs");
+  const p = require("path");
+  return {
+    BACKUP_DIR: mockBackupDir,
+    createBackup: jest.fn(async ({ tenantId, retentionDays }) => {
+      mockSeq += 1;
+      fsm.mkdirSync(mockBackupDir, { recursive: true });
+      const filePath = p.join(mockBackupDir, `tenant_${tenantId}_b${mockSeq}.zip`);
+      fsm.writeFileSync(filePath, `backup of ${tenantId}`);
+      const row = {
+        id: `b${mockSeq}`,
+        tenantId,
+        status: "completed",
+        filePath,
+        fileSize: 20,
+        recordCount: 2,
+        retentionDays,
+        expiresAt: null,
+        createdAt: new Date(),
+      };
+      mockTable.push(row);
+      return { data: row };
+    }),
+  };
+});
+
+const mockRow = (over) => {
+  const row = {
+    status: "completed",
+    retentionDays: 30,
+    expiresAt: null,
+    ...over,
+  };
+  row.update = jest.fn(async (v) => Object.assign(row, v));
+  row.destroy = jest.fn(async () => {
+    row.deletedAt = new Date();
+  });
+  return row;
 };
 
-// Mock node-cron before importing
-const mockSchedule = jest.fn();
-jest.mock("node-cron", () => ({ schedule: mockSchedule }));
-
-// Default JSZip mock
-const defaultJSZipImpl = () => ({
-  file: jest.fn().mockReturnThis(),
-  generateAsync: jest.fn().mockResolvedValue(Buffer.from([])),
-  loadAsync: jest.fn().mockResolvedValue({ files: {} }),
-});
-jest.mock("jszip", () => jest.fn().mockImplementation(defaultJSZipImpl));
-
-jest.mock("fs-extra", () => mockFse);
-jest.mock("../../utils/storagePath.util", () => () => "/fake-backup");
-jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: {
-    info: jest.fn(),
-    error: jest.fn(),
-    debug: jest.fn(),
+jest.mock("../../models", () => ({
+  Tenant: {
+    findAll: jest.fn(async () => [{ id: "tenant-a" }, { id: "tenant-b" }]),
+  },
+  TenantBackup: {
+    STATUS: { COMPLETED: "completed", DELETED: "deleted" },
+    BACKUP_TYPES: { FULL: "full" },
+    DEFAULT_RETENTION_DAYS: 30,
+    update: jest.fn(),
+    findAll: jest.fn(async () =>
+      mockTable
+        .filter((r) => r.status === "completed" && !r.deletedAt)
+        .sort((a, b) =>
+          a.tenantId === b.tenantId ? b.createdAt - a.createdAt : a.tenantId < b.tenantId ? -1 : 1,
+        ),
+    ),
   },
 }));
 
-let diffReturnValue = 36;
-jest.mock("moment-timezone", () => {
-  const MockMoment = jest.fn();
-  const mockMomentInstance = {
-    diff: jest.fn().mockImplementation(() => diffReturnValue),
-    tz: jest.fn().mockReturnValue({
-      format: jest.fn().mockReturnValue("2026-07-14 10~00~00"),
-    }),
-  };
-  MockMoment.mockImplementation(() => mockMomentInstance);
-  MockMoment.default = MockMoment;
-  return MockMoment;
+const cron = require("node-cron");
+const { cronBackup } = require("../../middlewares/backup.middleware");
+const auditService = require("../../services/audit.service");
+const tenantBackupService = require("../../services/tenantBackup.service");
+
+const DAY = 24 * 60 * 60 * 1000;
+const ago = (days) => new Date(Date.now() - days * DAY);
+
+const tick = async () => {
+  const callback = cron.schedule.mock.calls.at(-1)[1];
+  await callback();
+};
+
+afterAll(() => {
+  fs.rmSync(mockRoot, { recursive: true, force: true });
 });
 
-const {
-  backupAndZip,
-  cronBackup,
-  extractZip,
-  deleteOldFiles,
-} = require("../../middlewares/backup.middleware");
-const { logger } = require("../../middlewares/activityLog.middleware");
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockTable.length = 0;
+  fs.rmSync(path.join(mockRoot, "backup"), { recursive: true, force: true });
+  process.env.BACKUP_SCHEDULER = "0 3 * * 0";
+  delete process.env.BACKUP_KEEP_MIN;
+});
 
-describe("backup middleware", () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    // Reset mock implementations to defaults
-    mockFse.readdir.mockReset().mockImplementation(() => []);
-    mockFse.stat.mockReset().mockResolvedValue({ isDirectory: () => false });
-    mockFse.readFile.mockReset().mockResolvedValue(Buffer.from("data"));
-    mockFse.copy.mockReset();
-    mockFse.remove.mockReset().mockResolvedValue(undefined);
-    mockFse.pathExists.mockReset();
-    mockFse.ensureDir.mockReset().mockResolvedValue(undefined);
-    mockFse.writeFile.mockReset().mockResolvedValue(undefined);
-    mockFse.outputFile.mockReset();
-    process.env.BACKUP_SCHEDULER = "0 0 * * *";
-    diffReturnValue = 36;
-    // Reset JSZip to default (extractZip tests override it)
-    const JSZip = require("jszip");
-    JSZip.mockImplementation(defaultJSZipImpl);
-  });
+describe("S-03 — a tick backs up every tenant, into the backup volume", () => {
+  it("writes one tenant backup per tenant under storagePath('backup','tenant-backups'), attributed to the system actor", async () => {
+    cronBackup();
+    expect(cron.schedule).toHaveBeenCalledWith("0 3 * * 0", expect.any(Function));
 
-  describe("backupAndZip", () => {
-    it("should skip log backup when log folder does not exist", async () => {
-      mockFse.pathExists.mockResolvedValue(false);
-      mockFse.readdir.mockResolvedValueOnce(["data1.db"]);
+    await tick();
 
-      await backupAndZip();
+    const files = fs.readdirSync(mockBackupDir).sort();
+    expect(files).toEqual(["tenant_tenant-a_b1.zip", "tenant_tenant-b_b2.zip"]);
+    expect(tenantBackupService.createBackup).toHaveBeenCalledTimes(2);
 
-      expect(mockFse.copy).toHaveBeenCalledTimes(1);
-      expect(logger.info).toHaveBeenCalledWith(
-        "Log folder does not exist, skipping log backup",
-      );
-    });
-
-    it("should create backup of data and log folders", async () => {
-      // pathExists is called once for log folder
-      mockFse.pathExists.mockResolvedValue(true);
-      // readdir called: log folder, data folder
-      // But zipFolder calls addFolderToZip which calls readdir per call
-      // log folder: readdir(["log1.txt"]) -> for zipFolder
-      // data folder: readdir(["data1.db"]) -> for zipFolder
-      mockFse.readdir
-        .mockResolvedValueOnce(["log1.txt"]) // log folder
-        .mockResolvedValueOnce(["data1.db"]); // data folder
-
-      // copy called 2 times: log then data
-      // writeFile called 2 times: log zip then data zip
-
-      await backupAndZip();
-
-      expect(mockFse.ensureDir).toHaveBeenCalled();
-      expect(mockFse.copy).toHaveBeenCalledTimes(2);
-      expect(mockFse.writeFile).toHaveBeenCalled();
-      expect(logger.info).toHaveBeenNthCalledWith(
-        2,
-        "Data folder successfully zipped!",
-      );
-    });
-
-    it("should handle errors gracefully", async () => {
-      mockFse.ensureDir.mockRejectedValueOnce(new Error("Disk error"));
-
-      await backupAndZip();
-
-      expect(logger.error).toHaveBeenCalledWith(
-        expect.stringContaining("Error during backup and zipping process"),
-      );
-    });
-
-    it("should handle errors during data folder copy", async () => {
-      mockFse.pathExists.mockResolvedValue(false);
-      mockFse.copy.mockRejectedValueOnce(new Error("Copy failed"));
-
-      await backupAndZip();
-
-      expect(logger.error).toHaveBeenCalledWith(
-        expect.stringContaining("Error during backup and zipping process"),
-      );
-    });
-
-    it("should handle subdirectories recursively via addFolderToZip", async () => {
-      mockFse.pathExists.mockResolvedValue(false);
-      // First readdir returns a subfolder name
-      mockFse.readdir
-        .mockResolvedValueOnce(["subfolder"]) // data folder has subfolder
-        .mockResolvedValueOnce([]); // subfolder is empty
-      // stat: first call (subfolder) is a directory, second call (data1.db) is not
-      mockFse.stat
-        .mockResolvedValueOnce({ isDirectory: () => true }) // subfolder
-        .mockResolvedValueOnce({ isDirectory: () => false }); // data1.db
-
-      await backupAndZip();
-
-      // Should have called readdir for data folder and subfolder
-      expect(mockFse.readdir).toHaveBeenCalledTimes(2);
-      // zip.file should still be called for data1.db
-      expect(logger.info).toHaveBeenCalledWith(
-        "Data folder successfully zipped!",
-      );
-    });
-
-    it("should pass filter to skip mysql.sock in data backup", async () => {
-      mockFse.pathExists.mockResolvedValue(false);
-      mockFse.readdir.mockResolvedValueOnce(["data1.db"]);
-
-      await backupAndZip();
-
-      // copy was called with options object containing filter
-      const copyOptions = mockFse.copy.mock.calls[0][2];
-      expect(copyOptions).toHaveProperty("filter");
-      expect(copyOptions.filter("/fake-backup/data1.db")).toBe(true);
-      expect(copyOptions.filter("/fake-backup/mysql.sock")).toBe(false);
-    });
-  });
-
-  describe("extractZip", () => {
-    it("should extract zip file to destination", async () => {
-      const JSZip = require("jszip");
-      JSZip.mockImplementation(() => ({
-        loadAsync: jest.fn().mockResolvedValue({
-          files: {
-            "file1.txt": {
-              dir: false,
-              async: jest.fn().mockResolvedValue(Buffer.from("content")),
-            },
-          },
-        }),
-      }));
-
-      await extractZip("/backup/test.zip", "/dest");
-
-      expect(logger.error).not.toHaveBeenCalled();
-    });
-
-    it("should skip directories during extraction", async () => {
-      const JSZip = require("jszip");
-      JSZip.mockImplementation(() => ({
-        loadAsync: jest.fn().mockResolvedValue({
-          files: { "dir:/": { dir: true } },
-        }),
-      }));
-
-      await extractZip("/backup/test.zip", "/dest");
-
-      expect(logger.error).not.toHaveBeenCalled();
-    });
-
-    it("should log error when fse.outputFile fails for a file", async () => {
-      const JSZip = require("jszip");
-      mockFse.outputFile.mockRejectedValueOnce(new Error("Permission denied"));
-      JSZip.mockImplementation(() => ({
-        loadAsync: jest.fn().mockResolvedValue({
-          files: {
-            "file1.txt": {
-              dir: false,
-              async: jest.fn().mockResolvedValue(Buffer.from("content")),
-            },
-          },
-        }),
-      }));
-
-      await extractZip("/backup/test.zip", "/dest");
-
-      expect(logger.error).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to write file"),
-      );
-    });
-  });
-
-  describe("deleteOldFiles", () => {
-    it("should remove files older than 30 days", async () => {
-      diffReturnValue = 36;
-      mockFse.readdir.mockImplementation(() => [
-        "old-backup.zip",
-        "recent.zip",
-      ]);
-
-      await deleteOldFiles();
-
-      expect(mockFse.remove).toHaveBeenCalledWith(
-        expect.stringContaining("old-backup"),
-      );
-    });
-
-    it("should not remove files within 30 days", async () => {
-      diffReturnValue = 5;
-      mockFse.readdir.mockImplementation(() => ["recent.zip"]);
-
-      await deleteOldFiles();
-
-      expect(mockFse.remove).not.toHaveBeenCalled();
-    });
-
-    it("should handle errors gracefully", async () => {
-      mockFse.readdir.mockRejectedValueOnce(new Error("Read error"));
-
-      await deleteOldFiles();
-
-      expect(logger.error).toHaveBeenCalledWith(
-        expect.stringContaining("Error deleting old files"),
-      );
-    });
-  });
-
-  describe("cronBackup", () => {
-    it("should schedule cron job", () => {
-      process.env.BACKUP_SCHEDULER = "0 0 * * *";
-      cronBackup();
-      expect(mockSchedule).toHaveBeenCalled();
-    });
-
-    it("should call backupAndZip and deleteOldFiles in scheduled callback", async () => {
-      process.env.BACKUP_SCHEDULER = "0 0 * * *";
-      mockFse.pathExists.mockResolvedValue(false);
-      mockFse.readdir.mockResolvedValueOnce(["data1.db"]);
-      cronBackup();
-      // Trigger the scheduled callback to execute lines 141-148
-      const scheduledCb = mockSchedule.mock.calls[0][1];
-      await scheduledCb();
-
-      expect(logger.info).toHaveBeenCalledWith("Backup completed successfully");
-    });
-
-    it("should complete without error when backupAndZip and deleteOldFiles absorb their own failures", async () => {
-      // Both helpers catch internally, so a failure inside either of them is
-      // logged by that helper and the cron callback still reports success.
-      mockFse.pathExists.mockResolvedValue(false);
-      mockFse.copy.mockRejectedValueOnce(new Error("Copy failed"));
-      mockFse.readdir.mockResolvedValue(["data1.db"]);
-
-      cronBackup();
-      const scheduledCb = mockSchedule.mock.calls[0][1];
-      await scheduledCb();
-
-      expect(logger.error).toHaveBeenCalledWith(
-        expect.stringContaining("Error during backup and zipping process"),
-      );
-      expect(logger.info).toHaveBeenCalledWith("Backup completed successfully");
-    });
-
-    it("should log an error when the scheduled backup rejects", async () => {
-      // backupAndZip builds its filename prefix with moment().tz(...) BEFORE
-      // entering its own try block, so a clock failure there escapes
-      // backupAndZip's internal catch and reaches the cron callback's catch.
-      const momentMock = require("moment-timezone");
-      const instance = momentMock();
-      const originalTz = instance.tz;
-      instance.tz = jest.fn(() => {
-        throw new Error("clock unavailable");
+    const creates = auditService.logAction.mock.calls.filter(([e]) => e.action === "CREATE");
+    expect(creates).toHaveLength(2);
+    for (const [entry, opts] of creates) {
+      expect(entry).toMatchObject({
+        systemActor: "system:scheduled-backup",
+        resourceType: "TenantBackup",
       });
+      expect(entry.userId).toBeUndefined();
+      expect(opts).toEqual({ transaction: "TX" });
+    }
 
-      try {
-        cronBackup();
-        const scheduledCb = mockSchedule.mock.calls[0][1];
-        await scheduledCb();
-      } finally {
-        instance.tz = originalTz;
-      }
+    const status = JSON.parse(
+      fs.readFileSync(path.join(mockRoot, "backup", "last-scheduled-backup.json"), "utf8"),
+    );
+    expect(status).toMatchObject({ ok: true, tenants: 2 });
+  });
+});
 
-      expect(logger.error).toHaveBeenCalledWith(
-        "Error during cron backup: clock unavailable",
-      );
-      expect(logger.info).not.toHaveBeenCalledWith(
-        "Backup completed successfully",
-      );
+describe("S-14 — pruning never deletes the backup directory, and keeps the newest", () => {
+  it("an old tenant-backups DIRECTORY holding backups survives the tick", async () => {
+    fs.mkdirSync(mockBackupDir, { recursive: true });
+    const kept = path.join(mockBackupDir, "tenant_tenant-a_old.zip");
+    fs.writeFileSync(kept, "x");
+    mockTable.push(
+      mockRow({ id: "old-a", tenantId: "tenant-a", filePath: kept, createdAt: ago(40), expiresAt: ago(10) }),
+    );
+    const old = ago(60);
+    fs.utimesSync(kept, old, old);
+    fs.utimesSync(mockBackupDir, old, old);
+    fs.utimesSync(path.dirname(mockBackupDir), old, old);
+
+    cronBackup();
+    await tick();
+
+    expect(fs.existsSync(mockBackupDir)).toBe(true);
+    // expired, but among tenant-a's newest three: kept
+    expect(fs.existsSync(kept)).toBe(true);
+  });
+
+  it("prunes expired backups beyond the newest N of a tenant, file and row together", async () => {
+    process.env.BACKUP_KEEP_MIN = "1";
+    fs.mkdirSync(mockBackupDir, { recursive: true });
+    const expired = path.join(mockBackupDir, "tenant_tenant-a_expired.zip");
+    const fresh = path.join(mockBackupDir, "tenant_tenant-a_fresh.zip");
+    fs.writeFileSync(expired, "x");
+    fs.writeFileSync(fresh, "x");
+    const expiredRow = mockRow({
+      id: "exp-a", tenantId: "tenant-a", filePath: expired, createdAt: ago(45), expiresAt: ago(15),
     });
+    mockTable.push(
+      expiredRow,
+      mockRow({ id: "fresh-a", tenantId: "tenant-a", filePath: fresh, createdAt: ago(2), expiresAt: null }),
+    );
 
-    it("should fall back to the default expression when BACKUP_SCHEDULER is unset", () => {
-      const saved = process.env.BACKUP_SCHEDULER;
-      delete process.env.BACKUP_SCHEDULER;
+    cronBackup();
+    await tick();
 
-      try {
-        // cronExp is read at module load, so the module must be re-required
-        // with the variable absent.
-        jest.isolateModules(() => {
-          const {
-            cronBackup: freshCronBackup,
-          } = require("../../middlewares/backup.middleware");
-          const {
-            logger: freshLogger,
-          } = require("../../middlewares/activityLog.middleware");
+    expect(fs.existsSync(expired)).toBe(false);
+    expect(fs.existsSync(fresh)).toBe(true);
+    expect(expiredRow.status).toBe("deleted");
+    expect(expiredRow.destroy).toHaveBeenCalledWith({ transaction: "TX" });
+    const deletes = auditService.logAction.mock.calls.filter(([e]) => e.action === "DELETE");
+    expect(deletes.map(([e]) => e.resourceId)).toEqual(["exp-a"]);
+    expect(deletes[0][0].systemActor).toBe("system:scheduled-backup");
+  });
 
-          freshCronBackup();
+  it("never deletes a file outside the backup directory, whatever the row says", async () => {
+    process.env.BACKUP_KEEP_MIN = "1";
+    const outside = path.join(mockRoot, "uploads", "precious.pdf");
+    fs.mkdirSync(path.dirname(outside), { recursive: true });
+    fs.writeFileSync(outside, "evidence");
+    mockTable.push(
+      mockRow({ id: "evil", tenantId: "tenant-a", filePath: outside, createdAt: ago(90), expiresAt: ago(60) }),
+      mockRow({
+        id: "trav", tenantId: "tenant-a",
+        filePath: path.join(mockBackupDir, "..", "..", "uploads", "precious.pdf"),
+        createdAt: ago(80), expiresAt: ago(50),
+      }),
+    );
 
-          // NOTE: the announcement is driven by `cronExp !== "0 0 * * *"`,
-          // which is true when cronExp is undefined — so an unset variable is
-          // reported as a custom expression. Cosmetic only; the schedule below
-          // is still the correct default.
-          expect(freshLogger.info).toHaveBeenCalledWith(
-            "You set cron expression as undefined",
-          );
-        });
-      } finally {
-        if (saved === undefined) {
-          delete process.env.BACKUP_SCHEDULER;
-        } else {
-          process.env.BACKUP_SCHEDULER = saved;
-        }
-      }
+    cronBackup();
+    await tick();
 
-      expect(mockSchedule).toHaveBeenCalledWith(
-        "0 0 * * *",
-        expect.any(Function),
-      );
+    expect(fs.readFileSync(outside, "utf8")).toBe("evidence");
+    const status = JSON.parse(
+      fs.readFileSync(path.join(mockRoot, "backup", "last-scheduled-backup.json"), "utf8"),
+    );
+    expect(status.ok).toBe(false);
+    expect(status.prune.refused.map((r) => r.backupId).sort()).toEqual(["evil", "trav"]);
+  });
+});
+
+describe("cronBackup — the schedule", () => {
+  it("does not schedule when disabled", () => {
+    process.env.BACKUP_SCHEDULER = "disabled";
+    expect(cronBackup()).toBe(false);
+    process.env.BACKUP_SCHEDULER = "off";
+    expect(cronBackup()).toBe(false);
+    expect(cron.schedule).not.toHaveBeenCalled();
+  });
+
+  it("refuses an invalid expression loudly, on stderr too", () => {
+    process.env.BACKUP_SCHEDULER = "every tuesday";
+    const stderr = jest.spyOn(process.stderr, "write").mockImplementation(() => true);
+    expect(cronBackup()).toBe(false);
+    expect(cron.schedule).not.toHaveBeenCalled();
+    expect(stderr).toHaveBeenCalledWith(expect.stringContaining("NOT started"));
+  });
+
+  it("defaults to daily at midnight", () => {
+    delete process.env.BACKUP_SCHEDULER;
+    expect(cronBackup()).toBe(true);
+    expect(cron.schedule).toHaveBeenCalledWith("0 0 * * *", expect.any(Function));
+  });
+
+  it("a crash inside the run is surfaced, not thrown into node-cron", async () => {
+    jest.isolateModules(() => {
+      jest.doMock("../../services/scheduledBackup.service", () => ({
+        runScheduledBackup: jest.fn().mockRejectedValue(new Error("boom")),
+      }));
+      require("../../middlewares/backup.middleware").cronBackup();
     });
+    const stderr = jest.spyOn(process.stderr, "write").mockImplementation(() => true);
+    await expect(tick()).resolves.toBeUndefined();
+    expect(stderr).toHaveBeenCalledWith(expect.stringContaining("crashed: boom"));
+    jest.dontMock("../../services/scheduledBackup.service");
   });
 });

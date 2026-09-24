@@ -3,6 +3,7 @@ import {
   tenantBackupService,
   BackupStats,
   PageMeta,
+  RestoreResult,
   TenantBackup,
 } from "@/api/services/tenantBackup.service";
 
@@ -43,7 +44,7 @@ interface TenantBackupState {
       restoreUsers?: boolean;
       restoreFeatures?: boolean;
     },
-  ) => Promise<{ success: boolean; message: string }>;
+  ) => Promise<RestoreResult>;
   deleteBackup: (tenantId: string, backupId: string) => Promise<void>;
   fetchStats: (tenantId: string) => Promise<void>;
   setError: (error: string | null) => void;

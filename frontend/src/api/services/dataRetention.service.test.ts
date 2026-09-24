@@ -137,25 +137,8 @@ describe("dataRetentionService", () => {
       expect(res).toEqual(masked);
     });
 
-    it("anonymizes a dataset, defaulting options to an empty object", async () => {
-      mockedApi.post.mockResolvedValueOnce(envelope({ anonymized: 4, entityType: "users" }));
-      const res = await dataRetentionService.anonymize(TENANT, "users");
-      expect(mockedApi.post).toHaveBeenCalledWith(`/api/v1/tenants/${TENANT}/anonymize`, {
-        tenantId: TENANT,
-        entityType: "users",
-        options: {},
-      });
-      expect(res).toEqual({ anonymized: 4, entityType: "users" });
-    });
-
-    it("passes anonymize options through", async () => {
-      mockedApi.post.mockResolvedValueOnce(envelope({ anonymized: 1, entityType: "users" }));
-      await dataRetentionService.anonymize(TENANT, "users", { keepDates: true });
-      expect(mockedApi.post).toHaveBeenCalledWith(`/api/v1/tenants/${TENANT}/anonymize`, {
-        tenantId: TENANT,
-        entityType: "users",
-        options: { keepDates: true },
-      });
+    it("offers no dataset anonymization (A-152: the backend refuses it)", () => {
+      expect(dataRetentionService).not.toHaveProperty("anonymize");
     });
   });
 });

@@ -161,7 +161,7 @@ describe("eSignature.service — implemented workflow/key methods", () => {
         expiresAt: "2026-12-31",
         status: "completed", // must be ignored
         documentId: "evil", // must be ignored
-      });
+      }, { userId: "u-1" }); // A-124: the audit row names its actor
 
       expect(update).toHaveBeenCalledWith(
         {
@@ -183,7 +183,7 @@ describe("eSignature.service — implemented workflow/key methods", () => {
       const findOne = jest.fn().mockResolvedValue(workflow);
       const { updateWorkflow } = load({ SignatureWorkflow: { findOne } });
 
-      const result = await updateWorkflow("wf-1", "tenant-1", { subject: "x" });
+      const result = await updateWorkflow("wf-1", "tenant-1", { subject: "x" }, { userId: "u-1" });
 
       expect(result).toBe(workflow);
     });

@@ -46,6 +46,9 @@ const {
 const {
   initTenantLifecycleScheduler,
 } = require("./src/middlewares/tenantLifecycleScheduler.middleware");
+const {
+  initWebhookDeliveryScheduler,
+} = require("./src/middlewares/webhookDeliveryScheduler.middleware");
 
 const { initRedis, closeRedis } = require("./src/services/redis.service");
 
@@ -339,16 +342,14 @@ app.use(activityLogger);
 // not a CWD-relative path that shifts with the launch directory.
 app.use("/.well-known", express.static(storagePath(".well-known")));
 
+// nosniff + inline headers, and `dotfiles: "ignore"` — which is what keeps the
+// upload quarantine (`uploads/.quarantine`, S-17) from being served.
 app.use(
   "/uploads",
-  express.static(storagePath("uploads"), {
-    setHeaders: (res) => {
-      // Defense-in-depth for user-uploaded content: prevent MIME sniffing and
-      // force inline rendering only (never treat an upload as active content).
-      res.setHeader("X-Content-Type-Options", "nosniff");
-      res.setHeader("Content-Disposition", "inline");
-    },
-  }),
+  express.static(
+    storagePath("uploads"),
+    require("./src/utils/upload.util").UPLOADS_STATIC_OPTIONS,
+  ),
 );
 
 app.use("/public", express.static(appPath("public")));
@@ -654,6 +655,8 @@ async function startServer() {
     // 24h setInterval: configurable, and it fires even if no process lives a
     // whole day (W-01).
     initTenantLifecycleScheduler();
+    // Durable webhook delivery (A-10): resumes due retries at boot, then polls.
+    initWebhookDeliveryScheduler();
 
     // Start the batch-job worker (RabbitMQ consumer). No-op in inline mode.
     require("./src/workers/batchJob.worker")

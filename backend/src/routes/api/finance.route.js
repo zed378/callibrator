@@ -38,7 +38,7 @@ const financeController = require("../../controllers/finance.controller");
 router.get(
   "/reports/depreciation",
   auth,
-  dynamicAccess(["Finance", "Billing"], "read", { checkTenant: true }),
+  dynamicAccess("finance", "read", { checkTenant: true }),
   financeController.getDepreciationReport,
 );
 
@@ -70,7 +70,7 @@ router.get(
 router.get(
   "/",
   auth,
-  dynamicAccess(["Finance", "Billing"], "read", { checkTenant: true }),
+  dynamicAccess("finance", "read", { checkTenant: true }),
   financeController.fetchAssetFinances,
 );
 
@@ -108,7 +108,7 @@ router.get(
 router.post(
   "/",
   auth,
-  dynamicAccess(["Finance", "Billing"], "create", { checkTenant: true }),
+  dynamicAccess("finance", "create", { checkTenant: true }),
   validate(financeValidator.createAssetFinance),
   financeController.createAssetFinance,
 );
@@ -136,7 +136,7 @@ router.get(
   "/:financeId",
   validateUuid("financeId"),
   auth,
-  dynamicAccess(["Finance", "Billing"], "read", { checkTenant: true }),
+  dynamicAccess("finance", "read", { checkTenant: true }),
   financeController.getAssetFinanceById,
 );
 
@@ -163,7 +163,7 @@ router.patch(
   "/:financeId",
   validateUuid("financeId"),
   auth,
-  dynamicAccess(["Finance", "Billing"], "update", { checkTenant: true }),
+  dynamicAccess("finance", "update", { checkTenant: true }),
   validate(financeValidator.updateAssetFinance),
   financeController.updateAssetFinance,
 );
@@ -191,7 +191,7 @@ router.delete(
   "/:financeId",
   validateUuid("financeId"),
   auth,
-  dynamicAccess(["Finance", "Billing"], "delete", { checkTenant: true }),
+  dynamicAccess("finance", "delete", { checkTenant: true }),
   financeController.deleteAssetFinance,
 );
 

@@ -9,7 +9,7 @@ import Sidebar from "./Sidebar";
 import TopBar from "./TopBar";
 import ImpersonationBanner from "./ImpersonationBanner";
 import { MenuGroupType, convertBackendMenuToFrontend } from "./menuHelpers";
-import { CHANGE_PASSWORD_PATH } from "@/api/client";
+import { CHANGE_PASSWORD_PATH, MFA_PATH } from "@/api/client";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -50,11 +50,17 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
   // with 403 PASSWORD_CHANGE_REQUIRED). Go there rather than render pages
   // whose every request would fail.
   const mustChangePassword = user?.mustChangePassword === true;
+  // A-160: likewise an account its tenant requires to enrol MFA may use only
+  // the MFA page (and change-password, which comes first) until it enrols.
+  const mfaEnrolmentRequired = user?.mfaEnrolmentRequired === true;
   useEffect(() => {
-    if (isAuthenticated && mustChangePassword && pathname !== CHANGE_PASSWORD_PATH) {
-      router.replace(CHANGE_PASSWORD_PATH);
+    if (!isAuthenticated) return;
+    if (mustChangePassword) {
+      if (pathname !== CHANGE_PASSWORD_PATH) router.replace(CHANGE_PASSWORD_PATH);
+    } else if (mfaEnrolmentRequired && pathname !== MFA_PATH) {
+      router.replace(MFA_PATH);
     }
-  }, [isAuthenticated, mustChangePassword, pathname, router]);
+  }, [isAuthenticated, mustChangePassword, mfaEnrolmentRequired, pathname, router]);
 
   // Handle responsive layout resizing
   useEffect(() => {

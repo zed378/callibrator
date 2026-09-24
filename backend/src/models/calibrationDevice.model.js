@@ -82,11 +82,19 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.TEXT,
         allowNull: true,
       },
-      iotDeviceToken: {
-        type: DataTypes.STRING(255),
+      // A-29: the ingest token is stored ONLY as a hex SHA-256 hash (migration
+      // 0044, which also creates its unique index — not here, see 0026). The
+      // plaintext is shown once, by services/iotDevice.service.js, and never
+      // stored. The hash is excluded from the defaultScope and from toJSON()
+      // below, so no device response carries it.
+      iotTokenHash: {
+        type: DataTypes.STRING(64),
         allowNull: true,
-        unique: true,
-        comment: "Authentication token for IoT MQTT/HTTP ingestion",
+        comment: "SHA-256 (hex) of the IoT ingest token; the token itself is never stored",
+      },
+      iotTokenIssuedAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
       },
       iotEnabled: {
         type: DataTypes.BOOLEAN,
@@ -127,6 +135,7 @@ const defineModel = (db, DataTypes) => {
       ],
       defaultScope: {
         where: { is_deleted: false },
+        attributes: { exclude: ["iotTokenHash"] }, // A-29
       },
       scopes: {
         includeDeleted: {
@@ -135,6 +144,18 @@ const defineModel = (db, DataTypes) => {
       },
     },
   );
+
+  /**
+   * A-29 — the token hash never leaves the server, even from a row loaded
+   * `.unscoped()` or returned by create(). Belt and braces with the
+   * defaultScope exclusion above.
+   * @returns {object} the plain values without `iotTokenHash`
+   */
+  CalibrationDevice.prototype.toJSON = function () {
+    const values = { ...this.get({ plain: true }) };
+    delete values.iotTokenHash;
+    return values;
+  };
 
   /**
    * Soft-delete a calibration device. Sets is_deleted = true and persists.
@@ -172,13 +193,15 @@ const defineModel = (db, DataTypes) => {
     });
     // CalibrationDevice -> Warehouse
     CalibrationDevice.belongsTo(models.Warehouse, {
-      foreignKey: "location_id",
+      foreignKey: "locationId",
       as: "warehouse",
+      onDelete: "SET NULL",
     });
     // CalibrationDevice -> CalibrationRecord (hasMany)
     CalibrationDevice.hasMany(models.CalibrationRecord, {
-      foreignKey: "device_id",
+      foreignKey: "deviceId",
       as: "calibrationRecords",
+      onDelete: "RESTRICT",
     });
   };
 

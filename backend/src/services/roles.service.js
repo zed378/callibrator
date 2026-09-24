@@ -620,9 +620,11 @@ class RolesService {
       throw error;
     }
 
-    const previousRoleId = user.role_id;
+    // The ATTRIBUTE (A-148): `role_id` was a duplicate attribute the Role
+    // association added; it is gone, and assigning to it would save nothing.
+    const previousRoleId = user.roleId;
     await db.transaction(async (transaction) => {
-      user.role_id = roleId;
+      user.roleId = roleId;
       await user.save({ transaction });
       await auditAccessChange(transaction, actor, {
         tenantId: user.tenantId,
@@ -651,9 +653,9 @@ class RolesService {
       throw error;
     }
 
-    const previousRoleId = user.role_id;
+    const previousRoleId = user.roleId;
     await db.transaction(async (transaction) => {
-      user.role_id = null;
+      user.roleId = null;
       await user.save({ transaction });
       await auditAccessChange(transaction, actor, {
         tenantId: user.tenantId,
@@ -739,18 +741,55 @@ class RolesService {
   }
 
   /**
-   * Create menu group
+   * A-165 — a menu group is global (no tenant), and it is what every role
+   * grant points at: creating a child inherits its parent's grants, and
+   * deleting one revokes every grant on it. Each change is a platform
+   * operation, so it writes its audit row under the reserved PLATFORM tenant
+   * inside the SAME transaction as the change (A-41, ADR-051 Q-14). A failed
+   * audit insert is re-thrown by logAction and rolls the change back. Cache
+   * invalidation runs after the commit.
    */
-  static async createMenu(data) {
-    const menu = await MenuGroup.create({
-      name: data.name.trim(),
-      slug:
-        data.slug?.trim() ||
-        data.name.trim().toLowerCase().replace(/\s+/g, "-"),
-      icon: data.icon,
-      parent_id: data.parent_id,
-      sort_order: data.sort_order || 0,
-      is_active: data.is_active !== undefined ? data.is_active : true,
+
+  /**
+   * Create menu group
+   * @param {object} data - menu fields
+   * @param {object} [actor] - who, from where (A-41)
+   */
+  static async createMenu(data, actor = {}) {
+    const menu = await db.transaction(async (transaction) => {
+      const created = await MenuGroup.create(
+        {
+          name: data.name.trim(),
+          slug:
+            data.slug?.trim() ||
+            data.name.trim().toLowerCase().replace(/\s+/g, "-"),
+          icon: data.icon,
+          // The ATTRIBUTE (A-148): `parent_id` is no longer an attribute of
+          // MenuGroup, and Sequelize would drop it. The API field stays
+          // `parent_id`.
+          parentId: data.parent_id,
+          sort_order: data.sort_order || 0,
+          is_active: data.is_active !== undefined ? data.is_active : true,
+        },
+        { transaction },
+      );
+      await auditAccessChange(transaction, actor, {
+        tenantId: PLATFORM_TENANT_ID, // A-165: a global menu is a platform operation
+        action: "CREATE",
+        resourceType: "MenuGroup",
+        resourceId: created.id,
+        changes: {
+          operation: "CREATE_MENU",
+          before: {},
+          after: {
+            name: created.name,
+            slug: created.slug,
+            parent_id: created.parentId ?? null,
+            is_active: created.is_active,
+          },
+        },
+      });
+      return created;
     });
 
     // A child menu inherits its parent's grant (getRolePermissionsMatrix
@@ -764,8 +803,11 @@ class RolesService {
 
   /**
    * Update menu group
+   * @param {string} id
+   * @param {object} data - fields to change
+   * @param {object} [actor] - who, from where (A-41)
    */
-  static async updateMenu(id, data) {
+  static async updateMenu(id, data, actor = {}) {
     const menu = await MenuGroup.findByPk(id);
     if (!menu) {
       const error = new AppError(404, "Menu group not found");
@@ -780,11 +822,23 @@ class RolesService {
         data.slug?.trim() ||
         data.name?.trim().toLowerCase().replace(/\s+/g, "-");}
     if (data.icon !== undefined) {updates.icon = data.icon;}
-    if (data.parent_id !== undefined) {updates.parent_id = data.parent_id;}
+    if (data.parent_id !== undefined) {updates.parentId = data.parent_id;} // the attribute (A-148)
     if (data.sort_order !== undefined) {updates.sort_order = data.sort_order;}
     if (data.is_active !== undefined) {updates.is_active = data.is_active;}
 
-    await menu.update(updates);
+    // Read before the update: the instance is mutated in place.
+    const before = Object.fromEntries(Object.keys(updates).map((key) => [key, menu[key] ?? null]));
+
+    await db.transaction(async (transaction) => {
+      await menu.update(updates, { transaction });
+      await auditAccessChange(transaction, actor, {
+        tenantId: PLATFORM_TENANT_ID, // A-165: a global menu is a platform operation
+        action: "UPDATE",
+        resourceType: "MenuGroup",
+        resourceId: id,
+        changes: { operation: "UPDATE_MENU", before, after: updates },
+      });
+    });
 
     // Invalidate all role permissions since menu name/status might have changed
     await delPattern("permissions:role:*");
@@ -793,9 +847,11 @@ class RolesService {
   }
 
   /**
-   * Delete menu group
+   * Delete menu group, and every role grant on it
+   * @param {string} id
+   * @param {object} [actor] - who, from where (A-41)
    */
-  static async deleteMenu(id) {
+  static async deleteMenu(id, actor = {}) {
     const menu = await MenuGroup.findByPk(id);
     if (!menu) {
       const error = new AppError(404, "Menu group not found");
@@ -803,9 +859,25 @@ class RolesService {
       throw error;
     }
 
-    // Delete associated role permissions
-    await RoleMenuPermission.destroy({ where: { menuGroupId: id } });
-    await menu.destroy();
+    await db.transaction(async (transaction) => {
+      // Delete associated role permissions
+      const revokedGrants = await RoleMenuPermission.destroy({
+        where: { menuGroupId: id },
+        transaction,
+      });
+      await menu.destroy({ transaction });
+      await auditAccessChange(transaction, actor, {
+        tenantId: PLATFORM_TENANT_ID, // A-165: a global menu is a platform operation
+        action: "DELETE",
+        resourceType: "MenuGroup",
+        resourceId: id,
+        changes: {
+          operation: "DELETE_MENU",
+          before: { name: menu.name ?? null, slug: menu.slug ?? null },
+          after: { deleted: true, revokedGrants },
+        },
+      });
+    });
 
     // Invalidate all role permissions cache
     await delPattern("permissions:role:*");

@@ -9,7 +9,7 @@ class IotService {
   }
 
   async connect(port, host) {
-    if (this.connected) return;
+    if (this.connected) {return;}
 
     // Only attempt connection if explicitly configured
     const mqttHost = process.env.MQTT_HOST;
@@ -39,7 +39,7 @@ class IotService {
           if (err) {
             logger.error("IoT MQTT Subscribe Error", { error: err.message });
           } else {
-            logger.info(`IoT MQTT Client subscribed to device/#`);
+            logger.info("IoT MQTT Client subscribed to device/#");
           }
         });
       });
@@ -133,7 +133,7 @@ class IotService {
     // it is carried explicitly. A decommissioned device must not ingest.
     const device = await CalibrationDevice.unscoped().findOne({
       where: { id: deviceId, tenantId, iotEnabled: true, isDeleted: false },
-      attributes: ["id", "name", "readingTolerance"]
+      attributes: ["id", "name", "readingTolerance"],
     });
 
     if (!device) {
@@ -141,7 +141,7 @@ class IotService {
     }
 
     let isAnomaly = false;
-    let anomalyDetails = [];
+    const anomalyDetails = [];
 
     if (device.readingTolerance) {
       for (const [key, value] of Object.entries(payload)) {
@@ -163,17 +163,22 @@ class IotService {
       tenantId,
       deviceId,
       metrics: payload,
-      isAnomaly
+      isAnomaly,
     });
 
     if (isAnomaly) {
-      logger.warn(`IoT Anomaly detected for device ${deviceId}`, { payload, anomalyDetails });
+      // The metric names and the out-of-range findings, not the whole payload
+      // ("no full bodies" in logs — A-46).
+      logger.warn(`IoT Anomaly detected for device ${deviceId}`, {
+        metrics: Object.keys(payload),
+        anomalyDetails,
+      });
 
       await Notification.create({
         tenantId,
         title: `IoT Anomaly Alert: ${device.name}`,
-        message: `Anomalous readings detected: ${anomalyDetails.join(', ')}`,
-        type: "system"
+        message: `Anomalous readings detected: ${anomalyDetails.join(", ")}`,
+        type: "system",
       });
     }
 

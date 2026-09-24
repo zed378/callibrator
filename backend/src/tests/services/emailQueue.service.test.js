@@ -314,7 +314,9 @@ describe("emailQueue.service", () => {
         email: "test@mail.com",
       });
 
-      expect(result).toBe(true);
+      // A-158 — the failed direct send is reported to the caller. Fail-before:
+      // addEmailJob returned true whatever the fallback did.
+      expect(result).toBe(false);
       expect(logger.error).toHaveBeenCalledWith("Failed to send email", expect.any(Object));
     });
 

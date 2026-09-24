@@ -1,7 +1,7 @@
 apiVersion: v2
 name: frontend
 description: >-
-  Callibrator web application — Next.js 16 compiled to a standalone binary.
+  Callibrator web application — Next.js 16 standalone output on Node.
   NEXT_PUBLIC_* values are inlined at build time, so a different API URL or a
   tenant-pinned build requires a different image; this chart takes a tag and
   cannot configure them at runtime.

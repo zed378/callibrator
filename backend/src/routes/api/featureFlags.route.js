@@ -2,6 +2,8 @@ const express = require("express");
 const router = express.Router();
 const featureFlagController = require("../../controllers/featureFlag.controller");
 const { auth, superAdminOnly } = require("../../middlewares/auth.middleware");
+const { dynamicAccess } = require("../../middlewares/dynamicAccess.middleware");
+const { MENU_SLUGS } = require("../../constants/roleConstants");
 
 router.use(auth);
 
@@ -27,7 +29,16 @@ router.use(auth);
  *       401:
  *         description: Unauthorized
  */
-router.get("/", featureFlagController.getTenantFlags);
+/**
+ * A-155: the tenant-flag reads were gated on a token alone, so any role in any
+ * tenant could read any tenant's flags by naming its id (in the query for
+ * `/`, in the path for `/:tenantId/:flagKey`). Both need `feature-flags:
+ * read`; `checkTenant` answers 404 for a tenant id that is not the caller's —
+ * path OR query — the same as for one that does not exist.
+ */
+const canReadFlags = dynamicAccess(MENU_SLUGS.FEATURE_FLAGS, "read", { checkTenant: true });
+
+router.get("/", canReadFlags, featureFlagController.getTenantFlags);
 /**
  * @swagger
  * /api/v1/feature-flags/definitions:
@@ -73,7 +84,7 @@ router.get("/definitions", featureFlagController.getAllFlagDefinitions);
  *       404:
  *         description: Not found
  */
-router.get("/:tenantId/:flagKey", featureFlagController.isFlagEnabled);
+router.get("/:tenantId/:flagKey", canReadFlags, featureFlagController.isFlagEnabled);
 /**
  * @swagger
  * /api/v1/feature-flags/{tenantId}/{flagKey}:

@@ -85,15 +85,18 @@ describe("the real repository", () => {
     expect(seededMenuVocabulary().has("workflow")).toBe(false);
   });
 
-  it("reports the dead aliases and the computed gate as warnings, not refusals", () => {
+  it("reports the computed gate as a warning, and no dead alias remains (A-07)", () => {
     const { warnings } = checkRouteGates(collectRouteGates(), seededMenuVocabulary());
     const text = warnings.join("\n");
 
-    // Written out by hand so a change in either direction is noticed.
-    expect(text).toMatch(/audit\.route\.js:\d+ dynamicAccess names "AuditLogs"/);
-    expect(text).toMatch(/finance\.route\.js:\d+ dynamicAccess names "Finance"/);
+    // Written out by hand so a change in either direction is noticed. Until
+    // A-07 (2026-09-24) this also listed "AuditLogs" (audit.route.js) and
+    // "Finance" ×6 (finance.route.js); every gate now names a seeded slug
+    // (dynamicAccessSlugs.a07.test.js), so the computed search gate is the
+    // only thing this scanner cannot verify.
+    expect(text).not.toMatch(/dynamicAccess names "/);
     expect(text).toMatch(/search\.route\.js:\d+ dynamicAccess\(SEARCH_MENUS, …\) is computed/);
-    expect(warnings).toHaveLength(8);
+    expect(warnings).toHaveLength(1);
   });
 
   it("every ROLE_NAMES key has a ROLE_LEVELS entry", () => {

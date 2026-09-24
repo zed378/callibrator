@@ -163,6 +163,12 @@ const MENU_SLUGS = {
   // `write` to the technical roles only — not USER, ROOM USER or WAREHOUSE
   // STAFF — see ROLE_MENU_ASSIGNMENTS and migration 0031.
   ESIGNATURE: "esignature",
+  // A-118: the AI Assistant page (/dashboard/ai-assistant). A MENU entry only —
+  // the page's two calls are gated by the slugs of what they touch:
+  // POST /ai/ocr on `certificate` write, POST /ai/query on `sop` read. Granted
+  // by default to exactly the roles that hold one of those (below; migration
+  // 0038 for databases seeded before it existed).
+  AI_ASSISTANT: "ai-assistant",
 };
 
 /**
@@ -235,6 +241,7 @@ const ROLE_MENU_ASSIGNMENTS = [
       [MENU_SLUGS.SCIM]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.QMS]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.SOP]: PERMISSION_TYPES.WRITE,
+      [MENU_SLUGS.AI_ASSISTANT]: PERMISSION_TYPES.READ, // A-118: holds `sop`
       [MENU_SLUGS.WORKFLOWS]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.FINANCE]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.METERED_BILLING]: PERMISSION_TYPES.WRITE,
@@ -274,6 +281,7 @@ const ROLE_MENU_ASSIGNMENTS = [
       // platform-governance screens stay read-only.
       [MENU_SLUGS.QMS]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.SOP]: PERMISSION_TYPES.WRITE,
+      [MENU_SLUGS.AI_ASSISTANT]: PERMISSION_TYPES.READ, // A-118: holds `sop`
       [MENU_SLUGS.WORKFLOWS]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.FINANCE]: PERMISSION_TYPES.READ,
       // ADR-043: metered-billing moved from rbac([TENANT_ADMIN]) to
@@ -311,6 +319,7 @@ const ROLE_MENU_ASSIGNMENTS = [
       [MENU_SLUGS.DATA_RETENTION]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.QMS]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.SOP]: PERMISSION_TYPES.WRITE,
+      [MENU_SLUGS.AI_ASSISTANT]: PERMISSION_TYPES.READ, // A-118: holds `sop`
       [MENU_SLUGS.WORKFLOWS]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.FINANCE]: PERMISSION_TYPES.READ,
       // ADR-043: CALIBRATOR ADMIN had no metered-billing row at all, so it was
@@ -341,6 +350,7 @@ const ROLE_MENU_ASSIGNMENTS = [
       [MENU_SLUGS.PREDICTIVE_MAINTENANCE]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.QMS]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.SOP]: PERMISSION_TYPES.READ,
+      [MENU_SLUGS.AI_ASSISTANT]: PERMISSION_TYPES.READ, // A-118: holds `sop`
       [MENU_SLUGS.WORKFLOWS]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.FINANCE]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.KANBAN]: PERMISSION_TYPES.WRITE,

@@ -98,15 +98,17 @@ const defineModel = (db, DataTypes) => {
       onDelete: "RESTRICT",
     });
     Ticket.belongsTo(models.User, {
-      foreignKey: "created_by",
+      foreignKey: "createdBy",
       as: "requester",
+      onDelete: "SET NULL",
     });
     Ticket.belongsTo(models.User, {
-      foreignKey: "assigned_to",
+      foreignKey: "assignedTo",
       as: "assignee",
+      onDelete: "SET NULL",
     });
     Ticket.hasMany(models.TicketComment, {
-      foreignKey: "ticket_id",
+      foreignKey: "ticketId",
       as: "comments",
       onDelete: "CASCADE",
     });

@@ -26,7 +26,7 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.UUID,
         allowNull: false,
         references: { model: "signature_workflows", key: "id" },
-        onDelete: "CASCADE",
+        onDelete: "RESTRICT",
       },
       workflowStepId: {
         type: DataTypes.UUID,
@@ -114,6 +114,12 @@ const defineModel = (db, DataTypes) => {
       revokedBy: {
         type: DataTypes.UUID,
         allowNull: true,
+        // A-149: who revoked a signature is a Part 11 attribution (11.50,
+        // 11.70). It had no foreign key at all (migration 0017 made it a bare
+        // UUID); RESTRICT refuses a hard delete of that user. Migration 0037.
+        references: { model: "users", key: "id" },
+        onDelete: "RESTRICT",
+        onUpdate: "CASCADE",
       },
       revocationReason: {
         type: DataTypes.STRING(500),
@@ -142,8 +148,9 @@ const defineModel = (db, DataTypes) => {
       onDelete: "RESTRICT",
     });
     SignatureRecord.belongsTo(models.SignatureWorkflow, {
-      foreignKey: "workflow_id",
+      foreignKey: "workflowId",
       as: "workflow",
+      onDelete: "RESTRICT",
     });
     SignatureRecord.belongsTo(models.User, {
       foreignKey: "userId",

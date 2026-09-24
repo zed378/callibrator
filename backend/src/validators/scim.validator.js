@@ -18,7 +18,12 @@ const scimUserSchema = Joi.object({
 });
 
 const scimGroupSchema = Joi.object({
-  displayName: Joi.string().required(),
+  // scim_groups.display_name is VARCHAR(255) (ADR-053).
+  displayName: Joi.string().max(255).required(),
+  // The role this tenant's group grants (ADR-053, A-39). Optional: standard
+  // IdPs send only displayName and members; an unmapped group grants nothing
+  // and refuses members until it is mapped. The service checks the role.
+  roleId: Joi.string().uuid().optional(),
   members: Joi.array().items(Joi.object({
     value: Joi.string().uuid().required(),
     display: Joi.string().optional(),

@@ -31,7 +31,7 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.UUID,
         allowNull: false,
         references: { model: "calibration_devices", key: "id" },
-        onDelete: "CASCADE",
+        onDelete: "RESTRICT",
       },
       performedBy: {
         type: DataTypes.UUID,
@@ -149,8 +149,9 @@ const defineModel = (db, DataTypes) => {
     });
     // CalibrationRecord -> CalibrationDevice
     CalibrationRecord.belongsTo(models.CalibrationDevice, {
-      foreignKey: "device_id",
+      foreignKey: "deviceId",
       as: "device",
+      onDelete: "RESTRICT",
     });
     // CalibrationRecord -> User (performedBy)
     CalibrationRecord.belongsTo(models.User, {

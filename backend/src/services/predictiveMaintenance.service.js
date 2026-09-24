@@ -1,5 +1,6 @@
-const { CalibrationDevice, IotReading, Notification } = require("../models");
+const { CalibrationDevice, IotReading, Notification, sequelize } = require("../models");
 const { AppError } = require("../utils/appError.util");
+const auditService = require("./audit.service");
 const { logger } = require("../middlewares/activityLog.middleware");
 const { Op } = require("sequelize");
 
@@ -89,6 +90,73 @@ class PredictiveMaintenanceService {
     logger.info(`Generated predictive maintenance recommendation for device ${deviceId}`, { newInterval, reason });
 
     return { status: "recommended", newInterval, reason };
+  }
+
+  /**
+   * Apply a device's pending recommended calibration interval.
+   *
+   * A-145 — the interval change and its audit row commit together. Until
+   * 2026-09-24 the controller updated the device with no audit row, so a
+   * change to a device's calibration programme (ISO 17025 §6.4.7) was
+   * unattributable. The route is deliberately NOT a Part 11 authoring route
+   * (tests/routes/denyPlatformAuthoring.a127.test.js NOT_GUARDED): the same
+   * field is editable through PUT /calibration-devices/:id, which is not one.
+   *
+   * @param {string} tenantId
+   * @param {string} deviceId
+   * @param {string} userId - the approving user
+   * @returns {Promise<object>} the updated device
+   * @throws {AppError} 404 when the device is not in the tenant; 409 when it
+   *   has no pending recommendation
+   */
+  async approveRecommendation(tenantId, deviceId, userId) {
+    const device = await CalibrationDevice.findOne({ where: { id: deviceId, tenantId } });
+
+    if (!device) {
+      throw new AppError(404, "Device not found");
+    }
+
+    // A state conflict, explained — not a malformed request.
+    if (!device.recommendedCalibrationInterval) {
+      throw new AppError(
+        409,
+        "Device does not have a pending recommendation. Run an analysis first; a recommendation can be applied only once.",
+      );
+    }
+
+    const before = {
+      calibrationIntervalDays: device.calibrationIntervalDays,
+      recommendedCalibrationInterval: device.recommendedCalibrationInterval,
+      recommendationReason: device.recommendationReason,
+    };
+
+    await sequelize.transaction(async (transaction) => {
+      await device.update(
+        {
+          calibrationIntervalDays: device.recommendedCalibrationInterval,
+          recommendedCalibrationInterval: null,
+          recommendationReason: null,
+        },
+        { transaction },
+      );
+      await auditService.logAction(
+        {
+          tenantId,
+          userId,
+          action: "APPROVE",
+          resourceType: "CalibrationDevice",
+          resourceId: device.id,
+          changes: {
+            operation: "APPLY_RECOMMENDED_INTERVAL",
+            before,
+            after: { calibrationIntervalDays: before.recommendedCalibrationInterval },
+          },
+        },
+        { transaction },
+      );
+    });
+
+    return device;
   }
 }
 

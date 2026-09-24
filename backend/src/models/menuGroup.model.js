@@ -68,19 +68,19 @@ const defineModel = (db, DataTypes) => {
   MenuGroup.associate = (models) => {
     // Self-referencing parent menu group
     MenuGroup.belongsTo(MenuGroup, {
-      foreignKey: "parent_id",
+      foreignKey: "parentId",
       as: "parent",
       onDelete: "SET NULL",
     });
     // Children
     MenuGroup.hasMany(MenuGroup, {
-      foreignKey: "parent_id",
+      foreignKey: "parentId",
       as: "children",
       onDelete: "SET NULL",
     });
     // MenuGroup -> RoleMenuPermission (hasMany)
     MenuGroup.hasMany(models.RoleMenuPermission, {
-      foreignKey: "menu_group_id",
+      foreignKey: "menuGroupId",
       as: "rolePermissions",
       onDelete: "CASCADE",
     });

@@ -6,9 +6,8 @@
  *   before this change, and not the second engine `gdpr.service` used to carry.
  * - `setRetentionPolicy` refuses `audit_logs` as an entity, refuses a period
  *   below the per-entity floor, and refuses a policy with no tenant.
- * - `data_retention_policies` refuses a tenant-less (global) row at the model.
+ * - (`data_retention_policies` itself is dropped by migration 0047, A-137.)
  */
-const { Sequelize, DataTypes } = require("sequelize");
 
 // gdpr.service is loaded only to assert what it no longer exports; archiver is
 // ESM and cannot be required under Jest's CommonJS runtime.
@@ -118,21 +117,27 @@ describe("A-121 — audit rows are never purged", () => {
     it("accepts a period at the floor", async () => {
       await dataRetention.setRetentionPolicy("tenant-1", "notifications", 30);
 
-      expect(TenantSettings.upsert).toHaveBeenCalledWith({
-        tenantId: "tenant-1",
-        key: "retention_policy_notifications",
-        value: "30",
-      });
+      expect(TenantSettings.upsert).toHaveBeenCalledWith(
+        {
+          tenantId: "tenant-1",
+          key: "retention_policy_notifications",
+          value: "30",
+        },
+        { transaction: expect.anything() },
+      );
     });
 
     it("accepts 0, which means keep forever", async () => {
       await dataRetention.setRetentionPolicy("tenant-1", "sessions", 0);
 
-      expect(TenantSettings.upsert).toHaveBeenCalledWith({
-        tenantId: "tenant-1",
-        key: "retention_policy_sessions",
-        value: "0",
-      });
+      expect(TenantSettings.upsert).toHaveBeenCalledWith(
+        {
+          tenantId: "tenant-1",
+          key: "retention_policy_sessions",
+          value: "0",
+        },
+        { transaction: expect.anything() },
+      );
     });
   });
 
@@ -149,27 +154,5 @@ describe("A-121 — audit rows are never purged", () => {
         expect(TenantSettings.upsert).not.toHaveBeenCalled();
       },
     );
-
-    it("a data_retention_policies row without a tenant fails validation", async () => {
-      const sequelize = new Sequelize("postgres://u:p@127.0.0.1:1/none", {
-        logging: false,
-      });
-      const DataRetentionPolicy = require("../../models/dataRetentionPolicy.model")(
-        sequelize,
-        DataTypes,
-      );
-
-      await expect(
-        DataRetentionPolicy.build({ entityType: "notifications", retentionDays: 30 }).validate(),
-      ).rejects.toThrow(/per tenant/i);
-      await expect(
-        DataRetentionPolicy.build({
-          tenantId: "7b0e8f7e-6a54-4a7c-9d6b-3d1f0f6b8a11",
-          entityType: "notifications",
-          retentionDays: 30,
-        }).validate(),
-      ).resolves.toBeDefined();
-      await sequelize.close();
-    });
   });
 });

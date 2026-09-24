@@ -138,6 +138,8 @@ describe("gdprController", () => {
         "user-123",
         "firstName",
         "Jane",
+        // A-153: the request's actor, for the audit row in the transaction.
+        expect.objectContaining({ userId: "user-123" }),
       );
       expect(success).toHaveBeenCalled();
     });

@@ -167,9 +167,10 @@ describe("A-140 — GDPR Article 15 profile export", () => {
   it("writes no profile for a subject with no row in the tenant", async () => {
     mockDb.profileRow = null;
 
+    // A-151: "no such subject" stays a 404; it was rewritten into a 500.
     await expect(asTenant(() => gdprService.exportUserData(TENANT, USER))).rejects.toMatchObject({
-      status: 500,
-      message: "Failed to export user data",
+      status: 404,
+      message: "User not found",
     });
     expect(written["user_profile.json"]).toBeUndefined();
   });

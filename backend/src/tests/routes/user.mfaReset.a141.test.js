@@ -45,7 +45,7 @@ jest.mock("../../middlewares/auth.middleware", () => {
 // by rollback(), so "rolled back" is observable on the row.
 jest.mock("../../config", () => ({
   db: {
-    transaction: async () => {
+    transaction: jest.fn(async () => {
       const tx = {
         finished: undefined,
         undo: [],
@@ -60,7 +60,7 @@ jest.mock("../../config", () => ({
         },
       };
       return tx;
-    },
+    }),
   },
 }));
 
@@ -401,6 +401,15 @@ describe("A-141 — userService.resetUserMfa refuses on its own (defence in dept
     expect(await missing).toEqual({ status: 404, message: "User not found" });
     expect(await cross).toEqual({ status: 404, message: "User not found" });
     expect(foreign.mfaEnabled).toBe(true);
+  });
+
+  it("a transaction that cannot even start is a 500, and nothing is rolled back", async () => {
+    const { db } = require("../../config");
+    db.transaction.mockRejectedValueOnce(new Error("pool exhausted"));
+
+    await expect(
+      userService.resetUserMfa({ userId: "x", resetBy: "y", actorIsSuperAdmin: true }),
+    ).rejects.toEqual({ status: 500, message: "pool exhausted" });
   });
 
   it("an unexpected fault is a 500 with no detail beyond its message", async () => {

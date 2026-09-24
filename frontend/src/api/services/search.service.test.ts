@@ -1,4 +1,4 @@
-import { searchService } from "./search.service";
+import { searchErrorMessage, searchService } from "./search.service";
 import { api } from "../client";
 
 jest.mock("../client", () => ({
@@ -60,6 +60,32 @@ describe("searchService", () => {
       expect(mockedApi.get).toHaveBeenCalledWith(BASE, {
         params: { q: "y", types: undefined, limit: undefined },
       });
+    });
+  });
+
+  // A-56: the text GlobalSearch shows for a failed search.
+  describe("searchErrorMessage", () => {
+    it("names the failure and quotes the request id from the error body", () => {
+      const err = Object.assign(new Error("An unexpected error occurred."), {
+        response: { data: { requestId: "req-9" } },
+      });
+      expect(searchErrorMessage(err)).toBe(
+        "Search failed: An unexpected error occurred. (reference req-9)",
+      );
+    });
+
+    it("omits the reference when there is no string request id", () => {
+      const err = Object.assign(new Error("boom"), {
+        response: { data: { requestId: 42 } },
+      });
+      expect(searchErrorMessage(err)).toBe("Search failed: boom");
+      expect(searchErrorMessage(new Error("net down"))).toBe("Search failed: net down");
+    });
+
+    it("falls back to a generic detail for a non-Error or an empty message", () => {
+      expect(searchErrorMessage("nope")).toBe("Search failed: Unknown error");
+      expect(searchErrorMessage(null)).toBe("Search failed: Unknown error");
+      expect(searchErrorMessage(new Error(""))).toBe("Search failed: Unknown error");
     });
   });
 });

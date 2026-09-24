@@ -34,7 +34,7 @@ const calibrationSchedulerController = require("../../controllers/calibrationSch
 router.get(
   "/due",
   auth,
-  dynamicAccess("Maintenance", "read", { checkTenant: true }),
+  dynamicAccess("maintenance", "read", { checkTenant: true }),
   calibrationSchedulerController.listDue,
 );
 
@@ -73,7 +73,7 @@ router.get(
 router.post(
   "/run",
   auth,
-  dynamicAccess("Maintenance", "create", { checkTenant: true }),
+  dynamicAccess("maintenance", "create", { checkTenant: true }),
   calibrationSchedulerController.runScan,
 );
 

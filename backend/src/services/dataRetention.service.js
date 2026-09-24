@@ -92,12 +92,17 @@ exports.getRetentionPolicy = async (tenantId) => {
  * a positive period below the entity's floor (`MIN_RETENTION_DAYS`). `0` means
  * keep forever and is always allowed.
  *
+ * A-153: the change and its audit row (the period before and after) are ONE
+ * transaction. A retention period decides when records are destroyed; it was
+ * changed with no record of who changed it or from what.
+ *
  * @param {string} tenantId
  * @param {string} policyKey
  * @param {number} days
+ * @param {object} [actor] - auditActor(req): the audit row's actor
  * @returns {Promise<{policyKey: string, days: number}>}
  */
-exports.setRetentionPolicy = async (tenantId, policyKey, days) => {
+exports.setRetentionPolicy = async (tenantId, policyKey, days, actor = {}) => {
   if (!tenantId) {
     throw new AppError(
       400,
@@ -128,10 +133,26 @@ exports.setRetentionPolicy = async (tenantId, policyKey, days) => {
     );
   }
 
-  await TenantSettings.upsert({
-    tenantId,
-    key: `retention_policy_${policyKey}`,
-    value: String(days),
+  const key = `retention_policy_${policyKey}`;
+  await db.transaction(async (transaction) => {
+    const existing = await TenantSettings.findOne({ where: { tenantId, key }, transaction });
+    await TenantSettings.upsert({ tenantId, key, value: String(days) }, { transaction });
+    await auditService.logAction(
+      {
+        ...actorEntry(tenantId, actor),
+        action: "UPDATE",
+        resourceType: "DataRetention",
+        resourceId: tenantId,
+        changes: {
+          operation: "SET_RETENTION_POLICY",
+          policyKey,
+          // null: the platform default applied until now.
+          before: { days: existing ? parseInt(existing.value, 10) : null },
+          after: { days },
+        },
+      },
+      { transaction },
+    );
   });
 
   return { policyKey, days };
@@ -141,30 +162,73 @@ exports.isOnLegalHold = async (tenantId) => {
   const setting = await TenantSettings.findOne({
     where: {
       tenantId,
-      key: 'legal_hold_enabled',
+      key: "legal_hold_enabled",
     },
   });
 
-  return setting?.value === 'true';
+  return setting?.value === "true";
 };
 
-exports.enableLegalHold = async (tenantId, enabledBy, reason) => {
-  await TenantSettings.upsert({
-    tenantId,
-    key: 'legal_hold_enabled',
-    value: 'true',
-  });
+/**
+ * The audit-row fields for a request's actor (auditActor(req)). The user is the
+ * actor; logAction refuses an entry that names none (A-124), which rolls the
+ * change back.
+ *
+ * @param {string} tenantId - the tenant the change is about
+ * @param {object} actor - auditActor(req)
+ * @returns {object} tenantId, userId, ipAddress, userAgent
+ */
+const actorEntry = (tenantId, actor) => ({
+  tenantId,
+  userId: actor.userId || null,
+  ipAddress: actor.ipAddress || null,
+  userAgent: actor.userAgent || null,
+});
 
-  await TenantSettings.upsert({
-    tenantId,
-    key: 'legal_hold_reason',
-    value: reason || 'Legal hold enabled',
-  });
+/**
+ * Place a tenant under legal hold: no purge, masking or anonymisation until it
+ * is released.
+ *
+ * A-153: the three settings and the audit row are ONE transaction. A hold
+ * suspends the retention engine — whether one was in force, from when, set by
+ * whom and why is exactly what a regulator or a court asks — and it was
+ * enabled with a log line only.
+ *
+ * @param {string} tenantId
+ * @param {object} actor - auditActor(req); its user is recorded as enabling it
+ * @param {string} [reason]
+ * @returns {Promise<{tenantId: string, enabled: true, reason: string, enabledBy: string}>}
+ */
+exports.enableLegalHold = async (tenantId, actor, reason) => {
+  const enabledBy = actor.userId;
+  const holdReason = reason || "Legal hold enabled";
 
-  await TenantSettings.upsert({
-    tenantId,
-    key: 'legal_hold_enabled_by',
-    value: enabledBy,
+  await db.transaction(async (transaction) => {
+    const wasOnHold = await TenantSettings.findOne({
+      where: { tenantId, key: "legal_hold_enabled" },
+      transaction,
+    });
+    for (const [key, value] of [
+      ["legal_hold_enabled", "true"],
+      ["legal_hold_reason", holdReason],
+      ["legal_hold_enabled_by", String(enabledBy)],
+    ]) {
+      await TenantSettings.upsert({ tenantId, key, value }, { transaction });
+    }
+    await auditService.logAction(
+      {
+        ...actorEntry(tenantId, actor),
+        action: "UPDATE",
+        resourceType: "LegalHold",
+        resourceId: tenantId,
+        changes: {
+          operation: "LEGAL_HOLD_ENABLE",
+          before: { onHold: wasOnHold?.value === "true" },
+          after: { onHold: true, reason: holdReason },
+        },
+      },
+      { transaction },
+    );
   });
 
   logger.warn(`Legal hold enabled for tenant ${tenantId}`, { reason, enabledBy });
@@ -172,12 +236,43 @@ exports.enableLegalHold = async (tenantId, enabledBy, reason) => {
   return { tenantId, enabled: true, reason, enabledBy };
 };
 
-exports.disableLegalHold = async (tenantId, disabledBy) => {
-  await TenantSettings.destroy({
-    where: {
-      tenantId,
-      key: ['legal_hold_enabled', 'legal_hold_reason', 'legal_hold_enabled_by'],
-    },
+/**
+ * Release a tenant's legal hold (A-153: in one transaction with its audit
+ * row, which keeps the reason the hold was placed for).
+ *
+ * @param {string} tenantId
+ * @param {object} actor - auditActor(req); its user is recorded as releasing it
+ * @returns {Promise<{tenantId: string, enabled: false, disabledBy: string}>}
+ */
+exports.disableLegalHold = async (tenantId, actor) => {
+  const disabledBy = actor.userId;
+
+  await db.transaction(async (transaction) => {
+    const reason = await TenantSettings.findOne({
+      where: { tenantId, key: "legal_hold_reason" },
+      transaction,
+    });
+    const released = await TenantSettings.destroy({
+      where: {
+        tenantId,
+        key: ["legal_hold_enabled", "legal_hold_reason", "legal_hold_enabled_by"],
+      },
+      transaction,
+    });
+    await auditService.logAction(
+      {
+        ...actorEntry(tenantId, actor),
+        action: "UPDATE",
+        resourceType: "LegalHold",
+        resourceId: tenantId,
+        changes: {
+          operation: "LEGAL_HOLD_RELEASE",
+          before: { onHold: released > 0, reason: reason ? reason.value : null },
+          after: { onHold: false },
+        },
+      },
+      { transaction },
+    );
   });
 
   logger.info(`Legal hold disabled for tenant ${tenantId}`, { disabledBy });
@@ -313,6 +408,10 @@ exports.runRetentionSweep = async () => {
 
 /** What a masked personal-data value is replaced with. */
 const PII_MASK = "[REDACTED]";
+
+/** Where avatars are stored (user.service), and its "no photo" sentinel (A-180). */
+const AVATAR_FOLDER = "uploads/profile";
+const AVATAR_PLACEHOLDER = "default.svg";
 
 /**
  * Keys that carry network identity (who connected from where). Masked inside
@@ -477,8 +576,9 @@ const maskAuditTrail = async (tenantId, subjectIds, actor) => {
 /**
  * Mask personal data for `entityType` (A-135).
  *
- * - `users`: `ids` are user ids. Each account's name, email and phone are
- *   masked. The email becomes a unique, syntactically valid address, because
+ * - `users`: `ids` are user ids. Each account's name, email, phone,
+ *   username and avatar (A-180) are masked; the photo file is deleted after
+ *   the commit. The email becomes a unique, syntactically valid address, because
  *   `users.email` is unique and validated: the single shared `[REDACTED]` the
  *   previous version wrote failed the model's `isEmail` validation on every
  *   call, and would have collided on the unique index from the second row on.
@@ -515,17 +615,37 @@ exports.maskPII = async (tenantId, entityType, ids, actor = {}) => {
     throw new AppError(400, `Model not found for entity type: ${entityType}`);
   }
 
-  const fields = ["email", "firstName", "lastName", "phone"];
+  // A-180: `username` and `avatarUrl` are personal data too — a username is
+  // usually the person's name, and the avatar is their photograph. Both were
+  // left in place. The username becomes unique (`users.username` is a unique
+  // index); the avatar reference becomes the "no photo" placeholder, and the
+  // file itself is deleted after the commit, as gdpr.service's erasure does.
+  const fields = ["email", "username", "firstName", "lastName", "phone", "avatarUrl"];
   let masked = 0;
+  const avatarFiles = [];
 
   await db.transaction(async (transaction) => {
+    const accounts = await User.findAll({
+      where: { id: ids, tenantId },
+      attributes: ["id", "avatarUrl"],
+      transaction,
+    });
+    for (const account of accounts) {
+      const stored = account.avatarUrl ? String(account.avatarUrl).split("/").pop() : null;
+      if (stored && stored !== AVATAR_PLACEHOLDER) {
+        avatarFiles.push(stored);
+      }
+    }
+
     for (const id of ids) {
       const [count] = await User.update(
         {
           email: `redacted_${id}@redacted.invalid`,
+          username: `redacted_${id}`,
           firstName: PII_MASK,
           lastName: PII_MASK,
           phone: PII_MASK,
+          avatarUrl: AVATAR_PLACEHOLDER,
         },
         { where: { id, tenantId }, transaction },
       );
@@ -547,14 +667,45 @@ exports.maskPII = async (tenantId, entityType, ids, actor = {}) => {
     );
   });
 
+  // A-180: the photo files go AFTER the commit that stopped referencing them;
+  // a file left behind is a storage leak to log, not a failed masking.
+  const { deleteUpload } = require("../utils/upload.util");
+  for (const file of avatarFiles) {
+    try {
+      await deleteUpload(file, AVATAR_FOLDER);
+    } catch (err) {
+      logger.warn("Failed to delete a masked user's avatar file", { tenantId, error: err.message });
+    }
+  }
+
   logger.info(`PII masked for ${entityType}`, { tenantId, masked, fields });
 
   return { masked, fields };
 };
 
-exports.anonymizeDataset = async (tenantId, entityType, options = {}) => {
-  // Q-12: audit rows are never rewritten wholesale. GDPR minimisation of the
-  // trail is per subject, through maskPII("audit_logs").
+/**
+ * Whole-dataset anonymisation is refused, for every entity type (A-152).
+ *
+ * It rewrote EVERY string column of EVERY row of the named model in the
+ * tenant to `[ANONYMIZED]` — for `users` that is the password hash, username
+ * and email of every account, locking the whole hospital out — with no
+ * transaction (a failure part-way left a half-rewritten table) and no audit
+ * row; `keepNumericIds: false` even rewrote primary keys. The model was chosen
+ * from the caller's string, so any table could be named.
+ *
+ * There is no dataset whose every string column is safe to overwrite, and
+ * GDPR minimisation is per data subject: `maskPII("users", ids)` masks named
+ * accounts' personal fields, transactionally and audited, and
+ * `maskPII("audit_logs", subjectIds)` their personal data in the trail. The
+ * route stays, answering 400 with that pointer, so a caller learns where the
+ * operation went instead of receiving a 404.
+ *
+ * @param {string} tenantId
+ * @param {string} entityType
+ * @returns {Promise<never>} always rejects with a 400 AppError
+ */
+exports.anonymizeDataset = async (tenantId, entityType) => {
+  // Q-12: audit rows are never rewritten wholesale.
   if (entityType === "audit_logs") {
     throw new AppError(
       400,
@@ -562,41 +713,8 @@ exports.anonymizeDataset = async (tenantId, entityType, options = {}) => {
     );
   }
 
-  const onLegalHold = await exports.isOnLegalHold(tenantId);
-
-  if (onLegalHold) {
-    throw new AppError(400, 'Cannot anonymize dataset while legal hold is active');
-  }
-
-  const { keepDates = true, keepNumericIds = true } = options;
-
-  const Model = require('../models')[entityType.charAt(0).toUpperCase() + entityType.slice(1, -1)];
-  if (!Model) {
-    throw new AppError(400, `Model not found for entity type: ${entityType}`);
-  }
-
-  const records = await Model.findAll({ where: { tenantId } });
-  const updates = {};
-
-  for (const record of records) {
-    const recordUpdates = {};
-
-    for (const attr of Object.values(Model.rawAttributes)) {
-      if (attr.type.key === 'STRING' && attr.fieldName !== 'id') {
-        recordUpdates[attr.fieldName] = '[ANONYMIZED]';
-      } else if (!keepDates && attr.type.key === 'DATE') {
-        recordUpdates[attr.fieldName] = new Date('1970-01-01');
-      }
-    }
-
-    if (!keepNumericIds) {
-      recordUpdates.id = require('crypto').randomUUID();
-    }
-
-    await record.update(recordUpdates);
-  }
-
-  logger.info(`Dataset anonymized for ${entityType}`, { tenantId, count: records.length });
-
-  return { anonymized: records.length, entityType };
+  throw new AppError(
+    400,
+    `Dataset anonymization is not available (${entityType}): it overwrote every text column of every row. Mask named data subjects with mask-pii instead.`,
+  );
 };

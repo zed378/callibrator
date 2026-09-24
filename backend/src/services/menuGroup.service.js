@@ -12,6 +12,41 @@
 
 const { AppError } = require("../utils/appError.util");
 const { Role, MenuGroup, RoleMenuPermission } = require("../models");
+const { db } = require("../config");
+const auditService = require("./audit.service");
+const { delPattern } = require("./redis.service");
+const { PLATFORM_TENANT_ID } = require("../constants/platformTenant");
+
+/**
+ * A-173 — the second write path to the global menu tree (the first is
+ * roles.service createMenu/updateMenu/deleteMenu, A-165). A menu group is what
+ * every role grant points at, so creating, changing or deleting one is a
+ * platform operation: each writes ONE audit row under the reserved PLATFORM
+ * tenant, inside the SAME transaction as the change (A-41, ADR-051 Q-14). A
+ * failed audit insert is re-thrown by logAction and rolls the change back.
+ * The permissions cache is cleared after the commit, never inside it.
+ *
+ * @param {object} transaction
+ * @param {object} actor - auditActor(req): { userId, tenantId, ipAddress, userAgent }
+ * @param {object} row - { action, resourceId, changes }
+ */
+const auditMenuChange = (transaction, actor, { action, resourceId, changes }) =>
+  auditService.logAction(
+    {
+      tenantId: PLATFORM_TENANT_ID, // A-173: a global menu is a platform operation
+      userId: actor.userId,
+      action,
+      resourceType: "MenuGroup",
+      resourceId,
+      changes,
+      ipAddress: actor.ipAddress,
+      userAgent: actor.userAgent,
+    },
+    { transaction },
+  );
+
+// The menu-group fields an update may change, as the audit row records them.
+const MENU_GROUP_FIELDS = ["name", "slug", "icon", "parentId", "sortOrder", "isActive"];
 
 // Maps a DB slug to its Next.js dashboard route.
 const mapSlugToPath = (slug) => {
@@ -207,36 +242,82 @@ exports.getAvailableRoles = () =>
 // ------------------------------------------------------------------
 // CREATE MENU GROUP
 // ------------------------------------------------------------------
-exports.createMenuGroup = async (value) => {
-  const group = await MenuGroup.create({
-    name: value.name,
-    slug: value.slug || value.name.toLowerCase().replace(/\s+/g, "-"),
-    icon: value.icon,
-    parentId: value.parentId,
-    sortOrder: value.sortOrder,
-    isActive: value.isActive,
+exports.createMenuGroup = async (value, actor = {}) => {
+  const group = await db.transaction(async (transaction) => {
+    const created = await MenuGroup.create(
+      {
+        name: value.name,
+        slug: value.slug || value.name.toLowerCase().replace(/\s+/g, "-"),
+        icon: value.icon,
+        parentId: value.parentId,
+        sortOrder: value.sortOrder,
+        isActive: value.isActive,
+      },
+      { transaction },
+    );
+    await auditMenuChange(transaction, actor, {
+      action: "CREATE",
+      resourceId: created.id,
+      changes: {
+        operation: "CREATE_MENU",
+        before: {},
+        after: {
+          name: created.name,
+          slug: created.slug,
+          parentId: created.parentId ?? null,
+          isActive: created.isActive ?? null,
+        },
+      },
+    });
+    return created;
   });
+
+  // A child menu inherits its parent's grant (roles.service
+  // getRolePermissionsMatrix), so a new child of a granted parent changes
+  // what those roles grant (as roles.service#createMenu, A-165).
+  if (value.parentId) {
+    await delPattern("permissions:role:*");
+  }
   return formatMenuGroup(group);
 };
 
 // ------------------------------------------------------------------
 // UPDATE MENU GROUP
 // ------------------------------------------------------------------
-exports.updateMenuGroup = async (value) => {
+exports.updateMenuGroup = async (value, actor = {}) => {
   const group = await MenuGroup.findByPk(value.id);
   if (!group) {
     throw new AppError(404, "Menu group not found");
   }
 
-  await group.update({
-    name: value.name !== undefined ? value.name : group.name,
-    slug: value.slug !== undefined ? value.slug : group.slug,
-    icon: value.icon !== undefined ? value.icon : group.icon,
-    parentId: value.parentId !== undefined ? value.parentId : group.parentId,
-    sortOrder:
-      value.sortOrder !== undefined ? value.sortOrder : group.sortOrder,
-    isActive: value.isActive !== undefined ? value.isActive : group.isActive,
+  // Read before the update: the instance is mutated in place. The audit row
+  // records the fields the caller sent, before and after.
+  const sent = MENU_GROUP_FIELDS.filter((key) => value[key] !== undefined);
+  const before = Object.fromEntries(sent.map((key) => [key, group[key] ?? null]));
+  const after = Object.fromEntries(sent.map((key) => [key, value[key]]));
+
+  await db.transaction(async (transaction) => {
+    await group.update(
+      {
+        name: value.name !== undefined ? value.name : group.name,
+        slug: value.slug !== undefined ? value.slug : group.slug,
+        icon: value.icon !== undefined ? value.icon : group.icon,
+        parentId: value.parentId !== undefined ? value.parentId : group.parentId,
+        sortOrder:
+          value.sortOrder !== undefined ? value.sortOrder : group.sortOrder,
+        isActive: value.isActive !== undefined ? value.isActive : group.isActive,
+      },
+      { transaction },
+    );
+    await auditMenuChange(transaction, actor, {
+      action: "UPDATE",
+      resourceId: group.id,
+      changes: { operation: "UPDATE_MENU", before, after },
+    });
   });
+
+  // A menu's parent or active flag decides what a role's grant reaches.
+  await delPattern("permissions:role:*");
 
   return formatMenuGroup(group);
 };
@@ -244,15 +325,42 @@ exports.updateMenuGroup = async (value) => {
 // ------------------------------------------------------------------
 // DELETE MENU GROUP (+ cleanup nested associations)
 // ------------------------------------------------------------------
-exports.deleteMenuGroup = async (menuGroupId) => {
+exports.deleteMenuGroup = async (menuGroupId, actor = {}) => {
   const group = await MenuGroup.findByPk(menuGroupId);
   if (!group) {
     throw new AppError(404, "Menu group not found");
   }
 
-  await RoleMenuPermission.destroy({ where: { menuGroupId } });
-  await MenuGroup.destroy({ where: { parentId: menuGroupId } });
-  await group.destroy();
+  // A-173: the grants, the child menus and the group go in ONE transaction
+  // with the audit row — before, each was its own autocommit, and a failure
+  // part-way left the group in place with its grants already gone.
+  await db.transaction(async (transaction) => {
+    const children = await MenuGroup.findAll({
+      where: { parentId: menuGroupId },
+      attributes: ["id"],
+      transaction,
+    });
+    const childIds = children.map((child) => child.id);
+    // The children's grants would cascade with them (FK, migration 0037);
+    // revoking them here makes the audit row's count the real one.
+    const revokedGrants = await RoleMenuPermission.destroy({
+      where: { menuGroupId: [menuGroupId, ...childIds] },
+      transaction,
+    });
+    await MenuGroup.destroy({ where: { parentId: menuGroupId }, transaction });
+    await group.destroy({ transaction });
+    await auditMenuChange(transaction, actor, {
+      action: "DELETE",
+      resourceId: menuGroupId,
+      changes: {
+        operation: "DELETE_MENU",
+        before: { name: group.name, slug: group.slug },
+        after: { deleted: true, revokedGrants, deletedChildren: childIds },
+      },
+    });
+  });
+
+  await delPattern("permissions:role:*");
 };
 
 // ------------------------------------------------------------------

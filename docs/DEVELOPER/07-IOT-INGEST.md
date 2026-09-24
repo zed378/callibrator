@@ -6,7 +6,18 @@ How device telemetry enters this system, over HTTP and over MQTT — and why, as
 
 ---
 
-## Read This First: The Feature Is Built And Unreachable
+> **Update 2026-09-24 — A-29 and A-46 are fixed.** A device can now be provisioned through the API:
+> `POST /api/v1/iot/devices/:deviceId/token` issues (or rotates) a 32-byte ingest token, shown **once**
+> and stored only as its SHA-256 hash (`calibration_devices.iot_token_hash`, migration 0044 — the
+> plaintext `iot_device_token` column is gone); `PATCH /api/v1/iot/devices/:deviceId` sets
+> `iotEnabled` and `readingTolerance`; `DELETE …/token` revokes. The hash is excluded from the
+> model's default attributes and from `toJSON()`, `/iot/ingest` has its own rate limit (600/min per
+> client address), and the devices page has an IoT dialog. See [Provisioning A Device](#provisioning-a-device).
+> The sections below that describe the feature as **unreachable** record the state before that fix,
+> kept so the audit trail reads; where they disagree with the code, the code and this banner win.
+> Still true: the MQTT path authenticates by topic only (A-17), and ingest writes no `audit_logs` row.
+
+## Read This First: The Feature Is Built And Unreachable (before 2026-09-24)
 
 The ingest endpoint exists, the MQTT client exists, the model exists, the anomaly rule exists, the migration has run, and there are unit tests. **No device can use any of it**, because there is no way to give a device a credential.
 
@@ -177,26 +188,42 @@ Since `readingTolerance` can never be set, the anomaly rate is structurally zero
 
 A device reporting itself in tolerance has reported, not been calibrated. Calibration needs a traceable reference standard and a competent human who signs for the result. This is restated from [`../API/09-MAINTENANCE-API.md`](../API/09-MAINTENANCE-API.md) because the temptation is strongest exactly here.
 
-## Making It Work On A Disposable Stack
+## Provisioning A Device
 
-There is no supported way to provision a device. On a **local or disposable** stack only, and never on a deployment carrying real data:
+Since 2026-09-24 (A-29, A-46). Routes in `backend/src/routes/api/iot.route.js`, service
+`backend/src/services/iotDevice.service.js`, validator `backend/src/validators/iot.validator.js`.
 
-```sql
-UPDATE calibration_devices
-   SET iot_enabled = true,
-       iot_device_token = 'dev-only-token-not-a-secret',
-       reading_tolerance = '{"temperature": {"min": 18, "max": 26}}'::jsonb
- WHERE id = '<device uuid>';
-```
+| Route | Gate | Does |
+|---|---|---|
+| `GET /api/v1/iot/devices/:deviceId` | `calibration` read | `{ iotEnabled, readingTolerance, hasToken, tokenIssuedAt }` — never the token or its hash |
+| `PATCH /api/v1/iot/devices/:deviceId` | tenant admin (`rbac TENANT_ADMIN`) + `calibration` write, JWT only | `{ iotEnabled?, readingTolerance? }`; enabling a device with no token is **409** |
+| `POST /api/v1/iot/devices/:deviceId/token` | same | issues or rotates; **201** with `data.token` — the only time it is ever returned; enables ingest |
+| `DELETE /api/v1/iot/devices/:deviceId/token` | same | revokes and disables ingest; **409** when there is no token |
+
+Another tenant's device, a soft-deleted device and a missing one all answer the same **404**. Every
+mutation writes an `audit_logs` row (`UPDATE` on `CalibrationDevice`, `changes.iot` =
+`TOKEN_ISSUED` / `TOKEN_ROTATED` / `TOKEN_REVOKED` / `CONFIG_UPDATED`) in the same transaction; the
+row never carries the token or its hash.
+
+`readingTolerance` is `{ "<metric>": { "min"?: number, "max"?: number } }` (at least one bound,
+`min <= max`, metric names `[A-Za-z0-9_.-]{1,64}`, at most 50), or `null` to clear it. A bad metric
+name or a misspelt bound is refused with 400, not stripped.
 
 ```bash
-curl -X POST http://localhost:3000/api/v1/iot/ingest \
-  -H 'Content-Type: application/json' \
-  -H 'x-iot-token: dev-only-token-not-a-secret' \
-  -d '{"payload":{"temperature":31.9,"humidity":70}}'
+# as a tenant admin
+curl -X POST  https://<host>/api/v1/iot/devices/<device uuid>/token -H 'Authorization: Bearer …'
+curl -X PATCH https://<host>/api/v1/iot/devices/<device uuid> -H 'Authorization: Bearer …' \
+  -H 'Content-Type: application/json' -d '{"readingTolerance":{"temperature":{"min":18,"max":26}}}'
+
+# as the device
+curl -X POST https://<host>/api/v1/iot/ingest -H 'Content-Type: application/json' \
+  -H 'x-iot-token: iot_…' -d '{"payload":{"temperature":31.9,"humidity":70}}'
+# → { "data": { "success": true, "isAnomaly": true } } and a "system" notification
 ```
 
-That token is now visible in every device list response in that tenant. It is a development fixture, and writing a real one this way puts a plaintext credential into a field that is read back to everybody.
+Migration 0044 hashed any plaintext token that was already in `iot_device_token` (written by hand
+under the old instructions), so such a device keeps ingesting — but that token was readable by every
+device reader in its tenant: **rotate it**.
 
 ## Tests
 
@@ -204,24 +231,22 @@ That token is now visible in every device list response in that tenant. It is a 
 |---|---|---|
 | controller unit | `src/tests/controllers/iot.controller.test.js` | the controller's branches, against a mocked model |
 | service unit | `src/tests/services/iot.service.test.js` | the MQTT client and anomaly rule, against a mocked `mqtt` |
-| route | `src/tests/routes/iot.route.test.js` | the mount |
-| live E2E | `src/tests/e2e/modules/iot.e2e.test.js` | **two rejection cases only** — no successful ingest |
+| route | `src/tests/routes/iot.route.test.js` | the mount, and that every provisioning route is gated |
+| provisioning, end to end through the router | `src/tests/routes/iot.provisioning.a29.test.js` | issue → ingest succeeds; rotate/revoke; two-tenant 404s; A-46 out-of-tolerance reading → anomaly + notification (models are an in-memory double) |
+| no leak in device responses | `src/tests/services/calibrationDevices.tokenLeak.a29.test.js` | list and detail responses carry neither token nor hash (real model, faked SQL) |
+| migration 0044 | `src/tests/migrations/0044-iot-device-token-hash.test.js` | hash / refuse / idempotent / down refuses; also run on PostgreSQL 18.6 |
+| live E2E | `src/tests/e2e/modules/iot.e2e.test.js` | **rejection cases only** — no successful ingest |
 
 The E2E suite cannot cover a successful ingest, because provisioning a device is exactly the thing that does not exist. **A mock proves the client, not the contract** ([`../../CLAUDE.md`](../../CLAUDE.md) § Evidence): every green test on this module was written against a device that the running system cannot produce.
 
 One of the two E2E assertions also looks wrong. `iot.e2e.test.js:20` posts an empty body and expects **400**; with no token, `ingestHttp` throws `AppError(401, "IoT Device Token is required")` at line 11 before any payload check. **Not verified against a running server** — the live suite has never completed an uninterrupted run (P6-02).
 
-## Planned, Not Built
+## Built 2026-09-24 (was "Planned, Not Built")
 
-A-29's fix direction, recorded here so nobody reads it as current behaviour:
-
-- an admin-only endpoint that issues a random token of at least 32 bytes, stores it **hashed**, shows it once, and toggles `iotEnabled` — the shape `api_keys` already uses;
-- the token excluded from the model's default attributes;
-- a UI surface for provisioning;
-- a rate limit on `/iot/ingest` of its own;
-- `readingTolerance` accepted by the device validator, so anomaly detection can do anything at all.
-
-Its Definition of Done: a device provisioned end to end through the API with ingest succeeding, no device response containing the token, and tokens hashed at rest.
+A-29's fix direction is built as described in [Provisioning A Device](#provisioning-a-device), with
+one difference: `readingTolerance` is set through `PATCH /api/v1/iot/devices/:deviceId` — the one
+IoT admin surface A-46 asked for — not through the device create/update validator. The E2E
+assertion above was corrected to 401 (still not run live, P6-02).
 
 ## New To This Document
 
@@ -232,7 +257,7 @@ Found while writing this and **not** in A-29 or A-17. Each is evidence for the a
 | 1 | a soft-deleted device's token still authenticates | `iot.controller.js:20` and `iot.service.js:120` use `.unscoped()`, dropping `defaultScope: { where: { is_deleted: false } }` (`calibrationDevice.model.js:127`) |
 | 2 | `readingTolerance` is as unprovisionable as the token, so **anomaly detection is structurally dead** | absent from both schemas in `calibrationDevices.validator.js` (lines 29, 46), which strip unknown keys (line 70); read at `iot.service.js:132` |
 | 3 | one bad MQTT message can shut the server down | `iot.service.js:70` calls `ingestReading` unawaited and uncaught → unhandled rejection → the `unhandledRejection` handler in `index.js` calls `shutdown` |
-| 4 | the anomaly log line inlines the whole payload | `iot.service.js:156` — `{ payload, anomalyDetails }` written to `log/activity/combined/`, against the "no full bodies" rule in [`../ENGINEERING/12-LOGGING-CONVENTIONS.md`](../ENGINEERING/12-LOGGING-CONVENTIONS.md) |
+| 4 | the anomaly log line inlines the whole payload — **fixed 2026-09-24 (A-46)**: it now logs the metric names and the findings | `iot.service.js:156` — `{ payload, anomalyDetails }` written to `log/activity/combined/`, against the "no full bodies" rule in [`../ENGINEERING/12-LOGGING-CONVENTIONS.md`](../ENGINEERING/12-LOGGING-CONVENTIONS.md) |
 | 5 | ingest writes no `audit_logs` row | no `recordAudit` on `iot.route.js`; nothing in `ingestHttp` or `ingestReading` |
 | 6 | the demo seeder references an out-of-scope identifier | `migration.service.js:1327` — `devices.find((d) => d.iotEnabled) \|\| device`, where `device` is not bound in that scope; short-circuit hides it while the seed definitions include an IoT device |
 

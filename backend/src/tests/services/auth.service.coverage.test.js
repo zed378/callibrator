@@ -47,7 +47,12 @@ jest.mock("../../utils/jwt.util", () => ({
 
 // A-72: the LOGIN audit row's contract is tested with the real audit.service
 // in auth.loginAudit.a72.test.js.
-jest.mock("../../services/audit.service", () => ({ logAction: jest.fn() }));
+jest.mock("../../services/audit.service", () => ({
+  logAction: jest.fn(),
+  // A-126: the lock itself is written through persistLock; its ACCOUNT_LOCKED
+  // row is tested in auth.accountLocked.a126.test.js with the real service.
+  recordAccountLock: jest.fn(({ persistLock }) => persistLock(null)),
+}));
 
 jest.mock("../../services/emailQueue.service", () => ({
   queueActivationEmail: jest.fn(),

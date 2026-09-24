@@ -492,12 +492,13 @@ describe("tenant Service", () => {
       expect(result).toBeDefined();
     });
 
-    it("should return cached settings", async () => {
-      get.mockResolvedValue({ data: { theme: "dark" } });
+    it("never reads or writes a Redis cache (A-150: it held decrypted secrets)", async () => {
+      mockFindByPk.mockResolvedValue({ id: "t-1", settings: {} });
+      TenantSettings.findAll.mockResolvedValue([]);
 
-      const result = await tenantService.getTenantSettings("t-1");
+      await tenantService.getTenantSettings("t-1");
 
-      expect(get).toHaveBeenCalled();
+      expect(get).not.toHaveBeenCalled();
     });
 
     it("should return 404 when tenant not found", async () => {
@@ -520,7 +521,7 @@ describe("tenant Service", () => {
       del.mockResolvedValue(undefined);
 
       const result = await tenantService.updateTenantSettings("t-1", {
-        theme: "dark",
+        ai_vendor: "openai",
       });
 
       expect(result).toBeDefined();

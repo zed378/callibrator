@@ -12,6 +12,7 @@ const { auth } = require("../../middlewares/auth.middleware");
 const { dynamicAccess } = require("../../middlewares/dynamicAccess.middleware");
 const { validate } = require("../../middlewares/validation.middleware");
 const { validateUuid } = require("../../middlewares/validateUuid.middleware");
+const { denyPlatformAuthoring } = require("../../middlewares/denyPlatformAuthoring.middleware"); // A-145, ADR-051 Q-17
 const {
   createWorkflowSchema,
   updateWorkflowSchema,
@@ -87,28 +88,42 @@ router.get(
  *             schema:
  *               $ref: '#/components/schemas/SuccessResponse'
  *       400:
- *         description: Invalid payload or instance not pending
+ *         description: Invalid payload
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  *       403:
- *         description: User's role cannot approve the current step
+ *         description: >-
+ *           User's role cannot approve the current step, or a platform operator
+ *           (impersonating, or acting in another tenant — A-145, ADR-051 Q-17)
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  *       404:
- *         description: Workflow instance not found
+ *         description: Workflow instance not found (including another tenant's)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       409:
+ *         description: The instance is no longer pending, or the caller already acted on this step
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
+// A-145 (ADR-051 Q-17, ADR-052) — an approval or rejection is a Part 11 act:
+// the WorkflowAction row names the approver, and a final approval stamps the
+// certificate / stock transfer / work order as approved by them. A platform
+// operator may not record one in a member's name (impersonation) or inside
+// another tenant.
 router.post(
   "/instances/:instanceId/action",
   auth,
   validateUuid("instanceId"),
+  denyPlatformAuthoring,
   validate(submitActionSchema),
   workflowController.submitAction,
 );

@@ -89,7 +89,13 @@ describe("A-88 / Q-16 — tenant foreign keys as sync() builds them", () => {
     for (const table of TENANT_FK_CASCADE.filter((t) => t !== "qms_counters")) {
       expect(tables.has(table)).toBe(true);
     }
-    for (const table of TENANT_NULLABLE) {
+    // data_retention_policies has no model any more: migration 0047 (A-137)
+    // drops it. 0030 keeps naming it because 0030 still runs, before 0047, on
+    // a database that has the table; on one without it the name matches no
+    // constraint and is inert.
+    const droppedLater = require("../../migrations/0047-drop-data-retention-policies").TABLE;
+    expect(TENANT_NULLABLE).toContain(droppedLater);
+    for (const table of TENANT_NULLABLE.filter((t) => t !== droppedLater)) {
       expect(tables.has(table)).toBe(true);
     }
     for (const { table } of USER_FK_RESTRICT) {

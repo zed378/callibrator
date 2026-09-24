@@ -4,7 +4,7 @@ module.exports = (sequelize, DataTypes) => {
   class SopTrainingAcknowledgment extends Model {
     static associate(models) {
       SopTrainingAcknowledgment.belongsTo(models.Tenant, { foreignKey: "tenantId", as: "tenant", onDelete: "RESTRICT" });
-      SopTrainingAcknowledgment.belongsTo(models.SopDocument, { foreignKey: "document_id", as: "document" });
+      SopTrainingAcknowledgment.belongsTo(models.SopDocument, { foreignKey: "documentId", as: "document", onDelete: "RESTRICT" });
       SopTrainingAcknowledgment.belongsTo(models.User, { foreignKey: "userId", as: "user", onDelete: "RESTRICT" });
     }
   }

@@ -47,7 +47,8 @@ jest.mock("../../services/audit.service", () => ({
   logAction: jest.fn().mockResolvedValue(true),
 }));
 jest.mock("../../services/emailQueue.service", () => ({
-  emailQueueService: { queueEmail: jest.fn().mockResolvedValue(true) },
+  // A-158: the real export (emailQueueService never existed).
+  queueNotificationEmail: jest.fn().mockResolvedValue(true),
 }));
 const PASSWORD = "correct horse battery staple";
 jest.mock("../../services/auth.service", () => ({

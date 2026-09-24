@@ -1,7 +1,8 @@
 // src/app/dashboard/tenants/page.tsx
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
+import type { Tenant } from "@/types";
 import DashboardLayout from "@/components/layouts/DashboardLayout";
 import { Button, Alert, Card, CardSkeleton } from "@/components/ui";
 import { Plus, Building2 } from "lucide-react";
@@ -12,6 +13,7 @@ import { TenantCard } from "./components/TenantCard";
 import { CreateTenantModal } from "./components/CreateTenantModal";
 import { EditTenantModal } from "./components/EditTenantModal";
 import { SsoSettingsPanel } from "./components/SsoSettingsPanel";
+import { MfaPolicyPanel } from "./components/MfaPolicyPanel";
 import { DeleteTenantModal } from "./components/DeleteTenantModal";
 import { useTenants } from "./hooks/useTenants";
 
@@ -62,6 +64,8 @@ export default function TenantsPage() {
     handleUpdate,
     handleSsoClick,
   } = useTenants();
+  // A-160: the tenant whose "MFA required" policy is open, if any.
+  const [mfaPolicyTenant, setMfaPolicyTenant] = useState<Tenant | null>(null);
 
   return (
     <DashboardLayout>
@@ -114,6 +118,7 @@ export default function TenantsPage() {
                     tenant={tenant}
                     onEdit={handleEdit}
                     onSsoConfig={handleSsoClick}
+                    onMfaPolicy={setMfaPolicyTenant}
                     onDelete={canManagePlatform ? handleDeleteRequest : undefined}
                   />
                 ))}
@@ -196,6 +201,9 @@ export default function TenantsPage() {
             }}
           />
         </div>
+      )}
+      {mfaPolicyTenant && (
+        <MfaPolicyPanel tenant={mfaPolicyTenant} onClose={() => setMfaPolicyTenant(null)} />
       )}
       <DeleteTenantModal
         isOpen={!!showDeleteConfirm}

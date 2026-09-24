@@ -1,7 +1,7 @@
 import React from "react";
 import { Device } from "@/api/services/device.service";
 import { Card, CardContent, TableSkeleton, Table, Badge, Button, Pagination } from "@/components/ui";
-import { ClipboardList, Calendar, Edit, Trash2 } from "lucide-react";
+import { ClipboardList, Calendar, Edit, Trash2, Radio } from "lucide-react";
 
 interface DevicesTableProps {
   devices: any;
@@ -11,6 +11,8 @@ interface DevicesTableProps {
   hasWriteAccess: boolean;
   openEditModal: (dev: Device) => void;
   handleDeleteClick: (id: string) => void;
+  /** A-29: open the IoT ingest provisioning dialog for a device. */
+  openIotModal?: (dev: Device) => void;
 }
 
 export const DevicesTable: React.FC<DevicesTableProps> = ({
@@ -21,6 +23,7 @@ export const DevicesTable: React.FC<DevicesTableProps> = ({
   hasWriteAccess,
   openEditModal,
   handleDeleteClick,
+  openIotModal,
 }) => {
   const getStatusBadge = (status: Device["status"]) => {
     const maps = {
@@ -90,6 +93,18 @@ export const DevicesTable: React.FC<DevicesTableProps> = ({
                 ),
                 actions: (
                   <div className="flex items-center gap-2">
+                    {openIotModal && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-label={`IoT ingest for ${dev.name}`}
+                        title="IoT ingest"
+                        onClick={() => openIotModal(dev)}
+                        className="text-muted-foreground hover:text-primary hover:bg-muted"
+                      >
+                        <Radio className="h-4 w-4" />
+                      </Button>
+                    )}
                     {hasWriteAccess && (
                       <>
                         <Button

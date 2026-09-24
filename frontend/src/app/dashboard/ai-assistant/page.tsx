@@ -16,6 +16,20 @@ import { FileSearch, Send, Sparkles, Upload } from "lucide-react";
 import { aiService, type CertificateOcrResult } from "@/api/services/ai.service";
 import { useToastStore } from "@/stores/toastStore";
 
+/**
+ * A-118 — the two halves of this page are gated on different permissions:
+ * POST /ai/query on `sop` read, POST /ai/ocr on `certificate` write. A role
+ * can hold one and not the other, so a 403 from either is an expected state
+ * for that half — shown as a notice in its card, not toasted as a failure.
+ */
+const isForbidden = (err: unknown) =>
+  (err as { response?: { status?: number } } | null)?.response?.status === 403;
+
+const RAG_DENIED_NOTICE =
+  "Asking the knowledge base needs read access to SOP Documents. Ask your administrator if you need it.";
+const OCR_DENIED_NOTICE =
+  "Scanning certificates needs write access to Calibration & Certificates. Ask your administrator if you need it.";
+
 export default function AiAssistantPage() {
   const addToast = useToastStore((s) => s.addToast);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -24,11 +38,13 @@ export default function AiAssistantPage() {
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState<string | null>(null);
   const [asking, setAsking] = useState(false);
+  const [ragDenied, setRagDenied] = useState(false);
 
   // OCR
   const [ocr, setOcr] = useState<CertificateOcrResult | null>(null);
   const [ocrBusy, setOcrBusy] = useState(false);
   const [fileName, setFileName] = useState<string | null>(null);
+  const [ocrDenied, setOcrDenied] = useState(false);
 
   const ask = async () => {
     if (!question.trim()) return;
@@ -38,6 +54,10 @@ export default function AiAssistantPage() {
       const res = await aiService.query(question.trim());
       setAnswer(res.answer);
     } catch (err) {
+      if (isForbidden(err)) {
+        setRagDenied(true);
+        return;
+      }
       addToast({
         type: "error",
         title: "Query failed",
@@ -59,6 +79,11 @@ export default function AiAssistantPage() {
       setOcr(result);
       addToast({ type: "success", title: "Certificate scanned" });
     } catch (err) {
+      if (isForbidden(err)) {
+        setOcrDenied(true);
+        setFileName(null);
+        return;
+      }
       addToast({
         type: "error",
         title: "OCR failed",
@@ -104,29 +129,35 @@ export default function AiAssistantPage() {
               }
             />
             <CardContent className="space-y-4">
-              <FormField
-                label="Question"
-                helperText="Answered only from documents ingested for your tenant."
-              >
-                <Textarea
-                  value={question}
-                  onChange={(e) => setQuestion(e.target.value)}
-                  rows={3}
-                  placeholder="e.g. What is the calibration interval for pressure gauges?"
-                />
-              </FormField>
-              <Button
-                onClick={ask}
-                isLoading={asking}
-                disabled={!question.trim()}
-                leftIcon={<Send className="h-4 w-4" />}
-              >
-                Ask
-              </Button>
-              {answer !== null && (
-                <Alert variant="info">
-                  <span className="whitespace-pre-wrap">{answer}</span>
-                </Alert>
+              {ragDenied ? (
+                <Alert variant="info">{RAG_DENIED_NOTICE}</Alert>
+              ) : (
+                <>
+                  <FormField
+                    label="Question"
+                    helperText="Answered only from documents ingested for your tenant."
+                  >
+                    <Textarea
+                      value={question}
+                      onChange={(e) => setQuestion(e.target.value)}
+                      rows={3}
+                      placeholder="e.g. What is the calibration interval for pressure gauges?"
+                    />
+                  </FormField>
+                  <Button
+                    onClick={ask}
+                    isLoading={asking}
+                    disabled={!question.trim()}
+                    leftIcon={<Send className="h-4 w-4" />}
+                  >
+                    Ask
+                  </Button>
+                  {answer !== null && (
+                    <Alert variant="info">
+                      <span className="whitespace-pre-wrap">{answer}</span>
+                    </Alert>
+                  )}
+                </>
               )}
             </CardContent>
           </Card>
@@ -142,37 +173,43 @@ export default function AiAssistantPage() {
               }
             />
             <CardContent className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Upload a certificate image or PDF to extract its key fields.
-              </p>
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/*,application/pdf"
-                className="hidden"
-                onChange={onFile}
-              />
-              <Button
-                variant="outline"
-                onClick={() => fileRef.current?.click()}
-                isLoading={ocrBusy}
-                leftIcon={<Upload className="h-4 w-4" />}
-              >
-                {fileName ? `Re-scan (${fileName})` : "Upload certificate"}
-              </Button>
+              {ocrDenied ? (
+                <Alert variant="info">{OCR_DENIED_NOTICE}</Alert>
+              ) : (
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    Upload a certificate image or PDF to extract its key fields.
+                  </p>
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    accept="image/*,application/pdf"
+                    className="hidden"
+                    onChange={onFile}
+                  />
+                  <Button
+                    variant="outline"
+                    onClick={() => fileRef.current?.click()}
+                    isLoading={ocrBusy}
+                    leftIcon={<Upload className="h-4 w-4" />}
+                  >
+                    {fileName ? `Re-scan (${fileName})` : "Upload certificate"}
+                  </Button>
 
-              {ocr && (
-                <div className="rounded-md border border-border divide-y divide-border">
-                  {ocrRows.map(([label, value]) => (
-                    <div
-                      key={label}
-                      className="flex justify-between px-3 py-2 text-sm"
-                    >
-                      <span className="text-muted-foreground">{label}</span>
-                      <span className="font-medium">{value || "—"}</span>
+                  {ocr && (
+                    <div className="rounded-md border border-border divide-y divide-border">
+                      {ocrRows.map(([label, value]) => (
+                        <div
+                          key={label}
+                          className="flex justify-between px-3 py-2 text-sm"
+                        >
+                          <span className="text-muted-foreground">{label}</span>
+                          <span className="font-medium">{value || "—"}</span>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  )}
+                </>
               )}
             </CardContent>
           </Card>

@@ -15,7 +15,7 @@ import {
   Select,
   Textarea,
 } from "@/components/ui";
-import { Eraser, Lock, ShieldOff, Trash2, UserX } from "lucide-react";
+import { Lock, ShieldOff, Trash2, UserX } from "lucide-react";
 import {
   dataRetentionService,
   RETENTION_MIN_DAYS,
@@ -45,9 +45,6 @@ const POLICY_KEYS: { key: RetentionPolicyKey; label: string; help: string }[] = 
   },
 ];
 
-/** Datasets that may be anonymized. Audit logs are never rewritten (Q-12). */
-const ENTITY_OPTIONS = [{ value: "users", label: "Users" }];
-
 export default function DataRetentionPage() {
   const addToast = useToastStore((s) => s.addToast);
   const user = useAuthStore((s) => s.user);
@@ -67,8 +64,6 @@ export default function DataRetentionPage() {
   const [isHoldOpen, setIsHoldOpen] = useState(false);
   const [holdReason, setHoldReason] = useState("");
   const [isPurgeOpen, setIsPurgeOpen] = useState(false);
-  const [isAnonOpen, setIsAnonOpen] = useState(false);
-  const [anonEntity, setAnonEntity] = useState("users");
 
   useEffect(() => {
     tenantService
@@ -180,23 +175,14 @@ export default function DataRetentionPage() {
     setIsPurgeOpen(false);
   };
 
-  const confirmAnonymize = async () => {
-    await run(
-      "anon",
-      () => dataRetentionService.anonymize(tenantId, "users"),
-      "Dataset anonymized",
-    );
-    setIsAnonOpen(false);
-  };
-
   return (
     <DashboardLayout>
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Data Retention</h1>
           <p className="text-sm text-muted-foreground">
-            Retention windows, legal hold, and privacy operations (purge, PII
-            masking, anonymization).
+            Retention windows, legal hold, and privacy operations (purge and
+            PII masking).
           </p>
         </div>
 
@@ -234,8 +220,8 @@ export default function DataRetentionPage() {
                       </Badge>
                     </div>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      While a legal hold is active, purge, PII masking, and
-                      anonymization are blocked.
+                      While a legal hold is active, purge and PII masking are
+                      blocked.
                     </p>
                   </div>
                   {held ? (
@@ -342,14 +328,6 @@ export default function DataRetentionPage() {
                   </Button>
                   <Button
                     variant="outline"
-                    disabled={held}
-                    onClick={() => setIsAnonOpen(true)}
-                    leftIcon={<Eraser className="h-4 w-4" />}
-                  >
-                    Anonymize Dataset
-                  </Button>
-                  <Button
-                    variant="outline"
                     disabled
                     leftIcon={<UserX className="h-4 w-4" />}
                     title="Mask PII targets specific record ids — launch it from a record list."
@@ -374,7 +352,7 @@ export default function DataRetentionPage() {
         >
           <div className="p-6 space-y-4">
             <Alert variant="warning">
-              A legal hold suspends all data purging and anonymization for this
+              A legal hold suspends all data purging and PII masking for this
               tenant until released.
             </Alert>
             <FormField label="Reason" required>
@@ -422,39 +400,6 @@ export default function DataRetentionPage() {
           </div>
         </Dialog>
 
-        <Dialog
-          isOpen={isAnonOpen}
-          onClose={() => setIsAnonOpen(false)}
-          title="Anonymize Dataset"
-          size="md"
-        >
-          <div className="p-6 space-y-4">
-            <Alert variant="error">
-              Irreversibly replaces identifying fields with
-              <span className="font-mono"> [ANONYMIZED]</span> across the
-              selected dataset.
-            </Alert>
-            <FormField label="Entity">
-              <Select
-                value={anonEntity}
-                onChange={setAnonEntity}
-                options={ENTITY_OPTIONS}
-              />
-            </FormField>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setIsAnonOpen(false)}>
-                Cancel
-              </Button>
-              <Button
-                variant="danger"
-                onClick={confirmAnonymize}
-                isLoading={busy === "anon"}
-              >
-                Anonymize
-              </Button>
-            </div>
-          </div>
-        </Dialog>
       </div>
     </DashboardLayout>
   );

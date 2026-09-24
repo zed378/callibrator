@@ -22,7 +22,7 @@ const billingController = require("../../controllers/billing.controller");
 router.get(
   "/subscription",
   auth,
-  dynamicAccess("Billing", "read", { checkTenant: true }),
+  dynamicAccess("billing", "read", { checkTenant: true }),
   billingController.getSubscription,
 );
 
@@ -59,7 +59,7 @@ router.get(
 router.patch(
   "/subscription",
   auth,
-  dynamicAccess("Billing", "update", { checkTenant: true }),
+  dynamicAccess("billing", "update", { checkTenant: true }),
   validate(billingValidator.updateSubscription),
   billingController.updateSubscription,
 );
@@ -96,7 +96,7 @@ router.patch(
 router.get(
   "/invoices",
   auth,
-  dynamicAccess("Billing", "read", { checkTenant: true }),
+  dynamicAccess("billing", "read", { checkTenant: true }),
   billingController.fetchInvoices,
 );
 

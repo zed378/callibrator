@@ -228,8 +228,12 @@ router.post("/:tenantId/mask-pii", superAdminOnly, dataRetentionController.maskP
  * @swagger
  * /api/v1/tenants/{tenantId}/anonymize:
  *   post:
- *     summary: Anonymize a dataset
- *     description: Anonymizes a dataset for the tenant. Super admin only.
+ *     summary: Anonymize a dataset (refused)
+ *     description: >
+ *       A-152 - refused with 400 for every entity type. It overwrote every text
+ *       column of every row (for users - password hash, username, email) with
+ *       no transaction or audit row. Mask named data subjects with
+ *       POST /{tenantId}/mask-pii instead. Super admin only.
  *     tags: [DataRetention]
  *     security:
  *       - bearerAuth: []
@@ -252,10 +256,8 @@ router.post("/:tenantId/mask-pii", superAdminOnly, dataRetentionController.maskP
  *               options:
  *                 type: object
  *     responses:
- *       200:
- *         description: Dataset anonymized
  *       400:
- *         description: Bad request
+ *         description: Refused - use mask-pii
  *       401:
  *         description: Unauthorized
  */

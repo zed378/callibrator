@@ -29,7 +29,7 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.UUID,
         allowNull: false,
         references: { model: "warehouses", key: "id" },
-        onDelete: "CASCADE",
+        onDelete: "RESTRICT",
       },
       name: {
         type: DataTypes.STRING(255),
@@ -68,8 +68,9 @@ const defineModel = (db, DataTypes) => {
   StorageLocation.associate = (models) => {
     // StorageLocation -> Warehouse
     StorageLocation.belongsTo(models.Warehouse, {
-      foreignKey: "warehouse_id",
+      foreignKey: "warehouseId",
       as: "warehouse",
+      onDelete: "RESTRICT",
     });
     // StorageLocation -> Tenant
     StorageLocation.belongsTo(models.Tenant, {
@@ -79,8 +80,9 @@ const defineModel = (db, DataTypes) => {
     });
     // StorageLocation -> Stock (hasMany)
     StorageLocation.hasMany(models.Stock, {
-      foreignKey: "location_id",
+      foreignKey: "locationId",
       as: "stocks",
+      onDelete: "SET NULL",
     });
   };
 

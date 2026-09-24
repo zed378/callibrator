@@ -292,8 +292,8 @@ describe("scim.service", () => {
       });
 
       const patchOps = [
-        { op: "replace", value: { name: { givenName: "X", familyName: "Y" }, active: false, roleId: 3 } },
-        { op: "add", value: { roleId: 4 } },
+        { op: "replace", value: { name: { givenName: "X", familyName: "Y" }, active: false, roleId: "33333333-3333-4333-8333-333333333333" } },
+        { op: "add", value: { roleId: "44444444-4444-4444-8444-444444444444" } },
         { op: "remove", path: "roleId" },
       ];
 
@@ -360,9 +360,9 @@ describe("scim.service", () => {
       const mockUpdate = jest.fn();
       Users.findOne.mockResolvedValue({ id: "u1", update: mockUpdate });
 
-      await scim.patchUser("t1", "u1", [{ op: "add", value: { roleId: "r7" } }]);
+      await scim.patchUser("t1", "u1", [{ op: "add", value: { roleId: "77777777-7777-4777-8777-777777777777" } }]);
 
-      expect(mockUpdate).toHaveBeenCalledWith({ roleId: "r7" });
+      expect(mockUpdate).toHaveBeenCalledWith({ roleId: "77777777-7777-4777-8777-777777777777" });
     });
   });
 
@@ -385,341 +385,6 @@ describe("scim.service", () => {
     });
   });
 
-  describe("Groups", () => {
-    describe("getGroups", () => {
-      it("returns groups with displayName filter", async () => {
-        Role.findAndCountAll.mockResolvedValue({
-          count: 1,
-          rows: [{ id: "g1", name: "ADMIN", createdAt: new Date(), updatedAt: new Date() }],
-        });
-        Users.findAll.mockResolvedValue([]);
-
-        const result = await scim.getGroups("t1", 1, 10, 'displayName eq "ADMIN"');
-        expect(result.totalResults).toBe(1);
-        expect(result.Resources[0].displayName).toBe("ADMIN");
-        expect(Role.findAndCountAll).toHaveBeenCalledWith(
-          expect.objectContaining({ where: { name: "ADMIN" } })
-        );
-      });
-
-      it("queries roles unfiltered with default paging when no filter is given", async () => {
-        Role.findAndCountAll.mockResolvedValue({ count: 0, rows: [] });
-
-        const result = await scim.getGroups("t1");
-
-        expect(Role.findAndCountAll).toHaveBeenCalledWith({
-          where: {},
-          offset: 0,
-          limit: 100,
-        });
-        expect(result.startIndex).toBe(1);
-        expect(result.itemsPerPage).toBe(0);
-      });
-
-      it("ignores a filter that does not match the displayName grammar", async () => {
-        Role.findAndCountAll.mockResolvedValue({ count: 0, rows: [] });
-
-        await scim.getGroups("t1", 1, 10, 'userName eq "nope"');
-
-        expect(Role.findAndCountAll).toHaveBeenCalledWith(expect.objectContaining({ where: {} }));
-      });
-
-      it("clamps a zero/negative startIndex and count to a valid window", async () => {
-        Role.findAndCountAll.mockResolvedValue({ count: 0, rows: [] });
-
-        await scim.getGroups("t1", 0, 0);
-
-        expect(Role.findAndCountAll).toHaveBeenCalledWith(
-          expect.objectContaining({ offset: 0, limit: 1 })
-        );
-      });
-
-      // Role has no tenantId column; tenant scoping lives on the Users lookup.
-      it("never filters roles by tenantId, but scopes member lookups to the tenant", async () => {
-        Role.findAndCountAll.mockResolvedValue({ count: 1, rows: [{ id: "g1", name: "ADMIN" }] });
-        Users.findAll.mockResolvedValue([{ id: "u1", email: "a@b.com" }]);
-
-        const result = await scim.getGroups("t1");
-
-        expect(Role.findAndCountAll.mock.calls[0][0].where).not.toHaveProperty("tenantId");
-        expect(Users.findAll).toHaveBeenCalledWith({
-          where: { tenantId: "t1", roleId: "g1" },
-          attributes: ["id", "email"],
-        });
-        expect(result.Resources[0].members).toEqual([{ value: "u1", display: "a@b.com" }]);
-      });
-    });
-
-    describe("getGroupById", () => {
-      it("returns group details with members", async () => {
-        Role.findOne.mockResolvedValue({
-          id: "g1",
-          name: "ADMIN",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        });
-        Users.findAll.mockResolvedValue([{ id: "u1", email: "a@b.com" }]);
-
-        const result = await scim.getGroupById("t1", "g1");
-        expect(result.displayName).toBe("ADMIN");
-        expect(result.members[0].value).toBe("u1");
-      });
-
-      it("throws 404 when group not found", async () => {
-        Role.findOne.mockResolvedValue(null);
-        await expect(scim.getGroupById("t1", "g1")).rejects.toThrow("Group not found");
-      });
-    });
-
-    describe("createGroup", () => {
-      it("creates group and associates members (as strings or objects)", async () => {
-        Role.findOne.mockResolvedValue(null);
-        Role.create.mockResolvedValue({
-          id: "g1",
-          name: "NEW_GROUP",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        });
-        Users.findOne.mockResolvedValue({ id: "u1", update: jest.fn() });
-        Users.findAll.mockResolvedValue([{ id: "u1", email: "a@b.com" }]);
-
-        const result = await scim.createGroup("t1", {
-          displayName: "New Group",
-          members: ["u1", { value: "u2" }],
-        });
-
-        expect(result.displayName).toBe("NEW_GROUP");
-      });
-
-      it("throws 400 when displayName is missing", async () => {
-        await expect(scim.createGroup("t1", {})).rejects.toThrow("displayName is required");
-      });
-
-      it("throws 409 when group already exists", async () => {
-        Role.findOne.mockResolvedValue({ id: "g1" });
-        await expect(
-          scim.createGroup("t1", { displayName: "Existing" })
-        ).rejects.toThrow("Group already exists");
-      });
-
-      it("creates a global role without a tenantId and skips member assignment when members is absent", async () => {
-        Role.findOne.mockResolvedValue(null);
-        Role.create.mockResolvedValue({ id: "g1", name: "NEW_GROUP" });
-        Users.findAll.mockResolvedValue([]);
-
-        const result = await scim.createGroup("t1", { displayName: "New Group" });
-
-        expect(Role.create).toHaveBeenCalledWith({
-          name: "NEW GROUP",
-          description: "SCIM-provisioned group: New Group",
-          nameToShow: "New Group",
-          isSystem: false,
-          status: "active",
-          sortOrder: 99,
-        });
-        expect(Role.create.mock.calls[0][0]).not.toHaveProperty("tenantId");
-        expect(Users.findOne).not.toHaveBeenCalled();
-        expect(result.members).toEqual([]);
-      });
-
-      it("skips member assignment when the members array is empty", async () => {
-        Role.findOne.mockResolvedValue(null);
-        Role.create.mockResolvedValue({ id: "g1", name: "G" });
-        Users.findAll.mockResolvedValue([]);
-
-        await scim.createGroup("t1", { displayName: "G", members: [] });
-
-        expect(Users.findOne).not.toHaveBeenCalled();
-      });
-
-      it("silently skips members that are not in the tenant", async () => {
-        Role.findOne.mockResolvedValue(null);
-        Role.create.mockResolvedValue({ id: "g1", name: "G" });
-        Users.findOne.mockResolvedValue(null); // member belongs to another tenant
-        Users.findAll.mockResolvedValue([]);
-
-        const result = await scim.createGroup("t1", { displayName: "G", members: ["u-other"] });
-
-        expect(Users.findOne).toHaveBeenCalledWith({ where: { id: "u-other", tenantId: "t1" } });
-        expect(result.members).toEqual([]);
-      });
-
-      it("assigns the new role to members given as strings or {value} objects", async () => {
-        Role.findOne.mockResolvedValue(null);
-        Role.create.mockResolvedValue({ id: "g1", name: "G" });
-        const update = jest.fn();
-        Users.findOne.mockResolvedValue({ id: "u1", update });
-        Users.findAll.mockResolvedValue([]);
-
-        await scim.createGroup("t1", { displayName: "G", members: ["u1", { value: "u2" }] });
-
-        expect(Users.findOne).toHaveBeenCalledWith({ where: { id: "u1", tenantId: "t1" } });
-        expect(Users.findOne).toHaveBeenCalledWith({ where: { id: "u2", tenantId: "t1" } });
-        expect(update).toHaveBeenCalledWith({ roleId: "g1" });
-        expect(update).toHaveBeenCalledTimes(2);
-      });
-    });
-
-    describe("updateGroup", () => {
-      it("updates group name and updates members", async () => {
-        const mockUpdateRole = jest.fn();
-        Role.findOne.mockResolvedValue({
-          id: "g1",
-          update: mockUpdateRole,
-        });
-        Users.update.mockResolvedValue([1]);
-        Users.findAll.mockResolvedValue([]);
-
-        const result = await scim.updateGroup("t1", "g1", {
-          displayName: "Updated Group",
-          nameToShow: "Updated Group Pretty",
-          members: ["u1", { value: "u2" }],
-        });
-
-        expect(mockUpdateRole).toHaveBeenCalledWith({
-          name: "UPDATED GROUP",
-          nameToShow: "Updated Group Pretty",
-        });
-        expect(Users.update).toHaveBeenCalled();
-      });
-
-      it("throws 404 when group not found", async () => {
-        Role.findOne.mockResolvedValue(null);
-        await expect(scim.updateGroup("t1", "g1", {})).rejects.toThrow("Group not found");
-      });
-
-      it("applies no updates and touches no members for an empty payload", async () => {
-        const mockUpdateRole = jest.fn();
-        Role.findOne.mockResolvedValue({ id: "g1", update: mockUpdateRole });
-        Users.findAll.mockResolvedValue([]);
-
-        await scim.updateGroup("t1", "g1", {});
-
-        expect(mockUpdateRole).toHaveBeenCalledWith({});
-        expect(Users.update).not.toHaveBeenCalled();
-        expect(Role.findOne).toHaveBeenCalledWith({ where: { id: "g1" } });
-      });
-
-      it("scopes the member reassignment to the tenant", async () => {
-        Role.findOne.mockResolvedValue({ id: "g1", update: jest.fn() });
-        Users.update.mockResolvedValue([1]);
-        Users.findAll.mockResolvedValue([]);
-
-        await scim.updateGroup("t1", "g1", { members: ["u1", { value: "u2" }] });
-
-        expect(Users.update).toHaveBeenCalledWith(
-          { roleId: "g1" },
-          { where: { id: { [Op.in]: ["u1", "u2"] }, tenantId: "t1" } }
-        );
-      });
-    });
-
-    describe("patchGroup", () => {
-      it("applies patch ops (replace, add, remove) on group", async () => {
-        Role.findOne.mockResolvedValue({
-          id: "g1",
-          update: jest.fn(),
-        });
-        Users.update.mockResolvedValue([1]);
-        Users.findAll.mockResolvedValue([]);
-
-        const patchOps = [
-          { op: "replace", value: { displayName: "New Display Name" } },
-          { op: "add", value: { members: ["u1"] } },
-          { op: "remove", value: { members: [{ value: "u2" }] } },
-        ];
-
-        await scim.patchGroup("t1", "g1", patchOps);
-        expect(Users.update).toHaveBeenCalled();
-      });
-
-      it("throws 404 when group not found", async () => {
-        Role.findOne.mockResolvedValue(null);
-        await expect(scim.patchGroup("t1", "g1", [])).rejects.toThrow("Group not found");
-      });
-
-      it("renames the group on a replace displayName op", async () => {
-        const update = jest.fn();
-        Role.findOne.mockResolvedValue({ id: "g1", update });
-        Users.findAll.mockResolvedValue([]);
-
-        await scim.patchGroup("t1", "g1", [
-          { op: "replace", value: { displayName: "New Display Name" } },
-        ]);
-
-        expect(update).toHaveBeenCalledWith({
-          name: "NEW DISPLAY NAME",
-          nameToShow: "New Display Name",
-        });
-      });
-
-      it("adds members (strings or objects) scoped to the tenant", async () => {
-        Role.findOne.mockResolvedValue({ id: "g1", update: jest.fn() });
-        Users.update.mockResolvedValue([1]);
-        Users.findAll.mockResolvedValue([]);
-
-        await scim.patchGroup("t1", "g1", [
-          { op: "add", value: { members: ["u1", { value: "u2" }] } },
-        ]);
-
-        expect(Users.update).toHaveBeenCalledWith(
-          { roleId: "g1" },
-          { where: { id: { [Op.in]: ["u1", "u2"] }, tenantId: "t1" } }
-        );
-      });
-
-      it("demotes removed members to the default role", async () => {
-        Role.findOne.mockResolvedValue({ id: "g1", update: jest.fn() });
-        Users.update.mockResolvedValue([1]);
-        Users.findAll.mockResolvedValue([]);
-
-        await scim.patchGroup("t1", "g1", [
-          { op: "remove", value: { members: ["u1", { value: "u2" }] } },
-        ]);
-
-        expect(Users.update).toHaveBeenCalledWith(
-          { roleId: ROLE_IDS.USER },
-          { where: { id: { [Op.in]: ["u1", "u2"] }, tenantId: "t1" } }
-        );
-      });
-
-      // A-33: an operation that names nothing this module can apply used to be
-      // dropped with a 200. Every one of these shapes is now a 400.
-      it.each([
-        ["an empty value object", { op: "replace", value: {} }],
-        ["no value and no path", { op: "replace" }],
-        ["an unknown op", { op: "unknown", value: { displayName: "X" } }],
-      ])("rejects %s with 400 instead of a silent 200", async (_label, operation) => {
-        const update = jest.fn();
-        Role.findOne.mockResolvedValue({ id: "g1", update });
-        Users.findAll.mockResolvedValue([]);
-
-        await expect(scim.patchGroup("t1", "g1", [operation])).rejects.toMatchObject({ status: 400 });
-
-        expect(update).not.toHaveBeenCalled();
-        expect(Users.update).not.toHaveBeenCalled();
-      });
-    });
-
-    describe("deleteGroup", () => {
-      it("deletes group successfully", async () => {
-        const mockDestroy = jest.fn();
-        Role.findOne.mockResolvedValue({
-          id: "g1",
-          destroy: mockDestroy,
-        });
-
-        const result = await scim.deleteGroup("t1", "g1");
-        expect(result.status).toBe(204);
-        expect(mockDestroy).toHaveBeenCalled();
-      });
-
-      it("throws 404 when group to delete not found", async () => {
-        Role.findOne.mockResolvedValue(null);
-        await expect(scim.deleteGroup("t1", "g1")).rejects.toThrow("Group not found");
-      });
-    });
-  });
 });
 
 // ==========================================================================
@@ -778,27 +443,6 @@ describe("scim.service — privileged role guards (A-27)", () => {
     await expect(
       scim.createUser("t1", { userName: "a@b.c", roleId: "11111111-1111-1111-1111-111111111111" }),
     ).rejects.toMatchObject({ status: 400 });
-  });
-
-  it("refuses to rename a system role", async () => {
-    Role.findOne.mockResolvedValue({ id: "r-sys", name: "HEALTHCARE ADMIN", isSystem: true, update: jest.fn() });
-    await expect(
-      scim.updateGroup("t1", "r-sys", { displayName: "anything" }),
-    ).rejects.toMatchObject({ status: 403 });
-  });
-
-  it("refuses to delete a system role", async () => {
-    const destroy = jest.fn();
-    Role.findOne.mockResolvedValue({ id: "r-sys", name: "SUPERADMIN", isSystem: true, destroy });
-    await expect(scim.deleteGroup("t1", "r-sys")).rejects.toMatchObject({ status: 403 });
-    expect(destroy).not.toHaveBeenCalled();
-  });
-
-  it("refuses to patch a system role", async () => {
-    Role.findOne.mockResolvedValue({ id: "r-sys", name: "USER", isSystem: true, update: jest.fn() });
-    await expect(
-      scim.patchGroup("t1", "r-sys", [{ op: "replace", value: { displayName: "x" } }]),
-    ).rejects.toMatchObject({ status: 403 });
   });
 });
 
@@ -903,9 +547,9 @@ describe("scim.service — RFC 7644 patch paths and filters (A-33)", () => {
     });
 
     it("assigns a role via the path form", async () => {
-      await scim.patchUser("t1", "u1", [{ op: "add", path: "roleId", value: "r7" }]);
+      await scim.patchUser("t1", "u1", [{ op: "add", path: "roleId", value: "77777777-7777-4777-8777-777777777777" }]);
 
-      expect(update).toHaveBeenCalledWith({ roleId: "r7" });
+      expect(update).toHaveBeenCalledWith({ roleId: "77777777-7777-4777-8777-777777777777" });
     });
 
     // The point of the whole exercise: the new code path must not be a second
@@ -921,7 +565,7 @@ describe("scim.service — RFC 7644 patch paths and filters (A-33)", () => {
       Role.findOne.mockResolvedValue({ id: "r-other", name: "superadmin", isSystem: true });
 
       await expect(
-        scim.patchUser("t1", "u1", [{ op: "add", path: "roleId", value: "r-other" }]),
+        scim.patchUser("t1", "u1", [{ op: "add", path: "roleId", value: "88888888-8888-4888-8888-888888888888" }]),
       ).rejects.toMatchObject({ status: 403 });
       expect(update).not.toHaveBeenCalled();
     });
@@ -930,7 +574,7 @@ describe("scim.service — RFC 7644 patch paths and filters (A-33)", () => {
       Role.findOne.mockResolvedValue(null);
 
       await expect(
-        scim.patchUser("t1", "u1", [{ op: "replace", path: "roleId", value: "nope" }]),
+        scim.patchUser("t1", "u1", [{ op: "replace", path: "roleId", value: "99999999-9999-4999-8999-999999999999" }]),
       ).rejects.toMatchObject({ status: 400 });
       expect(update).not.toHaveBeenCalled();
     });
@@ -946,7 +590,7 @@ describe("scim.service — RFC 7644 patch paths and filters (A-33)", () => {
 
     it("rejects a non-string path with 400", async () => {
       await expect(
-        scim.patchUser("t1", "u1", [{ op: "replace", path: ["roleId"], value: "r7" }]),
+        scim.patchUser("t1", "u1", [{ op: "replace", path: ["roleId"], value: "77777777-7777-4777-8777-777777777777" }]),
       ).rejects.toMatchObject({ status: 400 });
     });
 
@@ -991,138 +635,6 @@ describe("scim.service — RFC 7644 patch paths and filters (A-33)", () => {
     });
   });
 
-  describe("patchGroup — path form", () => {
-    beforeEach(() => {
-      Role.findOne.mockResolvedValue({ id: "g1", name: "ENGINEERS", isSystem: false, update });
-    });
-
-    it("adds members given the standard IdP membership operation", async () => {
-      await scim.patchGroup("t1", "g1", [
-        { op: "add", path: "members", value: [{ value: "u1" }, { value: "u2" }] },
-      ]);
-
-      expect(Users.update).toHaveBeenCalledWith(
-        { roleId: "g1" },
-        { where: { id: { [Op.in]: ["u1", "u2"] }, tenantId: "t1" } },
-      );
-    });
-
-    it("resolves a members path carrying the core Group schema URN", async () => {
-      await scim.patchGroup("t1", "g1", [
-        { op: "add", path: "urn:ietf:params:scim:schemas:core:2.0:Group:members", value: ["u1"] },
-      ]);
-
-      expect(Users.update).toHaveBeenCalledWith(
-        { roleId: "g1" },
-        { where: { id: { [Op.in]: ["u1"] }, tenantId: "t1" } },
-      );
-    });
-
-    it("treats a replace on members as an assignment, like PUT does", async () => {
-      await scim.patchGroup("t1", "g1", [{ op: "replace", path: "members", value: "u3" }]);
-
-      expect(Users.update).toHaveBeenCalledWith(
-        { roleId: "g1" },
-        { where: { id: { [Op.in]: ["u3"] }, tenantId: "t1" } },
-      );
-    });
-
-    it("renames the group given path displayName", async () => {
-      await scim.patchGroup("t1", "g1", [
-        { op: "replace", path: "displayName", value: "Platform Team" },
-      ]);
-
-      expect(update).toHaveBeenCalledWith({ name: "PLATFORM TEAM", nameToShow: "Platform Team" });
-    });
-
-    it("removes the single member named by an Okta value filter", async () => {
-      await scim.patchGroup("t1", "g1", [{ op: "remove", path: 'members[value eq "u9"]' }]);
-
-      expect(Users.update).toHaveBeenCalledWith(
-        { roleId: ROLE_IDS.USER },
-        { where: { id: { [Op.in]: ["u9"] }, tenantId: "t1" } },
-      );
-    });
-
-    it("removes the members named in the value", async () => {
-      await scim.patchGroup("t1", "g1", [
-        { op: "remove", path: "members", value: [{ value: "u1" }] },
-      ]);
-
-      expect(Users.update).toHaveBeenCalledWith(
-        { roleId: ROLE_IDS.USER },
-        { where: { id: { [Op.in]: ["u1"] }, tenantId: "t1" } },
-      );
-    });
-
-    it("empties the group, tenant-scoped, when remove members carries no value", async () => {
-      await scim.patchGroup("t1", "g1", [{ op: "remove", path: "members" }]);
-
-      expect(Users.update).toHaveBeenCalledWith(
-        { roleId: ROLE_IDS.USER },
-        { where: { roleId: "g1", tenantId: "t1" } },
-      );
-    });
-
-    it("rejects an empty members value with 400", async () => {
-      await expect(
-        scim.patchGroup("t1", "g1", [{ op: "add", path: "members", value: [] }]),
-      ).rejects.toMatchObject({ status: 400 });
-      expect(Users.update).not.toHaveBeenCalled();
-    });
-
-    it("rejects removing displayName with 400", async () => {
-      await expect(
-        scim.patchGroup("t1", "g1", [{ op: "remove", path: "displayName" }]),
-      ).rejects.toMatchObject({ status: 400 });
-      expect(update).not.toHaveBeenCalled();
-    });
-
-    it("rejects a non-string displayName with 400", async () => {
-      await expect(
-        scim.patchGroup("t1", "g1", [{ op: "replace", path: "displayName", value: { x: 1 } }]),
-      ).rejects.toMatchObject({ status: 400 });
-    });
-
-    it("rejects an unsupported group path with 400", async () => {
-      await expect(
-        scim.patchGroup("t1", "g1", [{ op: "add", path: "externalId", value: "x" }]),
-      ).rejects.toMatchObject({ status: 400 });
-    });
-
-    it("rejects a non-string group path with 400", async () => {
-      await expect(
-        scim.patchGroup("t1", "g1", [{ op: "add", path: ["members"], value: ["u1"] }]),
-      ).rejects.toMatchObject({ status: 400 });
-    });
-
-    it("rejects a group operation with neither a path nor an object value", async () => {
-      await expect(
-        scim.patchGroup("t1", "g1", [{ op: "add", value: ["u1"] }]),
-      ).rejects.toMatchObject({ status: 400 });
-    });
-
-    // The asymmetry docs/DEVELOPER/09-SCIM-PROVISIONING.md flagged: updateGroup
-    // guarded member assignment, patchGroup did not.
-    it("runs a path-form member add through the A-27 role guard", async () => {
-      Role.findOne.mockResolvedValue({ id: SUPERADMIN_ID, name: "SUPERADMIN", isSystem: false, update });
-
-      await expect(
-        scim.patchGroup("t1", SUPERADMIN_ID, [{ op: "add", path: "members", value: ["u1"] }]),
-      ).rejects.toMatchObject({ status: 403 });
-      expect(Users.update).not.toHaveBeenCalled();
-    });
-
-    it("runs a value-form member add through the A-27 role guard too", async () => {
-      Role.findOne.mockResolvedValue({ id: SUPERADMIN_ID, name: "SUPERADMIN", isSystem: false, update });
-
-      await expect(
-        scim.patchGroup("t1", SUPERADMIN_ID, [{ op: "add", value: { members: ["u1"] } }]),
-      ).rejects.toMatchObject({ status: 403 });
-      expect(Users.update).not.toHaveBeenCalled();
-    });
-  });
-
   describe("getUsers — filter", () => {
     beforeEach(() => {
       Users.findAndCountAll.mockResolvedValue({
@@ -1145,8 +657,12 @@ describe("scim.service — RFC 7644 patch paths and filters (A-33)", () => {
     it("narrows to one user on a userName eq filter", async () => {
       const result = await scim.getUsers("t1", 1, 100, 'userName eq "ada@b.com"');
 
+      // A-49: userName matches the username column as well as the email — a
+      // user whose username differs from their address was unfindable.
       expect(Users.findAndCountAll).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { tenantId: "t1", email: "ada@b.com" } }),
+        expect.objectContaining({
+          where: { tenantId: "t1", [Op.or]: [{ email: "ada@b.com" }, { username: "ada@b.com" }] },
+        }),
       );
       expect(result.totalResults).toBe(1);
       expect(result.Resources).toHaveLength(1);
@@ -1176,7 +692,12 @@ describe("scim.service — RFC 7644 patch paths and filters (A-33)", () => {
 
       expect(Users.findAndCountAll).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { tenantId: "t1", email: "ada@b.com", isActive: true, status: "ACTIVE" },
+          where: {
+            tenantId: "t1",
+            [Op.or]: [{ email: "ada@b.com" }, { username: "ada@b.com" }],
+            isActive: true,
+            status: "ACTIVE",
+          },
         }),
       );
     });

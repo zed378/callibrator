@@ -20,6 +20,7 @@
 
 const crypto = require("crypto");
 const fs = require("fs");
+const path = require("path");
 const { Attachment } = require("../models");
 const storage = require("./storage");
 const storagePath = require("../utils/storagePath.util");
@@ -35,14 +36,23 @@ const hashStream = (stream) =>
     stream.on("error", reject);
   });
 
-/** Absolute legacy path for a row, guarding against traversal via folder. */
+/**
+ * Absolute legacy path for a row, refusing one outside the uploads tree.
+ *
+ * S-15: the root is FIXED — `storagePath("uploads")`. It used to be
+ * `storagePath(...parts)`, built from the row's own `folder`, so a folder of
+ * `../../etc` moved the root with it and the check passed. Both sides are
+ * `path.resolve`d and the prefix carries the separator. A row with an empty
+ * folder names a file at the storage root, which is not an upload, and is
+ * refused (migrateAll records it as failed and moves on).
+ */
 const legacyPath = (attachment) => {
   const parts = String(attachment.folder || "")
-    .split("/")
+    .split(/[\\/]/)
     .filter(Boolean);
-  const abs = storagePath(...parts, attachment.fileName);
-  const root = storagePath(...parts);
-  if (!abs.startsWith(root)) {
+  const abs = path.resolve(storagePath(...parts, String(attachment.fileName || "")));
+  const root = path.resolve(storagePath("uploads"));
+  if (!abs.startsWith(root + path.sep)) {
     throw new AppError(400, `Refusing to read outside storage root: ${attachment.id}`);
   }
   return abs;

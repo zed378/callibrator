@@ -9,6 +9,14 @@ jest.mock("../../models", () => ({
   Notification: {
     create: jest.fn(),
   },
+  // A-145 — approveRecommendation's managed transaction; the sentinel proves
+  // both the update and the audit row carry it.
+  sequelize: {
+    transaction: jest.fn(async (cb) => cb("TX")),
+  },
+}));
+jest.mock("../../services/audit.service", () => ({
+  logAction: jest.fn().mockResolvedValue({}),
 }));
 jest.mock("../../utils/appError.util", () => ({
   AppError: class AppError extends Error {
@@ -278,6 +286,78 @@ describe("predictiveMaintenance.service", () => {
             tenantId: "tenant-1",
           }),
         }),
+      );
+    });
+  });
+
+  describe("approveRecommendation (A-145)", () => {
+    const makeDevice = (overrides = {}) => ({
+      id: "device-1",
+      calibrationIntervalDays: 365,
+      recommendedCalibrationInterval: 180,
+      recommendationReason: "drift",
+      update: jest.fn(async function update(values) {
+        Object.assign(this, values);
+        return this;
+      }),
+      ...overrides,
+    });
+
+    it("scopes the lookup to the tenant and answers 404 when the device is not there", async () => {
+      const { CalibrationDevice } = require("../../models");
+      CalibrationDevice.findOne.mockResolvedValue(null);
+
+      await expect(
+        predictiveMaintenanceService.approveRecommendation("tenant-1", "device-1", "user-1"),
+      ).rejects.toMatchObject({ status: 404, message: "Device not found" });
+      expect(CalibrationDevice.findOne).toHaveBeenCalledWith({
+        where: { id: "device-1", tenantId: "tenant-1" },
+      });
+    });
+
+    it("answers 409 when there is no pending recommendation, and writes nothing", async () => {
+      const { CalibrationDevice, sequelize } = require("../../models");
+      const device = makeDevice({ recommendedCalibrationInterval: null });
+      CalibrationDevice.findOne.mockResolvedValue(device);
+
+      await expect(
+        predictiveMaintenanceService.approveRecommendation("tenant-1", "device-1", "user-1"),
+      ).rejects.toMatchObject({ status: 409 });
+      expect(sequelize.transaction).not.toHaveBeenCalled();
+      expect(device.update).not.toHaveBeenCalled();
+    });
+
+    it("applies the interval and writes the APPROVE audit row in the same transaction", async () => {
+      const { CalibrationDevice } = require("../../models");
+      const auditService = require("../../services/audit.service");
+      const device = makeDevice();
+      CalibrationDevice.findOne.mockResolvedValue(device);
+
+      const result = await predictiveMaintenanceService.approveRecommendation(
+        "tenant-1",
+        "device-1",
+        "user-1",
+      );
+
+      expect(result).toBe(device);
+      expect(device.update).toHaveBeenCalledWith(
+        { calibrationIntervalDays: 180, recommendedCalibrationInterval: null, recommendationReason: null },
+        { transaction: "TX" },
+      );
+      expect(auditService.logAction).toHaveBeenCalledWith(
+        {
+          tenantId: "tenant-1",
+          userId: "user-1",
+          action: "APPROVE",
+          resourceType: "CalibrationDevice",
+          resourceId: "device-1",
+          changes: {
+            operation: "APPLY_RECOMMENDED_INTERVAL",
+            before: { calibrationIntervalDays: 365, recommendedCalibrationInterval: 180, recommendationReason: "drift" },
+            after: { calibrationIntervalDays: 180 },
+          },
+        },
+        { transaction: "TX" },
       );
     });
   });

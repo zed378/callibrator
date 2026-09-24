@@ -6,6 +6,32 @@ const { AppError } = require("./appError.util");
 // MAGIC BYTE SIGNATURES
 // ==========================================
 
+// D0 CF 11 E0 A1 B1 1A E1 — OLE2 / Compound File Binary header.
+const OLE2_SIGNATURE = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1];
+// PK\3\4 — a ZIP local file header.
+const ZIP_LOCAL_SIGNATURE = [0x50, 0x4b, 0x03, 0x04];
+
+// How much of the file's head is inspected. Also the window the text check
+// scans for NUL bytes.
+const HEAD_BYTES = 8 * 1024;
+
+// S-11: OOXML types are ZIP containers. A ZIP signature alone would let any
+// archive through under an Office type, so the central directory must list
+// `[Content_Types].xml` (every OPC package has it) and at least one part under
+// the declared type's own folder.
+const OOXML_PART_PREFIX = {
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+    "word/",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xl/",
+};
+
+// S-11: text has no magic bytes, so it cannot be matched by signature. It is
+// accepted as text when its first HEAD_BYTES contain no NUL byte — UTF-8 and
+// ASCII text never carry one, while nearly every binary format (images,
+// archives, executables, Office files) has one within its first few hundred
+// bytes. UTF-16 text does carry NULs and is refused; export as UTF-8.
+const TEXT_TYPES = ["text/plain", "text/csv"];
+
 // Map of MIME types to their magic byte signatures
 const MAGIC_BYTES = {
   "image/jpeg": {
@@ -41,8 +67,19 @@ const MAGIC_BYTES = {
     ],
     extensions: [".pdf"],
   },
+  // S-11: legacy Office (.doc, .xls) is an OLE2 Compound File. Both share one
+  // signature — telling them apart means walking the CFB directory for a
+  // WordDocument or Workbook stream, which this check does not do.
+  "application/msword": {
+    signatures: [{ offset: 0, bytes: OLE2_SIGNATURE }],
+    extensions: [".doc"],
+  },
+  "application/vnd.ms-excel": {
+    signatures: [{ offset: 0, bytes: OLE2_SIGNATURE }],
+    extensions: [".xls"],
+  },
   "application/zip": {
-    signatures: [{ offset: 0, bytes: [0x50, 0x4b, 0x03, 0x04] }],
+    signatures: [{ offset: 0, bytes: ZIP_LOCAL_SIGNATURE }],
     extensions: [".zip"],
   },
   "application/octet-stream": {
@@ -125,81 +162,174 @@ const DANGEROUS_MIMES = [
 // MAGIC BYTE VALIDATION
 // ==========================================
 
+const matchesSignature = (buffer, bytes, offset = 0) =>
+  buffer.length >= offset + bytes.length &&
+  bytes.every((byte, i) => buffer[offset + i] === byte);
+
+const ZIP_EOCD_SIGNATURE = 0x06054b50;
+const ZIP_CENTRAL_SIGNATURE = 0x02014b50;
+const ZIP_EOCD_LENGTH = 22;
+const ZIP_CENTRAL_HEADER_LENGTH = 46;
+
 /**
- * Validate file content by checking magic bytes against declared MIME type
+ * The entry names in a ZIP's central directory, read from the file itself (no
+ * archive library: only the names are needed, nothing is decompressed).
+ * @param {import("fs").promises.FileHandle} fd - open handle on the file
+ * @param {number} size - the file's size in bytes
+ * @returns {Promise<string[]|null>} the names, or null when the file has no
+ *   well-formed single-disk central directory (ZIP64 sentinels fail the bounds
+ *   check and are refused)
+ */
+const readZipEntryNames = async (fd, size) => {
+  // The end-of-central-directory record is 22 bytes plus a comment of at most
+  // 65535, so it sits somewhere in the last 65557 bytes.
+  const tailLength = Math.min(size, ZIP_EOCD_LENGTH + 0xffff);
+  const tail = Buffer.alloc(tailLength);
+  await fd.read(tail, 0, tailLength, size - tailLength);
+
+  let eocd = -1;
+  for (let i = tailLength - ZIP_EOCD_LENGTH; i >= 0; i--) {
+    if (tail.readUInt32LE(i) === ZIP_EOCD_SIGNATURE) {
+      eocd = i;
+      break;
+    }
+  }
+  if (eocd < 0) {
+    return null;
+  }
+
+  const entryCount = tail.readUInt16LE(eocd + 10);
+  const directorySize = tail.readUInt32LE(eocd + 12);
+  const directoryOffset = tail.readUInt32LE(eocd + 16);
+  if (directoryOffset + directorySize > size) {
+    return null;
+  }
+
+  const directory = Buffer.alloc(directorySize);
+  await fd.read(directory, 0, directorySize, directoryOffset);
+
+  const names = [];
+  let pos = 0;
+  for (let n = 0; n < entryCount; n++) {
+    if (
+      pos + ZIP_CENTRAL_HEADER_LENGTH > directorySize ||
+      directory.readUInt32LE(pos) !== ZIP_CENTRAL_SIGNATURE
+    ) {
+      return null;
+    }
+    const nameLength = directory.readUInt16LE(pos + 28);
+    const extraLength = directory.readUInt16LE(pos + 30);
+    const commentLength = directory.readUInt16LE(pos + 32);
+    const nameStart = pos + ZIP_CENTRAL_HEADER_LENGTH;
+    names.push(directory.toString("utf8", nameStart, nameStart + nameLength));
+    pos = nameStart + nameLength + extraLength + commentLength;
+  }
+  return names;
+};
+
+/**
+ * Whether a file is an OOXML package of the declared kind: a ZIP whose central
+ * directory lists `[Content_Types].xml` and a part under the kind's folder
+ * (`word/` for .docx, `xl/` for .xlsx).
+ */
+const isOoxmlOfKind = async (fd, size, head, partPrefix) => {
+  if (!matchesSignature(head, ZIP_LOCAL_SIGNATURE)) {
+    return false;
+  }
+  const names = await readZipEntryNames(fd, size);
+  return (
+    names !== null &&
+    names.includes("[Content_Types].xml") &&
+    names.some((name) => name.startsWith(partPrefix))
+  );
+};
+
+/**
+ * Validate file content by checking magic bytes against declared MIME type.
+ *
+ * - signature types (images, PDF, OLE2 .doc/.xls, zip): the head must carry
+ *   the type's signature;
+ * - OOXML (.docx, .xlsx): a ZIP that is an OPC package of that kind (S-11);
+ * - text (.txt, .csv): no NUL byte in the first HEAD_BYTES (S-11).
+ *
  * @param {string} filePath - Path to the file to validate
  * @param {string} declaredMime - The MIME type declared by the client or server
- * @returns {Promise<string>} The verified MIME type, or null if invalid
- * @throws {AppError} If the file content doesn't match the declared type
+ * @returns {Promise<string>} The verified MIME type
+ * @throws {AppError} 400 naming the declared type if the content doesn't match
  */
 exports.validateFileMagicBytes = async (filePath, declaredMime) => {
+  let fd;
   try {
     const stat = await fs.promises.stat(filePath);
     if (stat.size === 0) {
       throw new AppError(400, "Uploaded file is empty");
     }
 
-    // Read the first 16 bytes for magic byte inspection
-    const fd = await fs.promises.open(filePath, "r");
-    const buffer = Buffer.alloc(Math.min(16, stat.size));
-    const { bytesRead } = await fd.read(buffer, 0, buffer.length, 0);
-    await fd.close();
+    fd = await fs.promises.open(filePath, "r");
+    const head = Buffer.alloc(Math.min(HEAD_BYTES, stat.size));
+    const { bytesRead } = await fd.read(head, 0, head.length, 0);
 
     if (bytesRead === 0) {
       throw new AppError(400, "Unable to read uploaded file");
     }
+    const buffer = head.subarray(0, bytesRead);
 
-    // Check against known signatures
-    for (const [mime, config] of Object.entries(MAGIC_BYTES)) {
-      if (config.customCheck) {
-        if (config.customCheck(buffer)) {
-          // MIME matches content - allow if declared matches
-          if (
-            declaredMime === mime ||
-            declaredMime === "application/octet-stream"
-          ) {
-            return mime;
-          }
-        }
-      } else {
-        for (const sig of config.signatures) {
-          if (buffer.length >= sig.offset + sig.bytes.length) {
-            const match = sig.bytes.every(
-              (byte, i) => buffer[sig.offset + i] === byte,
-            );
-            if (match) {
-              if (
-                declaredMime === mime ||
-                declaredMime === "application/octet-stream"
-              ) {
-                return mime;
-              }
-            }
-          }
+    if (TEXT_TYPES.includes(declaredMime)) {
+      if (!buffer.includes(0x00)) {
+        return declaredMime;
+      }
+    } else if (Object.hasOwn(OOXML_PART_PREFIX, declaredMime)) {
+      if (
+        await isOoxmlOfKind(
+          fd,
+          stat.size,
+          buffer,
+          OOXML_PART_PREFIX[declaredMime],
+        )
+      ) {
+        return declaredMime;
+      }
+    } else {
+      // Check against known signatures
+      for (const [mime, config] of Object.entries(MAGIC_BYTES)) {
+        const matchesSig = (sig) =>
+          matchesSignature(buffer, sig.bytes, sig.offset);
+        const matched = config.customCheck
+          ? config.customCheck(buffer)
+          : config.signatures.some(matchesSig);
+        if (
+          matched &&
+          (declaredMime === mime || declaredMime === "application/octet-stream")
+        ) {
+          return mime;
         }
       }
-    }
 
-    // If declared MIME doesn't match any known signature, check if it's a generic type
-    if (
-      declaredMime === "application/octet-stream" ||
-      declaredMime === "application/x-unknown"
-    ) {
-      // For generic types, just verify the file is readable
-      return "application/octet-stream";
+      // If declared MIME doesn't match any known signature, check if it's a generic type
+      if (
+        declaredMime === "application/octet-stream" ||
+        declaredMime === "application/x-unknown"
+      ) {
+        // For generic types, just verify the file is readable
+        return "application/octet-stream";
+      }
     }
 
     // If we get here, the declared MIME doesn't match the actual content
     // This could indicate a MIME type confusion attack
     throw new AppError(
       400,
-      `File content does not match declared type. Expected: ${declaredMime}`,
+      `File content does not match declared type "${declaredMime}"`,
     );
   } catch (err) {
     if (err instanceof AppError) {
       throw err;
     }
     throw new AppError(500, "File validation error");
+  } finally {
+    if (fd) {
+      await fd.close();
+    }
   }
 };
 

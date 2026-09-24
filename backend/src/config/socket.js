@@ -26,10 +26,18 @@
  *    on an HTTP request. Without it every socket-initiated query ran with no
  *    context at all, which the scope resolver treats as "skip".
  *
+ * A-54 (2026-09-24): the fan-out goes through the Redis adapter whenever the
+ * shared Redis client is ready at startup (`initRedis()` runs before
+ * `initSocket()` in index.js), so an emit on one replica reaches clients
+ * connected to every replica. Without Redis it falls back to the in-memory
+ * adapter with a warning — correct for exactly one replica, and only one.
+ *
  * Exported surface: initSocket / getIo / emitToBoard.
  */
 
 const { Server } = require("socket.io");
+const { createAdapter } = require("@socket.io/redis-adapter");
+const redisService = require("../services/redis.service");
 const { verifyPurposeToken } = require("../utils/jwt.util");
 const authService = require("../services/auth.service");
 const sessionService = require("../services/session.service");
@@ -138,7 +146,7 @@ const authenticateHandshake = async (socket, next) => {
       return deny(next, `user ${user.id} is banned`);
     }
 
-    if (user.status === "INACTIVE" || user.status === "SUSPENDED") {
+    if (user.status === "INACTIVE" || user.status === "SUSPENDED" || user.status === "erased") {
       return deny(next, `user ${user.id} is ${user.status.toLowerCase()}`);
     }
 
@@ -181,6 +189,54 @@ const withTenantContext = (socket, handler) => {
     tenantStorage.run(socket.tenantContext, () => handler(...args));
 };
 
+const IN_MEMORY_WARNING =
+  "[Socket] Redis is not available: using the in-memory adapter. Realtime " +
+  "events reach only clients connected to THIS process — run exactly one " +
+  "backend replica until Redis is configured (A-54).";
+
+/**
+ * Put the server's fan-out on Redis pub/sub (A-54).
+ *
+ * The adapter needs two connections of its own — a subscriber cannot issue
+ * ordinary commands — so both are duplicates of the shared client and inherit
+ * its URL, credentials and `protocol: 2` (redis.service.js). `lazyConnect` is
+ * overridden so they dial now rather than on their first command.
+ *
+ * Enabled only when the shared client is `ready`: index.js has already awaited
+ * `initRedis()`, so anything else means Redis is unconfigured or unreachable,
+ * and the in-memory adapter is the only one that can work. A connection lost
+ * LATER is ioredis's job: the duplicates reconnect with the shared retry
+ * strategy and re-subscribe on their own.
+ *
+ * @param {import("socket.io").Server} server
+ * @returns {boolean} whether the Redis adapter was installed
+ */
+const attachAdapter = (server) => {
+  let shared = null;
+  try {
+    shared = redisService.getRedisConnection();
+  } catch (err) {
+    console.warn(`[Socket] Redis client unavailable: ${err.message}`);
+  }
+
+  if (!shared || shared.status !== "ready") {
+    console.warn(IN_MEMORY_WARNING);
+    return false;
+  }
+
+  const pubClient = shared.duplicate({ lazyConnect: false });
+  const subClient = shared.duplicate({ lazyConnect: false });
+  for (const client of [pubClient, subClient]) {
+    client.on("error", (err) => {
+      console.warn(`[Socket] Redis adapter connection error: ${err.message}`);
+    });
+  }
+
+  server.adapter(createAdapter(pubClient, subClient));
+  console.log("[Socket] Redis adapter enabled: fan-out is shared across replicas");
+  return true;
+};
+
 let io;
 
 exports.initSocket = (server) => {
@@ -191,6 +247,8 @@ exports.initSocket = (server) => {
       credentials: true,
     },
   });
+
+  attachAdapter(io);
 
   // Socket authentication middleware.
   io.use(authenticateHandshake);
@@ -272,5 +330,7 @@ exports.__testables = {
   corsOrigin,
   readAuthToken,
   withTenantContext,
+  attachAdapter,
   AUTH_ERROR,
+  IN_MEMORY_WARNING,
 };

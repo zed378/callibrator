@@ -155,9 +155,8 @@ describe("eSignature.service", () => {
         principalHasMenuPermission: jest.fn().mockResolvedValue(true),
       }));
       jest.doMock("../../services/emailQueue.service", () => ({
-        emailQueueService: {
-          queueEmail: jest.fn().mockResolvedValue(undefined),
-        },
+        // A-158: the real export (emailQueueService never existed).
+        queueNotificationEmail: jest.fn().mockResolvedValue(true),
       }));
 
       jest.resetModules();

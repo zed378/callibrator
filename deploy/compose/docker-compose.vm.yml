@@ -68,8 +68,11 @@ services:
       # Socket.IO. See frontend/src/constants/index.ts.
       BACKEND_INTERNAL_URL: ${BACKEND_INTERNAL_URL:-http://backend:3000}
     build:
-      context: ../../frontend
-      dockerfile: Dockerfile
+      # Context is the REPOSITORY ROOT so the build can `npm ci --workspace
+      # frontend` against the committed root package-lock.json (ADR-044, S-29).
+      # See frontend/Dockerfile and frontend/Dockerfile.dockerignore.
+      context: ../..
+      dockerfile: frontend/Dockerfile
       args:
         # INLINED AT BUILD TIME. This one value is used BOTH server-side (the
         # Next.js proxy at /api/v1/[...path] forwards to it) and client-side

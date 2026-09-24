@@ -74,6 +74,17 @@ const migrationModules = [
   ["0032-esignature-technical-roles-only.js", require("../migrations/0032-esignature-technical-roles-only")],
   ["0033-audit-log-actor.js", require("../migrations/0033-audit-log-actor")],
   ["0034-platform-tenant.js", require("../migrations/0034-platform-tenant")],
+  ["0035-tenant-settings-secrets.js", require("../migrations/0035-tenant-settings-secrets")],
+  ["0036-flag-never-signed-in-admin-passwords.js", require("../migrations/0036-flag-never-signed-in-admin-passwords")],
+  ["0037-association-foreign-keys.js", require("../migrations/0037-association-foreign-keys")],
+  ["0038-ai-assistant-menu.js", require("../migrations/0038-ai-assistant-menu")],
+  ["0039-signature-workflow-requested-by.js", require("../migrations/0039-signature-workflow-requested-by")],
+  ["0040-session-impersonator.js", require("../migrations/0040-session-impersonator")],
+  ["0042-scim-groups-per-tenant.js", require("../migrations/0042-scim-groups-per-tenant")],
+  ["0043-webhook-durable-delivery.js", require("../migrations/0043-webhook-durable-delivery")],
+  ["0044-iot-device-token-hash.js", require("../migrations/0044-iot-device-token-hash")],
+  ["0047-drop-data-retention-policies.js", require("../migrations/0047-drop-data-retention-policies")],
+  ["0049-audit-actions-lockout-signature.js", require("../migrations/0049-audit-actions-lockout-signature")],
 ];
 
 const migrator = new Umzug({

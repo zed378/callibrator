@@ -32,6 +32,17 @@ const defineModel = (db, DataTypes) => {
         references: { model: "tenants", key: "id" },
         onDelete: "CASCADE",
       },
+      // A-146: the super admin behind an impersonation session; NULL for an
+      // ordinary one. The refresh reads it back, so a refreshed access token
+      // keeps its `impersonatorId` claim — and with it the F-8 attribution and
+      // the Part 11 refusal (A-127). Added to existing databases by migration
+      // 0040-session-impersonator. snake_case, like every column here.
+      impersonator_id: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: { model: "users", key: "id" },
+        onDelete: "CASCADE",
+      },
       token_hash: {
         type: DataTypes.STRING(64),
         allowNull: false,

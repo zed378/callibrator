@@ -111,7 +111,10 @@ describe("A-65 — eSignature.service#signDocument", () => {
     expect(h.models.SignatureRecord.create).not.toHaveBeenCalled();
     expect(h.step.update).not.toHaveBeenCalled();
     expect(h.workflow.update).not.toHaveBeenCalled();
-    expect(h.models.AuditLog.create).not.toHaveBeenCalled();
+    // A-126: a wrong credential writes one SIGNATURE_AUTH_FAILED row
+    // (esignature.signatureAuthFailed.a126.test.js) — and no other audit row.
+    const actions = h.models.AuditLog.create.mock.calls.map(([row]) => row.action);
+    expect(actions.filter((action) => action !== "SIGNATURE_AUTH_FAILED")).toEqual([]);
   };
 
   describe("signer binding", () => {

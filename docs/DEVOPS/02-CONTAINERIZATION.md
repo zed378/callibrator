@@ -77,45 +77,62 @@ A dedicated `app` user with `/usr/sbin/nologin`. Persistent directories are crea
 
 ## Frontend Image
 
-```dockerfile
-FROM node:22-alpine AS builder
-WORKDIR /app
-# next-bun-compile's postinstall shells out to `bun` to create a symlink.
-# Without it on PATH, `npm install` exits 127 with "sh: bun: not found".
-COPY --from=oven/bun:1-alpine /usr/local/bin/bun /usr/local/bin/bun
-COPY package.json ./
-RUN npm install --no-audit --no-fund
-COPY . .
-RUN npm run build
-RUN test -f .next/standalone/server.js || (echo "ERROR: no standalone output" && exit 1)
+**Build context: the repository root** (S-29, the same shape as the backend under ADR-046):
 
-FROM node:22-alpine AS runner
+```bash
+docker build -f frontend/Dockerfile .
+```
+
+Abridged — [`frontend/Dockerfile`](../../frontend/Dockerfile) is the source:
+
+```dockerfile
+FROM node:24.21.0-alpine@sha256:<digest> AS builder
 WORKDIR /app
-RUN apk add --no-cache wget && addgroup -S app && adduser -S -G app app
-ENV NODE_ENV=production HOSTNAME=0.0.0.0 HOST=0.0.0.0 PORT=3000
-COPY --from=builder --chown=app:app /app/.next/standalone ./
-COPY --from=builder --chown=app:app /app/.next/static ./.next/static
-COPY --from=builder --chown=app:app /app/public ./public
-USER app
+COPY package.json package-lock.json ./
+COPY frontend/package.json frontend/package.json
+COPY backend/package.json backend/package.json
+RUN npm ci --workspace frontend --no-audit --no-fund
+COPY frontend/ frontend/
+WORKDIR /app/frontend
+RUN npm run build
+RUN test -f .next/standalone/frontend/server.js || (echo "ERROR: ..." && exit 1)
+
+FROM node:24.21.0-alpine@sha256:<digest> AS runner
+WORKDIR /app
+RUN apk add --no-cache wget && addgroup -S -g 1001 app && adduser -S -u 1001 -G app app
+ENV NODE_ENV=production HOSTNAME=0.0.0.0 PORT=3000
+COPY --from=builder --chown=app:app /app/frontend/.next/standalone ./
+COPY --from=builder --chown=app:app /app/frontend/.next/static ./frontend/.next/static
+COPY --from=builder --chown=app:app /app/frontend/public ./frontend/public
+WORKDIR /app/frontend
+USER 1001:1001
 EXPOSE 3000
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3   CMD wget --no-verbose --tries=1 --spider http://localhost:3000 || exit 1
+HEALTHCHECK ... CMD wget --no-verbose --tries=1 --spider http://localhost:3000 || exit 1
 CMD ["node", "server.js"]
 ```
 
-**This replaced a Dockerfile that could not build.** The previous version — which is what this document described until 2026-09 — copied a `bun.lock` that is not committed and ran a `build:docker` script that does not exist in `package.json`. The image was never producible from a clean checkout. The compiled-binary path in [`../FRONTEND/11-BUILD-AND-BINARY.md`](../FRONTEND/11-BUILD-AND-BINARY.md) remains the intended on-premise distribution format; restoring it needs a committed lockfile and a real build script.
+**`npm ci --workspace frontend` against the committed root lockfile** (ADR-044). The previous image ran `npm install` with no lockfile in a `frontend/` context: over 10 minutes, and a different transitive tree on every build. What the root context sends is controlled by [`frontend/Dockerfile.dockerignore`](../../frontend/Dockerfile.dockerignore), an allow-list (the three manifests and `frontend/`, minus `node_modules`, `.next`, local `.env*` files and tests). BuildKit reads `<Dockerfile>.dockerignore` in preference to the context's `.dockerignore`; `frontend/.dockerignore` is not consulted by this build.
 
-**`HOSTNAME`, not `HOST`.** Next.js standalone `server.js` binds `process.env.HOSTNAME`, and **Docker sets `HOSTNAME` to the container ID**. Unset, the server listens on an address nothing can reach — the healthcheck reports "connection refused" while the process is perfectly healthy. This cost a deployment.
+**No bun in the image.** `next-bun-compile` (a devDependency) has a postinstall that runs `bun -e` to create a self-symlink used only by the opt-in compiled-binary path. The root `package.json` `allowScripts` denies it, and npm 11 in `node:24` honours that list, so the script does not run. The old image copied bun in only so `npm install` could run that postinstall.
 
-**No lockfile is copied, because none is committed.** `.gitignore` excludes `pnpm-lock.yaml`, `package-lock.json` and `bun.lock`, so every build resolves transitive versions fresh. **A build today and a build next month can ship different dependencies** — the exact failure `--frozen-lockfile` existed to prevent. Committing a lockfile is the fix; until then this is a known reproducibility gap, recorded as W-11.
+**`next.config.ts` sets `turbopack.root` and `outputFileTracingRoot` to the workspace root.** Under the npm workspace, `next` is hoisted to `<repo>/node_modules`, and Turbopack refuses to resolve outside its root — with root at `frontend/`, `next build` fails with "couldn't find the Next.js package". A consequence: the standalone bundle mirrors the repository layout, so the server is `.next/standalone/frontend/server.js` with the traced `node_modules` beside it, and the runtime `WORKDIR` is `/app/frontend`.
 
-**The `test -f .next/standalone/server.js` line.** It fails the build loudly if the build produced no standalone output. Without it the runner stage copies nothing and the failure surfaces at container start — the same class of problem as a build artefact reporting success and emitting nothing.
+**Both stages pin the base image by version and digest.** A floating tag is a different base on every pull.
+
+**The uid is pinned and `USER` is numeric** (1001). A Kubernetes pod with `runAsNonRoot` refuses an image whose `USER` is a name, and the chart's `runAsUser`/`fsGroup` must name this id.
+
+**The compiled-binary path** in [`../FRONTEND/11-BUILD-AND-BINARY.md`](../FRONTEND/11-BUILD-AND-BINARY.md) remains the intended on-premise distribution format; this image does not build it.
+
+**`HOSTNAME`, not `HOST`.** Next.js standalone `server.js` binds `process.env.HOSTNAME`, and **Docker sets `HOSTNAME` to the container ID**. Unset, the server listens on an address nothing can reach — the healthcheck reports "connection refused" while the process is perfectly healthy. This cost a deployment. `HOST` is read by nothing and is no longer set anywhere — not in the image, compose or the chart (S-30).
+
+**The `test -f .next/standalone/frontend/server.js` line.** It fails the build loudly if the build produced no standalone output. Without it the runner stage copies nothing and the failure surfaces at container start — the same class of problem as a build artefact reporting success and emitting nothing.
 
 **`output: "standalone"` is production-only in `next.config.ts`**, alongside a `next-bun-compile` adapter that is **opt-in behind `NEXT_COMPILE=true`**. Left always-on it breaks `next build` with `ENOENT: .next/next-server.js.nft.json`.
 
 **Overrides are evaluated against the package being installed.** `frontend/package.json` overrode `eslint` to an exact version while also declaring it a direct devDependency. At the workspace root that is fine — the root has no direct `eslint` — so `npm install` succeeded locally and **only the container build failed**, with `EOVERRIDE: Override for eslint@^9.22.0 conflicts with direct dependency`. The override now uses npm's `"$eslint"` reference, which resolves to the direct dependency's version.
 
 
-**Only `libstdc++`, `libc6-compat` and `wget`.** The Bun-compiled binary needs the first two; there is no Node in the final image. Anything else added should be justified.
+**Only `wget` is added to the runtime image** (for the healthcheck). The runtime is Node from the base image running the standalone bundle — not a Bun-compiled binary. Anything else added should be justified.
 
 ### `NEXT_PUBLIC_*` is baked in
 

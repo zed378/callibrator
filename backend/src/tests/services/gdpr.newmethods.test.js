@@ -4,10 +4,19 @@
  */
 // archiver ships as ESM; it is only used by exportUserData (not exercised here).
 jest.mock("archiver", () => jest.fn());
-jest.mock("../../config", () => ({ db: {} }));
+const mockTx = { id: "tx" };
+jest.mock("../../config", () => ({
+  db: { transaction: jest.fn(async (cb) => cb(mockTx)) },
+}));
+jest.mock("../../services/audit.service", () => ({ logAction: jest.fn() }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));
+jest.mock("../../services/emailQueue.service", () => ({
+  queueActivationEmail: jest.fn().mockResolvedValue(true),
+  queueNotificationEmail: jest.fn().mockResolvedValue(true),
+}));
+jest.mock("../../utils/jwt.util", () => ({ generatePurposeToken: jest.fn(() => "tok") }));
 jest.mock("../../models", () => ({
   ConsentRecord: {
     create: jest.fn().mockResolvedValue({ id: "c-1" }),
@@ -15,7 +24,17 @@ jest.mock("../../models", () => ({
     findAll: jest.fn().mockResolvedValue([]),
   },
   DsarRequest: { create: jest.fn().mockResolvedValue({ id: "dsar-1" }) },
-  User: { update: jest.fn().mockResolvedValue([1]) },
+  User: {
+    update: jest.fn().mockResolvedValue([1]),
+    // A-180: an email rectification reads the account and checks the address.
+    findOne: jest.fn().mockResolvedValue({
+      id: "u1",
+      email: "jane.old@example.com",
+      firstName: "Jane",
+      lastName: "Doe",
+    }),
+    unscoped: jest.fn(() => ({ findOne: jest.fn().mockResolvedValue(null) })),
+  },
   AuditLog: { create: jest.fn().mockResolvedValue({}) },
 }));
 
@@ -81,13 +100,41 @@ describe("gdpr.service new methods", () => {
   });
 
   describe("rectifyData", () => {
-    it("updates a whitelisted field and audits it", async () => {
-      const res = await gdpr.rectifyData("t1", "u1", "firstName", "Jane");
+    it("updates a whitelisted field and audits it in the same transaction", async () => {
+      const auditService = require("../../services/audit.service");
+      const res = await gdpr.rectifyData("t1", "u1", "firstName", "Jane", {
+        ipAddress: "10.0.0.1",
+        userAgent: "ua",
+      });
       expect(User.update).toHaveBeenCalledWith(
         { firstName: "Jane" },
-        { where: { id: "u1", tenantId: "t1" } },
+        { where: { id: "u1", tenantId: "t1" }, transaction: mockTx },
+      );
+      expect(auditService.logAction).toHaveBeenCalledWith(
+        {
+          tenantId: "t1",
+          userId: "u1",
+          action: "UPDATE",
+          resourceType: "User",
+          resourceId: "u1",
+          changes: { operation: "GDPR_RECTIFICATION", fields: ["firstName"] },
+          ipAddress: "10.0.0.1",
+          userAgent: "ua",
+        },
+        { transaction: mockTx },
       );
       expect(res).toEqual({ rectified: true, field: "firstName" });
+    });
+
+    it("A-153: never writes the new value into the permanent audit trail", async () => {
+      const auditService = require("../../services/audit.service");
+
+      await gdpr.rectifyData("t1", "u1", "email", "jane.private@example.com");
+
+      const [entry] = auditService.logAction.mock.calls[0];
+      expect(JSON.stringify(entry)).not.toContain("jane.private@example.com");
+      expect(entry.ipAddress).toBeNull();
+      expect(entry.userAgent).toBeNull();
     });
 
     it("rejects a non-whitelisted field", async () => {
@@ -95,23 +142,20 @@ describe("gdpr.service new methods", () => {
       expect(User.update).not.toHaveBeenCalled();
     });
 
-    it("404s when the user does not exist", async () => {
+    it("404s when the user does not exist, and writes no audit row", async () => {
+      const auditService = require("../../services/audit.service");
       User.update.mockResolvedValueOnce([0]);
       await expect(gdpr.rectifyData("t1", "u1", "phone", "123")).rejects.toMatchObject({ status: 404 });
+      expect(auditService.logAction).not.toHaveBeenCalled();
     });
 
-    it("still reports success when the audit write fails", async () => {
-      // The audit trail is best-effort: a failure must not undo the rectification.
-      const { AuditLog } = require("../../models");
-      const { logger } = require("../../middlewares/activityLog.middleware");
-      AuditLog.create.mockRejectedValueOnce(new Error("audit table down"));
+    it("A-153: a failed audit write fails the rectification (it rolls back)", async () => {
+      const auditService = require("../../services/audit.service");
+      auditService.logAction.mockRejectedValueOnce(new Error("audit table down"));
 
-      const res = await gdpr.rectifyData("t1", "u1", "email", "jane@example.com");
-
-      expect(res).toEqual({ rectified: true, field: "email" });
-      expect(logger.warn).toHaveBeenCalledWith("Failed to audit rectification", {
-        error: "audit table down",
-      });
+      await expect(
+        gdpr.rectifyData("t1", "u1", "email", "jane@example.com"),
+      ).rejects.toThrow("audit table down");
     });
   });
 

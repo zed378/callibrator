@@ -86,10 +86,12 @@ describe("qmsService", () => {
       mockedApi.post.mockResolvedValueOnce(envelope({ id: "nc1" }));
       await qmsService.createNonConformance({
         title: "Reading drift",
+        description: "Reads 0.4 °C high against the reference",
         severity: "HIGH",
       });
       expect(mockedApi.post).toHaveBeenCalledWith(`${BASE}/nc`, {
         title: "Reading drift",
+        description: "Reads 0.4 °C high against the reference",
         severity: "HIGH",
       });
       const body = mockedApi.post.mock.calls[0][1] as Record<string, unknown>;

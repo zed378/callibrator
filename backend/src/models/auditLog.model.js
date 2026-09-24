@@ -79,7 +79,18 @@ module.exports = (sequelize) => {
         allowNull: true,
       },
       action: {
-        type: DataTypes.ENUM("CREATE", "UPDATE", "DELETE", "LOGIN", "APPROVE", "EXPORT"),
+        // A-126 (ADR-051 Q-15): the last two are added to existing databases by
+        // migration 0049, appended in this order — keep them last.
+        type: DataTypes.ENUM(
+          "CREATE",
+          "UPDATE",
+          "DELETE",
+          "LOGIN",
+          "APPROVE",
+          "EXPORT",
+          "ACCOUNT_LOCKED",
+          "SIGNATURE_AUTH_FAILED",
+        ),
         allowNull: false,
       },
       resourceType: {

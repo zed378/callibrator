@@ -45,12 +45,14 @@ const defineModel = (db, DataTypes) => {
 
   TicketComment.associate = (models) => {
     TicketComment.belongsTo(models.Ticket, {
-      foreignKey: "ticket_id",
+      foreignKey: "ticketId",
       as: "ticket",
+      onDelete: "CASCADE",
     });
     TicketComment.belongsTo(models.User, {
-      foreignKey: "user_id",
+      foreignKey: "userId",
       as: "author",
+      onDelete: "SET NULL",
     });
   };
 

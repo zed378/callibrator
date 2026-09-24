@@ -33,7 +33,7 @@ const auditController = require("../../controllers/audit.controller");
  *         name: action
  *         schema:
  *           type: string
- *           enum: [CREATE, UPDATE, DELETE, LOGIN, APPROVE, EXPORT]
+ *           enum: [CREATE, UPDATE, DELETE, LOGIN, APPROVE, EXPORT, ACCOUNT_LOCKED, SIGNATURE_AUTH_FAILED]
  *       - in: query
  *         name: resourceType
  *         schema:
@@ -58,7 +58,7 @@ const auditController = require("../../controllers/audit.controller");
 router.get(
   "/",
   auth,
-  dynamicAccess(["AuditLogs", "Audit Logs", "audit"], "read", {
+  dynamicAccess("audit", "read", {
     checkTenant: true,
   }),
   auditController.fetchAuditLogs

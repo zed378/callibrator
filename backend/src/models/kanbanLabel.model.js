@@ -38,13 +38,14 @@ const defineModel = (db, DataTypes) => {
 
   KanbanLabel.associate = (models) => {
     KanbanLabel.belongsTo(models.KanbanProject, {
-      foreignKey: "project_id",
+      foreignKey: "projectId",
       as: "project",
+      onDelete: "CASCADE",
     });
     KanbanLabel.belongsToMany(models.KanbanCard, {
       through: models.KanbanCardLabel,
-      foreignKey: "label_id",
-      otherKey: "card_id",
+      foreignKey: "labelId",
+      otherKey: "cardId",
       as: "cards",
     });
   };

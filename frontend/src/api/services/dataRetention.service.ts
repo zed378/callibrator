@@ -12,7 +12,10 @@ import { api } from "../client";
  *   DELETE /api/v1/tenants/:tenantId/legal-hold    (super admin)
  *   POST   /api/v1/tenants/:tenantId/purge         (super admin)
  *   POST   /api/v1/tenants/:tenantId/mask-pii      (super admin)
- *   POST   /api/v1/tenants/:tenantId/anonymize     (super admin)
+ *
+ * `POST /anonymize` is not offered: the backend refuses it for every dataset
+ * (A-152) — it overwrote every text column of every row. Masking named data
+ * subjects (`maskPII`) is the per-subject operation.
  */
 
 // ---------- Types ----------
@@ -87,12 +90,6 @@ export type MaskPiiEntity = "users" | "audit_logs";
 export interface MaskPiiResult {
   masked: number;
   fields: string[];
-}
-
-/** `POST /anonymize`: rows changed. `audit_logs` is refused (Q-12). */
-export interface AnonymizeResult {
-  anonymized: number;
-  entityType: string;
 }
 
 // Backend response envelope
@@ -188,22 +185,6 @@ export const dataRetentionService = {
     const response = await api.post<BackendResponse<MaskPiiResult>>(
       `/api/v1/tenants/${tenantId}/mask-pii`,
       { tenantId, entityType, [idField]: ids },
-    );
-    return response.data;
-  },
-
-  /**
-   * POST /api/v1/tenants/:tenantId/anonymize — super admin only.
-   * Blocked while a legal hold is active.
-   */
-  anonymize: async (
-    tenantId: string,
-    entityType: "users",
-    options?: { keepDates?: boolean; keepNumericIds?: boolean },
-  ): Promise<AnonymizeResult> => {
-    const response = await api.post<BackendResponse<AnonymizeResult>>(
-      `/api/v1/tenants/${tenantId}/anonymize`,
-      { tenantId, entityType, options: options ?? {} },
     );
     return response.data;
   },

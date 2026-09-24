@@ -92,8 +92,11 @@ services:
   frontend:
     image: ${FRONTEND_IMAGE:-callibrator/frontend}:${IMAGE_TAG:-latest}
     build:
-      context: ../../frontend
-      dockerfile: Dockerfile
+      # Context is the REPOSITORY ROOT so the build can `npm ci --workspace
+      # frontend` against the committed root package-lock.json (ADR-044, S-29).
+      # See frontend/Dockerfile and frontend/Dockerfile.dockerignore.
+      context: ../..
+      dockerfile: frontend/Dockerfile
       args:
         # NEXT_PUBLIC_* values are INLINED AT BUILD TIME. Setting them in the
         # container environment does nothing — a different API URL, or a
@@ -104,7 +107,11 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: ${NODE_ENV:-production}
-      HOST: 0.0.0.0
+      # HOSTNAME, not HOST: Next standalone binds process.env.HOSTNAME and ignores
+      # HOST (S-30). frontend/Dockerfile already sets HOSTNAME=0.0.0.0; it is
+      # stated here too so this file says what the container binds, instead of
+      # a HOST line that looked like the setting and did nothing.
+      HOSTNAME: 0.0.0.0
       PORT: 3000
       # Server-only, read at RUNTIME. nginx routes /api/ to THIS service (Next
       # owns the auth cookie — see nginx/default.conf), and the Next proxy

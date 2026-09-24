@@ -1,6 +1,11 @@
 services:
   app:
-    build: .
+    # The image builds from the REPOSITORY ROOT so `npm ci` can read the
+    # committed root package-lock.json (S-29). deploy/compose/ is the maintained
+    # stack; this file is a standalone convenience.
+    build:
+      context: ..
+      dockerfile: frontend/Dockerfile
     expose:
       - "3000"
 

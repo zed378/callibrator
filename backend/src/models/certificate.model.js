@@ -326,13 +326,15 @@ const defineModel = (db, DataTypes) => {
     });
     // Certificate -> CalibrationRecord
     Certificate.belongsTo(models.CalibrationRecord, {
-      foreignKey: "calibration_record_id",
+      foreignKey: "calibrationRecordId",
       as: "calibrationRecord",
+      onDelete: "RESTRICT",
     });
     // Certificate -> Device
     Certificate.belongsTo(models.CalibrationDevice, {
-      foreignKey: "device_id",
+      foreignKey: "deviceId",
       as: "device",
+      onDelete: "RESTRICT",
     });
     // Certificate -> CalibratedBy (User)
     Certificate.belongsTo(models.User, {

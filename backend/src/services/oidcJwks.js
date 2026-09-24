@@ -242,9 +242,18 @@ exports.verifyIdToken = async (idToken, issuer, clientId) => {
  * @param {string} code - Authorization code
  * @param {Object} ssoSettings - SSO settings
  * @param {string} redirectUri - Redirect URI used in auth request
+ * @param {{nonce: string, codeVerifier: string}} flow - A-68: the `nonce` and
+ *   PKCE `code_verifier` stored when this sign-in began. Both are required: the
+ *   verifier goes to the token endpoint (the IdP checks it against the
+ *   `code_challenge` it was sent), and the ID token's `nonce` claim must equal
+ *   the stored one. Without them the callback is refused, never waved through.
  * @returns {Promise<{email: string, firstName: string, lastName: string}>}
  */
-exports.verifyOidcCallback = async (code, ssoSettings, redirectUri) => {
+exports.verifyOidcCallback = async (code, ssoSettings, redirectUri, flow = {}) => {
+  const { nonce, codeVerifier } = flow;
+  if (!nonce || !codeVerifier) {
+    throw new AppError(401, "OIDC sign-in state is incomplete");
+  }
   const clientId = ssoSettings.oidc_client_id;
   const clientSecret = ssoSettings.oidc_client_secret;
   const authority =
@@ -262,6 +271,7 @@ exports.verifyOidcCallback = async (code, ssoSettings, redirectUri) => {
         grant_type: "authorization_code",
         code,
         redirect_uri: redirectUri,
+        code_verifier: codeVerifier,
       }).toString(),
       {
         headers: {
@@ -279,6 +289,13 @@ exports.verifyOidcCallback = async (code, ssoSettings, redirectUri) => {
     // SECURITY: Verify id_token signature using JWKS
     // This replaces the previous insecure jwt.decode() only verification
     const decoded = await exports.verifyIdToken(idToken, issuer, clientId);
+
+    // A-68: the nonce binds this ID token to the sign-in THIS server started.
+    // A token minted for another request (replayed, or injected with a stolen
+    // code) carries another nonce, or none.
+    if (decoded.nonce !== nonce) {
+      throw new AppError(401, "id_token nonce does not match the sign-in request");
+    }
 
     return {
       email: (

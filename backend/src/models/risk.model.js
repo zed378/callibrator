@@ -85,12 +85,14 @@ const defineModel = (db, DataTypes) => {
       onDelete: "RESTRICT",
     });
     Risk.belongsTo(models.User, {
-      foreignKey: "identified_by",
+      foreignKey: "identifiedBy",
       as: "identifier",
+      onDelete: "SET NULL",
     });
     Risk.belongsTo(models.User, {
-      foreignKey: "assigned_to",
+      foreignKey: "assignedTo",
       as: "assignee",
+      onDelete: "SET NULL",
     });
   };
 

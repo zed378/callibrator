@@ -15,6 +15,16 @@ jest.mock("../../models", () => ({
   },
 }));
 
+// A-165: status and flag changes run in a managed transaction and audit
+// through logAction; the in-transaction effects are asserted against the
+// schema-enforcing ledger in admin.service.audit.a165.test.js.
+jest.mock("../../config", () => ({
+  db: { transaction: jest.fn(async (cb) => cb("TX")) },
+}));
+jest.mock("../../services/audit.service", () => ({
+  logAction: jest.fn().mockResolvedValue({}),
+}));
+
 jest.mock("../../utils/appError.util", () => {
   return {
     AppError: class AppError extends Error {
@@ -176,8 +186,8 @@ describe("adminService", () => {
 
       const result = await adminService.updateTenantStatus(tenantId, status);
 
-      expect(Tenants.findByPk).toHaveBeenCalledWith(tenantId);
-      expect(mockTenant.save).toHaveBeenCalled();
+      expect(Tenants.findByPk).toHaveBeenCalledWith(tenantId, { transaction: "TX" });
+      expect(mockTenant.save).toHaveBeenCalledWith({ transaction: "TX" });
       expect(result.status).toBe(status);
     });
 

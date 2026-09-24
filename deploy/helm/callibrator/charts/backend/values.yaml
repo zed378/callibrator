@@ -13,10 +13,18 @@ image:
 
 imagePullSecrets: []
 
-# Name of the Secret carrying CERT_SIGNING_SECRET, ENCRYPT_KEY,
-# ATTACHMENT_URL_SECRET, the JWT secrets and provider keys. Supplied by the
-# umbrella chart.
-secretName: callibrator-secrets
+# There is no secretName value (S-06). It defaulted to "callibrator-secrets",
+# which the umbrella never set, so under most release names the backend named
+# a Secret that did not exist. The Secret and ConfigMap names now come from the
+# umbrella's helpers (callibrator.secretName / callibrator.configMapName), the
+# same ones that create those objects. The umbrella refuses to render if
+# backend.secretName is set.
+
+# Must match the uid backend/Dockerfile pins (useradd -r -u 997).
+podSecurityContext:
+  runAsUser: 997
+  runAsGroup: 997
+  fsGroup: 997
 
 service:
   type: ClusterIP

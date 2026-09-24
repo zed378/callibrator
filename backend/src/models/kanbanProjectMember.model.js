@@ -28,13 +28,13 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.UUID,
         allowNull: true,
         references: { model: "users", key: "id" },
-        onDelete: "CASCADE",
+        onDelete: "SET NULL",
       },
       roleId: {
         type: DataTypes.UUID,
         allowNull: true,
         references: { model: "roles", key: "id" },
-        onDelete: "CASCADE",
+        onDelete: "SET NULL",
       },
       accessLevel: {
         type: DataTypes.STRING(20),
@@ -56,16 +56,19 @@ const defineModel = (db, DataTypes) => {
 
   KanbanProjectMember.associate = (models) => {
     KanbanProjectMember.belongsTo(models.KanbanProject, {
-      foreignKey: "project_id",
+      foreignKey: "projectId",
       as: "project",
+      onDelete: "CASCADE",
     });
     KanbanProjectMember.belongsTo(models.User, {
-      foreignKey: "user_id",
+      foreignKey: "userId",
       as: "user",
+      onDelete: "SET NULL",
     });
     KanbanProjectMember.belongsTo(models.Role, {
-      foreignKey: "role_id",
+      foreignKey: "roleId",
       as: "role",
+      onDelete: "SET NULL",
     });
   };
 

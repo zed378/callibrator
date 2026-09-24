@@ -1,5 +1,6 @@
 jest.mock("../../services/predictiveMaintenance.service", () => ({
   analyzeDevice: jest.fn(),
+  approveRecommendation: jest.fn(),
 }));
 
 jest.mock("../../models", () => ({
@@ -96,44 +97,33 @@ describe("predictiveMaintenance Controller", () => {
     });
   });
 
+  // A-145 — the lookup, the 404/409 and the audited update live in the
+  // service (tests/services/predictiveMaintenance.service.test.js); the
+  // controller passes the tenant, the device and the approving user.
   describe("approveRecommendation", () => {
-    it("should approve recommendation", async () => {
+    it("applies the recommendation as the calling user", async () => {
       req.params = { deviceId: "device-1" };
-      const mockDevice = {
-        id: "device-1",
-        recommendedCalibrationInterval: 30,
-        calibrationIntervalDays: 60,
-        update: jest.fn().mockResolvedValue({}),
-      };
-      CalibrationDevice.findOne.mockResolvedValue(mockDevice);
+      req.user = { id: "user-7" };
+      const device = { id: "device-1", calibrationIntervalDays: 30 };
+      predictiveMaintenanceService.approveRecommendation.mockResolvedValue(device);
       await predictiveMaintenanceController.approveRecommendation(req, res, next);
-      expect(res.json).toHaveBeenCalled();
-      expect(mockDevice.update).toHaveBeenCalled();
+      expect(predictiveMaintenanceService.approveRecommendation).toHaveBeenCalledWith(
+        "tenant-1",
+        "device-1",
+        "user-7",
+      );
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ data: device, message: "Recommendation applied successfully" }),
+      );
     });
 
-    it("should handle device not found", async () => {
-      req.params = { deviceId: "device-999" };
-      CalibrationDevice.findOne.mockResolvedValue(null);
-      await predictiveMaintenanceController.approveRecommendation(req, res, next);
-      expect(next).toHaveBeenCalled();
-    });
-
-    it("should handle no recommendation", async () => {
+    it("passes a service error on", async () => {
       req.params = { deviceId: "device-1" };
-      CalibrationDevice.findOne.mockResolvedValue({
-        id: "device-1",
-        recommendedCalibrationInterval: null,
-        update: jest.fn().mockResolvedValue({}),
-      });
+      req.user = { id: "user-7" };
+      const err = new Error("err");
+      predictiveMaintenanceService.approveRecommendation.mockRejectedValue(err);
       await predictiveMaintenanceController.approveRecommendation(req, res, next);
-      expect(next).toHaveBeenCalled();
-    });
-
-    it("should handle errors", async () => {
-      req.params = { deviceId: "device-1" };
-      CalibrationDevice.findOne.mockRejectedValue(new Error("err"));
-      await predictiveMaintenanceController.approveRecommendation(req, res, next);
-      expect(next).toHaveBeenCalled();
+      expect(next).toHaveBeenCalledWith(err);
     });
   });
 });

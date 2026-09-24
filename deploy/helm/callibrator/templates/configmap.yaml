@@ -68,6 +68,16 @@ data:
   # ------------------------------------------------------------------------
   VIRUS_SCAN_PROVIDER: {{ .Values.backend.env.VIRUS_SCAN_PROVIDER | quote }}
   VIRUS_SCAN_FAIL_OPEN: {{ .Values.backend.env.VIRUS_SCAN_FAIL_OPEN | quote }}
+  {{- if eq (default "" .Values.backend.env.VIRUS_SCAN_PROVIDER) "clamav" }}
+  # S-31. Since S-04, VIRUS_SCAN_PROVIDER=clamav with CLAMAV_ENABLED unset
+  # FAILS CLOSED — every upload is refused 422 — where it used to skip the scan
+  # silently. The chart set the provider and never these three. clamd is
+  # provided EXTERNALLY (backend.clamav.host), like PostgreSQL: this chart runs
+  # no ClamAV, and guard 6 refuses to render the provider without a host.
+  CLAMAV_ENABLED: "true"
+  CLAMAV_HOST: {{ .Values.backend.clamav.host | quote }}
+  CLAMAV_PORT: {{ .Values.backend.clamav.port | quote }}
+  {{- end }}
 
   # ------------------------------------------------------------------------
   # Certificates

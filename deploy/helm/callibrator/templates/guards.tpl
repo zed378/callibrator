@@ -40,22 +40,27 @@ See docs/DEVOPS/09-KUBERNETES.md.
 {{- end -}}
 
 {{/* ---------------------------------------------------------------------- */}}
-{{/* Guard 3 — the three required secrets.                                   */}}
+{{/* Guard 3 — the FOUR required secrets.                                    */}}
 {{/*                                                                         */}}
+{{/* CERT_SIGNING_SECRET, ENCRYPT_KEY, ATTACHMENT_URL_SECRET, KMS_MASTER_KEY  */}}
+{{/* (the fourth was missing until S-05; compose and the Makefile had it).    */}}
 {{/* The application EXITS without these. Failing at render is better than    */}}
 {{/* failing in a crash loop, and much better than a partially-configured    */}}
 {{/* deployment that starts and is permanently broken.                       */}}
 {{/* ---------------------------------------------------------------------- */}}
 {{- define "callibrator.guard.requiredSecrets" -}}
-{{- if not .Values.secrets.external.enabled -}}
+{{- if not (include "callibrator.externalSecrets" .) -}}
 {{- if not .Values.secrets.certSigningSecret -}}
-{{- fail "\n\nsecrets.certSigningSecret is required (or set secrets.external.enabled=true).\n\nThe application exits without it. Losing it later is unrecoverable: every\nissued certificate permanently fails public verification, and the key cannot\nbe re-derived from the data.\n\nBACK IT UP SEPARATELY FROM THE DATABASE.\n" -}}
+{{- fail "\n\nsecrets.certSigningSecret is required (or set global.secrets.external.enabled=true).\n\nThe application exits without it. Losing it later is unrecoverable: every\nissued certificate permanently fails public verification, and the key cannot\nbe re-derived from the data.\n\nBACK IT UP SEPARATELY FROM THE DATABASE.\n" -}}
 {{- end -}}
 {{- if not .Values.secrets.encryptKey -}}
-{{- fail "\n\nsecrets.encryptKey is required (or set secrets.external.enabled=true).\n\nThe application exits without it. Losing it later makes every tenant private\nkey and every stored storage credential undecryptable.\n\nBACK IT UP SEPARATELY FROM THE DATABASE.\n" -}}
+{{- fail "\n\nsecrets.encryptKey is required (or set global.secrets.external.enabled=true).\n\nThe application exits without it. Losing it later makes every tenant private\nkey and every stored storage credential undecryptable.\n\nBACK IT UP SEPARATELY FROM THE DATABASE.\n" -}}
 {{- end -}}
 {{- if not .Values.secrets.attachmentUrlSecret -}}
-{{- fail "\n\nsecrets.attachmentUrlSecret is required (or set secrets.external.enabled=true).\n" -}}
+{{- fail "\n\nsecrets.attachmentUrlSecret is required (or set global.secrets.external.enabled=true).\n" -}}
+{{- end -}}
+{{- if not .Values.secrets.kmsMasterKey -}}
+{{- fail "\n\nsecrets.kmsMasterKey is required (or set global.secrets.external.enabled=true).\n\nKMS_MASTER_KEY wraps every tenant secret (SSO certificates, OIDC, Stripe and\nwebhook secrets). In production the backend THROWS AT STARTUP without it, and\nbecause production writes nothing to stdout the pod crash-loops with EMPTY\nlogs (S-05). Generate one with: openssl rand -hex 32\n\nBACK IT UP SEPARATELY FROM THE DATABASE.\n" -}}
 {{- end -}}
 {{- if and .Values.secrets.jwtAccessSecret (eq .Values.secrets.jwtAccessSecret .Values.secrets.jwtRefreshSecret) -}}
 {{- fail "\n\nsecrets.jwtAccessSecret and secrets.jwtRefreshSecret are identical.\n\nEqual secrets mean an access token can be presented as a refresh token.\n" -}}
@@ -77,12 +82,48 @@ See docs/DEVOPS/09-KUBERNETES.md.
 {{- end -}}
 
 {{/* ---------------------------------------------------------------------- */}}
+{{/* Guard 5 — values that moved.                                            */}}
+{{/*                                                                         */}}
+{{/* These keys used to exist and would now be IGNORED silently, which is    */}}
+{{/* how S-06 happened: a name set in one place and read in another. A value */}}
+{{/* that is ignored should refuse to render instead.                        */}}
+{{/* ---------------------------------------------------------------------- */}}
+{{- define "callibrator.guard.movedValues" -}}
+{{- if (dig "external" nil (.Values.secrets | default dict)) -}}
+{{- fail "\n\nsecrets.external has moved to global.secrets.external (S-06).\n\nThe backend subchart must compute the same Secret name the umbrella creates,\nand a subchart can read only its own values and .Values.global.\n" -}}
+{{- end -}}
+{{- if and .Values.backend (hasKey .Values.backend "secretName") -}}
+{{- fail "\n\nbackend.secretName is no longer read (S-06). The backend reads the chart-managed\nSecret <base>-secrets, or global.secrets.external.secretName.\n" -}}
+{{- end -}}
+{{- if or .Values.fullnameOverride .Values.nameOverride -}}
+{{- fail "\n\nfullnameOverride / nameOverride are not read by the subcharts. Use\nglobal.fullnameOverride, which every chart in the tree names objects from (S-27).\n" -}}
+{{- end -}}
+{{- end -}}
+
+{{/* ---------------------------------------------------------------------- */}}
+{{/* Guard 6 — the clamav provider with nowhere to scan (S-31).              */}}
+{{/*                                                                         */}}
+{{/* Since S-04 the backend FAILS CLOSED when VIRUS_SCAN_PROVIDER=clamav and  */}}
+{{/* clamd is not configured: every upload is refused 422. The chart runs no */}}
+{{/* ClamAV, so an empty backend.clamav.host would render a release that     */}}
+{{/* accepts no attachment. Refuse at render instead.                        */}}
+{{/* ---------------------------------------------------------------------- */}}
+{{- define "callibrator.guard.clamav" -}}
+{{- if and .Values.backend.enabled (eq (default "" .Values.backend.env.VIRUS_SCAN_PROVIDER) "clamav") (not .Values.backend.clamav.host) -}}
+{{- fail "\n\nbackend.env.VIRUS_SCAN_PROVIDER is clamav but backend.clamav.host is empty.\n\nThis chart runs no ClamAV; clamd is provided externally, like PostgreSQL.\nWithout a host the backend refuses EVERY upload (422, fail-closed since S-04).\n\nSet --set backend.clamav.host=<clamd service> (port: backend.clamav.port, 3310),\nor set backend.env.VIRUS_SCAN_PROVIDER=none to run without scanning — a\ndecision to record, not a default.\n" -}}
+{{- end -}}
+{{- end -}}
+
+{{/* ---------------------------------------------------------------------- */}}
 {{/* Run every guard. Included from NOTES.txt so it evaluates on template,   */}}
 {{/* lint and install alike.                                                 */}}
 {{/* ---------------------------------------------------------------------- */}}
 {{- define "callibrator.guards" -}}
+{{- /* First: a moved value would otherwise surface as a misleading later error. */ -}}
+{{- include "callibrator.guard.movedValues" . -}}
 {{- include "callibrator.guard.imageTag" . -}}
 {{- include "callibrator.guard.cronReplicas" . -}}
 {{- include "callibrator.guard.requiredSecrets" . -}}
 {{- include "callibrator.guard.cors" . -}}
+{{- include "callibrator.guard.clamav" . -}}
 {{- end -}}

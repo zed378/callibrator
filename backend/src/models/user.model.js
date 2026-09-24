@@ -241,7 +241,7 @@ const defineModel = (db, DataTypes) => {
   User.associate = (models) => {
     // User -> Role
     User.belongsTo(models.Role, {
-      foreignKey: "role_id",
+      foreignKey: "roleId",
       as: "role",
       onDelete: "SET NULL",
     });
@@ -258,23 +258,27 @@ const defineModel = (db, DataTypes) => {
     });
     // User -> StockTransfer (requestedBy)
     User.hasMany(models.StockTransfer, {
-      foreignKey: "requested_by",
+      foreignKey: "requestedBy",
       as: "requestedTransfers",
+      onDelete: "RESTRICT",
     });
     // User -> StockTransfer (approvedBy)
     User.hasMany(models.StockTransfer, {
-      foreignKey: "approved_by",
+      foreignKey: "approvedBy",
       as: "approvedTransfers",
+      onDelete: "SET NULL",
     });
     // User -> StockAdjustment (adjustedBy)
     User.hasMany(models.StockAdjustment, {
-      foreignKey: "adjusted_by",
+      foreignKey: "adjustedBy",
       as: "adjustments",
+      onDelete: "RESTRICT",
     });
     // User -> StockOpname (performedBy)
     User.hasMany(models.StockOpname, {
-      foreignKey: "performed_by",
+      foreignKey: "performedBy",
       as: "performedOpnames",
+      onDelete: "RESTRICT",
     });
     // User -> CalibrationRecord (performedBy)
     // The ATTRIBUTE, not the column: "performed_by" added a second, nullable

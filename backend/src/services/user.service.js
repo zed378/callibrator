@@ -7,6 +7,8 @@ const { hashPassword } = require("../utils/password.util");
 const { deleteUpload, getUploadUrl } = require("../utils/upload.util");
 const { AppError } = require("../utils/appError.util");
 const auditService = require("./audit.service");
+const { checkAuthLockout, recordAuthFailure } = require("./rateLimiter.redis.service");
+const { isPlatformTenant } = require("../constants/platformTenant");
 const {
   SUPER_ADMIN_ROLE_ID,
   DEFAULT_LIMIT,
@@ -124,6 +126,162 @@ const AUDITED_USER_FIELDS = Object.freeze([
   "isActive",
 ]);
 
+// ------------------------------------------------------------------
+// A-128 (ADR-051 Q-18) — IDENTITY CONFLICTS, THE RESIDUAL ORACLE
+// ------------------------------------------------------------------
+// Account identity is GLOBAL: `users.username` and `users.email` are unique
+// across tenants (user.model.js), and Q-18 keeps it that way for now. So a
+// tenant administrator who creates a user — or renames one — with an identity
+// another tenant holds must be refused, and the refusal tells them that the
+// identity exists somewhere. Q-18 accepts that residual oracle, reachable only
+// by tenant administrators, on two conditions, implemented here:
+//   - RATE-LIMITED: a budget of conflicts per administrator per window
+//     (rateLimitConstants.js `userIdentityConflict`); past it, every create and
+//     every identity-changing edit by that administrator is refused with 429
+//     BEFORE anything is looked up, so a spent budget learns nothing.
+//   - AUDITED: each conflict is a row in the administrator's tenant, written in
+//     its own transaction (the create's own transaction has rolled back).
+// A super admin reads every tenant anyway, so for them a conflict discloses
+// nothing: neither counted nor audited.
+//
+// The check is GLOBAL (skipTenantScope) and includes soft-deleted accounts
+// (paranoid: false), because the unique index does both. It used to be
+// tenant-scoped: another tenant's holder passed the check and the insert failed
+// on the index with a 500 — the same oracle, unlimited and unaudited. It is an
+// exact, case-insensitive match: it used to be a LIKE on the raw input, where
+// `_` and `%` are wildcards — as a global probe, "does any tenant have an
+// address like %@hospital-b.example" would have been answered.
+//
+// Neither the 409 nor the audit row says WHICH tenant, or whether it was this
+// one: the row is readable by this tenant's administrators, and the in-tenant
+// case is visible to them in their own user list anyway.
+const IDENTITY_CONFLICT_ENDPOINT = "userIdentityConflict";
+
+const IDENTITY_CONFLICT_MESSAGES = Object.freeze({
+  username: "Username already used",
+  email: "Email already registered",
+});
+
+/** @param {"username"|"email"} field */
+const identityConflict = (field) => ({
+  status: 409,
+  message: IDENTITY_CONFLICT_MESSAGES[field],
+  identityConflict: field,
+});
+
+/** `value` as a LIKE pattern that matches only itself (PostgreSQL's default ESCAPE is a backslash). */
+const likeLiteral = (value) => value.replace(/[\\%_]/g, "\\$&");
+
+/**
+ * Throw the 409 when any account — any tenant, soft-deleted included — holds
+ * `value` as its `field`, compared case-insensitively.
+ *
+ * @param {"username"|"email"} field
+ * @param {string} value
+ * @param {{excludeId?: string, transaction: object}} options
+ */
+const assertIdentityFree = async (field, value, { excludeId, transaction }) => {
+  const holder = await Users.findOne({
+    where: {
+      [field]: { [Op.iLike]: likeLiteral(value.trim()) },
+      // A soft-deleted account still holds its username and email in the
+      // unique index. The defaultScope pins `is_deleted = false` under that
+      // COLUMN key; the same key given here replaces it (paranoid: false
+      // below does the same for deleted_at).
+      is_deleted: { [Op.in]: [true, false] },
+      ...(excludeId ? { id: { [Op.ne]: excludeId } } : {}),
+    },
+    attributes: ["id"],
+    paranoid: false,
+    // A-128: deliberately global — as the unique index this predicts is.
+    skipTenantScope: true,
+    transaction,
+  });
+  if (holder) {
+    throw identityConflict(field);
+  }
+};
+
+/**
+ * A-128 — refuse an administrator whose conflict budget is spent. Runs before
+ * any lookup. A super admin is not limited.
+ *
+ * @param {object} input - the service input (actor fields from getActor)
+ * @param {string} actorId
+ */
+const assertConflictBudget = async (input, actorId) => {
+  if (input.actorIsSuperAdmin) {
+    return;
+  }
+  const lockout = await checkAuthLockout({ userId: actorId, endpoint: IDENTITY_CONFLICT_ENDPOINT });
+  if (lockout.locked) {
+    throw {
+      status: 429,
+      message:
+        "Too many usernames or email addresses that were already registered. " +
+        "Try again later, or ask the person which address they use with Callibrator.",
+    };
+  }
+};
+
+/**
+ * A-128 — the conflict a non-super-admin was just answered with, counted
+ * against their budget and audited in their tenant. The row names the field,
+ * never the value, and never whose it was.
+ *
+ * @param {object} input - the service input
+ * @param {{actorId: string, field: string, action: string, resourceId: (string|null)}} conflict
+ */
+const recordIdentityConflict = async (input, { actorId, field, action, resourceId }) => {
+  if (input.actorIsSuperAdmin) {
+    return;
+  }
+  await recordAuthFailure({ userId: actorId, endpoint: IDENTITY_CONFLICT_ENDPOINT });
+  await db.transaction((transaction) =>
+    auditService.logAction(
+      {
+        tenantId: input.actorTenantId,
+        userId: actorId,
+        action,
+        resourceType: "User",
+        resourceId,
+        changes: { operation: "IDENTITY_CONFLICT", outcome: "refused", field },
+        ipAddress: input.ipAddress || null,
+        userAgent: input.userAgent || null,
+      },
+      { transaction },
+    ),
+  );
+  logger.warn("User identity conflict refused (A-128)", {
+    actorId,
+    tenantId: input.actorTenantId,
+    field,
+    action,
+  });
+};
+
+/**
+ * A-128 — the identity conflict an error stands for: one thrown by
+ * assertIdentityFree, or a unique violation on username/email from a create or
+ * update that raced past it. Null for anything else.
+ *
+ * @param {object} err
+ * @returns {"username"|"email"|null}
+ */
+const conflictFieldOf = (err) => {
+  if (err.identityConflict) {
+    return err.identityConflict;
+  }
+  if (err.name !== "SequelizeUniqueConstraintError") {
+    return null;
+  }
+  const fields = Object.keys(err.fields || {});
+  if (fields.includes("email")) {
+    return "email";
+  }
+  return fields.includes("username") ? "username" : null;
+};
+
 // Permission assignment moved to role-based model (RoleMenuPermission)
 // userMenuGrant.service removed - now using role_menu_permissions table directly
 
@@ -154,8 +312,8 @@ const validate = (data, schema) => {
 // nothing — and it never named the second-factor secrets at all: GET /users
 // and GET /users/:id returned every user's TOTP seed (`mfaSecret`), from
 // which anyone who can list users can generate that user's codes, plus the
-// e-mail OTP and the lockout counters. `role_id` is kept: it IS an attribute
-// (added by the Role association), a duplicate of `roleId`.
+// e-mail OTP and the lockout counters. `role_id` is no longer listed: it was
+// a duplicate of `roleId` added by the Role association (A-148), and is gone.
 // user.safeAttributes.test.js checks every name here against the model.
 const safeUserAttributes = {
   exclude: [
@@ -176,7 +334,6 @@ const safeUserAttributes = {
     "webauthnCredentialId",
     "webauthnPublicKey",
     "webauthnSignCount",
-    "role_id",
   ],
 };
 
@@ -534,14 +691,14 @@ exports.userRoleUpdate = async (input) => {
       };
     }
 
-    if (user.role_id === role.id) {
+    if (user.roleId === role.id) { // the attribute; `role_id` is gone (A-148)
       throw {
         status: 400,
         message: "User already has this role",
       };
     }
 
-    const previousRoleId = user.roleId || user.role_id || null;
+    const previousRoleId = user.roleId || null;
 
     await user.update(
       {
@@ -621,47 +778,32 @@ exports.userCreate = async (input) => {
   const { actorIsSuperAdmin = false, actorTenantId = null } = input || {};
 
   // Non-super-admins can only create users within their own tenant; the
-  // client-supplied tenantId is ignored for them.
-  const effectiveTenantId = actorIsSuperAdmin
-    ? tenantId
-    : actorTenantId || tenantId;
+  // client-supplied tenantId is ignored for them. A-125 follow-up: it used to
+  // be `actorTenantId || tenantId`, so a non-super-admin with NO tenant took
+  // the tenant from the BODY — any tenant, the PLATFORM one included. Such a
+  // caller is now refused, as is one whose own tenant is PLATFORM (only a
+  // super admin, naming it explicitly, may place an account there).
+  const effectiveTenantId = actorIsSuperAdmin ? tenantId : actorTenantId;
 
   let transaction;
 
   try {
+    if (!actorIsSuperAdmin && (!actorTenantId || isPlatformTenant(actorTenantId))) {
+      throw {
+        status: 403,
+        message: "Forbidden: your account cannot create users",
+      };
+    }
+
+    // A-128: a spent conflict budget is refused before anything is looked up.
+    // `input.createdBy`, not the validated `createdBy`: the schema strips it.
+    await assertConflictBudget(input, input.createdBy);
+
     transaction = await db.transaction();
 
-    const existingUsername = await Users.findOne({
-      where: {
-        username: {
-          [Op.like]: username.trim().toLowerCase(),
-        },
-      },
-      transaction,
-    });
-
-    if (existingUsername) {
-      throw {
-        status: 409,
-        message: "Username already used",
-      };
-    }
-
-    const existingEmail = await Users.findOne({
-      where: {
-        email: {
-          [Op.like]: email.trim().toLowerCase(),
-        },
-      },
-      transaction,
-    });
-
-    if (existingEmail) {
-      throw {
-        status: 409,
-        message: "Email already registered",
-      };
-    }
+    // A-128: global and exact — see assertIdentityFree.
+    await assertIdentityFree("username", username, { transaction });
+    await assertIdentityFree("email", email, { transaction });
 
     const role = await Roles.findByPk(roleId, {
       transaction,
@@ -705,7 +847,11 @@ exports.userCreate = async (input) => {
         lastName: lastName?.trim() || null,
         email: email.trim().toLowerCase(),
         password: hashedPassword,
-        role_id: roleId,
+        // The ATTRIBUTE. Since the User -> Role association's foreignKey
+        // became "roleId" (A-88 shape), `role_id` is no attribute of User and
+        // Sequelize dropped it: every admin-created account was stored with
+        // NO role (user.create.attributes.test.js).
+        roleId,
         status: status || "ACTIVE",
         // The ATTRIBUTE, not the column: `is_email_verified` is no attribute
         // of User, so Sequelize dropped it and every admin-created user was
@@ -790,6 +936,19 @@ exports.userCreate = async (input) => {
       await transaction.rollback();
     }
 
+    // A-128: a conflict is a 409, counted and audited — including a unique
+    // violation that raced past the check (it used to be a 500).
+    const conflictField = conflictFieldOf(err);
+    if (conflictField) {
+      await recordIdentityConflict(input, {
+        actorId: input.createdBy,
+        field: conflictField,
+        action: "CREATE",
+        resourceId: null,
+      });
+      throw { status: 409, message: IDENTITY_CONFLICT_MESSAGES[conflictField] };
+    }
+
     logger.error("Error creating user", {
       err: err.message,
       stack: err.stack,
@@ -845,46 +1004,18 @@ exports.editUser = async (input) => {
       actorTenantId,
     });
 
-    if (username && username !== user.username) {
-      const existingUsername = await Users.findOne({
-        where: {
-          username: {
-            [Op.like]: username.trim().toLowerCase(),
-          },
-          id: {
-            [Op.ne]: user.id,
-          },
-        },
-        transaction,
-      });
-
-      if (existingUsername) {
-        throw {
-          status: 409,
-          message: "Username already used",
-        };
-      }
+    // A-128: an identity change is the same probe as a create — budgeted,
+    // global and exact (assertIdentityFree), and audited when refused.
+    const usernameChanges = Boolean(username && username !== user.username);
+    const emailChanges = Boolean(email && email !== user.email);
+    if (usernameChanges || emailChanges) {
+      await assertConflictBudget(input, input.updatedBy);
     }
-
-    if (email && email !== user.email) {
-      const existingEmail = await Users.findOne({
-        where: {
-          email: {
-            [Op.like]: email.trim().toLowerCase(),
-          },
-          id: {
-            [Op.ne]: user.id,
-          },
-        },
-        transaction,
-      });
-
-      if (existingEmail) {
-        throw {
-          status: 409,
-          message: "Email already registered",
-        };
-      }
+    if (usernameChanges) {
+      await assertIdentityFree("username", username, { excludeId: user.id, transaction });
+    }
+    if (emailChanges) {
+      await assertIdentityFree("email", email, { excludeId: user.id, transaction });
     }
 
     const before = {};
@@ -958,6 +1089,18 @@ exports.editUser = async (input) => {
   } catch (err) {
     if (transaction) {
       await transaction.rollback();
+    }
+
+    // A-128: as in userCreate.
+    const conflictField = conflictFieldOf(err);
+    if (conflictField) {
+      await recordIdentityConflict(input, {
+        actorId: input.updatedBy,
+        field: conflictField,
+        action: "UPDATE",
+        resourceId: userId,
+      });
+      throw { status: 409, message: IDENTITY_CONFLICT_MESSAGES[conflictField] };
     }
 
     logger.error("Error updating user", {
@@ -1300,6 +1443,62 @@ exports.deleteUser = async (input) => {
 // ------------------------------------------------------------------
 
 const SUPER_ADMIN_ROLE_NAMES = new Set(["SUPER_ADMIN", "SUPERADMIN"]);
+
+/**
+ * The target of an administrator's credential reset (A-141 MFA, A-162
+ * password), after the guards both share:
+ *  - in the caller's tenant, or the same 404 as a missing user;
+ *  - not the caller (400, `selfMessage`);
+ *  - not a user whose role outranks the caller's (403); a super admin
+ *    outranks everyone, and an actor whose level is unknown is refused.
+ *
+ * @param {object} transaction
+ * @param {object} params
+ * @returns {Promise<object>} the target user row, with `role`
+ * @throws {{status: number, message: string}}
+ */
+const loadAdminResetTarget = async (
+  transaction,
+  { operation, userId, resetBy, actorIsSuperAdmin, actorTenantId, actorRoleLevel, selfMessage, what },
+) => {
+  const user = await Users.findByPk(userId, {
+    include: [
+      {
+        model: Roles,
+        as: "role",
+        // ADR-043: the JS attribute is roleLevel.
+        attributes: ["id", "name", "roleLevel"],
+        required: false,
+      },
+    ],
+    transaction,
+  });
+  if (!user) {
+    throw userNotFound();
+  }
+  assertSameTenantOrNotFound(operation, user, {
+    actorIsSuperAdmin,
+    actorTenantId,
+  });
+
+  if (String(user.id) === String(resetBy)) {
+    throw { status: 400, message: selfMessage };
+  }
+
+  // A super admin outranks everyone even if its level were missing.
+  const targetLevel = SUPER_ADMIN_ROLE_NAMES.has(user.role?.name)
+    ? Number.MAX_SAFE_INTEGER
+    : user.role?.roleLevel || 0;
+  // Written as "not at or below", so an actor whose level is unknown
+  // (undefined) is refused rather than compared as if it outranked anyone.
+  if (!actorIsSuperAdmin && !(targetLevel <= actorRoleLevel)) {
+    throw {
+      status: 403,
+      message: `Forbidden: you cannot reset the ${what} of a user whose role is above yours`,
+    };
+  }
+  return user;
+};
 /**
  * A tenant administrator clears another user's second factor — the way back
  * for a user who lost their authenticator AND their recovery codes.
@@ -1318,9 +1517,9 @@ const SUPER_ADMIN_ROLE_NAMES = new Set(["SUPER_ADMIN", "SUPERADMIN"]);
  *  - audited (UPDATE on User, `changes.operation` MFA_ADMIN_RESET) inside
  *    the transaction, naming the administrator as the actor.
  *
- * It does not reset the password: an administrator who can also set the
- * password could then sign in as the user; a password reset stays the user's
- * own e-mail-code path.
+ * It does not reset the password. That is a separate, separately audited
+ * action (resetUserPassword, A-162); the password alone does not pass a
+ * second factor, so resetting both is two deliberate steps, not one.
  *
  * @param {object} input
  * @param {string} input.userId - the target
@@ -1344,46 +1543,17 @@ exports.resetUserMfa = async (input) => {
   try {
     transaction = await db.transaction();
 
-    const user = await Users.findByPk(userId, {
-      include: [
-        {
-          model: Roles,
-          as: "role",
-          // ADR-043: the JS attribute is roleLevel.
-          attributes: ["id", "name", "roleLevel"],
-          required: false,
-        },
-      ],
-      transaction,
-    });
-    if (!user) {
-      throw userNotFound();
-    }
-    assertSameTenantOrNotFound("resetUserMfa", user, {
+    const user = await loadAdminResetTarget(transaction, {
+      operation: "resetUserMfa",
+      userId,
+      resetBy,
       actorIsSuperAdmin,
       actorTenantId,
+      actorRoleLevel,
+      selfMessage:
+        "You cannot reset your own MFA here; turn it off with your password and a code on the MFA page",
+      what: "MFA",
     });
-
-    if (String(user.id) === String(resetBy)) {
-      throw {
-        status: 400,
-        message:
-          "You cannot reset your own MFA here; turn it off with your password and a code on the MFA page",
-      };
-    }
-
-    // A super admin outranks everyone even if its level were missing.
-    const targetLevel = SUPER_ADMIN_ROLE_NAMES.has(user.role?.name)
-      ? Number.MAX_SAFE_INTEGER
-      : user.role?.roleLevel || 0;
-    // Written as "not at or below", so an actor whose level is unknown
-    // (undefined) is refused rather than compared as if it outranked anyone.
-    if (!actorIsSuperAdmin && !(targetLevel <= actorRoleLevel)) {
-      throw {
-        status: 403,
-        message: "Forbidden: you cannot reset the MFA of a user whose role is above yours",
-      };
-    }
 
     if (!user.mfaEnabled) {
       throw { status: 409, message: "MFA is not enabled for this user" };
@@ -1417,6 +1587,150 @@ exports.resetUserMfa = async (input) => {
       await transaction.rollback();
     }
     logger.error("Error resetting user MFA", { err: err.message, userId, resetBy });
+    throw {
+      status: err.status || 500,
+      message: err.message || "Internal server error",
+    };
+  }
+};
+
+// ------------------------------------------------------------------
+// ADMIN-ASSISTED PASSWORD RESET (A-162)
+// ------------------------------------------------------------------
+
+// No 0/O, 1/l/I: the password is read off a screen and typed or dictated.
+const TEMPORARY_PASSWORD_ALPHABET =
+  "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+// 16 characters of a 57-symbol alphabet: ~93 bits.
+const TEMPORARY_PASSWORD_LENGTH = 16;
+
+/**
+ * A random temporary password from a CSPRNG (crypto.randomInt is unbiased).
+ *
+ * @returns {string}
+ */
+const generateTemporaryPassword = () => {
+  const crypto = require("crypto");
+  let out = "";
+  for (let i = 0; i < TEMPORARY_PASSWORD_LENGTH; i += 1) {
+    out += TEMPORARY_PASSWORD_ALPHABET[crypto.randomInt(TEMPORARY_PASSWORD_ALPHABET.length)];
+  }
+  return out;
+};
+
+exports.generateTemporaryPassword = generateTemporaryPassword;
+exports.TEMPORARY_PASSWORD_LENGTH = TEMPORARY_PASSWORD_LENGTH;
+
+/**
+ * A tenant administrator replaces another user's password with a random
+ * temporary one — for a user who cannot use the e-mail-code reset (no access
+ * to the mailbox, or no working mail in the deployment).
+ *
+ * The same guards as the MFA reset (loadAdminResetTarget): same tenant or 404,
+ * never oneself (400), never a user whose role outranks the caller's (403).
+ * Then, in ONE transaction:
+ *  - the password becomes the temporary one (only its hash is stored);
+ *  - `mustChangePassword` is set (A-123): the holder must replace it before
+ *    anything else, so the administrator's knowledge of it is short-lived;
+ *  - a lockout from failed sign-ins is lifted, or the temporary password
+ *    could not be used;
+ *  - EVERY session of the user is revoked;
+ *  - audited (UPDATE on User, `changes.operation` PASSWORD_ADMIN_RESET,
+ *    actor = the administrator) — never the password or its hash.
+ *
+ * The temporary password is returned ONCE, in this response, and nowhere
+ * else: not logged, not audited, not stored in clear.
+ *
+ * It does NOT touch MFA: a user with MFA still needs their second factor, so
+ * the administrator who knows the temporary password cannot sign in as them
+ * with it alone. Residual risk, stated plainly: for a user WITHOUT MFA the
+ * administrator can sign in with the temporary password before the holder
+ * does, and then choose the "changed" password themselves. The audit row and
+ * the holder finding their password changed are the controls.
+ *
+ * @param {object} input
+ * @param {string} input.userId - the target
+ * @param {string} input.resetBy - the administrator (req.user.id)
+ * @param {boolean} [input.actorIsSuperAdmin]
+ * @param {string|null} [input.actorTenantId]
+ * @param {number} [input.actorRoleLevel]
+ * @param {string|null} [input.ipAddress]
+ * @param {string|null} [input.userAgent]
+ * @returns {Promise<object>} the envelope; data carries `temporaryPassword`
+ * @throws {{status: number, message: string}} 404 not found / not in the
+ *   caller's tenant; 400 self; 403 higher role
+ */
+exports.resetUserPassword = async (input) => {
+  const { userId, resetBy, actorIsSuperAdmin, actorTenantId, actorRoleLevel } = input;
+  // Lazily: session.service loads the Session model and Redis.
+  const { revokeOtherSessions } = require("./session.service");
+
+  let transaction;
+  try {
+    transaction = await db.transaction();
+
+    const user = await loadAdminResetTarget(transaction, {
+      operation: "resetUserPassword",
+      userId,
+      resetBy,
+      actorIsSuperAdmin,
+      actorTenantId,
+      actorRoleLevel,
+      selfMessage:
+        "You cannot reset your own password here; change it on the change-password page",
+      what: "password",
+    });
+
+    const temporaryPassword = generateTemporaryPassword();
+    const hashed = await hashPassword(temporaryPassword);
+
+    await user.update(
+      {
+        password: hashed,
+        mustChangePassword: true,
+        failedLoginAttempts: 0,
+        lockedUntil: null,
+      },
+      { transaction },
+    );
+    const sessionsRevoked = await revokeOtherSessions(user.id, null, "PASSWORD_ADMIN_RESET", {
+      transaction,
+    });
+
+    await auditUserChange(transaction, input, {
+      action: "UPDATE",
+      actorUserId: resetBy,
+      user,
+      // The key is not "mustChangePassword": it keeps the row free of the
+      // word the A-77 redaction check looks for (as userCreate does).
+      changes: {
+        operation: "PASSWORD_ADMIN_RESET",
+        sessionsRevoked,
+        firstLoginChangeRequired: true,
+      },
+    });
+
+    await transaction.commit();
+
+    logger.info("User password reset by an administrator", { userId: user.id, resetBy });
+
+    return {
+      success: true,
+      status: 200,
+      message:
+        "Password has been reset. Give the user this temporary password; it is shown only once, and they must change it when they sign in.",
+      data: {
+        id: user.id,
+        temporaryPassword,
+        mustChangePassword: true,
+        sessionsRevoked,
+      },
+    };
+  } catch (err) {
+    if (transaction && !transaction.finished) {
+      await transaction.rollback();
+    }
+    logger.error("Error resetting user password", { err: err.message, userId, resetBy });
     throw {
       status: err.status || 500,
       message: err.message || "Internal server error",

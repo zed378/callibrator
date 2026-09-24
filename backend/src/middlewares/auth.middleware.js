@@ -8,6 +8,12 @@ const sessionService = require("../services/session.service");
 const { logger } = require("./activityLog.middleware");
 const { tenantContextMiddleware } = require("./tenantContext.middleware");
 const { runWithImpersonator } = require("../utils/auditActor.util");
+const { isPlatformTenant } = require("../constants/platformTenant");
+const { isActiveTenantStatus } = require("../constants/tenantStatus");
+const {
+  MFA_ENROLMENT_REQUIRED_CODE,
+  mfaEnrolmentRequired,
+} = require("../utils/mfaPolicy.util");
 
 /**
  * A-59 — TODO: flip to `false` to refuse access tokens that name no session.
@@ -27,6 +33,18 @@ const { runWithImpersonator } = require("../utils/auditActor.util");
 const SIDLESS_ACCESS_TOKENS_ACCEPTED = true;
 
 exports.SIDLESS_ACCESS_TOKENS_ACCEPTED = SIDLESS_ACCESS_TOKENS_ACCEPTED;
+
+/**
+ * Whether a loaded principal is the platform super admin. The role name has
+ * been spelled three ways over time; all three are the super admin.
+ *
+ * @param {{role?: {name?: string}|null}} user
+ * @returns {boolean}
+ */
+const isSuperAdminPrincipal = (user) =>
+  user.role?.name === ROLE_NAMES.SUPER_ADMIN ||
+  user.role?.name === "SUPER_ADMIN" ||
+  user.role?.name === "SUPERADMIN";
 
 /**
  * A-101 — why this principal's tenant may not act, or null when it may. The
@@ -54,6 +72,16 @@ exports.SIDLESS_ACCESS_TOKENS_ACCEPTED = SIDLESS_ACCESS_TOKENS_ACCEPTED;
 const tenantRefusal = (user) => {
   if (!user.tenantId) {
     return null;
+  }
+  // A-125 follow-up: the reserved PLATFORM tenant is not a customer and is
+  // nobody's workplace but the operator's. A non-super-admin account whose
+  // home is PLATFORM (it can only get there by a direct database write or a
+  // bug upstream) is refused outright — otherwise it would act inside the
+  // tenant that holds the platform audit trail. The Tenant model's
+  // excludePlatformTenant hook does NOT cover the include that loads
+  // `user.tenant`, so the tenant row alone would have let it through.
+  if (isPlatformTenant(user.tenantId) && !isSuperAdminPrincipal(user)) {
+    return "Tenant account is not available";
   }
   if (!user.tenant) {
     return "Tenant account is deleted";
@@ -91,6 +119,40 @@ const PASSWORD_CHANGE_ALLOWED = new Set([
 
 exports.PASSWORD_CHANGE_ALLOWED = PASSWORD_CHANGE_ALLOWED;
 exports.PASSWORD_CHANGE_REQUIRED_CODE = "PASSWORD_CHANGE_REQUIRED";
+
+/**
+ * A-160 — the routes an account that must enrol MFA (the tenant's "MFA
+ * required" policy, utils/mfaPolicy.util.js) may still call: start and
+ * confirm an enrolment, sign out, "who am I" (which is how the frontend
+ * learns about it), and change password — an account can be under A-123's
+ * forced change AND this policy at once, and the password gate runs first,
+ * so without it neither gate could ever be cleared.
+ *
+ * Matched on method + the FULL path, as PASSWORD_CHANGE_ALLOWED is.
+ */
+const MFA_ENROLMENT_ALLOWED = new Set([
+  "POST /api/v1/auth/mfa/setup",
+  "POST /api/v1/auth/mfa/verify",
+  "POST /api/v1/auth/just-update-password",
+  "POST /api/v1/auth/logout",
+  "POST /api/v1/auth/logout-all",
+  "POST /api/v1/auth/verify",
+]);
+
+exports.MFA_ENROLMENT_ALLOWED = MFA_ENROLMENT_ALLOWED;
+exports.MFA_ENROLMENT_REQUIRED_CODE = MFA_ENROLMENT_REQUIRED_CODE;
+
+/**
+ * Whether an account that must enrol MFA is refused on this request.
+ *
+ * @param {object} user - req.user
+ * @param {object} req
+ * @param {string|null} impersonatorId
+ * @returns {boolean}
+ */
+const mustEnrolMfaFirst = (user, req, impersonatorId) =>
+  mfaEnrolmentRequired(user, impersonatorId) &&
+  !MFA_ENROLMENT_ALLOWED.has(`${req.method} ${req.baseUrl || ""}${req.path || ""}`);
 
 /**
  * Whether a flagged account must be refused on this request.
@@ -238,7 +300,8 @@ exports.auth = async (req, res, next) => {
       return forbidden(res, "Account banned");
     }
 
-    if (user.status === "INACTIVE" || user.status === "SUSPENDED") {
+    // A-180: "erased" — a GDPR-anonymised account (gdpr.service).
+    if (user.status === "INACTIVE" || user.status === "SUSPENDED" || user.status === "erased") {
       return forbidden(res, `Account is ${user.status.toLowerCase()}`);
     }
 
@@ -259,15 +322,35 @@ exports.auth = async (req, res, next) => {
     }
 
     // ==========================================
+    // TENANT "MFA REQUIRED" POLICY (A-160)
+    // ==========================================
+    // The user's tenant requires MFA and this account has none. Until it
+    // enrols, only the enrolment routes, change-password, logout and "who am
+    // I" are answered; the frontend sends it to the MFA page on this code.
+    const impersonatorId = impersonatorFrom(decoded);
+    if (mustEnrolMfaFirst(user, req, impersonatorId)) {
+      return errorResponse(
+        res,
+        "Your organisation requires multi-factor authentication. Set it up before continuing",
+        403,
+        null,
+        { code: MFA_ENROLMENT_REQUIRED_CODE },
+      );
+    }
+
+    // ==========================================
     // ATTACH USER TO REQUEST
     // ==========================================
 
     req.user = user;
+    // A-160: /auth/verify reports it, so the frontend can go to the MFA page
+    // before a request is refused.
+    req.mfaEnrolmentRequired = mfaEnrolmentRequired(user, impersonatorId);
     req.token = token;
     req.sessionId = decoded.sid || null;
     // F-8: the super admin acting through this token, when it is an
     // impersonation token. Every audit row the request writes names them.
-    req.impersonatorId = impersonatorFrom(decoded);
+    req.impersonatorId = impersonatorId;
 
     // Attach tenant context from user
     if (user.tenantId) {
@@ -283,12 +366,7 @@ exports.auth = async (req, res, next) => {
     // Tenant-bound and tenant-less non-super-admin accounts must NEVER be able
     // to select a tenant via request headers — doing so would let any
     // authenticated user operate inside an attacker-chosen tenant.
-    const isSuperAdmin =
-      user.role?.name === ROLE_NAMES.SUPER_ADMIN ||
-      user.role?.name === "SUPER_ADMIN" ||
-      user.role?.name === "SUPERADMIN";
-
-    if (isSuperAdmin) {
+    if (isSuperAdminPrincipal(user)) {
       const tenantCode = req.headers["x-tenant-code"];
       const tenantIdHeader = req.headers["x-tenant-id"];
 
@@ -304,7 +382,9 @@ exports.auth = async (req, res, next) => {
       if (tenantIdHeader) {
         const tenant =
           await tenantService.getTenantByIdForMiddleware(tenantIdHeader);
-        if (tenant && tenant.status === "ACTIVE") {
+        // A-143: `tenants.status` is a lower-case ENUM; comparing it with
+        // "ACTIVE" never matched, so this override never applied.
+        if (tenant && isActiveTenantStatus(tenant.status)) {
           req.tenant = tenant;
           req.tenantId = tenant.id;
         }
@@ -347,13 +427,15 @@ exports.optionalAuth = async (req, res, next) => {
     // A-101: a principal whose tenant is suspended or gone is treated as no
     // principal at all — optional auth never refuses, it just does not attach.
     // A-123: nor does it attach an account that must change its password
-    // first (unless impersonated) — it is anonymous until it has.
+    // first (unless impersonated) — it is anonymous until it has. A-160: nor
+    // one that must enrol MFA first.
     if (
       user &&
       user.isActive &&
       (user.status === "ACTIVE" || user.status === "INACTIVE") &&
       !tenantRefusal(user) &&
-      !mustChangePasswordFirst(user, req, impersonatorFrom(decoded))
+      !mustChangePasswordFirst(user, req, impersonatorFrom(decoded)) &&
+      !mustEnrolMfaFirst(user, req, impersonatorFrom(decoded))
     ) {
       req.user = user;
       req.impersonatorId = impersonatorFrom(decoded);

@@ -148,4 +148,14 @@ describe("DataRetentionPage — the real backend contract (A-135)", () => {
     await waitFor(() => expect(screen.getByText("Active")).toBeInTheDocument());
     expect(screen.getByRole("button", { name: /Release Hold/ })).toBeInTheDocument();
   });
+
+  it("offers no dataset anonymization — the backend refuses it (A-152)", async () => {
+    backend();
+    render(<DataRetentionPage />);
+
+    await waitFor(() => expect(dayInputs()[0].value).toBe("90"));
+    expect(screen.getByRole("button", { name: /Purge Expired Records/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Anonymize/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/ANONYMIZED/)).not.toBeInTheDocument();
+  });
 });

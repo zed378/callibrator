@@ -2,6 +2,8 @@ const express = require("express");
 const router = express.Router();
 const tenantLifecycleController = require("../../controllers/tenantLifecycle.controller");
 const { auth, superAdminOnly } = require("../../middlewares/auth.middleware");
+const { dynamicAccess } = require("../../middlewares/dynamicAccess.middleware");
+const { MENU_SLUGS } = require("../../constants/roleConstants");
 
 router.use(auth);
 
@@ -29,7 +31,15 @@ router.use(auth);
  *       404:
  *         description: Not found
  */
-router.get("/:tenantId/status", tenantLifecycleController.getTenantLifecycleStatus);
+// A-155: this read was gated on a token alone — any role in any tenant could
+// read any tenant's lifecycle state (suspended, grace period, offboarding) by
+// naming its id. It needs `tenant-lifecycle: read`; `checkTenant` answers 404
+// for a tenant id that is not the caller's, as for one that does not exist.
+router.get(
+  "/:tenantId/status",
+  dynamicAccess(MENU_SLUGS.TENANT_LIFECYCLE, "read", { checkTenant: true }),
+  tenantLifecycleController.getTenantLifecycleStatus,
+);
 /**
  * @swagger
  * /api/v1/tenants/{tenantId}/suspend:

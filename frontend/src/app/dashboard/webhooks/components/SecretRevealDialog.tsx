@@ -93,9 +93,13 @@ export const SecretRevealDialog: React.FC<SecretRevealDialogProps> = ({
           </div>
           <p className="text-xs text-muted-foreground mt-2">
             Each delivery includes an{" "}
-            <code className="font-mono">X-Webhook-Signature</code> header —
-            an HMAC-SHA256 of the request body computed with this secret. Use
-            it to verify payload authenticity.
+            <code className="font-mono">X-Webhook-Timestamp</code> header and
+            an <code className="font-mono">X-Webhook-Signature</code> header
+            (<code className="font-mono">v1=</code> an HMAC-SHA256, computed
+            with this secret, of the timestamp, a dot, and the raw request
+            body). Verify the signature, reject timestamps older than five
+            minutes, and deduplicate on{" "}
+            <code className="font-mono">X-Webhook-Delivery</code>.
           </p>
         </div>
 

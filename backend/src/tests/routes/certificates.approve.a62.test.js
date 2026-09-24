@@ -202,11 +202,14 @@ describe("A-62 — POST /certificates/:id/approve: the approver is the caller", 
     expect(res.status).toBe(401);
     expect(authService.passIsValid).toHaveBeenCalledTimes(1);
     expect(authService.passIsValid).toHaveBeenCalledWith(CALLER, PASSWORDS[OTHER]);
-    // Nothing was approved, signed or audited.
+    // Nothing was approved or signed. The one audit row is the failed
+    // attempt itself (A-126, ADR-051 Q-15), naming the CALLER.
     expect(mockRef.certificate.status).toBe("pending_approval");
     expect(mockRef.ledger.committed("certificates")).toEqual([]);
     expect(mockRef.ledger.committed("e_signature_records")).toEqual([]);
-    expect(mockRef.ledger.auditRows()).toEqual([]);
+    expect(mockRef.ledger.auditRows().map((r) => [r.action, r.userId])).toEqual([
+      ["SIGNATURE_AUTH_FAILED", CALLER],
+    ]);
   });
 
   it("the certificate's approver and the audit row's userId are the same id", async () => {

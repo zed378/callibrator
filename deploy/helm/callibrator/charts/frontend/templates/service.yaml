@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ .Release.Name }}-callibrator-frontend
+  name: {{ include "callibrator.baseName" . }}-frontend
   labels:
     app.kubernetes.io/name: callibrator-frontend
     app.kubernetes.io/instance: {{ .Release.Name }}

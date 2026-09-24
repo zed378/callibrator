@@ -57,12 +57,14 @@ const defineModel = (db, DataTypes) => {
 
   KanbanCardRelation.associate = (models) => {
     KanbanCardRelation.belongsTo(models.KanbanCard, {
-      foreignKey: "source_card_id",
+      foreignKey: "sourceCardId",
       as: "sourceCard",
+      onDelete: "CASCADE",
     });
     KanbanCardRelation.belongsTo(models.KanbanCard, {
-      foreignKey: "target_card_id",
+      foreignKey: "targetCardId",
       as: "targetCard",
+      onDelete: "CASCADE",
     });
   };
 

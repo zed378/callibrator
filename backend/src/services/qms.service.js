@@ -5,6 +5,8 @@ const { db } = require("../config");
 const auditService = require("./audit.service");
 const { AppError } = require("../utils/appError.util");
 const { QMS_NUMBERING } = require("../constants/qmsConstants");
+const webhookService = require("./webhook.service");
+const { WEBHOOK_EVENTS } = require("../constants/webhookEvents");
 
 /**
  * A-66 — every QMS mutation writes its audit row inside the SAME transaction as
@@ -286,6 +288,10 @@ exports.createCapa = async (tenantId, data, actor = {}) => {
         dueDate: dueDate || null,
       },
     });
+    // A-11: fires from afterCommit — never for a rolled-back create.
+    webhookService.emitAfterCommit(transaction, tenantId, WEBHOOK_EVENTS.CAPA_CREATED, {
+      capaId: capa.id, capaNumber, ncId, ncNumber: nc.ncNumber, status: "DRAFT", dueDate: dueDate || null,
+    });
 
     return capa;
   });
@@ -359,6 +365,12 @@ exports.updateCapa = async (tenantId, capaId, data, actor = {}) =>
       after: pick(capa, changed),
       capaNumber: capa.capaNumber,
     });
+    // A-11: the transition into CLOSED, announced from afterCommit.
+    if (data.status === "CLOSED" && before.status !== "CLOSED") {
+      webhookService.emitAfterCommit(transaction, tenantId, WEBHOOK_EVENTS.CAPA_CLOSED, {
+        capaId: capa.id, capaNumber: capa.capaNumber, ncId: capa.ncId, status: capa.status, closedBy: actor.userId || null,
+      });
+    }
 
     return capa;
   });

@@ -33,7 +33,7 @@ const isSuperAdmin = (req) => {
  * @returns {string|null}
  */
 const readableTenantId = (req) => {
-  const { scope } = req.query || {};
+  const { scope } = req.query;
   if (scope === undefined || scope === "") {
     return req.user.tenantId;
   }
@@ -49,7 +49,7 @@ const readableTenantId = (req) => {
 exports.fetchAuditLogs = asyncHandler(async (req, res) => {
   const tenantId = readableTenantId(req);
   const { page, limit, userId, actorType, action, resourceType, resourceId, startDate, endDate } =
-    req.query || {};
+    req.query;
 
   // An out-of-ENUM value would reach PostgreSQL as an invalid enum literal (500).
   if (actorType && !ACTOR_TYPE_VALUES.includes(actorType)) {

@@ -903,4 +903,53 @@ router.post(
   userController.resetUserMfa,
 );
 
+/* ------------------------------------------------------------------ */
+/* ADMIN-ASSISTED PASSWORD RESET (A-162)                              */
+/* ------------------------------------------------------------------ */
+/**
+ * @swagger
+ * /api/v1/users/{userId}/password/reset:
+ *   post:
+ *     summary: Reset another user's password to a temporary one (tenant administrator)
+ *     description: >
+ *       For a user who cannot use the e-mail-code reset. Replaces the
+ *       password with a random temporary one, returned ONCE in this response
+ *       (never stored in clear, logged or audited); the user must change it
+ *       at their next sign-in (PASSWORD_CHANGE_REQUIRED). Lifts a sign-in
+ *       lockout, signs out every session of theirs, leaves MFA as it is, and
+ *       is audited (PASSWORD_ADMIN_RESET). Requires users update access and a
+ *       tenant-administrator role; the target must be in the caller's tenant
+ *       (another tenant's user answers 404), may not be the caller, and may
+ *       not hold a role above the caller's.
+ *     tags:
+ *       - Users
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       '200':
+ *         description: Password reset; data.temporaryPassword is shown once
+ *       '400':
+ *         description: The caller named themselves (use the change-password page)
+ *       '403':
+ *         description: Not a tenant administrator, or the target's role is above the caller's
+ *       '404':
+ *         description: User not found (including a user of another tenant)
+ */
+router.post(
+  "/:userId/password/reset",
+  auth,
+  validateUuid("userId"),
+  dynamicAccess("users", "update", { checkTenant: true }),
+  rbac([ROLE_NAMES.TENANT_ADMIN]),
+  // Audited inside userService.resetUserPassword's transaction.
+  userController.resetUserPassword,
+);
+
 module.exports = router;

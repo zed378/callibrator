@@ -26,7 +26,7 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.UUID,
         allowNull: false,
         references: { model: "signature_workflows", key: "id" },
-        onDelete: "CASCADE",
+        onDelete: "RESTRICT",
       },
       stepNumber: {
         type: DataTypes.INTEGER,
@@ -36,6 +36,13 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.UUID,
         allowNull: true,
         comment: "User id of the signer, when they are an internal user",
+        // A-149: the signer of a regulated record (Part 11). It had no foreign
+        // key at all (migration 0017 made it a bare UUID); RESTRICT refuses a
+        // hard delete of that user. Nullable: rows from before A-86 may name
+        // an e-mail-only signer. Migration 0037.
+        references: { model: "users", key: "id" },
+        onDelete: "RESTRICT",
+        onUpdate: "CASCADE",
       },
       signerEmail: {
         type: DataTypes.STRING(255),
@@ -78,8 +85,9 @@ const defineModel = (db, DataTypes) => {
 
   SignatureWorkflowStep.associate = (models) => {
     SignatureWorkflowStep.belongsTo(models.SignatureWorkflow, {
-      foreignKey: "workflow_id",
+      foreignKey: "workflowId",
       as: "workflow",
+      onDelete: "RESTRICT",
     });
   };
 

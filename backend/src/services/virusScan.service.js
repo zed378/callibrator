@@ -29,6 +29,17 @@ exports.scanFile = async (absPath) => {
     const clamav = require("./clamAv.service");
     try {
       const result = await clamav.scanFile(absPath);
+      // S-04: VIRUS_SCAN_PROVIDER=clamav is a request to scan. With
+      // CLAMAV_ENABLED unset (the Helm chart sets the provider and nothing
+      // else) clamAv.service skips — which used to be reported clean, so the
+      // manifests promised a fail-closed scanner while nothing was scanned.
+      // A skipped scan is a scanner that is not there: it takes the same
+      // fail-closed / fail-open path as an unreachable one.
+      if (result.code === "SKIPPED") {
+        throw new Error(
+          "VIRUS_SCAN_PROVIDER=clamav but CLAMAV_ENABLED is not \"true\" — nothing would be scanned",
+        );
+      }
       if (!result.isClean) {
         return { clean: false, provider, reason: result.result || "infected" };
       }

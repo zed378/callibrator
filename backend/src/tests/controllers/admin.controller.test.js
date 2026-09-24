@@ -93,6 +93,8 @@ describe("admin Controller", () => {
       expect(adminService.updateTenantStatus).toHaveBeenCalledWith(
         VALID_TENANT_ID,
         "ACTIVE",
+        // A-165: the actor, for the audit rows the service writes.
+        expect.objectContaining({ userId: VALID_USER_ID, tenantId: VALID_TENANT_ID }),
       );
     });
 
@@ -131,6 +133,7 @@ describe("admin Controller", () => {
       expect(adminService.updateTenantFlags).toHaveBeenCalledWith(
         VALID_TENANT_ID,
         { ssoEnabled: true, auditLogEnabled: false },
+        expect.objectContaining({ userId: VALID_USER_ID, tenantId: VALID_TENANT_ID }),
       );
     });
 

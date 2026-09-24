@@ -327,8 +327,8 @@ describe("user.service", () => {
 
     it("should throw 400 when user already has this role", async () => {
       const mockUser = {
-        get: () => ({ id: "u1", role_id: "same-role" }),
-        role_id: "same-role",
+        get: () => ({ id: "u1", roleId: "same-role" }),
+        roleId: "same-role", // the attribute; `role_id` is gone (A-148)
         update: jest.fn().mockResolvedValue({}),
       };
       Users.findByPk.mockResolvedValueOnce(mockUser);
@@ -378,6 +378,8 @@ describe("user.service", () => {
         password: "password123",
         roleId: "r1",
         tenantId: "t1",
+        // A-125 follow-up: a non-super-admin creates in its OWN tenant.
+        actorTenantId: "t1",
       });
       expect(result.success).toBe(true);
       expect(result.data.username).toBe("newuser");
@@ -398,6 +400,7 @@ describe("user.service", () => {
           email: "t@t.com",
           password: "password123",
           roleId: "r1",
+          actorTenantId: "t1",
         }),
         "Username already used",
       );
@@ -419,6 +422,7 @@ describe("user.service", () => {
           email: "taken@test.com",
           password: "password123",
           roleId: "r1",
+          actorTenantId: "t1",
         }),
         "Email already registered",
       );

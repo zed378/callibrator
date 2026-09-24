@@ -18,7 +18,7 @@ jest.mock("../../models", () => ({
   },
   WebhookDelivery: {
     create: jest.fn(),
-    findByPk: jest.fn(),
+    findOne: jest.fn(),
     findAndCountAll: jest.fn(),
   },
   AuditLog: { create: jest.fn() },
@@ -26,7 +26,7 @@ jest.mock("../../models", () => ({
 
 const TX = { id: "tx-1" };
 jest.mock("../../config", () => ({
-  db: { transaction: jest.fn((cb) => cb(TX)) },
+  db: { transaction: jest.fn((cb) => cb(TX)), query: jest.fn() },
 }));
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
@@ -47,8 +47,9 @@ const kms = require("../../services/kms.service");
 const TENANT = "11111111-1111-4111-8111-111111111111";
 const ACTOR = { userId: "u-1", ipAddress: "10.0.0.1", userAgent: "jest" };
 
-const hmac = (secret, body) =>
-  `sha256=${crypto.createHmac("sha256", secret).update(body).digest("hex")}`;
+// A-10: the signature covers `${timestamp}.${body}` (X-Webhook-Timestamp).
+const hmac = (secret, body, timestamp) =>
+  `v1=${crypto.createHmac("sha256", secret).update(`${timestamp}.${body}`).digest("hex")}`;
 
 // A persisted-looking row: `update` applies the patch to the instance, the way
 // Sequelize's instance update does.
@@ -60,13 +61,23 @@ const row = (fields) => {
 
 // Dispatch one delivery for `webhook` and return what went over the wire.
 const deliverOnce = async (webhook) => {
+  const delivery = { id: "d1", tenantId: TENANT, webhookId: webhook.id, event: "test", payload: {}, attempts: 0, update: jest.fn() };
   Webhook.findAll.mockResolvedValue([webhook]);
-  WebhookDelivery.create.mockResolvedValue({ id: "d1", event: "test", payload: {}, update: jest.fn() });
+  Webhook.findOne.mockResolvedValue({ isActive: true, ...webhook });
+  WebhookDelivery.create.mockResolvedValue(delivery);
+  WebhookDelivery.findOne.mockResolvedValue(delivery);
+  db.query.mockResolvedValueOnce([[{ id: "d1", tenantId: TENANT }]]); // the claim
   global.fetch = jest.fn().mockResolvedValue({ ok: true, status: 200 });
   await webhookService.emitEvent(TENANT, "test", {});
-  await new Promise((r) => setImmediate(r));
+  for (let i = 0; i < 5 && !global.fetch.mock.calls.length; i++) {
+    await new Promise((r) => setImmediate(r));
+  }
   const [, init] = global.fetch.mock.calls[0];
-  return { body: init.body, signature: init.headers["X-Webhook-Signature"] };
+  return {
+    body: init.body,
+    signature: init.headers["X-Webhook-Signature"],
+    timestamp: init.headers["X-Webhook-Timestamp"],
+  };
 };
 
 describe("A-51 — webhook secret handling", () => {
@@ -118,23 +129,23 @@ describe("A-51 — webhook secret handling", () => {
     });
     const stored = Webhook.create.mock.calls[0][0].secret;
 
-    const { body, signature } = await deliverOnce(row({ secret: stored }));
+    const { body, signature, timestamp } = await deliverOnce(row({ secret: stored }));
 
-    expect(signature).toBe(hmac(created.secret, body));
+    expect(signature).toBe(hmac(created.secret, body, timestamp));
     // And specifically NOT with the ciphertext, which is what signing the
     // stored column verbatim would produce.
-    expect(signature).not.toBe(hmac(stored, body));
+    expect(signature).not.toBe(hmac(stored, body, timestamp));
   });
 
   it("signs an encrypted row with its plaintext, not with the stored ciphertext", async () => {
     const plaintext = "c".repeat(64);
-    const { body, signature } = await deliverOnce(row({ secret: kms.encryptData(TENANT, plaintext) }));
-    expect(signature).toBe(hmac(plaintext, body));
+    const { body, signature, timestamp } = await deliverOnce(row({ secret: kms.encryptData(TENANT, plaintext) }));
+    expect(signature).toBe(hmac(plaintext, body, timestamp));
   });
 
   it("still signs a legacy plaintext row (before migration 0022 has run)", async () => {
-    const { body, signature } = await deliverOnce(row({ secret: "legacy-plaintext-secret" }));
-    expect(signature).toBe(hmac("legacy-plaintext-secret", body));
+    const { body, signature, timestamp } = await deliverOnce(row({ secret: "legacy-plaintext-secret" }));
+    expect(signature).toBe(hmac("legacy-plaintext-secret", body, timestamp));
   });
 
   it("rotation issues a new secret once, invalidates the old one, and writes an audit row in the same transaction", async () => {
@@ -167,9 +178,9 @@ describe("A-51 — webhook secret handling", () => {
     expect(audited).not.toContain(result.secret);
     expect(audited).not.toContain(oldSecret);
 
-    const { body, signature } = await deliverOnce(webhook);
-    expect(signature).toBe(hmac(result.secret, body));
-    expect(signature).not.toBe(hmac(oldSecret, body));
+    const { body, signature, timestamp } = await deliverOnce(webhook);
+    expect(signature).toBe(hmac(result.secret, body, timestamp));
+    expect(signature).not.toBe(hmac(oldSecret, body, timestamp));
   });
 
   it("rotation without an actor still writes an audit row, attributed to nobody", async () => {
@@ -215,9 +226,9 @@ describe("A-51 — webhook secret handling", () => {
       { transaction: TX },
     );
 
-    const { body, signature } = await deliverOnce(webhook);
-    expect(signature).toBe(hmac(result.secret, body));
-    expect(signature).not.toBe(hmac(oldSecret, body));
+    const { body, signature, timestamp } = await deliverOnce(webhook);
+    expect(signature).toBe(hmac(result.secret, body, timestamp));
+    expect(signature).not.toBe(hmac(oldSecret, body, timestamp));
   });
 
   it("a patch that does not change the url keeps the secret and returns none", async () => {

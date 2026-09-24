@@ -95,33 +95,37 @@ const defineModel = (db, DataTypes) => {
 
   KanbanCard.associate = (models) => {
     KanbanCard.belongsTo(models.KanbanProject, {
-      foreignKey: "project_id",
+      foreignKey: "projectId",
       as: "project",
+      onDelete: "CASCADE",
     });
     KanbanCard.belongsTo(models.KanbanColumn, {
-      foreignKey: "column_id",
+      foreignKey: "columnId",
       as: "column",
+      onDelete: "CASCADE",
     });
     KanbanCard.belongsTo(models.KanbanSprint, {
-      foreignKey: "sprint_id",
+      foreignKey: "sprintId",
       as: "sprint",
+      onDelete: "SET NULL",
     });
     KanbanCard.belongsTo(models.User, {
-      foreignKey: "created_by",
+      foreignKey: "createdBy",
       as: "creator",
+      onDelete: "SET NULL",
     });
     // Assignees (users this card is assigned/tagged to)
     KanbanCard.belongsToMany(models.User, {
       through: models.KanbanCardAssignee,
-      foreignKey: "card_id",
-      otherKey: "user_id",
+      foreignKey: "cardId",
+      otherKey: "userId",
       as: "assignees",
     });
     // Labels ("tags" categorising the card)
     KanbanCard.belongsToMany(models.KanbanLabel, {
       through: models.KanbanCardLabel,
-      foreignKey: "card_id",
-      otherKey: "label_id",
+      foreignKey: "cardId",
+      otherKey: "labelId",
       as: "labels",
     });
   };

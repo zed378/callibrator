@@ -3,13 +3,15 @@ import type { Tenant } from "@/types";
 import { Badge, Card, CardContent } from "@/components/ui";
 import { Avatar } from "@/components/ui";
 import { Button } from "@/components/ui";
-import { HardDrive, Edit2, Trash2, Shield } from "lucide-react";
+import { HardDrive, Edit2, Trash2, Shield, ShieldCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 interface TenantCardProps {
   tenant: Tenant;
   onEdit: (tenant: Tenant) => void;
   onSsoConfig: (tenant: Tenant) => void;
+  /** A-160: open the tenant's "MFA required" policy. */
+  onMfaPolicy?: (tenant: Tenant) => void;
   /** Omitted for anyone but a super admin: deleting a tenant is a platform operation (A-76). */
   onDelete?: (id: string) => void;
 }
@@ -31,6 +33,7 @@ export const TenantCard: React.FC<TenantCardProps> = ({
   tenant,
   onEdit,
   onSsoConfig,
+  onMfaPolicy,
   onDelete,
 }) => {
   const router = useRouter();
@@ -95,6 +98,17 @@ export const TenantCard: React.FC<TenantCardProps> = ({
           >
             <Shield className="h-4 w-4 text-primary" />
           </Button>
+          {onMfaPolicy && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onMfaPolicy(tenant)}
+              title="MFA policy"
+              aria-label={`MFA policy for ${tenant.name}`}
+            >
+              <ShieldCheck className="h-4 w-4" />
+            </Button>
+          )}
           <Button variant="ghost" size="sm" onClick={() => onEdit(tenant)}>
             <Edit2 className="h-4 w-4" />
           </Button>

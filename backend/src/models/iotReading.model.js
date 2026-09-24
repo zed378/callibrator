@@ -23,7 +23,7 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.UUID,
         allowNull: false,
         references: { model: "calibration_devices", key: "id" },
-        onDelete: "CASCADE",
+        onDelete: "RESTRICT",
       },
       timestamp: {
         type: DataTypes.DATE,
@@ -68,8 +68,9 @@ const defineModel = (db, DataTypes) => {
     });
     // IotReading -> CalibrationDevice
     IotReading.belongsTo(models.CalibrationDevice, {
-      foreignKey: "device_id",
+      foreignKey: "deviceId",
       as: "device",
+      onDelete: "RESTRICT",
     });
   };
 

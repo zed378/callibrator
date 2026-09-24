@@ -26,6 +26,8 @@ jest.mock("../../config", () => ({
 }));
 
 jest.mock("../../utils/upload.util", () => ({
+  // S-17: the service promotes the scanned file out of quarantine.
+  promoteFromQuarantine: jest.fn(async (file) => file.path),
   getUploadUrl: jest.fn((fileName, folder) => `/${folder}/${fileName}`),
 }));
 
@@ -236,6 +238,22 @@ describe("attachment.service (coverage)", () => {
         message: "File rejected by virus scan: Eicar-Test",
       });
     });
+
+    // S-17: a file that cannot leave quarantine is removed, and the upload
+    // fails with the promotion's error — even when the removal itself fails.
+    it("rejects with the promotion error when the file cannot leave quarantine", async () => {
+      const { promoteFromQuarantine } = require("../../utils/upload.util");
+      virusScan.scanFile.mockResolvedValue({ clean: true });
+      fs.createReadStream.mockReturnValue(streamOf(["abc"]));
+      promoteFromQuarantine.mockRejectedValueOnce(new Error("EXDEV"));
+      fs.promises.unlink.mockRejectedValue(new Error("EPERM"));
+
+      await expect(
+        attachmentService.createAttachment("t-1", { path: "/q/f", filename: "f" }),
+      ).rejects.toThrow("EXDEV");
+      expect(fs.promises.unlink).toHaveBeenCalledWith("/q/f");
+      expect(Attachment.create).not.toHaveBeenCalled();
+    });
   });
 
   // ================================================================
@@ -285,6 +303,57 @@ describe("attachment.service (coverage)", () => {
   });
 
   // ================================================================
+  // S-15: the guard's root used to be storagePath(...folderParts) — derived
+  // from the untrusted folder it was meant to constrain — so "../../etc"
+  // moved the root out of storage with it and passed. The root is now the
+  // fixed storagePath("uploads"). storagePath is REAL here.
+  describe("S-15 — resolveAbsPath compares against the fixed uploads root", () => {
+    const row = (folder, fileName) => ({
+      id: "a-1",
+      folder,
+      fileName,
+      originalName: "x",
+      mimeType: "text/plain",
+    });
+    const validTokenFor = async (id) => {
+      Attachment.findOne.mockResolvedValue({ id });
+      const { token } = await attachmentService.generateSignedUrl("t-1", id);
+      return token;
+    };
+
+    it.each([
+      ["../../etc", "passwd"],
+      ["uploads/../../etc", "passwd"],
+      ["uploads/attachments/../../..", "secrets.env"],
+      ["..\\..\\etc", "passwd"],
+      ["backup/tenant-backups", "tenant_x.zip"],
+      ["uploads-evil", "x.pdf"],
+      ["", "abc.pdf"],
+      [null, null],
+    ])("refuses folder %j with fileName %j — getDownload and getSignedDownload", async (folder, fileName) => {
+      Attachment.findOne.mockResolvedValue(row(folder, fileName));
+      await expect(attachmentService.getDownload("t-1", "a-1")).rejects.toMatchObject({
+        status: 400,
+        message: "Invalid attachment path",
+      });
+
+      Attachment.findByPk.mockResolvedValue(row(folder, fileName));
+      const token = await validTokenFor("a-1");
+      await expect(attachmentService.getSignedDownload("a-1", token)).rejects.toMatchObject({
+        status: 400,
+        message: "Invalid attachment path",
+      });
+      expect(fs.existsSync).not.toHaveBeenCalled();
+    });
+
+    it("accepts an ordinary attachment under uploads/attachments", async () => {
+      Attachment.findOne.mockResolvedValue(row("uploads/attachments", "doc.pdf"));
+      fs.existsSync.mockReturnValue(true);
+      const r = await attachmentService.getDownload("t-1", "a-1");
+      expect(r.absPath).toBe(path.resolve(storagePath("uploads", "attachments", "doc.pdf")));
+    });
+  });
+
   describe("getDownload", () => {
     it("resolves the absolute path for an existing file", async () => {
       Attachment.findOne.mockResolvedValue({

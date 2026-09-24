@@ -1,8 +1,8 @@
 // Socket singleton lifecycle (F-01).
 
-import { io } from "socket.io-client";
+import { io, Socket } from "socket.io-client";
 import { socketTokenService } from "@/api/services/socketToken.service";
-import { getSocket, disconnectSocket } from "./socket";
+import { getSocket, disconnectSocket, joinBoardRoom } from "./socket";
 
 jest.mock("socket.io-client", () => ({ io: jest.fn() }));
 
@@ -142,5 +142,106 @@ describe("lib/socket (F-01)", () => {
     const [a, b] = await Promise.all([getSocket(), getSocket()]);
     expect(a).toBe(b);
     expect(ioMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+// The reconnect itself is proven against a real Socket.IO server in
+// app/dashboard/kanban/[projectId]/hooks/useBoard.realtime.test.ts; these pin
+// the bookkeeping around it.
+describe("lib/socket joinBoardRoom (A-53)", () => {
+  interface RoomSocket extends FakeSocket {
+    connected: boolean;
+    emit: jest.Mock;
+  }
+
+  const open = async (): Promise<RoomSocket> => {
+    getSocketToken.mockResolvedValueOnce({ token: "token-A", expiresIn: 60 });
+    const s = (await getSocket()) as unknown as RoomSocket;
+    s.connected = true;
+    s.emit = jest.fn();
+    return s;
+  };
+
+  const joins = (s: RoomSocket) =>
+    s.emit.mock.calls.filter((c) => c[0] === "kanban:join").map((c) => c[1]);
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    getSocketToken.mockReset();
+    disconnectSocket();
+    ioMock.mockImplementation((_url: string, opts: { auth: { token: string } }) =>
+      makeFakeSocket(opts.auth.token),
+    );
+  });
+
+  it("A-53: waits for connect when the socket is not connected yet, then joins", async () => {
+    const s = await open();
+    s.connected = false;
+    joinBoardRoom(s as unknown as Socket, "p1");
+    expect(joins(s)).toEqual([]);
+
+    s.handlers["connect"]();
+    expect(joins(s)).toEqual(["p1"]);
+  });
+
+  it("A-53: a connect on a socket from an ended session replays nothing", async () => {
+    const old = await open();
+    joinBoardRoom(old as unknown as Socket, "p1");
+    disconnectSocket();
+    old.emit.mockClear();
+
+    old.handlers["connect"]();
+    expect(joins(old)).toEqual([]);
+  });
+
+  it("A-53: ignores a refusal that arrives after the caller unsubscribed", async () => {
+    const s = await open();
+    const onRefused = jest.fn();
+    const leave = joinBoardRoom(s as unknown as Socket, "p1", onRefused);
+    const ack = s.emit.mock.calls[0][2] as (r?: unknown) => void;
+
+    leave();
+    ack({ ok: false, error: "nope" });
+    ack(undefined);
+    expect(onRefused).not.toHaveBeenCalled();
+  });
+
+  it("A-53: reports a refusal with a default message when the server gives none", async () => {
+    const s = await open();
+    const onRefused = jest.fn();
+    joinBoardRoom(s as unknown as Socket, "p1", onRefused);
+    (s.emit.mock.calls[0][2] as (r: unknown) => void)({ ok: false });
+    expect(onRefused).toHaveBeenCalledWith(
+      "Live updates for this board were refused",
+    );
+  });
+
+  it("A-53: a refusal without an onRefused handler is harmless", async () => {
+    const s = await open();
+    joinBoardRoom(s as unknown as Socket, "p1");
+    const ack = s.emit.mock.calls[0][2] as (r: unknown) => void;
+    expect(() => ack({ ok: false, error: "nope" })).not.toThrow();
+  });
+
+  it("A-53: leaves the room only when its last subscriber goes, and only once", async () => {
+    const s = await open();
+    const leaveA = joinBoardRoom(s as unknown as Socket, "p1");
+    const leaveB = joinBoardRoom(s as unknown as Socket, "p1");
+
+    leaveA();
+    expect(s.emit).not.toHaveBeenCalledWith("kanban:leave", "p1");
+    leaveB();
+    leaveB();
+    expect(
+      s.emit.mock.calls.filter((c) => c[0] === "kanban:leave"),
+    ).toEqual([["kanban:leave", "p1"]]);
+  });
+
+  it("A-53: does not emit a leave on a disconnected socket", async () => {
+    const s = await open();
+    const leave = joinBoardRoom(s as unknown as Socket, "p1");
+    s.connected = false;
+    leave();
+    expect(s.emit).not.toHaveBeenCalledWith("kanban:leave", "p1");
   });
 });

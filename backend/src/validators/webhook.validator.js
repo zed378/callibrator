@@ -20,8 +20,9 @@ const url = Joi.string().trim().max(1024).uri({ scheme: ["http", "https"] });
 // "*" or a dotted lowercase name such as `device.overdue`. The emitter only
 // ever sends lowercase names, so an uppercase or spaced subscription would be
 // stored and then never fire — a silently inert webhook. Event names are NOT
-// checked against a catalogue: the frontend lets an admin type a custom one,
-// and the catalogue itself is A-11.
+// checked against the catalogue (constants/webhookEvents.js, A-11): the
+// frontend lets an admin type a custom one, and existing subscriptions may
+// hold names from before the catalogue. A name outside it never fires.
 const eventName = Joi.string()
   .trim()
   .max(100)

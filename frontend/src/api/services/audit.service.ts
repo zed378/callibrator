@@ -8,7 +8,17 @@ export type AuditAction =
   | "DELETE"
   | "LOGIN"
   | "APPROVE"
-  | "EXPORT";
+  | "EXPORT"
+  // A-126 (ADR-051 Q-15)
+  | "ACCOUNT_LOCKED"
+  | "SIGNATURE_AUTH_FAILED";
+
+/**
+ * A-124 (ADR-051 Q-13): what acted. `system` rows name a background job in
+ * `actorName` (e.g. "system:retention-purge"); `unknown` exists only on rows
+ * written before the actor was recorded.
+ */
+export type AuditActorType = "user" | "system" | "unknown";
 
 export interface AuditLogUser {
   id: string;
@@ -27,6 +37,8 @@ export interface AuditLog {
   id: string;
   tenantId: string;
   userId?: string | null;
+  actorType?: AuditActorType;
+  actorName?: string | null;
   action: AuditAction;
   resourceType: string;
   resourceId?: string | null;
@@ -59,10 +71,13 @@ export interface AuditListQuery {
   page?: number;
   limit?: number;
   userId?: string;
+  actorType?: AuditActorType;
   action?: AuditAction;
   resourceType?: string;
   startDate?: string;
   endDate?: string;
+  /** Super admin only: the PLATFORM tenant's trail (A-125). Others get 403. */
+  scope?: "platform";
 }
 
 interface ListEnvelope {
@@ -91,6 +106,8 @@ export const auditService = {
     const params: Record<string, string | number> = { page, limit };
 
     if (query.userId) params.userId = query.userId;
+    if (query.actorType) params.actorType = query.actorType;
+    if (query.scope) params.scope = query.scope;
     if (query.action) params.action = query.action;
     if (query.resourceType) params.resourceType = query.resourceType;
     if (query.startDate) params.startDate = query.startDate;

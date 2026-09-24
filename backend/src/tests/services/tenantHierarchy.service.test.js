@@ -124,7 +124,6 @@ describe("tenantHierarchy.service", () => {
         }),
         count: jest.fn().mockResolvedValue(0),
       };
-      const mockCascade = jest.fn().mockResolvedValue(true);
       const mockModels = {
         Tenant: mockTenant,
         TenantHierarchy: mockHierarchy,
@@ -553,7 +552,8 @@ describe("tenantHierarchy.service", () => {
 
       expect(status.enabled).toBe(true);
       expect(status.maxDepth).toBe(10);
-      expect(status.cascadeRoles).toBe(true);
+      // A-134: the role cascade is gone; the flag is no longer read or reported.
+      expect(status).not.toHaveProperty("cascadeRoles");
     });
   });
 

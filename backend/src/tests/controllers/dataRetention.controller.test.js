@@ -126,3 +126,39 @@ describe("dataRetention Controller", () => {
     });
   });
 });
+// A-153: each hold / policy change passes the request's actor to the service,
+// which writes the audit row inside its transaction.
+describe("A-153 — the retention writes pass the request's actor", () => {
+  const req = () => ({
+    params: { tenantId: "tenant-1" },
+    body: { policyKey: "sessions", days: 60, reason: "litigation" },
+    query: {},
+    user: { id: "admin-1", tenantId: "platform" },
+    ip: "10.0.0.1",
+    headers: { "user-agent": "ua" },
+  });
+  const res = () => ({ status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis() });
+  const ACTOR = { userId: "admin-1", tenantId: "platform", ipAddress: "10.0.0.1", userAgent: "ua" };
+
+  beforeEach(() => jest.clearAllMocks());
+
+  it("setRetentionPolicy", async () => {
+    await dataRetentionController.setRetentionPolicy(req(), res(), jest.fn());
+    expect(dataRetentionService.setRetentionPolicy).toHaveBeenCalledWith(
+      "tenant-1",
+      "sessions",
+      60,
+      ACTOR,
+    );
+  });
+
+  it("enableLegalHold", async () => {
+    await dataRetentionController.enableLegalHold(req(), res(), jest.fn());
+    expect(dataRetentionService.enableLegalHold).toHaveBeenCalledWith("tenant-1", ACTOR, "litigation");
+  });
+
+  it("disableLegalHold", async () => {
+    await dataRetentionController.disableLegalHold(req(), res(), jest.fn());
+    expect(dataRetentionService.disableLegalHold).toHaveBeenCalledWith("tenant-1", ACTOR);
+  });
+});

@@ -58,6 +58,26 @@ interface BackendSearchResponse {
   data: SearchResponse;
 }
 
+/**
+ * The text GlobalSearch shows when a search request fails (A-56).
+ *
+ * The backend answers a search whose statement failed with a 500 rather than
+ * an empty list, so a broken search can no longer read as "no results". In
+ * production the body carries the generic message and a `requestId`; the
+ * reference is shown so a user can quote it to support.
+ */
+export const searchErrorMessage = (err: unknown): string => {
+  const detail =
+    err instanceof Error && err.message ? err.message : "Unknown error";
+  const body = (err as { response?: { data?: { requestId?: unknown } } })
+    ?.response?.data;
+  const requestId =
+    typeof body?.requestId === "string" ? body.requestId : undefined;
+  return requestId
+    ? `Search failed: ${detail} (reference ${requestId})`
+    : `Search failed: ${detail}`;
+};
+
 export const searchService = {
   /**
    * Global search across devices, stock and certificates

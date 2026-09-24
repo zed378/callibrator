@@ -80,6 +80,7 @@ const SESSION_COLUMNS = new Set([
   "id",
   "user_id",
   "tenant_id",
+  "impersonator_id", // A-146, migration 0040-session-impersonator
   "token_hash",
   "ip_address",
   "user_agent",

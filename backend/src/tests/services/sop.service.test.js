@@ -325,9 +325,46 @@ describe("sop.service", () => {
       });
       expect(mockAck.status).toBe("COMPLETED");
       expect(mockAck.acknowledgedAt).toBeDefined();
-      expect(mockAck.save).toHaveBeenCalled();
+      expect(mockAck.save).toHaveBeenCalledWith({ transaction: "TX" });
       expect(result.status).toBe("COMPLETED");
+      // A-145 — the training record and its audit row share the transaction.
+      expect(mockAuditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: "tenant-1",
+          userId: "user-1",
+          action: "UPDATE",
+          resourceType: "SopTrainingAcknowledgment",
+          changes: expect.objectContaining({
+            operation: "ACKNOWLEDGE_TRAINING",
+            documentId: "sop-1",
+            before: { status: "PENDING" },
+          }),
+        }),
+        { transaction: "TX" },
+      );
     });
+
+    it.each([
+      [new Date("2026-09-01T08:00:00.000Z"), "2026-09-01T08:00:00.000Z"],
+      [null, "an earlier date"],
+    ])(
+      "A-145: an acknowledgement already COMPLETED (at %s) is a 409 and is not rewritten",
+      async (acknowledgedAt, named) => {
+        const mockAck = {
+          status: "COMPLETED",
+          acknowledgedAt,
+          save: jest.fn(),
+        };
+        mockSopTrainingAcknowledgment.findOne.mockResolvedValue(mockAck);
+
+        await expect(
+          sopService.acknowledgeTraining("tenant-1", "user-1", "sop-1"),
+        ).rejects.toMatchObject({ status: 409, message: expect.stringContaining(named) });
+        expect(mockAck.acknowledgedAt).toBe(acknowledgedAt);
+        expect(mockAck.save).not.toHaveBeenCalled();
+        expect(mockAuditLog.create).not.toHaveBeenCalled();
+      },
+    );
 
     it("should throw 404 AppError if training acknowledgment not found", async () => {
       mockSopTrainingAcknowledgment.findOne.mockResolvedValue(null);

@@ -7,6 +7,10 @@ const auditService = require('./audit.service');
 const { SYSTEM_ACTORS } = require('../constants/systemActors');
 const { db } = require('../config');
 const { tenantStorage } = require('../middlewares/tenantContext.middleware');
+const {
+  isRedactedSettingKey,
+  SECRET_SETTING_MASK,
+} = require("../constants/tenantSecretSettings");
 
 /**
  * The actor recorded on an audit row the scheduler writes: a job, not a user
@@ -262,21 +266,115 @@ exports.hardDeleteOffboardedTenant = async (tenantId) => {
   return true;
 };
 
+/**
+ * A-179 — the user attributes a tenant export may carry: an ALLOW-list.
+ *
+ * The export used to be `User.findAll()` whole, then `toJSON()`: the password
+ * hash, the TOTP secret (live and pending), the recovery-code hashes, the
+ * WebAuthn credential id and public key, the OTP hash and the lockout state of
+ * every account went to the super admin's screen (GET /:tenantId/export) and
+ * into the offboarding response. A deny-list is the shape A-139 showed fails —
+ * a column added tomorrow (A-141's `mfaRecoveryCodes` was one) is exported
+ * until someone remembers it — so the export names what it carries instead.
+ * No credential, second-factor, one-time-code or lockout attribute is here.
+ */
+const EXPORTED_USER_ATTRIBUTES = Object.freeze([
+  "id",
+  "tenantId",
+  "roleId",
+  "username",
+  "email",
+  "firstName",
+  "lastName",
+  "phone",
+  "avatarUrl",
+  "isActive",
+  "status",
+  "isEmailVerified",
+  "lastLoginAt",
+  "createdAt",
+  "updatedAt",
+]);
+
+/**
+ * Copy the allow-listed fields of a row (nulls kept). A second line of defence
+ * behind the SELECT list: whatever the row object carries — getters included
+ * — only allow-listed keys leave.
+ *
+ * @param {object} row - a model instance
+ * @param {ReadonlyArray<string>} fields - the allow-list
+ * @returns {object} the projected plain object
+ */
+const project = (row, fields) => {
+  const plain = row.toJSON();
+  const out = {};
+  for (const field of fields) {
+    if (Object.prototype.hasOwnProperty.call(plain, field)) {
+      out[field] = plain[field];
+    }
+  }
+  return out;
+};
+
+/**
+ * A-179 — a `tenant_settings` row for the export. TenantSettings' `afterFind`
+ * hook has already DECRYPTED every secret key, so a secret row keeps its key
+ * (the reader can see it was configured) and its value reads
+ * SECRET_SETTING_MASK — the same rule `GET /tenants/settings` applies (A-150).
+ * An empty secret stays empty: nothing was configured.
+ *
+ * @param {object} setting - a TenantSettings instance
+ * @returns {object} the plain row, with any secret value masked
+ */
+const exportedSetting = (setting) => {
+  const plain = setting.toJSON();
+  if (isRedactedSettingKey(plain.key) && plain.value !== null && plain.value !== "") {
+    plain.value = SECRET_SETTING_MASK;
+  }
+  return plain;
+};
+
+/**
+ * A-179 — the tenant row without any credential mirrored into its
+ * `tenants.settings` JSONB column (written there before migration 0035
+ * scrubbed it, or by any path that still does).
+ *
+ * @param {object} tenant - a Tenant instance
+ * @returns {object} the plain row
+ */
+const exportedTenant = (tenant) => {
+  const plain = tenant.toJSON();
+  const { settings } = plain;
+  if (settings && typeof settings === "object" && !Array.isArray(settings)) {
+    plain.settings = Object.fromEntries(
+      Object.entries(settings).filter(([key]) => !isRedactedSettingKey(key)),
+    );
+  }
+  return plain;
+};
+
+exports.EXPORTED_USER_ATTRIBUTES = EXPORTED_USER_ATTRIBUTES;
+
 exports.exportTenantData = async (tenantId) => {
   const tenant = await Tenant.findByPk(tenantId);
   if (!tenant) {
-    throw new AppError(404, 'Tenant not found');
+    throw new AppError(404, "Tenant not found");
   }
 
-  const users = await User.findAll({ where: { tenantId } });
+  // A-179: only allow-listed columns are selected, and only allow-listed keys
+  // are returned.
+  const users = await User.findAll({
+    where: { tenantId },
+    attributes: [...EXPORTED_USER_ATTRIBUTES],
+  });
   const settings = await TenantSettings.findAll({ where: { tenantId } });
   const subscriptions = await Subscription.findAll({ where: { tenantId } });
   const invoices = await Invoice.findAll({ where: { tenantId } });
 
   return {
-    tenant: tenant.toJSON(),
-    users: users.map((u) => u.toJSON()),
-    settings: settings.map((s) => s.toJSON()),
+    tenant: exportedTenant(tenant),
+    users: users.map((u) => project(u, EXPORTED_USER_ATTRIBUTES)),
+    settings: settings.map(exportedSetting),
     subscriptions: subscriptions.map((s) => s.toJSON()),
     invoices: invoices.map((i) => i.toJSON()),
     exportedAt: new Date(),

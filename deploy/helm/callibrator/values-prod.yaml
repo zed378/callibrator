@@ -10,6 +10,19 @@ global:
   # Explicit, comma-separated. A wildcard is never honoured: the CORS policy
   # runs with credentials:true.
   corsOrigin: "https://callibrator.example.com"
+  # Production uses an external secrets operator. The Secret it creates must
+  # carry all FOUR required keys — CERT_SIGNING_SECRET, ENCRYPT_KEY,
+  # ATTACHMENT_URL_SECRET and KMS_MASTER_KEY — plus the JWT pair and DB_PASS
+  # (templates/secret.yaml is the key contract). CERT_SIGNING_SECRET,
+  # ENCRYPT_KEY and KMS_MASTER_KEY must ALSO be backed up outside the cluster
+  # and outside the database — a rebuild that recreates everything except them
+  # produces a system that starts cleanly and is permanently broken.
+  #
+  # Under global, not secrets: the backend subchart reads this name (S-06).
+  secrets:
+    external:
+      enabled: true
+      secretName: callibrator-secrets
 
 backend:
   # Tags are supplied on the command line, per release. The chart refuses to
@@ -42,6 +55,13 @@ backend:
     SEED_DEMO: ""
     VIRUS_SCAN_PROVIDER: clamav
     VIRUS_SCAN_FAIL_OPEN: "false"
+
+  # Provided externally, like the database below — this chart runs no clamd
+  # (S-31). A placeholder in the same convention as database.host: point it at
+  # the real clamd Service before deploying.
+  clamav:
+    host: clamav.production.svc.cluster.local
+    port: 3310
 
   # s3 rather than local — required before replicaCount goes above one, and
   # good practice regardless.
@@ -106,15 +126,6 @@ ingress:
   tls:
     enabled: true
     secretName: callibrator-tls
-
-secrets:
-  # Production uses an external secrets operator. CERT_SIGNING_SECRET and
-  # ENCRYPT_KEY must ALSO be backed up outside the cluster and outside the
-  # database — a rebuild that recreates everything except them produces a
-  # system that starts cleanly and is permanently broken.
-  external:
-    enabled: true
-    secretName: callibrator-secrets
 
 certificates:
   verifyBaseUrl: "https://callibrator.example.com/verify"

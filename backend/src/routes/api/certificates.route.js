@@ -145,6 +145,7 @@ router.post(
   "/",
   auth,
   dynamicAccess("certificate", "generate"),
+  denyPlatformAuthoring, // A-145: issues a numbered certificate
   certificateController.createCertificate,
 );
 
@@ -292,6 +293,7 @@ router.put(
   auth,
   validateUuid("certificateId"),
   dynamicAccess("certificate", "generate"),
+  denyPlatformAuthoring, // A-145: edits certificate content, approved ones included
   certificateController.updateCertificate,
 );
 
@@ -339,6 +341,7 @@ router.delete(
   auth,
   validateUuid("certificateId"),
   dynamicAccess("certificate", "generate"),
+  denyPlatformAuthoring, // A-145: withdraws an issued certificate number
   certificateController.deleteCertificate,
 );
 
