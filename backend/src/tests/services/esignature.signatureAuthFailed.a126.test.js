@@ -133,6 +133,12 @@ describe("A-126: a wrong signing credential writes SIGNATURE_AUTH_FAILED", () =>
   });
 
   it("a wrong password on an e-signature workflow step writes one row about that step", async () => {
+    // A-184 — the (open) workflow is read under its lock before re-authentication.
+    require("../../models").SignatureWorkflow.findByPk.mockResolvedValue({
+      id: "wf-1",
+      tenantId: TENANT_ID,
+      status: "in_progress",
+    });
     SignatureWorkflowStep.findByPk.mockResolvedValue({
       id: "step-1",
       workflowId: "wf-1",

@@ -4,16 +4,26 @@
  * Tracks tenant database backup operations and schedules.
  */
 
-// Backup status constants
+// Backup status constants — EXACTLY the members of the column's ENUM below.
+//
+// S-32: this object used to carry three more — RESTORING, RESTORED and
+// DELETING — that the `status` ENUM never had, and tenantBackup.service wrote
+// them. On PostgreSQL every such write fails with `invalid input value for
+// enum enum_tenant_backups_status`, so EVERY restore and EVERY HTTP delete of
+// a tenant backup failed on a real database (proven on PG16, 2026-09-24);
+// the unit tests mocked the model and never saw it. The service now expresses
+// those states with ENUM members:
+//   restoring -> IN_PROGRESS (claimed conditionally from COMPLETED)
+//   restored  -> COMPLETED with `restoredAt` set
+//   deleting  -> no intermediate state; DELETED + soft delete in one transaction
+// tests/models/tenantBackup.status.s32.test.js keeps this object and the ENUM
+// identical.
 const STATUS = {
   PENDING: "pending",
   IN_PROGRESS: "in_progress",
   COMPLETED: "completed",
   FAILED: "failed",
   DELETED: "deleted",
-  RESTORING: "restoring",
-  RESTORED: "restored",
-  DELETING: "deleting",
 };
 
 // Backup type constants
@@ -47,6 +57,11 @@ const defineModel = (db, DataTypes) => {
         onDelete: "RESTRICT",
       },
       // Backup details
+      // LEGACY, VARCHAR(255): no longer written (S-32). updateStatus used to
+      // copy filePath here, and an absolute path longer than 255 characters
+      // (a long APP_STORAGE_PATH) failed the whole COMPLETED update with
+      // "value too long". `filePath` (VARCHAR(500)) is the path of record;
+      // readers fall back to this column for rows written before the fix.
       backupPath: {
         type: DataTypes.STRING,
         allowNull: true,
@@ -160,15 +175,13 @@ const defineModel = (db, DataTypes) => {
    * @param {string} id - Backup ID
    * @param {Object} updates - Fields to update
    * @param {object} models - The models object
+   * @param {{transaction?: object}} [options] - run inside this transaction
    * @returns {object} The updated TenantBackup instance
    */
-  TenantBackup.updateStatus = async (id, updates, models = null) => {
+  TenantBackup.updateStatus = async (id, updates, models = null, options = {}) => {
     const updateData = { ...updates };
     if (updates.status) {
       updateData.status = updates.status;
-    }
-    if (updates.filePath) {
-      updateData.backupPath = updates.filePath;
     }
     if (updates.fileSize) {
       updateData.size = updates.fileSize;
@@ -196,11 +209,12 @@ const defineModel = (db, DataTypes) => {
       updateData.expiresAt = expiresAt;
     }
 
-    return TenantBackup.findByPk(id).then((backup) => {
+    const { transaction } = options;
+    return TenantBackup.findByPk(id, { transaction }).then((backup) => {
       if (!backup) {
         throw new Error(`Backup with id ${id} not found`);
       }
-      return backup.update(updateData);
+      return backup.update(updateData, { transaction });
     });
   };
 

@@ -10,6 +10,34 @@ const router = express.Router();
 const menuGroupController = require("../../controllers/menuGroup.controller");
 const { auth } = require("../../middlewares/auth.middleware");
 const { rbac } = require("../../middlewares/rbac.middleware");
+const { ROLE_NAMES } = require("../../constants/roleConstants");
+const { forbidden } = require("../../utils/response.util");
+
+/**
+ * AZ-01 (G-06) / P6-04 — the three user-facing menu reads take a `roleId`
+ * (query or body) and answered for ANY role, so every user could read the
+ * permission matrix of every role. The sidebar only ever asks for the caller's
+ * own role (DashboardLayout: `user.roleId`), so that is what a non-SUPERADMIN
+ * may ask for. Roles are global, not tenant-owned, so a refusal here is an
+ * in-tenant permission failure (403), not a tenant-membership oracle.
+ *
+ * @param {object} req - request
+ * @param {object} res - response
+ * @param {Function} next - next
+ * @returns {void}
+ */
+function ownRoleOnly(req, res, next) {
+  const user = req.user || {};
+  if (user.role?.name === ROLE_NAMES.SUPER_ADMIN) {
+    return next();
+  }
+  const asked = req.query?.roleId || req.body?.roleId;
+  const own = user.roleId || user.role?.id;
+  if (asked === undefined || (own && asked === own)) {
+    return next();
+  }
+  return forbidden(res, "You may only read the menu of your own role");
+}
 
 /* ------------------------------------------------------------------ */
 /* FILTER MENU GROUPS (user-facing) */
@@ -50,7 +78,7 @@ const { rbac } = require("../../middlewares/rbac.middleware");
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.post("/filter", auth, menuGroupController.filterMenuGroups);
+router.post("/filter", auth, ownRoleOnly, menuGroupController.filterMenuGroups);
 
 /**
  * @swagger
@@ -90,6 +118,7 @@ router.post("/filter", auth, menuGroupController.filterMenuGroups);
 router.post(
   "/get-assignments",
   auth,
+  ownRoleOnly,
   menuGroupController.getRoleMenuAssignments,
 );
 
@@ -116,7 +145,7 @@ router.post(
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.get("/menu-groups", auth, menuGroupController.filterMenuGroups);
+router.get("/menu-groups", auth, ownRoleOnly, menuGroupController.filterMenuGroups);
 
 /* ------------------------------------------------------------------ */
 /* ADMIN-ENDPOINTS (SUPERADMIN required) */

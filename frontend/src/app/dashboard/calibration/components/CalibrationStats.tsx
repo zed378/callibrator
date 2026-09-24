@@ -1,9 +1,10 @@
 import React from "react";
+import type { CertificateStats } from "@/stores/calibrationStore";
 import { Card, CardContent } from "@/components/ui";
 import { Award, CheckCircle, Clock, AlertTriangle } from "lucide-react";
 
 interface CalibrationStatsProps {
-  stats: any;
+  stats: CertificateStats | null;
 }
 
 export const CalibrationStats: React.FC<CalibrationStatsProps> = ({ stats }) => {

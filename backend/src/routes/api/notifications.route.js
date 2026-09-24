@@ -5,6 +5,20 @@ const { validateUuid } = require("../../middlewares/validateUuid.middleware");
 const { validate } = require("../../middlewares/validation.middleware");
 const { deleteManySchema } = require("../../validators/notification.validator");
 const notificationController = require("../../controllers/notification.controller");
+const { dynamicAccess } = require("../../middlewares/dynamicAccess.middleware");
+
+// A-251: POST /test with `scope: "tenant"` broadcast a caller-worded
+// notification (title, message, type) to EVERY user of the tenant, from any
+// role — a spoofed "SYSTEM" notice one request away. The caller-only form
+// stays open (the notifications page's realtime self-test uses it); the
+// tenant broadcast needs `notifications` write, as sending to others does.
+const canBroadcast = dynamicAccess("notifications", "write");
+function tenantBroadcastGate(req, res, next) {
+  if (req.body?.scope === "tenant") {
+    return canBroadcast(req, res, next);
+  }
+  return next();
+}
 
 /**
  * @swagger
@@ -64,6 +78,7 @@ router.get(
 router.post(
   "/test",
   auth,
+  tenantBroadcastGate,
   notificationController.sendTestNotification,
 );
 

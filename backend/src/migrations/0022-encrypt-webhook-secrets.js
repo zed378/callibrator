@@ -123,11 +123,13 @@ module.exports = {
 
     await rewriteSecrets(
       queryInterface,
-      "SELECT id, tenant_id, secret FROM webhooks WHERE secret NOT LIKE 'v1:%'",
+      // P6-10: an envelope is `v1:` (no key id) or `v2:<keyId>:`. Matching v1
+      // alone would take a v2 envelope for plaintext and wrap it twice.
+      "SELECT id, tenant_id, secret FROM webhooks WHERE secret NOT LIKE 'v1:%' AND secret NOT LIKE 'v2:%'",
       (tenantId, secret) => encryptData(tenantId, secret),
     );
 
-    const remaining = await countWhere(queryInterface, "secret NOT LIKE 'v1:%'");
+    const remaining = await countWhere(queryInterface, "secret NOT LIKE 'v1:%' AND secret NOT LIKE 'v2:%'");
     if (remaining !== 0) {
       throw new Error(`${NAME}: ${remaining} plaintext webhook secret(s) remain after encryption`);
     }
@@ -145,11 +147,11 @@ module.exports = {
     // which aborts the transaction: down never half-completes.
     await rewriteSecrets(
       queryInterface,
-      "SELECT id, tenant_id, secret FROM webhooks WHERE secret LIKE 'v1:%'",
+      "SELECT id, tenant_id, secret FROM webhooks WHERE secret LIKE 'v1:%' OR secret LIKE 'v2:%'",
       (tenantId, secret) => decryptData(tenantId, secret),
     );
 
-    const remaining = await countWhere(queryInterface, "secret LIKE 'v1:%'");
+    const remaining = await countWhere(queryInterface, "secret LIKE 'v1:%' OR secret LIKE 'v2:%'");
     if (remaining !== 0) {
       throw new Error(`${NAME}: ${remaining} encrypted webhook secret(s) remain after decryption`);
     }

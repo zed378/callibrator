@@ -21,9 +21,13 @@
  * Faked: the tenant row, its settings and JIT provisioning (models need a
  * database). They are the inputs to the flow, not what is under test.
  *
- * What this cannot show: a real IdP's quirks (Entra ID's issuer and JWKS
- * location differ from `${authority}/.well-known/jwks.json`) — see A-68's
- * section in TASKS/AUDIT-2026-09-REMEDIATION.md.
+ * A-188: the IdP can also take Microsoft Entra ID's SHAPE — a discovery
+ * document at /<tenant>/v2.0/.well-known/openid-configuration, keys at
+ * /<tenant>/discovery/v2.0/keys, endpoints under /<tenant>/oauth2/v2.0 and a
+ * tenant-specific issuer — and nothing at the paths this client used to
+ * derive. It can also behave as Entra does for a PUBLIC client (a
+ * client_secret in the token request is refused). What this still cannot
+ * show is Entra itself.
  */
 
 const http = require("http");
@@ -61,6 +65,25 @@ const idp = {
   tokenRequests: [],
   /** when set, the ID token carries this nonce instead of the one it was sent */
   nonceOverride: null,
+  /** A-188: "plain" (no discovery), "entra" (tenant-specific), "entra-common" */
+  shape: "plain",
+  /** A-188: a public client — a client_secret in the token request is refused */
+  publicClient: false,
+};
+
+// A-188: Entra ID's shape. TID is the directory (tenant) id.
+const TID = "72f988bf-86f1-41af-91ab-2d7cd011db47";
+const entraBase = () => `${idp.base}/${TID}`;
+const issuerOf = () => (idp.shape === "plain" ? idp.base : `${entraBase()}/v2.0`);
+const idpPath = (kind) => {
+  if (idp.shape === "plain") {
+    return { jwks: "/.well-known/jwks.json", authorize: "/authorize", token: "/token" }[kind];
+  }
+  return {
+    jwks: `/${TID}/discovery/v2.0/keys`,
+    authorize: `/${TID}/oauth2/v2.0/authorize`,
+    token: `/${TID}/oauth2/v2.0/token`,
+  }[kind];
 };
 
 const readBody = (req) =>
@@ -79,13 +102,27 @@ const idpHandler = async (req, res) => {
     res.end(body === undefined ? "" : JSON.stringify(body));
   };
 
-  if (req.method === "GET" && url.pathname === "/.well-known/jwks.json") {
+  if (
+    req.method === "GET" &&
+    ((idp.shape === "entra" && url.pathname === `/${TID}/v2.0/.well-known/openid-configuration`) ||
+      (idp.shape === "entra-common" && url.pathname === "/common/v2.0/.well-known/openid-configuration"))
+  ) {
+    return send(200, {
+      issuer: idp.shape === "entra" ? issuerOf() : `${idp.base}/{tenantid}/v2.0`,
+      authorization_endpoint: `${idp.base}${idpPath("authorize")}`,
+      token_endpoint: `${idp.base}${idpPath("token")}`,
+      jwks_uri: `${idp.base}${idpPath("jwks")}`,
+      response_modes_supported: ["query", "fragment", "form_post"],
+    });
+  }
+
+  if (req.method === "GET" && url.pathname === idpPath("jwks")) {
     return send(200, {
       keys: [{ ...idpKeys.publicKey.export({ format: "jwk" }), kid: KID, alg: "RS256", use: "sig" }],
     });
   }
 
-  if (req.method === "GET" && url.pathname === "/authorize") {
+  if (req.method === "GET" && url.pathname === idpPath("authorize")) {
     const q = Object.fromEntries(url.searchParams);
     idp.authorizeRequests.push(q);
     // The user signs in; the IdP sends the browser back with a code.
@@ -97,7 +134,7 @@ const idpHandler = async (req, res) => {
     return send(302, undefined, { Location: back.toString() });
   }
 
-  if (req.method === "POST" && url.pathname === "/token") {
+  if (req.method === "POST" && url.pathname === idpPath("token")) {
     const body = Object.fromEntries(new URLSearchParams(await readBody(req)));
     idp.tokenRequests.push(body);
     const issued = idp.codes.get(body.code);
@@ -112,7 +149,9 @@ const idpHandler = async (req, res) => {
       !issued ||
       !challengeOk ||
       body.client_id !== CLIENT_ID ||
-      body.client_secret !== CLIENT_SECRET ||
+      // A-188: a public client must send NO secret (Entra: AADSTS700025);
+      // a confidential one must send the right one.
+      (idp.publicClient ? "client_secret" in body : body.client_secret !== CLIENT_SECRET) ||
       body.redirect_uri !== issued.redirect_uri
     ) {
       return send(400, { error: "invalid_grant" });
@@ -126,7 +165,7 @@ const idpHandler = async (req, res) => {
         nonce: idp.nonceOverride || issued.nonce,
       },
       idpKeys.privateKey,
-      { algorithm: "RS256", keyid: KID, issuer: idp.base, audience: CLIENT_ID, expiresIn: "5m" },
+      { algorithm: "RS256", keyid: KID, issuer: issuerOf(), audience: CLIENT_ID, expiresIn: "5m" },
     );
     return send(200, { access_token: "at", token_type: "Bearer", id_token: idToken });
   }
@@ -181,6 +220,18 @@ const browserGet = async (url, { withCookies = true } = {}) => {
   return response;
 };
 
+/**
+ * A-188: a refused callback sends the browser to the frontend's login page
+ * with a fixed code — a 302, not the JSON envelope a browser would render.
+ */
+const expectLoginRefusal = (response, code) => {
+  expect(response.status).toBe(302);
+  const target = new URL(response.headers.get("location"));
+  expect(target.origin + target.pathname).toBe(`${FRONTEND}/login`);
+  expect(target.searchParams.get("error")).toBe(code);
+  expect(target.searchParams.has("code")).toBe(false);
+};
+
 /** Steps 1–2: start a sign-in on the login page and follow it to the IdP. */
 const startSignIn = async () => {
   const started = await fetch(`${rp.base}/api/v1/auth/sso/oidc/login`, {
@@ -227,6 +278,8 @@ beforeEach(() => {
   idp.authorizeRequests.length = 0;
   idp.tokenRequests.length = 0;
   idp.nonceOverride = null;
+  idp.shape = "plain";
+  idp.publicClient = false;
   oidcJwks.clearCache();
   process.env.FRONTEND_URL = FRONTEND;
 
@@ -301,8 +354,7 @@ describe("A-68/A-69: an OIDC sign-in against a real in-process IdP", () => {
 
     const res = await browserGet(forged.toString());
 
-    expect(res.status).toBe(401);
-    expect((await res.json()).message).toBe("Invalid or expired SSO sign-in state");
+    expectLoginRefusal(res, "sso_state");
     expect(idp.tokenRequests).toHaveLength(0);
     expect(ssoService.provisionUser).not.toHaveBeenCalled();
   });
@@ -314,7 +366,7 @@ describe("A-68/A-69: an OIDC sign-in against a real in-process IdP", () => {
 
     const res = await browserGet(stripped.toString());
 
-    expect(res.status).toBe(400);
+    expectLoginRefusal(res, "sso_state");
     expect(idp.tokenRequests).toHaveLength(0);
   });
 
@@ -329,7 +381,7 @@ describe("A-68/A-69: an OIDC sign-in against a real in-process IdP", () => {
       headers: { cookie: cookieAtCallback },
     });
 
-    expect(replay.status).toBe(401);
+    expectLoginRefusal(replay, "sso_state");
     expect(idp.tokenRequests).toHaveLength(1);
   });
 
@@ -340,7 +392,7 @@ describe("A-68/A-69: an OIDC sign-in against a real in-process IdP", () => {
     // The victim's browser has no binding cookie — or one of its own.
     jar = new Map();
     const noCookie = await browserGet(callbackUrl, { withCookies: false });
-    expect(noCookie.status).toBe(401);
+    expectLoginRefusal(noCookie, "sso_state");
 
     expect(idp.tokenRequests).toHaveLength(0);
     expect(ssoService.provisionUser).not.toHaveBeenCalled();
@@ -356,7 +408,7 @@ describe("A-68/A-69: an OIDC sign-in against a real in-process IdP", () => {
 
     const res = await browserGet(attacker.callbackUrl);
 
-    expect(res.status).toBe(401);
+    expectLoginRefusal(res, "sso_state");
     expect(idp.tokenRequests).toHaveLength(0);
   });
 
@@ -366,11 +418,99 @@ describe("A-68/A-69: an OIDC sign-in against a real in-process IdP", () => {
 
     const res = await browserGet(callbackUrl);
 
-    expect(res.status).toBe(401);
-    expect((await res.json()).message).toBe("id_token nonce does not match the sign-in request");
+    // A-188: the browser is sent back to the login page; the reason is logged.
+    expectLoginRefusal(res, "sso_failed");
     // The token WAS obtained (the code and verifier were good) — the nonce is
     // what refused it.
     expect(idp.tokenRequests).toHaveLength(1);
+    expect(ssoService.provisionUser).not.toHaveBeenCalled();
+  });
+});
+
+describe("A-188: discovery, Entra ID's shape and public clients, against the real in-process IdP", () => {
+  const settingsWith = (overrides) => ({
+    data: {
+      settings: {
+        sso_enabled: "true",
+        oidc_client_id: CLIENT_ID,
+        oidc_client_secret: CLIENT_SECRET,
+        oidc_redirect_uri: `${rp.base}/api/v1/auth/sso/oidc/callback/${TENANT.code}`,
+        ...overrides,
+      },
+    },
+  });
+
+  it.each([
+    ["the tenant-specific v2.0 issuer", () => `${entraBase()}/v2.0`],
+    ["the /oauth2/v2.0 endpoint base this client used to document", () => `${entraBase()}/oauth2/v2.0`],
+  ])("an Entra-shaped IdP completes when the authority is %s", async (_label, authority) => {
+    idp.shape = "entra";
+    tenantService.getTenantSettings.mockResolvedValue(settingsWith({ oidc_authority: authority() }));
+
+    const { redirectUrl, callbackUrl } = await startSignIn();
+
+    // The authorize request went to the DISCOVERED endpoint.
+    expect(new URL(redirectUrl).pathname).toBe(`/${TID}/oauth2/v2.0/authorize`);
+    const done = await browserGet(callbackUrl);
+    expect(done.status).toBe(302);
+    const landed = new URL(done.headers.get("location"));
+    expect(landed.pathname).toBe("/sso-callback");
+    expect(landed.searchParams.get("code")).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    // The ID token was verified against the tenant-specific issuer, with the
+    // keys at Entra's own path: provisioning ran.
+    expect(ssoService.provisionUser).toHaveBeenCalledWith(
+      TENANT.id,
+      expect.objectContaining({ email: USER.email }),
+    );
+  });
+
+  it("a multi-tenant authority (/common) is refused before the browser is sent anywhere", async () => {
+    idp.shape = "entra-common";
+    tenantService.getTenantSettings.mockResolvedValue(
+      settingsWith({ oidc_authority: `${idp.base}/common/v2.0` }),
+    );
+
+    const started = await fetch(`${rp.base}/api/v1/auth/sso/oidc/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ tenantCode: TENANT.code }),
+    });
+
+    expect(started.status).toBe(400);
+    expect((await started.json()).message).toMatch(/multi-tenant/);
+    expect(idp.authorizeRequests).toHaveLength(0);
+  });
+
+  it("a public client (no secret configured) sends no client_secret — not the string 'undefined'", async () => {
+    idp.publicClient = true;
+    tenantService.getTenantSettings.mockResolvedValue(
+      settingsWith({ oidc_authority: idp.base, oidc_client_secret: undefined }),
+    );
+
+    const { callbackUrl } = await startSignIn();
+    const done = await browserGet(callbackUrl);
+
+    expect(idp.tokenRequests).toHaveLength(1);
+    expect(idp.tokenRequests[0]).not.toHaveProperty("client_secret");
+    expect(new URL(done.headers.get("location")).pathname).toBe("/sso-callback");
+  });
+
+  it("a confidential client still sends its secret", async () => {
+    const { callbackUrl } = await startSignIn();
+    await browserGet(callbackUrl);
+
+    expect(idp.tokenRequests[0].client_secret).toBe(CLIENT_SECRET);
+  });
+
+  it("an IdP that refuses the token request sends the browser to /login?error=sso_failed", async () => {
+    tenantService.getTenantSettings.mockResolvedValue(
+      settingsWith({ oidc_authority: idp.base, oidc_client_secret: "wrong-secret" }),
+    );
+
+    const { callbackUrl } = await startSignIn();
+    const res = await browserGet(callbackUrl);
+
+    expectLoginRefusal(res, "sso_failed");
     expect(ssoService.provisionUser).not.toHaveBeenCalled();
   });
 });

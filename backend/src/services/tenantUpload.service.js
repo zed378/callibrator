@@ -11,7 +11,7 @@ const auditService = require("./audit.service");
 
 /** The "no logo" sentinel — never a file of this tenant's to delete. */
 const LOGO_PLACEHOLDER = "default.svg";
-const LOGO_FOLDER = "uploads/tenant";
+const LOGO_FOLDER = "uploads/public/tenant";
 
 /**
  * The stored logo filename of a tenant, or null when it has none of its own.

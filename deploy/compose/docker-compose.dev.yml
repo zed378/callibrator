@@ -5,6 +5,12 @@
 #
 # Publishes every port, adds pgadmin and MinIO, and relaxes the settings that
 # make development painful. NOTHING HERE IS SAFE FOR PRODUCTION.
+#
+# Every port binds to 127.0.0.1 EXCEPT nginx (S-19). They used to publish on
+# 0.0.0.0 — an unauthenticated Redis, a login-less pgAdmin
+# (SERVER_MODE False) and minioadmin:minioadmin, reachable from any network the
+# laptop joins, hospital wifi included. To reach one from another machine,
+# override the mapping in a local, uncommitted compose override file.
 
 services:
   backend:
@@ -30,7 +36,7 @@ services:
       STORAGE_S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
       STORAGE_S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
     ports:
-      - "${BACKEND_PORT:-3000}:3000"
+      - "127.0.0.1:${BACKEND_PORT:-3000}:3000"
       # A-17: the 1883 mapping was removed on 2026-09-23 — nothing listened on
       # it. The backend is an MQTT CLIENT of an external broker
       # (MQTT_HOST + MQTT_PORT); no broker is embedded. Publish a sidecar
@@ -49,24 +55,24 @@ services:
       # 3001 rather than 3000: on Windows, port 3000 falls in the WinNAT
       # reserved range and binds with EACCES — which is NOT a port-in-use
       # problem and cannot be diagnosed by hunting for the holder.
-      - "${FRONTEND_PORT:-3001}:3000"
+      - "127.0.0.1:${FRONTEND_PORT:-3001}:3000"
 
   postgres:
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
 
   redis:
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
 
   rabbitmq:
     ports:
-      - "${RABBITMQ_PORT:-5672}:5672"
-      - "${RABBITMQ_MGMT_PORT:-15672}:15672"
+      - "127.0.0.1:${RABBITMQ_PORT:-5672}:5672"
+      - "127.0.0.1:${RABBITMQ_MGMT_PORT:-15672}:15672"
 
   clamav:
     ports:
-      - "${CLAMAV_PORT:-3310}:3310"
+      - "127.0.0.1:${CLAMAV_PORT:-3310}:3310"
 
   nginx:
     ports:
@@ -77,10 +83,10 @@ services:
   # --------------------------------------------------------------------------
 
   pgadmin:
-    image: dpage/pgadmin4:8.14
+    image: dpage/pgadmin4:8.14@sha256:8a68677a97b8c8d1427dc915672a26d2c4a04376916a68256f53d669d6171be7
     restart: unless-stopped
     ports:
-      - "${PGADMIN_PORT:-8888}:80"
+      - "127.0.0.1:${PGADMIN_PORT:-8888}:80"
     environment:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-pgadmin@local.dev}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-pgadmin}
@@ -97,8 +103,8 @@ services:
     restart: unless-stopped
     command: server /data --console-address ":9001"
     ports:
-      - "${MINIO_PORT:-9000}:9000"
-      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+      - "127.0.0.1:${MINIO_PORT:-9000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}

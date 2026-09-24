@@ -34,8 +34,14 @@ export function useRoles() {
   }, [fetchRoles, searchTerm, currentPage, pageSize]);
 
   const handleDelete = async (id: string) => {
-    await deleteRole(id);
-    setShowDeleteConfirm(null);
+    try {
+      await deleteRole(id);
+    } catch {
+      // F-64: the store has put the backend's message in `error`, which the
+      // page renders as an Alert; the row stays because the list is unchanged.
+    } finally {
+      setShowDeleteConfirm(null);
+    }
   };
 
   const handleCreate = async (e: React.FormEvent) => {

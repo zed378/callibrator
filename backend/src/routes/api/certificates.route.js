@@ -39,6 +39,34 @@ router.get("/verify/:certificateNumber", certificatePdfController.verifyCertific
 
 /**
  * @swagger
+ * /api/v1/certificates/verify/{certificateNumber}/document:
+ *   get:
+ *     summary: The PDF of a signed certificate, via the verification capability (no auth)
+ *     description: >-
+ *       ADR-042 step 4. `token` is minted by the verification endpoint (its
+ *       `documentUrl`) for a signed certificate only and expires (default one
+ *       hour). The certificate's status is re-checked on every fetch. Served
+ *       inline as application/pdf with ETag and Range support.
+ *     tags: [Certificates]
+ *     parameters:
+ *       - in: path
+ *         name: certificateNumber
+ *         required: true
+ *         schema: { type: string }
+ *       - in: query
+ *         name: token
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200: { description: PDF }
+ *       403: { description: Invalid or expired link }
+ *       404: { description: No signed certificate document for this number }
+ */
+// PUBLIC — capability-gated (the token is the gate, as for /storage/object).
+router.get("/verify/:certificateNumber/document", certificatePdfController.verifyDocument);
+
+/**
+ * @swagger
  * /api/v1/certificates:
  *   get:
  *     summary: Get all certificates

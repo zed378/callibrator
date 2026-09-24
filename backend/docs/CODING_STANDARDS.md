@@ -136,7 +136,7 @@ callibrator-be/
 │   │   └── seedTablePermissions.util.js # Table permissions seeding utility
 │   └── validators/               # Joi validation schemas
 ├── .env                          # Environment variables
-├── local.env                     # Local development env
+├── .env.example                  # Local development env template (S-25)
 ├── docker-compose.yaml           # Docker services
 ├── Dockerfile                    # Container definition
 ├── package.json                  # Dependencies

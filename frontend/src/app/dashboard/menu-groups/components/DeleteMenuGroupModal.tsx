@@ -29,7 +29,8 @@ export const DeleteMenuGroupModal: React.FC<DeleteMenuGroupModalProps> = ({
             </p>
             <p className="text-sm text-muted-foreground mt-1">
               This will delete the menu group and remove it from every role it
-              is assigned to.
+              is assigned to. A group that still has child menus cannot be
+              deleted — delete or move its children first.
             </p>
           </div>
         </div>

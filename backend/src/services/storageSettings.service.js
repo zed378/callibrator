@@ -71,8 +71,8 @@ const updateSettings = async (tenantId, input) => {
 
   await storageConfig.setTenantConfig(tenantId, input);
   // A cached driver for this tenant now points at the OLD config; drop it so
-  // the next request rebuilds from the new settings.
-  storage.invalidate(tenantId);
+  // the next request rebuilds from the new settings — on every replica (A-40).
+  await storage.invalidate(tenantId);
 
   logger.info("Tenant storage settings updated", {
     tenantId,
@@ -85,7 +85,7 @@ const updateSettings = async (tenantId, input) => {
 const clearSettings = async (tenantId) => {
   if (!tenantId) {throw new AppError(400, "A tenant is required");}
   await storageConfig.clearTenantConfig(tenantId);
-  storage.invalidate(tenantId);
+  await storage.invalidate(tenantId);
   logger.info("Tenant storage settings cleared", { tenantId });
   return getSettings(tenantId);
 };

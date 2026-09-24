@@ -4,7 +4,9 @@ import React, { useEffect, useState, useCallback } from "react";
 import DashboardLayout from "@/components/layouts/DashboardLayout";
 import { useAuthStore } from "@/stores/authStore";
 import { sessionService, Session as ApiServiceSession } from "@/api/services/session.service";
-import { Button } from "@/components/ui";
+import { Button, ErrorState } from "@/components/ui";
+import { describeApiError } from "@/api/client";
+import { useToastStore } from "@/stores/toastStore";
 import { RefreshCw, LogOut, Monitor, Activity, Clock, Shield, AlertTriangle } from "lucide-react";
 import SessionStatCard from "./components/StatCard";
 import { SessionFilters } from "./components/SessionFilters";
@@ -36,11 +38,15 @@ export default function SessionManagementPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalSessions, setTotalSessions] = useState(0);
+  // F-07: a failed load is a failed state, never "no sessions".
+  const [loadError, setLoadError] = useState<unknown>(null);
+  const { addToast } = useToastStore();
   const LIMIT = 20;
 
   const fetchSessions = useCallback(async () => {
     if (!isAuthenticated || !user) return;
     setIsLoading(true);
+    setLoadError(null);
     try {
       const statusMap: Record<string, "active" | "expired" | "revoked" | undefined> = { all: undefined, active: "active", expired: "expired", revoked: "revoked" };
       const { sessions: apiSessions, meta } = await sessionService.getAll(page, LIMIT, searchQuery || undefined, statusMap[filterStatus]);
@@ -58,8 +64,12 @@ export default function SessionManagementPage() {
         revoked: apiSessions.filter((s: ApiServiceSession) => s.status === "revoked").length,
         currentUserId,
       });
-    } catch { /* ignore */ }
-    finally { setIsLoading(false); }
+    } catch (err) {
+      setSessions([]);
+      setLoadError(err);
+    } finally {
+      setIsLoading(false);
+    }
   }, [isAuthenticated, user, page, LIMIT, searchQuery, filterStatus]);
 
   const fetchStats = useCallback(async () => {
@@ -67,7 +77,11 @@ export default function SessionManagementPage() {
     try {
       const statsData = await sessionService.getStats();
       setStats((prev) => ({ ...(prev || { total: 0, active: 0, expired: 0, revoked: 0, currentUserId: user.id }), ...statsData }));
-    } catch { /* ignore */ }
+    } catch {
+      // F-07: the counts cannot be trusted — show none rather than stale or
+      // zero figures. The list's own error state reports the failure.
+      setStats(null);
+    }
   }, [isAuthenticated, user]);
 
   useEffect(() => {
@@ -87,19 +101,51 @@ export default function SessionManagementPage() {
     }
   }, [isAuthenticated, user, page, searchQuery, filterStatus, fetchSessions, fetchStats]);
 
+  /**
+   * F-07: a session action that fails says so and leaves the row in place.
+   * It used to be swallowed while the row was removed from the list — telling
+   * the operator a session was revoked when it was not, on a security screen.
+   */
+  const reportFailure = (title: string, err: unknown) => {
+    const { message, requestId } = describeApiError(err);
+    addToast({
+      type: "error",
+      title,
+      description: requestId ? `${message} (reference ${requestId})` : message,
+    });
+  };
   const handleRevokeSession = async (sessionId: string) => {
-    try { await sessionService.revoke(sessionId, "MANUAL_REVOKE"); setSessions((p) => p.filter((s) => s.id !== sessionId)); }
-    catch { /* ignore */ }
-    finally { setRevokeConfirm(null); }
+    setRevokeConfirm(null);
+    try {
+      await sessionService.revoke(sessionId, "MANUAL_REVOKE");
+      setSessions((p) => p.filter((s) => s.id !== sessionId));
+      addToast({ type: "success", title: "Session revoked" });
+    } catch (err) {
+      reportFailure("The session was NOT revoked", err);
+    }
     await fetchSessions(); await fetchStats();
   };
   const handleDeleteSession = async (sessionId: string) => {
-    try { await sessionService.delete(sessionId); setSessions((p) => p.filter((s) => s.id !== sessionId)); }
-    catch { /* ignore */ }
-    finally { setDeleteConfirm(null); }
+    setDeleteConfirm(null);
+    try {
+      await sessionService.delete(sessionId);
+      setSessions((p) => p.filter((s) => s.id !== sessionId));
+      addToast({ type: "success", title: "Session deleted" });
+    } catch (err) {
+      reportFailure("The session was NOT deleted", err);
+    }
     await fetchSessions(); await fetchStats();
   };
-  const handleRevokeAll = async () => { if (!user?.id) return; await sessionService.revokeAllForUser(user.id, "USER_REVOKE_ALL_OTHERS"); await fetchSessions(); await fetchStats(); };
+  const handleRevokeAll = async () => {
+    if (!user?.id) return;
+    try {
+      await sessionService.revokeAllForUser(user.id, "USER_REVOKE_ALL_OTHERS");
+      addToast({ type: "success", title: "All other sessions revoked" });
+    } catch (err) {
+      reportFailure("Your other sessions were NOT revoked", err);
+    }
+    await fetchSessions(); await fetchStats();
+  };
   const handleRefresh = async () => { setPage(1); await fetchSessions(); await fetchStats(); };
 
   return (
@@ -141,6 +187,8 @@ export default function SessionManagementPage() {
                 <p className="text-sm">Loading sessions...</p>
               </div>
             </div>
+          ) : loadError ? (
+            <ErrorState error={loadError} onRetry={handleRefresh} />
           ) : sessions.length === 0 ? (
             <div className="rounded-2xl bg-card p-12 text-center shadow-sm">
               <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />

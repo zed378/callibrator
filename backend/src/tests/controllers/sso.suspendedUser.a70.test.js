@@ -23,7 +23,8 @@
 
 jest.mock("../../models", () => ({
   Tenants: { findOne: jest.fn() },
-  Users: { findOne: jest.fn(), findByPk: jest.fn(), create: jest.fn() },
+  // A-188: update — the exchange stamps last_login_at.
+  Users: { findOne: jest.fn(), findByPk: jest.fn(), create: jest.fn(), update: jest.fn(async () => [1]) },
   Role: {},
   sequelize: { transaction: jest.fn(async (fn) => fn("mock-transaction")) },
 }));
@@ -178,9 +179,12 @@ describe("A-70: SSO refuses a suspended user", () => {
 
     const res = await callback();
 
-    expect(res.status).toBe(403);
-    expect(res.body.message).toBe("Account is suspended");
-    expect(res.redirect).toBeUndefined();
+    // A-188: refused to the login page, with a code — never to /sso-callback.
+    expect(res.status).toBe(302);
+    const target = new URL(res.redirect);
+    expect(target.pathname).toBe("/login");
+    expect(target.searchParams.get("error")).toBe("sso_account_refused");
+    expect(target.searchParams.has("code")).toBe(false);
     // No hand-off code was issued, so there is nothing to exchange ...
     expect(redis.set).not.toHaveBeenCalled();
     expect(redis.mockStore.size).toBe(0);
@@ -194,7 +198,7 @@ describe("A-70: SSO refuses a suspended user", () => {
 
     const res = await samlCallback();
 
-    expect(res.status).toBe(403);
+    expect(new URL(res.redirect).searchParams.get("error")).toBe("sso_account_refused");
     expect(redis.set).not.toHaveBeenCalled();
     expect(createSession).not.toHaveBeenCalled();
     expect(auditService.logAction).not.toHaveBeenCalled();

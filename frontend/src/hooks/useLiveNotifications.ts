@@ -12,28 +12,40 @@ import { playNotificationSound } from "@/lib/notificationSound";
  * page updates the TopBar bell instantly); this hook keeps it current via
  * the socket.io "new_notification" event and shows an info toast for every
  * incoming notification.
+ *
+ * F-17: a push does not increment the badge — it re-reads the server's count,
+ * so the same notification can never be counted twice. Every (re)connect
+ * re-reads it too, so pushes missed while disconnected are not lost
+ * (docs/FRONTEND/06-REALTIME.md: "on reconnect, refetch").
  */
 export function useLiveNotifications() {
-  const { addToast } = useToastStore();
-  const { unreadCount, setUnreadCount, incrementUnread, refreshUnread } =
-    useNotificationStore();
+  const unreadCount = useNotificationStore((s) => s.unreadCount);
+  const setUnreadCount = useNotificationStore((s) => s.setUnreadCount);
+  const refreshUnread = useNotificationStore((s) => s.refreshUnread);
   const [latest, setLatest] = useState<Notification | null>(null);
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
     let disposed = false;
     let cleanup: (() => void) | null = null;
+    // Store actions are read from the stores themselves, not closed over from
+    // render, so this effect subscribes once per mount.
+    const { refreshUnread: refresh } = useNotificationStore.getState();
+    const { addToast } = useToastStore.getState();
 
-    refreshUnread();
+    void refresh();
 
     (async () => {
       const socket = await getSocket();
       if (!socket || disposed) return;
 
-      const onConnect = () => setConnected(true);
+      const onConnect = () => {
+        setConnected(true);
+        void refresh();
+      };
       const onDisconnect = () => setConnected(false);
       const onNotification = (notification: Notification) => {
-        incrementUnread();
+        void refresh();
         setLatest(notification);
         playNotificationSound();
         addToast({
@@ -61,7 +73,6 @@ export function useLiveNotifications() {
       // for other subscribers.
       if (cleanup) cleanup();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return { unreadCount, latest, connected, setUnreadCount, refreshUnread };

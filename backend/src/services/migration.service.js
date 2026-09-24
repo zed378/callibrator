@@ -711,12 +711,9 @@ async function seedUsers() {
         status: userData.status,
         roleId: userData.roleId,
         tenantId: userData.tenantId,
-        // DEFAULT_SYSTEM_USERS is a module constant whose only entry sets
-        // isEmailVerified explicitly, so the `: true` fallback is unreachable.
-        isEmailVerified:
-          /* istanbul ignore next */ userData.isEmailVerified !== undefined
-            ? userData.isEmailVerified
-            : true,
+        // A-32: DEFAULT_SYSTEM_USERS is a module constant whose only entry sets
+        // isEmailVerified explicitly; the unreachable `: true` fallback is gone.
+        isEmailVerified: userData.isEmailVerified,
       };
 
       // Upsert instead of hard-delete + recreate: existing system users may
@@ -978,7 +975,7 @@ const DEMO_USERS = Object.entries(ROLE_IDS)
  * Seed the two extra demonstration tenants (idempotent by subdomain).
  * @returns {Promise<number>} number of tenants created
  */
-/* istanbul ignore next */
+/* istanbul ignore next -- demo fixtures only (SEED_DEMO=true, GET /migration/seed-demo, scripts/seedDemo.js): never runs in production; see A-32 */
 async function seedDemoTenants() {
   let created = 0;
   for (const t of DEMO_TENANTS) {
@@ -998,7 +995,7 @@ async function seedDemoTenants() {
  * Seed one user per application role under DEFAULT_TENANT (idempotent by email).
  * @returns {Promise<number>} number of users created
  */
-/* istanbul ignore next */
+/* istanbul ignore next -- demo fixtures only (SEED_DEMO=true, GET /migration/seed-demo, scripts/seedDemo.js): never runs in production; see A-32 */
 async function seedDemoUsers() {
   let created = 0;
   const hashed = await hashPassword("Demo123!");
@@ -1031,7 +1028,7 @@ async function seedDemoUsers() {
  * foreign keys on demo rows. Prefers the seeded system super-admin.
  * @returns {Promise<string>} user id
  */
-/* istanbul ignore next */
+/* istanbul ignore next -- demo fixtures only (SEED_DEMO=true, GET /migration/seed-demo, scripts/seedDemo.js): never runs in production; see A-32 */
 async function resolveDemoActorId() {
   const sys = await Users.findOne({
     where: { email: "sys@mail.com" },
@@ -1051,7 +1048,7 @@ async function resolveDemoActorId() {
  * Warehouse -> storage-location -> stock -> transfer/adjustment/opname.
  * @returns {Promise<Object>} counts per sub-entity
  */
-/* istanbul ignore next */
+/* istanbul ignore next -- demo fixtures only (SEED_DEMO=true, GET /migration/seed-demo, scripts/seedDemo.js): never runs in production; see A-32 */
 async function seedDemoWarehousing(tenantId, actorId, counts) {
   // Two warehouses
   const warehouses = [];
@@ -1189,7 +1186,7 @@ async function seedDemoWarehousing(tenantId, actorId, counts) {
 /**
  * Vendors -> supplier scorecards.
  */
-/* istanbul ignore next */
+/* istanbul ignore next -- demo fixtures only (SEED_DEMO=true, GET /migration/seed-demo, scripts/seedDemo.js): never runs in production; see A-32 */
 async function seedDemoVendors(tenantId, actorId, counts) {
   const vendorDefs = [
     { name: "Demo Calibration Lab", type: "CalibrationLab" },
@@ -1240,7 +1237,7 @@ async function seedDemoVendors(tenantId, actorId, counts) {
 /**
  * Calibration devices -> records -> certificates (draft + approved + signed).
  */
-/* istanbul ignore next */
+/* istanbul ignore next -- demo fixtures only (SEED_DEMO=true, GET /migration/seed-demo, scripts/seedDemo.js): never runs in production; see A-32 */
 async function seedDemoCalibration(tenantId, actorId, counts) {
   const deviceDefs = [
     { serial: `${DEMO.deviceSerialPrefix}1`, name: "Demo Digital Multimeter", iot: true },
@@ -1336,7 +1333,7 @@ async function seedDemoCalibration(tenantId, actorId, counts) {
  * Maintenance work orders + IoT readings (predictive maintenance is derived from
  * these, it has no dedicated model).
  */
-/* istanbul ignore next */
+/* istanbul ignore next -- demo fixtures only (SEED_DEMO=true, GET /migration/seed-demo, scripts/seedDemo.js): never runs in production; see A-32 */
 async function seedDemoMaintenance(tenantId, actorId, devices, counts) {
   const device = devices[0];
 
@@ -1389,7 +1386,7 @@ async function seedDemoMaintenance(tenantId, actorId, devices, counts) {
 /**
  * QMS non-conformances (+ a CAPA), SOP documents, and risks.
  */
-/* istanbul ignore next */
+/* istanbul ignore next -- demo fixtures only (SEED_DEMO=true, GET /migration/seed-demo, scripts/seedDemo.js): never runs in production; see A-32 */
 async function seedDemoQms(tenantId, actorId, devices, counts) {
   // Non-conformances
   const ncDefs = [
@@ -1505,7 +1502,7 @@ async function seedDemoQms(tenantId, actorId, devices, counts) {
 /**
  * Workflows (with steps referencing real roleIds).
  */
-/* istanbul ignore next */
+/* istanbul ignore next -- demo fixtures only (SEED_DEMO=true, GET /migration/seed-demo, scripts/seedDemo.js): never runs in production; see A-32 */
 async function seedDemoWorkflows(tenantId, counts) {
   const [workflow, wasCreated] = await Workflow.findOrCreate({
     where: { tenantId, name: `${DEMO.marker} Certificate Approval` },
@@ -1544,7 +1541,7 @@ async function seedDemoWorkflows(tenantId, counts) {
  * Support tickets (+ a comment). Manages the per-tenant TicketCounter so seeded
  * ticket numbers never collide with runtime-created tickets.
  */
-/* istanbul ignore next */
+/* istanbul ignore next -- demo fixtures only (SEED_DEMO=true, GET /migration/seed-demo, scripts/seedDemo.js): never runs in production; see A-32 */
 async function seedDemoTickets(tenantId, actorId, counts) {
   const [counter] = await TicketCounter.findOrCreate({
     where: { tenantId },
@@ -1610,7 +1607,7 @@ async function seedDemoTickets(tenantId, actorId, counts) {
  * A kanban project with columns (incl. terminal Done), labels, and cards.
  * Manages KanbanProject.cardSeq so seeded card keys never collide at runtime.
  */
-/* istanbul ignore next */
+/* istanbul ignore next -- demo fixtures only (SEED_DEMO=true, GET /migration/seed-demo, scripts/seedDemo.js): never runs in production; see A-32 */
 async function seedDemoKanban(tenantId, actorId, counts) {
   const [project, projectCreated] = await KanbanProject.findOrCreate({
     where: { tenantId, name: `${DEMO.marker} Board` },
@@ -1698,7 +1695,7 @@ async function seedDemoKanban(tenantId, actorId, counts) {
 /**
  * Notifications, content (categories + posts), and feature flags.
  */
-/* istanbul ignore next */
+/* istanbul ignore next -- demo fixtures only (SEED_DEMO=true, GET /migration/seed-demo, scripts/seedDemo.js): never runs in production; see A-32 */
 async function seedDemoEngagement(tenantId, actorId, counts) {
   // Notifications (tenant-wide, userId null)
   const notificationDefs = [
@@ -1806,7 +1803,7 @@ async function seedDemoEngagement(tenantId, actorId, counts) {
  * Seed a realistic slice of every business module. Idempotent and FK-safe.
  * @returns {Promise<Object>} { created: {per-module counts}, errors: [] }
  */
-/* istanbul ignore next */
+/* istanbul ignore next -- demo fixtures only (SEED_DEMO=true, GET /migration/seed-demo, scripts/seedDemo.js): never runs in production; see A-32 */
 async function seedDemoData() {
   logger.info("=== Starting demo-data seeding ===");
 
@@ -1889,7 +1886,7 @@ async function seedDemoData() {
  * Matches on the stable DEMO markers so real data is never touched.
  * @returns {Promise<Object>} { deleted: {...}, errors: [] }
  */
-/* istanbul ignore next */
+/* istanbul ignore next -- demo fixtures only (SEED_DEMO=true, GET /migration/seed-demo, scripts/seedDemo.js): never runs in production; see A-32 */
 async function unseedDemoData() {
   logger.info("=== Removing demo data ===");
   const tenantId = DEFAULT_TENANT.id;

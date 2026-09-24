@@ -29,7 +29,7 @@ jest.mock("@/api/services/search.service", () => {
   };
 });
 
-import { GlobalSearch } from "../GlobalSearch";
+import { GlobalSearchBox as GlobalSearch } from "../GlobalSearch";
 
 const input = () => screen.getByLabelText("Global search");
 

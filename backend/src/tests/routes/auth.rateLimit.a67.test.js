@@ -14,7 +14,8 @@
  * (rateLimiter.redis.service on its in-process fallback, because no Redis
  * client is ready in a unit run), the auth controller and its error mapping,
  * auth.service and its Joi validation. What is faked: the user lookup
- * (`Users.findOne` is spied — there is no database) and nothing else.
+ * (`Users.findOne` is spied — there is no database) and, since A-185, the
+ * bcrypt comparison, and nothing else.
  *
  * What it does not prove: the per-IP key behind the Next.js proxy. Without
  * `trust proxy`, `req.ip` there is the frontend server's address, so every
@@ -27,6 +28,16 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));
 
+// A-185: an unknown account is now compared against a real cost-12 bcrypt
+// hash (so its timing matches a wrong password). This suite drives dozens of
+// failures and counts them; it does not test bcrypt, so the comparison is
+// answered at once.
+jest.mock("../../utils/password.util", () => ({
+  hashPassword: jest.fn(),
+  comparePassword: jest.fn(),
+}));
+
+const { comparePassword } = require("../../utils/password.util");
 const authRouter = require("../../routes/api/auth.route");
 const { Users } = require("../../models");
 const { clearMemoryStore } = require("../../services/rateLimiter.redis.service");
@@ -76,7 +87,14 @@ const drive = (url, body, ip) =>
 // The per-IP lock is at maxAttempts * 3 failures (recordAuthFailure).
 const ipLimit = (endpoint) => getAuthConfig(endpoint).maxAttempts * 3;
 
-const BAD_LOGIN = { user: "nobody@hospital.example.com", password: "Wrong-password-1" };
+// A-185: every bad login names a DIFFERENT identifier, so the per-identifier
+// sign-in throttle (five per identifier and address) never answers first —
+// what this suite counts is the per-address limit.
+let badLoginSeq = 0;
+const badLogin = () => ({
+  user: `nobody-${(badLoginSeq += 1)}@hospital.example.com`,
+  password: "Wrong-password-1",
+});
 
 // Per-IP counting is opt-in (AUTH_RATE_LIMIT_BY_IP) until client-IP resolution
 // behind the Next proxy is fixed (A-16). This suite exercises it switched on.
@@ -87,6 +105,7 @@ beforeEach(() => {
   clearMemoryStore();
   jest.restoreAllMocks();
   jest.spyOn(Users, "findOne").mockResolvedValue(null);
+  comparePassword.mockResolvedValue(false);
 });
 
 afterAll(() => {
@@ -104,7 +123,7 @@ describe("A-67: per-IP counting is off by default", () => {
     const ip = "198.51.100.99";
 
     for (let i = 0; i < ipLimit("login") + 3; i += 1) {
-      expect((await drive("/login", BAD_LOGIN, ip)).status).toBe(401);
+      expect((await drive("/login", badLogin(), ip)).status).toBe(401);
     }
   });
 });
@@ -115,12 +134,12 @@ describe("A-67: the auth rate limiter records failures through the real router",
     const n = ipLimit("login");
 
     for (let i = 0; i < n; i += 1) {
-      const res = await drive("/login", BAD_LOGIN, ip);
+      const res = await drive("/login", badLogin(), ip);
       expect(res.status).toBe(401);
       expect(res.body.message).toBe("Invalid credentials");
     }
 
-    const locked = await drive("/login", BAD_LOGIN, ip);
+    const locked = await drive("/login", badLogin(), ip);
     expect(locked.status).toBe(429);
     expect(locked.body.message).toBe("IP blocked");
     expect(locked.body.retryAfter).toBeGreaterThan(0);
@@ -129,7 +148,7 @@ describe("A-67: the auth rate limiter records failures through the real router",
     expect(Users.findOne).toHaveBeenCalledTimes(n);
 
     // Only that address: another one is still answered on the merits.
-    const other = await drive("/login", BAD_LOGIN, "198.51.100.11");
+    const other = await drive("/login", badLogin(), "198.51.100.11");
     expect(other.status).toBe(401);
   });
 
@@ -138,7 +157,7 @@ describe("A-67: the auth rate limiter records failures through the real router",
     const ip = "198.51.100.12";
 
     for (let i = 0; i < ipLimit("login") + 2; i += 1) {
-      expect((await drive("/login", BAD_LOGIN, ip)).status).toBe(500);
+      expect((await drive("/login", badLogin(), ip)).status).toBe(500);
     }
   });
 
@@ -147,17 +166,17 @@ describe("A-67: the auth rate limiter records failures through the real router",
     const n = ipLimit("login");
 
     for (let i = 0; i < n - 1; i += 1) {
-      expect((await drive("/login", BAD_LOGIN, ip)).status).toBe(401);
+      expect((await drive("/login", badLogin(), ip)).status).toBe(401);
     }
     // An MFA-enabled account passes the password step without a session,
     // which keeps this case free of a database. (The backend answers it 200
     // with data.mfaRequired, not the 202 auth.service returns — login() in
     // response.util always sends 200; the frontend keys on mfaRequired.)
-    const { hashPassword } = require("../../utils/password.util");
+    comparePassword.mockResolvedValueOnce(true);
     Users.findOne.mockResolvedValueOnce({
       id: "11111111-1111-4111-8111-111111111111",
       email: "real@hospital.example.com",
-      password: await hashPassword("Right-password-1"),
+      password: "hash-of-Right-password-1",
       isActive: true,
       status: "ACTIVE",
       mfaEnabled: true,
@@ -172,8 +191,8 @@ describe("A-67: the auth rate limiter records failures through the real router",
     expect(ok.body.data.mfaRequired).toBe(true);
 
     // One more failure reaches the limit: the success reset nothing per-IP.
-    expect((await drive("/login", BAD_LOGIN, ip)).status).toBe(401);
-    expect((await drive("/login", BAD_LOGIN, ip)).status).toBe(429);
+    expect((await drive("/login", badLogin(), ip)).status).toBe(401);
+    expect((await drive("/login", badLogin(), ip)).status).toBe(429);
   });
 
   it("with no req.ip, counts against the socket address and logs the failure without an ip", async () => {
@@ -199,7 +218,7 @@ describe("A-67: the auth rate limiter records failures through the real router",
           {
             method: "POST",
             url: "/login",
-            body: BAD_LOGIN,
+            body: badLogin(),
             query: {},
             params: {},
             headers: {},

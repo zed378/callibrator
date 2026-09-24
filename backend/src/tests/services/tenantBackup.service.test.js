@@ -869,6 +869,42 @@ describe("Tenant Backup Service", () => {
       });
     });
 
+    it("D-02: a user entry naming ANOTHER tenant (and a raised role) is matched only in the owning tenant and writes only profile fields", async () => {
+      // The archive envelope is the owning tenant's, but the entry inside it
+      // claims tenant B, a different role and an active state. None of that
+      // may reach a row: the lookup is pinned to the owning tenant, the write
+      // is the RESTORE_UPDATE_FIELDS allow-list, and nothing is inserted.
+      mockTenantBackup.findByPk.mockResolvedValue(restorableBackup());
+      stubArchive(
+        archive({
+          users: [
+            backedUpUser({
+              tenantId: "tenant-B",
+              roleId: "super-admin-role",
+              isActive: true,
+              status: "active",
+              password: "$2b$10$chosenhash",
+              firstName: "Renamed",
+            }),
+          ],
+        }),
+      );
+      const live = liveAccount();
+      mockUsers.findOne.mockResolvedValue(live);
+      mockUsers.count.mockResolvedValue(1);
+
+      await run();
+
+      expect(mockUsers.findOne.mock.calls[0][0].where.tenantId).toBe(mockTenantId);
+      expect(live.update).toHaveBeenCalledWith(
+        { firstName: "Renamed", lastName: "One" },
+        { transaction: mockTransaction },
+      );
+      expect(mockUsers.create).not.toHaveBeenCalled();
+      expect(mockModels.sequelize.models.Users.bulkCreate).not.toHaveBeenCalled();
+      expect(mockModels.sequelize.models.Users.destroy).not.toHaveBeenCalled();
+    });
+
     it("leaves a live account completely untouched when mergeData is true (the merge path executes)", async () => {
       mockTenantBackup.findByPk.mockResolvedValue(
         restorableBackup({ metadata: { checksum: "mock-checksum" } }),

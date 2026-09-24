@@ -17,9 +17,14 @@ jest.mock("../../utils/response.util", () => ({
   error: jest.fn(),
 }));
 
+jest.mock("../../utils/fileResponse.util", () => ({
+  sendStoredFile: jest.fn().mockResolvedValue(undefined),
+}));
+
 const attachmentService = require("../../services/attachment.service");
 const attachmentController = require("../../controllers/attachment.controller");
 const { success } = require("../../utils/response.util");
+const { sendStoredFile } = require("../../utils/fileResponse.util");
 
 const VALID_USER_ID = "550e8400-e29b-41d4-a716-446655440000";
 const VALID_TENANT_ID = "550e8400-e29b-41d4-a716-446655440001";
@@ -193,16 +198,42 @@ describe("attachment Controller", () => {
       attachmentService.getDownload.mockResolvedValue({
         absPath: "/uploads/devices/report.pdf",
         fileName: "report.pdf",
+        mimeType: "application/pdf",
       });
 
       await attachmentController.download(req, res, next);
 
       expect(attachmentService.getDownload).toHaveBeenCalledWith(VALID_TENANT_ID, VALID_ATTACHMENT_ID);
-      expect(res.download).toHaveBeenCalledWith("/uploads/devices/report.pdf", "report.pdf");
+      // ADR-042 step 5: served with a content-type-driven disposition, ETag and Range.
+      expect(sendStoredFile).toHaveBeenCalledWith(res, "/uploads/devices/report.pdf", {
+        contentType: "application/pdf",
+        fileName: "report.pdf",
+      });
+    });
+
+    it("serves opaque bytes when the row carries no MIME type", async () => {
+      req.params = { id: VALID_ATTACHMENT_ID };
+      attachmentService.getDownload.mockResolvedValue({ absPath: "/x", fileName: "x" });
+      await attachmentController.download(req, res, next);
+      expect(sendStoredFile).toHaveBeenCalledWith(res, "/x", {
+        contentType: "application/octet-stream",
+        fileName: "x",
+      });
     });
   });
 
   describe("createSignedUrl", () => {
+    // A-189: the link's origin is the configured public one
+    // (utils/publicBaseUrl.util.js), never the request's Host header.
+    let savedBase;
+    beforeEach(() => {
+      savedBase = process.env.PUBLIC_BASE_URL;
+      process.env.PUBLIC_BASE_URL = "https://callibrator.example/";
+    });
+    afterEach(() => {
+      if (savedBase === undefined) {delete process.env.PUBLIC_BASE_URL;} else {process.env.PUBLIC_BASE_URL = savedBase;}
+    });
+
     it("should generate a signed URL", async () => {
       req.params = { id: VALID_ATTACHMENT_ID };
       req.body = { expiresInSec: 3600 };
@@ -217,7 +248,7 @@ describe("attachment Controller", () => {
       expect(attachmentService.generateSignedUrl).toHaveBeenCalledWith(
         VALID_TENANT_ID,
         VALID_ATTACHMENT_ID,
-        { baseUrl: "https://localhost:3000", expiresInSec: 3600 },
+        { baseUrl: "https://callibrator.example", expiresInSec: 3600 },
       );
       expect(res.status).toHaveBeenCalledWith(200);
     });
@@ -236,7 +267,7 @@ describe("attachment Controller", () => {
       expect(attachmentService.generateSignedUrl).toHaveBeenCalledWith(
         VALID_TENANT_ID,
         VALID_ATTACHMENT_ID,
-        { baseUrl: "https://localhost:3000", expiresInSec: undefined },
+        { baseUrl: "https://callibrator.example", expiresInSec: undefined },
       );
     });
   });
@@ -249,12 +280,27 @@ describe("attachment Controller", () => {
       attachmentService.getSignedDownload.mockResolvedValue({
         absPath: "/uploads/file.pdf",
         fileName: "file.pdf",
+        mimeType: "image/png",
       });
 
       await attachmentController.downloadSigned(req, res, next);
 
       expect(attachmentService.getSignedDownload).toHaveBeenCalledWith(VALID_ATTACHMENT_ID, "abc123");
-      expect(res.download).toHaveBeenCalledWith("/uploads/file.pdf", "file.pdf");
+      expect(sendStoredFile).toHaveBeenCalledWith(res, "/uploads/file.pdf", {
+        contentType: "image/png",
+        fileName: "file.pdf",
+      });
+    });
+
+    it("serves opaque bytes via a signed URL when the row carries no MIME type", async () => {
+      req.params = { id: VALID_ATTACHMENT_ID };
+      req.query = { token: "abc123" };
+      attachmentService.getSignedDownload.mockResolvedValue({ absPath: "/y", fileName: "y" });
+      await attachmentController.downloadSigned(req, res, next);
+      expect(sendStoredFile).toHaveBeenCalledWith(res, "/y", {
+        contentType: "application/octet-stream",
+        fileName: "y",
+      });
     });
   });
 

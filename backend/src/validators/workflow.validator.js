@@ -25,9 +25,17 @@ const updateWorkflowSchema = Joi.object({
   ).min(1).optional(),
 });
 
+// A-182 — approving a Certificate is an electronic signature, so the caller
+// re-authenticates with the same three fields as POST /certificates/:id/approve.
+// They are optional here because a StockTransfer or work-order decision, and
+// any rejection, needs none; workflow.service#submitAction requires them when
+// the instance decides on a Certificate. The approver is always the caller.
 const submitActionSchema = Joi.object({
   action: Joi.string().valid("APPROVED", "REJECTED").required(),
   comments: Joi.string().allow("", null).optional(),
+  authMethod: Joi.string().valid("password", "mfa").optional(),
+  authPayload: Joi.string().optional(),
+  meaning: Joi.string().min(1).max(255).optional(),
 });
 
 module.exports = {

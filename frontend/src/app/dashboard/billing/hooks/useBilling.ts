@@ -1,4 +1,5 @@
 // src/app/dashboard/billing/hooks/useBilling.ts
+import { deferEffect } from "@/lib/deferEffect";
 import { useCallback, useEffect, useState } from "react";
 import { useAuthStore } from "@/stores/authStore";
 import { useToastStore } from "@/stores/toastStore";
@@ -96,13 +97,9 @@ export function useBilling() {
     }
   }, [invoicesPage, pageSize, statusFilter]);
 
-  useEffect(() => {
-    fetchSubscription();
-  }, [fetchSubscription]);
+  useEffect(() => deferEffect(fetchSubscription), [fetchSubscription]);
 
-  useEffect(() => {
-    fetchInvoices();
-  }, [fetchInvoices]);
+  useEffect(() => deferEffect(fetchInvoices), [fetchInvoices]);
 
   const handleStatusFilterChange = (value: string) => {
     setStatusFilter(value as InvoiceStatus | "");

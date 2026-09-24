@@ -20,6 +20,12 @@ const { validateUuid } = require("../../middlewares/validateUuid.middleware");
 const { validate } = require("../../middlewares/validation.middleware");
 const contentValidator = require("../../validators/content.validator");
 const contentController = require("../../controllers/content.controller");
+const {
+  upload,
+  PUBLIC_UPLOAD_FOLDERS,
+  PUBLIC_IMAGE_MIMES,
+  PUBLIC_IMAGE_EXTS,
+} = require("../../utils/upload.util");
 
 // ---------------------------------------------------------------------------
 // PUBLIC (no auth) — published content for the marketing /blog & /news pages
@@ -237,6 +243,46 @@ router.get("/slug-check", auth, dynamicAccess("content", "read"), contentControl
  *       201:
  *         description: Post created successfully
  */
+/**
+ * @swagger
+ * /api/v1/content/media:
+ *   post:
+ *     summary: Upload a CMS image (public by design)
+ *     description: >-
+ *       ADR-042 step 3. Stores a JPEG/PNG/GIF/WebP image under the PUBLIC
+ *       upload class (`/uploads/public/cms/...`) for embedding in published
+ *       posts, and writes an audit row. SVG is refused. Requires create access
+ *       to the Content resource. Tenant evidence belongs in /attachments,
+ *       which is never public.
+ *     tags: [Content]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file: { type: string, format: binary }
+ *     responses:
+ *       201:
+ *         description: "Uploaded: { url, fileName, mimeType, size }"
+ *       400:
+ *         description: Missing file, disallowed type, or content not matching its type
+ */
+router.post(
+  "/media",
+  auth,
+  dynamicAccess("content", "create"),
+  upload({
+    folder: PUBLIC_UPLOAD_FOLDERS.CMS,
+    allowedMimes: PUBLIC_IMAGE_MIMES,
+    allowedExtensions: PUBLIC_IMAGE_EXTS,
+    maxFileSize: 5 * 1024 * 1024,
+  }),
+  contentController.uploadMedia,
+);
+
 router.post(
   "/posts",
   auth,

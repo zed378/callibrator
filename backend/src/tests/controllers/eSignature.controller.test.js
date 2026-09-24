@@ -11,7 +11,6 @@ jest.mock("../../services/eSignature.service", () => ({
   verifySignature: jest.fn(),
   getSignatureHistory: jest.fn(),
   cancelWorkflow: jest.fn(),
-  revokeSignature: jest.fn(),
   getEligibleSigners: jest.fn(),
   getStatus: jest.fn(() => ({ enabled: true, algorithm: "RSA" })),
 }));
@@ -284,16 +283,6 @@ describe("eSignature Controller", () => {
         expect.any(Object),
         undefined,
       );
-    });
-  });
-
-  describe("revokeSignature", () => {
-    it("should revoke signature", async () => {
-      req.params = { signatureId: "sig-1" };
-      req.body = { reason: "erroneous" };
-      eSignatureService.revokeSignature.mockResolvedValue(true);
-      await eSignatureController.revokeSignature(req, res, next);
-      expect(res.json).toHaveBeenCalled();
     });
   });
 

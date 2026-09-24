@@ -55,7 +55,7 @@ Two production defects from this exact cause:
 | `getRisks`, `getRiskById` | risks with no assignee were **completely invisible** — absent from the list, 404 on get, update and delete |
 | `GET /certificates` | returned **zero rows** while rows existed — four includes (`device`, `calibratedByUser`, `approvedByUser`, `signedByUser`) were INNER JOINs, and every draft has null `approvedBy` and `signedBy` |
 
-Assume this applies to any include on a nullable FK. `maintenance_work_orders` has two (`vendorId`, `assignedTo`) and is latent.
+Assume this applies to any include on a nullable FK. `maintenance_work_orders` has two (`vendorId`, `assignedTo`); both of `maintenance.service`'s reads carry `required: false` (and `paranoid: false`), pinned by the generated SQL in `tests/services/maintenance.includes.a190.test.js` — it is **not** latent, as this line used to say (A-190, AUDIT-2026-09-DATA D-12).
 
 ### 2. `defaultScope` hides soft-deleted rows
 

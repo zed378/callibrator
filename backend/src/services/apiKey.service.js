@@ -125,7 +125,7 @@ exports.verifyApiKey = async (raw) => {
     // required, so a key whose tenant is soft-deleted is not found and does
     // not authenticate. Do not add `required: false` — the tenant would read
     // as null and auth.middleware's suspended/deleted check would pass it.
-    include: [{ model: Tenant, as: "tenant", attributes: ["id", "status", "plan"] }],
+    include: [{ model: Tenant, as: "tenant", attributes: ["id", "status", "plan"], required: true }],
   });
   if (!key || !key.isActive) {
     return null;

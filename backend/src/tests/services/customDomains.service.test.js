@@ -5,8 +5,14 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
+// A-186: every write runs in a managed transaction with its audit row; the
+// row itself is asserted against the audit ledger in
+// customDomains.audit.a186.test.js.
 jest.mock("../../config", () => ({
-  db: { Sequelize: { Op: { ne: "ne_symbol" } } },
+  db: { Sequelize: { Op: { ne: "ne_symbol" } }, transaction: jest.fn(async (cb) => cb("TX")) },
+}));
+jest.mock("../../services/audit.service", () => ({
+  logAction: jest.fn().mockResolvedValue({}),
 }));
 
 jest.mock("../../utils/appError.util", () => ({
@@ -25,7 +31,8 @@ jest.mock("../../models", () => ({
     findOne: jest.fn(),
     findAll: jest.fn(),
   },
-  User: { findOne: jest.fn() },
+  User: { findOne: jest.fn(), findAll: jest.fn() },
+  Role: {},
 }));
 
 // A-166 — emailQueue.service and email.service are NOT mocked. The defect was
@@ -115,7 +122,10 @@ describe("customDomainsService", () => {
       status: "pending_verification",
       sslEnabled: true,
     });
-    User.findOne.mockResolvedValue({ email: "admin@example.com", firstName: "Ada" });
+    // A-186: the recipients are the requester (findOne) and the tenant's
+    // administrators (findAll). By default only the admin is found.
+    User.findOne.mockResolvedValue(null);
+    User.findAll.mockResolvedValue([{ id: "u-admin", email: "admin@example.com", firstName: "Ada" }]);
     mockSendMail.mockReset().mockResolvedValue({ messageId: "m-1" });
     // The broker is down unless a test brings it up: the queue then falls
     // back to a direct SMTP send, which is what reaches mockSendMail.
@@ -151,7 +161,7 @@ describe("customDomainsService", () => {
           domainType: "subdomain",
           sslEnabled: true,
           status: "pending_verification",
-        }),
+        }), { transaction: "TX" }
       );
       expect(res.verification.cname.value).toBe("cname.callibrator.io.");
       expect(mockSendMail).toHaveBeenCalledTimes(1);
@@ -203,7 +213,7 @@ describe("customDomainsService", () => {
       await svc.addDomain("tenant-1", { domain: "app.example.com" });
 
       expect(CustomDomain.create).toHaveBeenCalledWith(
-        expect.objectContaining({ domainType: "subdomain", sslEnabled: true }),
+        expect.objectContaining({ domainType: "subdomain", sslEnabled: true }), { transaction: "TX" }
       );
     });
 
@@ -211,25 +221,25 @@ describe("customDomainsService", () => {
       await svc.addDomain("tenant-1", { domain: "app.example.com", sslEnabled: false });
 
       expect(CustomDomain.create).toHaveBeenCalledWith(
-        expect.objectContaining({ sslEnabled: false }),
+        expect.objectContaining({ sslEnabled: false }), { transaction: "TX" }
       );
     });
 
-    it("still adds the domain when the tenant has no admin user to notify", async () => {
-      User.findOne.mockResolvedValueOnce(null);
+    it("still adds the domain when neither the requester nor an admin can be notified", async () => {
+      User.findAll.mockResolvedValueOnce([]);
 
       const res = await svc.addDomain("tenant-1", "app.example.com");
 
       expect(res.id).toBe("d-1");
       expect(mockSendMail).not.toHaveBeenCalled();
       expect(logger.error).toHaveBeenCalledWith(
-        "Domain verification email was not sent: the tenant has no user with an email address",
+        "Domain verification email was not sent: neither the requester nor any tenant administrator has an email address",
         { tenantId: "tenant-1", domain: "app.example.com" },
       );
     });
 
     it("still adds the domain when the admin user has no email address", async () => {
-      User.findOne.mockResolvedValueOnce({ id: "u-1", email: null });
+      User.findAll.mockResolvedValueOnce([{ id: "u-1", email: null }]);
 
       const res = await svc.addDomain("tenant-1", "app.example.com");
 
@@ -252,7 +262,7 @@ describe("customDomainsService", () => {
     });
 
     it("still adds the domain when the admin lookup fails, and logs it at ERROR", async () => {
-      User.findOne.mockRejectedValueOnce(new Error("connection reset"));
+      User.findAll.mockRejectedValueOnce(new Error("connection reset"));
 
       const res = await svc.addDomain("tenant-1", "app.example.com");
 
@@ -291,7 +301,7 @@ describe("customDomainsService", () => {
         expect(html).toContain("Hi Ada");
         expect(html).toContain("_domain_verify.app.example.com");
         const [, token] = html.match(/(callibrator-verify=[0-9a-f]{32})/);
-        expect(CustomDomain.create).toHaveBeenCalledWith(expect.objectContaining({ verificationToken: token }));
+        expect(CustomDomain.create).toHaveBeenCalledWith(expect.objectContaining({ verificationToken: token }), { transaction: "TX" });
         expect(html).toContain("cname.callibrator.io.");
         expect(html).toContain('href="https://kalibrasi.example.test/dashboard/custom-domains"');
         // The old link pointed at the domain that was not yet routed here.
@@ -299,11 +309,12 @@ describe("customDomainsService", () => {
         expect(logger.info).toHaveBeenCalledWith("Domain verification email queued", {
           tenantId: "tenant-1",
           domain: "app.example.com",
+          recipients: 1,
         });
       });
 
       it("greets an admin with no first name generically", async () => {
-        User.findOne.mockResolvedValueOnce({ email: "admin@example.com", firstName: null });
+        User.findAll.mockResolvedValueOnce([{ id: "u-admin", email: "admin@example.com", firstName: null }]);
 
         await svc.addDomain("tenant-1", "app.example.com");
 
@@ -394,7 +405,7 @@ describe("customDomainsService", () => {
       expect(res.verified).toBe(true);
       expect(res.status).toBe("active");
       expect(rec.update).toHaveBeenCalledWith(
-        expect.objectContaining({ status: "active" }),
+        expect.objectContaining({ status: "active" }), { transaction: "TX" }
       );
     });
 
@@ -409,7 +420,7 @@ describe("customDomainsService", () => {
       expect(res.status).toBe("verification_failed");
       expect(res.record).toBeNull();
       expect(rec.update).toHaveBeenCalledWith(
-        expect.objectContaining({ status: "verification_failed", verifiedAt: null }),
+        expect.objectContaining({ status: "verification_failed", verifiedAt: null }), { transaction: "TX" }
       );
     });
 
@@ -451,18 +462,15 @@ describe("customDomainsService", () => {
       expect(res.dnsRecord.name).toBe("_domain_verify.app.example.com");
     });
 
-    it("reports the reason when persisting the verification result fails", async () => {
+    // A-186: a failed write is a failure (500 through the controller), not a
+    // "not verified" answer that hides it — and the transaction takes its
+    // audit row with it (customDomains.audit.a186.test.js).
+    it("propagates a failure to persist the verification result", async () => {
       const rec = makeRecord();
       rec.update.mockRejectedValueOnce(new Error("write failed"));
       CustomDomain.findOne.mockResolvedValueOnce(rec);
 
-      const res = await svc.verifyDomain("tenant-1", "d-1");
-
-      expect(res).toEqual({ verified: false, reason: "write failed" });
-      expect(logger.error).toHaveBeenCalledWith(
-        "Domain verification failed",
-        expect.objectContaining({ domainId: "d-1", error: "write failed" }),
-      );
+      await expect(svc.verifyDomain("tenant-1", "d-1")).rejects.toThrow("write failed");
     });
   });
 
@@ -516,9 +524,9 @@ describe("customDomainsService", () => {
       const res = await svc.setDefaultDomain("tenant-1", "d-1");
       expect(CustomDomain.update).toHaveBeenCalledWith(
         { isDefault: false },
-        { where: { tenantId: "tenant-1" } },
+        { where: { tenantId: "tenant-1" }, transaction: "TX" },
       );
-      expect(rec.update).toHaveBeenCalledWith({ isDefault: true });
+      expect(rec.update).toHaveBeenCalledWith({ isDefault: true }, { transaction: "TX" });
       expect(res.isDefault).toBe(true);
     });
     it("400s for a deleted domain", async () => {

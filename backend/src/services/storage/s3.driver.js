@@ -130,10 +130,18 @@ class S3Driver {
     };
   }
 
-  async get(key) {
+  /**
+   * @param {string} key
+   * @param {{start: number, end: number}} [range] - inclusive byte range
+   */
+  async get(key, range) {
     try {
       const result = await this.client.send(
-        new GetObjectCommand({ Bucket: this.bucket, Key: this._objectKey(key) }),
+        new GetObjectCommand({
+          Bucket: this.bucket,
+          Key: this._objectKey(key),
+          ...(range ? { Range: `bytes=${range.start}-${range.end}` } : {}),
+        }),
       );
       return result.Body; // Readable stream
     } catch (err) {

@@ -1,22 +1,16 @@
 "use client";
 
 import { Clock } from "lucide-react";
-import React, { useEffect, useState } from "react";
+import React from "react";
+import { useClockSeconds } from "@/hooks/useClientValue";
 
 const RealTimeClock: React.FC = () => {
   // `time` starts null and is set after mount — reading `new Date()` during
   // render is non-deterministic and not allowed during prerender in Next 16.
-  const [time, setTime] = useState<Date | null>(null);
-
-  useEffect(() => {
-    // Sync to the system clock after mount — reading current time during render
-    // is disallowed during prerender (Next 16). This is a legitimate external-
-    // system subscription, so the set-state-in-effect heuristic doesn't apply.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setTime(new Date());
-    const timer = setInterval(() => setTime(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
+  // The system clock is an external store: subscribed once a second, null
+  // during prerender.
+  const seconds = useClockSeconds();
+  const time = seconds === null ? null : new Date(seconds * 1000);
 
   const formattedTime = time
     ? time.toLocaleTimeString("en-US", {

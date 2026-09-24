@@ -6,7 +6,6 @@ const {
   createWorkflow,
   signDocument,
   verifySignature,
-  revokeSignature,
   cancelWorkflow,
   validate,
 } = require("../../validators/eSignature.validator");
@@ -419,31 +418,9 @@ describe("E-Signature Validators", () => {
     it("rejects a reason over 500 characters", () => {
       expect(() => validate({ reason: "a".repeat(501) }, cancelWorkflow)).toThrow();
     });
-  });
 
-  describe("revokeSignature", () => {
-    it("should validate with reason", () => {
-      expect(() =>
-        validate({ reason: "Signature was obtained under duress" }, revokeSignature),
-      ).not.toThrow();
-    });
-
-    it("should reject missing reason", () => {
-      expect(() =>
-        validate({}, revokeSignature),
-      ).toThrow();
-    });
-
-    it("should reject empty reason", () => {
-      expect(() =>
-        validate({ reason: "" }, revokeSignature),
-      ).toThrow();
-    });
-
-    it("should reject reason exceeding max length", () => {
-      expect(() =>
-        validate({ reason: "a".repeat(501) }, revokeSignature),
-      ).toThrow();
+    it("A-09: an absent body validates as {} (the reason is optional)", () => {
+      expect(validate(undefined, cancelWorkflow)).toEqual({});
     });
   });
 });

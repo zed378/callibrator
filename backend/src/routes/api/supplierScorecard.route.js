@@ -2,6 +2,14 @@ const express = require("express");
 const router = express.Router();
 const scorecardController = require("../../controllers/supplierScorecard.controller");
 const { auth, denyApiKey } = require("../../middlewares/auth.middleware");
+const { dynamicAccess } = require("../../middlewares/dynamicAccess.middleware");
+const { MENU_SLUGS } = require("../../constants/roleConstants");
+
+// AZ-01 (G-03): every route here was `auth` (+ denyApiKey on writes) alone, so
+// any role could create, edit and delete vendor scorecards. Gated on the
+// seeded `supplier-scorecard` menu.
+const canRead = dynamicAccess(MENU_SLUGS.SUPPLIER_SCORECARD, "read");
+const canWrite = dynamicAccess(MENU_SLUGS.SUPPLIER_SCORECARD, "write");
 
 router.use(auth);
 
@@ -52,7 +60,7 @@ router.use(auth);
  *       401:
  *         description: Unauthorized
  */
-router.post("/", denyApiKey, scorecardController.createScorecard);
+router.post("/", denyApiKey, canWrite, scorecardController.createScorecard);
 /**
  * @swagger
  * /api/v1/supplier-scorecard:
@@ -78,7 +86,7 @@ router.post("/", denyApiKey, scorecardController.createScorecard);
  *       401:
  *         description: Unauthorized
  */
-router.get("/", scorecardController.getScorecards);
+router.get("/", canRead, scorecardController.getScorecards);
 /**
  * @swagger
  * /api/v1/supplier-scorecard/{id}:
@@ -103,7 +111,7 @@ router.get("/", scorecardController.getScorecards);
  *       404:
  *         description: Scorecard not found
  */
-router.get("/:id", scorecardController.getScorecardById);
+router.get("/:id", canRead, scorecardController.getScorecardById);
 /**
  * @swagger
  * /api/v1/supplier-scorecard/{id}:
@@ -156,7 +164,7 @@ router.get("/:id", scorecardController.getScorecardById);
  *       404:
  *         description: Scorecard not found
  */
-router.put("/:id", denyApiKey, scorecardController.updateScorecard);
+router.put("/:id", denyApiKey, canWrite, scorecardController.updateScorecard);
 /**
  * @swagger
  * /api/v1/supplier-scorecard/{id}:
@@ -181,6 +189,6 @@ router.put("/:id", denyApiKey, scorecardController.updateScorecard);
  *       404:
  *         description: Scorecard not found
  */
-router.delete("/:id", denyApiKey, scorecardController.deleteScorecard);
+router.delete("/:id", denyApiKey, canWrite, scorecardController.deleteScorecard);
 
 module.exports = router;

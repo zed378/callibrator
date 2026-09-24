@@ -180,6 +180,9 @@ const createTwoTenants = () => {
         isActive: true,
         status: "ACTIVE",
         isApiKey: false,
+        // P6-07: a platform operator (level 10) without MFA gets an
+        // enrolment-only session, so the fixture's operator has enrolled.
+        ...(ROLE_LEVELS[key] >= 10 ? { mfaEnabled: true } : {}),
       });
     }
     return principals.get(cacheKey);

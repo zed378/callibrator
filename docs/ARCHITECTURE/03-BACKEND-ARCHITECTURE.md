@@ -68,7 +68,6 @@ The order is behaviour, not style. Four consequences worth stating:
 | `validate(schema)` | Joi validation → 400 with field detail |
 | `validateUuid` | rejects malformed path ids before they reach the database |
 | `globalSanitizer` | input sanitisation across body, query, params |
-| `inputValidation` | additional input hardening |
 | `auditLog` | writes the `audit_logs` row |
 | `accessLog`, `activityLog` | request and activity logging |
 | `enforceQuota` | quota check **before** the handler |

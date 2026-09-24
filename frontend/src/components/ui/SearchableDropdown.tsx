@@ -118,10 +118,6 @@ export const SearchableDropdown: React.FC<SearchableDropdownProps> = ({
     }
   }, [isOpen]);
 
-  useEffect(() => {
-    setHighlightIndex(-1);
-  }, [searchTerm]);
-
   const handleClear = () => {
     onChange("");
     if (containerRef.current) {
@@ -217,7 +213,12 @@ export const SearchableDropdown: React.FC<SearchableDropdownProps> = ({
               ref={searchInputRef}
               type="text"
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => {
+                // A new term re-filters the list: the old highlight no longer
+                // points at the same option.
+                setSearchTerm(e.target.value);
+                setHighlightIndex(-1);
+              }}
               placeholder={searchPlaceholder}
               onKeyDown={handleKeyDown}
               className="w-full pl-9 pr-4 py-2.5 bg-transparent border-none focus:outline-none text-sm text-foreground placeholder:text-muted-foreground"

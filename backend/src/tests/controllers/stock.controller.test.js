@@ -31,6 +31,9 @@ const stockController = require("../../controllers/stock.controller");
 const stockService = require("../../services/stock.service");
 const { success, error } = require("../../utils/response.util");
 
+// P6-09: auditActor(req) for a request with no ip / user agent.
+const ACTOR = { ipAddress: null, tenantId: "tenant-1", userAgent: null, userId: "user-1" };
+
 describe("stockController", () => {
   let req;
   let res;
@@ -152,7 +155,7 @@ describe("stockController", () => {
         itemName: "Item 1",
         quantity: 0,
         minQuantity: 0,
-      });
+      }, ACTOR); // P6-09: the audit actor
       expect(success).toHaveBeenCalled();
     });
   });
@@ -175,6 +178,7 @@ describe("stockController", () => {
         "tenant-1",
         "8c352a92-d6cf-4b71-b0db-6e69622d1b11",
         { itemName: "Updated Item", quantity: 15 },
+        ACTOR,
       );
       expect(success).toHaveBeenCalled();
     });
@@ -228,6 +232,7 @@ describe("stockController", () => {
           reason: "Excess found",
         },
         "user-1",
+        ACTOR,
       );
       expect(success).toHaveBeenCalled();
     });
@@ -308,6 +313,7 @@ describe("stockController", () => {
         "8c352a92-d6cf-4b71-b0db-6e69622d1b11",
         { status: "completed" },
         "user-1",
+        ACTOR,
       );
       expect(success).toHaveBeenCalled();
     });

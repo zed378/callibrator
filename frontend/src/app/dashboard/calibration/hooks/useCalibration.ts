@@ -5,6 +5,33 @@ import { useDeviceStore } from "@/stores/deviceStore";
 import { useAuthStore } from "@/stores/authStore";
 import { Calibration, Certificate } from "@/api/services/calibration.service";
 
+/** The "record calibration" form (RecordCalibrationModal). */
+export interface RecordCalibrationForm {
+  deviceId: string;
+  calibrationDate: string;
+  dueDate: string;
+  standard: string;
+  results: {
+    temperatureReading: string;
+    humidityReading: string;
+    deviation: string;
+  };
+  isCompliant: boolean;
+  notes: string;
+}
+
+/** The "create certificate" form (CreateCertModal). */
+export interface CreateCertificateForm {
+  deviceId: string;
+  calibrationRecordId: string;
+  type: "calibration" | "maintenance" | "verification";
+  summary: string;
+  conditions: string;
+  notes: string;
+  standard: string;
+  validUntil: string;
+}
+
 export function useCalibration() {
   const { user } = useAuthStore();
   const {
@@ -62,7 +89,7 @@ export function useCalibration() {
     useState<Certificate | null>(null);
 
   // Forms State
-  const [recordForm, setRecordForm] = useState({
+  const [recordForm, setRecordForm] = useState<RecordCalibrationForm>({
     deviceId: "",
     calibrationDate: "",
     dueDate: "",
@@ -76,10 +103,10 @@ export function useCalibration() {
     notes: "",
   });
 
-  const [certForm, setCertForm] = useState({
+  const [certForm, setCertForm] = useState<CreateCertificateForm>({
     deviceId: "",
     calibrationRecordId: "",
-    type: "calibration" as "calibration" | "maintenance" | "verification",
+    type: "calibration",
     summary: "",
     conditions: "Standard indoor laboratory conditions.",
     notes: "",

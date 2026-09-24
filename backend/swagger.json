@@ -1059,7 +1059,7 @@
           "Auth"
         ],
         "summary": "Log in a user",
-        "description": "Public endpoint - no authentication or permission required. Rate limited to 5 attempts per 15 minutes. Account will be locked for 15 minutes after too many failed attempts. Token is revoked if brute force is detected.",
+        "description": "Public endpoint - no authentication or permission required. A-185 - every failure without the right password (unknown identifier, wrong password, suspended or locked account) is the same 401. Five failures for one identifier from one address pause that identifier and address for 15 minutes (429); 100 failures for one identifier from any addresses pause it everywhere for an hour (429). The pause never locks the account, and an unknown identifier is paused exactly like a real one. The access token in the body is for server-side callers (the Next.js login route, API tests); the browser never receives it (A-71).",
         "requestBody": {
           "required": true,
           "content": {
@@ -1111,8 +1111,18 @@
               }
             }
           },
+          "403": {
+            "description": "The right password, for an account or tenant that is suspended",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "423": {
-            "description": "Account temporarily locked",
+            "description": "The right password, for an account the MFA step locked (A-81)",
             "content": {
               "application/json": {
                 "schema": {
@@ -1122,7 +1132,7 @@
             }
           },
           "429": {
-            "description": "Too many login attempts - Rate limited (5 attempts per 15 minutes)",
+            "description": "Sign-in paused for this identifier (and address) after repeated failures - identical for unknown identifiers",
             "content": {
               "application/json": {
                 "schema": {
@@ -2901,6 +2911,15 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "in": "query",
+            "name": "includeSuperseded",
+            "description": "Include records a correction has superseded (default false — the list shows the record in force)",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
           }
         ],
         "responses": {
@@ -3105,10 +3124,12 @@
             "description": "Calibration record not found"
           }
         }
-      },
-      "put": {
-        "summary": "Update a calibration record",
-        "description": "Requires write access to calibration.",
+      }
+    },
+    "/api/v1/calibration-records/{calibrationRecordId}/corrections": {
+      "post": {
+        "summary": "Correct a calibration record (writes a superseding record)",
+        "description": "Requires write access to calibration. The original record is never\nchanged: a NEW record is written with the corrected content (fields\nomitted here are carried over from the original), `supersedesId` set to\nthe original and the reason recorded. The original is marked as\nsuperseded. A record can be corrected once; correct the latest\ncorrection to correct again.\n",
         "tags": [
           "CalibrationRecords"
         ],
@@ -3125,8 +3146,7 @@
             "schema": {
               "type": "string",
               "format": "uuid"
-            },
-            "description": "Calibration Record UUID"
+            }
           }
         ],
         "requestBody": {
@@ -3135,33 +3155,49 @@
             "application/json": {
               "schema": {
                 "type": "object",
+                "required": [
+                  "reason"
+                ],
                 "properties": {
-                  "calibrator": {
-                    "type": "string"
+                  "reason": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 2000,
+                    "description": "Why the original is wrong. Blank is refused."
+                  },
+                  "deviceId": {
+                    "type": "string",
+                    "format": "uuid"
                   },
                   "calibrationDate": {
                     "type": "string",
-                    "format": "date"
+                    "format": "date-time"
                   },
                   "dueDate": {
                     "type": "string",
-                    "format": "date"
+                    "format": "date-time",
+                    "nullable": true
                   },
-                  "status": {
-                    "type": "string",
-                    "enum": [
-                      "pending",
-                      "completed",
-                      "failed",
-                      "overdue"
-                    ]
-                  },
-                  "results": {
+                  "standard": {
                     "type": "string"
                   },
-                  "nextCalibrationDate": {
-                    "type": "string",
-                    "format": "date"
+                  "results": {
+                    "type": "object"
+                  },
+                  "measurementUncertainty": {
+                    "type": "number"
+                  },
+                  "isCompliant": {
+                    "type": "boolean"
+                  },
+                  "certificateNumber": {
+                    "type": "string"
+                  },
+                  "certificateFileUrl": {
+                    "type": "string"
+                  },
+                  "notes": {
+                    "type": "string"
                   }
                 }
               }
@@ -3169,8 +3205,8 @@
           }
         },
         "responses": {
-          "200": {
-            "description": "Calibration record updated successfully",
+          "201": {
+            "description": "The superseding record",
             "content": {
               "application/json": {
                 "schema": {
@@ -3179,14 +3215,6 @@
                     "success": {
                       "type": "boolean",
                       "example": true
-                    },
-                    "status": {
-                      "type": "integer",
-                      "example": 200
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "Calibration record updated successfully"
                     },
                     "data": {
                       "$ref": "#/components/schemas/CalibrationRecord"
@@ -3197,16 +3225,21 @@
             }
           },
           "400": {
-            "description": "Validation error or invalid UUID"
+            "description": "Validation error (including a missing or blank reason)"
           },
           "404": {
-            "description": "Calibration record not found"
+            "description": "Calibration record not found (including another tenant's)"
+          },
+          "409": {
+            "description": "The record was voided, or already corrected"
           }
         }
-      },
-      "delete": {
-        "summary": "Delete a calibration record",
-        "description": "Requires write access to calibration.",
+      }
+    },
+    "/api/v1/calibration-records/{calibrationRecordId}/void": {
+      "post": {
+        "summary": "Void a calibration record entered in error",
+        "description": "Requires write access to calibration. The record is kept and hidden from\nordinary reads, with the reason and who voided it. A void is final —\nthere is no restore.\n",
         "tags": [
           "CalibrationRecords"
         ],
@@ -3223,40 +3256,41 @@
             "schema": {
               "type": "string",
               "format": "uuid"
-            },
-            "description": "Calibration Record UUID"
+            }
           }
         ],
-        "responses": {
-          "200": {
-            "description": "Calibration record deleted successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "example": true
-                    },
-                    "status": {
-                      "type": "integer",
-                      "example": 200
-                    },
-                    "message": {
-                      "type": "string",
-                      "example": "Calibration record deleted successfully"
-                    }
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason"
+                ],
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 2000
                   }
                 }
               }
             }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Calibration record voided"
           },
           "400": {
-            "description": "Invalid UUID"
+            "description": "Validation error (including a missing or blank reason)"
           },
           "404": {
-            "description": "Calibration record not found"
+            "description": "Calibration record not found (including another tenant's)"
+          },
+          "409": {
+            "description": "The record was already voided, or has been corrected"
           }
         }
       }
@@ -3359,6 +3393,44 @@
         "responses": {
           "200": {
             "description": "Verification result"
+          }
+        }
+      }
+    },
+    "/api/v1/certificates/verify/{certificateNumber}/document": {
+      "get": {
+        "summary": "The PDF of a signed certificate, via the verification capability (no auth)",
+        "description": "ADR-042 step 4. `token` is minted by the verification endpoint (its `documentUrl`) for a signed certificate only and expires (default one hour). The certificate's status is re-checked on every fetch. Served inline as application/pdf with ETag and Range support.",
+        "tags": [
+          "Certificates"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "certificateNumber",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "PDF"
+          },
+          "403": {
+            "description": "Invalid or expired link"
+          },
+          "404": {
+            "description": "No signed certificate document for this number"
           }
         }
       }
@@ -4343,6 +4415,43 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/content/media": {
+      "post": {
+        "summary": "Upload a CMS image (public by design)",
+        "description": "ADR-042 step 3. Stores a JPEG/PNG/GIF/WebP image under the PUBLIC upload class (`/uploads/public/cms/...`) for embedding in published posts, and writes an audit row. SVG is refused. Requires create access to the Content resource. Tenant evidence belongs in /attachments, which is never public.",
+        "tags": [
+          "Content"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Uploaded: { url, fileName, mimeType, size }"
+          },
+          "400": {
+            "description": "Missing file, disallowed type, or content not matching its type"
           }
         }
       }
@@ -6836,8 +6945,8 @@
     },
     "/api/v1/gdpr/export": {
       "post": {
-        "summary": "Export user data",
-        "description": "Initiates a data export request for the authenticated user's personal data. Complies with GDPR Article 20 (Data Portability). Requires authentication.",
+        "summary": "Export the caller's personal data",
+        "description": "Builds an archive of the authenticated user's own personal data (GDPR Article 20, data portability). Takes no request body — any body sent is ignored. Acts on the caller only. P6-08: aligned with the controller.",
         "tags": [
           "GDPR/CCPA"
         ],
@@ -6846,53 +6955,46 @@
             "bearerAuth": []
           }
         ],
-        "requestBody": {
-          "required": false,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "format": {
-                    "type": "string",
-                    "enum": [
-                      "json",
-                      "csv",
-                      "xml"
-                    ],
-                    "default": "json"
-                  }
-                }
-              }
-            }
-          }
-        },
         "responses": {
           "200": {
-            "description": "Data export request processed successfully",
+            "description": "Export built",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "requestId": {
-                      "type": "string",
-                      "format": "uuid"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SuccessResponse"
                     },
-                    "status": {
-                      "type": "string",
-                      "enum": [
-                        "processing",
-                        "completed"
-                      ]
-                    },
-                    "downloadUrl": {
-                      "type": "string"
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "exportId": {
+                              "type": "string"
+                            },
+                            "downloadUrl": {
+                              "type": "string"
+                            },
+                            "expiresAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "fileSize": {
+                              "type": "integer"
+                            }
+                          }
+                        }
+                      }
                     }
-                  }
+                  ]
                 }
               }
             }
+          },
+          "400": {
+            "description": "Data export is disabled for this deployment"
           },
           "401": {
             "description": "Unauthorized"
@@ -6902,8 +7004,8 @@
     },
     "/api/v1/gdpr/erasure": {
       "post": {
-        "summary": "Request data erasure",
-        "description": "Submits a request to erase all personal data for the authenticated user. Complies with GDPR Article 17 (Right to Erasure) and CCPA Section 1798.105. Requires authentication.",
+        "summary": "Request erasure of the caller's personal data",
+        "description": "Records an erasure request (GDPR Article 17, CCPA 1798.105) for the compliance team to action. Validated by `gdpr.validator#requestErasure`: `reason` and `confirm: true` are both required; unknown fields are stripped. P6-08: this previously documented `confirmDeletion`, which the validator strips, so a client written from the spec always got 400.",
         "tags": [
           "GDPR/CCPA"
         ],
@@ -6919,16 +7021,21 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "reason"
+                  "reason",
+                  "confirm"
                 ],
                 "properties": {
                   "reason": {
                     "type": "string",
-                    "description": "Reason for erasure request"
+                    "maxLength": 500,
+                    "description": "Why erasure is requested"
                   },
-                  "confirmDeletion": {
+                  "confirm": {
                     "type": "boolean",
-                    "description": "Confirmation that user understands data will be permanently deleted"
+                    "enum": [
+                      true
+                    ],
+                    "description": "Must be `true` — the caller confirms the data will be erased"
                   }
                 }
               }
@@ -6937,28 +7044,36 @@
         },
         "responses": {
           "201": {
-            "description": "Erasure request submitted successfully",
+            "description": "Erasure request recorded",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "requestId": {
-                      "type": "string",
-                      "format": "uuid"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SuccessResponse"
                     },
-                    "status": {
-                      "type": "string",
-                      "enum": [
-                        "pending",
-                        "in_progress",
-                        "completed"
-                      ]
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "dsarId": {
+                              "type": "string",
+                              "format": "uuid",
+                              "description": "The id to poll at GET /gdpr/erasure/{requestId}"
+                            }
+                          }
+                        }
+                      }
                     }
-                  }
+                  ]
                 }
               }
             }
+          },
+          "400": {
+            "description": "Validation failed (missing `reason`, or `confirm` not `true`)"
           },
           "401": {
             "description": "Unauthorized"
@@ -6968,8 +7083,8 @@
     },
     "/api/v1/gdpr/erasure/{requestId}": {
       "get": {
-        "summary": "Get erasure request status",
-        "description": "Retrieves the current status of a data erasure request. Requires authentication.",
+        "summary": "Get the status of an erasure request",
+        "description": "The data subject reads their own request; a holder of `gdpr` read (the tenant's privacy officer) reads any request in the tenant. An unknown id, another tenant's, and another member's all answer the same 404 (A-252).",
         "tags": [
           "GDPR/CCPA"
         ],
@@ -6991,37 +7106,69 @@
         ],
         "responses": {
           "200": {
-            "description": "Erasure request status retrieved successfully",
+            "description": "The request",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "requestId": {
-                      "type": "string",
-                      "format": "uuid"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SuccessResponse"
                     },
-                    "status": {
-                      "type": "string",
-                      "enum": [
-                        "pending",
-                        "in_progress",
-                        "completed",
-                        "failed"
-                      ]
-                    },
-                    "submittedAt": {
-                      "type": "string",
-                      "format": "date-time"
-                    },
-                    "completedAt": {
-                      "type": "string",
-                      "format": "date-time"
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "id": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "userId": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "type": {
+                              "type": "string",
+                              "enum": [
+                                "export",
+                                "erasure",
+                                "rectification",
+                                "restriction"
+                              ]
+                            },
+                            "status": {
+                              "type": "string",
+                              "enum": [
+                                "pending",
+                                "in_progress",
+                                "completed",
+                                "rejected"
+                              ]
+                            },
+                            "details": {
+                              "type": "object"
+                            },
+                            "requestedAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "completedAt": {
+                              "type": "string",
+                              "format": "date-time",
+                              "nullable": true
+                            }
+                          }
+                        }
+                      }
                     }
-                  }
+                  ]
                 }
               }
             }
+          },
+          "400": {
+            "description": "requestId is not a UUID"
           },
           "401": {
             "description": "Unauthorized"
@@ -7034,8 +7181,8 @@
     },
     "/api/v1/gdpr/consent": {
       "put": {
-        "summary": "Update consent preferences",
-        "description": "Updates the user's consent preferences for various data processing activities. Complies with GDPR Article 7 (Conditions for Consent). Requires authentication.",
+        "summary": "Grant or withdraw consent for processing categories",
+        "description": "GDPR Article 7. Validated by `gdpr.validator#updateConsent`: `categories` (from a fixed list) and `consent` are both required. P6-08: this previously documented `consents` / `withdrawAll`, neither of which the validator accepts.",
         "tags": [
           "GDPR/CCPA"
         ],
@@ -7051,16 +7198,25 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "consents"
+                  "categories",
+                  "consent"
                 ],
                 "properties": {
-                  "consents": {
-                    "type": "object",
-                    "description": "Key-value pairs of consent identifiers and their status"
+                  "categories": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "analytics",
+                        "marketing",
+                        "functional",
+                        "necessary"
+                      ]
+                    }
                   },
-                  "withdrawAll": {
+                  "consent": {
                     "type": "boolean",
-                    "description": "If true, withdraws all consents"
+                    "description": "true grants, false withdraws, for every listed category"
                   }
                 }
               }
@@ -7069,23 +7225,43 @@
         },
         "responses": {
           "200": {
-            "description": "Consent preferences updated successfully",
+            "description": "Consent recorded",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "consents": {
-                      "type": "object"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SuccessResponse"
                     },
-                    "updatedAt": {
-                      "type": "string",
-                      "format": "date-time"
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "updated": {
+                              "type": "integer"
+                            },
+                            "consent": {
+                              "type": "boolean"
+                            },
+                            "categories": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        }
+                      }
                     }
-                  }
+                  ]
                 }
               }
             }
+          },
+          "400": {
+            "description": "Validation failed"
           },
           "401": {
             "description": "Unauthorized"
@@ -7095,8 +7271,8 @@
     },
     "/api/v1/gdpr/consent/history": {
       "get": {
-        "summary": "Get consent history",
-        "description": "Retrieves the complete consent history for the authenticated user. Complies with GDPR accountability principle. Requires authentication.",
+        "summary": "Get the caller's consent history",
+        "description": "The caller's consent records, newest first.",
         "tags": [
           "GDPR/CCPA"
         ],
@@ -7107,39 +7283,49 @@
         ],
         "responses": {
           "200": {
-            "description": "Consent history retrieved successfully",
+            "description": "Consent history (rows in `data`)",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "history": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "consentId": {
-                            "type": "string"
-                          },
-                          "version": {
-                            "type": "string"
-                          },
-                          "action": {
-                            "type": "string",
-                            "enum": [
-                              "granted",
-                              "withdrawn",
-                              "updated"
-                            ]
-                          },
-                          "createdAt": {
-                            "type": "string",
-                            "format": "date-time"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SuccessResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "purpose": {
+                                "type": "string"
+                              },
+                              "version": {
+                                "type": "string"
+                              },
+                              "status": {
+                                "type": "string",
+                                "enum": [
+                                  "granted",
+                                  "withdrawn"
+                                ]
+                              },
+                              "consentedAt": {
+                                "type": "string",
+                                "format": "date-time"
+                              }
+                            }
                           }
                         }
                       }
                     }
-                  }
+                  ]
                 }
               }
             }
@@ -7152,8 +7338,8 @@
     },
     "/api/v1/gdpr/processing": {
       "get": {
-        "summary": "Get processing activities",
-        "description": "Retrieves the list of personal data processing activities for the tenant. Required under GDPR Article 30 (Records of Processing Activities). Requires authentication.",
+        "summary": "Get the processing register as it applies to the caller",
+        "description": "GDPR Article 30 records of processing, for the caller as data subject.",
         "tags": [
           "GDPR/CCPA"
         ],
@@ -7164,41 +7350,63 @@
         ],
         "responses": {
           "200": {
-            "description": "Processing activities retrieved successfully",
+            "description": "Processing activities",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "activities": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "purpose": {
-                            "type": "string"
-                          },
-                          "legalBasis": {
-                            "type": "string",
-                            "enum": [
-                              "consent",
-                              "contract",
-                              "legal_obligation",
-                              "vital_interests",
-                              "public_task",
-                              "legitimate_interests"
-                            ]
-                          },
-                          "dataCategories": {
-                            "type": "array"
-                          },
-                          "recipients": {
-                            "type": "array"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SuccessResponse"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "controller": {
+                              "type": "string"
+                            },
+                            "tenantId": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "subjectId": {
+                              "type": "string",
+                              "format": "uuid"
+                            },
+                            "generatedAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "activities": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "purpose": {
+                                    "type": "string"
+                                  },
+                                  "legalBasis": {
+                                    "type": "string"
+                                  },
+                                  "dataCategories": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "retention": {
+                                    "type": "string"
+                                  }
+                                }
+                              }
+                            }
                           }
                         }
                       }
                     }
-                  }
+                  ]
                 }
               }
             }
@@ -7211,8 +7419,8 @@
     },
     "/api/v1/gdpr/rectify": {
       "put": {
-        "summary": "Rectify personal data",
-        "description": "Submits a request to correct or rectify inaccurate personal data. Complies with GDPR Article 16 (Right to Rectification). Requires authentication.",
+        "summary": "Correct one field of the caller's personal data",
+        "description": "GDPR Article 16. Validated by `gdpr.validator#rectifyData`: one `field` and its new `value`, both required. The service accepts only firstName, lastName, phone and email; an email change is confirmed by mail before it applies. P6-08: this previously documented `corrections` / `justification`, which the validator strips.",
         "tags": [
           "GDPR/CCPA"
         ],
@@ -7228,16 +7436,22 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "corrections"
+                  "field",
+                  "value"
                 ],
                 "properties": {
-                  "corrections": {
-                    "type": "object",
-                    "description": "Key-value pairs of data fields and their corrected values"
-                  },
-                  "justification": {
+                  "field": {
                     "type": "string",
-                    "description": "Justification for the correction"
+                    "maxLength": 100,
+                    "enum": [
+                      "firstName",
+                      "lastName",
+                      "phone",
+                      "email"
+                    ]
+                  },
+                  "value": {
+                    "description": "The corrected value"
                   }
                 }
               }
@@ -7246,39 +7460,54 @@
         },
         "responses": {
           "200": {
-            "description": "Data rectification request submitted successfully",
+            "description": "Rectified (or, for email, verification sent)",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "requestId": {
-                      "type": "string",
-                      "format": "uuid"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SuccessResponse"
                     },
-                    "status": {
-                      "type": "string",
-                      "enum": [
-                        "pending",
-                        "in_progress",
-                        "completed"
-                      ]
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "rectified": {
+                              "type": "boolean"
+                            },
+                            "field": {
+                              "type": "string"
+                            },
+                            "emailVerificationRequired": {
+                              "type": "boolean"
+                            }
+                          }
+                        }
+                      }
                     }
-                  }
+                  ]
                 }
               }
             }
           },
+          "400": {
+            "description": "Validation failed, or the field cannot be rectified"
+          },
           "401": {
             "description": "Unauthorized"
+          },
+          "409": {
+            "description": "The new email address is already in use"
           }
         }
       }
     },
     "/api/v1/gdpr/restrict": {
       "post": {
-        "summary": "Restrict data processing",
-        "description": "Submits a request to restrict the processing of personal data. Complies with GDPR Article 18 (Right to Restriction of Processing). Requires authentication.",
+        "summary": "Restrict processing of the caller's personal data",
+        "description": "GDPR Article 18. Validated by `gdpr.validator#restrictProcessing`: `reason` only. P6-08: this previously documented a `scope` array the validator strips — restriction applies to the whole account.",
         "tags": [
           "GDPR/CCPA"
         ],
@@ -7299,14 +7528,7 @@
                 "properties": {
                   "reason": {
                     "type": "string",
-                    "description": "Reason for restriction request"
-                  },
-                  "scope": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    },
-                    "description": "Specific data categories to restrict"
+                    "maxLength": 500
                   }
                 }
               }
@@ -7314,29 +7536,39 @@
           }
         },
         "responses": {
-          "201": {
-            "description": "Processing restriction request submitted successfully",
+          "200": {
+            "description": "Restriction recorded",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "requestId": {
-                      "type": "string",
-                      "format": "uuid"
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/SuccessResponse"
                     },
-                    "status": {
-                      "type": "string",
-                      "enum": [
-                        "pending",
-                        "in_progress",
-                        "completed"
-                      ]
+                    {
+                      "type": "object",
+                      "properties": {
+                        "data": {
+                          "type": "object",
+                          "properties": {
+                            "restricted": {
+                              "type": "boolean"
+                            },
+                            "requestId": {
+                              "type": "string",
+                              "format": "uuid"
+                            }
+                          }
+                        }
+                      }
                     }
-                  }
+                  ]
                 }
               }
             }
+          },
+          "400": {
+            "description": "Validation failed"
           },
           "401": {
             "description": "Unauthorized"
@@ -20093,6 +20325,22 @@
                   "comments": {
                     "type": "string",
                     "nullable": true
+                  },
+                  "authMethod": {
+                    "type": "string",
+                    "enum": [
+                      "password",
+                      "mfa"
+                    ],
+                    "description": "Required to APPROVE a Certificate (A-182, 21 CFR Part 11 re-authentication)"
+                  },
+                  "authPayload": {
+                    "type": "string",
+                    "description": "The caller's password or a current MFA code. Required to APPROVE a Certificate"
+                  },
+                  "meaning": {
+                    "type": "string",
+                    "description": "The meaning of the approval signature. Required to APPROVE a Certificate"
                   }
                 }
               }
@@ -20111,7 +20359,17 @@
             }
           },
           "400": {
-            "description": "Invalid payload",
+            "description": "Invalid payload, or a Certificate approval without authMethod, authPayload and meaning",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Re-authentication failed (Certificate approval)",
             "content": {
               "application/json": {
                 "schema": {
@@ -20121,7 +20379,7 @@
             }
           },
           "403": {
-            "description": "User's role cannot approve the current step, or a platform operator (impersonating, or acting in another tenant — A-145, ADR-051 Q-17)",
+            "description": "User's role cannot approve the current step, the caller lacks write access to the record type the instance decides on (A-183), or a platform operator (impersonating, or acting in another tenant — A-145, ADR-051 Q-17)",
             "content": {
               "application/json": {
                 "schema": {
@@ -20141,7 +20399,7 @@
             }
           },
           "409": {
-            "description": "The instance is no longer pending, or the caller already acted on this step",
+            "description": "The instance is no longer pending, the caller already acted on this step, or the certificate's status does not allow the decision (A-182) — the message explains the state",
             "content": {
               "application/json": {
                 "schema": {
@@ -20539,6 +20797,49 @@
           },
           "503": {
             "description": "One or more required dependencies are unhealthy"
+          }
+        }
+      }
+    },
+    "/api/v1/health/jobs": {
+      "get": {
+        "summary": "Scheduled-job outcomes (super admin only)",
+        "description": "The recorded state of every scheduled job — last run, outcome, error, consecutive failures, next expected run, overdue flag (P7-02). Answers 503 when any job's last run failed or it missed its window.\n",
+        "tags": [
+          "Health"
+        ],
+        "responses": {
+          "200": {
+            "description": "No job failing or overdue"
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Not a super admin, or an API key"
+          },
+          "503": {
+            "description": "A job is failing or overdue"
+          }
+        }
+      }
+    },
+    "/api/v1/health/metrics": {
+      "get": {
+        "summary": "Prometheus metrics for scheduled jobs (bearer METRICS_TOKEN)",
+        "description": "Text exposition format. Authenticated with `Authorization: Bearer <METRICS_TOKEN>`, not a user session. Answers 404 while METRICS_TOKEN is unset, so the endpoint does not exist until an operator enables it.\n",
+        "tags": [
+          "Health"
+        ],
+        "responses": {
+          "200": {
+            "description": "Metrics"
+          },
+          "401": {
+            "description": "Missing or wrong token"
+          },
+          "404": {
+            "description": "METRICS_TOKEN is not configured"
           }
         }
       }

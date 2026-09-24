@@ -12,7 +12,7 @@ export default function PostCard({ post }: { post: Post }) {
     >
       <div className="relative aspect-video w-full overflow-hidden bg-muted">
         {post.coverImageUrl ? (
-          // Host-relative /uploads URL (rewritten to the API); plain img avoids next/image config.
+          // Host-relative /uploads/public URL (rewritten to the API); plain img avoids next/image config.
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={post.coverImageUrl}

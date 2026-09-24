@@ -12,6 +12,14 @@
  *    the key by hand. Deny-by-default: no tenant means `global/` only.
  * 2. **Provider resolution.** Tenant-configured provider first, platform
  *    default second — resolved once and cached per tenant.
+ *
+ * A-40 — the cache is per process, so invalidation must reach every replica.
+ * A settings change bumps a per-tenant GENERATION in Redis; every resolve
+ * compares the cached driver's generation with Redis's and rebuilds on a
+ * mismatch, so a rotated or revoked credential stops being used on every
+ * replica on its next request, not at its next restart. When Redis is
+ * unavailable the generation reads as null everywhere, and staleness is
+ * bounded instead by a local TTL (STORAGE_DRIVER_CACHE_TTL_SEC, default 60s).
  */
 
 const LocalDriver = require("./local.driver");
@@ -19,6 +27,8 @@ const S3Driver = require("./s3.driver");
 const keys = require("./keys");
 const config = require("./config.service");
 const signing = require("./signing");
+const crypto = require("crypto");
+const redisService = require("../redis.service");
 const { AppError } = require("../../utils/appError.util");
 
 /* istanbul ignore next -- env-selected secret: which side of the `||` wins
@@ -27,10 +37,24 @@ const { AppError } = require("../../utils/appError.util");
 const SIGN_SECRET =
   process.env.ATTACHMENT_URL_SECRET || process.env.CERT_SIGNING_SECRET;
 
-// tenantId (or "__global__") -> driver instance. Drivers hold an S3 client and
-// a connection pool, so rebuilding one per request would be wasteful.
+// tenantId (or "__global__") -> { driver, generation, builtAt }. Drivers hold
+// an S3 client and a connection pool, so rebuilding one per request would be
+// wasteful.
 const driverCache = new Map();
 const GLOBAL_CACHE_KEY = "__global__";
+
+/** Redis key holding a tenant's driver generation (A-40). */
+const GENERATION_PREFIX = "storage:driver-generation:";
+/** Lifetime of a generation marker; its expiry only costs one rebuild. */
+const GENERATION_TTL_SEC = 30 * 24 * 60 * 60;
+/** Upper bound on a cached driver's age — the fallback when Redis is down. */
+const localTtlMs = () => (Number(process.env.STORAGE_DRIVER_CACHE_TTL_SEC) || 60) * 1000;
+
+/** The shared generation for a cache key, or null (unset / Redis down). */
+const currentGeneration = async (cacheKey) => {
+  const generation = await redisService.get(GENERATION_PREFIX + cacheKey);
+  return generation === null || generation === undefined ? null : String(generation);
+};
 
 /** Instantiate the driver described by a resolved configuration. */
 const buildDriver = (resolved) => {
@@ -72,8 +96,9 @@ class ScopedStorage {
     return this.driver.put(this._guard(key), body, options);
   }
 
-  get(key) {
-    return this.driver.get(this._guard(key));
+  /** @param {{start: number, end: number}} [range] - inclusive byte range */
+  get(key, range) {
+    return this.driver.get(this._guard(key), range);
   }
 
   stat(key) {
@@ -143,7 +168,15 @@ class ScopedStorage {
 /** Resolve the driver for a tenant: tenant override first, platform default. */
 const resolveDriver = async (tenantId) => {
   const cacheKey = tenantId || GLOBAL_CACHE_KEY;
-  if (driverCache.has(cacheKey)) {return driverCache.get(cacheKey);}
+  const generation = await currentGeneration(cacheKey);
+  const cached = driverCache.get(cacheKey);
+  if (
+    cached &&
+    cached.generation === generation &&
+    Date.now() - cached.builtAt < localTtlMs()
+  ) {
+    return cached.driver;
+  }
 
   const tenantConfig = tenantId ? await config.getTenantConfig(tenantId) : null;
 
@@ -159,7 +192,7 @@ const resolveDriver = async (tenantId) => {
     })
     : buildDriver(config.getGlobalConfig());
 
-  driverCache.set(cacheKey, driver);
+  driverCache.set(cacheKey, { driver, generation, builtAt: Date.now() });
   return driver;
 };
 
@@ -189,8 +222,10 @@ const getGlobalStorage = async () =>
  * tenant is derived from the key and never trusted from the request — a valid
  * token for tenant A's key can only ever open tenant A's object.
  *
- * Returns a readable stream plus the object's metadata for the response
- * headers. Throws 403 on a bad/expired token BEFORE touching storage.
+ * Returns the object's metadata and an `open(range?)` that yields a readable
+ * stream — split so the route can answer 304/416/HEAD from the metadata
+ * without ever opening the object, and open only the byte range asked for
+ * (ADR-042 step 5). Throws 403 on a bad/expired token BEFORE touching storage.
  */
 const openSignedObject = async (rawKey, token) => {
   const key = keys.normalizeKey(rawKey);
@@ -205,13 +240,24 @@ const openSignedObject = async (rawKey, token) => {
     : await getGlobalStorage();
 
   const meta = await scoped.stat(key);
-  const stream = await scoped.get(key);
-  return { stream, meta };
+  return { meta, open: (range) => scoped.get(key, range) };
 };
 
-/** Drop a cached driver after its configuration changes. */
-const invalidate = (tenantId) => {
-  driverCache.delete(tenantId || GLOBAL_CACHE_KEY);
+/**
+ * Drop a cached driver after its configuration changes — here, and (A-40) on
+ * every other replica, by bumping the shared generation they compare against.
+ *
+ * @returns {Promise<boolean>} whether the generation reached Redis; false
+ *   means other replicas converge only when their local TTL expires
+ */
+const invalidate = async (tenantId) => {
+  const cacheKey = tenantId || GLOBAL_CACHE_KEY;
+  driverCache.delete(cacheKey);
+  return redisService.set(
+    GENERATION_PREFIX + cacheKey,
+    `${Date.now()}-${crypto.randomUUID()}`,
+    GENERATION_TTL_SEC,
+  );
 };
 
 /** Drop every cached driver (config reload / tests). */

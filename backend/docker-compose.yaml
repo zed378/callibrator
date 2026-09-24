@@ -1,3 +1,7 @@
+# Datastores for a SOURCE CHECKOUT (backend on the host: `npm run dev`).
+# Every port binds to 127.0.0.1 only (S-19): a laptop on hospital wifi must not
+# publish an unauthenticated Redis, a password-less pgAdmin and clamd to the
+# LAN. deploy/compose/ is the maintained stack.
 services:
   # backend:
   #   # build: .
@@ -7,7 +11,7 @@ services:
   #   env_file:
   #     - .env
   #   ports:
-  #     - "${BACKEND_PORT:-3000}:3000"
+  #     - "127.0.0.1:${BACKEND_PORT:-3000}:3000"
   #   volumes:
   #     - ./uploads:/app/uploads
   #     - ./backup:/app/backup
@@ -42,11 +46,11 @@ services:
   #     start_period: 40s
 
   redis:
-    image: redis:8.6-alpine
+    image: redis:8.6-alpine@sha256:bb2e2e3ac0c7295b6f3b1b7ee5438f7320c74483cba1cb195f3fd43dad38de67
     container_name: redis
     restart: unless-stopped
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     volumes:
       - ./data/redis:/data
     healthcheck:
@@ -58,12 +62,12 @@ services:
       start_period: 10s
 
   rabbitmq:
-    image: rabbitmq:3.13-management-alpine
+    image: rabbitmq:3.13-management-alpine@sha256:606d8c0d6b3c18d1da9afc53bc7cdb2a8d5486df91b5a9830e9e07626c9ae281
     container_name: rabbitmq
     restart: unless-stopped
     ports:
-      - "${RABBITMQ_PORT:-5672}:5672"
-      - "${RABBITMQ_MGMT_PORT:-15672}:15672"
+      - "127.0.0.1:${RABBITMQ_PORT:-5672}:5672"
+      - "127.0.0.1:${RABBITMQ_MGMT_PORT:-15672}:15672"
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-guest}
@@ -85,7 +89,7 @@ services:
     # a `vector(1536)` column and migration 0018 runs `CREATE EXTENSION vector`.
     # Plain postgres:18-alpine lacks the extension, so use the official pgvector
     # image (PG 17 + pgvector preinstalled).
-    image: pgvector/pgvector:pg18
+    image: pgvector/pgvector:pg18@sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167bab54efd3640516a44ac1a928dd67e7a
     container_name: postgres
     restart: unless-stopped
     env_file:
@@ -100,7 +104,7 @@ services:
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     healthcheck:
       # pg_isready reports success only when the server is accepting connections.
       # Poll every 5s so the backend starts promptly once Postgres is ready; the
@@ -112,11 +116,12 @@ services:
       start_period: 30s
 
   pgadmin:
-    image: dpage/pgadmin4:latest
+    # P7-07: pinned (was :latest). Same version as deploy/compose/docker-compose.dev.yml.
+    image: dpage/pgadmin4:8.14@sha256:8a68677a97b8c8d1427dc915672a26d2c4a04376916a68256f53d669d6171be7
     container_name: pgadmin
     restart: unless-stopped
     ports:
-      - "${PGADMIN_PORT:-8888}:80"
+      - "127.0.0.1:${PGADMIN_PORT:-8888}:80"
     environment:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-pgadmin@local.dev}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
@@ -131,11 +136,13 @@ services:
   # freshclam refreshes signatures inside the container; first boot downloads the
   # DB, so the health check allows a long start_period.
   clamav:
-    image: clamav/clamav:latest
+    # P7-07: pinned (was :latest) — the tag the S-04 client was verified
+    # against, by digest. How to move it: docs/DEVOPS/02-CONTAINERIZATION.md.
+    image: clamav/clamav:1.4@sha256:a5f03c12a79dbe9f6d8a527b6bb1ea053fa8dd061d3738a26897f055ee2d9303
     container_name: clamav
     restart: unless-stopped
     ports:
-      - "${CLAMAV_PORT:-3310}:3310"
+      - "127.0.0.1:${CLAMAV_PORT:-3310}:3310"
     volumes:
       - ./data/clamav:/var/lib/clamav
     healthcheck:

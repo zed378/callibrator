@@ -765,3 +765,52 @@ describe("redis.service", () => {
     });
   });
 });
+
+// ================================================================
+// S-09 — Redis authentication, backward compatible
+// ================================================================
+describe("S-09 Redis credentials", () => {
+  const origEnv = { ...process.env };
+
+  afterEach(() => {
+    process.env = { ...origEnv };
+  });
+
+  it("sends no credentials when REDIS_PASSWORD and REDIS_USERNAME are unset (unchanged behaviour)", () => {
+    jest.resetModules();
+    delete process.env.REDIS_PASSWORD;
+    delete process.env.REDIS_USERNAME;
+    const Redis = require("ioredis");
+    const fresh = require("../../services/redis.service");
+
+    fresh.getRedisConnection();
+
+    const options = Redis.mock.calls[Redis.mock.calls.length - 1][1];
+    expect(options).not.toHaveProperty("password");
+    expect(options).not.toHaveProperty("username");
+  });
+
+  it("authenticates with REDIS_PASSWORD, and REDIS_USERNAME as an ACL user", () => {
+    jest.resetModules();
+    process.env.REDIS_PASSWORD = "s3cret";
+    process.env.REDIS_USERNAME = "callibrator";
+    const Redis = require("ioredis");
+    const fresh = require("../../services/redis.service");
+
+    fresh.getRedisConnection();
+
+    expect(Redis).toHaveBeenLastCalledWith(
+      expect.any(String),
+      expect.objectContaining({ password: "s3cret", username: "callibrator", lazyConnect: true }),
+    );
+    expect(fresh.credentialOptions()).toEqual({ password: "s3cret", username: "callibrator" });
+  });
+
+  it("a password alone uses the default user", () => {
+    jest.resetModules();
+    process.env.REDIS_PASSWORD = "s3cret";
+    delete process.env.REDIS_USERNAME;
+    const fresh = require("../../services/redis.service");
+    expect(fresh.credentialOptions()).toEqual({ password: "s3cret" });
+  });
+});

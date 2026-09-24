@@ -131,9 +131,14 @@ class AiService {
   }
 
   /**
-   * Split a document into overlapping chunks for embedding. Splits on paragraph
+   * Split a document into chunks for embedding. Splits on paragraph
    * boundaries first, then packs paragraphs up to ~maxChars per chunk so chunks
    * stay semantically coherent and within the embedding model's context.
+   *
+   * The chunks do NOT overlap (A-18: this said "overlapping", and nothing here
+   * ever overlapped). A sentence split across two chunks is retrievable only
+   * from each half. Adding overlap changes every stored embedding and is a
+   * retrieval-quality decision, not a comment fix.
    *
    * @param {string} text
    * @param {number} maxChars

@@ -80,7 +80,7 @@ describe("gdprController", () => {
 
   describe("getErasureStatus", () => {
     it("returns the DSAR status", async () => {
-      gdprService.getDsarStatus.mockResolvedValue({ status: "pending" });
+      gdprService.getDsarStatus.mockResolvedValue({ status: "pending", userId: "user-123" });
       req.params = { requestId: "d-1" };
       await gdprController.getErasureStatus(req, res);
       expect(gdprService.getDsarStatus).toHaveBeenCalledWith("tenant-123", "d-1");

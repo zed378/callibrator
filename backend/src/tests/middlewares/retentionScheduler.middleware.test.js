@@ -2,6 +2,9 @@
  * Tests for retentionScheduler middleware
  */
 
+jest.mock("../../services/jobMonitor.service", () =>
+  require("../fixtures/jobMonitorMock").create(),
+);
 jest.mock("node-cron", () => ({
   schedule: jest.fn(),
   validate: jest.fn(),
@@ -147,5 +150,40 @@ describe("retentionScheduler middleware", () => {
     expect(logger.error).toHaveBeenCalledWith(
       "Error during scheduled retention sweep: sweep failed",
     );
+  });
+
+  describe("P7-02 job monitoring", () => {
+    const monitor = require("../../services/jobMonitor.service");
+
+    it("a sweep with per-tenant errors is a FAILED run (the purge that failed nightly unnoticed)", async () => {
+      cron.validate.mockReturnValue(true);
+      delete process.env.RETENTION_SCHEDULER;
+      runRetentionSweep.mockResolvedValue({ tenants: 2, purged: 0, skipped: 0, errors: 1 });
+      initRetentionScheduler();
+      const run = await cron.schedule.mock.calls[0][1]();
+      expect(run).toEqual(expect.objectContaining({
+        outcome: "failure", error: "1 tenant(s) failed during the purge",
+      }));
+      expect(monitor.registerJob).toHaveBeenCalledWith("retention-sweep", undefined, "0 2 * * *");
+    });
+
+    it("a clean sweep succeeds; a thrown sweep fails", async () => {
+      cron.validate.mockReturnValue(true);
+      runRetentionSweep.mockResolvedValueOnce({ errors: 0 }).mockRejectedValueOnce(new Error("x"));
+      initRetentionScheduler();
+      const [, callback] = cron.schedule.mock.calls[0];
+      expect((await callback()).outcome).toBe("success");
+      expect((await callback()).outcome).toBe("failure");
+    });
+
+    it("disabled is reported as disabled; an invalid expression is alerted", () => {
+      process.env.RETENTION_SCHEDULER = "disabled";
+      initRetentionScheduler();
+      expect(monitor.markDisabled).toHaveBeenCalledWith("retention-sweep", "disabled via RETENTION_SCHEDULER");
+      process.env.RETENTION_SCHEDULER = "bad";
+      cron.validate.mockReturnValue(false);
+      initRetentionScheduler();
+      expect(monitor.refuseSchedule).toHaveBeenCalledWith("retention-sweep", "RETENTION_SCHEDULER", "bad");
+    });
   });
 });

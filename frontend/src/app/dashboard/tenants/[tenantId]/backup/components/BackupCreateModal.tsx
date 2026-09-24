@@ -1,4 +1,5 @@
 import React from "react";
+import type { BackupCreateForm } from "../hooks/useTenantBackups";
 import { Card, Button } from "@/components/ui";
 import { XCircle } from "lucide-react";
 
@@ -6,8 +7,8 @@ interface BackupCreateModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (e: React.FormEvent) => void;
-  form: any;
-  setForm: React.Dispatch<React.SetStateAction<any>>;
+  form: BackupCreateForm;
+  setForm: React.Dispatch<React.SetStateAction<BackupCreateForm>>;
   isCreating: boolean;
 }
 

@@ -39,6 +39,18 @@ const axios = require("axios");
 const FLOW = Object.freeze({ nonce: "nonce-123", codeVerifier: "verifier-123" });
 const jwt = require("jsonwebtoken");
 
+// A-188: verifyOidcCallback resolves the IdP through discovery first. These
+// suites are about the token exchange and the ID token, so the provider is
+// given; discovery itself is tested in "A-188: provider discovery" below.
+const PROVIDER = Object.freeze({
+  issuer: "https://login.example.com/t1/v2.0",
+  authorizationEndpoint: "https://login.example.com/t1/oauth2/v2.0/authorize",
+  tokenEndpoint: "https://login.example.com/t1/oauth2/v2.0/token",
+  jwksUri: "https://login.example.com/t1/discovery/v2.0/keys",
+  discovered: true,
+});
+const useProvider = () => jest.spyOn(oidcJwks, "discover").mockResolvedValue(PROVIDER);
+
 describe("oidcJwks", () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -299,6 +311,8 @@ describe("oidcJwks", () => {
   });
 
   describe("verifyOidcCallback", () => {
+    beforeEach(useProvider);
+
     it("should throw error when no id_token returned", async () => {
       axios.post.mockResolvedValueOnce({ data: {} });
 
@@ -628,6 +642,8 @@ describe("oidcJwks", () => {
   });
 
   describe("verifyOidcCallback unexpected errors", () => {
+    beforeEach(useProvider);
+
     it("maps a non-AppError token-exchange failure to a 401", async () => {
       const netErr = new Error("socket hang up");
       netErr.response = { data: { error: "invalid_grant" } };
@@ -667,6 +683,8 @@ describe("oidcJwks", () => {
   });
 
   describe("verifyOidcCallback email claim fallback chain", () => {
+    beforeEach(useProvider);
+
     const settings = { oidc_client_id: "c1", oidc_client_secret: "s1" };
 
     // Drives the real verifyIdToken path up to jwt.verify, which returns `claims`.
@@ -747,25 +765,28 @@ describe("oidcJwks", () => {
       });
     });
 
-    it("uses the configured authority for the token endpoint when supplied", async () => {
+    it("A-188: posts to the discovered token_endpoint and checks the discovered issuer and keys", async () => {
       withClaims({ email: "d@e.com" });
 
-      await oidcJwks.verifyOidcCallback(
-        "code-9",
-        { ...settings, oidc_authority: "https://login.example.com/t1/oauth2/v2.0" },
-        "https://cb",
-        FLOW,
-      );
+      await oidcJwks.verifyOidcCallback("code-9", settings, "https://cb", FLOW);
 
       expect(axios.post).toHaveBeenCalledWith(
-        "https://login.example.com/t1/oauth2/v2.0/token",
+        PROVIDER.tokenEndpoint,
         expect.stringContaining("code=code-9"),
         expect.any(Object),
+      );
+      expect(axios.get).toHaveBeenCalledWith(PROVIDER.jwksUri, expect.any(Object));
+      expect(jwt.verify).toHaveBeenCalledWith(
+        "tok",
+        expect.any(String),
+        expect.objectContaining({ issuer: PROVIDER.issuer, audience: "c1" }),
       );
     });
   });
 
   describe("A-68: nonce and PKCE", () => {
+    beforeEach(useProvider);
+
     const settings = { oidc_client_id: "c1", oidc_client_secret: "s1" };
     const withClaims = (claims) => {
       axios.post.mockResolvedValue({ data: { id_token: "tok" } });

@@ -2,8 +2,9 @@
 const attachmentService = require("../services/attachment.service");
 const { asyncHandler } = require("../utils/controllerWrapper.util");
 const { success } = require("../utils/response.util");
-
-const baseUrlOf = (req) => `${req.protocol}://${req.get("host")}`;
+// A-189: the configured public origin, never the proxy-facing Host header.
+const { baseUrlOf } = require("../utils/publicBaseUrl.util");
+const { sendStoredFile } = require("../utils/fileResponse.util");
 
 // POST /api/v1/attachments (multipart: file + resourceType/resourceId)
 exports.upload = asyncHandler(async (req, res) => {
@@ -42,12 +43,15 @@ exports.getOne = asyncHandler(async (req, res) => {
 });
 
 // GET /api/v1/attachments/:id/download
+// ADR-042 step 4/5: this is now THE url an attachment response carries, so it
+// must do what the static mount did — ETag/304, Range/206, and inline for
+// images and PDF (anything else stays a download) — see fileResponse.util.
 exports.download = asyncHandler(async (req, res) => {
-  const { absPath, fileName } = await attachmentService.getDownload(
+  const { absPath, fileName, mimeType } = await attachmentService.getDownload(
     req.user.tenantId,
     req.params.id,
   );
-  return res.download(absPath, fileName);
+  await sendStoredFile(res, absPath, { contentType: mimeType || "application/octet-stream", fileName });
 });
 
 // POST /api/v1/attachments/:id/signed-url
@@ -61,11 +65,11 @@ exports.createSignedUrl = asyncHandler(async (req, res) => {
 
 // GET /api/v1/attachments/:id/signed?token=... (PUBLIC, token-gated)
 exports.downloadSigned = asyncHandler(async (req, res) => {
-  const { absPath, fileName } = await attachmentService.getSignedDownload(
+  const { absPath, fileName, mimeType } = await attachmentService.getSignedDownload(
     req.params.id,
     req.query.token,
   );
-  return res.download(absPath, fileName);
+  await sendStoredFile(res, absPath, { contentType: mimeType || "application/octet-stream", fileName });
 });
 
 // DELETE /api/v1/attachments/:id

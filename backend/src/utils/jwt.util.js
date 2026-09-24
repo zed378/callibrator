@@ -1,5 +1,6 @@
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
+const { keyIdOf } = require("./keyring.util");
 
 // ==========================================
 // ENV VALIDATION
@@ -106,111 +107,64 @@ const assertExactTokenType = (decoded, expected) => {
   return decoded;
 };
 
-const JWT_KEY_VERSION = process.env.JWT_KEY_VERSION || "1";
-const JWT_ROTATION_INTERVAL_HOURS =
-  parseInt(process.env.JWT_ROTATION_INTERVAL) || 720; // 30 days default
+// ==========================================
+// ACCESS-KEY RING (S-26)
+// ==========================================
+//
+// Until S-26 this was a `JwtKeyRegistry`: an in-process Map seeded with one
+// key whose `expiresAt` was process start + 30 days, a `rotateKey()` nothing
+// called and nothing persisted, and a verifier that — once that one key had
+// "expired" — fell back to ACCESS_SECRET with HS256 hard-coded. So every
+// deployment that pinned HS384/HS512 or any RS*/ES* algorithm rejected every
+// token after 30 days of uptime, and the "rotation support" was not rotation.
+//
+// Now the ring is the ENVIRONMENT, read when used, the same on every replica:
+//
+//   HS*        sign + verify: JWT_ACCESS_SECRET
+//              verify only:   JWT_ACCESS_SECRET_PREVIOUS
+//   RS* / ES*  sign:          JWT_PRIVATE_KEY
+//              verify:        JWT_PUBLIC_KEY (or the public half of
+//                             JWT_PRIVATE_KEY when unset)
+//              verify only:   JWT_PUBLIC_KEY_PREVIOUS
+//
+// Every token carries `kid` = a fingerprint of its verification key
+// (utils/keyring.util.js); a token names the key that checks it. A token with
+// no kid, or an unknown one (issued before S-26: "default"), is tried against
+// each key. Nothing expires by the clock — a key leaves the ring when an
+// operator removes it. The algorithm is JWT_ALGORITHM, always: there is no
+// HS256 fallback. Rotating is: new key current, old key *_PREVIOUS, wait one
+// access-token lifetime, remove *_PREVIOUS (docs/SECURITY/13-KEY-ROTATION.md).
 
-// ==========================================
-// KEY MANAGEMENT (Supports key rotation)
-// ==========================================
+const isAsymmetric = (algorithm) => algorithm.startsWith("RS") || algorithm.startsWith("ES");
 
 /**
- * JWT Key Registry
- * Supports multiple active keys for rotation without invalidating existing tokens
- * In production, store keys in a secure vault (AWS Secrets Manager, Azure Key Vault, etc.)
+ * @param {string} material - an HS secret, or a PEM (public or private)
+ * @returns {string} the key id: a fingerprint of the VERIFICATION key
  */
-class JwtKeyRegistry {
-  constructor() {
-    // Active keys: { [keyId]: { secret, algorithm, activatedAt, expiresAt } }
-    this._keys = new Map();
-    this._currentKeyId = process.env.JWT_KEY_ID || "default";
-    this._initializeDefaultKey();
-  }
+const kidOf = (material) =>
+  isAsymmetric(JWT_ALGORITHM)
+    ? keyIdOf(crypto.createPublicKey(material).export({ type: "spki", format: "der" }))
+    : keyIdOf(Buffer.from(material));
 
-  _initializeDefaultKey() {
-    const now = Date.now();
-    this._keys.set(this._currentKeyId, {
-      secret: ACCESS_SECRET,
-      algorithm: JWT_ALGORITHM,
-      activatedAt: new Date(now - JWT_ROTATION_INTERVAL_HOURS * 60 * 60 * 1000),
-      expiresAt: new Date(now + 30 * 24 * 60 * 60 * 1000), // 30 days
-    });
-  }
-
-  /**
-   * Get the current active key for signing
-   */
-  getCurrentKey() {
-    const keys = Array.from(this._keys.values());
-    const activeKeys = keys.filter((k) => {
-      const now = Date.now();
-      return now >= k.activatedAt.getTime() && now <= k.expiresAt.getTime();
-    });
-    return activeKeys[activeKeys.length - 1] || keys[keys.length - 1];
-  }
-
-  /**
-   * Get all active keys for verification (supports multiple active keys during rotation)
-   */
-  getActiveKeys() {
-    const now = Date.now();
-    return Array.from(this._keys.entries())
-      .filter(([keyId, key]) => {
-        return (
-          now >= key.activatedAt.getTime() && now <= key.expiresAt.getTime()
-        );
-      })
-      .map(([keyId, key]) => ({ keyId, ...key }));
-  }
-
-  /**
-   * Rotate keys - create a new key and optionally retire old ones
-   * @param {string} newSecret - The new secret key
-   * @param {string} newAlgorithm - Algorithm (HS256, RS256, ES256, etc.)
-   * @returns {string} The new key ID
-   */
-  rotateKey(newSecret, newAlgorithm = JWT_ALGORITHM) {
-    const newKeyId = crypto.randomUUID();
-    const now = Date.now();
-
-    this._keys.set(newKeyId, {
-      secret: newSecret,
-      algorithm: newAlgorithm,
-      activatedAt: new Date(now),
-      expiresAt: new Date(now + 365 * 24 * 60 * 60 * 1000), // 1 year
-    });
-
-    this._currentKeyId = newKeyId;
-    return newKeyId;
-  }
-
-  /**
-   * Retire a key (prevent new token signing with it)
-   */
-  retireKey(keyId) {
-    const key = this._keys.get(keyId);
-    if (key) {
-      key.expiresAt = new Date(Date.now());
-    }
-  }
-
-  /**
-   * Get key by ID (for debugging/monitoring)
-   */
-  getKey(keyId) {
-    return this._keys.get(keyId) || null;
-  }
-
-  /**
-   * Get all key IDs (for monitoring)
-   */
-  getKeyIds() {
-    return Array.from(this._keys.keys());
-  }
-}
-
-// Singleton instance
-const keyRegistry = new JwtKeyRegistry();
+/**
+ * The keys a token may be verified with, current first.
+ * @returns {Array<{kid: string, key: string|object}>}
+ */
+const verificationKeys = () => {
+  const materials = isAsymmetric(JWT_ALGORITHM)
+    ? [
+      process.env.JWT_PUBLIC_KEY ||
+          (process.env.JWT_PRIVATE_KEY && crypto.createPublicKey(process.env.JWT_PRIVATE_KEY)),
+      process.env.JWT_PUBLIC_KEY_PREVIOUS,
+    ]
+    : [ACCESS_SECRET, process.env.JWT_ACCESS_SECRET_PREVIOUS];
+  return materials
+    .filter(Boolean)
+    .map((key) => ({
+      kid: typeof key === "string" ? kidOf(key) : keyIdOf(key.export({ type: "spki", format: "der" })),
+      key,
+    }));
+};
 
 // ==========================================
 // ACCESS TOKEN
@@ -220,43 +174,41 @@ const keyRegistry = new JwtKeyRegistry();
  * Sign with the current access key. Shared by access and purpose tokens.
  * @param {object} signPayload - claims, `typ` already set
  * @param {string|number} expiresIn
- * @param {string} [algorithmOverride]
  * @returns {string}
  */
-const signWithAccessKey = (signPayload, expiresIn, algorithmOverride) => {
-  const key = keyRegistry.getCurrentKey();
-  const algorithm = algorithmOverride || key.algorithm;
-
-  // For HS* algorithms, use the secret directly
-  // For RS*/ES* algorithms, a private key file path would be used
-  if (algorithm.startsWith("RS") || algorithm.startsWith("ES")) {
+const signWithAccessKey = (signPayload, expiresIn) => {
+  if (isAsymmetric(JWT_ALGORITHM)) {
     const privateKey = process.env.JWT_PRIVATE_KEY;
     if (!privateKey) {
       throw new Error(
-        `Algorithm ${algorithm} requires JWT_PRIVATE_KEY environment variable`,
+        `Algorithm ${JWT_ALGORITHM} requires JWT_PRIVATE_KEY environment variable`,
       );
     }
     return jwt.sign(signPayload, privateKey, {
       expiresIn,
-      algorithm,
-      keyid: keyRegistry._currentKeyId,
+      algorithm: JWT_ALGORITHM,
+      keyid: kidOf(privateKey),
     });
   }
 
-  return jwt.sign(signPayload, key.secret, {
+  return jwt.sign(signPayload, ACCESS_SECRET, {
     expiresIn,
-    algorithm,
-    keyid: keyRegistry._currentKeyId,
+    algorithm: JWT_ALGORITHM,
+    keyid: kidOf(ACCESS_SECRET),
   });
 };
 
+/**
+ * @param {object|string} payload - claims, or a user id
+ * @param {{expiresIn?: string|number}} [options]
+ * @returns {string}
+ */
 const generateAccessToken = (payload, options = {}) => {
   const basePayload =
     typeof payload === "object" && payload !== null ? payload : { id: payload };
   return signWithAccessKey(
     { ...basePayload, typ: TOKEN_TYPE_ACCESS },
     options.expiresIn || process.env.JWT_ACCESS_EXPIRED || "15m",
-    options.algorithm,
   );
 };
 
@@ -267,7 +219,7 @@ const generateAccessToken = (payload, options = {}) => {
  *
  * @param {object} payload - claims (identifiers only)
  * @param {"activation"|"mfa"|"socket"} typ
- * @param {{expiresIn?: string|number, algorithm?: string}} [options]
+ * @param {{expiresIn?: string|number}} [options]
  * @returns {string}
  */
 const generatePurposeToken = (payload, typ, options = {}) => {
@@ -275,7 +227,6 @@ const generatePurposeToken = (payload, typ, options = {}) => {
   return signWithAccessKey(
     { ...payload, typ },
     options.expiresIn || PURPOSE_TOKEN_TYPES[typ].ttl,
-    options.algorithm,
   );
 };
 
@@ -297,7 +248,7 @@ const generateRefreshToken = (payload) => {
 
   // The legacy JWT refresh token is symmetric and signed with REFRESH_SECRET,
   // whatever JWT_ALGORITHM says. Asymmetric algorithms and key rotation apply
-  // to ACCESS tokens: the key registry holds ACCESS_SECRET, and signing refresh
+  // to ACCESS tokens: the access-key ring holds ACCESS_SECRET, and signing refresh
   // tokens from it is what made the two interchangeable (A-31).
   //
   // Note that nothing in the login flow calls this — every refresh token this
@@ -313,61 +264,42 @@ const generateRefreshToken = (payload) => {
 // ==========================================
 
 /**
- * Verify against the access-key registry, then apply `checkType` to the
- * payload. Shared by access and purpose tokens.
+ * Verify against the access-key ring, then apply `checkType` to the payload.
+ * Shared by access and purpose tokens.
+ *
+ * The key the token's `kid` names is tried; a token whose kid names no key
+ * in the ring (or that has none) is tried against each. Always with the
+ * pinned JWT_ALGORITHM. An expired token is reported as expired, not as
+ * invalid.
+ *
  * @param {string} token
  * @param {(decoded: object) => object} checkType - throws on the wrong type
  * @param {string} failureMessage
  * @returns {object}
  */
 const verifyWithAccessKeys = (token, checkType, failureMessage) => {
-  const activeKeys = keyRegistry.getActiveKeys();
+  const keys = verificationKeys();
+  const header = (jwt.decode(token, { complete: true }) || {}).header || {};
+  const named = keys.filter((k) => k.kid === header.kid);
+  const candidates = named.length > 0 ? named : keys;
 
-  // Try each active key until one succeeds
-  for (const keyInfo of activeKeys) {
+  for (const { key } of candidates) {
+    let decoded;
     try {
-      const algorithm = keyInfo.algorithm;
-
-      if (algorithm.startsWith("RS") || algorithm.startsWith("ES")) {
-        const publicKey = process.env.JWT_PUBLIC_KEY;
-        if (!publicKey) {
-          continue;
-        }
-        // Do NOT cap with maxAge here: access tokens are signed with
-        // expiresIn = JWT_ACCESS_EXPIRED (1d by default). jwt.verify already
-        // enforces the token's own `exp`; a hardcoded maxAge:"15m" silently
-        // rejected every token 15 min after issuance regardless of exp.
-        return checkType(
-          jwt.verify(token, publicKey, {
-            algorithms: [algorithm],
-          }),
-        );
-      }
-
-      return checkType(
-        jwt.verify(token, keyInfo.secret, {
-          algorithms: [algorithm],
-        }),
-      );
+      decoded = jwt.verify(token, key, { algorithms: [JWT_ALGORITHM] });
     } catch (err) {
-      // Try next key
       if (err.name === "TokenExpiredError") {
         throw err; // Don't suppress expiration errors
       }
-      // Store error but continue trying keys
+      continue; // not this key
+    }
+    try {
+      return checkType(decoded);
+    } catch {
+      throw new Error(failureMessage);
     }
   }
-
-  // If no active keys matched, try the default secret as fallback (backward compat)
-  try {
-    return checkType(
-      jwt.verify(token, ACCESS_SECRET, {
-        algorithms: ["HS256"],
-      }),
-    );
-  } catch {
-    throw new Error(failureMessage);
-  }
+  throw new Error(failureMessage);
 };
 
 const verifyAccessToken = (token) =>
@@ -401,7 +333,7 @@ const verifyPurposeToken = (token, typ) => {
 
 const verifyRefreshToken = (token) => {
   // Refresh tokens are verified against REFRESH_SECRET alone. They are not part
-  // of the access-key rotation registry — that registry holds ACCESS_SECRET, and
+  // of the access-key ring — that ring holds ACCESS_SECRET, and
   // verifying a refresh token against it is what made the two interchangeable
   // (A-31). Note that every refresh token this application actually issues is
   // OPAQUE (generateOpaqueRefreshToken); this path exists for the legacy JWT
@@ -420,75 +352,28 @@ const verifyRefreshToken = (token) => {
 };
 
 // ==========================================
-// KEY ROTATION API
+// KEY INFO (monitoring)
 // ==========================================
 
 /**
- * Rotate JWT signing keys
- * @param {string} algorithm - Algorithm: HS256, RS256, ES256, etc.
- * @returns {Object} { keyId, algorithm, activatedAt, expiresAt }
- */
-const rotateKeys = (algorithm = JWT_ALGORITHM) => {
-  let newSecret;
-
-  if (algorithm.startsWith("HS")) {
-    // Symmetric key
-    newSecret = crypto.randomBytes(64).toString("hex");
-  } else if (algorithm.startsWith("RS")) {
-    // RSA key pair
-    const { publicKey, privateKey } = crypto.generateKeyPairSync("rsa", {
-      modulusLength: 2048,
-      publicKeyEncoding: { type: "spki", format: "pem" },
-      privateKeyEncoding: { type: "pkcs8", format: "pem" },
-    });
-    process.env.JWT_PUBLIC_KEY = publicKey;
-    process.env.JWT_PRIVATE_KEY = privateKey;
-    newSecret = publicKey; // For RS*, verification uses public key
-  } else if (algorithm.startsWith("ES")) {
-    // ECDSA key pair
-    const { publicKey, privateKey } = crypto.generateKeyPairSync("ec", {
-      namedCurve: "P-256",
-      publicKeyEncoding: { type: "spki", format: "pem" },
-      privateKeyEncoding: { type: "pkcs8", format: "pem" },
-    });
-    process.env.JWT_PUBLIC_KEY = publicKey;
-    process.env.JWT_PRIVATE_KEY = privateKey;
-    newSecret = publicKey;
-  } else {
-    throw new Error(`Unsupported algorithm: ${algorithm}`);
-  }
-
-  const newKeyId = keyRegistry.rotateKey(newSecret, algorithm);
-  const key = keyRegistry.getKey(newKeyId);
-
-  return {
-    keyId: newKeyId,
-    algorithm,
-    activatedAt: key.activatedAt,
-    expiresAt: key.expiresAt,
-  };
-};
-
-/**
- * Get current key info (for monitoring/debugging)
+ * S-26: there is no in-process rotation. Rotating a JWT key is an operator
+ * change to the environment (see the ring above); this only reports it.
+ * @returns {{keyId: string|null, algorithm: string, previousKeyIds: string[], keyCount: number}}
  */
 const getKeyInfo = () => {
-  const currentKey = keyRegistry.getCurrentKey();
+  const keys = verificationKeys();
   return {
-    keyId: keyRegistry._currentKeyId,
-    algorithm: currentKey.algorithm,
-    activatedAt: currentKey.activatedAt,
-    expiresAt: currentKey.expiresAt,
-    keyCount: keyRegistry.getKeyIds().length,
+    keyId: keys.length ? keys[0].kid : null,
+    algorithm: JWT_ALGORITHM,
+    previousKeyIds: keys.slice(1).map((k) => k.kid),
+    keyCount: keys.length,
   };
 };
 
 /**
- * Get all active key IDs (for monitoring)
+ * @returns {string[]} every key id a token is currently verified against
  */
-const getActiveKeyIds = () => {
-  return keyRegistry.getActiveKeys().map((k) => k.keyId);
-};
+const getActiveKeyIds = () => verificationKeys().map((k) => k.kid);
 
 // ==========================================
 // DECODE
@@ -517,8 +402,6 @@ module.exports = {
   verifyPurposeToken,
   verifyRefreshToken,
   decodeToken,
-  rotateKeys,
   getKeyInfo,
   getActiveKeyIds,
-  keyRegistry,
 };

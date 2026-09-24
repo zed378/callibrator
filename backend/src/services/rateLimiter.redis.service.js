@@ -9,6 +9,7 @@
  * fallback-policy note below before changing either arm.
  */
 
+const crypto = require("crypto");
 const { logger } = require("../middlewares/activityLog.middleware");
 const { getRedisConnection } = require("./redis.service");
 const {
@@ -938,8 +939,141 @@ async function noteAuthSuccess(req, endpoint) {
   }
 }
 
+// ============================================================
+// A-185 — THE PASSWORD SIGN-IN THROTTLE
+// ============================================================
+//
+// It used to be a hard ACCOUNT lock: the fifth wrong password for a REAL
+// username wrote users.locked_until and answered 423, while an unknown one
+// answered 401 forever. That was an existence oracle, and it let anyone who
+// knew a username lock its owner out, repeatedly, from anywhere.
+//
+// Now the counters are keyed by what the CALLER typed, never by whether it
+// names an account, so a real name and an invented one are throttled
+// identically:
+//
+//   pair     — identifier + address. Five failures pause THAT pair for fifteen
+//              minutes (AUTH_ENDPOINTS.login). The owner signing in from
+//              anywhere else is unaffected.
+//   ceiling  — identifier alone, across every address. A hundred failures in
+//              an hour pause the identifier everywhere
+//              (AUTH_ENDPOINTS.loginIdentifier): the bound on a guesser who
+//              rotates addresses.
+//
+// The identifier is trimmed, lower-cased and hashed (SHA-256) before it is a
+// key: the store never holds a typed username or address in the clear.
+//
+// The address is req.ip (A-16). Where a deployment's req.ip is one proxy
+// address shared by every browser, the pair collapses to the identifier
+// alone — no weaker than the lock it replaces, and bounded to fifteen minutes.
+// Keying the PAIR by address can only narrow a pause, never widen it, so it
+// does not depend on AUTH_RATE_LIMIT_BY_IP (which widens a pause to every
+// name from one address).
+
+/**
+ * @param {string} identifier - as typed
+ * @returns {string} the hash the keys carry
+ */
+function loginIdentifierHash(identifier) {
+  return crypto
+    .createHash("sha256")
+    .update(String(identifier).trim().toLowerCase())
+    .digest("hex");
+}
+
+/**
+ * @param {{identifier: string, ip?: (string|null)}} attempt
+ * @returns {{pairKey: string, ceilingKey: string}}
+ */
+function loginThrottleKeys({ identifier, ip }) {
+  const id = loginIdentifierHash(identifier);
+  return {
+    pairKey: makeKey("auth", "login", `pair:${id}:${ip || "unknown"}`),
+    ceilingKey: makeKey("auth", "loginIdentifier", `id:${id}`),
+  };
+}
+
+/**
+ * Whether this identifier may attempt a password sign-in from this address
+ * now. Checked BEFORE the account is looked up, so a paused attempt costs no
+ * lookup and no password comparison, and says nothing about the account.
+ *
+ * @param {{identifier: string, ip?: (string|null)}} attempt
+ * @returns {Promise<{throttled: boolean, retryAfterSeconds: number}>}
+ */
+async function checkLoginThrottle(attempt) {
+  const { pairKey, ceilingKey } = loginThrottleKeys(attempt);
+  const now = Date.now();
+  for (const [key, endpoint] of [
+    [pairKey, "login"],
+    [ceilingKey, "loginIdentifier"],
+  ]) {
+    const entry = await storeGet(key);
+    if (entry && entry.count >= getAuthConfig(endpoint).maxAttempts) {
+      return {
+        throttled: true,
+        retryAfterSeconds: Math.max(1, Math.ceil((entry.expiresAt - now) / 1000)),
+      };
+    }
+  }
+  return { throttled: false, retryAfterSeconds: 0 };
+}
+
+/**
+ * Count one failed password sign-in against the pair and the ceiling.
+ *
+ * `engaged` names the counter this attempt filled — once per window: the
+ * caller writes the ACCOUNT_LOCKED row then, and only for an account that
+ * exists (which the answer never shows).
+ *
+ * @param {{identifier: string, ip?: (string|null)}} attempt
+ * @returns {Promise<{engaged: (null|"identifier+address"|"identifier"), failedAttempts: number, pausedUntil: (Date|null)}>}
+ */
+async function recordLoginFailure(attempt) {
+  const { pairKey, ceilingKey } = loginThrottleKeys(attempt);
+  const now = Date.now();
+  const pairConfig = getAuthConfig("login");
+  const ceilingConfig = getAuthConfig("loginIdentifier");
+  const { count: pairCount } = await storeIncrEntry(pairKey, pairConfig.windowMs, now);
+  const { count: ceilingCount } = await storeIncrEntry(ceilingKey, ceilingConfig.windowMs, now);
+
+  if (ceilingCount === ceilingConfig.maxAttempts) {
+    return {
+      engaged: "identifier",
+      failedAttempts: ceilingCount,
+      pausedUntil: new Date(now + ceilingConfig.lockoutMs),
+    };
+  }
+  if (pairCount === pairConfig.maxAttempts) {
+    return {
+      engaged: "identifier+address",
+      failedAttempts: pairCount,
+      pausedUntil: new Date(now + pairConfig.lockoutMs),
+    };
+  }
+  return { engaged: null, failedAttempts: pairCount, pausedUntil: null };
+}
+
+/**
+ * A successful sign-in clears its own pair. The ceiling is NOT cleared: the
+ * owner succeeding from one address must not hand a distributed guesser a
+ * fresh hundred.
+ *
+ * @param {{identifier: string, ip?: (string|null)}} attempt
+ * @returns {Promise<void>}
+ */
+async function clearLoginThrottle(attempt) {
+  await storeDel(loginThrottleKeys(attempt).pairKey);
+}
+
 module.exports = {
   // Core functions
+  // A-185: the password sign-in throttle
+  checkLoginThrottle,
+  recordLoginFailure,
+  clearLoginThrottle,
+  loginIdentifierHash,
+
   recordAuthFailure,
   checkAuthLockout,
   resetAuthFailures,

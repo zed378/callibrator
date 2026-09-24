@@ -4,6 +4,11 @@
 // (utils/upload) into uploads/attachments; this service records metadata,
 // computes a checksum, runs the virus-scan hook, and issues signed, expiring
 // download URLs.
+//
+// ADR-042 step 4 (S-01): uploads/attachments is NOT served statically. An
+// attachment is reached only through GET /attachments/:id/download (auth +
+// equipment:read + tenant + soft delete) or a signed, expiring
+// /attachments/:id/signed link — both of which answer 404 for a deleted row.
 
 const crypto = require("crypto");
 const fs = require("fs");
@@ -15,7 +20,7 @@ const { Attachment, Certificate } = require("../models");
 const { db } = require("../config");
 const storagePath = require("../utils/storagePath.util");
 const { AppError } = require("../utils/appError.util");
-const { getUploadUrl, promoteFromQuarantine } = require("../utils/upload.util");
+const { promoteFromQuarantine } = require("../utils/upload.util");
 const { DEFAULT_LIMIT, MAX_LIMIT } = require("../constants");
 const virusScan = require("./virusScan.service");
 const auditService = require("./audit.service");
@@ -81,10 +86,16 @@ const toPublic = (a) => ({
   size: Number(a.size),
   checksum: a.checksum,
   uploadedBy: a.uploadedBy,
-  // Stable, permanent, host-relative URL for inline embedding (served
-  // statically from /uploads with inline + cross-origin CORP). Used by the
-  // CMS WYSIWYG editor to reference pasted/uploaded images.
-  url: getUploadUrl(a.fileName, a.folder || ATTACH_FOLDER),
+  // ADR-042 step 4 (S-01). This used to be `/uploads/attachments/<file>` —
+  // a permanent, unauthenticated bearer link to tenant evidence, handed out in
+  // every response and not revoked by the delete. It is now the GATED,
+  // host-relative download route: it works same-origin for a signed-in member
+  // of the tenant (the frontend proxy injects the session) and for nobody
+  // else, and it stops working when the attachment is deleted. Images and
+  // PDFs are served inline, so it can back an <img>. A link for someone
+  // without a session is an explicit act: POST /attachments/:id/signed-url.
+  // (CMS images are no longer attachments: POST /content/media.)
+  url: `/api/v1/attachments/${a.id}/download`,
   createdAt: a.createdAt,
 });
 
@@ -314,7 +325,8 @@ exports.getDownload = async (tenantId, id) => {
 };
 
 // ------------------------------------------------------------------
-// DELETE (soft — removes it from listings + storage-quota accounting)
+// DELETE (soft row + unlinked file — removes it from listings, storage-quota
+// accounting, and every download path)
 // ------------------------------------------------------------------
 // A-28. Two compliance properties the previous two-line implementation did not
 // have:
@@ -329,6 +341,27 @@ exports.getDownload = async (tenantId, id) => {
 //
 // The soft-delete flag is `isDeleted`. Writing `is_deleted` here would set a
 // property Sequelize does not map and silently do nothing.
+/**
+ * Remove a deleted attachment's file. Never throws: the delete has committed,
+ * so a file that cannot be removed is logged (it is unreachable, not exposed)
+ * rather than turning a completed delete into an error.
+ *
+ * @param {{id: string, folder: string, fileName: string}} attachment
+ * @returns {Promise<boolean>} whether the file is gone
+ */
+const unlinkAttachmentFile = async (attachment) => {
+  try {
+    await fs.promises.rm(resolveAbsPath(attachment), { force: true });
+    return true;
+  } catch (err) {
+    logger.warn("Deleted attachment's file could not be removed", {
+      attachmentId: attachment.id,
+      error: err.message,
+    });
+    return false;
+  }
+};
+
 const CERTIFICATE_RESOURCE = "certificate";
 const LOCKED_CERTIFICATE_STATES = ["approved", "signed"];
 
@@ -377,6 +410,18 @@ exports.deleteAttachment = async (tenantId, id, actor = {}) => {
       { transaction },
     );
   });
+
+  // ADR-042 step 6 (S-01): the delete revokes the BYTES too, not just the
+  // row. The file is unlinked AFTER the transaction has committed — not inside
+  // it. A filesystem unlink cannot be rolled back: done inside, a transaction
+  // that then failed (the audit insert, the commit itself) would leave a live
+  // row whose evidence is gone. Done after, the worst case is the reverse — a
+  // crash between commit and unlink leaves an orphan file — and an orphan is
+  // harmless now that no route serves a deleted attachment (both download
+  // paths read through the row, and the row is soft-deleted). The unlink is
+  // only reached once the delete is permitted: evidence of an approved or
+  // signed certificate is refused above with a 409 and keeps its file.
+  await unlinkAttachmentFile(attachment);
 
   logger.info("Attachment soft-deleted", {
     attachmentId: attachment.id,

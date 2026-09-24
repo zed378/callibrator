@@ -18,7 +18,11 @@ const { validateUuid } = require("../../middlewares/validateUuid.middleware");
 const { endpointRateLimiter } = require("../../services/rateLimiter.redis.service");
 const { enforceStorageQuota } = require("../../middlewares/enforceQuota.middleware");
 const tenantController = require("../../controllers/tenant.controller");
-const { upload } = require("../../utils/upload.util");
+const {
+  upload,
+  PUBLIC_IMAGE_MIMES,
+  PUBLIC_IMAGE_EXTS,
+} = require("../../utils/upload.util");
 
 /* ------------------------------------------------------------------ */
 /* GET ALL TENANTS                                                    */
@@ -378,15 +382,10 @@ router.post(
   // upload(), so a refused request never writes a file.
   superAdminOnly,
   upload({
-    folder: "uploads/tenant",
-    allowedMimes: [
-      "image/jpeg",
-      "image/png",
-      "image/gif",
-      "image/webp",
-      "image/svg+xml",
-    ],
-    allowedExtensions: [".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"],
+    folder: "uploads/public/tenant",
+    // ADR-042 step 3: a logo is in the public class; SVG is refused.
+    allowedMimes: PUBLIC_IMAGE_MIMES,
+    allowedExtensions: PUBLIC_IMAGE_EXTS,
     maxFileSize: parseInt(process.env.MAX_FILE_SIZE) || 5 * 1024 * 1024,
   }),
   tenantController.createTenant,
@@ -544,15 +543,10 @@ router.patch(
   dynamicAccess("management", "update", { checkTenant: true }),
   enforceStorageQuota(),
   upload({
-    folder: "uploads/tenant",
-    allowedMimes: [
-      "image/jpeg",
-      "image/png",
-      "image/gif",
-      "image/webp",
-      "image/svg+xml",
-    ],
-    allowedExtensions: [".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"],
+    folder: "uploads/public/tenant",
+    // ADR-042 step 3: a logo is in the public class; SVG is refused.
+    allowedMimes: PUBLIC_IMAGE_MIMES,
+    allowedExtensions: PUBLIC_IMAGE_EXTS,
     maxFileSize: parseInt(process.env.MAX_FILE_SIZE) || 5 * 1024 * 1024,
   }),
   tenantController.updateTenant,
@@ -801,15 +795,10 @@ router.post(
   auth,
   dynamicAccess("management", "update", { checkTenant: true }),
   upload({
-    folder: "uploads/tenant",
-    allowedMimes: [
-      "image/jpeg",
-      "image/png",
-      "image/gif",
-      "image/webp",
-      "image/svg+xml",
-    ],
-    allowedExtensions: [".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"],
+    folder: "uploads/public/tenant",
+    // ADR-042 step 3: a logo is in the public class; SVG is refused.
+    allowedMimes: PUBLIC_IMAGE_MIMES,
+    allowedExtensions: PUBLIC_IMAGE_EXTS,
     maxFileSize: parseInt(process.env.MAX_FILE_SIZE) || 5 * 1024 * 1024,
   }),
   tenantController.uploadTenantLogo,

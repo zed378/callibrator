@@ -1,4 +1,5 @@
 // src/app/dashboard/vendors/hooks/useVendors.ts
+import { deferEffect } from "@/lib/deferEffect";
 import { useCallback, useEffect, useState } from "react";
 import { useAuthStore } from "@/stores/authStore";
 import { useToastStore } from "@/stores/toastStore";
@@ -89,9 +90,7 @@ export function useVendors() {
     }
   }, [currentPage, pageSize, searchTerm, statusFilter, typeFilter]);
 
-  useEffect(() => {
-    fetchVendors();
-  }, [fetchVendors]);
+  useEffect(() => deferEffect(fetchVendors), [fetchVendors]);
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(e.target.value);

@@ -1,4 +1,5 @@
 // src/app/dashboard/permissions/hooks/usePermissions.ts
+import { deferEffect } from "@/lib/deferEffect";
 import { useCallback, useEffect, useState } from "react";
 import { roleService, RoleMenu } from "@/api/services/role.service";
 import { useAuthStore } from "@/stores/authStore";
@@ -42,10 +43,9 @@ export function usePermissions() {
 
   // Initial load: all roles + all menu groups
   useEffect(() => {
-    if (!isSuperAdmin) {
-      setIsLoading(false);
-      return;
-    }
+    // Not a super admin: nothing loads, and `isLoading` is derived false on
+    // return rather than set here (react-hooks/set-state-in-effect).
+    if (!isSuperAdmin) return;
     let cancelled = false;
     (async () => {
       setIsLoading(true);
@@ -99,7 +99,8 @@ export function usePermissions() {
   }, []);
 
   useEffect(() => {
-    if (selectedRoleId) loadRolePermissions(selectedRoleId);
+    if (!selectedRoleId) return;
+    return deferEffect(() => loadRolePermissions(selectedRoleId));
   }, [selectedRoleId, loadRolePermissions]);
 
   /** Cycle none → read → write → none for a menu group. */
@@ -144,7 +145,7 @@ export function usePermissions() {
     setSelectedRoleId,
     selectedRole,
     assignments,
-    isLoading,
+    isLoading: isSuperAdmin && isLoading,
     isRoleLoading,
     savingMenuId,
     error,

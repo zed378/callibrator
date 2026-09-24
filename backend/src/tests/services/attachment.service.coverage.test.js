@@ -50,7 +50,6 @@ const path = require("path");
 const fs = require("fs");
 const attachmentService = require("../../services/attachment.service");
 const { Attachment, Certificate } = require("../../models");
-const { getUploadUrl } = require("../../utils/upload.util");
 const virusScan = require("../../services/virusScan.service");
 const { logger } = require("../../middlewares/activityLog.middleware");
 const storagePath = require("../../utils/storagePath.util");
@@ -258,7 +257,7 @@ describe("attachment.service (coverage)", () => {
 
   // ================================================================
   describe("toPublic", () => {
-    it("falls back to the default folder when the record has none", async () => {
+    it("S-01 / ADR-042 step 4: the url is the GATED download route, never an /uploads path", async () => {
       Attachment.findOne.mockResolvedValue({
         id: "a-1",
         fileName: "x.pdf",
@@ -268,8 +267,8 @@ describe("attachment.service (coverage)", () => {
 
       const result = await attachmentService.getAttachment("t-1", "a-1");
 
-      expect(getUploadUrl).toHaveBeenCalledWith("x.pdf", "uploads/attachments");
-      expect(result.url).toBe("/uploads/attachments/x.pdf");
+      expect(result.url).toBe("/api/v1/attachments/a-1/download");
+      expect(result.url).not.toContain("/uploads/");
       expect(result.size).toBe(2048); // coerced from the string the driver returns
     });
   });

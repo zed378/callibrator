@@ -1,4 +1,5 @@
 // src/app/dashboard/maintenance/hooks/useMaintenance.ts
+import { deferEffect } from "@/lib/deferEffect";
 import { useCallback, useEffect, useState } from "react";
 import { useAuthStore } from "@/stores/authStore";
 import { useToastStore } from "@/stores/toastStore";
@@ -99,9 +100,7 @@ export function useMaintenance() {
     }
   }, [currentPage, pageSize, searchTerm, statusFilter, priorityFilter, typeFilter]);
 
-  useEffect(() => {
-    fetchWorkOrders();
-  }, [fetchWorkOrders]);
+  useEffect(() => deferEffect(fetchWorkOrders), [fetchWorkOrders]);
 
   // Load reference data (devices & vendors) once for the modal selects
   useEffect(() => {

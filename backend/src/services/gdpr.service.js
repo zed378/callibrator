@@ -527,7 +527,7 @@ exports.eraseUserData = async (tenantId, userId, options = {}) => {
 };
 
 /** Where avatars are stored (user.service), and its "no photo" sentinel. */
-const AVATAR_FOLDER = "uploads/profile";
+const AVATAR_FOLDER = "uploads/public/profile";
 const AVATAR_PLACEHOLDER = "default.svg";
 
 /**
@@ -987,7 +987,9 @@ async function sendEmailChangeMail(userId, email, { previous, firstName, lastNam
   const origin = (process.env.FRONTEND_URL || process.env.HOST_URL || "").replace(/\/+$/, "");
 
   try {
-    const token = generatePurposeToken({ id: userId }, "activation");
+    // A-191: the link verifies THIS address only (activationToken.util).
+    const { activationClaims } = require("../utils/activationToken.util");
+    const token = generatePurposeToken(activationClaims(userId, email), "activation");
     await queueActivationEmail({
       email,
       firstName,

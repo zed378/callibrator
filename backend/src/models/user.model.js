@@ -174,14 +174,14 @@ const defineModel = (db, DataTypes) => {
           const avatar = this.getDataValue("avatarUrl");
           const baseUrl = process.env.HOST_URL || "";
           // DEFAULT_UPLOAD_PLACEHOLDER means "no avatar uploaded". Building a
-          // URL from it yields /uploads/profile/default.svg, which 404s —
+          // URL from it yields /uploads/public/profile/default.svg, which 404s —
           // nothing ships that file, and /app/uploads is a volume that would
           // shadow it anyway. Returning null lets the UI render its initials
           // block, which is the intended appearance for a user with no photo.
           if (!avatar || avatar === DEFAULT_UPLOAD_PLACEHOLDER) {
             return null;
           }
-          return `${baseUrl}/uploads/profile/${avatar}`;
+          return `${baseUrl}/uploads/public/profile/${avatar}`;
         },
         first_name() {
           return this.getDataValue("firstName");

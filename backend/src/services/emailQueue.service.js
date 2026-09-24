@@ -138,6 +138,21 @@ const initEmailQueue = async () => {
 // ==========================================
 
 /**
+ * A-186 — what of a recipient may be logged: the address's DOMAIN, never the
+ * mailbox. The log is shipped off-box and kept for 30 days (activityLog
+ * middleware); a patient-facing hospital's staff addresses are personal data
+ * (GDPR Art. 5(1)(c)), and the job id already correlates a line with its
+ * message. The domain still shows a provider-specific delivery failure.
+ *
+ * @param {*} email
+ * @returns {string|null} the lower-cased domain, or null when there is none
+ */
+const recipientDomain = (email) => {
+  const at = typeof email === "string" ? email.lastIndexOf("@") : -1;
+  return at > 0 ? email.slice(at + 1).toLowerCase() : null;
+};
+
+/**
  * Add email job to RabbitMQ queue
  * @param {Object} job - Email job data
  * @returns {Promise<boolean>}
@@ -152,10 +167,10 @@ const addEmailJob = async (job) => {
       data: job.data,
       createdAt: new Date().toISOString(),
       retries: 0,
-      // unreachable fallback: every caller of addEmailJob (queueActivationEmail
-      // / queueOtpEmail / queueNotificationEmail) passes a hard-coded
-      // maxRetries: 3, so the `|| 3` alternative never evaluates.
-      maxRetries: /* istanbul ignore next */ job.maxRetries || 3,
+      // A-32: every caller of addEmailJob (queueActivationEmail / queueOtpEmail
+      // / queueNotificationEmail) passes maxRetries: 3; the unreachable `|| 3`
+      // fallback is gone.
+      maxRetries: job.maxRetries,
     };
 
     ch.sendToQueue(EMAIL_QUEUE, Buffer.from(JSON.stringify(jobData)), {
@@ -168,14 +183,18 @@ const addEmailJob = async (job) => {
     logger.info("Email job added to queue", {
       jobId: jobData.id,
       type: job.type,
-      to: job.data.email,
+      recipientDomain: recipientDomain(job.data.email),
     });
 
     return true;
   } catch (error) {
+    // A-186: never the job itself — its data is the address, and the OTP or
+    // the activation link (whose token the redaction format does not catch
+    // under the key `activationLink`).
     logger.error("Failed to add email job to queue", {
       error: error.message,
-      job,
+      type: job.type,
+      recipientDomain: recipientDomain(job.data.email),
     });
     // Fallback: send synchronously.
     // A-158 — the fallback's own outcome is returned. This returned `true`
@@ -212,7 +231,7 @@ const sendEmailDirectly = async (job) => {
 
     logger.info("Email sent successfully", {
       type: job.type,
-      to: job.data.email,
+      recipientDomain: recipientDomain(job.data.email),
     });
 
     return true;
@@ -220,7 +239,7 @@ const sendEmailDirectly = async (job) => {
     logger.error("Failed to send email", {
       error: error.message,
       type: job.type,
-      to: job.data.email,
+      recipientDomain: recipientDomain(job.data.email),
     });
     return false;
   }
@@ -315,8 +334,9 @@ const processEmailQueue = async () => {
       if (success) {
         ch.ack(msg);
         logger.info("Email sent successfully", {
+          jobId: job.id,
           type: job.type,
-          to: job.data.email,
+          recipientDomain: recipientDomain(job.data.email),
         });
       } else {
         throw new Error("Email sending returned false");

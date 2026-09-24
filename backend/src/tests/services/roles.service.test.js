@@ -40,6 +40,7 @@ jest.mock("../../models", () => {
       findAndCountAll: jest.fn(),
       create: jest.fn(),
       findOne: jest.fn(),
+      count: jest.fn().mockResolvedValue(0),
     },
     User: {
       findByPk: jest.fn(),
@@ -895,6 +896,14 @@ describe("RolesService", () => {
         expect(mockRoleMenuPermission.destroy).toHaveBeenCalledWith({ where: { menuGroupId: "m1" }, transaction: "TX" });
         expect(mockDestroy).toHaveBeenCalledWith({ transaction: "TX" });
         expect(require("../../services/redis.service").delPattern).toHaveBeenCalledWith("permissions:role:*");
+      });
+
+      it("A-181: refuses (409) a menu that still has children, and deletes nothing", async () => {
+        const mockDestroy = jest.fn();
+        mockMenuGroup.findByPk.mockResolvedValue({ name: "Reports", destroy: mockDestroy });
+        mockMenuGroup.count.mockResolvedValueOnce(2);
+        await expect(RolesService.deleteMenu("m1")).rejects.toMatchObject({ status: 409 });
+        expect(mockDestroy).not.toHaveBeenCalled();
       });
     });
   });

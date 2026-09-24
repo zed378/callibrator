@@ -6,8 +6,8 @@ jest.mock("../../services/calibrationRecords.service", () => ({
   fetchCalibrationRecords: jest.fn(),
   fetchSpecificCalibrationRecord: jest.fn(),
   createCalibrationRecord: jest.fn(),
-  updateCalibrationRecord: jest.fn(),
-  deleteCalibrationRecord: jest.fn(),
+  correctCalibrationRecord: jest.fn(),
+  voidCalibrationRecord: jest.fn(),
 }));
 
 jest.mock("../../utils/response.util", () => ({
@@ -22,7 +22,8 @@ jest.mock("../../validators/calibrationRecords.validator", () => {
     getCalibrationRecordsQuery: Joi.object(),
     calibrationRecordIdSchema: Joi.object(),
     createCalibrationRecordSchema: Joi.object(),
-    updateCalibrationRecordSchema: Joi.object(),
+    correctCalibrationRecordSchema: Joi.object(),
+    voidCalibrationRecordSchema: Joi.object(),
     validate: jest.fn((data, schema) => {
       if (data.failValidation) {
         return {
@@ -147,44 +148,49 @@ describe("calibrationRecordsController", () => {
     });
   });
 
-  describe("updateCalibrationRecord", () => {
-    it("should update record successfully", async () => {
+  // P6-03 — correct and void replace update and delete.
+  describe("correctCalibrationRecord", () => {
+    it("passes the tenant, the ACTING user, the record and the body to the service", async () => {
       req.params = { calibrationRecordId: "rec-1" };
-      req.body = { notes: "Updated record" };
-      calibrationRecordsService.updateCalibrationRecord.mockResolvedValueOnce({
+      req.body = { notes: "Corrected", reason: "misread" };
+      calibrationRecordsService.correctCalibrationRecord.mockResolvedValueOnce({
         success: true,
-        status: 200,
+        status: 201,
         message: "Success",
-        data: { id: "rec-1" },
+        data: { id: "rec-2" },
       });
 
-      await calibrationRecordsController.updateCalibrationRecord(req, res);
+      await calibrationRecordsController.correctCalibrationRecord(req, res);
 
-      expect(calibrationRecordsService.updateCalibrationRecord).toHaveBeenCalledWith(
+      expect(calibrationRecordsService.correctCalibrationRecord).toHaveBeenCalledWith(
         "tenant-1",
+        "user-1",
         "rec-1",
-        { notes: "Updated record" },
+        { notes: "Corrected", reason: "misread" },
         { userId: "user-1", tenantId: "tenant-1", ipAddress: "10.0.0.9", userAgent: "jest-agent" },
       );
       expect(success).toHaveBeenCalled();
     });
   });
 
-  describe("deleteCalibrationRecord", () => {
-    it("should delete record successfully", async () => {
+  describe("voidCalibrationRecord", () => {
+    it("passes the tenant, the acting user, the record and the reason to the service", async () => {
       req.params = { calibrationRecordId: "rec-1" };
-      calibrationRecordsService.deleteCalibrationRecord.mockResolvedValueOnce({
+      req.body = { reason: "entered twice" };
+      calibrationRecordsService.voidCalibrationRecord.mockResolvedValueOnce({
         success: true,
         status: 200,
         message: "Success",
         data: null,
       });
 
-      await calibrationRecordsController.deleteCalibrationRecord(req, res);
+      await calibrationRecordsController.voidCalibrationRecord(req, res);
 
-      expect(calibrationRecordsService.deleteCalibrationRecord).toHaveBeenCalledWith(
+      expect(calibrationRecordsService.voidCalibrationRecord).toHaveBeenCalledWith(
         "tenant-1",
+        "user-1",
         "rec-1",
+        { reason: "entered twice" },
         { userId: "user-1", tenantId: "tenant-1", ipAddress: "10.0.0.9", userAgent: "jest-agent" },
       );
       expect(success).toHaveBeenCalled();

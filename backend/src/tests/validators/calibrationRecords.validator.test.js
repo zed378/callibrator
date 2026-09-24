@@ -8,7 +8,8 @@ const {
   calibrationRecordIdSchema,
   calibrationDeviceIdSchema,
   createCalibrationRecordSchema,
-  updateCalibrationRecordSchema,
+  correctCalibrationRecordSchema,
+  voidCalibrationRecordSchema,
 } = require("../../validators/calibrationRecords.validator");
 
 describe("Calibration Record Validators", () => {
@@ -33,6 +34,7 @@ describe("Calibration Record Validators", () => {
         isCompliant: true,
         from: new Date("2026-01-01"),
         to: new Date("2026-06-30"),
+        includeSuperseded: false,
       });
     });
 
@@ -87,18 +89,53 @@ describe("Calibration Record Validators", () => {
     });
   });
 
-  describe("updateCalibrationRecordSchema", () => {
-    it("should validate update parameters", () => {
-      const data = {
-        notes: "Updated compliance note",
-        isCompliant: false,
-      };
-
-      const { error, value } = validate(data, updateCalibrationRecordSchema);
-
+  // P6-03 — correct and void each require a reason, and a blank one is
+  // refused (the abuse case: a reason field that accepts an empty string).
+  describe("correctCalibrationRecordSchema", () => {
+    it("accepts corrected content with a reason, trimmed", () => {
+      const { error, value } = validate(
+        { notes: "Updated compliance note", isCompliant: false, reason: "  misread the dial  " },
+        correctCalibrationRecordSchema,
+      );
       expect(error).toBeUndefined();
-      expect(value.notes).toBe("Updated compliance note");
-      expect(value.isCompliant).toBe(false);
+      expect(value).toEqual({ notes: "Updated compliance note", isCompliant: false, reason: "misread the dial" });
+    });
+
+    it.each([
+      ["missing", {}],
+      ["empty", { reason: "" }],
+      ["whitespace", { reason: "    " }],
+      ["too short", { reason: "ab" }],
+      ["too long", { reason: "x".repeat(2001) }],
+    ])("refuses a %s reason", (_label, body) => {
+      const { error } = validate({ notes: "x", ...body }, correctCalibrationRecordSchema);
+      expect(error).toBeDefined();
+      expect(error.details[0].path).toEqual(["reason"]);
+    });
+
+    it("strips lifecycle fields a caller tries to set", () => {
+      const { error, value } = validate(
+        { reason: "misread", supersedesId: "x", supersededById: "y", isDeleted: true, tenantId: "t" },
+        correctCalibrationRecordSchema,
+      );
+      expect(error).toBeUndefined();
+      expect(value).toEqual({ reason: "misread" });
+    });
+  });
+
+  describe("voidCalibrationRecordSchema", () => {
+    it("accepts a reason", () => {
+      const { error, value } = validate({ reason: "entered twice" }, voidCalibrationRecordSchema);
+      expect(error).toBeUndefined();
+      expect(value).toEqual({ reason: "entered twice" });
+    });
+
+    it.each([[{}], [{ reason: "" }], [{ reason: "   " }]])("refuses %j", (body) => {
+      expect(validate(body, voidCalibrationRecordSchema).error).toBeDefined();
+    });
+
+    it("refuses a request with no body at all (A-09: Express 5 leaves it undefined)", () => {
+      expect(validate(undefined, voidCalibrationRecordSchema).error.details[0].path).toEqual(["reason"]);
     });
   });
 

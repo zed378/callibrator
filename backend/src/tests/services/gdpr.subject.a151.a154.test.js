@@ -277,7 +277,7 @@ describe("A-154 — anonymising an account removes everything that identifies or
   it("deletes the avatar file only after the commit", async () => {
     await asTenant(() => gdprService.eraseUserData(TENANT, USER, { requestedBy: DPO }));
 
-    expect(deleteUpload).toHaveBeenCalledWith("jane-photo.png", "uploads/profile");
+    expect(deleteUpload).toHaveBeenCalledWith("jane-photo.png", "uploads/public/profile");
     expect(mockDb.events).toEqual([
       "update",
       "revoke-sessions",

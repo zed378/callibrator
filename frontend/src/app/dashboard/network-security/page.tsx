@@ -1,6 +1,7 @@
 // src/app/dashboard/network-security/page.tsx
 "use client";
 
+import { deferEffect } from "@/lib/deferEffect";
 import React, { useCallback, useEffect, useState } from "react";
 import DashboardLayout from "@/components/layouts/DashboardLayout";
 import {
@@ -64,9 +65,7 @@ export default function NetworkSecurityPage() {
     }
   }, []);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useEffect(() => deferEffect(load), [load]);
 
   /** The allowlist is replace-only server-side, so add/remove both PUT the full list. */
   const persistAllowlist = async (next: string[], title: string) => {

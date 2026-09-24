@@ -97,6 +97,37 @@ const watchLifecycle = (client) => {
   });
 };
 
+/**
+ * Redis credentials (S-09), backward compatible.
+ *
+ * Redis here is not a cache: it holds the brute-force lockout counters and the
+ * WebAuthn/OIDC state, so an unauthenticated Redis lets anything on its
+ * network flush a lockout. The compose stack now starts Redis with
+ * `--requirepass` whenever REDIS_PASSWORD is set, and the backend
+ * authenticates with:
+ *
+ *   REDIS_PASSWORD   the `requirepass` / ACL password
+ *   REDIS_USERNAME   an ACL user (Redis 6+); omit for the `default` user
+ *
+ * Both unset: no AUTH, exactly as before. Credentials embedded in REDIS_URL
+ * (`redis://user:pass@host:6379`) also work and TAKE PRECEDENCE — ioredis
+ * applies the URL's credentials over the options — so use one or the other.
+ * Every client duplicated from this one (the Socket.IO adapter's pub/sub
+ * pair) inherits them.
+ *
+ * @returns {{password?: string, username?: string}}
+ */
+const credentialOptions = () => {
+  const options = {};
+  if (process.env.REDIS_PASSWORD) {
+    options.password = process.env.REDIS_PASSWORD;
+  }
+  if (process.env.REDIS_USERNAME) {
+    options.username = process.env.REDIS_USERNAME;
+  }
+  return options;
+};
+
 const getRedisConnection = () => {
   if (redis) {
     return redis;
@@ -107,6 +138,7 @@ const getRedisConnection = () => {
     `redis://${process.env.REDIS_HOST || "localhost"}:${process.env.REDIS_PORT || 6379}`;
 
   redis = new Redis(redisUrl, {
+    ...credentialOptions(),
     // Commands queued while disconnected are rejected after every 4th failed
     // attempt rather than waiting forever. The helpers below never queue —
     // they check readiness first — but the rate limiter and queue dedup call
@@ -418,6 +450,7 @@ const closeRedis = async () => {
 };
 
 module.exports = {
+  credentialOptions,
   initRedis,
   getRedisConnection,
   get,

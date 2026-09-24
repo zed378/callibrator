@@ -16,21 +16,21 @@ describe("Avatar", () => {
   it("strips the backend origin from absolute /uploads URLs", () => {
     const { container } = render(
       <Avatar
-        src="http://localhost:5000/uploads/profile/pic.jpg"
+        src="http://localhost:5000/uploads/public/profile/pic.jpg"
         alt="Ada"
         fallback="Ada Lovelace"
       />,
     );
     const src = srcOf(container);
-    expect(src).toContain("/uploads/profile/pic.jpg");
+    expect(src).toContain("/uploads/public/profile/pic.jpg");
     expect(src).not.toContain("localhost:5000");
   });
 
   it("leaves an already-relative upload path alone", () => {
     const { container } = render(
-      <Avatar src="/uploads/profile/pic.jpg" alt="Ada" />,
+      <Avatar src="/uploads/public/profile/pic.jpg" alt="Ada" />,
     );
-    expect(srcOf(container)).toContain("/uploads/profile/pic.jpg");
+    expect(srcOf(container)).toContain("/uploads/public/profile/pic.jpg");
   });
 
   it("does not rewrite non-upload URLs", () => {

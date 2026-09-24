@@ -108,6 +108,7 @@ const SESSION_COLUMNS = new Set([
   "user_id",
   "tenant_id",
   "impersonator_id", // A-146, migration 0040-session-impersonator
+  "auth_method", // A-160, migration 0052-session-auth-method
   "token_hash",
   "ip_address",
   "user_agent",
@@ -432,6 +433,9 @@ const ssoLogin = async (kind) => {
   // The LOGIN audit row is not under test here, and the fake pg wire knows
   // only the sessions table.
   jest.spyOn(auditService, "logAction").mockResolvedValue({ id: "audit" });
+  // A-188: the exchange stamps users.last_login_at — the users table is not
+  // on this fake wire either.
+  jest.spyOn(Users, "update").mockResolvedValue([1]);
   // A-83: the exchange re-reads the user and its tenant before the session.
   jest.spyOn(Users, "findByPk").mockResolvedValue({
     id: USER_ID,
@@ -500,12 +504,15 @@ describe("A-59: the activation token is not an access token", () => {
       update: jest.fn(async () => undefined),
     };
     jest.spyOn(Users, "findByPk").mockResolvedValue(user);
+    // A-191: activation is a managed transaction (the update and its audit).
+    db.transaction.mockImplementation(async (fn) => fn({ id: "tx" }));
 
     expect(await activate(token)).toEqual({
       status: 200,
       message: "Account activated successfully",
     });
-    expect(user.update).toHaveBeenCalledWith({ isEmailVerified: true });
+    // A-191: in a transaction, with its audit row.
+    expect(user.update).toHaveBeenCalledWith({ isEmailVerified: true }, expect.anything());
   });
 
   it("the activation route refuses an access token with 400, and activates nothing", async () => {

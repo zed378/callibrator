@@ -1,0 +1,106 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- $base := include "callibrator.baseName" . -}}
+{{- $np := .Values.networkPolicy -}}
+# S-18 — default-deny for this release's pods, then the flows the application
+# uses. RENDERS ONLY: not yet applied to a cluster (P7-06). Values and the
+# reasoning are in values.yaml under networkPolicy.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $base }}-default-deny
+  labels:
+    {{- include "callibrator.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes: [Ingress, Egress]
+{{- if .Values.backend.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $base }}-backend
+  labels:
+    {{- include "callibrator.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: callibrator-backend
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        # The ingress controller: /socket.io, /oidc, /.well-known, /uploads.
+        - namespaceSelector:
+            {{- toYaml $np.ingressController.namespaceSelector | nindent 12 }}
+          podSelector:
+            {{- toYaml $np.ingressController.podSelector | nindent 12 }}
+        # The frontend's server-side proxy (BACKEND_INTERNAL_URL).
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: callibrator-frontend
+              app.kubernetes.io/instance: {{ .Release.Name }}
+        {{- with $np.extraBackendIngressFrom }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      ports:
+        - port: http
+          protocol: TCP
+  egress:
+    # DNS, to any resolver in the cluster.
+    - ports:
+        - { port: 53, protocol: UDP }
+        - { port: 53, protocol: TCP }
+    - {{- with $np.backendEgressTo }}
+      to:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      ports:
+        {{- range $np.backendEgressPorts }}
+        - port: {{ .port }}
+          protocol: {{ .protocol | default "TCP" }}
+        {{- end }}
+        {{- range $np.mqttEgressPorts }}
+        - port: {{ .port }}
+          protocol: {{ .protocol | default "TCP" }}
+        {{- end }}
+{{- end }}
+{{- if .Values.frontend.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $base }}-frontend
+  labels:
+    {{- include "callibrator.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: callibrator-frontend
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            {{- toYaml $np.ingressController.namespaceSelector | nindent 12 }}
+          podSelector:
+            {{- toYaml $np.ingressController.podSelector | nindent 12 }}
+      ports:
+        - port: http
+          protocol: TCP
+  egress:
+    - ports:
+        - { port: 53, protocol: UDP }
+        - { port: 53, protocol: TCP }
+    # The only upstream the Next server talks to is the backend.
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: callibrator-backend
+              app.kubernetes.io/instance: {{ .Release.Name }}
+      ports:
+        - port: {{ .Values.backend.service.port }}
+          protocol: TCP
+{{- end }}
+{{- end }}

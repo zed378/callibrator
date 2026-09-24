@@ -8,9 +8,10 @@
  * world-readable at its final URL. A rejected file was removed afterwards,
  * and a magic-byte mismatch on a single upload was not removed at all.
  *
- * Everything here is real: multer, express.static with the exact options
- * index.js mounts (UPLOADS_STATIC_OPTIONS), an HTTP server, and the disk —
- * a temporary storage root that storagePath points at.
+ * Everything here is real: multer, the exact static mount index.js uses
+ * (mountPublicUploads — since ADR-042 step 3 only `uploads/public/` is
+ * served), an HTTP server, and the disk — a temporary storage root that
+ * storagePath points at.
  */
 const fs = require("fs");
 const os = require("os");
@@ -44,7 +45,8 @@ const {
   promoteFromQuarantine,
   quarantinePath,
   QUARANTINE_DIRNAME,
-  UPLOADS_STATIC_OPTIONS,
+  PUBLIC_UPLOADS_STATIC_OPTIONS,
+  mountPublicUploads,
 } = require("../../utils/upload.util");
 const storagePath = require("../../utils/storagePath.util");
 const attachmentService = require("../../services/attachment.service");
@@ -74,7 +76,7 @@ const post = async (route, name, type, content) => {
 
 beforeAll(async () => {
   const app = express();
-  app.use("/uploads", express.static(storagePath("uploads"), UPLOADS_STATIC_OPTIONS));
+  mountPublicUploads(app);
 
   // A route that holds the file in quarantine for its service, as the
   // attachments route does.
@@ -99,7 +101,7 @@ beforeAll(async () => {
   // A route that does not hold (avatars, logos): promoted by the middleware.
   app.post(
     "/direct",
-    upload({ folder: "uploads/profile" }),
+    upload({ folder: "uploads/public/profile" }),
     (req, res) => res.json({ path: req.file.path, filename: req.file.filename }),
   );
 
@@ -147,37 +149,43 @@ describe("S-17 — the quarantine and the static mount", () => {
     expect(seen.quarantineStatus).toBe(404);
     expect(seen.finalStatus).toBe(404);
 
-    // After promotion it is served, and the quarantine is empty.
+    // After promotion it is on disk and the quarantine is empty — and it is
+    // STILL not served statically: attachments left the static mount with
+    // ADR-042 step 4 (S-01) and are reached only through the gated routes.
+    expect(listFiles("uploads", "attachments")).toContain(body.name);
     const after = await fetch(`${base}/uploads/attachments/${body.name}`);
-    expect(after.status).toBe(200);
-    expect(await after.text()).toBe("hello");
-    expect(after.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(after.status).toBe(404);
     expect(listFiles("uploads", QUARANTINE_DIRNAME)).toEqual([]);
   });
 
-  it("UPLOADS_STATIC_OPTIONS keeps dotfiles ignored", () => {
-    expect(UPLOADS_STATIC_OPTIONS.dotfiles).toBe("ignore");
-    expect(Object.isFrozen(UPLOADS_STATIC_OPTIONS)).toBe(true);
+  it("PUBLIC_UPLOADS_STATIC_OPTIONS keeps dotfiles ignored", () => {
+    expect(PUBLIC_UPLOADS_STATIC_OPTIONS.dotfiles).toBe("ignore");
+    expect(Object.isFrozen(PUBLIC_UPLOADS_STATIC_OPTIONS)).toBe(true);
   });
 
   it("a route that does not hold is promoted by the middleware after the magic-byte check", async () => {
     const { status, body } = await post("/direct", "a.png", "image/png", PNG);
 
     expect(status).toBe(200);
-    expect(body.path).toBe(path.join(storagePath("uploads/profile"), body.filename));
-    expect(listFiles("uploads", "profile")).toContain(body.filename);
+    expect(body.path).toBe(path.join(storagePath("uploads/public/profile"), body.filename));
+    expect(listFiles("uploads", "public", "profile")).toContain(body.filename);
     expect(listFiles("uploads", QUARANTINE_DIRNAME)).toEqual([]);
+    // The public class IS served — with its pinned type.
+    const served = await fetch(`${base}/uploads/public/profile/${body.filename}`);
+    expect(served.status).toBe(200);
+    expect(served.headers.get("content-type")).toBe("image/png");
+    expect(served.headers.get("x-content-type-options")).toBe("nosniff");
   });
 
   it("a magic-byte mismatch is refused and leaves no file anywhere", async () => {
-    const before = listFiles("uploads", "profile");
+    const before = listFiles("uploads", "public", "profile");
 
     const { status, body } = await post("/direct", "fake.png", "image/png", "not a png at all");
 
     expect(status).toBe(400);
     expect(body.message).toMatch(/^File content does not match declared type/);
     expect(listFiles("uploads", QUARANTINE_DIRNAME)).toEqual([]);
-    expect(listFiles("uploads", "profile")).toEqual(before);
+    expect(listFiles("uploads", "public", "profile")).toEqual(before);
   });
 
   it("promoteFromQuarantine refuses a file that is not in quarantine", async () => {
@@ -186,7 +194,7 @@ describe("S-17 — the quarantine and the static mount", () => {
     fs.writeFileSync(outside, "x");
 
     await expect(
-      promoteFromQuarantine({ path: outside, filename: "already-public.txt" }, "uploads/profile"),
+      promoteFromQuarantine({ path: outside, filename: "already-public.txt" }, "uploads/public/profile"),
     ).rejects.toMatchObject({ status: 500 });
     expect(fs.existsSync(outside)).toBe(true);
   });
@@ -233,7 +241,8 @@ describe("S-17 — attachment.service scans the file IN quarantine, then promote
     expect(fs.existsSync(finalPath("clean-1.txt"))).toBe(true);
     expect(fs.existsSync(quarantinePath("clean-1.txt"))).toBe(false);
     expect(created.fileName).toBe("clean-1.txt");
-    expect(created.url).toBe("/uploads/attachments/clean-1.txt");
+    // S-01: the gated route, never a static path.
+    expect(created.url).toMatch(/^\/api\/v1\/attachments\/.+\/download$/);
   });
 
   it("an infected file is refused 422 and leaves no file anywhere", async () => {

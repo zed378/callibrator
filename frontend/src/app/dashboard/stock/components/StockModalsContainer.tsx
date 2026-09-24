@@ -4,32 +4,38 @@ import AdjustmentModal from "./AdjustmentModal";
 import TransferModal from "./TransferModal";
 import OpnameModal from "./OpnameModal";
 
+// Each modal owns its form's type; this container only threads them through.
+type StockModalProps = React.ComponentProps<typeof StockModal>;
+type AdjustmentModalProps = React.ComponentProps<typeof AdjustmentModal>;
+type TransferModalProps = React.ComponentProps<typeof TransferModal>;
+type OpnameModalProps = React.ComponentProps<typeof OpnameModal>;
+
 interface StockModalsContainerProps {
   isStockModalOpen: boolean;
   setIsStockModalOpen: (open: boolean) => void;
   stockModalType: "create" | "edit";
   hasWriteAccess: boolean;
-  stockForm: any;
-  setStockForm: any;
-  warehouseOptions: any[];
-  locationOptions: any[];
+  stockForm: StockModalProps["form"];
+  setStockForm: StockModalProps["setForm"];
+  warehouseOptions: StockModalProps["warehouseOptions"];
+  locationOptions: StockModalProps["locationOptions"];
   fetchLocations: (id: string) => void;
   handleStockSubmit: (e: React.FormEvent) => void;
   isAdjustmentModalOpen: boolean;
   setIsAdjustmentModalOpen: (open: boolean) => void;
-  selectedStock: any;
-  adjustmentForm: any;
-  setAdjustmentForm: any;
+  selectedStock: AdjustmentModalProps["selectedStock"];
+  adjustmentForm: AdjustmentModalProps["form"];
+  setAdjustmentForm: AdjustmentModalProps["setForm"];
   handleAdjustmentSubmit: (e: React.FormEvent) => void;
   isTransferModalOpen: boolean;
   setIsTransferModalOpen: (open: boolean) => void;
-  transferForm: any;
-  setTransferForm: any;
+  transferForm: TransferModalProps["form"];
+  setTransferForm: TransferModalProps["setForm"];
   handleTransferSubmit: (e: React.FormEvent) => void;
   isOpnameModalOpen: boolean;
   setIsOpnameModalOpen: (open: boolean) => void;
-  opnameForm: any;
-  setOpnameForm: any;
+  opnameForm: OpnameModalProps["form"];
+  setOpnameForm: OpnameModalProps["setForm"];
   handleOpnameSubmit: (e: React.FormEvent) => void;
 }
 

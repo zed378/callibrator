@@ -44,6 +44,15 @@ const {
 } = require("../services/session.service");
 const { PASSWORD_MIN_LENGTH, ROLE_IDS } = require("../constants");
 const auditService = require("./audit.service");
+const { SYSTEM_ACTORS } = require("../constants/systemActors");
+const { PLATFORM_TENANT_ID } = require("../constants/platformTenant");
+const {
+  activationClaims,
+  activationEmailHash,
+} = require("../utils/activationToken.util");
+// A-185: the password sign-in throttle. Required as a module (not
+// destructured) so tests can observe it.
+const loginThrottle = require("./rateLimiter.redis.service");
 // A-99: the one place TOTP is done, on the otplib 13 API. `authenticator`,
 // which this file used to take from otplib, does not exist in otplib 13.
 const mfaService = require("./mfa.service");
@@ -51,6 +60,7 @@ const {
   MFA_POLICY_KEYS,
   NO_POLICY: NO_MFA_POLICY,
   parseMfaPolicy,
+  isPlatformOperator,
 } = require("../utils/mfaPolicy.util");
 
 // User statuses auth.middleware refuses on every request (and config/socket.js
@@ -255,7 +265,8 @@ exports.registerUser = async (input, origin) => {
     // Generate activation token. A-59: a purpose token, not an access token —
     // it travels by email (forwarded, archived, logged), so it must not work
     // as a bearer credential. Only activateAccount accepts it.
-    const activationToken = generatePurposeToken({ id: user.id }, "activation");
+    // A-191: bound to the address it is mailed to (activationClaims).
+    const activationToken = generatePurposeToken(activationClaims(user.id, email), "activation");
     const activationLink = baseOrigin + "/activation?token=" + activationToken;
 
     // Queue activation email (async, non-blocking).
@@ -350,6 +361,64 @@ const openLoginSession = ({ user, refreshToken, ipAddress, userAgent, method, se
   });
 
 // ------------------------------------------------------------------
+// A-185 — A FAILED SIGN-IN SAYS NOTHING ABOUT THE ACCOUNT
+//
+// Every way a password sign-in can fail WITHOUT the right password — an
+// unknown identifier, a wrong password, a suspended or deactivated account, an
+// account locked by the MFA step — is the same 401 "Invalid credentials", and
+// each is counted by the same throttle (rateLimiter.redis.service
+// #checkLoginThrottle), which is keyed by the identifier as typed plus the
+// caller's address and never by whether the identifier names an account. The
+// throttle answers 429 identically for a real name and an invented one.
+//
+// Anonymous failures no longer write users.locked_until: five wrong guesses
+// from one address used to lock the OWNER out everywhere (423), which was both
+// an existence oracle and a denial of service anyone could aim. A lock written
+// by the MFA step (A-81) is still honoured — its attempts needed the password
+// — and is disclosed only to a caller who has just proved the password.
+//
+// An unknown identifier still pays for a bcrypt comparison (against
+// UNKNOWN_ACCOUNT_HASH), so the answer's timing does not separate it from a
+// real account with a wrong password.
+// ------------------------------------------------------------------
+
+// A bcrypt hash (cost 12, like password.util) of a random value nobody holds.
+const UNKNOWN_ACCOUNT_HASH = "$2b$12$gnq6G52MC3XmdeZI66eNY.WwBTEEYGqu35QvYPrVM8uk60EhxTV3S";
+const INVALID_CREDENTIALS = "Invalid credentials";
+const SIGN_IN_PAUSED = "Too many failed sign-in attempts. Wait a few minutes, then try again.";
+
+exports.UNKNOWN_ACCOUNT_HASH = UNKNOWN_ACCOUNT_HASH;
+exports.SIGN_IN_PAUSED = SIGN_IN_PAUSED;
+
+/**
+ * Count a failed password sign-in and, when this attempt filled a throttle
+ * for an account that exists, record the ACCOUNT_LOCKED row (A-126) in that
+ * account's tenant. Nothing here changes the answer, which is always 401.
+ *
+ * @param {{identifier: string, ip: (string|null)}} attempt
+ * @param {object|null} dbUser - the account, or null when the identifier names none
+ * @param {string|null} userAgent
+ * @returns {Promise<void>}
+ */
+const noteFailedSignIn = async (attempt, dbUser, userAgent) => {
+  const throttle = await loginThrottle.recordLoginFailure(attempt);
+  if (throttle.engaged && dbUser) {
+    await auditService.recordAccountLock({
+      // Nothing to persist on the account: the pause lives in the throttle's
+      // store and covers the typed identifier, not the account row.
+      persistLock: async () => undefined,
+      user: dbUser,
+      lockedUntil: throttle.pausedUntil,
+      failedAttempts: throttle.failedAttempts,
+      endpoint: "login",
+      scope: throttle.engaged,
+      ipAddress: attempt.ip,
+      userAgent: userAgent || null,
+    });
+  }
+};
+
+// ------------------------------------------------------------------
 // LOGIN USER
 // ------------------------------------------------------------------
 exports.loginUser = async (input) => {
@@ -360,9 +429,15 @@ exports.loginUser = async (input) => {
   // Normalize: schema uses 'user' (email or username), service uses 'username'
   const username = typeof loginIdentifier === "string" ? loginIdentifier : null;
   if (!username) {
-    throw new AppError(401, "Invalid credentials");
+    throw new AppError(401, INVALID_CREDENTIALS);
   }
   const { ip, userAgent } = input;
+  const attempt = { identifier: username, ip: ip || null };
+
+  // A-185: before the account is looked up — a paused attempt learns nothing.
+  if ((await loginThrottle.checkLoginThrottle(attempt)).throttled) {
+    throw new AppError(429, SIGN_IN_PAUSED);
+  }
 
   // Support login by username OR email
   const dbUser = await Users.findOne({
@@ -383,9 +458,18 @@ exports.loginUser = async (input) => {
       tenantInclude(),
     ],
   });
-  if (!dbUser) {
-    throw new AppError(401, "Invalid credentials");
+
+  const match = await comparePassword(
+    password,
+    dbUser ? dbUser.password : UNKNOWN_ACCOUNT_HASH,
+  );
+  if (!dbUser || !match) {
+    await noteFailedSignIn(attempt, dbUser, userAgent);
+    throw new AppError(401, INVALID_CREDENTIALS);
   }
+
+  // Everything below is disclosed only to a caller who holds the password.
+
   // Refuse exactly what auth.middleware refuses. `isActive` alone let a user
   // whose `status` is SUSPENDED — which is what SCIM deprovisioning sets
   // (scim.service.js) — through to a session, and (A-72) a LOGIN audit row,
@@ -394,33 +478,10 @@ exports.loginUser = async (input) => {
     throw new AppError(403, "Account is suspended");
   }
 
+  // A lock the MFA step wrote (A-81) — its attempts already held the password.
   const lockedUntil = dbUser.lockedUntil;
   if (lockedUntil && new Date(lockedUntil) > new Date()) {
     throw new AppError(423, "Account temporarily locked");
-  }
-
-  const match = await comparePassword(password, dbUser.password);
-  if (!match) {
-    const attempts = (dbUser.failedLoginAttempts || 0) + 1;
-    await dbUser.update({ failedLoginAttempts: attempts });
-
-    if (attempts >= 5) {
-      const lockedUntil = new Date(Date.now() + 15 * 60 * 1000);
-      // A-126 (ADR-051 Q-15): the lock and its ACCOUNT_LOCKED row commit
-      // together; if the row cannot be written the lock is still persisted.
-      await auditService.recordAccountLock({
-        persistLock: (transaction) =>
-          transaction ? dbUser.update({ lockedUntil }, { transaction }) : dbUser.update({ lockedUntil }),
-        user: dbUser,
-        lockedUntil,
-        failedAttempts: attempts,
-        endpoint: "login",
-        ipAddress: ip || null,
-        userAgent: userAgent || null,
-      });
-      throw new AppError(423, "Account locked due to too many failed attempts");
-    }
-    throw new AppError(401, "Invalid credentials");
   }
 
   // A-83: refused AFTER the password, so the tenant's state is disclosed only
@@ -430,6 +491,8 @@ exports.loginUser = async (input) => {
   if (refusal) {
     throw new AppError(403, refusal);
   }
+
+  await loginThrottle.clearLoginThrottle(attempt);
 
   // Reset failed attempts on success
   if (dbUser.failedLoginAttempts > 0) {
@@ -517,6 +580,11 @@ exports.loginUser = async (input) => {
       mfaEnabled: !!dbUser.mfaEnabled,
       // A-123: the frontend goes straight to the change-password screen.
       mustChangePassword: !!dbUser.mustChangePassword,
+      // P6-07: a platform operator without MFA has an enrolment-only session
+      // (auth.middleware refuses everything but enrolment); the frontend
+      // goes straight to the MFA page. A tenant policy's demand is reported
+      // by /auth/verify, which reads the policy.
+      mfaEnrolmentRequired: !dbUser.mfaEnabled && isPlatformOperator(dbUser),
     },
     token: accessToken,
     refreshToken,
@@ -542,11 +610,30 @@ exports.activateAccount = async (token) => {
     throw new AppError(404, "User not found");
   }
 
+  // A-191: the link verifies the address it was mailed to. A token minted
+  // before the binding (no `eh`), or for an address the account no longer
+  // has, is refused — whoever reads the old mailbox must not verify a new one.
+  if (!decoded.eh || decoded.eh !== activationEmailHash(user.email)) {
+    throw new AppError(
+      400,
+      "This activation link was sent to an address this account no longer uses",
+    );
+  }
+
   if (user.isEmailVerified) {
     return { success: true, status: 200, message: "Account already activated" };
   }
 
-  await user.update({ isEmailVerified: true });
+  // Every mutation is audited in its transaction (a tenant-less account —
+  // self-registration — has no trail; auditCredentialChange logs instead).
+  await db.transaction(async (transaction) => {
+    await user.update({ isEmailVerified: true }, { transaction });
+    await auditCredentialChange(transaction, {
+      user,
+      operation: "EMAIL_VERIFIED",
+      details: { method: "activation_link" },
+    });
+  });
   await del(cacheKeys.userByEmail(user.email));
   await del(cacheKeys.userByUsername(user.username));
 
@@ -768,6 +855,88 @@ exports.getAuthUserWithTenant = async (userId) => {
 };
 
 // ------------------------------------------------------------------
+// P6-07 — BREAK-GLASS: A PLATFORM OPERATOR WHO LOST THEIR SECOND FACTOR
+//
+// The ordinary ways back, in order: the operator's own recovery codes
+// (A-141), then ANOTHER super admin's POST /users/:userId/mfa/reset (a super
+// admin may reset anyone). This is for the last case — the only operator, with
+// neither authenticator nor recovery codes — and it is NOT "disable the
+// check":
+//  - it clears the operator's MFA enrolment, so the operator's next password
+//    sign-in is the enrolment-only session P6-07 gives an operator without
+//    MFA: they must enrol a new authenticator before anything else;
+//  - every session of the operator is revoked;
+//  - it is written to the audit trail in the same transaction, actor
+//    `system:break-glass`, naming the person and the ticket;
+//  - it has no HTTP route. It runs from scripts/breakGlassMfaReset.js, which
+//    needs the database credentials — the break-glass is holding those, and
+//    the audit row is what makes its use visible.
+// A tenant user is refused here: that is an administrator's MFA reset.
+// ------------------------------------------------------------------
+
+/**
+ * @param {object} params
+ * @param {string} params.identifier - the operator's username or email
+ * @param {string} params.requestedBy - the person carrying out the procedure
+ * @param {string} params.ticket - the change or incident reference
+ * @returns {Promise<{userId: string, sessionsRevoked: number}>}
+ * @throws {AppError} 400 missing input, 404 no such account, 403 not a
+ *   platform operator, 409 no MFA to reset
+ */
+exports.breakGlassResetOperatorMfa = async ({ identifier, requestedBy, ticket }) => {
+  const text = (value) => (typeof value === "string" ? value.trim() : "");
+  if (!text(identifier) || !text(requestedBy) || !text(ticket)) {
+    throw new AppError(400, "identifier, requestedBy and ticket are all required");
+  }
+  const user = await Users.findOne({
+    where: { [Op.or]: [{ username: text(identifier) }, { email: text(identifier).toLowerCase() }] },
+    include: [{ model: Role, as: "role", attributes: ["id", "name", "roleLevel"], required: false }],
+    skipTenantScope: true,
+  });
+  if (!user) {
+    throw new AppError(404, "No account has that username or email");
+  }
+  if (!isPlatformOperator(user)) {
+    throw new AppError(
+      403,
+      "Break-glass is for platform operators only; a tenant user's MFA is reset by their administrator",
+    );
+  }
+  if (!user.mfaEnabled) {
+    throw new AppError(409, "This operator has no MFA enrolled; they will be asked to enrol at their next sign-in");
+  }
+
+  const sessionsRevoked = await db.transaction(async (transaction) => {
+    await user.update({ ...mfaService.MFA_CLEARED }, { transaction });
+    const [revoked] = await revokeAllSessions(user.id, "MFA_BREAK_GLASS");
+    await auditService.logAction(
+      {
+        tenantId: user.tenantId || PLATFORM_TENANT_ID,
+        systemActor: SYSTEM_ACTORS.BREAK_GLASS,
+        action: "UPDATE",
+        resourceType: "User",
+        resourceId: user.id,
+        changes: {
+          operation: "MFA_BREAK_GLASS_RESET",
+          requestedBy: text(requestedBy),
+          ticket: text(ticket),
+          sessionsRevoked: revoked,
+        },
+      },
+      { transaction },
+    );
+    return revoked;
+  });
+
+  logger.warn("Break-glass: a platform operator's MFA was reset", {
+    userId: user.id,
+    requestedBy: text(requestedBy),
+    ticket: text(ticket),
+  });
+  return { userId: user.id, sessionsRevoked };
+};
+
+// ------------------------------------------------------------------
 // JUST UPDATE PASSWORD
 // ------------------------------------------------------------------
 /**
@@ -978,12 +1147,15 @@ exports.refreshUserToken = async (
       ? session.expired_at
       : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     impersonatorId,
+    // A-160: an SSO session stays one through a refresh (migration 0052).
+    authMethod: session.auth_method || null,
   });
 
   const newAccessToken = generateAccessToken({
     id: user.id,
     email: user.email,
     ...(impersonatorId ? { impersonatorId } : {}),
+    ...(session.auth_method ? { amr: session.auth_method } : {}),
     sid: newSession.id,
   });
 

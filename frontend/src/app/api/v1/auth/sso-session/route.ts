@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { API_BASE_URL } from "@/constants";
 import { clientIpHeader } from "@/lib/clientIp";
+import { writeSessionCookies } from "@/lib/authCookies";
 
 /**
  * SSO session bootstrap (A-60).
@@ -23,19 +24,12 @@ import { clientIpHeader } from "@/lib/clientIp";
 // 32 random bytes, base64url — the backend's ssoExchangeSchema.
 const SSO_CODE = /^[A-Za-z0-9_-]{43}$/;
 
-const cookieOptions = {
-  httpOnly: true,
-  secure: process.env.NODE_ENV === "production",
-  sameSite: "lax" as const,
-  path: "/",
-  maxAge: 7 * 24 * 60 * 60, // 7 days
-};
-
 type ExchangeResponse = {
   success?: boolean;
   message?: string;
   data?: unknown;
   token?: unknown;
+  refreshToken?: unknown;
   session?: { id?: unknown } | null;
 };
 
@@ -92,12 +86,13 @@ export async function POST(req: NextRequest) {
   }
 
   const cookieStore = await cookies();
-  cookieStore.set("auth_token", token, cookieOptions);
-  cookieStore.set("auth_session", sessionId, cookieOptions);
-  // Non-httpOnly flag so client-side code can detect the logged-in state.
-  cookieStore.set("auth_logged_in", "true", {
-    ...cookieOptions,
-    httpOnly: false,
+  // httpOnly token + session id (+ the refresh token when the exchange carries
+  // one, F-05), and the non-httpOnly logged-in marker.
+  writeSessionCookies(cookieStore, {
+    token,
+    sessionId,
+    refreshToken:
+      typeof data.refreshToken === "string" ? data.refreshToken : null,
   });
 
   return NextResponse.json(

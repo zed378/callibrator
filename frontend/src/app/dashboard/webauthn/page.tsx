@@ -1,6 +1,7 @@
 // src/app/dashboard/webauthn/page.tsx
 "use client";
 
+import { deferEffect } from "@/lib/deferEffect";
 import React, {
   useCallback,
   useEffect,
@@ -80,9 +81,7 @@ export default function WebauthnPage() {
     }
   }, []);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useEffect(() => deferEffect(load), [load]);
 
   const register = async () => {
     setBusy("register");

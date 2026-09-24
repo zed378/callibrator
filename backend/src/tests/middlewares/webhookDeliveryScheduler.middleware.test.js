@@ -2,6 +2,9 @@
  * A-10 — the durable webhook dispatcher: a pass at boot (what makes a restart
  * resume scheduled retries), then node-cron on WEBHOOK_DISPATCH_SCHEDULER.
  */
+jest.mock("../../services/jobMonitor.service", () =>
+  require("../fixtures/jobMonitorMock").create(),
+);
 jest.mock("node-cron", () => ({
   schedule: jest.fn(),
   validate: jest.fn(),

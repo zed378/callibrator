@@ -63,6 +63,11 @@ backend:
     sessionCleanup: "0 2 * * *"
     backup: "0 3 * * 0"
     retention: "0 2 * * *"
+    # Empty = the application default (calibration 01:00 daily, tenant
+    # lifecycle 02:30 daily, quarantine sweep hourly at :17).
+    calibration: ""
+    tenantLifecycle: ""
+    quarantineSweep: ""
 
   service:
     type: ClusterIP
@@ -148,11 +153,71 @@ backend:
   rabbitmq:
     url: ""
 
+  # /app/uploads — attachments and the upload quarantine. NOT only for the
+  # local storage driver: the attachment path writes local disk whatever
+  # STORAGE_DRIVER says. With storage.driver=local a second claim covers the
+  # driver's root, /app/storage (S-18). ON by default, and the chart refuses
+  # NODE_ENV=production with it off (guard 8): every upload would be lost on
+  # the next rollout. Each claim carries helm.sh/resource-policy: keep.
   persistence:
-    # Only meaningful with storage.driver=local, which is single-replica only.
-    enabled: false
+    enabled: true
     size: 20Gi
+    objectsSize: ""
     storageClass: ""
+
+  # /app/backup — tenant backup ZIPs and last-scheduled-backup.json (S-18).
+  # The chart refuses cron.enabled without it (guard 7).
+  backupPersistence:
+    enabled: true
+    size: 50Gi
+    storageClass: ""
+
+# ============================================================================
+# NETWORK POLICY (S-18)
+# ============================================================================
+# Default-deny for this release's pods, then exactly the flows the application
+# uses. RENDERS ONLY — like the rest of this chart it has not been applied to a
+# cluster (P7-06). A NetworkPolicy that is wrong fails CLOSED (the pod cannot
+# reach its database), so the first install must check every flow below.
+# Requires a CNI that enforces NetworkPolicy (Calico, Cilium, …); on one that
+# does not, these objects are accepted and do nothing.
+networkPolicy:
+  enabled: true
+  # Who may reach the frontend and the backend's public paths (/socket.io,
+  # /oidc, /.well-known, /uploads, /health): the ingress controller's pods.
+  ingressController:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: ingress-nginx
+    podSelector: {}
+  # Extra sources allowed to reach the backend (e.g. a Prometheus namespace
+  # scraping /api/v1/health/metrics). NetworkPolicyPeer objects.
+  extraBackendIngressFrom: []
+  # Backend egress by PORT, to any destination: PostgreSQL, Redis, RabbitMQ
+  # and clamd are external to this chart, so there is no selector it could
+  # know. Narrow with `backendEgressTo` (NetworkPolicyPeers, e.g. ipBlocks of
+  # the datastore subnets) when you can.
+  backendEgressPorts:
+    - { port: 5432, protocol: TCP }   # PostgreSQL
+    - { port: 6379, protocol: TCP }   # Redis
+    - { port: 5672, protocol: TCP }   # RabbitMQ (AMQP)
+    - { port: 3310, protocol: TCP }   # clamd
+    - { port: 587, protocol: TCP }    # SMTP submission
+    - { port: 465, protocol: TCP }    # SMTPS
+    - { port: 443, protocol: TCP }    # S3, OIDC/SAML IdPs, webhooks, ACME, AI API, alert webhook
+    - { port: 80, protocol: TCP }     # ACME HTTP, plain-HTTP webhook receivers
+  backendEgressTo: []
+  # MQTT, only when the backend is an MQTT client (MQTT_HOST/MQTT_PORT).
+  mqttEgressPorts: []
+
+# ============================================================================
+# POD DISRUPTION BUDGETS (S-18)
+# ============================================================================
+# Rendered for a component only when its replicaCount > 1 — a PDB on a single
+# replica either blocks every node drain (minAvailable 1) or protects nothing.
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
 
 # ============================================================================
 # FRONTEND
@@ -245,9 +310,28 @@ secrets:
   jwtRefreshSecret: ""
   dbPassword: ""
   mailPassword: ""
+  # S-09: Redis requirepass/ACL password -> REDIS_PASSWORD. Keep backend.redis.url
+  # credential-free; the chart refuses a URL with user:password@ (guard 9).
+  redisPassword: ""
+  # S-09: the full amqp://user:pass@host:5672 URL, when the broker has
+  # credentials (it should). Overrides backend.rabbitmq.url.
+  rabbitmqUrl: ""
+  # P7-02: incoming-webhook URL for alerts (Slack, Mattermost, Teams, …).
+  alertWebhookUrl: ""
+  # P7-02: bearer token for /api/v1/health/metrics; >= 32 characters.
+  metricsToken: ""
   stripeSecretKey: ""
   stripeWebhookSecret: ""
   openaiApiKey: ""
+
+# ============================================================================
+# ALERTS (P7-02)
+# ============================================================================
+# Every scheduled-job failure, missed run and stuck batch job is logged at
+# `error` with an `alert.key` field — ship the logs and alert on that. These
+# add push channels. The webhook URL is secrets.alertWebhookUrl.
+alerts:
+  emailTo: ""
 
 # ============================================================================
 # CERTIFICATES / ACME

@@ -8,20 +8,26 @@ import {
 describe("toSameOriginUpload", () => {
   it("strips the backend origin from an absolute upload URL", () => {
     expect(
-      toSameOriginUpload("http://localhost:5000/uploads/profile/x.jpg"),
-    ).toBe("/uploads/profile/x.jpg");
+      toSameOriginUpload("http://localhost:5000/uploads/public/profile/x.jpg"),
+    ).toBe("/uploads/public/profile/x.jpg");
   });
 
   it("keeps the query string", () => {
-    expect(toSameOriginUpload("http://host/uploads/a.jpg?v=2")).toBe(
-      "/uploads/a.jpg?v=2",
+    expect(toSameOriginUpload("http://host/uploads/public/a.jpg?v=2")).toBe(
+      "/uploads/public/a.jpg?v=2",
     );
   });
 
   it("leaves an already-relative upload path alone", () => {
-    expect(toSameOriginUpload("/uploads/profile/x.jpg")).toBe(
-      "/uploads/profile/x.jpg",
+    expect(toSameOriginUpload("/uploads/public/profile/x.jpg")).toBe(
+      "/uploads/public/profile/x.jpg",
     );
+  });
+
+  it("S-01: an absolute URL to a non-public /uploads path is NOT made same-origin (nothing serves it)", () => {
+    expect(
+      toSameOriginUpload("http://localhost:5000/uploads/certificates/x.pdf"),
+    ).toBe("http://localhost:5000/uploads/certificates/x.pdf");
   });
 
   it("returns a non-upload URL untouched", () => {
@@ -33,8 +39,8 @@ describe("toSameOriginUpload", () => {
 
 describe("avatarSrc", () => {
   it("uses the uploaded picture when there is one", () => {
-    expect(avatarSrc("http://localhost:5000/uploads/profile/x.jpg")).toBe(
-      "/uploads/profile/x.jpg",
+    expect(avatarSrc("http://localhost:5000/uploads/public/profile/x.jpg")).toBe(
+      "/uploads/public/profile/x.jpg",
     );
   });
 
@@ -64,9 +70,9 @@ describe("avatarImageProps", () => {
   // a user-supplied SVG from being served as active content.
   it("optimizes an uploaded avatar", () => {
     expect(
-      avatarImageProps("http://localhost:5000/uploads/profile/x.jpg"),
+      avatarImageProps("http://localhost:5000/uploads/public/profile/x.jpg"),
     ).toEqual({
-      src: "/uploads/profile/x.jpg",
+      src: "/uploads/public/profile/x.jpg",
       unoptimized: false,
     });
   });

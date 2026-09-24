@@ -175,10 +175,11 @@ describe("Certificates Routes", () => {
     });
   });
 
-  it("should have exactly 13 route endpoints", () => {
+  it("should have exactly 14 route endpoints", () => {
     const routeCount = certificatesRoutes.stack.filter(
       (layer) => layer.route,
     ).length;
-    expect(routeCount).toBe(13);
+    // 14 since ADR-042 step 4 added GET /verify/:certificateNumber/document.
+    expect(routeCount).toBe(14);
   });
 });

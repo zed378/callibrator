@@ -225,7 +225,9 @@ describe("A-72: a refused login writes no session and no LOGIN row", () => {
       authService.loginUser({ user: "ada", password: "Right-password-1" }),
     ).rejects.toMatchObject({ status: 403, message: "Account is suspended" });
     expect(writes).toEqual([]);
-    expect(comparePassword).not.toHaveBeenCalled();
+    // A-185: the status is checked AFTER the password, so it is disclosed
+    // only to the password holder (a wrong password is the plain 401).
+    expect(comparePassword).toHaveBeenCalledTimes(1);
   });
 
   it.each([

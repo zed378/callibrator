@@ -20,6 +20,24 @@ const envelope = <T,>(data: T) => ({
   data,
 });
 
+describe("contentService.media (ADR-042 step 3)", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it("POSTs the image as multipart to /content/media and returns the public url", async () => {
+    mockedApi.post.mockResolvedValueOnce(
+      envelope({ url: "/uploads/public/cms/1-a.png", fileName: "1-a.png", mimeType: "image/png", size: 3 }),
+    );
+    const file = new File(["png"], "a.png", { type: "image/png" });
+
+    const res = await contentService.media.upload(file);
+
+    expect(mockedApi.post).toHaveBeenCalledWith("/api/v1/content/media", expect.any(FormData));
+    const form = mockedApi.post.mock.calls[0][1] as FormData;
+    expect(form.get("file")).toBe(file);
+    expect(res.url).toBe("/uploads/public/cms/1-a.png");
+  });
+});
+
 describe("contentService.posts", () => {
   beforeEach(() => jest.clearAllMocks());
 

@@ -17,6 +17,12 @@ import {
   TenantBreakdown,
 } from "./components";
 import useDashboardMetrics from "./hooks/useDashboardMetrics";
+import { useClientValue } from "@/hooks/useClientValue";
+
+/** Time-of-day greeting for an hour 0-23. */
+const greetingForHour = (h: number): string =>
+  h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
+const greetingForNow = () => greetingForHour(new Date().getHours());
 
 function StatsSkeleton() {
   return (
@@ -39,22 +45,12 @@ export default function DashboardPage() {
 
   // Time-of-day greeting is resolved after mount — reading `new Date()` during
   // render is non-deterministic and not allowed during prerender in Next 16.
-  const [greeting, setGreeting] = React.useState("Welcome");
+  const greeting = useClientValue(greetingForNow, "Welcome");
 
   useEffect(() => {
     fetchUser();
     fetchUsers();
   }, [fetchUser, fetchUsers]);
-
-  useEffect(() => {
-    // Resolve the greeting after mount — reading current time during render is
-    // disallowed during prerender (Next 16).
-    const h = new Date().getHours();
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setGreeting(
-      h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening",
-    );
-  }, []);
 
   const userName =
     user?.firstName && user?.lastName

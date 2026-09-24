@@ -286,3 +286,45 @@ describe("A-146: the refreshed token is still treated as an impersonation (F-8, 
     expect(handler).not.toHaveBeenCalled();
   });
 });
+
+// A-160 (with A-146's harness): an SSO session is recorded as federated
+// (sessions.auth_method, migration 0052), and a refresh keeps it so — the
+// refreshed access token carries `amr` again, which the tenant MFA policy
+// reads. A password session gains no claim.
+describe("A-160: a refreshed SSO session is still federated", () => {
+  const { createSession } = require("../../services/session.service");
+
+  it.each(["saml", "oidc"])("a %s session's refresh keeps auth_method and re-issues amr", async (method) => {
+    await createSession({
+      tenantId: TENANT,
+      userId: HOSPITAL_USER,
+      refreshToken: `rt-${method}`,
+      ipAddress: "10.0.0.9",
+      userAgent: "browser",
+      expiredAt: new Date(Date.now() + HOUR),
+      authMethod: method,
+    });
+
+    const refreshed = await authService.refreshUserToken(`rt-${method}`);
+
+    expect(verifyAccessToken(refreshed.data.token).amr).toBe(method);
+    const row = mockRef.sessions.get(refreshed.data.session.id);
+    expect(row.auth_method).toBe(method);
+  });
+
+  it("a password session's refresh carries no amr and no auth_method", async () => {
+    await createSession({
+      tenantId: TENANT,
+      userId: HOSPITAL_USER,
+      refreshToken: "rt-password",
+      ipAddress: "10.0.0.9",
+      userAgent: "browser",
+      expiredAt: new Date(Date.now() + HOUR),
+    });
+
+    const refreshed = await authService.refreshUserToken("rt-password");
+
+    expect(verifyAccessToken(refreshed.data.token)).not.toHaveProperty("amr");
+    expect(mockRef.sessions.get(refreshed.data.session.id)).not.toHaveProperty("auth_method");
+  });
+});

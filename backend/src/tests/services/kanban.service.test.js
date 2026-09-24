@@ -645,6 +645,21 @@ describe("createCard", () => {
     );
   });
 
+  it("D-05: the card_seq bump carries the project's tenant, and a statement that updates no row is a 404, not a card", async () => {
+    KanbanColumn.findOne.mockResolvedValueOnce({ id: "col1" });
+    sequelize.query.mockResolvedValueOnce([[]]); // a foreign projectId matches nothing
+
+    await expectReject(
+      svc.createCard(superAdmin, PID, { columnId: "col1", title: "T" }),
+      "Project not found",
+    );
+
+    const [sql, options] = sequelize.query.mock.calls[0];
+    expect(sql).toMatch(/WHERE id = :projectId AND tenant_id = :tenantId RETURNING card_seq/);
+    expect(options.replacements).toEqual({ projectId: PID, tenantId: TID });
+    expect(KanbanCard.create).not.toHaveBeenCalled();
+  });
+
   it("creates a card in a specific sprint with assignees and labels", async () => {
     KanbanColumn.findOne.mockResolvedValueOnce({ id: "col1" });
     KanbanSprint.findOne.mockResolvedValueOnce({ id: "sp1" });

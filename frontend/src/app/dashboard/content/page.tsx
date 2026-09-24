@@ -1,5 +1,6 @@
 "use client";
 
+import { deferEffect } from "@/lib/deferEffect";
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -68,10 +69,7 @@ export default function ContentPage() {
     }
   }, [page, typeF, statusF]);
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    load();
-  }, [load]);
+  useEffect(() => deferEffect(load), [load]);
 
   const remove = async (id: string) => {
     try {

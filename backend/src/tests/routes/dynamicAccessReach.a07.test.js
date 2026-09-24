@@ -47,7 +47,11 @@ const { collectRouteGates } = require("../../utils/authorizationWiring.util");
 
 // Reviewed 2026-09-24: seeded slugs that route gates use and that no seeded
 // role other than SUPERADMIN holds, directly or by one-level inheritance.
-const KNOWN_SUPERADMIN_ONLY = ["audit", "billing", "content", "users", "vendors"];
+// Q-20 (2026-09-24, ADR-056): users, vendors, billing and audit are
+// granted by slug to the admin roles (vendors read also to ENGINEERING
+// MANAGER). `content` — the platform-wide public blog — stays SUPERADMIN-only
+// on purpose.
+const KNOWN_SUPERADMIN_ONLY = ["content"];
 
 const SEED = fs.readFileSync(
   path.join(__dirname, "..", "..", "utils", "seedMenuGroups.util.js"),

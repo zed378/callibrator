@@ -1,0 +1,24 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+{{- $base := include "callibrator.baseName" . -}}
+{{- /* S-18. Only for a component with more than one replica: on a single
+       replica, minAvailable 1 blocks every node drain and anything lower
+       protects nothing. */ -}}
+{{- range $component := list "backend" "frontend" }}
+{{- $values := index $.Values $component }}
+{{- if and $values.enabled (gt (int $values.replicaCount) 1) }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $base }}-{{ $component }}
+  labels:
+    {{- include "callibrator.labels" $ | nindent 4 }}
+spec:
+  minAvailable: {{ $.Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: callibrator-{{ $component }}
+      app.kubernetes.io/instance: {{ $.Release.Name }}
+{{- end }}
+{{- end }}
+{{- end }}

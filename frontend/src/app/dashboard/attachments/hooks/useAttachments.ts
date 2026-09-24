@@ -1,4 +1,5 @@
 // src/app/dashboard/attachments/hooks/useAttachments.ts
+import { deferEffect } from "@/lib/deferEffect";
 import { useCallback, useEffect, useState } from "react";
 import { useToastStore } from "@/stores/toastStore";
 import {
@@ -61,9 +62,7 @@ export function useAttachments() {
     }
   }, [currentPage, pageSize, resourceTypeFilter]);
 
-  useEffect(() => {
-    fetchAttachments();
-  }, [fetchAttachments]);
+  useEffect(() => deferEffect(fetchAttachments), [fetchAttachments]);
 
   const openUploadModal = () => {
     setForm(emptyForm);

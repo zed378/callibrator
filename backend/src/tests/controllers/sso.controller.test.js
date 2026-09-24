@@ -10,6 +10,17 @@ jest.mock("../../services/sso.service", () => ({
   verifyOidcCallback: jest.fn(),
 }));
 
+// A-188: the IdP's endpoints come from its discovery document.
+jest.mock("../../services/oidcJwks", () => ({
+  discover: jest.fn().mockResolvedValue({
+    issuer: "https://idp.example.com/v2.0",
+    authorizationEndpoint: "https://idp.example.com/oauth2/v2.0/authorize",
+    tokenEndpoint: "https://idp.example.com/oauth2/v2.0/token",
+    jwksUri: "https://idp.example.com/discovery/v2.0/keys",
+    discovered: true,
+  }),
+}));
+
 jest.mock("../../services/tenant.service", () => ({
   getTenantSettings: jest.fn(),
 }));
@@ -21,6 +32,8 @@ jest.mock("../../models", () => ({
   // A-83: the exchange re-reads the user (and its tenant) before any session.
   Users: {
     findByPk: jest.fn(),
+    // A-188: the exchange stamps last_login_at in the session's transaction.
+    update: jest.fn().mockResolvedValue([1]),
   },
   // A-60: the exchange writes the session and its audit row in one
   // transaction; the fake hands the callback a recognisable transaction.
@@ -108,6 +121,19 @@ const { createSession } = require("../../services/session.service");
 const { generateAccessToken } = require("../../utils/jwt.util");
 
 const CODE_SHAPE = /^[A-Za-z0-9_-]{43}$/;
+
+/**
+ * A-188: a refused browser callback is a redirect to the login page with a
+ * fixed code — never the JSON error envelope.
+ */
+const expectLoginRefusal = (response, code) => {
+  expect(error).not.toHaveBeenCalled();
+  expect(response.redirect).toHaveBeenCalledTimes(1);
+  const target = new URL(response.redirect.mock.calls[0][0]);
+  expect(target.pathname).toBe("/login");
+  expect([...target.searchParams.keys()]).toEqual(["error"]);
+  expect(target.searchParams.get("error")).toBe(code);
+};
 
 /** The one-time code in a callback's redirect, or null. */
 const codeFrom = (response) =>
@@ -295,6 +321,8 @@ describe("sso.controller", () => {
         id: "user-1",
         email: "user@acme.com",
         sid: "session-123",
+        // A-160: the federated method, read by the tenant MFA policy.
+        amr: "saml",
       });
     });
 
@@ -303,7 +331,7 @@ describe("sso.controller", () => {
 
       await ssoController.ssoCallback(req, res, next);
 
-      expect(error).toHaveBeenCalledWith(res, "Tenant identifier (RelayState or URL parameter) is required", 400, expect.any(String));
+      expectLoginRefusal(res, "sso_unavailable");
     });
 
     it("should call error response with 404 if tenant is not found", async () => {
@@ -312,7 +340,7 @@ describe("sso.controller", () => {
 
       await ssoController.ssoCallback(req, res, next);
 
-      expect(error).toHaveBeenCalledWith(res, "Tenant not found", 404, expect.any(String));
+      expectLoginRefusal(res, "sso_unavailable");
     });
 
     it("should call error response with 400 if SSO is not enabled", async () => {
@@ -324,7 +352,7 @@ describe("sso.controller", () => {
 
       await ssoController.ssoCallback(req, res, next);
 
-      expect(error).toHaveBeenCalledWith(res, "SSO is not enabled for this tenant", 400, expect.any(String));
+      expectLoginRefusal(res, "sso_unavailable");
     });
 
     it("should extract tenantCode from params when both params and RelayState are present", async () => {
@@ -473,6 +501,7 @@ describe("sso.controller", () => {
         id: "user-1",
         email: "user@acme.com",
         sid: "session-123",
+        amr: "oidc",
       });
     });
 
@@ -481,7 +510,7 @@ describe("sso.controller", () => {
 
       await ssoController.oidcCallback(req, res, next);
 
-      expect(error).toHaveBeenCalledWith(res, "Authorization code and state are required", 400, expect.any(String));
+      expectLoginRefusal(res, "sso_state");
     });
 
     it("should call error with 404 if tenant is not found", async () => {
@@ -491,7 +520,7 @@ describe("sso.controller", () => {
 
       await ssoController.oidcCallback(req, res, next);
 
-      expect(error).toHaveBeenCalledWith(res, "Tenant not found", 404, expect.any(String));
+      expectLoginRefusal(res, "sso_unavailable");
     });
 
     it("should call error with 400 if SSO is not enabled", async () => {
@@ -504,7 +533,7 @@ describe("sso.controller", () => {
 
       await ssoController.oidcCallback(req, res, next);
 
-      expect(error).toHaveBeenCalledWith(res, "SSO is not enabled for this tenant", 400, expect.any(String));
+      expectLoginRefusal(res, "sso_unavailable");
     });
 
     it("takes the tenant from the stored sign-in when the URL names none", async () => {
@@ -542,6 +571,11 @@ describe("sso.controller", () => {
 
       await getHandler()(req, res, next);
 
+      if (name.endsWith("Callback")) {
+        // A-188: a browser callback redirects to the login page instead.
+        expectLoginRefusal(res, "sso_unavailable");
+        return;
+      }
       expect(error).toHaveBeenCalledWith(
         res,
         "SSO is not enabled for this tenant",
@@ -760,18 +794,13 @@ describe("sso.controller", () => {
   });
 
   describe("oidcCallback tenant identifier", () => {
-    it("returns 400 when the authorization code is missing", async () => {
+    it("sends the browser to the login page when the authorization code is missing (A-188)", async () => {
       req.params = { tenantCode: "acme" };
       await startedOidc(req);
 
       await ssoController.oidcCallback(req, res, next);
 
-      expect(error).toHaveBeenCalledWith(
-        res,
-        "Authorization code and state are required",
-        400,
-        expect.any(String),
-      );
+      expectLoginRefusal(res, "sso_state");
     });
 
     it("reads code and state from the query string — the IdP's GET return (response_mode=query)", async () => {
@@ -814,10 +843,16 @@ describe("sso.controller", () => {
       expect(Tenants.findOne).toHaveBeenCalledWith({ where: { code: "acme" } });
     });
 
+    // A-188: refused to the login page (?error=sso_state), never to /sso-callback.
     const refusedState = () => {
-      expect(error).toHaveBeenCalledWith(res, "Invalid or expired SSO sign-in state", 401, expect.any(String));
+      expectLoginRefusal(res, "sso_state");
       expect(ssoService.verifyOidcCallback).not.toHaveBeenCalled();
-      expect(res.redirect).not.toHaveBeenCalled();
+      expect(logger.warn).toHaveBeenCalledWith("SSO callback refused", {
+        protocol: "oidc",
+        code: "sso_state",
+        status: 401,
+        reason: "Invalid or expired SSO sign-in state",
+      });
     };
 
     it("oidcLogin stores the state, sends an S256 challenge of a verifier it keeps, and sets the binding cookie", async () => {

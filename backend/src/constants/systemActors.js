@@ -57,6 +57,13 @@ const SYSTEM_ACTORS = Object.freeze({
    * its RESOURCE, never as its actor.
    */
   AUTH_LOCKOUT: "system:auth-lockout",
+  /**
+   * P6-07 — the break-glass reset of a platform operator's second factor
+   * (auth.service#breakGlassResetOperatorMfa, run only from the
+   * scripts/breakGlassMfaReset.js CLI by someone with database access). The
+   * person is named in `changes.requestedBy`; they are not a principal here.
+   */
+  BREAK_GLASS: "system:break-glass",
 });
 
 const SYSTEM_ACTOR_NAMES = Object.freeze(Object.values(SYSTEM_ACTORS));

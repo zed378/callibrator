@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# Callibrator pre-push hook (P7-01) — OPT-IN.
+#
+#   make hooks            enable  (git config core.hooksPath scripts/git-hooks)
+#   make hooks-off        disable
+#   git push --no-verify  skip once (CI still runs everything)
+#
+# What it runs, cheapest first, on what is about to be pushed:
+#   1. gitleaks over the commits being pushed (not the whole history — CI
+#      does that). A secret stopped here never reaches the remote, which is the
+#      only place a push cannot be taken back from.
+#   2. the backend ESLint ratchet (scripts/ci/eslint-ratchet.js).
+#   3. the frontend typecheck, when frontend/ changed.
+# It does NOT run the unit suites (minutes, not seconds) — CI does.
+#
+# A missing tool is a loud SKIP, not a pass and not a block: the hook is a
+# convenience in front of CI, which is the gate.
+set -euo pipefail
+
+root="$(git rev-parse --show-toplevel)"
+cd "$root"
+zero=0000000000000000000000000000000000000000
+fail=0
+say() { printf '\033[1m[pre-push]\033[0m %s\n' "$*"; }
+
+ranges=()
+changed=""
+while read -r _local_ref local_sha _remote_ref remote_sha; do
+  [ "$local_sha" = "$zero" ] && continue # a delete pushes no content
+  if [ "$remote_sha" = "$zero" ]; then
+    # New branch: everything not already on any remote branch.
+    ranges+=("$local_sha --not --remotes")
+    changed+=$'\n'"$(git diff --name-only "$(git merge-base "$local_sha" origin/HEAD 2>/dev/null || echo "$local_sha")" "$local_sha" 2>/dev/null || true)"
+  else
+    ranges+=("$remote_sha..$local_sha")
+    changed+=$'\n'"$(git diff --name-only "$remote_sha" "$local_sha")"
+  fi
+done
+
+[ "${#ranges[@]}" -eq 0 ] && exit 0
+
+# 1. secrets
+if command -v gitleaks >/dev/null 2>&1; then
+  for range in "${ranges[@]}"; do
+    say "gitleaks: $range"
+    if ! gitleaks git --config .gitleaks.toml --redact --no-banner --log-opts="$range" .; then
+      say "SECRET FOUND in the commits being pushed. Remove it from history (not just the tip) and ROTATE it."
+      fail=1
+    fi
+  done
+else
+  say "SKIP secret scan: gitleaks is not installed (https://github.com/gitleaks/gitleaks#installing). CI will scan."
+fi
+
+# 2. backend lint ratchet
+if printf '%s\n' "$changed" | grep -q '^backend/'; then
+  say "backend ESLint ratchet"
+  node scripts/ci/eslint-ratchet.js || fail=1
+fi
+
+# 3. frontend typecheck
+if printf '%s\n' "$changed" | grep -q '^frontend/'; then
+  say "frontend typecheck"
+  (cd frontend && npx --no-install tsc --noEmit) || fail=1
+fi
+
+if [ "$fail" -ne 0 ]; then
+  say "push refused. Fix the above, or push with --no-verify and let CI refuse it instead."
+  exit 1
+fi
+say "ok"

@@ -742,15 +742,21 @@ exports.createCard = async (user, projectId, data) => {
       transaction,
     });
     // Atomically claim the next per-project sequence number for the card key.
-    const [[seqRow]] = await sequelize.query(
+    // Raw SQL bypasses the tenant hooks, so the tenant predicate is explicit
+    // (D-05): the project was resolved through the scoped model above, and
+    // this statement must not be able to bump a counter in any other tenant.
+    const [rows] = await sequelize.query(
       `UPDATE kanban_projects SET card_seq = card_seq + 1, updated_at = NOW()
-       WHERE id = :projectId RETURNING card_seq`,
+       WHERE id = :projectId AND tenant_id = :tenantId RETURNING card_seq`,
       {
-        replacements: { projectId },
+        replacements: { projectId, tenantId: project.tenantId },
         transaction,
       },
     );
-    const number = seqRow.card_seq;
+    if (rows.length !== 1) {
+      throw new AppError(404, "Project not found");
+    }
+    const number = rows[0].card_seq;
     const cardKey = `${codePrefix(project)}-${number}`;
     const created = await KanbanCard.create(
       {

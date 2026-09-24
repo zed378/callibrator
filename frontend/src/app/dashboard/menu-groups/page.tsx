@@ -90,7 +90,7 @@ export default function MenuGroupsPage() {
               actionLoading={actionLoading}
               getGroupAssignmentState={getGroupAssignmentState}
               isItemAssigned={isItemAssigned}
-              isItemFullyAssigned={(_g: any, i: any) => isItemAssigned(_g, i)}
+              isItemFullyAssigned={isItemAssigned}
               isItemPartiallyAssigned={() => false}
               onToggleGroup={toggleAssign}
               onAssignGroup={handleAssign}

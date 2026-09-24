@@ -33,11 +33,9 @@ class UsageStore {
     this._counters = new Map();
   }
 
-  // The `amount = 1` default is unreachable: usageStore is module-private and
-  // increment has a single call site (trackUsage), which already defaults
-  // amount to 1 in its own signature and always forwards it explicitly.
-  /* istanbul ignore next */
-  increment(tenantId, metric, amount = 1) {
+  // A-32: no `amount = 1` default here — the single call site (trackUsage)
+  // defaults it in its own signature and always forwards it.
+  increment(tenantId, metric, amount) {
     const key = `${tenantId}:${metric}`;
     const entry = this._counters.get(key) || {
       count: 0,

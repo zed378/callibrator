@@ -288,7 +288,14 @@ router.post(
  */
 // Username availability check requires authentication to prevent user enumeration
 // See: commands-backend.md RBAC rules - every protected endpoint must verify valid auth token
-router.post("/username-check", auth, userController.checkUsernameAvailability);
+// P6-04: the availability probe serves the create-user form, so it needs what
+// creating a user needs — otherwise any account can enumerate usernames.
+router.post(
+  "/username-check",
+  auth,
+  dynamicAccess("users", "create"),
+  userController.checkUsernameAvailability,
+);
 
 /* ------------------------------------------------------------------ */
 /* UPDATE USER ROLE                                                   */
@@ -768,7 +775,7 @@ router.post(
   dynamicAccess("users", "update", { checkSelf: true, checkTenant: true }),
   enforceStorageQuota(),
   upload({
-    folder: "uploads/profile",
+    folder: "uploads/public/profile",
     allowedMimes: ["image/jpeg", "image/png", "image/gif", "image/webp"],
     allowedExtensions: [".jpg", ".jpeg", ".png", ".gif", ".webp"],
     maxFileSize: 2 * 1024 * 1024, // 2MB

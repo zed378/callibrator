@@ -502,10 +502,11 @@ exports.getCacheStats = () => {
  */
 exports.isConfigured = () => {
   return (
-    // CLAMAV_SOCKET_PATH is never evaluated: CLAMAV_PORT is
-    // `parseInt(env) || 3310`, so it is always truthy and short-circuits first.
+    // A-32: CLAMAV_PORT is `parseInt(env) || 3310`, always truthy, so a
+    // trailing `|| CLAMAV_SOCKET_PATH` was never evaluated and has been removed:
+    // "configured" means enabled plus a reachable transport, and there always is one.
     CLAMAV_ENABLED &&
-    (CLAMAV_HTTP_MODE || CLAMAV_PORT || /* istanbul ignore next */ CLAMAV_SOCKET_PATH)
+    (CLAMAV_HTTP_MODE || CLAMAV_PORT)
   );
 };
 

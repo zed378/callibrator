@@ -3,10 +3,13 @@
 import React from "react";
 import { AlertTriangle, X, User, Shield } from "lucide-react";
 import { Button } from "@/components/ui";
+import { useModalA11y } from "@/components/ui/useModalA11y";
 
 interface AccessDeniedModalProps {
   isOpen: boolean;
   userName?: string;
+  /** F-07: the backend's reason for the refusal, when it gave one. */
+  message?: string | null;
   onClose: () => void;
   onRedirectToProfile: () => void;
 }
@@ -14,9 +17,12 @@ interface AccessDeniedModalProps {
 const AccessDeniedModal: React.FC<AccessDeniedModalProps> = ({
   isOpen,
   userName,
+  message,
   onClose,
   onRedirectToProfile,
 }) => {
+  // F-12: keyboard-complete like every other dialog.
+  const panelRef = useModalA11y<HTMLDivElement>(isOpen, onClose);
   if (!isOpen) return null;
 
   return (
@@ -28,7 +34,15 @@ const AccessDeniedModal: React.FC<AccessDeniedModalProps> = ({
       />
 
       {/* Modal */}
-      <div className="relative z-10 w-full max-w-md mx-4">
+      <div
+        ref={panelRef}
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="access-denied-title"
+        aria-describedby="access-denied-description"
+        tabIndex={-1}
+        className="relative z-10 w-full max-w-md mx-4 focus:outline-none"
+      >
         <div className="bg-card rounded-2xl shadow-2xl overflow-hidden">
           {/* Icon */}
           <div className="flex justify-center pt-8 pb-4">
@@ -39,16 +53,25 @@ const AccessDeniedModal: React.FC<AccessDeniedModalProps> = ({
 
           {/* Content */}
           <div className="px-6 pb-6">
-            <h2 className="text-xl font-bold text-foreground text-center mb-2">
+            <h2
+              id="access-denied-title"
+              className="text-xl font-bold text-foreground text-center mb-2"
+            >
               Access Restricted
             </h2>
 
-            <p className="text-sm text-muted-foreground text-center mb-4">
+            <p
+              id="access-denied-description"
+              className="text-sm text-muted-foreground text-center mb-4"
+            >
               Hello{" "}
               <span className="font-semibold text-foreground">
                 {userName || "User"}
               </span>
-              , you don&apos;t have permission to access this page.
+              , you don&apos;t have permission to do that.
+              {message && (
+                <span className="block mt-2 text-foreground">{message}</span>
+              )}
             </p>
 
             <div className="bg-muted rounded-lg p-3 mb-5 shadow-sm">
@@ -89,9 +112,10 @@ const AccessDeniedModal: React.FC<AccessDeniedModalProps> = ({
             variant="ghost"
             size="sm"
             onClick={onClose}
+            aria-label="Close"
             className="absolute top-4 right-4 p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
           >
-            <X className="w-4 h-4" />
+            <X className="w-4 h-4" aria-hidden="true" />
           </Button>
         </div>
       </div>

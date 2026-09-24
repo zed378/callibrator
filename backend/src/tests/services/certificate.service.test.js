@@ -19,6 +19,11 @@ jest.mock("../../config", () => ({
 jest.mock("../../services/audit.service", () => ({
   logAction: jest.fn().mockResolvedValue({}),
 }));
+// A-190 — createCertificate starts the workflow inside its transaction; the
+// model layer here has no workflow models. No workflow configured.
+jest.mock("../../services/workflow.service", () => ({
+  startWorkflow: jest.fn().mockResolvedValue(null),
+}));
 
 jest.mock("sequelize", () => {
   const mockSequelize = jest.fn();

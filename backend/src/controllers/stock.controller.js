@@ -1,6 +1,8 @@
 // src/controllers/stock.controller.js
 const stockService = require("../services/stock.service");
 const { asyncHandler } = require("../utils/controllerWrapper.util");
+// P6-09: who, from where — for the audit rows the service writes in its transaction.
+const { auditActor } = require("../utils/auditActor.util");
 const { success } = require("../utils/response.util");
 const {
   getStocksQuery,
@@ -66,7 +68,7 @@ exports.getSpecificStock = asyncHandler(async (req, res) => {
 exports.createStock = asyncHandler(async (req, res) => {
   const tenantId = req.user.tenantId;
   const validated = validate(req.body, createStockSchema);
-  const result = await stockService.createStock(tenantId, validated);
+  const result = await stockService.createStock(tenantId, validated, auditActor(req));
 
   success(
     res,
@@ -81,7 +83,7 @@ exports.updateStock = asyncHandler(async (req, res) => {
   const tenantId = req.user.tenantId;
   const { stockId } = validate(req.params, stockIdSchema);
   const validated = validate(req.body, updateStockSchema);
-  const result = await stockService.updateStock(tenantId, stockId, validated);
+  const result = await stockService.updateStock(tenantId, stockId, validated, auditActor(req));
 
   success(
     res,
@@ -114,7 +116,7 @@ exports.createAdjustment = asyncHandler(async (req, res) => {
   const tenantId = req.user.tenantId;
   const userId = req.user.id;
   const validated = validate(req.body, createAdjustmentSchema);
-  const result = await stockService.createAdjustment(tenantId, validated, userId);
+  const result = await stockService.createAdjustment(tenantId, validated, userId, auditActor(req));
 
   success(
     res,
@@ -168,7 +170,7 @@ exports.updateTransferStatus = asyncHandler(async (req, res) => {
   const userId = req.user.id;
   const { transferId } = req.params;
   const validated = validate(req.body, updateTransferStatusSchema);
-  const result = await stockService.updateTransferStatus(tenantId, transferId, validated, userId);
+  const result = await stockService.updateTransferStatus(tenantId, transferId, validated, userId, auditActor(req));
 
   success(
     res,

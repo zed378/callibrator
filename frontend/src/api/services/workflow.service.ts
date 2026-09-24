@@ -88,6 +88,15 @@ export interface SubmitActionInput {
   action: WorkflowAction;
   /** Named `comments` (plural) server-side. */
   comments?: string | null;
+  /**
+   * A-182 — approving a Certificate is an electronic signature (21 CFR
+   * Part 11): the caller re-authenticates with these three, as for
+   * POST /certificates/:id/approve. The backend answers 400 without them.
+   * Not sent for a rejection or for other record types.
+   */
+  authMethod?: "password" | "mfa";
+  authPayload?: string;
+  meaning?: string;
 }
 
 export interface SubmitActionResult {

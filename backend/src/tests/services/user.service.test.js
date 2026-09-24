@@ -90,7 +90,7 @@ jest.mock("../../models", () => ({
 jest.mock("../../utils/password.util", () => ({ hashPassword: jest.fn().mockResolvedValue("hashed_pw") }));
 jest.mock("../../utils/upload.util", () => ({
   deleteUpload: jest.fn(),
-  getUploadUrl: jest.fn((f) => `/uploads/profile/${f}`),
+  getUploadUrl: jest.fn((f) => `/uploads/public/profile/${f}`),
 }));
 jest.mock("../../utils/appError.util", () => {
   class AppError extends Error {

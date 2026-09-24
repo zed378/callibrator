@@ -18,11 +18,28 @@ const WINDOW = {
  * These track failures and can lock accounts/revoke tokens.
  */
 const AUTH_ENDPOINTS = {
+  // A-185: the password sign-in throttle is keyed by the typed identifier
+  // TOGETHER WITH the caller's address (rateLimiter.redis.service
+  // #checkLoginThrottle) — five failures of one name from one address pause
+  // that pair for fifteen minutes. It never writes users.locked_until, and it
+  // answers an unknown name exactly as a real one.
   login: {
     maxAttempts: 5,
     windowMs: WINDOW.FIFTEEN_MIN,
     lockoutMs: WINDOW.FIFTEEN_MIN,
     description: "Login endpoint",
+  },
+  // A-185: the ceiling on ONE identifier across every address — the defence
+  // against a guesser who rotates addresses. 100 is NIST SP 800-63B §5.2.2's
+  // upper bound on consecutive failures for one account. Reaching it pauses
+  // that identifier everywhere for an hour, which a determined attacker can
+  // trigger on purpose; that residual is accepted and recorded (ADR draft in
+  // the A-185 record) because without a ceiling a botnet guesses unbounded.
+  loginIdentifier: {
+    maxAttempts: 100,
+    windowMs: WINDOW.HOUR,
+    lockoutMs: WINDOW.HOUR,
+    description: "Login ceiling per identifier",
   },
   register: {
     maxAttempts: 3,

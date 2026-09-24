@@ -105,14 +105,42 @@ spec:
 
           volumeMounts:
             {{- if .Values.persistence.enabled }}
+            # Attachments and every other multer upload (uploads/, including
+            # uploads/.quarantine — S-17). This path does not go through the
+            # storage module, so it is local disk even with STORAGE_DRIVER=s3.
             - name: storage
               mountPath: /app/uploads
+            {{- if eq (default "local" .Values.storage.driver) "local" }}
+            # The `local` storage driver's root is <APP_STORAGE_PATH>/storage
+            # (services/storage/config.service.js). Before S-18 the PVC covered
+            # only /app/uploads, so pluggable-storage objects were written to
+            # the container layer and lost on the next rollout. Its own claim,
+            # not a subPath of the uploads one: a kubelet-created subPath
+            # directory is root-owned and not writable by uid 997.
+            - name: objects
+              mountPath: /app/storage
             {{- end }}
+            {{- end }}
+            {{- if .Values.backupPersistence.enabled }}
+            # Tenant backup ZIPs (services/tenantBackup.service.js BACKUP_DIR)
+            # and last-scheduled-backup.json. Without a volume a backup is
+            # written to the container layer and lost on the next rollout,
+            # while its tenant_backups row still says `completed` (S-18).
+            - name: backup
+              mountPath: /app/backup
+            {{- end }}
+            # Logs AND the scheduled-job status files (log/jobs/*.json, P7-02).
+            # emptyDir: production logs JSON to stdout, which the cluster's
+            # log collector ships; the job status survives a container restart
+            # but not a pod rescheduling — the alerts and metrics, not this
+            # file, are the signal of record in-cluster.
             - name: logs
               mountPath: /app/log
             # ACME HTTP-01 challenge files are WRITTEN AT RUNTIME and served
             # from the writable storage root. A read-only path here produces
             # domain verification failures that look like DNS problems.
+            # emptyDir on purpose: an HTTP-01 challenge lives for the minutes
+            # of one validation, and a restart mid-validation just retries it.
             - name: wellknown
               mountPath: /app/.well-known
 
@@ -129,6 +157,16 @@ spec:
         - name: storage
           persistentVolumeClaim:
             claimName: {{ include "callibrator.baseName" . }}-storage
+        {{- if eq (default "local" .Values.storage.driver) "local" }}
+        - name: objects
+          persistentVolumeClaim:
+            claimName: {{ include "callibrator.baseName" . }}-objects
+        {{- end }}
+        {{- end }}
+        {{- if .Values.backupPersistence.enabled }}
+        - name: backup
+          persistentVolumeClaim:
+            claimName: {{ include "callibrator.baseName" . }}-backup
         {{- end }}
         - name: logs
           emptyDir: {}

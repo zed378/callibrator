@@ -115,6 +115,47 @@ See docs/DEVOPS/09-KUBERNETES.md.
 {{- end -}}
 
 {{/* ---------------------------------------------------------------------- */}}
+{{/* Guard 7 — scheduled backups with nowhere durable to write (S-18).       */}}
+{{/*                                                                         */}}
+{{/* The BACKUP_SCHEDULER job writes tenant backup ZIPs to /app/backup. With */}}
+{{/* no volume there they land in the container layer, vanish on the next   */}}
+{{/* rollout, and leave tenant_backups rows saying `completed`.             */}}
+{{/* ---------------------------------------------------------------------- */}}
+{{- define "callibrator.guard.backupVolume" -}}
+{{- if and .Values.backend.enabled .Values.backend.cron.enabled (ne (toString .Values.backend.cron.backup) "disabled") (not .Values.backend.backupPersistence.enabled) -}}
+{{- fail "\n\nbackend.cron.enabled is true but backend.backupPersistence.enabled is false.\n\nThe scheduled tenant backup writes to /app/backup. Without a volume the ZIPs\nare lost on the next rollout while their rows still say `completed` (S-18).\n\nEnable backend.backupPersistence, or set backend.cron.backup=disabled and\nrecord where tenant backups are taken instead.\n" -}}
+{{- end -}}
+{{- end -}}
+
+{{/* ---------------------------------------------------------------------- */}}
+{{/* Guard 8 — production uploads on the container layer (S-18).             */}}
+{{/*                                                                         */}}
+{{/* Attachments are written to /app/uploads whatever STORAGE_DRIVER says.   */}}
+{{/* Without persistence every upload disappears on the next rollout.        */}}
+{{/* ---------------------------------------------------------------------- */}}
+{{- define "callibrator.guard.uploadsVolume" -}}
+{{- if and .Values.backend.enabled (eq (default "" .Values.backend.env.NODE_ENV) "production") (not .Values.backend.persistence.enabled) -}}
+{{- fail "\n\nbackend.persistence.enabled is false with NODE_ENV=production.\n\nAttachments (and, with storage.driver=local, every stored object) are written to\nlocal disk. Without persistence they are lost on the next rollout (S-18).\n" -}}
+{{- end -}}
+{{- end -}}
+
+{{/* ---------------------------------------------------------------------- */}}
+{{/* Guard 9 — credentials in the ConfigMap (S-09).                          */}}
+{{/*                                                                         */}}
+{{/* redis.url and rabbitmq.url are rendered into the ConfigMap, which        */}}
+{{/* `kubectl get cm -o yaml` prints to anyone who can read it. A URL with   */}}
+{{/* user:password@ belongs in the Secret: secrets.redisPassword and          */}}
+{{/* secrets.rabbitmqUrl.                                                     */}}
+{{/* ---------------------------------------------------------------------- */}}
+{{- define "callibrator.guard.credentialsInConfigMap" -}}
+{{- range $name, $url := dict "backend.redis.url" (toString .Values.backend.redis.url) "backend.rabbitmq.url" (toString .Values.backend.rabbitmq.url) -}}
+{{- if regexMatch "^[a-z+]+://[^/@]*@" $url -}}
+{{- fail (printf "\n\n%s carries credentials (user:password@).\n\nIt is rendered into the ConfigMap, which is not secret. Put the Redis password in\nsecrets.redisPassword (REDIS_PASSWORD) and the full RabbitMQ URL in\nsecrets.rabbitmqUrl — both go to the Secret — and leave the URL here\ncredential-free (S-09).\n" $name) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/* ---------------------------------------------------------------------- */}}
 {{/* Run every guard. Included from NOTES.txt so it evaluates on template,   */}}
 {{/* lint and install alike.                                                 */}}
 {{/* ---------------------------------------------------------------------- */}}
@@ -126,4 +167,7 @@ See docs/DEVOPS/09-KUBERNETES.md.
 {{- include "callibrator.guard.requiredSecrets" . -}}
 {{- include "callibrator.guard.cors" . -}}
 {{- include "callibrator.guard.clamav" . -}}
+{{- include "callibrator.guard.backupVolume" . -}}
+{{- include "callibrator.guard.uploadsVolume" . -}}
+{{- include "callibrator.guard.credentialsInConfigMap" . -}}
 {{- end -}}

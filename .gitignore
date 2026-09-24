@@ -22,11 +22,13 @@ build/
 out/
 coverage/
 
-# Environment
+# Environment — every env filename, in every workspace (S-25). The two
+# templates (backend/.env.example, deploy/compose/.env.example) are the only
+# env files that belong in git.
 .env
-.env.local
-.env.*.local
-.env.production.local
+.env.*
+*.env
+!.env.example
 
 # IDE
 .vscode/

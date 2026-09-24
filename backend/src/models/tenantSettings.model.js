@@ -47,7 +47,7 @@ const defineModel = (db, DataTypes) => {
     },
   );
 
-  const { encryptData, decryptData } = require("../services/kms.service");
+  const { encryptData, decryptData, isEnvelope } = require("../services/kms.service");
 
   // A-150: which keys are secret is defined once, in
   // constants/tenantSecretSettings.js — the explicit list (now including
@@ -75,8 +75,9 @@ const defineModel = (db, DataTypes) => {
    * @param {*} value - a value about to be written
    * @returns {boolean} true when it is a non-empty string not yet enveloped
    */
+  // P6-10: an envelope is `v1:` or `v2:<keyId>:` — kms.service decides.
   const isPlaintext = (value) =>
-    typeof value === "string" && value !== "" && !value.startsWith("v1:");
+    typeof value === "string" && value !== "" && !isEnvelope(value);
 
   /**
    * Envelope-encrypt a built instance's value when its key is secret.
@@ -163,7 +164,7 @@ const defineModel = (db, DataTypes) => {
   const decryptSetting = (setting) => {
     // A-178: a key that used to be secret (sso_idp_cert) may still hold an
     // envelope written before it was reclassified.
-    if (setting && isEnvelopeSettingKey(setting.key) && setting.value && setting.value.startsWith("v1:")) {
+    if (setting && isEnvelopeSettingKey(setting.key) && isEnvelope(setting.value)) {
       setting.value = decryptData(setting.tenantId, setting.value);
     }
   };

@@ -297,8 +297,8 @@ exports.getDepreciationReport = async (tenantId, { asOf } = {}) => {
   const csvRows = rows.map((r) =>
     [
       // deviceName is built above as `record.device?.name || "Unknown device"`,
-      // so it is never falsy here; the `|| ""` is an unreachable defensive guard.
-      `"${(/* istanbul ignore next */ r.deviceName || "").replace(/"/g, '""')}"`,
+      // so it is never falsy here (A-32: the unreachable `|| ""` is gone).
+      `"${r.deviceName.replace(/"/g, '""')}"`,
       r.serialNumber || "",
       r.purchaseDate,
       r.purchasePrice,

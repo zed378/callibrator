@@ -86,8 +86,14 @@ export function useTenants() {
   }, [fetchTenants, searchTerm, currentPage, pageSize, user, ownTenantId]);
 
   const handleDelete = async (id: string) => {
-    await deleteTenant(id);
-    setShowDeleteConfirm(null);
+    try {
+      await deleteTenant(id);
+    } catch {
+      // F-64: the store holds the backend's message in `error`, which the
+      // page renders; the tenant stays in the list because it was not deleted.
+    } finally {
+      setShowDeleteConfirm(null);
+    }
   };
 
   const handleDeleteRequest = (id: string) => setShowDeleteConfirm(id);
@@ -151,7 +157,9 @@ export function useTenants() {
       setEditLogoFile(null);
     } else if (tenant.logo) {
       setEditLogoPreview(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL || ""}/uploads/${tenant.logo}`,
+        // Logos are in the public class (ADR-042 step 3). This used to build
+        // `/uploads/<logo>` — without the `tenant/` folder, so it never loaded.
+        `/uploads/public/tenant/${encodeURIComponent(tenant.logo)}`,
       );
       setEditLogoKeep(true);
       setEditLogoFile(null);

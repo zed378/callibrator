@@ -11,6 +11,7 @@ const customDomainsService = require("../services/customDomains.service");
 const { success, error } = require("../utils/response.util");
 const { asyncHandler } = require("../utils/controllerWrapper.util");
 const { logger } = require("../middlewares/activityLog.middleware");
+const { auditActor } = require("../utils/auditActor.util");
 
 /**
  * Get all custom domains for current tenant
@@ -30,11 +31,17 @@ exports.addCustomDomain = asyncHandler(async (req, res) => {
   const { tenantId } = req.user;
   const { domain, type, sslEnabled } = req.body;
 
-  const result = await customDomainsService.addDomain(tenantId, {
-    domain,
-    type: type || "subdomain",
-    sslEnabled: sslEnabled !== false,
-  });
+  // A-186: the actor is audited with the domain and told how to verify it.
+  const result = await customDomainsService.addDomain(
+    tenantId,
+    {
+      domain,
+      type: type || "subdomain",
+      sslEnabled: sslEnabled !== false,
+    },
+    undefined,
+    auditActor(req),
+  );
 
   return success(res, result, null, "Custom domain added", 201);
 });
@@ -46,7 +53,7 @@ exports.verifyDomain = asyncHandler(async (req, res) => {
   const { domainId } = req.params;
   const { tenantId } = req.user;
 
-  const result = await customDomainsService.verifyDomain(tenantId, domainId);
+  const result = await customDomainsService.verifyDomain(tenantId, domainId, auditActor(req));
 
   return success(res, result, "Domain verification initiated");
 });
@@ -58,7 +65,7 @@ exports.removeCustomDomain = asyncHandler(async (req, res) => {
   const { domainId } = req.params;
   const { tenantId } = req.user;
 
-  await customDomainsService.removeDomain(tenantId, domainId);
+  await customDomainsService.removeDomain(tenantId, domainId, auditActor(req));
 
   return success(res, null, "Custom domain removed");
 });
@@ -85,6 +92,7 @@ exports.setDefaultDomain = asyncHandler(async (req, res) => {
   const result = await customDomainsService.setDefaultDomain(
     tenantId,
     domainId,
+    auditActor(req),
   );
 
   return success(res, result, "Default domain set");

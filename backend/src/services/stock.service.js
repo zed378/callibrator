@@ -6,6 +6,7 @@ const { logger } = require("../middlewares/activityLog.middleware");
 const { AppError } = require("../utils/appError.util");
 const { DEFAULT_LIMIT } = require("../constants");
 const webhookService = require("./webhook.service");
+const auditService = require("./audit.service");
 const { WEBHOOK_EVENTS } = require("../constants/webhookEvents");
 const {
   validate: validateInput,
@@ -34,6 +35,40 @@ const validate = (data, schema) => {
   }
   return value;
 };
+
+// ==========================================
+// P6-09 — EVERY QUANTITY CHANGE IS EXPLAINED
+// ==========================================
+//
+// A stock quantity changes in exactly four places, and each names a reason
+// and an actor and writes an audit row inside its transaction:
+//   - createStock with an opening quantity -> an "addition" adjustment
+//   - createAdjustment                     -> the adjustment (reason required)
+//   - updateTransferStatus -> "completed"  -> the transfer (its own record)
+//   - (stock opname records a count; it does not change quantities)
+// updateStock REFUSES a quantity change: it would bypass all of the above.
+
+/** The reason recorded for an item created with a quantity already on hand. */
+const OPENING_BALANCE_REASON = "Opening balance recorded when the stock item was created";
+
+/**
+ * Write one audit row inside `transaction` (a failed insert rolls the change
+ * back; a rolled-back change takes its row with it).
+ */
+const audit = (transaction, tenantId, actor, action, resourceType, resourceId, before, after) =>
+  auditService.logAction(
+    {
+      tenantId,
+      userId: actor.userId,
+      action,
+      resourceType,
+      resourceId,
+      changes: { before, after },
+      ipAddress: actor.ipAddress,
+      userAgent: actor.userAgent,
+    },
+    { transaction },
+  );
 
 // ==========================================
 // STOCK SERVICE METHODS
@@ -122,7 +157,12 @@ exports.fetchSpecificStock = async (tenantId, stockId) => {
   }
 };
 
-exports.createStock = async (tenantId, input) => {
+/**
+ * @param {string} tenantId
+ * @param {object} input - validated by createStockSchema
+ * @param {object} [actor] - auditActor(req): userId, ipAddress, userAgent
+ */
+exports.createStock = async (tenantId, input, actor = {}) => {
   const data = validate(input, createStockSchema);
   const transaction = await db.transaction();
 
@@ -188,6 +228,38 @@ exports.createStock = async (tenantId, input) => {
       },
       { transaction },
     );
+    await audit(transaction, tenantId, actor, "CREATE", "Stock", stock.id, {}, {
+      itemName: stock.itemName,
+      warehouseId: stock.warehouseId,
+      quantity: stock.quantity,
+    });
+
+    // P6-09: stock on hand at creation is a quantity change like any other —
+    // it is recorded as an adjustment, with who and why.
+    if (stock.quantity > 0) {
+      const opening = await StockAdjustment.create(
+        {
+          tenantId,
+          warehouseId: stock.warehouseId,
+          locationId: stock.locationId,
+          stockId: stock.id,
+          type: "addition",
+          quantity: stock.quantity,
+          quantityBefore: 0,
+          quantityAfter: stock.quantity,
+          reason: OPENING_BALANCE_REASON,
+          adjustedBy: actor.userId,
+        },
+        { transaction },
+      );
+      await audit(transaction, tenantId, actor, "CREATE", "StockAdjustment", opening.id, {}, {
+        stockId: stock.id,
+        type: "addition",
+        quantityBefore: 0,
+        quantityAfter: stock.quantity,
+        reason: OPENING_BALANCE_REASON,
+      });
+    }
 
     await transaction.commit();
     logger.info("Stock item created", { stockId: stock.id, tenantId });
@@ -207,7 +279,18 @@ exports.createStock = async (tenantId, input) => {
   }
 };
 
-exports.updateStock = async (tenantId, stockId, input) => {
+/**
+ * Update an item's descriptive fields. P6-09: a `quantity` that differs from
+ * the stored one is REFUSED (400) — a quantity changes through an
+ * adjustment, which requires a reason. The same value is accepted and
+ * ignored, so an edit form that echoes it keeps working.
+ *
+ * @param {string} tenantId
+ * @param {string} stockId
+ * @param {object} input - validated by updateStockSchema
+ * @param {object} [actor] - auditActor(req)
+ */
+exports.updateStock = async (tenantId, stockId, input, actor = {}) => {
   const data = validate(input, updateStockSchema);
   const transaction = await db.transaction();
 
@@ -221,17 +304,26 @@ exports.updateStock = async (tenantId, stockId, input) => {
       throw new AppError(404, "Stock item not found");
     }
 
-    await stock.update(
-      {
-        itemName: data.itemName || stock.itemName,
-        sku: data.sku !== undefined ? data.sku : stock.sku,
-        serialNumber: data.serialNumber !== undefined ? data.serialNumber : stock.serialNumber,
-        quantity: data.quantity !== undefined ? data.quantity : stock.quantity,
-        minQuantity: data.minQuantity !== undefined ? data.minQuantity : stock.minQuantity,
-        description: data.description !== undefined ? data.description : stock.description,
-      },
-      { transaction },
-    );
+    if (data.quantity !== undefined && data.quantity !== stock.quantity) {
+      throw new AppError(
+        400,
+        `The quantity of a stock item cannot be edited directly (it is ${stock.quantity}; ` +
+          `${data.quantity} was sent). Record an adjustment instead — POST /api/v1/stocks/adjustment ` +
+          "with the type, the quantity and a reason — or a transfer or stock count, so the change " +
+          "names who made it and why.",
+      );
+    }
+
+    const next = {
+      itemName: data.itemName || stock.itemName,
+      sku: data.sku !== undefined ? data.sku : stock.sku,
+      serialNumber: data.serialNumber !== undefined ? data.serialNumber : stock.serialNumber,
+      minQuantity: data.minQuantity !== undefined ? data.minQuantity : stock.minQuantity,
+      description: data.description !== undefined ? data.description : stock.description,
+    };
+    const before = Object.fromEntries(Object.keys(next).map((key) => [key, stock[key]]));
+    await stock.update(next, { transaction });
+    await audit(transaction, tenantId, actor, "UPDATE", "Stock", stock.id, before, next);
 
     await transaction.commit();
     logger.info("Stock item updated", { stockId, tenantId });
@@ -287,7 +379,13 @@ exports.deleteStock = async (tenantId, stockId) => {
 // STOCK ADJUSTMENT METHODS
 // ==========================================
 
-exports.createAdjustment = async (tenantId, input, userId) => {
+/**
+ * @param {string} tenantId
+ * @param {object} input - validated by createAdjustmentSchema (reason required)
+ * @param {string} userId - who adjusts
+ * @param {object} [actor] - auditActor(req)
+ */
+exports.createAdjustment = async (tenantId, input, userId, actor = {}) => {
   const data = validate(input, createAdjustmentSchema);
   const transaction = await db.transaction();
 
@@ -314,21 +412,34 @@ exports.createAdjustment = async (tenantId, input, userId) => {
       newQuantity -= data.quantity;
     }
 
-    // Update stock quantity
+    const quantityBefore = stock.quantity;
     await stock.update({ quantity: newQuantity }, { transaction });
 
-    // Log adjustment
+    // P6-09: the item, the before/after and the reason — all required.
     const adjustment = await StockAdjustment.create(
       {
         tenantId,
         warehouseId: stock.warehouseId,
         locationId: stock.locationId || null,
+        stockId: stock.id,
         type: data.type,
         quantity: data.quantity,
-        reason: data.reason || null,
+        quantityBefore,
+        quantityAfter: newQuantity,
+        reason: data.reason,
         adjustedBy: userId,
       },
       { transaction },
+    );
+    await audit(
+      transaction,
+      tenantId,
+      { ...actor, userId },
+      "CREATE",
+      "StockAdjustment",
+      adjustment.id,
+      { quantity: quantityBefore },
+      { stockId: stock.id, type: data.type, quantity: newQuantity, reason: data.reason },
     );
 
     await transaction.commit();
@@ -472,7 +583,14 @@ exports.createTransfer = async (tenantId, input, userId) => {
   }
 };
 
-exports.updateTransferStatus = async (tenantId, transferId, input, userId) => {
+/**
+ * @param {string} tenantId
+ * @param {string} transferId
+ * @param {object} input - validated by updateTransferStatusSchema
+ * @param {string} userId - who moves it on
+ * @param {object} [actor] - auditActor(req)
+ */
+exports.updateTransferStatus = async (tenantId, transferId, input, userId, actor = {}) => {
   const data = validate(input, updateTransferStatusSchema);
   const transaction = await db.transaction();
 
@@ -507,7 +625,8 @@ exports.updateTransferStatus = async (tenantId, transferId, input, userId) => {
       }
 
       // Deduct from source
-      await sourceStock.update({ quantity: sourceStock.quantity - transfer.quantity }, { transaction });
+      const sourceBefore = sourceStock.quantity;
+      await sourceStock.update({ quantity: sourceBefore - transfer.quantity }, { transaction });
 
       // Add to destination
       const [destStock, created] = await Stock.findOrCreate({
@@ -527,10 +646,12 @@ exports.updateTransferStatus = async (tenantId, transferId, input, userId) => {
         transaction,
       });
 
+      const destinationBefore = created ? 0 : destStock.quantity;
       if (!created) {
         await destStock.update({ quantity: destStock.quantity + transfer.quantity }, { transaction });
       }
 
+      const previousStatus = transfer.status;
       await transfer.update(
         {
           status: "completed",
@@ -538,6 +659,28 @@ exports.updateTransferStatus = async (tenantId, transferId, input, userId) => {
           transferDate: new Date(),
         },
         { transaction },
+      );
+      // P6-09: the transfer is the reason and names the actors; the audit row
+      // records both quantities it moved, from and to.
+      await audit(
+        transaction,
+        tenantId,
+        { ...actor, userId },
+        "UPDATE",
+        "StockTransfer",
+        transfer.id,
+        {
+          status: previousStatus,
+          sourceQuantity: sourceBefore,
+          destinationQuantity: destinationBefore,
+        },
+        {
+          status: "completed",
+          sourceStockId: sourceStock.id,
+          sourceQuantity: sourceBefore - transfer.quantity,
+          destinationStockId: destStock.id,
+          destinationQuantity: destinationBefore + transfer.quantity,
+        },
       );
       // A-11: fires from afterCommit — never for a rolled-back transfer.
       webhookService.emitAfterCommit(transaction, tenantId, WEBHOOK_EVENTS.STOCK_TRANSFER_COMPLETED, {

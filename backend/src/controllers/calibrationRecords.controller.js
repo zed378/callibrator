@@ -13,7 +13,8 @@ const {
   getCalibrationRecordsQuery,
   calibrationRecordIdSchema,
   createCalibrationRecordSchema,
-  updateCalibrationRecordSchema,
+  correctCalibrationRecordSchema,
+  voidCalibrationRecordSchema,
   validate: validatorValidate,
 } = require("../validators/calibrationRecords.validator");
 
@@ -43,6 +44,7 @@ exports.getAllCalibrationRecords = asyncHandler(async (req, res) => {
     isCompliant: validated.isCompliant,
     from: validated.from,
     to: validated.to,
+    includeSuperseded: validated.includeSuperseded,
   });
 
   // Rows in `data`, pagination in a top-level `meta`. A failed result carries
@@ -79,15 +81,19 @@ exports.createCalibrationRecord = asyncHandler(async (req, res) => {
   sendResult(res, result);
 });
 
-exports.updateCalibrationRecord = asyncHandler(async (req, res) => {
+// P6-03 — no update, no delete: a correction is a new, superseding record and
+// a void is final. Both need a reason; the service writes the audit rows.
+
+exports.correctCalibrationRecord = asyncHandler(async (req, res) => {
   const tenantId = req.user.tenantId;
   const { calibrationRecordId } = validate(
     req.params,
     calibrationRecordIdSchema,
   );
-  const validated = validate(req.body, updateCalibrationRecordSchema);
-  const result = await calibrationRecordsService.updateCalibrationRecord(
+  const validated = validate(req.body, correctCalibrationRecordSchema);
+  const result = await calibrationRecordsService.correctCalibrationRecord(
     tenantId,
+    req.user.id,
     calibrationRecordId,
     validated,
     auditActor(req),
@@ -96,15 +102,18 @@ exports.updateCalibrationRecord = asyncHandler(async (req, res) => {
   sendResult(res, result);
 });
 
-exports.deleteCalibrationRecord = asyncHandler(async (req, res) => {
+exports.voidCalibrationRecord = asyncHandler(async (req, res) => {
   const tenantId = req.user.tenantId;
   const { calibrationRecordId } = validate(
     req.params,
     calibrationRecordIdSchema,
   );
-  const result = await calibrationRecordsService.deleteCalibrationRecord(
+  const validated = validate(req.body, voidCalibrationRecordSchema);
+  const result = await calibrationRecordsService.voidCalibrationRecord(
     tenantId,
+    req.user.id,
     calibrationRecordId,
+    validated,
     auditActor(req),
   );
 

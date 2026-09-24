@@ -1,6 +1,7 @@
 // src/app/dashboard/batch-jobs/page.tsx
 "use client";
 
+import { deferEffect } from "@/lib/deferEffect";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import DashboardLayout from "@/components/layouts/DashboardLayout";
 import {
@@ -77,9 +78,7 @@ export default function BatchJobsPage() {
     loadRef.current = () => void load(true);
   }, [load]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useEffect(() => deferEffect(load), [load]);
 
   // Jobs progress server-side, so refresh while any are still running.
   const hasRunning = jobs.some(

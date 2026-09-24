@@ -160,6 +160,39 @@ describe("dynamicAccess middleware", () => {
       expect(res.json).not.toHaveBeenCalled();
       expect(logger.error).toHaveBeenCalled();
     });
+
+    it("A-254: the error log names the principal by id and never carries its secrets", async () => {
+      // req.user is the whole Users row auth.middleware loads — password hash,
+      // MFA secret and recovery codes included.
+      req.user = makeUser({
+        password: "$2b$10$A254A254A254hashhashhashhash",
+        mfaSecret: "A254MFASECRET",
+        mfaRecoveryCodes: ["A254RECOVERY"],
+      });
+      RolesService.getRolePermissionsMatrix.mockRejectedValue(new Error("boom"));
+
+      await run(dynamicAccess("Home", "read"));
+
+      const logged = JSON.stringify(logger.error.mock.calls);
+      expect(logged).not.toContain("A254");
+      expect(logger.error).toHaveBeenCalledWith(
+        "DynamicAccess Error",
+        expect.objectContaining({ error: "boom", userId: req.user.id, menuGroup: "Home" }),
+      );
+    });
+
+    it("A-254: a principal missing id, tenant and role name is logged as nulls", async () => {
+      req.user = { role: { id: "role-1" }, isApiKey: false, apiKeyScopes: [] };
+      RolesService.getRolePermissionsMatrix.mockRejectedValue(new Error("boom"));
+
+      await run(dynamicAccess("Home", "read"));
+
+      expect(logger.error).toHaveBeenCalledWith(
+        "DynamicAccess Error",
+        expect.objectContaining({ userId: null, tenantId: null, role: null }),
+      );
+    });
+
   });
 
   describe("permission resolution", () => {

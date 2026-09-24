@@ -21,6 +21,9 @@ const customDomainsService = require("../../services/customDomains.service");
 const customDomainsController = require("../../controllers/customDomains.controller");
 const { success, error } = require("../../utils/response.util");
 
+// A-186: every write hands the service the request's audit actor.
+const ACTOR = { userId: null, tenantId: "tenant-123", ipAddress: null, userAgent: null };
+
 describe("customDomainsController", () => {
   let req;
   let res;
@@ -98,6 +101,8 @@ describe("customDomainsController", () => {
           type: "subdomain",
           sslEnabled: true,
         },
+        undefined,
+        ACTOR,
       );
       expect(success).toHaveBeenCalled();
     });
@@ -121,6 +126,8 @@ describe("customDomainsController", () => {
           type: "subdomain",
           sslEnabled: true,
         },
+        undefined,
+        ACTOR,
       );
     });
   });
@@ -145,6 +152,7 @@ describe("customDomainsController", () => {
       expect(customDomainsService.verifyDomain).toHaveBeenCalledWith(
         "tenant-123",
         "domain-123",
+        ACTOR,
       );
       expect(success).toHaveBeenCalled();
     });
@@ -161,6 +169,7 @@ describe("customDomainsController", () => {
       expect(customDomainsService.removeDomain).toHaveBeenCalledWith(
         "tenant-123",
         "domain-123",
+        ACTOR,
       );
       expect(success).toHaveBeenCalled();
     });
@@ -217,6 +226,7 @@ describe("customDomainsController", () => {
       expect(customDomainsService.setDefaultDomain).toHaveBeenCalledWith(
         "tenant-123",
         "domain-123",
+        ACTOR,
       );
       expect(success).toHaveBeenCalled();
     });

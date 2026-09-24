@@ -1,5 +1,6 @@
 const crypto = require("crypto");
 const ssoService = require("../services/sso.service");
+const oidcJwks = require("../services/oidcJwks");
 const tenantService = require("../services/tenant.service");
 const auditService = require("../services/audit.service");
 const redis = require("../services/redis.service");
@@ -261,7 +262,17 @@ const issueSsoTokens = async (entry) => {
       ipAddress: entry.ipAddress,
       userAgent: entry.userAgent,
       expiredAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+      // A-160: the session is federated; its MFA is the IdP's (0052).
+      authMethod: entry.method,
     });
+    // A-188: an SSO sign-in is a sign-in — "last login" used to stay at the
+    // last PASSWORD sign-in, so an SSO-only account looked dormant. Written in
+    // the session's transaction; pre-auth there is no tenant context, and the
+    // row is named by id and its own tenant.
+    await Users.update(
+      { lastLoginAt: new Date() },
+      { where: { id: entry.userId, tenantId: entry.tenantId }, transaction, skipTenantScope: true },
+    );
     await auditService.logAction(
       {
         tenantId: entry.tenantId,
@@ -282,6 +293,8 @@ const issueSsoTokens = async (entry) => {
     id: entry.userId,
     email: entry.email,
     sid: session.id,
+    // A-160: read by the tenant MFA policy (auth.middleware).
+    amr: entry.method,
   });
 
   return { accessToken, session };
@@ -321,34 +334,110 @@ exports.ssoLogin = asyncHandler(async (req, res) => {
   success(res, { redirectUrl }, null, "SAML redirect URL generated", 200);
 });
 
+// ---------------------------------------------------------------------------
+// A-188 — A REFUSED CALLBACK SENDS THE BROWSER BACK TO THE LOGIN PAGE
+//
+// The SAML ACS and the OIDC callback are reached by the BROWSER, returning
+// from the identity provider. A refusal used to answer with the JSON error
+// envelope, which the browser rendered as a raw page. It now redirects to
+// `${FRONTEND_URL}/login?error=<code>`, where the login page shows a message
+// for the code. Only a fixed code goes in the URL — never the reason, which
+// may name the IdP's answer; the reason is logged.
+// ---------------------------------------------------------------------------
+
+const SSO_ERROR_CODES = Object.freeze({
+  STATE: "sso_state",
+  UNAVAILABLE: "sso_unavailable",
+  ACCOUNT_REFUSED: "sso_account_refused",
+  FAILED: "sso_failed",
+  ERROR: "sso_error",
+});
+
+/**
+ * @param {string} message
+ * @param {number} status
+ * @param {string} ssoCode - one of SSO_ERROR_CODES
+ * @returns {AppError}
+ */
+const callbackRefusal = (message, status, ssoCode) =>
+  Object.assign(new AppError(status, message), { ssoCode });
+
+/**
+ * The code a refused callback is answered with.
+ *
+ * @param {{ssoCode?: string, status?: number, statusCode?: number}} err
+ * @returns {string}
+ */
+const refusalCode = (err) => {
+  if (err.ssoCode) {
+    return err.ssoCode;
+  }
+  const status = err.status || err.statusCode || 500;
+  if (status === 403) {
+    return SSO_ERROR_CODES.ACCOUNT_REFUSED;
+  }
+  return status >= 500 ? SSO_ERROR_CODES.ERROR : SSO_ERROR_CODES.FAILED;
+};
+
+/**
+ * Run a browser-facing callback; on refusal, log why and send the browser to
+ * the login page with a code.
+ *
+ * @param {string} protocol - "saml" | "oidc", for the log
+ * @param {(req: object, res: object) => Promise<void>} handler
+ * @returns {(req: object, res: object) => Promise<void>}
+ */
+const refuseToLoginPage = (protocol, handler) => async (req, res) => {
+  try {
+    await handler(req, res);
+  } catch (err) {
+    const code = refusalCode(err);
+    logger.warn("SSO callback refused", {
+      protocol,
+      code,
+      status: err.status || err.statusCode || 500,
+      reason: err.message,
+    });
+    const target = new URL("/login", process.env.FRONTEND_URL || "http://localhost:3000");
+    target.searchParams.set("error", code);
+    res.redirect(target.toString());
+  }
+};
+
+exports.SSO_ERROR_CODES = SSO_ERROR_CODES;
+
 /**
  * Handle SAML ACS Callback
  */
-exports.ssoCallback = asyncHandler(async (req, res) => {
+exports.ssoCallback = asyncHandler(refuseToLoginPage("saml", async (req, res) => {
   const { SAMLResponse, RelayState } = req.body || {};
   const tenantCode = req.params.tenantCode || RelayState;
 
   if (!tenantCode) {
-    throw new AppError(400, "Tenant identifier (RelayState or URL parameter) is required");
+    throw callbackRefusal(
+      "Tenant identifier (RelayState or URL parameter) is required",
+      400,
+      SSO_ERROR_CODES.UNAVAILABLE,
+    );
   }
 
   const tenant = await Tenants.findOne({ where: { code: tenantCode } });
   if (!tenant) {
-    throw new AppError(404, "Tenant not found");
+    throw callbackRefusal("Tenant not found", 404, SSO_ERROR_CODES.UNAVAILABLE);
   }
 
   const settingsResult = await tenantService.getTenantSettings(tenant.id, SSO_SETTINGS);
   const ssoSettings = settingsResult.data?.settings || {};
 
   if (ssoSettings.sso_enabled !== "true" && ssoSettings.sso_enabled !== true) {
-    throw new AppError(400, "SSO is not enabled for this tenant");
+    throw callbackRefusal("SSO is not enabled for this tenant", 400, SSO_ERROR_CODES.UNAVAILABLE);
   }
 
   const userData = await ssoService.parseAndVerifyResponse(SAMLResponse, ssoSettings);
   const user = await ssoService.provisionUser(tenant.id, userData);
 
   await handoffRedirect(req, res, tenant, user, "saml");
-});
+}));
 
 /**
  * Handle SAML SP Metadata endpoint
@@ -416,6 +505,9 @@ exports.oidcLogin = asyncHandler(async (req, res) => {
   // exchange sends exactly the value the authorize request did.
   const hostUrl = process.env.HOST_URL || "http://localhost:5000";
   const redirectUri = ssoSettings.oidc_redirect_uri || `${hostUrl}/api/v1/auth/sso/oidc/callback/${tenant.code}`;
+  // A-188: the IdP's own authorization endpoint, from its discovery document
+  // (a missing or multi-tenant authority is refused here, before any state).
+  const provider = await oidcJwks.discover(ssoSettings);
   const flow = await beginOidcFlow(tenant.code, redirectUri);
 
   const redirectUrl = ssoService.generateOidcAuthRequest(tenant.code, ssoSettings, {
@@ -423,6 +515,7 @@ exports.oidcLogin = asyncHandler(async (req, res) => {
     nonce: flow.nonce,
     codeChallenge: flow.codeChallenge,
     redirectUri,
+    authorizationEndpoint: provider.authorizationEndpoint,
   });
 
   res.cookie(OIDC_BINDING_COOKIE, flow.binding, {
@@ -435,13 +528,13 @@ exports.oidcLogin = asyncHandler(async (req, res) => {
 /**
  * Handle OIDC Callback
  */
-exports.oidcCallback = asyncHandler(async (req, res) => {
+exports.oidcCallback = asyncHandler(refuseToLoginPage("oidc", async (req, res) => {
   // A-68/A-69: the IdP returns with a GET (?code&state, response_mode=query);
   // a POSTed form body is still read.
   const { code, state } = { ...req.query, ...req.body };
 
   if (!code || !state) {
-    throw new AppError(400, "Authorization code and state are required");
+    throw callbackRefusal("Authorization code and state are required", 400, SSO_ERROR_CODES.STATE);
   }
 
   // A-68: consume the state once, bound to this browser; the binding cookie is
@@ -449,20 +542,20 @@ exports.oidcCallback = asyncHandler(async (req, res) => {
   const flow = await consumeOidcFlow(state, readCookie(req.headers.cookie, OIDC_BINDING_COOKIE));
   res.clearCookie(OIDC_BINDING_COOKIE, bindingCookieOptions());
   if (!flow || (req.params.tenantCode && req.params.tenantCode !== flow.tenantCode)) {
-    throw new AppError(401, "Invalid or expired SSO sign-in state");
+    throw callbackRefusal("Invalid or expired SSO sign-in state", 401, SSO_ERROR_CODES.STATE);
   }
   const { tenantCode } = flow;
 
   const tenant = await Tenants.findOne({ where: { code: tenantCode } });
   if (!tenant) {
-    throw new AppError(404, "Tenant not found");
+    throw callbackRefusal("Tenant not found", 404, SSO_ERROR_CODES.UNAVAILABLE);
   }
 
   const settingsResult = await tenantService.getTenantSettings(tenant.id, SSO_SETTINGS);
   const ssoSettings = settingsResult.data?.settings || {};
 
   if (ssoSettings.sso_enabled !== "true" && ssoSettings.sso_enabled !== true) {
-    throw new AppError(400, "SSO is not enabled for this tenant");
+    throw callbackRefusal("SSO is not enabled for this tenant", 400, SSO_ERROR_CODES.UNAVAILABLE);
   }
 
   const userData = await ssoService.verifyOidcCallback(code, ssoSettings, flow.redirectUri, {
@@ -472,7 +565,7 @@ exports.oidcCallback = asyncHandler(async (req, res) => {
   const user = await ssoService.provisionUser(tenant.id, userData);
 
   await handoffRedirect(req, res, tenant, user, "oidc");
-});
+}));
 
 /**
  * Exchange an SSO hand-off code for a session (A-60).

@@ -260,6 +260,7 @@ describe("predictiveMaintenance.service", () => {
           message: expect.stringContaining("Pressure Sensor A"),
           type: "MAINTENANCE",
         }),
+        { transaction: "TX" }, // A-190: with the recommendation and its audit row
       );
     });
 

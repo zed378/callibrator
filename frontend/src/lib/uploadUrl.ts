@@ -4,23 +4,29 @@
  * Normalise a backend upload URL for use with next/image.
  *
  * The backend builds ABSOLUTE upload URLs from its own HOST_URL (e.g.
- * `http://localhost:5000/uploads/profile/x.jpg`). next/image refuses those
+ * `http://localhost:5000/uploads/public/profile/x.jpg`). next/image refuses those
  * unless the host is whitelisted, failing the request with
  * `400 "url" parameter is not allowed` — so the image silently never renders.
  *
- * next.config.ts already rewrites `/uploads/*` to the backend, so the same
- * file is reachable same-origin. Stripping the origin therefore makes the
- * image a local one from next/image's perspective, and works in dev and prod
- * regardless of what the backend's HOST_URL is set to.
+ * next.config.ts rewrites `/uploads/public/*` to the backend, so the same
+ * file is reachable same-origin. Only the PUBLIC class is served statically
+ * (S-01, ADR-042 step 3): avatars, tenant logos, CMS images. Certificates and
+ * attachments are never under `/uploads` any more — they are gated API routes.
+ * Stripping the origin therefore makes the image a local one from
+ * next/image's perspective, and works in dev and prod regardless of what the
+ * backend's HOST_URL is set to.
  *
- * Anything that isn't an `/uploads/*` path (e.g. an external CDN avatar) is
- * returned untouched.
+ * Anything that isn't an `/uploads/public/*` path (e.g. an external CDN
+ * avatar) is returned untouched.
  */
+/** The one static upload prefix the backend serves (ADR-042 step 3). */
+export const PUBLIC_UPLOADS_PREFIX = "/uploads/public/";
+
 export const toSameOriginUpload = (src: string): string => {
   try {
     // The base makes this safe for values that are already relative.
     const parsed = new URL(src, "http://placeholder.invalid");
-    if (parsed.pathname.startsWith("/uploads/")) {
+    if (parsed.pathname.startsWith(PUBLIC_UPLOADS_PREFIX)) {
       return `${parsed.pathname}${parsed.search}`;
     }
   } catch {

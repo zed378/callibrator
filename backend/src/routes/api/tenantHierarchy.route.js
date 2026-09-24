@@ -354,7 +354,8 @@ router.get(
 // (value, options) method — passing it as middleware called it with
 // (req, res, next), which threw and 500'd every request. The body is now
 // validated inside addChildTenant against that same schema.
-router.post("/:parentId/children", ...platformOnly, addChildTenant);
+// A-187: a malformed id is 400 here, not a database error (500) in the service.
+router.post("/:parentId/children", ...platformOnly, validateUuid("parentId"), addChildTenant);
 
 /**
  * @swagger

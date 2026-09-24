@@ -273,14 +273,41 @@ describe("SCIM Routes (full coverage)", () => {
       expect(typeof guard()).toBe("function");
     });
 
-    it("allows an API key principal", () => {
+    // A-250: a key is a SCIM service account only with the `scim` scope.
+    it.each([
+      ["GET", ["scim:read"]],
+      ["GET", ["scim:write"]],
+      ["POST", ["scim:write"]],
+      ["PATCH", ["stock:read", "scim:write"]],
+      ["DELETE", ["scim:write"]],
+    ])("A-250: allows a %s by an API key scoped %j", (method, apiKeyScopes) => {
       const next = jest.fn();
       const res = makeRes();
+      const req = { method, user: { isApiKey: true, apiKeyScopes } };
 
-      guard()({ user: { isApiKey: true } }, res, next);
+      guard()(req, res, next);
 
       expect(next).toHaveBeenCalled();
       expect(res.status).not.toHaveBeenCalled();
+      expect(req.apiKeyAuthorized).toBe(true);
+    });
+
+    it.each([
+      ["GET", ["stock:read"]],
+      ["POST", ["scim:read"]],
+      ["PUT", ["users:write"]],
+      ["DELETE", []],
+      ["GET", undefined],
+    ])("A-250: refuses a %s by an API key scoped %j", (method, apiKeyScopes) => {
+      const next = jest.fn();
+      const res = makeRes();
+      const req = { method, user: { isApiKey: true, apiKeyScopes } };
+
+      guard()(req, res, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(req.apiKeyAuthorized).toBeUndefined();
     });
 
     it.each(["SUPER_ADMIN", "SUPERADMIN"])("allows %s", (roleName) => {

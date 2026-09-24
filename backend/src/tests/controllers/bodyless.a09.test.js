@@ -40,7 +40,7 @@ jest.mock("../../services/userPermission.service", () => ({ setUserPermission: j
 jest.mock("../../services/vendor.service", () => ({ qualifyVendor: jest.fn() }));
 jest.mock("../../services/webauthn.service", () => ({ verifyRegistration: jest.fn(), verifyLogin: jest.fn() }));
 jest.mock("../../services/webhook.service", () => ({ updateWebhook: jest.fn() }));
-jest.mock("../../services/eSignature.service", () => ({ updateWorkflow: jest.fn(), revokeSignature: jest.fn() }));
+jest.mock("../../services/eSignature.service", () => ({ updateWorkflow: jest.fn() }));
 jest.mock("../../services/auth.service", () => ({
   justUpdatePassword: jest.fn(),
   passIsValid: jest.fn(),
@@ -131,6 +131,12 @@ const makeRes = () => {
     return res;
   });
   res.download = jest.fn();
+  // A-188: a refused SSO callback redirects the browser to the login page.
+  res.redirect = jest.fn((location) => {
+    res.statusCode = 302;
+    res.location = location;
+    return res;
+  });
   return res;
 };
 
@@ -142,6 +148,7 @@ const callBodyless = async (handler, reqOverrides = {}) => {
   await handler(req, res, next);
   return {
     status: res.statusCode,
+    location: res.location,
     payload: res.payload,
     message: res.payload && res.payload.message,
     nextArg: next.mock.calls.length ? next.mock.calls[0][0] : undefined,
@@ -225,17 +232,22 @@ describe("A-09 — handlers that own their own 400", () => {
     expectNoTypeError(result);
   });
 
-  it("sso.ssoCallback answers 400, not 500", async () => {
+  // A-188: a browser callback's refusal is a redirect to the login page with
+  // a code (it used to be the JSON 400) — and still never a 500.
+  it("sso.ssoCallback sends the browser to /login?error=sso_unavailable, not 500", async () => {
     const result = await callBodyless(ssoController.ssoCallback);
 
-    expect(result.status).toBe(400);
+    expect(result.status).toBe(302);
+    expect(new URL(result.location).pathname).toBe("/login");
+    expect(new URL(result.location).searchParams.get("error")).toBe("sso_unavailable");
     expectNoTypeError(result);
   });
 
-  it("sso.oidcCallback answers 400, not 500", async () => {
+  it("sso.oidcCallback sends the browser to /login?error=sso_state, not 500", async () => {
     const result = await callBodyless(ssoController.oidcCallback);
 
-    expect(result.status).toBe(400);
+    expect(result.status).toBe(302);
+    expect(new URL(result.location).searchParams.get("error")).toBe("sso_state");
     expectNoTypeError(result);
   });
 });
@@ -326,7 +338,6 @@ describe("A-09 — handlers that hand an absent body to a service", () => {
     ["auth.justUpdatePassword", () => authController.justUpdatePassword, authService.justUpdatePassword, {}],
     ["auth.passIsValid", () => authController.passIsValid, authService.passIsValid, {}],
     ["eSignature.updateWorkflow", () => eSignatureController.updateWorkflow, eSignatureService.updateWorkflow, { params: { workflowId: RESOURCE_ID } }],
-    ["eSignature.revokeSignature", () => eSignatureController.revokeSignature, eSignatureService.revokeSignature, { params: { signatureId: RESOURCE_ID } }],
   ])("%s reaches its service without a TypeError", async (_name, getHandler, serviceFn, overrides) => {
     serviceFn.mockResolvedValue({ status: 200, message: "ok", data: {} });
 

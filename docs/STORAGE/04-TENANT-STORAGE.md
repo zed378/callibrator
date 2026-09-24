@@ -27,6 +27,17 @@ Two facts decide how much of this document applies to the code you are about to 
 
 **The attachment request path does not use this module yet.** `backend/src/services/attachment.service.js` still writes and reads files through multer and `storagePath.util.js` at `uploads/attachments/<fileName>`. Nothing outside `storageMigration.service.js` reads or writes `attachment.storageKey`. The only application code that imports `services/storage` is the storage controller and the migration tool. The pluggable layer is built, tested and reachable through `/api/v1/storage`; **the upload and download path has not been cut over to it.** Do not write a document, a task or a code comment that says attachments are served from tenant storage today.
 
+**The legacy path is no longer served statically (S-01, ADR-057 — ADR-042 steps 3–6).** Until 2026-09-24 `backend/index.js` mounted `express.static(storagePath("uploads"))` at `/uploads` with **no authentication**: every attachment and every certificate PDF on that legacy path was an unauthenticated, permanent URL, and deleting an attachment (a soft delete) did not revoke it. As built now:
+
+| Class | On disk | Reached through |
+|---|---|---|
+| **public** — avatars, tenant logos, CMS images | `uploads/public/{profile,tenant,cms}/` | the static mount, **only** `/uploads/public/*`, images only (`.jpg .jpeg .png .gif .webp`, each served with a pinned `Content-Type`), `nosniff`, `Content-Security-Policy: default-src 'none'; sandbox`. **SVG is refused.** Written only by a permissioned upload: `users:update` (avatar), `management` (logo), `content:create` (`POST /api/v1/content/media`, which also writes an audit row) |
+| attachments | `uploads/attachments/` | `GET /api/v1/attachments/:id/download` (`auth` · `equipment:read` · tenant · soft delete) — the `url` in every attachment response — or a signed `/attachments/:id/signed?token=…` link. Both answer **404** once the attachment is deleted, and the delete **unlinks the file after its transaction commits** |
+| certificates | `uploads/certificates/` (`filePath` is the locator `certificates/<random>.pdf`, not a URL) | `GET /api/v1/certificates/:id/pdf` (`auth` · `certificate:read` · tenant), or — for the public verification page — the `documentUrl` capability `/api/v1/certificates/verify/<number>/document?token=…`, minted **only for a `signed` certificate**, one-hour TTL (`CERT_DOCUMENT_URL_TTL_SEC`), status re-checked on every fetch |
+| exports, backups | `exports/`, `backup/` | never under `uploads/`; their own gated routes |
+
+Every gated file route answers `If-None-Match`/`If-Modified-Since` with 304 and a single `Range` with 206, and sets `Content-Disposition` from the content type — `inline` only for raster images and PDF (`backend/src/utils/fileResponse.util.js`). Existing files and stored paths were moved by migration `0056-uploads-public-class.js`.
+
 **`GET /usage` is not connected to billing.** `meteredBilling.service.js` defines a `storage_bytes` metric and `usageMetric.model.js` stores it, but no code calls `storageSettings.getUsage()` and records it. The endpoint reports the number; feeding it to metering is unbuilt.
 
 ## The Three Providers
@@ -54,7 +65,7 @@ platform default  (environment: STORAGE_DRIVER and friends)
 
 `resolveDriver(tenantId)` in `services/storage/index.js` caches one driver instance per tenant, keyed by tenant id, with `"__global__"` for the platform. Drivers hold an S3 client and a connection pool, so rebuilding one per request would be waste.
 
-**The cache is per process.** `storage.invalidate(tenantId)` is called after a settings write or clear, in that process only. On a multi-replica deployment the other replicas keep the old driver until they restart. This is as-built, and it is the reason a settings change can appear to take effect for some requests and not others.
+**The cache is per process; its invalidation is not (A-40, fixed 2026-09-24).** `storage.invalidate(tenantId)` — awaited after a settings write or clear — drops the local entry **and** writes a new random *generation* to Redis (`storage:driver-generation:<tenantId>`, 30-day TTL). Every `resolveDriver` reads that generation and rebuilds when it differs from the one its cached driver was built under, so a rotated or revoked credential stops being used on **every** replica at its next request. When Redis is unavailable the generation reads as `null` everywhere and staleness is bounded by a local TTL instead: `STORAGE_DRIVER_CACHE_TTL_SEC`, default 60 seconds. The cost is one Redis `GET` per resolve.
 
 A stored configuration is **re-validated on read**, not only on write (`index.js`, `resolveDriver`): a row could predate a validation rule or have been edited out of band.
 
@@ -115,7 +126,7 @@ An unknown domain is a 400. The allowlist exists so a caller cannot invent a nam
 
 `openSignedObject()` verifies the token **before touching storage**, then derives the tenant from the key (`t/<tenantId>/…`) rather than from the request. A valid token for tenant A's key can only ever open tenant A's object.
 
-The controller forces `Content-Disposition: attachment` and `X-Content-Type-Options: nosniff` on the response: stored objects are opaque blobs and letting a browser sniff and render one is stored XSS. If the object disappears mid-stream the connection is aborted, or answered 410 when headers have not been sent.
+The controller (ADR-042 step 5) sets `X-Content-Type-Options: nosniff` and a `Content-Disposition` **chosen by the content type**: `inline` only for `image/jpeg|png|gif|webp` and `application/pdf`, `attachment` for everything else (the local driver stores no type, so it is taken from an allowlisted extension, else `application/octet-stream`). Non-PDF responses also carry `Content-Security-Policy: default-src 'none'; sandbox`. It emits `ETag` (the driver's, or a weak size+mtime tag) and `Last-Modified`, answers a matching `If-None-Match`/`If-Modified-Since` with **304** without opening the object, a single `bytes=` `Range` with **206** (`Content-Range`), an unsatisfiable one with **416**, and a multi-range or malformed one with the whole object; `If-Range` is honoured. `Cache-Control: private, no-cache, no-transform`. If the object disappears mid-stream the connection is aborted, or answered 410 when headers have not been sent. Until 2026-09-24 it hardcoded `attachment` and had none of the rest, which is why it could not back an `<img>` or `<iframe>`.
 
 ### s3
 
@@ -132,7 +143,7 @@ Mounted at `/api/v1/storage` (`backend/index.js`).
 | PUT | `/settings` | `auth` · `denyApiKey` · `rbac([TENANT_ADMIN])` · `validate(updateStorageSettingsSchema)` |
 | DELETE | `/settings` | `auth` · `denyApiKey` · `rbac([TENANT_ADMIN])` |
 | POST | `/settings/test` | `auth` · `denyApiKey` · `rbac([TENANT_ADMIN])` |
-| GET | `/usage` | `auth` only |
+| GET | `/usage` | `auth` · `denyApiKey` · `rbac([TENANT_ADMIN])` |
 
 ### Who may configure storage, and since when
 
@@ -144,7 +155,7 @@ Mounted at `/api/v1/storage` (`backend/index.js`).
 
 **`GET /object` is deliberately outside that gate.** It is the public resolution point for local/NFS signed URLs; its authorization is the HMAC token and the tenant segment of the key. `backend/src/tests/routes/routeGuards.a02.test.js` asserts this explicitly — the case is `"does not gate GET /object as a settings route"`.
 
-**`GET /usage` is `auth` only.** Any authenticated member of the tenant can read the tenant's stored bytes and object count. That is a deliberate scope-of-the-fix line, not an oversight — A-02 named the four settings routes — but it is worth knowing before you cite this route as gated. Note also that the A-02 suite's `"leaves no route on auth alone"` sweep is written for webhooks and custom domains; the storage block asserts the four settings routes individually, so adding an ungated storage route would not fail that suite.
+**`GET /usage` is tenant-admin gated** (`storage.route.js`: `router.get("/usage", ...storageAdmin, …)`), the same gate as the four settings routes — it reports the tenant's stored bytes and object count. This document said `auth` only until 2026-09-24 (S-24); the code was stricter than the document. The A-02 suite pins it: `"leaves no route but /object on auth alone"` in `backend/src/tests/routes/routeGuards.a02.test.js` enumerates the storage router's stack and fails on any route without a role gate other than `GET /object`, so a newly added ungated storage route fails the suite.
 
 ### What a tenant may configure
 
@@ -222,7 +233,7 @@ It copies a legacy on-disk attachment — `<storage root>/<attachment.folder>/<a
 | Property | How |
 |---|---|
 | Resumable | a row that already has a `storageKey` returns `skipped` |
-| Verified | the SHA-256 of the object **read back from storage** must equal `attachment.checksum`, or the partial copy is deleted and the row fails |
+| Verified | the SHA-256 of the object **read back from storage** must equal `attachment.checksum` — or, for a row with no checksum, the source file's own hash taken before the copy — or the partial copy is deleted and the row fails. A source that no longer matches its recorded checksum is refused **before** copying |
 | Non-destructive | the legacy file is left in place; reclaiming disk is a separate, deliberate step |
 | Dry-run | `--dry-run` reports `would-migrate` and writes nothing |
 | Batch-safe | one failing row is recorded as `failed` and the run continues |
@@ -232,7 +243,7 @@ Per-row outcomes are `migrated`, `skipped`, `missing-source`, `would-migrate` an
 Two things to know before running it:
 
 - **It runs cross-tenant by design.** There is no AsyncLocalStorage context in a CLI process, so `resolveScope()` returns `skip` and the global tenant hooks add no predicate — `Attachment.findAll({ where: { storageKey: null } })` really does see every tenant. `--tenant` is the only thing that narrows it. The per-row copy is still tenant-correct, because `getTenantStorage(attachment.tenantId)` binds the key to the row's own tenant.
-- **A checksum-less row is copied but not verified.** The comparison is `if (attachment.checksum && readBack !== attachment.checksum)`, so a row with a null checksum passes and reports `verified: false`. Read the flag; do not read `migrated` as "byte-verified".
+- **A checksum-less row is verified against its source file (A-40, fixed 2026-09-24).** It used to be copied unverified and reported `migrated`, `verified: false`. Every `migrated` row is now `verified: true`, with `verifiedAgainst: "recorded-checksum"` or `"source-file"` — the latter proves the copy matches the file as it is on disk now, not that the file is what was uploaded.
 
 `attachment.save({ hooks: false })` skips the model hooks when writing the key back, which also means it does not re-stamp or re-check the tenant. The key was built from the row's own `tenantId`, so it is consistent — but it is a hook bypass, and it is here because the tool runs outside a request.
 
@@ -251,7 +262,7 @@ module.exports = (...paths) => path.join(storageRoot, ...paths);
 
 Unpackaged, the root is the `backend/` directory. Packaged (a Bun single-file binary — `utils/packaged.util.js`), `__dirname` is meaningless, so the root moves next to the executable or to `APP_STORAGE_PATH`.
 
-It resolves **filesystem** paths, not storage **keys**. It is used by the legacy attachment path, by `backend/index.js` for the `.well-known` and `uploads` static mounts, by `getGlobalConfig()` for the `local` provider's default root, and by the migration tool to find the source file. It has no knowledge of tenants and performs no isolation check — the traversal guard in `storageMigration.legacyPath()` and in `attachment.service.resolveAbsPath()` is written at each call site, which is why both of them re-derive the root and compare prefixes.
+It resolves **filesystem** paths, not storage **keys**. It is used by the legacy attachment path, by `backend/index.js` for the `.well-known` and `uploads/public` static mounts, by `getGlobalConfig()` for the `local` provider's default root, and by the migration tool to find the source file. It has no knowledge of tenants and performs no isolation check — the traversal guard in `storageMigration.legacyPath()` and in `attachment.service.resolveAbsPath()` is written at each call site, which is why both of them re-derive the root and compare prefixes.
 
 ## Traps
 
@@ -261,8 +272,8 @@ It resolves **filesystem** paths, not storage **keys**. It is used by the legacy
 | Passing a tenant config through to `S3Driver` with `endpointTrusted` | the SSRF guard is skipped on an attacker-chosen endpoint |
 | Building a key by string concatenation | it still passes `assertKeyForTenant`, or it throws — but a key built outside `buildKey()` can miss the domain allowlist |
 | Calling `getTenantStorage()` with no tenant | 500, not a fallback to global. Use `getGlobalStorage()` |
-| Expecting a settings change to apply immediately across replicas | `invalidate()` clears the cache in **one** process |
-| Reading `migrated` as verified | a row with no `checksum` is copied unverified; check `verified` |
+| Expecting a settings change to apply across replicas when Redis is down | the generation cannot be shared; other replicas converge within `STORAGE_DRIVER_CACHE_TTL_SEC` (default 60s) |
+| Reading `verifiedAgainst: "source-file"` as proof of the original upload | it proves the copy matches today's file, which had no recorded checksum to compare with |
 | Treating `attachment.storageKey` as the serving path | nothing in the request path reads it yet |
 
 ## Tests

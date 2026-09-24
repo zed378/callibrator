@@ -4,7 +4,7 @@ import {
   ApproveCertificateInput,
   Calibration,
   CalibrationCreateInput,
-  CalibrationUpdateInput,
+  CalibrationCorrectionInput,
   Certificate,
   CertificateCreateInput,
   CertificateUpdateInput,
@@ -13,7 +13,7 @@ import {
 } from "@/api/services/calibration.service";
 import { PaginatedResponse } from "@/types";
 
-interface CertificateStats {
+export interface CertificateStats {
   totalCertificates: number;
   byStatus: Record<string, number>;
   byType: Record<string, number>;
@@ -40,8 +40,8 @@ interface CalibrationState {
   ) => Promise<void>;
   fetchCalibrationById: (id: string) => Promise<void>;
   createCalibration: (data: CalibrationCreateInput) => Promise<Calibration>;
-  updateCalibration: (data: CalibrationUpdateInput) => Promise<Calibration>;
-  deleteCalibration: (id: string) => Promise<void>;
+  correctCalibration: (data: CalibrationCorrectionInput) => Promise<Calibration>;
+  voidCalibration: (id: string, reason: string) => Promise<void>;
 
   // Certificate actions
   fetchCertificates: (
@@ -129,28 +129,29 @@ export const useCalibrationStore = create<CalibrationState>()((set) => ({
     }
   },
 
-  updateCalibration: async (data: CalibrationUpdateInput) => {
+  // P6-03: a correction is a new record; `currentCalibration` becomes it.
+  correctCalibration: async (data: CalibrationCorrectionInput) => {
     set({ isLoading: true, error: null });
     try {
-      const record = await calibrationService.update(data);
+      const record = await calibrationService.correct(data);
       set({ currentCalibration: record, isLoading: false });
       return record;
     } catch (err: unknown) {
       const message =
-        err instanceof Error ? err.message : "Failed to update calibration record";
+        err instanceof Error ? err.message : "Failed to correct calibration record";
       set({ isLoading: false, error: message });
       throw err;
     }
   },
 
-  deleteCalibration: async (id: string) => {
+  voidCalibration: async (id: string, reason: string) => {
     set({ isLoading: true, error: null });
     try {
-      await calibrationService.delete(id);
+      await calibrationService.void(id, reason);
       set({ isLoading: false });
     } catch (err: unknown) {
       const message =
-        err instanceof Error ? err.message : "Failed to delete calibration record";
+        err instanceof Error ? err.message : "Failed to void calibration record";
       set({ isLoading: false, error: message });
       throw err;
     }

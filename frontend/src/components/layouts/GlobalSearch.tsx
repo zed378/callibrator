@@ -10,6 +10,9 @@ import {
   SearchResult,
   SearchResponse,
 } from "@/api/services/search.service";
+import { describeApiError } from "@/api/client";
+import { useMenuStore } from "@/stores/menuStore";
+import { menuHasAnyPath, SEARCHABLE_MENU_PATHS } from "@/lib/menuAccess";
 
 const TYPE_CONFIG: Record<
   SearchResult["type"],
@@ -54,9 +57,14 @@ const getSecondaryText = (result: SearchResult): string => {
   }
 };
 
-export const GlobalSearch: React.FC<{ className?: string }> = ({
-  className = "",
-}) => {
+/**
+ * The search box itself. `onForbidden` is called when the backend refuses the
+ * search with 403 (F-10) — the caller removes the box.
+ */
+export const GlobalSearchBox: React.FC<{
+  className?: string;
+  onForbidden?: () => void;
+}> = ({ className = "", onForbidden }) => {
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -79,6 +87,11 @@ export const GlobalSearch: React.FC<{ className?: string }> = ({
         setIsOpen(true);
       }
     } catch (err) {
+      if (describeApiError(err).status === 403 && onForbidden) {
+        // F-10: not a failure to show — this principal may not search at all.
+        onForbidden();
+        return;
+      }
       if (requestId === requestIdRef.current) {
         setResponse(null);
         // A-56: a failed search is shown as a failure, never as "no results".
@@ -90,7 +103,7 @@ export const GlobalSearch: React.FC<{ className?: string }> = ({
         setIsLoading(false);
       }
     }
-  }, []);
+  }, [onForbidden]);
 
   // A-22. Clearing the results used to happen inside the debounce effect —
   // a synchronous setState in an effect body, which renders twice for one
@@ -250,6 +263,25 @@ export const GlobalSearch: React.FC<{ className?: string }> = ({
       )}
     </div>
   );
+};
+
+/**
+ * F-10: the search box, only for a principal who can search. It renders when
+ * the server-resolved menu contains at least one searchable menu
+ * (lib/menuAccess.ts) and the backend has not refused a search this session —
+ * an unauthorised surface is absent (docs/FRONTEND/00-FRONTEND-STANDARDS.md),
+ * and no request is sent.
+ */
+export const GlobalSearch: React.FC<{ className?: string }> = ({
+  className,
+}) => {
+  const menuGroups = useMenuStore((s) => s.menuGroups);
+  const searchRefused = useMenuStore((s) => s.searchRefused);
+  const refuseSearch = useMenuStore((s) => s.refuseSearch);
+  if (searchRefused || !menuHasAnyPath(menuGroups, SEARCHABLE_MENU_PATHS)) {
+    return null;
+  }
+  return <GlobalSearchBox className={className} onForbidden={refuseSearch} />;
 };
 
 export default GlobalSearch;

@@ -238,25 +238,15 @@ export const authService = {
   },
 
   /**
-   * Rotate access/refresh tokens.
-   * Backend route: POST /api/v1/auth/refresh
-   * The Next proxy re-sets httpOnly cookies when the response
-   * contains a rotated token/session, so callers usually only
-   * need to know whether the refresh succeeded.
+   * F-05: renew the session. POST /api/v1/auth/refresh is the NEXT route
+   * (app/api/v1/auth/refresh/route.ts), not the backend's: it reads the
+   * httpOnly refresh cookie, rotates it with the backend and rewrites the
+   * session cookies. The browser never sees a token, so this takes no
+   * argument and returns nothing — it rejects when the session is over.
+   * The API client calls the same route itself on a 401; this is for a caller
+   * that wants to renew ahead of time.
    */
-  refresh: async (
-    refreshToken: string,
-    sessionId?: string,
-  ): Promise<{ token?: string; refreshToken?: string }> => {
-    const response = await api.post<{
-      success: boolean;
-      data?: { token?: string; refreshToken?: string };
-      token?: string;
-      refreshToken?: string;
-    }>("/api/v1/auth/refresh", { refreshToken, sessionId });
-    return response.data ?? {
-      token: response.token,
-      refreshToken: response.refreshToken,
-    };
+  refresh: async (): Promise<void> => {
+    await api.post("/api/v1/auth/refresh", {});
   },
 };

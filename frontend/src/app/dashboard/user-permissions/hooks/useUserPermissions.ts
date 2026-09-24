@@ -1,4 +1,5 @@
 // src/app/dashboard/user-permissions/hooks/useUserPermissions.ts
+import { deferEffect } from "@/lib/deferEffect";
 import { useCallback, useEffect, useState } from "react";
 import {
   userPermissionService,
@@ -32,25 +33,39 @@ export function useUserPermissions() {
   const [isRoleSaving, setIsRoleSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Load users (searchable) + available roles
+  // Available roles: loaded once. Not a super admin: nothing loads, and
+  // `isUsersLoading` is derived false on return rather than set here
+  // (react-hooks/set-state-in-effect).
   useEffect(() => {
-    if (!isSuperAdmin) {
-      setIsUsersLoading(false);
-      return;
-    }
+    if (!isSuperAdmin) return;
     let cancelled = false;
     (async () => {
+      try {
+        const rolesRes = await menuGroupRoleService.getAvailableRoles();
+        if (!cancelled) setRoles(rolesRes);
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to load roles");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isSuperAdmin]);
+
+  // Users, re-searched as the search term changes.
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+    let cancelled = false;
+    (async () => {
+      await Promise.resolve();
+      if (cancelled) return;
       setIsUsersLoading(true);
       try {
-        const [usersRes, rolesRes] = await Promise.all([
-          userService.getAll(1, 50, search || undefined),
-          roles.length === 0
-            ? menuGroupRoleService.getAvailableRoles()
-            : Promise.resolve(roles),
-        ]);
+        const usersRes = await userService.getAll(1, 50, search || undefined);
         if (cancelled) return;
         setUsers(usersRes.data);
-        setRoles(rolesRes);
         setSelectedUserId((prev) => prev || usersRes.data[0]?.id || "");
       } catch (err) {
         if (!cancelled) {
@@ -63,7 +78,6 @@ export function useUserPermissions() {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSuperAdmin, search]);
 
   const loadPermissions = useCallback(async (userId: string) => {
@@ -82,8 +96,8 @@ export function useUserPermissions() {
   }, []);
 
   useEffect(() => {
-    if (selectedUserId) loadPermissions(selectedUserId);
-    else setData(null);
+    if (!selectedUserId) return;
+    return deferEffect(() => loadPermissions(selectedUserId));
   }, [selectedUserId, loadPermissions]);
 
   /** Set a custom override, or null to restore role inheritance. */
@@ -153,8 +167,8 @@ export function useUserPermissions() {
     selectedUserId,
     setSelectedUserId,
     roles,
-    data,
-    isUsersLoading,
+    data: selectedUserId ? data : null,
+    isUsersLoading: isSuperAdmin && isUsersLoading,
     isDataLoading,
     savingMenuId,
     isRoleSaving,

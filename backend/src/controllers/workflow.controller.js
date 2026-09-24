@@ -1,6 +1,7 @@
 const workflowService = require("../services/workflow.service");
 const { success } = require("../utils/response.util");
 const { asyncHandler } = require("../utils/controllerWrapper.util");
+const { auditActor } = require("../utils/auditActor.util");
 
 // NOTE: this controller previously imported `successResponse`, which
 // response.util.js does not export — every handler threw
@@ -26,7 +27,8 @@ exports.getWorkflowById = asyncHandler(async (req, res) => {
 });
 
 exports.createWorkflow = asyncHandler(async (req, res) => {
-  const workflow = await workflowService.createWorkflow(req.tenantId, req.body);
+  // A-204 — definition changes are audited; the actor is the caller.
+  const workflow = await workflowService.createWorkflow(req.tenantId, req.body, auditActor(req));
   success(res, workflow, null, "Workflow created successfully", 201);
 });
 
@@ -35,12 +37,13 @@ exports.updateWorkflow = asyncHandler(async (req, res) => {
     req.tenantId,
     req.params.id,
     req.body,
+    auditActor(req),
   );
   success(res, workflow, null, "Workflow updated successfully");
 });
 
 exports.deleteWorkflow = asyncHandler(async (req, res) => {
-  await workflowService.deleteWorkflow(req.tenantId, req.params.id);
+  await workflowService.deleteWorkflow(req.tenantId, req.params.id, auditActor(req));
   success(res, null, null, "Workflow deleted successfully");
 });
 
@@ -51,11 +54,13 @@ exports.getPendingTasks = asyncHandler(async (req, res) => {
 });
 
 exports.submitAction = asyncHandler(async (req, res) => {
+  // A-182 — the Part 11 context of a certificate approval comes from the
+  // connection, never the body (A-65).
   const result = await workflowService.submitAction(
     req.tenantId,
     req.params.instanceId,
     req.user,
-    req.body,
+    { ...req.body, ipAddress: req.ip, userAgent: req.headers["user-agent"] },
   );
   success(res, { status: result.status }, null, result.message);
 });

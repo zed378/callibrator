@@ -85,6 +85,7 @@ describe("tenantHierarchy Controller", () => {
       expect(tenantHierarchyService.createSubOrganization).toHaveBeenCalledWith(
         TENANT_ID,
         { name: "Branch A" },
+        expect.objectContaining({ userId: expect.any(String) }), // A-187: the audit actor
       );
       expect(success).toHaveBeenCalled();
     });
@@ -321,6 +322,7 @@ describe("tenantHierarchy Controller", () => {
       expect(tenantHierarchyService.createSubOrganization).toHaveBeenCalledWith(
         TENANT_ID,
         { name: "New Branch", plan: "free" },
+        expect.objectContaining({ userId: expect.any(String) }), // A-187: the audit actor
       );
       // 201 must be the status code, not the meta argument.
       expect(success).toHaveBeenCalledWith(
@@ -345,6 +347,7 @@ describe("tenantHierarchy Controller", () => {
       expect(tenantHierarchyService.createSubOrganization).toHaveBeenCalledWith(
         TENANT_ID,
         { name: "New Branch", plan: "business" },
+        expect.objectContaining({ userId: expect.any(String) }), // A-187: the audit actor
       );
     });
 

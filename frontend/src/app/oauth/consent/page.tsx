@@ -1,6 +1,7 @@
 // src/app/oauth/consent/page.tsx
 "use client";
 
+import { deferEffect } from "@/lib/deferEffect";
 import React, { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ShieldCheck, Check, X } from "lucide-react";
@@ -39,9 +40,7 @@ function ConsentScreen() {
     }
   }, [requestId]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useEffect(() => deferEffect(load), [load]);
 
   const decide = async (approve: boolean) => {
     setDeciding(true);

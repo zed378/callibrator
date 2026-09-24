@@ -34,6 +34,11 @@ exports.createStockSchema = Joi.object({
   description: Joi.string().trim().allow(null, ""),
 });
 
+// P6-09: `quantity` is accepted here ONLY so an edit form that echoes the
+// current value keeps working; stock.service refuses any value that differs
+// from the stored one and points at the adjustment endpoint. A quantity
+// changes through an adjustment, a transfer or an opname — each names a
+// reason and an actor.
 exports.updateStockSchema = Joi.object({
   itemName: Joi.string().trim().min(2).max(255),
   sku: Joi.string().trim().max(100).allow(null, ""),
@@ -69,7 +74,9 @@ exports.createAdjustmentSchema = Joi.object({
   stockId: Joi.string().uuid().required(),
   type: Joi.string().valid("addition", "subtraction", "write_off").required(),
   quantity: Joi.number().integer().min(1).required(),
-  reason: Joi.string().trim().max(255).allow(null, ""),
+  // P6-09: required and never blank — trim() runs before min(), so "   " is
+  // refused rather than stored as a reason that says nothing.
+  reason: Joi.string().trim().min(3).max(255).required(),
 });
 
 // ==========================================

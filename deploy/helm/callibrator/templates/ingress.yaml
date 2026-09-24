@@ -86,11 +86,15 @@ spec:
                   number: {{ .Values.backend.service.port }}
 
           # ----------------------------------------------------------------
-          # Uploads. The backend sets X-Content-Type-Options: nosniff and
-          # Content-Disposition: inline on every response — the ingress must
-          # not strip or override them.
+          # Uploads — ONLY the public class (S-01, ADR-042 step 3): avatars,
+          # tenant logos, CMS images. The backend sets a pinned image
+          # Content-Type, nosniff, Content-Disposition: inline and a sandbox
+          # CSP — the ingress must not strip or override them. Certificates
+          # and attachments are NOT under this prefix any more (they are
+          # served through gated /api/v1 routes); do not widen it to /uploads.
+          # Other /uploads paths fall through to the frontend, which 404s.
           # ----------------------------------------------------------------
-          - path: /uploads
+          - path: /uploads/public
             pathType: Prefix
             backend:
               service:

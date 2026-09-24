@@ -6,13 +6,20 @@ const { Op } = require("sequelize");
 
 class PredictiveMaintenanceService {
   /**
-   * Analyze IoT data for a specific calibration device and generate a 
+   * Analyze IoT data for a specific calibration device and generate a
    * recommendation for its calibration interval.
-   * 
-   * @param {string} tenantId 
-   * @param {string} deviceId 
+   *
+   * A-190 — the recommendation it stores (the value approveRecommendation
+   * later applies, A-145), the tenant notification and ONE audit row now
+   * commit together. Before, both writes autocommitted unattributed: who
+   * proposed a change to a device's calibration programme was not recorded.
+   * The outcomes that write nothing ("skipped", "unchanged") record nothing.
+   *
+   * @param {string} tenantId
+   * @param {string} deviceId
+   * @param {object} [actor] - auditActor(req)
    */
-  async analyzeDevice(tenantId, deviceId) {
+  async analyzeDevice(tenantId, deviceId, actor = {}) {
     const device = await CalibrationDevice.findOne({
       where: { id: deviceId, tenantId, iotEnabled: true },
     });
@@ -73,18 +80,52 @@ class PredictiveMaintenanceService {
       return { status: "unchanged", reason: "Current calibration interval is optimal based on recent readings." };
     }
 
-    // Save the recommendation to the device
-    await device.update({
-      recommendedCalibrationInterval: newInterval,
-      recommendationReason: reason
-    });
+    const before = {
+      recommendedCalibrationInterval: device.recommendedCalibrationInterval ?? null,
+      recommendationReason: device.recommendationReason ?? null,
+    };
 
-    // Notify the tenant
-    await Notification.create({
-      tenantId,
-      title: `Predictive Maintenance Recommendation: ${device.name}`,
-      message: `We analyzed the IoT telemetry for ${device.name}. ${reason}`,
-      type: "MAINTENANCE"
+    await sequelize.transaction(async (transaction) => {
+      // Save the recommendation to the device
+      await device.update(
+        { recommendedCalibrationInterval: newInterval, recommendationReason: reason },
+        { transaction },
+      );
+
+      // Notify the tenant
+      await Notification.create(
+        {
+          tenantId,
+          title: `Predictive Maintenance Recommendation: ${device.name}`,
+          message: `We analyzed the IoT telemetry for ${device.name}. ${reason}`,
+          type: "MAINTENANCE",
+        },
+        { transaction },
+      );
+
+      await auditService.logAction(
+        {
+          tenantId,
+          userId: actor.userId,
+          action: "UPDATE",
+          resourceType: "CalibrationDevice",
+          resourceId: device.id,
+          changes: {
+            operation: "RECOMMEND_INTERVAL",
+            before,
+            after: {
+              recommendedCalibrationInterval: newInterval,
+              recommendationReason: reason,
+              calibrationIntervalDays: device.calibrationIntervalDays,
+              anomalyRate,
+              totalReadings,
+            },
+          },
+          ipAddress: actor.ipAddress,
+          userAgent: actor.userAgent,
+        },
+        { transaction },
+      );
     });
 
     logger.info(`Generated predictive maintenance recommendation for device ${deviceId}`, { newInterval, reason });

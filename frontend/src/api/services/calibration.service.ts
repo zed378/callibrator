@@ -42,8 +42,14 @@ export interface CalibrationCreateInput {
   notes?: string;
 }
 
-export interface CalibrationUpdateInput extends Partial<CalibrationCreateInput> {
+/**
+ * P6-03 — a calibration record is append-only. A correction writes a NEW
+ * record that supersedes `id`; fields omitted are carried over from it.
+ * `reason` is required (the backend refuses a blank one).
+ */
+export interface CalibrationCorrectionInput extends Partial<CalibrationCreateInput> {
   id: string;
+  reason: string;
 }
 
 export interface Certificate {
@@ -290,17 +296,20 @@ export const calibrationService = {
     return response.data;
   },
 
-  update: async (data: CalibrationUpdateInput): Promise<Calibration> => {
+  // P6-03 — there is no update and no delete: the backend has no PUT or
+  // DELETE for a calibration record. Returns the NEW, superseding record.
+  correct: async (data: CalibrationCorrectionInput): Promise<Calibration> => {
     const { id, ...rest } = data;
-    const response = await api.put<BackendCalibrationResponse>(
-      `/api/v1/calibration-records/${id}`,
+    const response = await api.post<BackendCalibrationResponse>(
+      `/api/v1/calibration-records/${id}/corrections`,
       rest,
     );
     return response.data;
   },
 
-  delete: async (id: string): Promise<void> => {
-    await api.delete(`/api/v1/calibration-records/${id}`);
+  // A void is final: the record is kept, hidden, with the reason.
+  void: async (id: string, reason: string): Promise<void> => {
+    await api.post(`/api/v1/calibration-records/${id}/void`, { reason });
   },
 
   // ==========================================

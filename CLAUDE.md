@@ -105,7 +105,7 @@ Every one of these has caused a production defect here. They are structural, not
 | A **global** uniqueness constraint | a cross-tenant existence oracle |
 | Suspending the **default tenant** in a test | 403s every later request; recovery is a direct database update |
 
-The first one is the most repeated defect shape in this codebase. It has hit certificates and risks, and it is latent on `maintenance_work_orders`.
+The first one is the most repeated defect shape in this codebase. It has hit certificates and risks. `maintenance_work_orders` was long listed here as latent; it is not — every include there carries `required: false`, pinned by `maintenance.includes.a190.test.js` (A-227, 2026-09-25).
 
 ## The Response Envelope
 

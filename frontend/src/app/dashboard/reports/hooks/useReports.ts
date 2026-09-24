@@ -1,4 +1,5 @@
 // src/app/dashboard/reports/hooks/useReports.ts
+import { deferEffect } from "@/lib/deferEffect";
 import { useCallback, useEffect, useState } from "react";
 import { useToastStore } from "@/stores/toastStore";
 import {
@@ -82,10 +83,12 @@ export function useReports() {
     [appliedRange],
   );
 
-  useEffect(() => {
-    fetchForTab(activeTab);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab]);
+  // Refetches when the tab changes, and when an applied compliance range
+  // changes fetchForTab's identity.
+  useEffect(
+    () => deferEffect(() => fetchForTab(activeTab)),
+    [activeTab, fetchForTab],
+  );
 
   const handleTabChange = (tab: ReportsTab) => {
     setActiveTab(tab);
@@ -94,8 +97,8 @@ export function useReports() {
 
   const handleApplyComplianceRange = () => {
     const range = { from: complianceFrom, to: complianceTo };
+    // The effect above refetches with it: fetchForTab depends on appliedRange.
     setAppliedRange(range);
-    fetchForTab("compliance", range);
   };
 
   const runExport = async (

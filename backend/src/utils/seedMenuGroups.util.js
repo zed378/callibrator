@@ -781,6 +781,7 @@ async function seedRoleMenuPermissions() {
         "users",
         "vendors",
         "billing",
+        "audit", // Q-20
         "calibration",
         "certificate",
         "maintenance",
@@ -827,6 +828,8 @@ async function seedRoleMenuPermissions() {
         "roles",
         "users",
         "vendors",
+        "billing", // Q-20
+        "audit", // Q-20
         "calibration",
         "certificate",
         "maintenance",

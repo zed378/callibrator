@@ -9,6 +9,8 @@ const express = require("express");
 const router = express.Router();
 const scimController = require("../../controllers/scim.controller");
 const { auth } = require("../../middlewares/auth.middleware");
+const { scopeAllows } = require("../../services/apiKey.service");
+const { MENU_SLUGS } = require("../../constants/roleConstants");
 
 // SCIM typically authenticates using a Bearer token (API Key).
 // Our tryApiKeyAuth handles "Authorization: ApiKey <key>".
@@ -35,14 +37,26 @@ router.use(auth);
 
 // We should also verify that the authenticated user is a service account/API key
 // or has super admin privileges, not just a random user.
+// A-250: an API key is a SCIM service account only when it carries the `scim`
+// scope — `scim:read` for GET, `scim:write` for everything else. Before this,
+// ANY key passed (A-27 fact 3): a key a tenant admin minted as `stock:read`
+// for an integration could provision users and rewrite group membership.
+const SCIM_READ_METHODS = new Set(["GET", "HEAD"]);
+const keyMayUseScim = (req) =>
+  scopeAllows(
+    req.user.apiKeyScopes,
+    MENU_SLUGS.SCIM,
+    SCIM_READ_METHODS.has(req.method) ? "read" : "write",
+  );
+
 const requireApiKeyOrAdmin = (req, res, next) => {
-  if (req.user?.isApiKey || req.user?.role?.name === "SUPER_ADMIN" || req.user?.role?.name === "SUPERADMIN") {
+  if ((req.user?.isApiKey && keyMayUseScim(req)) || req.user?.role?.name === "SUPER_ADMIN" || req.user?.role?.name === "SUPERADMIN") {
     // A-03: SCIM is one of the few endpoints meant for a service account. It
     // authorizes the key here rather than by scope, so it opts in explicitly.
     req.apiKeyAuthorized = true;
     return next();
   }
-  return res.status(403).json({ schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"], detail: "SCIM endpoints require an API Key", status: "403" });
+  return res.status(403).json({ schemas: ["urn:ietf:params:scim:api:messages:2.0:Error"], detail: "SCIM endpoints require an API key scoped scim:read (GET) or scim:write", status: "403" });
 };
 
 router.use(requireApiKeyOrAdmin);

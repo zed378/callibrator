@@ -1,4 +1,5 @@
 // src/app/dashboard/api-keys/hooks/useApiKeys.ts
+import { deferEffect } from "@/lib/deferEffect";
 import { useCallback, useEffect, useState } from "react";
 import { useToastStore } from "@/stores/toastStore";
 import {
@@ -61,9 +62,7 @@ export function useApiKeys() {
     }
   }, [currentPage, pageSize]);
 
-  useEffect(() => {
-    fetchApiKeys();
-  }, [fetchApiKeys]);
+  useEffect(() => deferEffect(fetchApiKeys), [fetchApiKeys]);
 
   const openCreateModal = () => {
     setForm(emptyForm);

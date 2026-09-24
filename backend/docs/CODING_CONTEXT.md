@@ -130,7 +130,7 @@ backend/
 │       ├── tablePermission.validator.js
 │       └── user.validator.js
 ├── .env                          # Environment variables
-├── local.env                     # Local development env
+├── .env.example                  # Local development env template (S-25)
 ├── docker-compose.yaml           # Docker services
 ├── Dockerfile                    # Container definition
 ├── jest.config.js                # Test configuration

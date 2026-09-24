@@ -41,13 +41,23 @@ export function useSsoSettings(tenant: Tenant | null, onClose: () => void) {
         }
       };
       loadSettings();
-      setSaveSuccess(false);
-      setXmlSuccess(false);
-      setXmlError(null);
-      setXmlContent("");
-      setActiveTab("config");
     }
   }, [tenant, fetchTenantSettings]);
+
+  // A different tenant resets the dialog's transient state. Adjusted during
+  // render (React's "reset state when a prop changes" pattern), not in the
+  // effect above — react-hooks/set-state-in-effect.
+  // Tracks null too, so closing (tenant → null) and reopening the same tenant
+  // resets as well.
+  const [shownTenantId, setShownTenantId] = useState<string | null>(null);
+  if ((tenant?.id ?? null) !== shownTenantId) {
+    setShownTenantId(tenant?.id ?? null);
+    setSaveSuccess(false);
+    setXmlSuccess(false);
+    setXmlError(null);
+    setXmlContent("");
+    setActiveTab("config");
+  }
 
   const hostUrl =
     typeof window !== "undefined"

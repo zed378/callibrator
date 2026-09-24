@@ -24,8 +24,9 @@ const folders = [
 
   // Uploads
   path.join(rootDir, "uploads"),
-  path.join(rootDir, "uploads/tenant"),
-  path.join(rootDir, "uploads/profile"),
+  path.join(rootDir, "uploads/public/tenant"),
+  path.join(rootDir, "uploads/public/profile"),
+  path.join(rootDir, "uploads/public/cms"),
   path.join(rootDir, "uploads/attachments"),
   path.join(rootDir, "uploads/certificates"),
 ];

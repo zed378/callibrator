@@ -50,26 +50,24 @@ export default function Counter({
   const reduced = useReducedMotionSafe();
   const { prefix, target, suffix, decimals, group } = parseValue(value);
   const [display, setDisplay] = useState(() => prefix + fmt(0, decimals, group) + suffix);
+  const final = prefix + fmt(target, decimals, group) + suffix;
 
   useEffect(() => {
-    if (!inView) return;
-    if (reduced) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setDisplay(prefix + fmt(target, decimals, group) + suffix);
-      return;
-    }
+    // Under reduced motion nothing animates: the final value is derived below.
+    if (!inView || reduced) return;
     const controls = animate(0, target, {
       duration,
       ease: [0.16, 1, 0.3, 1],
       onUpdate: (v) => setDisplay(prefix + fmt(v, decimals, group) + suffix),
     });
     return () => controls.stop();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inView, reduced]);
+  }, [inView, reduced, prefix, target, suffix, decimals, group, duration]);
+
+  const shown = inView && reduced ? final : display;
 
   return (
     <span ref={ref} className={className}>
-      {display}
+      {shown}
     </span>
   );
 }

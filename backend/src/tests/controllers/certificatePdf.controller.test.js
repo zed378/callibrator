@@ -122,3 +122,22 @@ describe("certificatePdf Controller", () => {
     });
   });
 });
+describe("certificatePdf Controller — document frame-ancestors (ADR-042 step 4)", () => {
+  const saved = process.env.CORS_ORIGIN;
+  afterEach(() => {
+    if (saved === undefined) {delete process.env.CORS_ORIGIN;}
+    else {process.env.CORS_ORIGIN = saved;}
+  });
+
+  it("is just 'self' when no frontend origin is configured", () => {
+    delete process.env.CORS_ORIGIN;
+    expect(certificatePdfController._documentFrameAncestors()).toBe("'self'");
+  });
+
+  it("admits only well-formed http(s) origins, so CORS_ORIGIN cannot inject a directive", () => {
+    process.env.CORS_ORIGIN = "https://a.test, http://b.test:3000, https://c.test; script-src *, javascript:x";
+    expect(certificatePdfController._documentFrameAncestors()).toBe(
+      "'self' https://a.test http://b.test:3000",
+    );
+  });
+});

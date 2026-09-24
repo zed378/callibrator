@@ -1,6 +1,14 @@
 const express = require("express");
 const router = express.Router();
 const { auth } = require("../../middlewares/auth.middleware");
+const { dynamicAccess } = require("../../middlewares/dynamicAccess.middleware");
+
+// AZ-01 (G-02): every report was `auth` alone, so an API key of any scope and
+// any custom role read the whole reporting surface. Gated on the seeded
+// `reports` menu — the menu that shows the Reports page. The seed grants it
+// (read) to every seeded role, so this changes nothing for them; it makes the
+// grant mean something for custom roles and for API keys (`reports:read`).
+const canReadReports = dynamicAccess("reports", "read");
 const reportingController = require("../../controllers/reporting.controller");
 
 /**
@@ -20,7 +28,7 @@ const reportingController = require("../../controllers/reporting.controller");
  *     responses:
  *       200: { description: Report generated }
  */
-router.get("/summary", auth, reportingController.summary);
+router.get("/summary", auth, canReadReports, reportingController.summary);
 
 /**
  * @swagger
@@ -42,7 +50,7 @@ router.get("/summary", auth, reportingController.summary);
  *     responses:
  *       200: { description: Report generated }
  */
-router.get("/compliance", auth, reportingController.compliance);
+router.get("/compliance", auth, canReadReports, reportingController.compliance);
 
 /**
  * @swagger
@@ -54,7 +62,7 @@ router.get("/compliance", auth, reportingController.compliance);
  *     responses:
  *       200: { description: Report generated }
  */
-router.get("/calibration-workload", auth, reportingController.calibrationWorkload);
+router.get("/calibration-workload", auth, canReadReports, reportingController.calibrationWorkload);
 
 /**
  * @swagger
@@ -70,7 +78,7 @@ router.get("/calibration-workload", auth, reportingController.calibrationWorkloa
  *     responses:
  *       200: { description: Report generated }
  */
-router.get("/overdue-devices", auth, reportingController.overdueDevices);
+router.get("/overdue-devices", auth, canReadReports, reportingController.overdueDevices);
 
 /**
  * @swagger
@@ -86,6 +94,6 @@ router.get("/overdue-devices", auth, reportingController.overdueDevices);
  *     responses:
  *       200: { description: Report generated }
  */
-router.get("/inventory", auth, reportingController.inventory);
+router.get("/inventory", auth, canReadReports, reportingController.inventory);
 
 module.exports = router;

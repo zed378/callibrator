@@ -3,6 +3,14 @@ const { logger } = require("./activityLog.middleware");
 const {
   processExpiredGracePeriods,
 } = require("../services/tenantLifecycle.service");
+const {
+  runMonitored,
+  registerJob,
+  markDisabled,
+  refuseSchedule,
+} = require("../services/jobMonitor.service");
+
+const JOB = "tenant-lifecycle";
 
 const DEFAULT_SCHEDULE = "30 2 * * *"; // daily at 2:30 AM
 
@@ -22,6 +30,7 @@ const initTenantLifecycleScheduler = () => {
 
   if (schedule === "disabled" || schedule === "off") {
     logger.info("Tenant lifecycle scheduler disabled via TENANT_LIFECYCLE_SCHEDULER");
+    markDisabled(JOB, "disabled via TENANT_LIFECYCLE_SCHEDULER");
     return;
   }
 
@@ -29,6 +38,7 @@ const initTenantLifecycleScheduler = () => {
     logger.error(
       `Invalid TENANT_LIFECYCLE_SCHEDULER cron expression "${schedule}"; tenant lifecycle scheduler not started`,
     );
+    refuseSchedule(JOB, "TENANT_LIFECYCLE_SCHEDULER", schedule);
     return;
   }
 
@@ -38,18 +48,29 @@ const initTenantLifecycleScheduler = () => {
       : "Tenant lifecycle scheduler scheduled at 2:30 AM daily",
   );
 
-  cron.schedule(schedule, async () => {
-    logger.info("Running tenant lifecycle processor...");
-    try {
-      const results = await processExpiredGracePeriods();
-      const failed = results.filter((r) => r.action === "failed").length;
-      logger.info(
-        `Tenant lifecycle processor complete: offboarded=${results.length - failed}, failed=${failed}`,
-      );
-    } catch (error) {
-      logger.error(`Error during scheduled tenant lifecycle run: ${error.message}`);
-    }
-  });
+  const task = cron.schedule(schedule, () =>
+    runMonitored(JOB, runLifecycle, {
+      isFailure: (outcome) =>
+        outcome.failed > 0 ? `${outcome.failed} tenant(s) failed to offboard` : null,
+    }),
+  );
+  registerJob(JOB, task, schedule);
+};
+
+/** One scheduled pass: logs its counts, rethrows so the run is a failure. */
+const runLifecycle = async () => {
+  logger.info("Running tenant lifecycle processor...");
+  try {
+    const results = await processExpiredGracePeriods();
+    const failed = results.filter((r) => r.action === "failed").length;
+    logger.info(
+      `Tenant lifecycle processor complete: offboarded=${results.length - failed}, failed=${failed}`,
+    );
+    return { results, failed };
+  } catch (error) {
+    logger.error(`Error during scheduled tenant lifecycle run: ${error.message}`);
+    throw error;
+  }
 };
 
 module.exports = { initTenantLifecycleScheduler };

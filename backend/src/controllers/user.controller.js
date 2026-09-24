@@ -233,7 +233,7 @@ exports.deleteUser = asyncHandler(async (req, res) => {
  */
 const discardUploadedAvatar = async (req) => {
   try {
-    await require("../utils/upload.util").deleteUpload(req.uploadFilename, "uploads/profile");
+    await require("../utils/upload.util").deleteUpload(req.uploadFilename, "uploads/public/profile");
   } catch (deleteErr) {
     require("../middlewares/activityLog.middleware").logger.warn(
       `Failed to delete uploaded avatar after failure: ${req.uploadFilename}`,

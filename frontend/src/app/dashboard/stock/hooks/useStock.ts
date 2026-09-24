@@ -1,4 +1,5 @@
 // src/app/dashboard/stock/hooks/useStock.ts
+import { deferEffect } from "@/lib/deferEffect";
 import { useEffect, useState, useCallback } from "react";
 import { useStockStore } from "@/stores/stockStore";
 import { stockService } from "@/api/services/stock.service";
@@ -102,12 +103,10 @@ export function useStock() {
   }, [fetchWarehouses]);
 
   // Fetch sub-locations if a warehouse filter is chosen
+  // (Clearing the warehouse filter clears the location in
+  // handleWarehouseFilterChange — the only place the warehouse changes.)
   useEffect(() => {
-    if (selectedWarehouseId) {
-      fetchLocations(selectedWarehouseId);
-    } else {
-      setSelectedLocationId("");
-    }
+    if (selectedWarehouseId) fetchLocations(selectedWarehouseId);
   }, [selectedWarehouseId, fetchLocations]);
 
   // Fetch primary data based on active tab & filters
@@ -155,9 +154,7 @@ export function useStock() {
     fetchReportSummary,
   ]);
 
-  useEffect(() => {
-    loadTabData();
-  }, [loadTabData]);
+  useEffect(() => deferEffect(loadTabData), [loadTabData]);
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(e.target.value);
@@ -314,7 +311,9 @@ export function useStock() {
           itemName: stockForm.itemName,
           sku: stockForm.sku || null,
           serialNumber: stockForm.serialNumber || null,
-          quantity: stockForm.quantity,
+          // P6-09: no `quantity`. The backend refuses a quantity change here —
+          // it goes through an adjustment, which records who and why — and a
+          // stale form value would read as one.
           minQuantity: stockForm.minQuantity,
           description: stockForm.description || null,
         });

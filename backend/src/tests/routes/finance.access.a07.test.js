@@ -201,9 +201,12 @@ describe("A-07 — finance routes gate on the seeded `finance` slug", () => {
     const matrix = await RolesService.getRolePermissionsMatrix(ROLE_NAMES.HEALTCARE_ADMIN);
     expect(matrix.finance).toEqual(["read"]);
     expect(matrix["Asset Finance"]).toEqual(["read"]);
-    // What the old gate asked for is in nobody's matrix.
+    // What the old gate asked for is in nobody's matrix. (`Billing` — the
+    // subscription page — is now granted READ by Q-20, and is a different
+    // menu from asset finance: its grant still reaches none of these routes,
+    // as the `billing:*` key test below shows.)
     expect(matrix.Finance).toBeUndefined();
-    expect(matrix.Billing).toBeUndefined();
+    expect(matrix.Billing).toEqual(["read"]);
   });
 
   describe.each([

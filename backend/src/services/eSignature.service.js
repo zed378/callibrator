@@ -14,6 +14,7 @@ const { promisify } = require("util");
 const generateKeyPairAsync = promisify(crypto.generateKeyPair);
 const { logger } = require("../middlewares/activityLog.middleware");
 const { AppError } = require("../utils/appError.util");
+const { Transaction } = require("sequelize");
 const { db } = require("../config");
 const auditService = require("./audit.service");
 const { USER_STATUS } = require("../constants/appConstants");
@@ -33,16 +34,11 @@ const SIGNATURE_KEY_SIZE = parseInt(process.env.SIGNATURE_KEY_SIZE) || 2048;
 const REQUIRE_REAUTHENTICATION = true;
 const SIGNATURE_TTL_MS = parseInt(process.env.SIGNATURE_TTL_MS) || 300000; // 5 min
 
-// AES-256 key for encrypting signer private keys at rest. Required — no
-// hardcoded default. Derived via SHA-256 so any sufficiently-random secret
-// yields a valid 32-byte key.
-const ENCRYPT_KEY_RAW = process.env.ENCRYPT_KEY;
-/* istanbul ignore next -- fail-fast startup guard: private keys must never be
-   encrypted under a default key baked into source. */
-if (!ENCRYPT_KEY_RAW) {
-  throw new Error("ENCRYPT_KEY is required (no insecure default)");
-}
-const ENCRYPT_KEY = crypto.createHash("sha256").update(ENCRYPT_KEY_RAW).digest();
+// P6-10 / S-08 — signer private keys at rest are a KMS envelope (AES-256-GCM,
+// tenant id as AAD, the master key named by id so it rotates). The old
+// AES-CBC-under-ENCRYPT_KEY form is still read, never written; see
+// services/signingKeyWrap.service.js and migration 0058.
+const { wrapPrivateKey, unwrapPrivateKey } = require("./signingKeyWrap.service");
 
 // ==========================================
 // SIGNATURE SCHEME
@@ -251,7 +247,7 @@ exports.generateKeyPair = async (tenantId) => {
       keyType: "esignature",
       algorithm: SIGNATURE_ALGORITHM,
       publicKey,
-      privateKey: encryptPrivateKey(privateKey),
+      privateKey: wrapPrivateKey(tenantId, privateKey),
       createdAt: new Date(),
     });
 
@@ -272,32 +268,6 @@ exports.generateKeyPair = async (tenantId) => {
   }
 };
 
-/**
- * Encrypt private key for storage
- */
-function encryptPrivateKey(privateKey) {
-  const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv("aes-256-cbc", ENCRYPT_KEY, iv);
-
-  let encrypted = cipher.update(privateKey, "utf8", "hex");
-  encrypted += cipher.final("hex");
-
-  return `${iv.toString("hex")}:${encrypted}`;
-}
-
-/**
- * Decrypt private key for use. Called by loadSigningKey() on every signature.
- */
-function decryptPrivateKey(encryptedKey) {
-  const [ivHex, encrypted] = encryptedKey.split(":");
-  const iv = Buffer.from(ivHex, "hex");
-  const decipher = crypto.createDecipheriv("aes-256-cbc", ENCRYPT_KEY, iv);
-
-  let decrypted = decipher.update(encrypted, "hex", "utf8");
-  decrypted += decipher.final("utf8");
-
-  return decrypted;
-}
 
 /**
  * Load the tenant's current e-signature signing key and return its decrypted
@@ -328,7 +298,7 @@ async function loadSigningKey(tenantId) {
 
   let privateKeyPem;
   try {
-    privateKeyPem = decryptPrivateKey(key.privateKey);
+    privateKeyPem = unwrapPrivateKey(tenantId, key.privateKey);
   } catch (err) {
     logger.error("Signing key could not be decrypted", {
       tenantId,
@@ -337,7 +307,8 @@ async function loadSigningKey(tenantId) {
     });
     throw new AppError(
       500,
-      "The tenant signing key could not be decrypted (wrong ENCRYPT_KEY?)",
+      "The tenant signing key could not be decrypted (wrong KMS_MASTER_KEY, or ENCRYPT_KEY for a key " +
+        "stored before migration 0058?)",
     );
   }
 
@@ -749,115 +720,135 @@ exports.signDocument = async (stepId, userId, signatureData) => {
       SignatureRecord,
     } = require("../models");
 
-    // Get step
-    const step = await SignatureWorkflowStep.findByPk(stepId);
-    if (!step) {
-      throw new AppError(404, "Signature step not found");
-    }
+    // A-184 — every check that decides whether this signature may be made
+    // runs INSIDE the signing transaction, on rows locked FOR UPDATE: the
+    // step's status, the workflow's status and its expiry. They used to be
+    // read before the transaction with no lock, so a cancellation (or a
+    // second signature of the same step) committing between the read and the
+    // signature was signed over — the e-signature form of A-167.
+    //
+    // Lock order: the workflow, then the step. Every workflow mutation
+    // (cancel, update, delete — findWorkflowForMutation) locks the workflow
+    // first, so signing cannot deadlock against them, and two signatures in
+    // one workflow serialise on it.
+    const outcome = await db.transaction(async (transaction) => {
+      const found = await SignatureWorkflowStep.findByPk(stepId, { transaction });
+      if (!found) {
+        throw new AppError(404, "Signature step not found");
+      }
 
-    // A-65 — only the step's own signer may sign it. The step is already
-    // tenant-scoped (another tenant's step is the 404 above), so this is a
-    // permission failure inside the caller's tenant: 403. It is checked before
-    // the step's state, so a non-signer learns nothing about it. A step with
-    // no internal signer (signerId null) cannot be signed by any user.
-    if (!step.signerId || step.signerId !== userId) {
-      throw new AppError(403, "Only the assigned signer can sign this step");
-    }
+      // A-65 — only the step's own signer may sign it. The step is already
+      // tenant-scoped (another tenant's step is the 404 above), so this is a
+      // permission failure inside the caller's tenant: 403. It is checked
+      // before the step's state, so a non-signer learns nothing about it. A
+      // step with no internal signer (signerId null) cannot be signed by any
+      // user. (The signer of a step never changes, so the unlocked read
+      // decides this.)
+      if (!found.signerId || found.signerId !== userId) {
+        throw new AppError(403, "Only the assigned signer can sign this step");
+      }
 
-    // Verify step is pending. A-85: a step in any other state is a state
-    // conflict (409), explained — not a malformed request.
-    if (step.status !== "pending") {
-      throw new AppError(409, explainUnsignableStep(step.status));
-    }
+      // A-85: a step in any other state is a state conflict (409),
+      // explained — not a malformed request. A-159: this IS the turn check: a
+      // later signer's step is "waiting" until the previous one is signed.
+      // Refused here early; decided below, under the lock.
+      if (found.status !== "pending") {
+        throw new AppError(409, explainUnsignableStep(found.status));
+      }
 
-    // A-159 — a second, identical `step.status !== "pending"` check ("not
-    // your turn", 400) used to follow and could never run. The check above IS
-    // the turn check: a later signer's step is "waiting" until the previous
-    // step is signed.
+      const workflow = await SignatureWorkflow.findByPk(found.workflowId, {
+        transaction,
+        lock: Transaction.LOCK.UPDATE,
+      });
+      // Re-read under the workflow's lock, and lock the step itself: a
+      // signature of this step committed since the read above is seen here.
+      const step = await SignatureWorkflowStep.findByPk(stepId, {
+        transaction,
+        lock: Transaction.LOCK.UPDATE,
+      });
+      if (step.status !== "pending") {
+        throw new AppError(409, explainUnsignableStep(step.status));
+      }
 
-    // A-65 — re-authenticate the signer with their own password or MFA code,
-    // exactly as certificate approval does (the same function), BEFORE
-    // anything is signed or persisted.
-    const method = authenticationMethod || "password";
-    const user = await require("../models").User.findByPk(userId);
-    // User.status is UPPERCASE — the model default and USER_STATUS are
-    // "ACTIVE". This compared against "active", which no stored row carries,
-    // so every real signer was refused here with a 401; the unit tests passed
-    // only because their fixtures used the same wrong lowercase value. Signing
-    // a Part 11 record needs an account that is active on both flags, the
-    // rule the SSO sign-in applies (sso.service.js).
-    if (!user || !user.isActive || user.status !== USER_STATUS.ACTIVE) {
-      throw new AppError(401, "Re-authentication required");
-    }
-    // A-126: a wrong credential writes SIGNATURE_AUTH_FAILED about this step.
-    await require("./certificate.service").verifySignerCredentials(userId, method, authPayload, {
-      tenantId: step.tenantId,
-      resourceType: "SignatureWorkflowStep",
-      resourceId: step.id,
-      operation: "sign",
-      ipAddress: signatureData.ipAddress,
-      userAgent: signatureData.userAgent,
-    });
+      if (!workflow) {
+        throw new AppError(404, "Workflow not found");
+      }
+      // A-130 — a cancelled workflow keeps its pending step as it was, so the
+      // step's own status does not stop a signature. Cancellation is final.
+      if (workflow.status === "cancelled" || workflow.status === "expired") {
+        throw new AppError(409, explainClosedWorkflow(workflow.status, "signed"));
+      }
+      // A-159 — expiry. With no scheduler, the first signature attempted
+      // after expiresAt records the expiry (with its audit row) — here, in
+      // this transaction, under the lock — and is then refused (409) once
+      // that record has committed.
+      if (workflow.expiresAt && new Date(workflow.expiresAt).getTime() <= Date.now()) {
+        await expireWorkflow(workflow, userId, signatureData, transaction);
+        return { expired: true, workflow };
+      }
 
-    // Get workflow
-    const workflow = await SignatureWorkflow.findByPk(step.workflowId);
-    if (!workflow) {
-      throw new AppError(404, "Workflow not found");
-    }
-    // A-130 — a cancelled workflow keeps its pending step as it was, so the
-    // step's own status does not stop a signature. Cancellation is final.
-    if (workflow.status === "cancelled" || workflow.status === "expired") {
-      throw new AppError(409, explainClosedWorkflow(workflow.status, "signed"));
-    }
-    // A-159 — expiry. Nothing ever read expiresAt, so a workflow past its
-    // expiry went on collecting signatures, and nothing set "expired". With
-    // no scheduler, the first signature attempted after expiresAt records the
-    // expiry (with its audit row) and is refused with the state explanation.
-    if (workflow.expiresAt && new Date(workflow.expiresAt).getTime() <= Date.now()) {
-      await expireWorkflow(workflow, userId, signatureData);
-      throw new AppError(409, explainClosedWorkflow("expired", "signed"));
-    }
+      // A-65 — re-authenticate the signer with their own password or MFA
+      // code, exactly as certificate approval does (the same function),
+      // BEFORE anything is signed or persisted, and after every state check:
+      // a refused signature consumes no one-time MFA code.
+      const method = authenticationMethod || "password";
+      const user = await require("../models").User.findByPk(userId, { transaction });
+      // User.status is UPPERCASE — the model default and USER_STATUS are
+      // "ACTIVE". This compared against "active", which no stored row
+      // carries, so every real signer was refused here with a 401. Signing a
+      // Part 11 record needs an account that is active on both flags, the
+      // rule the SSO sign-in applies (sso.service.js).
+      if (!user || !user.isActive || user.status !== USER_STATUS.ACTIVE) {
+        throw new AppError(401, "Re-authentication required");
+      }
+      // A-126: a wrong credential writes SIGNATURE_AUTH_FAILED about this
+      // step, in its own transaction (it survives this one's rollback).
+      await require("./certificate.service").verifySignerCredentials(userId, method, authPayload, {
+        tenantId: step.tenantId,
+        resourceType: "SignatureWorkflowStep",
+        resourceId: step.id,
+        operation: "sign",
+        ipAddress: signatureData.ipAddress,
+        userAgent: signatureData.userAgent,
+      });
 
-    // Everything the signature binds is fixed HERE, before anything is signed,
-    // and the same values are what gets persisted. signedAt in particular is
-    // computed once: verification reconstructs the payload from the stored
-    // column, so a second `new Date()` would make every signature unverifiable
-    // (that was the original defect, with Date.now() inside the payload).
-    const signedAt = new Date();
+      // Everything the signature binds is fixed HERE, before anything is
+      // signed, and the same values are what gets persisted. signedAt in
+      // particular is computed once: verification reconstructs the payload
+      // from the stored column, so a second `new Date()` would make every
+      // signature unverifiable (that was the original defect, with Date.now()
+      // inside the payload).
+      const signedAt = new Date();
 
-    const { keyId, privateKeyPem } = await loadSigningKey(step.tenantId);
+      const { keyId, privateKeyPem } = await loadSigningKey(step.tenantId);
 
-    const canonicalPayload = canonicalizeSignaturePayload({
-      scheme: SIGNATURE_SCHEME_V2,
-      algorithm: SIGNATURE_ALGORITHM,
-      tenantId: step.tenantId,
-      documentId: workflow.documentId,
-      workflowId: workflow.id,
-      workflowStepId: step.id,
-      signerUserId: userId,
-      signedAt: canonicalTimestamp(signedAt),
-      authenticationMethod: method,
-      reason,
-    });
+      const canonicalPayload = canonicalizeSignaturePayload({
+        scheme: SIGNATURE_SCHEME_V2,
+        algorithm: SIGNATURE_ALGORITHM,
+        tenantId: step.tenantId,
+        documentId: workflow.documentId,
+        workflowId: workflow.id,
+        workflowStepId: step.id,
+        signerUserId: userId,
+        signedAt: canonicalTimestamp(signedAt),
+        authenticationMethod: method,
+        reason,
+      });
 
-    const payloadBuffer = Buffer.from(canonicalPayload, "utf8");
-    const signatureValue = crypto
-      .sign("sha256", payloadBuffer, privateKeyPem)
-      .toString("base64");
-    // Kept for the NOT NULL column and for human comparison: the digest of the
-    // bytes that were actually signed, not a hash of a timestamp.
-    const signatureHash = crypto
-      .createHash("sha256")
-      .update(payloadBuffer)
-      .digest("hex");
+      const payloadBuffer = Buffer.from(canonicalPayload, "utf8");
+      const signatureValue = crypto
+        .sign("sha256", payloadBuffer, privateKeyPem)
+        .toString("base64");
+      // Kept for the NOT NULL column and for human comparison: the digest of
+      // the bytes that were actually signed, not a hash of a timestamp.
+      const signatureHash = crypto
+        .createHash("sha256")
+        .update(payloadBuffer)
+        .digest("hex");
 
-    // A-41 — the signature, the step and workflow transitions and the audit
-    // row commit together or not at all. Before this, the audit insert used
-    // an action outside the ENUM ("DOCUMENT_SIGNED") and columns that do not
-    // exist, so it failed on every signing — after the signature had already
-    // committed with no transaction: a signature with no audit row, and a 500
-    // to the signer. Notifications go out only after the commit.
-    const { signature, allSigned, nextStep } = await db.transaction(async (transaction) => {
+      // A-41 — the signature, the step and workflow transitions and the
+      // audit row commit together or not at all. Notifications go out only
+      // after the commit.
       const created = await SignatureRecord.create(
         {
           workflowId: workflow.id,
@@ -935,8 +926,19 @@ exports.signDocument = async (stepId, userId, signatureData) => {
         { transaction },
       );
 
-      return { signature: created, allSigned: everyoneSigned, nextStep: next };
+      return { workflow, signature: created, allSigned: everyoneSigned, nextStep: next };
     });
+
+    const { workflow } = outcome;
+    if (outcome.expired) {
+      // The expiry and its audit row have committed; the signature is refused.
+      logger.info("Signature workflow expired", {
+        tenantId: workflow.tenantId,
+        workflowId: workflow.id,
+      });
+      throw new AppError(409, explainClosedWorkflow("expired", "signed"));
+    }
+    const { signature, allSigned, nextStep } = outcome;
 
     if (allSigned) {
       await completeWorkflow(workflow);
@@ -989,45 +991,41 @@ function generateSignatureCertificate(signature, workflow) {
 
 /**
  * A-159 — record that a workflow has expired: status "expired" and its audit
- * row, in one transaction. Called by signDocument when a signature is
- * attempted after expiresAt; the caller then refuses the signature (409).
+ * row. Called by signDocument, inside the signing transaction and under the
+ * workflow's lock (A-184), when a signature is attempted after expiresAt;
+ * signDocument commits the expiry and then refuses the signature (409).
  *
  * The audit row names the signer whose attempt found the expiry — the
  * request that made the write — and says so in `changes.detectedBy`; there is
  * no expiry job to name as a system actor.
  *
- * @param {Object} workflow - the SignatureWorkflow instance
+ * @param {Object} workflow - the SignatureWorkflow instance (locked)
  * @param {string} userId - the signer who attempted to sign
  * @param {Object} signatureData - for ipAddress / userAgent
+ * @param {Object} transaction - the signing transaction
  */
-async function expireWorkflow(workflow, userId, signatureData) {
+async function expireWorkflow(workflow, userId, signatureData, transaction) {
   const previousStatus = workflow.status;
-  await db.transaction(async (transaction) => {
-    await workflow.update({ status: "expired" }, { transaction });
-    await auditService.logAction(
-      {
-        tenantId: workflow.tenantId,
-        userId,
-        action: "UPDATE",
-        resourceType: "SignatureWorkflow",
-        resourceId: workflow.id,
-        changes: {
-          operation: "EXPIRE",
-          before: { status: previousStatus },
-          after: { status: "expired" },
-          expiresAt: new Date(workflow.expiresAt).toISOString(),
-          detectedBy: "signature attempt after expiresAt",
-        },
-        ipAddress: signatureData.ipAddress || null,
-        userAgent: signatureData.userAgent || null,
+  await workflow.update({ status: "expired" }, { transaction });
+  await auditService.logAction(
+    {
+      tenantId: workflow.tenantId,
+      userId,
+      action: "UPDATE",
+      resourceType: "SignatureWorkflow",
+      resourceId: workflow.id,
+      changes: {
+        operation: "EXPIRE",
+        before: { status: previousStatus },
+        after: { status: "expired" },
+        expiresAt: new Date(workflow.expiresAt).toISOString(),
+        detectedBy: "signature attempt after expiresAt",
       },
-      { transaction },
-    );
-  });
-  logger.info("Signature workflow expired", {
-    tenantId: workflow.tenantId,
-    workflowId: workflow.id,
-  });
+      ipAddress: signatureData.ipAddress || null,
+      userAgent: signatureData.userAgent || null,
+    },
+    { transaction },
+  );
 }
 
 /**
@@ -1855,70 +1853,13 @@ exports.cancelWorkflow = async (workflowId, userId, tenantId, actor = {}, reason
   }
 };
 
-/**
- * Revoke a signature
- */
-exports.revokeSignature = async (signatureId, userId, tenantId, reason) => {
-  try {
-    const { SignatureRecord } = require("../models");
-
-    const signature = await SignatureRecord.findOne({
-      where: { id: signatureId, tenantId },
-    });
-
-    if (!signature) {
-      throw new AppError(404, "Signature not found");
-    }
-
-    const previousStatus = signature.status;
-
-    // A-41 — the revocation and its audit row commit together. The previous
-    // row ("SIGNATURE_REVOKED", entityType/entityId) was outside the ENUM and
-    // the schema, so it failed after the revocation had committed.
-    await db.transaction(async (transaction) => {
-      await signature.update(
-        {
-          status: "revoked",
-          revokedAt: new Date(),
-          revokedBy: userId,
-          revocationReason: reason,
-        },
-        { transaction },
-      );
-
-      await auditService.logAction(
-        {
-          tenantId,
-          userId,
-          action: "UPDATE",
-          resourceType: "SignatureRecord",
-          resourceId: signatureId,
-          changes: {
-            operation: "REVOKE",
-            before: { status: previousStatus },
-            after: { status: "revoked", reason },
-          },
-        },
-        { transaction },
-      );
-    });
-
-    logger.info("Signature revoked", {
-      signatureId,
-      revokedBy: userId,
-      reason,
-    });
-
-    return { success: true };
-  } catch (err) {
-    if (err.status) throw err;
-    logger.error("Failed to revoke signature", {
-      signatureId,
-      error: err.message,
-    });
-    throw new AppError(500, "Failed to revoke signature");
-  }
-};
+// A-107 (ADR-051; ADR-055) — there is no signature revocation. An
+// unrouted `revokeSignature` lived here: no re-authentication, no state check
+// (a revoked signature could be revoked again) and its read outside the
+// transaction. Revoking a Part 11 signature is a signature act of its own and
+// needs its own design (who may revoke, re-authentication, what the record
+// and its verification show); verifySignature still reports a `revoked`
+// row as `revoked` for any such row written in the past.
 
 // ==========================================
 // UTILITIES

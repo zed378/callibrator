@@ -34,7 +34,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   onConfirm,
   onCancel,
 }) => (
-  <Dialog isOpen={isOpen} onClose={onCancel} size="md">
+  <Dialog isOpen={isOpen} onClose={onCancel} size="md" ariaLabel={title}>
     <div className="flex items-start gap-4">
       <span
         className={`shrink-0 flex items-center justify-center w-11 h-11 rounded-full ${

@@ -427,6 +427,7 @@ class RolesService {
           model: Role,
           as: "role",
           attributes: ["id", "status"],
+          required: true, // D-12: stated, not inherited from the defaultScope
           include: [
             {
               model: RoleMenuPermission,
@@ -563,6 +564,7 @@ class RolesService {
           model: Role,
           as: "role",
           attributes: [],
+          required: true, // D-12: stated, not inherited from the defaultScope
           include: [
             {
               model: RoleMenuPermission,
@@ -860,6 +862,16 @@ class RolesService {
     }
 
     await db.transaction(async (transaction) => {
+      // A-181 (ADR-056): a menu with children is refused, as on
+      // menuGroup.service#deleteMenuGroup. The parent_id FK is SET NULL, so a
+      // delete here promoted every child to the top level with its grants.
+      const children = await MenuGroup.count({ where: { parentId: id }, transaction });
+      if (children > 0) {
+        throw new AppError(
+          409,
+          `Menu "${menu.name}" still has ${children} child menu(s). Delete or move them first; a menu is deleted only when it is empty.`,
+        );
+      }
       // Delete associated role permissions
       const revokedGrants = await RoleMenuPermission.destroy({
         where: { menuGroupId: id },

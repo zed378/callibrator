@@ -13,3 +13,4 @@ export { FormField } from "./FormField";
 export { Avatar } from "./Avatar";
 export { Skeleton, TableSkeleton, CardSkeleton } from "./Skeleton";
 export { DateField } from "./DateField";
+export { ErrorState, errorStateCopy } from "./ErrorState";

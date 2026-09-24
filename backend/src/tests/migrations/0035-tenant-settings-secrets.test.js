@@ -31,7 +31,7 @@ const fakeQueryInterface = ({ tenants, settings, tables = ["tenants", "tenant_se
   };
   const tx = { id: "tx" };
   const plaintext = () =>
-    state.settings.filter((x) => x.value !== null && x.value !== "" && !x.value.startsWith("v1:"));
+    state.settings.filter((x) => x.value !== null && x.value !== "" && !/^v[12]:/.test(x.value));
   return {
     state,
     showAllTables: jest.fn(async () => tables),
@@ -59,10 +59,10 @@ const fakeQueryInterface = ({ tenants, settings, tables = ["tenants", "tenant_se
           }
           return [[], { rowCount: hit ? 1 : 0 }];
         }
-        if (s.startsWith("SELECT id, tenant_id, key, value FROM tenant_settings WHERE value IS NOT NULL AND value <> '' AND value NOT LIKE 'v1:%'")) {
+        if (s.startsWith("SELECT id, tenant_id, key, value FROM tenant_settings WHERE value IS NOT NULL AND value <> '' AND value NOT LIKE 'v1:%' AND value NOT LIKE 'v2:%'")) {
           return plaintext();
         }
-        if (s.startsWith("SELECT key FROM tenant_settings WHERE value IS NOT NULL AND value <> '' AND value NOT LIKE 'v1:%'")) {
+        if (s.startsWith("SELECT key FROM tenant_settings WHERE value IS NOT NULL AND value <> '' AND value NOT LIKE 'v1:%' AND value NOT LIKE 'v2:%'")) {
           return plaintext().map((x) => ({ key: x.key }));
         }
         if (s.startsWith("UPDATE tenant_settings SET value = :value WHERE id = :id AND tenant_id = :tenantId AND value = :previous")) {

@@ -448,13 +448,13 @@ describe("upload utility - comprehensive middleware tests", () => {
     const path = require("path");
 
     it("moves a passed single upload into its folder and repoints req.file", async () => {
-      const middleware = upload({ folder: "uploads/profile" });
+      const middleware = upload({ folder: "uploads/public/profile" });
       mockReq.file = { originalname: "a.jpg", mimetype: "image/jpeg", filename: "a.jpg", path: Q + "/a.jpg" };
       expect(await runMiddleware(middleware, mockReq)).toBeUndefined();
-      const to = path.join("C:/uploads/uploads/profile", "a.jpg");
+      const to = path.join("C:/uploads/uploads/public/profile", "a.jpg");
       expect(fs.promises.rename).toHaveBeenCalledWith(path.resolve(Q + "/a.jpg"), to);
       expect(mockReq.file.path).toBe(to);
-      expect(mockReq.file.destination).toBe("C:/uploads/uploads/profile");
+      expect(mockReq.file.destination).toBe("C:/uploads/uploads/public/profile");
     });
 
     it("holdInQuarantine leaves the file where it is", async () => {
@@ -469,7 +469,7 @@ describe("upload utility - comprehensive middleware tests", () => {
       const renameErr = new Error("EXDEV");
       fs.promises.rename.mockRejectedValueOnce(renameErr);
       const unlinkSpy = jest.spyOn(fs.promises, "unlink").mockResolvedValue();
-      const middleware = upload({ folder: "uploads/profile" });
+      const middleware = upload({ folder: "uploads/public/profile" });
       mockReq.file = { originalname: "a.jpg", mimetype: "image/jpeg", path: Q + "/a.jpg" };
       expect(await runMiddleware(middleware, mockReq)).toBe(renameErr);
       expect(unlinkSpy).toHaveBeenCalledWith(Q + "/a.jpg");

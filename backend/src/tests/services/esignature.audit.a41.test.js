@@ -184,56 +184,6 @@ describe("A-41 — e-signature audit inside the signing transaction", () => {
       expect(queueNotificationEmail).not.toHaveBeenCalled();
     });
   });
-
-  describe("revokeSignature", () => {
-    beforeEach(() => {
-      mockRef.signature = {
-        id: "sig-1",
-        status: "signed",
-        update: (values, options) =>
-          mockRef.ledger.write("signature_records", { id: "sig-1", ...values }, options),
-      };
-    });
-
-    const revoke = () => eSignatureService.revokeSignature("sig-1", "u-2", "tenant-1", "signed in error");
-
-    it("commits the revocation with exactly one valid audit row", async () => {
-      await revoke();
-
-      expect(mockRef.ledger.committed("signature_records")).toEqual([
-        expect.objectContaining({ status: "revoked", revokedBy: "u-2" }),
-      ]);
-      expect(mockRef.ledger.auditRows()).toEqual([
-        expect.objectContaining({
-          tenantId: "tenant-1",
-          userId: "u-2",
-          action: "UPDATE",
-          resourceType: "SignatureRecord",
-          resourceId: "sig-1",
-          changes: {
-            operation: "REVOKE",
-            before: { status: "signed" },
-            after: { status: "revoked", reason: "signed in error" },
-          },
-        }),
-      ]);
-    });
-
-    it("a failing audit insert leaves the signature unrevoked", async () => {
-      mockRef.ledger.failNext("audit_logs", new Error("audit insert failed"));
-
-      await expect(revoke()).rejects.toThrow();
-
-      expect(mockRef.ledger.committed("signature_records")).toEqual([]);
-      expect(mockRef.ledger.auditRows()).toEqual([]);
-    });
-
-    it("a rolled-back revocation leaves no audit row", async () => {
-      mockRef.ledger.failNext("signature_records", new Error("write failed"));
-
-      await expect(revoke()).rejects.toThrow();
-
-      expect(mockRef.ledger.auditRows()).toEqual([]);
-    });
-  });
+  // A-107 (ADR-055) — revokeSignature was unrouted dead code and has
+  // been removed; its absence is pinned in esignature.noRevocation.a107.test.js.
 });

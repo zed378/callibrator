@@ -20,7 +20,7 @@ cards below are about the gap between rendering and working, and none of them up
 
 | Id | Finding | Severity | Status |
 |---|---|---|---|
-| S-01 | **`/uploads` is a public static mount** — every certificate PDF is enumerable, unauthenticated, cross-tenant | **critical** | TODO |
+| S-01 | **`/uploads` is a public static mount** — every certificate PDF is enumerable, unauthenticated, cross-tenant | **critical** | **DONE** 2026-09-25 — static mount limited to `uploads/public/` images; certificates and attachments behind gated routes and capabilities (ADR-057, migration 0056); `fileServing.s01.test.js` |
 | S-02 | **A tenant backup restore deletes every user in the tenant and recreates them without passwords** | **critical** | **DONE** 2026-09-24 |
 | S-03 | **`BACKUP_SCHEDULER` backs up nothing** — it zips two directories inside the read-only pkg snapshot | **critical** | **DONE** 2026-09-24 — scheduler runs a per-tenant `createBackup` under each tenant's context, audited as `system:scheduled-backup`; status file; invalid cron refuses; zip-slip `extractZip` deleted (PG18-verified) |
 | S-04 | ClamAV is wired in but cannot scan: no `STANDBY` command, unframed `INSTREAM`, and "not FOUND" read as clean | **high** | **DONE** 2026-09-24 — `zINSTREAM` with length-prefixed chunks; only `stream: OK` is clean, everything else fails closed; `clamav`+unset `CLAMAV_ENABLED` fails closed; verified on real `clamav/clamav:1.4` (EICAR FOUND) |
@@ -30,7 +30,7 @@ cards below are about the gap between rendering and working, and none of them up
 | S-08 | No secret is rotatable: no key id in the KMS payload, `ENCRYPT_KEY` outside the KMS entirely | **high** | TODO |
 | S-09 | RabbitMQ credentials contradict themselves in `.env.example`; Redis has no authentication at all | **high** | **PARTIAL** 2026-09-24 — RabbitMQ template fixed; Redis auth needs a deploy decision |
 | S-10 | `.env.example` ships `IMAGE_TAG=latest`, which satisfies the prod overlay's `:?` guard | **high** | **DONE** 2026-09-24 |
-| S-11 | Six of the twelve allowed attachment types are rejected by the magic-byte check | medium | TODO |
+| S-11 | Six of the twelve allowed attachment types are rejected by the magic-byte check | medium | **DONE** 2026-09-24 — all 12 types verify; `fileValidation.s11.test.js` |
 | S-12 | The image never creates or chowns `/app/storage` or `/app/.well-known` | medium | **DONE** 2026-09-24 — proven live |
 | S-13 | The backend build disables TLS verification for apt and resolves npm without a lockfile | medium | **PARTIAL** 2026-09-24 — backend done; frontend image deferred |
 | S-14 | The backup pruner and the backup writer point at different directories; the pruner can delete every tenant backup | medium | **DONE** 2026-09-24 — one `BACKUP_DIR`; row-driven pruning, keep newest `BACKUP_KEEP_MIN`, unlink only inside the dir, audited in-transaction (PG18-verified) |
@@ -43,7 +43,7 @@ cards below are about the gap between rendering and working, and none of them up
 | S-21 | Six health-check claims describe a `/health` body that no longer exists | low | **DONE** 2026-09-24 |
 | S-22 | Two manifests still document things removed or never built (the MQTT port, an embedded broker) | low | **DONE** 2026-09-24 |
 | S-23 | `vm-http.conf` proxies two Swagger paths the backend does not serve | low | **PARTIAL** 2026-09-24 — dead proxy paths removed; Swagger gate open |
-| S-24 | `docs/STORAGE/04` says `GET /usage` is `auth` only; the route is tenant-admin gated | low | TODO |
+| S-24 | `docs/STORAGE/04` says `GET /usage` is `auth` only; the route is tenant-admin gated | low | **DONE** 2026-09-25 — docs corrected; `routeGuards.a02.test.js` |
 | S-25 | Three divergent environment templates, one of them committed and unusable | low | **PARTIAL** 2026-09-24 — canonical templates named, not consolidated |
 | S-26 | The JWT key registry is decorative, and non-HS256 deployments stop verifying after 30 days uptime | low | TODO |
 | S-27 | Helm: the default release name `callibrator` breaks every service and ConfigMap reference | **high** | **DONE** 2026-09-24 — renders consistently for any release name (checked by a script over `helm template`); not known to deploy |

@@ -74,8 +74,10 @@ const principal = (overrides = {}) => ({
   ...overrides,
 });
 
+// P6-07: an operator without MFA gets an enrolment-only session; these cases
+// are about the tenant, so the operator has enrolled.
 const superAdmin = (overrides = {}) =>
-  principal({ role: { name: "SUPER_ADMIN" }, ...overrides });
+  principal({ role: { name: "SUPER_ADMIN" }, mfaEnabled: true, ...overrides });
 
 let req;
 let res;

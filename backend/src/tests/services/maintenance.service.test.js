@@ -7,8 +7,17 @@ jest.mock("sequelize", () => ({
   },
 }));
 
+// A-190: every write runs in a managed transaction with its audit row (the
+// ledger proof is maintenance.audit.a190.test.js); here the double runs the
+// callback with a marker transaction.
 jest.mock("../../config", () => ({
-  db: { transaction: jest.fn() },
+  db: { transaction: jest.fn(async (cb) => cb("TX")) },
+}));
+jest.mock("../../services/audit.service", () => ({
+  logAction: jest.fn().mockResolvedValue({}),
+}));
+jest.mock("../../services/webhook.service", () => ({
+  emitAfterCommit: jest.fn(),
 }));
 
 jest.mock("../../models", () => ({
@@ -17,9 +26,10 @@ jest.mock("../../models", () => ({
     findOne: jest.fn(),
     create: jest.fn(),
   },
-  CalibrationDevice: {},
-  Vendor: {},
-  User: {},
+  // A-220: references are looked up in the tenant; found by default.
+  CalibrationDevice: { findOne: jest.fn(async ({ where }) => ({ id: where.id })) },
+  Vendor: { findOne: jest.fn(async ({ where }) => ({ id: where.id })) },
+  User: { findOne: jest.fn(async ({ where }) => ({ id: where.id })) },
 }));
 
 jest.mock("../../utils/appError.util", () => {
@@ -205,6 +215,7 @@ describe("maintenance.service", () => {
           tenantId: "t-1",
           title: "New Work Order",
         }),
+        { transaction: "TX" },
       );
     });
 
@@ -223,6 +234,7 @@ describe("maintenance.service", () => {
           title: "Mapped",
           assignedTo: "user-1",
         }),
+        { transaction: "TX" },
       );
     });
 
@@ -251,7 +263,7 @@ describe("maintenance.service", () => {
       expect(order.update).toHaveBeenCalledWith({
         status: "in_progress",
         priority: "critical",
-      });
+      }, { transaction: "TX" });
     });
 
     it("should map assigneeId to assignedTo in update", async () => {
@@ -265,7 +277,7 @@ describe("maintenance.service", () => {
 
       expect(order.update).toHaveBeenCalledWith({
         assignedTo: "user-2",
-      });
+      }, { transaction: "TX" });
     });
 
     it("should throw 404 when work order not found", async () => {
@@ -384,7 +396,7 @@ describe("maintenance.service", () => {
 
       await createWorkOrder("t-1", undefined);
 
-      expect(MaintenanceWorkOrder.create).toHaveBeenCalledWith({ tenantId: "t-1" });
+      expect(MaintenanceWorkOrder.create).toHaveBeenCalledWith({ tenantId: "t-1" }, { transaction: "TX" });
     });
 
     it("should map an explicitly null assigneeId to assignedTo (unassigning)", async () => {
@@ -397,7 +409,7 @@ describe("maintenance.service", () => {
         title: "X",
         assignedTo: null,
         tenantId: "t-1",
-      });
+      }, { transaction: "TX" });
     });
 
     it("should not emit an assignedTo key when assigneeId is absent", async () => {

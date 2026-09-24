@@ -45,8 +45,28 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.INTEGER,
         allowNull: false,
       },
+      // P6-09: required, and never blank — CHECK (btrim(reason) <> '') from
+      // migration 0059. Rows older than P6-09 carry a reason saying none was
+      // recorded.
       reason: {
         type: DataTypes.STRING(255),
+        allowNull: false,
+      },
+      // P6-09: WHICH item moved, and from what to what. Nullable only because
+      // rows written before migration 0059 cannot be attributed after the
+      // fact; stock.service writes all three on every adjustment.
+      stockId: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: { model: "stocks", key: "id" },
+        onDelete: "RESTRICT",
+      },
+      quantityBefore: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+      },
+      quantityAfter: {
+        type: DataTypes.INTEGER,
         allowNull: true,
       },
       adjustedBy: {
@@ -90,6 +110,12 @@ const defineModel = (db, DataTypes) => {
       foreignKey: "locationId",
       as: "location",
       onDelete: "SET NULL",
+    });
+    // StockAdjustment -> Stock (the item adjusted; P6-09)
+    StockAdjustment.belongsTo(models.Stock, {
+      foreignKey: "stockId",
+      as: "stock",
+      onDelete: "RESTRICT",
     });
     // StockAdjustment -> User (adjustedBy)
     StockAdjustment.belongsTo(models.User, {

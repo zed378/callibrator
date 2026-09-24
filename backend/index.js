@@ -8,6 +8,7 @@ const hpp = require("hpp");
 
 const cors = require("cors");
 const helmet = require("helmet");
+const { API_CSP_DIRECTIVES } = require("./src/utils/csp.util");
 const rateLimit = require("express-rate-limit");
 
 const { swaggerDocs } = require("./src/docs/swagger");
@@ -49,6 +50,10 @@ const {
 const {
   initWebhookDeliveryScheduler,
 } = require("./src/middlewares/webhookDeliveryScheduler.middleware");
+const {
+  initQuarantineSweep,
+} = require("./src/middlewares/quarantineSweepScheduler.middleware");
+const { startWatchdog: initJobWatchdog } = require("./src/services/jobMonitor.service");
 
 const { initRedis, closeRedis } = require("./src/services/redis.service");
 
@@ -124,26 +129,17 @@ if (
 }
 
 // Security Headers
-// A conservative Content-Security-Policy is enabled (previously disabled).
-// 'unsafe-inline' is permitted for scripts/styles because the bundled
-// swagger-ui injects inline assets; the remaining directives (default-src
-// 'self', object-src 'none', frame-ancestors 'none') still provide meaningful
-// XSS/clickjacking mitigation. crossOriginResourcePolicy is set to
-// "cross-origin" so the separate-origin frontend can load /uploads images.
+// P7-08: the API default Content-Security-Policy no longer allows
+// 'unsafe-inline' for SCRIPTS. The old comment said swagger-ui injects inline
+// assets; its scripts are external files, and Swagger now gets its own policy
+// under /docs (docs/swagger.js). Both policies live in utils/csp.util.js with
+// the reasoning. crossOriginResourcePolicy is "cross-origin" so the
+// separate-origin frontend can load /uploads/public images.
 app.use(
   helmet({
     contentSecurityPolicy: {
       useDefaults: true,
-      directives: {
-        "default-src": ["'self'"],
-        "script-src": ["'self'", "'unsafe-inline'"],
-        "style-src": ["'self'", "'unsafe-inline'", "https:"],
-        "img-src": ["'self'", "data:", "https:"],
-        "font-src": ["'self'", "data:", "https:"],
-        "object-src": ["'none'"],
-        "frame-ancestors": ["'none'"],
-        "upgrade-insecure-requests": null,
-      },
+      directives: { ...API_CSP_DIRECTIVES },
     },
     crossOriginResourcePolicy: { policy: "cross-origin" },
     crossOriginEmbedderPolicy: false,
@@ -342,15 +338,13 @@ app.use(activityLogger);
 // not a CWD-relative path that shifts with the launch directory.
 app.use("/.well-known", express.static(storagePath(".well-known")));
 
-// nosniff + inline headers, and `dotfiles: "ignore"` — which is what keeps the
-// upload quarantine (`uploads/.quarantine`, S-17) from being served.
-app.use(
-  "/uploads",
-  express.static(
-    storagePath("uploads"),
-    require("./src/utils/upload.util").UPLOADS_STATIC_OPTIONS,
-  ),
-);
+// ADR-042 step 3/4 (S-01): ONLY the public class is static — avatars, tenant
+// logos and CMS images under `uploads/public/`, images only, served with a
+// per-extension Content-Type allowlist and nosniff. Certificates, attachments
+// and the upload quarantine live elsewhere in the uploads tree and are
+// reachable only through gated routes (attachments/:id/download,
+// certificates/:id/pdf, the signed certificate document, storage/object).
+require("./src/utils/upload.util").mountPublicUploads(app);
 
 app.use("/public", express.static(appPath("public")));
 
@@ -640,6 +634,22 @@ async function startServer() {
     // (a wrong role_level, a partially missing seed) refuses the boot.
     await assertSeededRoles({ sequelize: db });
 
+    // P6-05 (PR-5) — the migration log is not evidence. Compare every model's
+    // columns, and the control objects that live only in migrations (the
+    // calibration_records append-only trigger, the per-tenant serial index),
+    // with information_schema. A mismatch refuses the boot, naming each one
+    // (SCHEMA_VERIFY=warn downgrades that to error logs, for a recovery).
+    // Runs BEFORE the role switch: information_schema hides from a role the
+    // columns it holds no privilege on.
+    const { assertSchemaMatchesModels } = require("./src/utils/schemaVerify.util");
+    await assertSchemaMatchesModels({ sequelize: db, logger });
+
+    // P6-03 — from here on every query runs as DB_APP_ROLE, which has no
+    // UPDATE/DELETE on calibration_records. db.sync() and the migrator above
+    // needed the owner; nothing after this point does.
+    const { enterApplicationRole } = require("./src/utils/dbRole.util");
+    await enterApplicationRole({ sequelize: db, logger });
+
     // Redis Connection
     await initRedis();
 
@@ -657,6 +667,11 @@ async function startServer() {
     initTenantLifecycleScheduler();
     // Durable webhook delivery (A-10): resumes due retries at boot, then polls.
     initWebhookDeliveryScheduler();
+    // S-33: remove uploads a crash left in uploads/.quarantine.
+    initQuarantineSweep();
+    // P7-02: every job above records its runs and alerts on failure; the
+    // watchdog alerts on a run that did not happen and on stuck batch jobs.
+    initJobWatchdog();
 
     // Start the batch-job worker (RabbitMQ consumer). No-op in inline mode.
     require("./src/workers/batchJob.worker")

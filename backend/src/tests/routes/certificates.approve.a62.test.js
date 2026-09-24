@@ -44,6 +44,7 @@ jest.mock("../../middlewares/dynamicAccess.middleware", () => ({
 // Not under test, and it pulls in the PDF/QR toolchain.
 jest.mock("../../controllers/certificatePdf.controller", () => ({
   verifyCertificate: jest.fn(),
+  verifyDocument: jest.fn(),
   generatePdf: jest.fn(),
   downloadPdf: jest.fn(),
   getQrCode: jest.fn(),

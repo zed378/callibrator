@@ -8,6 +8,13 @@
 const express = require("express");
 const router = express.Router();
 const { auth } = require("../../middlewares/auth.middleware");
+const { dynamicAccess } = require("../../middlewares/dynamicAccess.middleware");
+const { MENU_SLUGS } = require("../../constants/roleConstants");
+
+// AZ-01 (G-05): `auth` alone let every role list the tenant's jobs and enqueue
+// work. Reads need the seeded `batch-jobs` menu; enqueueing a job needs write.
+const canRead = dynamicAccess(MENU_SLUGS.BATCH_JOBS, "read");
+const canWrite = dynamicAccess(MENU_SLUGS.BATCH_JOBS, "write");
 const {
   createTestJob,
   getJobs,
@@ -37,7 +44,7 @@ router.use(auth);
  *       '200':
  *         description: List of batch jobs
  */
-router.get("/", getJobs);
+router.get("/", canRead, getJobs);
 
 /**
  * @swagger
@@ -58,7 +65,7 @@ router.get("/", getJobs);
  *       '200':
  *         description: Job details and progress
  */
-router.get("/:id", getJobStatus);
+router.get("/:id", canRead, getJobStatus);
 
 /**
  * @swagger
@@ -84,6 +91,6 @@ router.get("/:id", getJobStatus);
  *       '201':
  *         description: Job created
  */
-router.post("/test", createTestJob);
+router.post("/test", canWrite, createTestJob);
 
 module.exports = router;

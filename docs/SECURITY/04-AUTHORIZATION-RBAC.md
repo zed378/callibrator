@@ -89,13 +89,31 @@ The frontend renders its sidebar from the server-resolved menu tree, so an unaut
 
 **Every backend route enforces independently regardless.** The menu tree is navigation.
 
-## The Failure Mode Nothing Prevents
+## The Failure Mode — And The Guard Against It
 
-**A new route with no permission gate is authenticated-but-unauthorized-by-omission**, and nothing in the system prevents it. The route works, for everyone with a token.
+**A new route with no permission gate is authenticated-but-unauthorized-by-omission.** The route works, for everyone with a token — every role, and every API key whatever its scopes.
 
-There is no mechanism that fails a route lacking a gate. It is caught in review and by tests, which means it will eventually not be caught.
+Since 2026-09-24 (P6-04, ADR-058) a test fails the build when that happens:
+`backend/src/tests/routes/routePermissionGuard.p604.test.js`. It requires every module under
+`src/routes` (`api/` **and** `internal/`), walks each router's Express layer stack — the chain
+Express actually runs, `router.use` layers included — and requires every route to carry a gate:
+`dynamicAccess`, `rbac`, `checkRoleLevel`, `abac` or `superAdminOnly`. `auth` is authentication, not a
+gate; `denyApiKey` narrows who may call, it is not a gate either. The routes `index.js` and
+`docs/swagger.js` register directly on the app are read from source and must all be listed.
 
-A build guard that fails any diff adding a route without a `dynamicAccess` or `rbac` call is the mechanical fix, and it is in [`../../TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md). Until then this is the single most likely authorization defect.
+A route that is ungated **on purpose** is listed in `backend/src/constants/routeGateExemptions.js`
+with a kind and a reason: `public` (no `auth`; its own defence named), `self` (acts on the caller
+only), `service` (authorized below the route — the entry names `file#function`, and the guard fails
+if that function does not exist), `inline` (a guard function defined in the router — the guard fails
+if it is not in the chain), `pending` (names the card that closes it) or `accepted` (names the
+decision). The guard also fails on a **stale** entry — a route now gated, or gone — so the list can
+only shrink by being edited. Its `public` entries are the one list P9-21's `public()` marker is to read.
+
+The guard also checks that every `dynamicAccess` resource on a route is a **seeded** menu slug: a gate
+naming no menu grants nobody but SUPERADMIN and is the same hole with a longer line of code (A-07).
+
+It runs under `npm test`, so under `make verify`. It does **not** run on its own in a hook or CI
+pipeline — none exists (A-19); that half of P6-04 is still open.
 
 ## Cross-Tenant Failures Return 404
 
@@ -135,7 +153,7 @@ The negative cases are the test. The positive case is a smoke test wearing a sec
 1. Add the slug to `MENU_SLUGS`.
 2. Add it to the relevant `ROLE_MENU_ASSIGNMENTS` entries — a menu group nobody is granted is invisible.
 3. Seed the `menu_groups` row.
-4. Gate every backend route with `dynamicAccess("<slug>", "read" | "write")`.
+4. Gate every backend route with `dynamicAccess("<slug>", "read" | "write")`. A route you deliberately leave ungated goes in `constants/routeGateExemptions.js` with its reason, or the P6-04 guard fails the build.
 5. Add the frontend surface.
 6. Write the negative tests above.
 7. Confirm cache invalidation covers the new grant.

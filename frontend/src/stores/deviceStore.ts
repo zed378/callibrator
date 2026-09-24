@@ -101,6 +101,10 @@ export const useDeviceStore = create<DeviceState>()((set) => ({
       const message =
         error instanceof Error ? error.message : "Failed to delete device";
       set({ isLoading: false, error: message });
+      // F-64: a failed delete reaches the caller, which keeps the confirm
+      // dialog open. Swallowed, the dialog closed and the list refetch that
+      // followed cleared the error — the device looked deleted and was not.
+      throw error;
     }
   },
 

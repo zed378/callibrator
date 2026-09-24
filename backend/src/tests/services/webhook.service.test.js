@@ -264,7 +264,7 @@ describe("webhook.service", () => {
 
         await webhookService.updateWebhook("t1", "w1", { url: "https://new.com", events: ["event1"] });
         expect(mockUpdate).toHaveBeenCalledWith(
-          { url: "https://new.com", events: ["event1"], secret: expect.stringMatching(/^v1:/) },
+          { url: "https://new.com", events: ["event1"], secret: expect.stringMatching(/^v2:/) }, // P6-10: v2 names its key
           { transaction: { id: "tx" } },
         );
       });

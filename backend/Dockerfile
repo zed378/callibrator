@@ -19,7 +19,11 @@
 # STAGE 1 — BUILDER
 # ==========================================
 
-FROM node:24-alpine AS builder
+# P7-07: pinned by version AND digest — the same image frontend/Dockerfile
+# uses (node:24-alpine resolved to this digest on 2026-09-24). A floating tag
+# changes the toolchain under an unchanged commit. How to move it:
+# docs/DEVOPS/02-CONTAINERIZATION.md § Moving a pinned base image.
+FROM node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS builder
 
 WORKDIR /app
 
@@ -58,7 +62,10 @@ RUN npx --no-install pkg . \
 # STAGE 2 — RUNTIME
 # ==========================================
 
-FROM debian:bookworm-slim
+# P7-07: pinned by digest (bookworm-slim on 2026-09-24). Debian point releases
+# and security updates arrive by MOVING this digest deliberately, not by a
+# rebuild picking up whatever the tag points at that day.
+FROM debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251
 
 WORKDIR /app
 
@@ -96,9 +103,16 @@ RUN set -eux; \
 # number. An unpinned uid would make a base-image bump a silent crash loop.
 RUN useradd -r -u 997 -s /usr/sbin/nologin app
 
-# Create persistent storage directories
-RUN mkdir -p /app/backup/tenant-backups /app/log /app/uploads/profile /app/uploads/tenant && \
-    chown -R app:app /app/backup /app/log /app/uploads
+# Create persistent storage directories.
+#
+# /app/storage (the `local` storage driver's root, services/storage/
+# config.service.js) and /app/.well-known (ACME HTTP-01 challenges) since
+# S-40: S-12 was marked done, but neither was created, so the first write to
+# either failed EACCES under the root-owned /app. They are volumes in compose
+# and in the chart; creating them here is what makes an unmounted run work.
+RUN mkdir -p /app/backup/tenant-backups /app/log /app/uploads/profile /app/uploads/tenant \
+        /app/storage /app/.well-known && \
+    chown -R app:app /app/backup /app/log /app/uploads /app/storage /app/.well-known
 
 # Copy binary
 COPY --from=builder /out/backend ./backend

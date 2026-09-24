@@ -147,6 +147,18 @@ describe("s3 driver — object operations", () => {
     await expect(driver.get(KEY)).resolves.toBe("stream");
   });
 
+  it("ADR-042 step 5: a ranged get asks S3 for exactly that range", async () => {
+    mockSend.mockResolvedValue({ Body: "partial" });
+    await expect(driver.get(KEY, { start: 0, end: 99 })).resolves.toBe("partial");
+    expect(lastInput().Range).toBe("bytes=0-99");
+  });
+
+  it("an unranged get sends no Range", async () => {
+    mockSend.mockResolvedValue({ Body: "stream" });
+    await driver.get(KEY);
+    expect(lastInput().Range).toBeUndefined();
+  });
+
   it("maps a missing object to 410 on get", async () => {
     mockSend.mockRejectedValue(Object.assign(new Error("gone"), { name: "NoSuchKey" }));
     await expect(driver.get(KEY)).rejects.toMatchObject({ status: 410 });

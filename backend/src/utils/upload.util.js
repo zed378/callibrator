@@ -26,10 +26,11 @@ const {
 // purpose: `/app/uploads` is its own bind mount in compose, so a directory
 // beside it would be on another filesystem and the promoting `rename` would
 // fail with EXDEV (and the image does not make `/app` itself writable). The
-// static mount never serves it: UPLOADS_STATIC_OPTIONS sets
-// `dotfiles: "ignore"`, which answers 404 for any path with a dot segment.
+// static mount never serves it: since ADR-042 step 3 it serves only
+// `uploads/public/`, and the quarantine is not under that root at all
+// (PUBLIC_UPLOADS_STATIC_OPTIONS also keeps `dotfiles: "ignore"`).
 // tests/utils/upload.quarantine.s17.test.js asserts that against the same
-// options object index.js mounts.
+// mount index.js uses (mountPublicUploads).
 
 /** The quarantine directory's name, relative to the uploads root. */
 const QUARANTINE_DIRNAME = ".quarantine";
@@ -38,20 +39,96 @@ const QUARANTINE_DIRNAME = ".quarantine";
 const quarantinePath = (...parts) =>
   storagePath("uploads", QUARANTINE_DIRNAME, ...parts);
 
+// ==========================================
+// THE PUBLIC CLASS (ADR-042 step 3, S-01)
+// ==========================================
+//
+// `/uploads` used to be ONE unauthenticated express.static mount over the
+// whole uploads tree: certificates, attachments, avatars and logos alike.
+// Only one class of file is now public, and it is public because it is put
+// in `uploads/public/` by a permissioned action — avatars (users:update),
+// tenant logos (management), CMS images (content:write). Everything else in
+// the uploads tree (certificates, attachments, the quarantine) is outside the
+// served root and is reached only through gated routes.
+//
+// The public class is images only, with a strict per-extension Content-Type
+// allowlist. SVG is refused outright — it is active content (script), and the
+// only thing that held it shut before was the magic-byte check.
+
+/** Folders of the public class, relative to the storage root. */
+const PUBLIC_UPLOAD_FOLDERS = Object.freeze({
+  PROFILE: "uploads/public/profile",
+  TENANT: "uploads/public/tenant",
+  CMS: "uploads/public/cms",
+});
+
+/** The URL the public class is served at (index.js). */
+const PUBLIC_UPLOADS_URL = "/uploads/public";
+
 /**
- * The express.static options for the public `/uploads` mount (index.js).
- * `dotfiles: "ignore"` is what keeps the quarantine unreachable. It is the
- * default; it is stated here so nobody changes it without seeing why.
+ * Extension -> the ONLY Content-Type the public mount will serve it as. A file
+ * whose extension is not here is answered 404, whatever is on disk.
  */
-const UPLOADS_STATIC_OPTIONS = Object.freeze({
+const PUBLIC_IMAGE_TYPES = Object.freeze({
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".png": "image/png",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+});
+const PUBLIC_IMAGE_EXTS = Object.freeze(Object.keys(PUBLIC_IMAGE_TYPES));
+const PUBLIC_IMAGE_MIMES = Object.freeze([...new Set(Object.values(PUBLIC_IMAGE_TYPES))]);
+
+/**
+ * The express.static options for the public mount (index.js).
+ * `dotfiles: "ignore"` is the default; it is stated so nobody changes it
+ * without seeing why (the quarantine is a dot-directory, S-17 — it is no
+ * longer under the served root at all, this is the second fence).
+ */
+const PUBLIC_UPLOADS_STATIC_OPTIONS = Object.freeze({
   dotfiles: "ignore",
-  setHeaders: (res) => {
-    // Defense-in-depth for user-uploaded content: prevent MIME sniffing and
-    // force inline rendering only (never treat an upload as active content).
+  index: false,
+  redirect: false,
+  // Names are random and a replaced avatar/logo gets a new name, so a day of
+  // caching never serves a stale image under a live URL.
+  maxAge: 24 * 60 * 60 * 1000,
+  setHeaders: (res, filePath) => {
+    // The guard below has already refused any other extension.
+    res.setHeader("Content-Type", PUBLIC_IMAGE_TYPES[path.extname(filePath).toLowerCase()]);
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Content-Disposition", "inline");
+    // Even an image opened as a top-level document runs nothing.
+    res.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
   },
 });
+
+/**
+ * Refuse, before express.static looks at the disk, any public path whose
+ * extension is not an allowlisted image type.
+ */
+const publicUploadsGuard = (req, res, next) => {
+  const ext = path.extname(req.path).toLowerCase();
+  if (!Object.prototype.hasOwnProperty.call(PUBLIC_IMAGE_TYPES, ext)) {
+    return res.status(404).end();
+  }
+  return next();
+};
+
+/**
+ * Mount the public class — and ONLY the public class — on an app. index.js
+ * calls this; the tests call it on their own app so they exercise exactly
+ * what production mounts. Nothing else under `/uploads` is served.
+ *
+ * @param {import("express").Application} app
+ */
+const mountPublicUploads = (app) => {
+  const express = require("express");
+  app.use(
+    PUBLIC_UPLOADS_URL,
+    publicUploadsGuard,
+    express.static(storagePath("uploads", "public"), PUBLIC_UPLOADS_STATIC_OPTIONS),
+  );
+};
 
 /** Remove a file, ignoring one that is already gone. */
 const discard = (filePath) => fs.promises.unlink(filePath).catch(() => {});
@@ -107,10 +184,9 @@ const storage = multer.diskStorage({
 // ==========================================
 
 const fileFilter = (req, file, cb) => {
-  // NOTE: SVG is intentionally excluded from the default allowlist. SVG files
-  // can embed executable JavaScript and are served inline from /uploads, which
-  // would enable stored XSS. Routes that genuinely need SVG must opt in
-  // explicitly via allowedMimes/allowedExtensions and serve them safely.
+  // NOTE: SVG is intentionally excluded. SVG files can embed executable
+  // JavaScript; the public mount refuses the extension outright (ADR-042
+  // step 3), so an SVG could never be served from it anyway.
   const allowedMimes = req.allowedMimes || [
     "image/jpeg",
     "image/png",
@@ -387,4 +463,11 @@ exports.getUploadUrl = (filename, folder = "uploads") => {
 exports.QUARANTINE_DIRNAME = QUARANTINE_DIRNAME;
 exports.quarantinePath = quarantinePath;
 exports.promoteFromQuarantine = promoteFromQuarantine;
-exports.UPLOADS_STATIC_OPTIONS = UPLOADS_STATIC_OPTIONS;
+exports.PUBLIC_UPLOAD_FOLDERS = PUBLIC_UPLOAD_FOLDERS;
+exports.PUBLIC_UPLOADS_URL = PUBLIC_UPLOADS_URL;
+exports.PUBLIC_IMAGE_TYPES = PUBLIC_IMAGE_TYPES;
+exports.PUBLIC_IMAGE_EXTS = PUBLIC_IMAGE_EXTS;
+exports.PUBLIC_IMAGE_MIMES = PUBLIC_IMAGE_MIMES;
+exports.PUBLIC_UPLOADS_STATIC_OPTIONS = PUBLIC_UPLOADS_STATIC_OPTIONS;
+exports.publicUploadsGuard = publicUploadsGuard;
+exports.mountPublicUploads = mountPublicUploads;
