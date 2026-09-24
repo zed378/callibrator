@@ -321,8 +321,14 @@ const getOrCreatePdf = async (tenantId, certificateId, opts = {}) => {
 // PUBLIC VERIFICATION
 // ------------------------------------------------------------------
 const verifyByCertificateNumber = async (certificateNumber, { baseUrl } = {}) => {
+  // A-130 (F-11, ADR-051 A-107) — `paranoid: false`. A soft-deleted
+  // certificate used to answer "No certificate matches this number", which to
+  // a third party holding the printed copy reads as a forgery — and a deleted
+  // REVOKED certificate lost the one fact the holder needed. The row is
+  // reported as it stands, marked `withdrawn`, and never as valid.
   const cert = await Certificate.findOne({
     where: { certificateNumber },
+    paranoid: false,
     include: [
       { model: CalibrationDevice, as: "device", attributes: ["id", "name", "serialNumber"], required: false },
       { model: Tenant, as: "tenant", attributes: ["id", "name"], required: false },
@@ -342,7 +348,8 @@ const verifyByCertificateNumber = async (certificateNumber, { baseUrl } = {}) =>
   const revoked = cert.status === "revoked";
   const signed = cert.status === "signed";
   const expired = !!(cert.validUntil && new Date(cert.validUntil) < now);
-  const valid = signed && !revoked && !expired;
+  const withdrawn = !!cert.deletedAt;
+  const valid = signed && !revoked && !expired && !withdrawn;
   const integrityHash = computeIntegrityHash(cert);
 
   return {
@@ -354,6 +361,7 @@ const verifyByCertificateNumber = async (certificateNumber, { baseUrl } = {}) =>
       status: cert.status,
       revoked,
       expired,
+      withdrawn,
       certificateNumber: cert.certificateNumber,
       type: cert.type,
       standard: cert.standard || null,
@@ -392,7 +400,9 @@ const verifyByCertificateNumber = async (certificateNumber, { baseUrl } = {}) =>
       //
       // `expired` is NOT part of the gate: an expired certificate was properly
       // issued and its document is real history, so it stays published.
-      documentUrl: signed ? cert.filePath || null : null,
+      //
+      // A withdrawn (soft-deleted) certificate publishes no document either.
+      documentUrl: signed && !withdrawn ? cert.filePath || null : null,
     },
   };
 };

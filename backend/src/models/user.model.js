@@ -102,6 +102,23 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.INTEGER,
         allowNull: true,
       },
+      // A-141: SHA-256 hashes (salted with the user id) of the one-time
+      // recovery codes issued at MFA enable / rotate. A code is consumed by a
+      // conditional update that removes its hash (mfa.service.js
+      // #consumeRecoveryCode). Never returned by any endpoint. Migration 0031.
+      mfaRecoveryCodes: {
+        type: DataTypes.ARRAY(DataTypes.TEXT),
+        allowNull: true,
+      },
+      // A-123 (ADR-051 Q-11): set on an account an administrator created, so
+      // the admin-chosen password is changed at first sign-in. While set,
+      // auth.middleware refuses every route but change-password, logout and
+      // "who am I". Migration 0031.
+      mustChangePassword: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+      },
       // WebAuthn (passkeys / security keys)
       webauthnEnabled: {
         type: DataTypes.BOOLEAN,

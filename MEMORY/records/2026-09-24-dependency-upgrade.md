@@ -95,3 +95,32 @@ All tests and both image builds had already passed with every one of these skipp
   it.
 - **Requiring SimpleWebAuthn 14 on Node 24** prints two `ExperimentalWarning` lines (Web Crypto
   ML-DSA). This is log noise, not an error.
+
+## Deployed to the VM — 2026-09-24
+
+The deploy used the owner's wipe procedure (ADR-041 runbook).
+
+**Preparation.** Before anything was touched, the containers of the 32 other projects were listed and
+the network plan was checked against the host. The pinned `172.30.19.0/24` overlaps none of them;
+they sit on 172.17 to 172.29, each a /16.
+
+**Wipe and rebuild.**
+- `down -v --remove-orphans` scoped to project `callibrator`, which left **0 containers** and no
+  network.
+- The bind mounts were emptied through a throwaway alpine container.
+- `up -d --build` from `547ffe2`: **all seven containers healthy.**
+- **The other 32 containers were identical before and after** — checked with `diff`.
+
+**Verified live:**
+
+| Check | Result |
+|---|---|
+| Database | PostgreSQL **18.6**; 30 migrations applied, `0027` to `0030` among them. **`0028`, `0029` and `0030` ran on real PostgreSQL for the first time** |
+| Foreign keys | `audit_logs` tenant and impersonator: `r`; `calibration_records.performed_by`: `r`; `notifications` tenant: `c` |
+| NOT NULL | `calibration_records.tenant_id` and `.performed_by` |
+| New columns | the `users.mfa_pending_*` and `mfa_last_used_step` columns are present |
+| Seed | through the momentary `ALLOW_SEEDING` toggle: 11 roles, 7 menu groups, **152** permissions (130 before — the new `esignature` and `profile-page` grants), 1 user. It was switched back to `false`, and the endpoint answers **401** |
+| Public URL | `/health` 200, `/login` 200, and a real login through the Next proxy: 200 |
+| **A-99 in the pkg binary** | `POST /auth/mfa/setup` returned a secret and a QR code, so otplib 13's ES-module dependencies load in the compiled binary. **The verify step was deliberately not run:** it would enable MFA on the only super admin, and there is no disable or recovery path until A-141 lands |
+| **A-16 / ADR-050** | that login recorded `sessions.ip_address` **and** the `LOGIN` audit row's `ip_address` as `103.136.59.201`, the operator's real public IP — not the gateway |
+| Rate limiting | **`AUTH_RATE_LIMIT_BY_IP=true` is now set on the VM** (the `.env` was backed up first). The backend restarted healthy, and login still returns 200 |

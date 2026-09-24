@@ -21,14 +21,19 @@ exports.createKeyPair = Joi.object({
 /**
  * Validate signature workflow creation
  */
+// A-129 / A-130 (ADR-051 Q-19, A-86; F-10) — a signer is a USER of the
+// tenant, named by `userId`. Their name and email are read from the user row by
+// the service; a body `name` / `email` is stripped (stripUnknown applies to the
+// nested objects), not trusted and not rejected, so an older client still
+// validates. `userId` is optional HERE so that an email-only signer reaches the
+// service and gets its explanation (400, "invite them as a user"), rather than
+// a bare "userId is required".
 exports.createWorkflow = Joi.object({
   documentId: Joi.string().required(),
   signers: Joi.array()
     .items(
       Joi.object({
-        userId: Joi.string().required(),
-        email: Joi.string().email().required(),
-        name: Joi.string().required(),
+        userId: Joi.string().uuid(),
       }),
     )
     .min(1)
@@ -60,7 +65,8 @@ exports.signDocument = Joi.object({
   biometricData: Joi.string().optional().allow(null),
   authenticationMethod: Joi.string().valid("password", "mfa").default("password"),
   authPayload: Joi.string().required(),
-  reason: Joi.string().max(255).optional().allow("", null),
+  // A-129 (ADR-051 Q-19) — mandatory. The service refuses a blank one too.
+  reason: Joi.string().trim().min(1).max(255).required(),
 }).options({ abortEarly: false, stripUnknown: true });
 
 /**
@@ -69,6 +75,14 @@ exports.signDocument = Joi.object({
  */
 exports.verifySignature = Joi.object({
   signatureId: Joi.string().uuid().required(),
+}).options({ abortEarly: false, stripUnknown: true });
+
+/**
+ * A-130 — POST /workflows/:workflowId/cancel. The body is optional; a reason,
+ * when given, is recorded in the CANCEL audit row.
+ */
+exports.cancelWorkflow = Joi.object({
+  reason: Joi.string().trim().max(500).allow(""),
 }).options({ abortEarly: false, stripUnknown: true });
 
 /**

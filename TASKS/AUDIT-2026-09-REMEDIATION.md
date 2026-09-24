@@ -35,7 +35,7 @@ Task ids are `A-nn`. They are referenced from [`PHASE-9-TYPESCRIPT-MIGRATION.md`
 | A-13 | raw internal error messages reach clients in production | medium | 0 | **DONE** 2026-09-24 (asyncHandler half under A-132) |
 | A-14 | production logging: no stdout, per-request lines dropped, unbounded files | medium | 1 | TODO |
 | A-15 | `/health` checks only the database | medium | 1 | **DONE** 2026-09-23 |
-| A-16 | whether `req.ip` is the client through a three-proxy chain | **unverified** | 1 | **DONE** 2026-09-24 in code (ADR-050) — deploy verification open |
+| A-16 | whether `req.ip` is the client through a three-proxy chain | **unverified** | 1 | **DONE** 2026-09-24 — verified on the VM: session and audit rows record the real client IP |
 | A-17 | MQTT: public port with nothing behind it; the MQTT path authenticates nobody | low | 0 | **DONE** 2026-09-23 |
 | A-18 | dead code and unused dependencies | low | 2 | TODO |
 | A-19 | no secret scanner, no hook, no gate of any kind | medium | 2 | TODO |
@@ -112,7 +112,7 @@ Task ids are `A-nn`. They are referenced from [`PHASE-9-TYPESCRIPT-MIGRATION.md`
 | A-96 | the tenant-logo and avatar routes: no audit row, old file deleted before the update, refused uploads left on disk | medium | 0 | **DONE** 2026-09-24 |
 | A-97 | `POST /attachments` does not check `resourceId` against the tenant (a dangling in-tenant reference only) | low | 0 | **DONE** 2026-09-24 |
 | A-98 | roles without `account` have no Change Password menu entry | low | 0 | TODO — product decision |
-| A-99 | **MFA does not work in production:** `otplib` 13 has no `authenticator` export, and a global jest mock that accepts any code hides it | **critical** | 0 | **DONE** 2026-09-24 — to verify on the deployed binary |
+| A-99 | **MFA does not work in production:** `otplib` 13 has no `authenticator` export, and a global jest mock that accepts any code hides it | **critical** | 0 | **DONE** 2026-09-24 — MFA setup verified in the deployed pkg binary |
 | A-100 | `ssoExchange` counts failures per IP regardless of `AUTH_RATE_LIMIT_BY_IP` — a shared lockout of SSO until A-16 is deployed | **high** | 0 | **DONE** 2026-09-24 |
 | A-101 | the `auth` middleware admits a user whose tenant was soft-deleted | medium | 0 | **DONE** 2026-09-24 |
 | A-102 | on the VM, nginx sends `X-Forwarded-Proto: http` because Cloudflare terminates TLS; `req.secure` is wrong | low | 0 | TODO |
@@ -163,7 +163,7 @@ Task ids are `A-nn`. They are referenced from [`PHASE-9-TYPESCRIPT-MIGRATION.md`
 | A-147 | migration `0011` has a blanket `.catch(() => {})` on `dropTable`, and drops and recreates `e_signature_records` over what `sync()` built | medium | 0 | TODO |
 | A-148 | 64 more duplicate attributes of the A-88 shape on FKs outside Q-16 (e.g. `calibration_records.device_id`, `certificates.calibration_record_id`) | medium | 0 | TODO |
 | A-149 | `signature_records.revoked_by` and `signature_workflow_steps.signer_id` have no foreign key at all | medium | 0 | TODO |
-| A-67 | the rate limiter's failure recording on login, register, OTP and reset **never runs** — it is mounted before the handler | **high** | 0 | **PARTIAL** 2026-09-24 — recording fixed; per-IP counting off until A-16 |
+| A-67 | the rate limiter's failure recording on login, register, OTP and reset **never runs** — it is mounted before the handler | **high** | 0 | **DONE** 2026-09-24 — `AUTH_RATE_LIMIT_BY_IP=true` enabled on the VM after A-16 was verified |
 | A-68 | OIDC has no `state`, `nonce` or PKCE check — login CSRF and code injection | **high** | 0 | TODO |
 | A-69 | SSO through the Next `/api` proxy cannot work: the proxy follows the backend's 302 server-side | **high** | 0 | TODO |
 | A-70 | SSO provisioning signs in a suspended or inactive user (a session and a LOGIN row are created) | medium | 0 | **DONE** 2026-09-24 |

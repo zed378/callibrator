@@ -1775,7 +1775,7 @@ way for anyone to lock every user out.
   `docs/OBSERVABILITY/01-LOGGING.md` still show `$proxy_add_x_forwarded_for` or the old `:real-ip` —
   amended with this ADR.
 
-**Status:** Accepted — implemented 2026-09-24; **verification on the VM pending.**
+**Status:** Accepted — implemented 2026-09-24; **verified on the VM 2026-09-24** (the session and the `LOGIN` audit row recorded the operator's real public IP). `AUTH_RATE_LIMIT_BY_IP=true` is enabled there.
 
 ---
 
