@@ -17,6 +17,19 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ### Fixed
 
+- **Tenant isolation did not cover `bulkCreate` or `upsert`.** Twelve `TenantSettings.upsert` sites resolve on `(tenant_id, key)`, so a wrong tenant id overwrote another tenant's storage credentials or OIDC configuration. Both verbs now refuse a write naming another tenant. Verified against a real PostgreSQL. (D-01)
+- **Tenant administrators were locked out of API keys, webhooks, storage settings and tenant backup.** The role level was never loaded and never seeded. (V-01)
+- **The approval-workflow engine was SUPERADMIN-only** because five gates named `"workflow"` instead of `"workflows"`. The backend now **refuses to start** when any gate names a menu that is not seeded. (A-58)
+- **Another tenant's id returned 403 instead of 404** in both authorization middlewares and in user management, which let a caller learn which ids exist. (AZ-04)
+- **Restoring a tenant backup deleted every user and recreated them without passwords.** It now never deletes a live account. (S-02)
+- **A global retention policy purged every tenant's rows**, audit logs included, ignoring legal hold. (D-03)
+- **Restoring a soft-deleted device, user, tenant or role wrote nothing** and reported success. (D-07)
+- **The public certificate check published a draft certificate's PDF**, at a guessable filename. (A-57)
+- **One Redis restart disabled Redis until the backend restarted**, taking registration, passkeys, OIDC, shared rate limiting and queue deduplication with it. (W-05)
+- **Deleting a role left its permissions in force for up to an hour.** (W-11)
+- **Logging out left the realtime connection open and the tenant selection set**, so the next person in the same browser tab inherited the previous one's tenant. (F-01, F-06)
+- **The dashboard's system-health panel was hardcoded green.** It now shows real dependency status to super-admins and nothing to anyone else. (F-02)
+
 - **A bodyless request was a 500, and the validator was part of the problem.** Express 5 leaves `req.body` undefined where Express 4 gave `{}`, and Joi treats `undefined` as **valid** against a non-required object schema — so `validate(schema)` let an absent body straight through and the handler's first read threw. A request middleware now fills only an absent body, all 31 validator helpers coerce it, and 69 reads on unvalidated routes are guarded, so a bodyless request gets the 400 it is owed. (A-09)
 - **Webhook deliveries followed redirects**, so a registered host that passed both SSRF layers could answer `302 Location: http://169.254.169.254/...` and this process would fetch cloud metadata from inside the deployment. Redirects are no longer followed; a 3xx is a delivery failure. (A-50)
 - **Dead session-security middleware deleted.** It was imported by nothing and its SQL targeted a table that does not exist, so session fixation protection, a concurrent-session limit and IP binding were never in place — while eleven documents and four ADRs described them as real. Whether they should exist is now an Open Question instead of an assumption. (A-12)

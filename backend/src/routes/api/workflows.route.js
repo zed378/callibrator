@@ -47,7 +47,7 @@ const {
 router.get(
   "/instances/pending",
   auth,
-  workflowController.getPendingTasks
+  workflowController.getPendingTasks,
 );
 
 /**
@@ -110,7 +110,7 @@ router.post(
   auth,
   validateUuid("instanceId"),
   validate(submitActionSchema),
-  workflowController.submitAction
+  workflowController.submitAction,
 );
 
 // Admin Management Routes
@@ -146,8 +146,8 @@ router.post(
 router.get(
   "/",
   auth,
-  dynamicAccess("workflow", "read"),
-  workflowController.getWorkflows
+  dynamicAccess("workflows", "read"),
+  workflowController.getWorkflows,
 );
 
 /**
@@ -212,9 +212,9 @@ router.get(
 router.post(
   "/",
   auth,
-  dynamicAccess("workflow", "write"),
+  dynamicAccess("workflows", "write"),
   validate(createWorkflowSchema),
-  workflowController.createWorkflow
+  workflowController.createWorkflow,
 );
 
 /**
@@ -249,9 +249,9 @@ router.post(
 router.get(
   "/:id",
   auth,
-  dynamicAccess("workflow", "read"),
+  dynamicAccess("workflows", "read"),
   validateUuid("id"),
-  workflowController.getWorkflowById
+  workflowController.getWorkflowById,
 );
 
 /**
@@ -313,10 +313,10 @@ router.get(
 router.put(
   "/:id",
   auth,
-  dynamicAccess("workflow", "write"),
+  dynamicAccess("workflows", "write"),
   validateUuid("id"),
   validate(updateWorkflowSchema),
-  workflowController.updateWorkflow
+  workflowController.updateWorkflow,
 );
 
 /**
@@ -351,9 +351,9 @@ router.put(
 router.delete(
   "/:id",
   auth,
-  dynamicAccess("workflow", "write"),
+  dynamicAccess("workflows", "write"),
   validateUuid("id"),
-  workflowController.deleteWorkflow
+  workflowController.deleteWorkflow,
 );
 
 module.exports = router;

@@ -27,6 +27,56 @@ const SYSTEM_ACCOUNT_USERNAME = process.env.SYSTEM_ACCOUNT_USERNAME || "sys";
 const SYSTEM_ACCOUNT_EMAIL =
   process.env.SYSTEM_ACCOUNT_EMAIL || "sys@mail.com";
 
+// ==========================================
+// TENANT-ISOLATION REFUSAL (AZ-04)
+// ==========================================
+
+/**
+ * The one error for "this user id does not resolve for you". CLAUDE.md:
+ * "Cross-tenant returns 404, never 403 [...] Non-existent, soft-deleted and
+ * not-yours must be indistinguishable." Every not-found and every cross-tenant
+ * branch in userRoleUpdate / editUser / deleteUser throws THIS, so the two
+ * outcomes cannot drift apart. A fresh object per throw: callers may mutate.
+ *
+ * @returns {{status: 404, message: string}}
+ */
+const userNotFound = () => ({ status: 404, message: "User not found" });
+
+/**
+ * Refuse a non-super-admin acting on a user in another tenant, with the same
+ * error as a user that does not exist. The reason goes to the log only.
+ *
+ * On the HTTP path this is defence-in-depth: the global tenant hooks
+ * (utils/tenantScope.util.js) already scope `Users.findByPk` to the caller's
+ * tenant, so a foreign user comes back `null`. It still has to be
+ * indistinguishable — it becomes the live branch the moment a lookup gains
+ * `.unscoped()` / `skipTenantScope`, or runs outside a request context (where
+ * the hooks skip).
+ *
+ * @param {string} operation - the service function, for the log
+ * @param {{id: string, tenantId: (string|null)}} user - the row that was found
+ * @param {{actorIsSuperAdmin: boolean, actorTenantId: (string|null)}} actor
+ * @throws {{status: 404, message: string}} when the user is outside the actor's tenant
+ */
+const assertSameTenantOrNotFound = (operation, user, actor) => {
+  if (
+    actor.actorIsSuperAdmin ||
+    String(user.tenantId) === String(actor.actorTenantId)
+  ) {
+    return;
+  }
+
+  logger.warn("user.service: cross-tenant user access refused", {
+    reason: "cross-tenant",
+    operation,
+    userId: user.id,
+    userTenantId: user.tenantId,
+    actorTenantId: actor.actorTenantId,
+  });
+
+  throw userNotFound();
+};
+
 // Permission assignment moved to role-based model (RoleMenuPermission)
 // userMenuGrant.service removed - now using role_menu_permissions table directly
 
@@ -357,19 +407,15 @@ exports.userRoleUpdate = async (input) => {
     });
 
     if (!user) {
-      throw {
-        status: 404,
-        message: "User not found",
-      };
+      throw userNotFound();
     }
 
-    // Tenant isolation: a non-super-admin may only modify users in their tenant.
-    if (!actorIsSuperAdmin && String(user.tenantId) !== String(actorTenantId)) {
-      throw {
-        status: 403,
-        message: "Access denied: resource belongs to a different tenant",
-      };
-    }
+    // Tenant isolation: a non-super-admin may only modify users in their
+    // tenant. AZ-04: a foreign user is refused exactly like a missing one.
+    assertSameTenantOrNotFound("userRoleUpdate", user, {
+      actorIsSuperAdmin,
+      actorTenantId,
+    });
 
     const role = await Roles.findByPk(roleId, {
       transaction,
@@ -666,19 +712,15 @@ exports.editUser = async (input) => {
     });
 
     if (!user) {
-      throw {
-        status: 404,
-        message: "User not found",
-      };
+      throw userNotFound();
     }
 
-    // Tenant isolation: a non-super-admin may only edit users in their tenant.
-    if (!actorIsSuperAdmin && String(user.tenantId) !== String(actorTenantId)) {
-      throw {
-        status: 403,
-        message: "Access denied: resource belongs to a different tenant",
-      };
-    }
+    // Tenant isolation: a non-super-admin may only edit users in their
+    // tenant. AZ-04: a foreign user is refused exactly like a missing one.
+    assertSameTenantOrNotFound("editUser", user, {
+      actorIsSuperAdmin,
+      actorTenantId,
+    });
 
     if (username && username !== user.username) {
       const existingUsername = await Users.findOne({
@@ -905,11 +947,18 @@ exports.deleteUser = async ({
     });
 
     if (!user) {
-      throw {
-        status: 404,
-        message: "User not found",
-      };
+      throw userNotFound();
     }
+
+    // Tenant isolation: a non-super-admin may only delete users in their
+    // tenant. AZ-04: a foreign user is refused exactly like a missing one.
+    // This runs BEFORE the system-account guard below: that guard answers a
+    // specific 403, so running it first confirmed to another tenant that the
+    // id is the system account.
+    assertSameTenantOrNotFound("deleteUser", user, {
+      actorIsSuperAdmin,
+      actorTenantId,
+    });
 
     // The seeded default super-admin account can NEVER be deleted — not even by
     // another super admin.
@@ -920,14 +969,6 @@ exports.deleteUser = async ({
       throw {
         status: 403,
         message: "The default system administrator account cannot be deleted",
-      };
-    }
-
-    // Tenant isolation: a non-super-admin may only delete users in their tenant.
-    if (!actorIsSuperAdmin && String(user.tenantId) !== String(actorTenantId)) {
-      throw {
-        status: 403,
-        message: "Access denied: resource belongs to a different tenant",
       };
     }
 

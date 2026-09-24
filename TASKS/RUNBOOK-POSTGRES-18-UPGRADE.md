@@ -1,7 +1,66 @@
 # Runbook — Moving the Deployment to PostgreSQL 18
 
-**Decision:** [ADR-041](../MEMORY/DECISIONS.md) · **Status:** not started · **Target:** the VM at
+**Decision:** [ADR-041](../MEMORY/DECISIONS.md) · **Status:** not started — **superseded for this deployment by the owner decision below** (wipe, not migrate) · **Target:** the VM at
 `10.1.200.13`, `/home/infra/callibrator`
+
+---
+
+## Owner Decision — 2026-09-24: Wipe, Do Not Migrate
+
+The owner has directed that deploying to the VM means **removing every container and every volume
+belonging to this project's stack first**, then deploying fresh. The data on the reference
+deployment is disposable.
+
+That settles the problem the rest of this runbook exists to solve. A fresh data directory is
+initialised by PostgreSQL 18 from nothing, so there is no 17-written directory to be incompatible
+with — the dump, the restore, the inventory comparison and Path B are all unnecessary for **this**
+deployment. They stay below because they are the right procedure for any deployment whose data is
+not disposable, which will be every real hospital.
+
+### The exact scope — and what must not be touched
+
+The VM hosts **at least six other projects**: `wedding-staging`, `zedauth`, `zedauth-console`,
+`zedauth-demo`, `zedauth-site`, `commercial2026`, `stocks`, `portainer`. None of them may be
+affected. Scope is therefore selected **by compose project label**, never by name pattern or by
+`docker system prune`, either of which would take other projects with it.
+
+Mapped on 2026-09-24:
+
+| Belongs to this stack | Count |
+|---|---|
+| containers labelled `com.docker.compose.project=callibrator` | 7 — backend, frontend, nginx, postgres, redis, rabbitmq, clamav |
+| network | `callibrator_default` |
+| named or anonymous volumes | **none** — the data lives in bind mounts |
+| bind-mounted data | `/home/infra/callibrator/deploy/compose/volumes/{backup,certs,clamav,log,postgres,rabbitmq,redis,uploads}` |
+
+Because the data is in **bind mounts**, `docker compose down -v` alone does **not** delete it — `-v`
+removes named and anonymous volumes, and there are none. The directories must be removed as well,
+and `postgres/` and `rabbitmq/` are owned by container uids, so the host user cannot delete them
+directly.
+
+### The procedure
+
+```bash
+cd /home/infra/callibrator/deploy/compose
+git -C /home/infra/callibrator pull
+
+# 1. containers, network, and any volumes — this project only
+docker compose -p callibrator -f docker-compose.yml -f docker-compose.vm.yml down -v --remove-orphans
+
+# 2. confirm nothing of this project survives, and that the neighbours are untouched
+docker ps -a --filter label=com.docker.compose.project=callibrator    # expect: empty
+docker ps --format '{{.Names}}' | sort                                 # the other projects, still up
+
+# 3. bind-mounted data — through a throwaway container, because the dirs are container-owned
+docker run --rm -v "$PWD/volumes:/v" alpine sh -c 'rm -rf /v/* && ls -la /v'
+
+# 4. rebuild and start on PostgreSQL 18
+docker compose -p callibrator -f docker-compose.yml -f docker-compose.vm.yml up -d --build
+docker exec callibrator-postgres-1 postgres --version                  # expect 18.x
+```
+
+The ClamAV directory is 168 MB of signature databases; deleting it means `freshclam` downloads them
+again on first start, so ClamAV reports unhealthy for a few minutes. That is expected.
 
 ---
 

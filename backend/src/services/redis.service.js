@@ -8,6 +8,95 @@ const { logger } = require("../middlewares/activityLog.middleware");
 
 let redis = null;
 
+/**
+ * Longest wait between two reconnect attempts, in milliseconds.
+ *
+ * ioredis's own default strategy caps at 2000 ms; this matches it.
+ */
+const RETRY_DELAY_CAP_MS = 2000;
+
+/**
+ * How long to wait between reconnect attempts.
+ *
+ * It must ALWAYS return a number. ioredis 5 (`built/redis/event_handler.js`,
+ * `closeHandler`) calls `retryStrategy(++retryAttempts)` on every lost
+ * connection and, when the result is not a number, calls `setStatus("end")`
+ * and flushes every queued command with "Connection is closed" — and never
+ * dials again unless something calls `connect()` by hand. The README says the
+ * same: "the connection will be lost forever if the user doesn't call
+ * `redis.connect()` manually".
+ *
+ * This used to return `null` after the third attempt: a reconnect budget of
+ * about 1.2 s. Any Redis restart outlived it, the client ended, and because
+ * `initRedis()` runs once at boot every helper below reported "not ready"
+ * for the rest of the process's life (W-05) — registration 429, passkeys 503,
+ * the rate limiter back on per-process memory, queue dedup off. The attempt
+ * counter resets to 0 on `ready` (`readyHandler`), so the backoff starts
+ * short again after each recovery.
+ *
+ * @param {number} times - 1-based attempt number since the last `ready`
+ * @returns {number} delay in milliseconds, capped at RETRY_DELAY_CAP_MS
+ */
+const retryStrategy = (times) => Math.min(times * 200, RETRY_DELAY_CAP_MS);
+
+/**
+ * Clients closeRedis() shut down on purpose. Per client, and never cleared:
+ * ioredis emits `close`/`end` on a later tick than `quit()` resolves, so a
+ * flag reset after `await quit()` would already be false when they fire.
+ */
+const closedOnPurpose = new WeakSet();
+
+/**
+ * Log the connection's state transitions and keep the client from ever
+ * staying ended.
+ *
+ * - ready → close: one `warn` naming the consequence (every helper fails
+ *   over until the connection returns). ioredis also emits `error` on each
+ *   failed attempt, which the `error` listener logs.
+ * - close → ready: one `warn` that it recovered.
+ * - end without closeRedis(): with a numeric retryStrategy ioredis only gets
+ *   here when the connector itself errors (`Redis#_connect`); schedule a
+ *   `connect()`, whose failure re-enters the normal retry loop.
+ *
+ * @param {import("ioredis").Redis} client
+ */
+const watchLifecycle = (client) => {
+  let lost = false;
+
+  client.on("ready", () => {
+    if (lost) {
+      lost = false;
+      logger.warn("Redis reconnected; caching, locks and shared rate limiting resumed");
+    }
+  });
+
+  client.on("close", () => {
+    if (!lost && !closedOnPurpose.has(client)) {
+      lost = true;
+      logger.warn(
+        "Redis connection lost; caching, locks, WebAuthn/OIDC state and shared rate limiting are degraded until it reconnects",
+      );
+    }
+  });
+
+  client.on("end", () => {
+    if (closedOnPurpose.has(client)) {return;}
+    logger.error({
+      status: "Redis Connection Ended",
+      message: `ioredis stopped reconnecting; forcing a reconnect in ${RETRY_DELAY_CAP_MS}ms`,
+    });
+    const timer = setTimeout(() => {
+      if (client.status === "end" && !closedOnPurpose.has(client)) {
+        client.connect().catch(() => {
+          // The failed attempt goes through closeHandler → retryStrategy,
+          // which keeps retrying; the `error` listener has already logged it.
+        });
+      }
+    }, RETRY_DELAY_CAP_MS);
+    timer.unref?.();
+  });
+};
+
 const getRedisConnection = () => {
   if (redis) {
     return redis;
@@ -18,13 +107,12 @@ const getRedisConnection = () => {
     `redis://${process.env.REDIS_HOST || "localhost"}:${process.env.REDIS_PORT || 6379}`;
 
   redis = new Redis(redisUrl, {
+    // Commands queued while disconnected are rejected after every 4th failed
+    // attempt rather than waiting forever. The helpers below never queue —
+    // they check readiness first — but the rate limiter and queue dedup call
+    // the client directly and already treat a rejection as "Redis down".
     maxRetriesPerRequest: 3,
-    retryStrategy: (times) => {
-      if (times > 3) {
-        return null;
-      }
-      return Math.min(times * 200, 1000);
-    },
+    retryStrategy,
     lazyConnect: true,
   });
 
@@ -34,6 +122,8 @@ const getRedisConnection = () => {
       message: err.message,
     });
   });
+
+  watchLifecycle(redis);
 
   return redis;
 };
@@ -283,6 +373,7 @@ const cacheKeys = {
 const closeRedis = async () => {
   try {
     if (redis) {
+      closedOnPurpose.add(redis);
       await redis.quit();
       redis = null;
       logger.info("Redis connection closed");
@@ -303,4 +394,6 @@ module.exports = {
   releaseLock,
   cacheKeys,
   closeRedis,
+  retryStrategy,
+  RETRY_DELAY_CAP_MS,
 };

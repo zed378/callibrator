@@ -60,9 +60,17 @@ const buildDb = () => {
     { tableName: "roles", timestamps: true, underscored: true },
   );
 
+  // Each recorded statement is the SQL text PLUS its bind values. `bulkCreate`
+  // inlines escaped literals into the text, but `upsert` hands over
+  // `{ query, bind }` with `$1..$n` placeholders — recording only `sql.query`
+  // (as this stub first did) throws every upserted value away, so an assertion
+  // like "the statement carries TENANT_B" could never pass. The bind array is
+  // what Postgres actually receives, so it is part of the statement.
   const statements = [];
-  db.query = jest.fn(async (sql) => {
-    statements.push(typeof sql === "string" ? sql : sql.query);
+  db.query = jest.fn(async (sql, options) => {
+    const text = typeof sql === "string" ? sql : sql.query;
+    const bind = (sql && sql.bind) || (options && options.bind);
+    statements.push(bind ? `${text} -- bind: ${JSON.stringify(bind)}` : text);
     // Shapes the two call sites destructure: bulkInsert reads results[0],
     // upsert reads [record] and assigns to it.
     return [[], 0];

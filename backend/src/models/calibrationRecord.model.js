@@ -122,9 +122,14 @@ const defineModel = (db, DataTypes) => {
    * Restore a soft-deleted calibration record by ID. Sets is_deleted = false.
    */
   CalibrationRecord.restoreStatic = async function (id) {
-    return this.update(
-      { is_deleted: false },
-      { where: { id, is_deleted: true } },
+    // `isDeleted` is the ATTRIBUTE (column is_deleted via underscored).
+    // Model.update intersects its values with attribute names, so the former
+    // `{ is_deleted: false }` was dropped and nothing was written (D-07).
+    // unscoped(): the defaultScope pins isDeleted = false, which a restore
+    // must not inherit; paranoid and the global tenant hooks still apply.
+    return this.unscoped().update(
+      { isDeleted: false },
+      { where: { id, isDeleted: true } },
     );
   };
 

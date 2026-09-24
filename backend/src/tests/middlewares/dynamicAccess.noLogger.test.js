@@ -92,6 +92,34 @@ describe("dynamicAccess without a logger", () => {
     expect(res.status).not.toHaveBeenCalled();
   });
 
+  // AZ-04: the isolation refusal must still be produced — as a 404, the same
+  // body as not-found — when there is nowhere to log the reason.
+  it("should still refuse a foreign tenant with 404 when there is no logger", async () => {
+    const { Tenants } = require("../../models");
+    Tenants.findByPk.mockResolvedValueOnce({ id: "tenant-999" });
+    req.params = { tenantId: "tenant-999" };
+
+    await dynamicAccess("Home", "read", { checkTenant: true })(req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.json).toHaveBeenCalledWith({
+      success: false,
+      status: 404,
+      message: "Tenant not found",
+      data: null,
+    });
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it("should still refuse an in-tenant permission failure with 403 when there is no logger", async () => {
+    RolesService.getRolePermissionsMatrix.mockResolvedValue({ Home: [] });
+
+    await dynamicAccess("Home", "write")(req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(next).not.toHaveBeenCalled();
+  });
+
   it("should still return 500 from hasDynamicPermission when the lookup throws", async () => {
     RolesService.getRolePermissionsMatrix.mockRejectedValue(new Error("boom"));
     req.body = { menuGroup: "Home", permissionType: "read" };

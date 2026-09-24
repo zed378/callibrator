@@ -24,12 +24,12 @@ below is read from code, and the cards say where that leaves a doubt.
 
 | Id | Finding | Severity | Area | Status |
 |---|---|---|---|---|
-| F-01 | **Logout never closes the socket** — the next user in the same tab inherits the previous user's authenticated Socket.IO connection | **high** | realtime / tenancy | TODO |
-| F-02 | The dashboard's "System Health — All Systems Go" panel is **hardcoded**; it has never called `/health` | **high** | integrity | TODO |
+| F-01 | **Logout never closes the socket** — the next user in the same tab inherits the previous user's authenticated Socket.IO connection | **high** | realtime / tenancy | **DONE** 2026-09-24 |
+| F-02 | The dashboard's "System Health — All Systems Go" panel is **hardcoded**; it has never called `/health` | **high** | integrity | **DONE** 2026-09-24 |
 | F-03 | **`make verify` cannot pass, and never checked the frontend**: 85 lint errors, `typecheck` type-checks nothing, `test` never runs the coverage gate | **high** | gate | TODO |
 | F-04 | **0% coverage above the service layer** — every page, every hook, `client.ts`'s interceptors, `proxy.ts` and `socket.ts` | **high** | tests | TODO |
 | F-05 | **Token refresh is dead end to end**, and the 401 path races a redirect against the cookie clear | **high** | auth | TODO |
-| F-06 | `x_tenant_id` **survives logout** — a super admin's next session is silently scoped to the tenant they last impersonated | medium | tenancy | TODO |
+| F-06 | `x_tenant_id` **survives logout** — a super admin's next session is silently scoped to the tenant they last impersonated | medium | tenancy | **DONE** 2026-09-24 |
 | F-07 | No error boundary, no 403/404/409/429/offline handling, no `X-Request-Id`; `AccessDeniedModal` is rendered nowhere | medium | errors | TODO |
 | F-08 | **Two `proxy.ts` files** with different auth logic | medium | routing | TODO |
 | F-09 | `POST /api/v1/auth/sso-session` writes the auth cookie from an **unverified request body** | medium | auth | TODO |
@@ -50,7 +50,7 @@ below is read from code, and the cards say where that leaves a doubt.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24 |
 | **Severity** | **high** |
 | **Verified** | from code. Not reproduced in a browser — the hand-off depends on the tab not reloading, which is argued from the navigation calls below, not observed |
 | **Evidence** | `frontend/src/lib/socket.ts:64` defines `disconnectSocket()`. `grep -rn "disconnectSocket" frontend/src` returns **only that definition** — zero callers. `frontend/src/stores/authStore.ts:315-336` (`logout`) clears the menu store and three cookies and does not touch the socket; `exitImpersonation` (`:292-313`) does not either. `frontend/src/components/layouts/Sidebar.tsx:110-113` and `Navigation.tsx:39-42` both do `await logout(); router.push("/login")` — a **client-side** navigation. `frontend/src/app/login/hooks/useLoginForm.ts:41` and `:55` return with `router.push(callbackUrl)` — client-side again. `frontend/src/lib/socket.ts:10` holds `socket` at module scope and `:21` returns it unconditionally: `if (socket) return socket;` |
@@ -90,11 +90,27 @@ disconnect is missed.
 
 ---
 
+**What was changed (2026-09-24)** — logout disconnects the socket **first**, before the logout
+request is sent, so no event for the departing user can land while it is in flight. The same happens
+on `exitImpersonation` and on a failed session restore. Two races that the fix would otherwise have
+left open are closed in `lib/socket.ts`: a connection **still being set up** when the session ends is
+now discarded rather than handed to the next user, and a late `connect_error` on a dead socket can no
+longer re-authenticate the next session's socket.
+
+**Proof** — `stores/__tests__/authStore.session.test.ts` and `lib/socket.test.ts` use the **real**
+socket singleton; only `io` and the HTTP layer are faked. Against the old code: *"logout disconnects
+the socket and the next login gets a fresh connection with the new token"* → `Received number of
+calls: 0`.
+
+**Not covered:** the real two-users-same-tab case over a live Socket.IO server was not reproduced;
+the tests prove A's socket closes and B's is new, not that B receives nothing of A's tenant end to
+end. Room re-join on reconnect is A-53, still open.
+
 ### F-02 — The "System Health" panel is hardcoded
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24 |
 | **Severity** | **high** |
 | **Verified** | from code — the component takes no props, makes no call, and imports no service |
 | **Evidence** | `frontend/src/app/dashboard/components/DashboardSystemHealth.tsx:25-30` renders a pulsing green dot and the literal text `All Systems Go`; `:34-57` render four `HealthIndicator`s with `status="healthy"` and the literal strings `"99.9% uptime"`, `"Connected • 2ms"`, `"Active • 1ms"`, `"3 messages pending"`. `:20-22` labels the block `Real-time infrastructure status`. It is mounted unconditionally at `frontend/src/app/dashboard/page.tsx:159`. `grep -rn "api/v1/health" frontend/src` returns nothing |
@@ -124,6 +140,21 @@ the component. Do not keep a decorative version. If it is kept, the three states
 - Leaving "All Systems Go" as a static header above dynamic indicators
 
 ---
+
+**What was changed (2026-09-24)** — the panel is **wired to the real data**, not removed. It calls
+`GET /api/v1/health` (super-admin only) through a new `health.service.ts`, treats **503 as an answer**
+— it carries the breakdown, and it is the answer that matters most — and renders exactly what comes
+back. An unhealthy dependency shows red with the backend's own error text; `not configured` and
+`unknown` show **neutral grey, never green**; a failed request shows "could not load", not a status.
+A non-super-admin gets **no panel and no request**, and a 403 removes the panel rather than showing
+green. The static "All Systems Go", the invented "Connected • 2ms" and "3 messages pending", and the
+fake uptime are gone.
+
+`react-hooks/set-state-in-effect` fired on the first version and **was right**; the component was
+restructured instead of the rule being disabled.
+
+**Not covered:** a real dependency stopped behind a live backend. The 503 case is proven with a
+response body copied from the real `readinessDetail` shape, not from a running stack.
 
 ### F-03 — `make verify` cannot pass, and never checked the frontend
 
@@ -270,7 +301,7 @@ this line). Align the cookie's `maxAge` with the refresh window rather than with
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24 |
 | **Severity** | medium |
 | **Verified** | from code. Not reproduced against a live super-admin account |
 | **Evidence** | `frontend/src/stores/authStore.ts:272-274` — `impersonate` sets `x_tenant_id` to the impersonated tenant. `:301-303` — `exitImpersonation` deletes `impersonating`, `auth_logged_in` **and** `x_tenant_id`. `:326` — plain `logout` deletes **only** `impersonating`. `frontend/src/app/api/v1/auth/logout/route.ts:26-28` deletes `auth_token`, `auth_session` and `auth_logged_in` — not `x_tenant_id`. `frontend/src/app/api/v1/[...path]/route.ts:19-20` then reads that surviving cookie and `:50` sends it as `X-Tenant-ID` on every later request. `backend/src/middlewares/auth.middleware.js:144-164` honours the header for `SUPER_ADMIN`/`SUPERADMIN` and rebinds `req.tenantId` to it. Plain password login never sets the cookie (`authStore.ts:117-164`), so the stale value is not overwritten |
@@ -306,6 +337,17 @@ from a client-writable cookie.
 - Testing that the banner is hidden rather than that the tenant is right
 
 ---
+
+**What was changed (2026-09-24)** — logout deletes `x_tenant_id`, `impersonating` and
+`auth_logged_in` in a `finally`, so they go even when the logout request fails; resets the current
+tenant; and clears the cached tenant branding. The server-side logout route deletes the same two
+cookies. A password `login()` also clears any stale `x_tenant_id` first — this covers the 401 path,
+where the API client reloads straight to `/login` and never runs logout at all. Against the old
+code, *"logout after impersonation removes x_tenant_id…"* received `["auth_logged_in", "x_tenant_id"]`.
+
+**Adjacent defect found, not fixed:** `tenantStore.fetchTenantById` and `updateTenant` **set**
+`x_tenant_id` whenever a super-admin merely views or edits a tenant — silently switching their tenant
+context. Recorded here so it is not lost.
 
 ### F-07 — No error boundary and no status handling below 401
 
@@ -799,3 +841,16 @@ Stated so nobody re-audits them.
   from the dependency list, not measured.
 - **The Kanban, tickets, QMS, SOP, GDPR, SCIM and OIDC screens** were read only where an endpoint,
   an envelope or an error path took the audit through them. None was walked end to end.
+
+---
+
+## Found 2026-09-24 — the frontend coverage gate has never been green
+
+`frontend/jest.config.js` sets a **70 %** coverage threshold. With `jest --coverage` the frontend sits
+at **about 14 %**, so the command exits 1 — and it did before any change made today. `make verify`
+never ran it: `frontend/package.json`'s `test` script is `jest` without `--coverage`, so the
+threshold is never evaluated.
+
+`CLAUDE.md` describes only the backend's 100 % gate. The frontend's gate exists in configuration,
+has never passed, and has never been run by anything that would notice. That is the same shape as
+the backend lint gate (A-34): a gate that looks enforced because it is written down.

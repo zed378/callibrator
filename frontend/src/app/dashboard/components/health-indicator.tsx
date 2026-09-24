@@ -4,10 +4,16 @@ import React, { useEffect, useState } from "react";
 
 const HealthIndicator: React.FC<{
   name: string;
-  status: "healthy" | "warning" | "error";
+  /**
+   * "neutral" is for a state that is neither a pass nor a fail — not
+   * configured, or configured but not measured. It must never look green.
+   */
+  status: "healthy" | "warning" | "error" | "neutral";
   uptime?: string;
+  /** Overrides the default label for the status. */
+  label?: string;
   delay: number;
-}> = ({ name, status, uptime, delay }) => {
+}> = ({ name, status, uptime, label, delay }) => {
   const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
@@ -40,6 +46,14 @@ const HealthIndicator: React.FC<{
       bgColor: "bg-destructive/10",
       borderColor: "border-destructive/30",
     },
+    neutral: {
+      dot: "bg-muted-foreground",
+      shadow: "shadow-none",
+      label: "Unknown",
+      labelColor: "text-muted-foreground",
+      bgColor: "bg-muted/30",
+      borderColor: "border-border",
+    },
   };
 
   const config = statusConfig[status];
@@ -57,7 +71,7 @@ const HealthIndicator: React.FC<{
           />
         </div>
         <span className={`text-sm font-semibold ${config.labelColor}`}>
-          {config.label}
+          {label ?? config.label}
         </span>
       </div>
       <p className="text-sm font-medium text-foreground/70">

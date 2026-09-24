@@ -44,8 +44,9 @@ const denyTenantIsolation = (req, res, reason, resourceTenantId) => {
     requestId: req.requestId || "unknown",
     reason,
     resourceTenantId: String(resourceTenantId),
-    callerTenantId: req.user ? req.user.tenantId : undefined,
-    userId: req.user ? req.user.id : undefined,
+    // Only reached after the 401 guard, so req.user is always present here.
+    callerTenantId: req.user.tenantId,
+    userId: req.user.id,
     method: req.method,
     url: req.originalUrl,
   });
