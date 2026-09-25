@@ -1,4 +1,4 @@
-const { Op } = require('sequelize');
+const { Op, Transaction } = require('sequelize');
 const { Tenant, TenantSettings, User, Subscription, Invoice } = require('../models');
 const { AppError } = require('../utils/appError.util');
 const { logger } = require('../middlewares/activityLog.middleware');
@@ -6,7 +6,7 @@ const { isEnabled } = require('./featureFlag.service');
 const auditService = require('./audit.service');
 const { SYSTEM_ACTORS } = require('../constants/systemActors');
 const { db } = require('../config');
-const { tenantStorage } = require('../middlewares/tenantContext.middleware');
+const { runForTenant } = require('../utils/jobContext.util');
 const {
   isRedactedSettingKey,
   SECRET_SETTING_MASK,
@@ -153,8 +153,11 @@ exports.offboardTenant = async (
     return tenant;
   }
 
-  const exportData = await exports.exportTenantData(tenantId);
-
+  // W-17 (ADR-073): no export is built here. The one this used to build was
+  // taken before the transaction, returned to the operator's screen (which
+  // ignored it) and discarded by the scheduler. Offboarding deletes nothing:
+  // the data stays readable through GET /tenants/:tenantId/export until the
+  // hard delete, which refuses while regulated records remain (D-23).
   const before = {
     status: tenant.status,
     gracePeriodExpiresAt: tenant.gracePeriodExpiresAt || null,
@@ -214,7 +217,7 @@ exports.offboardTenant = async (
     expiresAt: tenant.offboardRetentionExpiresAt,
   });
 
-  return { tenant, exportData };
+  return { tenant };
 };
 
 exports.cancelOffboarding = async (tenantId) => {
@@ -240,30 +243,117 @@ exports.cancelOffboarding = async (tenantId) => {
   return tenant;
 };
 
-exports.hardDeleteOffboardedTenant = async (tenantId) => {
-  const tenant = await Tenant.findByPk(tenantId);
-  if (!tenant) {
-    throw new AppError(404, 'Tenant not found');
-  }
+/**
+ * The tenant-scoped tables a hard delete removes itself, in this order, once
+ * nothing retained is left (D-23): configuration, accounts, billing plan.
+ * Everything on 0030's TENANT_FK_CASCADE list goes with the tenant row.
+ */
+const DELETED_WITH_TENANT = Object.freeze(["tenant_settings", "users", "subscriptions"]);
 
-  if (tenant.status !== 'deleted') {
-    throw new AppError(400, 'Tenant is not offboarded');
-  }
+/**
+ * Hard-delete an offboarded tenant whose retention period has expired.
+ *
+ * D-23 (ADR-064) — this force-deleted four tables in four autocommits and then
+ * the tenant row, trusting CASCADE for the other ~50. Since 0030 every
+ * regulated table's tenant key is ON DELETE RESTRICT, so on real data it
+ * failed part-way — users and subscriptions gone, the tenant and its records
+ * still there — or, before 0030, silently cascaded away calibration evidence.
+ * Now, in ONE transaction:
+ *  - the tenant must be offboarded (409) and past its retention date (409);
+ *  - every tenant-scoped table that is neither CASCADE (0030) nor on
+ *    DELETED_WITH_TENANT is counted — soft-deleted rows included, they are
+ *    records too. If any holds rows, the delete is REFUSED (409) naming each
+ *    table and count. Those are the records a hospital must retain
+ *    (calibration records, certificates, signatures, the audit trail — which
+ *    includes the offboarding itself); removing them is an archival
+ *    decision, not a side effect of this call;
+ *  - otherwise DELETED_WITH_TENANT goes in order, then the tenant row (its
+ *    CASCADE tables with it), and one audit row under the platform tenant.
+ *
+ * In practice a tenant that ever wrote an audit row is refused: the answer to
+ * "what is retained after a purge" is "every regulated record, until an
+ * archival process removes it". None exists yet; nothing calls this today.
+ *
+ * @param {string} tenantId
+ * @param {object} [actor] - auditActor(req); null userId records the scheduler
+ * @returns {Promise<{tenantId: string, deleted: Object<string, number>}>}
+ * @throws {AppError} 404 unknown tenant; 409 not offboarded, retention running, or records retained
+ */
+exports.hardDeleteOffboardedTenant = async (tenantId, { userId = null, ipAddress = null, userAgent = null } = {}) => {
+  const models = require("../models");
+  const { TENANT_FK_CASCADE } = require("../migrations/0030-tenant-foreign-keys-restrict");
+  const { PLATFORM_TENANT_ID } = require("../constants/platformTenant");
 
-  if (tenant.offboardRetentionExpiresAt && new Date() < new Date(tenant.offboardRetentionExpiresAt)) {
-    throw new AppError(400, 'Retention period has not expired yet');
-  }
+  return db.transaction(async (transaction) => {
+    const tenant = await Tenant.findByPk(tenantId, { transaction, lock: Transaction.LOCK.UPDATE });
+    if (!tenant) {
+      throw new AppError(404, "Tenant not found");
+    }
+    if (tenant.status !== "deleted") {
+      throw new AppError(409, `This tenant is "${tenant.status}", not offboarded: offboard it before it can be deleted`);
+    }
+    if (tenant.offboardRetentionExpiresAt && new Date() < new Date(tenant.offboardRetentionExpiresAt)) {
+      throw new AppError(
+        409,
+        `The offboarded tenant's retention period runs until ${new Date(tenant.offboardRetentionExpiresAt).toISOString()}; it cannot be deleted before then`,
+      );
+    }
 
-  await User.destroy({ where: { tenantId }, force: true });
-  await Subscription.destroy({ where: { tenantId }, force: true });
-  await Invoice.destroy({ where: { tenantId }, force: true });
-  await TenantSettings.destroy({ where: { tenantId }, force: true });
+    const scoped = [...new Set(Object.values(models.sequelize.models))]
+      .map((model) => ({ model, attribute: model.rawAttributes.tenantId ? "tenantId" : model.rawAttributes.tenant_id ? "tenant_id" : null }))
+      .filter(({ model, attribute }) => attribute && model.name !== "Tenant");
+    const count = ({ model, attribute }) =>
+      model.unscoped().count({ where: { [attribute]: tenantId }, paranoid: false, skipTenantScope: true, transaction });
 
-  await tenant.destroy({ force: true });
+    const retained = [];
+    for (const entry of scoped) {
+      const table = entry.model.tableName;
+      if (TENANT_FK_CASCADE.includes(table) || DELETED_WITH_TENANT.includes(table)) {continue;}
+      const n = await count(entry);
+      if (n > 0) {retained.push(`${table} (${n})`);}
+    }
+    if (retained.length) {
+      throw new AppError(
+        409,
+        `This tenant still holds records that are retained after offboarding: ${retained.sort().join(", ")}. ` +
+          "Nothing was deleted. Removing retained records is an archival decision, not part of this operation.",
+      );
+    }
 
-  await logger.warn(`Hard-deleted offboarded tenant: ${tenantId}`);
+    const deleted = {};
+    for (const table of DELETED_WITH_TENANT) {
+      const entry = scoped.find(({ model }) => model.tableName === table);
+      deleted[table] = await entry.model.unscoped().destroy({
+        where: { [entry.attribute]: tenantId },
+        force: true,
+        skipTenantScope: true,
+        transaction,
+      });
+    }
+    await tenant.destroy({ force: true, transaction });
 
-  return true;
+    await auditService.logAction(
+      {
+        tenantId: PLATFORM_TENANT_ID,
+        ...(userId ? { userId } : { systemActor: TENANT_LIFECYCLE_ACTOR }),
+        action: "DELETE",
+        resourceType: "Tenant",
+        resourceId: tenantId,
+        ipAddress,
+        userAgent,
+        changes: {
+          operation: "TENANT_HARD_DELETE",
+          ...(userId ? {} : { actor: TENANT_LIFECYCLE_ACTOR }),
+          before: { name: tenant.name, status: tenant.status },
+          deleted,
+        },
+      },
+      { transaction },
+    );
+
+    await logger.warn(`Hard-deleted offboarded tenant: ${tenantId}`);
+    return { tenantId, deleted };
+  });
 };
 
 /**
@@ -406,6 +496,9 @@ exports.getTenantLifecycleStatus = async (tenantId) => {
   };
 };
 
+/** Tenants read per page by the lifecycle processor (W-17). */
+const LIFECYCLE_PAGE_SIZE = Number(process.env.TENANT_LIFECYCLE_PAGE_SIZE) || 50;
+
 /**
  * The scheduled job (middlewares/tenantLifecycleScheduler.middleware.js):
  * offboard every suspended tenant whose grace period has passed.
@@ -422,34 +515,50 @@ exports.getTenantLifecycleStatus = async (tenantId) => {
  *
  * @returns {Promise<Array<{tenantId: string, action: 'offboarded'|'failed', error?: string}>>}
  */
-exports.processExpiredGracePeriods = async () => {
+exports.processExpiredGracePeriods = async ({ pageSize = LIFECYCLE_PAGE_SIZE } = {}) => {
   const now = new Date();
-  // The ENUM's own lowercase value — PostgreSQL does not coerce, and
-  // 'SUSPENDED' raised `invalid input value for enum enum_tenants_status`.
-  const tenants = await Tenant.findAll({
-    where: {
-      status: 'suspended',
-      gracePeriodExpiresAt: { [Op.lte]: now },
-    },
-  });
-
   const results = [];
 
-  for (const tenant of tenants) {
-    const context = { tenantId: tenant.id, isSuperAdmin: false, isSystemTask: false };
-    try {
-      await tenantStorage.run(context, () => exports.offboardTenant(tenant.id));
-      results.push({ tenantId: tenant.id, action: 'offboarded' });
-    } catch (err) {
-      results.push({ tenantId: tenant.id, action: 'failed', error: err.message });
-      logger.error(`Tenant lifecycle: offboarding ${tenant.id} failed`, {
-        tenantId: tenant.id,
-        error: err.message,
-      });
+  // W-17: keyset pages of ids, never the whole table's rows at once.
+  let afterId = null;
+  for (;;) {
+    // The ENUM's own lowercase value — PostgreSQL does not coerce, and
+    // 'SUSPENDED' raised `invalid input value for enum enum_tenants_status`.
+    const where = {
+      status: 'suspended',
+      gracePeriodExpiresAt: { [Op.lte]: now },
+    };
+    if (afterId) {
+      where.id = { [Op.gt]: afterId };
     }
+    const tenants = await Tenant.findAll({
+      where,
+      attributes: ['id'],
+      order: [['id', 'ASC']],
+      limit: pageSize,
+    });
+
+    for (const tenant of tenants) {
+      try {
+        // W-12: the job helper, so every job's context is declared the same way.
+        await runForTenant(tenant.id, () => exports.offboardTenant(tenant.id));
+        results.push({ tenantId: tenant.id, action: 'offboarded' });
+      } catch (err) {
+        results.push({ tenantId: tenant.id, action: 'failed', error: err.message });
+        logger.error(`Tenant lifecycle: offboarding ${tenant.id} failed`, {
+          tenantId: tenant.id,
+          error: err.message,
+        });
+      }
+    }
+
+    if (tenants.length < pageSize) {
+      break;
+    }
+    afterId = tenants[tenants.length - 1].id;
   }
 
-  logger.info(`Processed ${tenants.length} expired grace period(s)`, { results });
+  logger.info(`Processed ${results.length} expired grace period(s)`, { results });
 
   return results;
 };

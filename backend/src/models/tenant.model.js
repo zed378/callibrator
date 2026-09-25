@@ -7,6 +7,8 @@
  * Multi-tenant isolation with shared infrastructure.
  */
 
+// D-27 (ADR-070): every JSON column declares its shape, validated on write.
+const { jsonShape } = require("../utils/jsonShape.util");
 const { Op } = require("sequelize");
 const { PLATFORM_TENANT_ID } = require("../constants/platformTenant");
 
@@ -80,6 +82,7 @@ const defineModel = (db, DataTypes) => {
       contactPhone: { type: DataTypes.STRING(50), allowNull: true },
       settings: {
         type: DataTypes.JSONB,
+        validate: { shape: jsonShape("Tenant.settings") },
         defaultValue: {},
       },
       limitSeats: {

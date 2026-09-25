@@ -198,6 +198,20 @@ describe("tenantLifecycle.service", () => {
       );
     });
 
+    it("W-17: offboarding builds no export — no user, setting, subscription or invoice is read", async () => {
+      Tenant.findByPk.mockResolvedValue({ id: "t1", status: "suspended", save: jest.fn() });
+      TenantSettings.upsert.mockResolvedValue({});
+
+      const result = await tenantLifecycle.offboardTenant("t1");
+
+      expect(Object.keys(result)).toEqual(["tenant"]);
+      expect(User.findAll).not.toHaveBeenCalled();
+      expect(TenantSettings.findAll).not.toHaveBeenCalled();
+      expect(Subscription.findAll).not.toHaveBeenCalled();
+      expect(Invoice.findAll).not.toHaveBeenCalled();
+      expect(Tenant.findByPk).toHaveBeenCalledTimes(1);
+    });
+
     it("returns immediately if already offboarded and force is false", async () => {
       const mockTenant = {
         id: "t1",
@@ -241,49 +255,6 @@ describe("tenantLifecycle.service", () => {
         status: "active",
       });
       await expect(tenantLifecycle.cancelOffboarding("t1")).rejects.toThrow("Tenant is not offboarded");
-    });
-  });
-
-  describe("hardDeleteOffboardedTenant", () => {
-    it("hard-deletes tenant and related data after retention", async () => {
-      const mockDestroy = jest.fn();
-      Tenant.findByPk.mockResolvedValue({
-        id: "t1",
-        status: "deleted",
-        offboardRetentionExpiresAt: new Date(Date.now() - 86400000),
-        destroy: mockDestroy,
-      });
-      User.destroy.mockResolvedValue(3);
-      Subscription.destroy.mockResolvedValue(1);
-      Invoice.destroy.mockResolvedValue(5);
-      TenantSettings.destroy.mockResolvedValue(10);
-
-      await tenantLifecycle.hardDeleteOffboardedTenant("t1");
-
-      expect(User.destroy).toHaveBeenCalledWith({ where: { tenantId: "t1" }, force: true });
-      expect(mockDestroy).toHaveBeenCalledWith({ force: true });
-    });
-
-    it("throws 404 if tenant not found", async () => {
-      Tenant.findByPk.mockResolvedValue(null);
-      await expect(tenantLifecycle.hardDeleteOffboardedTenant("t1")).rejects.toThrow("Tenant not found");
-    });
-
-    it("throws 400 if tenant is not offboarded", async () => {
-      Tenant.findByPk.mockResolvedValue({
-        id: "t1",
-        status: "active",
-      });
-      await expect(tenantLifecycle.hardDeleteOffboardedTenant("t1")).rejects.toThrow("Tenant is not offboarded");
-    });
-
-    it("throws 400 if retention period has not expired yet", async () => {
-      Tenant.findByPk.mockResolvedValue({
-        id: "t1",
-        status: "deleted",
-        offboardRetentionExpiresAt: new Date(Date.now() + 86400000),
-      });
-      await expect(tenantLifecycle.hardDeleteOffboardedTenant("t1")).rejects.toThrow("Retention period has not expired yet");
     });
   });
 

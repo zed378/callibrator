@@ -71,7 +71,7 @@ Both stacks fail **at configuration time** rather than deploying something that 
 | `CORS_ORIGIN` required in staging and prod | with no origins in production the app rejects everything |
 | `ACME_DIRECTORY_URL` required in prod | the **default is Let's Encrypt staging** — certificates no browser trusts |
 | `make preflight` | rejects `TAG=latest`, `NODE_ENV != production`, `SEED_DEMO=true`, a wildcard CORS origin, a staging ACME URL, an empty / `guest` / `CHANGE_ME` `RABBITMQ_PASS`, and (S-09) a `REDIS_PASSWORD` that is empty or shorter than 16 characters, or set alongside a credentialed `REDIS_URL` |
-| `make check-env` (every `make up`) | rejects missing required secrets, and a `RABBITMQ_URL` whose credentials differ from `RABBITMQ_USER`/`RABBITMQ_PASS` (S-09) |
+| `make check-env` (every `make up`) | rejects missing required secrets, and a `RABBITMQ_URL` whose credentials differ from `RABBITMQ_USER`/`RABBITMQ_PASS` (S-09). Inside compose the backend's URL is now BUILT from those two (ADR-066), so the `.env` line only matters for a backend run outside compose |
 
 ### Helm
 
@@ -175,7 +175,7 @@ Set `REDIS_PASSWORD` in `.env` (`make secrets` prints one). The compose Redis st
 
 ## Container Hardening (S-19)
 
-Every service: `no-new-privileges`, `cap_drop: [ALL]` plus only the capabilities its entrypoint needs; nginx and redis run read-only; CPU limits beside the memory limits in the prod, staging and vm overlays. The dev overlay binds every port to `127.0.0.1` except nginx. Table and reasoning: [`../docs/DEVOPS/02-CONTAINERIZATION.md`](../docs/DEVOPS/02-CONTAINERIZATION.md). **Not verified by running** — confirm every container reaches healthy on the first `make up`.
+Every service: `no-new-privileges`, `cap_drop: [ALL]` plus only the capabilities its entrypoint needs; nginx and redis run read-only; CPU limits beside the memory limits in the prod, staging and vm overlays. The dev overlay binds every port to `127.0.0.1` except nginx. Table and reasoning: [`../docs/DEVOPS/02-CONTAINERIZATION.md`](../docs/DEVOPS/02-CONTAINERIZATION.md). **PARTLY VERIFIED BY RUNNING (2026-09-25, ADR-066): with the dev overlay, volume-init, postgres, redis (read_only), rabbitmq and the backend (uid 997, no capabilities) all reached healthy under these settings, and the backend connected to all three datastores. clamav, frontend, nginx, pgadmin and minio were NOT started, and no other overlay was brought up.** Confirm the rest on the first `make up`.
 
 `volumes/redis` matters more than it looks.
 

@@ -14,6 +14,14 @@ jest.mock("../../models", () => ({
   },
 }));
 
+// W-04: an anomaly's reading, alert and audit row are one transaction.
+jest.mock("../../config", () => ({
+  db: { transaction: jest.fn(async (cb) => cb("TX")) },
+}));
+jest.mock("../../services/audit.service", () => ({
+  logAction: jest.fn().mockResolvedValue({}),
+}));
+
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: {
     error: jest.fn(),
@@ -26,6 +34,8 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
 const mqtt = require("mqtt");
 const { CalibrationDevice, IotReading, Notification } = require("../../models");
 const { logger } = require("../../middlewares/activityLog.middleware");
+const auditService = require("../../services/audit.service");
+const { tenantStorage } = require("../../middlewares/tenantContext.middleware");
 
 describe("iot.service", () => {
   const iot = require("../../services/iot.service");
@@ -413,6 +423,8 @@ describe("iot.service", () => {
 
     beforeEach(() => {
       CalibrationDevice.unscoped.mockReturnValue({ findOne: jest.fn() });
+      IotReading.create.mockResolvedValue({ id: "reading-1" });
+      Notification.create.mockResolvedValue({ id: "alert-1" });
     });
 
     it("should create reading when device found with no anomaly", async () => {
@@ -434,12 +446,15 @@ describe("iot.service", () => {
 
       const result = await iot.ingestReading("t1", "dev1", { temperature: 5, humidity: 50 });
       expect(result.isAnomaly).toBe(true);
-      expect(Notification.create).toHaveBeenCalledWith({
-        tenantId: "t1",
-        title: "IoT Anomaly Alert: Sensor Alpha",
-        message: expect.stringContaining("temperature"),
-        type: "system",
-      });
+      expect(Notification.create).toHaveBeenCalledWith(
+        {
+          tenantId: "t1",
+          title: "IoT Anomaly Alert: Sensor Alpha",
+          message: expect.stringContaining("temperature"),
+          type: "SYSTEM",
+        },
+        { transaction: "TX" },
+      );
       expect(logger.warn).toHaveBeenCalledWith("IoT Anomaly detected for device dev1", expect.any(Object));
     });
 
@@ -448,12 +463,15 @@ describe("iot.service", () => {
 
       const result = await iot.ingestReading("t1", "dev1", { temperature: 60 });
       expect(result.isAnomaly).toBe(true);
-      expect(Notification.create).toHaveBeenCalledWith({
-        tenantId: "t1",
-        title: "IoT Anomaly Alert: Sensor Alpha",
-        message: expect.stringContaining("above max"),
-        type: "system",
-      });
+      expect(Notification.create).toHaveBeenCalledWith(
+        {
+          tenantId: "t1",
+          title: "IoT Anomaly Alert: Sensor Alpha",
+          message: expect.stringContaining("above max"),
+          type: "SYSTEM",
+        },
+        { transaction: "TX" },
+      );
     });
 
     it("should detect multiple anomalies", async () => {
@@ -462,6 +480,69 @@ describe("iot.service", () => {
       const result = await iot.ingestReading("t1", "dev1", { temperature: 5, humidity: 90 });
       expect(result.isAnomaly).toBe(true);
       expect(Notification.create).toHaveBeenCalled();
+    });
+
+    it("W-04: an anomaly's reading, alert and ONE audit row naming system:iot-ingest share a transaction", async () => {
+      CalibrationDevice.unscoped().findOne.mockResolvedValue(mockDevice);
+
+      await iot.ingestReading("t1", "dev1", { temperature: 60 });
+
+      expect(IotReading.create).toHaveBeenCalledWith(
+        { tenantId: "t1", deviceId: "dev1", metrics: { temperature: 60 }, isAnomaly: true },
+        { transaction: "TX" },
+      );
+      expect(auditService.logAction).toHaveBeenCalledTimes(1);
+      expect(auditService.logAction).toHaveBeenCalledWith(
+        {
+          tenantId: "t1",
+          systemActor: "system:iot-ingest",
+          action: "CREATE",
+          resourceType: "Notification",
+          resourceId: "alert-1",
+          changes: {
+            operation: "IOT_ANOMALY_ALERT",
+            audience: "tenant",
+            deviceId: "dev1",
+            readingId: "reading-1",
+            anomalies: ["temperature (60) is above max (50)"],
+          },
+        },
+        { transaction: "TX" },
+      );
+    });
+
+    it("W-04: a failed audit insert rejects the ingest (the transaction rolls the alert back)", async () => {
+      CalibrationDevice.unscoped().findOne.mockResolvedValue(mockDevice);
+      auditService.logAction.mockRejectedValueOnce(new Error("audit insert failed"));
+
+      await expect(iot.ingestReading("t1", "dev1", { temperature: 60 })).rejects.toThrow("audit insert failed");
+    });
+
+    it("W-04 / Q-13: an ordinary reading writes no audit row and opens no transaction", async () => {
+      CalibrationDevice.unscoped().findOne.mockResolvedValue(mockDevice);
+      const { db } = require("../../config");
+
+      await iot.ingestReading("t1", "dev1", { temperature: 25 });
+
+      expect(auditService.logAction).not.toHaveBeenCalled();
+      expect(db.transaction).not.toHaveBeenCalled();
+    });
+
+    it("W-12: the ingest runs confined to the tenant it was given, not as a system task", async () => {
+      let seen;
+      CalibrationDevice.unscoped().findOne.mockImplementation(async () => {
+        seen = tenantStorage.getStore();
+        return mockDevice;
+      });
+
+      await iot.ingestReading("t1", "dev1", { temperature: 25 });
+
+      expect(seen).toEqual({ tenantId: "t1", isSuperAdmin: false, isSystemTask: false });
+    });
+
+    it("W-12: an ingest with no tenant is refused before any query", async () => {
+      await expect(iot.ingestReading(null, "dev1", {})).rejects.toThrow(/runForTenant needs a tenantId/);
+      expect(CalibrationDevice.unscoped().findOne).not.toHaveBeenCalled();
     });
 
     it("should throw when device not found", async () => {
@@ -499,7 +580,8 @@ describe("iot.service", () => {
       expect((await iot.ingestReading("t1", "dev1", { temperature: -100 })).isAnomaly).toBe(false);
       expect((await iot.ingestReading("t1", "dev1", { temperature: 60 })).isAnomaly).toBe(true);
       expect(Notification.create).toHaveBeenCalledWith(
-        expect.objectContaining({ message: "Anomalous readings detected: temperature (60) is above max (50)" })
+        expect.objectContaining({ message: "Anomalous readings detected: temperature (60) is above max (50)" }),
+        { transaction: "TX" },
       );
     });
 
@@ -513,7 +595,8 @@ describe("iot.service", () => {
       expect((await iot.ingestReading("t1", "dev1", { temperature: 9999 })).isAnomaly).toBe(false);
       expect((await iot.ingestReading("t1", "dev1", { temperature: 5 })).isAnomaly).toBe(true);
       expect(Notification.create).toHaveBeenCalledWith(
-        expect.objectContaining({ message: "Anomalous readings detected: temperature (5) is below min (10)" })
+        expect.objectContaining({ message: "Anomalous readings detected: temperature (5) is below min (10)" }),
+        { transaction: "TX" },
       );
     });
 
@@ -527,8 +610,8 @@ describe("iot.service", () => {
         title: "IoT Anomaly Alert: Sensor Alpha",
         message:
           "Anomalous readings detected: temperature (5) is below min (10), humidity (90) is above max (80)",
-        type: "system",
-      });
+        type: "SYSTEM",
+      }, { transaction: "TX" });
     });
   });
 

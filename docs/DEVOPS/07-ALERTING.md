@@ -145,7 +145,7 @@ The difference is whether the person receiving it at 2am knows whether it can wa
 
 **Scheduled-job alerting is in place in the application.** Everything else in this document is still *design*: there is no metrics stack, no pager integration and no alert on dependencies, errors or disk. Stated plainly so nobody reads the tables above as running rules.
 
-Decision record: **ADR-PENDING-infra (P7-02)**. Code: [`backend/src/services/jobMonitor.service.js`](../../backend/src/services/jobMonitor.service.js), [`backend/src/services/alert.service.js`](../../backend/src/services/alert.service.js).
+Decision record: **[ADR-066](../../MEMORY/DECISIONS.md)** (P7-02). Code: [`backend/src/services/jobMonitor.service.js`](../../backend/src/services/jobMonitor.service.js), [`backend/src/services/alert.service.js`](../../backend/src/services/alert.service.js).
 
 ### What is monitored
 

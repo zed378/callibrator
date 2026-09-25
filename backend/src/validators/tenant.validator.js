@@ -3,6 +3,13 @@
  */
 const Joi = require("joi");
 
+// P7-08 / ADR-071 (amendment): a logo is an uploaded file name, never a URL.
+const { STORED_LOGO_NAME } = require("../constants/tenantLogo");
+const logoField = Joi.string()
+  .pattern(STORED_LOGO_NAME)
+  .messages({ "string.pattern.base": "logo must be an uploaded file name, not a URL or a path" })
+  .allow(null, "");
+
 // ==========================================
 // GET ALL TENANTS QUERY
 // ==========================================
@@ -33,7 +40,7 @@ exports.createTenantSchema = Joi.object({
   name: Joi.string().trim().min(2).max(100).required(),
   code: Joi.string().trim().min(2).max(50).required(),
   description: Joi.string().trim().allow(null, ""),
-  logo: Joi.string().allow(null, ""),
+  logo: logoField,
   primaryColor: Joi.string()
     .pattern(/^#([0-9a-fA-F]{6})$/)
     .allow(null, ""),
@@ -69,7 +76,7 @@ exports.updateTenantSchema = Joi.object({
   name: Joi.string().trim().min(2).max(100),
   code: Joi.string().trim().min(2).max(50),
   description: Joi.string().trim().allow(null, ""),
-  logo: Joi.string().allow(null, ""),
+  logo: logoField,
   primaryColor: Joi.string()
     .pattern(/^#([0-9a-fA-F]{6})$/)
     .allow(null, ""),

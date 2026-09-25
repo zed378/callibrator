@@ -249,18 +249,19 @@ describe("A-179 — the tenant-lifecycle export carries no credential", () => {
     expect(tenant.settings).toEqual({ theme: "dark" });
   });
 
-  it("the offboarding response carries the same redacted export", async () => {
+  // W-17 (ADR-073): the offboarding response used to carry this export too.
+  // It now carries none. NOT asserted here: the `tenant` it returns is the raw
+  // Tenant row, whose settings JSONB can still mirror a credential — as it did
+  // before this change, beside the export. Open, recorded on W-17.
+  it("the offboarding response carries no export", async () => {
     const saved = jest.spyOn(models.Tenant.prototype, "save").mockResolvedValue(undefined);
     jest.spyOn(models.TenantSettings, "upsert").mockResolvedValue(undefined);
     const { db } = require("../../config");
     jest.spyOn(db, "transaction").mockImplementation(async (cb) => cb({ id: "tx" }));
 
-    const { exportData } = await asSuperAdmin(() => tenantLifecycle.offboardTenant(TENANT));
+    const result = await asSuperAdmin(() => tenantLifecycle.offboardTenant(TENANT));
 
-    const all = JSON.stringify(exportData);
-    for (const [name, value] of Object.entries(SECRETS)) {
-      expect({ name, leaked: all.includes(value) }).toEqual({ name, leaked: false });
-    }
+    expect(Object.keys(result)).toEqual(["tenant"]);
     expect(saved).toHaveBeenCalled();
   });
 });

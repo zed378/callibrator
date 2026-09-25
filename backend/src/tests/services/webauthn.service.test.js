@@ -310,22 +310,8 @@ describe("webauthn.service", () => {
   });
 
   // ------------------------------------------------------------------- disable
-  describe("disable", () => {
-    it("clears the credential fields", async () => {
-      const result = await webauthn.disable("t1", "u1");
-
-      expect(result).toEqual({ success: true });
-      expect(Users.update).toHaveBeenCalledWith(
-        {
-          webauthnEnabled: false,
-          webauthnCredentialId: null,
-          webauthnPublicKey: null,
-          webauthnSignCount: 0,
-        },
-        { where: { id: "u1", tenantId: "t1" } },
-      );
-    });
-  });
+  // A-213: disable re-authenticates and is audited in its transaction; its
+  // tests are webauthn.disable.a213.test.js.
 
   // -------------------------------------------------------------- ORIGIN config
   describe("expectedOrigin resolution", () => {

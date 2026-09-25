@@ -1,6 +1,11 @@
 const mqtt = require("mqtt");
 const { CalibrationDevice, IotReading, Notification } = require("../models");
 const { logger } = require("../middlewares/activityLog.middleware");
+// `db` from config, NOT from the models barrel (CLAUDE.md, traps).
+const { db } = require("../config");
+const auditService = require("./audit.service");
+const { SYSTEM_ACTORS } = require("../constants/systemActors");
+const { runForTenant } = require("../utils/jobContext.util");
 
 class IotService {
   constructor() {
@@ -128,7 +133,30 @@ class IotService {
     });
   }
 
+  /**
+   * Store one reading for a device of `tenantId`; an out-of-tolerance reading
+   * also raises a tenant-wide alert.
+   *
+   * W-12: the whole ingest runs inside runForTenant(tenantId) — the tenant the
+   * MQTT topic names, or the authenticated device's on the HTTP path — so the
+   * isolation hooks confine the device lookup and stamp every row it writes.
+   * A topic naming another tenant's device finds nothing.
+   *
+   * W-04: an anomaly's reading, its tenant-wide alert and one audit row naming
+   * `system:iot-ingest` are ONE transaction. An ordinary reading writes no
+   * audit row: individual readings are out of the trail by ADR-051 Q-13, and
+   * the reading row is itself the record.
+   *
+   * @param {string} tenantId
+   * @param {string} deviceId
+   * @param {object} payload - metric name -> value
+   * @returns {Promise<{success: true, isAnomaly: boolean}>}
+   */
   async ingestReading(tenantId, deviceId, payload) {
+    return runForTenant(tenantId, () => this.ingestInTenant(tenantId, deviceId, payload));
+  }
+
+  async ingestInTenant(tenantId, deviceId, payload) {
     // See iot.controller.js: `.unscoped()` drops the soft-delete predicate, so
     // it is carried explicitly. A decommissioned device must not ingest.
     const device = await CalibrationDevice.unscoped().findOne({
@@ -159,28 +187,52 @@ class IotService {
       }
     }
 
-    await IotReading.create({
-      tenantId,
-      deviceId,
-      metrics: payload,
-      isAnomaly,
+    const reading = { tenantId, deviceId, metrics: payload, isAnomaly };
+
+    if (!isAnomaly) {
+      await IotReading.create(reading);
+      return { success: true, isAnomaly };
+    }
+
+    // The metric names and the out-of-range findings, not the whole payload
+    // ("no full bodies" in logs — A-46).
+    logger.warn(`IoT Anomaly detected for device ${deviceId}`, {
+      metrics: Object.keys(payload),
+      anomalyDetails,
     });
 
-    if (isAnomaly) {
-      // The metric names and the out-of-range findings, not the whole payload
-      // ("no full bodies" in logs — A-46).
-      logger.warn(`IoT Anomaly detected for device ${deviceId}`, {
-        metrics: Object.keys(payload),
-        anomalyDetails,
-      });
-
-      await Notification.create({
-        tenantId,
-        title: `IoT Anomaly Alert: ${device.name}`,
-        message: `Anomalous readings detected: ${anomalyDetails.join(", ")}`,
-        type: "system",
-      });
-    }
+    await db.transaction(async (transaction) => {
+      const stored = await IotReading.create(reading, { transaction });
+      const alert = await Notification.create(
+        {
+          tenantId,
+          title: `IoT Anomaly Alert: ${device.name}`,
+          message: `Anomalous readings detected: ${anomalyDetails.join(", ")}`,
+          // W-32: the ENUM is upper case (SYSTEM, CALIBRATION, INVENTORY,
+          // MAINTENANCE). "system" was refused by PostgreSQL, so no anomaly
+          // alert had ever been stored.
+          type: "SYSTEM",
+        },
+        { transaction },
+      );
+      await auditService.logAction(
+        {
+          tenantId,
+          systemActor: SYSTEM_ACTORS.IOT_INGEST,
+          action: "CREATE",
+          resourceType: "Notification",
+          resourceId: alert.id,
+          changes: {
+            operation: "IOT_ANOMALY_ALERT",
+            audience: "tenant",
+            deviceId,
+            readingId: stored.id,
+            anomalies: anomalyDetails,
+          },
+        },
+        { transaction },
+      );
+    });
 
     return { success: true, isAnomaly };
   }

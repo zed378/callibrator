@@ -187,8 +187,81 @@ const SUBJECT_RECORDS = Object.freeze([
   { model: "Notification", columns: ["userId"] },
 ]);
 
-/** The most rows exported per table. */
-const SUBJECT_RECORD_LIMIT = 1000;
+/**
+ * D-24 (ADR-070) — rows read per query while an export is written. The export
+ * is COMPLETE and STREAMED: each table is read a keyset page at a time (by id,
+ * stable while rows are added) and each page is written to the file before the
+ * next is read, so memory is bounded by one page, not by the tenant's history.
+ * It used to read every table whole into memory and truncate at 1,000 rows per
+ * table (5,000 audit rows) — an Article 15 answer that silently stopped.
+ */
+const EXPORT_PAGE_SIZE = 500;
+
+/**
+ * Every row of `Model` matching `where`, a keyset page (by id) at a time.
+ *
+ * @param {object} Model - a Sequelize model (or an unscoped one)
+ * @param {object} where - the tenant AND subject predicate
+ * @param {object} [options] - extra findAll options (attributes)
+ * @returns {AsyncGenerator<object[]>} non-empty pages of raw rows
+ */
+async function* pagesOf(Model, where, options = {}) {
+  let afterId = null;
+  for (;;) {
+    const rows = await Model.findAll({
+      ...options,
+      where: afterId === null ? where : { ...where, id: { [Op.gt]: afterId } },
+      order: [["id", "ASC"]],
+      limit: EXPORT_PAGE_SIZE,
+      raw: true,
+    });
+    if (rows.length > 0) {
+      yield rows;
+    }
+    if (rows.length < EXPORT_PAGE_SIZE) {
+      return;
+    }
+    afterId = rows[rows.length - 1].id;
+  }
+}
+
+/**
+ * A JSON array, written as it is read: `[`, one row per line, `]`.
+ *
+ * @param {AsyncIterable<object[]>} pages
+ * @param {(row: object) => object} [map] - a per-row transform
+ * @returns {AsyncGenerator<string>}
+ */
+async function* jsonArray(pages, map = (row) => row) {
+  yield "[";
+  let separator = "\n";
+  for await (const rows of pages) {
+    const lines = [];
+    for (const row of rows) {
+      lines.push(`${separator}${JSON.stringify(map(row))}`);
+      separator = ",\n";
+    }
+    yield lines.join("");
+  }
+  // `separator` is still the opening one only when no row was written.
+  yield separator === "\n" ? "]" : "\n]";
+}
+
+/**
+ * A JSON object of named arrays, each streamed: `{"name": [...], ...}`.
+ *
+ * @param {Array<[string, () => AsyncGenerator<string>]>} members - name, and
+ *   a factory for its streamed value (called only when it is reached)
+ * @returns {AsyncGenerator<string>}
+ */
+async function* jsonObject(members) {
+  yield "{";
+  for (const [index, [name, value]] of members.entries()) {
+    yield `${index === 0 ? "\n" : ",\n"}${JSON.stringify(name)}: `;
+    yield* value();
+  }
+  yield "\n}\n";
+}
 
 /**
  * Export the records that name the subject (`SUBJECT_RECORDS`), each filtered
@@ -205,22 +278,23 @@ const SUBJECT_RECORD_LIMIT = 1000;
  */
 async function exportSubjectRecords(exportDir, tenantId, userId) {
   const models = require("../models");
-  const records = {};
 
-  for (const { model, columns } of SUBJECT_RECORDS) {
-    records[model] = await models[model].findAll({
-      where: {
-        tenantId,
-        [Op.or]: columns.map((column) => ({ [column]: userId })),
-      },
-      limit: SUBJECT_RECORD_LIMIT,
-      raw: true,
-    });
-  }
-
+  // D-24: streamed — fs.promises.writeFile consumes the generator a chunk at a
+  // time, and a failed read rejects the write (and so the export).
   await fs.promises.writeFile(
     path.join(exportDir, "subject_records.json"),
-    JSON.stringify(records, null, 2),
+    jsonObject(
+      SUBJECT_RECORDS.map(({ model, columns }) => [
+        model,
+        () =>
+          jsonArray(
+            pagesOf(models[model], {
+              tenantId,
+              [Op.or]: columns.map((column) => ({ [column]: userId })),
+            }),
+          ),
+      ]),
+    ),
   );
 }
 
@@ -271,41 +345,7 @@ const IMPERSONATOR_SESSION_FIELDS = Object.freeze(["ip_address", "user_agent", "
 async function exportPrivacyRecords(exportDir, tenantId, userId) {
   const { ConsentRecord, DsarRequest, Session } = require("../models");
 
-  const consentHistory = await ConsentRecord.findAll({
-    where: { tenantId, userId },
-    attributes: [
-      "id",
-      "purpose",
-      "version",
-      "status",
-      "ipAddress",
-      "consentedAt",
-      "withdrawnAt",
-      "createdAt",
-    ],
-    order: [["consentedAt", "DESC"]],
-    limit: SUBJECT_RECORD_LIMIT,
-    raw: true,
-  });
-
-  const dsarRequests = await DsarRequest.findAll({
-    where: { tenantId, userId },
-    attributes: ["id", "type", "status", "details", "requestedAt", "completedAt"],
-    order: [["requestedAt", "DESC"]],
-    limit: SUBJECT_RECORD_LIMIT,
-    raw: true,
-  });
-
-  // `sessions` is snake_case (CLAUDE.md § Traps), and the defaultScope hides
-  // soft-deleted rows — which are still the subject's history, so unscoped.
-  const sessionRows = await Session.unscoped().findAll({
-    where: { tenant_id: tenantId, user_id: userId },
-    attributes: [...EXPORTED_SESSION_ATTRIBUTES],
-    order: [["created_at", "DESC"]],
-    limit: SUBJECT_RECORD_LIMIT,
-    raw: true,
-  });
-  const sessions = sessionRows.map((row) => {
+  const withholdImpersonator = (row) => {
     if (!row.impersonator_id) {
       return row;
     }
@@ -315,11 +355,61 @@ async function exportPrivacyRecords(exportDir, tenantId, userId) {
     }
     delete withheld.impersonator_id;
     return withheld;
-  });
+  };
 
+  // D-24: streamed, complete, in id order (was: newest first, 1,000 each).
   await fs.promises.writeFile(
     path.join(exportDir, "privacy_records.json"),
-    JSON.stringify({ consentHistory, dsarRequests, sessions }, null, 2),
+    jsonObject([
+      [
+        "consentHistory",
+        () =>
+          jsonArray(
+            pagesOf(
+              ConsentRecord,
+              { tenantId, userId },
+              {
+                attributes: [
+                  "id",
+                  "purpose",
+                  "version",
+                  "status",
+                  "ipAddress",
+                  "consentedAt",
+                  "withdrawnAt",
+                  "createdAt",
+                ],
+              },
+            ),
+          ),
+      ],
+      [
+        "dsarRequests",
+        () =>
+          jsonArray(
+            pagesOf(
+              DsarRequest,
+              { tenantId, userId },
+              { attributes: ["id", "type", "status", "details", "requestedAt", "completedAt"] },
+            ),
+          ),
+      ],
+      // `sessions` is snake_case (CLAUDE.md § Traps), and the defaultScope
+      // hides soft-deleted rows — which are still the subject's history, so
+      // unscoped.
+      [
+        "sessions",
+        () =>
+          jsonArray(
+            pagesOf(
+              Session.unscoped(),
+              { tenant_id: tenantId, user_id: userId },
+              { attributes: [...EXPORTED_SESSION_ATTRIBUTES] },
+            ),
+            withholdImpersonator,
+          ),
+      ],
+    ]),
   );
 }
 
@@ -328,31 +418,26 @@ async function exportPrivacyRecords(exportDir, tenantId, userId) {
  */
 async function exportAuditLogs(exportDir, tenantId, userId) {
   const { AuditLog } = require("../models");
+  const file = path.join(exportDir, "audit_logs.json");
 
   try {
     // The rows the subject acted in: as the principal, or as the super admin
     // behind an impersonation (F-8). `performedBy` is not an audit_logs
     // column; filtering on it made PostgreSQL reject the query, and the
     // subject received an error object in place of their own audit rows.
-    const logs = await AuditLog.findAll({
-      where: {
-        tenantId,
-        [Op.or]: [{ userId }, { impersonatorId: userId }],
-      },
-      limit: 5000,
-      raw: true,
-    });
-
+    // D-24: streamed and complete (was: the first 5,000, in memory).
     await fs.promises.writeFile(
-      path.join(exportDir, "audit_logs.json"),
-      JSON.stringify(logs, null, 2),
+      file,
+      jsonArray(
+        pagesOf(AuditLog, {
+          tenantId,
+          [Op.or]: [{ userId }, { impersonatorId: userId }],
+        }),
+      ),
     );
   } catch (err) {
     logger.warn("Failed to export audit logs", { error: err.message });
-    await fs.promises.writeFile(
-      path.join(exportDir, "audit_logs.json"),
-      JSON.stringify({ error: "Failed to export" }, null, 2),
-    );
+    await fs.promises.writeFile(file, JSON.stringify({ error: "Failed to export" }, null, 2));
   }
 }
 
@@ -423,7 +508,7 @@ function generateExportId() {
 /**
  * Erase user data for GDPR Article 17 (Right to Erasure).
  *
- * D-11 (ADR-PENDING-dbA): an erasure PSEUDONYMISES the account in place — it
+ * D-11 (ADR-063): an erasure PSEUDONYMISES the account in place — it
  * never removes the row. The row's id is what calibration records, signatures,
  * certificates and the audit trail point at (ON DELETE RESTRICT, ADR-051
  * Q-16), and those are records the platform must retain (21 CFR Part 11,
@@ -851,8 +936,23 @@ exports.getProcessingActivities = async (tenantId, userId) => {
 /**
  * Rectify a personal-data field (GDPR Article 16). Only a whitelist of
  * self-service profile fields may be changed here.
+ *
+ * A-214 (ADR-068): an EMAIL change needs fresh re-authentication — the A-114
+ * rule (auth.service#reauthenticate): the current password, and on an MFA
+ * account a current TOTP or recovery code, spent in this transaction. Without
+ * it a stolen session could move the address, then reset the password through
+ * it and own the account. A session that signed in through SSO is answered
+ * 409: its address is the identity provider's (and the key SSO matches on).
+ * The other fields need no re-authentication.
+ *
+ * @param {string} tenantId
+ * @param {string} userId - the caller, who is the subject
+ * @param {string} field
+ * @param {*} value
+ * @param {{ipAddress?: string, userAgent?: string}} [actor]
+ * @param {{currentPassword?: string, code?: string, recoveryCode?: string, signInMethod?: (string|null)}} [reauth]
  */
-exports.rectifyData = async (tenantId, userId, field, value, actor = {}) => {
+exports.rectifyData = async (tenantId, userId, field, value, actor = {}, reauth = {}) => {
   if (!isGdprEnabled()) {
     throw new AppError(400, "Rectification is disabled");
   }
@@ -868,6 +968,7 @@ exports.rectifyData = async (tenantId, userId, field, value, actor = {}) => {
   const isEmail = field === "email";
   const newValue = isEmail ? normalizeRectifiedEmail(value) : value;
   let emailChange = null;
+  let reauthenticatedWith = null;
 
   // A-153: the change and its audit row are ONE transaction (the row was
   // written after the commit, and a failure to write it was only logged). The
@@ -879,14 +980,31 @@ exports.rectifyData = async (tenantId, userId, field, value, actor = {}) => {
       const changes = { [field]: newValue };
 
       if (isEmail) {
+        // A-214: the whole row — re-authentication reads the password hash
+        // and the MFA state.
         const user = await User.findOne({
           where: { id: userId, tenantId },
-          attributes: ["id", "email", "firstName", "lastName"],
           transaction,
         });
         if (!user) {
           throw new AppError(404, "User not found");
         }
+        const authService = require("./auth.service");
+        const managedBy = await authService.passwordManagedBy(user, reauth.signInMethod || null);
+        if (managedBy) {
+          throw new AppError(
+            409,
+            `You signed in through your organisation's identity provider (${managedBy.protocol.toUpperCase()}${
+              managedBy.provider ? `, ${managedBy.provider}` : ""
+            }). Your email address is managed there: change it with that provider, not here.`,
+          );
+        }
+        reauthenticatedWith = await authService.reauthenticate(user, reauth, {
+          purpose: "Changing your email address",
+          transaction,
+          ipAddress: actor.ipAddress || null,
+          userAgent: actor.userAgent || null,
+        });
         // A-180: an address the account already has is not a change — no
         // re-verification, no mail.
         // `users.email` is NOT NULL.
@@ -918,6 +1036,7 @@ exports.rectifyData = async (tenantId, userId, field, value, actor = {}) => {
             operation: "GDPR_RECTIFICATION",
             fields: [field],
             ...(emailChange ? { emailVerificationReset: true } : {}),
+            ...(reauthenticatedWith ? { reauthenticatedWith } : {}),
           },
           ipAddress: actor.ipAddress || null,
           userAgent: actor.userAgent || null,

@@ -97,6 +97,7 @@ const migrationModules = [
   ["0066-signature-records-step-restrict.js", require("../migrations/0066-signature-records-step-restrict")],
   ["0067-foreign-key-and-tenant-indexes.js", require("../migrations/0067-foreign-key-and-tenant-indexes")],
   ["0070-custom-domain-partial-uniqueness.js", require("../migrations/0070-custom-domain-partial-uniqueness")],
+  ["0078-user-temporary-password-expiry.js", require("../migrations/0078-user-temporary-password-expiry")],
 ];
 
 const migrator = new Umzug({

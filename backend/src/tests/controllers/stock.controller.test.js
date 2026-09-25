@@ -289,6 +289,7 @@ describe("stockController", () => {
           quantity: 5,
         },
         "user-1",
+        ACTOR, // A-202: the create is audited under the acting user
       );
       expect(success).toHaveBeenCalled();
     });

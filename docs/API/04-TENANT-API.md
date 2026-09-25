@@ -128,6 +128,13 @@ Backed by `tenant_hierarchies` with a materialised `path` and `depth`, so ancest
 
 **`POST /:parentId/children`** (SUPERADMIN, no API key; A-187). Body `{ name, code? }`. The child's `code` defaults to `<PARENT>_<nnn>`, its `subdomain` is derived from the code (as for `POST /tenants`), its `email` is the parent's, and its plan is the parent's. The tenant, its `tenant_hierarchies` row and one PLATFORM audit row (`CREATE_SUB_ORGANIZATION`) commit together. Answers: **201**; **400** malformed id or body; **404** parent does not exist; **409** parent not `active`, parent has no `code`, the depth limit (`HIERARCHY_MAX_DEPTH`, default 5) is reached, or the code/subdomain is taken — all checked before anything is written. Until A-187 every call failed on the real models (NOT NULL `subdomain`/`email`) with a 500.
 
+**`PUT /:tenantId/parent`** `{ newParentId }` and **`DELETE /:tenantId/parent`** (SUPERADMIN, no API key; A-224,
+ADR-065). One transaction: the tenant row locked, its `tenant_hierarchies` row (created if missing) and **every
+descendant's `path` and `depth`** rewritten, one PLATFORM audit row (`MOVE_TENANT` / `DETACH_TENANT`). Answers:
+**400** `newParentId` missing or not a UUID; **404** tenant or new parent not found; **409** the tenant itself as
+parent, a parent inside its own subtree (a cycle), already under that parent, **already a root** (was 404), a
+tenant or parent with no `code`, or a subtree the move would push past `HIERARCHY_MAX_DEPTH`.
+
 **Hierarchy does not grant visibility.** A parent tenant does not automatically see child data; the tenant predicate is still exact-match. Cross-tenant visibility needs an explicit, audited path.
 
 ## `/api/v1/custom-domains` — 7 endpoints
@@ -144,9 +151,9 @@ Backed by `tenant_hierarchies` with a materialised `path` and `depth`, so ancest
 
 States: `pending_verification`, `active`, `verification_failed`, `deleting`, `deleted`. Types: `custom`, `subdomain`, `vanity`.
 
-TLS is provisioned over ACME when `CUSTOM_DOMAINS_ENABLED` and `TLS_AUTO_PROVISION` are set. **`ACME_DIRECTORY_URL` defaults to the Let's Encrypt staging directory** — forgetting to point it at production yields certificates no browser trusts, and the failure appears in the browser rather than in any log.
+**Not implemented: serving the application on a custom domain, and TLS for it** (A-256, ADR-065, 2026-09-25). Nothing resolves a tenant from a request's `Host`, and no certificate is issued: `resolveTenantByDomain` and `provisionTLSCertificate` had no caller and were removed, and `TLS_AUTO_PROVISION` / `ACME_*` are no longer read. A verified domain is a verified **claim**. `GET /domains/status` reports `tlsAutoProvision: false`.
 
-Challenge files are written at runtime under `storagePath(".well-known")` and served from there. A CWD-relative path shifts with the launch directory, and the resulting failures look like DNS problems.
+**Uniqueness** (A-223, migration `0070`): a domain is `active` for one organisation at a time, and live (not `deleted`) at most once per tenant, both ignoring case; a removed domain blocks nothing and can be added again. Every conflict is a 409 with its explanation.
 
 ## `/api/v1/admin` — 3 endpoints
 

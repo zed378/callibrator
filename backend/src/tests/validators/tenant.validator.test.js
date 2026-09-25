@@ -239,7 +239,8 @@ describe("Tenant Validators", () => {
           name: "Acme",
           code: "ACME",
           description: "Test tenant",
-          logo: "https://example.com/logo.png",
+          // P7-08: an uploaded file name, never a URL (tenant.logoUrl.p708.test.js)
+          logo: "1758600000000-4242-logo.png",
           phone: "+1234567890",
           address: "123 Main St",
           city: "New York",
@@ -251,7 +252,7 @@ describe("Tenant Validators", () => {
         createTenantSchema,
       );
       expect(result.description).toBe("Test tenant");
-      expect(result.logo).toBe("https://example.com/logo.png");
+      expect(result.logo).toBe("1758600000000-4242-logo.png");
       expect(result.phone).toBe("+1234567890");
       expect(result.address).toBe("123 Main St");
       expect(result.city).toBe("New York");

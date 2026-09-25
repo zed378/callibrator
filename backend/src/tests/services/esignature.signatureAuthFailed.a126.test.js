@@ -52,6 +52,11 @@ jest.mock("../../services/mfa.service", () => ({
   verifyLogin: jest.fn(async (user, code) => code === "424242"),
 }));
 jest.mock("../../services/webhook.service", () => ({ dispatch: jest.fn() }));
+// A-203: no approval workflow is pending here (the refusal is certificate.service.test.js's).
+jest.mock("../../services/workflow.service", () => ({
+  startWorkflow: jest.fn(async () => null),
+  findPendingInstance: jest.fn(async () => null),
+}));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));

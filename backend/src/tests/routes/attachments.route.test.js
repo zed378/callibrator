@@ -132,10 +132,11 @@ describe("Attachments Routes", () => {
     });
   });
 
-  it("should have exactly 7 route endpoints", () => {
+  // D-22 (ADR-070): + GET /orphans.
+  it("should have exactly 8 route endpoints", () => {
     const routeCount = attachmentsRoutes.stack.filter(
       (layer) => layer.route,
     ).length;
-    expect(routeCount).toBe(7);
+    expect(routeCount).toBe(8);
   });
 });

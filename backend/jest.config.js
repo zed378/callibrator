@@ -94,14 +94,15 @@ module.exports = {
   // the package.json test scripts pass; a bare `npx jest` on a suite that runs
   // the real otplib fails with "Must use import to load ES Module".
   //
-  // uuid is still mapped. Our code's use (`v4()` returning a string) matches
-  // the mock's shape, but the mapping also replaces the uuid@8 that Sequelize
-  // requires internally (v1 and v4 for UUIDV1/UUIDV4 defaults): every
-  // Sequelize-generated UUIDV4 in a unit run is the same constant, and v1 is
-  // undefined.
-  moduleNameMapper: {
-    "^uuid$": "<rootDir>/__mocks__/uuid.js",
-  },
+  // A-116: uuid is NOT mocked globally any more. __mocks__/uuid.js and a
+  // `^uuid$` mapping replaced the package for every require, Sequelize's
+  // own included (it generates UUIDV1/UUIDV4 defaults through it), so every
+  // UUIDV4 default in a unit run was one constant and UUIDV1 threw. uuid 14 is
+  // ESM-only and loads under the same --experimental-vm-modules flag as
+  // otplib. A test that needs a deterministic id mocks "uuid" in its own file
+  // (jest.mock("uuid", ...)); do not add a file named uuid.js to
+  // <rootDir>/__mocks__/, which would mock it for every test again.
+  // Pinned by src/tests/models/uuidDefaults.a116.test.js.
   moduleFileExtensions: ["js", "json"],
   testTimeout: 10000,
 };

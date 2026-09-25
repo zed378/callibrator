@@ -1066,7 +1066,84 @@ async function clearLoginThrottle(attempt) {
   await storeDel(loginThrottleKeys(attempt).pairKey);
 }
 
+// ============================================================
+// A-260 — SIGNED-IN PASSWORD CHECKS
+// ============================================================
+//
+// POST /auth/pass-is-valid, the change-password route and every fresh
+// re-authentication (auth.service#verifySessionPassword) compare a typed
+// password with the CALLER'S OWN hash. None was counted, so whoever held a
+// session could guess the password there without the sign-in throttle. One
+// counter per user (AUTH_ENDPOINTS.passwordCheck) covers all of them. The key
+// is the user id from the verified session, never request input. There is no
+// per-address key: the session already names the one principal guessing.
+
+/**
+ * @param {string} userId
+ * @returns {string}
+ */
+function passwordCheckKey(userId) {
+  return makeKey("auth", "passwordCheck", `user:${userId}`);
+}
+
+/**
+ * Whether this user's password may be checked now. Asked BEFORE the
+ * comparison, so a spent budget learns nothing.
+ *
+ * @param {string} userId
+ * @returns {Promise<{throttled: boolean, retryAfterSeconds: number}>}
+ */
+async function checkPasswordCheckBudget(userId) {
+  const entry = await storeGet(passwordCheckKey(userId));
+  if (entry && entry.count >= getAuthConfig("passwordCheck").maxAttempts) {
+    return {
+      throttled: true,
+      retryAfterSeconds: Math.max(1, Math.ceil((entry.expiresAt - Date.now()) / 1000)),
+    };
+  }
+  return { throttled: false, retryAfterSeconds: 0 };
+}
+
+/**
+ * Count one wrong password. `engaged` is true on the one attempt that fills
+ * the budget: the caller audits then, once per window. A racing attempt past
+ * the budget is `exhausted` but not `engaged`.
+ *
+ * @param {string} userId
+ * @returns {Promise<{engaged: boolean, exhausted: boolean, failedAttempts: number,
+ *   pausedUntil: Date, retryAfterSeconds: number}>}
+ */
+async function recordPasswordCheckFailure(userId) {
+  const config = getAuthConfig("passwordCheck");
+  const now = Date.now();
+  const { count } = await storeIncrEntry(passwordCheckKey(userId), config.windowMs, now);
+  return {
+    engaged: count === config.maxAttempts,
+    exhausted: count >= config.maxAttempts,
+    failedAttempts: count,
+    // The increment refreshed the window, so the pause ends one window from now.
+    pausedUntil: new Date(now + config.lockoutMs),
+    retryAfterSeconds: Math.ceil(config.lockoutMs / 1000),
+  };
+}
+
+/**
+ * The right password clears the count: only the holder of the password can
+ * produce it, so it hands a guesser nothing.
+ *
+ * @param {string} userId
+ * @returns {Promise<void>}
+ */
+async function clearPasswordCheckBudget(userId) {
+  await storeDel(passwordCheckKey(userId));
+}
+
 module.exports = {
+  // A-260: signed-in password checks
+  checkPasswordCheckBudget,
+  recordPasswordCheckFailure,
+  clearPasswordCheckBudget,
+
   // Core functions
   // A-185: the password sign-in throttle
   checkLoginThrottle,

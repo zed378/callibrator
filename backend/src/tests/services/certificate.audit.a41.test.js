@@ -16,6 +16,11 @@ const { createLedger } = require("../fixtures/auditLedger");
 
 const mockRef = { ledger: null, certificate: null };
 
+// D-22 (ADR-070): a parent's delete soft-deletes its attachments through
+// attachment.service, in the parent's transaction.
+jest.mock("../../services/attachment.service", () => ({
+  softDeleteForResource: jest.fn().mockResolvedValue([]),
+}));
 jest.mock("../../models", () => ({
   Certificate: {
     findOne: jest.fn(async () => mockRef.certificate),
@@ -53,6 +58,8 @@ jest.mock("../../services/auth.service", () => ({
 jest.mock("../../services/mfa.service", () => ({ verifyLogin: jest.fn(() => true) }));
 jest.mock("../../services/workflow.service", () => ({
   startWorkflow: jest.fn(async () => undefined),
+  // A-203: no workflow pending unless a test says so.
+  findPendingInstance: jest.fn(async () => null),
 }));
 jest.mock("../../validators/certificate.validator", () => ({
   validate: (data) => data,

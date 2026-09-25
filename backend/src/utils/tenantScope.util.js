@@ -31,7 +31,13 @@
  * ON clause, with its join type pinned to what it would have been without
  * the hook, so a LEFT JOIN never silently becomes an INNER JOIN.
  *
- * Nine hooks are registered. Read/bulk-write verbs get a predicate; create-shaped
+ * HOOKLESS STATICS (W-34). `aggregate` (so `sum`/`min`/`max`) and static
+ * `increment` (so `decrement`) run no hook at all; they are wrapped per model
+ * (`scopeHooklessStatics`). `restore` does fire hooks, which were not
+ * registered until 2026-09-25.
+ *
+ * Eleven hooks are registered, plus `afterDefine` to wrap each new model's
+ * hookless statics. Read/bulk-write verbs get a predicate; create-shaped
  * verbs get a stamp. `bulkCreate` and `upsert` (D-01) were outside the hooks
  * entirely until 2026-09-23 — see `applyTenantAssignmentBulk` and
  * `assertUpsertTenant` for why those two REFUSE a mismatched row instead of
@@ -74,8 +80,22 @@ const resolveScope = (options) => {
   return { mode: "deny" };
 };
 
-/** Inject the mandatory tenant predicate into a read/bulk-write query. */
-const applyTenantWhere = (options, model) => {
+/**
+ * Inject the mandatory tenant predicate into a read/bulk-write query.
+ *
+ * W-33 — `byField`: `Model.destroy` maps attribute names to column names
+ * (`Utils.mapOptionFieldNames`, sequelize/lib/model.js) BEFORE it runs
+ * `beforeBulkDestroy`, and nothing maps them again. The predicate added there
+ * must therefore name the COLUMN: `tenantId` reached the DELETE verbatim, and
+ * PostgreSQL answered `column "tenantId" does not exist` for every bulk
+ * destroy of an underscored model run inside a tenant context. Finds and bulk
+ * updates map after their hooks, so they keep the attribute name.
+ *
+ * @param {object} options - the query options (mutated)
+ * @param {object} model - the model the hook fired for
+ * @param {{byField?: boolean}} [how]
+ */
+const applyTenantWhere = (options, model, { byField = false } = {}) => {
   const key = tenantKeyOf(model);
   if (!key) {return;}
 
@@ -84,7 +104,8 @@ const applyTenantWhere = (options, model) => {
 
   // Isolation is FORCED: a caller asking for another tenant simply gets nothing.
   const value = scope.mode === "deny" ? NO_TENANT_UUID : scope.tenantId;
-  options.where = { ...(options.where || {}), [key]: value };
+  const column = byField ? model.rawAttributes[key].field || key : key;
+  options.where = { ...(options.where || {}), [column]: value };
 };
 
 /**
@@ -344,8 +365,97 @@ const assertSameTenant = (instance, model, options) => {
   }
 };
 
+/**
+ * W-34 — `Model.destroy({ truncate: true })` becomes `TRUNCATE`, which has no
+ * WHERE: the predicate `beforeBulkDestroy` adds is silently dropped and every
+ * tenant's rows go. Inside a tenant (or deny) scope it is refused.
+ */
+const refuseScopedTruncate = (options, model) => {
+  if (!options || !options.truncate || !tenantKeyOf(model)) {return;}
+  const scope = resolveScope(options);
+  if (scope.mode === "skip") {return;}
+  throw new Error("Security Violation: Attempted to truncate a tenant-scoped table inside a tenant context");
+};
+
+/**
+ * Options objects `beforeCount` has already scoped. `count` runs its hook and
+ * then hands the SAME object to `this.aggregate`, so the aggregate wrapper
+ * skips it instead of adding the predicate a second time.
+ */
+const scopedByCount = new WeakSet();
+
+/** Marks a model whose hookless statics are already wrapped. */
+const WRAPPED = Symbol("tenantScope.hooklessStatics");
+
+/**
+ * W-34 — give the HOOKLESS statics of a tenant-scoped model the predicate a
+ * find gets. In Sequelize 6.37.8 (`lib/model.js`):
+ *
+ *   - `aggregate` runs NO hook. `sum`, `min` and `max` are `this.aggregate(...)`
+ *     and `count` is `beforeCount` + `this.aggregate(...)`.
+ *   - static `increment` runs NO hook; `decrement` and the instance
+ *     `increment`/`decrement` all end in `this.constructor.increment`/
+ *     `this.increment`.
+ *   - static `restore` runs `beforeBulkRestore` (registered below), and the
+ *     instance `restore` runs `beforeRestore` — neither was registered.
+ *
+ * Wrapping `aggregate` and `increment` on the model therefore reaches every
+ * one of those verbs. The predicate is resolved exactly as for a find
+ * (`resolveScope`): `skipTenantScope: true` is the only opt-out; no context,
+ * the super admin and a system task skip; no resolvable tenant denies.
+ *
+ * Both originals map attribute names to columns AFTER this wrapper runs
+ * (`Utils.mapOptionFieldNames`), so the attribute name is correct here.
+ */
+const scopeHooklessStatics = (model) => {
+  if (!model || !tenantKeyOf(model) || Object.prototype.hasOwnProperty.call(model, WRAPPED)) {return;}
+  const { aggregate, increment } = model;
+
+  Object.defineProperty(model, "aggregate", {
+    configurable: true,
+    writable: true,
+    value: function scopedAggregate(attribute, aggregateFunction, options) {
+      if (options && scopedByCount.has(options)) {
+        return aggregate.call(this, attribute, aggregateFunction, options);
+      }
+      // A shallow copy: the caller's object is not mutated (aggregate deep-
+      // clones it next anyway), and applyTenantWhere replaces `where`.
+      const scoped = { ...(options || {}) };
+      if (Array.isArray(scoped.include)) {scoped.include = [...scoped.include];}
+      applyTenantWhere(scoped, this);
+      applyTenantToIncludes(scoped, this);
+      return aggregate.call(this, attribute, aggregateFunction, scoped);
+    },
+  });
+
+  Object.defineProperty(model, "increment", {
+    configurable: true,
+    writable: true,
+    value: function scopedIncrement(fields, options) {
+      // No `where`: Sequelize's own assertion refuses it. The predicate must
+      // not turn a refused call into a tenant-wide update.
+      if (!options || !options.where) {
+        return increment.call(this, fields, options);
+      }
+      const key = tenantKeyOf(this);
+      const scope = resolveScope(options);
+      if (scope.mode === "skip") {
+        return increment.call(this, fields, options);
+      }
+      const value = scope.mode === "deny" ? NO_TENANT_UUID : scope.tenantId;
+      return increment.call(this, fields, { ...options, where: withTenantPredicate(options.where, key, value) });
+    },
+  });
+
+  Object.defineProperty(model, WRAPPED, { value: true });
+};
+
 /** Register the isolation hooks on a Sequelize instance. */
 const register = (db) => {
+  // W-34: the statics no hook reaches — on every model already defined, and
+  // on every model defined from now on.
+  Object.values(db.models || {}).forEach(scopeHooklessStatics);
+  db.addHook("afterDefine", (model) => scopeHooklessStatics(model));
   db.addHook("beforeFind", function (options) {
     applyTenantWhere(options, this);
     applyTenantToIncludes(options, this);
@@ -353,12 +463,22 @@ const register = (db) => {
   db.addHook("beforeCount", function (options) {
     applyTenantWhere(options, this);
     applyTenantToIncludes(options, this);
+    scopedByCount.add(options);
   });
   db.addHook("beforeBulkUpdate", function (options) {
     applyTenantWhere(options, this);
   });
   db.addHook("beforeBulkDestroy", function (options) {
-    applyTenantWhere(options, this);
+    refuseScopedTruncate(options, this);
+    applyTenantWhere(options, this, { byField: true });
+  });
+  // W-34: `Model.restore` maps names to columns BEFORE this hook, exactly as
+  // `destroy` does (W-33), so the predicate names the column.
+  db.addHook("beforeBulkRestore", function (options) {
+    applyTenantWhere(options, this, { byField: true });
+  });
+  db.addHook("beforeRestore", function (instance, options) {
+    assertSameTenant(instance, this, options);
   });
   db.addHook("beforeCreate", function (instance, options) {
     applyTenantAssignment(instance, this, options);
@@ -387,5 +507,7 @@ module.exports = {
   applyTenantAssignmentBulk,
   assertUpsertTenant,
   assertSameTenant,
+  scopeHooklessStatics,
+  refuseScopedTruncate,
   register,
 };

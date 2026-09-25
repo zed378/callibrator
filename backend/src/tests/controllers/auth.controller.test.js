@@ -17,6 +17,7 @@ jest.mock("../../services/auth.service", () => ({
   refreshUserToken: jest.fn(),
   verifyUserSession: jest.fn(),
   justUpdatePassword: jest.fn(),
+  passwordManagedBy: jest.fn(async () => null),
   setupMfa: jest.fn(),
   verifyMfaSetup: jest.fn(),
   disableMfa: jest.fn(),
@@ -320,7 +321,32 @@ describe("authController", () => {
 
       expect(success).toHaveBeenCalledWith(
         res,
-        { id: "user-1", mfaEnabled: false, mfaEnrolmentRequired: expected },
+        { id: "user-1", mfaEnabled: false, mfaEnrolmentRequired: expected, passwordManagedBy: null },
+        null,
+        "Token valid",
+        200,
+      );
+    });
+
+    // A-216: "who am I" says when the identity provider manages the password,
+    // so the change-password page explains instead of asking.
+    it("reports passwordManagedBy for the session's sign-in method (A-216)", async () => {
+      req.user = { id: "user-1" };
+      req.signInMethod = "oidc";
+      authService.verifyUserSession.mockResolvedValue({
+        success: true,
+        status: 200,
+        message: "Token valid",
+        data: { id: "user-1" },
+      });
+      authService.passwordManagedBy.mockResolvedValueOnce({ protocol: "oidc", provider: "login.example.com" });
+
+      await authController.verify(req, res);
+
+      expect(authService.passwordManagedBy).toHaveBeenCalledWith(req.user, "oidc");
+      expect(success).toHaveBeenCalledWith(
+        res,
+        expect.objectContaining({ passwordManagedBy: { protocol: "oidc", provider: "login.example.com" } }),
         null,
         "Token valid",
         200,
@@ -347,9 +373,26 @@ describe("authController", () => {
         "user-1",
         "NewPass123",
         "OldPass123",
-        { ipAddress: "127.0.0.1", userAgent: null },
+        // A-216: the session's sign-in method, which auth.middleware set.
+        { ipAddress: "127.0.0.1", userAgent: null, signInMethod: null },
       );
       expect(success).toHaveBeenCalled();
+    });
+
+    it("forwards a federated session's sign-in method (A-216)", async () => {
+      req.user = { id: "user-1" };
+      req.signInMethod = "saml";
+      req.body = { newPassword: "NewPass123", currentPassword: "OldPass123" };
+      authService.justUpdatePassword.mockResolvedValue({ message: "ok" });
+
+      await authController.justUpdatePassword(req, res);
+
+      expect(authService.justUpdatePassword).toHaveBeenCalledWith(
+        "user-1",
+        "NewPass123",
+        "OldPass123",
+        expect.objectContaining({ signInMethod: "saml" }),
+      );
     });
   });
 
@@ -367,9 +410,12 @@ describe("authController", () => {
 
       await authController.passIsValid(req, res);
 
+      // A-260: with the request's address and agent, for the audit row of a
+      // spent password budget.
       expect(authService.passIsValid).toHaveBeenCalledWith(
         "user-1",
         "TestPass123",
+        { ipAddress: req.ip, userAgent: null },
       );
       expect(success).toHaveBeenCalled();
     });
@@ -486,7 +532,7 @@ describe("authController", () => {
       expect(authService.setupMfa).toHaveBeenCalledWith(req.user.id, {
         currentPassword: "pw",
         code: "123456",
-      });
+      }, { ipAddress: req.ip, userAgent: null });
     });
 
     it("A-114: a request with no body at all reaches the service with no re-authentication", async () => {
@@ -498,7 +544,7 @@ describe("authController", () => {
       expect(authService.setupMfa).toHaveBeenCalledWith(req.user.id, {
         currentPassword: undefined,
         code: undefined,
-      });
+      }, { ipAddress: req.ip, userAgent: null });
     });
 
     it("should generate the MFA secret via authService", async () => {
@@ -513,7 +559,7 @@ describe("authController", () => {
       expect(authService.setupMfa).toHaveBeenCalledWith(req.user.id, {
         currentPassword: undefined,
         code: undefined,
-      });
+      }, { ipAddress: req.ip, userAgent: null });
       expect(success).toHaveBeenCalledWith(
         res,
         expect.objectContaining({ secret: "JBSWY3DPEHPK3PXP" }),

@@ -102,9 +102,9 @@ const fmtDate = (d) => (d ? new Date(d).toISOString().slice(0, 10) : "—");
 // (timestamp + small counter + uuid v4) rather than a second scheme. The
 // timestamp and counter are only there for that consistency — the 122 random
 // bits of the uuid are what make the name unguessable, so they come from
-// crypto.randomUUID (a CSPRNG-backed v4) rather than the `uuid` package: that
-// package is replaced by a constant in the Jest environment (__mocks__/uuid.js),
-// which would make the one property this name exists for untestable.
+// crypto.randomUUID (a CSPRNG-backed v4). Until A-116 the `uuid` package was
+// replaced by a constant in the Jest environment, which would have made the
+// one property this name exists for untestable; crypto keeps it independent.
 const randomPdfFileName = () =>
   `${Date.now()}-${Math.floor(Math.random() * 10000)}-${crypto.randomUUID()}.pdf`;
 

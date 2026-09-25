@@ -278,21 +278,41 @@ describe("eSignature.service — implemented workflow/key methods", () => {
     // read (canManage). The own-signatures scope is pinned in
     // esignature.history.a129.test.js.
     it("returns the tenant's records with no filters, to a manager", async () => {
-      const findAll = jest.fn().mockResolvedValue([{ id: "sig-1" }]);
-      const { getSignatureHistory } = load({ SignatureRecord: { findAll } });
+      const findAll = jest.fn().mockResolvedValue({ count: 1, rows: [{ id: "sig-1" }] });
+      const { getSignatureHistory } = load({ SignatureRecord: { findAndCountAll: findAll } });
 
       const result = await getSignatureHistory("tenant-1", {}, { callerId: "u-9", canManage: true });
 
       const arg = findAll.mock.calls[0][0];
       expect(arg.where).toEqual({ tenantId: "tenant-1" });
       expect(arg.attributes).toBeUndefined();
-      expect(arg.order).toEqual([["signedAt", "DESC"]]);
-      expect(result).toHaveLength(1);
+      expect(arg.order).toEqual([["signedAt", "DESC"], ["id", "ASC"]]);
+      // D-24: one page — the default page size, from the first row.
+      expect(arg.limit).toBe(25);
+      expect(arg.offset).toBe(0);
+      expect(result).toEqual({
+        rows: [{ id: "sig-1" }],
+        meta: { total: 1, page: 1, limit: 25, totalPages: 1 },
+      });
+    });
+
+    // D-24 (ADR-070): the history is paginated, never read whole.
+    it("reads the requested page, caps the page size, and never pages below 1", async () => {
+      const findAll = jest.fn().mockResolvedValue({ count: 450, rows: [] });
+      const { getSignatureHistory } = load({ SignatureRecord: { findAndCountAll: findAll } });
+
+      const page3 = await getSignatureHistory("tenant-1", { page: "3", limit: "50" }, { canManage: true });
+      expect(findAll.mock.calls[0][0]).toMatchObject({ limit: 50, offset: 100 });
+      expect(page3.meta).toEqual({ total: 450, page: 3, limit: 50, totalPages: 9 });
+
+      const capped = await getSignatureHistory("tenant-1", { page: "0", limit: "5000" }, { canManage: true });
+      expect(findAll.mock.calls[1][0]).toMatchObject({ limit: 200, offset: 0 });
+      expect(capped.meta).toEqual({ total: 450, page: 1, limit: 200, totalPages: 3 });
     });
 
     it("with no filters and no scope it is deny-by-default: no caller, no rows", async () => {
-      const findAll = jest.fn().mockResolvedValue([]);
-      const { getSignatureHistory } = load({ SignatureRecord: { findAll } });
+      const findAll = jest.fn().mockResolvedValue({ count: 0, rows: [] });
+      const { getSignatureHistory } = load({ SignatureRecord: { findAndCountAll: findAll } });
 
       await getSignatureHistory("tenant-1");
 
@@ -301,8 +321,8 @@ describe("eSignature.service — implemented workflow/key methods", () => {
 
     it("filters by startDate only", async () => {
       const { Op } = require("sequelize");
-      const findAll = jest.fn().mockResolvedValue([]);
-      const { getSignatureHistory } = load({ SignatureRecord: { findAll } });
+      const findAll = jest.fn().mockResolvedValue({ count: 0, rows: [] });
+      const { getSignatureHistory } = load({ SignatureRecord: { findAndCountAll: findAll } });
 
       await getSignatureHistory("tenant-1", { startDate: "2026-01-01" });
 
@@ -313,8 +333,8 @@ describe("eSignature.service — implemented workflow/key methods", () => {
 
     it("filters by endDate only", async () => {
       const { Op } = require("sequelize");
-      const findAll = jest.fn().mockResolvedValue([]);
-      const { getSignatureHistory } = load({ SignatureRecord: { findAll } });
+      const findAll = jest.fn().mockResolvedValue({ count: 0, rows: [] });
+      const { getSignatureHistory } = load({ SignatureRecord: { findAndCountAll: findAll } });
 
       await getSignatureHistory("tenant-1", { endDate: "2026-02-01" });
 
@@ -324,8 +344,8 @@ describe("eSignature.service — implemented workflow/key methods", () => {
     });
 
     it("filters by signer", async () => {
-      const findAll = jest.fn().mockResolvedValue([]);
-      const { getSignatureHistory } = load({ SignatureRecord: { findAll } });
+      const findAll = jest.fn().mockResolvedValue({ count: 0, rows: [] });
+      const { getSignatureHistory } = load({ SignatureRecord: { findAndCountAll: findAll } });
 
       await getSignatureHistory("tenant-1", { userId: "u-1" }, { callerId: "u-9", canManage: true });
 
@@ -337,8 +357,8 @@ describe("eSignature.service — implemented workflow/key methods", () => {
 
     it("filters by a signedAt date range", async () => {
       const { Op } = require("sequelize");
-      const findAll = jest.fn().mockResolvedValue([]);
-      const { getSignatureHistory } = load({ SignatureRecord: { findAll } });
+      const findAll = jest.fn().mockResolvedValue({ count: 0, rows: [] });
+      const { getSignatureHistory } = load({ SignatureRecord: { findAndCountAll: findAll } });
 
       await getSignatureHistory("tenant-1", {
         startDate: "2026-01-01",
@@ -352,7 +372,7 @@ describe("eSignature.service — implemented workflow/key methods", () => {
 
     it("throws 500 on query failure", async () => {
       const findAll = jest.fn().mockRejectedValue(new Error("db"));
-      const { getSignatureHistory } = load({ SignatureRecord: { findAll } });
+      const { getSignatureHistory } = load({ SignatureRecord: { findAndCountAll: findAll } });
 
       await expect(getSignatureHistory("tenant-1", {})).rejects.toThrow(
         "Failed to get signature history",

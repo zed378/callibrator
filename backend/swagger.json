@@ -716,6 +716,47 @@
         }
       }
     },
+    "/api/v1/attachments/orphans": {
+      "get": {
+        "summary": "Orphan report — live attachments whose linked record is gone (tenant administrators)",
+        "description": "D-22 (ADR-070). The caller's tenant's live attachments whose `(resourceType, resourceId)` resolves to no live record of the tenant: `parent_missing_or_deleted`, or `unlinkable_type` for a type that cannot be linked at all. Read-only. Rows are `data`, pagination a top-level `meta`.",
+        "tags": [
+          "Attachments"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "default": 25
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Orphaned attachments retrieved"
+          },
+          "403": {
+            "description": "Not a tenant administrator",
+            "or no equipment read": null
+          }
+        }
+      }
+    },
     "/api/v1/attachments/{id}": {
       "get": {
         "summary": "Get attachment metadata",
@@ -1378,6 +1419,22 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Validation failed, or the current password is incorrect"
+          },
+          "409": {
+            "description": "A-216: the session signed in through SSO and its identity provider (named in the message) manages the password; or A-215: the administrator's temporary password has expired"
+          },
+          "429": {
+            "description": "A-260: five wrong passwords in fifteen minutes, across every signed-in password check of this account. The attempt that spends the budget also signs this session out. Retry-After gives the seconds until checks resume.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
           }
         }
       }
@@ -1423,6 +1480,19 @@
                       }
                     }
                   }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No password was given"
+          },
+          "429": {
+            "description": "A-260: five wrong passwords in fifteen minutes, across every signed-in password check of this account. The attempt that spends the budget also signs this session out. Retry-After gives the seconds until checks resume.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
                 }
               }
             }
@@ -1920,7 +1990,7 @@
             "description": "MFA is already enabled and no re-authentication was given"
           },
           "429": {
-            "description": "Too many failed attempts on the MFA endpoints (setup, verify and disable share one budget: 5 per user per 15 minutes; per IP too when AUTH_RATE_LIMIT_BY_IP is on)\n"
+            "description": "Too many failed attempts on the MFA endpoints (setup, verify and disable share one budget: 5 per user per 15 minutes; per IP too when AUTH_RATE_LIMIT_BY_IP is on); or, for a rotation, A-260: the account's signed-in password-check budget is spent (Retry-After)\n"
           }
         }
       }
@@ -2017,7 +2087,7 @@
             "description": "MFA is not enabled"
           },
           "429": {
-            "description": "Too many failed attempts (shared with setup and verify)"
+            "description": "Too many failed attempts (shared with setup and verify); or A-260: the account's signed-in password-check budget is spent (Retry-After)"
           }
         }
       }
@@ -2290,6 +2360,12 @@
                       "Canceled",
                       "Unpaid"
                     ]
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 500,
+                    "description": "Why the status is being overridden manually (A-225; required by the service when `status` changes)"
                   }
                 }
               }
@@ -6326,11 +6402,28 @@
               "type": "string",
               "format": "date"
             }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "default": 25,
+              "maximum": 200
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "Signature history retrieved successfully. Rows are `data` itself, the count in a top-level `meta.total` (A-106; formerly `data.signatures`).",
+            "description": "One page of the signature history. Rows are `data` itself, pagination a top-level `meta` (A-106, formerly `data.signatures`; D-24, paginated since 2026-09-25).",
             "content": {
               "application/json": {
                 "schema": {
@@ -6340,6 +6433,15 @@
                       "type": "object",
                       "properties": {
                         "total": {
+                          "type": "integer"
+                        },
+                        "page": {
+                          "type": "integer"
+                        },
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "totalPages": {
                           "type": "integer"
                         }
                       }
@@ -7359,7 +7461,7 @@
     "/api/v1/gdpr/rectify": {
       "put": {
         "summary": "Correct one field of the caller's personal data",
-        "description": "GDPR Article 16. Validated by `gdpr.validator#rectifyData`: one `field` and its new `value`, both required. The service accepts only firstName, lastName, phone and email; an email change is confirmed by mail before it applies. P6-08: this previously documented `corrections` / `justification`, which the validator strips.",
+        "description": "GDPR Article 16. Validated by `gdpr.validator#rectifyData`: one `field` and its new `value`, both required. The service accepts only firstName, lastName, phone and email; an email change is confirmed by mail before it applies. P6-08: this previously documented `corrections` / `justification`, which the validator strips. A-214: an email change needs `currentPassword` and, on an account with MFA, a current `code` or a `recoveryCode`; a session signed in through SSO is answered 409 (its address belongs to the identity provider).",
         "tags": [
           "GDPR/CCPA"
         ],
@@ -7391,6 +7493,21 @@
                   },
                   "value": {
                     "description": "The corrected value"
+                  },
+                  "currentPassword": {
+                    "type": "string",
+                    "maxLength": 1024,
+                    "description": "Required for an email change (A-214)"
+                  },
+                  "code": {
+                    "type": "string",
+                    "maxLength": 32,
+                    "description": "A current TOTP code — an email change on an MFA account"
+                  },
+                  "recoveryCode": {
+                    "type": "string",
+                    "maxLength": 64,
+                    "description": "Or an MFA recovery code"
                   }
                 }
               }
@@ -7432,13 +7549,16 @@
             }
           },
           "400": {
-            "description": "Validation failed, or the field cannot be rectified"
+            "description": "Validation failed, the field cannot be rectified, or an email change's re-authentication is missing or incorrect"
           },
           "401": {
             "description": "Unauthorized"
           },
           "409": {
-            "description": "The new email address is already in use"
+            "description": "The new email address is already in use, or the session signed in through SSO and the identity provider manages the address"
+          },
+          "429": {
+            "description": "A-260: the account's signed-in password-check budget is spent (five wrong passwords in fifteen minutes); Retry-After gives the seconds until checks resume"
           }
         }
       }
@@ -18446,6 +18566,48 @@
         }
       }
     },
+    "/api/v1/users/{userId}/webauthn": {
+      "delete": {
+        "summary": "Remove another user's passkey (tenant administrator)",
+        "description": "For a user whose passkey device is lost or compromised, or who signs in only through SSO and so cannot re-authenticate the self-service removal. Clears the user's passkey (credential, public key and sign count), signs out every session of theirs, leaves the password and MFA as they are, and is audited (WEBAUTHN_ADMIN_RESET). Requires users update access and a tenant-administrator role; the target must be in the caller's tenant (another tenant's user answers 404), may not be the caller, and may not hold a role above the caller's.\n",
+        "tags": [
+          "Users"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "userId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Passkey removed; data.sessionsRevoked counts the sessions signed out"
+          },
+          "400": {
+            "description": "Malformed id, or the caller named themselves (use POST /webauthn/disable with the password)"
+          },
+          "403": {
+            "description": "Not a tenant administrator, or the target's role is above the caller's"
+          },
+          "404": {
+            "description": "User not found (including a user of another tenant)"
+          },
+          "409": {
+            "description": "The user has no passkey to remove"
+          }
+        }
+      }
+    },
     "/api/v1/users/{userId}/password/reset": {
       "post": {
         "summary": "Reset another user's password to a temporary one (tenant administrator)",
@@ -19856,7 +20018,7 @@
     "/api/v1/webauthn/disable": {
       "post": {
         "summary": "Disable WebAuthn",
-        "description": "Disables WebAuthn passkey authentication for the current user.",
+        "description": "Removes the current user's passkey. A-213: needs the current password and, on an account with MFA, a current TOTP `code` or a `recoveryCode`; audited as WEBAUTHN_DISABLE.",
         "tags": [
           "WebAuthn"
         ],
@@ -19865,12 +20027,50 @@
             "bearerAuth": []
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "currentPassword"
+                ],
+                "properties": {
+                  "currentPassword": {
+                    "type": "string"
+                  },
+                  "code": {
+                    "type": "string",
+                    "description": "A current TOTP code (MFA accounts)"
+                  },
+                  "recoveryCode": {
+                    "type": "string",
+                    "description": "Or a recovery code (MFA accounts)"
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "WebAuthn disabled"
           },
+          "400": {
+            "description": "Re-authentication missing or incorrect"
+          },
           "401": {
             "description": "Unauthorized"
+          },
+          "404": {
+            "description": "User not found"
+          },
+          "409": {
+            "description": "No passkey is enrolled"
+          },
+          "429": {
+            "description": "A-260: the account's signed-in password-check budget is spent (five wrong passwords in fifteen minutes); Retry-After gives the seconds until checks resume"
           }
         }
       }

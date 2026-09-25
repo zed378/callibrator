@@ -234,11 +234,12 @@ exports.verifySignature = asyncHandler(async (req, res) => {
  * Get signature history / audit trail.
  *
  * A-106 — rows in `data`, the count in a top-level `meta`. They used to be
- * wrapped as `data.signatures`.
+ * wrapped as `data.signatures`. D-24 (ADR-070) — one page of them: `meta`
+ * carries total, page, limit and totalPages.
  */
 exports.getSignatureHistory = asyncHandler(async (req, res) => {
   const { id: callerId, tenantId } = req.user;
-  const { userId, startDate, endDate } = req.query;
+  const { userId, startDate, endDate, page, limit } = req.query;
 
   // A-129 (ADR-051 Q-19, F-9) — the tenant's history is workflow management
   // (`qms` read). Without it the route still answers, with the caller's own
@@ -247,11 +248,11 @@ exports.getSignatureHistory = asyncHandler(async (req, res) => {
 
   const history = await eSignatureService.getSignatureHistory(
     tenantId,
-    { userId, startDate, endDate },
+    { userId, startDate, endDate, page, limit },
     { callerId, canManage },
   );
 
-  return success(res, history, { total: history.length }, "Signature history retrieved");
+  return success(res, history.rows, history.meta, "Signature history retrieved");
 });
 
 /**

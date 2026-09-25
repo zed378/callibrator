@@ -65,20 +65,20 @@ QMS (non-conformances, CAPA, SOP) · risk register · vendor scorecards · workf
 |---|---|---|---|
 | **P6-01** | Restore the backend coverage gate | ✅ **DONE** 2026-09-11 | trust in every other gate |
 | **P6-02** | One clean full E2E pass, uninterrupted | 🔴 **TODO** | release sign-off |
-| **P6-03** | `REVOKE UPDATE, DELETE` on `calibration_records` | 🔴 **TODO** | 21 CFR Part 11 defensibility (PR-2) |
+| **P6-03** | `REVOKE UPDATE, DELETE` on `calibration_records` | ✅ **DONE** 2026-09-25 — trigger + application-role REVOKE, tested as `callibrator_app` on PG 18.6 (ADR-062) | 21 CFR Part 11 defensibility (PR-2) |
 | **P6-04** | Build guard: no route without a permission gate | 🟡 **PARTIAL** 2026-09-25 — guard test green (ADR-058); runs only in `npm test` until CI | the likeliest authorization defect |
-| **P6-05** | Post-migration column verification | ⏳ TODO | silent no-op migrations (PR-5) |
-| **P6-06** | Composite unique on `(tenant_id, serial_number)` | ⏳ TODO | a cross-tenant oracle |
+| **P6-05** | Post-migration column verification | ✅ **DONE** 2026-09-25 — every boot verifies; fresh and upgrade boots pass on PG 18.6 (ADR-062) | silent no-op migrations (PR-5) |
+| **P6-06** | Composite unique on `(tenant_id, serial_number)` | 🟡 **PARTIAL** — constraint by ADR-049; not partial on `is_deleted` | a cross-tenant oracle |
 | **P6-07** | Mandatory MFA at role level 10 | ✅ **DONE** 2026-09-25 — enrolment-only session + audited break-glass (ADR-059); E2E harness change not run live | PR-3 |
 | **P6-08** | Align Swagger with the GDPR validators | ✅ **DONE** 2026-09-25 — `swaggerValidatorAlignment.p608.test.js`; 33 other drifts pinned | AC-29 |
-| **P6-09** | Reason required on every stock quantity change | ⏳ TODO | an unexplained quantity change |
-| **P6-10** | Rotation procedure for the two unrotatable secrets | ⏳ TODO | "rotate the key" is not currently available |
+| **P6-09** | Reason required on every stock quantity change | ✅ **DONE** 2026-09-25 — `0059` + stock.service (ADR-062) | an unexplained quantity change |
+| **P6-10** | Rotation procedure for the two unrotatable secrets | 🟡 **PARTIAL** 2026-09-25 — built, rehearsed on seeded data (PG 16, 18.6); production-copy rehearsal owed (ADR-062) | "rotate the key" is not currently available |
 
 ### The state of the gates
 
 | Gate | State |
 |---|---|
-| Backend unit coverage (100%) | ✅ **passing** — 481 suites, 10,463 tests, 100% statements, branches, functions and lines (2026-09-25, batch 5). **But `models/` is excluded from the gate twice, so it has never measured a model** — the A-88 model DDL test now covers foreign keys |
+| Backend unit coverage (100%) | ✅ **passing** — 578 suites, 12,164 tests, 100% statements, branches, functions and lines (2026-09-25, batch 7, Node 24). **But `models/` is excluded from the gate twice, so it has never measured a model** — the A-88 model DDL test now covers foreign keys |
 | Backend lint | 🔴 **red, and it had never run at all** — a version mismatch crashed ESLint before it linted a file (A-34). It runs now and reports 1,319 errors, all formatting, none logic |
 | Frontend coverage (70%) | 🔴 **red, and never run** — about 14%; `npm test` does not pass `--coverage`, so nothing evaluates the threshold |
 | Live E2E in one uninterrupted run | 🔴 **never achieved** — every fix verified individually; the rate-limit window kept resetting |
@@ -100,18 +100,19 @@ regression; it is a gate nobody could have been running.
 [`2026-09-24-phase0-batch2`](../MEMORY/records/2026-09-24-phase0-batch2.md),
 [`2026-09-24-phase0-batch3-checkpoint`](../MEMORY/records/2026-09-24-phase0-batch3-checkpoint.md),
 [`2026-09-24-phase0-batch4`](../MEMORY/records/2026-09-24-phase0-batch4.md),
-[`2026-09-25-phase0-batch5`](../MEMORY/records/2026-09-25-phase0-batch5.md)
+[`2026-09-25-phase0-batch5`](../MEMORY/records/2026-09-25-phase0-batch5.md),
+[`2026-09-25-phase0-batch7`](../MEMORY/records/2026-09-25-phase0-batch7.md)
 
 Started as a documentation task on 2026-09-21 and turned into an audit. The board has grown from
 32 findings to 47, because **fourteen of the new ones were found while fixing or documenting
 something else** — which is the only way defects of this shape are found.
 
-| | Count (2026-09-25, batch 5, main board only) |
+| | Count (2026-09-25, batch 7, main board only) |
 |---|---|
-| Findings recorded | **193** |
-| Done and verified by a named test | **164** |
-| Partly done | 4 |
-| Open | 25 — highest: A-182 (workflow approval skips re-authentication), A-183, A-185, A-181, A-184, A-186–A-191 |
+| Findings recorded | **231** |
+| Done and verified by a named test | **219** |
+| Partly done | 6 |
+| Open | 6 — A-08, A-19, A-20, A-24, A-257, A-263 |
 
 ### The ones that matter most, still open
 
@@ -156,14 +157,14 @@ dump, a fresh volume and a restore, with the old volume kept as the rollback.
 
 | Task | Title | Status | Depends on |
 |---|---|---|---|
-| P7-01 | CI pipeline running the gates that run only locally | ⏳ TODO | P6-01 |
-| P7-02 | **Alerting on scheduled-job outcomes** | ⏳ TODO | — |
-| P7-03 | Structured log shipping | ⏳ TODO | — |
+| P7-01 | CI pipeline running the gates that run only locally | 🟡 **PARTIAL** 2026-09-25 — `.github/workflows/ci.yml` written (ADR-066); actionlint, gitleaks, the lint ratchet, the frontend gates, helm+kubeconform and compose config verified locally, and two red-on-day-one stages fixed. **Never run on GitHub**; `backend-test`, `boot-and-migrate`, `npm audit`, `next build` not run in CI form; no image build/push | P6-01 |
+| P7-02 | **Alerting on scheduled-job outcomes** | 🟡 **PARTIAL** 2026-09-25 — in the application: every scheduler monitored, watchdog for missed runs and stuck batch jobs, webhook/email sinks, `/health/jobs`, `/health/metrics` (ADR-066; `jobMonitor.service.p702`, `alert.service.p702`, `health.jobs.p702`, `metricsAuth.p702` — 100% covered; metrics served live). Open: the infrastructure backup runs outside the process, and routing to a channel is configuration nobody has set | — |
+| P7-03 | Structured log shipping | 🟡 **PARTIAL** 2026-09-25 — JSON on stdout with `requestId` on every request line (`activityLog.requestId.p703`); Vector template passes `vector validate` and **has never shipped a line**; 52 `console.*` sites remain (A-42 sweep) | — |
 | P7-04 | **A full restore drill** | ⏳ TODO | — |
 | P7-05 | Formalise the secret backup procedure | ⏳ TODO | P6-10 |
 | P7-06 | Validate the Helm charts against a real cluster | ⏳ TODO | a cluster |
-| P7-07 | Pin the two `:latest` base images | ⏳ TODO | — |
-| P7-08 | Split swagger onto its own CSP | ⏳ TODO | — |
+| P7-07 | Pin the two `:latest` base images | ✅ **DONE** 2026-09-25 — every base image pinned by digest (both Dockerfiles, compose, the Vector overlay; MinIO dev-only by release tag); process in `docs/DEVOPS/02` § Moving a pinned base image; compose digests pulled successfully in a live run (ADR-066) | — |
+| P7-08 | Split swagger onto its own CSP | 🟡 **PARTIAL** 2026-09-25 — API origin drops `'unsafe-inline'` for scripts; `/docs` has its own policy and serves no inline script (checked live); Swagger off in production unless `SWAGGER_ENABLED` (`csp.p708`, ADR-066). **Content origin done 2026-09-25 (ADR-071).** The Next.js pages send a per-request nonce CSP with `'strict-dynamic'`, minted in `src/proxy.ts`. Every page now renders per request. `<style>` elements need the nonce; `style` attributes stay inline. nosniff, Referrer-Policy and Permissions-Policy are set, and X-Powered-By is off. Tests: `lib/securityHeaders.test.ts` and `proxy.test.ts` § "the page CSP". Checked live on a production build with the standalone server: curl showed a different nonce on each request. Headless Chrome loaded 11 pages with 0 violations. A `contentHtml` carrying `<script>`, a `data:` script, `onerror` and `<style>` had all four blocked. Open: that `contentHtml` check was a one-off run and is not in a suite (the frontend has no browser runner). Also open: the websocket was not exercised against a live backend, and there is no `MEMORY/records` entry yet. **Follow-ups done 2026-09-25 (ADR-071 amendment 1).** The certificate PDF frame is not blocked: the document route already allows `'self'` plus `CORS_ORIGIN` with no `X-Frame-Options`, and the `/api` proxy relays that. `certificateFrame.p708.test.js` pins it, and headless Chrome rendered the PDF in the frame on a real backend. Tenant logos are uploads only, and `img-src` is not widened. A URL or path is refused (400), and a stored absolute URL gets `logoBaseUrl: null`, so the UI falls back, with no migration. Tests: `tenant.logoUrl.p708.test.js` and `useTenantBranding.p708.test.tsx`, both failing against HEAD | — |
 
 **P7-02 first.** A scheduled compliance job failing silently is the failure mode this system is most exposed to, and it has already happened — the retention purge failed every night with `column "tenantId" does not exist` until someone looked.
 
@@ -242,10 +243,10 @@ From [`../docs/PLAN/18-RISK-REGISTER.md`](../docs/PLAN/18-RISK-REGISTER.md).
 
 | Risk | Severity | State |
 |---|---|---|
-| **PR-2** — append-only is a convention, not a constraint | critical | **open** → P6-03 |
+| **PR-2** — append-only is a convention, not a constraint | critical | **mitigated** 2026-09-25 — P6-03 (ADR-062) |
 | **PR-3** — super-admin without enforced MFA | critical | partially mitigated → P6-07 |
 | PR-1 — a missed tenant predicate | critical | mitigated, monitored |
-| PR-5 — silent migration no-op | high | known → P6-05 |
+| PR-5 — silent migration no-op | high | **mechanised** 2026-09-25 — P6-05 (ADR-062) |
 | PR-12 — single host | medium | mitigated by preparation only |
 
 ---

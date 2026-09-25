@@ -94,7 +94,9 @@ const statements = () => {
     let match;
     while ((match = re.exec(source))) {
       found.push({
-        file: path.relative(SRC, file),
+        // POSIX separators, so the CROSS_TENANT keys and the assertions
+        // below mean the same thing on Windows as on Linux.
+        file: path.relative(SRC, file).split(path.sep).join("/"),
         sql: sqlAt(source, match.index + match[0].length),
       });
     }

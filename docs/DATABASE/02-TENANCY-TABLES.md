@@ -107,11 +107,9 @@ Indexed on `tenant_id`, `status`, `created_at`.
 | `verificationToken` | `STRING` | DNS or HTTP-01 proof |
 | `verifiedAt`, `lastCheckedAt` | `DATE` | |
 
-TLS over ACME when `CUSTOM_DOMAINS_ENABLED` and `TLS_AUTO_PROVISION` are set.
+`domain` is stored lower-case and is **not** unique on its own (A-223, migration `0070`, ADR-065). Two partial unique indexes replace the global one: `custom_domains_domain_active_uq (lower(domain)) WHERE status = 'active'` and `custom_domains_tenant_domain_live_uq (tenant_id, lower(domain)) WHERE status <> 'deleted'`. Neither can be declared on the model (an expression index; and `db.sync()` runs before the migrator).
 
-**`ACME_DIRECTORY_URL` defaults to the Let's Encrypt staging directory.** Forgetting to point it at production yields certificates no browser trusts, and the failure appears in the browser rather than in any log.
-
-Challenge files are written at runtime under `storagePath(".well-known")`. A CWD-relative path shifts with the launch directory and the resulting failures look like DNS problems.
+No TLS certificate is issued and no request is routed by `Host` (A-256, ADR-065): the ACME code had no caller and was removed; `TLS_AUTO_PROVISION` and `ACME_*` are no longer read.
 
 ## `data_retention_policies`
 

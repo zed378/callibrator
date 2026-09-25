@@ -868,6 +868,8 @@ exports.userCreate = async (input) => {
     }
 
     const hashedPassword = await hashPassword(password);
+    // A-215: the administrator's password expires (TEMPORARY_PASSWORD_TTL_MS).
+    const temporaryPasswordExpiresAt = temporaryPasswordExpiry();
 
     const user = await Users.create(
       {
@@ -891,6 +893,7 @@ exports.userCreate = async (input) => {
         // since ADR-047 a password signs. The holder must replace it before
         // anything else (auth.middleware answers 403 until they do).
         mustChangePassword: true,
+        temporaryPasswordExpiresAt,
       },
       {
         transaction,
@@ -913,6 +916,8 @@ exports.userCreate = async (input) => {
           // mustChangePassword; this key keeps the audit row free of the
           // word the A-77 redaction check looks for).
           firstLoginChangeRequired: true,
+          // A-215: when the administrator's password stops signing in.
+          firstLoginChangeDeadline: temporaryPasswordExpiresAt.toISOString(),
         },
       },
     });
@@ -956,6 +961,7 @@ exports.userCreate = async (input) => {
         status: user.status,
         isEmailVerified: user.isEmailVerified,
         mustChangePassword: true,
+        temporaryPasswordExpiresAt,
         createdAt: user.createdAt,
         picture: user.picture,
         avatarUrl: user.picture,
@@ -1625,6 +1631,108 @@ exports.resetUserMfa = async (input) => {
 };
 
 // ------------------------------------------------------------------
+// ADMIN-ASSISTED PASSKEY REMOVAL (A-262)
+// ------------------------------------------------------------------
+
+/**
+ * A tenant administrator removes another user's passkey — for a lost or
+ * compromised authenticator, and for the SSO-only user, who has no password
+ * to re-authenticate the self-service removal with (ADR-068).
+ *
+ * The same guards as the MFA and password resets (loadAdminResetTarget): same
+ * tenant or 404, never oneself (400), never a user whose role outranks the
+ * caller's (403). Then, in ONE transaction:
+ *  - every passkey column is cleared (the credential id, the public key and
+ *    the sign count go with the flag);
+ *  - EVERY session of the user is revoked: a session opened with the lost
+ *    authenticator may be the thief's;
+ *  - audited (UPDATE on User, `changes.operation` WEBAUTHN_ADMIN_RESET,
+ *    actor = the administrator) — never the credential id or the key.
+ *
+ * The password and MFA are left as they are: the user signs in with them and
+ * may register a new passkey.
+ *
+ * @param {object} input
+ * @param {string} input.userId - the target
+ * @param {string} input.resetBy - the administrator (req.user.id)
+ * @param {boolean} [input.actorIsSuperAdmin]
+ * @param {string|null} [input.actorTenantId]
+ * @param {number} [input.actorRoleLevel]
+ * @param {string|null} [input.ipAddress]
+ * @param {string|null} [input.userAgent]
+ * @returns {Promise<object>} the envelope
+ * @throws {{status: number, message: string}} 404 not found / not in the
+ *   caller's tenant; 400 self; 403 higher role; 409 no passkey
+ */
+exports.resetUserPasskey = async (input) => {
+  const { userId, resetBy, actorIsSuperAdmin, actorTenantId, actorRoleLevel } = input;
+  // Lazily: session.service loads the Session model and Redis.
+  const { revokeOtherSessions } = require("./session.service");
+
+  let transaction;
+  try {
+    transaction = await db.transaction();
+
+    const user = await loadAdminResetTarget(transaction, {
+      operation: "resetUserPasskey",
+      userId,
+      resetBy,
+      actorIsSuperAdmin,
+      actorTenantId,
+      actorRoleLevel,
+      selfMessage:
+        "You cannot remove your own passkey here; remove it on the Passkeys page with your password",
+      what: "passkey",
+    });
+
+    if (!user.webauthnEnabled) {
+      throw { status: 409, message: "This user has no passkey to remove" };
+    }
+
+    await user.update(
+      {
+        webauthnEnabled: false,
+        webauthnCredentialId: null,
+        webauthnPublicKey: null,
+        webauthnSignCount: 0,
+      },
+      { transaction },
+    );
+    const sessionsRevoked = await revokeOtherSessions(user.id, null, "WEBAUTHN_ADMIN_RESET", {
+      transaction,
+    });
+
+    await auditUserChange(transaction, input, {
+      action: "UPDATE",
+      actorUserId: resetBy,
+      user,
+      changes: { operation: "WEBAUTHN_ADMIN_RESET", sessionsRevoked },
+    });
+
+    await transaction.commit();
+
+    logger.info("User passkey removed by an administrator", { userId: user.id, resetBy });
+
+    return {
+      success: true,
+      status: 200,
+      message:
+        "The passkey has been removed and the user's sessions were signed out. They sign in with their password and may register a new passkey.",
+      data: { id: user.id, webauthnEnabled: false, sessionsRevoked },
+    };
+  } catch (err) {
+    if (transaction && !transaction.finished) {
+      await transaction.rollback();
+    }
+    logger.error("Error removing user passkey", { err: err.message, userId, resetBy });
+    throw {
+      status: err.status || 500,
+      message: err.message || "Internal server error",
+    };
+  }
+};
+
+// ------------------------------------------------------------------
 // ADMIN-ASSISTED PASSWORD RESET (A-162)
 // ------------------------------------------------------------------
 
@@ -1650,6 +1758,20 @@ const generateTemporaryPassword = () => {
 
 exports.generateTemporaryPassword = generateTemporaryPassword;
 exports.TEMPORARY_PASSWORD_LENGTH = TEMPORARY_PASSWORD_LENGTH;
+
+/**
+ * A-215 (ADR-068) — how long an administrator-chosen password (a create or a
+ * reset) signs in before it must be replaced: 72 hours, which spans a
+ * weekend. After it, sign-in answers the same 401 as a wrong password
+ * (auth.service#loginUser) and the administrator issues a new one.
+ */
+const TEMPORARY_PASSWORD_TTL_MS = 72 * 60 * 60 * 1000;
+
+/** @returns {Date} when a temporary password issued now expires */
+const temporaryPasswordExpiry = () => new Date(Date.now() + TEMPORARY_PASSWORD_TTL_MS);
+
+exports.TEMPORARY_PASSWORD_TTL_MS = TEMPORARY_PASSWORD_TTL_MS;
+exports.temporaryPasswordExpiry = temporaryPasswordExpiry;
 
 /**
  * A tenant administrator replaces another user's password with a random
@@ -1713,11 +1835,14 @@ exports.resetUserPassword = async (input) => {
 
     const temporaryPassword = generateTemporaryPassword();
     const hashed = await hashPassword(temporaryPassword);
+    // A-215: it expires (TEMPORARY_PASSWORD_TTL_MS).
+    const temporaryPasswordExpiresAt = temporaryPasswordExpiry();
 
     await user.update(
       {
         password: hashed,
         mustChangePassword: true,
+        temporaryPasswordExpiresAt,
         failedLoginAttempts: 0,
         lockedUntil: null,
       },
@@ -1737,6 +1862,7 @@ exports.resetUserPassword = async (input) => {
         operation: "PASSWORD_ADMIN_RESET",
         sessionsRevoked,
         firstLoginChangeRequired: true,
+        firstLoginChangeDeadline: temporaryPasswordExpiresAt.toISOString(),
       },
     });
 
@@ -1748,11 +1874,12 @@ exports.resetUserPassword = async (input) => {
       success: true,
       status: 200,
       message:
-        "Password has been reset. Give the user this temporary password; it is shown only once, and they must change it when they sign in.",
+        "Password has been reset. Give the user this temporary password; it is shown only once, it stops working after 72 hours, and they must change it when they sign in.",
       data: {
         id: user.id,
         temporaryPassword,
         mustChangePassword: true,
+        temporaryPasswordExpiresAt,
         sessionsRevoked,
       },
     };

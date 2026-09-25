@@ -198,14 +198,19 @@ export const gdprService = {
     return record?.activities ?? [];
   },
 
-  /** PUT /gdpr/rectify — corrects a single field on the calling user. */
+  /**
+   * PUT /gdpr/rectify — corrects a single field on the calling user.
+   * A-214: an email change needs `currentPassword` and, on an MFA account, a
+   * current `code` (or `recoveryCode`); other fields need neither.
+   */
   rectifyData: async (
     field: string,
     value: unknown,
+    reauth?: { currentPassword: string; code?: string; recoveryCode?: string },
   ): Promise<RectifyResult> => {
     const response = await api.put<BackendResponse<RectifyResult>>(
       `${BASE}/rectify`,
-      { field, value },
+      { field, value, ...(reauth ?? {}) },
     );
     return response.data;
   },

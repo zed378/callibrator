@@ -311,29 +311,6 @@ describe("tenantHierarchy.service (coverage)", () => {
   });
 
   // ================================================================
-  describe("assignRoleToUserAcrossHierarchy", () => {
-    it("defaults to subtree scope when no scope is given", async () => {
-      const User = { update: jest.fn().mockResolvedValue([1]) };
-      const TenantHierarchy = {
-        findOne: jest.fn().mockResolvedValue({ path: "/parent" }),
-        findAll: jest.fn().mockResolvedValue([]),
-      };
-      const svc = loadService({}, { User, TenantHierarchy });
-
-      const result = await svc.assignRoleToUserAcrossHierarchy("user-1", "role-1");
-
-      expect(result).toEqual({ success: true, tenantCount: 1 });
-      expect(User.update).toHaveBeenCalledTimes(1);
-      expect(logger.info).toHaveBeenCalledWith(
-        "Role assigned across hierarchy",
-        expect.objectContaining({
-          userId: "user-1",
-          roleId: "role-1",
-          scope: "subtree",
-        }),
-      );
-    });
-  });
 
   // ================================================================
   describe("buildTenantFilter", () => {

@@ -13,6 +13,11 @@ const mockStatus = {
 // A-41: mutations run in a managed transaction and audit through logAction.
 // The callback executes with a sentinel transaction; the in-transaction effects
 // themselves are asserted in certificate.audit.a41.test.js against a ledger.
+// D-22 (ADR-070): a parent's delete soft-deletes its attachments through
+// attachment.service, in the parent's transaction.
+jest.mock("../../services/attachment.service", () => ({
+  softDeleteForResource: jest.fn().mockResolvedValue([]),
+}));
 jest.mock("../../config", () => ({
   db: { transaction: jest.fn(async (cb) => cb("TX")) },
 }));
@@ -23,6 +28,8 @@ jest.mock("../../services/audit.service", () => ({
 // model layer here has no workflow models. No workflow configured.
 jest.mock("../../services/workflow.service", () => ({
   startWorkflow: jest.fn().mockResolvedValue(null),
+  // A-203: no workflow pending unless a test says so.
+  findPendingInstance: jest.fn(async () => null),
 }));
 
 jest.mock("sequelize", () => {
@@ -485,6 +492,13 @@ describe("certificate.service", () => {
       expect(result.success).toBe(true);
       expect(result.status).toBe(200);
       expect(mockCert.destroy).toHaveBeenCalled();
+      // D-22 (ADR-070): its attachments in the same transaction.
+      expect(require("../../services/attachment.service").softDeleteForResource).toHaveBeenCalledWith(
+        "tenant-1",
+        "Certificate",
+        "cert-1",
+        expect.objectContaining({ transaction: expect.anything() }),
+      );
     });
 
     // A-157 — the status that gates the delete is read inside the delete's
@@ -655,6 +669,86 @@ describe("certificate.service", () => {
           meaning: "Approved",
         }),
       ).rejects.toMatchObject({ status: 409 });
+    });
+  });
+
+  // A-203 (ADR-065) — once a certificate's approval workflow has started, it
+  // is approved through that workflow; the direct route refuses.
+  describe("A-203 — the approval workflow is mandatory once started", () => {
+    const workflowService = require("../../services/workflow.service");
+    const REAUTH_OPTS = { authMethod: "password", authPayload: "correct-password", meaning: "Approved" };
+
+    it("refuses a direct approval (409) while a workflow instance is PENDING — before re-authentication, changing nothing", async () => {
+      const mockCert = {
+        id: "cert-1",
+        tenantId: "tenant-1",
+        status: "pending_approval",
+        approve: jest.fn(),
+        save: jest.fn(),
+      };
+      Certificate.findOne.mockResolvedValueOnce(mockCert);
+      workflowService.findPendingInstance.mockResolvedValueOnce({
+        id: "wi-1",
+        currentStepOrder: 1,
+        workflow: { name: "Certificate sign-off" },
+      });
+
+      const err = await approveCertificate("tenant-1", "cert-1", "user-2", REAUTH_OPTS).catch((e) => e);
+
+      expect(err).toMatchObject({ status: 409 });
+      expect(err.message).toBe(
+        'This certificate is in its approval workflow "Certificate sign-off" (step 1) and is approved there, ' +
+          "not directly: act on it with POST /workflows/instances/:instanceId/action. Nothing was recorded.",
+      );
+      expect(workflowService.findPendingInstance).toHaveBeenCalledWith(
+        "tenant-1",
+        "Certificate",
+        "cert-1",
+        expect.anything(),
+      );
+      // No credential was consumed and nothing changed.
+      expect(authService.passIsValid).not.toHaveBeenCalled();
+      expect(mockCert.approve).not.toHaveBeenCalled();
+      expect(mockCert.save).not.toHaveBeenCalled();
+    });
+
+    it("still approves directly when no workflow is pending (a tenant with no workflow configured)", async () => {
+      const mockCert = {
+        id: "cert-1",
+        tenantId: "tenant-1",
+        status: "pending_approval",
+        approve: jest.fn().mockResolvedValueOnce(true),
+        save: jest.fn().mockResolvedValueOnce(true),
+      };
+      Certificate.findOne.mockResolvedValueOnce(mockCert);
+
+      const result = await approveCertificate("tenant-1", "cert-1", "user-2", REAUTH_OPTS);
+
+      expect(result.status).toBe(200);
+      expect(mockCert.approve).toHaveBeenCalled();
+    });
+
+    it("a re-submission after a rejection starts a new workflow instance in the same transaction", async () => {
+      const mockCert = { id: "cert-1", status: "draft", submitForApproval: jest.fn().mockResolvedValueOnce(true) };
+      Certificate.findOne.mockResolvedValueOnce(mockCert);
+      workflowService.findPendingInstance.mockResolvedValueOnce(null);
+      workflowService.startWorkflow.mockResolvedValueOnce({ id: "wi-2" });
+
+      await submitCertificateForApproval("tenant-1", "cert-1", { userId: "user-1" });
+
+      const [, , , transaction] = workflowService.startWorkflow.mock.calls[0];
+      expect(workflowService.startWorkflow).toHaveBeenCalledWith("tenant-1", "Certificate", "cert-1", transaction);
+      expect(transaction).toBeDefined();
+    });
+
+    it("does not start a second instance while one is still pending", async () => {
+      const mockCert = { id: "cert-1", status: "draft", submitForApproval: jest.fn().mockResolvedValueOnce(true) };
+      Certificate.findOne.mockResolvedValueOnce(mockCert);
+      workflowService.findPendingInstance.mockResolvedValueOnce({ id: "wi-1" });
+
+      await submitCertificateForApproval("tenant-1", "cert-1", { userId: "user-1" });
+
+      expect(workflowService.startWorkflow).not.toHaveBeenCalled();
     });
   });
 

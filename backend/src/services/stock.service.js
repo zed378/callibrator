@@ -506,7 +506,13 @@ exports.fetchAdjustments = async ({ tenantId, warehouseId, type, page = 1, limit
 // STOCK TRANSFER METHODS
 // ==========================================
 
-exports.createTransfer = async (tenantId, input, userId) => {
+/**
+ * @param {string} tenantId
+ * @param {object} input - validated by createTransferSchema
+ * @param {string} userId - the requester
+ * @param {object} [actor] - auditActor(req)
+ */
+exports.createTransfer = async (tenantId, input, userId, actor = {}) => {
   const data = validate(input, createTransferSchema);
   const transaction = await db.transaction();
 
@@ -562,11 +568,24 @@ exports.createTransfer = async (tenantId, input, userId) => {
       { transaction },
     );
 
+    // A-202 (ADR-065) — the transfer's approval workflow starts in the SAME
+    // transaction, as a certificate's does (A-190). It started after the
+    // commit, fail-soft: a failure there left a transfer with no workflow,
+    // which any warehouse writer could then move by hand. Now a failure rolls
+    // the transfer back, and the create and its audit row commit together.
+    const workflowService = require("./workflow.service");
+    const instance = await workflowService.startWorkflow(tenantId, "StockTransfer", transfer.id, transaction);
+    await audit(transaction, tenantId, { ...actor, userId }, "CREATE", "StockTransfer", transfer.id, {}, {
+      status: transfer.status,
+      itemName: transfer.itemName,
+      quantity: transfer.quantity,
+      fromWarehouseId: transfer.fromWarehouseId,
+      toWarehouseId: transfer.toWarehouseId,
+      workflowInstanceId: instance ? instance.id : null,
+    });
+
     await transaction.commit();
     logger.info("Stock transfer request created", { transferId: transfer.id, tenantId });
-
-    const workflowService = require("./workflow.service");
-    await workflowService.startWorkflow(tenantId, "StockTransfer", transfer.id);
 
     return {
       success: true,
@@ -606,6 +625,25 @@ exports.updateTransferStatus = async (tenantId, transferId, input, userId, actor
 
     if (transfer.status === "completed" || transfer.status === "cancelled") {
       throw new AppError(400, `Cannot update transfer in '${transfer.status}' status`);
+    }
+
+    // A-202 / A-203 (ADR-065) — a transfer whose approval workflow is still
+    // PENDING is decided through that workflow, not moved by hand: the
+    // configured chain is the control, and a manual move would leave the
+    // instance pending over a transfer that had already happened.
+    const pending = await require("./workflow.service").findPendingInstance(
+      tenantId,
+      "StockTransfer",
+      transfer.id,
+      transaction,
+    );
+    if (pending) {
+      throw new AppError(
+        409,
+        `This stock transfer is awaiting approval in the workflow "${pending.workflow.name}" ` +
+          `(step ${pending.currentStepOrder}). It moves when that workflow approves it ` +
+          "(POST /workflows/instances/:instanceId/action), not by a status change.",
+      );
     }
 
     if (data.status === "completed") {

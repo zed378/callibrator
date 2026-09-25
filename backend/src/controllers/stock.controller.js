@@ -154,7 +154,7 @@ exports.createTransfer = asyncHandler(async (req, res) => {
   const tenantId = req.user.tenantId;
   const userId = req.user.id;
   const validated = validate(req.body, createTransferSchema);
-  const result = await stockService.createTransfer(tenantId, validated, userId);
+  const result = await stockService.createTransfer(tenantId, validated, userId, auditActor(req));
 
   success(
     res,

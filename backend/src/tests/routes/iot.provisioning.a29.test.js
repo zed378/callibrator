@@ -385,7 +385,8 @@ describe("A-46 — reading tolerance and anomaly detection", () => {
     expect(mockDb.notifications).toEqual([
       expect.objectContaining({
         tenantId: fx.tenantA.id,
-        type: "system",
+        // W-32: the ENUM value. "system" was refused by PostgreSQL.
+        type: "SYSTEM",
         message: expect.stringContaining("temperature (42) is above max (30)"),
       }),
     ]);

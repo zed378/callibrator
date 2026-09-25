@@ -16,8 +16,16 @@ const fs = require("fs");
 const path = require("path");
 const { quarantinePath } = require("../utils/upload.util");
 const { logger } = require("../middlewares/activityLog.middleware");
+const { runAsSystem, SYSTEM_TASKS } = require("../utils/jobContext.util");
 
 const DEFAULT_MAX_AGE_MINUTES = 60;
+/** Entries one run examines at most (W-17); the rest wait for the next run. */
+const DEFAULT_MAX_ENTRIES = 5000;
+
+const maxEntries = () => {
+  const n = Number(process.env.QUARANTINE_SWEEP_MAX_ENTRIES);
+  return Number.isInteger(n) && n > 0 ? n : DEFAULT_MAX_ENTRIES;
+};
 
 const maxAgeMs = () => {
   const n = Number(process.env.QUARANTINE_MAX_AGE_MINUTES);
@@ -25,16 +33,28 @@ const maxAgeMs = () => {
 };
 
 /**
+ * W-12: an explicit platform context (SYSTEM_TASKS.QUARANTINE_SWEEP). The
+ * quarantine is one directory for every tenant and this reads no table.
+ *
+ * W-17: the directory is streamed (`opendir`), never read whole, and a run
+ * stops after `maxEntries` entries with `truncated: true`. A crash loop that
+ * filled the quarantine cannot make one run hold every name in memory.
+ *
  * @param {object} [opts]
  * @param {Date} [opts.now]
- * @returns {Promise<{scanned: number, removed: number, errors: number}>}
+ * @param {number} [opts.limit] - entries to examine (default QUARANTINE_SWEEP_MAX_ENTRIES, 5000)
+ * @returns {Promise<{scanned: number, removed: number, errors: number, truncated: boolean}>}
  */
-async function sweepQuarantine({ now = new Date() } = {}) {
+function sweepQuarantine({ now = new Date(), limit = maxEntries() } = {}) {
+  return runAsSystem(SYSTEM_TASKS.QUARANTINE_SWEEP, () => sweep(now, limit));
+}
+
+async function sweep(now, limit) {
   const dir = quarantinePath();
-  const summary = { scanned: 0, removed: 0, errors: 0 };
-  let entries;
+  const summary = { scanned: 0, removed: 0, errors: 0, truncated: false };
+  let handle;
   try {
-    entries = await fs.promises.readdir(dir, { withFileTypes: true });
+    handle = await fs.promises.opendir(dir);
   } catch (err) {
     if (err.code === "ENOENT") {
       return summary;
@@ -43,7 +63,14 @@ async function sweepQuarantine({ now = new Date() } = {}) {
   }
 
   const cutoff = now.getTime() - maxAgeMs();
-  for (const entry of entries) {
+  let seen = 0;
+  // Leaving the loop early (the bound) closes the handle: for-await calls return().
+  for await (const entry of handle) {
+    if (seen >= limit) {
+      summary.truncated = true;
+      break;
+    }
+    seen += 1;
     if (!entry.isFile()) {
       continue;
     }
@@ -65,4 +92,4 @@ async function sweepQuarantine({ now = new Date() } = {}) {
   return summary;
 }
 
-module.exports = { sweepQuarantine, DEFAULT_MAX_AGE_MINUTES };
+module.exports = { sweepQuarantine, DEFAULT_MAX_AGE_MINUTES, DEFAULT_MAX_ENTRIES };

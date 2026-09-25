@@ -2,7 +2,8 @@ const express = require("express");
 const router = express.Router();
 const { auth } = require("../../middlewares/auth.middleware");
 const { dynamicAccess } = require("../../middlewares/dynamicAccess.middleware");
-const { MENU_SLUGS } = require("../../constants");
+const { MENU_SLUGS, ROLE_NAMES } = require("../../constants");
+const { rbac } = require("../../middlewares/rbac.middleware");
 const { validateUuid } = require("../../middlewares/validateUuid.middleware");
 const { upload } = require("../../utils/upload.util");
 const { enforceStorageQuota } = require("../../middlewares/enforceQuota.middleware");
@@ -148,6 +149,39 @@ router.post(
  *       200: { description: Attachments retrieved }
  */
 router.get("/", auth, dynamicAccess(MENU_SLUGS.EQUIPMENT, "read"), attachmentController.list);
+
+/**
+ * @swagger
+ * /api/v1/attachments/orphans:
+ *   get:
+ *     summary: Orphan report — live attachments whose linked record is gone (tenant administrators)
+ *     description: >-
+ *       D-22 (ADR-070). The caller's tenant's live attachments whose
+ *       `(resourceType, resourceId)` resolves to no live record of the tenant:
+ *       `parent_missing_or_deleted`, or `unlinkable_type` for a type that
+ *       cannot be linked at all. Read-only. Rows are `data`, pagination a
+ *       top-level `meta`.
+ *     tags: [Attachments]
+ *     security: [ { bearerAuth: [] } ]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 25 }
+ *     responses:
+ *       200: { description: Orphaned attachments retrieved }
+ *       403: { description: Not a tenant administrator, or no equipment read }
+ */
+// Declared before `/:id`, which would otherwise take "orphans" as an id.
+router.get(
+  "/orphans",
+  auth,
+  rbac([ROLE_NAMES.TENANT_ADMIN]),
+  dynamicAccess(MENU_SLUGS.EQUIPMENT, "read"),
+  attachmentController.listOrphans,
+);
 
 /**
  * @swagger

@@ -23,16 +23,9 @@ const live = process.env.DATA_PG_LIVE_TEST === "1" ? describe : describe.skip;
 const TENANT_A = "da0a0a0a-0000-4000-8000-00000000000a";
 const TENANT_B = "db0b0b0b-0000-4000-8000-00000000000b";
 
-// jest.config maps `uuid` to a mock returning ONE constant (A-116) — which
-// Sequelize's UUIDV4 defaults use too. Rows in a real table need real ids.
-const useRealUuids = (uuid) => {
-  uuid.v4.mockImplementation(() => require("crypto").randomUUID());
-};
-
 const startProcess = () => {
   let graph;
   jest.isolateModules(() => {
-    useRealUuids(require("uuid"));
     const { db } = require("../../config");
     db.options.logging = false;
     graph = {
@@ -122,7 +115,8 @@ live("batch-6 data identity and retention — real PostgreSQL", () => {
       { replacements: { t: TENANT_A, d: ids.deviceA, u: ids.technician } },
     );
     ids.record = record.id;
-  });
+    // db.sync({ force: true }) of 71 models can exceed jest's 10 s default.
+  }, 120000);
 
   afterAll(async () => {
     if (g) {
@@ -136,7 +130,9 @@ live("batch-6 data identity and retention — real PostgreSQL", () => {
       const err = await errorOf(g.db, "DELETE FROM users WHERE id = :id", { id: ids.technician });
 
       expect(err).not.toBeNull();
-      expect(err.original.code).toBe("23503");
+      // 23001 restrict_violation: an ON DELETE RESTRICT constraint reports
+      // its own SQLSTATE; 23503 is what NO ACTION raises (verified on PG 18).
+      expect(err.original.code).toBe("23001");
       expect(err.message).toMatch(/calibration_records_performed_by_fkey|violates foreign key constraint/);
       const [[{ n }]] = await g.db.query(
         "SELECT count(*)::int AS n FROM calibration_records WHERE id = :id AND performed_by = :u",
@@ -350,7 +346,8 @@ live("batch-6 data identity and retention — real PostgreSQL", () => {
 
       expect(reapplied.length).toBeGreaterThan(50);
       expect(await rowCounts()).toEqual(before);
-    });
+      // Every migration, twice: well past jest's 10 s default on PG 18.
+    }, 180000);
   });
 
   // ------------------------------------------------------------------

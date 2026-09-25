@@ -405,10 +405,13 @@ describe("tenantScope.util", () => {
 
       const hooks = db.addHook.mock.calls.map(([name]) => name);
       expect(hooks).toEqual([
+        "afterDefine",
         "beforeFind",
         "beforeCount",
         "beforeBulkUpdate",
         "beforeBulkDestroy",
+        "beforeBulkRestore",
+        "beforeRestore",
         "beforeCreate",
         "beforeBulkCreate",
         "beforeUpdate",

@@ -48,7 +48,7 @@ const path = require("path");
 const { Op } = require("sequelize");
 const { db } = require("../config");
 const { logger } = require("../middlewares/activityLog.middleware");
-const { tenantStorage } = require("../middlewares/tenantContext.middleware");
+const { runForTenant } = require("../utils/jobContext.util");
 const { SYSTEM_ACTORS } = require("../constants/systemActors");
 const auditService = require("./audit.service");
 const tenantBackupService = require("./tenantBackup.service");
@@ -58,6 +58,8 @@ const SCHEDULED_BACKUP_ACTOR = SYSTEM_ACTORS.SCHEDULED_BACKUP;
 
 /** The newest completed backups of a tenant that pruning never removes. */
 const DEFAULT_KEEP_MIN = 3;
+/** Rows (tenants, or completed backups) read per page by the scheduled job (W-17). */
+const DEFAULT_PAGE_SIZE = 500;
 
 /** Tenants whose data the job backs up: every one not offboarded. */
 const BACKED_UP_TENANT_STATUSES = Object.freeze(["active", "suspended"]);
@@ -179,94 +181,140 @@ async function backupTenant(tenantId, now) {
 async function pruneExpiredBackups({
   now = new Date(),
   keepMin = positiveIntEnv("BACKUP_KEEP_MIN", DEFAULT_KEEP_MIN),
+  pageSize = positiveIntEnv("BACKUP_PRUNE_PAGE_SIZE", DEFAULT_PAGE_SIZE),
 } = {}) {
   const { TenantBackup } = require("../models");
-  const rows = await TenantBackup.findAll({
-    where: { status: TenantBackup.STATUS.COMPLETED },
-    order: [
-      ["tenantId", "ASC"],
-      ["createdAt", "DESC"],
-      ["id", "DESC"],
-    ],
-    skipTenantScope: true,
-  });
-
-  const byTenant = new Map();
-  for (const row of rows) {
-    if (!byTenant.has(row.tenantId)) {
-      byTenant.set(row.tenantId, []);
-    }
-    byTenant.get(row.tenantId).push(row);
-  }
-
   const summary = { pruned: [], kept: 0, refused: [], errors: [] };
 
-  for (const [tenantId, tenantRows] of byTenant) {
-    // Newest first: the first keepMin are kept whatever their age.
-    summary.kept += Math.min(keepMin, tenantRows.length);
-    const candidates = tenantRows
-      .slice(keepMin)
-      .filter((row) => effectiveExpiry(row) < now);
+  // W-17: the completed backups are read in keyset pages on (tenantId ASC,
+  // createdAt DESC, id DESC) — the order the "newest keepMin" rule needs —
+  // with the tenant and its rank carried across pages, never all at once.
+  let cursor = null;
+  let currentTenant = null;
+  let rank = 0;
+  for (;;) {
+    const rows = await TenantBackup.findAll({
+      where: {
+        status: TenantBackup.STATUS.COMPLETED,
+        ...(cursor ? afterBackupCursor(cursor) : {}),
+      },
+      order: [
+        ["tenantId", "ASC"],
+        ["createdAt", "DESC"],
+        ["id", "DESC"],
+      ],
+      limit: pageSize,
+      skipTenantScope: true,
+    });
 
-    for (const row of candidates) {
-      const filePath = row.filePath || row.backupPath || null;
-      if (filePath && !isInsideBackupDir(filePath)) {
-        summary.refused.push({ tenantId, backupId: row.id, filePath });
-        logger.error("Scheduled backup prune: refusing a path outside the backup directory", {
-          tenantId,
-          backupId: row.id,
-          filePath,
-          backupDir: backupDir(),
-        });
+    for (const row of rows) {
+      if (row.tenantId !== currentTenant) {
+        currentTenant = row.tenantId;
+        rank = 0;
+      }
+      rank += 1;
+      // Newest first: the first keepMin are kept whatever their age.
+      if (rank <= keepMin) {
+        summary.kept += 1;
         continue;
       }
-      try {
-        await tenantStorage.run({ tenantId, isSuperAdmin: false, isSystemTask: false }, () =>
-          db.transaction(async (transaction) => {
-            await row.update({ status: TenantBackup.STATUS.DELETED }, { transaction });
-            await row.destroy({ transaction });
-            await auditService.logAction(
-              {
-                tenantId,
-                systemActor: SCHEDULED_BACKUP_ACTOR,
-                action: "DELETE",
-                resourceType: "TenantBackup",
-                resourceId: row.id,
-                changes: {
-                  operation: "BACKUP_PRUNE",
-                  actor: SCHEDULED_BACKUP_ACTOR,
-                  fileName: filePath ? path.basename(filePath) : null,
-                  expiredAt: effectiveExpiry(row).toISOString(),
-                  keepMin,
-                  before: { status: TenantBackup.STATUS.COMPLETED },
-                  after: { status: TenantBackup.STATUS.DELETED },
-                },
-              },
-              { transaction },
-            );
-          }),
-        );
-      } catch (err) {
-        summary.errors.push({ tenantId, backupId: row.id, stage: "row", error: err.message });
-        continue;
+      if (effectiveExpiry(row) < now) {
+        await pruneRow(row, keepMin, summary);
       }
-      // The row is committed as deleted; only now does the file go. A file
-      // that outlives a failed unlink is an orphan on disk, never a row
-      // pointing at nothing.
-      if (filePath) {
-        try {
-          await fs.promises.unlink(filePath);
-        } catch (err) {
-          if (err.code !== "ENOENT") {
-            summary.errors.push({ tenantId, backupId: row.id, stage: "file", error: err.message });
-          }
-        }
-      }
-      summary.pruned.push({ tenantId, backupId: row.id });
     }
+
+    if (rows.length < pageSize) {
+      break;
+    }
+    const last = rows[rows.length - 1];
+    cursor = { tenantId: last.tenantId, createdAt: last.createdAt, id: last.id };
   }
 
   return summary;
+}
+
+/**
+ * The keyset predicate for "after `cursor`" in (tenantId ASC, createdAt DESC,
+ * id DESC) order.
+ *
+ * @param {{tenantId: string, createdAt: Date, id: string}} cursor
+ * @returns {object} a where fragment
+ */
+function afterBackupCursor({ tenantId, createdAt, id }) {
+  return {
+    [Op.or]: [
+      { tenantId: { [Op.gt]: tenantId } },
+      { tenantId, createdAt: { [Op.lt]: createdAt } },
+      { tenantId, createdAt, id: { [Op.lt]: id } },
+    ],
+  };
+}
+
+/**
+ * Prune one expired backup: the row (soft-deleted, audited, in its tenant's
+ * context and one transaction), then its file.
+ *
+ * @param {object} row
+ * @param {number} keepMin
+ * @param {object} summary - updated in place
+ */
+async function pruneRow(row, keepMin, summary) {
+  const { TenantBackup } = require("../models");
+  const tenantId = row.tenantId;
+  const filePath = row.filePath || row.backupPath || null;
+  if (filePath && !isInsideBackupDir(filePath)) {
+    summary.refused.push({ tenantId, backupId: row.id, filePath });
+    logger.error("Scheduled backup prune: refusing a path outside the backup directory", {
+      tenantId,
+      backupId: row.id,
+      filePath,
+      backupDir: backupDir(),
+    });
+    return;
+  }
+  try {
+    await runForTenant(tenantId, () =>
+      db.transaction(async (transaction) => {
+        await row.update({ status: TenantBackup.STATUS.DELETED }, { transaction });
+        await row.destroy({ transaction });
+        await auditService.logAction(
+          {
+            tenantId,
+            systemActor: SCHEDULED_BACKUP_ACTOR,
+            action: "DELETE",
+            resourceType: "TenantBackup",
+            resourceId: row.id,
+            changes: {
+              operation: "BACKUP_PRUNE",
+              actor: SCHEDULED_BACKUP_ACTOR,
+              fileName: filePath ? path.basename(filePath) : null,
+              expiredAt: effectiveExpiry(row).toISOString(),
+              keepMin,
+              before: { status: TenantBackup.STATUS.COMPLETED },
+              after: { status: TenantBackup.STATUS.DELETED },
+            },
+          },
+          { transaction },
+        );
+      }),
+    );
+  } catch (err) {
+    summary.errors.push({ tenantId, backupId: row.id, stage: "row", error: err.message });
+    return;
+  }
+  // The row is committed as deleted; only now does the file go. A file
+  // that outlives a failed unlink is an orphan on disk, never a row
+  // pointing at nothing.
+  if (filePath) {
+    try {
+      await fs.promises.unlink(filePath);
+    } catch (err) {
+      if (err.code !== "ENOENT") {
+        summary.errors.push({ tenantId, backupId: row.id, stage: "file", error: err.message });
+      }
+    }
+  }
+  summary.pruned.push({ tenantId, backupId: row.id });
 }
 
 /**
@@ -316,24 +364,36 @@ async function runScheduledBackup({ now = new Date() } = {}) {
 
   try {
     const { Tenant } = require("../models");
-    const tenants = await Tenant.findAll({
-      where: { status: { [Op.in]: [...BACKED_UP_TENANT_STATUSES] } },
-      attributes: ["id"],
-      order: [["id", "ASC"]],
-      skipTenantScope: true,
-    });
-    outcome.tenants = tenants.length;
-
-    for (const tenant of tenants) {
-      try {
-        const done = await tenantStorage.run(
-          { tenantId: tenant.id, isSuperAdmin: false, isSystemTask: false },
-          () => backupTenant(tenant.id, now),
-        );
-        outcome.backedUp.push({ tenantId: done.tenantId, backupId: done.backupId });
-      } catch (err) {
-        outcome.failed.push({ tenantId: tenant.id, error: err.message });
+    const pageSize = positiveIntEnv("BACKUP_PRUNE_PAGE_SIZE", DEFAULT_PAGE_SIZE);
+    // W-17: tenants in keyset pages of ids.
+    let afterId = null;
+    for (;;) {
+      const where = { status: { [Op.in]: [...BACKED_UP_TENANT_STATUSES] } };
+      if (afterId) {
+        where.id = { [Op.gt]: afterId };
       }
+      const tenants = await Tenant.findAll({
+        where,
+        attributes: ["id"],
+        order: [["id", "ASC"]],
+        limit: pageSize,
+        skipTenantScope: true,
+      });
+      outcome.tenants += tenants.length;
+
+      for (const tenant of tenants) {
+        try {
+          const done = await runForTenant(tenant.id, () => backupTenant(tenant.id, now));
+          outcome.backedUp.push({ tenantId: done.tenantId, backupId: done.backupId });
+        } catch (err) {
+          outcome.failed.push({ tenantId: tenant.id, error: err.message });
+        }
+      }
+
+      if (tenants.length < pageSize) {
+        break;
+      }
+      afterId = tenants[tenants.length - 1].id;
     }
 
     outcome.prune = await pruneExpiredBackups({ now });

@@ -65,12 +65,6 @@ const {
   MenuGroup,
   RoleMenuPermission,
   Tenant,
-  Warehouse,
-  StorageLocation,
-  Stock,
-  StockTransfer,
-  StockAdjustment,
-  StockOpname,
 } = require("../../models");
 const { db } = require("../../config");
 const { seedMenuGroups } = require("../../utils/seedMenuGroups.util");
@@ -437,197 +431,74 @@ describe("migration.service", () => {
   });
 
   // ==========================================
-  // COVERAGE — dropSeededTables
+  // A-261 — dropSeededTables is gone
   // ==========================================
 
-  describe("dropSeededTables", () => {
-    const allDestroyMocks = () => [
-      StockTransfer.destroy,
-      StockAdjustment.destroy,
-      StockOpname.destroy,
-      Stock.destroy,
-      StorageLocation.destroy,
-      Warehouse.destroy,
-      Users.destroy,
-      Tenant.destroy,
-      RoleMenuPermission.destroy,
-      MenuGroup.destroy,
-      Roles.destroy,
-    ];
-
-    it("should force-delete every seeded table and report the counts", async () => {
-      StockTransfer.destroy.mockResolvedValue(1);
-      StockAdjustment.destroy.mockResolvedValue(2);
-      StockOpname.destroy.mockResolvedValue(3);
-      Stock.destroy.mockResolvedValue(4);
-      StorageLocation.destroy.mockResolvedValue(5);
-      Warehouse.destroy.mockResolvedValue(6);
-      Users.destroy.mockResolvedValue(7);
-      Tenant.destroy.mockResolvedValue(8);
-      RoleMenuPermission.destroy.mockResolvedValue(9);
-      MenuGroup.destroy.mockResolvedValue(10);
-      Roles.destroy.mockResolvedValue(11);
-
-      const result = await migrationService.dropSeededTables();
-
-      expect(result).toEqual({
-        stockTransfersDeleted: 1,
-        stockAdjustmentsDeleted: 2,
-        stockOpnamesDeleted: 3,
-        stocksDeleted: 4,
-        storageLocationsDeleted: 5,
-        warehousesDeleted: 6,
-        usersDeleted: 7,
-        tenantsDeleted: 8,
-        roleMenuPermissionsDeleted: 9,
-        menuGroupsDeleted: 10,
-        rolesDeleted: 11,
-        errors: [],
-      });
-
-      for (const destroy of allDestroyMocks()) {
-        expect(destroy).toHaveBeenCalledWith({ where: {}, force: true });
-      }
+  // It force-deleted every stock row, user, tenant, role-menu permission,
+  // menu group and role, one statement at a time and outside any transaction,
+  // so a failure part-way left the platform half-erased. Nothing called it: no
+  // route, controller, script or boot path (ADR-072).
+  describe("A-261: no helper deletes every user and tenant", () => {
+    it("is not exported", () => {
+      expect(migrationService).not.toHaveProperty("dropSeededTables");
     });
 
-    it("should delete dependents before the roles they reference", async () => {
-      const order = [];
-      const track = (name) => (mock) =>
-        mock.mockImplementation(async () => {
-          order.push(name);
-          return 0;
-        });
-      track("stockTransfers")(StockTransfer.destroy);
-      track("stockAdjustments")(StockAdjustment.destroy);
-      track("stockOpnames")(StockOpname.destroy);
-      track("stocks")(Stock.destroy);
-      track("storageLocations")(StorageLocation.destroy);
-      track("warehouses")(Warehouse.destroy);
-      track("users")(Users.destroy);
-      track("tenants")(Tenant.destroy);
-      track("roleMenuPermissions")(RoleMenuPermission.destroy);
-      track("menuGroups")(MenuGroup.destroy);
-      track("roles")(Roles.destroy);
-
-      await migrationService.dropSeededTables();
-
-      expect(order).toEqual([
-        "stockTransfers",
-        "stockAdjustments",
-        "stockOpnames",
-        "stocks",
-        "storageLocations",
-        "warehouses",
-        "users",
-        "tenants",
-        "roleMenuPermissions",
-        "menuGroups",
-        "roles",
-      ]);
-    });
-
-    it("should collect the error and stop when a delete fails", async () => {
-      StockTransfer.destroy.mockResolvedValue(1);
-      StockAdjustment.destroy.mockRejectedValue(new Error("FK violation"));
-
-      const result = await migrationService.dropSeededTables();
-
-      expect(result.errors).toEqual(["Error dropping tables: FK violation"]);
-      expect(result.stockTransfersDeleted).toBe(1);
-      // Everything after the failure is left at its initial value.
-      expect(result.stockAdjustmentsDeleted).toBe(0);
-      expect(result.rolesDeleted).toBe(0);
-      expect(Roles.destroy).not.toHaveBeenCalled();
+    it("no application source defines or calls it", () => {
+      const fs = require("fs");
+      const path = require("path");
+      const root = path.join(__dirname, "..", "..");
+      const offenders = [];
+      const walk = (dir) => {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          const full = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            if (entry.name !== "tests") {
+              walk(full);
+            }
+          } else if (entry.name.endsWith(".js") && /dropSeededTables\s*\(/.test(fs.readFileSync(full, "utf8"))) {
+            offenders.push(path.relative(root, full));
+          }
+        }
+      };
+      walk(root);
+      expect(offenders).toEqual([]);
     });
   });
 
   // ==========================================
-  // COVERAGE — syncTables
+  // A-259 — syncTables / resetAndSeed are gone
   // ==========================================
 
-  describe("syncTables", () => {
-    it("should force-sync the database", async () => {
-      db.sync.mockResolvedValue(true);
-
-      const result = await migrationService.syncTables();
-
-      expect(db.sync).toHaveBeenCalledWith({ force: true });
-      expect(result).toEqual({ synced: true, errors: [] });
+  // Since P6-03 the backend runs as the application role, which cannot drop
+  // or create tables, so `db.sync({ force: true })` failed on every
+  // deployment; nothing called either helper. Dropping the schema is an owner
+  // operation outside the application (ADR-068).
+  describe("A-259: no runtime schema reset", () => {
+    it("exports neither syncTables nor resetAndSeed", () => {
+      expect(migrationService).not.toHaveProperty("syncTables");
+      expect(migrationService).not.toHaveProperty("resetAndSeed");
     });
 
-    it("should report a sync failure without throwing", async () => {
-      db.sync.mockRejectedValue(new Error("connection refused"));
-
-      const result = await migrationService.syncTables();
-
-      expect(result).toEqual({
-        synced: false,
-        errors: ["Error syncing tables: connection refused"],
-      });
-    });
-  });
-
-  // ==========================================
-  // COVERAGE — resetAndSeed
-  // ==========================================
-
-  describe("resetAndSeed", () => {
-    const happyPath = () => {
-      for (const m of [
-        StockTransfer,
-        StockAdjustment,
-        StockOpname,
-        Stock,
-        StorageLocation,
-        Warehouse,
-        Users,
-        Tenant,
-        RoleMenuPermission,
-        MenuGroup,
-        Roles,
-      ]) {
-        m.destroy.mockResolvedValue(0);
-      }
-      db.sync.mockResolvedValue(true);
-      Roles.findAll.mockResolvedValue([]);
-      Roles.bulkCreate.mockResolvedValue(true);
-      seedMenuGroups.mockResolvedValue(true);
-      Roles.findOne.mockResolvedValue({ id: "role-1" });
-      MenuGroup.findOne.mockResolvedValue({ id: "menu-1" });
-      RoleMenuPermission.findOne.mockResolvedValue(null);
-      RoleMenuPermission.create.mockResolvedValue(true);
-      Tenant.findOne.mockResolvedValue(null);
-      Tenant.create.mockResolvedValue(true);
-      Users.findOne.mockResolvedValue(null);
-      Users.create.mockResolvedValue(true);
-    };
-
-    it("should drop, sync, then seed roles, menus, the tenant and users", async () => {
-      happyPath();
-
-      const result = await migrationService.resetAndSeed();
-
-      expect(result.drop.errors).toEqual([]);
-      expect(result.sync.synced).toBe(true);
-      expect(result.roles.rolesCreated).toBe(
-        migrationService.DEFAULT_ROLES.length + migrationService.APPLICATION_ROLES.length,
-      );
-      expect(result.menuGroups.menuGroupsCreated).toBe(7);
-      expect(result.users.usersCreated).toBeGreaterThan(0);
-      expect(Tenant.create).toHaveBeenCalled();
-    });
-
-    it("should abort before seeding when the sync fails", async () => {
-      happyPath();
-      db.sync.mockRejectedValue(new Error("no database"));
-
-      const result = await migrationService.resetAndSeed();
-
-      expect(result.sync.synced).toBe(false);
-      expect(result).not.toHaveProperty("roles");
-      expect(result).not.toHaveProperty("users");
-      expect(Roles.bulkCreate).not.toHaveBeenCalled();
-      expect(Users.create).not.toHaveBeenCalled();
+    it("no application source forces a sync (only the opt-in live test harnesses do)", () => {
+      const fs = require("fs");
+      const path = require("path");
+      const root = path.join(__dirname, "..", "..");
+      const offenders = [];
+      const walk = (dir) => {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          const full = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            if (entry.name !== "tests") {
+              walk(full);
+            }
+          } else if (entry.name.endsWith(".js") && /sync\(\s*\{\s*force:\s*true/.test(fs.readFileSync(full, "utf8"))) {
+            offenders.push(path.relative(root, full));
+          }
+        }
+      };
+      walk(root);
+      expect(offenders).toEqual([]);
+      expect(db.sync).not.toHaveBeenCalled();
     });
   });
 

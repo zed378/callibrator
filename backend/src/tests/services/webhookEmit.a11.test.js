@@ -83,6 +83,9 @@ jest.mock("../../models", () => ({
   NonConformance: { findOne: jest.fn() },
   Capa: { create: jest.fn(), findOne: jest.fn() },
   MaintenanceWorkOrder: { create: jest.fn(), findOne: jest.fn() },
+  // A-202/A-203: a certificate or stock-transfer transition first asks
+  // workflow.service for a PENDING approval instance; none here (undefined).
+  WorkflowInstance: { findOne: jest.fn() },
   StockTransfer: { findOne: jest.fn() },
   Stock: { findOne: jest.fn(), findOrCreate: jest.fn() },
 }));
@@ -180,13 +183,18 @@ describe("A-11 — certificates", () => {
   });
 });
 
-describe("A-11 — maintenance work orders (autocommitted writes)", () => {
-  it("work_order.created is emitted once the insert has happened", async () => {
+// A-190 moved the work-order writes into a managed transaction (the audit row
+// commits with the change), so these are no longer autocommitted: the event
+// is registered on that transaction and fires after its COMMIT. A-220 checks
+// the device is the tenant's own before the insert, hence the device lookup.
+describe("A-11 — maintenance work orders (managed transaction)", () => {
+  it("work_order.created is emitted after the insert commits", async () => {
+    models.CalibrationDevice.findOne.mockResolvedValueOnce({ id: "dev-1" });
     models.MaintenanceWorkOrder.create.mockResolvedValueOnce(
       instance({ id: "wo-1", deviceId: "dev-1", type: "Preventative", status: "Open", priority: "High", title: "t" }),
     );
     await maintenanceService.createWorkOrder(T, { title: "t", deviceId: "dev-1" });
-    expect(webhookService.emitAfterCommit).toHaveBeenCalledWith(null, T, "work_order.created", expect.any(Object));
+    expect(webhookService.emitAfterCommit).toHaveBeenCalledWith(mockTx.all[0], T, "work_order.created", expect.any(Object));
     expect(mockEmitted).toEqual([
       { tenantId: T, event: "work_order.created", payload: { workOrderId: "wo-1", deviceId: "dev-1", type: "Preventative", status: "Open", priority: "High" } },
     ]);
@@ -196,6 +204,14 @@ describe("A-11 — maintenance work orders (autocommitted writes)", () => {
     models.MaintenanceWorkOrder.create.mockRejectedValueOnce(new Error("insert failed"));
     await expect(maintenanceService.createWorkOrder(T, { title: "t" })).rejects.toMatchObject({ status: 500 });
     expect(mockEmitted).toEqual([]);
+  });
+
+  it("a work order whose COMMIT fails emits nothing", async () => {
+    models.MaintenanceWorkOrder.create.mockResolvedValueOnce(instance({ id: "wo-2", status: "Open" }));
+    mockTx.commitFails = true;
+    await expect(maintenanceService.createWorkOrder(T, { title: "t" })).rejects.toMatchObject({ status: 500 });
+    expect(webhookService.emitAfterCommit).toHaveBeenCalled(); // registered…
+    expect(mockEmitted).toEqual([]); // …but never fired
   });
 
   it("work_order.completed is emitted on the transition into Completed", async () => {

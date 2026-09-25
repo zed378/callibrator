@@ -836,7 +836,11 @@ describe("auth.service (coverage)", () => {
           userAgent: "",
         }),
       );
-      expect(user.update).toHaveBeenCalledWith({ lastLoginAt: expect.any(Date) });
+      // A-211: stamped in the session's transaction.
+      expect(user.update).toHaveBeenCalledWith(
+        { lastLoginAt: expect.any(Date) },
+        { transaction: expect.anything() },
+      );
     });
 
     it("returns a null role when the association is not loaded", async () => {

@@ -144,9 +144,11 @@ jobs:
         # `typecheck` script and exits 0 — a gate that ran nothing (P7-01).
         working-directory: frontend
         run: npx tsc --noEmit
-      - name: test
+      - name: test + coverage gate
+        # --coverage is what evaluates the thresholds in frontend/jest.config.js
+        # (F-03). Plain `jest --ci` ran the suites and never checked the gate.
         working-directory: frontend
-        run: npx jest --ci
+        run: npx jest --ci --coverage
       - name: build
         working-directory: frontend
         env:
@@ -309,27 +311,29 @@ jobs:
         run: |
           set -euo pipefail
           chart=deploy/helm/callibrator
-          tags="--set backend.image.tag=ci --set frontend.image.tag=ci"
-          dev="$tags --set global.corsOrigin=https://ci.invalid --set backend.clamav.host=clamd \
-            --set secrets.certSigningSecret=x --set secrets.encryptKey=x \
-            --set secrets.attachmentUrlSecret=x --set secrets.kmsMasterKey=x"
+          # Arrays, not word-split strings: this workflow's own actionlint stage
+          # fails on unquoted expansion (SC2086).
+          tags=(--set backend.image.tag=ci --set frontend.image.tag=ci)
+          dev=("${tags[@]}" --set global.corsOrigin=https://ci.invalid --set backend.clamav.host=clamd
+            --set secrets.certSigningSecret=x --set secrets.encryptKey=x
+            --set secrets.attachmentUrlSecret=x --set secrets.kmsMasterKey=x)
           for rel in callibrator prod; do
-            helm lint "$chart" $dev
-            helm template "$rel" "$chart" $dev | kubeconform -strict -summary -kubernetes-version 1.33.0 -
+            helm lint "$chart" "${dev[@]}"
+            helm template "$rel" "$chart" "${dev[@]}" | kubeconform -strict -summary -kubernetes-version 1.33.0 -
           done
           for env in staging prod; do
-            helm lint "$chart" -f "$chart/values-$env.yaml" $tags
-            helm template callibrator "$chart" -f "$chart/values-$env.yaml" $tags \
+            helm lint "$chart" -f "$chart/values-$env.yaml" "${tags[@]}"
+            helm template callibrator "$chart" -f "$chart/values-$env.yaml" "${tags[@]}" \
               | kubeconform -strict -summary -kubernetes-version 1.33.0 -
           done
       - name: helm guards refuse what they must (the failing direction)
         run: |
           set -uo pipefail
           chart=deploy/helm/callibrator
-          ok="--set backend.image.tag=ci --set frontend.image.tag=ci --set global.corsOrigin=https://ci.invalid \
-            --set backend.clamav.host=clamd --set secrets.certSigningSecret=x --set secrets.encryptKey=x \
-            --set secrets.attachmentUrlSecret=x --set secrets.kmsMasterKey=x"
-          refuse() { if helm template r "$chart" $ok "$@" >/dev/null 2>&1; then echo "::error::rendered, should refuse: $*"; exit 1; fi; echo "refused as required: $*"; }
+          ok=(--set backend.image.tag=ci --set frontend.image.tag=ci --set global.corsOrigin=https://ci.invalid
+            --set backend.clamav.host=clamd --set secrets.certSigningSecret=x --set secrets.encryptKey=x
+            --set secrets.attachmentUrlSecret=x --set secrets.kmsMasterKey=x)
+          refuse() { if helm template r "$chart" "${ok[@]}" "$@" >/dev/null 2>&1; then echo "::error::rendered, should refuse: $*"; exit 1; fi; echo "refused as required: $*"; }
           refuse --set backend.image.tag=
           refuse --set backend.replicaCount=2
           refuse --set secrets.kmsMasterKey=

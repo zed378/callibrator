@@ -2,7 +2,7 @@
 
 /**
  * Tenant e-signature private keys move from AES-CBC under ENCRYPT_KEY to KMS
- * envelopes (S-08, P6-10; ADR-PENDING-data).
+ * envelopes (S-08, P6-10; ADR-062).
  *
  * WHAT WAS WRONG
  *

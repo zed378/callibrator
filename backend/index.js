@@ -53,6 +53,7 @@ const {
 const {
   initQuarantineSweep,
 } = require("./src/middlewares/quarantineSweepScheduler.middleware");
+const { initWebhookDeliveryPurge } = require("./src/middlewares/webhookDeliveryPurgeScheduler.middleware");
 const { startWatchdog: initJobWatchdog } = require("./src/services/jobMonitor.service");
 
 const { initRedis, closeRedis } = require("./src/services/redis.service");
@@ -645,6 +646,8 @@ async function startServer() {
     initWebhookDeliveryScheduler();
     // S-33: remove uploads a crash left in uploads/.quarantine.
     initQuarantineSweep();
+    // ADR-070: finished webhook deliveries past retention, daily, bounded, audited.
+    initWebhookDeliveryPurge();
     // P7-02: every job above records its runs and alerts on failure; the
     // watchdog alerts on a run that did not happen and on stuck batch jobs.
     initJobWatchdog();

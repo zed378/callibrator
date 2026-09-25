@@ -30,7 +30,7 @@ Under 21 CFR Part 11, originality of the record is not optional, and a control t
 
 **Mitigation:** `REVOKE UPDATE, DELETE ON calibration_records` for the application role, matching what `audit_logs` gets by construction. Tracked in [`../../TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md).
 
-**2026-09-24 — mitigated as a constraint (P6-03, ADR-PENDING-data):** migration 0057 adds a trigger that refuses a delete, a truncate or a content change for **every** role, and creates the application role with `UPDATE`/`DELETE`/`TRUNCATE` revoked (lifecycle columns granted back). The `PUT`/`DELETE` routes are replaced by correct (a superseding record) and void. **Residual:** the backend runs as the owner until `DB_APP_ROLE` is set, and a superuser can still drop the trigger — DDL, visible in the log. Details: [`../DATABASE/07-CALIBRATION-TABLES.md`](../DATABASE/07-CALIBRATION-TABLES.md). Finding A-240: every `REVOKE` in these documents assumed an application role that did not exist.
+**2026-09-24 — mitigated as a constraint (P6-03, ADR-062):** migration 0057 adds a trigger that refuses a delete, a truncate or a content change for **every** role, and creates the application role with `UPDATE`/`DELETE`/`TRUNCATE` revoked (lifecycle columns granted back). The `PUT`/`DELETE` routes are replaced by correct (a superseding record) and void. **Residual:** the backend runs as the owner until `DB_APP_ROLE` is set, and a superuser can still drop the trigger — DDL, visible in the log. Details: [`../DATABASE/07-CALIBRATION-TABLES.md`](../DATABASE/07-CALIBRATION-TABLES.md). Finding A-240: every `REVOKE` in these documents assumed an application role that did not exist.
 
 ### PR-3 — Super-admin credential compromise
 
@@ -78,7 +78,7 @@ The Umzug context **is** the QueryInterface — `context.sequelize.getQueryInter
 
 **Mitigation to add:** a post-migration assertion step comparing expected columns against `information_schema`.
 
-**2026-09-24 — mechanised (P6-05, ADR-PENDING-data):** every boot compares each model's columns and the migration-only control objects with the database and refuses to start on a mismatch; `make migrate` ends with `make migrate-verify`. See [`../DATABASE/13-MIGRATIONS.md`](../DATABASE/13-MIGRATIONS.md).
+**2026-09-24 — mechanised (P6-05, ADR-062):** every boot compares each model's columns and the migration-only control objects with the database and refuses to start on a mismatch; `make migrate` ends with `make migrate-verify`. See [`../DATABASE/13-MIGRATIONS.md`](../DATABASE/13-MIGRATIONS.md).
 
 ### PR-6 — Fail-open regressions in optional subsystems
 

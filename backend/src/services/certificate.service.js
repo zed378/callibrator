@@ -551,7 +551,7 @@ exports.createCertificate = async (tenantId, userId, inputData, actor = {}) => {
     // Get tenant for certificate number generation
     const tenant = await Tenant.findByPk(tenantId);
     // D-40: certificate_number is unique PLATFORM-wide — it is the key the
-    // public verification page resolves (ADR-PENDING-dbA). The prefix must
+    // public verification page resolves (ADR-063). The prefix must
     // therefore be distinct per tenant. `tenants.code` is globally unique but
     // nullable; every code-less tenant used to share the prefix "T", and the
     // generator's tenant-scoped lookup could not see the other tenant's
@@ -755,6 +755,13 @@ exports.deleteCertificate = async (tenantId, certificateId, actor = {}) => {
       }
 
       await certificate.destroy({ transaction });
+      // D-22 (ADR-070): its attachments go with it, in this transaction.
+      await require("./attachment.service").softDeleteForResource(
+        tenantId,
+        "Certificate",
+        certificate.id,
+        { transaction, actor },
+      );
       await auditCertificate(transaction, certificate, {
         tenantId,
         userId: actor.userId,
@@ -815,11 +822,13 @@ exports.deleteCertificate = async (tenantId, certificateId, actor = {}) => {
  * @param {"submitted"|"approved"|"signed"|"revoked"} params.transition
  * @param {{userId: string, authOptions: Object}|null} params.reauth - who
  *   re-authenticates, or null for a transition that is not a signature
+ * @param {(transaction: Object, certificate: Object) => Promise<void>} [params.guard] -
+ *   a further refusal, checked after the status and BEFORE re-authentication
  * @param {(transaction: Object, certificate: Object, previousStatus: string) => Promise<void>} params.mutate
  * @returns {Promise<Object|null>} the transitioned certificate, or null (404)
  * @throws {AppError} 409 with the state explanation; 400/401 from re-auth
  */
-const runTransition = ({ tenantId, certificateId, transition, reauth, mutate }) =>
+const runTransition = ({ tenantId, certificateId, transition, reauth, mutate, guard }) =>
   db.transaction(async (transaction) => {
     const certificate = await lockCertificate(tenantId, certificateId, transaction);
     if (!certificate) {
@@ -829,6 +838,9 @@ const runTransition = ({ tenantId, certificateId, transition, reauth, mutate }) 
     const refusal = explainRefusedTransition(certificate.status, transition);
     if (refusal) {
       throw new AppError(409, refusal);
+    }
+    if (guard) {
+      await guard(transaction, certificate);
     }
 
     if (reauth) {
@@ -845,6 +857,31 @@ const runTransition = ({ tenantId, certificateId, transition, reauth, mutate }) 
   });
 
 /**
+ * A-203 (ADR-065) — the workflow is mandatory once it has started: a
+ * certificate whose approval workflow is PENDING is approved through that
+ * workflow (where every step's approver re-authenticates, A-182), never
+ * directly. The direct route stays for a tenant with no workflow configured.
+ * Checked under the certificate's row lock, before re-authentication, so a
+ * refusal consumes no one-time MFA code.
+ */
+const refuseWhileWorkflowPending = async (transaction, certificate) => {
+  const pending = await require("./workflow.service").findPendingInstance(
+    certificate.tenantId,
+    "Certificate",
+    certificate.id,
+    transaction,
+  );
+  if (pending) {
+    throw new AppError(
+      409,
+      `This certificate is in its approval workflow "${pending.workflow.name}" (step ` +
+        `${pending.currentStepOrder}) and is approved there, not directly: act on it with ` +
+        "POST /workflows/instances/:instanceId/action. Nothing was recorded.",
+    );
+  }
+};
+
+/**
  * Approve a certificate (move from pending_approval to approved)
  */
 exports.approveCertificate = async (tenantId, certificateId, approvedBy, authOptions) => {
@@ -853,6 +890,7 @@ exports.approveCertificate = async (tenantId, certificateId, approvedBy, authOpt
       tenantId,
       certificateId,
       transition: "approved",
+      guard: refuseWhileWorkflowPending,
       // Re-authenticate BEFORE mutating: the signature authorises the approval.
       reauth: { userId: approvedBy, authOptions },
       mutate: async (transaction, locked, previousStatus) => {
@@ -1078,13 +1116,21 @@ exports.submitCertificateForApproval = async (tenantId, certificateId, actor = {
     reauth: null,
     mutate: async (transaction, locked, previousStatus) => {
       await locked.submitForApproval({ transaction });
+      // A-203 (ADR-065) — a certificate re-submitted after its workflow
+      // rejected it goes through the chain again: a new instance starts, in
+      // this transaction. Without it the rejected instance was the last word,
+      // and the re-submitted certificate could be approved directly.
+      const workflowService = require("./workflow.service");
+      const pending = await workflowService.findPendingInstance(tenantId, "Certificate", locked.id, transaction);
+      const instance =
+        pending || (await workflowService.startWorkflow(tenantId, "Certificate", locked.id, transaction));
       await auditCertificate(transaction, locked, {
         tenantId,
         userId: actor.userId,
         action: "UPDATE",
         operation: "SUBMIT_FOR_APPROVAL",
         before: { status: previousStatus },
-        after: { status: locked.status },
+        after: { status: locked.status, workflowInstanceId: instance ? instance.id : null },
         ipAddress: actor.ipAddress,
         userAgent: actor.userAgent,
       });

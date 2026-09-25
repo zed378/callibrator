@@ -169,10 +169,19 @@ export const webauthnService = {
     return response.data;
   },
 
-  /** POST /api/v1/webauthn/disable — removes the enrolled credential. */
-  disable: async (): Promise<WebauthnResult> => {
+  /**
+   * POST /api/v1/webauthn/disable — removes the enrolled credential.
+   * A-213: needs the current password and, on an MFA account, a current
+   * code (or a recovery code); the backend answers 400 without them.
+   */
+  disable: async (reauth: {
+    currentPassword: string;
+    code?: string;
+    recoveryCode?: string;
+  }): Promise<WebauthnResult> => {
     const response = await api.post<BackendResponse<WebauthnResult>>(
       "/api/v1/webauthn/disable",
+      reauth,
     );
     return response.data;
   },

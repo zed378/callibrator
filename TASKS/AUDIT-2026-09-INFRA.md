@@ -27,8 +27,8 @@ cards below are about the gap between rendering and working, and none of them up
 | S-05 | `KMS_MASTER_KEY` does not exist anywhere in the Helm chart | **high** | **DONE** 2026-09-24 — `KMS_MASTER_KEY` in the chart Secret; guard requires it |
 | S-06 | The Helm chart's Secret and ConfigMap names can never both match what the Deployment mounts | **high** | **DONE** 2026-09-24 — one `baseName` helper; envFrom uses the same helpers that create the objects |
 | S-07 | `nginx/default.conf` routes `/api/` to the backend — the mistake `deploy/README.md` says breaks login | **high** | **DONE** 2026-09-24 — no browser login yet |
-| S-08 | No secret is rotatable: no key id in the KMS payload, `ENCRYPT_KEY` outside the KMS entirely | **high** | TODO |
-| S-09 | RabbitMQ credentials contradict themselves in `.env.example`; Redis has no authentication at all | **high** | **PARTIAL** 2026-09-24 — RabbitMQ template fixed; Redis auth needs a deploy decision |
+| S-08 | No secret is rotatable: no key id in the KMS payload, `ENCRYPT_KEY` outside the KMS entirely | **high** | **DONE** 2026-09-25 — `v2:<keyId>` envelopes, key ring, resumable `keys:rotate`, signing keys in KMS envelopes (`0058`); PG 18.6 rehearsal on seeded data (ADR-062) |
+| S-09 | RabbitMQ credentials contradict themselves in `.env.example`; Redis has no authentication at all | **high** | **PARTIAL** 2026-09-25 — Redis `requirepass` from `REDIS_PASSWORD`, and the backend RabbitMQ URL **built** from `RABBITMQ_USER`/`PASS` in compose (ADR-066). Proven live (dev overlay, throwaway project): unauthenticated `PING` → `NOAUTH` in-container, over the published port and from the compose network; backend healthy, AUTHed to Redis, connected to RabbitMQ as `callibrator` while `.env` still held a stale `guest:guest` URL. Helm renders both into the Secret. **Not run:** the by-the-book `make env; make secrets; make up ENV=prod` (no `make` on this host) |
 | S-10 | `.env.example` ships `IMAGE_TAG=latest`, which satisfies the prod overlay's `:?` guard | **high** | **DONE** 2026-09-24 |
 | S-11 | Six of the twelve allowed attachment types are rejected by the magic-byte check | medium | **DONE** 2026-09-24 — all 12 types verify; `fileValidation.s11.test.js` |
 | S-12 | The image never creates or chowns `/app/storage` or `/app/.well-known` | medium | **DONE** 2026-09-24 — proven live |
@@ -37,15 +37,15 @@ cards below are about the gap between rendering and working, and none of them up
 | S-15 | The attachment traversal guard derives its root from the same untrusted value it validates | medium | **DONE** 2026-09-24 — fixed root `path.resolve(storagePath("uploads"))`, both separators, empty folder refused (attachment + storage migration) |
 | S-16 | `make migrate` always also runs migrations on the host | medium | **DONE** 2026-09-24 |
 | S-17 | Uploads are written into the public tree before they are scanned; the scan cache key is not a hash | medium | **DONE** 2026-09-24 — **deviation:** quarantine is `uploads/.quarantine` (same mount, avoids EXDEV; not served, `dotfiles: "ignore"`); scan before promote; cache key = SHA-256 of content |
-| S-18 | Helm: no volume for `/app/backup`, persistence mounted at the wrong path, no NetworkPolicy, no PDB | medium | TODO |
-| S-19 | Compose: no `user:`, no `cap_drop`, no `read_only`, no CPU limits; dev publishes five datastores on `0.0.0.0` | medium | TODO |
+| S-18 | Helm: no volume for `/app/backup`, persistence mounted at the wrong path, no NetworkPolicy, no PDB | medium | **DONE — renders, not known to deploy** 2026-09-25 — PVCs for uploads, `/app/storage` and `/app/backup`; 3 NetworkPolicies and a PDB; `backupPersistence.enabled=false` and `persistence.enabled=false` refuse to render; kubeconform-valid for default/staging/prod (helm v4.3.0 locally). P7-06 owns "deploys" |
+| S-19 | Compose: no `user:`, no `cap_drop`, no `read_only`, no CPU limits; dev publishes five datastores on `0.0.0.0` | medium | **DONE** 2026-09-25 — `no-new-privileges` and `cap_drop: [ALL]` on every stack service; redis and nginx `read_only`; CPU limits in prod/staging/vm (not on the one-shot `volume-init`); dev binds only nginx on 0.0.0.0 (CI check, proven both directions). Live: postgres, redis, rabbitmq, volume-init and backend (uid 997, CapEff 0) healthy; **clamav, frontend and nginx not started** under these settings yet |
 | S-20 | Plaintext secrets at rest outside the KMS: TOTP seeds, IoT device tokens, ~~webhook secrets~~ (A-51, 2026-09-24) | medium | TODO — webhook secrets done |
 | S-21 | Six health-check claims describe a `/health` body that no longer exists | low | **DONE** 2026-09-24 |
 | S-22 | Two manifests still document things removed or never built (the MQTT port, an embedded broker) | low | **DONE** 2026-09-24 |
 | S-23 | `vm-http.conf` proxies two Swagger paths the backend does not serve | low | **PARTIAL** 2026-09-24 — dead proxy paths removed; Swagger gate open |
 | S-24 | `docs/STORAGE/04` says `GET /usage` is `auth` only; the route is tenant-admin gated | low | **DONE** 2026-09-25 — docs corrected; `routeGuards.a02.test.js` |
-| S-25 | Three divergent environment templates, one of them committed and unusable | low | **PARTIAL** 2026-09-24 — canonical templates named, not consolidated |
-| S-26 | The JWT key registry is decorative, and non-HS256 deployments stop verifying after 30 days uptime | low | TODO |
+| S-25 | Three divergent environment templates, one of them committed and unusable | low | **PARTIAL** 2026-09-25 — `backend/local.env` deleted; two templates; `.gitignore` and both Dockerfile ignores cover every env filename. A copy of `deploy/compose/.env.example` plus secrets booted the backend (live, dev overlay). **Not run:** a fresh-clone start from `backend/.env.example` |
+| S-26 | The JWT key registry is decorative, and non-HS256 deployments stop verifying after 30 days uptime | low | **DONE** 2026-09-25 — registry deleted; `kid` ring with `*_PREVIOUS`; `jwt.keyring.s26.test.js` (ADR-062) |
 | S-27 | Helm: the default release name `callibrator` breaks every service and ConfigMap reference | **high** | **DONE** 2026-09-24 — renders consistently for any release name (checked by a script over `helm template`); not known to deploy |
 | S-28 | Makefile `.ONESHELL` without `-e`: a failed step does not stop a recipe | medium | **DONE** 2026-09-24 — `.SHELLFLAGS := -ec` |
 | S-29 | `frontend/Dockerfile` uses `npm install` and an unpinned base image | medium | **DONE** 2026-09-24 — frontend image from the repo root with `npm ci --workspace frontend`, pinned node 24, uid 1001 |
@@ -507,7 +507,7 @@ proves nothing about the cookie).
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-25 (ADR-062). Every new envelope names its key (`v2:<keyId>:…`); `KMS_MASTER_KEY_PREVIOUS` rows decrypt; `npm run keys:rotate` is resumable and re-reads what it converts; tenant signing keys are KMS envelopes with tenant AAD (migration `0058`, which verifies every converted row); `docs/SECURITY/07` and `secret.yaml` corrected. Tests: `kms.rotation.s08.test.js`, `keyRotation.service.s08.test.js`, `signingKeyWrap.s08.test.js` (all fail at `fabc3be`: the modules did not exist), `keyRotation.s08.live.test.js` (5/5 on PG 18.6: 0058, rotate A→B, B-only read-back, idempotent re-run, interrupted rotation, 0058 down). The production-copy rehearsal is owed under P6-10 |
 | **Severity** | **high — an incident-response gap** |
 | **Verified** | from code |
 
@@ -1365,7 +1365,7 @@ other.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-25 (ADR-062). `JwtKeyRegistry` and `rotateKeys()` are deleted; tokens carry `kid` = key fingerprint; `JWT_ACCESS_SECRET_PREVIOUS` / `JWT_PUBLIC_KEY_PREVIOUS` verify for one lifetime; the algorithm is pinned and there is no HS256 fallback. Tests: `jwt.keyring.s26.test.js` — "HS512: a valid token still verifies after 31 days of uptime (the S-26 DoD test)", "RS256: after 31 days of uptime a token still verifies" and 8 more, all failing at `fabc3be`. `docs/SECURITY/07` states what rotating each JWT secret requires |
 | **Severity** | low |
 | **Verified** | from code |
 

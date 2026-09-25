@@ -61,6 +61,7 @@ const {
   NO_POLICY: NO_MFA_POLICY,
   parseMfaPolicy,
   isPlatformOperator,
+  isFederatedMethod,
 } = require("../utils/mfaPolicy.util");
 
 // User statuses auth.middleware refuses on every request (and config/socket.js
@@ -336,6 +337,10 @@ const openLoginSession = ({ user, refreshToken, ipAddress, userAgent, method, se
       userAgent: userAgent || "",
       expiredAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
     });
+    // A-211: "last login" is stamped when a session is ISSUED, in its
+    // transaction — never at the password step. An account whose password
+    // passed but whose second factor never did has not signed in.
+    await user.update({ lastLoginAt: new Date() }, { transaction });
     if (!user.tenantId) {
       logger.error("LOGIN not audited: the user has no tenant", {
         userId: user.id,
@@ -389,6 +394,20 @@ const SIGN_IN_PAUSED = "Too many failed sign-in attempts. Wait a few minutes, th
 
 exports.UNKNOWN_ACCOUNT_HASH = UNKNOWN_ACCOUNT_HASH;
 exports.SIGN_IN_PAUSED = SIGN_IN_PAUSED;
+
+/**
+ * A-215 — whether the account's password is an administrator's temporary one
+ * (a create or a reset) whose time has run out. A password the holder chose
+ * has no expiry (`temporaryPasswordExpiresAt` is null).
+ *
+ * @param {{temporaryPasswordExpiresAt?: (Date|string|null)}} user
+ * @returns {boolean}
+ */
+const temporaryPasswordExpired = (user) =>
+  Boolean(user.temporaryPasswordExpiresAt) &&
+  new Date(user.temporaryPasswordExpiresAt).getTime() <= Date.now();
+
+exports.temporaryPasswordExpired = temporaryPasswordExpired;
 
 /**
  * Count a failed password sign-in and, when this attempt filled a throttle
@@ -463,7 +482,14 @@ exports.loginUser = async (input) => {
     password,
     dbUser ? dbUser.password : UNKNOWN_ACCOUNT_HASH,
   );
-  if (!dbUser || !match) {
+  // A-215: an administrator's temporary password past its expiry is a wrong
+  // password — the same 401, counted by the same throttle, so the answer says
+  // nothing about the account. Only the server log names the reason.
+  const expired = Boolean(dbUser && match && temporaryPasswordExpired(dbUser));
+  if (expired) {
+    logger.info("Sign-in refused: the temporary password has expired", { userId: dbUser.id });
+  }
+  if (!dbUser || !match || expired) {
     await noteFailedSignIn(attempt, dbUser, userAgent);
     throw new AppError(401, INVALID_CREDENTIALS);
   }
@@ -499,8 +525,8 @@ exports.loginUser = async (input) => {
     await dbUser.update({ failedLoginAttempts: 0, lockedUntil: null });
   }
 
-  // Update last login
-  await dbUser.update({ lastLoginAt: new Date() });
+  // A-211: `lastLoginAt` is NOT written here — the password step is not a
+  // sign-in. openLoginSession stamps it with the session it issues.
 
   // If MFA is enabled, issue a temporary token and require the second factor.
   // A-59: this is an "mfa" purpose token, accepted ONLY by POST /auth/mfa/login
@@ -739,6 +765,8 @@ exports.processResetPassword = async (input) => {
         // A-123: the password is now one the holder chose, not an
         // administrator — the forced change is satisfied.
         mustChangePassword: false,
+        // A-215: and it does not expire.
+        temporaryPasswordExpiresAt: null,
       },
       { transaction },
     );
@@ -937,6 +965,290 @@ exports.breakGlassResetOperatorMfa = async ({ identifier, requestedBy, ticket })
 };
 
 // ------------------------------------------------------------------
+// A-216 (ADR-068) — A FEDERATED SESSION'S PASSWORD IS THE IDENTITY PROVIDER'S
+//
+// A user provisioned just-in-time by SSO (sso.service#provisionUser) holds a
+// random local password nobody knows, so Change Password could only ever
+// answer "Current password is incorrect". ADR-051 (A-98) said SSO users are
+// pointed to their identity provider; nothing did. Now a session that signed
+// in through SSO (the access token's `amr`, A-160) is answered 409 with the
+// provider named, and /auth/verify reports the same so the frontend shows the
+// explanation instead of the form.
+//
+// The exception is an account under the A-123 forced change: an administrator
+// gave it a temporary password, which the holder knows and must replace.
+// ------------------------------------------------------------------
+
+const IDP_NAME_KEYS = Object.freeze(["oidc_authority", "sso_idp_entity_id", "sso_idp_entry_point"]);
+
+/** The host of a URL-shaped setting, else the value itself (a SAML URN), bounded. */
+const providerLabel = (value) => {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (!text) {
+    return null;
+  }
+  try {
+    return new URL(text).host || text.slice(0, 120);
+  } catch {
+    return text.slice(0, 120);
+  }
+};
+
+/**
+ * Who manages this session's password, when it is not this application.
+ *
+ * @param {{tenantId?: string|null, mustChangePassword?: boolean}} user
+ * @param {string|null|undefined} signInMethod - the access token's `amr`
+ * @returns {Promise<{protocol: string, provider: (string|null)}|null>} null
+ *   when the password is managed here
+ */
+exports.passwordManagedBy = async (user, signInMethod) => {
+  if (!user || !isFederatedMethod(signInMethod) || user.mustChangePassword) {
+    return null;
+  }
+  let provider = null;
+  if (user.tenantId) {
+    const { TenantSettings } = require("../models");
+    // Before any tenant context is trusted for this read: the tenant is the
+    // user's own, never request input (as getAuthUserWithTenant reads it).
+    const rows = await TenantSettings.findAll({
+      where: { tenantId: user.tenantId, key: IDP_NAME_KEYS },
+      attributes: ["key", "value"],
+      skipTenantScope: true,
+      raw: true,
+    });
+    const byKey = new Map(rows.map((row) => [row.key, row.value]));
+    const order = signInMethod === "oidc" ? ["oidc_authority"] : ["sso_idp_entity_id", "sso_idp_entry_point"];
+    provider = order.map((key) => providerLabel(byKey.get(key))).find(Boolean) || null;
+  }
+  return { protocol: signInMethod, provider };
+};
+
+/**
+ * The state explanation for a password change refused because the identity
+ * provider manages the password.
+ *
+ * @param {{protocol: string, provider: (string|null)}} managedBy
+ * @returns {string}
+ */
+const passwordManagedByMessage = ({ protocol, provider }) =>
+  `You signed in through your organisation's identity provider (${String(protocol).toUpperCase()}${
+    provider ? `, ${provider}` : ""
+  }). Your password is managed there: change it with that provider, not here.`;
+
+exports.passwordManagedByMessage = passwordManagedByMessage;
+
+// ------------------------------------------------------------------
+// A-260 (ADR-072) — THE SIGNED-IN PASSWORD BUDGET
+//
+// Every check of the caller's OWN password by a session — pass-is-valid,
+// change-password, and the re-authentication of a passkey removal, an email
+// rectification, an MFA rotation or disable — goes through
+// verifySessionPassword. They were uncounted: a stolen session could guess
+// the password there without meeting the sign-in throttle.
+//
+// One budget per user (AUTH_ENDPOINTS.passwordCheck: 5 wrong in 15 minutes).
+// The attempt that spends it:
+//   - signs out the session that made it, and writes ACCOUNT_LOCKED (actor
+//     system:auth-lockout, `changes.scope` "session-password-check") in the
+//     same transaction;
+//   - is answered 429 with Retry-After, as is every check until the window
+//     ends.
+// It never writes users.locked_until: whoever guesses here is already signed
+// in, so locking sign-in would lock out only the real user (ADR-059, A-142).
+// ------------------------------------------------------------------
+
+const PASSWORD_CHECKS_PAUSED =
+  "Too many wrong passwords. Password checks for this account are paused; try again later.";
+
+/**
+ * @param {number} retryAfterSeconds
+ * @param {boolean} signedOut - this attempt's session was revoked
+ * @returns {AppError} a 429 carrying `retryAfterSeconds` (the Retry-After header)
+ */
+const passwordChecksPaused = (retryAfterSeconds, signedOut) => {
+  const error = new AppError(
+    429,
+    signedOut ? `${PASSWORD_CHECKS_PAUSED} This session has been signed out.` : PASSWORD_CHECKS_PAUSED,
+  );
+  error.retryAfterSeconds = retryAfterSeconds;
+  return error;
+};
+
+/**
+ * Revoke the session whose password check spent the budget.
+ *
+ * @param {string|null} sessionId
+ * @returns {Promise<boolean>} whether a live session was revoked
+ */
+const signOutPausedSession = async (sessionId) => {
+  if (!sessionId) {
+    return false;
+  }
+  const result = await revokeSessionById(sessionId, "PASSWORD_CHECKS_EXHAUSTED");
+  return Array.isArray(result) && result[0] > 0;
+};
+
+/**
+ * The attempt that spent the budget: its session is revoked and the pause is
+ * audited, in one transaction of their own — the caller's transaction (a
+ * re-authentication runs inside the change's) is about to roll back. If the
+ * audit row cannot be written the session is revoked anyway: the control must
+ * not depend on the trail (audit.service#recordAccountLock).
+ *
+ * @param {{id: string, tenantId: (string|null)}} user
+ * @param {{failedAttempts: number, pausedUntil: Date}} failure
+ * @param {{purpose: string, ipAddress: (string|null), userAgent: (string|null), sessionId: (string|null)}} context
+ * @returns {Promise<boolean>} whether a session was signed out
+ */
+const recordPasswordChecksExhausted = async (user, failure, { purpose, ipAddress, userAgent, sessionId }) => {
+  const revoke = () => signOutPausedSession(sessionId);
+  try {
+    return await db.transaction(async (transaction) => {
+      // CLS carries `transaction` into revokeSessionById.
+      const signedOut = await revoke();
+      await auditService.logAction(
+        {
+          tenantId: user.tenantId || PLATFORM_TENANT_ID,
+          systemActor: SYSTEM_ACTORS.AUTH_LOCKOUT,
+          action: "ACCOUNT_LOCKED",
+          resourceType: "User",
+          resourceId: user.id,
+          changes: {
+            endpoint: "passwordCheck",
+            scope: "session-password-check",
+            purpose,
+            failedAttempts: failure.failedAttempts,
+            lockedUntil: failure.pausedUntil.toISOString(),
+            sessionRevoked: signedOut,
+          },
+          ipAddress,
+          userAgent,
+        },
+        { transaction },
+      );
+      return signedOut;
+    });
+  } catch (err) {
+    logger.error("Password-check pause was not audited; signing the session out without its row", {
+      userId: user.id,
+      error: err.message,
+    });
+    return revoke();
+  }
+};
+
+/**
+ * Compare `candidate` with the caller's own password, under the per-user
+ * budget. A wrong password returns false (the caller answers as it always
+ * did); the one that spends the budget, and every check while it is spent,
+ * throws 429.
+ *
+ * @param {{id: string, tenantId: (string|null), password: string}} user - the caller's row
+ * @param {string} candidate - a non-empty string; callers refuse anything else first
+ * @param {object} options
+ * @param {string} options.purpose - for the audit row
+ * @param {string|null} [options.ipAddress]
+ * @param {string|null} [options.userAgent]
+ * @param {string|null} [options.sessionId] - defaults to the request's session
+ * @returns {Promise<boolean>}
+ * @throws {AppError} 429 with `retryAfterSeconds`
+ */
+exports.verifySessionPassword = async (
+  user,
+  candidate,
+  { purpose, ipAddress = null, userAgent = null, sessionId = null },
+) => {
+  const budget = await loginThrottle.checkPasswordCheckBudget(user.id);
+  if (budget.throttled) {
+    throw passwordChecksPaused(budget.retryAfterSeconds, false);
+  }
+  if (await comparePassword(candidate, user.password)) {
+    await loginThrottle.clearPasswordCheckBudget(user.id);
+    return true;
+  }
+  const failure = await loginThrottle.recordPasswordCheckFailure(user.id);
+  if (!failure.exhausted) {
+    return false;
+  }
+  const context = { purpose, ipAddress, userAgent, sessionId: sessionId || getCurrentSessionId() };
+  logger.warn("Signed-in password checks paused (A-260)", {
+    userId: user.id,
+    purpose,
+    failedAttempts: failure.failedAttempts,
+  });
+  // Audited once, by the attempt that filled the budget; a racing attempt
+  // past it only signs its own session out.
+  const signedOut = failure.engaged
+    ? await recordPasswordChecksExhausted(user, failure, context)
+    : await signOutPausedSession(context.sessionId);
+  throw passwordChecksPaused(failure.retryAfterSeconds, signedOut);
+};
+
+// ------------------------------------------------------------------
+// A-213 / A-214 (ADR-068) — FRESH RE-AUTHENTICATION FOR A SENSITIVE CHANGE
+//
+// The A-114 rule, shared: holding a session is not enough to change what
+// protects the account. The current password is required; on an account with
+// MFA, a current TOTP code (or a recovery code) as well. A wrong password and
+// a wrong code are one combined 400 (not 401: the frontend signs out on a
+// 401), and the password is checked first so a wrong one never burns a code.
+// ------------------------------------------------------------------
+
+/**
+ * Prove the caller still holds the account's credentials. The second factor
+ * is SPENT inside `transaction`, so a change that rolls back does not burn it.
+ *
+ * @param {object} user - the account row (password, mfaEnabled, mfaSecret…)
+ * @param {{currentPassword?: unknown, code?: unknown, recoveryCode?: unknown}} proof
+ * @param {object} options
+ * @param {string} options.purpose - for the refusal message and the log
+ * @param {object} [options.transaction]
+ * @param {string|null} [options.ipAddress] - A-260: for the pause's audit row
+ * @param {string|null} [options.userAgent]
+ * @returns {Promise<string>} the method that proved it: "password",
+ *   "password+totp" or "password+recovery_code"
+ * @throws {AppError} 400 missing or wrong; 429 the password-check budget is
+ *   spent (A-260)
+ */
+exports.reauthenticate = async (
+  user,
+  { currentPassword, code, recoveryCode },
+  { purpose, transaction, ipAddress = null, userAgent = null },
+) => {
+  const needsFactor = Boolean(user.mfaEnabled);
+  const hasFactor = Boolean(code) || Boolean(recoveryCode);
+  if (typeof currentPassword !== "string" || !currentPassword || (needsFactor && !hasFactor)) {
+    throw new AppError(
+      400,
+      needsFactor
+        ? `${purpose} requires your current password and a current MFA or recovery code`
+        : `${purpose} requires your current password`,
+    );
+  }
+  const refusal = needsFactor ? MFA_REAUTH_FAILED : "Current password is incorrect";
+  if (!(await exports.verifySessionPassword(user, currentPassword, { purpose, ipAddress, userAgent }))) {
+    logger.warn("Re-authentication failed", { userId: user.id, purpose, reason: "password" });
+    throw new AppError(400, refusal);
+  }
+  if (!needsFactor) {
+    return "password";
+  }
+  const factorOk = recoveryCode
+    ? await mfaService.consumeRecoveryCode(user, recoveryCode, { transaction })
+    : await mfaService.consumeCode(user, code, { transaction });
+  if (!factorOk) {
+    logger.warn("Re-authentication failed", {
+      userId: user.id,
+      purpose,
+      reason: recoveryCode ? "recovery_code" : "totp",
+    });
+    throw new AppError(400, refusal);
+  }
+  return recoveryCode ? "password+recovery_code" : "password+totp";
+};
+
+// ------------------------------------------------------------------
 // JUST UPDATE PASSWORD
 // ------------------------------------------------------------------
 /**
@@ -953,13 +1265,26 @@ exports.breakGlassResetOperatorMfa = async ({ identifier, requestedBy, ticket })
  * @param {object} [context]
  * @param {string|null} [context.ipAddress]
  * @param {string|null} [context.userAgent]
+ * @param {string|null} [context.signInMethod] - A-216: the session's `amr`;
+ *   a federated session is answered 409, naming its identity provider
+ * @throws {AppError} 409 federated session (A-216) or expired temporary
+ *   password (A-215); 400 validation or a wrong current password
  */
 exports.justUpdatePassword = async (
   userId,
   newPassword,
   currentPassword,
-  { ipAddress = null, userAgent = null } = {},
+  { ipAddress = null, userAgent = null, signInMethod = null } = {},
 ) => {
+  // A-216: first, so a federated user is told where to go, not why a password
+  // they never had is wrong.
+  if (isFederatedMethod(signInMethod)) {
+    const holder = await Users.findByPk(userId);
+    const managedBy = await exports.passwordManagedBy(holder, signInMethod);
+    if (managedBy) {
+      throw new AppError(409, passwordManagedByMessage(managedBy));
+    }
+  }
   if (!newPassword || newPassword.length < PASSWORD_MIN_LENGTH) {
     throw new AppError(
       400,
@@ -976,9 +1301,22 @@ exports.justUpdatePassword = async (
   if (!currentPassword) {
     throw new AppError(400, "Current password is required");
   }
-  const currentMatches = await comparePassword(currentPassword, user.password);
+  // A-260: under the signed-in password budget.
+  const currentMatches = await exports.verifySessionPassword(user, currentPassword, {
+    purpose: "Changing your password",
+    ipAddress,
+    userAgent,
+  });
   if (!currentMatches) {
     throw new AppError(400, "Current password is incorrect");
+  }
+  // A-215: a session opened before the temporary password expired does not
+  // keep it alive. Told only to its holder, who has just proved it.
+  if (temporaryPasswordExpired(user)) {
+    throw new AppError(
+      409,
+      "The temporary password an administrator set for you has expired. Ask an administrator to reset your password again.",
+    );
   }
   // A-123: "changing" to the same password would clear the forced-change
   // flag while the administrator still knows the password.
@@ -993,6 +1331,8 @@ exports.justUpdatePassword = async (
         password: hashed,
         passwordChangedAt: new Date(),
         mustChangePassword: false,
+        // A-215: the holder's own password does not expire.
+        temporaryPasswordExpiresAt: null,
       },
       { transaction },
     );
@@ -1017,12 +1357,33 @@ exports.justUpdatePassword = async (
 // ------------------------------------------------------------------
 // CHECK PASSWORD VALIDITY
 // ------------------------------------------------------------------
-exports.passIsValid = async (userId, password) => {
+/**
+ * Whether `password` is the caller's own. A-260: it is the plainest password
+ * oracle a session has, so it is under the signed-in password budget: five
+ * wrong answers in fifteen minutes sign the session out and pause every
+ * password check of the account (429).
+ *
+ * @param {string} userId - the authenticated caller
+ * @param {unknown} password
+ * @param {{ipAddress?: (string|null), userAgent?: (string|null)}} [context]
+ * @returns {Promise<object>} the envelope; `data.valid`
+ * @throws {AppError} 400 no password; 404 no user; 429 budget spent
+ */
+exports.passIsValid = async (userId, password, { ipAddress = null, userAgent = null } = {}) => {
+  // A string, or bcrypt throws and the check answers 500. Not counted: it is
+  // not a guess.
+  if (typeof password !== "string" || !password) {
+    throw new AppError(400, "Password is required");
+  }
   const user = await Users.findByPk(userId);
   if (!user) {
     throw new AppError(404, "User not found");
   }
-  const match = await comparePassword(password, user.password);
+  const match = await exports.verifySessionPassword(user, password, {
+    purpose: "Checking your password",
+    ipAddress,
+    userAgent,
+  });
   // 200 with `data.valid` is intentional (this is a check endpoint), but the
   // message must reflect the result — callers that only read the message or
   // the success flag were treating a wrong password as valid.
@@ -1277,8 +1638,8 @@ exports.loginMfa = async (userId, tokenCode, inputIp, inputUserAgent, { recovery
     secondFactor: useRecovery ? spendRecoveryCode : undefined,
   });
 
-  // Update last login — after the second factor, whichever it was, passed.
-  await dbUser.update({ lastLoginAt: new Date() });
+  // A-211: `lastLoginAt` was stamped by openLoginSession, in the session's
+  // transaction — after the second factor, whichever it was, passed.
 
   const accessToken = generateAccessToken({
     id: dbUser.id,
@@ -1364,11 +1725,18 @@ exports.MFA_PENDING_TTL_MS = MFA_PENDING_TTL_MS;
  * @param {object} [reauth] - required when MFA is already enabled
  * @param {string} [reauth.currentPassword]
  * @param {string} [reauth.code] - a code from the CURRENT authenticator
+ * @param {{ipAddress?: (string|null), userAgent?: (string|null)}} [context] -
+ *   A-260: for the audit row of a spent password budget
  * @returns {Promise<{ secret: string, qrCodeUrl: string, rotation: boolean }>}
  * @throws {AppError} 404 no user; 409 MFA enabled and no re-authentication
- *   given; 400 the re-authentication is wrong
+ *   given; 400 the re-authentication is wrong; 429 the password budget is
+ *   spent (A-260)
  */
-exports.setupMfa = async (userId, { currentPassword, code } = {}) => {
+exports.setupMfa = async (
+  userId,
+  { currentPassword, code } = {},
+  { ipAddress = null, userAgent = null } = {},
+) => {
   const qrcode = require("qrcode");
 
   const dbUser = await Users.findByPk(userId);
@@ -1382,7 +1750,12 @@ exports.setupMfa = async (userId, { currentPassword, code } = {}) => {
       throw new AppError(409, MFA_ALREADY_ENABLED);
     }
     // The password first: a wrong password must not burn the current code.
-    const passwordOk = await comparePassword(currentPassword, dbUser.password);
+    // A-260: under the signed-in password budget.
+    const passwordOk = await exports.verifySessionPassword(dbUser, currentPassword, {
+      purpose: "Replacing your MFA authenticator",
+      ipAddress,
+      userAgent,
+    });
     if (!passwordOk || !(await mfaService.consumeCode(dbUser, code))) {
       logger.warn("MFA rotation refused: re-authentication failed", {
         userId: dbUser.id,
@@ -1543,7 +1916,13 @@ exports.disableMfa = async (
   }
 
   // The password first: a wrong password must not burn a code.
-  const passwordOk = await comparePassword(currentPassword, dbUser.password);
+  // A-260: under the signed-in password budget.
+  const passwordOk = await exports.verifySessionPassword(dbUser, currentPassword, {
+    purpose: "Turning off MFA",
+    ipAddress,
+    userAgent,
+    sessionId,
+  });
   if (!passwordOk) {
     logger.warn("MFA disable refused: re-authentication failed", {
       userId: dbUser.id,

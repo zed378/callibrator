@@ -83,12 +83,14 @@ const filesTouchingSignatures = () => {
 
 describe("D-18 — no hard delete of signature evidence", () => {
   it("the scanner bites", () => {
-    const found = scan(`
+    // Inside an async function: the scanner parses as a CommonJS script, where
+    // a top-level await is a syntax error.
+    const found = scan(`async function sample() {
       await workflow.destroy({ transaction });
       await workflow.destroy({ transaction, force: true });   // 3
       await SignatureRecord.destroy({ where: { workflowId } }); // 4
       await step.destroy({ force: false });
-    `);
+    }`);
     expect(found.map((f) => f.line)).toEqual([3, 4]);
   });
 

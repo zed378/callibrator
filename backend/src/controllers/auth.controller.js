@@ -176,9 +176,12 @@ exports.verify = asyncHandlerWithMapping(
     // A-160: "who am I" is one of the routes an account that must enrol MFA
     // may call, so this is where the frontend learns it (auth.middleware
     // decided it from the tenant's policy).
+    // A-216: and whether the identity provider manages this session's
+    // password — the change-password page then explains instead of asking.
+    const passwordManagedBy = await authService.passwordManagedBy(req.user, req.signInMethod || null);
     success(
       res,
-      { ...result.data, mfaEnrolmentRequired: req.mfaEnrolmentRequired === true },
+      { ...result.data, mfaEnrolmentRequired: req.mfaEnrolmentRequired === true, passwordManagedBy },
       null,
       result.message,
       result.status,
@@ -222,11 +225,13 @@ exports.justUpdatePassword = asyncHandlerWithMapping(async (req, res) => {
   const { newPassword, currentPassword } = req.body || {};
   // A-98 / F-12: the audit row the service writes carries the caller's
   // address and user agent.
+  // A-216: `signInMethod` (the session's `amr`, auth.middleware) — a
+  // federated session is told its identity provider manages the password.
   const result = await authService.justUpdatePassword(
     userId,
     newPassword,
     currentPassword,
-    requestContext(req),
+    { ...requestContext(req), signInMethod: req.signInMethod || null },
   );
   success(res, null, null, result.message, 200);
 }, {});
@@ -234,7 +239,9 @@ exports.justUpdatePassword = asyncHandlerWithMapping(async (req, res) => {
 exports.passIsValid = asyncHandlerWithMapping(async (req, res) => {
   const { id: userId } = req.user;
   const { password } = req.body || {};
-  const result = await authService.passIsValid(userId, password);
+  // A-260: under the signed-in password budget; a spent one is a 429 with
+  // Retry-After (controllerWrapper sends the header).
+  const result = await authService.passIsValid(userId, password, requestContext(req));
   success(res, result.data, null, result.message, 200);
 }, {});
 
@@ -253,7 +260,7 @@ exports.passIsValid = asyncHandlerWithMapping(async (req, res) => {
 exports.setupMfa = asyncHandlerWithMapping(
   withAuthOutcome("mfaManage", {}, async (req, res) => {
     const { currentPassword, code } = req.body || {};
-    const result = await authService.setupMfa(req.user.id, { currentPassword, code });
+    const result = await authService.setupMfa(req.user.id, { currentPassword, code }, requestContext(req));
     success(res, result, null, "MFA secret generated", 200);
   }),
   {},

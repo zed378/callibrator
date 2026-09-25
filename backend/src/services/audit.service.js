@@ -7,6 +7,7 @@ const { logger } = require("../middlewares/activityLog.middleware");
 const { currentImpersonatorId } = require("../utils/auditActor.util");
 const { ACTOR_TYPES, SYSTEM_ACTORS, SYSTEM_ACTOR_NAMES } = require("../constants/systemActors");
 const { PLATFORM_TENANT_ID } = require("../constants/platformTenant");
+const { redactAuditChanges } = require("../utils/auditRedaction.util");
 
 // ------------------------------------------------------------------
 // HELPERS
@@ -126,6 +127,18 @@ exports.logAction = async (
       );
     }
     const actor = resolveActor(userId, systemActor);
+    // D-27 (ADR-070): a secret never reaches this permanent table — its value
+    // is replaced, and the call site that tried is named so it gets fixed.
+    const { value: safeChanges, redacted } = redactAuditChanges(changes);
+    if (redacted.length > 0) {
+      logger.warn("Audit changes carried secret-bearing fields; their values were redacted", {
+        tenantId,
+        action,
+        resourceType,
+        resourceId,
+        fields: redacted,
+      });
+    }
     const newLog = await AuditLog.create(
       {
         tenantId,
@@ -138,7 +151,7 @@ exports.logAction = async (
         action,
         resourceType,
         resourceId,
-        changes,
+        changes: safeChanges,
         ipAddress,
         userAgent,
       },

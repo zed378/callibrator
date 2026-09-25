@@ -16,9 +16,9 @@
  *    the second half of this file is the backstop: a static check that every
  *    query on a child model carries its parent key in its `where`.
  *
- * Decision (ADR-PENDING-dbB, D-17): the child tables do NOT gain a
+ * Decision (ADR-064, D-17): the child tables do NOT gain a
  * denormalised `tenant_id` in this change. Alternatives and the bad
- * implications are in the ADR draft; the short form is that eleven tables,
+ * implications are in ADR-064; the short form is that eleven tables,
  * a backfill, and a create path that must stamp a tenant in background jobs
  * is a schema change to make deliberately, not as a side effect of an audit.
  *
@@ -251,7 +251,9 @@ describe("D-17 — every query on a child model names its scoped parent", () => 
     const tally = {};
     const unreviewed = [];
     for (const file of sourceFiles()) {
-      const rel = path.relative(SRC, file);
+      // POSIX separators: the review keys are written with "/", and on Windows
+      // path.relative answers with backslashes, so every reviewed exception read as new.
+      const rel = path.relative(SRC, file).split(path.sep).join("/");
       for (const f of scanSource(fs.readFileSync(file, "utf8"))) {
         if (REVIEWED_WITHOUT_PARENT[`${rel} *`]) {continue;}
         const key = `${rel} ${f.model}.${f.method}`;

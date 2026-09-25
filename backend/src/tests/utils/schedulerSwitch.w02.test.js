@@ -138,3 +138,53 @@ describe("W-02 — no scheduler escapes the switch", () => {
     expect(notDisabled).toEqual([]);
   });
 });
+
+// The DoD asks for the RENDERED ConfigMap, not the template text. `helm` is
+// not a dependency of the backend suite, so this runs where it is installed
+// (it was, for the 2026-09-25 verification) and says it was skipped otherwise.
+const helmAvailable = (() => {
+  try {
+    require("child_process").execFileSync("helm", ["version", "--short"], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+})();
+
+(helmAvailable ? describe : describe.skip)("W-02 — the rendered chart (needs helm on PATH)", () => {
+  const render = (...extra) =>
+    require("child_process").execFileSync(
+      "helm",
+      [
+        "template", "r", path.join(REPO, "deploy/helm/callibrator"),
+        // The CI render's minimum values (.github/workflows/ci.yml).
+        "--set", "backend.image.tag=ci", "--set", "frontend.image.tag=ci",
+        "--set", "global.corsOrigin=https://ci.invalid", "--set", "backend.clamav.host=clamd",
+        "--set", "secrets.certSigningSecret=x", "--set", "secrets.encryptKey=x",
+        "--set", "secrets.attachmentUrlSecret=x", "--set", "secrets.kmsMasterKey=x",
+        ...extra,
+      ],
+      { encoding: "utf8", timeout: 60000 },
+    );
+  const value = (manifest, name) => {
+    const m = manifest.match(new RegExp(`^[ \\t]*${name}: "([^"]*)"\\r?$`, "m"));
+    return m ? m[1] : undefined;
+  };
+
+  it("an API deployment (cron.enabled false, three replicas) renders NO enabled singleton scheduler", () => {
+    const manifest = render("--set", "backend.cron.enabled=false", "--set", "backend.replicaCount=3");
+
+    expect(value(manifest, "SCHEDULERS_ENABLED")).toBe("false");
+    const enabled = schedulerVariables
+      .filter((name) => !EXEMPT_VARIABLES.includes(name))
+      .filter((name) => value(manifest, name) !== "disabled");
+    expect(enabled).toEqual([]);
+  });
+
+  it("the scheduler deployment (cron.enabled true) does not switch them off", () => {
+    const manifest = render();
+
+    expect(value(manifest, "SCHEDULERS_ENABLED")).not.toBe("false");
+    expect(value(manifest, "RETENTION_SCHEDULER")).toBe("0 2 * * *");
+  });
+});

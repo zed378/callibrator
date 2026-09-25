@@ -65,6 +65,8 @@ All are read at module load; changing one requires a restart.
 
 One row in `webhook_deliveries` per (webhook, event), created by `emitEvent` or `testWebhook` and updated in place. `attempts` is the count; only the last error survives.
 
+**Retention (ADR-070).** A finished row — `success` or `exhausted` — is deleted once its `updated_at` is older than `WEBHOOK_DELIVERY_RETENTION_DAYS` (default 30, never below 7) by the daily purge (`WEBHOOK_DELIVERY_PURGE_SCHEDULER`, 03:43; off with `SCHEDULERS_ENABLED=false`). It works tenant by tenant, 1,000 rows per transaction and at most 50,000 per run, each batch with a `system:webhook-delivery-purge` audit row. A `pending` or `failed` row is never purged. The delivery log therefore shows 30 days.
+
 | Status | `next_attempt_at` | Meaning |
 |---|---|---|
 | `pending` | the database's `now()` at creation | not attempted yet — due immediately |

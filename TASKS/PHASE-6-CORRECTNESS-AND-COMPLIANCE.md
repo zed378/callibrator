@@ -90,7 +90,7 @@ exit 0
 
 | | |
 |---|---|
-| **Status** | 🔴 TODO |
+| **Status** | ✅ DONE — verified 2026-09-25 on PostgreSQL 18.6 (ADR-062, migration `0057`). A trigger refuses DELETE, TRUNCATE and any content change for every role; `callibrator_app` has no UPDATE/DELETE/TRUNCATE beyond the lifecycle columns; `PUT`/`DELETE` routes replaced by `POST /:id/corrections` and `POST /:id/void`. **Tested as the application role** (`SET LOCAL ROLE callibrator_app`): DELETE, content UPDATE and TRUNCATE → `permission denied`; as the superuser owner the trigger refuses. **Mutation check:** DELETE granted back → the trigger still refuses; trigger also disabled → the row is deleted. Tests: `dataIntegrity.p6.live.test.js` (P6-03 blocks), `dbRole.util.p603.test.js`, `0057-0059.p6.test.js`, `calibrationRecords.service.test.js` "P6-03 correct / void" (15 fail at `fabc3be`). **Open:** `RESET ROLE` undoes the switch (a separate LOGIN role is the stronger form, not built); the Helm chart does not set `DB_APP_ROLE`; `unseedDemoData` can no longer delete demo calibration records |
 | **Depends on** | — |
 | **Spec refs** | `docs/PLAN/07-CALIBRATION-PROGRAM.md` · `docs/DATABASE/07` · `docs/PLAN/15-COMPLIANCE-STANDARDS.md` |
 | **Spec required** | **yes** |
@@ -154,7 +154,7 @@ Contrast `audit_logs`, protected by having no delete path at all. Under 21 CFR P
 
 | | |
 |---|---|
-| **Status** | ⏳ TODO |
+| **Status** | ✅ DONE — verified 2026-09-25 on PostgreSQL 18.6 (ADR-062). Every boot compares every model column plus seven migration-only control objects with `information_schema` and refuses on a mismatch; `make migrate` ends in `make migrate-verify`. A fresh boot (`db.sync()` + 57 migrations) and an upgrade from `fabc3be`'s schema with legacy rows both pass, and a second boot is a no-op. Tests: `schemaVerify.util.p605.test.js` (16), `dataIntegrity.p6.live.test.js` "P6-05 — verifySchema" (a dropped column, trigger and an undeclared NOT NULL column each fail it). Blanket-catch audit: `docs/DATABASE/13-MIGRATIONS.md` |
 | **Spec refs** | `docs/DATABASE/13-MIGRATIONS.md` |
 
 **Why:** a migration wrapped in a blanket `try/catch` around `describeTable` is **recorded as applied while doing nothing**. Umzug reports success, the column never appears, and the failure surfaces weeks later (PR-5).
@@ -174,7 +174,7 @@ Contrast `audit_logs`, protected by having no delete path at all. Under 21 CFR P
 
 | | |
 |---|---|
-| **Status** | ⏳ TODO |
+| **Status** | 🟡 PARTIAL — the constraint is done by D-04 / ADR-049 (migration `0026`, `UNIQUE (tenant_id, serial_number)`, refuses on in-tenant duplicates); re-verified on PG 18.6 by `dataIntegrity.p6.live.test.js` "two tenants hold the same serial; one tenant cannot hold it twice", and the index is a P6-05 control object. **Not done:** the DoD's *partial on `is_deleted = false`* — a soft-deleted device still holds its serial. That needs a decision, not a migration |
 | **Spec refs** | `docs/DATABASE/06-DEVICE-TABLES.md` · `docs/SECURITY/05` |
 | **Spec required** | **yes** |
 
@@ -234,7 +234,7 @@ Contrast `audit_logs`, protected by having no delete path at all. Under 21 CFR P
 
 | | |
 |---|---|
-| **Status** | ⏳ TODO |
+| **Status** | ✅ DONE — verified 2026-09-25 on PostgreSQL 18.6 (ADR-062, migration `0059`). `PATCH /stocks/:id` refuses a quantity change (a `0` included) with a 400 naming the adjustment endpoint; an adjustment's reason is NOT NULL with `CHECK (btrim(reason) <> '')` and the validator refuses blank; every adjustment records `stock_id` and before/after. Tests: `stock.service.test.js` "P6-09: REFUSES a quantity change (400) …", `stock.validator.test.js` "P6-09: refuses a whitespace reason" and five more (fail at `fabc3be`), `dataIntegrity.p6.live.test.js` P6-09 block. Docs: `docs/DATABASE/05-WAREHOUSE-TABLES.md`, `docs/API/05-WAREHOUSE-STOCK-API.md` |
 | **Spec refs** | `docs/DATABASE/05-WAREHOUSE-TABLES.md` · `docs/UI-UX/13-WAREHOUSE-UX.md` |
 
 **Why:** every quantity change is supposed to route through adjustment, transfer or opname — each of which captures a reason and an actor. **`PATCH /api/v1/stocks/:stockId` can change `quantity` directly**, bypassing all three. The UI does not offer that path, which means the interface is currently the only thing preventing an unexplained quantity change.
@@ -253,7 +253,7 @@ Contrast `audit_logs`, protected by having no delete path at all. Under 21 CFR P
 
 | | |
 |---|---|
-| **Status** | ⏳ TODO |
+| **Status** | 🟡 PARTIAL — built and rehearsed on seeded data, 2026-09-25 (ADR-062, migration `0058`). Key-id envelopes (`v2:<keyId>`), the `KMS_MASTER_KEY_PREVIOUS` ring, `npm run keys:rotate`; signing keys moved from AES-CBC/`ENCRYPT_KEY` into KMS envelopes with tenant AAD; the certificate HMAC names its key. Tests: `keyRotation.s08.live.test.js` (5, PG 18.6), `keyRotation.service.s08`, `kms.rotation.s08`, `signingKeyWrap.s08`, `keyring.util.p610`, `certificatePdf.keyId.p610`. **Not done:** the rehearsal against a copy of production data (`docs/SECURITY/13-KEY-ROTATION.md`) |
 | **Spec refs** | `docs/SECURITY/07-CRYPTOGRAPHY-AND-SECRETS.md` · `docs/SECURITY/12-INCIDENT-RESPONSE.md` |
 | **Spec required** | **yes** |
 

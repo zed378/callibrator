@@ -15,7 +15,7 @@
 const mockModels = {
   SignatureWorkflow: { findOne: jest.fn(), findAll: jest.fn() },
   SignatureWorkflowStep: { name: "SignatureWorkflowStep" },
-  SignatureRecord: { findAll: jest.fn() },
+  SignatureRecord: { findAll: jest.fn(), findAndCountAll: jest.fn() },
 };
 
 jest.mock("../../models", () => mockModels);
@@ -150,7 +150,8 @@ describe("A-106 — list envelopes: rows in data, count in a top-level meta", ()
 
   it("GET /history", async () => {
     const rows = [{ id: "sig-1" }];
-    mockModels.SignatureRecord.findAll.mockResolvedValueOnce(rows);
+    // D-24 (ADR-070): one page, and meta carries the pagination.
+    mockModels.SignatureRecord.findAndCountAll.mockResolvedValueOnce({ count: 1, rows });
     const res = makeRes();
 
     await eSignatureController.getSignatureHistory(makeReq(), res, jest.fn());
@@ -161,7 +162,7 @@ describe("A-106 — list envelopes: rows in data, count in a top-level meta", ()
       status: 200,
       message: "Signature history retrieved",
       data: rows,
-      meta: { total: 1 },
+      meta: { total: 1, page: 1, limit: 25, totalPages: 1 },
     });
   });
 });

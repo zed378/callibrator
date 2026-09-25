@@ -62,6 +62,7 @@ const {
   StockOpname,
   MaintenanceWorkOrder,
   Sequelize,
+  Op,
 } = require("../../models");
 const { getDashboardMetrics } = require("../../services/dashboard.service");
 
@@ -367,8 +368,12 @@ describe("dashboard.service", () => {
       Tenant.findByPk.mockResolvedValue(null);
     };
 
-    const monthKey = (d) =>
-      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    // D-24: the database groups by month (UTC); the service fills the gaps.
+    const monthKey = (d) => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+    const monthsAgo = (n) => {
+      const d = new Date();
+      return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - n, 1));
+    };
 
     it("returns 6 zeroed buckets, oldest first, when there are no rows", async () => {
       zeroAll();
@@ -380,67 +385,113 @@ describe("dashboard.service", () => {
       expect(trend).toHaveLength(6);
       expect(trend.every((b) => b.count === 0)).toBe(true);
       expect(trend[5].month).toBe(monthKey(new Date()));
+      expect(trend[0].month).toBe(monthKey(monthsAgo(5)));
     });
 
-    it("counts rows into their calendar-month bucket", async () => {
+    it("places each grouped row in its month, reading COUNT (a bigint string) as a number", async () => {
       zeroAll();
-      const now = new Date();
-      const thisMonth = new Date(now.getFullYear(), now.getMonth(), 15);
-      const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 10);
-
       CalibrationRecord.findAll.mockResolvedValue([
-        { calibrationDate: thisMonth },
-        { calibrationDate: thisMonth },
-        { calibrationDate: lastMonth },
+        { month: monthKey(monthsAgo(0)), count: "2" },
+        { month: monthKey(monthsAgo(1)), count: "1" },
       ]);
 
       const result = await getDashboardMetrics("tenant-1");
-      const trend = result.data.trends.calibrations;
-      const byMonth = Object.fromEntries(trend.map((b) => [b.month, b.count]));
+      const byMonth = Object.fromEntries(result.data.trends.calibrations.map((b) => [b.month, b.count]));
 
-      expect(byMonth[monthKey(thisMonth)]).toBe(2);
-      expect(byMonth[monthKey(lastMonth)]).toBe(1);
+      expect(byMonth[monthKey(monthsAgo(0))]).toBe(2);
+      expect(byMonth[monthKey(monthsAgo(1))]).toBe(1);
     });
 
-    it("skips rows whose date field is null", async () => {
+    it("ignores a grouped row outside the window", async () => {
       zeroAll();
-      CalibrationRecord.findAll.mockResolvedValue([
-        { calibrationDate: null },
-        { calibrationDate: undefined },
-      ]);
-
-      const result = await getDashboardMetrics("tenant-1");
-
-      expect(
-        result.data.trends.calibrations.every((b) => b.count === 0),
-      ).toBe(true);
-    });
-
-    it("ignores rows that fall outside the 6-month window", async () => {
-      zeroAll();
-      const old = new Date(2000, 0, 15);
-      CalibrationRecord.findAll.mockResolvedValue([{ calibrationDate: old }]);
+      CalibrationRecord.findAll.mockResolvedValue([{ month: "2000-01", count: "9" }]);
 
       const result = await getDashboardMetrics("tenant-1");
       const trend = result.data.trends.calibrations;
 
-      expect(trend).toHaveLength(6);
       expect(trend.every((b) => b.count === 0)).toBe(true);
       expect(trend.map((b) => b.month)).not.toContain("2000-01");
     });
 
-    it("parses date strings as well as Date objects", async () => {
+    it("buckets months in the connection's timezone (+07:00): 03:00 WIB on 1 September is September", async () => {
       zeroAll();
-      const now = new Date();
-      const iso = new Date(now.getFullYear(), now.getMonth(), 5).toISOString();
-      Certificate.findAll.mockResolvedValue([{ createdAt: iso }]);
+      jest.useFakeTimers({ now: new Date("2026-08-31T20:00:00Z"), doNotFake: ["nextTick", "setImmediate"] });
+      CalibrationRecord.sequelize = { options: { timezone: "+07:00" } };
+      CalibrationRecord.findAll.mockResolvedValue([{ month: "2026-09", count: "4" }]);
+      try {
+        const result = await getDashboardMetrics("tenant-1");
+        const trend = result.data.trends.calibrations;
+        expect(trend.map((b) => b.month)).toEqual(["2026-04", "2026-05", "2026-06", "2026-07", "2026-08", "2026-09"]);
+        expect(trend[5].count).toBe(4);
+        // The window opens at 00:00 WIB on 1 April = 17:00 UTC on 31 March.
+        const where = CalibrationRecord.findAll.mock.calls.map(([o]) => o.where).find((w) => w.calibrationDate);
+        expect(where.calibrationDate[Op.gte]).toEqual(new Date("2026-03-31T17:00:00Z"));
+      } finally {
+        delete CalibrationRecord.sequelize;
+        jest.useRealTimers();
+      }
+    });
 
-      const result = await getDashboardMetrics("tenant-1");
-      const byMonth = Object.fromEntries(
-        result.data.trends.certificates.map((b) => [b.month, b.count]),
-      );
+    it("handles a negative offset (-05:00): 21:00 on 31 August there is still August", async () => {
+      zeroAll();
+      jest.useFakeTimers({ now: new Date("2026-09-01T02:00:00Z"), doNotFake: ["nextTick", "setImmediate"] });
+      CalibrationRecord.sequelize = { options: { timezone: "-05:00" } };
+      CalibrationRecord.findAll.mockResolvedValue([]);
+      try {
+        const result = await getDashboardMetrics("tenant-1");
+        expect(result.data.trends.calibrations[5].month).toBe("2026-08");
+      } finally {
+        delete CalibrationRecord.sequelize;
+        jest.useRealTimers();
+      }
+    });
 
-      expect(byMonth[monthKey(now)]).toBe(1);
+    it("treats a timezone it cannot read (a zone name) as UTC", async () => {
+      zeroAll();
+      jest.useFakeTimers({ now: new Date("2026-08-31T20:00:00Z"), doNotFake: ["nextTick", "setImmediate"] });
+      CalibrationRecord.sequelize = { options: { timezone: "Asia/Jakarta" } };
+      CalibrationRecord.findAll.mockResolvedValue([]);
+      try {
+        const result = await getDashboardMetrics("tenant-1");
+        expect(result.data.trends.calibrations[5].month).toBe("2026-08");
+      } finally {
+        delete CalibrationRecord.sequelize;
+        jest.useRealTimers();
+      }
+    });
+
+    it("asks the database for one row per month: GROUP BY to_char(date_trunc('month', <column>)), from the window start", async () => {
+      zeroAll();
+      CalibrationRecord.findAll.mockResolvedValue([]);
+      CalibrationRecord.rawAttributes = { calibrationDate: { field: "calibration_date" } };
+      Sequelize.col.mockImplementation((name) => ({ col: name }));
+      Sequelize.fn.mockImplementation((name, ...args) => ({ fn: name, args }));
+
+      try {
+        await getDashboardMetrics("tenant-1");
+      } finally {
+        delete CalibrationRecord.rawAttributes;
+      }
+
+      const trendCall = (Model) =>
+        Model.findAll.mock.calls.map(([o]) => o).find((o) => Array.isArray(o.attributes) && o.attributes.some((a) => a[1] === "month"));
+      const options = trendCall(CalibrationRecord);
+      const month = {
+        fn: "to_char",
+        args: [{ fn: "date_trunc", args: ["month", { col: "calibration_date" }] }, "YYYY-MM"],
+      };
+      expect(options.attributes).toEqual([
+        [month, "month"],
+        [{ fn: "COUNT", args: [{ col: "id" }] }, "count"],
+      ]);
+      expect(options.group).toEqual([month]);
+      expect(options.raw).toBe(true);
+      expect(options.where).toMatchObject({ tenantId: "tenant-1" });
+      expect(options.where.calibrationDate[Op.gte]).toEqual(monthsAgo(5));
+      // Certificates have no rawAttributes here: the attribute name is the column.
+      expect(trendCall(Certificate).group).toEqual([
+        { fn: "to_char", args: [{ fn: "date_trunc", args: ["month", { col: "createdAt" }] }, "YYYY-MM"] },
+      ]);
     });
   });
 

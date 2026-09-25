@@ -11,6 +11,8 @@
  * @param {typeof import("sequelize").DataTypes} DataTypes - The Sequelize DataTypes
  * @returns {object} The defined Sequelize model
  */
+// D-27 (ADR-070): every JSON column declares its shape, validated on write.
+const { jsonShape } = require("../utils/jsonShape.util");
 const defineModel = (db, DataTypes) => {
   const CalibrationDevice = db.define(
     "CalibrationDevice",
@@ -75,6 +77,7 @@ const defineModel = (db, DataTypes) => {
       },
       uncertaintyBudget: {
         type: DataTypes.JSONB,
+        validate: { shape: jsonShape("CalibrationDevice.uncertaintyBudget") },
         allowNull: true,
         comment: "Stores parameters and formulas for measurement uncertainty budget",
       },
@@ -103,6 +106,7 @@ const defineModel = (db, DataTypes) => {
       },
       readingTolerance: {
         type: DataTypes.JSONB,
+        validate: { shape: jsonShape("CalibrationDevice.readingTolerance") },
         allowNull: true,
         comment: "Stores upper/lower bounds for anomaly detection on IoT readings",
       },

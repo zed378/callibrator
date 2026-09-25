@@ -4,6 +4,7 @@ const { Op } = require("sequelize");
 
 const { Sessions } = require("../models");
 const redis = require("./redis.service");
+const { runAsSystem, SYSTEM_TASKS } = require("../utils/jobContext.util");
 
 const hashToken = (token) => {
   return crypto.createHash("sha256").update(token).digest("hex");
@@ -235,15 +236,50 @@ exports.rotateRefreshToken = async ({
 // CLEANUP EXPIRED SESSIONS
 // ==========================================
 
-exports.cleanupExpiredSessions = async () => {
-  return await Sessions.destroy({
-    where: {
-      expired_at: {
-        [Op.lt]: new Date(),
-      },
-    },
+/** Expired sessions deleted per statement (W-17). */
+const CLEANUP_BATCH_SIZE = Number(process.env.SESSION_CLEANUP_BATCH_SIZE) || 1000;
+/** Once a run has spent this long, it stops after its current batch (W-17). */
+const CLEANUP_BUDGET_MS = Number(process.env.SESSION_CLEANUP_BUDGET_MS) || 60 * 1000;
+
+/**
+ * Delete expired sessions, in bounded batches.
+ *
+ * W-12: an explicit platform context (SYSTEM_TASKS.SESSION_CLEANUP). Expiry
+ * does not depend on the tenant, and a platform operator's session has no
+ * tenant at all, so the job spans tenants and says so.
+ *
+ * W-17: one `DELETE ... WHERE id IN (SELECT id ... LIMIT n)` per batch instead
+ * of one unbounded DELETE, and the run stops once `budgetMs` has passed. What
+ * is left is deleted by the next run; an expired session is refused at use
+ * (isSessionLive) whether or not its row is gone.
+ *
+ * Not audited (ADR-051 Q-13): session sweeps are named there as out of scope.
+ *
+ * @param {object} [opts]
+ * @param {Date} [opts.now]
+ * @param {number} [opts.batchSize]
+ * @param {number} [opts.budgetMs]
+ * @returns {Promise<number>} how many were deleted
+ */
+exports.cleanupExpiredSessions = async ({
+  now = new Date(),
+  batchSize = CLEANUP_BATCH_SIZE,
+  budgetMs = CLEANUP_BUDGET_MS,
+} = {}) =>
+  runAsSystem(SYSTEM_TASKS.SESSION_CLEANUP, async () => {
+    const deadline = Date.now() + budgetMs;
+    let total = 0;
+    for (;;) {
+      const deleted = await Sessions.destroy({
+        where: { expired_at: { [Op.lt]: now } },
+        limit: batchSize,
+      });
+      total += deleted;
+      if (deleted < batchSize || Date.now() >= deadline) {
+        return total;
+      }
+    }
   });
-};
 
 // ==========================================
 // SESSION LIVENESS (A-48)

@@ -1,7 +1,7 @@
 "use strict";
 
 /**
- * A removed custom domain can be added again (A-223; ADR-PENDING-misc).
+ * A removed custom domain can be added again (A-223; ADR-065).
  *
  * WHAT WAS WRONG
  *

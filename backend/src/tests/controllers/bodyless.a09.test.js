@@ -35,7 +35,7 @@ jest.mock("../../services/roles.service", () => ({
 }));
 jest.mock("../../services/sop.service", () => ({ createDocument: jest.fn() }));
 jest.mock("../../services/supplierScorecard.service", () => ({ createScorecard: jest.fn(), updateScorecard: jest.fn() }));
-jest.mock("../../services/tenantHierarchy.service", () => ({ createSubOrganization: jest.fn(), assignRoleToUserAcrossHierarchy: jest.fn() }));
+jest.mock("../../services/tenantHierarchy.service", () => ({ createSubOrganization: jest.fn(), updateTenantParent: jest.fn() }));
 jest.mock("../../services/userPermission.service", () => ({ setUserPermission: jest.fn() }));
 jest.mock("../../services/vendor.service", () => ({ qualifyVendor: jest.fn() }));
 jest.mock("../../services/webauthn.service", () => ({ verifyRegistration: jest.fn(), verifyLogin: jest.fn() }));
@@ -333,8 +333,8 @@ describe("A-09 — handlers that hand an absent body to a service", () => {
     ["webauthn.verifyLogin", () => webauthnController.verifyLogin, webauthnService.verifyLogin, {}],
     ["webhook.update", () => webhookController.update, webhookService.updateWebhook, { params: { id: RESOURCE_ID } }],
     ["oidcProvider.decision", () => oidcProviderController.decision, require("../../services/oidcProvider.service").decideAuthorization, {}],
-    ["tenantHierarchy.createSubOrganization", () => tenantHierarchyController.createSubOrganization, require("../../services/tenantHierarchy.service").createSubOrganization, { params: { parentTenantId: TENANT_ID } }],
-    ["tenantHierarchy.assignRoleAcrossHierarchy", () => tenantHierarchyController.assignRoleAcrossHierarchy, require("../../services/tenantHierarchy.service").assignRoleToUserAcrossHierarchy, { params: { userId: USER_ID } }],
+    // A-224: the move is the service's; a bodyless request reaches it (which answers 400).
+    ["tenantHierarchy.updateTenantParent", () => tenantHierarchyController.updateTenantParent, require("../../services/tenantHierarchy.service").updateTenantParent, { params: { tenantId: TENANT_ID } }],
     ["auth.justUpdatePassword", () => authController.justUpdatePassword, authService.justUpdatePassword, {}],
     ["auth.passIsValid", () => authController.passIsValid, authService.passIsValid, {}],
     ["eSignature.updateWorkflow", () => eSignatureController.updateWorkflow, eSignatureService.updateWorkflow, { params: { workflowId: RESOURCE_ID } }],
@@ -374,15 +374,4 @@ describe("A-09 — handlers whose own validator sees params, not the body", () =
     expectNoTypeError(result);
   });
 
-  it("tenantHierarchy.updateTenantParent answers 404, not 500, with no body", async () => {
-    Tenant.findByPk.mockResolvedValue(null);
-
-    const result = await callBodyless(tenantHierarchyController.updateTenantParent, {
-      params: { tenantId: TENANT_ID },
-    });
-
-    expect(result.status).toBe(404);
-    expect(result.message).toBe("Tenant not found");
-    expectNoTypeError(result);
-  });
 });

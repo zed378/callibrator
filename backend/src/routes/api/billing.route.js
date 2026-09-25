@@ -50,6 +50,11 @@ router.get(
  *               status:
  *                 type: string
  *                 enum: [Active, PastDue, Canceled, Unpaid]
+ *               reason:
+ *                 type: string
+ *                 minLength: 3
+ *                 maxLength: 500
+ *                 description: Why the status is being overridden manually (A-225; required by the service when `status` changes)
  *     responses:
  *       200:
  *         description: Subscription updated successfully

@@ -23,6 +23,11 @@ const { createLedger } = require("../fixtures/auditLedger");
 
 const mockRef = { ledger: null, existing: null };
 
+// D-22 (ADR-070): a parent's delete soft-deletes its attachments through
+// attachment.service, in the parent's transaction.
+jest.mock("../../services/attachment.service", () => ({
+  softDeleteForResource: jest.fn().mockResolvedValue([]),
+}));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: { error: jest.fn(), warn: jest.fn(), info: jest.fn(), debug: jest.fn() },
 }));

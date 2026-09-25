@@ -322,9 +322,9 @@ describe("eSignature Controller", () => {
       expect(success).toHaveBeenCalledWith(res, [], { total: 0 }, "Workflows retrieved");
     });
 
-    it("sends the signature history rows as data with meta.total beside them", async () => {
-      eSignatureService.getSignatureHistory.mockResolvedValue([]);
-      req.query = { userId: "user-9", startDate: "2026-01-01", endDate: "2026-06-30" };
+    it("sends the signature history rows as data with the page's meta beside them", async () => {
+      eSignatureService.getSignatureHistory.mockResolvedValue({ rows: [], meta: { total: 0, page: 1, limit: 25, totalPages: 0 } });
+      req.query = { userId: "user-9", startDate: "2026-01-01", endDate: "2026-06-30", page: "2", limit: "10" };
 
       await eSignatureController.getSignatureHistory(req, res, next);
 
@@ -332,14 +332,20 @@ describe("eSignature Controller", () => {
       // at all) is scoped to their own signatures by the service.
       expect(eSignatureService.getSignatureHistory).toHaveBeenCalledWith(
         "tenant-1",
-        { userId: "user-9", startDate: "2026-01-01", endDate: "2026-06-30" },
+        { userId: "user-9", startDate: "2026-01-01", endDate: "2026-06-30", page: "2", limit: "10" },
         { callerId: "user-1", canManage: false },
       );
-      expect(success).toHaveBeenCalledWith(res, [], { total: 0 }, "Signature history retrieved");
+      // D-24 (ADR-070): rows in data, the service's pagination as the top-level meta.
+      expect(success).toHaveBeenCalledWith(
+        res,
+        [],
+        { total: 0, page: 1, limit: 25, totalPages: 0 },
+        "Signature history retrieved",
+      );
     });
 
     it("A-129: a caller holding `qms` (here through the SUPERADMIN bypass) gets the tenant-wide scope", async () => {
-      eSignatureService.getSignatureHistory.mockResolvedValue([]);
+      eSignatureService.getSignatureHistory.mockResolvedValue({ rows: [], meta: { total: 0, page: 1, limit: 25, totalPages: 0 } });
       req.user = { id: "user-1", tenantId: "tenant-1", role: { id: "r", name: "SUPERADMIN" } };
       req.query = { userId: "user-9" };
 
@@ -347,13 +353,16 @@ describe("eSignature Controller", () => {
 
       expect(eSignatureService.getSignatureHistory).toHaveBeenCalledWith(
         "tenant-1",
-        { userId: "user-9", startDate: undefined, endDate: undefined },
+        { userId: "user-9", startDate: undefined, endDate: undefined, page: undefined, limit: undefined },
         { callerId: "user-1", canManage: true },
       );
     });
 
     it("passes the signature history through when the service returns rows", async () => {
-      eSignatureService.getSignatureHistory.mockResolvedValue([{ id: "sig-1" }]);
+      eSignatureService.getSignatureHistory.mockResolvedValue({
+        rows: [{ id: "sig-1" }],
+        meta: { total: 1, page: 1, limit: 25, totalPages: 1 },
+      });
       req.query = {};
 
       await eSignatureController.getSignatureHistory(req, res, next);
@@ -361,7 +370,7 @@ describe("eSignature Controller", () => {
       expect(success).toHaveBeenCalledWith(
         res,
         [{ id: "sig-1" }],
-        { total: 1 },
+        { total: 1, page: 1, limit: 25, totalPages: 1 },
         "Signature history retrieved",
       );
     });

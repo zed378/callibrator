@@ -50,30 +50,9 @@ jest.mock("nodemailer", () => ({
 
 jest.mock("dns", () => ({ promises: { resolveTxt: jest.fn() } }));
 
-// The real fs otherwise: email.service reads its templates at load.
-jest.mock("fs", () => ({
-  ...jest.requireActual("fs"),
-  promises: {
-    mkdir: jest.fn().mockResolvedValue(),
-    writeFile: jest.fn().mockResolvedValue(),
-    unlink: jest.fn().mockResolvedValue(),
-  },
-}));
-
-jest.mock("acme-client", () => ({
-  directory: {
-    letsencrypt: { staging: "https://acme-staging", production: "https://acme-prod" },
-  },
-  crypto: {
-    createPrivateKey: jest.fn().mockResolvedValue(Buffer.from("ACCOUNT_KEY")),
-    createCsr: jest.fn().mockResolvedValue([Buffer.from("CERT_KEY"), Buffer.from("CSR")]),
-  },
-  Client: jest.fn(),
-}));
-
-jest.mock("../../services/kms.service", () => ({
-  encryptData: jest.fn(() => ({ ciphertext: "enc", iv: "iv", authTag: "tag" })),
-}));
+// A-256: the ACME client, the KMS envelope and the challenge-file writes
+// served provisionTLSCertificate, which had no caller and was removed; their
+// doubles went with it.
 
 const svc = require("../../services/customDomains.service");
 const { AppError } = require("../../utils/appError.util");
@@ -81,9 +60,6 @@ const { logger } = require("../../middlewares/activityLog.middleware");
 const { CustomDomain, User } = require("../../models");
 const emailQueue = require("../../services/emailQueue.service");
 const dns = require("dns").promises;
-const fs = require("fs");
-const acme = require("acme-client");
-const kms = require("../../services/kms.service");
 
 const makeRecord = (over = {}) => {
   const rec = {
@@ -322,7 +298,8 @@ describe("customDomainsService", () => {
       });
 
       it("is published to email_queue as a notification job when the broker is up", async () => {
-        const channel = { on: jest.fn(), sendToQueue: jest.fn(), close: jest.fn() };
+        // W-09: the publish declares its queues on the channel first.
+        const channel = { on: jest.fn(), assertQueue: jest.fn().mockResolvedValue({}), sendToQueue: jest.fn(), close: jest.fn() };
         mockConnect.mockReset().mockResolvedValue({
           on: jest.fn(),
           close: jest.fn(),
@@ -383,12 +360,190 @@ describe("customDomainsService", () => {
       });
     });
 
-    it("advertises Let's Encrypt auto-provisioning in the instructions when TLS auto-provision is on", async () => {
+    // A-256: nothing issues a certificate, so the instructions never promise
+    // one — whatever TLS_AUTO_PROVISION says. They used to, when it was on.
+    it("never promises an auto-provisioned certificate, even with TLS_AUTO_PROVISION on", async () => {
       process.env.TLS_AUTO_PROVISION = "true";
 
       const res = await svc.addDomain("tenant-1", "app.example.com");
 
-      expect(res.verification.instructions[3]).toContain("auto-provisioned");
+      expect(res.verification.instructions[3]).toBe("4. Contact support to enable TLS for your domain");
+      expect(JSON.stringify(res.verification)).not.toMatch(/auto-provision|Let's Encrypt/);
+    });
+  });
+
+  // A-223 — a removed domain can be added again; a conflict is a 409 with an
+  // explanation, never the unique index's 500. The indexes themselves are
+  // migration 0070's, verified on PostgreSQL 18.
+  describe("A-223 — who may claim a domain", () => {
+    const DOMAIN_TAKEN =
+      "This domain is already registered and verified by an organisation on this platform. " +
+      "It can be added here once that registration is removed.";
+
+    it("checks this tenant's live rows, then other tenants' ACTIVE rows globally, before writing", async () => {
+      await svc.addDomain("tenant-1", "app.example.com");
+
+      expect(CustomDomain.findOne).toHaveBeenNthCalledWith(1, {
+        where: { tenantId: "tenant-1", domain: "app.example.com", status: { ne_symbol: "deleted" } },
+        attributes: ["id", "status"],
+      });
+      expect(CustomDomain.findOne).toHaveBeenNthCalledWith(2, {
+        where: { domain: "app.example.com", status: "active", tenantId: { ne_symbol: "tenant-1" } },
+        attributes: ["id"],
+        skipTenantScope: true,
+      });
+      expect(CustomDomain.create).toHaveBeenCalledTimes(1);
+    });
+
+    it("names this tenant's own live registration, with its state, in the 409", async () => {
+      CustomDomain.findOne.mockResolvedValueOnce({ id: "d-0", status: "verification_failed" });
+
+      await expect(svc.addDomain("tenant-1", "app.example.com")).rejects.toMatchObject({
+        status: 409,
+        message: "This domain is already registered for your organisation (status: verification_failed).",
+      });
+      expect(CustomDomain.create).not.toHaveBeenCalled();
+    });
+
+    it("409s — without saying whose — when another organisation holds the domain ACTIVE", async () => {
+      CustomDomain.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: "d-other" });
+
+      const err = await svc.addDomain("tenant-1", "app.example.com").catch((e) => e);
+
+      expect(err).toMatchObject({ status: 409, message: DOMAIN_TAKEN });
+      expect(err.message).not.toContain("d-other");
+      expect(CustomDomain.create).not.toHaveBeenCalled();
+    });
+
+    it("lets a domain this tenant removed be added again (the removed row blocks nothing)", async () => {
+      // The own-row lookup excludes status 'deleted', so a removed row is not found.
+      const res = await svc.addDomain("tenant-1", "app.example.com");
+
+      expect(res.id).toBe("d-1");
+      expect(CustomDomain.create).toHaveBeenCalledTimes(1);
+    });
+
+    it("stores and compares one spelling: lower case", async () => {
+      await svc.addDomain("tenant-1", "App.Example.COM");
+
+      expect(CustomDomain.findOne.mock.calls[0][0].where.domain).toBe("app.example.com");
+      expect(CustomDomain.create).toHaveBeenCalledWith(
+        expect.objectContaining({ domain: "app.example.com" }),
+        { transaction: "TX" },
+      );
+    });
+
+    it("turns a lost race on the unique index into the same 409, not a 500", async () => {
+      const race = Object.assign(new Error("duplicate key"), { name: "SequelizeUniqueConstraintError" });
+      CustomDomain.create.mockRejectedValueOnce(race);
+
+      await expect(svc.addDomain("tenant-1", "app.example.com")).rejects.toMatchObject({
+        status: 409,
+        message: DOMAIN_TAKEN,
+      });
+    });
+
+    it("refuses to verify a removed domain with a 409 that says what to do", async () => {
+      CustomDomain.findOne.mockResolvedValueOnce(makeRecord({ status: "deleted" }));
+
+      await expect(svc.verifyDomain("tenant-1", "d-1")).rejects.toMatchObject({
+        status: 409,
+        message: "This domain was removed and cannot be verified. Add it again to start a new verification.",
+      });
+      expect(dns.resolveTxt).not.toHaveBeenCalled();
+    });
+
+    it("refuses to activate a domain another organisation already holds ACTIVE, and writes nothing", async () => {
+      const rec = makeRecord();
+      CustomDomain.findOne.mockResolvedValueOnce(rec).mockResolvedValueOnce({ id: "d-other" });
+
+      await expect(svc.verifyDomain("tenant-1", "d-1")).rejects.toMatchObject({ status: 409, message: DOMAIN_TAKEN });
+      expect(rec.update).not.toHaveBeenCalled();
+    });
+
+    it("does not re-check other organisations when re-verifying a domain already ACTIVE here", async () => {
+      const rec = makeRecord({ status: "active" });
+      CustomDomain.findOne.mockResolvedValueOnce(rec);
+
+      const res = await svc.verifyDomain("tenant-1", "d-1");
+
+      expect(res.verified).toBe(true);
+      expect(CustomDomain.findOne).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not check other organisations when verification failed", async () => {
+      const rec = makeRecord();
+      CustomDomain.findOne.mockResolvedValueOnce(rec);
+      dns.resolveTxt.mockResolvedValueOnce([["wrong"]]);
+
+      await svc.verifyDomain("tenant-1", "d-1");
+
+      expect(CustomDomain.findOne).toHaveBeenCalledTimes(1);
+    });
+
+    it("turns a verification that lost the unique-index race into the same 409", async () => {
+      const rec = makeRecord();
+      rec.update.mockRejectedValueOnce(
+        Object.assign(new Error("duplicate key"), { name: "SequelizeUniqueConstraintError" }),
+      );
+      CustomDomain.findOne.mockResolvedValueOnce(rec);
+
+      await expect(svc.verifyDomain("tenant-1", "d-1")).rejects.toMatchObject({ status: 409, message: DOMAIN_TAKEN });
+    });
+
+    it("persists a token it had to generate, so the published TXT value can match later", async () => {
+      const rec = makeRecord({ verificationToken: null });
+      CustomDomain.findOne.mockResolvedValueOnce(rec);
+      dns.resolveTxt.mockResolvedValueOnce([["stale"]]);
+
+      const res = await svc.verifyDomain("tenant-1", "d-1");
+
+      expect(rec.update).toHaveBeenCalledWith(
+        expect.objectContaining({ verificationToken: res.dnsRecord.value }),
+        { transaction: "TX" },
+      );
+    });
+  });
+
+  // A-186 recipients: the requester and every active tenant administrator, once each.
+  describe("verification email recipients", () => {
+    it("mails the requester and the administrators, once per address ignoring case", async () => {
+      User.findOne.mockResolvedValueOnce({ id: "u-req", email: "Admin@Example.com", firstName: "Req" });
+      User.findAll.mockResolvedValueOnce([
+        { id: "u-admin", email: "admin@example.com", firstName: "Ada" },
+        { id: "u-2", email: "second@example.com", firstName: "Bo" },
+      ]);
+
+      await svc.addDomain("tenant-1", "app.example.com", "subdomain", { userId: "u-req" });
+
+      expect(User.findOne).toHaveBeenCalledWith({
+        where: { id: "u-req", tenantId: "tenant-1" },
+        attributes: ["id", "email", "firstName"],
+      });
+      expect(mockSendMail.mock.calls.map((c) => c[0].to)).toEqual(["Admin@Example.com", "second@example.com"]);
+      expect(logger.info).toHaveBeenCalledWith("Domain verification email queued", {
+        tenantId: "tenant-1",
+        domain: "app.example.com",
+        recipients: 2,
+      });
+    });
+
+    it("logs at ERROR, with counts and no address, when only some recipients were reached", async () => {
+      User.findAll.mockResolvedValueOnce([
+        { id: "u-admin", email: "admin@example.com", firstName: "Ada" },
+        { id: "u-2", email: "second@example.com", firstName: "Bo" },
+      ]);
+      mockSendMail.mockResolvedValueOnce({ messageId: "m-1" }).mockRejectedValueOnce(new Error("SMTP 554"));
+
+      const res = await svc.addDomain("tenant-1", "app.example.com");
+
+      expect(res.id).toBe("d-1");
+      expect(logger.error).toHaveBeenCalledWith("Domain verification email reached only some recipients", {
+        tenantId: "tenant-1",
+        domain: "app.example.com",
+        accepted: 1,
+        recipients: 2,
+      });
     });
   });
 
@@ -553,119 +708,21 @@ describe("customDomainsService", () => {
     });
   });
 
-  describe("getDomainByDomain", () => {
-    it("returns the matching non-deleted record", async () => {
-      const rec = makeRecord({ status: "active" });
-      CustomDomain.findOne.mockResolvedValueOnce(rec);
-
-      expect(await svc.getDomainByDomain("app.example.com")).toBe(rec);
-      expect(CustomDomain.findOne).toHaveBeenCalledWith({
-        where: { domain: "app.example.com", status: { ne_symbol: "deleted" } },
-      });
+  // A-256 (ADR-065): serving the application ON a custom domain is not
+  // implemented. The two functions that pretended to were never called, and
+  // were removed rather than left for the next route to inherit.
+  describe("A-256 — no Host-header tenant resolution, no ACME issuance", () => {
+    it("exports neither resolveTenantByDomain, provisionTLSCertificate nor getDomainByDomain", () => {
+      expect(svc.resolveTenantByDomain).toBeUndefined();
+      expect(svc.provisionTLSCertificate).toBeUndefined();
+      expect(svc.getDomainByDomain).toBeUndefined();
     });
 
-    it("returns null when the lookup fails", async () => {
-      CustomDomain.findOne.mockRejectedValueOnce(new Error("db down"));
-
-      expect(await svc.getDomainByDomain("app.example.com")).toBeNull();
-      expect(logger.error).toHaveBeenCalledWith(
-        "Failed to get domain",
-        expect.objectContaining({ error: "db down" }),
-      );
-    });
-  });
-
-  describe("resolveTenantByDomain", () => {
-    it("resolves a tenant from an active domain", async () => {
-      CustomDomain.findOne.mockResolvedValueOnce({ tenantId: "tenant-9", domain: "x.com" });
-      expect(await svc.resolveTenantByDomain("x.com")).toEqual({
-        tenantId: "tenant-9",
-        domain: "x.com",
-      });
-    });
-    it("returns null when disabled", async () => {
-      process.env.CUSTOM_DOMAINS_ENABLED = "false";
-      expect(await svc.resolveTenantByDomain("x.com")).toBeNull();
-    });
-    it("returns null on miss", async () => {
-      expect(await svc.resolveTenantByDomain("nope.com")).toBeNull();
-    });
-
-    it("returns null (does not throw) when the lookup fails", async () => {
-      CustomDomain.findOne.mockRejectedValueOnce(new Error("db down"));
-
-      expect(await svc.resolveTenantByDomain("x.com")).toBeNull();
-      expect(logger.error).toHaveBeenCalledWith(
-        "Domain resolution failed",
-        expect.objectContaining({ hostname: "x.com", error: "db down" }),
-      );
-    });
-  });
-
-  describe("provisionTLSCertificate + status + constants", () => {
-    // An `auto` implementation that also exercises the http-01 challenge
-    // create/remove callbacks (and their non-http-01 early-return branches).
-    const autoWithChallenges = jest.fn(async (opts) => {
-      await opts.challengeCreateFn({}, { type: "http-01", token: "tok" }, "KEYAUTH");
-      await opts.challengeCreateFn({}, { type: "dns-01", token: "x" }, "y");
-      await opts.challengeRemoveFn({}, { type: "http-01", token: "tok" });
-      await opts.challengeRemoveFn({}, { type: "dns-01", token: "x" });
-      return Buffer.from("CERT_PEM");
-    });
-
-    beforeEach(() => {
-      acme.Client.mockImplementation(() => ({ auto: autoWithChallenges }));
-      // Exercise the unlink .catch() swallow path.
-      fs.promises.unlink.mockRejectedValue(new Error("already gone"));
-    });
-
-    it("issues a certificate via ACME and encrypts the key for a tenant", async () => {
+    it("reports tlsAutoProvision false even when TLS_AUTO_PROVISION is set", () => {
       process.env.TLS_AUTO_PROVISION = "true";
-
-      const res = await svc.provisionTLSCertificate("x.com", "tenant-1");
-
-      expect(res.success).toBe(true);
-      expect(res.certificate.domain).toBe("x.com");
-      expect(res.certificate.issuer).toBe("Let's Encrypt");
-      expect(res.certificate.certificate).toBe("CERT_PEM");
-      expect(kms.encryptData).toHaveBeenCalledWith("tenant-1", "CERT_KEY");
-      expect(res.certificate.encryptedPrivateKey).toEqual({
-        ciphertext: "enc",
-        iv: "iv",
-        authTag: "tag",
-      });
-      // The http-01 token was written under the challenge dir.
-      expect(fs.promises.writeFile).toHaveBeenCalledWith(
-        expect.stringContaining("tok"),
-        "KEYAUTH",
-      );
+      expect(svc.getStatus().tlsAutoProvision).toBe(false);
     });
 
-    it("omits the encrypted key when no tenant is supplied", async () => {
-      process.env.TLS_AUTO_PROVISION = "true";
-
-      const res = await svc.provisionTLSCertificate("x.com");
-
-      expect(res.success).toBe(true);
-      expect(res.certificate.encryptedPrivateKey).toBeNull();
-      expect(kms.encryptData).not.toHaveBeenCalled();
-    });
-
-    it("declines when disabled", async () => {
-      process.env.TLS_AUTO_PROVISION = "false";
-      const res = await svc.provisionTLSCertificate("x.com");
-      expect(res.success).toBe(false);
-      expect(res.reason).toBe("TLS auto-provisioning disabled");
-    });
-
-    it("degrades gracefully instead of throwing if issuance fails", async () => {
-      process.env.TLS_AUTO_PROVISION = "true";
-      acme.crypto.createPrivateKey.mockRejectedValueOnce(new Error("acme down"));
-
-      const res = await svc.provisionTLSCertificate("x.com");
-
-      expect(res).toEqual({ success: false, reason: "acme down" });
-    });
     it("reports status and constants", () => {
       process.env.DNS_CHECK_INTERVAL = "60";
       expect(svc.getStatus()).toMatchObject({

@@ -821,7 +821,7 @@ Base: `/api/v1/tenants`, `/api/v1/tenant-hierarchy`, `/api/v1/custom-domains`.
 
 ### 23. Known Limitations
 *   **`customDomains.controller` and `tenantHierarchy.controller` destructure service objects that the services don't export** → several endpoints would be `undefined` at runtime; some domain methods (`getDomainStatus`, `setDefaultDomain`, `getDnsRecords`) are not implemented.
-*   DNS TXT verification and TLS provisioning are simulated stubs; `resolveTenantByDomain` checks a function reference (always truthy) instead of calling it.
+*   DNS TXT verification is real. Serving on a custom domain is **not implemented**: no `Host` resolution, no TLS issuance — `resolveTenantByDomain` and `provisionTLSCertificate` were removed (A-256, ADR-065); `TLS_AUTO_PROVISION` is no longer read.
 *   The Tenant model lacks several address/contact/`maxUsers` columns that the service reads/writes; `deleteTenant` constructs `AppError` with reversed args.
 
 ### 24. Change Log

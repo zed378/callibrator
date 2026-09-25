@@ -67,6 +67,13 @@ Before ADR-035, `approve` on a `draft` threw a plain `Error` and surfaced as a 5
 
 A conflict reported as a server error hides a design gap behind a stack trace. That is why the status code matters here.
 
+**The approval workflow is mandatory once started** (A-203, ADR-065, 2026-09-25). While a certificate's workflow
+instance is `PENDING`, `POST /:certificateId/approve` is **409** — it names the workflow and step, and is decided
+before re-authentication, so no one-time code is consumed. The certificate is approved through the workflow
+(`POST /workflows/instances/:instanceId/action`, which re-authenticates each approver, A-182). A tenant with no
+workflow configured approves directly, as before. `POST /:certificateId/submit` after a workflow **rejection**
+starts a new instance in the same transaction, so a re-submitted certificate goes through the chain again.
+
 ### PDF
 
 | Method | Path | Purpose |
@@ -135,7 +142,7 @@ Four step states rather than three: `waiting` means the step is not yet reachabl
 |---|---|---|
 | POST | `/sign` | apply a signature |
 | POST | `/verify` | verify one |
-| GET | `/history` | signature history |
+| GET | `/history` | signature history — one page (`?page&limit`, default 25, max 200); rows in `data`, `meta {total,page,limit,totalPages}` top-level (D-24, ADR-070) |
 
 `signature_records`: `signatureHash`, `signatureAlgorithm`, `polygon` (JSON), `biometricData` (JSON), `authenticationMethod`, `signedAt`, `ipAddress`, `userAgent`, `status` (`signed` / `revoked`), plus `revokedAt`, `revokedBy`, `revocationReason`.
 

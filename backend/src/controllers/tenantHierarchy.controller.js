@@ -8,28 +8,20 @@
 // imported as the module object — NOT destructured as `{ tenantHierarchyService }`
 // (which was undefined and made every endpoint throw at runtime).
 const tenantHierarchyService = require("../services/tenantHierarchy.service");
-const { success, error } = require("../utils/response.util");
+const { success } = require("../utils/response.util");
 const { asyncHandler } = require("../utils/controllerWrapper.util");
 const { AppError, formatErrors } = require("../utils/appError.util");
 const { addChild: addChildValidator } = require("../validators/tenantHierarchy.validator");
-const { logger } = require("../middlewares/activityLog.middleware");
 const { auditActor } = require("../utils/auditActor.util");
 
-/**
- * Create a sub-organization
- */
-exports.createSubOrganization = asyncHandler(async (req, res) => {
-  const { parentTenantId } = req.params;
-  const { name } = req.body || {};
-
-  const result = await tenantHierarchyService.createSubOrganization(
-    parentTenantId,
-    { name },
-    auditActor(req),
-  );
-
-  return success(res, result, 201, "Sub-organization created");
-});
+// A-255 (ADR-065) — seven handlers here were never routed: createSubOrganization
+// (addChildTenant is the routed one), getDescendants, getAncestors,
+// getDataVisibilityScope, assignRoleAcrossHierarchy, getUserRolesAcrossTenants
+// and getStatus. They were removed rather than left for the next route file
+// to import: assignRoleAcrossHierarchy wrote a user's role, unaudited and with
+// no privilege check, and the others duplicated routed handlers with the
+// wrong response shapes. The routed surface is exactly what
+// routes/api/tenantHierarchy.route.js imports.
 
 /**
  * Get tenant hierarchy tree
@@ -40,80 +32,6 @@ exports.getTenantTree = asyncHandler(async (req, res) => {
   const tree = await tenantHierarchyService.getTenantTree(tenantId);
 
   return success(res, tree, "Tenant tree retrieved");
-});
-
-/**
- * Get descendant tenants
- */
-exports.getDescendants = asyncHandler(async (req, res) => {
-  const { tenantId } = req.user;
-
-  const descendants =
-    await tenantHierarchyService.getDescendantTenants(tenantId);
-
-  return success(res, descendants, "Descendants retrieved");
-});
-
-/**
- * Get ancestor tenants
- */
-exports.getAncestors = asyncHandler(async (req, res) => {
-  const { tenantId } = req.user;
-
-  const ancestors = await tenantHierarchyService.getAncestorTenants(tenantId);
-
-  return success(res, ancestors, "Ancestors retrieved");
-});
-
-/**
- * Get data visibility scope
- */
-exports.getDataVisibilityScope = asyncHandler(async (req, res) => {
-  const { tenantId } = req.user;
-  const { scope = "self" } = req.query;
-
-  const visibility = await tenantHierarchyService.getDataVisibilityScope(
-    tenantId,
-    scope,
-  );
-
-  return success(res, visibility, "Visibility scope retrieved");
-});
-
-/**
- * Assign role across hierarchy
- */
-exports.assignRoleAcrossHierarchy = asyncHandler(async (req, res) => {
-  const { userId } = req.params;
-  const { roleId, scope = "subtree" } = req.body || {};
-
-  const result = await tenantHierarchyService.assignRoleToUserAcrossHierarchy(
-    userId,
-    roleId,
-    scope,
-  );
-
-  return success(res, result, "Role assigned across hierarchy");
-});
-
-/**
- * Get user roles across tenants
- */
-exports.getUserRolesAcrossTenants = asyncHandler(async (req, res) => {
-  const { userId } = req.params;
-
-  const roles = await tenantHierarchyService.getUserRolesAcrossTenants(userId);
-
-  return success(res, roles, "User roles retrieved");
-});
-
-/**
- * Get service status
- */
-exports.getStatus = asyncHandler(async (req, res) => {
-  const status = tenantHierarchyService.getStatus();
-
-  return success(res, status, "Service status retrieved");
 });
 
 // -------------------------------------------------------
@@ -200,87 +118,33 @@ exports.addChildTenant = asyncHandler(async (req, res) => {
 });
 
 /**
- * Update a tenant's parent
+ * Update a tenant's parent.
+ *
+ * A-224: the move — the tenant, its hierarchy row, every descendant's path and
+ * one audit row, in one transaction, with the cycle and depth checks — is
+ * tenantHierarchy.service#updateTenantParent. A malformed or missing
+ * `newParentId` is 400; a conflict is 409 with its explanation.
  */
 exports.updateTenantParent = asyncHandler(async (req, res) => {
   const { tenantId } = req.params;
   const { newParentId } = req.body || {};
 
-  const { Tenant, TenantHierarchy } = require("../models");
+  const result = await tenantHierarchyService.updateTenantParent(tenantId, newParentId, auditActor(req));
 
-  const tenant = await Tenant.findByPk(tenantId);
-  if (!tenant) {
-    return error(res, "Tenant not found", 404);
-  }
-
-  const newParent = await Tenant.findByPk(newParentId);
-  if (!newParent) {
-    return error(res, "New parent tenant not found", 404);
-  }
-
-  await Tenant.update({ parentId: newParentId }, { where: { id: tenantId } });
-
-  // Update hierarchy record
-  const hierarchy = await TenantHierarchy.findOne({ where: { tenantId } });
-  if (hierarchy) {
-    const parentHierarchy = await TenantHierarchy.findOne({
-      where: { tenantCode: newParent.code },
-    });
-    const parentPath = parentHierarchy
-      ? parentHierarchy.path
-      : `/${newParent.code.toLowerCase()}`;
-    await hierarchy.update({
-      parentCode: newParent.code,
-      path: `${parentPath}/${hierarchy.tenantCode.toLowerCase()}`,
-      depth: (parentHierarchy ? parentHierarchy.depth : 0) + 1,
-    });
-  }
-
-  logger.info("Tenant parent updated", { tenantId, newParentId });
-
-  return success(
-    res,
-    { tenantId, newParentId },
-    "Parent tenant updated successfully",
-  );
+  return success(res, result, null, "Parent tenant updated successfully");
 });
 
 /**
- * Remove a tenant's parent (make it a root tenant)
+ * Remove a tenant's parent (make it a root tenant).
+ *
+ * A-224: "already a root" is a state conflict (409), not a 404.
  */
 exports.removeTenantParent = asyncHandler(async (req, res) => {
   const { tenantId } = req.params;
 
-  const { Tenant, TenantHierarchy } = require("../models");
+  const result = await tenantHierarchyService.removeTenantParent(tenantId, auditActor(req));
 
-  const tenant = await Tenant.findByPk(tenantId);
-  if (!tenant) {
-    return error(res, "Tenant not found", 404);
-  }
-
-  if (!tenant.parentId) {
-    return error(res, "Tenant is already a root tenant", 404);
-  }
-
-  await Tenant.update({ parentId: null }, { where: { id: tenantId } });
-
-  // Update hierarchy record
-  const hierarchy = await TenantHierarchy.findOne({ where: { tenantId } });
-  if (hierarchy) {
-    await hierarchy.update({
-      parentCode: null,
-      path: `/${hierarchy.tenantCode.toLowerCase()}`,
-      depth: 0,
-    });
-  }
-
-  logger.info("Tenant parent removed", { tenantId });
-
-  return success(
-    res,
-    { tenantId, status: "root" },
-    "Parent relationship removed successfully",
-  );
+  return success(res, { ...result, status: "root" }, null, "Parent relationship removed successfully");
 });
 
 /**

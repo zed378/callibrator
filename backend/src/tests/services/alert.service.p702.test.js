@@ -30,15 +30,21 @@ describe("P7-02 alert.service", () => {
 
   beforeAll(async () => {
     server = http.createServer((req, res) => {
+      if (req.url === "/hang") {
+        // Never answers, and never records: the client abandons this request
+        // after ALERT_WEBHOOK_TIMEOUT_MS, but under load the server can finish
+        // reading its body AFTER that test has ended. Recorded into the shared
+        // `received`, it landed in a later test's array as a stale POST (the
+        // last test then read the hung request's "Detail:" line — it failed
+        // 5 times in 512 under 16 workers).
+        return;
+      }
       let body = "";
       req.on("data", (chunk) => {
         body += chunk;
       });
       req.on("end", () => {
         received.push({ headers: req.headers, body: JSON.parse(body) });
-        if (status === "hang") {
-          return; // never answers: the timeout must abandon it
-        }
         res.writeHead(status).end();
       });
     });
@@ -62,7 +68,7 @@ describe("P7-02 alert.service", () => {
     process.env = saved;
   });
 
-  const url = () => `http://127.0.0.1:${server.address().port}/hook`;
+  const url = (route = "/hook") => `http://127.0.0.1:${server.address().port}${route}`;
 
   it("logs every alert at error, carrying a matchable alert.key, even with no sink configured", async () => {
     const result = await alerts.raiseAlert(ALERT);
@@ -107,9 +113,8 @@ describe("P7-02 alert.service", () => {
   });
 
   it("a hanging webhook is abandoned after ALERT_WEBHOOK_TIMEOUT_MS", async () => {
-    process.env.ALERT_WEBHOOK_URL = url();
+    process.env.ALERT_WEBHOOK_URL = url("/hang");
     process.env.ALERT_WEBHOOK_TIMEOUT_MS = "50";
-    status = "hang";
     const result = await alerts.raiseAlert(ALERT);
     expect(result.webhook).toBe("failed");
   });

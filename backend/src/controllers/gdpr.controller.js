@@ -108,10 +108,17 @@ exports.getProcessingActivities = asyncHandler(async (req, res) => {
  */
 exports.rectifyData = asyncHandler(async (req, res) => {
   const { tenantId, userId } = actor(req);
-  const { field, value } = req.body;
+  const { field, value, currentPassword, code, recoveryCode } = req.body;
   // A-153: the request's IP / user agent go on the audit row the service
   // writes inside its transaction.
-  const result = await gdprService.rectifyData(tenantId, userId, field, value, auditActor(req));
+  // A-214: an email change re-authenticates the caller; `signInMethod` (the
+  // session's `amr`) tells the service whether an identity provider owns it.
+  const result = await gdprService.rectifyData(tenantId, userId, field, value, auditActor(req), {
+    currentPassword,
+    code,
+    recoveryCode,
+    signInMethod: req.signInMethod || null,
+  });
   return success(res, result, "Data rectified");
 });
 

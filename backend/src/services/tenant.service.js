@@ -12,6 +12,7 @@ const {
   createTenantSchema,
   updateTenantSchema,
 } = require("../validators/tenant.validator");
+const { STORED_LOGO_NAME } = require("../constants/tenantLogo");
 const { get, set, del, delPattern, cacheKeys } = require("./redis.service");
 const auditService = require("./audit.service");
 const { PLATFORM_TENANT_ID } = require("../constants/platformTenant");
@@ -58,13 +59,30 @@ const TENANT_LOGO_BASE_URL = `${process.env.HOST_URL || "http://localhost:5000"}
  * /uploads/public/tenant/default.svg, which 404s: nothing ships that file, and
  * /app/uploads is a volume that would shadow it. Null lets the UI fall back.
  *
+ * P7-08 / ADR-071 (amendment): only an uploaded file is ever a logo. A row
+ * written before that rule may hold something else, and no migration rewrites
+ * it:
+ *  - a same-origin path (`/uploads/public/tenant/x.png`, an older layout) is
+ *    reduced to its file name, as tenantUpload.service already does when it
+ *    deletes the file it replaces;
+ *  - an absolute URL (`https://…`, `//…`, `data:`) is NOT served: null, so the
+ *    UI shows its fallback. Serving it would hotlink a third party (the
+ *    viewer's IP and Referer leave the platform), and the page CSP's
+ *    `img-src` would block it anyway — a broken image instead of a fallback.
+ *
  * @param {string|null|undefined} logo - the stored filename
  * @returns {string|null} the public URL, or null when there is no real logo
  */
-const logoUrl = (logo) =>
-  !logo || logo === DEFAULT_UPLOAD_PLACEHOLDER
-    ? null
-    : `${TENANT_LOGO_BASE_URL}/${logo}`;
+const logoUrl = (logo) => {
+  if (!logo || logo === DEFAULT_UPLOAD_PLACEHOLDER) {return null;}
+  const value = String(logo);
+  // A scheme (`https:`, `data:`) or a scheme-relative `//host` is off-origin.
+  if (value.includes(":") || value.startsWith("//")) {return null;}
+  const name = value.split("/").pop();
+  return STORED_LOGO_NAME.test(name) && name !== DEFAULT_UPLOAD_PLACEHOLDER
+    ? `${TENANT_LOGO_BASE_URL}/${name}`
+    : null;
+};
 
 /**
  * Transform tenant instance to plain object with logo baseUrl

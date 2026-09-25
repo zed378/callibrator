@@ -4,6 +4,14 @@
 
 **All four are global**, not tenant-scoped. Every tenant draws from the same role and menu catalogue.
 
+**This is a decision, not an oversight** (D-16, D-17, ADR-064, 2026-09-25). None of the four carries a tenant
+column, so the global tenant hooks never scope them, and `roles.name` is unique platform-wide. That is safe only
+while no tenant principal can write them: every route that creates, renames, deletes or re-permissions a role or a
+menu group is SUPERADMIN-only, held route by route (and a new mutating route fails the inventory) by
+`backend/src/tests/routes/rolesGlobal.d16.test.js`. A tenant-owned role would be a `tenant_id` column with
+`UNIQUE (tenant_id, name)` and a backfill — rejected for now; ADR-064 records why. SCIM groups, which *are*
+tenant-owned, map onto these global roles (ADR-053).
+
 ---
 
 ## `roles` — `paranoid`

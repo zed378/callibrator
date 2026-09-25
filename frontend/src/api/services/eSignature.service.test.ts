@@ -251,24 +251,41 @@ describe("eSignatureService", () => {
 
   describe("history", () => {
     // A-106 — rows ARE `data`, the count in a top-level `meta`.
-    it("reads the rows from data and passes the backend's own filters", async () => {
+    // D-24 (ADR-070) — one page: the backend's pagination meta is passed on.
+    it("reads the rows from data, the page from the top-level meta, and passes the filters and page", async () => {
       mockedApi.get.mockResolvedValueOnce({
         ...envelope([{ id: "s1" }]),
-        meta: { total: 1 },
+        meta: { total: 51, page: 2, limit: 50, totalPages: 2 },
       });
       const res = await eSignatureService.getSignatureHistory({
         userId: "u1",
         startDate: "2026-01-01",
+        page: 2,
+        limit: 50,
       });
       expect(mockedApi.get).toHaveBeenCalledWith(`${BASE}/history`, {
-        params: { userId: "u1", startDate: "2026-01-01" },
+        params: { userId: "u1", startDate: "2026-01-01", page: 2, limit: 50 },
       });
-      expect(res).toEqual([{ id: "s1" }]);
+      expect(res.data).toEqual([{ id: "s1" }]);
+      expect(res.meta).toEqual({ total: 51, page: 2, limit: 50, totalPages: 2 });
     });
 
-    it("returns [] when there is no history", async () => {
+    it("returns an empty first page when there is no history", async () => {
       mockedApi.get.mockResolvedValueOnce({ ...envelope([]), meta: { total: 0 } });
-      await expect(eSignatureService.getSignatureHistory()).resolves.toEqual([]);
+      const res = await eSignatureService.getSignatureHistory();
+      expect(res.data).toEqual([]);
+      expect(res.meta).toEqual({ total: 0, page: 1, limit: 25, totalPages: 1 });
+    });
+
+    it("tolerates a response with no data array and no meta", async () => {
+      mockedApi.get.mockResolvedValueOnce({});
+      const res = await eSignatureService.getSignatureHistory({ page: 3, limit: 10 });
+      expect(res).toEqual({
+        success: true,
+        message: "",
+        data: [],
+        meta: { total: 0, page: 3, limit: 10, totalPages: 1 },
+      });
     });
   });
 });

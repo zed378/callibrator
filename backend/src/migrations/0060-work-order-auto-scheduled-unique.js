@@ -2,7 +2,7 @@
 
 /**
  * One open auto-scheduled calibration work order per device (W-03,
- * ADR-PENDING-async).
+ * ADR-061).
  *
  * WHAT WAS WRONG
  *

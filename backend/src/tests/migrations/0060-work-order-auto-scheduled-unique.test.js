@@ -3,10 +3,14 @@
  *
  * A fake QueryInterface proves the statements, the order, the one
  * transaction, idempotency and the refusal on a missing table. The DDL itself
- * was run on PostgreSQL 16 (not 18): fresh-after-sync, a second `up`, `down`
+ * was first run on PostgreSQL 16: fresh-after-sync, a second `up`, `down`
  * then `up`, and a pre-existing table holding two open orders for one device
- * (the index still builds, because no existing row is auto_scheduled). The
- * concurrency it exists for is proven by calibrationScheduler.w03.live.test.js.
+ * (the index still builds, because no existing row is auto_scheduled). On
+ * 2026-09-25 it was run on PostgreSQL 18.6 through the real migrator after
+ * db.sync() (up, a second migrator.up() applying nothing, a direct re-run,
+ * down keeping the column, up again; `\d maintenance_work_orders` checked).
+ * The concurrency it exists for is proven by calibrationScheduler.w03.live.test.js,
+ * run on the same 18.6 server (ADR-061).
  */
 const fs = require("fs");
 const path = require("path");

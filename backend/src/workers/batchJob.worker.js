@@ -42,6 +42,13 @@ const handleMessage = async (msg, ch) => {
   try {
     payload = JSON.parse(msg.content.toString());
   } catch {
+    payload = null;
+  }
+  // A body that parses to a non-object ("null", a number) is as invalid as
+  // one that does not parse: reading `.jobId` off it would throw, and the
+  // message would sit unsettled, holding a prefetch slot, until the channel
+  // closed.
+  if (!payload || typeof payload !== "object") {
     logger.error("Invalid batch job message; dropping");
     rabbitmq.nack(ch, msg);
     return;

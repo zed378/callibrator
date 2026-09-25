@@ -8,7 +8,7 @@ Domain rules: [`../PLAN/07-CALIBRATION-PROGRAM.md`](../PLAN/07-CALIBRATION-PROGR
 
 ## `/api/v1/calibration-records` — 5 endpoints
 
-As-built since P6-03 (2026-09-24, ADR-PENDING-data). Source: `backend/src/routes/api/calibrationRecords.route.js`.
+As-built since P6-03 (2026-09-24, ADR-062). Source: `backend/src/routes/api/calibrationRecords.route.js`.
 
 | Method | Path | Permission | Purpose |
 |---|---|---|---|

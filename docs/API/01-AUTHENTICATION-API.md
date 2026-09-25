@@ -31,8 +31,10 @@ Envelope, status codes and header conventions: [`00-API-STANDARDS.md`](./00-API-
 |---|---|---|---|
 | POST | `/send-otp` | public | request a reset OTP — **3 per 15 min**, then lockout |
 | POST | `/reset-password` | public | complete reset with an OTP — 5 per 5 min |
-| POST | `/just-update-password` | bearer | change password while signed in |
-| POST | `/pass-is-valid` | bearer | check a password without changing it |
+| POST | `/just-update-password` | bearer | change password while signed in. 409 for an SSO session, naming the IdP (A-216), or for an expired temporary password (A-215) (ADR-068) |
+| POST | `/pass-is-valid` | bearer | check a password without changing it. 400 without a password |
+
+**These two, and every re-authentication (MFA rotate or disable, passkey removal, email change), share one per-user budget (A-260, ADR-072).** Five wrong passwords in 15 minutes: the attempt that spends it signs its session out and is audited `ACCOUNT_LOCKED`. It and every check until the window ends answer **429 with `Retry-After`**.
 
 OTP state lives on the user row: `otpCode`, `otpExpiredAt`, `otpRequestCount`, `otpLastRequestedAt`.
 

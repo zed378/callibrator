@@ -7,7 +7,7 @@
  * correct only while no tenant principal can write them: a tenant admin who
  * could create a role would learn, from a 409, which names other hospitals
  * use (the oracle), and a rename, a permission change or a delete would
- * change every tenant's role of that name. ADR-PENDING-dbB records the
+ * change every tenant's role of that name. ADR-064 records the
  * decision: roles stay global, and the guard is "platform operator only",
  * held here route by route.
  *

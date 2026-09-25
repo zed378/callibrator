@@ -100,6 +100,12 @@ jest.mock("../../services/emailQueue.service", () => ({
 jest.mock("../../utils/jwt.util", () => ({
   generatePurposeToken: jest.fn(() => "ACTIVATION-TOKEN"),
 }));
+// A-214: an email change re-authenticates first; that step is proven in
+// gdpr.rectifyReauth.a214.test.js. Here it passes, as for a password holder.
+jest.mock("../../services/auth.service", () => ({
+  passwordManagedBy: jest.fn(async () => null),
+  reauthenticate: jest.fn(async () => "password"),
+}));
 
 const fs = require("fs");
 const path = require("path");
@@ -118,6 +124,19 @@ const ADMIN = "55555555-5555-4555-8555-555555555555";
 const asTenant = (fn) => tenantStorage.run({ tenantId: TENANT }, fn);
 
 let written;
+
+// D-24 (ADR-070): the export streams — writeFile is handed an async iterable
+// of chunks, not a string.
+const readAll = async (content) => {
+  if (typeof content === "string") {
+    return content;
+  }
+  let text = "";
+  for await (const chunk of content) {
+    text += chunk;
+  }
+  return text;
+};
 
 beforeEach(() => {
   jest.restoreAllMocks();
@@ -144,7 +163,7 @@ beforeEach(() => {
   written = {};
   jest.spyOn(fs.promises, "mkdir").mockResolvedValue(undefined);
   jest.spyOn(fs.promises, "writeFile").mockImplementation(async (file, content) => {
-    written[path.basename(file)] = JSON.parse(content);
+    written[path.basename(file)] = JSON.parse(await readAll(content));
   });
   jest.spyOn(fs.promises, "stat").mockResolvedValue({ size: 1 });
   jest.spyOn(fs.promises, "rm").mockResolvedValue(undefined);
@@ -173,7 +192,8 @@ describe("A-180 — the Article 15 export includes consent history, DSARs and se
       expect(more).toEqual([]);
       expect(sql).toMatch(new RegExp(`"tenant_id" = '${TENANT}'`));
       expect(sql).toMatch(new RegExp(`"user_id" = '${USER}'`));
-      expect(sql).toContain("LIMIT 1000");
+      // D-24 (ADR-070): a keyset page at a time, not the first 1,000.
+      expect(sql).toMatch(/ORDER BY "\w+"\."id" ASC LIMIT 500/);
     },
   );
 
@@ -297,6 +317,8 @@ describe("A-180 — rectifying the email", () => {
       operation: "GDPR_RECTIFICATION",
       fields: ["email"],
       emailVerificationReset: true,
+      // A-214: how the caller re-authenticated.
+      reauthenticatedWith: "password",
     });
     // The audit trail never holds the address (A-153).
     expect(JSON.stringify(auditService.logAction.mock.calls)).not.toContain("new.address");

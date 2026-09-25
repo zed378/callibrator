@@ -20,7 +20,8 @@
  * is not a principal that could log in, be granted menus or be impersonated.
  *
  * Deliberately absent (ADR-051 Q-13): individual IoT readings and session
- * sweeps are not audited, so neither has a name here.
+ * sweeps are not audited. IoT ingest has a name only for the anomaly ALERT it
+ * raises across a tenant (W-04, ADR-069), never for an ordinary reading.
  *
  * Kept in its own module (like auditActions.js) so a test that mocks the
  * constants barrel cannot empty it. A test asserts the model ENUM equals
@@ -65,12 +66,26 @@ const SYSTEM_ACTORS = Object.freeze({
    */
   BREAK_GLASS: "system:break-glass",
   /**
-   * W-04 / W-30 (ADR-PENDING-async) — the scheduled calibration scan
+   * W-04 / W-30 (ADR-061) — the scheduled calibration scan
    * (services/calibrationScheduler.service.js), which creates Preventative
    * work orders for due devices. A manual run from the API is attributed to
    * the requesting user instead.
    */
   CALIBRATION_SCAN: "system:calibration-scan",
+  /**
+   * W-04 (ADR-069) — IoT ingest (services/iot.service.js), for the one act it
+   * audits: an out-of-tolerance reading and the tenant-wide anomaly alert it
+   * raises. The device is authenticated by its token, not a person.
+   */
+  IOT_INGEST: "system:iot-ingest",
+  /**
+   * W-04 (ADR-069) — the batch-job runner and its sweeps
+   * (services/batchJob.service.js): every state change of a job after it is
+   * queued. The user who created the job is named in `changes.requestedBy`.
+   */
+  BATCH_JOB: "system:batch-job",
+  /** ADR-070 — services/webhookDeliveryPurge.service.js: finished deliveries past retention. */
+  WEBHOOK_DELIVERY_PURGE: "system:webhook-delivery-purge",
 });
 
 const SYSTEM_ACTOR_NAMES = Object.freeze(Object.values(SYSTEM_ACTORS));

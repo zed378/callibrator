@@ -1,3 +1,4 @@
+const { Op } = require("sequelize");
 const {
   SopDocument,
   SopTrainingAcknowledgment,
@@ -12,6 +13,48 @@ const { AppError } = require("../utils/appError.util");
 // A-28. Statuses from which an SOP can be released. PUBLISHED and ARCHIVED are
 // terminal for this action and are reported as 409 state explanations.
 const PUBLISHABLE_STATES = ["DRAFT", "UNDER_REVIEW"];
+
+/** D-24 (ADR-070): users read, and acknowledgements inserted, this many at a time. */
+const TRAINING_FANOUT_BATCH = 500;
+
+/**
+ * D-24 (ADR-070) — assign a published SOP's training to every user of the
+ * tenant, a batch at a time. It used to read every user of the tenant into
+ * memory and insert one acknowledgement per user in ONE statement — a
+ * statement whose size, and whose bind-parameter count (PostgreSQL's limit is
+ * 65,535), grew with the tenant. Now: keyset pages by id (stable while rows
+ * are added), only the id selected, one bulkCreate per page, all inside the
+ * publish's transaction — so the release is still all or nothing.
+ *
+ * @param {string} tenantId
+ * @param {string} documentId
+ * @param {object} transaction - the publish's transaction
+ * @returns {Promise<number>} how many acknowledgements were assigned
+ */
+const assignTraining = async (tenantId, documentId, transaction) => {
+  let assigned = 0;
+  let afterId = null;
+  for (;;) {
+    const users = await User.findAll({
+      where: afterId ? { tenantId, id: { [Op.gt]: afterId } } : { tenantId },
+      attributes: ["id"],
+      order: [["id", "ASC"]],
+      limit: TRAINING_FANOUT_BATCH,
+      transaction,
+    });
+    if (users.length > 0) {
+      await SopTrainingAcknowledgment.bulkCreate(
+        users.map((user) => ({ tenantId, documentId, userId: user.id, status: "PENDING" })),
+        { transaction },
+      );
+      assigned += users.length;
+    }
+    if (users.length < TRAINING_FANOUT_BATCH) {
+      return assigned;
+    }
+    afterId = users[users.length - 1].id;
+  }
+};
 
 exports.createDocument = async (tenantId, authorId, data) => {
   const { title, version, contentUrl, requiresTraining } = data;
@@ -78,6 +121,8 @@ exports.getDocuments = async (tenantId, page = 1, limit = 10, status) => {
  * @param {string} publisherId - the authenticated caller releasing the SOP
  * @returns {Promise<object>} the published document
  */
+exports.TRAINING_FANOUT_BATCH = TRAINING_FANOUT_BATCH;
+
 exports.publishDocument = async (tenantId, documentId, publisherId) => {
   const doc = await SopDocument.findOne({ where: { id: documentId, tenantId } });
   if (!doc) {throw new AppError(404, "Document not found");}
@@ -106,15 +151,8 @@ exports.publishDocument = async (tenantId, documentId, publisherId) => {
     if (doc.requiresTraining) {
       // Fan the acknowledgment out to every user in the tenant. Narrowing this
       // by role or department is an open question, not a judgement call: see
-      // A-28 in TASKS/AUDIT-2026-09-REMEDIATION.md.
-      const users = await User.findAll({ where: { tenantId }, transaction });
-      const acks = users.map(user => ({
-        tenantId,
-        documentId: doc.id,
-        userId: user.id,
-        status: "PENDING",
-      }));
-      await SopTrainingAcknowledgment.bulkCreate(acks, { transaction });
+      // A-28 in TASKS/AUDIT-2026-09-REMEDIATION.md. D-24: in batches.
+      await assignTraining(tenantId, doc.id, transaction);
     }
 
     await auditService.logAction(

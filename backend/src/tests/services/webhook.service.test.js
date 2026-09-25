@@ -107,6 +107,7 @@ describe("webhook.service", () => {
         WEBHOOK_BACKOFF_CAP_MS: "4000",
         WEBHOOK_LEASE_MS: "60000",
         WEBHOOK_DISPATCH_BATCH: "7",
+        WEBHOOK_EMIT_CONCURRENCY: "4",
       });
       try {
         jest.isolateModules(() => {
@@ -117,6 +118,7 @@ describe("webhook.service", () => {
             BACKOFF_CAP_MS: 4000,
             LEASE_MS: 60000,
             BATCH_SIZE: 7,
+            EMIT_CONCURRENCY: 4,
           });
           expect([1, 2, 3, 4].map(svc._backoffMs)).toEqual([1000, 2000, 4000, 4000]);
         });

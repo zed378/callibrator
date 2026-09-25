@@ -188,6 +188,13 @@ const NOTIFY_WRITE = [R.HEALTCARE_ADMIN, R.CALIBRATOR_ADMIN];
 
 let fx;
 
+// W-08 (batch 6) made createJob refuse a type with no registered handler (400).
+// The controller defaults to EXPORT_CSV and no handler is registered in this
+// process, so without this the SUPERADMIN case reached the controller — the
+// gate passed — and then 400'd for a reason unrelated to authorization.
+// Registering a no-op handler keeps this suite about the gate only.
+require("../../services/batchJob.service").registerHandler("EXPORT_CSV", async () => ({ processedItems: 0 }));
+
 beforeEach(async () => {
   jest.clearAllMocks();
   fx = createTwoTenants();

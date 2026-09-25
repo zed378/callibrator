@@ -36,6 +36,11 @@ data:
   DB_USER: {{ .Values.backend.database.user | quote }}
   DB_DIALECT: {{ .Values.backend.database.dialect | quote }}
   DB_SSL: {{ .Values.backend.database.ssl | quote }}
+  # P6-03 (migration 0057): after migrating as DB_USER, every pooled
+  # connection switches to this NOLOGIN role, which has no UPDATE/DELETE on
+  # calibration_records. Empty or "none" = every query runs as the owner
+  # (the backend only warns). Before 2026-09-25 the chart never set it.
+  DB_APP_ROLE: {{ .Values.backend.database.appRole | default "" | quote }}
 
   # Credential-free by rule (guard 9, S-09): the Redis password is
   # REDIS_PASSWORD and a credentialed RabbitMQ URL is RABBITMQ_URL, both in the
@@ -145,6 +150,7 @@ data:
   CALIBRATION_SCHEDULER: "disabled"
   TENANT_LIFECYCLE_SCHEDULER: "disabled"
   QUARANTINE_SWEEP_SCHEDULER: "disabled"
+  WEBHOOK_DELIVERY_PURGE_SCHEDULER: "disabled"
   # The watchdog alerts on the scheduler pod; one per release is enough.
   JOB_WATCHDOG_SCHEDULER: "disabled"
   {{- end }}

@@ -2,7 +2,7 @@
 
 /**
  * `users.email` and `users.username` unique CASE-INSENSITIVELY, platform-wide
- * (D-06; ADR-051 Q-18 re-affirmed by ADR-PENDING-dbA).
+ * (D-06; ADR-051 Q-18 re-affirmed by ADR-063).
  *
  * ADR-051 Q-18 keeps ONE global identity per person: sign-in is by username or
  * email with no tenant qualifier (auth.service#login looks the identifier up

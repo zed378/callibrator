@@ -131,7 +131,7 @@ export default function TenantLifecyclePage() {
     await run(
       "offboard",
       () => tenantLifecycleService.offboard(tenantId),
-      "Tenant offboarded — data exported and deletion scheduled",
+      "Tenant offboarded — deletion scheduled after the retention period",
     );
     setIsOffboardOpen(false);
   };

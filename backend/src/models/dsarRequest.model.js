@@ -4,6 +4,8 @@
  * Tracks GDPR data-subject requests (export / erasure / rectification /
  * restriction) as asynchronous, auditable work items.
  */
+// D-27 (ADR-070): every JSON column declares its shape, validated on write.
+const { jsonShape } = require("../utils/jsonShape.util");
 const defineModel = (db, DataTypes) => {
   const DsarRequest = db.define(
     "DsarRequest",
@@ -46,6 +48,7 @@ const defineModel = (db, DataTypes) => {
       },
       details: {
         type: DataTypes.JSONB,
+        validate: { shape: jsonShape("DsarRequest.details") },
         allowNull: true,
       },
       requestedAt: {

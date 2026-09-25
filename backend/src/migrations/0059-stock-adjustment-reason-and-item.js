@@ -2,7 +2,7 @@
 
 /**
  * Every stock quantity change names its item, its before/after and a reason
- * (P6-09; ADR-PENDING-data).
+ * (P6-09; ADR-062).
  *
  * WHAT WAS WRONG
  *

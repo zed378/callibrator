@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import DashboardLayout from "@/components/layouts/DashboardLayout";
-import { AlertTriangle, Loader2, Lock, Shield } from "lucide-react";
+import { AlertTriangle, ExternalLink, Loader2, Lock, Shield } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { userService } from "@/api/services/user.service";
 import { Button, Card } from "@/components/ui";
@@ -135,12 +135,18 @@ export default function ChangePasswordPage() {
     } catch (err) {
       // Surface the server's reason (e.g. "Current password is incorrect")
       // rather than a generic failure.
-      setErrors({
-        currentPassword:
-          err instanceof Error && err.message
-            ? err.message
-            : "Failed to change password",
-      });
+      const message =
+        err instanceof Error && err.message
+          ? err.message
+          : "Failed to change password";
+      // A-215 / A-216: a 409 explains the account's state (the identity
+      // provider manages the password; the temporary password expired) — it
+      // is not about the current-password field.
+      setErrors(
+        statusOf(err) === 409
+          ? { _form: message }
+          : { currentPassword: message },
+      );
     } finally {
       setIsSaving(false);
     }
@@ -165,6 +171,42 @@ export default function ChangePasswordPage() {
         </div>
       </DashboardLayout>
     );
+
+  // A-216: signed in through the organisation's identity provider, whose
+  // password this is — say where to change it instead of asking for a
+  // password the user never had (the backend answers 409 anyway).
+  const managedBy = user.passwordManagedBy;
+  if (managedBy) {
+    const protocol = managedBy.protocol.toUpperCase();
+    return (
+      <DashboardLayout>
+        <div className="space-y-6">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">
+              Change Password
+            </h1>
+          </div>
+          <Card className="md:max-w-150 px-6 py-7 border border-border">
+            <div role="status" className="flex items-start gap-3 text-sm">
+              <ExternalLink className="mt-0.5 h-5 w-5 shrink-0 text-foreground" />
+              <div className="space-y-2">
+                <p className="font-semibold text-foreground">
+                  Your password is managed by your organisation&apos;s
+                  identity provider
+                </p>
+                <p className="text-muted-foreground">
+                  You signed in with single sign-on ({protocol}
+                  {managedBy.provider ? `, ${managedBy.provider}` : ""}).
+                  Change your password with that provider; it cannot be
+                  changed here.
+                </p>
+              </div>
+            </div>
+          </Card>
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>

@@ -73,6 +73,19 @@ const asTenant = (fn) => tenantStorage.run({ tenantId: TENANT }, fn);
 
 let written;
 
+// D-24 (ADR-070): the export streams — writeFile is handed an async iterable
+// of chunks, not a string.
+const readAll = async (content) => {
+  if (typeof content === "string") {
+    return content;
+  }
+  let text = "";
+  for await (const chunk of content) {
+    text += chunk;
+  }
+  return text;
+};
+
 beforeEach(() => {
   jest.restoreAllMocks();
   mockDb.statements = [];
@@ -93,7 +106,7 @@ beforeEach(() => {
   written = {};
   jest.spyOn(fs.promises, "mkdir").mockResolvedValue(undefined);
   jest.spyOn(fs.promises, "writeFile").mockImplementation(async (file, content) => {
-    written[require("path").basename(file)] = JSON.parse(content);
+    written[require("path").basename(file)] = JSON.parse(await readAll(content));
   });
   jest.spyOn(fs.promises, "stat").mockResolvedValue({ size: 1 });
   jest.spyOn(fs, "createWriteStream").mockReturnValue({ on: () => {} });

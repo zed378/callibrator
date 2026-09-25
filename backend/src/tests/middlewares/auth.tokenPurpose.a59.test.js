@@ -455,9 +455,6 @@ const ssoLogin = async (kind) => {
 };
 
 beforeEach(() => {
-  // __mocks__/uuid.js answers one constant id (uuid@14 is ESM-only); two
-  // sessions must have two ids here.
-  require("uuid").v4.mockImplementation(() => require("crypto").randomUUID());
   redis.mockStore.clear();
   fakeDb = fakeSessionsDb();
   jest

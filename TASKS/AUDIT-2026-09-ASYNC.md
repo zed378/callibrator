@@ -22,28 +22,42 @@ needs one to settle says so in its own card.
 | Id | Finding | Severity | Live or latent |
 |---|---|---|---|
 | W-01 | the tenant-lifecycle processor has **never run**: it filters on a column the model does not define, and on an enum value that does not exist | **high** | **DONE** 2026-09-24 — verified on PostgreSQL 18.6 |
-| W-02 | `CALIBRATION_SCHEDULER` is set in **no** deployment file, and the chart's "not the scheduler" branch disables only one of four jobs | **high** | latent (1 replica today), live on the documented scale-out |
-| W-03 | the calibration scan's idempotency guard is a check-then-create race with no lock and no constraint | **high** | latent — needs a second replica |
-| W-04 | **no background mutation writes an audit row** — including the purge that destroys `audit_logs` | **high** | **partial** — purge audited 2026-09-24 |
+| W-02 | `CALIBRATION_SCHEDULER` is set in **no** deployment file, and the chart's "not the scheduler" branch disables only one of four jobs | **high** | **DONE** 2026-09-25: rendered chart asserted (ADR-060) |
+| W-03 | the calibration scan's idempotency guard is a check-then-create race with no lock and no constraint | **high** | **DONE** 2026-09-25: index and live race on PostgreSQL 18.6 (ADR-061) |
+| W-04 | **no background mutation writes an audit row** — including the purge that destroys `audit_logs` | **high** | **DONE** 2026-09-25: IoT anomaly, calibration notification and batch-job transitions audited in their transactions; audit rows have no retention window (ADR-069) |
 | W-05 | one Redis blip disables Redis **permanently** for that process, silently, restoring the whole A-24 symptom set | **high** | **DONE** 2026-09-24 |
-| W-06 | a RabbitMQ consumer is never re-registered: a broker restart ends both workers for the life of the process | **high** | **live** |
-| W-07 | a batch job interrupted by SIGTERM is **acked on redelivery and never runs again** — stuck `PROCESSING`, no DLQ row | **medium–high** | **live** |
-| W-08 | batch jobs do nothing: the handler registry is empty and every job reports `COMPLETED`, progress 100, with a download URL | **medium–high** | **live** |
-| W-09 | the email retry both re-publishes **and** dead-letters the same message, from an in-process timer that can take the server down | medium | **live** |
+| W-06 | a RabbitMQ consumer is never re-registered: a broker restart ends both workers for the life of the process | **high** | **DONE** 2026-09-25: live broker restart (ADR-061) |
+| W-07 | a batch job interrupted by SIGTERM is **acked on redelivery and never runs again** — stuck `PROCESSING`, no DLQ row | **medium–high** | **DONE** 2026-09-25: row claim, heartbeat, sweep, drain (ADR-060) |
+| W-08 | batch jobs do nothing: the handler registry is empty and every job reports `COMPLETED`, progress 100, with a download URL | **medium–high** | **DONE** 2026-09-25: unregistered type refused or FAILED; no handlers exist (ADR-060) |
+| W-09 | the email retry both re-publishes **and** dead-letters the same message, from an in-process timer that can take the server down | medium | **DONE** 2026-09-25: broker delay queues, one DLQ message, live (ADR-061) |
 | W-10 | the nightly "tenant backup" backs up two local folders and not the database; the real backup service is scheduled by nothing | medium | **live** |
 | W-11 | a deleted or deactivated role keeps its permissions for up to an hour — cached authorization with no invalidation on that path | medium | **DONE** 2026-09-24 |
-| W-12 | every scheduled job runs with **no tenant predicate at all**, and `beforeCreate` does not stamp `tenantId` | medium | **live** |
+| W-12 | every scheduled job runs with **no tenant predicate at all**, and `beforeCreate` does not stamp `tenantId` | medium | **DONE** 2026-09-25: every job declares a context; opt-outs are a closed list (ADR-060, ADR-069) — live on PostgreSQL 18.6 |
 | W-13 | silent failure is the norm: every job's failure path ends at `logger.error`, and production writes no stdout (A-14) | medium | **live** |
 | W-14 | MQTT ingest fans out to every replica — N duplicate readings and N duplicate alerts per message — with no backpressure | medium | latent (MQTT off) |
 | W-15 | the GDPR export ZIP is deleted by a 168-hour in-process timer; a restart leaves exported personal data on disk forever | medium | **live** |
 | W-16 | the retention purge has no transaction, and one malformed setting makes a tenant silently never purge | medium | **partial** — transaction added 2026-09-24 |
-| W-17 | unbounded result sets and N+1 inside the per-tenant and per-device loops | low–medium | **live** |
-| W-18 | connection and timer lifecycle: two AMQP connections per process, one never closed, no in-flight memo on either getter | low–medium | **live** |
+| W-17 | unbounded result sets and N+1 inside the per-tenant and per-device loops | low–medium | **DONE** 2026-09-25: every scheduled job paged or batched (ADR-069); emit-path first attempts capped, the scan commits per tenant chunk, offboarding builds no export (ADR-073) — live on PostgreSQL 18.6 |
+| W-18 | connection and timer lifecycle: two AMQP connections per process, one never closed, no in-flight memo on either getter | low–medium | **DONE** 2026-09-25: one connection, one close (ADR-061) |
 | W-19 | the rate limiter's memory fallback has lazy expiry only — no sweep, unbounded growth | low | **live** |
 | W-20 | `hardDeleteOffboardedTenant` would **cascade-delete the tenant's audit trail** (`audit_logs.tenant_id ON DELETE CASCADE`), with no transaction and no audit row | **high** | **fixed** 2026-09-24 — `audit_logs.tenant_id` RESTRICT (migration 0030) |
 | W-21 | `enterGracePeriod` accepts a tenant that is not suspended; a later suspension past the deadline is offboarded immediately | medium | live |
+| W-30 | the scheduled calibration scan's work orders were **all rolled back**: it passed no actor, and `logAction` refuses one inside the transaction (A-124 + A-190) | **high** | **DONE** 2026-09-25 (ADR-061) |
+| W-31 | the batch worker acked through the shared **publishing** channel, where the delivery tag means nothing: a protocol error that closes that channel | medium | **DONE** 2026-09-25 (ADR-061) |
+| W-32 | the IoT anomaly alert was written with `type: "system"`, which the notifications ENUM refuses: **no anomaly alert had ever been stored** | medium | **DONE** 2026-09-25 (ADR-069) — live on PostgreSQL 18.6 |
+| W-33 | the isolation hook put the ATTRIBUTE `tenantId` into a bulk DELETE after Sequelize had mapped names to columns: **every bulk destroy of an underscored model in a tenant context failed on PostgreSQL** | **high** | **DONE** 2026-09-25 (ADR-069) — live on PostgreSQL 18.6. The 5 affected tenant-user routes are enumerated and live-tested (`bulkDestroyRoutes.w33.live.test.js`) |
+| W-34 | `sum`/`min`/`max`/`aggregate`, static `increment`/`decrement` and `restore` ran **no tenant hook**, and `destroy({ truncate })` dropped the predicate: tenant A's `Stock.sum` returned A's **and B's** total on PostgreSQL 18.6 | medium (latent: every current call site passes `tenantId`) | **DONE** 2026-09-25 (ADR-073) — wrapped per model, live on PostgreSQL 18.6 |
 
-**By severity:** 6 high · 2 medium–high · 8 medium · 3 low/low–medium. **19 total.**
+**By severity:** 7 high · 2 medium–high · 10 medium · 3 low/low–medium. **22 total.**
+
+**Added 2026-09-25 (ADR-073):** W-34 (medium, latent), confirmed from the Sequelize 6.37.8 source
+after W-33's card noted it in passing. Its card is at the end of this file.
+
+**Added 2026-09-25 (ADR-069):** W-32 (medium) and W-33 (high), found by the first live run of the
+tenant-scoped jobs. Their cards are at the end of this file.
+
+**Added 2026-09-25:** W-30 (high) and W-31 (medium), which were found while W-03 and W-06 were being
+fixed. Their cards are at the end of this file.
 
 ---
 
@@ -199,7 +213,7 @@ and `tenantLifecycleScheduler.middleware.test.js`.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-25 (ADR-060) |
 | **Severity** | **high** |
 | **Verified** | from code and from every file in `deploy/`. Confirming the rendered ConfigMap needs `helm template`, which was not run |
 
@@ -254,13 +268,36 @@ false` then sets one variable and the code cannot grow a fifth job that escapes 
       the switch
 - [ ] `.env.example` lists every scheduler variable the code reads
 
+**What was changed (2026-09-25, ADR-060).**
+
+- **One switch.** `utils/schedulerSwitch.util.js#scheduleSetting(env, default)` is read by every
+  singleton scheduler. `SCHEDULERS_ENABLED=false` disables all of them, whatever their own variables
+  say. The webhook dispatcher is the one named exemption: its claim is `SKIP LOCKED` (ADR-054).
+- **Deviation from the fix direction: the switch defaults to ON.** Defaulting to off would silently
+  stop backups and the retention purge on every existing single-instance deployment at upgrade.
+  ADR-060 records why.
+- The chart's `cron.enabled: false` branch sets `SCHEDULERS_ENABLED: "false"` and disables every
+  scheduler variable. Both `.env.example` files list them all, `CALIBRATION_SCHEDULER` included.
+
+**Tests.** `src/tests/utils/schedulerSwitch.w02.test.js` (14 tests):
+- It enumerates every `cron.schedule` call site in `src/` and fails on one that bypasses
+  `scheduleSetting`.
+- It checks both `.env.example` files.
+- **"an API deployment (cron.enabled false, three replicas) renders NO enabled singleton
+  scheduler"** runs `helm template` and asserts on the **rendered** ConfigMap. It is skipped when
+  `helm` is not on PATH. It ran here with helm v3.21.2.
+
+**Fail-before.** At `fabc3be` the suite cannot load, because `schedulerSwitch.util` does not exist.
+The old chart, rendered with the same arguments, disables **only** `RETENTION_SCHEDULER` and has no
+`SCHEDULERS_ENABLED`.
+
 ---
 
 ## W-03 — The calibration scan's idempotency guard is a race
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-25, verified on PostgreSQL 18.6 (ADR-061) |
 | **Severity** | **high** |
 | **Verified** | from code. **Needs a second replica to demonstrate** — stated plainly, not rounded up |
 
@@ -314,13 +351,43 @@ interim, but it is advisory and it fails open when Redis is down (**W-05**).
 - [ ] the violation path is counted as `skipped`, not as `errors`
 - [ ] the comment at `:9–13` says "concurrent" or stops claiming it
 
+**What was changed (2026-09-25, ADR-061).**
+
+- **Migration `0060-work-order-auto-scheduled-unique`** adds `auto_scheduled BOOLEAN NOT NULL
+  DEFAULT false`, and a partial unique index on `device_id` where the order is auto-scheduled, Open
+  or InProgress, and not deleted. It runs in one transaction, and it throws on a missing table
+  instead of recording itself applied.
+- **Deviation:** the index covers **auto-scheduled** orders only, not every open Preventative order.
+  A person may legitimately open a second preventative order.
+- The scan sets `autoScheduled: true`. `maintenance.service#createWorkOrder` maps the unique
+  violation to **409**, and the scan counts it as **`skipped`**, before any notification or webhook.
+- The header comment now separates repeated runs from concurrent ones.
+
+**Tests.**
+- `calibrationScheduler.w03.test.js`, "W-03 — a concurrent scan's work order is a skip, not an
+  error". Across the whole file, 9 of 11 fail at `fabc3be`.
+- `maintenance.w30.test.js`, "maps the partial unique index's violation to 409 with a state
+  explanation".
+- `0060-work-order-auto-scheduled-unique.test.js`, which cannot load at `fabc3be`.
+
+**Verified on real PostgreSQL 18.6**, in a throwaway `pgvector/pgvector:pg18` container:
+- The full `db.sync()` + `migrator.up()` applied 0060.
+- A second `migrator.up()` applied nothing.
+- A direct re-run of `up`, then `down`, which drops the index and keeps the column, then `up` again,
+  all worked.
+- `\d maintenance_work_orders` shows the column and the index.
+- `calibrationScheduler.w03.live.test.js` passes 3 of 3. Two scans, forced to race by a barrier,
+  produce one work order, one audit row, one notification and one webhook event.
+- **Fail-before:** with the index dropped (`down` instead of `up`), 2 of 3 fail and the race
+  creates a second work order.
+
 ---
 
 ## W-04 — No background mutation writes an audit row
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-25 (ADR-069) |
 | **Severity** | **high — compliance** (ISO 17025, 21 CFR Part 11 §11.10(e)) |
 | **Verified** | from code, 2026-09-23 |
 
@@ -376,6 +443,88 @@ tests failed against the old code.
 
 **Still live:** tenant offboarding (W-01, which never runs), scheduler-created work orders, and IoT
 ingest. They wait on Q-13, the system actor.
+
+**2026-09-25 (W-30, ADR-061):**
+- Scheduler-created work orders are now audited inside their transaction, as
+  `system:calibration-scan`, and as the requesting user on a manual run. Test:
+  `maintenance.w30.test.js`, "with the system actor it commits the work order and ONE audit row
+  naming the job" (3 of 3 fail at `fabc3be`).
+- Offboarding has been audited since W-01.
+- **Still open:** IoT ingest, the tenant-wide notification, batch-job state transitions, and the
+  decision on the 365-day audit-log window.
+
+**What was changed (2026-09-25, ADR-069).** Every audit row below is written with
+`logAction(entry, { transaction })`, inside the transaction of the change it records. Each names a
+system actor from `constants/systemActors.js`.
+
+- **IoT ingest (`iot.service.js`), actor `system:iot-ingest`, new.** An out-of-tolerance reading,
+  its tenant-wide alert and one `CREATE Notification` audit row are ONE transaction. The row's
+  `changes` hold `IOT_ANOMALY_ALERT`, the reading id and the findings. An ordinary reading writes no
+  audit row. Q-13 is kept: individual readings are not audited, and the reading row is the record.
+  Writing the live test found **W-32**: no anomaly alert had ever been stored.
+- **The calibration scan's tenant-wide notification (`calibrationScheduler.service.js`).** The
+  notification and a `CREATE Notification` audit row form their own transaction. The row is
+  written as the job, or as the user on a manual run. `notificationService.emitNotification(data,
+  { transaction })` is the new transactional form: it re-throws, and it pushes the socket and email
+  delivery to `afterCommit`. Towards the scan the notification stays best-effort: a failure is
+  logged and not counted, and the work order has already committed.
+- **Batch jobs (`batchJob.service.js`), actor `system:batch-job`, new.** Every state change is
+  audited, with the queuing user in `changes.requestedBy`:
+  - the claim, PENDING→PROCESSING (claim, re-read and audit row in one transaction);
+  - completion;
+  - every failure path: handler error, no handler, the abandoned-job sweep and shutdown.
+
+  A failure updates only a row still `PROCESSING`, so a job the sweep already failed is not failed
+  or audited twice. The sweeps use `UPDATE … RETURNING` and audit each returned row in its own
+  tenant.
+- **The 365-day window — decided (ADR-069 §5).** An audit row's retention period is
+  **indefinite**. The 365 days was the pre-A-121 *deletion* window, which Q-12 removed. It is not a
+  retention period.
+  - A finite minimum would understate 21 CFR 11.10(e): the trail must be kept as long as the records
+    it describes, and those are kept indefinitely.
+  - "Window" may only ever mean hot storage. That requires an archival process that keeps the rows
+    retrievable through the audit API, keeps their integrity verifiable, and audits itself. None
+    exists, so there is no window.
+  - Recorded in `docs/DATABASE/10-AUDIT-LOGS.md` § Retention period.
+
+**Tests.**
+- `iot.service.test.js`:
+  - "W-04: an anomaly's reading, alert and ONE audit row naming system:iot-ingest share a
+    transaction"
+  - "W-04: a failed audit insert rejects the ingest (the transaction rolls the alert back)"
+  - "W-04 / Q-13: an ordinary reading writes no audit row and opens no transaction"
+- `calibrationScheduler.service.test.js`:
+  - "W-04: a scheduled scan's tenant-wide notification is audited as system:calibration-scan, in
+    its transaction"
+  - "W-04: a manual run's notification names the requesting user, not the job"
+  - "W-04: a failed audit insert means no notification is counted"
+  - "W-04: a notification whose transaction fails is logged and not counted; the device is not an
+    error"
+- `notification.service.test.js`:
+  - "W-04: with a transaction, writes in it and delivers only after the COMMIT"
+  - "W-04: with a transaction, a failed insert is RE-THROWN so the caller rolls back"
+- `batchJob.service.test.js`, describe "W-04 — every state change writes one audit row, in its
+  transaction", 7 tests. Among them:
+  - "a completed job: PENDING -> PROCESSING and PROCESSING -> COMPLETED, naming the job and who
+    asked"
+  - "the abandoned-job sweep audits each failed row in ITS OWN tenant"
+  - "a job the sweep already failed is not failed, or audited, a second time"
+- `systemActors.a124.test.js`, "the list is closed and frozen…", now lists the two new actors.
+- **Live, PostgreSQL 18.6** (the 0033 actor CHECK in force):
+  - `backgroundJobs.w12.live.test.js`:
+    - "an anomaly stores the reading, the tenant-wide alert and ONE audit row naming
+      system:iot-ingest"
+    - "an ordinary reading is stored with no audit row (ADR-051 Q-13)"
+    - "the abandoned-job sweep fails each stale job and audits it in ITS OWN tenant"
+  - `calibrationScheduler.w03.live.test.js`: the race test now also asserts ONE `Notification`
+    audit row by `system:calibration-scan`.
+  - `batchJob.w07.live.test.js`: its cleanup now deletes the new audit rows first (RESTRICT FK).
+
+**Fail-before** (a `git worktree` at `beb0c4b`, with the new tests copied in):
+- every W-04 test named above fails;
+- live, the anomaly test fails with `invalid input value for enum enum_notifications_type:
+  "system"` (W-32);
+- the sweep test and the w03 notification-audit assertion fail on the missing rows.
 
 ---
 
@@ -474,7 +623,7 @@ minute at the 2 s cap, where the old code logged four and then died. Not throttl
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-25, verified on a real RabbitMQ 4 (ADR-061) |
 | **Severity** | **high** |
 | **Verified** | from code. **Needs a running broker to demonstrate** — restart it and watch both queues stop draining |
 
@@ -523,13 +672,37 @@ broker multiplies consumers, which is a different bug with the same symptom.
 - [ ] the broker down at boot is retried, and the log says so once per attempt, not once per second
 - [ ] exactly one consumer per queue after ten forced reconnects
 
+**What was changed (2026-09-25, ADR-061).** `rabbitmq.service#startConsumer(queue, handler,
+{prefetch, setup})`:
+- It registers on a channel of its own.
+- It re-registers with capped exponential backoff (`RABBITMQ_RECONNECT_BASE_MS` /
+  `RABBITMQ_RECONNECT_MAX_MS`) when the channel closes, the broker cancels, or registration fails.
+  It logs once per attempt.
+- It re-runs `setup` (the queue declarations) each time.
+- There is one consumer per queue.
+
+Both workers (`emailQueue.service#processEmailQueue` and `workers/batchJob.worker.js`) use it.
+
+**Tests.**
+- `rabbitmq.service.test.js` (32 tests, over the in-memory broker `tests/fixtures/fakeAmqp.js`):
+  - "a message published AFTER a broker restart is consumed — the consumer re-registered itself"
+  - "a broker that is down at boot is retried, one log line per attempt, until it is up"
+  - "exactly ONE consumer per queue after ten forced reconnects"
+  - At `fabc3be`, 24 of 32 fail.
+- `emailQueue.service.test.js`, "an email queued after a broker restart is still sent".
+- `batchJob.worker.test.js`, "a job published after a broker restart is still run".
+
+**Live:** `rabbitmq.w06.live.test.js` (opt-in, `RABBITMQ_LIVE_TEST=1`). It passes 4 of 4 against
+`rabbitmq:4-alpine` with a real `docker restart` of the broker. Both consumers logged
+"re-registered", and a message published after the restart was consumed. At `fabc3be`, 4 of 4 fail.
+
 ---
 
 ## W-07 — A batch job interrupted by SIGTERM is acked on redelivery and never runs
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-25 (ADR-060) |
 | **Severity** | **medium–high** |
 | **Verified** | from code. **Needs a broker to demonstrate** |
 
@@ -578,13 +751,44 @@ a reason.
 - [ ] shutdown stops consuming before it closes the channel, and waits for in-flight work
 - [ ] no `batch_jobs` row can stay `PROCESSING` past a bounded age without something saying so
 
+**What was changed (2026-09-25, ADR-060).**
+
+- **The claim is the row.** `batchJob.service#runJob(jobId, tenantId)` does an atomic
+  `PENDING -> PROCESSING` UPDATE inside the job's tenant context. A lost claim is `ran: false`, and
+  the worker acks it with a log line.
+- A running job **heartbeats** its row (`BATCH_JOB_HEARTBEAT_MS`, 60 s).
+- `failAbandonedJobs` (every 5 min, on every replica, idempotent) fails a `PROCESSING` row that has
+  been silent for `BATCH_JOB_STALE_MINUTES` (10), with a reason.
+- **Shutdown** (`index.js`, then `stopBatchJobWorker`) cancels the consumers, waits for in-flight
+  handlers (`RABBITMQ_DRAIN_TIMEOUT_MS`), and fails the jobs it had to abandon.
+- The redelivered message then finds a `FAILED` row and is acked.
+- **Nothing is re-run automatically.** Handlers are not declared idempotent.
+- The worker no longer uses the Redis claim.
+
+**Tests.**
+- `batchJob.service.test.js` (30 tests; 20 fail at `fabc3be`).
+- `batchJob.worker.test.js` (16 tests; 16 fail at `fabc3be`), including "shutdown mid-job fails the
+  job; its redelivery elsewhere settles without running it". That test stops the worker mid-job,
+  closes the connection, and starts a fresh worker graph on the same in-memory broker.
+- `rabbitmq.service.test.js`, "stopConsumers cancels, then waits for in-flight handlers".
+
+**Live on PostgreSQL 18.6:** `batchJob.w07.live.test.js` (opt-in, `BATCHJOB_PG_LIVE_TEST=1`)
+passes 3 of 3:
+- Two runners racing on one row: one runs, the other is a no-op.
+- The heartbeat moves `updated_at`, and the sweep fails a silent `PROCESSING` row but not a live one.
+
+At `fabc3be`, 3 of 3 fail.
+
+**Also fixed here:** a message whose body parses to a non-object (`null`, a number) used to throw
+before being settled. It held a prefetch slot until its channel closed. It is now dead-lettered.
+
 ---
 
 ## W-08 — Batch jobs do nothing, and report success
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-25, by decision, not by handlers (ADR-060) |
 | **Severity** | **medium–high** |
 | **Verified** | from code, 2026-09-23 |
 
@@ -632,13 +836,35 @@ claiming work that did not happen.
 - [ ] `progress` and `processedItems` come from the handler, not from the request's `totalItems`
 - [ ] whatever the board says about batch jobs is corrected to match
 
+**What was changed (2026-09-25, ADR-060).** The fix direction's second option: **there is no
+default handler.**
+- `createJob` refuses an unregistered type with **400**, naming the registered types or saying
+  there are none.
+- A queued job of an unregistered type ends **`FAILED`**, with `errorDetails` saying nothing was
+  processed.
+- `resultUrl` and `processedItems` come **only** from the handler's return value.
+- There is no `/download` route, so there is nothing to fabricate; a request for it is a 404.
+
+**This means the feature does nothing.** No type is registered in `src/`, so `POST
+/api/v1/jobs/test` answers 400 for every type. Writing a real handler is new work, not part
+of this card.
+
+**Tests:** `batchJob.service.test.js`:
+- "refuses an unregistered type with 400 and creates nothing"
+- "a queued job of an unregistered type ends FAILED with the reason, never COMPLETED (W-08)"
+- "a handler that returns nothing leaves processedItems as the handler set it and no resultUrl
+  (W-08)"
+
+All three fail at `fabc3be`. The previous test file asserted the opposite: "processes and
+completes a job with no handler", with a `resultUrl`.
+
 ---
 
 ## W-09 — The email retry re-publishes *and* dead-letters, from a timer that can take the server down
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-25, verified on a real RabbitMQ 4 (ADR-061) |
 | **Severity** | medium |
 | **Verified** | from code. **Needs a broker to demonstrate the DLQ duplication** |
 
@@ -692,6 +918,29 @@ rather than leave a control that does not control.
 - [ ] a throw anywhere in the consumer cannot reach `uncaughtException` — asserted by a test that
       closes the channel and then fails a job
 - [ ] `consumerTimeout` is gone or does something
+
+**What was changed (2026-09-25, ADR-061).**
+
+- Retry *n* is published to `email_retry_<ms>`, a durable queue whose `x-message-ttl`
+  dead-letters it back onto `email_queue`. The original is **acked**. Only the last failure is
+  nacked, to `email_dlq`.
+- The in-process timer is gone, and so is `consumerTimeout`:
+  `grep -rn consumerTimeout backend/src` returns nothing.
+- A retry sent on a channel that has closed is logged. The broker then redelivers the unacked
+  original. Nothing is thrown out of the consumer, and `rabbitmq.service`'s dispatch catches
+  anything a handler throws.
+
+**Tests.** `emailQueue.service.test.js` (27 tests, rewritten against the in-memory broker; 20 fail at
+`fabc3be`):
+- "a job that always fails produces exactly ONE DLQ message, after the last attempt"
+- "a restart during the backoff still delivers the retry: the delay is a durable queue"
+- "the channel closing mid-send cannot throw out of the consumer: the job is redelivered and sent"
+
+**Live, RabbitMQ 4:** `rabbitmq.w06.live.test.js`, "an email that always fails dead-letters ONCE".
+On the same broker the **old code left 4 DLQ copies** of one always-failing email, after 4 sends.
+
+**Also fixed here:** a message body that parses to a non-object is dead-lettered instead of throwing
+before it is settled.
 
 ---
 
@@ -849,7 +1098,7 @@ matrix returns with Redis for the rest of its hour. `deleteRole` does not fail o
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-25 (ADR-060, ADR-069) — live on PostgreSQL 18.6 |
 | **Severity** | medium |
 | **Verified** | from code, 2026-09-23 |
 
@@ -904,6 +1153,91 @@ which makes them greppable and reviewable instead of implicit.
       hand-written `where` that omits the predicate
 - [ ] `batchJob.service.runJob` uses the `tenantId` its own message carries
 - [ ] every remaining `isSystemTask` is a named, reviewed opt-out
+
+**Partly fixed (2026-09-25, ADR-060).**
+
+- `utils/jobContext.util.js` has two helpers:
+  - `runForTenant(tenantId, fn)`: the hooks confine and stamp every query to that tenant.
+  - `runAsSystem(reason, fn)`: a named cross-tenant opt-out. It refuses an empty reason.
+  Neither helper is a super admin.
+- **Using them:**
+  - The batch-job runner, in the tenant its **message** carries. It refuses a message with no
+    `tenantId`.
+  - The batch-job sweeps.
+  - The calibration scan: the all-tenant read uses `runAsSystem`, and each device's work runs under
+    `runForTenant(device.tenantId)`.
+- The tenant-lifecycle processor (W-01) and the scheduled backup already ran each tenant in its own
+  context.
+
+**Tests.**
+- `jobContext.w12.test.js`: "a hand-written where that forgets the tenant is confined to tenant A"
+  and "a where naming ANOTHER tenant is overridden to tenant A". These use the real global hooks on a
+  real model. The suite cannot load at `fabc3be`.
+- `batchJob.w07.live.test.js`, "a runner confined to another tenant cannot claim the job, and leaves
+  it PENDING". This one ran live on PostgreSQL 18.6.
+
+**Still open:**
+- The retention purge, session cleanup, the quarantine sweep, the webhook dispatcher and MQTT ingest
+  use neither helper.
+- The DoD's "every remaining `isSystemTask` is a named, reviewed opt-out" is not met for them.
+
+**What was changed (2026-09-25, ADR-069) — DONE.**
+
+- **The opt-outs are a closed list.** `SYSTEM_TASKS` in `utils/jobContext.util.js` has six
+  entries, and `runAsSystem` refuses any other reason. A test scans `src/` and fails when
+  `isSystemTask: true` appears outside that file, or when a `runAsSystem(...)` passes a literal.
+- **Each remaining job now declares its context:**
+
+  | Job | Context |
+  |---|---|
+  | Retention purge | `runForTenant(tenant)` per tenant. The `tenants` list itself is not tenant-scoped |
+  | Session cleanup | `SYSTEM_TASKS.SESSION_CLEANUP`. An operator's session has no tenant, so a per-tenant loop would miss it |
+  | Quarantine sweep | `SYSTEM_TASKS.QUARANTINE_SWEEP`. One shared directory, no table |
+  | Webhook dispatcher | The raw claim runs under `SYSTEM_TASKS.WEBHOOK_DISPATCH`. Each claimed delivery runs under `runForTenant(its tenant)` |
+  | MQTT and HTTP IoT ingest | `runForTenant(tenant)` inside `ingestReading`. A topic naming another tenant's device finds nothing |
+  | Tenant lifecycle, scheduled backup | They had a per-tenant context already. Both now use `runForTenant` |
+
+- **Found and fixed: W-33.** Giving the retention purge a tenant context exposed it. The isolation
+  hook put `tenantId` into a bulk DELETE after Sequelize had mapped names to columns, and PostgreSQL
+  refused every one. `beforeBulkDestroy` now uses the column name.
+
+**Tests.**
+- `jobContext.w12.test.js`:
+  - "ADR-069: runAsSystem refuses a reason that is not a reviewed SYSTEM_TASKS entry"
+  - "the list is frozen and names exactly the reviewed jobs"
+  - "no source file but jobContext.util sets isSystemTask: true"
+  - "every runAsSystem call names a SYSTEM_TASKS entry, never a literal"
+- `scheduledJobs.w17.test.js`:
+  - "the sweep reads tenants in keyset pages and purges each inside ITS OWN tenant context"
+  - "runs as the named platform task, never in a tenant and never as a super admin" (sessions)
+  - "reads expired tenants in keyset pages of ids, and offboards each in its own tenant"
+  - "claims as the named system task and delivers each row in its own tenant" (webhooks)
+- `quarantineSweep.s33.test.js`, "W-12: runs in the named platform context, never a tenant's and
+  never a super admin's".
+- `iot.service.test.js`:
+  - "W-12: the ingest runs confined to the tenant it was given, not as a system task"
+  - "W-12: an ingest with no tenant is refused before any query"
+- **Live, PostgreSQL 18.6** — `backgroundJobs.w12.live.test.js`:
+  - "a destroy with NO tenant predicate inside runForTenant(A) deletes only A's rows, in a bounded
+    statement"
+  - "the sweep purges each tenant in batches, one audit row per pass, and never touches a tenant on
+    hold"
+  - "a message naming tenant B for tenant A's device writes nothing, in either tenant"
+  - "deletes every expired session — both tenants' and a platform operator's — in batches, and
+    keeps live ones"
+
+**Fail-before** (a worktree at `beb0c4b`):
+- all four `jobContext.w12` tests above fail;
+- so do the `scheduledJobs.w17` context tests;
+- live, the first two tests fail with `column "tenantId" does not exist` (W-33).
+
+"A message naming tenant B…" fails at `beb0c4b` only because of rows the earlier failures left
+behind. Its own predicate was explicit before, so it is **not** independent fail-before evidence.
+The session test passes at `beb0c4b`: its SQL was always correct, and it pins the new behaviour.
+
+The two-tenant fixture `createTwoTenants()` was **not** used. It is a request-path double with no
+hooks and no SQL (its header says so). What W-12 needed proved is the global hooks and the
+statements they produce, so the proof is the real hooks on real models against PostgreSQL.
 
 ---
 
@@ -1116,7 +1450,7 @@ stops a tenant's purge.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-25 (ADR-069, ADR-073): every scheduled job bounded; emit-path first attempts capped; the scan commits per tenant chunk; offboarding builds no export |
 | **Severity** | low–medium |
 | **Verified** | from code. Impact depends on row counts nobody has measured here |
 
@@ -1150,13 +1484,148 @@ or write it somewhere.
 - [ ] outbound webhook concurrency is capped, with the cap named
 - [ ] `offboardTenant` does not build an export it throws away
 
+**Partly fixed (2026-09-25).**
+
+- The calibration scan reads due devices in keyset pages (`CALIBRATION_SCAN_BATCH_SIZE`, 200).
+- It reads the open work orders of a page in **one** query, instead of one query per device.
+- Test: `calibrationScheduler.w03.test.js`, "reads due devices in keyset pages and open work orders
+  once per page".
+
+**Still open:**
+- Creating a work order is still a transaction per due device. That is inherent in the work.
+- The other jobs' `findAll` calls are not bounded.
+- Webhook concurrency is not capped.
+- `offboardTenant` still builds an export it throws away.
+
+**What was changed (2026-09-25, ADR-069 §6).** Every scheduled job now reads and deletes in bounded
+pages or batches:
+
+| Job | Bound | Setting (default) |
+|---|---|---|
+| Retention sweep | tenants in keyset pages of ids | `RETENTION_SWEEP_TENANT_PAGE_SIZE` (100) |
+| Retention purge | each pass deletes at most N rows per table (`DELETE … WHERE id IN (SELECT id … LIMIT n)`), with one transaction and one audit row per pass. A table that filled its batch gets another pass | `RETENTION_PURGE_BATCH_SIZE` (5000) |
+| Retention sweep | every tenant gets at least one pass per run. After the budget, catch-up passes stop and the tenant is counted in `incomplete` | `RETENTION_SWEEP_BUDGET_MS` (15 min) |
+| Session cleanup | bounded DELETE batches until a short batch or the budget | `SESSION_CLEANUP_BATCH_SIZE` (1000), `SESSION_CLEANUP_BUDGET_MS` (60 s) |
+| Quarantine sweep | the directory is streamed with `opendir`, and a run stops after N entries with `truncated: true` | `QUARANTINE_SWEEP_MAX_ENTRIES` (5000) |
+| Tenant lifecycle | ids in keyset pages | `TENANT_LIFECYCLE_PAGE_SIZE` (50) |
+| Scheduled backup | tenants in keyset pages. The prune walks `(tenant ASC, created_at DESC, id DESC)` pages and carries the tenant's rank across a page boundary | `BACKUP_PRUNE_PAGE_SIZE` (500) |
+| Webhook dispatcher | already `LIMIT`ed, so one pass has at most N POSTs in flight | `WEBHOOK_DISPATCH_BATCH` (50) |
+
+The watchdog's stuck-job read was already bounded (`limit: 20`). The batch-job sweeps are one
+conditional `UPDATE` each.
+
+**Tests.**
+- `scheduledJobs.w17.test.js`:
+  - "a table that fills its batch gets another pass, each pass one transaction and one audit row"
+  - "stops starting passes once the deadline has passed, and says the tenant is incomplete"
+  - "the sweep counts a tenant left with rows as incomplete"
+  - "deletes in bounded batches until a batch comes back short"
+  - "stops after the batch in hand once its time budget is spent"
+  - "reads expired tenants in keyset pages of ids…"
+  - "the tenant list is read in keyset pages"
+  - "the prune carries a tenant's rank across a page boundary and pages on the composite key"
+- `quarantineSweep.s33.test.js`:
+  - "W-17: one run examines at most `limit` entries and says it stopped early"
+  - "W-17: QUARANTINE_SWEEP_MAX_ENTRIES sets the bound; an invalid value falls back to the default"
+- `tenantScope.bulkDestroy.w33.test.js`, "a bounded destroy carries it inside the LIMIT subquery".
+- **Live, PostgreSQL 18.6** — `backgroundJobs.w12.live.test.js`:
+  - "the sweep purges each tenant in batches, one audit row per pass…" (batch 2, tenant page 1)
+  - "the composite keyset walks every tenant's backups across pages, keeping the newest keepMin of
+    each"
+
+**Fail-before** (a worktree at `beb0c4b`): every `scheduledJobs.w17` bound test and both quarantine
+bound tests fail. The live keyset test passes at `beb0c4b`, because the old prune read everything
+in one query. It pins the new paging, not a defect.
+
+**DoD after this change:**
+- [x] no scheduled job calls `findAll` without a bound
+- [ ] the calibration scan's per-device **writes** are still linear in devices. Its reads are
+      constant per page
+- [ ] outbound webhook concurrency: capped per dispatcher pass (`WEBHOOK_DISPATCH_BATCH`). The first
+      attempt `emitEvent` makes per event is **not** capped
+- [ ] `offboardTenant` still builds an export it throws away. `tenantLifecycle.service.js` is being
+      edited under D-23, so this was left alone
+
+**What was changed (2026-09-25, ADR-073) — the remainder.**
+
+1. **Emit-path cap.** `emitEvent` keeps at most `WEBHOOK_EMIT_CONCURRENCY` (10) first attempts in
+   flight per process. A delivery past the cap is written, gets no immediate attempt, and is counted
+   in the result's `deferred`. The row is already due, so the dispatcher's next pass (15 s) sends it.
+   Nothing is queued in memory.
+2. **Offboarding builds no export (removed, not kept).** It was built before the transaction,
+   discarded by the scheduler, and ignored by the operator's screen, which nonetheless said "data
+   exported". The data stays readable through `GET /tenants/:tenantId/export` until the hard delete.
+   The response is `{ tenant }`. The frontend's type, test and toast were updated.
+3. **The scan commits per tenant chunk.** Within a page, due devices are grouped by tenant and split
+   into chunks of `CALIBRATION_SCAN_TX_BATCH_SIZE` (25). Each chunk gets two transactions:
+   - the work orders: `maintenanceService.createAutoScheduledWorkOrders`, which does one `INSERT …
+     ON CONFLICT DO NOTHING` and a read-back **by id**, then writes one audit row per order;
+   - the notifications, one audit row each.
+
+   A device whose order a concurrent scan created is `conflicted` and counted as a skip (W-03 is
+   intact: `calibrationScheduler.w03.live.test.js` still passes).
+
+**Tests.**
+- `webhook.emitCap.w17.test.js`:
+  - "writes a row for every webhook but starts at most WEBHOOK_EMIT_CONCURRENCY attempts; the rest are deferred"
+  - "the cap is per process, across events: a second event while two are in flight starts none"
+  - "a slot is released when its attempt settles, so the next event's first attempt runs"
+  - "a failed attempt releases its slot too"
+  - "WEBHOOK_EMIT_CONCURRENCY defaults to 10, and an invalid value falls back to it"
+- `tenantLifecycle.service.test.js`, "W-17: offboarding builds no export — no user, setting,
+  subscription or invoice is read". Also `tenantLifecycle.export.a179.test.js`, "the offboarding
+  response carries no export", which replaces "…carries the same redacted export".
+- `maintenance.autoScheduled.w17.test.js` (7 tests), including:
+  - "inserts every item in ONE statement, ON CONFLICT DO NOTHING, in one transaction"
+  - "writes one audit row per created order, naming the actor and that order, in the transaction"
+  - "reads back what was inserted BY ID, so a conflicted device is reported, not misattributed"
+  - "a device that is not the tenant's is reported missing and never inserted (A-220)"
+- `calibrationScheduler.w03.test.js`, "W-17 (ADR-073) — work orders and notifications in one
+  transaction per tenant chunk":
+  - "one batch call per chunk of one tenant's devices; two tenants never share one"
+  - "the chunk's notifications share ONE transaction, each with its own audit row naming its device and work order"
+  - "a chunk in which nothing was created opens no notification transaction"
+  - "CALIBRATION_SCAN_TX_BATCH_SIZE defaults to 25, and an invalid value falls back to it"
+- `calibrationScheduler.service.test.js`:
+  - "a failed chunk is an error for each of its devices, and the next chunk still runs"
+  - "a device the batch reports as not the tenant's is an error, and nothing is notified for it"
+- **Live, PostgreSQL 18.6** — `calibrationScheduler.batch.w17.live.test.js` (opt-in
+  `CALIBRATION_BATCH_PG_LIVE_TEST=1`):
+  - "chunks of 2: three work-order transactions and three notification transactions for five
+    devices; a device conflicted AFTER the read is skipped without aborting its chunk". It checks
+    that every audit row, notification audit and webhook payload names its own device and order;
+  - "an all-tenant scan puts each tenant's devices in its own transaction, and skips the open ones by
+    its read guard".
+
+**Fail-before** (a worktree at `beb0c4b`):
+- every test named above from `webhook.emitCap.w17`, `tenantLifecycle.service`,
+  `maintenance.autoScheduled.w17` and the W-17 block of `calibrationScheduler.w03` fails;
+- 7 pre-existing tests in `calibrationScheduler.w03.test.js` fail there only because the mocked
+  seam moved from `createWorkOrder` to `createAutoScheduledWorkOrders`;
+- the two new `calibrationScheduler.service.test.js` tests were not run at `beb0c4b`;
+- the live chunk test fails; the live all-tenant test passes, because its behaviour is unchanged.
+
+**DoD (final):**
+- [x] no scheduled job calls `findAll` without a bound
+- [x] the calibration scan's per-device queries are constant per chunk: 2 commits per ≤25 devices of
+      a tenant. The exception is one autocommit webhook-delivery row per subscribed webhook per
+      device, from `emitEvent`
+- [x] outbound webhook concurrency is capped, with the caps named: `WEBHOOK_DISPATCH_BATCH` per
+      dispatcher pass, and `WEBHOOK_EMIT_CONCURRENCY` for first attempts
+- [x] `offboardTenant` does not build an export it throws away
+
+**Found while doing it, open.** The offboard response returns the raw `Tenant` row. Its `settings`
+JSONB can mirror a credential, and A-179's `exportedTenant` strips that only from the export. This
+was true before, beside the export. `suspend`, `resume` and `cancelOffboarding` return the same row.
+It is super-admin only, and it needs its own card.
+
 ---
 
 ## W-18 — Connection, channel and timer lifecycle
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-25 (ADR-061) |
 | **Severity** | low–medium |
 | **Verified** | from code. The duplicate-connection race needs a broker to observe |
 
@@ -1193,6 +1662,23 @@ getters (`if (connecting) return connecting`). Export one `closeRabbitMQ` and ca
       concurrently and counts `amqplib.connect` invocations
 - [ ] shutdown closes every AMQP connection the process opened
 - [ ] `emailQueue.service` holds no `amqplib` import
+
+**What was changed (2026-09-25, ADR-061).**
+
+- `emailQueue.service` holds no `amqplib` import and no connection of its own.
+- There is one connection per process, in `rabbitmq.service`, with in-flight memos on both
+  `getConnection` and `getChannel`. The connect timer is `unref()`d.
+- There is **one** `closeRabbitMQ`. `index.js` imports it from `rabbitmq.service` and calls it once.
+  It stops the consumers, then closes their channels, the publishing channel and the connection.
+
+**Tests.**
+- `rabbitmq.service.test.js`:
+  - "ten concurrent getConnection() calls dial ONCE"
+  - "ten concurrent first callers share ONE connection and ONE channel"
+  - "closeRabbitMQ closes the consumer channels, the publishing channel and the ONE connection"
+- `emailQueue.service.test.js`: "queues each type as a persistent message whose messageId is the
+  job id" asserts one connection. "closeRabbitMQ closes the process's ONE connection (W-18)" also
+  passes.
 
 ---
 
@@ -1276,3 +1762,275 @@ this before anyone routes the function.
 `enterGracePeriod` accepts an active tenant and sets the deadline. If that tenant is suspended after
 the deadline has passed, the next scheduled run offboards it at once, with no grace. **Fix
 direction:** a 409 with a state explanation when the tenant is not suspended.
+
+---
+
+## W-30 — The scheduled calibration scan's work orders were all rolled back
+
+| | |
+|---|---|
+| **Status** | **DONE** 2026-09-25 (ADR-061) |
+| **Severity** | **high** |
+| **Verified** | by test against the audit-ledger fixture (real ENUM, NOT NULL columns, migration 0033's actor CHECK, real rollback) |
+
+**Evidence.**
+- A-190 moved `maintenance.service#createWorkOrder` into a transaction together with its audit row.
+- A-124 made `logAction` refuse an entry that names neither a user nor a system actor.
+- The calibration scan called `createWorkOrder(tenantId, data)` with **no actor**.
+
+So every work order the **scheduled** scan tried to create was rolled back, and was counted as a
+per-device error. A manual run from the API was unaffected, because it had a user. Found while
+fixing W-03.
+
+**Fix.**
+- `SYSTEM_ACTORS.CALIBRATION_SCAN` (`system:calibration-scan`) is passed as the actor of a
+  scheduled scan.
+- A manual run passes the requesting user, and an actor without a `userId` falls back to the
+  system actor.
+
+**Tests.**
+- `maintenance.w30.test.js`:
+  - "with NO actor (what the scan passed before) the work order is rolled back"
+  - "with the system actor it commits the work order and ONE audit row naming the job"
+  - 3 of 3 fail at `fabc3be`.
+- `calibrationScheduler.w03.test.js`, "a scheduled scan (no actor) is attributed to
+  system:calibration-scan".
+- Live on PostgreSQL 18.6: `calibrationScheduler.w03.live.test.js` asserts one audit row for the
+  one work order.
+
+---
+
+## W-31 — The batch worker acked on the wrong channel
+
+| | |
+|---|---|
+| **Status** | **DONE** 2026-09-25 (ADR-061) |
+| **Severity** | medium |
+| **Verified** | against the in-memory broker, and live on RabbitMQ 4 |
+
+**Evidence.**
+- `workers/batchJob.worker.js` consumed on one channel and acked through
+  `rabbitmq.getChannel()`, the shared **publishing** channel.
+- A delivery tag is per channel. The broker answers an ack of a tag the channel never delivered
+  with `PRECONDITION_FAILED` and **closes that channel**.
+- The result: every batch-job ack broke publishing for every producer in the process, until the
+  channel was reopened.
+
+**Fix.**
+- A handler receives `(msg, ch)`, where `ch` is the arrival channel.
+- `rabbitmq.ack(ch, msg)` and `nack(ch, msg)` settle there.
+- They never throw: a closed channel means the broker has already requeued the message.
+
+**Tests.**
+- `rabbitmq.service.test.js`:
+  - "acking on the PUBLISHING channel (what the batch worker did) closes that channel"
+  - "ack/nack on the channel the message came on; a closed channel is logged, not thrown"
+- `batchJob.worker.test.js`, "consumes, acks on the arrival channel, and dead-letters a failure".
+- Live: `rabbitmq.w06.live.test.js` raised no channel error across its runs.
+
+---
+
+## W-32 — The IoT anomaly alert had never been stored
+
+| | |
+|---|---|
+| **Status** | **DONE** 2026-09-25 (ADR-069) |
+| **Severity** | medium |
+| **Verified** | live on PostgreSQL 18.6 |
+
+**Evidence.**
+- `iot.service.js#ingestReading` created the alert with `type: "system"`.
+- `enum_notifications_type` is `{SYSTEM, CALIBRATION, INVENTORY, MAINTENANCE}`, and PostgreSQL
+  answered `invalid input value for enum enum_notifications_type: "system"`.
+- The reading had already autocommitted. So every anomaly stored its reading, then rejected the
+  ingest, and no alert ever reached the hospital.
+- Three unit tests and the A-46 route test asserted `"system"`. They held the defect in place: a
+  mock accepts any string.
+
+**Fix.** `type: "SYSTEM"`. The reading, the alert and the audit row are one transaction now (W-04),
+so a refused alert can no longer leave its reading behind either.
+
+**Tests.**
+- `backgroundJobs.w12.live.test.js`, "an anomaly stores the reading, the tenant-wide alert and ONE
+  audit row naming system:iot-ingest". At `beb0c4b` it fails with the ENUM error above.
+- `iot.service.test.js` and `iot.provisioning.a29.test.js` now assert `"SYSTEM"`.
+
+---
+
+## W-33 — A bulk destroy inside a tenant context named a column that does not exist
+
+| | |
+|---|---|
+| **Status** | **DONE** 2026-09-25 (ADR-069) |
+| **Severity** | **high** |
+| **Verified** | live on PostgreSQL 18.6, and in the real Sequelize query generator |
+
+**Evidence.**
+- `Model.destroy` calls `Utils.mapOptionFieldNames(options, this)` **before**
+  `runHooks("beforeBulkDestroy", options)` (`sequelize/lib/model.js`, 6.x). Nothing maps the names
+  again.
+- `tenantScope.util.js#applyTenantWhere` then added `{ tenantId: ctx }`, and `DELETE … WHERE
+  "tenantId" = …` reached PostgreSQL.
+- So every bulk destroy of a model whose tenant attribute is `tenantId` (column `tenant_id`) failed
+  whenever a tenant context was active: `column "tenantId" does not exist`.
+- `Session` escaped only because its attribute is literally `tenant_id`.
+- Finds and bulk updates map names after their hooks, so they were never affected.
+
+**Why nobody saw it.** Background jobs ran with no context, so the hook skipped them. The first live
+run of the tenant-scoped retention purge (W-12) failed for every tenant. On the request path, a
+super admin also skips the hook. A tenant user's bulk destroy on such a model has been failing. The
+affected routes are **five**, enumerated below.
+
+**Fix.** The `beforeBulkDestroy` hook calls `applyTenantWhere(options, model, { byField: true })`,
+which uses the attribute's `field`.
+
+**Tests.**
+- `tenantScope.bulkDestroy.w33.test.js` runs the real Sequelize PostgreSQL generator with the real
+  hooks. All 3 tests fail at `beb0c4b`:
+  - "the predicate is the COLUMN tenant_id, never the attribute tenantId"
+  - "a bounded destroy carries it inside the LIMIT subquery"
+  - "a where naming another tenant is overridden, not AND-ed with an unknown column"
+- Live: `backgroundJobs.w12.live.test.js`, "a destroy with NO tenant predicate inside
+  runForTenant(A) deletes only A's rows, in a bounded statement". It fails at `beb0c4b` with the
+  error above.
+- `tenantScope.test.js`, "bound hooks apply scoping…", still passes: an attribute with no `field`
+  keeps its name.
+
+**Affected routes — enumerated 2026-09-25.** Every `.destroy(` in `backend/src` (tests excluded)
+was classified by model, bulk/instance and the context that reaches it.
+
+A call site could fail only when all four were true: it is a **static** `Model.destroy` (an instance
+`destroy()` fires `beforeDestroy`, not `beforeBulkDestroy`); the model's tenant attribute is
+`tenantId` with column `tenant_id`; the hook resolves to `filter` or `deny`; and nothing passes
+`skipTenantScope`. A super admin (`superAdminOnly`), a script, the ALLOW_SEEDING bootstrap and
+`runAsSystem` all skip the hook. A paranoid model fails as well: its bulk soft delete is an
+`UPDATE … SET deleted_at` built from the same mapped `where`.
+
+**The five tenant-user routes that answered 500.** They were verified live on PostgreSQL 18
+(pgvector/pgvector:pg18). The test file is `bulkDestroyRoutes.w33.live.test.js`, which is opt-in
+with `W33_PG_LIVE_TEST=1`. It has 12 tests and all 12 pass with the fix. With `beb0c4b`'s
+`tenantScope.util.js`, exactly these five fail with `column "tenantId" does not exist`. That result
+is the same on a clean `beb0c4b` checkout and on today's `src/` with only that one file reverted.
+
+| Route (gate) | Call site | Was broken | Test |
+|---|---|---|---|
+| `DELETE /api/v1/kanban/projects/:projectId` (auth + project owner) | `kanban.service.js#deleteProject` → `KanbanProject.destroy({ where: { id } })` (paranoid) | **yes**: no tenant user could delete a board | "a tenant user deletes their own project: it succeeds, and tenant B's project is untouched"; cross-tenant: "tenant B's project id answers 404 and deletes nothing" |
+| `DELETE /api/v1/notifications/:notificationId` (auth) | `notification.service.js#removeForUser` → `Notification.destroy` | **yes**, for a personal notification. A tenant-wide one is only hidden through `notification_states` and worked | "DELETE /:notificationId removes the caller's personal notification, and tenant B's are untouched"; cross-tenant: "DELETE /:notificationId with tenant B's id answers 404 and deletes nothing" |
+| `DELETE /api/v1/notifications/bulk` (auth) | same | **yes**, whenever a personal notification was among the ids | "DELETE /bulk deletes the caller's ids and ignores tenant B's"; "DELETE /bulk naming only tenant B's ids answers 404 and deletes nothing" |
+| `DELETE /api/v1/notifications/all` (auth) | same | **yes**, whenever the caller had a personal notification | "DELETE /all removes every personal notification of the caller, and none of tenant B's" |
+| `DELETE /api/v1/storage/settings` (TENANT_ADMIN) | `storage/config.service.js#clearTenantConfig` → `TenantSettings.destroy` | **yes**: a tenant could not revert to platform storage | "a tenant admin reverts to the platform default: A's two rows go, B's stay" |
+
+**Not broken, and why.**
+
+| Route or caller | Call site | Why | Test |
+|---|---|---|---|
+| `DELETE /api/v1/feature-flags/:tenantId/:flagKey` (superAdminOnly) | `featureFlag.service.js#resetTenantFlag` (TenantSettings) | super admin skips the hook | "DELETE /api/v1/feature-flags/:tenantId/:flagKey — featureFlag.resetTenantFlag" (passes at `beb0c4b`) |
+| `DELETE /api/v1/oidc/clients/:clientId` (superAdminOnly) | `oidcProvider.service.js#deleteClient` (TenantSettings) | super admin | "DELETE /api/v1/oidc/clients/:clientId — oidcProvider.deleteClient" (passes at `beb0c4b`) |
+| `DELETE /api/v1/data-retention/:tenantId/legal-hold` (superAdminOnly) | `dataRetention.service.js#disableLegalHold` (TenantSettings) | super admin | "DELETE /api/v1/data-retention/:tenantId/legal-hold — dataRetention.disableLegalHold" (passes at `beb0c4b`) |
+| `POST /api/v1/data-retention/:tenantId/purge` (superAdminOnly) | `purgeBatch` (Notification, IotReading) | super admin on the route. The **scheduled** sweep failed only after W-12 wrapped it in `runForTenant` | `backgroundJobs.w12.live.test.js` (above) |
+| no route (`tenantLifecycle.service.js#hardDeleteOffboardedTenant` has no caller) | `unscoped().destroy` | passes `skipTenantScope: true`, and nothing calls it | — |
+| internal `/migration` seed/unseed (super admin or ALLOW_SEEDING) and scripts | `migration.service.js`, 46 bulk destroys | super admin, or no context | — |
+| `scripts/backfillEmbeddings.js` only | `ai.service.js#ingestDocument` (DocumentChunk) | no context; no route reaches it | — |
+| session cleanup scheduler | `session.service.js#cleanupExpiredSessions` (Session) | the attribute is literally `tenant_id`, and it runs under `runAsSystem` | — |
+| webhook-delivery purge job (new, untracked, owned by another agent) | `webhookDeliveryPurge.service.js#purgeTenant` (WebhookDelivery) | runs under `runForTenant`, so it **would** have failed before the fix. It is not in `beb0c4b` and is not a route | not covered here |
+
+These bulk destroys were never affected because their model is not tenant-scoped:
+- `kanban.service.js`: KanbanCardAssignee, KanbanCardLabel and KanbanCardRelation;
+- `menuGroup.service.js` ×3, `roles.service.js` ×3 and `seedMenuGroups.util.js`: RoleMenuPermission;
+- `userPermission.service.js`: UserMenuPermission;
+- `workflow.service.js`: WorkflowStep.
+
+That leaves 34 of the 105 call sites. 31 are instance `destroy()` calls. The other 3 are not
+Sequelize at all: `res.destroy`, and the ClamAV socket and stream.
+
+**The same shape elsewhere: none found.** The other hooks were checked against
+`sequelize/lib/model.js` 6.37.8. `beforeBulkUpdate` runs at :1941, before
+`mapOptionFieldNames` at :2008. `beforeFind` runs before `mapFinderOptions`. `beforeCount` runs
+before `aggregate`'s mapping at :1275. So the attribute name is correct in all three.
+
+The live test "the same shape through beforeBulkUpdate is NOT affected: PATCH /projects/:projectId
+updates only A's row" passes both before and after the fix.
+
+The other hooks that add a `where` are also safe:
+- `Tenant`'s `excludePlatformTenant` names `id`, where the attribute and the column are the same;
+- `TenantSettings.beforeBulkUpdate` reads its `where` before mapping, as it should;
+- the session liveness `beforeBulkUpdate` reads its `where` before mapping, as it should.
+
+No code change was needed.
+
+**Seen in passing, a different shape, not fixed here** *(now W-34, fixed by ADR-073)*. Two static methods run no tenant hook at all:
+- `Model.sum/min/max/aggregate` never runs `beforeFind`. Its two call sites
+  (`dashboard.service.js` `Stock.sum` and `quota.service.js` `Attachment.sum`) name `tenantId`
+  explicitly.
+- `Model.increment` and `Model.restore` run no tenant hook either. No static call site exists
+  today.
+
+---
+
+## W-34 — The Sequelize statics that run no tenant hook
+
+| | |
+|---|---|
+| **Status** | **DONE** 2026-09-25 (ADR-073) |
+| **Severity** | medium, latent: every current call site passes `tenantId` itself |
+| **Verified** | from the Sequelize 6.37.8 source, and live on PostgreSQL 18.6 |
+
+**Evidence** (`sequelize/lib/model.js`, 6.37.8):
+
+| Verb | Hook it runs |
+|---|---|
+| `aggregate`; `sum`/`min`/`max` are `this.aggregate(...)` | **none** |
+| `count` | `beforeCount`, then `this.aggregate(...)` |
+| static `increment`; `decrement` and instance `increment`/`decrement` end in it | **none** |
+| static `restore` | `beforeBulkRestore`, after `mapOptionFieldNames`. It was **not registered** |
+| instance `restore` | `beforeRestore`, **not registered** |
+| `destroy({ truncate: true })` | `beforeBulkDestroy`, but the statement is `TRUNCATE`, so the WHERE is dropped |
+
+At `beb0c4b`, on PostgreSQL 18.6, inside `runForTenant(A)`:
+- `Stock.sum("quantity")` returned **1107**, which is A's 7 plus B's 1100;
+- `Stock.max` returned B's 1000;
+- an `increment` aimed at B's row by id changed it;
+- a bulk `restore` restored B's rows.
+
+**Fix — structural, not a guard test (ADR-073).** `tenantScope.util.js#scopeHooklessStatics` wraps
+`aggregate` and `increment` on every tenant-scoped model, both the models already defined and later
+ones through `afterDefine`. Those two wrappers reach every verb above. The predicate is resolved as
+for a find, and `skipTenantScope: true` is the only opt-out. The other three gaps:
+- `beforeBulkRestore` names the column;
+- `beforeRestore` refuses another tenant's row;
+- a truncate inside a tenant or deny scope is refused.
+
+A guard test was the alternative. It was rejected because it is opt-in again (ADR-048's argument): a
+text scan cannot follow aliases or a `where` built elsewhere.
+
+**No CLAUDE.md trap line.** Nothing is left for an author to remember. Raw SQL is already listed.
+
+**Tests.**
+- `tenantScope.hookless.w34.test.js` runs the real generator with the real hooks. It has 21 tests,
+  including:
+  - "sum/min/max inside a tenant context carries the tenant predicate with no where of its own"
+  - "an include inside sum is scoped in its ON clause too"
+  - "count carries the predicate exactly once"
+  - "a principal with no resolvable tenant sums nothing (deny)"
+  - "skipTenantScope is the opt-out; no context and the super admin skip"
+  - "static increment carries the tenant COLUMN after Sequelize maps it"
+  - "with no where it is still refused by Sequelize, not widened to the whole tenant"
+  - "a bulk restore carries the tenant COLUMN"
+  - "an instance restore of another tenant's row is refused"
+  - "a truncate inside a tenant context is refused; outside one it runs"
+- `tenantScope.test.js`, "wires every mutating and reading hook", now lists `afterDefine`,
+  `beforeBulkRestore` and `beforeRestore`.
+- **Live, PostgreSQL 18.6** — `tenantHookless.w34.live.test.js` (opt-in `W34_PG_LIVE_TEST=1`, 6
+  tests):
+  - "tenant A's sum excludes tenant B's rows without an explicit where"
+  - "min, max, aggregate and count see only the caller's tenant"
+  - "a where naming tenant B inside tenant A's context sums A's rows, not B's"
+  - "static increment and decrement with no tenant in the where change only A's rows"
+  - "an increment aimed at B's row by id from A's context changes nothing"
+  - "a bulk restore from A's context restores only A's soft-deleted rows"
+
+**Fail-before** (a worktree at `beb0c4b`):
+- 15 of the 21 unit tests fail. The 6 that pass pin paths that did not change: no tenant key,
+  the opt-outs, the no-`where` refusal, `count`'s single predicate, and the caller's options left
+  unmutated;
+- all 6 live tests fail, with the numbers quoted above.

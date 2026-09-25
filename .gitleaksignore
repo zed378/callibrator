@@ -9,7 +9,15 @@ fabc3be8c67dde7bc19501730cf79341370ebe96:backend/src/services/user.service.js:ge
 c13172908666e6fb64b88141f1bbbe617a4907aa:docs/DEVELOPER/07-IOT-INGEST.md:curl-auth-header:193
 # a truncated example JWT in a response sample
 a984e7bebb1569abf1ee9dc3303cb56f97a256ed:backend/docs/CODING_STANDARDS.md:generic-api-key:575
-# the literal fallback "sk_test_placeholder"
+# the literal Stripe placeholder fallback (sk_test_ + "placeholder")
 a984e7bebb1569abf1ee9dc3303cb56f97a256ed:backend/src/services/stripeWebhook.service.js:stripe-access-token:11
-# documentation quoting the "sk_test_placeholder" fallback
+# documentation quoting that placeholder fallback
 a984e7bebb1569abf1ee9dc3303cb56f97a256ed:docs/BACKEND/10-MODULE-REFERENCE.md:stripe-access-token:2091
+# 2026-09-25 (batch 6 follow-up): the scan went red on its own commits. These
+# two comment lines above, as first committed, quoted the placeholder literally,
+# and so does docs/DEVOPS/01-CI-CD.md:66. Read by hand: all three are the same
+# documented placeholder, not a key. The comments were reworded so later
+# commits do not reintroduce it; the historical findings are silenced here.
+244b63b8201a2a5ef547925aa2e10cb2090f1edc:.gitleaksignore:stripe-access-token:12
+244b63b8201a2a5ef547925aa2e10cb2090f1edc:.gitleaksignore:stripe-access-token:14
+af9fd5cdfd038d2d35f20e072591108beb95ac2a:docs/DEVOPS/01-CI-CD.md:stripe-access-token:66

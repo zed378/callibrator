@@ -20,6 +20,7 @@ const {
 } = require("@simplewebauthn/server");
 
 const { Users } = require("../models");
+const { db } = require("../config");
 const { AppError } = require("../utils/appError.util");
 const { logger } = require("../middlewares/activityLog.middleware");
 const redis = require("./redis.service");
@@ -225,16 +226,61 @@ async function getStatus(tenantId, userId) {
   };
 }
 
-async function disableWebauthn(tenantId, userId) {
-  await Users.update(
-    {
-      webauthnEnabled: false,
-      webauthnCredentialId: null,
-      webauthnPublicKey: null,
-      webauthnSignCount: 0,
-    },
-    { where: { id: userId, tenantId } },
-  );
+/**
+ * A-213 (ADR-068) — remove the caller's passkey.
+ *
+ * It used to need nothing but the session and write no audit row: whoever held
+ * a stolen cookie could remove the owner's passkey unrecorded. Now it needs
+ * the A-114 re-authentication (auth.service#reauthenticate: the current
+ * password, and on an MFA account a current TOTP or recovery code, spent in
+ * this transaction), and the change and its audit row (UPDATE on User,
+ * `changes.operation` WEBAUTHN_DISABLE) commit together or not at all.
+ *
+ * @param {string} tenantId - the caller's tenant
+ * @param {string} userId - the caller
+ * @param {{currentPassword?: string, code?: string, recoveryCode?: string}} [proof]
+ * @param {{ipAddress?: (string|null), userAgent?: (string|null)}} [context]
+ * @returns {Promise<{success: true}>}
+ * @throws {AppError} 404 no such user in the tenant; 409 no passkey enrolled;
+ *   400 re-authentication missing or wrong
+ */
+async function disableWebauthn(tenantId, userId, proof = {}, { ipAddress = null, userAgent = null } = {}) {
+  // Lazily: auth.service loads the session, e-mail and Redis services.
+  const authService = require("./auth.service");
+
+  const user = await Users.findOne({ where: { id: userId, tenantId } });
+  if (!user) {
+    throw new AppError(404, "User not found");
+  }
+  if (!user.webauthnEnabled) {
+    throw new AppError(409, "No passkey is enrolled on this account, so there is nothing to remove");
+  }
+
+  await db.transaction(async (transaction) => {
+    const method = await authService.reauthenticate(user, proof, {
+      purpose: "Removing a passkey",
+      transaction,
+      ipAddress,
+      userAgent,
+    });
+    await user.update(
+      {
+        webauthnEnabled: false,
+        webauthnCredentialId: null,
+        webauthnPublicKey: null,
+        webauthnSignCount: 0,
+      },
+      { transaction },
+    );
+    await authService.auditCredentialChange(transaction, {
+      user,
+      // Never the credential id or key: audit_logs is permanent.
+      operation: "WEBAUTHN_DISABLE",
+      details: { reauthenticatedWith: method },
+      ipAddress,
+      userAgent,
+    });
+  });
 
   return { success: true };
 }

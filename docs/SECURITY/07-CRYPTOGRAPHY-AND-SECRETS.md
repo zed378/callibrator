@@ -140,7 +140,7 @@ A secret in `audit_logs` is a permanent secret in a table designed to be undelet
 
 ## Rotation
 
-As-built since P6-10 / S-08 / S-26 (2026-09-24, ADR-PENDING-data). The procedure for each is [`13-KEY-ROTATION.md`](13-KEY-ROTATION.md).
+As-built since P6-10 / S-08 / S-26 (2026-09-24, ADR-062). The procedure for each is [`13-KEY-ROTATION.md`](13-KEY-ROTATION.md).
 
 | Secret | Rotatable | How, and the cost |
 |---|---|---|
@@ -154,7 +154,7 @@ As-built since P6-10 / S-08 / S-26 (2026-09-24, ADR-PENDING-data). The procedure
 | Webhook secrets | yes | receiver must be updated |
 | `tenant_keys` (e-signature key pairs) | yes | a new pair per tenant; old signatures keep their `keyId` and verify against the (soft-deleted) old public key |
 
-**Rehearsed on PostgreSQL 16 against seeded data, not a copy of production** (`backend/src/tests/services/keyRotation.s08.live.test.js`). The P6-10 DoD asks for a rehearsal against a production copy; that is still owed, and the runbook says so.
+**Rehearsed on PostgreSQL 16 and 18.6 against seeded data, not a copy of production** (`backend/src/tests/services/keyRotation.s08.live.test.js`). The P6-10 DoD asks for a rehearsal against a production copy; that is still owed, and the runbook says so.
 
 ## Where Secrets Live
 

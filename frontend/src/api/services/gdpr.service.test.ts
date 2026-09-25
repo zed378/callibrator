@@ -135,6 +135,19 @@ describe("gdprService", () => {
         value: "Jane",
       });
     });
+
+    it("sends an email change's re-authentication with it (A-214)", async () => {
+      mockedApi.put.mockResolvedValueOnce(envelope({ rectified: true }));
+
+      await gdprService.rectifyData("email", "new@x.test", { currentPassword: "pw", code: "123456" });
+
+      expect(mockedApi.put).toHaveBeenCalledWith(`${BASE}/rectify`, {
+        field: "email",
+        value: "new@x.test",
+        currentPassword: "pw",
+        code: "123456",
+      });
+    });
   });
 
   describe("restrictProcessing", () => {

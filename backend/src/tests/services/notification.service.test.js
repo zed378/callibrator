@@ -198,6 +198,32 @@ describe("notification.service", () => {
       expect(result).toBeNull();
     });
 
+    it("W-04: with a transaction, writes in it and delivers only after the COMMIT", async () => {
+      Notification.create.mockResolvedValueOnce(mockNotification({ id: "n-tx", tenantId: "t-3" }));
+      const commits = [];
+      const transaction = { afterCommit: jest.fn((fn) => commits.push(fn)) };
+
+      const result = await emitNotification({ title: "T", message: "M", tenantId: "t-3" }, { transaction });
+
+      expect(Notification.create).toHaveBeenCalledWith(
+        { title: "T", message: "M", tenantId: "t-3" },
+        { transaction },
+      );
+      expect(result.id).toBe("n-tx");
+      expect(mockSocket.emit).not.toHaveBeenCalled(); // not before the commit
+      await commits[0]();
+      expect(_mockToRoom).toBe("tenant_t-3");
+      expect(mockSocket.emit).toHaveBeenCalledWith("new_notification", expect.objectContaining({ id: "n-tx" }));
+    });
+
+    it("W-04: with a transaction, a failed insert is RE-THROWN so the caller rolls back", async () => {
+      Notification.create.mockRejectedValueOnce(new Error("DB down"));
+      const transaction = { afterCommit: jest.fn() };
+
+      await expect(emitNotification({ title: "T", message: "M" }, { transaction })).rejects.toThrow("DB down");
+      expect(transaction.afterCommit).not.toHaveBeenCalled();
+    });
+
     it("should dispatch the email channel when specified", async () => {
       const created = mockNotification({ id: "n-3", userId: "u-1" });
       Notification.create.mockResolvedValueOnce(created);

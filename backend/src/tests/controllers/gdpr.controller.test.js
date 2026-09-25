@@ -140,8 +140,26 @@ describe("gdprController", () => {
         "Jane",
         // A-153: the request's actor, for the audit row in the transaction.
         expect.objectContaining({ userId: "user-123" }),
+        // A-214: the re-authentication (used for an email change) and the
+        // session's sign-in method.
+        { currentPassword: undefined, code: undefined, recoveryCode: undefined, signInMethod: null },
       );
       expect(success).toHaveBeenCalled();
+    });
+
+    it("forwards an email change's re-authentication and the sign-in method (A-214)", async () => {
+      gdprService.rectifyData.mockResolvedValue({ rectified: true });
+      req.body = { field: "email", value: "new@x.test", currentPassword: "pw", code: "123456", recoveryCode: "R" };
+      req.signInMethod = "oidc";
+      await gdprController.rectifyData(req, res);
+      expect(gdprService.rectifyData).toHaveBeenCalledWith(
+        "tenant-123",
+        "user-123",
+        "email",
+        "new@x.test",
+        expect.any(Object),
+        { currentPassword: "pw", code: "123456", recoveryCode: "R", signInMethod: "oidc" },
+      );
     });
   });
 

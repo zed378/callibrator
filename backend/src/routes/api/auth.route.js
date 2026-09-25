@@ -384,6 +384,23 @@ router.post("/verify", auth, verify);
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/SuccessResponse'
+ *       '400':
+ *         description: Validation failed, or the current password is incorrect
+ *       '409':
+ *         description: >-
+ *           A-216: the session signed in through SSO and its identity provider
+ *           (named in the message) manages the password; or A-215: the
+ *           administrator's temporary password has expired
+ *       '429':
+ *         description: >-
+ *           A-260: five wrong passwords in fifteen minutes, across every
+ *           signed-in password check of this account. The attempt that spends
+ *           the budget also signs this session out. Retry-After gives the
+ *           seconds until checks resume.
+ *         headers:
+ *           Retry-After:
+ *             schema:
+ *               type: integer
  */
 router.post("/just-update-password", auth, justUpdatePassword);
 
@@ -421,6 +438,18 @@ router.post("/just-update-password", auth, justUpdatePassword);
  *                   properties:
  *                     valid:
  *                       type: boolean
+ *       '400':
+ *         description: No password was given
+ *       '429':
+ *         description: >-
+ *           A-260: five wrong passwords in fifteen minutes, across every
+ *           signed-in password check of this account. The attempt that spends
+ *           the budget also signs this session out. Retry-After gives the
+ *           seconds until checks resume.
+ *         headers:
+ *           Retry-After:
+ *             schema:
+ *               type: integer
  */
 router.post("/pass-is-valid", auth, passIsValid);
 
@@ -821,7 +850,8 @@ router.post(
  *         description: >
  *           Too many failed attempts on the MFA endpoints (setup, verify and
  *           disable share one budget: 5 per user per 15 minutes; per IP too
- *           when AUTH_RATE_LIMIT_BY_IP is on)
+ *           when AUTH_RATE_LIMIT_BY_IP is on); or, for a rotation, A-260: the
+ *           account's signed-in password-check budget is spent (Retry-After)
  */
 // A-142: rate-limited per user (and per IP when AUTH_RATE_LIMIT_BY_IP).
 router.post("/mfa/setup", auth, mfaManagePreCheck(), setupMfa);
@@ -897,7 +927,10 @@ router.post("/mfa/verify", auth, mfaManagePreCheck(), verifyMfaSetup);
  *       '409':
  *         description: MFA is not enabled
  *       '429':
- *         description: Too many failed attempts (shared with setup and verify)
+ *         description: >-
+ *           Too many failed attempts (shared with setup and verify); or A-260:
+ *           the account's signed-in password-check budget is spent
+ *           (Retry-After)
  */
 router.post("/mfa/disable", auth, mfaManagePreCheck(), disableMfa);
 

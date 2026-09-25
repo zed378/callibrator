@@ -32,9 +32,10 @@ name: callibrator
 #                      a writable one).
 #   CPU limits         in the prod, staging and vm overlays, beside memory.
 #
-# NOT VERIFIED BY RUNNING: docker was unavailable when this was written
-# (2026-09-24). The first `make up` on any host must confirm every container
-# reaches healthy; a missing capability shows as an entrypoint
+# PARTLY VERIFIED BY RUNNING (2026-09-25, ADR-066): under the dev overlay,
+# volume-init, postgres, redis, rabbitmq and backend reached healthy with these
+# settings. clamav, frontend and nginx were not started — the first `make up`
+# must confirm those reach healthy; a missing capability shows as an entrypoint
 # "Operation not permitted" in `docker compose logs <service>`.
 # ----------------------------------------------------------------------------
 x-hardened: &hardened
@@ -103,6 +104,19 @@ services:
       - .env
     environment:
       NODE_ENV: ${NODE_ENV:-production}
+      # S-09 (ADR-066): ONE source. The broker below is created from
+      # RABBITMQ_USER/RABBITMQ_PASS, and the URL the backend connects with is
+      # built from the same two variables here — `environment` overrides
+      # env_file, so a stale RABBITMQ_URL in .env can no longer disagree.
+      # The password is placed in the URL verbatim: keep it URL-safe
+      # (`make secrets` prints hex).
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASS:-guest}@rabbitmq:5672
+      # P6-03 (migration 0057): run queries as the application role, not the
+      # owner. Defaulted HERE, not only in .env.example, because an .env made
+      # before 2026-09-25 (the VM's, for one) has no DB_APP_ROLE line and the
+      # backend then runs as the owner with only a warning. Set DB_APP_ROLE=none
+      # in .env to opt out deliberately.
+      DB_APP_ROLE: ${DB_APP_ROLE:-callibrator_app}
       APP_STORAGE_PATH: /app
       # The compiled binary cannot use puppeteer's bundled Chromium; the
       # runtime image installs a system one.

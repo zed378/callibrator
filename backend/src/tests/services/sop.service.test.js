@@ -198,8 +198,12 @@ describe("sop.service", () => {
       expect(mockDoc.status).toBe("PUBLISHED");
       expect(mockDoc.publishedDate).toBeDefined();
       expect(mockDoc.save).toHaveBeenCalledWith({ transaction: "TX" });
+      // D-24 (ADR-070): a keyset page of ids, not every user row.
       expect(mockUser.findAll).toHaveBeenCalledWith({
         where: { tenantId: "tenant-1" },
+        attributes: ["id"],
+        order: [["id", "ASC"]],
+        limit: sopService.TRAINING_FANOUT_BATCH,
         transaction: "TX",
       });
       expect(mockSopTrainingAcknowledgment.bulkCreate).toHaveBeenCalledWith(

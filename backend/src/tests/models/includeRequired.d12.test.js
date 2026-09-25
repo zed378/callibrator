@@ -114,6 +114,24 @@ describe("D-12 — the Sequelize behaviour, on generated SQL", () => {
     expect(mockSql.statements[0]).toMatch(/ LEFT OUTER JOIN "vendors" AS "vendor" ON /);
   });
 
+  // D-12 DoD: the two lists whose missing rows are the ones a user is looking
+  // for, pinned on the SQL the real service functions generate.
+  it("the stock transfer list LEFT-joins the approver: a PENDING transfer (approved_by NULL) is listed", async () => {
+    const stock = require("../../services/stock.service");
+    await asTenant(() => stock.fetchTransfers({ tenantId: TENANT }));
+    const select = mockSql.statements.find((s) => /FROM "stock_transfers"/.test(s) && /"approver"/.test(s));
+    expect(select).toMatch(/ LEFT OUTER JOIN "users" AS "approver" ON /);
+    expect(select).not.toMatch(/INNER JOIN/);
+  });
+
+  it("the CAPA list LEFT-joins the assignee: an UNASSIGNED CAPA is listed", async () => {
+    const qms = require("../../services/qms.service");
+    await asTenant(() => qms.getCapas(TENANT));
+    const select = mockSql.statements.find((s) => /FROM "capas"/.test(s) && /"assignee"/.test(s));
+    expect(select).toMatch(/ LEFT OUTER JOIN "users" AS "assignee" ON /);
+    expect(select).not.toMatch(/INNER JOIN/);
+  });
+
   it.each(DEFAULT_SCOPED.map((name) => [name]))(
     "%s: its defaultScope `where` makes a bare include required",
     (name) => {

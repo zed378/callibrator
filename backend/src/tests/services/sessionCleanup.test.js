@@ -2,11 +2,22 @@
  * Tests for sessionCleanup middleware
  */
 
-// Mock node-cron before importing
+// Mock node-cron before importing. `validate` is node-cron 4.6.0's REAL
+// validator (node_modules/node-cron/dist/node-cron.d.ts exports it); the
+// middleware refuses an invalid expression before scheduling, and a mock
+// without it fails every init test with "cron.validate is not a function".
 const mockSchedule = jest.fn();
+const mockValidate = jest.requireActual("node-cron").validate;
 jest.mock("node-cron", () => ({
   schedule: mockSchedule,
+  validate: mockValidate,
 }));
+
+// P7-02: every scheduler records its runs through jobMonitor.service; the
+// pass-through fixture keeps this test about session cleanup.
+jest.mock("../../services/jobMonitor.service", () =>
+  require("../fixtures/jobMonitorMock").create(),
+);
 
 // Mock session service - revokeAllSessions returns [affectedCount] like Sequelize
 jest.mock("../../services/session.service", () => ({
@@ -36,7 +47,11 @@ const loadSessionCleanup = () => {
   // Re-apply mocks after reset
   jest.mock("node-cron", () => ({
     schedule: mockSchedule,
+    validate: mockValidate,
   }));
+  jest.mock("../../services/jobMonitor.service", () =>
+    require("../fixtures/jobMonitorMock").create(),
+  );
   jest.mock("../../services/session.service", () => ({
     cleanupExpiredSessions: cleanupExpiredSessions,
     revokeAllSessions: revokeAllSessions,

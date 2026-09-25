@@ -71,6 +71,9 @@ jest.mock("../../models", () => ({
   },
   CalibrationDevice: {},
   CalibrationRecord: {},
+  // D-22 (ADR-070): the delete soft-deletes the certificate's attachments in
+  // its transaction; this certificate has none.
+  Attachment: { findAll: jest.fn(async () => []), update: jest.fn() },
   Tenant: {},
   User: { findByPk: jest.fn() },
   ESignatureRecord: {},

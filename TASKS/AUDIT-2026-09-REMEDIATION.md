@@ -38,7 +38,7 @@ Task ids are `A-nn`. They are referenced from [`PHASE-9-TYPESCRIPT-MIGRATION.md`
 | A-16 | whether `req.ip` is the client through a three-proxy chain | **unverified** | 1 | **DONE** 2026-09-24 — verified on the VM: session and audit rows record the real client IP |
 | A-17 | MQTT: public port with nothing behind it; the MQTT path authenticates nobody | low | 0 | **DONE** 2026-09-23 |
 | A-18 | dead code and unused dependencies | low | 2 | **PARTIAL** 2026-09-25 — dead `paginated` and `inputValidation.middleware` removed; unused deps (`aedes`, `aedes-server-factory`, `clamdjs`, `fs-extra`, `randomstring`) listed, not yet removed |
-| A-19 | no secret scanner, no hook, no gate of any kind | medium | 2 | TODO |
+| A-19 | no secret scanner, no hook, no gate of any kind | medium | 2 | **PARTIAL** 2026-09-25 — gitleaks in CI and in the opt-in `pre-push` hook; the scan was red on its own commits and is now clean over all 41 (ADR-066). The hook is installed by `make hooks`, not by `npm install` (a decision: a forced hook is the first thing people skip) |
 | A-20 | the `automate/` Playwright suite is not in the repository | medium | 2 | TODO |
 | A-21 | no lockfile is committed | medium | 2 | **DONE** 2026-09-23 (ADR-044) |
 | A-22 | one React Compiler lint error in `GlobalSearch.tsx` | low | 2 | **DONE** 2026-09-24 |
@@ -129,7 +129,7 @@ Task ids are `A-nn`. They are referenced from [`PHASE-9-TYPESCRIPT-MIGRATION.md`
 | A-113 | `GET /key-pairs` wraps rows as `data.keyPairs`; `deleteWorkflow` soft-deletes a completed (signed) workflow with no state check | medium | 0 | **DONE** 2026-09-24 |
 | A-114 | `setupMfa` on an account that already has MFA **overwrites the live secret** with no re-authentication — a stolen session can replace the second factor | **high** | 0 | **DONE** 2026-09-24 |
 | A-115 | no TOTP replay protection — a code can be reused within its ~90-second window | medium | 0 | **DONE** 2026-09-24 |
-| A-116 | the global `uuid` mock also replaces Sequelize's internal uuid: every `UUIDV4` default is **one constant** in unit runs, and `UUIDV1` throws | medium | 0 | TODO |
+| A-116 | the global `uuid` mock also replaces Sequelize's internal uuid: every `UUIDV4` default is **one constant** in unit runs, and `UUIDV1` throws — mock and mappings removed; real uuid in every run, `uuidDefaults.a116.test.js` | medium | 0 | **DONE** 2026-09-25 |
 | A-117 | `createAttachment` and `updateTenantSettings` write no audit row | medium | 0 | **DONE** 2026-09-24 |
 | A-118 | the AI assistant page has no menu entry and now 403s for roles without `certificate` write / `sop` read; the attachment modal offers "General" with a record id, which now 400s | low | 0 | **DONE** 2026-09-24 — AI Assistant menu entry (migration 0038, PG18-checked); 403 shows a permission notice; the upload form hides the record id for General |
 | A-119 | **workflow signing refused every real user**: `status !== "active"` against a stored `"ACTIVE"` — seven test files encoded the lowercase fixture | **critical** | 0 | **DONE** 2026-09-24 |
@@ -206,44 +206,49 @@ Task ids are `A-nn`. They are referenced from [`PHASE-9-TYPESCRIPT-MIGRATION.md`
 | A-190 | `maintenance.service` writes work orders with no transaction and no audit row; `POST /predictive-maintenance/analyze/:deviceId` mutates unaudited; `createCertificate` starts its workflow after commit (a failure leaves a certificate without one) | medium | 0 | **DONE** 2026-09-25 — work orders and analyze audited in transactions; certificate workflow starts inside its transaction; `maintenance.audit.a190.test.js`, `certificate.audit.a41.test.js` |
 | A-191 | an unused activation link verifies a later rectified email (token not bound to the address); login never checks `isEmailVerified` (owner decision) | low | 0 | **DONE** 2026-09-25 — activation token bound to the address; login verification not enforced (ADR-059, ADR-051 Q-11); `auth.activationBinding.a191.test.js` |
 | A-200 | the workflow's final approval wrote `APPROVED`/`DRAFT` (not in the certificate ENUM) and `approvedById`/`approvedAt` (not attributes) — a workflow-approved certificate recorded no approver (found by A-182) | high | 0 | **DONE** 2026-09-25 with A-182 |
-| A-201 | a final StockTransfer workflow decision writes `Approved`/`Rejected`, not values of its ENUM — every such decision would 500 on PostgreSQL; a MaintenanceWorkOrder rejection changes nothing | medium–high | 0 | TODO — needs the status mapping decided |
-| A-202 | `stock.service#createTransfer` starts its workflow after commit, fail-soft — the A-190 shape for transfers | medium | 1 | TODO |
-| A-203 | a certificate with a PENDING workflow instance can be approved directly via `POST /certificates/:id/approve`, bypassing the chain | medium | 0 | TODO — owner: is the workflow mandatory? |
+| A-201 | a final StockTransfer workflow decision writes `Approved`/`Rejected`, not values of its ENUM — every such decision would 500 on PostgreSQL; a MaintenanceWorkOrder rejection changes nothing | medium–high | 0 | **DONE** 2026-09-25 (ADR-065) — decided: approved → `in_transit`, rejected → `cancelled` (audited; 409 when no longer `pending` or gone); work orders approved → `Completed`, rejected → `InProgress`. `workflow.service.test.js` › A-201 |
+| A-202 | `stock.service#createTransfer` starts its workflow after commit, fail-soft — the A-190 shape for transfers | medium | 1 | **DONE** 2026-09-25 (ADR-065) — the workflow starts in the create's transaction, the create is audited, and a manual move while it is PENDING is 409. `stock.service.test.js` › A-202 (4 of 4 fail at `fabc3be`) |
+| A-203 | a certificate with a PENDING workflow instance can be approved directly via `POST /certificates/:id/approve`, bypassing the chain | medium | 0 | **DONE** 2026-09-25 (ADR-065) — decided: a started workflow is mandatory; direct approve is 409 while an instance is PENDING (before re-auth); re-submission after a rejection starts a new instance. `certificate.service.test.js` › A-203 |
 | A-204 | workflow definition writes were unaudited; replacing steps cascaded into `workflow_actions` and erased approval history; deleting a workflow with pending instances broke the inbox | high | 0 | **DONE** 2026-09-25 (ADR-055) — `workflow.service.test.js` › A-204 |
 | A-210 | a tenant admin controls its own IdP and could assert the super admin's email through SSO to get a platform session | high | 0 | **DONE** 2026-09-25 — operators refused SSO (ADR-059) |
-| A-211 | `loginUser` sets `lastLoginAt` at the password step, before MFA completes | low | 2 | TODO |
+| A-211 | `loginUser` sets `lastLoginAt` at the password step, before MFA completes | low | 2 | **DONE** 2026-09-25 — stamped when the session is issued, in its transaction (password-only and MFA step); SSO already did (A-188) (ADR-068); `auth.lastLogin.a211.test.js` |
 | A-212 | E2E expected 404/500 for an invalid activation token; the backend answers 400 | low | 2 | **DONE** 2026-09-25 |
-| A-213 | WebAuthn disable has no re-authentication and no audit row | medium | 0 | TODO |
-| A-214 | GDPR email rectification needs no re-authentication — stolen session → rectify → reset → takeover | medium | 0 | TODO |
-| A-215 | temporary passwords from admin create or reset never expire | low | 1 | TODO |
-| A-216 | JIT-SSO users cannot use Change Password; "point SSO users to the IdP" is not implemented | low | 1 | TODO |
+| A-213 | WebAuthn disable has no re-authentication and no audit row | medium | 0 | **DONE** 2026-09-25 — A-114 re-auth (password, + TOTP/recovery code with MFA, spent in the transaction); `WEBAUTHN_DISABLE` audited in-transaction; 409 when none enrolled; frontend asks for them (ADR-068); `webauthn.disable.a213.test.js` |
+| A-214 | GDPR email rectification needs no re-authentication — stolen session → rectify → reset → takeover | medium | 0 | **DONE** 2026-09-25 — self-service email change needs the A-114 re-auth; an SSO session is 409 naming the IdP; other fields and the admin path unchanged (ADR-068); `gdpr.rectifyReauth.a214.test.js` |
+| A-215 | temporary passwords from admin create or reset never expire | low | 1 | **DONE** 2026-09-25 — 72 h expiry (migration `0078`, backfill starts the clock at upgrade); expired = the same 401 as a wrong password (ADR-068); `auth.temporaryPassword.a215.test.js`, `user.temporaryPasswordExpiry.a215.test.js`, `0078-user-temporary-password-expiry.test.js`, `authCards.a215.live.test.js` (PG 18.6) |
+| A-216 | JIT-SSO users cannot use Change Password; "point SSO users to the IdP" is not implemented | low | 1 | **DONE** 2026-09-25 — a federated session (`amr` saml/oidc) gets 409 naming the IdP; `/auth/verify` reports `passwordManagedBy` and the page explains instead of the form (ADR-068); `auth.passwordManagedBy.a216.test.js`, `page.a216.test.tsx` |
 | A-220 | work orders accepted another tenant's `deviceId`/`vendorId`/`assigneeId` | medium | 0 | **DONE** 2026-09-25 — 404; `maintenance.audit.a190.test.js` |
 | A-221 | menu grant/revoke never cleared `permissions:role:<id>` — a revoked menu stayed usable for the cache TTL | medium | 0 | **DONE** 2026-09-25 with A-181 |
 | A-222 | the email queue's failure line logged the whole job, including the activation link and token | medium–high | 0 | **DONE** 2026-09-25 with A-186 |
-| A-223 | a removed custom domain keeps its globally unique `domain`; re-adding it is a 500 | low | 1 | TODO |
-| A-224 | `updateTenantParent`/`removeTenantParent`: no transaction, no audit row, no cycle check, descendants' paths not updated, "already root" is 404 not 409 | medium | 0 | TODO |
-| A-225 | `PATCH /billing/subscription` sets `status`/`planId` directly, bypassing payment, unaudited (SUPERADMIN-only) | medium | 0 | TODO |
-| A-226 | `updateMenuGroup` accepts any `parentId`, including itself or a descendant — a menu cycle | low | 1 | TODO |
+| A-223 | a removed custom domain keeps its globally unique `domain`; re-adding it is a 500 | low | 1 | **DONE** 2026-09-25 (ADR-065) — migration `0070`: partial uniques (ACTIVE once platform-wide; live once per tenant; lower-case), every conflict a 409; PG 18.6-verified. `customDomains.service.test.js` › A-223 |
+| A-224 | `updateTenantParent`/`removeTenantParent`: no transaction, no audit row, no cycle check, descendants' paths not updated, "already root" is 404 not 409 | medium | 0 | **DONE** 2026-09-25 (ADR-065) — one audited transaction in `tenantHierarchy.service`: cycle and depth checks, every descendant path rewritten, "already root" 409. `tenantHierarchy.move.a224.test.js` (14 of 14 fail at `fabc3be`) |
+| A-225 | `PATCH /billing/subscription` sets `status`/`planId` directly, bypassing payment, unaudited (SUPERADMIN-only) | medium | 0 | **DONE** 2026-09-25 (ADR-065) — Stripe-billed: 409; manual: lifecycle transitions only, `reason` required, locked and audited. `billing.subscriptionOverride.a225.test.js` (22 of 24 fail at `fabc3be`) |
+| A-226 | `updateMenuGroup` accepts any `parentId`, including itself or a descendant — a menu cycle | low | 1 | **DONE** 2026-09-25 (ADR-065) — itself or a descendant as parent is 409; an unknown parent 404. `menuGroup.cycle.a226.test.js` (9 of 18 fail at `fabc3be`) |
 | A-227 | `CLAUDE.md` called `maintenance_work_orders` latent for the `required: false` trap; it is not | doc | — | **DONE** 2026-09-25 — corrected; pinned by `maintenance.includes.a190.test.js` |
-| A-228 | the log redaction format has no rule for email addresses or `*Link` keys | low | 2 | TODO |
+| A-228 | the log redaction format has no rule for email addresses or `*Link` keys | low | 2 | **DONE** 2026-09-25 (ADR-065) — emails masked in any logged string; keys ending in `link` redacted. `activityLog.redaction.a228.test.js` (11 of 17 fail at `fabc3be`) |
 | A-230 | the verification page's certificate `<iframe>` could never render: `frame-ancestors 'none'` globally | medium | 0 | **DONE** 2026-09-25 (ADR-057) — not browser-verified |
 | A-231 | the tenant edit-logo preview URL missed the `tenant/` folder | low | 2 | **DONE** 2026-09-25 |
 | A-232 | any user with `equipment:read` could publish arbitrary files at a permanent public URL via `POST /attachments` with `resourceType:"post"` | medium | 0 | **DONE** 2026-09-25 — CMS media needs `content:create`, audited; `content.media.s01.test.js` |
 | A-250 | SCIM accepted any API key whatever its scopes — a `stock:read` key could provision users | high | 0 | **DONE** 2026-09-25 (ADR-058) — `scim.route.test.js` › A-250 |
 | A-251 | `POST /notifications/test {scope:"tenant"}` let any role broadcast "SYSTEM" notices to the tenant | medium | 0 | **DONE** 2026-09-25 — `readGates.p604.test.js` |
 | A-252 | `GET /gdpr/erasure/:id` returned any member's erasure request; 200 null for an unknown id | medium | 0 | **DONE** 2026-09-25 — `gdpr.erasureStatus.a252.test.js` |
-| A-253 | `index.js` serves `/error`, `/documentation`, `/standards`, `/tab-permissions` unauthenticated in production | low | 1 | TODO |
+| A-253 | `index.js` serves `/error`, `/documentation`, `/standards`, `/tab-permissions` unauthenticated in production | low | 1 | **DONE** 2026-09-25 (ADR-065) — `/documentation`, `/standards` only under `SWAGGER_ENABLED`; `/error`, `/tab-permissions` removed. `appRoutes.a253.test.js` (4 of 4 fail at `fabc3be`) |
 | A-254 | the `dynamicAccess` error path logged `JSON.stringify(req.user)` — password hash, MFA secret, recovery codes — inside the message, beyond key redaction | high | 0 | **DONE** 2026-09-25 — `dynamicAccess.test.js` › A-254 |
-| A-255 | seven `tenantHierarchy.controller` handlers unrouted, including `assignRoleAcrossHierarchy` | low | 2 | TODO |
-| A-256 | `resolveTenantByDomain` / `provisionTLSCertificate` have no callers — custom domains never resolve | medium | 1 | TODO |
+| A-255 | seven `tenantHierarchy.controller` handlers unrouted, including `assignRoleAcrossHierarchy` | low | 2 | **DONE** 2026-09-25 (ADR-065) — the seven unrouted handlers and `assignRoleToUserAcrossHierarchy` removed. `tenantHierarchy.controller.test.js`, `bodyless.a09.test.js` |
+| A-256 | `resolveTenantByDomain` / `provisionTLSCertificate` have no callers — custom domains never resolve | medium | 1 | **DONE** 2026-09-25 (ADR-065) — decided: not implemented; the two uncalled functions removed, instructions no longer promise TLS, `tlsAutoProvision: false`. `customDomains.service.test.js` › A-256 |
 | A-257 | backend jest cannot load ESM-only dependencies under Node 22; the project targets Node 24 | tooling | 2 | known — pin Node 24 |
-| A-258 | `username-check` uses `Op.like` on raw input, tenant-scoped against a globally unique column | low | 1 | TODO |
+| A-258 | `username-check` uses `Op.like` on raw input, tenant-scoped against a globally unique column | low | 1 | **DONE** 2026-09-25 (ADR-065) — the probe asks `assertIdentityFree`'s exact, case-insensitive question; a "taken" answer is budgeted and audited. `user.usernameCheck.a258.test.js` (6 of 9 fail at `fabc3be`) |
+| A-259 | since P6-03 (0057) the backend runs as the application role: `unseedDemoData` force-deletes calibration records the trigger now refuses (non-transactional, stops part-way); `migration.service#syncTables` (`sync({ force: true })`) fails without owner rights | medium | 0 | **DONE** 2026-09-25 — unseed is one transaction and refuses before any delete once demo records exist; `syncTables`/`resetAndSeed` removed (no caller; owner-only) (ADR-068); `migration.unseedDemo.a259.test.js`, `migration.service.test.js` › A-259, `authCards.a215.live.test.js` |
 | A-67 | the rate limiter's failure recording on login, register, OTP and reset **never runs** — it is mounted before the handler | **high** | 0 | **DONE** 2026-09-24 — `AUTH_RATE_LIMIT_BY_IP=true` enabled on the VM after A-16 was verified |
 | A-68 | OIDC has no `state`, `nonce` or PKCE check — login CSRF and code injection. Now: one-time `state` bound to the browser by an httpOnly cookie, `nonce` checked in the ID token, PKCE S256; also the GET callback route and the SSO-start `validate()` 500 | **high** | 0 | **DONE** 2026-09-24 |
 | A-69 | SSO through the Next `/api` proxy cannot work: the proxy follows the backend's 302 server-side. Now: `redirect: "manual"`, and the OIDC binding cookie is carried both ways. Not yet seen with a live IdP | **high** | 0 | **DONE** 2026-09-24 |
 | A-70 | SSO provisioning signs in a suspended or inactive user (a session and a LOGIN row are created) | medium | 0 | **DONE** 2026-09-24 |
 | A-71 | the login response returns the access token to browser JavaScript, beside the httpOnly cookie | medium | 0 | **DONE** 2026-09-25 — the Next proxy strips `token`/`refreshToken` before the browser (ADR-059); `route.tokenStrip.a71.test.ts` |
 | A-72 | password and MFA login write no `LOGIN` audit row | medium | 0 | **DONE** 2026-09-24 |
+| A-260 | the signed-in password checks (`pass-is-valid`, change-password, and the `reauthenticate` paths: passkey removal, email rectification, MFA rotation and disable) have no per-user limit, so a session is an unthrottled password oracle | medium | 0 | **DONE** 2026-09-25 (ADR-072) — one per-user budget, 5 wrong in 15 min (`auth.service#verifySessionPassword`). The spending attempt revokes its session and writes `ACCOUNT_LOCKED` in its own transaction; it and every later check get 429 + `Retry-After`; never `locked_until`. `auth.passwordCheckBudget.a260.test.js`, `auth.passwordCheckRetryAfter.a260.test.js` |
+| A-261 | `migration.service#dropSeededTables` has no caller and force-deletes every user, tenant, role and stock row without a transaction | medium | 0 | **DONE** 2026-09-25 (ADR-072) — removed; no route, controller, script or boot path called it. `migration.service.test.js` › A-261 |
+| A-262 | there is no admin way to remove another user's passkey; an SSO-only user cannot remove their own | medium | 0 | **DONE** 2026-09-25 (ADR-072) — `DELETE /users/:userId/webauthn`, with `loadAdminResetTarget` guards (other tenant or missing 404, self 400, higher role 403, none 409). It revokes every session and audits `WEBAUTHN_ADMIN_RESET` in the transaction; users page "Remove passkey". `user.passkeyReset.a262.test.js` (two-tenant 404), frontend `CredentialResetActions.a262.test.tsx`, `user.passkeyReset.a262.test.ts` |
+| A-263 | the super admin `offboard`, `suspend`, `resume` and `cancelOffboarding` responses return the raw `Tenant` row, whose `settings` JSON can still carry a credential (found by W-17; `mirroredAiKey` in the A-179 test) | medium | 0 | TODO |
 
 ---
 
@@ -1398,7 +1403,7 @@ so a caller can tell; a duplicate email is recoverable, a silently dropped one i
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **PARTIAL** 2026-09-25 — see the summary row (ADR-066) |
 | **Evidence** | No CI, no hook tooling, no secret scanner. Documents claimed a `pre-push` hook, a secret scanner and an IDOR enforcement script; none exist. |
 
 **Definition of Done**
@@ -1485,6 +1490,7 @@ permission cache, not a search statement, and were left alone.
 | — | avatar and tenant-logo broken images; email templates carrying another company's branding and a broken Outlook CTA | commits `78028b0`, `582e24b`, `6621722` |
 | — | `npm test` could not run under a hoisted workspace install | commit `78028b0` |
 | — | MySQL support removed — it never worked | ADR-039 |
+| W-33 | five tenant-user routes answered **500** (`column "tenantId" does not exist`) until the W-33 fix. `DELETE /kanban/projects/:projectId` failed on every call. `DELETE /notifications/:notificationId`, `/notifications/bulk` and `/notifications/all` failed whenever a personal notification was involved. `DELETE /storage/settings` failed on every call. The super-admin routes on the same models were unaffected | `tenantScope.util.js` (ADR-069); enumerated and live-tested on PostgreSQL 18 in `bulkDestroyRoutes.w33.live.test.js`; card: `AUDIT-2026-09-ASYNC.md` § W-33 |
 
 ---
 
@@ -5061,3 +5067,309 @@ requested-by` (A-170). It was renamed to `0049` and registered last.
   can still guess without a lockout. The `mfaManage`-style budget is the obvious model.
 - `auth.controller.js` still says the ENUM has no failure action. Individual failed logins are still
   not audit rows, so the comment is only partly stale. The file belongs to another agent.
+
+### A-201 to A-203, A-223 to A-226, A-228, A-253, A-255, A-256, A-258 — What was changed (2026-09-25, ADR-065)
+
+The batch-6 agent "misc" was halted mid-task; its edits (A-223, A-225, A-226, A-228, A-253, A-256, A-258) were
+committed unverified in `244b63b..beb0c4b`. They were verified, and the rest finished, on 2026-09-25.
+
+**A-201 — the status mapping (owner decision, taken under the standing instruction).**
+- *For new ENUM values* (`approved`, `rejected`): the transfer records the decision literally.
+- *Against:* an `ALTER TYPE` migration, and two more states every transfer screen, filter and transition
+  rule must learn — for information the workflow instance already holds.
+- **Decided:** the decision lands on the transfer's own lifecycle. Approved → `in_transit` (released to
+  move; `approvedBy` = the approver), rejected → `cancelled`, each with an audit row in the decision's
+  transaction. The stock still moves only at `completed` (P6-09) — an approval authorises a movement, it
+  does not perform one. A transfer no longer `pending`, or deleted, is a 409 and the decision rolls back
+  (it was a silent no-op). A work order's sign-off: approved → `Completed`, rejected → `InProgress`.
+
+**A-203 — is the workflow mandatory? (owner decision, taken under the standing instruction).**
+- *For "optional":* the direct route is itself gated, re-authenticated and audited; an absent approver
+  could block an urgent certificate.
+- *For "mandatory":* a tenant that configured a chain configured it as its approval control (ISO 17025
+  7.8; Part 11 §11.10(f) sequencing); a direct approval made it advisory and left the instance PENDING
+  over an approved certificate forever.
+- **Decided: mandatory once started.** While a certificate's instance is PENDING, `POST
+  /certificates/:id/approve` is 409, decided under the row lock and before re-authentication (no MFA
+  code consumed). No workflow configured: direct approval as before. A re-submission after a rejection
+  starts a new instance in the same transaction. An absent approver is handled by reconfiguring the
+  workflow (audited, A-204), not by a bypass.
+
+**A-202.** `createTransfer` starts the workflow inside its transaction (a failure rolls the transfer back),
+audits the create with the instance id, and `updateTransferStatus` refuses (409) while the instance is
+PENDING. The controller passes `auditActor(req)`.
+
+**A-223, A-256 (`0070`).** `custom_domains.domain` lost its global unique; two partial uniques replace it
+(ACTIVE once per platform, live once per tenant, both on `lower(domain)`); every conflict is a 409 that
+never says who holds the domain. Serving on a custom domain is **not implemented**: the uncalled
+`resolveTenantByDomain` and `provisionTLSCertificate` were removed. Docs amended: `docs/API/04-TENANT-API.md`,
+`docs/DATABASE/02-TENANCY-TABLES.md`, `docs/BACKEND/11-CONFIGURATION.md`, `docs/BACKEND/10-MODULE-REFERENCE.md`.
+
+**A-224, A-255.** The re-parent handlers became `tenantHierarchy.service#updateTenantParent` /
+`#removeTenantParent` (see ADR-065 §4). Seven unrouted controller handlers and the service's
+`assignRoleToUserAcrossHierarchy` were deleted.
+
+**Verified:**
+- `0070` on PostgreSQL 18.6 from `fabc3be`'s schema with legacy rows: before, re-adding a removed domain
+  failed on `custom_domains_domain_key`; after, it succeeded; a second ACTIVE row and a second live row in
+  one tenant were refused by the new indexes; re-run `up` changed nothing; `down` refused while re-added
+  rows existed, then restored `custom_domains_domain_key`; `up` again re-applied.
+- Named tests, failing at `fabc3be` / passing now: `customDomains.service` (31 of 59), `appRoutes.a253` (4 of 4),
+  `billing.subscriptionOverride.a225` (22 of 24), `menuGroup.cycle.a226` (9 of 18),
+  `activityLog.redaction.a228` (11 of 17), `user.usernameCheck.a258` (6 of 9), `tenantHierarchy.move.a224`
+  (14 of 14), `tenantHierarchy.controller` › updateTenantParent / removeTenantParent (3 of 3),
+  `stock.service` › A-202 (4 of 4), `certificate.service` › A-203 (2 of 4 — the other two pin the unchanged
+  no-workflow path), `workflow.service` › A-201 and findPendingInstance (all new cases).
+- `customDomains.service.js`: 100 % on all four measures.
+
+**Still open:**
+- deploy templates still set `TLS_AUTO_PROVISION`/`ACME_*`, and `acme-client` is still a dependency;
+- `0070`'s `down` does not restore the original letter case of stored domains.
+
+### A-211, A-213 to A-216, A-259 — What was changed (2026-09-25, ADR-068)
+
+**A-211.** `auth.service#openLoginSession` writes `lastLoginAt` in the session's transaction, together
+with the LOGIN audit row. The writes at the password step and after the MFA step are removed. SSO
+already stamped it at issue (A-188). Impersonation does not stamp it.
+
+**A-213, A-214: one re-authentication rule.** `auth.service#reauthenticate` applies the A-114 rule:
+- the current password is required;
+- on an MFA account, a current TOTP code or a recovery code is required as well;
+- the password is checked first, so a wrong one never burns a code;
+- the code is spent in the change's transaction;
+- a missing proof is a 400 that names what is needed;
+- a wrong password and a wrong code give one combined 400.
+
+`webauthn.service#disable` uses the rule and audits `WEBAUTHN_DISABLE` in the same transaction. It
+answers 409 when no passkey is enrolled and 404 for another tenant's user. `gdpr.service#rectifyData`
+uses it for `email` only. The rectification row records `reauthenticatedWith`, and an SSO session gets
+a 409 that names the IdP.
+
+Contract changes:
+- `gdpr.validator#rectifyData` accepts `currentPassword`, `code` and `recoveryCode`;
+- the swagger for both routes, and `swagger.json`, match;
+- the frontend GDPR and Passkeys pages ask for the password, and for the code when MFA is on.
+
+**A-215.** Migration `0078-user-temporary-password-expiry` adds the column and backfills flagged
+accounts to `now() + 72 hours`. `userCreate` and `resetUserPassword` set the column to
+`TEMPORARY_PASSWORD_TTL_MS` (72 h) ahead and return it. The audit row records it as
+`firstLoginChangeDeadline`. `justUpdatePassword` and the email-code reset clear it.
+
+At sign-in, an expired temporary password goes through the wrong-password path: the same 401, and the
+throttle counts it. `justUpdatePassword` refuses an expired temporary password with a 409, and says so
+only after the password was proved.
+
+**A-216.** `justUpdatePassword` answers a federated session 409 before anything else, for example:
+*"You signed in through your organisation's identity provider (OIDC, login.microsoftonline.com). Your
+password is managed there: change it with that provider, not here."* An account under the A-123
+forced change is exempt.
+- `auth.middleware` sets `req.signInMethod` from the token's `amr`.
+- `/auth/verify` returns `passwordManagedBy`.
+- `dashboard/change-password` shows the explanation instead of the form, and shows any 409 as a
+  form-level message.
+
+**A-259.**
+- `unseedDemoData` is one transaction. It counts the demo devices' calibration records first. If any
+  exist it returns `{refused: true}` with the reason, and deletes nothing.
+- `migration.service#syncTables` and `resetAndSeed` are removed. Neither had a caller: no route,
+  script or boot path.
+- A test pins that no application source forces a sync.
+
+**Docs amended (ADR-068):**
+- `docs/SECURITY/03-AUTHENTICATION-SECURITY.md` § Changes That Need Fresh Re-Authentication;
+- `docs/API/01-AUTHENTICATION-API.md`, the `/just-update-password` row.
+
+**Verified — PostgreSQL 18.6 (`pgvector/pgvector:pg18`, throwaway container, removed afterwards):**
+- **Fresh boot** (`node index.js`, `DB_APP_ROLE=callibrator_app`, empty database): 58 migrations
+  applied, ending with `0078`. `[schema-verify] OK: 72 tables, 864 columns and 7 control objects`, and
+  queries ran as `callibrator_app`.
+- **Upgrade boot** (column dropped, `0078` row deleted, a flagged legacy account inserted): only `0078`
+  applied. The account got `2026-09-28 05:50:18+00`, 72 hours from the upgrade, and the verifier
+  passed.
+- A third boot applied nothing. `\d users` shows `temporary_password_expires_at timestamp with time
+  zone`, nullable.
+- `authCards.a215.live.test.js`, 8 of 8, covers:
+  - fresh;
+  - upgrade (only `0078` runs; the flagged account gets 72 h; an unflagged account keeps null);
+  - re-run (`migrator.up()` returns `[]`, and a direct `up` changes nothing);
+  - `down`, then `up`;
+  - the model mapping;
+  - the trigger refusing the owner's record DELETE;
+  - `unseedDemoData` refusing with nothing deleted;
+  - `callibrator_app` getting "must be owner" on `DROP TABLE`.
+
+**Named tests, fail-before in a worktree at `beb0c4b`** (the new test files copied in, run against the
+old code). The counts are of the cases that existed then. Three cases were added later for coverage:
+a wrong recovery code (A-213), an SSO session with no provider (A-214), and a provider name that is
+not a URL (A-216).
+
+| Test | Result at `beb0c4b` |
+|---|---|
+| `auth.lastLogin.a211.test.js` | 4 of 5 fail. The password-only stamp already worked |
+| `webauthn.disable.a213.test.js` | 10 of 10 fail |
+| `gdpr.rectifyReauth.a214.test.js` | 7 of 10 fail. The other three pin behaviour that is unchanged |
+| `auth.temporaryPassword.a215.test.js` | 6 of 9 fail |
+| `user.temporaryPasswordExpiry.a215.test.js` | the suite cannot load: no `0078` |
+| `0078-user-temporary-password-expiry.test.js` | the suite cannot load |
+| `auth.passwordManagedBy.a216.test.js` | 10 of 12 fail |
+| `migration.unseedDemo.a259.test.js` | 4 of 4 fail |
+| frontend `page.a216.test.tsx` | 3 of 4 fail |
+
+On PostgreSQL 18.6 the old `unseedDemoData` returned `deleted: {categories: 1, …}` and the error
+*"calibration_records is append-only: record … cannot be deleted"*. The demo category was gone, and
+the device and the record remained.
+
+**Updated for the new contract:**
+- `auth.service.test`, `auth.service.coverage.test`, `auth.passwordChange.a123`,
+  `user.passwordReset.a162`, `gdpr.a180`, `gdpr.newmethods`;
+- `controllers/auth.controller`, `controllers/gdpr.controller`, `controllers/webauthn.controller`,
+  `services/webauthn.service`, `migration.service` (the `syncTables`/`resetAndSeed` cases are replaced
+  by § A-259);
+- frontend `webauthn.service.test.ts` and `gdpr.service.test.ts`.
+
+Coverage of the changed backend files, from a targeted run of 2,892 tests: `auth.service`,
+`webauthn.service`, `user.service`, `migration.service`, `auth.middleware` and `0078` are 100 % on all
+four measures. `gdpr.service` is 100 % on the lines this change touched. Its line 224 belongs to
+another agent's work in progress. Frontend: `tsc --noEmit` is clean, `eslint` is clean on the changed
+files, and the change-password, gdpr and webauthn service suites pass.
+
+**Still open:**
+- ~~no admin path removes another user's passkey~~: A-262, closed 2026-09-25;
+- the SSO-only user cannot change their email through self-service (ADR-068). An administrator can
+  now remove their passkey (A-262);
+- ~~the password-check endpoints, including `pass-is-valid`, have no per-user limit~~: A-260, closed
+  2026-09-25;
+- ~~`dropSeededTables` now has no caller and deletes every user and tenant without a
+  transaction~~: A-261, closed 2026-09-25;
+- the Passkeys and GDPR pages were not exercised in a browser.
+
+### A-260 to A-262 — What was changed (2026-09-25, ADR-072)
+
+**A-260: one budget for a session's own-password checks.** `auth.service#verifySessionPassword` is
+now the only place a signed-in session's typed password is compared with the caller's hash. It is
+used by:
+- `passIsValid`;
+- `justUpdatePassword`;
+- `reauthenticate`, which serves the passkey removal and the email rectification;
+- the rotation branch of `setupMfa`;
+- `disableMfa`.
+
+The budget is `AUTH_ENDPOINTS.passwordCheck`: 5 wrong passwords in 15 minutes, one Redis counter per
+user (`rateLimiter.redis.service#checkPasswordCheckBudget`, `#recordPasswordCheckFailure`,
+`#clearPasswordCheckBudget`). The counter is checked before the comparison, and the right password
+clears it. It never writes `users.locked_until`.
+
+The attempt that spends the budget:
+- revokes its own session (`PASSWORD_CHECKS_EXHAUSTED`);
+- writes `ACCOUNT_LOCKED` (actor `system:auth-lockout`, `changes.scope` `session-password-check`,
+  `purpose`, `failedAttempts`, `lockedUntil`, `sessionRevoked`) in the same transaction. That
+  transaction is separate from the change being re-authenticated, so the row survives that
+  change's rollback;
+- if the row cannot be written, still revokes the session and logs the failure.
+
+That attempt, and every check until the window ends, gets a 429 `AppError` carrying
+`retryAfterSeconds`. `controllerWrapper#sendCaughtError` turns it into a `Retry-After` header.
+
+The session is revoked, not only paused. Pausing alone leaves a stolen session about 3,300 guesses
+over its 7-day life. Revoking caps it at 5. The owner who mistypes signs in again, through the
+separate sign-in throttle (ADR-072, Alternatives).
+
+Other changes:
+- `pass-is-valid` answers 400 to a missing or non-string password. That request used to be a bcrypt
+  500, and it is not counted.
+- The controllers and `webauthn`/`gdpr` pass the request's address and user agent for the audit row.
+- The swagger for `pass-is-valid`, `just-update-password`, `mfa/setup`, `mfa/disable`,
+  `webauthn/disable` and `gdpr/rectify` documents the 429.
+
+**A-261.** `migration.service#dropSeededTables` is removed. A search of backend, frontend, scripts,
+docs and workflows found no caller. It was never routed or exported to a controller: the migration
+controller calls only `seedAll`, `unseedAll` and `seedDemoData`. Its three coverage tests are replaced
+by a pin: it is not exported, and no application source defines or calls it.
+
+**A-262.** `DELETE /users/:userId/webauthn` is mounted as `auth`, `validateUuid`,
+`dynamicAccess("users","update",{checkTenant})`, `rbac([TENANT_ADMIN])`, then
+`user.controller#resetUserPasskey`, which calls `user.service#resetUserPasskey`.
+- Guards (`loadAdminResetTarget`): another tenant's user or a missing one is 404, oneself is 400, a
+  higher role is 403, and no passkey is 409.
+- In one transaction it clears `webauthnEnabled`, `webauthnCredentialId`, `webauthnPublicKey` and
+  `webauthnSignCount`. It revokes every session (`WEBAUTHN_ADMIN_RESET`) and audits
+  `WEBAUTHN_ADMIN_RESET` with `sessionsRevoked`, never the credential.
+- The swagger JSDoc is on the route.
+- Frontend: `userService.resetPasskey`. The users list now carries `webauthnEnabled`. There is a
+  "Remove passkey" action in `CredentialResetActions.tsx`, offered only for a user with a passkey,
+  with a confirmation that says the password and MFA stay.
+
+**Docs amended (ADR-072):**
+- `docs/SECURITY/03-AUTHENTICATION-SECURITY.md` § Changes That Need Fresh Re-Authentication;
+- `docs/API/01-AUTHENTICATION-API.md` § Password and OTP;
+- ADR-068's three open implications are marked closed.
+
+**Named tests, fail-before.**
+- A-261 and A-262 were run in a worktree at `beb0c4b` with the new test files copied in.
+- A-260 was run in that worktree overlaid with the current tree, and with only the A-260 source edits
+  reversed. `beb0c4b` alone does not have ADR-068's `reauthenticate`.
+
+| Test | Result before |
+|---|---|
+| `auth.passwordCheckBudget.a260.test.js` (19) | 15 of 19 fail. The four that pass pin unchanged behaviour: 4 wrong answers are `valid: false`, a right password succeeds, an unknown user is a 404, and a wrong password below the budget keeps each route's 400 |
+| `controllers/auth.passwordCheckRetryAfter.a260.test.js` (3) | 2 of 3 fail. The one that passes: a 429 without `retryAfterSeconds` sends no header |
+| `routes/user.passkeyReset.a262.test.js` (13) | 11 of 13 fail. The two-tenant 404 and "DELETE only" cases pass vacuously, because the route did not exist, and are kept for the contract |
+| `services/migration.service.test.js` › A-261 (2) | 2 of 2 fail |
+| frontend `CredentialResetActions.a262.test.tsx` (3) | 3 of 3 fail |
+| frontend `user.passkeyReset.a262.test.ts` (3) | 3 of 3 fail |
+
+**Updated for the new contract:**
+- `controllers/auth.controller.test.js`: `passIsValid` and `setupMfa` receive the request context;
+- `services/migration.service.test.js`: the `dropSeededTables` cases are replaced by § A-261.
+
+**Checks run:**
+- Full backend `npm run test:coverage` on Node 24.18.0: every changed backend file is 100 % on all
+  four measures. These are `auth.service`, `rateLimiter.redis.service`, `user.service`,
+  `migration.service`, `webauthn.service`, `gdpr.service`, `controllerWrapper.util`,
+  `auth.controller`, `user.controller`, `auth.route` and `user.route`.
+- `swaggerValidatorAlignment.p608` and `readGates.p604` pass.
+- The run's red lines belong to other agents' work in progress: `clamAv.service.test.js`,
+  `tenant.service.coverage.test.js`, and coverage of `tenant.service`, `tenant.validator` and
+  `tenantScope.util`.
+- Frontend: `npx tsc --noEmit` is clean, `npx eslint` is clean on the changed files, and the
+  users-page and user-service suites pass (32 tests).
+
+**Still open:**
+- the budget has not been exercised against a live Redis, and the 429 has not been seen through
+  the Next proxy;
+- the "Remove passkey" action and the Passkeys and GDPR pages have not been used in a browser;
+- how the change-password, Passkeys and GDPR pages show the 429 was not checked. None of them has
+  been changed to say that the session was signed out.
+
+### A-116 — What was changed (2026-09-25)
+
+**Cause.** `backend/__mocks__/uuid.js` (a `v4` returning `12345678-1234-1234-1234-123456789012`) plus
+a `"^uuid$"` `moduleNameMapper` entry in `jest.config.js` and `jest.e2e.config.js`. A file in
+`<rootDir>/__mocks__/` named after a package mocks it for **every** require, Sequelize's own
+included, and Sequelize generates `UUIDV4`/`UUIDV1` defaults through `uuid`. So in every unit run
+every `UUIDV4` default was that one constant, and `UUIDV1` threw `uuidv1 is not a function`.
+
+**Change.** The mock file and both mappings are gone. uuid 14 is ESM-only but loads under the
+`--experimental-vm-modules` flag the npm test scripts already pass (A-99). A test that needs a
+deterministic id mocks `uuid` in its own file. Three already did: `validateUuid.test.js`,
+`tenantBackup.service.test.js` and `upload.test.js`. The workaround that re-implemented `v4` with
+`crypto.randomUUID()` was removed from `auth.tokenPurpose.a59.test.js` and from eleven live tests:
+`dataIdentity.dbA`, `authCards.a215`, `backgroundJobs.w12`, `batchJob.w07`, `bulkDestroyRoutes.w33`,
+`calibrationScheduler.w03`, `dataIntegrity.p6`, `dataLayer.dbB`, `dataLayer.dbC`, `keyRotation.s08`
+and `webhook.durable.a10`. Against the real module, `v4` is not a `jest.fn`, so those calls would
+have thrown.
+
+**Evidence.** `src/tests/models/uuidDefaults.a116.test.js` has 4 tests. They check that two
+`CalibrationDevice.build()` rows get different v4 ids, that every model with a `UUIDV4` primary key
+builds distinct ids, that a `UUIDV1` default generates a v1 id, and that application code gets the
+real `v4`. At HEAD `beb0c4b` with the mock in place, all 4 fail: the constant, and
+`uuidv1 is not a function`. With the change, all 4 pass. The full backend unit suite
+(`npm run test:coverage`) passes with 578 suites, 12164 tests and 100 % coverage. **No unit test
+relied on the constant.**
+
+**Open.** `calibrationScheduler.batch.w17.live.test.js` (W-17, being edited at the same time)
+still calls `require("uuid").v4.mockImplementation(...)` in its `beforeAll`. That line throws now,
+so the file must drop it before it runs against a live database. The comment above
+`randomPdfFileName` in `certificatePdf.service.js` still says the package "is replaced by a
+constant in the Jest environment". That is no longer true, and `crypto.randomUUID()` is still the
+right choice there. The live suites were not run: they need a database.

@@ -364,6 +364,9 @@ exports.auth = async (req, res, next) => {
     });
     req.token = token;
     req.sessionId = decoded.sid || null;
+    // A-216: how this session signed in — a federated one's password (and
+    // address, A-214) belong to its identity provider.
+    req.signInMethod = signInMethod;
     // F-8: the super admin acting through this token, when it is an
     // impersonation token. Every audit row the request writes names them.
     req.impersonatorId = impersonatorId;

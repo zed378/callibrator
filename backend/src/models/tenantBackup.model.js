@@ -18,6 +18,8 @@
 //   deleting  -> no intermediate state; DELETED + soft delete in one transaction
 // tests/models/tenantBackup.status.s32.test.js keeps this object and the ENUM
 // identical.
+// D-27 (ADR-070): every JSON column declares its shape, validated on write.
+const { jsonShape } = require("../utils/jsonShape.util");
 const STATUS = {
   PENDING: "pending",
   IN_PROGRESS: "in_progress",
@@ -124,6 +126,7 @@ const defineModel = (db, DataTypes) => {
       },
       metadata: {
         type: DataTypes.JSON,
+        validate: { shape: jsonShape("TenantBackup.metadata") },
         allowNull: true,
       },
       // Audit

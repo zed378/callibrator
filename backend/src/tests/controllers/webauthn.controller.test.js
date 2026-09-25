@@ -161,8 +161,45 @@ describe("webauthn Controller", () => {
 
       await webauthnController.disable(req, res, next);
 
-      expect(webauthnService.disable).toHaveBeenCalledWith(TENANT_ID, USER_ID);
+      // A-213: the re-authentication from the body, and the request context
+      // for the audit row.
+      expect(webauthnService.disable).toHaveBeenCalledWith(
+        TENANT_ID,
+        USER_ID,
+        { currentPassword: undefined, code: undefined, recoveryCode: undefined },
+        { ipAddress: null, userAgent: null },
+      );
       expect(success).toHaveBeenCalled();
+    });
+
+    it("passes the body's re-authentication and the caller's address through (A-213)", async () => {
+      webauthnService.disable.mockResolvedValue({ success: true });
+      req.body = { currentPassword: "pw", code: "123456", recoveryCode: "R", extra: "ignored" };
+      req.ip = "198.51.100.1";
+      req.headers = { "user-agent": "ua" };
+
+      await webauthnController.disable(req, res, next);
+
+      expect(webauthnService.disable).toHaveBeenCalledWith(
+        TENANT_ID,
+        USER_ID,
+        { currentPassword: "pw", code: "123456", recoveryCode: "R" },
+        { ipAddress: "198.51.100.1", userAgent: "ua" },
+      );
+    });
+
+    it("tolerates a request with no body (Express 5)", async () => {
+      webauthnService.disable.mockResolvedValue({ success: true });
+      req.body = undefined;
+
+      await webauthnController.disable(req, res, next);
+
+      expect(webauthnService.disable).toHaveBeenCalledWith(
+        TENANT_ID,
+        USER_ID,
+        { currentPassword: undefined, code: undefined, recoveryCode: undefined },
+        expect.any(Object),
+      );
     });
   });
 });

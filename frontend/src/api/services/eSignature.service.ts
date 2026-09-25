@@ -1,4 +1,5 @@
 import { api } from "../client";
+import type { PaginatedResponse } from "@/types";
 
 /**
  * E-Signature (21 CFR Part 11).
@@ -21,7 +22,7 @@ import { api } from "../client";
  *   POST   /workflows/:workflowId/cancel             (A-130)
  *   POST   /sign                     (denies API keys; `reason` required)
  *   POST   /verify
- *   GET    /history                  ?userId&startDate&endDate
+ *   GET    /history                  ?userId&startDate&endDate&page&limit (D-24: paginated)
  */
 
 const BASE = "/api/v1/esignature";
@@ -189,6 +190,10 @@ export interface SignatureHistoryParams {
   userId?: string;
   startDate?: string;
   endDate?: string;
+  /** D-24 (ADR-070): 1-based page; the backend defaults to 1. */
+  page?: number;
+  /** D-24 (ADR-070): page size; the backend defaults to 25 and caps at 200. */
+  limit?: number;
 }
 
 /** The caller's own step status, for GET /my-workflows?stepStatus=. */
@@ -200,7 +205,7 @@ interface BackendResponse<T> {
   status: number;
   message: string;
   data: T;
-  meta?: { total: number };
+  meta?: { total: number; page?: number; limit?: number; totalPages?: number };
 }
 
 // ---------- Service ----------
@@ -360,19 +365,34 @@ export const eSignatureService = {
   },
 
   /**
-   * GET /history — rows are `data` itself, the count in a top-level
-   * `meta.total` (A-106; the backend used to wrap them as data.signatures).
+   * GET /history — ONE PAGE of the history (D-24, ADR-070): rows are `data`
+   * itself, pagination a top-level `meta` (A-106; the backend used to wrap
+   * them as data.signatures, and until D-24 returned every signature).
    * Without `qms` read, only the caller's own signatures, `userId` ignored
    * (A-129).
    */
   getSignatureHistory: async (
     params: SignatureHistoryParams = {},
-  ): Promise<SignatureRecord[]> => {
+  ): Promise<PaginatedResponse<SignatureRecord>> => {
     const response = await api.get<BackendResponse<SignatureRecord[]>>(
       `${BASE}/history`,
       { params },
     );
-    return response.data ?? [];
+    const rows = Array.isArray(response?.data) ? response.data : [];
+    const meta = response?.meta;
+    const total = meta?.total ?? rows.length;
+    const limit = meta?.limit ?? params.limit ?? 25;
+    return {
+      success: response?.success ?? true,
+      message: response?.message ?? "",
+      data: rows,
+      meta: {
+        total,
+        page: meta?.page ?? params.page ?? 1,
+        limit,
+        totalPages: meta?.totalPages ?? Math.max(1, Math.ceil(total / limit)),
+      },
+    };
   },
 };
 

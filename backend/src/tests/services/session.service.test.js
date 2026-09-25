@@ -258,6 +258,7 @@ describe("session.service", () => {
         where: {
           expired_at: expect.any(Object),
         },
+        limit: 1000,
       });
       expect(result).toBe(10);
     });

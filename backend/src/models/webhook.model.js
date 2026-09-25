@@ -5,6 +5,8 @@
  * of domain events and receives HMAC-signed POST deliveries when they occur.
  */
 
+// D-27 (ADR-070): every JSON column declares its shape, validated on write.
+const { jsonShape } = require("../utils/jsonShape.util");
 const defineModel = (db, DataTypes) => {
   const Webhook = db.define(
     "Webhook",
@@ -38,6 +40,7 @@ const defineModel = (db, DataTypes) => {
       // The special value "*" subscribes to every event.
       events: {
         type: DataTypes.JSONB,
+        validate: { shape: jsonShape("Webhook.events") },
         allowNull: false,
         defaultValue: [],
       },

@@ -774,12 +774,23 @@ router.post(
  *         schema:
  *           type: string
  *           format: date
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 25
+ *           maximum: 200
  *     responses:
  *       200:
  *         description: >-
- *           Signature history retrieved successfully. Rows are `data` itself,
- *           the count in a top-level `meta.total` (A-106; formerly
- *           `data.signatures`).
+ *           One page of the signature history. Rows are `data` itself,
+ *           pagination a top-level `meta` (A-106, formerly `data.signatures`;
+ *           D-24, paginated since 2026-09-25).
  *         content:
  *           application/json:
  *             schema:
@@ -789,6 +800,12 @@ router.post(
  *                   type: object
  *                   properties:
  *                     total:
+ *                       type: integer
+ *                     page:
+ *                       type: integer
+ *                     limit:
+ *                       type: integer
+ *                     totalPages:
  *                       type: integer
  *                 data:
  *                   type: array

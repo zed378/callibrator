@@ -1710,15 +1710,28 @@ const HISTORY_REDACTED_ATTRIBUTES = ["biometricData", "ipAddress", "userAgent"];
  * @param {string} [filters.userId] - honoured only when canManage
  * @param {string} [filters.startDate]
  * @param {string} [filters.endDate]
+ * @param {number|string} [filters.page] - D-24: 1-based page (default 1)
+ * @param {number|string} [filters.limit] - D-24: page size (default
+ *   DEFAULT_LIMIT, capped at MAX_LIMIT)
  * @param {{callerId: string, canManage: boolean}} scope - from the controller
- * @returns {Promise<Array>}
+ * @returns {Promise<{rows: Array, meta: {total: number, page: number, limit: number, totalPages: number}}>}
  */
 exports.getSignatureHistory = async (tenantId, filters = {}, scope = {}) => {
   try {
     const { SignatureRecord } = require("../models");
     const { Op } = require("sequelize");
+    const { DEFAULT_LIMIT, MAX_LIMIT } = require("../constants");
+    // D-24 (ADR-070): one page, not every signature the tenant ever made. The
+    // id breaks ties between signatures made in the same millisecond, so a
+    // row never appears on two pages or on none.
+    const limit = Math.min(Number(filters.limit) || DEFAULT_LIMIT, MAX_LIMIT);
+    const page = Math.max(Number(filters.page) || 1, 1);
     const where = { tenantId };
-    const options = { order: [["signedAt", "DESC"]] };
+    const options = {
+      order: [["signedAt", "DESC"], ["id", "ASC"]],
+      limit,
+      offset: (page - 1) * limit,
+    };
     if (scope.canManage) {
       if (filters.userId) {
         where.userId = filters.userId;
@@ -1737,7 +1750,11 @@ exports.getSignatureHistory = async (tenantId, filters = {}, scope = {}) => {
         where.signedAt[Op.lte] = new Date(filters.endDate);
       }
     }
-    return await SignatureRecord.findAll({ where, ...options });
+    const { count, rows } = await SignatureRecord.findAndCountAll({ where, ...options });
+    return {
+      rows,
+      meta: { total: count, page, limit, totalPages: Math.ceil(count / limit) },
+    };
   } catch (err) {
     logger.error("Failed to get signature history", {
       tenantId,

@@ -36,7 +36,15 @@ exports.verifyLogin = asyncHandler(async (req, res) => {
   success(res, result, null, "WebAuthn login verified");
 });
 
+// A-213: removing the passkey needs the current password (and, with MFA, a
+// current code or recovery code) from the body; it is audited.
 exports.disable = asyncHandler(async (req, res) => {
-  const result = await webauthnService.disable(req.user?.tenantId, req.user?.id);
+  const { currentPassword, code, recoveryCode } = req.body || {};
+  const result = await webauthnService.disable(
+    req.user?.tenantId,
+    req.user?.id,
+    { currentPassword, code, recoveryCode },
+    { ipAddress: req.ip || null, userAgent: req.headers?.["user-agent"] || null },
+  );
   success(res, result, null, "WebAuthn disabled");
 });

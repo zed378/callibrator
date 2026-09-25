@@ -8,7 +8,9 @@
  * no context at all — how every job ran before — the hooks add nothing.
  */
 const { Sequelize, DataTypes } = require("sequelize");
-const { runForTenant, runAsSystem } = require("../../utils/jobContext.util");
+const fs = require("fs");
+const path = require("path");
+const { runForTenant, runAsSystem, SYSTEM_TASKS } = require("../../utils/jobContext.util");
 const { tenantStorage } = require("../../middlewares/tenantContext.middleware");
 const { register: registerTenantScopeHooks } = require("../../utils/tenantScope.util");
 
@@ -25,17 +27,67 @@ describe("runForTenant / runAsSystem", () => {
   });
 
   it("runAsSystem is an explicit, named system task and never a super admin", async () => {
-    const result = await runAsSystem("test: cross-tenant read", async () => tenantStorage.getStore());
+    const result = await runAsSystem(SYSTEM_TASKS.SESSION_CLEANUP, async () => tenantStorage.getStore());
     expect(result).toEqual({
       tenantId: null,
       isSuperAdmin: false,
       isSystemTask: true,
-      systemReason: "test: cross-tenant read",
+      systemReason: SYSTEM_TASKS.SESSION_CLEANUP,
     });
   });
 
   it("runAsSystem refuses an unnamed opt-out", async () => {
     await expect(runAsSystem("", async () => 1)).rejects.toThrow(/reason/);
+  });
+
+  it("ADR-069: runAsSystem refuses a reason that is not a reviewed SYSTEM_TASKS entry", async () => {
+    const fn = jest.fn();
+    await expect(runAsSystem("test: cross-tenant read", fn)).rejects.toThrow(/not a reviewed opt-out/);
+    expect(fn).not.toHaveBeenCalled();
+  });
+});
+
+describe("ADR-069 — the cross-tenant opt-outs are a closed, reviewed list", () => {
+  const SRC = path.join(__dirname, "..", "..");
+  const sourceFiles = (dir = SRC) =>
+    fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        return entry.name === "tests" ? [] : sourceFiles(full);
+      }
+      return entry.name.endsWith(".js") ? [full] : [];
+    });
+
+  it("the list is frozen and names exactly the reviewed jobs", () => {
+    expect(Object.isFrozen(SYSTEM_TASKS)).toBe(true);
+    expect(Object.keys(SYSTEM_TASKS)).toEqual([
+      "BATCH_JOB_SWEEP",
+      "BATCH_JOB_SHUTDOWN",
+      "CALIBRATION_SCAN",
+      "SESSION_CLEANUP",
+      "QUARANTINE_SWEEP",
+      "WEBHOOK_DISPATCH",
+    ]);
+  });
+
+  it("no source file but jobContext.util sets isSystemTask: true", () => {
+    const offenders = sourceFiles()
+      .filter((file) => /isSystemTask:\s*true/.test(fs.readFileSync(file, "utf8")))
+      .map((file) => path.relative(SRC, file).split(path.sep).join("/"));
+    expect(offenders).toEqual(["utils/jobContext.util.js"]);
+  });
+
+  it("every runAsSystem call names a SYSTEM_TASKS entry, never a literal", () => {
+    const literal = [];
+    for (const file of sourceFiles()) {
+      const text = fs.readFileSync(file, "utf8");
+      for (const [call] of text.matchAll(/runAsSystem\(\s*[^)\s,]+/g)) {
+        if (!/runAsSystem\(\s*(SYSTEM_TASKS\.[A-Z_]+|reason)$/.test(call)) {
+          literal.push(`${path.relative(SRC, file)}: ${call}`);
+        }
+      }
+    }
+    expect(literal).toEqual([]);
   });
 });
 

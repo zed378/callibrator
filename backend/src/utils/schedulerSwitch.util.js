@@ -1,5 +1,5 @@
 /**
- * One switch for "this instance is not the scheduler" (W-02, ADR-PENDING-async).
+ * One switch for "this instance is not the scheduler" (W-02, ADR-060).
  *
  * Every singleton scheduler reads its cron expression through
  * `scheduleSetting(envName, default)`. With `SCHEDULERS_ENABLED=false` that

@@ -58,6 +58,9 @@ describe("A-124 — system actors", () => {
       "system:auth-lockout", // A-126
       "system:break-glass", // P6-07
       "system:calibration-scan", // W-04 / W-30
+      "system:iot-ingest", // W-04: the anomaly alert only (ADR-069)
+      "system:batch-job", // W-04: batch-job state changes (ADR-069)
+      "system:webhook-delivery-purge", // ADR-070: finished deliveries past retention
     ]);
     for (const name of SYSTEM_ACTOR_NAMES) {
       expect(name).toMatch(/^system:[a-z][a-z-]*$/);

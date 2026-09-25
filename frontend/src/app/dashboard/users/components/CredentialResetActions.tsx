@@ -1,13 +1,13 @@
 "use client";
 
 import React, { useState } from "react";
-import { KeyRound, ShieldOff, Copy, Check } from "lucide-react";
+import { KeyRound, ShieldOff, Fingerprint, Copy, Check } from "lucide-react";
 import type { User } from "@/types";
 import { Button, ConfirmDialog, Dialog } from "@/components/ui";
 import { userService } from "@/api/services/user.service";
 import { useToastStore } from "@/stores/toastStore";
 
-type Pending = "mfa" | "password" | null;
+type Pending = "mfa" | "passkey" | "password" | null;
 
 interface CredentialResetActionsProps {
   user: User;
@@ -17,9 +17,43 @@ interface CredentialResetActionsProps {
 
 const nameOf = (user: User) => user.username || user.email;
 
+const FAILURE_TITLES: Record<Exclude<Pending, null>, string> = {
+  mfa: "Could not reset MFA",
+  passkey: "Could not remove the passkey",
+  password: "Could not reset the password",
+};
+
+/** What each confirmation says, and its button. */
+const confirmation = (pending: Pending, name: string) => {
+  if (pending === "mfa") {
+    return {
+      title: `Reset MFA for ${name}?`,
+      description:
+        "Their authenticator and recovery codes stop working and every session of theirs is signed out. They sign in with their password and set up MFA again. This is recorded in the audit trail.",
+      label: "Reset MFA",
+    };
+  }
+  if (pending === "passkey") {
+    return {
+      title: `Remove the passkey of ${name}?`,
+      description:
+        "Their passkey stops working and every session of theirs is signed out. Their password and MFA are not changed; they can register a new passkey after signing in. This is recorded in the audit trail.",
+      label: "Remove passkey",
+    };
+  }
+  return {
+    title: `Reset the password of ${name}?`,
+    description:
+      "Their current password stops working and every session of theirs is signed out. You will see a temporary password once; they must change it when they sign in. Their MFA is not changed. This is recorded in the audit trail.",
+    label: "Reset password",
+  };
+};
+
 /**
  * A-162 — an administrator's credential resets for one user row:
  *  - "Reset MFA" (POST /users/:id/mfa/reset, A-141) — only for a user with MFA;
+ *  - "Remove passkey" (DELETE /users/:id/webauthn, A-262) — only for a user
+ *    with a passkey;
  *  - "Reset password" (POST /users/:id/password/reset) — a temporary
  *    password, shown ONCE in a dialog and held only in this component's
  *    state until it is closed.
@@ -48,7 +82,14 @@ export const CredentialResetActions: React.FC<CredentialResetActionsProps> = ({
     const action = pending;
     setBusy(true);
     try {
-      if (action === "mfa") {
+      if (action === "passkey") {
+        const result = await userService.resetPasskey(user.id);
+        addToast({
+          type: "success",
+          title: `Passkey removed for ${nameOf(user)}`,
+          description: `${result.sessionsRevoked} session(s) signed out. They sign in with their password and may register a new passkey.`,
+        });
+      } else if (action === "mfa") {
         const result = await userService.resetMfa(user.id);
         addToast({
           type: "success",
@@ -62,7 +103,7 @@ export const CredentialResetActions: React.FC<CredentialResetActionsProps> = ({
       }
       onReset?.();
     } catch (err) {
-      fail(action === "mfa" ? "Could not reset MFA" : "Could not reset the password", err);
+      fail(FAILURE_TITLES[action ?? "password"], err);
     } finally {
       setBusy(false);
       setPending(null);
@@ -84,6 +125,8 @@ export const CredentialResetActions: React.FC<CredentialResetActionsProps> = ({
     setCopied(false);
   };
 
+  const shown = confirmation(pending, nameOf(user));
+
   return (
     <>
       {user.mfaEnabled === true && (
@@ -95,6 +138,17 @@ export const CredentialResetActions: React.FC<CredentialResetActionsProps> = ({
           onClick={() => setPending("mfa")}
         >
           <ShieldOff className="h-4 w-4" />
+        </Button>
+      )}
+      {user.webauthnEnabled === true && (
+        <Button
+          variant="ghost"
+          size="sm"
+          title={`Remove passkey for ${nameOf(user)}`}
+          aria-label={`Remove passkey for ${nameOf(user)}`}
+          onClick={() => setPending("passkey")}
+        >
+          <Fingerprint className="h-4 w-4" />
         </Button>
       )}
       <Button
@@ -109,13 +163,9 @@ export const CredentialResetActions: React.FC<CredentialResetActionsProps> = ({
 
       <ConfirmDialog
         isOpen={pending !== null}
-        title={pending === "mfa" ? `Reset MFA for ${nameOf(user)}?` : `Reset the password of ${nameOf(user)}?`}
-        description={
-          pending === "mfa"
-            ? "Their authenticator and recovery codes stop working and every session of theirs is signed out. They sign in with their password and set up MFA again. This is recorded in the audit trail."
-            : "Their current password stops working and every session of theirs is signed out. You will see a temporary password once; they must change it when they sign in. Their MFA is not changed. This is recorded in the audit trail."
-        }
-        confirmLabel={pending === "mfa" ? "Reset MFA" : "Reset password"}
+        title={shown.title}
+        description={shown.description}
+        confirmLabel={shown.label}
         variant="danger"
         isLoading={busy}
         onConfirm={confirm}
