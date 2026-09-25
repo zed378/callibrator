@@ -157,7 +157,11 @@ const sign = (stepId = "step-1") =>
 const brokerDown = () => mockConnect.mockRejectedValue(new Error("ECONNREFUSED"));
 
 const brokerUp = () => {
-  const channel = { on: jest.fn(), sendToQueue: jest.fn(), close: jest.fn() };
+  // W-09: a publish declares email_queue, its DLQ and its retry queues on the
+  // channel first (emailQueue.service#publishingChannel), as a real channel
+  // allows. A double without assertQueue threw there and silently took the
+  // direct-SMTP fallback, so the broker path was never reached.
+  const channel = { on: jest.fn(), assertQueue: jest.fn().mockResolvedValue({}), sendToQueue: jest.fn(), close: jest.fn() };
   mockConnect.mockResolvedValue({ on: jest.fn(), close: jest.fn(), createChannel: async () => channel });
   return channel;
 };

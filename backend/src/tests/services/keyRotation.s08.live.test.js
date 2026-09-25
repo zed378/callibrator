@@ -46,8 +46,6 @@ const boot = (env) => {
   let graph;
   try {
     jest.isolateModules(() => {
-      const uuid = require("uuid");
-      uuid.v4.mockImplementation(() => crypto.randomUUID());
       const { db } = require("../../config");
       db.options.logging = false;
       graph = {

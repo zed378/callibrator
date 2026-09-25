@@ -13,9 +13,6 @@ module.exports = {
   collectCoverage: false,
   transform: {},
   transformIgnorePatterns: ["/node_modules/"],
-  moduleNameMapper: {
-    "^uuid$": "<rootDir>/__mocks__/uuid.js",
-  },
   moduleFileExtensions: ["js", "json"],
   testTimeout: 30000,
 };

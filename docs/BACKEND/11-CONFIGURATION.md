@@ -189,11 +189,8 @@ Unset means `/ai` and the GDPR export path return errors. That is an environment
 
 | Variable | Notes |
 |---|---|
-| `CUSTOM_DOMAINS_ENABLED`, `TLS_AUTO_PROVISION` | |
-| `ACME_DIRECTORY_URL` | **defaults to Let's Encrypt STAGING** |
-| `ACME_ACCOUNT_EMAIL` | |
-
-Forgetting to point `ACME_DIRECTORY_URL` at the production directory yields certificates no browser trusts, and the failure appears in a browser rather than in any log.
+| `CUSTOM_DOMAINS_ENABLED` | registering and DNS-verifying a domain |
+| `TLS_AUTO_PROVISION`, `ACME_DIRECTORY_URL`, `ACME_ACCOUNT_EMAIL`, `ACME_CHALLENGE_DIR` | **no longer read** (A-256, ADR-065): no certificate is issued for a custom domain. Still present in some deploy templates; harmless, and to be removed with them |
 
 ## Bootstrap and Seeding
 

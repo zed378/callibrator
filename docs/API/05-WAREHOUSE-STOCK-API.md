@@ -79,9 +79,17 @@ pending ──▶ in_transit ──▶ completed
    └── cancelled ┘
 ```
 
-Quantity leaves the source when the transfer enters `in_transit`, and arrives at the destination on `completed` — each inside a transaction, never both at once and never neither (BR-10).
+Quantity moves at **`completed`**, source and destination in one transaction with one audit row naming both
+quantities (`stock.service#updateTransferStatus`, P6-09). `in_transit` moves nothing. *(This section said the
+source was debited on entering `in_transit`; the code has never done that — corrected 2026-09-25, ADR-065.)*
 
-A transfer is one of three resource types the workflow engine can gate (`workflows.resourceType`); when a workflow is configured, approval routes through `workflow_instances`.
+**With an approval workflow** (A-201/A-202, ADR-065). When the tenant configured an active `StockTransfer`
+workflow, `POST /transfer` starts its instance **in the same transaction** as the transfer (a failure rolls the
+transfer back) and audits the create. While that instance is `PENDING`, `PATCH /transfer/:transferId` is **409**:
+the transfer moves through the workflow (`POST /workflows/instances/:instanceId/action`). The final decision maps
+onto the transfer's own states — **approved → `in_transit`** (`approvedBy` = the approver; the stock still moves
+only at `completed`), **rejected → `cancelled`** — audited, and a 409 when the transfer is no longer `pending` or
+no longer exists. It used to write `Approved`/`Rejected`, which are not values of the ENUM.
 
 ### Opname (physical count)
 
@@ -136,4 +144,4 @@ Every quantity change goes through a transaction, and every path writes a row th
 | Transfer | `stock_transfers` with the state transition |
 | Opname | `stock_opnames` reconciliation |
 
-**Closed 2026-09-24 (P6-09, ADR-PENDING-data).** `PATCH /:stockId` refuses a `quantity` that differs from the stored one — **400**, naming `POST /stocks/adjustment` — and accepts the same value as a no-op. `POST /stocks/adjustment` requires a `reason` (3–255 characters after trimming; blank is refused, and the database has a `CHECK` too), records the item (`stockId`) and the level before and after, and writes an audit row in the same transaction. Creating an item with stock on hand records an opening-balance adjustment. See [`../DATABASE/05-WAREHOUSE-TABLES.md`](../DATABASE/05-WAREHOUSE-TABLES.md).
+**Closed 2026-09-24 (P6-09, ADR-062).** `PATCH /:stockId` refuses a `quantity` that differs from the stored one — **400**, naming `POST /stocks/adjustment` — and accepts the same value as a no-op. `POST /stocks/adjustment` requires a `reason` (3–255 characters after trimming; blank is refused, and the database has a `CHECK` too), records the item (`stockId`) and the level before and after, and writes an audit row in the same transaction. Creating an item with stock on hand records an opening-balance adjustment. See [`../DATABASE/05-WAREHOUSE-TABLES.md`](../DATABASE/05-WAREHOUSE-TABLES.md).

@@ -32,7 +32,84 @@ const transformNotifications = (rows) => (rows || []).map(transformNotification)
 // ------------------------------------------------------------------
 // EMIT NOTIFICATION (Internal Use)
 // ------------------------------------------------------------------
-exports.emitNotification = async (data) => {
+/**
+ * Deliver a stored notification on its realtime and (opt-in) email channels.
+ * Never throws: a channel that fails is logged, the row is already stored.
+ */
+const deliverNotification = async (transformed, notifData, { channels, recipientEmail, recipientName }) => {
+  // --- Realtime channel (socket.io) ---
+  // Delivered ONLY to the addressed recipient: the target user, or the target
+  // tenant room for tenant-wide notifications. This mirrors the REST feed
+  // (fetchUserNotifications), which is recipient scoped.
+  //
+  // It deliberately no longer fans out to a global "super_admins" room. That
+  // pushed every user's notification to super admins, so their bell badge
+  // incremented (and toasts/sounds fired) for items that were not theirs and
+  // never appeared in their list — a phantom unread count, plus a leak of
+  // other users' notification content.
+  try {
+    const io = getIo();
+    const room = notifData.userId
+      ? `user_${notifData.userId}`
+      : notifData.tenantId
+        ? `tenant_${notifData.tenantId}`
+        : null;
+    // No recipient => nobody to notify in realtime (the row is still stored).
+    if (room) {
+      io.to(room).emit("new_notification", transformed);
+    }
+  } catch (socketErr) {
+    console.warn("Socket.io emit failed (server might be booting):", socketErr.message);
+  }
+
+  // --- Additional channel (email), opt-in via data.channels ---
+  const requested = channels || notificationChannels.DEFAULT_CHANNELS;
+  if (requested.includes("email")) {
+    try {
+      let email = recipientEmail;
+      let name = recipientName;
+      // Resolve recipient contact details from the target user if not supplied.
+      if (notifData.userId && !email) {
+        const u = await User.findByPk(notifData.userId, {
+          attributes: ["email", "firstName"],
+        });
+        if (u) {
+          email = email || u.email;
+          name = name || u.firstName;
+        }
+      }
+      await notificationChannels.dispatch(transformed, {
+        channels: requested,
+        recipientEmail: email,
+        recipientName: name,
+      });
+    } catch (chErr) {
+      console.warn("Notification channel dispatch failed:", chErr.message);
+    }
+  }
+};
+
+/**
+ * Store a notification and deliver it.
+ *
+ * Without a transaction (the historical form): best-effort — a failure is
+ * logged and `null` returned, so a notification can never block the flow
+ * that raised it (a stock reduction, a sign-off).
+ *
+ * W-04 — with `{ transaction }`: the row is written in the caller's
+ * transaction (next to the caller's audit row), a failure is RE-THROWN so the
+ * caller's transaction cannot commit half of it, and the realtime and email
+ * deliveries wait for the COMMIT — a rolled-back notification is never
+ * announced.
+ *
+ * @param {object} data - Notification columns plus `channels`,
+ *   `recipientEmail`, `recipientName` (routing only, not stored)
+ * @param {object} [options]
+ * @param {object} [options.transaction] - a Sequelize transaction
+ * @returns {Promise<object|null>} the stored notification, or null after a
+ *   logged failure outside a transaction
+ */
+exports.emitNotification = async (data, { transaction } = {}) => {
   try {
     // Channel-routing fields are not Notification columns — strip them off
     // before persisting the row.
@@ -42,63 +119,24 @@ exports.emitNotification = async (data) => {
       recipientName,
       ...notifData
     } = data;
+    const routing = { channels, recipientEmail, recipientName };
 
-    const newNotification = await Notification.create(notifData);
+    const newNotification = transaction
+      ? await Notification.create(notifData, { transaction })
+      : await Notification.create(notifData);
     const transformed = transformNotification(newNotification);
 
-    // --- Realtime channel (socket.io) ---
-    // Delivered ONLY to the addressed recipient: the target user, or the target
-    // tenant room for tenant-wide notifications. This mirrors the REST feed
-    // (fetchUserNotifications), which is recipient scoped.
-    //
-    // It deliberately no longer fans out to a global "super_admins" room. That
-    // pushed every user's notification to super admins, so their bell badge
-    // incremented (and toasts/sounds fired) for items that were not theirs and
-    // never appeared in their list — a phantom unread count, plus a leak of
-    // other users' notification content.
-    try {
-      const io = getIo();
-      const room = notifData.userId
-        ? `user_${notifData.userId}`
-        : notifData.tenantId
-          ? `tenant_${notifData.tenantId}`
-          : null;
-      // No recipient => nobody to notify in realtime (the row is still stored).
-      if (room) {
-        io.to(room).emit("new_notification", transformed);
-      }
-    } catch (socketErr) {
-      console.warn("Socket.io emit failed (server might be booting):", socketErr.message);
-    }
-
-    // --- Additional channel (email), opt-in via data.channels ---
-    const requested = channels || notificationChannels.DEFAULT_CHANNELS;
-    if (requested.includes("email")) {
-      try {
-        let email = recipientEmail;
-        let name = recipientName;
-        // Resolve recipient contact details from the target user if not supplied.
-        if (notifData.userId && !email) {
-          const u = await User.findByPk(notifData.userId, {
-            attributes: ["email", "firstName"],
-          });
-          if (u) {
-            email = email || u.email;
-            name = name || u.firstName;
-          }
-        }
-        await notificationChannels.dispatch(transformed, {
-          channels: requested,
-          recipientEmail: email,
-          recipientName: name,
-        });
-      } catch (chErr) {
-        console.warn("Notification channel dispatch failed:", chErr.message);
-      }
+    if (transaction) {
+      transaction.afterCommit(() => deliverNotification(transformed, notifData, routing));
+    } else {
+      await deliverNotification(transformed, notifData, routing);
     }
 
     return transformed;
   } catch (error) {
+    if (transaction) {
+      throw error;
+    }
     console.error("Failed to emit notification:", error);
     // We don't throw here to prevent blocking main flows (like stock reduction) if notification fails
     return null;

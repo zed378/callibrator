@@ -241,6 +241,8 @@ describe("A-162 — POST /users/:userId/password/reset", () => {
       id: target.id,
       temporaryPassword: expect.stringMatching(/^[A-HJ-NP-Za-km-z2-9]{16}$/),
       mustChangePassword: true,
+      // A-215: it stops signing in after 72 hours.
+      temporaryPasswordExpiresAt: expect.any(Date),
       sessionsRevoked: 2,
     });
     // Only the hash is stored, and it is the hash of what was shown.
@@ -269,6 +271,8 @@ describe("A-162 — POST /users/:userId/password/reset", () => {
         operation: "PASSWORD_ADMIN_RESET",
         sessionsRevoked: 2,
         firstLoginChangeRequired: true,
+        // A-215: when the temporary password stops signing in.
+        firstLoginChangeDeadline: expect.stringMatching(/^\d{4}-\d\d-\d\dT/),
       },
       ipAddress: "203.0.113.9",
       userAgent: "jest",

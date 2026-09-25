@@ -40,19 +40,10 @@ const live = process.env.WEBHOOK_PG_LIVE_TEST === "1" ? describe : describe.skip
 const TENANT_A = "a1a1a1a1-0000-4000-8000-00000000000a";
 const TENANT_B = "b2b2b2b2-0000-4000-8000-00000000000b";
 
-// jest.config maps `uuid` to a mock returning ONE constant (A-116) — which
-// Sequelize's UUIDV4 defaults use too. Rows in a real table need real ids.
-const realUuids = new Set();
-const useRealUuids = (uuid) => {
-  uuid.v4.mockImplementation(() => require("crypto").randomUUID());
-  realUuids.add(uuid);
-};
-
 /** A separately loaded module graph: a new process, as far as the DB can tell. */
 const startProcess = () => {
   let graph;
   jest.isolateModules(() => {
-    useRealUuids(require("uuid"));
     const { db } = require("../../config");
     db.options.logging = false;
     graph = {
@@ -98,10 +89,6 @@ live("webhook delivery — live PostgreSQL (A-10, A-11)", () => {
        ON CONFLICT (id) DO NOTHING`,
       { replacements: { a: TENANT_A, b: TENANT_B } },
     );
-  });
-
-  beforeEach(() => {
-    realUuids.forEach(useRealUuids); // restoreMocks resets the implementation
   });
 
   afterEach(async () => {

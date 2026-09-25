@@ -33,6 +33,11 @@ exports.updateConsent = Joi.object({
 exports.rectifyData = Joi.object({
   field: Joi.string().required().max(100),
   value: Joi.required(),
+  // A-214: an email change needs fresh re-authentication (the service
+  // decides which of these it requires; other fields ignore them).
+  currentPassword: Joi.string().max(1024),
+  code: Joi.string().max(32),
+  recoveryCode: Joi.string().max(64),
 }).options({ abortEarly: false, stripUnknown: true });
 
 /**

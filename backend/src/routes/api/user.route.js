@@ -911,6 +911,56 @@ router.post(
 );
 
 /* ------------------------------------------------------------------ */
+/* ADMIN-ASSISTED PASSKEY REMOVAL (A-262)                             */
+/* ------------------------------------------------------------------ */
+/**
+ * @swagger
+ * /api/v1/users/{userId}/webauthn:
+ *   delete:
+ *     summary: Remove another user's passkey (tenant administrator)
+ *     description: >
+ *       For a user whose passkey device is lost or compromised, or who signs
+ *       in only through SSO and so cannot re-authenticate the self-service
+ *       removal. Clears the user's passkey (credential, public key and sign
+ *       count), signs out every session of theirs, leaves the password and
+ *       MFA as they are, and is audited (WEBAUTHN_ADMIN_RESET). Requires
+ *       users update access and a tenant-administrator role; the target must
+ *       be in the caller's tenant (another tenant's user answers 404), may not
+ *       be the caller, and may not hold a role above the caller's.
+ *     tags:
+ *       - Users
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       '200':
+ *         description: Passkey removed; data.sessionsRevoked counts the sessions signed out
+ *       '400':
+ *         description: Malformed id, or the caller named themselves (use POST /webauthn/disable with the password)
+ *       '403':
+ *         description: Not a tenant administrator, or the target's role is above the caller's
+ *       '404':
+ *         description: User not found (including a user of another tenant)
+ *       '409':
+ *         description: The user has no passkey to remove
+ */
+router.delete(
+  "/:userId/webauthn",
+  auth,
+  validateUuid("userId"),
+  dynamicAccess("users", "update", { checkTenant: true }),
+  rbac([ROLE_NAMES.TENANT_ADMIN]),
+  // Audited inside userService.resetUserPasskey's transaction.
+  userController.resetUserPasskey,
+);
+
+/* ------------------------------------------------------------------ */
 /* ADMIN-ASSISTED PASSWORD RESET (A-162)                              */
 /* ------------------------------------------------------------------ */
 /**

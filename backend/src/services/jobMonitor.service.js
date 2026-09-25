@@ -121,6 +121,14 @@ const JOBS = Object.freeze({
     action: "Read the error (usually permissions on the uploads volume).",
     singleton: true,
   },
+  // ADR-070 — middlewares/webhookDeliveryPurgeScheduler.middleware.js.
+  "webhook-delivery-purge": {
+    title: "Webhook delivery purge",
+    meaning:
+      "Finished webhook deliveries past the retention window were NOT removed. Nothing is lost; webhook_deliveries keeps growing until a run succeeds.",
+    action: "Read the error (usually the database); the next daily run retries and removes the backlog in bounded batches.",
+    singleton: true,
+  },
 });
 
 const states = new Map();

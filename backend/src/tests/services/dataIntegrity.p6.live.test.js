@@ -29,22 +29,14 @@ const TENANT_A = "a6a6a6a6-0000-4000-8000-00000000000a";
 const TENANT_B = "b6b6b6b6-0000-4000-8000-00000000000b";
 const APP_ROLE = process.env.DB_APP_ROLE || "callibrator_app"; // what migration 0057 grants
 
-// jest.config maps `uuid` to a mock returning ONE constant (A-116) — which
-// Sequelize's UUIDV4 defaults use too. Rows in a real table need real ids.
-const useRealUuids = (uuid) => {
-  uuid.v4.mockImplementation(() => require("crypto").randomUUID());
-};
-
 /** A separately loaded module graph: its own Sequelize instance and pool. */
 const startProcess = () => {
   let graph;
   jest.isolateModules(() => {
-    useRealUuids(require("uuid"));
     const { db } = require("../../config");
     db.options.logging = false;
     graph = {
       db,
-      uuid: require("uuid"),
       models: require("../../models"),
       service: require("../../services/calibrationRecords.service"),
       tenantStorage: require("../../middlewares/tenantContext.middleware").tenantStorage,
@@ -53,6 +45,7 @@ const startProcess = () => {
       m0026: require("../../migrations/0026-calibration-device-serial-per-tenant"),
       m0057: require("../../migrations/0057-calibration-records-append-only"),
       m0059: require("../../migrations/0059-stock-adjustment-reason-and-item"),
+      m0063: require("../../migrations/0063-user-identity-case-insensitive"),
       stockService: require("../../services/stock.service"),
     };
   });
@@ -167,7 +160,10 @@ live("Phase 6 data integrity — live PostgreSQL (P6-03, P6-05, P6-06)", () => {
     );
     ids.legacyAdjustment = legacy.id;
     await g.m0059.up({ context: qi });
-  });
+    // The verifier expects 0063's case-insensitive identity indexes (ADR-063).
+    await g.m0063.up({ context: qi });
+    // db.sync({ force: true }) of 71 models can exceed jest's 10 s default.
+  }, 120000);
 
   afterAll(async () => {
     if (g) {
@@ -340,7 +336,6 @@ live("Phase 6 data integrity — live PostgreSQL (P6-03, P6-05, P6-06)", () => {
       p = startProcess();
       await p.dbRole.enterApplicationRole({ sequelize: p.db, logger, env: { DB_APP_ROLE: APP_ROLE } });
     });
-    beforeEach(() => useRealUuids(p.uuid));
     afterAll(async () => {
       await p.db.close();
     });

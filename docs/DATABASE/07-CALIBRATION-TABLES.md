@@ -74,7 +74,7 @@ The reason is not fastidiousness. A record that can be edited after the fact has
 ### The gap — closed as a constraint (P6-03, 2026-09-24)
 
 Until P6-03 this table was `paranoid`, `PUT` / `DELETE` endpoints existed for it, and the append-only property was
-a service-layer convention. It is now enforced by the database, twice over (ADR-PENDING-data; migration `0057`):
+a service-layer convention. It is now enforced by the database, twice over (ADR-062; migration `0057`):
 
 1. **A trigger, for every role — the owner and a superuser included.** `calibration_records_append_only` refuses
    `DELETE`, and refuses any `UPDATE` that changes a column other than the lifecycle columns
@@ -94,7 +94,7 @@ the owner — needs a second credential in the deployment and is not built.
 
 Both are **tested as the application role, not the owner**, with a mutation check that re-grants `DELETE` and
 disables the trigger and shows each assertion then fails: `backend/src/tests/services/dataIntegrity.p6.live.test.js`
-(PostgreSQL 16). `make migrate-verify` (P6-05) refuses a boot where the trigger is missing.
+(PostgreSQL 16 and 18.6). `make migrate-verify` (P6-05) refuses a boot where the trigger is missing.
 
 ### Correct and void — the only writes after insert
 

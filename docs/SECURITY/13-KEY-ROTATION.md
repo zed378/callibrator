@@ -1,7 +1,7 @@
 # 13 — Key Rotation Runbook
 
-> As-built 2026-09-24 (P6-10, S-08, S-26 — ADR-PENDING-data). Source files named in each section.
-> **Rehearsed on PostgreSQL 16 against seeded data** (`backend/src/tests/services/keyRotation.s08.live.test.js`),
+> As-built 2026-09-24 (P6-10, S-08, S-26 — ADR-062). Source files named in each section.
+> **Rehearsed on PostgreSQL 16 and 18.6 against seeded data** (`backend/src/tests/services/keyRotation.s08.live.test.js`),
 > **not against a copy of production.** Do that rehearsal before the first real rotation — a procedure that has
 > never met real data is the P6-10 abuse case.
 

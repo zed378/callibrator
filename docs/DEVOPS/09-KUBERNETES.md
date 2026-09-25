@@ -146,7 +146,7 @@ CERT_SIGNING_SECRET  ENCRYPT_KEY  ATTACHMENT_URL_SECRET  KMS_MASTER_KEY
 
 `KMS_MASTER_KEY` was missing from the chart until S-05, although compose and the Makefile already required it. `backend/src/services/kms.service.js` throws at startup in production without it. (Since A-14 production logs to stdout, so the crash is at least visible in `kubectl logs`; before, the pod crash-looped with empty logs.) Values key: `secrets.kmsMasterKey`.
 
-Kubernetes Secrets, chart-managed (`<base>-secrets`) or external via a secrets operator: `global.secrets.external.enabled` and `global.secrets.external.secretName`. **The switch moved from `secrets.external` to `global.secrets.external` in batch 5 (S-06)** because the backend subchart must compute the same Secret name the umbrella creates, and a subchart sees only its own values and `global`. The old `secrets.external` key **refuses to render** (guard 5) rather than being silently ignored — an operator upgrading a values file gets an error naming the new key. Decision: ADR-PENDING-infra (helm secrets), drafted in the batch-6 record. An external Secret must carry the same keys [`templates/secret.yaml`](../../deploy/helm/callibrator/templates/secret.yaml) writes:
+Kubernetes Secrets, chart-managed (`<base>-secrets`) or external via a secrets operator: `global.secrets.external.enabled` and `global.secrets.external.secretName`. **The switch moved from `secrets.external` to `global.secrets.external` in batch 5 (S-06)** because the backend subchart must compute the same Secret name the umbrella creates, and a subchart sees only its own values and `global`. The old `secrets.external` key **refuses to render** (guard 5) rather than being silently ignored — an operator upgrading a values file gets an error naming the new key. Decision: [ADR-066](../../MEMORY/DECISIONS.md). An external Secret must carry the same keys [`templates/secret.yaml`](../../deploy/helm/callibrator/templates/secret.yaml) writes:
 
 | Key | Required | Since |
 |---|---|---|
@@ -185,6 +185,8 @@ The charts assume Postgres, Redis and RabbitMQ are provided **externally** — a
 Running a database from an application chart couples the two lifecycles: a `helm uninstall` that takes the database with it is a class of accident worth designing out.
 
 **Postgres must have pgvector.** Migration `0018` runs `CREATE EXTENSION vector`, and plain Postgres fails it. Compose uses `pgvector/pgvector:pg18` for this reason; a managed service must have the extension available.
+
+**The backend runs its queries as an application role (P6-03, since 2026-09-25 in the chart — ADR-066).** `backend.database.appRole` (default `callibrator_app`) becomes `DB_APP_ROLE` in the ConfigMap. After migrating as `backend.database.user`, every pooled connection runs `SET ROLE callibrator_app`, which has no UPDATE/DELETE on `calibration_records`. Migration `0057` creates the role when the database user has `CREATEROLE` or is a superuser; **on a managed database without that, boot fails until an administrator runs `CREATE ROLE callibrator_app NOLOGIN; GRANT callibrator_app TO <user>;`** (the error says so). `none` opts out — the backend then warns on every boot. Before this, the chart never set the variable and every Helm deployment ran as the owner.
 
 ## Resources
 

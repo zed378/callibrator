@@ -89,10 +89,10 @@ WHERE table_name = 'calibration_devices';
 
 ### The mechanical fix — every boot verifies the schema (P6-05)
 
-As-built 2026-09-24 (ADR-PENDING-data). After `db.sync()` and the migrator, the backend compares **every model's
+As-built 2026-09-24 (ADR-062). After `db.sync()` and the migrator, the backend compares **every model's
 columns** with `information_schema.columns`, and checks the **control objects that exist only in migrations** by
 name — the `calibration_records` append-only trigger and void CHECK (0057), the per-tenant serial index (0026), the
-stock-adjustment reason CHECK (0059) — and **refuses to start** on a mismatch, naming each one
+stock-adjustment reason CHECK (0059), the case-insensitive `users` email and username indexes (0063, ADR-063) — and **refuses to start** on a mismatch, naming each one
 (`backend/src/utils/schemaVerify.util.js`, called from `backend/index.js`):
 
 - a model table or column the database lacks — the silent no-op migration;
@@ -110,12 +110,15 @@ make migrate-verify        # prints the last boot's [schema-verify] verdict; fai
 make migrate-verify-host   # HOST: npm run migrate:verify against backend/.env's database, exit 1 on a mismatch
 ```
 
-Proved against PostgreSQL 16 — a synced and migrated database passes; a dropped column, a dropped trigger and an
-undeclared `NOT NULL` column each fail it: `backend/src/tests/services/dataIntegrity.p6.live.test.js`.
+Proved against PostgreSQL 16 and 18.6 — a synced and migrated database passes; a dropped column, a dropped trigger and an
+undeclared `NOT NULL` column each fail it: `backend/src/tests/services/dataIntegrity.p6.live.test.js`. On 18.6 a fresh
+boot (`db.sync()` + all migrations) and an upgrade from the pre-batch-6 schema (`fabc3be`, with legacy rows) both
+pass the verifier (ADR-062).
 
 **Blanket catches still in existing migrations** (audited 2026-09-24, A-243). All ran long ago on every database;
 the verifier now catches their failure mode, so they are recorded rather than rewritten:
-`0001`, `0002`, `0004`, `0005`, `0013` wrap `describeTable` in a catch that skips on **any** error; `0014` swallows
+`0001` and `0005` wrap `describeTable` in a catch that skips on **any** error (`0002`, `0004`, `0009`, `0013`, `0016` no
+longer do — D-14, ADR-063); `0014` swallows
 any `addIndex`/`removeIndex` error; `0017` swallows `DROP TYPE` errors and its `down`'s `dropTable`; `0018` swallows
 `CREATE EXTENSION vector` and the ivfflat index (deliberate — pgvector is optional there, and the `ALTER TABLE …
 vector` after it fails loudly without the extension). `0014`/`0023`/`0028`/`0029`/`0031` narrow their catch to
@@ -123,11 +126,23 @@ vector` after it fails loudly without the extension). `0014`/`0023`/`0028`/`0029
 
 ## Writing a Migration
 
+0. **`up` never drops a table that may hold data** (D-09, ADR-063). A re-run is possible whenever `schema_migrations`
+   is lost — a data-only restore, a rebuilt database — so `up` refuses rather than rebuilds (see `0011`). The whole
+   migrator is re-run over a populated database, with `schema_migrations` emptied, by
+   `backend/src/tests/migrations/dataIdentity.dbA.live.test.js`, which asserts every row count is unchanged.
 1. **Write `down` as well as `up`.** A migration with no rollback is a one-way door, and the moment you need it is an incident.
 2. **Idempotent guards are fine; blanket catches are not.** Check for the column, add it if absent, and let a genuine error fail loudly.
 3. **Expand and contract for anything breaking.** Add the new column, backfill, switch the code, then drop the old column in a later migration. One migration that renames a column in place breaks every running instance during the deploy.
 4. **Test on an empty database and on a copy of production data.** The two fail differently: empty catches ordering, populated catches constraint violations against real values.
 5. **Verify the resulting columns.** See above.
+5a. **What `db.sync()` does and does not do on an existing database** (D-13, D-20, ADR-064 — observed on PostgreSQL
+   18.6, 2026-09-25). It creates a missing **table**, and it adds a model's missing **`indexes` entries**; it never
+   adds a **column**, never changes a column's type, default or foreign key, and never adds an **enum value**. So:
+   a new column on an existing model always needs a migration; so does a new enum value, and a changed `onDelete`
+   (`0066`). And because sync runs **before** the migrator, a model `indexes` entry — or any index — naming a
+   column that only a migration creates breaks `sync()` on every existing database: such an index lives in the
+   migration only, and the model gains it in a later release. An expression or partial index (`0070`) cannot be
+   declared on the model at all.
 6. **PostgreSQL only (ADR-039).** `CREATE EXTENSION`, `JSONB`, generated columns and `tsvector` are all fair game — no portability shim, no dialect branch. **Never edit an applied migration** to remove its old dialect guard; write a new one if behaviour must change. (Formerly: "consider MySQL". Anything PostgreSQL-only used to need a deliberate decision with an ADR.
 
 ## Running Migrations in a Deployed Container

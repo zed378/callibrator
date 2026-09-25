@@ -1,3 +1,4 @@
+const { randomUUID } = require("crypto");
 const { Op } = require("sequelize");
 const { db } = require("../config");
 const { MaintenanceWorkOrder, CalibrationDevice, Vendor, User } = require("../models");
@@ -252,6 +253,87 @@ exports.createWorkOrder = async (tenantId, data, actor = {}) => {
   }
 };
 
+/**
+ * W-17 (ADR-073) — the calibration scan's work orders for ONE tenant, in ONE
+ * transaction: one INSERT for all of them, one audit row EACH (per-device
+ * attribution is unchanged), and one WORK_ORDER_CREATED webhook each after
+ * the commit. `createWorkOrder` made a transaction — a commit — per device.
+ *
+ * W-03 still holds: the INSERT is `ON CONFLICT DO NOTHING`, so a device that
+ * already has an open auto-scheduled order (migration 0060's partial unique
+ * index, e.g. a concurrent scan's) inserts nothing instead of aborting the
+ * whole batch, and is returned in `conflicted`.
+ *
+ * The rows get their ids here, and what was inserted is read back by those
+ * ids: Sequelize maps `RETURNING` rows onto the built instances BY POSITION,
+ * which misattributes every row after a skipped one.
+ *
+ * @param {string} tenantId
+ * @param {Array<{deviceId: string, title: string, description: string, priority: string}>} items
+ * @param {object} actor - `{ systemActor }` or auditActor(req)
+ * @returns {Promise<{created: object[], conflicted: string[], missing: string[]}>}
+ *   `missing`: devices that are not this tenant's (A-220), nothing written for them
+ */
+exports.createAutoScheduledWorkOrders = async (tenantId, items, actor) => {
+  if (!items.length) {
+    return { created: [], conflicted: [], missing: [] };
+  }
+  return db.transaction(async (transaction) => {
+    const deviceIds = items.map((item) => item.deviceId);
+    const owned = new Set(
+      (
+        await CalibrationDevice.findAll({
+          where: { id: { [Op.in]: deviceIds }, tenantId },
+          attributes: ["id"],
+          transaction,
+        })
+      ).map((device) => device.id),
+    );
+    const rows = items
+      .filter((item) => owned.has(item.deviceId))
+      .map((item) => ({
+        ...toModelFields(item),
+        id: randomUUID(),
+        tenantId,
+        type: "Preventative",
+        status: "Open",
+        autoScheduled: true,
+      }));
+
+    let inserted = [];
+    if (rows.length) {
+      await MaintenanceWorkOrder.bulkCreate(rows, {
+        transaction,
+        validate: true,
+        ignoreDuplicates: true,
+        returning: false,
+      });
+      inserted = await MaintenanceWorkOrder.findAll({
+        where: { id: { [Op.in]: rows.map((row) => row.id) } },
+        transaction,
+      });
+    }
+
+    for (const created of inserted) {
+      await auditWorkOrder(transaction, tenantId, actor, {
+        action: "CREATE",
+        resourceId: created.id,
+        changes: { before: {}, after: pick(created, AUDITED_FIELDS) },
+      });
+      webhookService.emitAfterCommit(transaction, tenantId, WEBHOOK_EVENTS.WORK_ORDER_CREATED, {
+        workOrderId: created.id, deviceId: created.deviceId, type: created.type, status: created.status, priority: created.priority,
+      });
+    }
+
+    const createdDevices = new Set(inserted.map((row) => row.deviceId));
+    return {
+      created: inserted.map(transformWorkOrder),
+      conflicted: deviceIds.filter((id) => owned.has(id) && !createdDevices.has(id)),
+      missing: deviceIds.filter((id) => !owned.has(id)),
+    };
+  });
+};
+
 // ------------------------------------------------------------------
 // UPDATE WORK ORDER
 // ------------------------------------------------------------------
@@ -317,6 +399,13 @@ exports.deleteWorkOrder = async (tenantId, orderId, actor = {}) => {
     const before = pick(order, AUDITED_FIELDS);
     await db.transaction(async (transaction) => {
       await order.destroy({ transaction });
+      // D-22 (ADR-070): its attachments go with it, in this transaction.
+      await require("./attachment.service").softDeleteForResource(
+        tenantId,
+        "MaintenanceWorkOrder",
+        order.id,
+        { transaction, actor },
+      );
       await auditWorkOrder(transaction, tenantId, actor, {
         action: "DELETE",
         resourceId: order.id,

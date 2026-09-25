@@ -153,10 +153,13 @@ describe("webauthnService", () => {
   });
 
   describe("disable", () => {
-    it("posts to disable", async () => {
+    it("posts the re-authentication to disable (A-213)", async () => {
       mockedApi.post.mockResolvedValueOnce(envelope({ success: true }));
-      const res = await webauthnService.disable();
-      expect(mockedApi.post).toHaveBeenCalledWith(`${BASE}/disable`);
+      const res = await webauthnService.disable({ currentPassword: "pw", code: "123456" });
+      expect(mockedApi.post).toHaveBeenCalledWith(`${BASE}/disable`, {
+        currentPassword: "pw",
+        code: "123456",
+      });
       expect(res.success).toBe(true);
     });
   });

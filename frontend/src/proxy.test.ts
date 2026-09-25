@@ -83,6 +83,46 @@ describe("proxy (F-08: the only route guard)", () => {
     expect(re.test("/dashboard")).toBe(true);
     expect(re.test("/api/v1/devices")).toBe(false);
     expect(re.test("/_next/static/chunk.js")).toBe(false);
+    // Backend images carry the backend's own sandbox CSP.
+    expect(re.test("/uploads/public/profile/a.png")).toBe(false);
+    expect(re.test("/verify/CERT-1")).toBe(true);
+  });
+});
+
+describe("proxy — the page CSP (P7-08, ADR-071)", () => {
+  const nonceOf = (csp: string | null) => /'nonce-([^']+)'/.exec(csp ?? "")?.[1];
+
+  it("a page that passes gets a nonce CSP, and Next gets the same policy and nonce on the REQUEST", () => {
+    const res = proxy(request("/blog/post"));
+    const csp = res.headers.get("content-security-policy");
+    expect(csp).toMatch(/script-src 'self' 'nonce-[A-Za-z0-9+/]+=*' 'strict-dynamic'/);
+    // NextResponse.next({ request: { headers } }) encodes the overrides as
+    // x-middleware-request-* — what the renderer reads the nonce from.
+    expect(res.headers.get("x-middleware-request-content-security-policy")).toBe(csp);
+    expect(res.headers.get("x-middleware-request-x-nonce")).toBe(nonceOf(csp));
+  });
+
+  it("the nonce differs on every request", () => {
+    const nonces = new Set(
+      Array.from({ length: 20 }, () => nonceOf(proxy(request("/")).headers.get("content-security-policy"))),
+    );
+    expect(nonces.size).toBe(20);
+  });
+
+  it("the dashboard with a live session, and /login clearing a dead token, both carry it", () => {
+    expect(proxy(request("/dashboard", { auth_token: live })).headers.get("content-security-policy")).toContain(
+      "frame-ancestors 'none'",
+    );
+    const res = proxy(request("/login", { auth_token: expired }));
+    expect(res.headers.get("content-security-policy")).toContain("'strict-dynamic'");
+    expect(clearedCookies(res)).toContain("auth_token");
+  });
+
+  it("the websocket host comes from the request's Host header", () => {
+    const req = new NextRequest("http://app.example.test/", { headers: { host: "app.example.test" } });
+    expect(proxy(req).headers.get("content-security-policy")).toContain(
+      "ws://app.example.test wss://app.example.test",
+    );
   });
 });
 

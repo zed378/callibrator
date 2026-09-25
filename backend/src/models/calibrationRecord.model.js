@@ -12,6 +12,8 @@
  * @param {typeof import("sequelize").DataTypes} DataTypes - The Sequelize DataTypes
  * @returns {object} The defined Sequelize model
  */
+// D-27 (ADR-070): every JSON column declares its shape, validated on write.
+const { jsonShape } = require("../utils/jsonShape.util");
 const defineModel = (db, DataTypes) => {
   const CalibrationRecord = db.define(
     "CalibrationRecord",
@@ -57,6 +59,7 @@ const defineModel = (db, DataTypes) => {
       },
       results: {
         type: DataTypes.JSONB,
+        validate: { shape: jsonShape("CalibrationRecord.results") },
         allowNull: true,
         comment: "JSON object containing calibration measurements and results",
       },
@@ -88,7 +91,7 @@ const defineModel = (db, DataTypes) => {
         allowNull: false,
       },
       // ------------------------------------------------------------------
-      // P6-03 — append-only lifecycle (migration 0057, ADR-PENDING-data).
+      // P6-03 — append-only lifecycle (migration 0057, ADR-062).
       // A record's CONTENT never changes after insert: the database trigger
       // `calibration_records_append_only` refuses it for every role. A wrong
       // result is CORRECTED by a new row that supersedes it; a record entered

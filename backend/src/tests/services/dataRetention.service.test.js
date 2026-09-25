@@ -527,9 +527,9 @@ describe("dataRetention.service", () => {
 
       const summary = await dataRetention.runRetentionSweep();
 
-      expect(spy).toHaveBeenCalledWith("t1");
-      expect(spy).toHaveBeenCalledWith("t2");
-      expect(summary).toEqual({ tenants: 2, purged: 7, skipped: 1, errors: 0 });
+      expect(spy).toHaveBeenCalledWith("t1", expect.objectContaining({ batchSize: 5000 }));
+      expect(spy).toHaveBeenCalledWith("t2", expect.objectContaining({ batchSize: 5000 }));
+      expect(summary).toEqual({ tenants: 2, purged: 7, skipped: 1, errors: 0, incomplete: 0 });
     });
 
     it("treats a missing purged map as zero", async () => {
@@ -540,7 +540,7 @@ describe("dataRetention.service", () => {
 
       const summary = await dataRetention.runRetentionSweep();
 
-      expect(summary).toEqual({ tenants: 1, purged: 0, skipped: 0, errors: 0 });
+      expect(summary).toEqual({ tenants: 1, purged: 0, skipped: 0, errors: 0, incomplete: 0 });
     });
 
     it("counts and logs a per-tenant failure without aborting the sweep", async () => {
@@ -552,7 +552,7 @@ describe("dataRetention.service", () => {
 
       const summary = await dataRetention.runRetentionSweep();
 
-      expect(summary).toEqual({ tenants: 2, purged: 3, skipped: 0, errors: 1 });
+      expect(summary).toEqual({ tenants: 2, purged: 3, skipped: 0, errors: 1, incomplete: 0 });
     });
   });
 });

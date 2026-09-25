@@ -10,9 +10,10 @@
 # application code, and gets nothing else.
 services:
   vector:
-    # Pin by digest on first pull (docs/DEVOPS/02-CONTAINERIZATION.md
-    # § Moving a pinned base image); the config was validated with 0.58.0.
-    image: timberio/vector:0.58.0-alpine
+    # P7-07: pinned by digest (0.58.0-alpine, pulled 2026-09-25, when this
+    # file's vector.toml passed `vector validate`). How to move it:
+    # docs/DEVOPS/02-CONTAINERIZATION.md § Moving a pinned base image.
+    image: timberio/vector:0.58.0-alpine@sha256:5dcf67db0ee378caa87f3395cb9484ebe3e97bb0334d119f2ac33116e00c5773
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true

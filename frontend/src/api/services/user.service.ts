@@ -33,12 +33,21 @@ interface BackendUserItem {
   // so the users page can offer "Reset MFA" only where there is MFA.
   mfaEnabled?: boolean;
   mustChangePassword?: boolean;
+  // A-262: so the page offers "Remove passkey" only where there is one.
+  webauthnEnabled?: boolean;
 }
 
 /** A-162: POST /users/:userId/mfa/reset → data. */
 export interface MfaResetResult {
   id: string;
   mfaEnabled: false;
+  sessionsRevoked: number;
+}
+
+/** A-262: DELETE /users/:userId/webauthn → data. */
+export interface PasskeyResetResult {
+  id: string;
+  webauthnEnabled: false;
   sessionsRevoked: number;
 }
 
@@ -93,6 +102,7 @@ const transformUser = (item: BackendUserItem): User => ({
   updatedAt: item.createdAt,
   mfaEnabled: item.mfaEnabled === true,
   mustChangePassword: item.mustChangePassword === true,
+  webauthnEnabled: item.webauthnEnabled === true,
 });
 
 export const userService = {
@@ -105,6 +115,19 @@ export const userService = {
   resetMfa: async (userId: string): Promise<MfaResetResult> => {
     const response = await api.post<{ success: boolean; data: MfaResetResult }>(
       `/api/v1/users/${encodeURIComponent(userId)}/mfa/reset`,
+    );
+    return response.data;
+  },
+
+  /**
+   * A-262: a tenant administrator removes another user's passkey. The backend
+   * signs out every session of theirs; the password and MFA stay. 404 for a
+   * user outside the caller's tenant, 400 for the caller, 403 for a higher
+   * role, 409 when the user has no passkey.
+   */
+  resetPasskey: async (userId: string): Promise<PasskeyResetResult> => {
+    const response = await api.delete<{ success: boolean; data: PasskeyResetResult }>(
+      `/api/v1/users/${encodeURIComponent(userId)}/webauthn`,
     );
     return response.data;
   },

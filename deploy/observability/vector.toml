@@ -9,9 +9,8 @@
 # directory), or install the agent on the host with this file as its config.
 # Docs: docs/DEVOPS/06-LOGGING.md § Shipping.
 #
-# NOT VERIFIED BY RUNNING: written 2026-09-24 without Docker or Vector at
-# hand. `vector validate --no-environment deploy/observability/vector.toml`
-# is the first thing to run.
+# VALIDATED, NOT RUN: `vector validate --no-environment` passes with
+# timberio/vector:0.58.0-alpine (2026-09-25). It has never shipped a line.
 
 [sources.containers]
 type = "docker_logs"

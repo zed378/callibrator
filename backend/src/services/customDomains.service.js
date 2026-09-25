@@ -6,7 +6,7 @@
  * Domain-management operations are keyed by the domain record id (matching the
  * controller contract).
  *
- * NOT IMPLEMENTED (A-256, ADR-PENDING-misc): serving the application ON a
+ * NOT IMPLEMENTED (A-256, ADR-065): serving the application ON a
  * custom domain. Nothing resolves a tenant from the request's Host, and no TLS
  * certificate is issued for a domain. `resolveTenantByDomain` and
  * `provisionTLSCertificate` had no caller anywhere and were removed rather than

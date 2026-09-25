@@ -122,7 +122,7 @@ Three tables for movement rather than one generic ledger, because the three have
 
 ## Every Quantity Change Is Explained (P6-09)
 
-As-built 2026-09-24 (ADR-PENDING-data; `backend/src/services/stock.service.js`). A stock quantity changes in exactly
+As-built 2026-09-24 (ADR-062; `backend/src/services/stock.service.js`). A stock quantity changes in exactly
 these places, and each names an actor and a reason and writes an audit row inside its transaction:
 
 | Path | Explanation row |

@@ -1,5 +1,6 @@
 import path from "node:path";
 import type { NextConfig } from "next";
+import { PAGE_SECURITY_HEADERS } from "./src/lib/securityHeaders";
 
 const isProd =
   process.env.NODE_ENV === "production" || process.env.NEXT_COMPILE === "true";
@@ -8,6 +9,21 @@ const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
 
 const nextConfig: NextConfig = {
+  // P7-08: the framework banner tells a scanner the stack for free.
+  poweredByHeader: false,
+  // P7-08, ADR-071: the static page security headers. The CSP is NOT here —
+  // it carries a per-request nonce, so src/proxy.ts sets it. /api/ and
+  // /uploads/public/ are excluded: both relay backend responses that already
+  // carry helmet's headers (and, for uploads, a sandbox CSP), and repeating
+  // them would send each header twice. nginx adds only HSTS.
+  async headers() {
+    return [
+      {
+        source: "/((?!api/|uploads/public/).*)",
+        headers: [...PAGE_SECURITY_HEADERS],
+      },
+    ];
+  },
   // Serve the backend's PUBLIC upload class (avatars, tenant logos, CMS
   // images) same-origin, so the host-relative /uploads/public URLs saved in
   // content work in both dev and prod. Unlike /api/v1 (see note below), these

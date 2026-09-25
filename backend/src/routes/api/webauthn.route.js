@@ -133,15 +133,40 @@ router.post("/verify-login", webauthnController.verifyLogin);
  * /api/v1/webauthn/disable:
  *   post:
  *     summary: Disable WebAuthn
- *     description: Disables WebAuthn passkey authentication for the current user.
+ *     description: >-
+ *       Removes the current user's passkey. A-213: needs the current password
+ *       and, on an account with MFA, a current TOTP `code` or a `recoveryCode`;
+ *       audited as WEBAUTHN_DISABLE.
  *     tags: [WebAuthn]
  *     security:
  *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [currentPassword]
+ *             properties:
+ *               currentPassword: { type: string }
+ *               code: { type: string, description: A current TOTP code (MFA accounts) }
+ *               recoveryCode: { type: string, description: Or a recovery code (MFA accounts) }
  *     responses:
  *       200:
  *         description: WebAuthn disabled
+ *       400:
+ *         description: Re-authentication missing or incorrect
  *       401:
  *         description: Unauthorized
+ *       404:
+ *         description: User not found
+ *       409:
+ *         description: No passkey is enrolled
+ *       429:
+ *         description: >-
+ *           A-260: the account's signed-in password-check budget is spent
+ *           (five wrong passwords in fifteen minutes); Retry-After gives the
+ *           seconds until checks resume
  */
 router.post("/disable", webauthnController.disable);
 

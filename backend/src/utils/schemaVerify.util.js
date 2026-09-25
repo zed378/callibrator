@@ -63,6 +63,20 @@ const EXPECTED_OBJECTS = Object.freeze([
     name: "stock_adjustments_reason_not_blank",
     why: "P6-09: every stock adjustment names a reason (migration 0059)",
   }),
+  // 0063 skips (by design) when `users` is absent; a skip that happened must
+  // not pass silently, because sign-in assumes one account per identifier.
+  Object.freeze({
+    kind: "index",
+    table: "users",
+    name: "users_email_lower_unique",
+    why: "D-06 / ADR-063: one account per email, whatever its case (migration 0063)",
+  }),
+  Object.freeze({
+    kind: "index",
+    table: "users",
+    name: "users_username_lower_unique",
+    why: "D-06 / ADR-063: one account per username, whatever its case (migration 0063)",
+  }),
 ]);
 
 const TAG = "[schema-verify]";

@@ -36,6 +36,11 @@ const mockRow = (table, fields) => {
   return row;
 };
 
+// D-22 (ADR-070): a parent's delete soft-deletes its attachments through
+// attachment.service, in the parent's transaction.
+jest.mock("../../services/attachment.service", () => ({
+  softDeleteForResource: jest.fn().mockResolvedValue([]),
+}));
 jest.mock("../../models", () => ({
   MaintenanceWorkOrder: {
     findOne: async ({ where }) => mockOwned(mockRef.orders, where),

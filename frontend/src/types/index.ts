@@ -31,12 +31,18 @@ export interface User {
   // A-141: from /auth/verify and the MFA sign-in step. A count, never a code.
   mfaEnabled?: boolean;
   mfaRecoveryCodesRemaining?: number;
+  // A-262: from the users list — the page offers "Remove passkey" only here.
+  webauthnEnabled?: boolean;
   // A-123: an administrator set this account's password; it must be changed
   // before anything else (the backend answers 403 PASSWORD_CHANGE_REQUIRED).
   mustChangePassword?: boolean;
   // A-160: the user's tenant requires MFA and this account has none; from
   // /auth/verify. The backend answers 403 MFA_ENROLMENT_REQUIRED elsewhere.
   mfaEnrolmentRequired?: boolean;
+  // A-216: this session signed in through the organisation's identity
+  // provider, which manages the password; from /auth/verify. The
+  // change-password page explains instead of showing the form.
+  passwordManagedBy?: { protocol: string; provider: string | null } | null;
 }
 
 export interface LoginCredentials {

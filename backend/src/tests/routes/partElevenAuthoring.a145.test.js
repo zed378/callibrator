@@ -116,7 +116,8 @@ jest.mock("../../models", () => ({
   WorkflowStep: {},
   Role: {},
   Certificate: { findOne: jest.fn(async () => null) },
-  StockTransfer: { findOne: jest.fn(async () => null) },
+  // A-201: a final decision moves the pending transfer (in_transit / cancelled).
+  StockTransfer: { findOne: mockFindOne("stock_transfers") },
   MaintenanceWorkOrder: { findOne: jest.fn(async () => null) },
   CalibrationDevice: { findOne: mockFindOne("devices") },
   IotReading: {},
@@ -260,6 +261,10 @@ beforeEach(() => {
     workflow_instances: [
       { id: INSTANCE_A, tenantId: TENANT_A, status: "PENDING", currentStepOrder: 1, resourceId: "st-a", workflow: twoStepWorkflow(TENANT_A), actions: [] },
       { id: INSTANCE_B, tenantId: TENANT_B, status: "PENDING", currentStepOrder: 1, resourceId: "st-b", workflow: twoStepWorkflow(TENANT_B), actions: [] },
+    ],
+    stock_transfers: [
+      { id: "st-a", tenantId: TENANT_A, status: "pending", approvedBy: null },
+      { id: "st-b", tenantId: TENANT_B, status: "pending", approvedBy: null },
     ],
     devices: [
       { id: DEVICE_A, tenantId: TENANT_A, calibrationIntervalDays: 365, recommendedCalibrationInterval: 180, recommendationReason: "drift" },
@@ -484,6 +489,17 @@ describe("A-145 — POST /workflows/instances/:instanceId/action", () => {
 
     expect(res.status).toBe(200);
     expect(mockRef.ledger.auditRows()).toEqual([
+      // A-201: the transfer the workflow rejected is cancelled, audited.
+      expect.objectContaining({
+        action: "UPDATE",
+        resourceType: "StockTransfer",
+        resourceId: "st-a",
+        changes: {
+          operation: "WORKFLOW_REJECT",
+          before: { status: "pending", approvedBy: null },
+          after: { status: "cancelled", approvedBy: ADMIN_A },
+        },
+      }),
       expect.objectContaining({
         action: "UPDATE",
         changes: expect.objectContaining({

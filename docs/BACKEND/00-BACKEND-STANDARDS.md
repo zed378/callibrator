@@ -68,6 +68,14 @@ Use `.unscoped()` to see them. And note the naming:
 
 Models are `underscored`: `isDeleted` in code, `is_deleted` in the database.
 
+### 3. `DECIMAL` and `COUNT` come back as strings
+
+`node-postgres` returns `NUMERIC` and `bigint` as strings, and Sequelize passes them through: `a + b`
+concatenates and `"90.00" > "1000.00"` is true — quietly (D-21, ADR-064). Every `DECIMAL` attribute declares a
+`get()` that returns `Number(...)` (null stays null); `tests/models/decimalGetters.d21.test.js` discovers every
+`DECIMAL` attribute and fails on one without it. A getter does not cover `raw: true` reads or aggregates
+(`SUM`, `COUNT`): parse those at the call site (`parseInt(row.count, 10)`).
+
 ## The `sessions` Exception
 
 `sessions` uses **snake_case attribute names** — `tenant_id`, `user_id`, `token_hash`.

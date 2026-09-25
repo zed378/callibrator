@@ -155,15 +155,11 @@ export function useTenants() {
       setEditLogoPreview(tenant.logoBaseUrl);
       setEditLogoKeep(true);
       setEditLogoFile(null);
-    } else if (tenant.logo) {
-      setEditLogoPreview(
-        // Logos are in the public class (ADR-042 step 3). This used to build
-        // `/uploads/<logo>` — without the `tenant/` folder, so it never loaded.
-        `/uploads/public/tenant/${encodeURIComponent(tenant.logo)}`,
-      );
-      setEditLogoKeep(true);
-      setEditLogoFile(null);
     } else {
+      // P7-08 / ADR-071 (amendment): `logoBaseUrl` is null exactly when the
+      // backend will not serve the stored logo — none, the placeholder, or an
+      // old absolute URL. Building a URL from the raw value here showed a
+      // broken image; the empty preview is the fallback.
       setEditLogoPreview("");
       setEditLogoKeep(false);
       setEditLogoFile(null);

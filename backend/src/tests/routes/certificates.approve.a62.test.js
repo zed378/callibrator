@@ -84,6 +84,8 @@ jest.mock("../../services/auth.service", () => ({
 jest.mock("../../services/mfa.service", () => ({ verifyLogin: jest.fn(() => false) }));
 jest.mock("../../services/workflow.service", () => ({
   startWorkflow: jest.fn(async () => undefined),
+  // A-203: no workflow pending unless a test says so.
+  findPendingInstance: jest.fn(async () => null),
 }));
 
 const { Sequelize, DataTypes } = jest.requireActual("sequelize");

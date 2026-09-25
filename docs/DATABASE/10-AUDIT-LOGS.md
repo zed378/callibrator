@@ -33,6 +33,27 @@ One table, and the only one in the schema whose most important property is somet
 > pattern). For GDPR, personal data in audit rows is **masked, not deleted** — and the masking path
 > does not work yet (A-135).
 
+### Retention period: indefinite, and there is no "window" (ADR-069)
+
+An audit row's retention period is **indefinite**. No job deletes one, and no setting exists for it:
+`setRetentionPolicy` refuses `audit_logs`, and there is no `AUDIT_LOG_RETENTION_DAYS`. The
+"365-day window" in older text was the deletion window that Q-12 removed. It is not a retention
+period.
+
+- **A finite minimum** would understate 21 CFR 11.10(e). The trail must be kept as long as the
+  records it describes, and a calibration record is kept indefinitely.
+- **"Window" may only ever mean hot storage.** An archival process may later move old rows out of
+  this table, and only if all of these hold:
+  - the rows stay retrievable through the audit API with the same filters;
+  - their integrity stays verifiable;
+  - the move writes an audit row of its own.
+- **That process does not exist.** Until it does, every row stays here.
+
+Background jobs write their rows with a `system:` actor, inside the transaction of the change they
+record. The retention purge, tenant offboarding, the scheduled backup, the calibration scan and its
+reminder notification, IoT anomaly alerts, and batch-job state changes all do this (W-04,
+ADR-061, ADR-069).
+
 That absence is the control (BR-6). An audit trail that can be edited or deleted is not an audit trail — it is a log, and a log that the person under investigation could have altered proves nothing.
 
 Every other significant table is soft-deletable. This one is not, deliberately, and any change that adds a delete path here is a compliance regression regardless of how it is justified.

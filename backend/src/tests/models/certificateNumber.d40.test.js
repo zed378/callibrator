@@ -3,7 +3,7 @@
  *
  * `certificates.certificate_number` is unique platform-wide: it is the key
  * the public verification page (GET /certificates/verify/:number) resolves
- * with no tenant, so it must name exactly one certificate (ADR-PENDING-dbA,
+ * with no tenant, so it must name exactly one certificate (ADR-063,
  * D-15). The generator read the last number under its prefix through the
  * tenant-scoped model, so it could not see a number another tenant held under
  * the same prefix — every code-less tenant shared "T" — and the insert failed

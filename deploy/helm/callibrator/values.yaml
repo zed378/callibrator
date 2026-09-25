@@ -144,6 +144,12 @@ backend:
     user: callibrator
     dialect: postgres
     ssl: false
+    # P6-03 → DB_APP_ROLE. The same default as the backend and migration
+    # 0057. Migration 0057 creates it when `user` has CREATEROLE (or is a
+    # superuser); on a managed database without that, create it once as an
+    # administrator: CREATE ROLE callibrator_app NOLOGIN;
+    # GRANT callibrator_app TO <user>;  — or set "none" to run as the owner.
+    appRole: callibrator_app
     # PostgreSQL must have pgvector: migration 0018 runs
     # `CREATE EXTENSION vector` and plain Postgres fails it.
 

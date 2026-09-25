@@ -25,6 +25,7 @@ import {
   type ProcessingRecord,
 } from "@/api/services/gdpr.service";
 import { useToastStore } from "@/stores/toastStore";
+import { useAuthStore } from "@/stores/authStore";
 
 const CATEGORIES: ConsentCategory[] = [
   "analytics",
@@ -52,6 +53,10 @@ export default function GdprPage() {
   const [erasure, setErasure] = useState({ reason: "", confirm: false });
   const [isRectifyOpen, setIsRectifyOpen] = useState(false);
   const [rectify, setRectify] = useState({ field: "firstName", value: "" });
+  // A-214: an email change re-authenticates (password, plus a code with MFA).
+  const [rectifyAuth, setRectifyAuth] = useState({ currentPassword: "", code: "" });
+  const mfaEnabled = useAuthStore((s) => s.user?.mfaEnabled === true);
+  const isEmailChange = rectify.field === "email";
   const [isRestrictOpen, setIsRestrictOpen] = useState(false);
   const [restrictReason, setRestrictReason] = useState("");
 
@@ -159,14 +164,30 @@ export default function GdprPage() {
       addToast({ type: "error", title: "Enter the corrected value" });
       return;
     }
+    if (isEmailChange && (!rectifyAuth.currentPassword || (mfaEnabled && !rectifyAuth.code.trim()))) {
+      addToast({
+        type: "error",
+        title: mfaEnabled
+          ? "Enter your current password and authenticator code"
+          : "Enter your current password",
+      });
+      return;
+    }
+    const reauth = isEmailChange
+      ? {
+          currentPassword: rectifyAuth.currentPassword,
+          ...(mfaEnabled ? { code: rectifyAuth.code.trim() } : {}),
+        }
+      : undefined;
     const ok = await run(
       "rectify",
-      () => gdprService.rectifyData(rectify.field, rectify.value.trim()),
+      () => gdprService.rectifyData(rectify.field, rectify.value.trim(), reauth),
       "Data corrected",
     );
     if (ok) {
       setIsRectifyOpen(false);
       setRectify({ field: "firstName", value: "" });
+      setRectifyAuth({ currentPassword: "", code: "" });
     }
   };
 
@@ -462,6 +483,32 @@ export default function GdprPage() {
                 }
               />
             </FormField>
+            {isEmailChange && (
+              <>
+                <FormField label="Current password" required>
+                  <Input
+                    type="password"
+                    autoComplete="current-password"
+                    value={rectifyAuth.currentPassword}
+                    onChange={(e) =>
+                      setRectifyAuth({ ...rectifyAuth, currentPassword: e.target.value })
+                    }
+                  />
+                </FormField>
+                {mfaEnabled && (
+                  <FormField label="Authenticator code" required>
+                    <Input
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      value={rectifyAuth.code}
+                      onChange={(e) =>
+                        setRectifyAuth({ ...rectifyAuth, code: e.target.value })
+                      }
+                    />
+                  </FormField>
+                )}
+              </>
+            )}
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setIsRectifyOpen(false)}>
                 Cancel

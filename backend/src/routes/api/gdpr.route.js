@@ -312,6 +312,9 @@ router.get("/processing", auth, getProcessingActivities);
  *       firstName, lastName, phone and email; an email change is confirmed by
  *       mail before it applies. P6-08: this previously documented
  *       `corrections` / `justification`, which the validator strips.
+ *       A-214: an email change needs `currentPassword` and, on an account with
+ *       MFA, a current `code` or a `recoveryCode`; a session signed in through
+ *       SSO is answered 409 (its address belongs to the identity provider).
  *     tags: [GDPR/CCPA]
  *     security:
  *       - bearerAuth: []
@@ -329,6 +332,18 @@ router.get("/processing", auth, getProcessingActivities);
  *                 enum: [firstName, lastName, phone, email]
  *               value:
  *                 description: The corrected value
+ *               currentPassword:
+ *                 type: string
+ *                 maxLength: 1024
+ *                 description: Required for an email change (A-214)
+ *               code:
+ *                 type: string
+ *                 maxLength: 32
+ *                 description: A current TOTP code — an email change on an MFA account
+ *               recoveryCode:
+ *                 type: string
+ *                 maxLength: 64
+ *                 description: Or an MFA recovery code
  *     responses:
  *       200:
  *         description: Rectified (or, for email, verification sent)
@@ -346,11 +361,20 @@ router.get("/processing", auth, getProcessingActivities);
  *                         field: { type: string }
  *                         emailVerificationRequired: { type: boolean }
  *       400:
- *         description: Validation failed, or the field cannot be rectified
+ *         description: >-
+ *           Validation failed, the field cannot be rectified, or an email
+ *           change's re-authentication is missing or incorrect
  *       401:
  *         description: Unauthorized
  *       409:
- *         description: The new email address is already in use
+ *         description: >-
+ *           The new email address is already in use, or the session signed in
+ *           through SSO and the identity provider manages the address
+ *       429:
+ *         description: >-
+ *           A-260: the account's signed-in password-check budget is spent
+ *           (five wrong passwords in fifteen minutes); Retry-After gives the
+ *           seconds until checks resume
  */
 router.put("/rectify", auth, validate(rectifyValidator), rectifyData);
 

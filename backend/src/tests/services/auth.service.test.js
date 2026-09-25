@@ -1026,9 +1026,11 @@ describe("auth.service", () => {
       expect(result.message).toBe("Login successful");
       expect(result.token).toBe("access-token");
       expect(result.refreshToken).toBe("refresh-token");
-      expect(mockUser.update).toHaveBeenCalledWith({
-        lastLoginAt: expect.any(Date),
-      });
+      // A-211: stamped in the session's transaction.
+      expect(mockUser.update).toHaveBeenCalledWith(
+        { lastLoginAt: expect.any(Date) },
+        { transaction: expect.anything() },
+      );
       // A-115: the code is CONSUMED against the user's live secret.
       expect(mockTotp.consumeCode).toHaveBeenCalledWith(
         expect.objectContaining({ id: "user-1", mfaSecret: "secret" }),

@@ -22,8 +22,13 @@ tenantContext.middleware.js
             │
             ▼
 global Sequelize hooks  (installed by models/index.js)
-    beforeFind / beforeBulkUpdate / beforeBulkDestroy → inject WHERE
-    beforeCreate / beforeUpdate                       → stamp tenantId
+    beforeFind / beforeCount / beforeBulkUpdate /
+    beforeBulkDestroy / beforeBulkRestore             → inject WHERE
+    beforeCreate / beforeUpdate / beforeBulkCreate    → stamp tenantId
+    beforeUpsert / beforeDestroy / beforeRestore      → refuse a cross-tenant row
+    aggregate (sum/min/max/count) and increment
+    (decrement) — no hook exists — wrapped per model  → inject WHERE   (W-34, ADR-073)
+    destroy({ truncate: true }) in a tenant context   → refused        (W-34, ADR-073)
 ```
 
 A developer writing a query does not opt in. That is the entire design: a control that requires remembering will eventually not be remembered.

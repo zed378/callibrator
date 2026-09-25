@@ -1683,7 +1683,7 @@ include.
 - An include of a model **with no tenant key** is still unscoped. That is correct today, and it means
   a new tenant-owned model that forgets its tenant column is silently global — exactly as for root
   queries.
-- `aggregate`, `max` and `sum` remain unhooked.
+- `aggregate`, `max` and `sum` remain unhooked. *(Closed by ADR-073: they, `increment` and `restore` are now scoped.)*
 - A-88 — the `foreignKey: "tenant_id"` shape — is a separate decision (Q-16).
 
 **Status:** Accepted — implemented 2026-09-24.
@@ -2326,9 +2326,1610 @@ to be claims the guard can verify.
   reconfigured.
 - **A tenant whose IdP has no MFA** has SSO users without MFA.
 - **Open follow-ups:** temporary passwords never expire (A-215), and JIT-SSO users cannot change a
-  password they never knew (A-216).
+  password they never knew (A-216). Both closed by ADR-068 (2026-09-25).
 
 **Status:** Accepted, implemented 2026-09-25 (batch 6).
+
+---
+
+## ADR-060: Background Jobs Declare Their Tenant, Are Switched Off by One Variable, and Never Report Work That Did Not Happen
+
+**Date:** 2026-09-25 · **Findings:** W-02, W-07, W-08, W-12 (`TASKS/AUDIT-2026-09-ASYNC.md`) · **Replaces:** the `ADR-PENDING-async` markers in `utils/schedulerSwitch.util.js`, `utils/jobContext.util.js` and `services/batchJob.service.js`
+
+**Context**
+
+The async audit found four things about work that runs outside a request. The chart's "not the
+scheduler" branch disabled one job of four, and `CALIBRATION_SCHEDULER` was set nowhere (W-02). A
+batch job claimed its work in Redis before running it, for a day, so a worker killed mid-job left the
+row `PROCESSING` forever and its redelivery was acked as a duplicate (W-07). A job of any type with
+no handler "completed", with `progress` 100 and a `resultUrl` to a route that does not exist (W-08).
+And every job ran with no tenant context, so the isolation hooks skipped and each query was isolated
+only by the `where` its author remembered to write (W-12).
+
+**Decision**
+
+1. **One switch.** Every singleton scheduler reads its expression through
+   `scheduleSetting(envName, default)`. `SCHEDULERS_ENABLED=false` returns `"disabled"` for all of
+   them. The chart's `cron.enabled: false` branch sets it and also disables each variable. The
+   webhook dispatcher is the one named exemption, because its claim is `FOR UPDATE SKIP LOCKED`
+   (ADR-054).
+2. **The switch defaults to ENABLED.** The card asked for off by default, and that was not done.
+3. **A job declares its tenant context in code.** `runForTenant(tenantId, fn)` is for work done for
+   one tenant: the hooks confine every query to it and stamp it on every create.
+   `runAsSystem(reason, fn)` is a cross-tenant opt-out, and it must be given a reason. Neither form is
+   a super admin.
+4. **The batch-job claim is the row.** It is an atomic `UPDATE … SET status='PROCESSING' WHERE id=?
+   AND status='PENDING'`, run inside the job's own tenant context. A runner that loses it does
+   nothing. A running job heartbeats its row, and a sweep fails any `PROCESSING` row whose heartbeat
+   stopped (`BATCH_JOB_STALE_MINUTES`, 10). Shutdown drains the consumers and fails the jobs it had
+   to abandon. **Nothing is re-run automatically.**
+5. **There is no default handler.** `createJob` refuses an unregistered type with a 400. A queued job
+   of an unregistered type ends `FAILED`, with the reason. `resultUrl` and `processedItems` come only
+   from what the handler returns.
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| Default the switch to **off** (the card's suggestion) | every existing single-instance deployment (compose, the VM) silently stops its backups, retention purge and calibration scan on upgrade. A job nobody runs is a worse failure than one that runs twice, and running twice is now bounded (W-03's index; the P7-02 minute claim) |
+| Leader election (a Redis or advisory lock per run) | a second moving part for every job. The chart already runs one scheduler pod, and what remains dangerous about a double run (W-03) is held by the database instead |
+| Keep the Redis claim and release it on shutdown | a SIGKILL or OOM kill cannot release anything. The claim has to live where the job's state lives |
+| Re-run an interrupted job automatically | handlers are not declared idempotent, so a re-run could repeat side effects. Failing the job with a reason is honest, and the user can start it again |
+| Register placeholder handlers for the types the UI offers | that is the fabrication W-08 removed, moved into another file |
+| Leave jobs contextless and review each `where` | this is the state that produced W-12. The hooks exist so that isolation does not depend on each author remembering |
+
+**Implications, including the bad ones**
+
+- **Batch jobs now do nothing at all.** No type is registered, so `POST /api/v1/jobs/test`
+  answers 400 for every type. The feature is honest, and it is also empty until someone writes a
+  handler.
+- **An interrupted batch job stays failed.** The user has to start it again, and the failure reason
+  says so.
+- **The heartbeat adds one `UPDATE` a minute** for each running job. A handler that blocks the event
+  loop for longer than `BATCH_JOB_STALE_MINUTES` is failed by the sweep while it is still running.
+  Its late completion does not overwrite the `FAILED` row.
+- **Defaulting to enabled means a new replica that is not told otherwise runs every scheduler.**
+  The chart tells it. A hand-rolled deployment has to set `SCHEDULERS_ENABLED=false` itself.
+- **`runAsSystem` is still an opt-out.** It is easy to find (`grep -rn runAsSystem src/`), but it is
+  not enforced. W-12 is **partial**: the retention purge, session cleanup, the quarantine sweep and
+  MQTT ingest do not use either helper yet.
+
+**Status:** Accepted, implemented 2026-09-25. The tests are named in the ASYNC board rows for W-02,
+W-07, W-08 and W-12.
+
+---
+
+## ADR-061: The Database and the Broker Hold the Async Invariants: One Scheduled Work Order per Device, Retries in Delay Queues, One Connection, Settle on the Arrival Channel
+
+**Date:** 2026-09-25 · **Findings:** W-03, W-04/W-30, W-06, W-09, W-18, W-31 · **Migration:** `0060-work-order-auto-scheduled-unique` · **Replaces:** the `ADR-PENDING-async` markers in migration 0060 and `constants/systemActors.js`
+
+**Context**
+
+The calibration scan's idempotency guard was a read followed by three writes. Two scans in the same
+minute both created a work order, notified the whole hospital and called the webhook (W-03). Since
+A-190 the scan's work order is audited inside its transaction, and since A-124 `logAction` refuses an
+entry that names no actor. The scan passed none, so **every work order the scheduled scan tried to
+create was rolled back** (W-30, found while fixing W-03). On the queue side, a broker restart ended
+both consumers for the life of the process (W-06). A failed email was dead-lettered on every attempt
+and retried from an in-process timer that could throw out of its callback (W-09). The email queue
+kept its own second AMQP connection, and shutdown closed only one of the two (W-18). The batch worker
+acked through the shared publishing channel, where the delivery tag means nothing (W-31).
+
+**Decision**
+
+1. **`maintenance_work_orders.auto_scheduled`** (boolean, default false) and a **partial unique index
+   on `device_id`, where `auto_scheduled` and status is Open or InProgress and the row is not
+   deleted**. The scan sets the flag. A unique violation from `createWorkOrder` becomes a 409, and
+   the scan counts it as a **skip**, before any notification or webhook. The scan's read guard is
+   unchanged.
+2. **The scan's audit rows name `system:calibration-scan`** (`SYSTEM_ACTORS.CALIBRATION_SCAN`). A
+   manual run names the user who asked for it.
+3. **One AMQP connection per process** (`rabbitmq.service`), with a memoised in-flight connect and
+   channel open, and one `closeRabbitMQ`. `emailQueue.service` no longer imports amqplib.
+4. **Supervised consumers.** `startConsumer(queue, handler, {prefetch, setup})` registers on a
+   channel of its own. It re-registers with capped exponential backoff when that channel closes or
+   registration fails, and re-runs `setup` (the queue declarations) each time. There is one consumer
+   per queue.
+5. **Settle on the arrival channel.** A handler receives `(msg, ch)`, and `ack`/`nack` never throw. A
+   closed channel means the broker has already requeued the message.
+6. **Email retries live in the broker.** Retry *n* is published to `email_retry_<ms>`, a durable
+   queue whose `x-message-ttl` dead-letters it back onto `email_queue`, and the original is acked.
+   Only the last failure is nacked to `email_dlq`. A message that is not a JSON object is
+   dead-lettered and not left unsettled.
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| A unique index on every open Preventative order per device (the card's first suggestion) | a person may legitimately open a second preventative order (cleaning, an electrical-safety test) while a calibration order is open. That ordinary API create would become a 409 |
+| A lock (advisory or Redis) around the scan | it holds only while every writer takes it. A manual run, a new code path or a Redis outage bypasses it. The index holds for every writer |
+| Backfill `auto_scheduled` from the old titles or descriptions | this is guessing from free text. A guess that marked two open rows for one device would stop the index from being built. With no backfill, the index cannot find a duplicate |
+| Attribute the scan to a seeded "system" user | it would put a user row in every tenant, with a password field nobody owns. It would also blur "a person did this" in a Part 11 trail |
+| The RabbitMQ delayed-message plugin | it is a plugin that has to be installed on every broker, and the deployment treats RabbitMQ as optional. TTL queues are core AMQP |
+| Keep the in-process retry timer and catch around it | a restart would still lose the retry, and the DLQ would still get a copy for every attempt |
+| Publisher confirms on every publish | this is the right next step, and it was not done here (see the implications below) |
+
+**Implications, including the bad ones**
+
+- **Rows that existed before this change are never protected.** Existing open orders stay `false`,
+  so a race against an old open calibration order is caught only by the read guard. That race window
+  closes when the old order does.
+- **One delay queue per tier** (`email_retry_2000/4000/8000` by default). Changing
+  `EMAIL_RETRY_BASE_MS` declares new queues. The old ones are left for an operator to delete, and
+  redeclaring a queue with different arguments is a `PRECONDITION_FAILED`.
+- **No publisher confirms.** A publish made in the gap between the broker dying and the client
+  noticing is lost without an error. This was observed in the live run: a publish on the stale
+  channel just after a restart. An email lost this way is not retried. The window is the socket
+  close latency.
+- **At-least-once, not exactly-once.** The A-26 claim for email is still taken before the send.
+- **The email DLQ is now truthful:** one message per exhausted job. Anything reading it as "one per
+  attempt" was reading it wrong before.
+- **The migration's `down` keeps the column.** The model declares it, and it records which orders
+  the scan created.
+
+**Verified.** Migration 0060 was run on **PostgreSQL 18.6**: up, a second `migrator.up()` that
+applied nothing, a direct re-run of `up`, `down` (index gone, column kept), and `up` again. The index
+was checked with `\d maintenance_work_orders`. The two-scan race was run live on the same server
+(`calibrationScheduler.w03.live.test.js`); without the index, the race test fails. The queue
+behaviour was run on **RabbitMQ 4** with a real container restart (`rabbitmq.w06.live.test.js`). The
+old code left **4** DLQ copies of one always-failing email on that broker; the new code leaves 1.
+
+**Status:** Accepted, implemented 2026-09-25.
+
+---
+
+## ADR-062: Calibration Records Are Append-Only in the Database; the Backend Runs as an Application Role; Every Boot Verifies the Schema; Stock Moves Only by Adjustment; Every Secret Names Its Key
+
+**Date:** 2026-09-25 · **Findings:** P6-03 (PR-2, BR-7), P6-05 (PR-5), P6-09, P6-10, S-08, S-26, A-240, A-242 · **Migrations:** `0057`, `0058`, `0059` · **Replaces:** the `ADR-PENDING-data` markers
+
+**Context**
+
+Five controls the compliance story depended on were conventions, not mechanisms. `calibration_records`
+was `paranoid` and had `PUT` and `DELETE` routes. The backend connected as the database owner — a
+superuser in compose — so a `REVOKE` alone would have protected nothing (A-240). A migration that did
+nothing could be recorded as applied, and nothing checked the columns (PR-5). `PATCH /stocks/:id` set
+`quantity` with no reason and no actor. No secret could be rotated: KMS envelopes named no key,
+tenant signing keys were AES-CBC under `ENCRYPT_KEY`, and the JWT "key registry" was an in-process
+map that emptied itself after 30 days of uptime (S-26).
+
+**Decision**
+
+1. **`calibration_records` is append-only in the database, for every role (P6-03, migration `0057`).**
+   - A trigger refuses `DELETE` and `TRUNCATE` outright.
+   - `UPDATE` may change only the lifecycle columns, and only once each:
+     - `superseded_by_id` and `superseded_at` — the record was corrected;
+     - `void_reason`, `voided_by`, `is_deleted`, `deleted_at` — the record was voided;
+     - `updated_at`.
+   - Every other column is compared as "all but the lifecycle list", so a column added later is
+     immutable by default.
+   - CHECKs: a void names a reason; a correction names a reason and never supersedes itself. A
+     partial unique index on `supersedes_id` keeps each correction chain linear.
+   - The routes changed to match. `PUT` and `DELETE` are gone. A wrong result is corrected by a
+     **new** record (`POST /:id/corrections`), and the original stays. A record entered in error is
+     voided with a reason (`POST /:id/void`), and a void is final.
+2. **The backend runs its queries as an application role (P6-03).**
+   - `0057` creates `DB_APP_ROLE` (default `callibrator_app`): `NOLOGIN`, DML on every table and
+     sequence, default privileges for tables created later.
+   - It then revokes `UPDATE`, `DELETE` and `TRUNCATE` on `calibration_records`, and grants `UPDATE`
+     back on the lifecycle columns alone.
+   - Boot still migrates as the owner. It then switches every pooled connection with `SET ROLE`
+     (`afterPoolAcquire`, `utils/dbRole.util.js`).
+   - Before continuing, boot **proves the switch as the switched session**. It refuses to start if
+     the role is a superuser, can `DELETE` or table-wide `UPDATE` `calibration_records`, or cannot
+     `INSERT`.
+   - `0057` also switches off row level security left on with no policy by `0012` (A-242). That was
+     invisible to a superuser and fatal to the application role.
+3. **Every boot compares the schema with the models, and refuses on a mismatch (P6-05).** After
+   `db.sync()` and the migrator, and before the role switch, `utils/schemaVerify.util.js` checks
+   `information_schema` against:
+   - every model's table and columns;
+   - any undeclared `NOT NULL` column with no default;
+   - any table with row level security on;
+   - the control objects that exist only in migrations: the two `0057` triggers, the void CHECK, the
+     per-tenant serial index (`0026`), the stock-reason CHECK (`0059`), and the case-insensitive
+     identity indexes (`0063`, ADR-063).
+
+   It is not wrapped in a catch. `SCHEMA_VERIFY=warn` is the only way past a mismatch, and it logs
+   every one at error level. `make migrate` ends in `make migrate-verify`.
+4. **A stock quantity changes only through an explained movement (P6-09, migration `0059`).**
+   - `PATCH /stocks/:id` refuses a `quantity` change (a `0` included) with a 400 that names the
+     adjustment endpoint.
+   - An adjustment's `reason` is `NOT NULL` with `CHECK (btrim(reason) <> '')`, and the validator
+     refuses a blank one.
+   - Every adjustment records `stock_id`, `quantity_before` and `quantity_after`.
+   - Stock created with a quantity writes an opening-balance adjustment.
+   - Legacy adjustments with no reason are backfilled with a text that says none was recorded.
+5. **Every stored secret names the key that wrapped it, and every key has a successor (P6-10, S-08,
+   S-26, migration `0058`).**
+   - **KMS envelopes are `v2:<keyId>:…`.** The ring is `KMS_MASTER_KEY` plus
+     `KMS_MASTER_KEY_PREVIOUS`, and `npm run keys:rotate` re-wraps resumably. A `v1` envelope,
+     which names no key, is read by trying each key.
+   - **Tenant e-signature private keys are KMS envelopes with the tenant id as AAD.** `0058`
+     converts every legacy CBC row, verifying each one by re-reading it. After that, `ENCRYPT_KEY` is
+     read only for a row restored from an old backup.
+   - **The JWT key registry is deleted.** Each token names its key (`kid` = fingerprint).
+     `JWT_ACCESS_SECRET_PREVIOUS` and `JWT_PUBLIC_KEY_PREVIOUS` cover one token lifetime. The
+     algorithm is pinned, and there is no HS256 fallback.
+   - The procedure is `docs/SECURITY/13-KEY-ROTATION.md`.
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| `REVOKE UPDATE, DELETE` alone | decorative while the backend is the owner or a superuser (A-240): the owner can re-grant, and a superuser skips privilege checks |
+| The trigger alone | it holds for every role, but an auditor asks for the grant by name, and two independent layers mean one mistake does not reopen the hole |
+| A separate `LOGIN` role for the application, with no path back to the owner | stronger: `RESET ROLE` could not undo it. But it needs a second credential in every deployment template, including Helm. Recorded as the recommended hardening, not built |
+| Keep `PUT` and make every edit an audited change | the record's content still changes in place. Part 11 wants the original kept and the correction attributable |
+| Verify the schema in CI only | CI never sees the deployed database, and the drift that matters is the drift on that database |
+| `db.sync({ alter: true })` to close column gaps | alters live tables with no review, and hides the migration that did nothing instead of naming it |
+| Version `ENCRYPT_KEY` separately instead of moving the signing keys into the KMS | two key-management schemes for the same kind of secret, and CBC stays unauthenticated |
+| An external KMS (AWS KMS, Vault) now | the key-id format is what makes one pluggable later. Choosing a provider is a deployment decision, not this card |
+
+**Implications — including the bad ones**
+
+- **`SET ROLE` can be undone by `RESET ROLE`.** An attacker who can run arbitrary SQL gets the owner
+  back. The trigger still holds even then, but the grant does not. A separate login role would close
+  this.
+- **Runtime paths that need the owner now fail as the application role:**
+  - `migration.service#syncTables` (`db.sync({ force: true })`) and the other destructive reset
+    helpers;
+  - `unseedDemoData`, which force-deletes the demo tenant's calibration records. It is not
+    transactional, so it stops part-way after deleting the certificates. **Demo calibration records,
+    and the devices they reference, can no longer be removed.** This is the intended guarantee, but
+    the helper does not yet say so.
+- **Roles are cluster-wide.** Two databases on one cluster share `callibrator_app` unless
+  `DB_APP_ROLE` differs. On managed PostgreSQL an owner without `CREATEROLE` cannot create the role,
+  so `0057` refuses the boot with the two statements an administrator must run.
+- **`DB_APP_ROLE` unset means owner mode.** Every boot logs a warning, and only the trigger protects
+  the records. `deploy/compose/.env.example` sets it; **the Helm chart does not**.
+- **A void is final.** A mistaken void is answered by a new record, never an undo. Rows soft-deleted
+  before `0057` carry a synthetic void reason that says no reason was recorded.
+- **Adjustments written before `0059` stay unattributed:** `stock_id` and before/after are `NULL`.
+  The migration does not guess.
+- **A mismatch refuses the boot.** Any hand-made column, trigger drop or skipped migration now stops
+  the application until someone fixes it or sets `SCHEMA_VERIFY=warn`.
+- **`0058` needs the `ENCRYPT_KEY` the rows were written under.** With the wrong key it refuses the
+  boot, naming each row. Its `down` converts back to unauthenticated CBC.
+- **The rotation has been rehearsed only against seeded data**, on PostgreSQL 16 and 18.6
+  (`keyRotation.s08.live.test.js`). The rehearsal against a copy of production that the P6-10 DoD
+  asks for is still owed.
+
+**Verification (PostgreSQL 18.6, `pgvector/pgvector:pg18`)**
+
+- **Fresh boot:** `db.sync()` then all 57 migrations; verifier OK; `current_user = callibrator_app`.
+- **Upgrade from `fabc3be`'s schema, with legacy rows seeded:**
+  - the 12 pending migrations apply;
+  - the soft-deleted record is backfilled;
+  - the blank and `NULL` reasons are backfilled;
+  - the legacy CBC signing key becomes `v2:`;
+  - the verifier passes.
+- **Re-running** is a no-op. **Up, down, down, up** was run for each of `0057`–`0059`.
+- **As `callibrator_app`:**
+  - `DELETE`, a content `UPDATE` and `TRUNCATE` are refused with "permission denied";
+  - a void and an `INSERT` succeed.
+- **As the superuser owner,** the trigger refuses `DELETE` and content changes.
+- **Mutation check:** with `DELETE` granted back, the trigger still refuses. With the trigger also
+  disabled, the delete succeeds.
+
+Tests: `dataIntegrity.p6.live.test.js` (21), `keyRotation.s08.live.test.js` (5),
+`dbRole.util.p603`, `schemaVerify.util.p605`, `0057-0059.p6`, `calibrationRecords.service`,
+`stock.service`, `stock.validator`, `keyRotation.service.s08`, `kms.rotation.s08`,
+`signingKeyWrap.s08`, `keyring.util.p610`, `certificatePdf.keyId.p610`, `jwt.keyring.s26`.
+
+**Status:** Accepted, implemented 2026-09-24/25 (batch 6). Verified on PG 18.6 on 2026-09-25.
+
+---
+
+## ADR-063: Identity and Certificate Numbers Stay Platform-Wide; Identity Is Case-Insensitive; Erasure Pseudonymises; the Audit Trail Is Indexed; Migrations Never Swallow
+
+**Date:** 2026-09-25 · **Findings:** D-05, D-06 (A-37), D-08, D-09, D-10, D-11, D-14, D-15 (D-40) · **Extends:** ADR-051 (Q-12, Q-16, Q-18) · **Migrations:** `0062`, `0063` · **Replaces:** the `ADR-PENDING-dbA` markers
+
+**Context**
+
+The data audit proposed per-tenant uniqueness for `users.email`, `users.username` (D-06) and
+`certificates.certificate_number` (D-15). It also found that `hardDeleteUser` was a soft delete
+reported as a hard one (D-11), that `audit_logs` had no useful index (D-08), and that five migrations
+recorded themselves applied on any `describeTable` error (D-14). Two of those proposals conflict with
+decisions already made: ADR-051 Q-18 keeps one global identity, and the public verification page
+resolves a certificate by its number alone.
+
+**Decision**
+
+1. **Identity stays platform-wide, and is now case-insensitive (D-06, migration `0063`).** ADR-051
+   Q-18 stands: sign-in takes a username or email with no tenant qualifier, so each identifier must
+   name exactly one account.
+   - `0063` adds `UNIQUE (lower(email))` and `UNIQUE (lower(username))` beside the existing exact
+     indexes. SCIM wrote addresses as the IdP sent them, and the A-128 duplicate check used `ILIKE`
+     while the constraint did not.
+   - The migration **refuses** while two accounts differ only by case. It names account ids and
+     tenants, never the address, because migration output lands in logs.
+   - The indexes live only in the migration, never on the model, because `sync()` runs first.
+2. **Certificate numbers stay platform-wide (D-15, D-40).** The number is the key the public
+   verification page and the printed QR code resolve, with no tenant in the URL. The card's composite
+   constraint is rejected.
+   - What was broken is fixed instead. Every tenant with no `code` shared the prefix `T`, and the
+     generator's tenant-scoped lookup could not see the other tenant's numbers. The second such
+     tenant to issue on a given day collided.
+   - A code-less tenant's prefix is now `T` plus the first 8 hex digits of its id.
+   - The generator reads the highest number under that prefix across every tenant
+     (`skipTenantScope`). That number is never returned to the caller.
+3. **Erasure pseudonymises the account in place. There is no physical delete (D-11).**
+   - The account row is referenced, with `RESTRICT` (ADR-051 Q-16), by calibration records,
+     signatures, certificates and the audit trail. Those are records the platform must keep: 21 CFR
+     Part 11, ISO 17025, and GDPR Art. 17(3)(b).
+   - An erasure destroys the name, contact details, password, second factors and sessions. It keeps
+     the id, so the retained records stay attributable.
+   - `hardDelete: true` is **refused with a 400** that says what an erasure does instead. The
+     `anonymize: false` branch is reported as `soft_deleted` and erases nothing.
+4. **The audit trail is indexed by migration, never by the model (D-08, migration `0062`).**
+   - The indexes are `(tenant_id, created_at DESC)`, `(tenant_id, resource_type, resource_id)` and
+     `(user_id)`.
+   - They are built `CONCURRENTLY`, because every mutation writes an audit row. A plain build would
+     stall every tenant's writes for its duration.
+   - An `INVALID` index left by an interrupted build is dropped and rebuilt, never accepted.
+5. **A migration never swallows an error (D-14, D-09).**
+   - The five `catch { return }` guards around `describeTable` are gone. `sync()` runs first, so the
+     table exists, and the only thing a catch could swallow is a real failure.
+   - A migration that genuinely tolerates an absent table checks with `showAllTables()` and says so,
+     as `0063` does.
+   - `0011` refuses to re-run over a populated `e_signature_records` (A-147).
+   - A test runs the whole migrator twice over a populated database, `schema_migrations` emptied in
+     between, and asserts every table's row count is unchanged.
+6. **Every raw query that names a tenant-scoped table carries `tenant_id` (D-05).**
+   - The `card_seq` bump in `kanban.service#createCard` now carries the project's tenant, and a
+     statement that updates no row is a 404.
+   - `rawSqlTenantPredicate.d05.test.js` is the tripwire:
+     - it derives the tenant-scoped tables from the real model factories;
+     - it reads every `.query(` in application source;
+     - it fails on a statement that names a scoped table, or interpolates a table name, without
+       `tenant_id`.
+   - A deliberate cross-tenant statement must be listed in its `CROSS_TENANT` map with a reason.
+     The map is empty.
+7. **`calibration_records.performed_by` is `RESTRICT` (D-10).** This was decided in ADR-051 Q-16
+   and is confirmed here on PostgreSQL 18. A hard delete of a user who performed a calibration fails
+   with SQLSTATE `23001` (`restrict_violation`), and the record stays.
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| `UNIQUE (tenant_id, email)` and `(tenant_id, username)` (the D-06 fix direction) | ADR-051 Q-18 rejected it: it needs tenant-qualified sign-in on every path. Memberships are the long-term model |
+| A `citext` column type | changes the column type under every query and every `sync()`, for what one expression index does |
+| Lower-case on write only | leaves existing mixed-case rows and relies on every writer, SCIM included, remembering to do it |
+| Per-tenant certificate numbers, with the tenant in the verification URL | breaks every QR code already printed on a certificate |
+| A physical delete with `SET NULL` and the performer's name copied onto each record | loses attribution for a Part 11 record, and copies personal data into more places, not fewer |
+| Indexes declared on the `AuditLog` model | `sync()` never adds an index to an existing table (D-13), and would build it with a blocking lock on a fresh one |
+| A lint rule instead of a test for D-05 | the project has no custom ESLint rule infrastructure. The test uses the real model set, so a new scoped model is covered with no edit |
+
+**Implications — including the bad ones**
+
+- **The existence oracle remains.** A tenant admin creating a user learns that an address or
+  username exists somewhere on the platform, now case-insensitively too. This is the narrow residual
+  that Q-18 accepted.
+- **`0063` refuses the boot while case-variant duplicates exist.** An operator must decide which
+  account a person keeps.
+- **A code-less tenant's printed certificate numbers expose the first 8 hex digits of its tenant
+  id.** Numbers issued before this change keep the shared `T` prefix.
+- **An erased account is a row forever,** holding `erased_<id>@erased.local`. Nothing on the platform
+  can physically remove a person's account row. If the owner wants that, it needs a new decision.
+- **`CONCURRENTLY` cannot run inside a transaction,** so `0062` is not atomic. On a large deployed
+  `audit_logs`, the first boot after it takes as long as three index builds.
+- **The D-05 tripwire is textual.** A statement assembled at runtime from fragments escapes it. It
+  proves the predicate is present, not that it is correct.
+
+**Verification (PostgreSQL 18.6)**
+
+`dataIdentity.dbA.live.test.js` passes 10/10. It covers:
+
+- D-10 `RESTRICT`;
+- D-11 erased fields, asserted field by field, and the `hardDelete` refusal;
+- D-06 case-variant refusal, both as a constraint and as the migration's refusal;
+- the D-08 plans using each new index over 20,000 rows;
+- the D-40 two code-less tenants;
+- D-09, the whole migrator run twice with row counts unchanged;
+- `0011`'s refusal.
+
+**Up, down, down, up** was run for `0062` and `0063` on an upgraded and a fresh database.
+
+Unit tests: `0062-audit-log-indexes`, `0063-user-identity-case-insensitive`,
+`describeTableGuards.d14`, `certificateNumber.d40`, `gdpr.service`, `kanban.service`,
+`rawSqlTenantPredicate.d05`.
+
+**Status:** Accepted, implemented 2026-09-24/25 (batch 6). Verified on PG 18.6 on 2026-09-25.
+
+---
+
+## ADR-064: Roles Stay Global; Child Tables Stay Unscoped Behind a Checked Parent Key; Evidence Links Are RESTRICT; Every Tenant Key and Foreign Key Is Indexed; Money Reads as a Number; a Tenant Purge Never Destroys a Retained Record
+
+**Date:** 2026-09-25 · **Findings:** D-12, D-13, D-16 (A-38), D-17, D-18, D-19, D-20, D-21, D-22, D-23, D-24, D-25, D-26, D-27, D-28 · **Extends:** ADR-051 (Q-16), ADR-062 (P6-05), ADR-039 · **Migrations:** `0066`, `0067` (`0068` and `0069` were reserved by the halted agent and never written) · **Replaces:** the `ADR-PENDING-dbB` markers
+
+**Context**
+
+The second half of the data audit (`TASKS/AUDIT-2026-09-DATA.md`, D-12 to D-28) was worked by the batch-6
+agent "dbB", which was halted mid-task; its edits were committed unverified in `244b63b..beb0c4b`. This ADR
+records the decisions those edits implement, and the ones finished afterwards. Several cards are data-model
+questions rather than defects: the audit said so, and asked for a recorded decision either way.
+
+**Decision**
+
+1. **Roles, their menu permissions and menu groups stay global (D-16, D-17 group 3).** No `tenant_id` on
+   `roles`, `role_menu_permissions`, `menu_groups`, `user_menu_permissions`; `roles.name` stays unique
+   platform-wide. The guard is the route: every route that creates, renames, deletes or re-permissions a
+   role or menu group is SUPERADMIN-only, held route by route by `rolesGlobal.d16.test.js` (43 tests; a new
+   mutating route fails its inventory). The CMS (`posts`, `categories`, `post_categories`) is platform
+   content by the same decision.
+2. **Child tables stay unscoped, and the parent key is checked statically (D-17 group 2).** The seven
+   `kanban_*` children, `workflow_steps`, `workflow_actions`, `notification_states`, `ticket_comments` and
+   `user_menu_permissions` do not gain a denormalised `tenant_id` now. Every query on them must name its
+   scoped parent's key; `unscopedModels.d17.test.js` parses `backend/src` and fails on one that does not,
+   with two reviewed exceptions, and fails when a new model without a tenant column is not listed with its
+   reason. Every such model carries a header comment naming the reason and the compensating control.
+3. **An evidence row's link to what it evidences is `ON DELETE RESTRICT` (D-18).** Only a non-attesting
+   operational actor may be `SET NULL`. After `0066` (`signature_records.workflow_step_id`, was CASCADE) the
+   rule holds for all five evidence tables: `signature_records`, `e_signature_records`, `certificates`,
+   `calibration_records`, `attachments` (tenant RESTRICT; `uploaded_by` SET NULL; the polymorphic resource
+   link has no foreign key — item 8). No code hard-deletes a signature model (`signatureEvidence.d18.test.js`).
+4. **Every tenant column and every foreign key is indexed, by migration and in the model (D-19, D-20).**
+   `0067` creates up to 75 reviewed indexes (tenant boundary, `(tenant_id, status)` where lists filter on status,
+   every unindexed FK, and `iot_readings (tenant_id, device_id, timestamp)` / `(tenant_id, timestamp)`),
+   skipping any already served by an index with the same leading columns and recording what it created, so
+   `down` drops exactly those. `iot_readings` is a retention entity: platform default 0 (keep), opt-in
+   per tenant, floor 730 days. It is **not partitioned** while empty (A-29: nothing ingests); the Open
+   Decisions row "Partitioning `iot_readings` and `audit_logs`" stands. `webhook_deliveries` has the same
+   unbounded shape and **no purge** — open; `document_chunks` is replaced on re-index and bounded by its
+   documents.
+5. **A `DECIMAL` attribute reads as a number (D-21).** A per-attribute `get()` returning `Number(...)`, not
+   a global `pg` type parser: visible in the model, and it does not silently change `raw: true` and
+   aggregate results elsewhere. Aggregates are parsed at the call site. `decimalGetters.d21.test.js`
+   discovers every `DECIMAL` attribute. Rule in `docs/BACKEND/00-BACKEND-STANDARDS.md`.
+6. **`db.sync()` is not a migration (D-13, D-12).** It creates tables and adds missing model indexes; it
+   never adds a column, an enum value or a changed foreign key. Drift is caught at every boot by ADR-062's
+   schema verification. An index on a column only a migration creates never goes on the model in the same
+   release (it would break `sync()` on every existing database, because sync runs first). Every include of a
+   default-scoped model states `required` — a test over the source (`includeRequired.d12.test.js`) is the
+   lint rule.
+7. **A tenant purge never destroys a retained record (D-23).** `hardDeleteOffboardedTenant` runs in one
+   transaction; it counts every tenant-scoped table (enumerated from `db.models`) that is neither on 0030's
+   CASCADE list nor on its own delete list (`tenant_settings`, `users`, `subscriptions`), soft-deleted rows
+   included, and **refuses (409)** naming each that holds rows. Otherwise it deletes those three, then the
+   tenant row, with one PLATFORM audit row. The compliance answer to "what is retained after a purge": every
+   regulated record — calibration records, certificates, signatures, invoices and the audit trail, which
+   includes the offboarding itself — until an archival process removes it. None exists.
+8. **An attachment's resource link stays polymorphic, validated in code (D-22).** No foreign key is possible
+   on `(resource_type, resource_id)`. A linked attachment's type must be on `LINKABLE_RESOURCES` and its id a
+   live record of the caller's tenant (A-97). Cascading a parent's soft delete to its attachments is open.
+9. **Aggregation happens in the database (D-24).** PostgreSQL-only (ADR-039) removes the portability that
+   justified bucketing in JS: `monthlyTrend` groups by `date_trunc('month', …)` in the connection's timezone
+   (`+07:00`) and returns at most six rows.
+10. **Low-severity schema conventions (D-25, D-26, D-27, D-28).** `paranoid` (`deleted_at`) is the
+    soft-delete mechanism for new models; the eleven models that carry both `isDeleted` and `deleted_at` are
+    not converted in this change. Native `ENUM`s stay; a new value is a migration (`ALTER TYPE … ADD VALUE`),
+    because `sync()` never adds one. JSON columns: `api_keys.scopes`' comment now matches `assertScopes`.
+    `"UsageMetrics"` keeps its camelCase name, documented in `docs/DATABASE/11-BILLING-TABLES.md`.
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| Tenant-owned roles: nullable `roles.tenant_id` (NULL = system), `UNIQUE (tenant_id, name)`, hooks scope them | a migration with a backfill over every user's `role_id`, a split between "system" and "tenant" roles in every gate, and SCIM already gives tenants their own group names (ADR-053). Worth doing when a tenant needs a custom role; not as an audit side effect |
+| A denormalised `tenant_id` on the eleven child tables | eleven columns, a backfill, and every create path — including background jobs — must stamp a tenant; a missed stamp is a row no one can see. The static parent-key check gives the same guarantee for today's code at no schema cost |
+| `ON DELETE CASCADE` kept on the step key, relying on paranoid steps | the database would obey the one `force: true` or hand-run `DELETE` that erases Part 11 signatures; RESTRICT makes the database refuse |
+| Indexes in the model `indexes` block only | `sync()` adds them only when it next runs, and 60-odd names appearing at an arbitrary boot is not a reviewable change; the migration creates them deliberately, reversibly and with a lock timeout |
+| `CREATE INDEX CONCURRENTLY` in `0067` | cannot run inside the transaction that makes the migration atomic; every table is small today. The header documents the by-hand path for a large database |
+| A global `pg.types.setTypeParser(1700, parseFloat)` | also changes every `raw: true` read and aggregate, silently, and float-parses money everywhere; the getter is local and discoverable |
+| Rely on `tenants` CASCADE for the purge | 0030 made regulated tenant keys RESTRICT on purpose (ADR-051 Q-16); CASCADE would erase the evidence the platform must keep |
+| Remove `hardDeleteOffboardedTenant` (it has no caller) | the offboarding design names a purge after retention; a correct, refusing implementation is the specification for whoever wires it |
+| Rename `"UsageMetrics"` to `usage_metrics` | touches raw statements and every deployed database for a naming benefit only |
+
+**Bad implications, stated**
+
+- Roles are shared: a tenant cannot have a role of its own, and a platform operator's rename changes it
+  for every hospital. Tenants needing custom roles have no path today.
+- The child-table guarantee is a source scan, not a database predicate: raw SQL, a dynamic model name, or a
+  query built outside `backend/src` escapes it.
+- RESTRICT means a genuine clean-up of a test workflow's signatures needs a deliberate archival step; and
+  on PostgreSQL 18 a RESTRICT refusal is SQLSTATE **23001** (`restrict_violation`), which Sequelize 6 does
+  **not** map to `ForeignKeyConstraintError` (only 23503). Any future "refusal → 409" translation must test
+  both codes (`dataLayer.dbB.live.test.js` asserts either).
+- `0067` takes a SHARE lock per table while it builds; on a large production database it needs a window.
+- The number getter does not cover `raw: true` or `SUM`; a new aggregate over money can still be a string.
+- In practice no real tenant can be hard-deleted: every offboarded tenant has at least its offboarding
+  audit row. That is intended, but it means offboarded tenants accumulate until archival exists.
+- `monthlyTrend`'s months are WIB months (the connection timezone), not the viewer's.
+- D-22's orphaning path (a parent soft-deleted, its attachments still listed) and D-24's other unbounded
+  reads (DSAR export, SOP fan-out, signature history) remain.
+
+**Evidence**
+
+On PostgreSQL **18.6** (`pgvector/pgvector:pg18`, throwaway container), booting as `backend/index.js` does
+(`db.sync()`, then the migrator from `0001`, then ADR-062's schema verification):
+- a database built by `fabc3be` (45 migrations) then booted by this tree: `0066`, `0067`, `0070` applied,
+  schema verification OK; the step key became `ON UPDATE CASCADE ON DELETE RESTRICT` with the previous
+  CASCADE definition recorded; 71 of the 75 indexes created (the two `iot_readings` indexes had already been added by
+  `sync()` from the model, and two more were already served by existing indexes — all four skipped); re-running each `up` changed nothing; `down` to before `0066`
+  restored CASCADE and dropped exactly the 71; `up` again re-applied all three;
+- a fresh database: 57 migrations, verification OK; a second boot applied 0;
+- `dataLayer.dbB.live.test.js` (10 tests) against the same server;
+- D-23 against the migrated database: a tenant with an audit row refused (409, `audit_logs (1)`); a tenant
+  with only settings and a CASCADE custom domain deleted, and afterwards no row in any of the 52 tables
+  with a `tenant_id` column referenced it (enumerated from `information_schema`).
+
+Unit tests: `includeRequired.d12`, `rolesGlobal.d16`, `unscopedModels.d17`, `signatureEvidence.d18`,
+`0067-foreign-key-and-tenant-indexes`, `dataRetention.service` (iot_readings), `decimalGetters.d21`,
+`tenantLifecycle.hardDelete.d23`, `dashboard.service` (monthlyTrend).
+
+**Status:** Accepted. D-12, D-13, D-16 to D-21, D-23, D-27, D-28 implemented 2026-09-25; D-22, D-24, D-25, D-26
+partial (see the board).
+
+---
+
+## ADR-065: Custom Domains Are Verified Claims, Unique While Live; Stock Transfers Are Decided on Their Own Lifecycle; a Started Approval Workflow Is Mandatory; Tenant Moves Are Transactional; Unrouted Handlers Are Removed
+
+**Date:** 2026-09-25 · **Findings:** A-201, A-202, A-203, A-223, A-224, A-225, A-226, A-228, A-253, A-255, A-256, A-258 · **Extends:** ADR-055 (workflow decisions are signatures), ADR-042/057 (file serving), A-190 · **Migrations:** `0070` · **Replaces:** the `ADR-PENDING-misc` markers
+
+**Context**
+
+The batch-6 agent "misc" was halted while editing the custom-domains service; its edits were committed
+unverified. Two of its cards were marked as needing an owner decision (A-201's status mapping, A-203 "is the
+workflow mandatory?"). The owner's standing instruction is to argue both sides briefly, decide on best
+practice, and record the decision.
+
+**Decision**
+
+1. **A custom domain is a verified claim, unique while live (A-223, A-256; migration `0070`).**
+   - `custom_domains.domain` is no longer globally unique. It is stored lower-case, and two partial unique
+     indexes hold the rule: ACTIVE (verified) for one organisation at a time; live (not `deleted`) at most
+     once per tenant. A removed domain blocks nothing and can be added again; a PENDING claim does not hold a
+     domain against its real owner — the first to publish the DNS record and verify holds it.
+   - Every conflict is a 409 with its explanation; a lost race on either index is the same 409, not a 500.
+     The "someone else holds it" answer never says who.
+   - `0070` refuses, changing nothing, while existing rows already violate the new indexes (naming row ids,
+     never the domain), and its `down` refuses while a removed domain has been re-added.
+   - **Serving the application on a custom domain is not implemented.** `resolveTenantByDomain` and
+     `provisionTLSCertificate` had no caller and were removed rather than fixed: selecting a tenant from a
+     `Host` header is a tenant-isolation decision (which principal may act where, what a spoofed `Host`
+     selects), and the ACME stub had no caller, no persistence of what it issued and no renewal.
+     `TLS_AUTO_PROVISION` and `ACME_*` are no longer read; the instructions stop promising a certificate.
+2. **A stock transfer's workflow decision lands on the transfer's own states (A-201).**
+   - For: add `approved` / `rejected` to the ENUM — the transfer then records the decision literally. Against:
+     an `ALTER TYPE` migration, and two new states every transfer screen, filter and transition rule must
+     learn, for information the workflow instance already holds.
+   - **Decided:** approved → `in_transit` (released to move; `approvedBy` = the approver), rejected →
+     `cancelled`, each audited in the decision's transaction. An approval authorises a movement, it does not
+     perform one: stock moves only at `completed`, which counts and audits both quantities (P6-09). A
+     transfer no longer `pending`, or gone, is a 409 and the decision rolls back.
+   - A maintenance work order's sign-off (nothing starts one yet): approved → `Completed`, rejected →
+     `InProgress` (back to its performer). A rejection used to change nothing.
+3. **A started approval workflow is mandatory (A-203, A-202).**
+   - For "optional": a direct approval is itself permission-gated, re-authenticated and audited, and an
+     absent approver in the chain could block an urgent certificate. Against: a tenant that configured a chain
+     configured it as its approval control (ISO 17025 7.8, Part 11 §11.10(f) sequencing checks); a direct
+     approval made the chain advisory and left its instance PENDING forever over an approved certificate — an
+     inconsistent record.
+   - **Decided:** while a certificate's instance is PENDING, `POST /certificates/:id/approve` is 409, decided
+     under the row lock and before re-authentication. A tenant with no workflow approves directly, as before.
+     A re-submission after a rejection starts a new instance in the same transaction. The same holds for a
+     stock transfer: its workflow starts inside the create's transaction (was after commit, fail-soft — the
+     A-190 shape), the create is audited, and a manual status change while the instance is PENDING is 409.
+   - The remedy for an absent approver is to reconfigure the workflow (an audited definition change, A-204),
+     not a bypass.
+4. **Moving a tenant in the hierarchy is one audited transaction (A-224).** The handlers moved into
+   `tenantHierarchy.service`: tenant row locked, a cycle refused on the `parentId` chain (not only on paths,
+   which may be incomplete), the tenant's hierarchy row and every descendant's `path` and `depth` rewritten,
+   depth limit checked for the whole subtree, `_` escaped in the `LIKE` subtree pattern, one PLATFORM audit
+   row. "Already a root" is a 409.
+5. **Unreachable handlers are removed (A-255).** The seven unrouted `tenantHierarchy.controller` handlers
+   and the service's `assignRoleToUserAcrossHierarchy` — which wrote a user's role unaudited, with no
+   privilege check, and passed a user id where a tenant id was expected — were deleted rather than routed.
+6. **Already implemented by the halted agent, recorded here:**
+   - A-225: `PATCH /billing/subscription` refuses every change on a Stripe-billed subscription (409 — the
+     provider is the source of truth), allows only the payment-lifecycle status transitions with a required
+     `reason`, locks the row, and audits before/after in one transaction.
+   - A-226: a menu group's parent may not be itself or a descendant (409); an unknown parent is 404.
+   - A-228: the log redaction masks email addresses in any string and redacts keys ending in `link`.
+   - A-253: `/documentation` and `/standards` are served only under `SWAGGER_ENABLED` (not in production by
+     default); `/error` (a test route answering 500) and `/tab-permissions` (a missing file) were removed.
+   - A-258: `username-check` compares exactly (case-insensitive), not with `LIKE` on raw input.
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| Keep the global unique on `domain`, hard-delete on removal | the removal is in the audit trail by id; a hard delete leaves audit rows naming nothing |
+| Implement Host-header tenant resolution and ACME now | a tenant-isolation design (spoofed `Host`, principal vs. domain tenant mismatch, certificate storage and renewal) that deserves its own spec, not a side effect of an audit card |
+| `approved`/`rejected` transfer states | see 2 |
+| Approval completes the transfer (moves the stock) | conflates authorising a movement with receiving it; the receiving count is a separate, audited act |
+| Direct approval stays allowed alongside the workflow | see 3 |
+| Route the seven hierarchy handlers behind SUPERADMIN | they duplicated routed handlers with other response shapes, and one was a privilege-escalation primitive |
+
+**Bad implications, stated**
+
+- A verified custom domain does nothing for users yet; the UI must not imply otherwise. Deploy templates
+  still set `TLS_AUTO_PROVISION` (harmless; to be removed with them). `acme-client` remains a dependency.
+- `0070` lower-cases stored domains; its `down` does not restore the original case.
+- (Checked: no frontend screen uses `Approved`/`Rejected` as a transfer status — a grep of `frontend/src`.)
+- An approver who is absent blocks a certificate until the workflow is reconfigured.
+- A transfer decided by a workflow still needs a person to mark it `completed` when it arrives.
+- A tenant move rewrites every descendant row under lock; a very large subtree is a long transaction.
+
+**Evidence**
+
+`0070` on PostgreSQL 18.6, booted from `fabc3be`'s schema with legacy rows (a removed `Old.Example.com`, a
+pending and an active domain): before, re-adding the removed domain failed on `custom_domains_domain_key`;
+after, the two legacy uniques (`custom_domains_domain_key` and the model index `custom_domains_domain`) were
+dropped, domains lower-cased, the partial indexes created; re-adding succeeded, a second ACTIVE and a second
+live row in one tenant were refused by the new indexes; `down` refused while re-added rows existed, then
+restored `custom_domains_domain_key`; `up` again re-applied. The workflow gate's lookup
+(`workflow.service#findPendingInstance`) on the same server: a PENDING Certificate instance was found (with its
+workflow's name and step), the same resource id asked as a StockTransfer was not, and after the instance was
+REJECTED it was not found.
+
+Named tests, and how many failed at `fabc3be`: `customDomains.service` (31 of 59), `appRoutes.a253` (4 of 4),
+`billing.subscriptionOverride.a225` (22 of 24), `menuGroup.cycle.a226` (9 of 18), `activityLog.redaction.a228`
+(11 of 17), `user.usernameCheck.a258` (6 of 9), `tenantHierarchy.move.a224` (14 of 14), `workflow.service` ›
+A-201 (all new A-201 cases), `stock.service` › A-202 (4 of 4), `certificate.service` › A-203 (2 of 4; the two
+that pass at baseline pin the unchanged no-workflow path).
+
+**Status:** Accepted, implemented 2026-09-25.
+
+---
+
+## ADR-066: CI Is One Workflow of Required Gates; Scheduled Jobs Alert on Their Outcome; Deployment Credentials Have One Source
+
+**Date:** 2026-09-25 · **Findings:** P7-01, A-19, P7-02, P7-03, P7-07, P7-08, S-09, S-17, S-18, S-19, S-23, S-25, P6-03 (deployment half) · **Replaces the markers:** `ADR-PENDING-infra (CI)`, `(P7-02)`, `(helm secrets)`, `(P7-08/S-23)`, `(S-17 location)`
+
+**Context.** The "infra" agent of batch 6 was halted before it wrote a report. Its edits were committed
+unverified, with five `ADR-PENDING-infra` markers in `docs/`. The follow-up on 2026-09-25 verified
+what could be run locally and found three defects the unverified work would have shipped. The
+workflow's own `actionlint` stage failed on the workflow (SC2086). The `secret-scan` stage failed on
+the repository's own commits: its documentation quoted the Stripe placeholder literally, which gave
+three findings. The `frontend` stage ran `jest` without `--coverage`, so it never evaluated the
+frontend gate.
+
+**Decision**
+
+- **CI is `.github/workflows/ci.yml`, and every job in it is a required gate.** The jobs are
+  secret scan, workflow lint, the backend ESLint ratchet, backend unit tests with the 100% coverage
+  gate, the frontend (lint, typecheck, test with coverage, build), `npm audit`, a boot-and-migrate
+  run on PostgreSQL 18, and deploy config (helm plus kubeconform, the chart's refusal guards,
+  `docker compose config` and the S-19 port check).
+  - No job is `continue-on-error`.
+  - A gate that cannot pass today is replaced by a gate that can fail honestly, not softened. The
+    backend lint ratchet is the example.
+  - Actions are pinned by commit SHA. The CLI tools are pinned by version and sha256. Node is
+    24.21.0.
+  - The `pre-push` hook is opt-in (`make hooks`). CI is the gate.
+- **Secret-scan allowlisting has two forms, and a new entry is a review item.** A narrow value regex
+  covers the template placeholders (`CHANGE_ME…`). Anything else is a fingerprint in
+  `.gitleaksignore` with a comment. Nothing is allowlisted by source directory.
+- **A scheduled job's outcome is monitored, not just its start (P7-02).**
+  - Every scheduler runs through `jobMonitor.runMonitored`. A partial failure counts as a failure.
+  - Each job's state is persisted to `JOB_STATUS_DIR`.
+  - The alert of record is a structured `error` log line with an `alert.key`. It is also pushed to
+    `ALERT_WEBHOOK_URL` or `ALERT_EMAIL_TO` when either is set.
+  - An alert fires on the first failure, then at most every `JOB_ALERT_REPEAT_HOURS`, and once more
+    on recovery.
+  - A watchdog alerts on missed runs and on batch jobs stuck in `PROCESSING`.
+  - Metrics are served on `/api/v1/health/metrics`, bearer-gated and off until `METRICS_TOKEN` is
+    set.
+- **Log shipping is a template, not a deployment (P7-03).** `deploy/observability/vector.toml`
+  reads container stdout, re-redacts and ships to Loki. It is an optional overlay.
+- **Swagger is off in production unless `SWAGGER_ENABLED=true`, rather than behind a session
+  (S-23).** The UI is fetched by a browser navigation that carries no bearer token. A spec gated by
+  a cookie the API does not issue would be a gate in name only.
+- **The API origin's CSP has no `'unsafe-inline'` for scripts. `/docs` has its own policy
+  (P7-08).** Swagger UI loads its scripts as files. Only style stays inline.
+- **Quarantine is `uploads/.quarantine`, inside the uploads mount (S-17).** A quarantine on another
+  filesystem would make the promoting `rename` fail with `EXDEV`. The static mount ignores
+  dotfiles, and the hourly sweep removes leftovers.
+- **Helm: the Secret switch is `global.secrets.external`.** The old `secrets.external` key refuses
+  to render. The URLs in the ConfigMap must be credential-free, and guard 9 refuses a URL with
+  `user:password@`. `REDIS_PASSWORD` and a credentialed `RABBITMQ_URL` go in the Secret.
+- **Compose: deployment credentials have one source (S-09).**
+  - `REDIS_PASSWORD` is read by both Redis (`--requirepass`) and the backend (AUTH). `REDIS_URL`
+    stays credential-free.
+  - The backend's `RABBITMQ_URL` is built in `docker-compose.yml` from the same
+    `RABBITMQ_USER`/`RABBITMQ_PASS` that create the broker's user. `environment` overrides
+    `env_file`, so a stale URL in `.env` can no longer disagree with the broker.
+- **Compose and Helm set `DB_APP_ROLE` (P6-03, deployment half).** Compose defaults it to
+  `callibrator_app` in the file itself, because a `.env` made before 2026-09-25 has no such line.
+  The chart sets it through `backend.database.appRole`. `none` opts out explicitly.
+- **Hardening (S-19) is `no-new-privileges` and `cap_drop: [ALL]` on every service.** A service
+  adds back only the capabilities its entrypoint needs. Redis and nginx get a read-only root. CPU
+  limits sit beside the memory limits. The dev overlay binds nothing but nginx on 0.0.0.0. Base
+  images are pinned by digest (P7-07).
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| Softening a red stage (`continue-on-error`) until it is fixed | the abuse case P7-01 names. A ratchet or a narrower gate that can fail is honest |
+| Plain `eslint` as the backend lint gate | ~950 errors today (A-34). The gate would be red on day one and then switched off |
+| A forced hook on every clone (husky) | the first thing people learn to `--no-verify`. CI is the gate |
+| Allowlisting the docs directories in gitleaks | "allowlisted into uselessness". A fingerprint silences one finding in one commit |
+| Alerting through a metrics stack only | no metrics stack exists. The log line and the webhook work with nothing else deployed |
+| Swagger behind a super-admin session | no session cookie exists for a navigation. See the decision |
+| Keeping `RABBITMQ_URL` in `.env` and checking agreement with `make check-env` | was the batch-2 fix. It only works when the operator runs `make`, and it does not protect a `.env` edited later |
+| `read_only` on the backend and frontend | pkg extracts native addons and Chromium writes at runtime, and neither is mapped yet. A read-only root that breaks certificate PDFs on first use is worse |
+
+**Implications, including the bad ones**
+
+- **The workflow has never run on GitHub.** What was run on 2026-09-25, on Windows with Docker:
+  - `actionlint` 1.7.12, clean after the SC2086 fix;
+  - `gitleaks` 8.30.1 over all 41 commits, clean after three fingerprints;
+  - the helm and kubeconform steps, verbatim, with helm **v4.3.0** where CI pins v3.19.0;
+  - the compose step and the S-19 check, in both directions;
+  - the backend lint ratchet at 950 = baseline;
+  - frontend eslint (0 errors), `tsc` and the coverage gate;
+  - the tool checksums and the action SHAs, checked against the tags.
+
+  **The `boot-and-migrate`, `backend-test`, `npm audit` and `next build` jobs were not run in their
+  CI form.**
+- **The ratchet and `backend-test` are sensitive to concurrent work.** Another change that adds a
+  lint error or drops coverage turns them red. That is their purpose, and it makes a parallel batch
+  noisy.
+- **The Helm charts render. They are not known to deploy.** P7-06 is still open.
+- **With compose, `RABBITMQ_PASS` must be URL-safe.** It is placed in the URL verbatim. `make
+  secrets` prints hex.
+- **`DB_APP_ROLE` on by default requires `CREATEROLE`.** A managed PostgreSQL whose owner lacks
+  it fails migration 0057 at boot until an administrator creates the role, and the error says how.
+  Under compose the owner is a superuser.
+- **Alert routing is configuration.** Until `ALERT_WEBHOOK_URL`, `ALERT_EMAIL_TO` or a log pipeline
+  is set up, an alert is a log line. In Kubernetes the job status files live on an `emptyDir`.
+- **Vector is validated (`vector validate`) but has never shipped a line.**
+- **The content origin still sends no CSP.** The frontend half of P7-08 is open.
+
+**Status:** Accepted. Implemented 2026-09-24 (batch 6) and verified or corrected 2026-09-25. The
+evidence is in `MEMORY/records/2026-09-25-phase0-batch6.md` § Follow-up: infra.
+
+---
+
+## ADR-067: The Frontend Coverage Gate Is the Measured Figure, Ratcheted to 70%, and It Runs
+
+**Date:** 2026-09-25 · **Findings:** F-03, F-04, F-05, F-07, F-08, F-10, F-12, F-15, F-17 · **Replaces the marker:** `ADR-PENDING-fe`
+
+**Context.** `frontend/jest.config.js` declared a 70% threshold that nothing evaluated. `npm test`
+ran plain `jest`, the real figure was 28%, and the CI draft ran `jest --ci` without coverage too. The
+"fe" agent of batch 6 was halted before reporting. Its work was committed unverified.
+
+**Decision**
+
+- **`npm test` is `jest --coverage`, and CI runs `jest --ci --coverage`.** Only `--coverage`
+  evaluates `coverageThreshold`.
+- **The threshold is what the suite measures, and it only ratchets up.** It stands at 41 / 35 / 34 /
+  41 (statements / branches / functions / lines).
+  - It moves toward 70 in the steps listed in `docs/FRONTEND/10-TESTING.md` § Coverage gate.
+  - It rises in the same change that earns it.
+  - It is never lowered, and never reached by excluding product code. `collectCoverageFrom`
+    excludes only `*.d.ts`, the root layout and page, and `src/tests/**` helpers.
+- **The service tests are named for what they are.** The `*.service.test.ts` files mock the client.
+  They prove what the frontend believes about the API, not the API. Real-code layers sit above them:
+  - the client interceptors, run through a fake adapter;
+  - the Next route handlers;
+  - `proxy.ts`;
+  - store contracts;
+  - screen hooks.
+- **`axe-core` runs in the jsdom component suite.** Colour contrast and page-level rules are off
+  there and belong to the browser suite.
+- **Async queries wait up to 5 s (`jest.setup.ts`).** Under coverage instrumentation the full-page
+  suites (`page.a156`, DataRetention A-135) failed intermittently: 4 failures in 1 of 3 runs. The
+  ceiling changes only how long a failing test waits, not what any assertion accepts.
+- **Behaviour chosen in this batch:**
+  - a missing `roleId` yields an empty menu with a retry, never the static tree (F-15);
+  - a 403 from `/search` removes the search box (F-10);
+  - one `proxy.ts` (F-08);
+  - route error boundaries (F-07);
+  - the two unused animation dependencies are removed (F-17).
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| Keep 70% and fix the gate later | a number nothing checks is the failure F-03 records |
+| 70% now, with `continue-on-error` in CI | softening a gate. See ADR-066 |
+| Exclude untested pages from coverage | reaches the number by redefining it |
+| `retry` on flaky suites | hides a real hang as well as a slow render. A longer wait still fails a test that never renders |
+
+**Implications, including the bad ones**
+
+- **41% is not 70%.** Most pages still have no test above the service layer, and branch coverage
+  trails.
+- **A frontend change that lowers coverage by one point fails the gate.** That is intended.
+- **The manual checks the F-cards ask for have not been done.** These are the screen-reader walk,
+  one screen per status code, and the `JWT_ACCESS_EXPIRED=60s` run. No browser has exercised this
+  work, so those cards stay partial.
+- **The 5 s async ceiling makes a genuinely failing `findBy*` slower to report.**
+
+**Status:** Accepted. Implemented 2026-09-24 (batch 6), verified 2026-09-25. The measured figures
+are in `MEMORY/records/2026-09-25-phase0-batch6.md` § Follow-up: fe.
+
+---
+
+## ADR-068: A Sensitive Self-Service Change Re-Authenticates; an Administrator's Password Expires in 72 Hours; a Federated Session's Password Is the Identity Provider's; No Runtime Helper Resets the Schema
+
+**Date:** 2026-09-25 · **Findings:** A-211, A-213, A-214, A-215, A-216, A-259 · **Extends:** ADR-051 (Q-11, A-98), ADR-059 (7), ADR-062 · **Migration:** `0078-user-temporary-password-expiry`
+
+**Context**
+
+Six follow-ups from batch 6. The password step of a sign-in stamped `last_login_at` before the MFA
+step had passed (A-211). Removing a passkey needed nothing but the session, and wrote no audit row
+(A-213). A self-service email change also needed nothing but the session. A stolen session could
+move the address, reset the password through it, and take the account (A-214). The password an
+administrator chose at creation or by a reset signed in until its holder changed it, with no time
+limit (A-215; ADR-059 listed this as open). A user provisioned just-in-time by SSO has a random local
+password that nobody knows. Change Password could only tell them it was wrong, and ADR-051's "SSO
+users are pointed to their identity provider" was not built (A-216). Since P6-03 the backend runs as
+the application role. `unseedDemoData` then stopped part-way, and `syncTables` could not work at all
+(A-259; ADR-062 listed both as implications).
+
+**Decision**
+
+1. **`last_login_at` is written when a session is issued, in the session's transaction** (A-211).
+   This is `auth.service#openLoginSession`, used for password-only sign-in and for the MFA step. A
+   sign-in whose LOGIN audit row fails leaves no stamp. SSO already worked this way (A-188).
+   Impersonation does not stamp it, because the holder did not sign in.
+2. **Removing a passkey and changing one's own email need fresh re-authentication, by the A-114
+   rule** (A-213, A-214). The rule is `auth.service#reauthenticate`:
+   - the current password is required;
+   - on an MFA account, a current TOTP code or a recovery code is required as well;
+   - the code is spent inside the change's own transaction, so a rolled-back change does not burn it;
+   - a missing proof is a 400 that names what is needed;
+   - a wrong password and a wrong code give one combined 400.
+
+   Each change is audited in its transaction: `WEBAUTHN_DISABLE`, and `GDPR_RECTIFICATION` for
+   email. Both rows carry `reauthenticatedWith`. The other rectifiable fields (names, phone) need no
+   re-authentication. An administrator changing *another* user acts through the user routes, whose
+   gates and audit are unchanged.
+3. **A temporary password expires 72 hours after it is issued** (A-215).
+   - Column `users.temporary_password_expires_at`, added by migration `0078`. It is set by
+     `userCreate` and `resetUserPassword`.
+   - It is cleared by the holder's own change and by the email-code reset.
+   - An expired temporary password at sign-in gets the same 401 "Invalid credentials" as a wrong
+     password, and the throttle counts it the same way. It is not an oracle.
+   - A session opened before the expiry cannot use the expired password to change it. The holder,
+     who has just proved the password, gets a 409 that says it expired.
+   - Migration `0078` starts the clock at the upgrade for every account that was already flagged
+     `must_change_password`.
+4. **A session that signed in through SSO does not change a local password or email here** (A-216,
+   and A-214 for email). The check is the access token's `amr` of `saml` or `oidc` (A-160):
+   - `POST /auth/just-update-password` answers 409, naming the protocol and the identity provider.
+     The provider name is the host of `oidc_authority`, the SAML entity id, or the host of the SAML
+     entry point.
+   - `/auth/verify` returns `passwordManagedBy`, and the change-password page shows the explanation
+     instead of the form.
+   - An account under the A-123 forced change is exempt. An administrator gave it a temporary
+     password, which the holder knows and must replace.
+5. **No runtime helper drops or recreates the schema** (A-259).
+   - `migration.service#syncTables` (a forced `db.sync`) and `resetAndSeed`, its only caller, are
+     removed. The application role cannot drop a table, and no route, script or boot path called
+     either one.
+   - Recreating the schema is an owner operation, done outside the application: `make migrate` on an
+     empty database.
+   - `unseedDemoData` runs in one transaction. It counts the demo devices' calibration records
+     first. If any exist, it refuses before deleting anything and says why: the records are
+     append-only (ADR-062), and a device that has records cannot be deleted.
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| Stamp `last_login_at` at the password step and again at the MFA step | the first stamp is the defect: a correct password is not a sign-in |
+| Re-authenticate a passkey removal with a passkey assertion | an SSO-only user could then remove a passkey, but it needs a second ceremony flow on the page. Recorded as a possible follow-up. The password rule matches A-114 and A-141 |
+| Require re-authentication for every GDPR rectification | a name or phone number does not give control of the account. The email does, because the reset goes to it |
+| Send a confirmation link to the *old* address instead of asking for the password | a stolen session often comes with the mailbox, and on-premises deployments may have no mail (ADR-059 7). The old address is still told about the change (A-180) |
+| TTL of 24 hours | a temporary password issued on a Friday dies before Monday. Hospital shifts and weekends make that the usual case |
+| TTL of 7 days (the session lifetime) or 14 days | a credential handed over on paper stays usable for a week or more. That is most of the risk the card names |
+| Make the TTL a setting | nobody has asked for one. A constant (`TEMPORARY_PASSWORD_TTL_MS`) is one line to change, and the migration names the same 72 |
+| Leave passwords issued before `0078` without expiry | keeps the defect for exactly the accounts that already exist |
+| Backfill passwords issued before `0078` as already expired | would lock out, without warning, every account an administrator created that has not signed in yet |
+| A 401 "expired" at sign-in | tells anyone who has the old temporary password that the account exists and what state it is in |
+| Mark JIT-provisioned accounts with a column (`sso_provisioned`) | accounts that already exist cannot be told apart without guessing from the audit trail. The session's `amr` is exact for every JIT account, because such an account can only ever hold an SSO session |
+| Keep `syncTables` and make it refuse clearly | it would be a helper whose only honest behaviour is to refuse, kept next to seeding code that someone will one day call. ADR-051 Q-10 removed the second purge engine for the same reason |
+| Make unseed void the demo records and delete the rest | the devices would have to stay (the records reference them), so the result is still partial, only in a different way. A void is also final (ADR-062), so demo "cleanup" would write permanent Part 11 voids |
+
+**Implications, including the bad ones**
+
+- **A user with a password who signs in through SSO is told to use the IdP** while in that session,
+  even though they could change their local password after signing in with it. That is the price of
+  keying the rule on the session rather than on the account.
+- **An SSO-only user cannot remove a passkey or change their email through self-service**: they
+  have no password to re-authenticate with. The email belongs to the IdP, because SSO matches
+  accounts by it. An administrator can remove a passkey today only by database access. There is no
+  admin passkey reset, and that is an open follow-up. Closed by ADR-072 (A-262, 2026-09-25):
+  `DELETE /users/:userId/webauthn`.
+- **The re-authentication endpoints are a password oracle for whoever holds the session.** This is
+  not new: `POST /auth/pass-is-valid` and the change-password route already are one. None of them has
+  a per-user limit except the MFA management bucket (A-142). This is recorded as open. Closed by
+  ADR-072 (A-260, 2026-09-25).
+- **Demo data, once seeded, can never be unseeded**, because seeding creates calibration records.
+  This is the ADR-062 guarantee, and `unseedDemoData` now says so instead of half-deleting. It has no
+  caller today.
+- **`dropSeededTables` now has no caller.** It deletes every user and tenant without a transaction,
+  and it was left in place because A-259 did not name it. Recorded as open. Removed by ADR-072
+  (A-261, 2026-09-25).
+- **An expired temporary password strands a signed-in holder on the change-password screen**
+  (every other route is 403 under A-123) until an administrator resets it again. The page shows why.
+- **The 72 hours start at issue, not at delivery.** An administrator who issues a password and
+  hands it over three days later hands over a dead one.
+
+**Verified.** PostgreSQL 18.6 (`pgvector/pgvector:pg18`), in a throwaway container:
+
+- A real `node index.js` boot on an empty database applied 58 migrations, ending with `0078`. The
+  schema verifier reported OK (72 tables, 864 columns) and the role switched to `callibrator_app`.
+- An upgrade boot, after dropping the column, deleting the `0078` row and adding a flagged legacy
+  account, applied only `0078`. It gave that account an expiry 72 hours from the upgrade, and the
+  verifier passed.
+- A third boot applied nothing.
+- `authCards.a215.live.test.js` (8 tests) proves fresh, upgrade, re-run, down, up, the model
+  mapping, the trigger refusing the record delete, `unseedDemoData` refusing with nothing deleted,
+  and `callibrator_app` unable to drop a table.
+- At `HEAD`, the old `unseedDemoData` deleted the demo category and then failed on the calibration
+  record. The category was gone, and the device and record remained.
+
+**Status:** Accepted, implemented 2026-09-25.
+
+---
+
+## ADR-069: Every Background Job Runs in a Declared Context from a Closed List, Audits What It Changes, and Reads in Bounded Pages; Audit Rows Have No Retention Window
+
+**Date:** 2026-09-25 · **Findings:** W-04, W-12, W-17, and two found while doing them: W-32, W-33 (`TASKS/AUDIT-2026-09-ASYNC.md`) · **Extends:** ADR-060 (the job helpers), ADR-061 (the calibration scan's audit), ADR-051 (Q-12, Q-13)
+
+**Context**
+
+ADR-060 created `runForTenant` and `runAsSystem`. By its own account W-12 stayed partial: the
+retention purge, session cleanup, the quarantine sweep, the webhook dispatcher and MQTT ingest used
+neither helper. `runAsSystem` took any non-empty string, so "every opt-out is named" was a
+convention, not a control. W-04 still had three unaudited background mutations: IoT ingest, the
+calibration scan's tenant-wide notification, and batch-job state changes. It also carried an
+unanswered question about a "365-day audit-log window". W-17 had bounded only the calibration scan.
+
+Doing this work surfaced two live defects. Both were hidden because background jobs ran with no
+tenant context:
+
+- **W-33.** `Model.destroy` maps attribute names to column names *before* it runs
+  `beforeBulkDestroy` (`sequelize/lib/model.js`: `Utils.mapOptionFieldNames`, then the hook), and
+  nothing maps them again. The isolation hook added `tenantId`, which reached the `DELETE` as written.
+  So every bulk destroy of an underscored model inside a tenant context failed on PostgreSQL with
+  `column "tenantId" does not exist`. The first live run of the tenant-scoped retention purge failed
+  this way for every tenant.
+- **W-32.** IoT ingest wrote its anomaly alert with `type: "system"`. The notifications ENUM is
+  `SYSTEM, CALIBRATION, INVENTORY, MAINTENANCE`, and PostgreSQL refused the insert. No anomaly alert
+  had ever been stored, and the unit tests asserted the wrong value.
+
+**Decision**
+
+1. **The cross-tenant opt-outs are a closed list.** `SYSTEM_TASKS` in `utils/jobContext.util.js`
+   has six entries: the batch-job sweep and shutdown, the calibration scan's due-device read,
+   session cleanup, the quarantine sweep, and the webhook claim. `runAsSystem` refuses any other
+   reason. `jobContext.w12.test.js` scans `src/` and fails when:
+   - `isSystemTask: true` appears outside `jobContext.util.js`;
+   - a `runAsSystem(...)` call passes a literal instead of a `SYSTEM_TASKS` entry.
+
+   This mirrors `SYSTEM_ACTORS`. Adding an opt-out is a reviewed edit to one file.
+2. **The context of each job:**
+
+   | Job | Context |
+   |---|---|
+   | Retention purge | `runForTenant(tenant)` for each tenant's purge. The tenant list reads `tenants`, which is not tenant-scoped |
+   | Session cleanup | `SYSTEM_TASKS.SESSION_CLEANUP`. Expiry does not depend on the tenant, and an operator's session has no tenant (`sessions.tenant_id` is nullable), so a per-tenant loop would miss it. Not audited: Q-13 |
+   | Quarantine sweep | `SYSTEM_TASKS.QUARANTINE_SWEEP`. It covers one shared directory and reads no table |
+   | Webhook dispatcher | The raw claim runs under `SYSTEM_TASKS.WEBHOOK_DISPATCH`. Each claimed delivery runs under `runForTenant(its tenant)` |
+   | MQTT and HTTP IoT ingest | `runForTenant(tenant)`, inside `ingestReading`. A topic naming another tenant's device finds nothing |
+   | Tenant lifecycle, scheduled backup | These already had a per-tenant context. They now go through `runForTenant` too, so every job declares its context the same way |
+3. **The bulk-destroy predicate names the column (W-33).** `applyTenantWhere(..., { byField: true })`
+   runs only in the `beforeBulkDestroy` hook. It uses the attribute's `field`. Finds and bulk updates
+   map names after their hooks, so they still use the attribute name.
+4. **What background work audits (W-04).** Each audit row is written inside its mutation's
+   transaction:
+   - **IoT ingest:** only an anomaly. The reading, the tenant-wide alert and one audit row naming
+     `system:iot-ingest` form one transaction. An ordinary reading writes no audit row. Q-13 keeps
+     individual readings out of the audit trail, and the reading row is the record.
+   - **The calibration scan's notification:** the notification and its audit row (the job, or the
+     user on a manual run) form their own transaction, after the work order's. The notification is
+     announced only after that transaction commits. It stays best-effort: a failed notification is
+     logged and not counted, and it does not roll back the work order. `emitNotification(data,
+     { transaction })` is the transactional form. It re-throws, and it delivers after the commit.
+   - **Batch jobs:** every state change is audited as `system:batch-job`, with the queuing user in
+     `changes.requestedBy`. The changes are PENDING→PROCESSING, PROCESSING→COMPLETED and
+     PROCESSING→FAILED, including the sweep and shutdown. A failure updates only a row that is
+     still `PROCESSING`, so a job the sweep already failed is not failed or audited twice. The
+     sweeps use `UPDATE … RETURNING` and audit each returned row in its own tenant.
+5. **Audit rows have no retention window.** The card asked what "the 365-day audit-log window" means
+   against the compliance claim. It could mean three things:
+   - **A deletion window:** delete rows older than 365 days. That was the pre-A-121 behaviour, and
+     Q-12 forbids it.
+   - **A minimum retention period:** keep rows at least N days. Part 11 §11.10(e) requires the audit
+     trail to be kept at least as long as the records it describes. A calibration record is kept
+     indefinitely (append-only, ADR-062), so any finite N understates the requirement.
+   - **A hot-storage window:** rows older than N days move to cheaper storage and remain
+     retrievable.
+
+   **Decided:** the retention period of an audit row is *indefinite*. No job deletes one, and there
+   is no setting for it: `setRetentionPolicy` refuses `audit_logs`, and no `AUDIT_LOG_RETENTION_DAYS`
+   exists. "Window" may only ever mean the third reading. An archival process may later move old
+   rows out of the hot table only if all of these hold:
+   - the rows stay retrievable by the audit API with the same filters;
+   - their integrity is verifiable;
+   - the move itself writes an audit row.
+
+   That process does not exist. Until it does, there is no window. `docs/DATABASE/10-AUDIT-LOGS.md`
+   says so.
+6. **Bounded scheduled work (W-17).** Each job has a batch or page size, and a time budget where it
+   loops:
+
+   | Job | Bound | Setting (default) |
+   |---|---|---|
+   | Retention sweep | tenants in keyset pages of ids | `RETENTION_SWEEP_TENANT_PAGE_SIZE` (100) |
+   | Retention purge | each pass deletes at most N rows per table (`DELETE … WHERE id IN (SELECT id … LIMIT n)`), one transaction and one audit row per pass. A table that filled its batch gets another pass | `RETENTION_PURGE_BATCH_SIZE` (5000) |
+   | Retention sweep | every tenant gets at least one pass per run. Catch-up passes stop once the budget is spent, and the tenant is counted in `incomplete` | `RETENTION_SWEEP_BUDGET_MS` (15 min) |
+   | Session cleanup | bounded DELETE batches, stopping on a short batch or when the budget is spent | `SESSION_CLEANUP_BATCH_SIZE` (1000), `SESSION_CLEANUP_BUDGET_MS` (60 s) |
+   | Quarantine sweep | the directory is streamed (`opendir`), and a run examines at most N entries (`truncated: true`) | `QUARANTINE_SWEEP_MAX_ENTRIES` (5000) |
+   | Tenant lifecycle | ids in keyset pages | `TENANT_LIFECYCLE_PAGE_SIZE` (50) |
+   | Scheduled backup | tenants in keyset pages; the prune walks `(tenant ASC, created_at DESC, id DESC)` pages and carries the tenant's rank across page boundaries | `BACKUP_PRUNE_PAGE_SIZE` (500) |
+   | Webhook dispatcher | already `LIMIT`ed, so a pass has at most N POSTs in flight | `WEBHOOK_DISPATCH_BATCH` (50) |
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| Keep `runAsSystem` open and review call sites by grep | this is the state ADR-060 left. A grep nobody runs is not a control, and the test now fails on the first unreviewed opt-out |
+| Retention per tenant as `runAsSystem` with the existing explicit predicates | this is what W-12 described. Isolation would still rest on each author's `where` |
+| Session cleanup per tenant | it would miss every platform operator's session (NULL tenant). It would also add one query per tenant to delete rows whose deletion rule has no tenant in it |
+| Fix W-33 by mapping every hook's key to the field name | finds and bulk updates map after their hooks. Giving them the column name would double-map it or break it. Only the destroy path runs its hook after the mapping |
+| Audit every IoT reading | Q-13 decided against it. Readings arrive continuously, and the reading row is the record. The consequential act is the tenant-wide alert |
+| Create the scan's notification inside the work order's transaction | `createWorkOrder` owns its transaction in `maintenance.service`. A failed notification would roll back the work order, which is the part that matters |
+| Audit only the batch-job terminal states | a job that is claimed and never finishes would have no record that it ever started. That is the W-07 case |
+| One purge transaction per tenant, however large (the W-16 shape) | a tenant with a million expired rows would hold one transaction and its locks for the whole delete |
+| A finite audit retention period (e.g. 7 years) | no current obligation names one, and every record the trail describes is kept indefinitely. A finite period would be the first deletion path back into the audit trail |
+
+**Implications, including the bad ones**
+
+- **More audit rows:**
+  - about three per batch job;
+  - one per retention pass;
+  - one per calibration reminder;
+  - one per anomalous IoT reading.
+
+  A flapping sensor writes one audit row per out-of-tolerance reading, with no rate limit.
+- **`runAsSystem` with an unlisted reason throws.** A new cross-tenant job fails at runtime until
+  its entry is added to `SYSTEM_TASKS`. That is intended.
+- **W-33 changes a path that was failing.** Every bulk destroy of an underscored tenant model inside
+  a request's tenant context used to throw on PostgreSQL. It now runs. `src/` has about 69
+  `.destroy({` call sites, instance destroys included, and **they were not reviewed one by one**.
+  - A request route that answered 500 because of this now performs its delete.
+  - Which routes were affected in production is not known. They are listed as open on W-33.
+- **A backlog is purged over several nights.** A tenant left `incomplete` is logged. It is not an
+  alert: `retentionScheduler`'s `isFailure` still looks only at `errors`.
+- **A truncated quarantine sweep leaves files for the next hourly run**, and it is not flagged as a
+  failure either.
+- **Still open in W-17** *(all three closed by ADR-073)*:
+  - the per-event first webhook attempt from `emitEvent` is not capped (only the dispatcher is);
+  - `offboardTenant` still builds an export it throws away (`tenantLifecycle.service`, being edited
+    under D-23);
+  - the calibration scan still uses one transaction per due device.
+- **Evidence is PostgreSQL only.** `backgroundJobs.w12.live.test.js` ran on 18.6. Nothing here was
+  run against a deployed stack.
+
+**Status:** Accepted, implemented 2026-09-25. The tests are named in the ASYNC board rows for W-04,
+W-12, W-17, W-32 and W-33.
+
+---
+
+## ADR-070: A Parent's Soft Delete Takes Its Attachments With It; Unbounded Reads Are Paged; Every JSON Column Declares Its Shape and the Audit Trail Keeps No Secret; Finished Webhook Deliveries Are Purged After 30 Days
+
+**Date:** 2026-09-25 · **Findings:** D-22, D-24, D-27 (`TASKS/AUDIT-2026-09-DATA.md`), ADR-064 decision 4's open `webhook_deliveries` purge · **Extends:** ADR-064 (items 4, 8, 9, 10), ADR-054, ADR-060, ADR-051 Q-13 · **Migrations:** none (`0080` was reserved and is not used)
+
+**Context**
+
+ADR-064 left four data-layer items open. A parent's soft delete left its attachments live, and nothing
+could find attachments whose parent was already gone (D-22). Three reads grew with the tenant: the
+Article 15 export, the SOP training fan-out, and the signature history (D-24). The JSON columns had no
+declared shape, and nothing kept a secret out of `audit_logs.changes` (D-27). `webhook_deliveries` had
+no purge.
+
+**Decision**
+
+1. **A parent's soft delete soft-deletes its attachments (D-22).** It happens in the parent's
+   transaction and writes one `DELETE` audit row per attachment. The audit row names the parent in
+   `changes.cascade` and carries `operation: "cascade-soft-delete"`. This is
+   `attachment.service#softDeleteForResource`. It is wired into the four delete paths that exist:
+   certificate, calibration device, maintenance work order and kanban card. The kanban card delete had
+   no transaction and now has one. The attachment's type matches without regard to case and under
+   every spelling that links to the model. The tenant predicate is explicit.
+   - **The file is kept.** No gated path serves a soft-deleted row, so the kept bytes cannot be
+     reached. A future restore of the parent can restore exactly the rows whose audit row names it.
+   - **Voiding a calibration record is not a delete.** A voided record is retained evidence (P6-03),
+     and so are its files. Nothing cascades on a void.
+2. **There is an orphan report (D-22).** `GET /api/v1/attachments/orphans` requires `auth`,
+   `rbac(TENANT_ADMIN)` and `equipment: read`.
+   - It lists the caller's tenant's live attachments whose `(resource_type, resource_id)` resolves to
+     no live record, with a reason for each: `parent_missing_or_deleted` or `unlinkable_type`.
+   - A parent counts only if it belongs to the **same** tenant.
+   - The query is raw SQL (a polymorphic anti-join), built only from constant maps, with an explicit
+     tenant predicate.
+   - The report is read-only. An administrator acts on an orphan through the ordinary audited routes.
+   - It has no `:id`.
+3. **Unbounded reads become pages (D-24).**
+   - **The DSAR export streams, and it is complete.** Each table is read in keyset pages of 500 by id.
+     Each page is written through `fs.promises.writeFile(asyncIterable)` before the next is read. The
+     export used to hold everything in memory, and it **silently truncated** at 1,000 rows per table
+     and 5,000 audit rows. A read that fails partway through still fails the export (A-151). Rows are
+     now in id order, not newest first.
+   - **The SOP training fan-out is batched.** It reads 500 user ids at a time by keyset and runs one
+     `bulkCreate` per page. All of it runs inside the publish's transaction, so a release is still all
+     or nothing.
+   - **`GET /esignature/history` is paginated** (`page`, `limit`, default 25, maximum 200). Rows are in
+     `data`, and `meta { total, page, limit, totalPages }` is at the top level. The order is
+     `signedAt DESC, id ASC`, so no row appears on two pages. The frontend
+     `eSignatureService.getSignatureHistory` now returns a `PaginatedResponse`. No screen calls it.
+4. **Every JSON column declares its shape (D-27).** `utils/jsonShape.util.js` holds one Joi schema for
+   each of the 14 JSON/JSONB attributes, and each attribute validates with
+   `validate.shape = jsonShape("<Model>.<attr>")`.
+   - Where a boundary validator exists, the schema reuses it (`readingToleranceSchema`) or mirrors it
+     (the scopes, webhook event names and notification channels).
+   - No schema is stricter than today's writers. `calibration_records.results` still accepts the `""`
+     that its create schema allows.
+   - A discovery test fails when a JSON attribute is added without a shape.
+5. **`audit_logs.changes` keeps no secret (D-27).** `audit.service#logAction` stores a redacted copy
+   (`utils/auditRedaction.util.js`), and a warning names the fields.
+   - The deny-list matches key names by their **ending**, optionally followed by `hash`: `password`,
+     `secret`, `token`, `apikey`, `privatekey`, `accesskey`, `secretkey`, `otp`, `recoverycodes`, and
+     the others in the util. So `smtp_password` and `tokenHash` are redacted, while
+     `passwordChangedAt`, `tokenExpiresAt` and `secretRotated` are kept.
+   - Boolean and empty values are kept.
+   - Bearer and JWT strings are masked wherever they appear.
+   - An entry that carries a secret is **redacted, not refused**. Refusing it would roll back the
+     mutation.
+6. **Finished webhook deliveries are purged (ADR-064 #4).** This is
+   `services/webhookDeliveryPurge.service.js`.
+   - **What it deletes:** only `success` and `exhausted` rows whose `updated_at` is older than
+     `WEBHOOK_DELIVERY_RETENTION_DAYS` (default **30**, floor 7). The DELETE re-checks the status, so a
+     `pending` or `failed` row is never removed, however old it is.
+   - **How it runs:** tenant by tenant under `runForTenant`. Each batch of 1,000 is its own
+     transaction. A run stops at 50,000 rows and says so.
+   - **What it records:** one audit row per batch, in that batch's transaction. The actor is
+     `system:webhook-delivery-purge`, a new `SYSTEM_ACTORS` entry. The row records the count, the
+     counts by status, the cutoff and the window.
+   - **When it runs:** daily at 03:43 (`WEBHOOK_DELIVERY_PURGE_SCHEDULER`), through `scheduleSetting`,
+     so `SCHEDULERS_ENABLED=false` stops it along with every other singleton. It is registered with the
+     job monitor, in the chart's API-pod branch and in both `.env.example` files.
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| D-22 **keep**: leave the attachments live and filter them at read time by the parent's state | every read path (list, get, download, signed link, quota) would need a polymorphic join, and a path that missed it would serve evidence of a deleted record |
+| D-22 **hide**: a read-time join only, with no write | the same problem, and storage accounting would still count the files |
+| D-22: unlink the file too, as an explicit delete does | deleting a draft certificate is not a decision to destroy evidence bytes, and it would make a restore impossible |
+| D-22: a `deleted_with_parent` marker column (migration 0080) | no code path restores a parent today. The audit row already identifies the cascaded rows exactly, so a column would be a schema change with no reader |
+| D-22: cascade on a calibration record's void | a voided record is retained evidence (P6-03), and its files are part of it |
+| D-24: `INSERT … SELECT` for the SOP fan-out | it is set-based and faster, but it is raw SQL (a review item that bypasses the hooks) and it skips the model defaults. Keyset batches bound the statement just as well |
+| D-24: a background job that builds the DSAR export | it adds a queue and a status model. Streaming bounds the memory, which is where the export failed |
+| D-24: a cursor for the signature history | every other list route uses `page`/`limit`, and the frontend's `PaginatedResponse` expects it |
+| D-27: refuse an audit entry that carries a secret | `logAction` re-throws inside a transaction, so each such call site would become a failed mutation in production |
+| D-27: reuse A-228's log redactor | it masks every email address and every `*link` key, and an audit row must record exactly which address a change set |
+| D-27: TypeScript types only (Phase 9) | types are not checked at run time, on writes from JavaScript, or on JSON the client sends |
+| Purge through the retention engine (`dataRetention.service`) as a per-tenant entity | retention there is opt-in per tenant (platform default 0, keep), so nothing would be purged without a tenant policy. A delivery row is the platform's queue state, not a tenant's record |
+| Keep deliveries forever, or partition the table | keeping them forever is the unbounded growth this item is about. Partitioning is the open "partition `audit_logs`/`iot_readings`" row, and a table kept bounded does not need it |
+| Separate windows for delivered and dead-lettered rows | there is no redelivery route, so a dead letter is informational only. One window is simpler to operate |
+| Purge across tenants in one statement under `runAsSystem` | it needs a new `SYSTEM_TASKS` opt-out, and it could not write the audit row in each tenant's own trail |
+
+**Implications, including the bad ones**
+
+- **A cascaded attachment's file stays on disk.** It cannot be reached, but it uses storage and
+  nothing sweeps it. The quota counts only live rows, so the tenant is not charged for it.
+- **Deleting a kanban project does not cascade.** The project is paranoid and its cards are not
+  destroyed, so the cards' attachments stay live. The orphan report does not list them, because the
+  cards are still live.
+- **Rows written outside a model create or update are not validated.** The shape is checked when a
+  model create or update writes the column. It is not checked for `bulkCreate` without
+  `validate: true`, for raw SQL, or for rows written before this change. A `readingTolerance` written
+  before A-46 that violates its schema now fails on its next save.
+- **The redaction deny-list is a list.** A secret stored under a key it does not match (for example
+  `pin`) is still written. The fixtures test real shapes, not the list itself.
+- **The DSAR export now comes out in id order**, not newest first. It can be very large, but it is
+  complete, which the old export was not.
+- **The signature history change breaks any client that relied on the full list.** No screen uses it,
+  and the frontend service was updated in the same change.
+- **A tenant's webhook delivery log keeps 30 days.** For older events, it shows no deliveries.
+- **The orphan query has not been run on the deployed database.** D-22's DoD asks for that run, and it
+  remains open.
+
+**Evidence**
+
+On PostgreSQL **18.6** (`pgvector/pgvector:pg18`, throwaway container). No migration was added.
+- **Upgrade boot.** A database built by `beb0c4b` was booted as `index.js` boots it: `db.sync()`, then
+  57 migrations, then schema verification. It was then booted with this tree, which applied the one
+  pending migration (another agent's `0078`), and schema verification passed.
+- **Fresh boot.** A fresh database applied 58 migrations and passed verification. A second boot
+  applied none.
+- **Live test.** `dataLayer.dbC.live.test.js` (4 tests) passed on **both** databases, running **as the
+  application role** (`DB_APP_ROLE=callibrator_app`, with `current_user` asserted). It shows:
+  - the certificate and device cascades, each with its audit rows, leave another tenant's row naming
+    the same id untouched;
+  - the orphan report finds a deleted parent, an unlinkable type and a link to another tenant's
+    certificate, and does not list a voided record's evidence, a standalone file or another tenant's
+    orphans;
+  - the purge removes finished rows older than 30 days and keeps pending, failed and recent rows;
+  - each tenant gets one `system:webhook-delivery-purge` audit row, which passes migration 0033's
+    actor CHECK.
+
+**Unit tests, with how many failed at `beb0c4b`:**
+- `attachment.cascade.d22`: 10 of 10
+- `attachments.orphans.d22`: 5 of 6
+- `sop.fanout.d24`: 4 of 4
+- `gdpr.exportStream.d24`: 3 of 4 (12,345 audit rows written through the real `writeFile`)
+- `esignature.newmethods` › getSignatureHistory: 7
+- `eSignature.envelope.a105a106` › GET /history: 1
+- the parent services' delete tests: `kanban.service` 1, `certificate.service` 3,
+  `maintenance.service` 1, `calibrationDevices.service` 1
+
+Four new suites could not load at `beb0c4b`, because the modules they test did not exist:
+`webhookDeliveryPurge.adr070` (8), `webhookDeliveryPurgeScheduler.adr070` (8), `jsonShape.d27` (64)
+and `auditRedaction.d27` (11).
+
+Suites updated because their contract changed: `gdpr.a180`, `gdpr.subject.a151.a154`,
+`gdpr.exportProfile.a140`, `gdpr.service`, `eSignature.controller`, `eSignature.a129a130`,
+`certificates.twoTenant.a145`, `attachments.route`, `sop.service`, `systemActors.a124`,
+`schedulerSwitch.w02` (through the registration lines) and the frontend `eSignature.service.test.ts`.
+
+**Status:** Accepted, implemented 2026-09-25. D-22, D-24 and D-27 are **DONE**, except where the board
+says otherwise. D-25 and D-26 are unchanged: their decisions are recorded in ADR-064, and what remains
+of them is conversion work, not a decision.
+
+---
+
+## ADR-071: The Content Origin Sends a Nonce CSP with 'strict-dynamic'; Every Page Renders per Request; Style Elements Need the Nonce, Style Attributes Stay Inline
+
+**Date:** 2026-09-25 · **Findings:** P7-08 (content-origin half), S-43, W-09 · **Follows:** ADR-066 (the API-origin half)
+
+**Context.** ADR-066 took `'unsafe-inline'` out of the API origin's `script-src`. The Next.js origin
+— the one that renders user-authored `posts.contentHtml` and ticket descriptions through
+`dangerouslySetInnerHTML`, the stored-XSS surface of the system — sent no Content-Security-Policy at
+all. Server-side sanitisation (`sanitize-html` at write time) was the only layer. The app runs
+Next 16.3.6 with `cacheComponents: true`, so most routes shipped a build-time static shell.
+
+**Decision**
+
+- **Scripts: a per-request nonce with `'strict-dynamic'`, minted in the proxy.** `src/proxy.ts`
+  generates 128 random bits per page request and sets the policy on the response **and on the
+  request**. Next reads the nonce back from the request's `Content-Security-Policy` header while
+  rendering (`next/dist/server/app-render/get-script-nonce-from-header.js`) and stamps it on its own
+  bootstrap, chunk and flight scripts. `x-nonce` hands it to the root layout for the one inline
+  script of our own (`ThemeInitScript`). `script-src-attr 'none'`. `'unsafe-eval'` is added only
+  under `next dev`, for React's error stacks.
+- **Every page renders per request.** A nonce exists only while a request is rendered. A prerendered
+  page, or a Cache Components static shell, was rendered at build time with no nonce, and under
+  `'strict-dynamic'` none of its scripts would run. The root layout reads `headers()` outside any
+  Suspense boundary and exports `instant = false`, which is Next 16's declaration that the root
+  layout may block. `use cache` data caching is unaffected.
+- **Styles: `style-src-elem 'self' 'nonce-…'`, `style-src-attr 'unsafe-inline'`.** A `<style>`
+  element needs the nonce; a `style` attribute does not. The attributes cannot be nonced (CSP has no
+  nonce for attributes). React server-renders each `style={{…}}` prop (39 in `src/`, plus Motion's
+  initial states) as an attribute, and hydration does not re-apply one the browser dropped. So
+  attributes stay allowed. Tailwind 4 and Next emit no inline `<style>` in production (the built
+  pages carry none; CSS is linked files), so elements can be locked down. Injected `<style>` in
+  content is then blocked, which also closes CSS-based exfiltration. `style-src 'self'
+  'unsafe-inline'` is the fallback for a browser without the `-elem`/`-attr` split. Under
+  `next dev`, HMR injects `<style>` without a nonce, so dev allows inline elements.
+- **The rest.** `default-src 'self'`. `img-src 'self' data: blob:` plus the API origin (TipTap has
+  `allowBase64`; the avatar preview is a `blob:`). `font-src 'self'` (next/font self-hosts).
+  `connect-src 'self'` plus `ws://` and `wss://` of the request's `Host` (validated before it is
+  reflected) plus `NEXT_PUBLIC_API_BASE_URL` and its websocket twin. `frame-src 'self'` plus the API
+  origin (the certificate PDF). `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`,
+  `frame-ancestors 'none'`.
+- **Static headers in `next.config.ts`:** `X-Content-Type-Options: nosniff`,
+  `Referrer-Policy: strict-origin-when-cross-origin`, and a `Permissions-Policy` that keeps only
+  geolocation (`dashboard/network-security`). `poweredByHeader: false`. `/api/` and
+  `/uploads/public/` are excluded, because they relay backend responses that already carry helmet's
+  headers. nginx adds only HSTS, so nothing is sent twice.
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| A static CSP in `next.config.ts` with `script-src 'self' 'unsafe-inline'` | Next's inline bootstrap and flight scripts need either the nonce or `'unsafe-inline'`, and `'unsafe-inline'` lets an injected `<script>` in `contentHtml` run. That is the W-09 reasoning, which ADR-066 already refused to carry over |
+| Experimental SRI (`experimental.sri`) with hashes, keeping static prerendering | Experimental. It covers script **files** but not Next's inline flight scripts, which still need `'unsafe-inline'` or a nonce |
+| `style-src 'self' 'nonce-…'` with no `'unsafe-inline'` | Blocks every server-rendered `style` attribute. Landing sections, Motion, progress bars and kanban colours lose their styling with no error |
+| `style-src 'self' 'unsafe-inline'` for elements too | Simpler. But nothing in production needs inline `<style>`, and allowing it leaves content-injected CSS live |
+| Choosing `ws:` or `wss:` from `X-Forwarded-Proto` | Makes the websocket depend on a proxy header. If the header is missing, Socket.IO silently falls back to long-polling. `ws:` on an https page is refused as mixed content anyway, so listing both widens nothing |
+| `img-src https:` (as on the API origin) | Lets content authors embed third-party tracking images. See the bad implications |
+| Keeping static shells and reading the nonce only inside Suspense | The shell's own scripts (bootstrap, flight) would still be un-nonced, so the page would not boot |
+
+**Implications, including the bad ones**
+
+- **No page is prerendered any more.** Every navigation is server-rendered, and a CDN cannot cache
+  HTML. For a signed-in operational app the cost is small, but it is a cost. The public blog/news
+  pages lose static delivery. Their data is still `use cache`d.
+- **External images are blocked.** A tenant logo, a content image or an avatar that is an absolute
+  `https://` URL to another host no longer loads. The supported path is an upload, which is served
+  from `/uploads/public/`. Nothing in the repository sets such a URL, but `tenant.logo` is a free
+  string (`tenant.validator.js`).
+- **The nonce is only as good as the proxy matcher.** A page path excluded from the matcher gets no
+  CSP. Today the matcher excludes only `api`, `_next/static`, `_next/image`, `favicon.ico` and
+  `uploads/public/`.
+- **Development differs from production.** Dev allows `'unsafe-eval'` and inline `<style>`. A
+  violation seen only in production is possible, and the production build is the one verified.
+- **Not verified:** the Socket.IO websocket under this policy against a live backend (the header was
+  checked, the connection was not). Also not verified: a deployment behind nginx or the Cloudflare
+  tunnel.
+
+**Evidence.**
+- Unit: `frontend/src/lib/securityHeaders.test.ts` (the builder, and Next's own nonce parser reading
+  the result) and `frontend/src/proxy.test.ts` § "the page CSP".
+- Live: `next build`, then the standalone `server.js` on `127.0.0.1:4310`. curl showed the header on
+  `/`, `/login`, `/blog/<slug>` and `/verify/<n>`, with a different nonce on each request. Every
+  `<script>` Next served carried that request's nonce.
+- Headless Chrome, driven through the repository's existing `puppeteer-core`, loaded 11 pages with
+  zero CSP violations and zero page errors, and Next booted on every page. The pages were `/`,
+  `/login`, `/register`, `/blog`, `/news`, `/verify/CERT-1`, `/oauth/consent`, `/sso-callback`, a
+  404, `/dashboard` and `/dashboard/devices`.
+- A 12th page, `/blog/csp-probe`, was served by a stand-in backend. Its `contentHtml` carried an
+  inline `<script>`, a `data:` script, an `onerror` attribute and a `<style>`, which bypassed the
+  write-time sanitiser. All four were blocked, and none of the payload's globals was set.
+
+**Status:** Accepted, implemented 2026-09-25.
+
+**Amendment 1 (2026-09-25) — the certificate frame, and external images**
+
+*The certificate frame is not blocked, and nothing changed.* The verification page frames
+`NEXT_PUBLIC_API_BASE_URL` + `documentUrl`. In every deployment template that base is the public
+origin, so the PDF is served through the Next `/api` proxy, which relays the backend's headers
+unchanged. The document route already replaces helmet's policy with
+`default-src 'none'; frame-ancestors 'self' <CORS_ORIGIN…>` and removes `X-Frame-Options`
+(`fileResponse.util.js`, `certificatePdf.controller.js`, ADR-057). Through the proxy, `'self'` is the
+page's own origin. Every other API response keeps `frame-ancestors 'none'` and
+`X-Frame-Options: SAMEORIGIN`, including the gated `/certificates/:id/pdf`, which nothing frames. The
+attachment routes are not framed anywhere either: they are opened in a new tab or saved from a blob.
+`certificateFrame.p708.test.js` pins these headers over helmet configured as `index.js` configures
+it. Checked live against a real backend on PostgreSQL 18 and `next build` + `next start`: headless
+Chrome 154 rendered the PDF viewer in the frame. A control iframe of an ordinary API response was
+refused for `frame-ancestors 'none'`.
+
+*External images: validate the logo, do not widen `img-src`.*
+
+| Option | For | Against |
+|---|---|---|
+| **(a) A logo is an uploaded file only** (chosen) | Tenant logos are uploads already: since A-79 the controller drops a body `logo`, and the upload route names the file. No third party learns who views the app. `img-src` stays closed to tracking pixels in `contentHtml`. A logo cannot disappear because another host changed | A tenant row that already holds a hotlinked URL shows no logo until the tenant uploads one. Content authors cannot embed an external image; they must upload it (`POST /content/media`) |
+| (b) Add `https:` to `img-src` | Nothing breaks. Pasted images keep working | Every viewer's IP, and the page as Referer origin, go to whichever host the logo or content names. Any author can plant a tracking pixel in `contentHtml`. This is the alternative ADR-071 already refused |
+
+- **Validation.** `tenant.validator.js` accepts `logo` only as a stored file name
+  (`constants/tenantLogo.js`: `^[A-Za-z0-9][A-Za-z0-9._-]{0,254}$`). A URL or a path answers 400.
+- **Existing values, without a migration.** `logoUrl()` in `tenant.service.js` serves a bare file
+  name as before. It reduces a legacy same-origin path to its file name. For an absolute value
+  (a scheme or `//host`), or anything else that is not a stored file name, it returns
+  `logoBaseUrl: null`. The UI then shows its fallback: the default favicon, and the building icon in
+  the tenant editor. Before, such a value became `<HOST_URL>/uploads/public/tenant/https://…`, a
+  broken image.
+- **The frontend uses the served URL only.** The signed-in branding (`useTenantBranding.ts`) set the
+  favicon and apple-touch-icon from the raw `tenant.logo`. That was a relative href for a file name,
+  and a hotlink for a URL. It now uses `logoBaseUrl`, as the public branding already did. The tenant
+  editor no longer builds a preview URL from the raw value (`useTenants.ts`).
+- **Bad implications.** A stored logo whose original file extension held a character outside
+  `[A-Za-z0-9._-]` is now refused at upload (400) and not served. The upload middleware keeps the
+  original extension verbatim. External images already embedded in `contentHtml` stay blocked. No
+  sanitiser rule strips them at write time, so the author sees a broken image.
+- **Evidence.** `tenant.logoUrl.p708.test.js` (backend, 23 tests; 16 fail against HEAD) and
+  `useTenantBranding.p708.test.tsx` (frontend, 2 tests; both fail against HEAD). Live: a default
+  tenant whose stored logo was `https://cdn.example.com/hotlinked-logo.png` answered
+  `logoBaseUrl: <origin>/uploads/public/tenant/https://cdn.example.com/hotlinked-logo.png` before
+  the change and `null` after. Headless `/login` and `/register`, from a build with
+  `NEXT_PUBLIC_TENANT_ID` set, showed the default icons, made no request off the app origin and had
+  no CSP violation.
+
+---
+
+## ADR-072: A Session's Own-Password Checks Share One Budget, and Spending It Signs That Session Out; an Administrator Can Remove a Passkey; No Helper Deletes Every User
+
+**Date:** 2026-09-25 · **Findings:** A-260, A-261, A-262 · **Extends:** ADR-059 (1), ADR-068 (implications) · **No migration**
+
+**Context**
+
+ADR-068 left three follow-ups open. Every check of the caller's own password by a signed-in
+session could be repeated without limit (A-260):
+- `POST /auth/pass-is-valid`;
+- the change-password route;
+- the re-authentication of a passkey removal, an email change and an MFA rotation or disable.
+
+The only limit was the `mfaManage` bucket (A-142), and it covered the MFA endpoints alone. A stolen
+session was therefore a password oracle that the sign-in throttle (A-185) never saw.
+
+`migration.service#dropSeededTables` had no caller. It force-deleted every stock row, user, tenant,
+role-menu permission, menu group and role, one statement at a time, with no transaction (A-261).
+
+An administrator had no way to remove another user's passkey (A-262). An SSO-only user, who has no
+password to re-authenticate with, could not remove their own passkey at all.
+
+**Decision**
+
+1. **One budget per user covers every signed-in check of one's own password** (A-260). The code
+   path is `auth.service#verifySessionPassword`, and the budget is
+   `AUTH_ENDPOINTS.passwordCheck`: five wrong passwords in fifteen minutes.
+   - It is keyed by the user id from the verified session, never by request input.
+   - It has no per-address key: the session already names the one principal who is guessing.
+   - The budget is checked **before** the comparison, so a spent budget learns nothing, not even
+     from the right password.
+   - The right password clears the count.
+   - It never writes `users.locked_until`. As with `mfaManage` (A-142), the guesser already holds a
+     session, so locking sign-in would lock out only the real user. ADR-059 (1) still holds: an
+     account is never locked by attempts.
+2. **The attempt that spends the budget signs out the session that made it, and is audited.**
+   - `ACCOUNT_LOCKED`, actor `system:auth-lockout`, `changes.scope` `session-password-check`, with
+     the purpose, the count, when the pause ends and whether a session was revoked.
+   - The row and the revocation are written in one transaction of their own. A re-authentication
+     runs inside the change's transaction, and that transaction is about to roll back.
+   - If the row cannot be written, the session is revoked anyway and the failure is logged. This
+     follows `recordAccountLock`: the control must not depend on the trail.
+   - An attempt racing past the budget revokes its own session but writes no second row.
+3. **A spent budget answers 429 with `Retry-After`.** This covers the spending attempt and every
+   check until the window ends. `controllerWrapper#sendCaughtError` sends the header for any
+   `AppError` that carries `retryAfterSeconds`. A wrong password below the budget keeps each route's
+   own answer (`valid: false`, or 400).
+4. **`dropSeededTables` is removed** (A-261). No route, controller, script or boot path called it. A
+   test pins that no application source defines or calls it. This is ADR-068 (5) applied to the
+   last such helper.
+5. **`DELETE /users/:userId/webauthn` lets a tenant administrator remove another user's passkey**
+   (A-262).
+   - Guards: `loadAdminResetTarget`, shared with the MFA and password resets. Another tenant's user
+     or a missing one is 404, oneself is 400, a higher role is 403, and no passkey is 409.
+   - It clears every passkey column and revokes **every** session of the user, because a session
+     opened with a lost authenticator may be the thief's.
+   - It is audited `WEBAUTHN_ADMIN_RESET`, actor the administrator, in the transaction.
+   - The password and MFA are untouched.
+   - The users page offers it only for a user with a passkey.
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| Pause without revoking the session | a stolen session keeps its 5 guesses per 15 minutes for its whole 7-day life, about 3,300 guesses. Revoking caps a stolen session at 5 |
+| Revoke every session of the user | the other sessions are not implicated. Whoever holds this session can already sign out everywhere through `/auth/logout-all`, so revoking everything adds no protection, and it costs the owner their other devices |
+| Lock the account (`users.locked_until`) | ADR-059 (1): the guesser is signed in already, so a sign-in lock hurts only the owner |
+| Count per endpoint (a limiter middleware on each route) | spreading guesses across five routes would give 25 per window. The email rectification checks the password only for `email`, so a route middleware would also have throttled a name change |
+| Fold these checks into `mfaManage` | that bucket counts every 4xx on the MFA endpoints, including a missing field. It is also consulted before the handler, where pass-is-valid and the rectification have no hook |
+| Count every 4xx, as `withAuthOutcome` does | a missing password or a 409 state explanation is not a guess |
+| Keep `dropSeededTables` and wrap it in a transaction | a helper nobody calls, which erases the platform, has no honest use (ADR-068 (5)) |
+| Remove a passkey by the self-service route with an admin override flag | one route with two authorisation models. The admin resets already have their own shape, guards and audit |
+
+**Implications, including the bad ones**
+
+- **The owner who mistypes five times signs themselves out,** and for fifteen minutes cannot change
+  a password, email, passkey or MFA setting. They can still sign in, because the sign-in throttle is
+  separate, and they can use the rest of the application.
+- **Anyone holding a session can pause the owner's sensitive changes for fifteen minutes** by typing
+  five wrong passwords. It costs them that session. They could already sign the owner out
+  everywhere.
+- **The budget lives in Redis,** with a per-process fallback during an outage (A-30). During an
+  outage the effective budget is five per replica.
+- **The pause's audit row has no actor user.** It names the account as the resource and the system
+  as the actor, like the A-126 sign-in lock.
+- **An administrator can remove the passkey of any user at or below their level in their tenant.**
+  The row and the user's forced sign-out are the controls. This is the same trust ADR-059 (7)
+  places in the password reset.
+
+**Verified.** Tests only: `auth.passwordCheckBudget.a260.test.js` (19),
+`auth.passwordCheckRetryAfter.a260.test.js` (3), `user.passkeyReset.a262.test.js` (13),
+`migration.service.test.js` › A-261 (2), and the frontend `CredentialResetActions.a262.test.tsx` (3)
+and `user.passkeyReset.a262.test.ts` (3). Fail-before is recorded under A-260 to A-262 in
+`TASKS/AUDIT-2026-09-REMEDIATION.md`. The budget has not been exercised against a live Redis, and
+the new users-page action has not been used in a browser.
+
+**Status:** Accepted, implemented 2026-09-25.
+
+---
+
+## ADR-073: The Statics No Hook Reaches Are Wrapped per Model; the Calibration Scan Commits per Tenant Chunk; the Emit Path's First Attempts Are Capped; Offboarding Builds No Export
+
+**Date:** 2026-09-25 · **Findings:** W-34 (new), W-17 (remainder) (`TASKS/AUDIT-2026-09-ASYNC.md`) · **Amends:** ADR-048 (its "aggregate, max and sum remain unhooked"), ADR-069 §4 and §6 (the scan's transactions, the emit path)
+
+**Context**
+
+ADR-048 recorded that `aggregate`, `max` and `sum` remained unhooked. Reading Sequelize 6.37.8
+(`lib/model.js`) showed the gap is wider:
+
+| Verb | Hook Sequelize runs | Registered before this ADR |
+|---|---|---|
+| `aggregate`, and `sum`/`min`/`max` (each is `this.aggregate(...)`) | **none** | — |
+| `count` | `beforeCount`, then `this.aggregate(...)` | yes |
+| static `increment`; `decrement` and the instance forms all end in it | **none** | — |
+| static `restore` | `beforeBulkRestore`, *after* `mapOptionFieldNames` (as `destroy`, W-33) | **no** |
+| instance `restore` | `beforeRestore` | **no** |
+| `destroy({ truncate: true })` | `beforeBulkDestroy`, but the statement is `TRUNCATE`: the WHERE is dropped | yes, and useless |
+
+Today's two aggregate call sites (`Stock.sum` in `dashboard.service`, `Attachment.sum` in
+`quota.service`) pass `tenantId` explicitly, so nothing was leaking. It was a trap: on PostgreSQL 18.6,
+at `beb0c4b`, `runForTenant(A, () => Stock.sum("quantity"))` returned **1107**, tenant A's 7 plus
+tenant B's 1100. An increment aimed at B's row by id from A's context changed it, and a bulk restore
+from A's context restored B's rows.
+
+W-17 had three items left. `emitEvent` started one detached claim-and-POST chain per matching webhook
+per event, with no cap. `offboardTenant` built a full export and threw it away. The calibration scan
+committed two transactions per due device.
+
+**Decision**
+
+1. **The hookless statics are wrapped per model, not guarded by a test.**
+   `tenantScope.util.js#scopeHooklessStatics` defines `aggregate` and `increment` as own statics on
+   every tenant-scoped model: every model already defined when `register` runs, and every later one
+   through `afterDefine`. Because `sum`, `min`, `max` and `count` call `this.aggregate`, and
+   `decrement` and the instance forms call `increment`, those two wrappers reach every verb in the
+   table. The predicate is resolved by the same `resolveScope` as a find: `skipTenantScope: true` is
+   the only opt-out; no context, the super admin and a system task skip; no resolvable tenant denies.
+   - `aggregate` also scopes includes (`applyTenantToIncludes`). It skips an options object
+     `beforeCount` has already scoped (a `WeakSet`), so `count` carries the predicate once.
+   - An `increment` with no `where` is passed through untouched, so Sequelize still refuses it
+     rather than the wrapper widening it to the whole tenant. A non-plain `where` is AND-ed.
+   - `beforeBulkRestore` names the **column** (`byField`, as W-33). `beforeRestore` refuses another
+     tenant's instance (`assertSameTenant`).
+   - `destroy({ truncate: true })` inside a tenant or deny scope is **refused**.
+2. **The calibration scan commits per tenant chunk.** Due devices are grouped by tenant within a page
+   and split into chunks of `CALIBRATION_SCAN_TX_BATCH_SIZE` (25). Each chunk runs in its tenant's
+   context:
+   - **Transaction 1** is `maintenanceService.createAutoScheduledWorkOrders`. It makes one tenant
+     check of the devices, one `INSERT … ON CONFLICT DO NOTHING` of every work order, and a read-back
+     **by id**. It then writes **one audit row per created order**, naming the actor, and queues one
+     `work_order.created` webhook per order for after the commit. A device whose open auto-scheduled
+     order already exists (0060's partial index, W-03) inserts nothing and is reported as
+     `conflicted`, which the scan counts as a skip. A device that is not the tenant's is `missing`,
+     which is an error.
+   - **Transaction 2** is every tenant-wide notification of the chunk, each with its own audit row
+     naming its device and work order. As before, it is best-effort towards the scan.
+   - Then each created order's `device.*` webhook event is emitted.
+
+   There are two commits per chunk instead of two per device. Per-device audit attribution does not
+   change.
+3. **`emitEvent`'s first attempts are capped per process** (`WEBHOOK_EMIT_CONCURRENCY`, 10). Past the
+   cap, the delivery row is written and gets no immediate attempt. It is already due, so the
+   dispatcher's next pass (every 15 s by default) sends it. The result says `deferred: n`. A slot is
+   released when its attempt settles, whether it succeeded or failed.
+4. **`offboardTenant` builds no export.** Remove, not keep. The export was taken before the
+   transaction, so it was not a snapshot of the offboarded state. The scheduler discarded it, and the
+   operator's screen ignored it while announcing "data exported". Offboarding deletes nothing: the
+   data stays readable through `GET /tenants/:tenantId/export` until the hard delete, and the hard
+   delete refuses while regulated records remain (D-23). The response is `{ tenant }`, and the
+   frontend's type and toast say so.
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| A permanent guard test failing on any source call of these statics without an explicit `tenantId` | opt-in again: the ADR-048 argument. A text scan cannot follow `const M = models[name]; M.sum(...)`, an alias, or a `where` built elsewhere, and "has an explicit tenantId" trusts the author's value. It also leaves `restore` and `truncate` open |
+| Patch `Model.aggregate`/`increment` once on Sequelize's base class | reaches every Sequelize instance in the process, and non-tenant models pay for a check that always skips. Per model is explicit, and a model with no tenant key is never touched |
+| Put the predicate in an `aggregate` wrapper and let `count` apply it twice | it is idempotent on a plain `where`, but it nests `Op.and` again on a non-plain include `where`. The `WeakSet` keeps `count`'s SQL identical to what it was |
+| One savepoint per device inside a chunk transaction, reusing `createWorkOrder` | a Sequelize savepoint runs its `afterCommit` hooks when the savepoint is released, **before** the outer commit, so `emitAfterCommit` would announce work orders that could still roll back (the A-11 invariant) |
+| `bulkCreate(..., { returning: true })` | Sequelize maps `RETURNING` rows onto the built instances **by position**. With `ON CONFLICT DO NOTHING` skipping a row, every later row's id would be attached to the wrong device, and so would its audit row |
+| One transaction per tenant per page, however many devices | holds a transaction and its unique-index entries for up to 200 inserts. A chunk bounds the lock time and the blast radius of one failure |
+| Put the notifications in the work orders' transaction | rejected by ADR-069: a failed notification would roll back the work orders |
+| Queue deferred first attempts in memory | an in-memory queue is the unbounded structure W-17 is about, and it would still be lost on restart. The durable row is already the queue |
+| Keep the offboard export by writing it to storage | this is personal data at rest with no retention rule (W-15's problem again). The live export route already serves the same data for the whole retention period |
+
+**Implications, including the bad ones**
+
+- **The tenant isolation now depends on two more private Sequelize behaviours**: `count` calling
+  `this.aggregate`, and `decrement` and the instance forms calling `increment`. The unit suite pins
+  both. A Sequelize upgrade that changes either shows up as a failing test. It is not a guarantee.
+- A model whose statics were captured **before** `register` ran is not wrapped. No such model exists:
+  the barrel registers after defining every model, and `afterDefine` covers the rest.
+- **A failure in a chunk's work-order transaction is an error for every device in the chunk.**
+  Before, only the failing device was an error. A per-device failure other than a conflict is now
+  rare, because the tenant check and the conflict are handled in SQL, but it costs up to 24
+  neighbours a day's delay.
+- **A failed notification transaction loses the notifications of the whole chunk.** They are logged,
+  not counted, and not retried. The work orders stand.
+- A bulk insert bypasses the model's instance hooks. `MaintenanceWorkOrder` has none, and
+  `beforeBulkCreate` still stamps the tenant.
+- **Deferred webhook first attempts wait for the dispatcher**, up to one tick (15 s by default),
+  longer if the dispatcher is disabled. Total in-flight POSTs per process are at most
+  `WEBHOOK_DISPATCH_BATCH` + `WEBHOOK_EMIT_CONCURRENCY`. `testWebhook` is not capped: it is one
+  awaited attempt per request.
+- **The emit path still writes one autocommit delivery row per webhook per event.** The scan's
+  writes per device are now constant per chunk, except for these rows.
+- **Still open:** the offboard response returns the raw `Tenant` row, and its `settings` JSONB can
+  mirror a credential (A-179's `exportedTenant` strips it only from the export). This was true before
+  this ADR, beside the export. `suspend`, `resume` and `cancelOffboarding` return the same row. This
+  needs its own card.
+
+**Status:** Accepted, implemented 2026-09-25. The tests are named on the ASYNC board, W-17 and W-34.
 
 ---
 
@@ -2338,20 +3939,24 @@ Recorded so a future reader can tell whether their idea was evaluated and reject
 
 | Question | State |
 |---|---|
-| `REVOKE UPDATE, DELETE` on `calibration_records` | **should happen** — the append-only rule is currently a convention, not a constraint (PR-2) |
-| A composite unique on `(tenant_id, serial_number)` | should happen — the current global unique is a weak cross-tenant oracle |
+| `REVOKE UPDATE, DELETE` on `calibration_records` | **closed** — done by ADR-062: a trigger for every role plus the application-role REVOKE (P6-03) |
+| A separate `LOGIN` application role with no path back to the owner | **open** — the stronger form of ADR-062's `SET ROLE` (which `RESET ROLE` undoes); needs a second credential in every deployment template, Helm included |
+| A composite unique on `(tenant_id, serial_number)` | **closed** — done by ADR-049 (migration `0026`); not partial on `is_deleted` |
 | Mandatory MFA for role level 10 | should happen (PR-3) |
 | A build guard failing any route without a permission gate | should happen — the most likely authorization defect has no mechanism against it |
-| Post-migration column verification | should happen — a blanket-catch migration is recorded as applied while doing nothing |
+| Post-migration column verification | **closed** — every boot verifies the schema and refuses on a mismatch (ADR-062, P6-05) |
 | JSDoc with `checkJs` on the backend | **closed** — superseded by strict TypeScript (ADR-038) |
 | ESM for the backend | open — deliberately deferred until the TypeScript migration completes (ADR-038) |
 | Row Level Security as defence in depth | **open** — PostgreSQL-only (ADR-039) removes one of ADR-029's three reasons against it; the fail-open risk and per-request cost remain |
 | Partitioning `iot_readings` and `audit_logs` | deferred until retention alone stops being enough |
 | A read replica for reporting | deferred until reporting measurably affects operational p95 |
 | Per-signer signing keys instead of per-tenant | **open** — ADR-040 signs with a tenant key held by the service, which proves the service signed for that user, not that the user did. Non-repudiation against the operator needs per-user key material and an enrolment flow |
-| Moving the e-signature private keys under `kms.service.js` | **open** — they are the only tenant secret still wrapped with `ENCRYPT_KEY` directly (ADR-040); the change needs a re-wrap of existing keys |
+| Moving the e-signature private keys under `kms.service.js` | **closed** — migration `0058` re-wraps them as KMS envelopes with tenant AAD (ADR-062) |
 | A trusted timestamp (RFC 3161) on signatures | **open** — `signedAt` is the application's own clock, bound into the payload but attested by nothing |
-| A rotation procedure for `CERT_SIGNING_SECRET` and `ENCRYPT_KEY` | **open, and cheap to design in advance** — neither is practically rotatable today, so "rotate the key" is not currently an available incident response |
+| A rotation procedure for `CERT_SIGNING_SECRET` and `ENCRYPT_KEY` | **closed by ADR-062**, except the rehearsal against a copy of production data, which is still owed (`docs/SECURITY/13-KEY-ROTATION.md`) |
+| Serving the application on a custom domain (resolve the tenant from `Host`, issue and renew TLS) | **open** — ADR-065 removed the uncalled stubs; a verified domain is a claim only. Needs its own design: a spoofed `Host`, a principal whose tenant differs from the domain's, certificate storage and renewal |
+| Tenant-owned roles (`roles.tenant_id`, `UNIQUE (tenant_id, name)`) | **open** — ADR-064 keeps roles global; revisit when a tenant needs a custom role |
+| An archival process for an offboarded tenant's retained records | **open** — ADR-064: a tenant purge refuses while any regulated record remains, so offboarded tenants accumulate until this exists |
 
 ---
 

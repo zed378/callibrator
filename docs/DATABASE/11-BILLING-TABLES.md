@@ -92,6 +92,10 @@ SELECT * FROM "UsageMetrics" WHERE "tenantId" = $1;
 ```
 
 Recorded as PR-15. Renaming it is a migration with no functional benefit, so it stays and is documented.
+Re-decided 2026-09-25 (D-28, ADR-064): kept. The rename would touch the raw statements in
+`backend/src/services/meteredBilling.service.js` and every deployed database for a naming benefit only; the
+tenant hooks already work on it (`tenantKeyOf` finds `tenantId`, the physical column is `"tenantId"`). Anyone
+writing raw SQL against it quotes both names, as above.
 
 ### Metering window
 

@@ -26,33 +26,33 @@ describes the hooks and the raw-SQL rule more confidently than the code supports
 | Id | Finding | Severity | Verified | Status |
 |---|---|---|---|---|
 | D-01 | **`bulkCreate` and `upsert` are outside the tenant hooks entirely** — no predicate, no stamping | **critical** | from code | **DONE** 2026-09-24 |
-| D-02 | tenant-backup restore writes `users` rows straight from a caller-supplied payload | **high** | from code | TODO |
+| D-02 | tenant-backup restore writes `users` rows straight from a caller-supplied payload | **high** | from code | **DONE** (fixed before batch 6 under S-02/A-120; card was stale) — the archive's tenant must equal the backup row's, else 409; only profile fields are written; `tenantBackup.service.test.js` "D-02: …" and "refuses a backup whose archive names another tenant, and writes nothing" |
 | D-03 | the GDPR retention purge deletes across **every tenant** when the policy is global | **high** | from code | **DONE** 2026-09-24 |
 | D-04 | `calibration_devices.serial_number` is **globally unique** — a cross-tenant device oracle, and a real collision between two hospitals | **high** | from code | **DONE** 2026-09-24 (ADR-049) |
-| D-05 | one `sequelize.query` carries no tenant predicate; `CLAUDE.md` says they all do | medium | from code | TODO |
-| D-06 | `users.email` **and `users.username`** are globally unique — A-37 is wider than SCIM | **high** | from code | TODO |
+| D-05 | one `sequelize.query` carries no tenant predicate; `CLAUDE.md` says they all do | medium | from code | **DONE** 2026-09-25 — `card_seq` bump carries `tenant_id`, 0 rows is a 404; tripwire `rawSqlTenantPredicate.d05.test.js` (ADR-063) |
+| D-06 | `users.email` **and `users.username`** are globally unique — A-37 is wider than SCIM | **high** | from code | **DONE** 2026-09-25 — **deviation (ADR-063, ADR-051 Q-18):** identity stays global, now case-insensitive (`0063`); PG 18.6-verified |
 | D-07 | `restoreStatic()` on **seven** models (the card first said six) was a **silent no-op** — `is_deleted` written where the attribute is `isDeleted` | **high** | from code | **DONE** 2026-09-24 |
-| D-08 | `audit_logs` has **no indexes at all** — and it is the fastest-growing table | **high** | from code | TODO |
-| D-09 | migration 0011 **unconditionally drops `e_signature_records` with `CASCADE`** on `up` | **high** | from code | TODO |
-| D-10 | `calibration_records.performed_by` → `users` **ON DELETE CASCADE** — deleting a user deletes the calibration evidence | **high** | from code | TODO |
-| D-11 | `hardDeleteUser()` is a **soft** delete — GDPR Art. 17 erasure does not erase | **high** | from code | TODO |
-| D-12 | an `include` of a default-scoped model without `required: false` is an INNER JOIN — 26 sites | medium | from code + the repo's own comment | TODO |
-| D-13 | `db.sync()` never alters: a model column with no migration is **absent forever** on an existing database | medium | **needs psql** | TODO |
-| D-14 | five migrations record themselves applied on any `describeTable` error | medium | from code | TODO |
-| D-15 | `certificates.certificate_number` is globally unique | medium | from code | TODO |
-| D-16 | `roles` is a **global table** — no `tenant_id`, globally unique `name` (A-38, confirmed and widened) | medium | from code | TODO |
-| D-17 | 19 models have **no tenant column** and are therefore not scoped at all | medium | from code | TODO |
-| D-18 | `signature_records` CASCADE-deletes with its workflow, its step and its tenant | medium | from code | TODO |
-| D-19 | `iot_readings` has no retention policy and no `(tenant_id, timestamp)` index | medium | from code | TODO |
-| D-20 | fifteen models declare **no `indexes` block at all** — foreign keys without indexes | medium | from code | TODO |
-| D-21 | DECIMAL comes back from `pg` as a **string**; `invoices.amount` / `tax` are never coerced | medium | from code | TODO |
-| D-22 | `attachments.resource_id` is a polymorphic id with **no foreign key** and no cleanup | medium | from code | TODO |
-| D-23 | `hardDeleteOffboardedTenant` force-deletes four tables and leaves the rest to CASCADE or to fail | medium | from code | TODO |
-| D-24 | unbounded reads: DSAR export, dashboard trend, SOP fan-out, signature history | medium | from code | TODO |
-| D-25 | two soft-delete mechanisms coexist (`paranoid` + `isDeleted`) with no rule for which | low | from code | TODO |
-| D-26 | 46 native `ENUM` types, none derived from the constants they mirror | low | from code | TODO |
-| D-27 | 14 `JSON`/`JSONB` columns with no declared shape | low | from code | TODO |
-| D-28 | `"UsageMetrics"` is the only camelCase, non-`underscored` table in the schema | low | from code | TODO |
+| D-08 | `audit_logs` has **no indexes at all** — and it is the fastest-growing table | **high** | from code | **DONE** 2026-09-25 — three indexes by `0062` (CONCURRENTLY); plans verified on PG 18.6; deployed-database psql still owed |
+| D-09 | migration 0011 **unconditionally drops `e_signature_records` with `CASCADE`** on `up` | **high** | from code | **DONE** 2026-09-25 — `0011` refuses over a populated table (A-147); whole-migrator re-run test on PG 18.6 (ADR-063) |
+| D-10 | `calibration_records.performed_by` → `users` **ON DELETE CASCADE** — deleting a user deletes the calibration evidence | **high** | from code | **DONE** (ADR-051 Q-16, before batch 6) — `RESTRICT` confirmed on PG 18.6, SQLSTATE `23001` |
+| D-11 | `hardDeleteUser()` is a **soft** delete — GDPR Art. 17 erasure does not erase | **high** | from code | **DONE** 2026-09-25 — erasure pseudonymises; `hardDelete` refused 400 (ADR-063); PG 18.6-verified |
+| D-12 | an `include` of a default-scoped model without `required: false` is an INNER JOIN — 26 sites | medium | from code + the repo's own comment | **DONE** 2026-09-25 (ADR-064) — every include of a default-scoped model states `required`; the rule is a source test (`includeRequired.d12.test.js`) |
+| D-13 | `db.sync()` never alters: a model column with no migration is **absent forever** on an existing database | medium | **needs psql** | **DONE** 2026-09-25 (ADR-064, with ADR-062) — drift refuses the boot (P6-05); the rule is in `13-MIGRATIONS.md`; the deployed database's drift query not run |
+| D-14 | five migrations record themselves applied on any `describeTable` error | medium | from code | **DONE** 2026-09-25 — the five guards removed; `describeTableGuards.d14.test.js`; columns confirmed in psql (PG 18.6) |
+| D-15 | `certificates.certificate_number` is globally unique | medium | from code | **DONE** 2026-09-25 — **deviation (ADR-063):** stays platform-wide (the public verification key); the D-40 collision fixed |
+| D-16 | `roles` is a **global table** — no `tenant_id`, globally unique `name` (A-38, confirmed and widened) | medium | from code | **DONE** 2026-09-25 — **decision (ADR-064):** roles stay global; every mutating route SUPERADMIN-only, held by `rolesGlobal.d16.test.js` |
+| D-17 | 19 models have **no tenant column** and are therefore not scoped at all | medium | from code | **DONE** 2026-09-25 (ADR-064) — every unscoped model documented; child-model queries must name the parent (`unscopedModels.d17.test.js`) |
+| D-18 | `signature_records` CASCADE-deletes with its workflow, its step and its tenant | medium | from code | **DONE** 2026-09-25 (ADR-064) — `0066`: the step key is RESTRICT; the rule holds for all five evidence tables; PG 18.6-verified |
+| D-19 | `iot_readings` has no retention policy and no `(tenant_id, timestamp)` index | medium | from code | **DONE** 2026-09-25 (ADR-064) — iot_readings is a retention entity (default keep, floor 730 d); `(tenant_id, device_id, timestamp)` and `(tenant_id, timestamp)`; not partitioned |
+| D-20 | fifteen models declare **no `indexes` block at all** — foreign keys without indexes | medium | from code | **DONE** 2026-09-25 (ADR-064) — `0067`: 75 reviewed indexes (tenant columns, `(tenant_id, status)`, every unindexed FK); PG 18.6-verified |
+| D-21 | DECIMAL comes back from `pg` as a **string**; `invoices.amount` / `tax` are never coerced | medium | from code | **DONE** 2026-09-25 (ADR-064) — a `get()` on every DECIMAL attribute; rule in the backend standards |
+| D-22 | `attachments.resource_id` is a polymorphic id with **no foreign key** and no cleanup | medium | from code | **PARTIAL** 2026-09-25 (ADR-064, ADR-070) — linked types validated (A-97); a parent's soft delete soft-deletes its attachments, audited; orphan report `GET /attachments/orphans`. Open: free-string type on unlinked uploads; orphan query not yet run on the deployed database |
+| D-23 | `hardDeleteOffboardedTenant` force-deletes four tables and leaves the rest to CASCADE or to fail | medium | from code | **DONE** 2026-09-25 (ADR-064) — one transaction; refuses (409) while any retained table holds rows; PG 18.6-verified |
+| D-24 | unbounded reads: DSAR export, dashboard trend, SOP fan-out, signature history | medium | from code | **PARTIAL** 2026-09-25 (ADR-064, ADR-070) — `monthlyTrend` in SQL; DSAR export streamed and complete; SOP fan-out batched; signature history paginated. Open: the review check for an unbounded `findAll` |
+| D-25 | two soft-delete mechanisms coexist (`paranoid` + `isDeleted`) with no rule for which | low | from code | **PARTIAL** 2026-09-25 — decision (ADR-064): `paranoid` for new models; the eleven dual models not converted |
+| D-26 | 46 native `ENUM` types, none derived from the constants they mirror | low | from code | **PARTIAL** 2026-09-25 — decision (ADR-064): native ENUMs stay; a new value is a migration |
+| D-27 | 14 `JSON`/`JSONB` columns with no declared shape | low | from code | **DONE** 2026-09-25 (ADR-070) — all 14 columns declare a validated shape; `audit_logs.changes` redacted at write, tested on fixtures |
+| D-28 | `"UsageMetrics"` is the only camelCase, non-`underscored` table in the schema | low | from code | **DONE** 2026-09-25 — decision (ADR-064): kept, documented in `11-BILLING-TABLES.md` |
 | D-29 | migration `0019` reviewed line by line — **correct**; two residual risks named | info | from code | — |
 
 **Counts:** 1 critical · 8 high · 15 medium · 4 low · 1 informational.
@@ -318,7 +318,7 @@ the wrong code for "you may not write another tenant's row".
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** — fixed before batch 6 (S-02 / A-120); verified from code and tests 2026-09-25 (ADR-063 records the state). A restore targets only the tenant that owns the backup row; an archive naming another tenant is refused with a 409 and writes nothing; only `firstName`, `lastName`, `phone`, `avatarUrl` are written onto an account that already exists in that tenant, and no account is created. Tests: `tenantBackup.service.test.js` — "D-02: a user entry naming ANOTHER tenant (and a raised role) is matched only in the owning tenant and writes only profile fields", "refuses a backup whose archive names another tenant, and writes nothing" |
 | **Severity** | **high** |
 | **Verified** | from code, 2026-09-23 |
 
@@ -507,7 +507,7 @@ unique.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-25 (ADR-063). The `UPDATE` carries `tenant_id = :tenantId` and a result that is not one row is a 404. Tests: `kanban.service.test.js` "createCard › D-05: the card_seq bump carries the project's tenant, and a statement that updates no row is a 404, not a card"; `rawSqlTenantPredicate.d05.test.js` (4) — the review tripwire over every `.query(` in application source. **Fail-before** (`fabc3be`): both fail. The tripwire's sanity test also failed on Windows because it compared `path.relative` output with `/` — fixed in the test (the contract was right, the separator was not). `CLAUDE.md`'s sentence now stands as written |
 | **Severity** | medium |
 | **Verified** | from code, 2026-09-23 — exhaustive grep of `backend/src` |
 
@@ -568,7 +568,7 @@ sentence is true, or state the one documented exception.
 
 | | |
 |---|---|
-| **Status** | TODO — supersedes and widens **A-37** |
+| **Status** | **DONE** 2026-09-25 — **deviation, ADR-063:** the composite fix is rejected by ADR-051 Q-18 (one global identity; sign-in has no tenant qualifier). Instead `0063` adds `UNIQUE (lower(email))` and `UNIQUE (lower(username))`, refusing while case-variant duplicates exist, naming ids only. The psql queries ran on PG 18.6 test databases, not the deployed one. The DoD tests "same email in A and B both succeed" are therefore replaced by their opposite: `dataIdentity.dbA.live.test.js` "another tenant cannot hold a case-variant of an existing address or username", "up refuses — creating nothing — while two accounts differ only by case"; `0063-user-identity-case-insensitive.test.js`. A-37 is not updated here |
 | **Severity** | **high** |
 | **Verified** | from code, 2026-09-23 |
 
@@ -713,7 +713,7 @@ fixed models sit at **44–62 % statements**; `softDelete` and `associate` are e
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-25 (ADR-063). `0062` builds `(tenant_id, created_at DESC)`, `(tenant_id, resource_type, resource_id)` and `(user_id)` CONCURRENTLY, rebuilding an INVALID one. On PG 18.6 over 20,000 rows each query plans onto its index (`dataIdentity.dbA.live.test.js` "the tenant list, the resource lookup and the subject lookup use the new indexes"); `0062-audit-log-indexes.test.js`. Before `0062` (`fabc3be` schema) none of the three existed. **Still owed:** the size/plan queries on the deployed database. The other index-less models are D-20 (dbB) |
 | **Severity** | **high** |
 | **Verified** | from code, 2026-09-23. Row counts and plans **need psql** |
 
@@ -769,7 +769,7 @@ EXPLAIN (ANALYZE, BUFFERS)
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-25 (ADR-063). `0011` refuses to re-run over a populated `e_signature_records` (A-147). `dataIdentity.dbA.live.test.js` "migrator.up() on the sync-built database, then again with schema_migrations emptied" asserts every table's row count is unchanged, and "a populated e_signature_records survives a re-run of 0011" — both pass on PG 18.6. `docs/DATABASE/13-MIGRATIONS.md` states the rule. `0017`'s `down` was not re-reviewed |
 | **Severity** | **high — compliance** (21 CFR Part 11 record destruction) |
 | **Verified** | from code, 2026-09-23 |
 
@@ -815,7 +815,7 @@ not about today.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** — by ADR-051 Q-16 before batch 6 (`calibration_records_performed_by_fkey … ON DELETE RESTRICT` on both a fresh and a `fabc3be` database). A hard delete of the performer fails with SQLSTATE **`23001`** (`restrict_violation`, not `23503`) and the record stays: `dataIdentity.dbA.live.test.js` D-10 (the test expected `23503`; corrected 2026-09-25 on PG 18.6) |
 | **Severity** | **high — compliance** (ISO 17025 record retention) |
 | **Verified** | from code, 2026-09-23 |
 
@@ -862,7 +862,7 @@ evidence-bearing table to `users` the same way, and decide it once rather than s
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-25 (ADR-063 — the retention conflict is named there). Erasure pseudonymises in place; `hardDelete: true` is a 400; `anonymize: false` reports `soft_deleted`. Tests: `gdpr.service.test.js` "D-11: refuses hardDelete … with a 400 …" (fail before, at `fabc3be`); `dataIdentity.dbA.live.test.js` asserts the erased row field by field on PG 18.6 |
 | **Severity** | **high — compliance** (GDPR Art. 17) |
 | **Verified** | from code, 2026-09-23 |
 
@@ -908,7 +908,7 @@ rules for clinical records and GDPR erasure genuinely conflict and the owner has
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-25 (ADR-064). `includeRequired.d12.test.js` (22): the Sequelize behaviour pinned on generated SQL (a bare include of a default-scoped model is `INNER JOIN`, with `required: false` `LEFT OUTER JOIN`), the reviewed list of 13 default-scoped models, and the **rule over the source** — every include entry of a default-scoped model in `backend/src` states `required` (the lint rule the card asks for; it runs in `make verify`). The two wanted-row regressions are pinned on the SQL the real services generate: a pending transfer's `approver` and an unassigned CAPA's `assignee` are LEFT joins. fail-before at `fabc3be`: the source rule fails (1 of 22); the two regressions pass there, because A-75/A-90 had already fixed those sites. `CLAUDE.md`'s `maintenance_work_orders` line was corrected by A-227 |
 | **Severity** | medium — but this is the defect shape `CLAUDE.md` calls the most repeated one here |
 | **Verified** | from code, 2026-09-23, and from the repo's own comment at `services/audit.service.js:90-92`: *"`required:false` — `userId` is nullable … and User **carries a scope that would otherwise INNER JOIN and hide those logs**."* `node_modules` is not installed on this machine, so the Sequelize behaviour was **not** re-derived from its source |
 
@@ -969,7 +969,7 @@ depends on a property of the *included* model rather than of the call.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-25 (ADR-064, with ADR-062). Mechanised by P6-05: every boot compares every model column with `information_schema` and refuses on a mismatch (`schemaVerify.util.js`), and `make migrate-verify` reads that verdict. On PostgreSQL 18.6 a database built by `fabc3be` and booted by this tree passed it. Observed there, and now the rule in `docs/DATABASE/13-MIGRATIONS.md` § Writing a Migration (5a): `sync()` adds missing tables **and model indexes**, never columns, enum values or changed foreign keys; an index on a migration-only column never goes on the model in the same release. **Not done:** the drift query against the VM database (not reachable); its next boot performs the same check |
 | **Severity** | medium — **potentially high**; only psql can say |
 | **Verified** | from code. The *consequence* **needs psql** |
 
@@ -1035,7 +1035,7 @@ Object.values(db.models).flatMap(m =>
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-25 (ADR-063). The five `catch { return }` guards are gone (`0009` and `0016` had already lost theirs). `describeTableGuards.d14.test.js` — 9 cases fail at `fabc3be`. Their columns (`invoices.stripe_invoice_id`, `users.mfa_*`, `calibration_devices.uncertainty_budget`, `calibration_records.measurement_uncertainty`, `tenants.parent_id`, `attachments.storage_key`) confirmed in psql on PG 18.6; the boot verifier (P6-05) now asserts every model column |
 | **Severity** | medium |
 | **Verified** | from code, 2026-09-23 |
 
@@ -1083,7 +1083,7 @@ an absent table, it checks with `showAllTables()` and says so, rather than catch
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-25 — **deviation, ADR-063:** `certificate_number` stays platform-wide unique because it is the key the public verification page and the printed QR resolve. The real defect (D-40: code-less tenants shared the prefix `T`, the generator could not see the other tenant's numbers) is fixed: prefix `T<8 hex of tenant id>`, cross-tenant max lookup. Tests: `certificateNumber.d40.test.js` (fails at `fabc3be`); `dataIdentity.dbA.live.test.js` "both succeed with distinct, tenant-specific numbers" |
 | **Severity** | medium |
 | **Verified** | from code, 2026-09-23 |
 
@@ -1121,7 +1121,7 @@ SELECT certificate_number, count(DISTINCT tenant_id) FROM certificates
 
 | | |
 |---|---|
-| **Status** | TODO — confirms and widens **A-38** |
+| **Status** | **DONE** 2026-09-25 — **decision, ADR-064: roles, their menu permissions and menu groups stay global.** Every mutating roles / role-permission / menu-group route is SUPERADMIN-only; `rolesGlobal.d16.test.js` (43) drives each through the real router and pins the route inventory, so a new mutating route fails until it is listed with its guard. fail-before at `fabc3be`: 0 of 43 — the routes were already SUPERADMIN-only; the test is the pin, the ADR the decision. `docs/DATABASE/04-RBAC-TABLES.md` says so. A-38 (SCIM groups, ADR-053) is the tenant-owned layer on top |
 | **Severity** | medium — **high** in consequence; medium because it is a data-model decision, not a defect |
 | **Verified** | from code, 2026-09-23 |
 
@@ -1162,7 +1162,7 @@ migration with a backfill; the second is a guard sweep. It needs an ADR either w
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-25 (ADR-064). Every model without a tenant column carries a header comment naming why and the compensating control. `unscopedModels.d17.test.js` (5): the unscoped models are exactly the documented 19; each child model's parent keys are real attributes; a source scan fails on any child-model query whose `where` does not name its parent key (two reviewed exceptions, counted). Group 2 does not gain `tenant_id` (ADR-064 says why). fail-before at `fabc3be`: 0 of 5 — it documents and pins; the Windows path-separator bug in its review keys was fixed 2026-09-25 |
 | **Severity** | medium |
 | **Verified** | from code, 2026-09-23 |
 
@@ -1200,7 +1200,7 @@ the absence of a line.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-25 (ADR-064). The rule: an evidence row's link to what it evidences is RESTRICT; only a non-attesting actor may be SET NULL — after `0066` it holds for all five tables. `0066` rebuilds `signature_records.workflow_step_id` as `ON UPDATE CASCADE ON DELETE RESTRICT`, recording the old definition; PG 18.6: up on a `fabc3be` database, re-run no-op, down restored CASCADE, up again. `dataLayer.dbB.live.test.js` (fail-before in-test: on the CASCADE shape a step delete erased the signature; after `up` it is refused). `signatureEvidence.d18.test.js`: no `force: true` or bulk destroy of a signature model anywhere (the workflow 409 is A-130's, `esignature.*` tests). **Finding:** on PG 18 the refusal is SQLSTATE `23001`, which Sequelize 6 does not map to `ForeignKeyConstraintError` |
 | **Severity** | medium |
 | **Verified** | from code, 2026-09-23 |
 
@@ -1234,7 +1234,7 @@ once, for `signature_records`, `e_signature_records`, `certificates`, `calibrati
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-25 (ADR-064). `iot_readings` joins `DEFAULT_RETENTION_DAYS` (platform default 0 = keep; opt-in per tenant or `IOT_READING_RETENTION_DAYS`, floor 730 days) and its purge carries the tenant predicate (`dataRetention.service.test.js`; live: `dataLayer.dbB.live.test.js` purges only the opted-in tenant's old rows). The two indexes are on the model and in `0067`. **Partitioning: not now**, decided while the table is empty (A-29) — the Open Decisions row stands. `webhook_deliveries`: **purged since ADR-070** — finished rows (`success`, `exhausted`) past `WEBHOOK_DELIVERY_RETENTION_DAYS` (30, floor 7), daily, bounded, audited per tenant (`webhookDeliveryPurge.adr070`, `dataLayer.dbC.live`); `document_chunks` is replaced on re-index |
 | **Severity** | medium |
 | **Verified** | from code, 2026-09-23. Growth **needs psql** |
 
@@ -1270,7 +1270,7 @@ partitioning **before** the table has rows — that is the whole window in which
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-25 (ADR-064). `0067` creates each of 75 reviewed indexes unless an index with the same leading columns already serves it, records what it created, and `down` drops exactly those. PG 18.6: on a `fabc3be` database it created 71 (the iot pair had already been added by `sync()` from the model); re-run no-op; down/up. `0067-foreign-key-and-tenant-indexes.test.js` holds every model foreign key to "indexed by a model or by this list" (cannot run at `fabc3be`: the migration did not exist). EXPLAIN with seqscan disabled uses the tenant index (`dataLayer.dbB.live.test.js`); plans on production-sized tables not recorded |
 | **Severity** | medium |
 | **Verified** | from code, 2026-09-23 |
 
@@ -1308,7 +1308,7 @@ and the migration both have to be written.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-25 (ADR-064). The four DECIMAL attributes (`invoices.amount_due`/`amount_paid`, `asset_finances.purchase_price`/`salvage_value` — the card's `amount`/`tax` do not exist) read as numbers through a `get()`; null stays null. `decimalGetters.d21.test.js` discovers every DECIMAL attribute (5 of 10 fail at `fabc3be`); live on PG 18.6 in `dataLayer.dbB.live.test.js`. Every money arithmetic site already coerced (`finance.service`, `stripeWebhook.service`); no SUM over money exists. Rule: `docs/BACKEND/00-BACKEND-STANDARDS.md` trap 3 |
 | **Severity** | medium |
 | **Verified** | from code, 2026-09-23 |
 
@@ -1348,7 +1348,7 @@ Then a test that reads a row back and asserts the **type**.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **PARTIAL** 2026-09-25 (ADR-064, ADR-070). A linked attachment's `resourceType` must be on `LINKABLE_RESOURCES` and its `resourceId` a live record of the caller's tenant (A-97). **ADR-070:** deleting a certificate, calibration device, work order or kanban card soft-deletes its attachments in the same transaction, one DELETE audit row each naming the parent (`changes.cascade`), file kept; a calibration record's void does not cascade (retained evidence). Orphan report `GET /api/v1/attachments/orphans` (tenant admin + `equipment: read`, tenant-bound on attachment AND parent). Tests: `attachment.cascade.d22` (10), `attachments.orphans.d22` (6), the parent services' delete tests; live PG 18.6 as the app role: `dataLayer.dbC.live`. **Still open:** a free-string type on unlinked uploads; the orphan query run against the deployed database; a kanban **project** delete does not cascade to its cards' files |
 | **Severity** | medium |
 | **Verified** | from code, 2026-09-23 |
 
@@ -1376,9 +1376,9 @@ audit row. Add an orphan report so existing ones can be found.
 
 **Definition of Done**
 - [ ] `resourceType` validated against a single shared list
-- [ ] soft-deleting a parent soft-deletes its attachments, in one transaction, audited
+- [x] soft-deleting a parent soft-deletes its attachments, in one transaction, audited (ADR-070)
 - [ ] an orphan query recorded and run against the deployed database
-- [ ] test: the attachments of a soft-deleted certificate are no longer listed
+- [x] test: the attachments of a soft-deleted certificate are no longer listed (ADR-070)
 
 ---
 
@@ -1386,7 +1386,7 @@ audit row. Add an orphan report so existing ones can be found.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-25 (ADR-064). Decision: neither explicit deletes of everything nor `tenants` CASCADE — **a purge never destroys a retained record.** It counts every tenant-scoped table from `db.models` that is neither on 0030's CASCADE list nor its own (`tenant_settings`, `users`, `subscriptions`), soft-deleted rows included, and refuses naming each; otherwise it deletes those three and the tenant row, with one PLATFORM audit row, in one transaction. `tenantLifecycle.hardDelete.d23.test.js` (6). PG 18.6: a tenant with an audit row was refused (`audit_logs (1)`); one with only settings and a CASCADE custom domain was deleted, and no row in any of the 52 `tenant_id` tables referenced it afterwards. **The compliance answer:** every regulated record is retained until an archival process removes it; none exists, and no caller wires this function |
 | **Severity** | medium |
 | **Verified** | from code, 2026-09-23 |
 
@@ -1433,7 +1433,7 @@ function's behaviour on real data is unknown.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **PARTIAL** 2026-09-25 (ADR-064, ADR-070). `monthlyTrend` groups by month in SQL (ADR-064). **ADR-070:** the DSAR export streams keyset pages of 500 through `writeFile(asyncIterable)` and is complete (was truncated at 1,000/5,000) — `gdpr.exportStream.d24` (12,345 audit rows); the SOP fan-out reads and inserts 500 at a time in the publish's transaction — `sop.fanout.d24`; `GET /esignature/history` takes `page`/`limit` (25/200) with rows in `data` and `meta {total,page,limit,totalPages}` top-level — `esignature.newmethods`, `eSignature.envelope.a105a106`, `eSignature.a129a130`, frontend `eSignature.service.test.ts`. **Open:** a review check that flags a new unbounded `findAll`; `dataRetention.service`'s anonymise read (async area) |
 | **Severity** | medium |
 | **Verified** | from code, 2026-09-23 |
 
@@ -1462,8 +1462,8 @@ signature history takes a `limit` and a cursor, like every other list route.
 
 **Definition of Done**
 - [ ] `monthlyTrend` aggregates in SQL; the dialect-safety comment removed, citing ADR-039
-- [ ] the DSAR export streams, tested at a realistic row count — not ten rows
-- [ ] `getSignatureHistory` paginated, with `meta.total` as a top-level sibling of `data`
+- [x] the DSAR export streams, tested at a realistic row count — not ten rows (ADR-070)
+- [x] `getSignatureHistory` paginated, with `meta.total` as a top-level sibling of `data` (ADR-070)
 - [ ] a check that a new `findAll` on a tenant-scoped model without a `limit` is flagged in review
 
 ---
@@ -1472,7 +1472,7 @@ signature history takes a `limit` and a cursor, like every other list route.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **PARTIAL** 2026-09-25 — **decision, ADR-064:** `paranoid` (`deleted_at`) is the mechanism for new models. The eleven dual models, `search.service`'s per-table `softDelete` strings and a both-flags-agree test are **open** |
 | **Severity** | low |
 | **Verified** | from code, 2026-09-23 |
 
@@ -1508,7 +1508,7 @@ and a comment on each dual model saying which flag is authoritative.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **PARTIAL** 2026-09-25 — **decision, ADR-064:** native ENUMs stay; adding a value is an `ALTER TYPE … ADD VALUE` migration, because `sync()` never adds one (`docs/DATABASE/13-MIGRATIONS.md` 5a). The model-list-equals-constant test is **open** (with Phase 9 typing) |
 | **Severity** | low |
 | **Verified** | from code, 2026-09-23 |
 
@@ -1542,7 +1542,7 @@ typing work, which will want the union type anyway.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-25 (ADR-064, ADR-070). Every JSON/JSONB column validates on write against a declared Joi shape (`utils/jsonShape.util.js`, `validate.shape` on each model attribute); `jsonShape.d27` discovers all 14 from the model files. `audit_logs.changes` is redacted at write by a suffix deny-list (`utils/auditRedaction.util.js`), tested on real-shaped fixtures (`auditRedaction.d27`, 11). The `api_keys.scopes` comment matches `assertScopes` (ADR-064). Not covered: `bulkCreate` without `validate`, raw SQL, rows written before |
 | **Severity** | low |
 | **Verified** | from code, 2026-09-23 |
 
@@ -1566,8 +1566,8 @@ validated on write. For `audit_logs.changes`, a deny-list of key names checked a
 test over real fixtures rather than over the deny-list itself.
 
 **Definition of Done**
-- [ ] each JSON column has a declared, validated shape
-- [ ] `audit_logs.changes` redaction tested against fixtures containing real secret-shaped keys
+- [x] each JSON column has a declared, validated shape (ADR-070)
+- [x] `audit_logs.changes` redaction tested against fixtures containing real secret-shaped keys (ADR-070)
 - [ ] the `api_keys.scopes` comment corrected to match `assertScopes`
 
 ---
@@ -1576,7 +1576,7 @@ test over real fixtures rather than over the deny-list itself.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-25 — **decision, ADR-064:** `"UsageMetrics"` keeps its name; the exception is documented in `docs/DATABASE/11-BILLING-TABLES.md`. No rename, so no migration |
 | **Severity** | low |
 | **Verified** | from code, 2026-09-23 |
 

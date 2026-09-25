@@ -36,6 +36,14 @@ exports.list = asyncHandler(async (req, res) => {
   success(res, result.rows, result.meta, "Attachments retrieved", 200);
 });
 
+// GET /api/v1/attachments/orphans — D-22 (ADR-070): the tenant's live
+// attachments whose linked record is gone. Rows in `data`, a top-level `meta`.
+exports.listOrphans = asyncHandler(async (req, res) => {
+  const { page, limit } = req.query;
+  const result = await attachmentService.listOrphans(req.user.tenantId, { page, limit });
+  success(res, result.rows, result.meta, "Orphaned attachments retrieved", 200);
+});
+
 // GET /api/v1/attachments/:id
 exports.getOne = asyncHandler(async (req, res) => {
   const data = await attachmentService.getAttachment(req.user.tenantId, req.params.id);

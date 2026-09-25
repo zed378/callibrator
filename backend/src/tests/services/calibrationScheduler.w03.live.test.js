@@ -15,6 +15,9 @@
  * OPT-IN — needs a database whose schema is db.sync() of the current models
  * (the test applies migration 0060 itself; it is idempotent):
  *
+ * W-04 (ADR-069): the winner's tenant-wide notification carries its own audit
+ * row, by the same system actor.
+ *
  *   CALIBRATION_PG_LIVE_TEST=1 DB_HOST=... DB_PORT=... DB_NAME=... DB_USER=... DB_PASS=... \
  *     npm test -- src/tests/services/calibrationScheduler.w03.live --coverage=false
  *
@@ -30,8 +33,6 @@ const DEVICE = "d4d4d4d4-0000-4000-8000-0000000000d4";
 const startProcess = () => {
   let graph;
   jest.isolateModules(() => {
-    const uuid = require("uuid");
-    uuid.v4.mockImplementation(() => require("crypto").randomUUID());
     const { db } = require("../../config");
     db.options.logging = false;
     graph = {
@@ -153,10 +154,18 @@ live("calibration scan — two concurrent scans, live PostgreSQL (W-03)", () => 
       { actor_type: "system", actor_name: "system:calibration-scan", user_id: null, resource_id: orders[0].id },
     ]);
 
-    const [notes] = await p1.db.query("SELECT type FROM notifications WHERE tenant_id = :t", {
+    const [notes] = await p1.db.query("SELECT id, type FROM notifications WHERE tenant_id = :t", {
       replacements: { t: TENANT },
     });
     expect(notes).toHaveLength(1);
+    // W-04 (ADR-069): the tenant-wide notification has its own audit row, by the job.
+    const [noteAudits] = await p1.db.query(
+      "SELECT actor_type, actor_name, user_id, resource_id FROM audit_logs WHERE tenant_id = :t AND resource_type = 'Notification'",
+      { replacements: { t: TENANT } },
+    );
+    expect(noteAudits).toEqual([
+      { actor_type: "system", actor_name: "system:calibration-scan", user_id: null, resource_id: notes[0].id },
+    ]);
     expect(emitted).toHaveLength(1);
   });
 

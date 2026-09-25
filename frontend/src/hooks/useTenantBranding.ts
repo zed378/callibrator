@@ -37,9 +37,15 @@ export function useTenantBranding() {
         const tenant = await tenantService.getById(tenantId);
 
         const newBranding: TenantBranding = {
-          logo: tenant.logo,
+          // P7-08 / ADR-071 (amendment): the SERVED logo URL, never the raw
+          // stored `logo`. The raw value is a bare file name (a relative href
+          // that resolves against the current page) or, on an old row, an
+          // absolute third-party URL the page CSP blocks. The backend returns
+          // `logoBaseUrl: null` for anything it will not serve, and the
+          // default favicon is the fallback — as the public branch below.
+          logo: tenant.logoBaseUrl || undefined,
           logoBaseUrl: tenant.logoBaseUrl,
-          favicon: tenant.logo || "/favicon.ico",
+          favicon: tenant.logoBaseUrl || "/favicon.ico",
           appName: tenant.name || "Hospital Device Callibrator",
           primaryColor: tenant.primaryColor,
         };

@@ -6,6 +6,11 @@
 // MOCKS
 // ================================================================
 
+// D-22 (ADR-070): a parent's delete soft-deletes its attachments through
+// attachment.service, in the parent's transaction.
+jest.mock("../../services/attachment.service", () => ({
+  softDeleteForResource: jest.fn().mockResolvedValue([]),
+}));
 jest.mock("sequelize", () => ({
   Op: {
     or: Symbol("or"),
@@ -893,7 +898,14 @@ describe("deleteCard", () => {
     const card = makeCard();
     KanbanCard.findOne.mockResolvedValueOnce(card);
     const res = await svc.deleteCard(superAdmin, PID, "cd1");
-    expect(card.destroy).toHaveBeenCalled();
+    expect(card.destroy).toHaveBeenCalledWith({ transaction: "txn" });
+    // D-22 (ADR-070): its attachments in the same transaction, attributed.
+    expect(require("../../services/attachment.service").softDeleteForResource).toHaveBeenCalledWith(
+      card.tenantId,
+      "KanbanCard",
+      card.id,
+      { transaction: "txn", actor: { userId: superAdmin.id } },
+    );
     expect(res).toEqual({ deleted: true });
   });
 });

@@ -6,6 +6,8 @@
  * scopes ("<resource>:<read|write|*>" or "*") enforced by dynamicAccess.
  */
 
+// D-27 (ADR-070): every JSON column declares its shape, validated on write.
+const { jsonShape } = require("../utils/jsonShape.util");
 const defineModel = (db, DataTypes) => {
   const ApiKey = db.define(
     "ApiKey",
@@ -36,9 +38,13 @@ const defineModel = (db, DataTypes) => {
         allowNull: false,
         unique: true,
       },
-      // e.g. ["CalibrationDevices:read","Certificates:write","*:read","*"]
+      // Lower-case "<menu slug>:<read|write>" strings, e.g. ["equipment:read", "certificate:write"].
+      // Shape enforced on write by apiKey.service#assertScopes (A-27): a known slug,
+      // read or write, and NO wildcard — the "*" / "*:read" forms this comment used
+      // to show are refused (D-27).
       scopes: {
         type: DataTypes.JSONB,
+        validate: { shape: jsonShape("ApiKey.scopes") },
         allowNull: false,
         defaultValue: [],
       },

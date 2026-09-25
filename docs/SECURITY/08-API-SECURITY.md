@@ -56,11 +56,50 @@ Test: `backend/src/tests/utils/csp.p708.test.js` — real express + helmet + the
 
 ### Swagger is not published in production (S-23)
 
-`/docs` and `/docs.json` were mounted unconditionally and unauthenticated, reachable in production only because no nginx location happened to route them. Now `swaggerDocs` mounts them outside production, and **in production only with `SWAGGER_ENABLED=true`** (`SWAGGER_ENABLED=false` turns them off everywhere). Same test file: `NODE_ENV=production` → both 404. Decision: ADR-PENDING-infra (P7-08/S-23) — *off* rather than *behind a super-admin session*, because the UI is fetched by a browser navigation that carries no bearer token, and a spec gated by a session cookie the API does not issue would be a gate in name only.
+`/docs` and `/docs.json` were mounted unconditionally and unauthenticated, reachable in production only because no nginx location happened to route them. Now `swaggerDocs` mounts them outside production, and **in production only with `SWAGGER_ENABLED=true`** (`SWAGGER_ENABLED=false` turns them off everywhere). Same test file: `NODE_ENV=production` → both 404. Decision: [ADR-066](../../MEMORY/DECISIONS.md) (P7-08/S-23) — *off* rather than *behind a super-admin session*, because the UI is fetched by a browser navigation that carries no bearer token, and a spec gated by a session cookie the API does not issue would be a gate in name only.
 
-### The content origin — still open
+### The content origin — a nonce CSP (P7-08, [ADR-071](../../MEMORY/DECISIONS.md))
 
-**The reasoning never transferred to the frontend.** The pages that render user-supplied `posts.contentHtml` (and ticket descriptions) through `dangerouslySetInnerHTML` are served by Next.js on a different origin, and **that origin sends no Content-Security-Policy at all** (`frontend/next.config.ts` and `frontend/proxy.ts` set none — checked 2026-09-24). A nonce-based policy there needs the Next.js proxy to mint a nonce per request and the inline theme script (`ThemeInitScript.tsx`) to carry it. P7-08's last two Definition-of-Done items — the content origin verified against a stricter policy, and a test that an inline script in `contentHtml` does not execute — are **not done**; they belong to the frontend and are recorded as S-43.
+**The reasoning never transferred to the frontend.** The pages that render user-supplied `posts.contentHtml` (and ticket descriptions) through `dangerouslySetInnerHTML` are served by Next.js. Until 2026-09-25 **that origin sent no Content-Security-Policy at all**. It now sends one, built by [`frontend/src/lib/securityHeaders.ts`](../../frontend/src/lib/securityHeaders.ts). [`frontend/src/proxy.ts`](../../frontend/src/proxy.ts) calls the builder once per page request with a fresh 128-bit nonce. As served by a production build:
+
+```
+default-src      'self'
+script-src       'self' 'nonce-<per request>' 'strict-dynamic'     ← dev adds 'unsafe-eval'
+script-src-attr  'none'
+style-src        'self' 'unsafe-inline'                            ← fallback for pre--elem/-attr browsers
+style-src-elem   'self' 'nonce-<per request>'                      ← dev: 'unsafe-inline' (HMR)
+style-src-attr   'unsafe-inline'
+img-src          'self' data: blob: <API origin>
+font-src         'self'
+connect-src      'self' ws://<Host> wss://<Host> <API origin> <API ws origin>
+frame-src        'self' <API origin>
+object-src       'none'
+base-uri         'self'
+form-action      'self'
+frame-ancestors  'none'
+```
+
+`<API origin>` is `NEXT_PUBLIC_API_BASE_URL`, the origin `lib/socket.ts` connects to. In production it is the public origin itself. `<Host>` is the request's `Host` header, which is left out unless it is a plain host or host and port.
+
+- **How Next gets the nonce.** The proxy sets the policy on the **request** as well as on the response. Next parses the request header while rendering and stamps the nonce on every script it emits. The root layout reads `x-nonce` for `ThemeInitScript`.
+- **Every page renders per request.** A prerendered page or static shell has no nonce, so its scripts would be blocked. The root layout reads `headers()` and exports `instant = false`, which makes every route dynamic.
+- **Styles.** `<style>` elements need the nonce. `style` attributes stay inline, because React server-renders `style={{…}}` props as attributes and CSP cannot nonce an attribute. Production Tailwind 4 and Next emit no inline `<style>`. The reasoning is in ADR-071.
+- **Other page headers** (set in `frontend/next.config.ts`, not on `/api/` or `/uploads/public/`, which relay the backend's own):
+  - `X-Content-Type-Options: nosniff`
+  - `Referrer-Policy: strict-origin-when-cross-origin`
+  - `Permissions-Policy: camera=(), microphone=(), geolocation=(self), payment=(), usb=(), browsing-topics=()`
+  - `X-Powered-By` is off.
+  - nginx adds only HSTS.
+
+**Tests.**
+- `frontend/src/lib/securityHeaders.test.ts` — every directive, and Next's own `getScriptNonceFromHeader` reading the nonce back out.
+- `frontend/src/proxy.test.ts` § "the page CSP" — the nonce reaches the request (`x-middleware-request-*`) and differs on every request.
+
+**Verified live on 2026-09-25**, on a production build served by the standalone `server.js`:
+- Headless Chrome loaded 11 pages with zero violations, and Next booted on each.
+- A blog post whose `contentHtml` carried `<script>`, `<script src="data:…">`, `onerror=` and `<style>` had all four blocked. The post bypassed the write-time sanitiser.
+
+That covers P7-08's third Definition-of-Done item (S-43). The fourth, "a test that an inline script in `contentHtml` does not execute", was met by that run, but the run is a one-off and not a suite test. The frontend has no browser runner, and none was added. **Not verified:** the Socket.IO websocket under this policy against a live backend, and a deployment behind nginx.
 
 ## CORS
 

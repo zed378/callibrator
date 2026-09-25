@@ -435,6 +435,13 @@ exports.deleteCalibrationDevice = async (tenantId, calibrationDeviceId, actor = 
     // Sequelize CLS (config/index.js `useCLS`), as certificate.approve() does.
     await db.transaction(async (transaction) => {
       await device.softDelete();
+      // D-22 (ADR-070): its attachments go with it, in this transaction.
+      await require("./attachment.service").softDeleteForResource(
+        tenantId,
+        "CalibrationDevice",
+        device.id,
+        { transaction, actor },
+      );
       await auditDevice(
         transaction,
         tenantId,

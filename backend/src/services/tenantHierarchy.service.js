@@ -404,43 +404,10 @@ exports.buildTenantFilter = async (tenantId, scope = "self") => {
 // PERMISSIONS & ROLES
 // ==========================================
 
-/**
- * Assign a role to a user across all tenants in hierarchy
- * @param {string} userId - User ID
- * @param {string} roleId - Role ID
- * @param {string} scope - Scope (self, subtree)
- */
-exports.assignRoleToUserAcrossHierarchy = async (
-  userId,
-  roleId,
-  scope = "subtree",
-) => {
-  const { User } = require("../models");
-
-  const visibility = await exports.getDataVisibilityScope(userId, scope);
-
-  try {
-    for (const tenantId of visibility.tenantIds) {
-      await User.update({ roleId }, { where: { id: userId, tenantId } });
-    }
-
-    logger.info("Role assigned across hierarchy", {
-      userId,
-      roleId,
-      scope,
-      tenantCount: visibility.tenantIds.length,
-    });
-
-    return { success: true, tenantCount: visibility.tenantIds.length };
-  } catch (err) {
-    logger.error("Failed to assign role across hierarchy", {
-      userId,
-      roleId,
-      error: err.message,
-    });
-    throw new AppError(500, "Failed to assign role");
-  }
-};
+// A-255 (ADR-065): assignRoleToUserAcrossHierarchy was removed with its
+// unrouted handler. It wrote users.role_id with no audit row and no privilege
+// check (ROLE_LEVELS), and passed the USER id where getDataVisibilityScope
+// expects a TENANT id, so it matched no hierarchy and updated nothing.
 
 /**
  * Get user's roles across all tenants
@@ -495,7 +462,7 @@ exports.getUserRolesAcrossTenants = async (userId) => {
     }));
   } catch (err) {
     // A failure is a failure, not an empty result: log it and answer 500, as
-    // this file's other role operations do (assignRoleToUserAcrossHierarchy).
+    // this file's other role operations did (the removed assignRoleToUserAcrossHierarchy).
     logger.error("Failed to get user roles", {
       userId,
       error: err.message,
@@ -503,6 +470,164 @@ exports.getUserRolesAcrossTenants = async (userId) => {
     throw new AppError(500, "Failed to get user roles");
   }
 };
+
+// ==========================================
+// MOVING A TENANT IN THE TREE (A-224)
+// ==========================================
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** A LIKE pattern matching every path strictly below `path` (codes may hold `_`, a LIKE wildcard). */
+const subtreePattern = (path) => `${path.replace(/[\\%_]/g, "\\$&")}/%`;
+
+/**
+ * Move a tenant under a new parent (`newParentId`), or make it a root (null).
+ *
+ * A-224 — the two controller handlers this replaces wrote the tenant and its
+ * hierarchy row in two autocommits with no audit row; accepted a new parent
+ * inside the tenant's own subtree (a cycle: the subtree detached from every
+ * root and disappeared from the tree); left every descendant's materialised
+ * path pointing at the old position; and answered "already a root" with a 404.
+ * Now, in one transaction:
+ *  - the tenant row is locked; a missing tenant or parent is 404;
+ *  - a state conflict is 409, explained: itself as parent, a parent inside its
+ *    own subtree (checked on the parentId chain, which does not depend on the
+ *    hierarchy rows being complete), already under that parent, already a
+ *    root, no code, or a move that would push the subtree past MAX_DEPTH;
+ *  - the tenant's hierarchy row (created if missing) and EVERY descendant's
+ *    path and depth are rewritten;
+ *  - ONE audit row, under the PLATFORM tenant (a tenant's place in the tree is
+ *    a platform operation, as createSubOrganization records it).
+ *
+ * @param {string} tenantId
+ * @param {string|null} newParentId - null makes the tenant a root
+ * @param {object} [actor] - auditActor(req)
+ * @returns {Promise<{tenantId: string, parentId: (string|null), path: string, depth: number, descendantsMoved: number}>}
+ * @throws {AppError} 400 malformed parent id; 404 tenant/parent not found; 409 as above
+ */
+const moveTenant = async (tenantId, newParentId, actor = {}) => {
+  if (newParentId !== null && !(typeof newParentId === "string" && UUID.test(newParentId))) {
+    throw new AppError(400, "newParentId must be a tenant id (UUID)");
+  }
+  const { Tenant, TenantHierarchy } = require("../models");
+  const { Transaction, Op } = db.Sequelize;
+  const LOCK = Transaction.LOCK.UPDATE;
+
+  return db.transaction(async (transaction) => {
+    const tenant = await Tenant.findByPk(tenantId, { transaction, lock: LOCK });
+    if (!tenant) {
+      throw new AppError(404, "Tenant not found");
+    }
+    if (!tenant.code) {
+      throw new AppError(409, "This tenant has no code; set one before moving it in the hierarchy (its path is built from it)");
+    }
+
+    let newParent = null;
+    if (newParentId === null) {
+      if (!tenant.parentId) {
+        throw new AppError(409, "This tenant is already a root tenant: it has no parent to remove");
+      }
+    } else {
+      if (newParentId === tenantId) {
+        throw new AppError(409, "A tenant cannot be its own parent");
+      }
+      if (tenant.parentId === newParentId) {
+        throw new AppError(409, "This tenant is already under that parent");
+      }
+      newParent = await Tenant.findByPk(newParentId, { transaction });
+      if (!newParent) {
+        throw new AppError(404, "New parent tenant not found");
+      }
+      if (!newParent.code) {
+        throw new AppError(409, "The new parent tenant has no code; set one before moving a tenant under it");
+      }
+      // The parentId chain upwards from the new parent must not reach the tenant.
+      let cursor = newParent;
+      for (let hops = 0; cursor && cursor.parentId; hops += 1) {
+        if (cursor.parentId === tenantId || hops > MAX_DEPTH * 4) {
+          throw new AppError(
+            409,
+            `"${newParent.name}" is inside this tenant's own subtree: moving the tenant under it would make a cycle`,
+          );
+        }
+        cursor = await Tenant.findByPk(cursor.parentId, { transaction });
+      }
+    }
+
+    const own = await TenantHierarchy.findOne({ where: { tenantId }, transaction, lock: LOCK });
+    const oldPath = own ? own.path : `/${tenant.code.toLowerCase()}`;
+    const oldDepth = own ? own.depth : 0;
+
+    let parentPath = "";
+    let parentDepth = -1;
+    if (newParent) {
+      const parentRow = await TenantHierarchy.findOne({ where: { tenantId: newParent.id }, transaction });
+      parentPath = parentRow ? parentRow.path : `/${newParent.code.toLowerCase()}`;
+      parentDepth = parentRow ? parentRow.depth : 0;
+    }
+    const newPath = `${parentPath}/${tenant.code.toLowerCase()}`;
+    const newDepth = parentDepth + 1;
+
+    const descendants = own
+      ? await TenantHierarchy.findAll({
+        where: { path: { [Op.like]: subtreePattern(oldPath) } },
+        transaction,
+        lock: LOCK,
+      })
+      : [];
+    const deepest = descendants.reduce((max, d) => Math.max(max, d.depth - oldDepth), 0);
+    if (newDepth + deepest > MAX_DEPTH) {
+      throw new AppError(
+        409,
+        `Moving this tenant there would put its subtree ${newDepth + deepest} levels deep; the maximum is ${MAX_DEPTH}`,
+      );
+    }
+
+    const before = { parentId: tenant.parentId || null, path: oldPath, depth: oldDepth };
+    await tenant.update({ parentId: newParentId }, { transaction });
+
+    const placement = { parentCode: newParent ? newParent.code : null, path: newPath, depth: newDepth };
+    if (own) {
+      await own.update(placement, { transaction });
+    } else {
+      await TenantHierarchy.create({ tenantId, tenantCode: tenant.code, ...placement }, { transaction });
+    }
+    for (const d of descendants) {
+      await d.update(
+        { path: `${newPath}${d.path.slice(oldPath.length)}`, depth: d.depth - oldDepth + newDepth },
+        { transaction },
+      );
+    }
+
+    await auditService.logAction(
+      {
+        tenantId: PLATFORM_TENANT_ID,
+        userId: actor.userId,
+        action: "UPDATE",
+        resourceType: "Tenant",
+        resourceId: tenantId,
+        changes: {
+          operation: newParent ? "MOVE_TENANT" : "DETACH_TENANT",
+          before,
+          after: { parentId: newParentId, path: newPath, depth: newDepth },
+          descendantsMoved: descendants.length,
+        },
+        ipAddress: actor.ipAddress,
+        userAgent: actor.userAgent,
+      },
+      { transaction },
+    );
+
+    logger.info("Tenant moved in the hierarchy", { tenantId, newParentId, descendantsMoved: descendants.length });
+    return { tenantId, parentId: newParentId, path: newPath, depth: newDepth, descendantsMoved: descendants.length };
+  });
+};
+
+/** A-224 — PUT /tenant-hierarchy/:tenantId/parent. */
+exports.updateTenantParent = (tenantId, newParentId, actor) => moveTenant(tenantId, newParentId, actor);
+
+/** A-224 — DELETE /tenant-hierarchy/:tenantId/parent: the tenant becomes a root. */
+exports.removeTenantParent = (tenantId, actor) => moveTenant(tenantId, null, actor);
 
 // ==========================================
 // UTILITIES

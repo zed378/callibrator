@@ -4,6 +4,8 @@
  * Stores time-series telemetry data from IoT calibration devices.
  */
 
+// D-27 (ADR-070): every JSON column declares its shape, validated on write.
+const { jsonShape } = require("../utils/jsonShape.util");
 const defineModel = (db, DataTypes) => {
   const IotReading = db.define(
     "IotReading",
@@ -32,6 +34,7 @@ const defineModel = (db, DataTypes) => {
       },
       metrics: {
         type: DataTypes.JSONB,
+        validate: { shape: jsonShape("IotReading.metrics") },
         allowNull: false,
         comment: "Stores the telemetry readings (e.g. { temperature: 22, humidity: 45 })",
       },

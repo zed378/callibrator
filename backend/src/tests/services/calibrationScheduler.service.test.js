@@ -2,9 +2,14 @@ jest.mock("../../models", () => ({
   CalibrationDevice: { findAll: jest.fn() },
   MaintenanceWorkOrder: { findAll: jest.fn() },
 }));
-jest.mock("../../services/maintenance.service", () => ({ createWorkOrder: jest.fn() }));
+jest.mock("../../services/maintenance.service", () => ({ createAutoScheduledWorkOrders: jest.fn() }));
 jest.mock("../../services/notification.service", () => ({ emitNotification: jest.fn() }));
 jest.mock("../../services/webhook.service", () => ({ emitEvent: jest.fn() }));
+// W-04: the tenant-wide notification and its audit row are one transaction.
+jest.mock("../../config", () => ({
+  db: { transaction: jest.fn(async (cb) => cb("TX")) },
+}));
+jest.mock("../../services/audit.service", () => ({ logAction: jest.fn().mockResolvedValue({}) }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
@@ -16,11 +21,22 @@ const maintenanceService = require("../../services/maintenance.service");
 const notificationService = require("../../services/notification.service");
 const webhookService = require("../../services/webhook.service");
 const { logger } = require("../../middlewares/activityLog.middleware");
+const auditService = require("../../services/audit.service");
+
+// W-17 (ADR-073): the scan hands each tenant's chunk to ONE batch call. By
+// default the batch creates every item, numbering the orders wo1, wo2, ...
+const createsAll = (ids = null) =>
+  jest.fn(async (tenantId, items) => ({
+    created: items.map((item, i) => ({ id: ids ? ids[i] : `wo${i + 1}`, deviceId: item.deviceId })),
+    conflicted: [],
+    missing: [],
+  }));
+const batchItems = (call = 0) => maintenanceService.createAutoScheduledWorkOrders.mock.calls[call][1];
 
 describe("calibrationScheduler.service", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    maintenanceService.createWorkOrder.mockResolvedValue({ data: { id: "wo1" } });
+    maintenanceService.createAutoScheduledWorkOrders.mockImplementation(createsAll());
     notificationService.emitNotification.mockResolvedValue({ id: "n1" });
     webhookService.emitEvent.mockResolvedValue({ matched: 0 });
   });
@@ -37,7 +53,7 @@ describe("calibrationScheduler.service", () => {
     expect(summary.workOrdersCreated).toBe(1);
     expect(summary.notificationsCreated).toBe(1);
     expect(summary.skipped).toBe(0);
-    expect(maintenanceService.createWorkOrder).toHaveBeenCalled();
+    expect(maintenanceService.createAutoScheduledWorkOrders).toHaveBeenCalled();
     expect(webhookService.emitEvent).toHaveBeenCalledWith(
       "t1",
       "device.overdue",
@@ -55,7 +71,7 @@ describe("calibrationScheduler.service", () => {
 
     expect(summary.workOrdersCreated).toBe(0);
     expect(summary.skipped).toBe(1);
-    expect(maintenanceService.createWorkOrder).not.toHaveBeenCalled();
+    expect(maintenanceService.createAutoScheduledWorkOrders).not.toHaveBeenCalled();
     expect(summary.details[0]).toEqual({
       deviceId: "d1",
       action: "skipped",
@@ -74,15 +90,16 @@ describe("calibrationScheduler.service", () => {
     const summary = await scheduler.runCalibrationScan({ tenantId: "t1", now, leadDays: 30 });
 
     expect(summary.overdue).toBe(0);
-    expect(maintenanceService.createWorkOrder).toHaveBeenCalledWith(
+    expect(maintenanceService.createAutoScheduledWorkOrders).toHaveBeenCalledWith(
       "t1",
-      expect.objectContaining({
-        title: "Calibration due: Dev",
-        priority: "High",
-        type: "Preventative",
-        status: "Open",
-        description: expect.stringContaining("(S/N SN9) is due for calibration (scheduled 2025-01-05)"),
-      }),
+      [
+        {
+          deviceId: "d1",
+          title: "Calibration due: Dev",
+          priority: "High",
+          description: expect.stringContaining("(S/N SN9) is due for calibration (scheduled 2025-01-05)"),
+        },
+      ],
       { systemActor: "system:calibration-scan" },
     );
     expect(notificationService.emitNotification).toHaveBeenCalledWith(
@@ -92,6 +109,7 @@ describe("calibrationScheduler.service", () => {
         title: "Device calibration due",
         actionUrl: "/dashboard/devices/d1",
       }),
+      { transaction: "TX" },
     );
     expect(webhookService.emitEvent).toHaveBeenCalledWith(
       "t1",
@@ -114,53 +132,118 @@ describe("calibrationScheduler.service", () => {
 
     await scheduler.runCalibrationScan({ tenantId: "t1" });
 
-    const wo = maintenanceService.createWorkOrder.mock.calls[0][1];
+    const [wo] = batchItems();
     expect(wo.description).toContain('Device "Dev" is');
     expect(wo.description).not.toContain("S/N");
     expect(wo.description).toContain("(scheduled unknown)");
   });
 
-  it("does not count a notification when emitNotification returns nothing", async () => {
+  it("W-04: a notification whose transaction fails is logged and not counted; the device is not an error", async () => {
     CalibrationDevice.findAll.mockResolvedValue([
       { id: "d1", tenantId: "t1", name: "Dev", nextCalibrationDate: new Date("2020-01-01") },
     ]);
     MaintenanceWorkOrder.findAll.mockResolvedValue([]);
-    notificationService.emitNotification.mockResolvedValue(null);
+    notificationService.emitNotification.mockRejectedValue(new Error("insert failed"));
 
     const summary = await scheduler.runCalibrationScan({ tenantId: "t1" });
 
     expect(summary.workOrdersCreated).toBe(1);
     expect(summary.notificationsCreated).toBe(0);
+    expect(summary.errors).toBe(0);
+    expect(auditService.logAction).not.toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining("the notifications for 1 device(s) of tenant t1 were not created"),
+    );
   });
 
-  it("reports a null workOrderId when createWorkOrder returns no data envelope", async () => {
+  it("W-04: a scheduled scan's tenant-wide notification is audited as system:calibration-scan, in its transaction", async () => {
     CalibrationDevice.findAll.mockResolvedValue([
       { id: "d1", tenantId: "t1", name: "Dev", nextCalibrationDate: new Date("2020-01-01") },
     ]);
     MaintenanceWorkOrder.findAll.mockResolvedValue([]);
-    maintenanceService.createWorkOrder.mockResolvedValue(null);
 
-    const summary = await scheduler.runCalibrationScan({ tenantId: "t1" });
+    await scheduler.runCalibrationScan({ tenantId: "t1" });
 
-    expect(summary.details[0].workOrderId).toBeNull();
-    expect(webhookService.emitEvent).toHaveBeenCalledWith(
-      "t1",
-      "device.overdue",
-      expect.objectContaining({ workOrderId: null }),
+    expect(auditService.logAction).toHaveBeenCalledTimes(1);
+    expect(auditService.logAction).toHaveBeenCalledWith(
+      {
+        tenantId: "t1",
+        systemActor: "system:calibration-scan",
+        action: "CREATE",
+        resourceType: "Notification",
+        resourceId: "n1",
+        changes: {
+          operation: "CALIBRATION_REMINDER",
+          audience: "tenant",
+          deviceId: "d1",
+          workOrderId: "wo1",
+          overdue: true,
+        },
+      },
+      { transaction: "TX" },
     );
   });
 
-  it("records an error for a failing device and keeps scanning the rest", async () => {
+  it("W-04: a manual run's notification names the requesting user, not the job", async () => {
+    CalibrationDevice.findAll.mockResolvedValue([
+      { id: "d1", tenantId: "t1", name: "Dev", nextCalibrationDate: new Date("2020-01-01") },
+    ]);
+    MaintenanceWorkOrder.findAll.mockResolvedValue([]);
+
+    await scheduler.runCalibrationScan({
+      tenantId: "t1",
+      actor: { userId: "u1", ipAddress: "10.0.0.1", userAgent: "ua" },
+    });
+
+    const [entry] = auditService.logAction.mock.calls[0];
+    expect(entry).toMatchObject({ userId: "u1", ipAddress: "10.0.0.1", userAgent: "ua" });
+    expect(entry).not.toHaveProperty("systemActor");
+    expect(entry.changes.workOrderId).toBe("wo1");
+    expect(maintenanceService.createAutoScheduledWorkOrders.mock.calls[0][2]).toEqual({
+      userId: "u1",
+      ipAddress: "10.0.0.1",
+      userAgent: "ua",
+    });
+  });
+
+  it("W-04: a failed audit insert means no notification is counted", async () => {
+    CalibrationDevice.findAll.mockResolvedValue([
+      { id: "d1", tenantId: "t1", name: "Dev", nextCalibrationDate: new Date("2020-01-01") },
+    ]);
+    MaintenanceWorkOrder.findAll.mockResolvedValue([]);
+    auditService.logAction.mockRejectedValueOnce(new Error("audit insert failed"));
+
+    const summary = await scheduler.runCalibrationScan({ tenantId: "t1" });
+
+    expect(summary.notificationsCreated).toBe(0);
+  });
+
+  it("a device the batch reports as not the tenant's is an error, and nothing is notified for it", async () => {
+    CalibrationDevice.findAll.mockResolvedValue([
+      { id: "d1", tenantId: "t1", name: "Dev", nextCalibrationDate: new Date("2020-01-01") },
+    ]);
+    MaintenanceWorkOrder.findAll.mockResolvedValue([]);
+    maintenanceService.createAutoScheduledWorkOrders.mockResolvedValue({ created: [], conflicted: [], missing: ["d1"] });
+
+    const summary = await scheduler.runCalibrationScan({ tenantId: "t1" });
+
+    expect(summary).toMatchObject({ errors: 1, workOrdersCreated: 0, notificationsCreated: 0 });
+    expect(summary.details).toEqual([{ deviceId: "d1", action: "error", error: "Device not found" }]);
+    expect(notificationService.emitNotification).not.toHaveBeenCalled();
+    expect(webhookService.emitEvent).not.toHaveBeenCalled();
+  });
+
+  it("a failed chunk is an error for each of its devices, and the next chunk still runs", async () => {
     CalibrationDevice.findAll.mockResolvedValue([
       { id: "d1", tenantId: "t1", name: "Bad", nextCalibrationDate: new Date("2020-01-01") },
       { id: "d2", tenantId: "t1", name: "Good", nextCalibrationDate: new Date("2020-01-01") },
     ]);
     MaintenanceWorkOrder.findAll.mockResolvedValue([]);
-    maintenanceService.createWorkOrder
+    maintenanceService.createAutoScheduledWorkOrders
       .mockRejectedValueOnce(new Error("boom"))
-      .mockResolvedValue({ data: { id: "wo2" } });
+      .mockImplementation(createsAll(["wo2"]));
 
-    const summary = await scheduler.runCalibrationScan({ tenantId: "t1" });
+    const summary = await scheduler.runCalibrationScan({ tenantId: "t1", txBatchSize: 1 });
 
     expect(summary.scanned).toBe(2);
     expect(summary.errors).toBe(1);
@@ -169,7 +252,7 @@ describe("calibrationScheduler.service", () => {
       { deviceId: "d1", action: "error", error: "boom" },
       { deviceId: "d2", action: "created", overdue: true, workOrderId: "wo2" },
     ]);
-    expect(logger.error).toHaveBeenCalledWith("Calibration scan failed for device d1: boom");
+    expect(logger.error).toHaveBeenCalledWith("Calibration scan failed for 1 device(s) of tenant t1: boom");
   });
 
   it("scans every tenant when tenantId is omitted", async () => {
@@ -253,7 +336,7 @@ describe("calibrationScheduler.service", () => {
       const result = await scheduler.getDueDevices();
 
       expect(result).toEqual([]);
-      expect(maintenanceService.createWorkOrder).not.toHaveBeenCalled();
+      expect(maintenanceService.createAutoScheduledWorkOrders).not.toHaveBeenCalled();
       expect(CalibrationDevice.findAll.mock.calls[0][0].where).not.toHaveProperty("tenantId");
     });
   });

@@ -7,6 +7,8 @@
  * ESignatureRecord, which is the certificate module's polymorphic compliance log.
  */
 
+// D-27 (ADR-070): every JSON column declares its shape, validated on write.
+const { jsonShape } = require("../utils/jsonShape.util");
 const defineModel = (db, DataTypes) => {
   const SignatureRecord = db.define(
     "SignatureRecord",
@@ -80,11 +82,13 @@ const defineModel = (db, DataTypes) => {
       },
       polygon: {
         type: DataTypes.JSON,
+        validate: { shape: jsonShape("SignatureRecord.polygon") },
         allowNull: true,
         comment: "Captured hand-drawn signature polygon, if any",
       },
       biometricData: {
         type: DataTypes.JSON,
+        validate: { shape: jsonShape("SignatureRecord.biometricData") },
         allowNull: true,
       },
       authenticationMethod: {

@@ -87,7 +87,7 @@ This used to say only "non-root". Precisely, in the compose stack (`deploy/compo
 | nginx | master root (binds 80/443), workers `nginx` | CHOWN, SETUID, SETGID, NET_BIND_SERVICE, DAC_OVERRIDE | **yes** (tmpfs `/var/cache/nginx`, `/var/run`, `/tmp`) | 0.5 |
 | volume-init | root, runs once | CHOWN, FOWNER, DAC_OVERRIDE | — | — |
 
-Every service has `no-new-privileges`. **Not verified by running** — no Docker where it was written; the first `make up` must show every container healthy, and a missing capability appears as an entrypoint "Operation not permitted" in `docker compose logs <service>`.
+Every service has `no-new-privileges`. **PARTLY VERIFIED BY RUNNING (2026-09-25, ADR-066): with the dev overlay, volume-init, postgres, redis (read_only), rabbitmq and the backend (uid 997, no capabilities) all reached healthy under these settings, and the backend connected to all three datastores. clamav, frontend, nginx, pgadmin and minio were NOT started, and no other overlay was brought up.** For the services not started, the first `make up` must show every container healthy, and a missing capability appears as an entrypoint "Operation not permitted" in `docker compose logs <service>`.
 
 ## Frontend Image
 

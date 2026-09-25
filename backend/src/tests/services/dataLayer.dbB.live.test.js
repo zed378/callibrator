@@ -20,14 +20,16 @@
 
 const live = process.env.DATA_PG_LIVE_TEST === "1" ? describe : describe.skip;
 
+// sync({ force: true }) drops and recreates ~75 tables: well past the 10 s
+// default on a database that already holds them.
+jest.setTimeout(180000);
+
 const TENANT_A = "d1d1d1d1-0000-4000-8000-00000000000a";
 const TENANT_B = "d2d2d2d2-0000-4000-8000-00000000000b";
 
 const startProcess = () => {
   let graph;
   jest.isolateModules(() => {
-    // jest.config maps `uuid` to a constant (A-116); real rows need real ids.
-    require("uuid").v4.mockImplementation(() => require("crypto").randomUUID());
     const { db } = require("../../config");
     db.options.logging = false;
     graph = {
@@ -176,7 +178,12 @@ live("dbB data layer — live PostgreSQL (D-18, D-19, D-20, D-21)", () => {
         "FOREIGN KEY (workflow_step_id) REFERENCES signature_workflow_steps(id) ON UPDATE CASCADE ON DELETE RESTRICT",
       );
       const err = await errorOf("DELETE FROM signature_workflow_steps WHERE id = :s", { s: ids.step });
-      expect(err && err.original && err.original.code).toBe("23503"); // foreign_key_violation
+      // PostgreSQL 18 reports an ON DELETE RESTRICT refusal as 23001
+      // restrict_violation; 16 reported 23503 foreign_key_violation. Either is
+      // the refusal. NOTE: Sequelize 6 maps only 23503 to
+      // ForeignKeyConstraintError — on 18 this surfaces as a plain
+      // DatabaseError, so any 409 translation must test both codes.
+      expect(["23001", "23503"]).toContain(err && err.original && err.original.code);
     });
 
     it("a second up changes nothing; down restores exactly the CASCADE it replaced", async () => {

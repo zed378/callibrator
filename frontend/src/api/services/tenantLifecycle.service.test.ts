@@ -63,8 +63,8 @@ describe("tenantLifecycleService", () => {
   });
 
   describe("offboard", () => {
-    it("POSTs /offboard with force flag and unwraps { tenant, exportData }", async () => {
-      const payload = { tenant: { status: "OFFBOARDED" }, exportData: { exportedAt: "x", tenant: {} } };
+    it("POSTs /offboard with force flag and unwraps { tenant }", async () => {
+      const payload = { tenant: { status: "OFFBOARDED" } };
       mockedApi.post.mockResolvedValueOnce(envelope(payload));
       const res = await tenantLifecycleService.offboard(TID, true);
       expect(mockedApi.post).toHaveBeenCalledWith(`${BASE}/offboard`, { force: true });
@@ -72,7 +72,7 @@ describe("tenantLifecycleService", () => {
     });
 
     it("passes force:undefined when omitted", async () => {
-      mockedApi.post.mockResolvedValueOnce(envelope({ tenant: {}, exportData: {} }));
+      mockedApi.post.mockResolvedValueOnce(envelope({ tenant: {} }));
       await tenantLifecycleService.offboard(TID);
       expect(mockedApi.post).toHaveBeenCalledWith(`${BASE}/offboard`, { force: undefined });
     });

@@ -346,6 +346,37 @@ class WorkflowService {
   }
 
   /**
+   * A-202 / A-203 — the PENDING workflow instance deciding on a resource, or
+   * null. While one exists the resource is decided THROUGH it: a direct
+   * approval of the certificate, or a manual move of the stock transfer, is
+   * refused (409) by its service.
+   *
+   * @param {string} tenantId
+   * @param {string} resourceType - "Certificate" | "StockTransfer" | ...
+   * @param {string} resourceId
+   * @param {object} [transaction]
+   * @returns {Promise<object|null>} the instance, with `workflow` (id, name)
+   */
+  async findPendingInstance(tenantId, resourceType, resourceId, transaction = null) {
+    return WorkflowInstance.findOne({
+      where: { tenantId, resourceId, status: "PENDING" },
+      include: [
+        {
+          model: Workflow,
+          as: "workflow",
+          attributes: ["id", "name", "resourceType"],
+          // required: true on purpose — the resource type IS the filter (a
+          // resource id is only unique within its type).
+          where: { resourceType },
+          required: true,
+        },
+      ],
+      order: [["createdAt", "DESC"]],
+      transaction,
+    });
+  }
+
+  /**
    * Fetch all workflow instances waiting for approval by a specific user (based on their role)
    */
   async getPendingTasks(tenantId, user) {
@@ -555,7 +586,7 @@ class WorkflowService {
             comments,
           });
         } else {
-          await this._updateTargetResourceStatus(tenantId, resourceType, instance.resourceId, "REJECTED", t);
+          await this._updateTargetResourceStatus(tenantId, resourceType, instance.resourceId, "REJECTED", t, user);
         }
       } else if (finalApproval) {
         instance.status = "APPROVED";
@@ -624,25 +655,81 @@ class WorkflowService {
     // #applyWorkflowRejection). This wrote "APPROVED" / "DRAFT" — not values
     // of the lowercase status ENUM — and `approvedById` / `approvedAt`, which
     // are not Certificate attributes (A-200).
+    //
+    // A-201 (ADR-065) — this wrote "Approved" / "Rejected" to a StockTransfer,
+    // values its ENUM (pending, in_transit, completed, cancelled) does not
+    // have: every final decision would have failed on PostgreSQL, rolling the
+    // decision back. And `approvedAt` is not a StockTransfer attribute. The
+    // mapping now lands on the transfer's own lifecycle:
+    //   APPROVED -> in_transit (released to move; approvedBy = the approver).
+    //     The stock itself moves only at "completed" (stock.service
+    //     #updateTransferStatus), which counts and audits both quantities —
+    //     an approval authorises a movement, it does not perform it.
+    //   REJECTED -> cancelled (approvedBy = who decided, as a manual cancel records).
+    // A transfer that has already left `pending` is not rewritten: 409.
     if (resourceType === "StockTransfer") {
-      const record = await StockTransfer.findOne({ where: { id: resourceId, tenantId }, transaction });
-      if (record) {
-        if (finalStatus === "APPROVED") {
-          record.status = "Approved";
-          record.approvedBy = approverUser ? approverUser.id : null;
-          record.approvedAt = new Date();
-        } else if (finalStatus === "REJECTED") {
-          record.status = "Rejected";
-        }
-        await record.save({ transaction });
+      const record = await StockTransfer.findOne({
+        where: { id: resourceId, tenantId },
+        transaction,
+        lock: Transaction.LOCK.UPDATE,
+      });
+      if (!record) {
+        throw new AppError(409, "The stock transfer this workflow decides on no longer exists. Nothing was recorded.");
       }
+      if (record.status !== "pending") {
+        throw new AppError(
+          409,
+          `This stock transfer is "${record.status}" and can no longer be ${
+            finalStatus === "APPROVED" ? "approved" : "rejected"
+          } through its workflow: only a pending transfer is decided.`,
+        );
+      }
+      const before = { status: record.status, approvedBy: record.approvedBy || null };
+      record.status = finalStatus === "APPROVED" ? "in_transit" : "cancelled";
+      record.approvedBy = approverUser ? approverUser.id : null;
+      await record.save({ transaction });
+      await auditService.logAction(
+        {
+          tenantId,
+          userId: approverUser ? approverUser.id : null,
+          action: "UPDATE",
+          resourceType: "StockTransfer",
+          resourceId: record.id,
+          changes: {
+            operation: finalStatus === "APPROVED" ? "WORKFLOW_APPROVE" : "WORKFLOW_REJECT",
+            before,
+            after: { status: record.status, approvedBy: record.approvedBy },
+          },
+        },
+        { transaction },
+      );
     } else if (resourceType === "MaintenanceWorkOrder") {
+      // A-201 — a sign-off workflow on a work order. Nothing starts one today
+      // (no startWorkflow("MaintenanceWorkOrder") caller), so this is the
+      // contract for when something does: APPROVED signs the work off
+      // (Completed); REJECTED sends it back to the performer (InProgress).
+      // A rejection used to change nothing, so a rejected work order looked
+      // exactly like one still awaiting its decision.
       const record = await MaintenanceWorkOrder.findOne({ where: { id: resourceId, tenantId }, transaction });
       if (record) {
-        if (finalStatus === "APPROVED") {
-          record.status = "Completed";
-        }
+        const before = { status: record.status };
+        record.status = finalStatus === "APPROVED" ? "Completed" : "InProgress";
         await record.save({ transaction });
+        await auditService.logAction(
+          {
+            tenantId,
+            userId: approverUser ? approverUser.id : null,
+            action: "UPDATE",
+            resourceType: "MaintenanceWorkOrder",
+            resourceId: record.id,
+            changes: {
+              operation: finalStatus === "APPROVED" ? "WORKFLOW_APPROVE" : "WORKFLOW_REJECT",
+              before,
+              after: { status: record.status },
+            },
+          },
+          { transaction },
+        );
       }
     }
   }

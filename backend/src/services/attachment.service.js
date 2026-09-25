@@ -13,6 +13,7 @@
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
+const { Op, fn, col, where: sqlWhere } = require("sequelize");
 const { Attachment, Certificate } = require("../models");
 // NOT `db` from the models barrel — that export is the models registry's
 // sequelize handle under a different name; the config module is the one that
@@ -166,6 +167,189 @@ const assertLinkTarget = async (tenantId, resourceType, resourceId) => {
     throw new AppError(404, "Resource not found");
   }
 };
+
+// ------------------------------------------------------------------
+// PARENT DELETE CASCADE (D-22, ADR-070)
+// ------------------------------------------------------------------
+
+/**
+ * The lower-cased `resourceType` spellings that link to `modelName`.
+ * @param {string} modelName - a value of LINKABLE_RESOURCES
+ * @returns {string[]}
+ */
+const typesLinkingTo = (modelName) =>
+  Object.keys(LINKABLE_RESOURCES).filter((type) => LINKABLE_RESOURCES[type] === modelName);
+
+/**
+ * D-22 (ADR-070) — a parent's soft delete soft-deletes its attachments, in the
+ * parent's transaction, with one DELETE audit row per attachment that names
+ * the parent (`changes.cascade`). It used to leave them live: listed, counted
+ * against the tenant's storage and downloadable, attached to a record nobody
+ * could open any more.
+ *
+ * The FILE is kept, unlike an explicit delete (deleteAttachment unlinks it
+ * after commit): deleting a draft certificate is not a decision to destroy the
+ * evidence bytes, and a later restore of the parent can restore these rows —
+ * exactly the ones whose DELETE row names it in `changes.cascade` — only while
+ * the bytes exist. No gated path serves a soft-deleted row, so a kept file is
+ * unreachable, not exposed.
+ *
+ * Matching is case-insensitive over every spelling that links to the model
+ * (`device` and `CalibrationDevice` alike), with the tenant predicate explicit.
+ *
+ * @param {string} tenantId - the parent's tenant
+ * @param {string} modelName - the parent model, a value of LINKABLE_RESOURCES
+ * @param {string} resourceId - the parent's id
+ * @param {object} options
+ * @param {object} options.transaction - the parent delete's transaction (required)
+ * @param {{userId?: string, ipAddress?: string, userAgent?: string}} [options.actor]
+ * @returns {Promise<string[]>} the ids of the attachments soft-deleted
+ * @throws {Error} a model that is not linkable, or no transaction — both are
+ *   programming errors, never a caller's input
+ */
+exports.softDeleteForResource = async (tenantId, modelName, resourceId, { transaction, actor = {} } = {}) => {
+  const types = typesLinkingTo(modelName);
+  if (types.length === 0) {
+    throw new Error(`softDeleteForResource: ${modelName} is not a linkable resource`);
+  }
+  if (!transaction) {
+    throw new Error("softDeleteForResource runs inside the parent delete's transaction");
+  }
+
+  const rows = await Attachment.findAll({
+    where: {
+      tenantId,
+      resourceId,
+      [Op.and]: [sqlWhere(fn("lower", col("resource_type")), { [Op.in]: types })],
+    },
+    attributes: ["id", "resourceType", "resourceId", "originalName", "checksum"],
+    transaction,
+  });
+  if (rows.length === 0) {
+    return [];
+  }
+
+  const ids = rows.map((row) => row.id);
+  await Attachment.update({ isDeleted: true }, { where: { id: ids, tenantId }, transaction });
+  for (const row of rows) {
+    await auditService.logAction(
+      {
+        tenantId,
+        userId: actor.userId || null,
+        action: "DELETE",
+        resourceType: "Attachment",
+        resourceId: row.id,
+        changes: {
+          operation: "cascade-soft-delete",
+          before: { isDeleted: false },
+          after: { isDeleted: true },
+          originalName: row.originalName,
+          checksum: row.checksum,
+          resource: { type: row.resourceType, id: row.resourceId },
+          cascade: { type: modelName, id: resourceId },
+        },
+        ipAddress: actor.ipAddress || null,
+        userAgent: actor.userAgent || null,
+      },
+      { transaction },
+    );
+  }
+  return ids;
+};
+
+// ------------------------------------------------------------------
+// ORPHAN REPORT (D-22, ADR-070)
+// ------------------------------------------------------------------
+
+/**
+ * D-22 — for each linkable model, its table and what makes a parent row LIVE.
+ * A calibration record's `is_deleted` is a VOID (P6-03), not a delete: a voided
+ * record is retained evidence, and so are its files — not orphans. A device's
+ * `is_deleted` is its delete. A test holds every LINKABLE_RESOURCES model here.
+ */
+const LIVE_PARENTS = Object.freeze({
+  Certificate: { table: "certificates", live: "p.deleted_at IS NULL" },
+  CalibrationDevice: { table: "calibration_devices", live: "p.deleted_at IS NULL AND p.is_deleted = false" },
+  CalibrationRecord: { table: "calibration_records", live: "p.deleted_at IS NULL" },
+  MaintenanceWorkOrder: { table: "maintenance_work_orders", live: "p.deleted_at IS NULL" },
+  KanbanCard: { table: "kanban_cards", live: "p.deleted_at IS NULL" },
+});
+
+const quoteList = (values) => values.map((v) => `'${v}'`).join(", ");
+
+/**
+ * The predicate "this attachment's parent is a live record of its tenant",
+ * one EXISTS per linkable model. Built only from the two constant maps above —
+ * never from input — so interpolating it is safe.
+ */
+const LIVE_PARENT_SQL = Object.entries(LIVE_PARENTS)
+  .map(
+    ([modelName, { table, live }]) =>
+      `(lower(a.resource_type) IN (${quoteList(typesLinkingTo(modelName))}) AND EXISTS (` +
+      `SELECT 1 FROM ${table} p WHERE p.id = a.resource_id AND p.tenant_id = a.tenant_id AND ${live}))`,
+  )
+  .join("\n        OR ");
+
+const ORPHAN_FROM = `
+    FROM attachments a
+   WHERE a.tenant_id = :tenantId
+     AND a.is_deleted = false
+     AND a.deleted_at IS NULL
+     AND a.resource_id IS NOT NULL
+     AND NOT (
+        ${LIVE_PARENT_SQL}
+     )`;
+
+const ORPHAN_ROWS_SQL = `
+  SELECT a.id, a.resource_type AS "resourceType", a.resource_id AS "resourceId",
+         a.original_name AS "originalName", a.mime_type AS "mimeType", a.size,
+         a.uploaded_by AS "uploadedBy", a.created_at AS "createdAt",
+         CASE WHEN lower(a.resource_type) IN (${quoteList(Object.keys(LINKABLE_RESOURCES))})
+              THEN 'parent_missing_or_deleted' ELSE 'unlinkable_type' END AS reason
+  ${ORPHAN_FROM}
+   ORDER BY a.created_at DESC, a.id
+   LIMIT :limit OFFSET :offset`;
+
+const ORPHAN_COUNT_SQL = `SELECT count(*)::int AS total ${ORPHAN_FROM}`;
+
+/**
+ * D-22 (ADR-070) — the caller's tenant's LIVE attachments whose link resolves
+ * to no live record: the parent was deleted before the cascade existed, was
+ * removed outside the application, or the type cannot be linked at all
+ * (`unlinkable_type` — rows written before A-97). Read-only; what to do with an
+ * orphan (delete it, or re-link it) is an administrator's decision, made
+ * through the ordinary audited routes.
+ *
+ * Raw SQL (a polymorphic anti-join has no model form), so the tenant predicate
+ * is explicit — and it is the attachment's tenant AND the parent's, so another
+ * tenant's record never counts as a live parent.
+ *
+ * @param {string} tenantId - the caller's tenant
+ * @param {{page?: number|string, limit?: number|string}} [query]
+ * @returns {Promise<{rows: object[], meta: {total: number, page: number, limit: number, totalPages: number}}>}
+ */
+exports.listOrphans = async (tenantId, { page = 1, limit = DEFAULT_LIMIT } = {}) => {
+  const safeLimit = Math.min(Number(limit) || DEFAULT_LIMIT, MAX_LIMIT);
+  const safePage = Math.max(Number(page) || 1, 1);
+  const [[[{ total }]], [rows]] = await Promise.all([
+    db.query(ORPHAN_COUNT_SQL, { replacements: { tenantId } }),
+    db.query(ORPHAN_ROWS_SQL, {
+      replacements: { tenantId, limit: safeLimit, offset: (safePage - 1) * safeLimit },
+    }),
+  ]);
+  return {
+    rows: rows.map((row) => ({ ...row, size: Number(row.size) })),
+    meta: {
+      total,
+      page: safePage,
+      limit: safeLimit,
+      totalPages: Math.ceil(total / safeLimit),
+    },
+  };
+};
+
+exports.LINKABLE_RESOURCES = LINKABLE_RESOURCES;
+exports.LIVE_PARENTS = LIVE_PARENTS;
 
 // ------------------------------------------------------------------
 // CREATE (from a multer-uploaded file)

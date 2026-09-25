@@ -16,6 +16,7 @@ import {
   Card,
   CardContent,
   Dialog,
+  Input,
 } from "@/components/ui";
 import { Fingerprint, KeyRound, ShieldCheck, Trash2 } from "lucide-react";
 import {
@@ -60,6 +61,10 @@ export default function WebauthnPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [isDisableOpen, setIsDisableOpen] = useState(false);
+  // A-213: removing the passkey re-authenticates.
+  const [disablePassword, setDisablePassword] = useState("");
+  const [disableCode, setDisableCode] = useState("");
+  const needsCode = user?.mfaEnabled === true;
 
   const isSupported = useSyncExternalStore(
     subscribeToNothing,
@@ -117,12 +122,21 @@ export default function WebauthnPage() {
     }
   };
 
+  const closeDisable = () => {
+    setIsDisableOpen(false);
+    setDisablePassword("");
+    setDisableCode("");
+  };
+
   const disable = async () => {
     setBusy("disable");
     try {
-      await webauthnService.disable();
+      await webauthnService.disable({
+        currentPassword: disablePassword,
+        ...(needsCode ? { code: disableCode.trim() } : {}),
+      });
       addToast({ type: "success", title: "Passkey removed" });
-      setIsDisableOpen(false);
+      closeDisable();
       await load();
     } catch (err) {
       addToast({
@@ -249,7 +263,7 @@ export default function WebauthnPage() {
 
         <Dialog
           isOpen={isDisableOpen}
-          onClose={() => setIsDisableOpen(false)}
+          onClose={closeDisable}
           title="Remove Passkey"
           size="md"
         >
@@ -258,14 +272,31 @@ export default function WebauthnPage() {
               You will need your password to sign in after this. You can
               register a new passkey at any time.
             </Alert>
+            <Input
+              label="Current password"
+              type="password"
+              autoComplete="current-password"
+              value={disablePassword}
+              onChange={(e) => setDisablePassword(e.target.value)}
+            />
+            {needsCode && (
+              <Input
+                label="Authenticator code"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                value={disableCode}
+                onChange={(e) => setDisableCode(e.target.value)}
+              />
+            )}
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setIsDisableOpen(false)}>
+              <Button variant="outline" onClick={closeDisable}>
                 Cancel
               </Button>
               <Button
                 variant="danger"
                 onClick={disable}
                 isLoading={busy === "disable"}
+                disabled={!disablePassword || (needsCode && !disableCode.trim())}
               >
                 Remove Passkey
               </Button>

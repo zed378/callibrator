@@ -228,161 +228,21 @@ const DEFAULT_MENUS = [MENU_SLUGS.PROFILE, PROFILE_SUB_ROUTES.CHANGE_PASSWORD];
 // DATABASE OPERATIONS
 // ==========================================
 
-/**
- * Drop all seeded tables (truncate)
- * @returns {Promise<Object>} Result of drop operation
+/*
+ * A-261: `dropSeededTables`, which force-deleted every user, tenant, role and
+ * stock row one statement at a time with no transaction, is REMOVED as well
+ * (ADR-072): nothing called it — no route, controller, script or boot path.
+ *
+ * A-259 (ADR-068): `syncTables` (a forced `db.sync`, dropping every table) and
+ * `resetAndSeed`, which called it, are REMOVED. Since P6-03 (migration 0057)
+ * the backend runs its queries as the application role, which may not drop or
+ * create tables, so both failed on every deployment — and nothing called
+ * either (no route, script or boot path). Dropping and recreating the schema
+ * is an owner operation: it is done with the owner's credentials, outside the
+ * application (`make migrate` on an empty database), never by a runtime
+ * helper that also erases the audit trail and the append-only calibration
+ * records.
  */
-async function dropSeededTables() {
-  const result = {
-    stockTransfersDeleted: 0,
-    stockAdjustmentsDeleted: 0,
-    stockOpnamesDeleted: 0,
-    stocksDeleted: 0,
-    storageLocationsDeleted: 0,
-    warehousesDeleted: 0,
-    usersDeleted: 0,
-    roleMenuPermissionsDeleted: 0,
-    menuGroupsDeleted: 0,
-    rolesDeleted: 0,
-    errors: [],
-  };
-
-  try {
-    // Delete dependent tables first
-    result.stockTransfersDeleted = await StockTransfer.destroy({
-      where: {},
-      force: true,
-    });
-    logger.info(`Dropped ${result.stockTransfersDeleted} stock transfers`);
-
-    result.stockAdjustmentsDeleted = await StockAdjustment.destroy({
-      where: {},
-      force: true,
-    });
-    logger.info(`Dropped ${result.stockAdjustmentsDeleted} stock adjustments`);
-
-    result.stockOpnamesDeleted = await StockOpname.destroy({
-      where: {},
-      force: true,
-    });
-    logger.info(`Dropped ${result.stockOpnamesDeleted} stock opnames`);
-
-    result.stocksDeleted = await Stock.destroy({ where: {}, force: true });
-    logger.info(`Dropped ${result.stocksDeleted} stocks`);
-
-    result.storageLocationsDeleted = await StorageLocation.destroy({
-      where: {},
-      force: true,
-    });
-    logger.info(`Dropped ${result.storageLocationsDeleted} storage locations`);
-
-    result.warehousesDeleted = await Warehouse.destroy({
-      where: {},
-      force: true,
-    });
-    logger.info(`Dropped ${result.warehousesDeleted} warehouses`);
-
-    // Delete users (foreign key dependency)
-    result.usersDeleted = await Users.destroy({
-      where: {},
-      force: true,
-    });
-    logger.info(`Dropped ${result.usersDeleted} users`);
-
-    // Delete tenants
-    result.tenantsDeleted = await Tenant.destroy({
-      where: {},
-      force: true,
-    });
-    logger.info(`Dropped ${result.tenantsDeleted} tenants`);
-
-    // Delete role menu permissions
-    result.roleMenuPermissionsDeleted = await RoleMenuPermission.destroy({
-      where: {},
-      force: true,
-    });
-    logger.info(
-      `Dropped ${result.roleMenuPermissionsDeleted} role menu permissions`,
-    );
-
-    // Delete menu groups
-    result.menuGroupsDeleted = await MenuGroup.destroy({
-      where: {},
-      force: true,
-    });
-    logger.info(`Dropped ${result.menuGroupsDeleted} menu groups`);
-
-    // Delete roles last
-    result.rolesDeleted = await Roles.destroy({
-      where: {},
-      force: true,
-    });
-    logger.info(`Dropped ${result.rolesDeleted} roles`);
-
-    return result;
-  } catch (error) {
-    result.errors.push(`Error dropping tables: ${error.message}`);
-    logger.error(`Failed to drop tables: ${error.message}`);
-    return result;
-  }
-}
-
-/**
- * Sync database tables (recreate all tables)
- * @returns {Promise<Object>} Result of sync operation
- */
-async function syncTables() {
-  const result = {
-    synced: false,
-    errors: [],
-  };
-
-  try {
-    const { db } = require("../config");
-    await db.sync({ force: true });
-    result.synced = true;
-    logger.info("All database tables synced successfully");
-    return result;
-  } catch (error) {
-    result.errors.push(`Error syncing tables: ${error.message}`);
-    logger.error(`Failed to sync tables: ${error.message}`);
-    return result;
-  }
-}
-
-/**
- * Drop tables, sync, and seed - complete reset and seed operation
- * @returns {Promise<Object>} Complete operation result
- */
-async function resetAndSeed() {
-  logger.info("=== Starting database reset and seed ===");
-
-  const result = {
-    drop: await dropSeededTables(),
-  };
-
-  // Sync tables
-  result.sync = await syncTables();
-  if (!result.sync.synced) {
-    logger.error("Table sync failed, aborting seed");
-    return result;
-  }
-
-  // Step 1: Seed roles first (needed for menu permission assignments)
-  result.roles = await seedAllRoles();
-
-  // Step 2: Seed menu groups and assign role permissions (requires roles to exist)
-  result.menuGroups = await seedMenuGroupsAndItems();
-
-  // Step 2.5: Seed default tenant (required before users are created)
-  await seedDefaultTenant();
-
-  // Step 3: Seed users (last, as they reference roles)
-  result.users = await seedUsers();
-
-  logger.info("=== Database reset and seed completed ===");
-  return result;
-}
 
 // ==========================================
 // ROLE SEEDING
@@ -640,7 +500,7 @@ async function seedRoleMenuPermissions(roleName, menuSlugs, permissionType) {
  * A-125 (ADR-051 Q-14) — create the reserved PLATFORM tenant if absent. Its
  * audit trail records platform operations (tenant create and delete, global
  * roles). Migration 0034 creates it too; this covers a database seeded before
- * the migrator runs, or reset by resetAndSeed.
+ * the migrator runs.
  *
  * `includePlatformTenant`: the Tenant model's hooks hide the row from every
  * other query. A soft-deleted PLATFORM row (paranoid: false finds it) is not
@@ -663,7 +523,7 @@ async function seedPlatformTenant() {
 
 /**
  * Seed default tenant — and, first, the PLATFORM tenant (A-125), so every path
- * that seeds a tenant (resetAndSeed, seedAll, seedDemoData) creates both.
+ * that seeds a tenant (seedAll, seedDemoData) creates both.
  * @returns {Promise<void>}
  */
 async function seedDefaultTenant() {
@@ -1884,234 +1744,308 @@ async function seedDemoData() {
 /**
  * Remove all demo rows created by seedDemoData(), in reverse FK order.
  * Matches on the stable DEMO markers so real data is never touched.
- * @returns {Promise<Object>} { deleted: {...}, errors: [] }
+ *
+ * A-259 (ADR-068): all or nothing, and never a calibration record.
+ *  - It runs in ONE transaction. It used to delete table by table with no
+ *    transaction, so the first refusal left the demo half-removed: since P6-03
+ *    (migration 0057) the append-only trigger refuses every DELETE on
+ *    `calibration_records`, for every role, and the certificates, IoT
+ *    readings and work orders deleted before it stayed deleted.
+ *  - Demo calibration records are Part 11 records like any other: they are
+ *    never deleted, and a device with records cannot be deleted either. So
+ *    once a demo record exists the whole unseed is REFUSED before anything is
+ *    touched, and the result says why. (Seeding demo data is the decision that
+ *    cannot be undone; its route is behind SEED_DEMO=true.)
+ *
+ * @returns {Promise<Object>} { deleted: {...}, errors: [], refused?: true }
  */
 /* istanbul ignore next -- demo fixtures only (SEED_DEMO=true, GET /migration/seed-demo, scripts/seedDemo.js): never runs in production; see A-32 */
 async function unseedDemoData() {
   logger.info("=== Removing demo data ===");
+  const { db } = require("../config");
   const tenantId = DEFAULT_TENANT.id;
   const deleted = {};
   const errors = [];
   const like = (col, prefix) => ({ [col]: { [Op.like]: `${prefix}%` } });
 
   try {
-    // Content join + posts + categories (platform-global)
-    const demoPosts = await Post.findAll({
-      where: like("slug", DEMO.contentSlugPrefix),
-      paranoid: false,
-    });
-    const demoPostIds = demoPosts.map((p) => p.id);
-    if (demoPostIds.length) {
-      deleted.postCategories = await PostCategory.destroy({
-        where: { postId: { [Op.in]: demoPostIds } },
-        force: true,
+    await db.transaction(async (transaction) => {
+      // A-259: first, before any delete — the calibration records that make
+      // this impossible.
+      const demoDevices = await CalibrationDevice.findAll({
+        where: { tenantId, ...like("serial_number", DEMO.deviceSerialPrefix) },
+        paranoid: false,
+        transaction,
       });
-    }
-    deleted.posts = await Post.destroy({
-      where: like("slug", DEMO.contentSlugPrefix),
-      force: true,
-      paranoid: false,
-    });
-    deleted.categories = await Category.destroy({
-      where: like("slug", DEMO.contentSlugPrefix),
-      force: true,
-      paranoid: false,
-    });
+      const deviceIds = demoDevices.map((d) => d.id);
+      const records = deviceIds.length
+        ? await CalibrationRecord.count({
+          where: { deviceId: { [Op.in]: deviceIds } },
+          paranoid: false,
+          transaction,
+        })
+        : 0;
+      if (records > 0) {
+        throw Object.assign(
+          new Error(
+            `Demo data cannot be removed: its devices hold ${records} calibration record(s), which are append-only (ADR-062) and are never deleted. Nothing was removed.`,
+          ),
+          { unseedRefused: true },
+        );
+      }
 
-    // Notifications
-    deleted.notifications = await Notification.destroy({
-      where: { tenantId, ...like("title", DEMO.marker) },
-      force: true,
-    });
+      // Content join + posts + categories (platform-global)
+      const demoPosts = await Post.findAll({
+        where: like("slug", DEMO.contentSlugPrefix),
+        paranoid: false,
+        transaction,
+      });
+      const demoPostIds = demoPosts.map((p) => p.id);
+      if (demoPostIds.length) {
+        deleted.postCategories = await PostCategory.destroy({
+          where: { postId: { [Op.in]: demoPostIds } },
+          force: true,
+          transaction,
+        });
+      }
+      deleted.posts = await Post.destroy({
+        where: like("slug", DEMO.contentSlugPrefix),
+        force: true,
+        paranoid: false,
+        transaction,
+      });
+      deleted.categories = await Category.destroy({
+        where: like("slug", DEMO.contentSlugPrefix),
+        force: true,
+        paranoid: false,
+        transaction,
+      });
 
-    // Kanban (cards -> labels -> columns -> project)
-    const demoProjects = await KanbanProject.findAll({
-      where: { tenantId, ...like("name", DEMO.marker) },
-      paranoid: false,
-    });
-    const projectIds = demoProjects.map((p) => p.id);
-    if (projectIds.length) {
-      deleted.kanbanCards = await KanbanCard.destroy({
-        where: { projectId: { [Op.in]: projectIds } },
+      // Notifications
+      deleted.notifications = await Notification.destroy({
+        where: { tenantId, ...like("title", DEMO.marker) },
         force: true,
-        paranoid: false,
+        transaction,
       });
-      deleted.kanbanLabels = await KanbanLabel.destroy({
-        where: { projectId: { [Op.in]: projectIds } },
-        force: true,
-      });
-      deleted.kanbanColumns = await KanbanColumn.destroy({
-        where: { projectId: { [Op.in]: projectIds } },
-        force: true,
-      });
-      deleted.kanbanProjects = await KanbanProject.destroy({
-        where: { id: { [Op.in]: projectIds } },
-        force: true,
-        paranoid: false,
-      });
-    }
 
-    // Tickets (comments -> tickets)
-    const demoTickets = await Ticket.findAll({
-      where: { tenantId, ...like("subject", DEMO.marker) },
-      paranoid: false,
-    });
-    const ticketIds = demoTickets.map((t) => t.id);
-    if (ticketIds.length) {
-      deleted.ticketComments = await TicketComment.destroy({
-        where: { ticketId: { [Op.in]: ticketIds } },
-        force: true,
-      });
-      deleted.tickets = await Ticket.destroy({
-        where: { id: { [Op.in]: ticketIds } },
-        force: true,
+      // Kanban (cards -> labels -> columns -> project)
+      const demoProjects = await KanbanProject.findAll({
+        where: { tenantId, ...like("name", DEMO.marker) },
         paranoid: false,
+        transaction,
       });
-    }
+      const projectIds = demoProjects.map((p) => p.id);
+      if (projectIds.length) {
+        deleted.kanbanCards = await KanbanCard.destroy({
+          where: { projectId: { [Op.in]: projectIds } },
+          force: true,
+          paranoid: false,
+          transaction,
+        });
+        deleted.kanbanLabels = await KanbanLabel.destroy({
+          where: { projectId: { [Op.in]: projectIds } },
+          force: true,
+          transaction,
+        });
+        deleted.kanbanColumns = await KanbanColumn.destroy({
+          where: { projectId: { [Op.in]: projectIds } },
+          force: true,
+          transaction,
+        });
+        deleted.kanbanProjects = await KanbanProject.destroy({
+          where: { id: { [Op.in]: projectIds } },
+          force: true,
+          paranoid: false,
+          transaction,
+        });
+      }
 
-    // Workflows (steps -> workflow)
-    const demoWorkflows = await Workflow.findAll({
-      where: { tenantId, ...like("name", DEMO.marker) },
-      paranoid: false,
-    });
-    const workflowIds = demoWorkflows.map((w) => w.id);
-    if (workflowIds.length) {
-      deleted.workflowSteps = await WorkflowStep.destroy({
-        where: { workflowId: { [Op.in]: workflowIds } },
-        force: true,
-      });
-      deleted.workflows = await Workflow.destroy({
-        where: { id: { [Op.in]: workflowIds } },
-        force: true,
+      // Tickets (comments -> tickets)
+      const demoTickets = await Ticket.findAll({
+        where: { tenantId, ...like("subject", DEMO.marker) },
         paranoid: false,
+        transaction,
       });
-    }
+      const ticketIds = demoTickets.map((t) => t.id);
+      if (ticketIds.length) {
+        deleted.ticketComments = await TicketComment.destroy({
+          where: { ticketId: { [Op.in]: ticketIds } },
+          force: true,
+          transaction,
+        });
+        deleted.tickets = await Ticket.destroy({
+          where: { id: { [Op.in]: ticketIds } },
+          force: true,
+          paranoid: false,
+          transaction,
+        });
+      }
 
-    // QMS: CAPA -> NC ; SOP ; risks
-    deleted.capas = await Capa.destroy({
-      where: { tenantId, ...like("capa_number", DEMO.capaPrefix) },
-      force: true,
-      paranoid: false,
-    });
-    deleted.nonConformances = await NonConformance.destroy({
-      where: { tenantId, ...like("nc_number", DEMO.ncPrefix) },
-      force: true,
-      paranoid: false,
-    });
-    deleted.sopDocuments = await SopDocument.destroy({
-      where: { tenantId, ...like("document_number", DEMO.sopPrefix) },
-      force: true,
-      paranoid: false,
-    });
-    deleted.risks = await Risk.destroy({
-      where: { tenantId, ...like("title", DEMO.marker) },
-      force: true,
-      paranoid: false,
-    });
+      // Workflows (steps -> workflow)
+      const demoWorkflows = await Workflow.findAll({
+        where: { tenantId, ...like("name", DEMO.marker) },
+        paranoid: false,
+        transaction,
+      });
+      const workflowIds = demoWorkflows.map((w) => w.id);
+      if (workflowIds.length) {
+        deleted.workflowSteps = await WorkflowStep.destroy({
+          where: { workflowId: { [Op.in]: workflowIds } },
+          force: true,
+          transaction,
+        });
+        deleted.workflows = await Workflow.destroy({
+          where: { id: { [Op.in]: workflowIds } },
+          force: true,
+          paranoid: false,
+          transaction,
+        });
+      }
 
-    // Certificates -> calibration records -> devices ; IoT ; maintenance
-    deleted.certificates = await Certificate.destroy({
-      where: { tenantId, ...like("certificate_number", DEMO.certPrefix) },
-      force: true,
-      paranoid: false,
-    });
-    const demoDevices = await CalibrationDevice.findAll({
-      where: { tenantId, ...like("serial_number", DEMO.deviceSerialPrefix) },
-      paranoid: false,
-    });
-    const deviceIds = demoDevices.map((d) => d.id);
-    if (deviceIds.length) {
-      deleted.iotReadings = await IotReading.destroy({
-        where: { deviceId: { [Op.in]: deviceIds } },
-        force: true,
-      });
-      deleted.maintenanceWorkOrders = await MaintenanceWorkOrder.destroy({
-        where: { deviceId: { [Op.in]: deviceIds } },
+      // QMS: CAPA -> NC ; SOP ; risks
+      deleted.capas = await Capa.destroy({
+        where: { tenantId, ...like("capa_number", DEMO.capaPrefix) },
         force: true,
         paranoid: false,
+        transaction,
       });
-      deleted.calibrationRecords = await CalibrationRecord.destroy({
-        where: { deviceId: { [Op.in]: deviceIds } },
+      deleted.nonConformances = await NonConformance.destroy({
+        where: { tenantId, ...like("nc_number", DEMO.ncPrefix) },
         force: true,
         paranoid: false,
+        transaction,
       });
-      deleted.calibrationDevices = await CalibrationDevice.destroy({
-        where: { id: { [Op.in]: deviceIds } },
+      deleted.sopDocuments = await SopDocument.destroy({
+        where: { tenantId, ...like("document_number", DEMO.sopPrefix) },
         force: true,
         paranoid: false,
+        transaction,
       });
-    }
+      deleted.risks = await Risk.destroy({
+        where: { tenantId, ...like("title", DEMO.marker) },
+        force: true,
+        paranoid: false,
+        transaction,
+      });
 
-    // Vendors (scorecards -> vendors)
-    const demoVendors = await Vendor.findAll({
-      where: { tenantId, ...like("name", "Demo ") },
-      paranoid: false,
-    });
-    const vendorIds = demoVendors.map((v) => v.id);
-    if (vendorIds.length) {
-      deleted.supplierScorecards = await SupplierScorecard.destroy({
-        where: { vendorId: { [Op.in]: vendorIds } },
+      // Certificates ; IoT ; maintenance ; devices (they hold no calibration
+      // record — that was refused above)
+      deleted.certificates = await Certificate.destroy({
+        where: { tenantId, ...like("certificate_number", DEMO.certPrefix) },
         force: true,
         paranoid: false,
+        transaction,
       });
-      deleted.vendors = await Vendor.destroy({
-        where: { id: { [Op.in]: vendorIds } },
-        force: true,
-        paranoid: false,
-      });
-    }
+      if (deviceIds.length) {
+        deleted.iotReadings = await IotReading.destroy({
+          where: { deviceId: { [Op.in]: deviceIds } },
+          force: true,
+          transaction,
+        });
+        deleted.maintenanceWorkOrders = await MaintenanceWorkOrder.destroy({
+          where: { deviceId: { [Op.in]: deviceIds } },
+          force: true,
+          paranoid: false,
+          transaction,
+        });
+        deleted.calibrationDevices = await CalibrationDevice.destroy({
+          where: { id: { [Op.in]: deviceIds } },
+          force: true,
+          paranoid: false,
+          transaction,
+        });
+      }
 
-    // Warehousing: transfers/adjustments/opnames -> stock -> locations -> warehouses
-    const demoWarehouses = await Warehouse.findAll({
-      where: { tenantId, ...like("code", DEMO.warehouseCodePrefix) },
-      paranoid: false,
-    });
-    const warehouseIds = demoWarehouses.map((w) => w.id);
-    if (warehouseIds.length) {
-      deleted.stockTransfers = await StockTransfer.destroy({
-        where: { fromWarehouseId: { [Op.in]: warehouseIds } },
-        force: true,
-      });
-      deleted.stockAdjustments = await StockAdjustment.destroy({
-        where: { warehouseId: { [Op.in]: warehouseIds } },
-        force: true,
-      });
-      deleted.stockOpnames = await StockOpname.destroy({
-        where: { warehouseId: { [Op.in]: warehouseIds } },
-        force: true,
-      });
-      deleted.stocks = await Stock.destroy({
-        where: { warehouseId: { [Op.in]: warehouseIds } },
-        force: true,
+      // Vendors (scorecards -> vendors)
+      const demoVendors = await Vendor.findAll({
+        where: { tenantId, ...like("name", "Demo ") },
         paranoid: false,
+        transaction,
       });
-      deleted.storageLocations = await StorageLocation.destroy({
-        where: { warehouseId: { [Op.in]: warehouseIds } },
-        force: true,
-      });
-      deleted.warehouses = await Warehouse.destroy({
-        where: { id: { [Op.in]: warehouseIds } },
-        force: true,
-        paranoid: false,
-      });
-    }
+      const vendorIds = demoVendors.map((v) => v.id);
+      if (vendorIds.length) {
+        deleted.supplierScorecards = await SupplierScorecard.destroy({
+          where: { vendorId: { [Op.in]: vendorIds } },
+          force: true,
+          paranoid: false,
+          transaction,
+        });
+        deleted.vendors = await Vendor.destroy({
+          where: { id: { [Op.in]: vendorIds } },
+          force: true,
+          paranoid: false,
+          transaction,
+        });
+      }
 
-    // Demo users and extra tenants
-    deleted.users = await Users.destroy({
-      where: { email: { [Op.like]: `%@${DEMO.userEmailDomain}` } },
-      force: true,
-      paranoid: false,
-    });
-    deleted.tenants = await Tenant.destroy({
-      where: { subdomain: { [Op.in]: DEMO.tenantSubdomains } },
-      force: true,
-      paranoid: false,
+      // Warehousing: transfers/adjustments/opnames -> stock -> locations -> warehouses
+      const demoWarehouses = await Warehouse.findAll({
+        where: { tenantId, ...like("code", DEMO.warehouseCodePrefix) },
+        paranoid: false,
+        transaction,
+      });
+      const warehouseIds = demoWarehouses.map((w) => w.id);
+      if (warehouseIds.length) {
+        deleted.stockTransfers = await StockTransfer.destroy({
+          where: { fromWarehouseId: { [Op.in]: warehouseIds } },
+          force: true,
+          transaction,
+        });
+        deleted.stockAdjustments = await StockAdjustment.destroy({
+          where: { warehouseId: { [Op.in]: warehouseIds } },
+          force: true,
+          transaction,
+        });
+        deleted.stockOpnames = await StockOpname.destroy({
+          where: { warehouseId: { [Op.in]: warehouseIds } },
+          force: true,
+          transaction,
+        });
+        deleted.stocks = await Stock.destroy({
+          where: { warehouseId: { [Op.in]: warehouseIds } },
+          force: true,
+          paranoid: false,
+          transaction,
+        });
+        deleted.storageLocations = await StorageLocation.destroy({
+          where: { warehouseId: { [Op.in]: warehouseIds } },
+          force: true,
+          transaction,
+        });
+        deleted.warehouses = await Warehouse.destroy({
+          where: { id: { [Op.in]: warehouseIds } },
+          force: true,
+          paranoid: false,
+          transaction,
+        });
+      }
+
+      // Demo users and extra tenants
+      deleted.users = await Users.destroy({
+        where: { email: { [Op.like]: `%@${DEMO.userEmailDomain}` } },
+        force: true,
+        paranoid: false,
+        transaction,
+      });
+      deleted.tenants = await Tenant.destroy({
+        where: { subdomain: { [Op.in]: DEMO.tenantSubdomains } },
+        force: true,
+        paranoid: false,
+        transaction,
+      });
     });
 
     logger.info("=== Demo data removed ===");
   } catch (error) {
+    // Rolled back: nothing the counts named was removed.
+    for (const key of Object.keys(deleted)) {
+      delete deleted[key];
+    }
     errors.push(`Demo unseeding error: ${error.message}`);
     logger.error(`Demo unseeding failed: ${error.message}`);
+    if (error.unseedRefused) {
+      return { deleted, errors, refused: true };
+    }
   }
 
   return { deleted, errors };
@@ -2122,11 +2056,6 @@ async function unseedDemoData() {
 // ==========================================
 
 module.exports = {
-  // Database operations
-  dropSeededTables,
-  syncTables,
-  resetAndSeed,
-
   // Role seeding
   seedDefaultRoles,
   seedApplicationRoles,

@@ -136,6 +136,19 @@ jest.mock("../../models", () => ({
           return out;
         }),
     ),
+    // D-24 (ADR-070): the history reads one page through findAndCountAll.
+    findAndCountAll: jest.fn(async ({ where, attributes, limit, offset }) => {
+      const all = mockStore.records
+        .filter((r) => !r.deletedAt && mockMatches(r, where))
+        .map((r) => {
+          const out = { ...r };
+          for (const key of (attributes && attributes.exclude) || []) {
+            delete out[key];
+          }
+          return out;
+        });
+      return { count: all.length, rows: all.slice(offset, offset + limit) };
+    }),
   },
   AuditLog: { create: (...args) => mockRef.ledger.AuditLog.create(...args) },
 }));
@@ -465,7 +478,7 @@ describe("A-129 — GET /history (F-9)", () => {
     expect(res.body.data[0]).not.toHaveProperty("ipAddress");
     expect(res.body.data[0]).not.toHaveProperty("userAgent");
     expect(res.body.data[0]).not.toHaveProperty("biometricData");
-    expect(res.body.meta).toEqual({ total: 1 });
+    expect(res.body.meta).toEqual({ total: 1, page: 1, limit: 25, totalPages: 1 });
   });
 
   it("a caller holding qms read gets the tenant's history — and never another tenant's", async () => {

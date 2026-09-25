@@ -344,6 +344,23 @@ exports.resetUserMfa = asyncHandler(async (req, res) => {
 });
 
 /**
+ * A-262. DELETE /users/:userId/webauthn — a tenant administrator removes
+ * another user's passkey. The target comes from the PATH; tenant, privilege
+ * and role level come from the authenticated principal, never the body.
+ */
+exports.resetUserPasskey = asyncHandler(async (req, res) => {
+  const result = await userService.resetUserPasskey({
+    userId: req.params.userId,
+    resetBy: req.user.id,
+    // rbac() ran first and refused a principal without a role.
+    actorRoleLevel: req.user.role.roleLevel,
+    ...getActor(req),
+  });
+
+  success(res, result.data, null, result.message, result.status);
+});
+
+/**
  * A-162. POST /users/:userId/password/reset — a tenant administrator replaces
  * another user's password with a temporary one, shown once. The target comes
  * from the PATH; tenant, privilege and role level from the authenticated

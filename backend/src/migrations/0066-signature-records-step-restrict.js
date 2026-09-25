@@ -17,7 +17,7 @@
  * eSignature.service#deleteWorkflow refuses (409) a workflow with any
  * signature. The database was the one layer that would have obeyed.
  *
- * THE RULE (D-18, applied to all five evidence tables — see the ADR draft):
+ * THE RULE (D-18, applied to all five evidence tables — ADR-064):
  * an evidence-bearing row's link to what it evidences is RESTRICT; only a
  * non-attesting operational actor may be SET NULL. After this migration the
  * rule holds with no exception:

@@ -9,6 +9,8 @@
  * and `exhausted` is the dead letter. See services/webhook.service.js.
  */
 
+// D-27 (ADR-070): every JSON column declares its shape, validated on write.
+const { jsonShape } = require("../utils/jsonShape.util");
 const defineModel = (db, DataTypes) => {
   const WebhookDelivery = db.define(
     "WebhookDelivery",
@@ -36,6 +38,7 @@ const defineModel = (db, DataTypes) => {
       },
       payload: {
         type: DataTypes.JSONB,
+        validate: { shape: jsonShape("WebhookDelivery.payload") },
         allowNull: false,
         defaultValue: {},
       },

@@ -27,9 +27,14 @@
 // Bounded (W-17): due devices are read in keyset pages of SCAN_BATCH_SIZE, and
 // the open work orders of a page are read in ONE query, not one per device.
 //
-// Audited (W-04 / W-30): each work order is created with its audit row in one
-// transaction, attributed to `system:calibration-scan` — or to the user, on a
-// manual run.
+// Audited (W-04 / W-30): each work order has its own audit row, written in the
+// work order's transaction and attributed to `system:calibration-scan` — or to
+// the user, on a manual run. Each tenant-wide notification is audited the same
+// way, in a transaction after the work orders' (W-04, ADR-069).
+//
+// Batched (W-17, ADR-073): a transaction holds the work orders of up to
+// CALIBRATION_SCAN_TX_BATCH_SIZE (25) due devices of ONE tenant, and a second
+// one their notifications — two commits per chunk, not two per device.
 
 const { Op } = require("sequelize");
 const { CalibrationDevice, MaintenanceWorkOrder } = require("../models");
@@ -38,12 +43,20 @@ const notificationService = require("./notification.service");
 const webhookService = require("./webhook.service");
 const { logger } = require("../middlewares/activityLog.middleware");
 const { SYSTEM_ACTORS } = require("../constants/systemActors");
-const { runForTenant, runAsSystem } = require("../utils/jobContext.util");
+const { runForTenant, runAsSystem, SYSTEM_TASKS } = require("../utils/jobContext.util");
+const auditService = require("./audit.service");
+// `db` from config, NOT from the models barrel (CLAUDE.md, traps).
+const { db } = require("../config");
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_LEAD_DAYS = Number(process.env.CALIBRATION_REMINDER_LEAD_DAYS) || 0;
 /** Due devices read per page (W-17). */
 const SCAN_BATCH_SIZE = Number(process.env.CALIBRATION_SCAN_BATCH_SIZE) || 200;
+/** Due devices of one tenant whose work orders share a transaction (W-17, ADR-073). */
+const SCAN_TX_BATCH_SIZE = (() => {
+  const n = Number(process.env.CALIBRATION_SCAN_TX_BATCH_SIZE);
+  return Number.isInteger(n) && n > 0 ? n : 25;
+})();
 /** Who a scheduled scan's audit rows name. */
 const SCAN_ACTOR = Object.freeze({ systemActor: SYSTEM_ACTORS.CALIBRATION_SCAN });
 
@@ -76,7 +89,7 @@ const resolveWindow = (now, leadDays) => {
 const inScanScope = (tenantId, fn) =>
   tenantId
     ? runForTenant(tenantId, fn)
-    : runAsSystem("calibration-scan: due devices across every tenant", fn);
+    : runAsSystem(SYSTEM_TASKS.CALIBRATION_SCAN, fn);
 
 /**
  * The open Preventative work order of each device in a page, in ONE query.
@@ -95,77 +108,140 @@ const openWorkOrdersOf = async (deviceIds) => {
   return new Map(rows.map((row) => [row.deviceId, row.id]));
 };
 
-/**
- * Create the work order, the notification and the webhook event of one due
- * device, inside that device's tenant context.
- */
-const scheduleDevice = async (device, isOverdue, actor, summary) => {
+/** The work-order fields and labels of one due device. */
+const describeDevice = (device, isOverdue) => {
   const serialSuffix = device.serialNumber ? ` (S/N ${device.serialNumber})` : "";
   const dueLabel = toDateLabel(device.nextCalibrationDate);
+  const verb = isOverdue ? "overdue for" : "due for";
+  return {
+    serialSuffix,
+    dueLabel,
+    item: {
+      deviceId: device.id,
+      title: `${isOverdue ? "Overdue calibration" : "Calibration due"}: ${device.name}`,
+      description: `Auto-scheduled by the calibration scheduler. Device "${device.name}"${serialSuffix} is ${verb} calibration (scheduled ${dueLabel}).`,
+      priority: isOverdue ? "Critical" : "High",
+    },
+  };
+};
 
-  let woResult;
+/**
+ * Schedule a chunk of ONE tenant's due devices, inside that tenant's context
+ * (W-17, ADR-073). Two transactions per chunk instead of two per device:
+ *
+ *  1. every work order of the chunk, and one audit row EACH
+ *     (`maintenanceService.createAutoScheduledWorkOrders`). A device whose
+ *     order a concurrent scan created first (W-03) is a skip;
+ *  2. the tenant-wide notification of every created order, and one audit row
+ *     EACH (W-04). Best-effort towards the scan, as before: the work orders
+ *     have committed, so a failure is logged and not counted — now for the
+ *     whole chunk.
+ *
+ * Then the webhook event of each created order (best-effort; its first
+ * attempts are capped in webhook.service). A failure of step 1 is an error for
+ * every device of the chunk, and the next chunk still runs.
+ *
+ * @param {string} tenantId
+ * @param {Array<{device: object, isOverdue: boolean}>} chunk
+ * @param {object} actor - `{ systemActor }` or the requesting user
+ * @param {object} summary - the scan's running summary (mutated)
+ */
+const scheduleChunk = async (tenantId, chunk, actor, summary) => {
+  const described = new Map(
+    chunk.map((entry) => [entry.device.id, { ...entry, ...describeDevice(entry.device, entry.isOverdue) }]),
+  );
+
+  let result;
   try {
-    woResult = await maintenanceService.createWorkOrder(
-      device.tenantId,
-      {
-        deviceId: device.id,
-        title: `${isOverdue ? "Overdue calibration" : "Calibration due"}: ${device.name}`,
-        description: `Auto-scheduled by the calibration scheduler. Device "${device.name}"${serialSuffix} is ${isOverdue ? "overdue for" : "due for"} calibration (scheduled ${dueLabel}).`,
-        type: "Preventative",
-        status: "Open",
-        priority: isOverdue ? "Critical" : "High",
-        autoScheduled: true,
-      },
+    result = await maintenanceService.createAutoScheduledWorkOrders(
+      tenantId,
+      [...described.values()].map((entry) => entry.item),
       actor,
     );
   } catch (err) {
-    // W-03: a concurrent scan created it first — the index said no.
-    if (err && err.status === 409) {
-      summary.skipped++;
-      summary.details.push({
-        deviceId: device.id,
-        action: "skipped",
-        reason: "created by a concurrent scan",
-      });
-      return;
+    for (const deviceId of described.keys()) {
+      summary.errors++;
+      summary.details.push({ deviceId, action: "error", error: err.message });
     }
-    throw err;
+    logger.error(`Calibration scan failed for ${described.size} device(s) of tenant ${tenantId}: ${err.message}`);
+    return;
   }
-  summary.workOrdersCreated++;
 
-  // Tenant-wide notification (userId null → visible to all tenant users).
-  const notification = await notificationService.emitNotification({
-    tenantId: device.tenantId,
-    userId: null,
-    type: "CALIBRATION",
-    title: isOverdue ? "Device calibration overdue" : "Device calibration due",
-    message: `${device.name}${serialSuffix} is ${isOverdue ? "overdue for" : "due for"} calibration (scheduled ${dueLabel}).`,
-    actionUrl: `/dashboard/devices/${device.id}`,
-  });
-  if (notification) {
-    summary.notificationsCreated++;
+  for (const deviceId of result.conflicted) {
+    // W-03: a concurrent scan created it first — the index said no.
+    summary.skipped++;
+    summary.details.push({ deviceId, action: "skipped", reason: "created by a concurrent scan" });
+  }
+  for (const deviceId of result.missing) {
+    summary.errors++;
+    summary.details.push({ deviceId, action: "error", error: "Device not found" });
+  }
+  summary.workOrdersCreated += result.created.length;
+
+  const created = result.created.map((order) => ({ order, ...described.get(order.deviceId) }));
+  if (!created.length) {
+    return;
+  }
+
+  // Tenant-wide notifications (userId null → visible to all tenant users).
+  // W-04: each with its own audit row, all in ONE transaction, announced only
+  // after the commit.
+  try {
+    await db.transaction(async (transaction) => {
+      for (const { order, device, isOverdue, serialSuffix, dueLabel } of created) {
+        const notification = await notificationService.emitNotification(
+          {
+            tenantId,
+            userId: null,
+            type: "CALIBRATION",
+            title: isOverdue ? "Device calibration overdue" : "Device calibration due",
+            message: `${device.name}${serialSuffix} is ${isOverdue ? "overdue for" : "due for"} calibration (scheduled ${dueLabel}).`,
+            actionUrl: `/dashboard/devices/${device.id}`,
+          },
+          { transaction },
+        );
+        await auditService.logAction(
+          {
+            tenantId,
+            ...(actor.userId
+              ? { userId: actor.userId, ipAddress: actor.ipAddress, userAgent: actor.userAgent }
+              : { systemActor: actor.systemActor }),
+            action: "CREATE",
+            resourceType: "Notification",
+            resourceId: notification.id,
+            changes: {
+              operation: "CALIBRATION_REMINDER",
+              audience: "tenant",
+              deviceId: device.id,
+              workOrderId: order.id,
+              overdue: isOverdue,
+            },
+          },
+          { transaction },
+        );
+      }
+    });
+    summary.notificationsCreated += created.length;
+  } catch (err) {
+    logger.error(
+      `Calibration scan: the notifications for ${created.length} device(s) of tenant ${tenantId} were not created: ${err.message}`,
+    );
   }
 
   // Fan out a domain event to any subscribed webhooks (best-effort).
-  await webhookService.emitEvent(
-    device.tenantId,
-    isOverdue ? "device.overdue" : "device.calibration_due",
-    {
+  for (const { order, device, isOverdue } of created) {
+    await webhookService.emitEvent(tenantId, isOverdue ? "device.overdue" : "device.calibration_due", {
       deviceId: device.id,
       name: device.name,
       serialNumber: device.serialNumber,
       nextCalibrationDate: device.nextCalibrationDate,
-      workOrderId: woResult?.data?.id || null,
-    },
-  );
-
-  summary.details.push({
-    deviceId: device.id,
-    action: "created",
-    overdue: isOverdue,
-    workOrderId: woResult?.data?.id || null,
-  });
+      workOrderId: order.id,
+    });
+    summary.details.push({ deviceId: device.id, action: "created", overdue: isOverdue, workOrderId: order.id });
+  }
 };
+
+exports.SCAN_TX_BATCH_SIZE = SCAN_TX_BATCH_SIZE;
 
 // ------------------------------------------------------------------
 // RUN SCAN — create work orders + notifications for due devices
@@ -178,6 +254,7 @@ const scheduleDevice = async (device, isOverdue, actor, summary) => {
  * @param {object|null} [options.actor] - auditActor(req) on a manual run; the
  *   scheduled scan omits it and is recorded as `system:calibration-scan`
  * @param {number} [options.batchSize]
+ * @param {number} [options.txBatchSize] - due devices of one tenant per transaction
  */
 exports.runCalibrationScan = async ({
   tenantId = null,
@@ -185,6 +262,7 @@ exports.runCalibrationScan = async ({
   leadDays = DEFAULT_LEAD_DAYS,
   actor = null,
   batchSize = SCAN_BATCH_SIZE,
+  txBatchSize = SCAN_TX_BATCH_SIZE,
 } = {}) => {
   const { reference, dueThreshold } = resolveWindow(now, leadDays);
   const auditActor = actor && actor.userId ? actor : SCAN_ACTOR;
@@ -218,6 +296,7 @@ exports.runCalibrationScan = async ({
       };
     });
 
+    const byTenant = new Map();
     for (const device of devices) {
       summary.scanned++;
       const isOverdue = new Date(device.nextCalibrationDate) < reference;
@@ -238,20 +317,17 @@ exports.runCalibrationScan = async ({
         continue;
       }
 
-      try {
-        await runForTenant(device.tenantId, () =>
-          scheduleDevice(device, isOverdue, auditActor, summary),
-        );
-      } catch (err) {
-        summary.errors++;
-        summary.details.push({
-          deviceId: device.id,
-          action: "error",
-          error: err.message,
-        });
-        logger.error(
-          `Calibration scan failed for device ${device.id}: ${err.message}`,
-        );
+      const pending = byTenant.get(device.tenantId) || [];
+      pending.push({ device, isOverdue });
+      byTenant.set(device.tenantId, pending);
+    }
+
+    // W-17: each tenant's due devices of this page, in chunks of txBatchSize,
+    // each chunk inside that tenant's context.
+    for (const [deviceTenant, entries] of byTenant) {
+      for (let i = 0; i < entries.length; i += txBatchSize) {
+        const chunk = entries.slice(i, i + txBatchSize);
+        await runForTenant(deviceTenant, () => scheduleChunk(deviceTenant, chunk, auditActor, summary));
       }
     }
 

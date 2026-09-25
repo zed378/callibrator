@@ -38,6 +38,7 @@ const {
 } = require("../utils/ssrf.util");
 
 const { WEBHOOK_TEST_EVENT } = require("../constants/webhookEvents");
+const { runForTenant, runAsSystem, SYSTEM_TASKS } = require("../utils/jobContext.util");
 
 const MAX_ATTEMPTS = Number(process.env.WEBHOOK_MAX_ATTEMPTS) || 12;
 const TIMEOUT_MS = Number(process.env.WEBHOOK_TIMEOUT_MS) || 8000;
@@ -51,6 +52,17 @@ const BACKOFF_CAP_MS = Number(process.env.WEBHOOK_BACKOFF_CAP_MS) || 6 * 60 * 60
 // the POST is still in flight lets a second replica send it again.
 const LEASE_MS = Number(process.env.WEBHOOK_LEASE_MS) || 5 * 60 * 1000;
 const BATCH_SIZE = Number(process.env.WEBHOOK_DISPATCH_BATCH) || 50;
+
+/** A positive integer from the environment, or the default (W-17). */
+const positiveInt = (raw, fallback) => {
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0 ? n : fallback;
+};
+// W-17 — the most first attempts emitEvent keeps in flight at once, across
+// the whole process. Past it the row is left due, and the dispatcher sends it
+// on its next pass: the cap never loses a delivery, it only defers one.
+const EMIT_CONCURRENCY = positiveInt(process.env.WEBHOOK_EMIT_CONCURRENCY, 10);
+let emitInFlight = 0;
 
 /** @param {number} attempt - 1-based number of the attempt that just failed */
 const backoffMs = (attempt) => Math.min(BACKOFF_BASE_MS * 2 ** (attempt - 1), BACKOFF_CAP_MS);
@@ -424,8 +436,15 @@ const deliverClaimed = async ({ id, tenantId }) => {
  */
 const dispatchDelivery = async (id, tenantId) => {
   const [claimed] = await claim({ id, tenantId });
-  return claimed ? deliverClaimed(claimed) : null;
+  return claimed ? deliverInTenant(claimed) : null;
 };
+
+/**
+ * W-12: every read and write of one delivery runs confined to the tenant the
+ * claim returned for it, so the isolation hooks hold even where a `where`
+ * forgets the tenant — not only the explicit predicates in deliverClaimed.
+ */
+const deliverInTenant = (claimed) => runForTenant(claimed.tenantId, () => deliverClaimed(claimed));
 
 /**
  * The dispatcher's tick: claim up to `limit` due deliveries across every
@@ -437,8 +456,11 @@ const dispatchDelivery = async (id, tenantId) => {
  * @returns {Promise<{claimed: number, errors: number}>}
  */
 exports.dispatchDue = async ({ limit = BATCH_SIZE } = {}) => {
-  const claimed = await claim({ limit });
-  const results = await Promise.allSettled(claimed.map(deliverClaimed));
+  // W-12: the claim spans tenants and says so; each delivery then runs in its
+  // own tenant. W-17: at most `limit` rows per pass, so at most `limit` POSTs
+  // in flight from one pass (WEBHOOK_DISPATCH_BATCH, 50).
+  const claimed = await runAsSystem(SYSTEM_TASKS.WEBHOOK_DISPATCH, () => claim({ limit }));
+  const results = await Promise.allSettled(claimed.map(deliverInTenant));
   const rejected = results.filter((r) => r.status === "rejected");
   rejected.forEach((r) => logger.error(`Webhook dispatch error: ${r.reason.message}`));
   return { claimed: claimed.length, errors: rejected.length };
@@ -451,6 +473,10 @@ exports.dispatchDue = async ({ limit = BATCH_SIZE } = {}) => {
 // a durable row first; the first attempt then runs off the caller's path. If
 // that attempt never happens (the process dies), the row is already due and
 // the dispatcher sends it.
+//
+// The first attempts are capped (WEBHOOK_EMIT_CONCURRENCY, 10, per process).
+// A row past the cap gets no immediate attempt and is counted in `deferred`;
+// it is already due, so the dispatcher's next pass sends it.
 const emitEvent = async (tenantId, event, payload = {}) => {
   try {
     const webhooks = await Webhook.findAll({
@@ -478,12 +504,22 @@ const emitEvent = async (tenantId, event, payload = {}) => {
         }),
       );
     }
+    // W-17: at most EMIT_CONCURRENCY first attempts in flight per process. A
+    // scan that emits for 500 devices used to start 500 detached chains.
+    let deferred = 0;
     for (const delivery of deliveries) {
-      dispatchDelivery(delivery.id, tenantId).catch((e) =>
-        logger.error(`Webhook delivery error: ${e.message}`),
-      );
+      if (emitInFlight >= EMIT_CONCURRENCY) {
+        deferred++;
+        continue;
+      }
+      emitInFlight++;
+      dispatchDelivery(delivery.id, tenantId)
+        .catch((e) => logger.error(`Webhook delivery error: ${e.message}`))
+        .finally(() => {
+          emitInFlight--;
+        });
     }
-    return { matched: webhooks.length };
+    return deferred ? { matched: webhooks.length, deferred } : { matched: webhooks.length };
   } catch (err) {
     logger.error(`emitEvent failed for "${event}": ${err.message}`);
     return { matched: 0, error: err.message };
@@ -551,4 +587,6 @@ exports._sign = sign;
 exports._backoffMs = backoffMs;
 exports._claim = claim;
 exports._dispatchDelivery = dispatchDelivery;
-exports._config = Object.freeze({ MAX_ATTEMPTS, BACKOFF_BASE_MS, BACKOFF_CAP_MS, LEASE_MS, BATCH_SIZE });
+exports._config = Object.freeze({ MAX_ATTEMPTS, BACKOFF_BASE_MS, BACKOFF_CAP_MS, LEASE_MS, BATCH_SIZE, EMIT_CONCURRENCY });
+exports._emitInFlight = () => emitInFlight;
+exports._positiveInt = positiveInt;

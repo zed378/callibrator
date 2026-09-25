@@ -91,12 +91,11 @@ export const tenantLifecycleService = {
   offboard: async (
     tenantId: string,
     force?: boolean,
-  ): Promise<{ tenant: TenantLifecycleStatus; exportData: TenantExportData }> => {
+  ): Promise<{ tenant: TenantLifecycleStatus }> => {
+    // The response carries no export (W-17, ADR-073): download one first with
+    // exportData(), which stays available until the tenant is hard-deleted.
     const response = await api.post<
-      BackendResponse<{
-        tenant: TenantLifecycleStatus;
-        exportData: TenantExportData;
-      }>
+      BackendResponse<{ tenant: TenantLifecycleStatus }>
     >(`/api/v1/tenants/${tenantId}/offboard`, { force });
     return response.data;
   },

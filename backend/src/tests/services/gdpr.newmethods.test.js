@@ -17,6 +17,11 @@ jest.mock("../../services/emailQueue.service", () => ({
   queueNotificationEmail: jest.fn().mockResolvedValue(true),
 }));
 jest.mock("../../utils/jwt.util", () => ({ generatePurposeToken: jest.fn(() => "tok") }));
+// A-214: an email change re-authenticates first (gdpr.rectifyReauth.a214.test.js).
+jest.mock("../../services/auth.service", () => ({
+  passwordManagedBy: jest.fn(async () => null),
+  reauthenticate: jest.fn(async () => "password"),
+}));
 jest.mock("../../models", () => ({
   ConsentRecord: {
     create: jest.fn().mockResolvedValue({ id: "c-1" }),

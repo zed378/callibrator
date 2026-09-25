@@ -121,7 +121,7 @@ describe("W-04 — the retention purge audits what it destroyed", () => {
 
     const summary = await dataRetention.runRetentionSweep();
 
-    expect(summary).toEqual({ tenants: 2, purged: 10, skipped: 0, errors: 1 });
+    expect(summary).toEqual({ tenants: 2, purged: 10, skipped: 0, errors: 1, incomplete: 0 });
     expect(mockRef.ledger.auditRows()).toEqual([
       expect.objectContaining({ tenantId: "tenant-2", action: "DELETE" }),
     ]);

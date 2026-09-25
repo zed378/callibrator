@@ -119,6 +119,13 @@ const defineModel = (db, DataTypes) => {
         allowNull: false,
         defaultValue: false,
       },
+      // A-215 (ADR-068): when an administrator's temporary password (a create
+      // or a reset) stops signing in; null for a password the holder chose.
+      // Past it, sign-in is the same 401 as a wrong password. Migration 0078.
+      temporaryPasswordExpiresAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
       // WebAuthn (passkeys / security keys)
       webauthnEnabled: {
         type: DataTypes.BOOLEAN,

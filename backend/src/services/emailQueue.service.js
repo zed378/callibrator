@@ -205,6 +205,12 @@ const processJob = async (msg, ch) => {
   try {
     job = JSON.parse(msg.content.toString());
   } catch {
+    job = null;
+  }
+  // A body that parses to a non-object ("null", a number) is as invalid as one
+  // that does not parse: reading `.id` off it would throw, leaving the message
+  // unsettled on a prefetch slot until the channel closed.
+  if (!job || typeof job !== "object") {
     logger.error("Invalid email job data");
     rabbitmq.nack(ch, msg); // Drop invalid message (to the DLQ)
     return;

@@ -42,38 +42,59 @@ const countByStatus = async (Model, tenantId, extraWhere = {}) => {
   }, {});
 };
 
+/** "+07:00" -> 420; anything else -> 0 (UTC). */
+const offsetMinutes = (timezone) => {
+  const m = /^([+-])(\d{2}):(\d{2})$/.exec(timezone || "");
+  return m ? (m[1] === "-" ? -1 : 1) * (Number(m[2]) * 60 + Number(m[3])) : 0;
+};
+
 /**
- * Bucket rows into the last `months` calendar months (dialect-safe:
- * fetches only the date column and buckets in JS).
- * Returns [{ month: "2026-02", count }] oldest → newest.
+ * Rows per calendar month over the last `months` months, oldest first:
+ * [{ month: "2026-02", count }], every month present (0 when empty).
+ *
+ * D-24 (ADR-064) — this fetched every row's date column for six months and
+ * bucketed them in JS, "dialect-safe". ADR-039 made the platform
+ * PostgreSQL-only, so the database groups them and returns at most `months`
+ * rows instead of six months of them.
+ *
+ * A month is a calendar month in the connection's timezone (config/index.js
+ * sets "+07:00"), because that is the zone date_trunc() works in on this
+ * connection. The window start and the bucket keys are computed in the same
+ * zone, so a row near midnight on the first of a month lands in one bucket,
+ * the same one the database put it in.
  */
 const monthlyTrend = async (Model, dateField, tenantId, months = 6) => {
-  const start = new Date();
-  start.setDate(1);
-  start.setHours(0, 0, 0, 0);
-  start.setMonth(start.getMonth() - (months - 1));
+  const offset = offsetMinutes(Model.sequelize && Model.sequelize.options.timezone) * 60000;
+  const local = new Date(Date.now() + offset); // wall clock of the zone, read with UTC getters
+  const firstMonth = Date.UTC(local.getUTCFullYear(), local.getUTCMonth() - (months - 1), 1);
+  const start = new Date(firstMonth - offset);
+
+  // The physical column (`calibration_date`), not the attribute name.
+  const attribute = Model.rawAttributes && Model.rawAttributes[dateField];
+  const column = Sequelize.col(attribute && attribute.field ? attribute.field : dateField);
+  const month = Sequelize.fn("to_char", Sequelize.fn("date_trunc", "month", column), "YYYY-MM");
 
   const rows = await Model.findAll({
     where: scoped(tenantId, { [dateField]: { [Op.gte]: start } }),
-    attributes: [dateField],
+    attributes: [
+      [month, "month"],
+      [Sequelize.fn("COUNT", Sequelize.col("id")), "count"],
+    ],
+    group: [month],
     raw: true,
   });
 
   const buckets = {};
   for (let i = 0; i < months; i += 1) {
-    const d = new Date(start.getFullYear(), start.getMonth() + i, 1);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    buckets[key] = 0;
+    const d = new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth() - (months - 1) + i, 1));
+    buckets[`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`] = 0;
   }
-  rows.forEach((row) => {
-    const value = row[dateField];
-    if (!value) return;
-    const d = new Date(value);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    if (key in buckets) buckets[key] += 1;
-  });
+  for (const row of rows) {
+    // COUNT is a bigint: pg returns it as a string (D-21).
+    if (row.month in buckets) {buckets[row.month] = parseInt(row.count, 10);}
+  }
 
-  return Object.entries(buckets).map(([month, count]) => ({ month, count }));
+  return Object.entries(buckets).map(([key, count]) => ({ month: key, count }));
 };
 
 exports.getDashboardMetrics = async (tenantId = null) => {

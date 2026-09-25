@@ -931,7 +931,17 @@ exports.deleteCard = async (user, projectId, cardId) => {
   await assertAccess(user, projectId, "editor");
   const card = await KanbanCard.findOne({ where: { id: cardId, projectId } });
   if (!card) throw new AppError(404, "Card not found");
-  await card.destroy();
+  // D-22 (ADR-070): the card's attachments are soft-deleted with it, in one
+  // transaction, each with its audit row.
+  await sequelize.transaction(async (transaction) => {
+    await card.destroy({ transaction });
+    await require("./attachment.service").softDeleteForResource(
+      card.tenantId,
+      "KanbanCard",
+      card.id,
+      { transaction, actor: { userId: user.id } },
+    );
+  });
   emitToBoard(projectId, "kanban:card:deleted", { cardId, columnId: card.columnId });
   return { deleted: true };
 };

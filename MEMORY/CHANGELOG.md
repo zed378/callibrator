@@ -8,6 +8,30 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+## 2026-09-25 — Phase 0 batch 7 ([record](./records/2026-09-25-phase0-batch7.md), ADR-060–ADR-073)
+
+### Security
+- Bulk deletes, sums, increments and restores are now tenant-scoped (W-33, W-34). Five tenant-user delete routes answered 500 before.
+- Strict nonce CSP on every page.
+- Tenant logos must be uploaded.
+- Temporary passwords expire after 72 h (migration `0078`).
+- Signed-in password checks are budgeted per user.
+- Passkey removal and email change need re-authentication.
+- Admins can remove a user's passkey.
+- Redis requires a password; containers drop every capability.
+
+### Changed
+- Calibration records are append-only for the application role (`DB_APP_ROLE`, default `callibrator_app`).
+- Background jobs run in explicit tenant context; audit rows are kept indefinitely.
+- The DSAR export streams and is complete; signature history is paginated; attachments follow their parent's soft delete.
+- Webhook delivery rows are purged after 30 days.
+
+### Fixed
+- The calibration scan's work orders rolled back (W-30); IoT anomaly alerts were never stored (W-32).
+- Demo unseed stopped part-way.
+- CI would have failed its first run.
+
+
 ## 2026-09-25 — Phase 0 batch 5 ([record](./records/2026-09-25-phase0-batch5.md), ADR-053, ADR-054)
 
 ### Security

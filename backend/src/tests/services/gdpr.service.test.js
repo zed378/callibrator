@@ -161,7 +161,14 @@ describe("gdprService", () => {
     process.env.CONSENT_REQUIRED = "false";
 
     fs.promises.mkdir.mockResolvedValue(undefined);
-    fs.promises.writeFile.mockResolvedValue(undefined);
+    // D-24 (ADR-070): the export streams — consume the iterable like Node does.
+    fs.promises.writeFile.mockImplementation(async (file, content) => {
+      if (typeof content !== "string") {
+        for await (const chunk of content) {
+          void chunk;
+        }
+      }
+    });
     fs.promises.stat.mockResolvedValue({ size: 1024 });
     fs.promises.rm.mockResolvedValue(undefined);
     fs.existsSync.mockReturnValue(false);

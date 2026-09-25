@@ -97,6 +97,24 @@ const AUTH_ENDPOINTS = {
     description: "MFA setup, verification and disable",
     persistUserLockout: false,
   },
+  // A-260 (ADR-072): every check of the CALLER'S OWN password by a signed-in
+  // session — POST /auth/pass-is-valid, the change-password route, and the
+  // re-authentication of a passkey removal, an email rectification and an MFA
+  // rotation or disable (auth.service#verifySessionPassword). One bucket per
+  // user across all of them, so spreading guesses buys nothing. Five wrong
+  // passwords in fifteen minutes pause every one of these checks for that
+  // user and sign out the session that made them.
+  //
+  // persistUserLockout: false — as for mfaManage: the guesser already holds a
+  // session, so locking SIGN-IN would lock out only the real user, and a
+  // success here must not clear a sign-in lock either.
+  passwordCheck: {
+    maxAttempts: 5,
+    windowMs: WINDOW.FIFTEEN_MIN,
+    lockoutMs: WINDOW.FIFTEEN_MIN,
+    description: "Signed-in password checks",
+    persistUserLockout: false,
+  },
   // A-128 (ADR-051 Q-18): a tenant administrator's user create / identity edit
   // that hits a username or email already registered — possibly in another
   // tenant, the residual existence oracle Q-18 accepts. Keyed by the

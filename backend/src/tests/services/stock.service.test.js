@@ -51,6 +51,12 @@ jest.mock("../../models", () => ({
 }));
 
 // P6-09: every quantity change audits inside its transaction.
+// A-202 / A-203: the workflow engine is its own suite. Here no workflow is
+// configured and none is pending, unless a test says otherwise.
+jest.mock("../../services/workflow.service", () => ({
+  startWorkflow: jest.fn(async () => null),
+  findPendingInstance: jest.fn(async () => null),
+}));
 jest.mock("../../services/audit.service", () => ({
   logAction: jest.fn().mockResolvedValue({}),
 }));
@@ -838,6 +844,87 @@ describe("stock.service", () => {
         "Db error",
       );
       expect(tx.rollback).toHaveBeenCalled();
+    });
+  });
+
+  // A-202 (ADR-065) — the approval workflow starts in the create's
+  // transaction, and a transfer awaiting its workflow is not moved by hand.
+  describe("A-202 — a transfer and its approval workflow", () => {
+    const workflowService = require("../../services/workflow.service");
+    const input = { fromWarehouseId: "wh-1", toWarehouseId: "wh-2", itemName: "Item 1", quantity: 5 };
+    const arrangeCreate = () => {
+      const tx = mockTransaction();
+      db.transaction.mockResolvedValueOnce(tx);
+      Warehouse.findOne.mockResolvedValueOnce({ id: "wh-1" }).mockResolvedValueOnce({ id: "wh-2" });
+      Stock.findOne.mockResolvedValueOnce({ id: "st-1", quantity: 10 });
+      StockTransfer.create.mockResolvedValueOnce({ id: "tf-1", status: "pending", ...input });
+      return tx;
+    };
+
+    it("starts the workflow inside the create's transaction, and audits the create with its instance", async () => {
+      const tx = arrangeCreate();
+      workflowService.startWorkflow.mockResolvedValueOnce({ id: "wi-1" });
+
+      await createTransfer("tenant-1", input, "usr-1", { ipAddress: "10.0.0.1", userAgent: "jest" });
+
+      expect(workflowService.startWorkflow).toHaveBeenCalledWith("tenant-1", "StockTransfer", "tf-1", tx);
+      expect(auditService.logAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: "tenant-1",
+          userId: "usr-1",
+          action: "CREATE",
+          resourceType: "StockTransfer",
+          resourceId: "tf-1",
+          changes: {
+            before: {},
+            after: expect.objectContaining({ status: "pending", quantity: 5, workflowInstanceId: "wi-1" }),
+          },
+          ipAddress: "10.0.0.1",
+        }),
+        { transaction: tx },
+      );
+      // The workflow and the audit row are written before the commit.
+      expect(workflowService.startWorkflow.mock.invocationCallOrder[0]).toBeLessThan(tx.commit.mock.invocationCallOrder[0]);
+      expect(auditService.logAction.mock.invocationCallOrder[0]).toBeLessThan(tx.commit.mock.invocationCallOrder[0]);
+    });
+
+    it("a workflow that cannot start rolls the transfer back — never a transfer with no workflow", async () => {
+      const tx = arrangeCreate();
+      workflowService.startWorkflow.mockRejectedValueOnce(new Error("workflow lookup failed"));
+
+      await expectRejectsWithMessage(createTransfer("tenant-1", input, "usr-1"), "workflow lookup failed");
+      expect(tx.commit).not.toHaveBeenCalled();
+      expect(tx.rollback).toHaveBeenCalled();
+    });
+
+    it("records a null instance when the tenant configured no workflow", async () => {
+      arrangeCreate();
+
+      await createTransfer("tenant-1", input, "usr-1");
+
+      expect(auditService.logAction.mock.calls[0][0].changes.after.workflowInstanceId).toBeNull();
+    });
+
+    it("refuses (409) to move a transfer whose workflow is still pending, and touches no stock", async () => {
+      const tx = mockTransaction();
+      db.transaction.mockResolvedValueOnce(tx);
+      StockTransfer.findOne.mockResolvedValueOnce({ id: "tf-1", status: "pending", update: jest.fn() });
+      workflowService.findPendingInstance.mockResolvedValueOnce({
+        id: "wi-1",
+        currentStepOrder: 2,
+        workflow: { name: "Two-step transfer approval" },
+      });
+
+      const err = await updateTransferStatus("tenant-1", "tf-1", { status: "completed" }, "usr-1").catch((e) => e);
+
+      expect(err).toMatchObject({ status: 409 });
+      expect(err.message).toBe(
+        'This stock transfer is awaiting approval in the workflow "Two-step transfer approval" (step 2). ' +
+          "It moves when that workflow approves it (POST /workflows/instances/:instanceId/action), not by a status change.",
+      );
+      expect(workflowService.findPendingInstance).toHaveBeenCalledWith("tenant-1", "StockTransfer", "tf-1", tx);
+      expect(Stock.findOne).not.toHaveBeenCalled();
+      expect(tx.commit).not.toHaveBeenCalled();
     });
   });
 

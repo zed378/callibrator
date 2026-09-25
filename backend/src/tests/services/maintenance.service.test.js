@@ -1,5 +1,10 @@
 const { describe, it, expect, beforeEach } = require("@jest/globals");
 
+// D-22 (ADR-070): a parent's delete soft-deletes its attachments through
+// attachment.service, in the parent's transaction.
+jest.mock("../../services/attachment.service", () => ({
+  softDeleteForResource: jest.fn().mockResolvedValue([]),
+}));
 jest.mock("sequelize", () => ({
   Op: {
     or: Symbol("or"),
@@ -307,6 +312,13 @@ describe("maintenance.service", () => {
       const result = await deleteWorkOrder("t-1", "wo-del");
       expect(result.success).toBe(true);
       expect(order.destroy).toHaveBeenCalled();
+      // D-22 (ADR-070): its attachments in the same transaction.
+      expect(require("../../services/attachment.service").softDeleteForResource).toHaveBeenCalledWith(
+        "t-1",
+        "MaintenanceWorkOrder",
+        "wo-del",
+        expect.objectContaining({ transaction: expect.anything() }),
+      );
     });
 
     it("should throw 404 when work order not found", async () => {

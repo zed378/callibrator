@@ -104,7 +104,13 @@ describe("A-123 / A-98: justUpdatePassword", () => {
     expect(user.mustChangePassword).toBe(false);
     expect(user.password).toBe(`hash:${MINE}`);
     expect(user.update).toHaveBeenCalledWith(
-      { password: `hash:${MINE}`, passwordChangedAt: expect.any(Date), mustChangePassword: false },
+      {
+        password: `hash:${MINE}`,
+        passwordChangedAt: expect.any(Date),
+        mustChangePassword: false,
+        // A-215: the holder's own password carries no expiry.
+        temporaryPasswordExpiresAt: null,
+      },
       { transaction: mockTx },
     );
     expect(revokeAllSessions).toHaveBeenCalledWith(USER_ID, "PASSWORD_CHANGED");

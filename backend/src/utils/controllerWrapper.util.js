@@ -36,6 +36,10 @@ const isProductionEnv = () => process.env.NODE_ENV === "production";
  */
 const sendCaughtError = (req, res, error, status, detailsArg, exposable) => {
   const isProduction = isProductionEnv();
+  // A-260: a 429 that knows when the pause ends says so (RFC 9110 §10.2.3).
+  if (status === 429 && error && Number.isFinite(error.retryAfterSeconds)) {
+    res.setHeader("Retry-After", String(Math.max(1, Math.ceil(error.retryAfterSeconds))));
+  }
   const shown = exposable === true || isExposableError(error, status);
   const message = shown
     ? (error && error.message) || "Internal server error"

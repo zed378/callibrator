@@ -875,7 +875,7 @@ describe("Workflow Service", () => {
       WorkflowInstance.findOne.mockResolvedValue(mockInstance);
       WorkflowAction.create.mockResolvedValue({});
 
-      const mockST = { id: "res-1", status: "Pending", save: jest.fn().mockResolvedValue() };
+      const mockST = { id: "res-1", status: "pending", approvedBy: null, save: jest.fn().mockResolvedValue() };
       StockTransfer.findOne.mockResolvedValue(mockST);
 
       const result = await workflowService.submitAction(
@@ -887,8 +887,26 @@ describe("Workflow Service", () => {
 
       expect(mockInstance.status).toBe("APPROVED");
       expect(mockInstance.save).toHaveBeenCalled();
-      expect(mockST.status).toBe("Approved");
-      expect(mockST.save).toHaveBeenCalled();
+      // A-201: a value of the transfer's ENUM — released to move, by the approver.
+      expect(mockST.status).toBe("in_transit");
+      expect(mockST.approvedBy).toBe("user-1");
+      expect(mockST.save).toHaveBeenCalledWith({ transaction: mockTransaction });
+      expect(StockTransfer.findOne).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: "res-1", tenantId: "tenant-1" }, transaction: mockTransaction, lock: "UPDATE" }),
+      );
+      expect(auditService.logAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          resourceType: "StockTransfer",
+          resourceId: "res-1",
+          userId: "user-1",
+          changes: {
+            operation: "WORKFLOW_APPROVE",
+            before: { status: "pending", approvedBy: null },
+            after: { status: "in_transit", approvedBy: "user-1" },
+          },
+        }),
+        { transaction: mockTransaction },
+      );
       expect(mockTransaction.commit).toHaveBeenCalled();
       expect(result.status).toBe("APPROVED");
     });
@@ -992,7 +1010,7 @@ describe("Workflow Service", () => {
       WorkflowInstance.findOne.mockResolvedValue(mockInstance);
       WorkflowAction.create.mockResolvedValue({});
       
-      const mockST = { id: "res-1", status: "Pending", save: jest.fn().mockResolvedValue() };
+      const mockST = { id: "res-1", status: "pending", save: jest.fn().mockResolvedValue() };
       StockTransfer.findOne.mockResolvedValue(mockST);
 
       await workflowService.submitAction(
@@ -1002,10 +1020,12 @@ describe("Workflow Service", () => {
         { action: "REJECTED" }
       );
 
-      expect(mockST.status).toBe("Rejected");
+      // A-201: "Rejected" is not a value of the ENUM; a rejected transfer is cancelled.
+      expect(mockST.status).toBe("cancelled");
+      expect(mockST.approvedBy).toBe("user-1");
     });
 
-    it("should handle missing target resource gracefully during status update", async () => {
+    it("A-201: a decision on a transfer that no longer exists is a 409 and rolls back", async () => {
       const mockInstance = {
         id: "instance-1",
         status: "PENDING",
@@ -1023,14 +1043,40 @@ describe("Workflow Service", () => {
 
       StockTransfer.findOne.mockResolvedValue(null);
 
-      const result = await workflowService.submitAction(
-        "tenant-1",
-        "instance-1",
-        { id: "user-1", roleId: "admin" },
-        { action: "REJECTED" }
-      );
+      await expect(
+        workflowService.submitAction("tenant-1", "instance-1", { id: "user-1", roleId: "admin" }, { action: "REJECTED" }),
+      ).rejects.toMatchObject({
+        status: 409,
+        message: "The stock transfer this workflow decides on no longer exists. Nothing was recorded.",
+      });
+      expect(mockTransaction.rollback).toHaveBeenCalled();
+      expect(mockTransaction.commit).not.toHaveBeenCalled();
+    });
 
-      expect(result.status).toBe("REJECTED");
+    it("A-201: a transfer that has already left `pending` is not rewritten by a final decision (409)", async () => {
+      const mockInstance = {
+        id: "instance-1",
+        status: "PENDING",
+        currentStepOrder: 1,
+        workflow: { resourceType: "StockTransfer", steps: [{ id: "step-1", stepOrder: 1, roleId: "admin", requiredApprovals: 1 }] },
+        actions: [],
+        resourceId: "res-1",
+        save: jest.fn().mockResolvedValue(),
+      };
+      WorkflowInstance.findOne.mockResolvedValue(mockInstance);
+      WorkflowAction.create.mockResolvedValue({});
+      const mockST = { id: "res-1", status: "completed", save: jest.fn() };
+      StockTransfer.findOne.mockResolvedValue(mockST);
+
+      await expect(
+        workflowService.submitAction("tenant-1", "instance-1", { id: "user-1", roleId: "admin" }, { action: "APPROVED" }),
+      ).rejects.toMatchObject({
+        status: 409,
+        message:
+          'This stock transfer is "completed" and can no longer be approved through its workflow: only a pending transfer is decided.',
+      });
+      expect(mockST.save).not.toHaveBeenCalled();
+      expect(mockTransaction.rollback).toHaveBeenCalled();
     });
 
     it("should rollback transaction on submit error", async () => {
@@ -1345,18 +1391,67 @@ describe("Workflow Service", () => {
   // always passes the approving user. These call it directly to reach the
   // no-approver / unknown-status / missing-record branches.
   // ------------------------------------------------------------------
+  describe("A-202 / A-203 — findPendingInstance", () => {
+    it("finds the PENDING instance of a resource, filtered by its workflow's resource type, in the transaction", async () => {
+      const t = {};
+      WorkflowInstance.findOne.mockResolvedValueOnce({ id: "wi-1" });
+
+      const found = await workflowService.findPendingInstance("tenant-1", "Certificate", "cert-1", t);
+
+      expect(found).toEqual({ id: "wi-1" });
+      expect(WorkflowInstance.findOne).toHaveBeenCalledWith({
+        where: { tenantId: "tenant-1", resourceId: "cert-1", status: "PENDING" },
+        include: [
+          {
+            model: Workflow,
+            as: "workflow",
+            attributes: ["id", "name", "resourceType"],
+            where: { resourceType: "Certificate" },
+            required: true,
+          },
+        ],
+        order: [["createdAt", "DESC"]],
+        transaction: t,
+      });
+    });
+
+    it("defaults to no transaction", async () => {
+      WorkflowInstance.findOne.mockResolvedValueOnce(null);
+
+      expect(await workflowService.findPendingInstance("tenant-1", "StockTransfer", "tf-1")).toBeNull();
+      expect(WorkflowInstance.findOne.mock.calls[0][0].transaction).toBeNull();
+    });
+  });
+
   describe("_updateTargetResourceStatus", () => {
     const t = {};
 
     it("should null out approvedBy on a StockTransfer when no approver is supplied", async () => {
-      const mockST = { id: "res-1", status: "Pending", save: jest.fn().mockResolvedValue() };
+      const mockST = { id: "res-1", status: "pending", save: jest.fn().mockResolvedValue() };
       StockTransfer.findOne.mockResolvedValue(mockST);
 
       await workflowService._updateTargetResourceStatus("tenant-1", "StockTransfer", "res-1", "APPROVED", t);
 
-      expect(mockST.status).toBe("Approved");
+      expect(mockST.status).toBe("in_transit");
       expect(mockST.approvedBy).toBeNull();
       expect(mockST.save).toHaveBeenCalledWith({ transaction: t });
+    });
+
+    it("A-201: every status it writes is a value of the model's ENUM", async () => {
+      for (const [finalStatus, expected] of [["APPROVED", "in_transit"], ["REJECTED", "cancelled"]]) {
+        const mockST = { id: "res-1", status: "pending", save: jest.fn().mockResolvedValue() };
+        StockTransfer.findOne.mockResolvedValue(mockST);
+        await workflowService._updateTargetResourceStatus("tenant-1", "StockTransfer", "res-1", finalStatus, t, { id: "u" });
+        expect(["pending", "in_transit", "completed", "cancelled"]).toContain(mockST.status);
+        expect(mockST.status).toBe(expected);
+      }
+      for (const [finalStatus, expected] of [["APPROVED", "Completed"], ["REJECTED", "InProgress"]]) {
+        const mockWo = { id: "res-1", status: "Open", save: jest.fn().mockResolvedValue() };
+        MaintenanceWorkOrder.findOne.mockResolvedValue(mockWo);
+        await workflowService._updateTargetResourceStatus("tenant-1", "MaintenanceWorkOrder", "res-1", finalStatus, t, { id: "u" });
+        expect(["Open", "InProgress", "Completed", "Cancelled"]).toContain(mockWo.status);
+        expect(mockWo.status).toBe(expected);
+      }
     });
 
     it("A-182: never touches a Certificate — its decisions go through the certificate state machine", async () => {
@@ -1365,33 +1460,38 @@ describe("Workflow Service", () => {
       expect(Certificate.findOne).not.toHaveBeenCalled();
     });
 
-    it("should leave a StockTransfer status untouched for an unrecognised final status", async () => {
-      const mockST = { id: "res-1", status: "Pending", save: jest.fn().mockResolvedValue() };
-      StockTransfer.findOne.mockResolvedValue(mockST);
-
-      await workflowService._updateTargetResourceStatus("tenant-1", "StockTransfer", "res-1", "CANCELLED", t);
-
-      expect(mockST.status).toBe("Pending");
-      expect(mockST.save).toHaveBeenCalledWith({ transaction: t });
-    });
-
-    it("should leave a MaintenanceWorkOrder status untouched when rejected", async () => {
-      // Only APPROVED maps to a work-order status ("Completed"); REJECTED is a no-op.
+    it("A-201: a rejected work order goes back to its performer (InProgress), audited", async () => {
       const mockWo = { id: "res-1", status: "Open", save: jest.fn().mockResolvedValue() };
       MaintenanceWorkOrder.findOne.mockResolvedValue(mockWo);
 
       await workflowService._updateTargetResourceStatus("tenant-1", "MaintenanceWorkOrder", "res-1", "REJECTED", t);
 
-      expect(mockWo.status).toBe("Open");
+      expect(mockWo.status).toBe("InProgress");
       expect(mockWo.save).toHaveBeenCalledWith({ transaction: t });
+      expect(auditService.logAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          resourceType: "MaintenanceWorkOrder",
+          userId: null,
+          changes: { operation: "WORKFLOW_REJECT", before: { status: "Open" }, after: { status: "InProgress" } },
+        }),
+        { transaction: t },
+      );
     });
 
-    it("should no-op when a StockTransfer record is missing", async () => {
+    it("A-201: a missing StockTransfer is a 409, never a silent no-op", async () => {
       StockTransfer.findOne.mockResolvedValue(null);
 
       await expect(
         workflowService._updateTargetResourceStatus("tenant-1", "StockTransfer", "gone", "APPROVED", t)
-      ).resolves.toBeUndefined();
+      ).rejects.toMatchObject({ status: 409 });
+    });
+
+    it("A-201: a rejection of a transfer no longer pending names the decision in its 409", async () => {
+      StockTransfer.findOne.mockResolvedValue({ id: "res-1", status: "in_transit", save: jest.fn() });
+
+      await expect(
+        workflowService._updateTargetResourceStatus("tenant-1", "StockTransfer", "res-1", "REJECTED", t, { id: "u" })
+      ).rejects.toMatchObject({ status: 409, message: expect.stringContaining("can no longer be rejected") });
     });
 
     it("should no-op when a MaintenanceWorkOrder record is missing", async () => {

@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono, Space_Grotesk } from "next/font/google";
+import { headers } from "next/headers";
 import "./globals.css";
+import { NONCE_HEADER } from "@/lib/securityHeaders";
 import { ThemeInitScript } from "@/components/ThemeInitScript";
 import { AuthInitializer } from "@/components/AuthInitializer";
 import { TenantBrandingProvider } from "@/components/TenantBrandingProvider";
@@ -51,11 +53,26 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+/**
+ * P7-08, ADR-071: every page is rendered per request, because a CSP nonce is.
+ *
+ * Next stamps the proxy's nonce on its scripts only while rendering a request.
+ * A prerendered page — or a Cache Components static shell — was rendered at
+ * build time with no nonce, and under `'strict-dynamic'` none of its scripts
+ * would run. Reading the request headers here, outside any Suspense boundary,
+ * makes every route dynamic; `instant = false` declares that this root layout
+ * is allowed to block, which is what makes that a valid Cache Components app.
+ * `use cache` data caching (lib/content.api.ts) is unaffected.
+ */
+export const instant = false;
+
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const nonce = (await headers()).get(NONCE_HEADER) ?? undefined;
+
   return (
     <html
       lang="en"
@@ -66,7 +83,7 @@ export default function RootLayout({
       <head>
       </head>
       <body className="min-h-full flex flex-col bg-background text-foreground" suppressHydrationWarning>
-        <ThemeInitScript script={themeInitScript} />
+        <ThemeInitScript script={themeInitScript} nonce={nonce} />
         <ThemeProvider>
           <TenantBrandingProvider>
             <AuthInitializer />

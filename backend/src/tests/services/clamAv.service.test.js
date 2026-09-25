@@ -10,6 +10,12 @@
  * The real-clamd block at the end runs when CLAMAV_LIVE_PORT names a running
  * clamd (e.g. `docker run -p 13310:3310 clamav/clamav:1.4`).
  *
+ * The unit tests never write the EICAR string to disk: a host antivirus
+ * (Windows Defender here) detects it on write and refuses the open, so the
+ * test failed on the machine rather than on the code. The fake clamd flags
+ * FAKE_INFECTED, a harmless payload, instead. Only the opt-in real-clamd
+ * block writes EICAR, because there the real engine's verdict is the point.
+ *
  * Env consts are read at module load, so each test sets process.env and then
  * re-requires the service (jest.resetModules in beforeEach).
  */
@@ -18,7 +24,7 @@ const os = require("os");
 const path = require("path");
 const crypto = require("crypto");
 const EventEmitter = require("events");
-const { startFakeClamd, EICAR } = require("../fixtures/fakeClamd");
+const { startFakeClamd, EICAR, FAKE_INFECTED, FAKE_SIGNATURE } = require("../fixtures/fakeClamd");
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: {
@@ -114,17 +120,17 @@ describe("S-04 — clamd INSTREAM protocol (fake clamd over TCP)", () => {
     expect(payload.equals(content)).toBe(true);
   });
 
-  it("the EICAR test file reads FOUND, with its signature", async () => {
+  it("an infected file reads FOUND, with its signature", async () => {
     const svc = load();
-    const file = write("eicar.com", EICAR);
+    const file = write("infected.bin", FAKE_INFECTED);
 
     const result = await svc.scanFile(file, false);
 
     expect(result).toEqual({
       isClean: false,
       code: "FOUND",
-      result: "stream: Eicar-Test-Signature FOUND",
-      signature: "Eicar-Test-Signature",
+      result: `stream: ${FAKE_SIGNATURE} FOUND`,
+      signature: FAKE_SIGNATURE,
     });
     const { logger } = require("../../middlewares/activityLog.middleware");
     expect(logger.warn).toHaveBeenCalledWith(
@@ -229,7 +235,7 @@ describe("S-04 — clamd INSTREAM protocol (fake clamd over TCP)", () => {
     const local = await startFakeClamd({ path: pipe });
     try {
       const svc = load({ CLAMAV_SOCKET_PATH: pipe, CLAMAV_PORT: "1" });
-      const file = write("eicar.com", EICAR);
+      const file = write("infected.bin", FAKE_INFECTED);
 
       const result = await svc.scanFile(file, false);
 
@@ -353,8 +359,8 @@ describe("S-17 — the verdict cache is keyed by a content hash", () => {
     const svc = load({ CLAMAV_HTTP_MODE: "true", CLAMAV_HTTP_URL: "http://clamav.local:9000" });
     svc.clearCache();
 
-    const clean = write("a.txt", "A".repeat(EICAR.length));
-    const bad = write("b.txt", EICAR);
+    const clean = write("a.txt", "A".repeat(FAKE_INFECTED.length));
+    const bad = write("b.txt", FAKE_INFECTED);
     const when = new Date("2026-01-01T00:00:00Z");
     fs.utimesSync(clean, when, when);
     fs.utimesSync(bad, when, when);
@@ -386,7 +392,7 @@ describe("S-17 — the verdict cache is keyed by a content hash", () => {
   it("a FOUND verdict is cached as not-clean", async () => {
     const svc = load();
     svc.clearCache();
-    const a = write("eicar.com", EICAR);
+    const a = write("infected.bin", FAKE_INFECTED);
     await svc.scanFile(a);
     expect(await svc.scanFile(a)).toEqual({ isClean: false, result: "Cache hit", code: "CACHE" });
   });

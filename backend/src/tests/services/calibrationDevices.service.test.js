@@ -2,6 +2,11 @@
  * Tests for calibrationDevices.service.js
  */
 
+// D-22 (ADR-070): a parent's delete soft-deletes its attachments through
+// attachment.service, in the parent's transaction.
+jest.mock("../../services/attachment.service", () => ({
+  softDeleteForResource: jest.fn().mockResolvedValue([]),
+}));
 jest.mock("sequelize", () => ({
   Op: {
     or: Symbol("or"),
@@ -352,6 +357,13 @@ describe("calibrationDevices.service", () => {
       expect(result.success).toBe(true);
       expect(result.status).toBe(200);
       expect(mockDevice.softDelete).toHaveBeenCalled();
+      // D-22 (ADR-070): its attachments in the same transaction.
+      expect(require("../../services/attachment.service").softDeleteForResource).toHaveBeenCalledWith(
+        "tenant-1",
+        "CalibrationDevice",
+        "device-1",
+        expect.objectContaining({ transaction: expect.anything() }),
+      );
     });
 
     it("should handle error during delete", async () => {

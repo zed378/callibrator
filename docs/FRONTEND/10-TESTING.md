@@ -1,6 +1,6 @@
 # 10 — Frontend Testing
 
-Jest 30 · Testing Library · jsdom · axe-core. Coverage gate: **target 70%; enforced today at 41/35/34/41** (statements/branches/functions/lines) — see [§ Coverage gate](#coverage-gate). *(Amended 2026-09-24, F-03/F-04, ADR-PENDING-fe.)*
+Jest 30 · Testing Library · jsdom · axe-core. Coverage gate: **target 70%; enforced today at 41/35/34/41** (statements/branches/functions/lines) — see [§ Coverage gate](#coverage-gate). *(Amended 2026-09-24, F-03/F-04, [ADR-067](../../MEMORY/DECISIONS.md).)*
 
 Overall strategy: [`../TESTING/00-TEST-STRATEGY.md`](../TESTING/00-TEST-STRATEGY.md).
 
@@ -189,6 +189,8 @@ Measured 2026-09-24, after F-03/F-04: **42.13% statements, 36.61% branches,
 35.80% functions, 42.45% lines** (145 suites, 1,309 tests). The gate is set a
 point under that — **41 / 35 / 34 / 41** — so it passes honestly and fails on a
 regression.
+
+Re-measured **2026-09-25** with `npm test` (two runs, identical): **42.01% statements, 36.56% branches, 35.65% functions, 42.32% lines** (145 suites, 1,309 tests, all pass) — the gate passes. `src/api/client.ts` is at 95.95% statements. CI now runs `jest --ci --coverage`, so the gate runs there too; before 2026-09-25 the workflow ran `jest --ci` and never evaluated it ([ADR-067](../../MEMORY/DECISIONS.md)). Async queries wait up to 5 s (`jest.setup.ts`) because two full-page suites timed out intermittently under coverage instrumentation.
 
 **Ratchet to 70%.** Each step raises the four numbers in `jest.config.js` in
 the same change that earns them; none is reached by excluding product code

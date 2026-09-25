@@ -2,7 +2,7 @@
 
 /**
  * `calibration_records` is append-only as a DATABASE constraint, not a
- * service-layer convention (P6-03, PR-2, BR-7; ADR-PENDING-data).
+ * service-layer convention (P6-03, PR-2, BR-7; ADR-062).
  *
  * WHAT WAS WRONG
  *

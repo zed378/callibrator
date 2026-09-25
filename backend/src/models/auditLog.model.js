@@ -1,3 +1,5 @@
+// D-27 (ADR-070): every JSON column declares its shape, validated on write.
+const { jsonShape } = require("../utils/jsonShape.util");
 const { Model, DataTypes } = require("sequelize");
 const { ACTOR_TYPE_VALUES, ACTOR_NAME_MAX_LENGTH } = require("../constants/systemActors");
 
@@ -103,6 +105,7 @@ module.exports = (sequelize) => {
       },
       changes: {
         type: DataTypes.JSONB,
+        validate: { shape: jsonShape("AuditLog.changes") },
         allowNull: true,
         comment: "Stores { before: {}, after: {} } snapshots of the record",
       },

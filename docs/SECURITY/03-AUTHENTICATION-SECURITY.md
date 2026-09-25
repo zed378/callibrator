@@ -190,6 +190,54 @@ The authenticator increments a counter on each use. A response carrying a counte
 
 Storing `webauthnSignCount` without comparing it is storing a defence nobody applies.
 
+## Changes That Need Fresh Re-Authentication (ADR-068)
+
+Holding a session is not enough to change what protects the account. The rule is A-114's, shared as
+`auth.service#reauthenticate`:
+- the current password is required;
+- on an MFA account, a current TOTP code or a recovery code is required as well;
+- the code is spent inside the change's transaction;
+- a wrong password and a wrong code give one combined 400.
+
+The rule applies to:
+
+| Change | Also |
+|---|---|
+| MFA rotate or disable (A-114, A-141) | other sessions revoked |
+| Passkey removal, `POST /webauthn/disable` (A-213) | audited `WEBAUTHN_DISABLE` in the transaction |
+| Own email, `PUT /gdpr/rectify {field: "email"}` (A-214) | audited `GDPR_RECTIFICATION` with `reauthenticatedWith`; the previous address is told |
+| Own password, `POST /auth/just-update-password` | the current password only; every session is revoked |
+
+A session that signed in through SSO (`amr` of `saml` or `oidc`) cannot change the password or the
+email here (A-216). It gets a 409 that names the identity provider, and `/auth/verify` returns
+`passwordManagedBy` so the page explains instead of showing the form. An account under the A-123
+forced change is exempt.
+
+**An administrator's password expires 72 hours after it is issued** (A-215): the create, or
+`POST /users/:userId/password/reset`. The column is `users.temporary_password_expires_at` (migration
+`0078`). Past it, sign-in gets the same 401 "Invalid credentials" as a wrong password, counted by the
+same throttle, and the administrator issues a new password.
+
+**Every signed-in check of one's own password is budgeted (A-260, ADR-072).** It covers
+`POST /auth/pass-is-valid`, the change-password route, and every re-authentication above: the MFA
+rotation and disable, the passkey removal and the email change. The code path is
+`auth.service#verifySessionPassword`.
+- The budget is one per user across all of them (`AUTH_ENDPOINTS.passwordCheck`): five wrong
+  passwords in fifteen minutes.
+- The attempt that spends it signs out the session that made it. It writes `ACCOUNT_LOCKED` (actor
+  `system:auth-lockout`, `changes.scope` `session-password-check`) in the same transaction, apart
+  from the change being re-authenticated, so the row survives that change's rollback.
+- That attempt, and every check until the window ends, gets 429 with `Retry-After`. The password is
+  not compared while the budget is spent.
+- The budget never writes `users.locked_until`, because the guesser already holds a session.
+- The right password clears the count.
+
+**An administrator can remove another user's passkey (A-262):** `DELETE /users/:userId/webauthn`.
+It has the same guards as the MFA and password resets: another tenant's user or a missing one is 404,
+oneself is 400, and a higher role is 403. It revokes every session of the user and is audited
+`WEBAUTHN_ADMIN_RESET` in its transaction. It is the way out for an SSO-only user, who has no password
+to re-authenticate the self-service removal with.
+
 ## OTP and Password Reset
 
 `otpCode`, `otpExpiredAt`, `otpRequestCount`, `otpLastRequestedAt`.

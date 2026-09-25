@@ -10,9 +10,18 @@
  * INSTREAM: a sequence of chunks, each `<uint32 big-endian length><bytes>`,
  * ended by a zero-length chunk. A chunk whose declared length would push the
  * stream past `streamMaxLength` is answered `INSTREAM size limit exceeded.
- * ERROR` and the connection closed. A completed stream that begins with the
- * EICAR test string answers `stream: Eicar-Test-Signature FOUND`, anything
- * else `stream: OK`.
+ * ERROR` and the connection closed. A completed stream that begins with
+ * FAKE_INFECTED answers `stream: Callibrator-Fake-Test-Signature FOUND`, one
+ * that begins with the EICAR test string answers
+ * `stream: Eicar-Test-Signature FOUND`, anything else `stream: OK`.
+ *
+ * Why FAKE_INFECTED and not EICAR: a unit test that WRITES the EICAR string to
+ * disk depends on the host's antivirus. Windows Defender detects it on write
+ * (Virus:DOS/EICAR_Test_File) and refuses every later open with
+ * ERROR_VIRUS_INFECTED, which Node reports as `UNKNOWN: unknown error, open`,
+ * so the scan under test failed before a byte reached this server. The fake
+ * clamd's verdict is the fake's to define; EICAR on disk is kept for the
+ * opt-in real-clamd block, where the real engine is what is being tested.
  *
  * `mode` overrides the behaviour for failure tests:
  *  - "normal"          the protocol above
@@ -28,6 +37,10 @@ const net = require("net");
 
 const EICAR =
   "X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*";
+
+/** A harmless payload the FAKE clamd, and only it, reports as infected. */
+const FAKE_INFECTED = "CALLIBRATOR-FAKE-CLAMD-TEST-PAYLOAD: harmless, flagged by the fake only";
+const FAKE_SIGNATURE = "Callibrator-Fake-Test-Signature";
 
 /**
  * @param {object} [opts]
@@ -111,12 +124,14 @@ async function startFakeClamd({ streamMaxLength = 25 * 1024 * 1024, path } = {})
         if (len === 0) {
           const content = Buffer.concat(payload);
           session.payload = content;
-          answer(
-            content.toString("latin1").startsWith(EICAR)
-              ? "stream: Eicar-Test-Signature FOUND"
-              : "stream: OK",
-            session.terminator,
-          );
+          const text = content.toString("latin1");
+          let verdict = "stream: OK";
+          if (text.startsWith(FAKE_INFECTED)) {
+            verdict = `stream: ${FAKE_SIGNATURE} FOUND`;
+          } else if (text.startsWith(EICAR)) {
+            verdict = "stream: Eicar-Test-Signature FOUND";
+          }
+          answer(verdict, session.terminator);
           return;
         }
         if (total + len > streamMaxLength) {
@@ -150,4 +165,4 @@ async function startFakeClamd({ streamMaxLength = 25 * 1024 * 1024, path } = {})
   };
 }
 
-module.exports = { startFakeClamd, EICAR };
+module.exports = { startFakeClamd, EICAR, FAKE_INFECTED, FAKE_SIGNATURE };

@@ -4,6 +4,7 @@ const { AppError } = require('../utils/appError.util');
 const { logger } = require('../middlewares/activityLog.middleware');
 const auditService = require('./audit.service');
 const { db } = require('../config');
+const { runForTenant } = require("../utils/jobContext.util");
 
 /** The actor recorded on the purge's audit row: a job, not a user (W-04). */
 const RETENTION_ACTOR = 'system:retention-purge';
@@ -290,140 +291,218 @@ exports.disableLegalHold = async (tenantId, actor) => {
   return { tenantId, enabled: false, disabledBy };
 };
 
-exports.purgeExpiredRecords = async (tenantId) => {
+/** Rows of one table one purge pass deletes at most (W-17). */
+const PURGE_BATCH_SIZE = Number(process.env.RETENTION_PURGE_BATCH_SIZE) || 5000;
+/** Tenants read per page by the sweep (W-17). */
+const SWEEP_TENANT_PAGE_SIZE = Number(process.env.RETENTION_SWEEP_TENANT_PAGE_SIZE) || 100;
+/** After this long, a sweep stops starting catch-up passes (W-17). */
+const SWEEP_BUDGET_MS = Number(process.env.RETENTION_SWEEP_BUDGET_MS) || 15 * 60 * 1000;
+
+/**
+ * Delete one bounded batch of `entity` rows older than `cutoff`, for one tenant.
+ * `limit` becomes `DELETE ... WHERE id IN (SELECT id ... LIMIT n)` on PostgreSQL.
+ */
+const purgeBatch = (entity, tenantId, cutoff, limit, transaction) => {
+  switch (entity) {
+    case "notifications":
+      return Notification.destroy({
+        where: { tenantId, createdAt: { [Op.lt]: cutoff } },
+        limit,
+        transaction,
+      });
+    case "sessions":
+      return Session.destroy({
+        where: {
+          // The Session model names this attribute `tenant_id` (not tenantId),
+          // so querying by `tenantId` throws "column tenantId does not exist".
+          tenant_id: tenantId,
+          createdAt: { [Op.lt]: cutoff },
+        },
+        limit,
+        transaction,
+      });
+    default:
+      // "iot_readings" — D-19: served by iot_readings_tenant_id_timestamp (migration 0067).
+      return IotReading.destroy({
+        where: { tenantId, timestamp: { [Op.lt]: cutoff } },
+        limit,
+        transaction,
+      });
+  }
+};
+
+/**
+ * Purge one tenant's expired notifications, sessions and (when configured)
+ * IoT readings.
+ *
+ * W-04 / W-16 — each pass's deletes and the audit row that records them are
+ * ONE transaction: a purge whose record cannot be written does not happen
+ * (logAction re-throws inside a transaction), and a failure part-way through
+ * rolls the pass back instead of leaving the tenant half-purged.
+ *
+ * W-17 — a pass deletes at most `batchSize` rows of each table. A table that
+ * filled its batch gets another pass (another transaction, another audit row)
+ * until it is done or `deadline` has passed; `complete: false` then says rows
+ * were left for the next run. One tenant's backlog can no longer make one
+ * transaction delete millions of rows.
+ *
+ * A-121 (ADR-051 Q-12): audit_logs is not a purgeable entity. There is no
+ * case for it here and getRetentionPolicy never reports it.
+ *
+ * @param {string} tenantId
+ * @param {object} [opts]
+ * @param {number} [opts.batchSize] - rows per table per pass (RETENTION_PURGE_BATCH_SIZE, 5000)
+ * @param {number|null} [opts.deadline] - epoch ms after which no further pass starts
+ * @returns {Promise<{tenantId: string, purged: object, skipped: false, complete: boolean}|{skipped: true, reason: string}>}
+ */
+exports.purgeExpiredRecords = async (tenantId, { batchSize = PURGE_BATCH_SIZE, deadline = null } = {}) => {
   const onLegalHold = await exports.isOnLegalHold(tenantId);
 
   if (onLegalHold) {
     logger.info(`Purge skipped for tenant ${tenantId}: legal hold active`);
-    return { skipped: true, reason: 'legal_hold' };
+    return { skipped: true, reason: "legal_hold" };
   }
 
   const policies = await exports.getRetentionPolicy(tenantId);
   const results = {};
   const cutoffs = {};
+  const cutoffDates = {};
 
-  // W-04 / W-16 — the deletes and the audit row that records them are ONE
-  // transaction: a purge whose record cannot be written does not happen
-  // (logAction re-throws inside a transaction), and a failure part-way through
-  // rolls every table back instead of leaving a tenant half-purged.
-  //
-  // A-121 (ADR-051 Q-12): audit_logs is not a purgeable entity. There is no
-  // case for it below and getRetentionPolicy never reports it.
-  await db.transaction(async (transaction) => {
-    for (const [entity, configuredDays] of Object.entries(policies)) {
-      // 0 (or a stored value that does not parse) means keep forever.
-      if (!Number.isFinite(configuredDays) || configuredDays <= 0) {
-        continue;
-      }
-      // An override stored before the floor existed cannot purge sooner.
-      const retentionDays = Math.max(configuredDays, MIN_RETENTION_DAYS[entity]);
-
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - retentionDays);
-      cutoffs[entity] = cutoff.toISOString();
-
-      let deletedCount = 0;
-
-      switch (entity) {
-        case 'notifications':
-          deletedCount = await Notification.destroy({
-            where: {
-              tenantId,
-              createdAt: { [Op.lt]: cutoff },
-            },
-            transaction,
-          });
-          break;
-
-        case 'sessions':
-          deletedCount = await Session.destroy({
-            where: {
-              // The Session model names this attribute `tenant_id` (not tenantId),
-              // so querying by `tenantId` throws "column tenantId does not exist".
-              tenant_id: tenantId,
-              createdAt: { [Op.lt]: cutoff },
-            },
-            transaction,
-          });
-          break;
-
-        case "iot_readings":
-          // D-19: served by iot_readings_tenant_id_timestamp (migration 0067).
-          deletedCount = await IotReading.destroy({
-            where: {
-              tenantId,
-              timestamp: { [Op.lt]: cutoff },
-            },
-            transaction,
-          });
-          break;
-      }
-
-      if (deletedCount > 0) {
-        results[entity] = deletedCount;
-      }
+  for (const [entity, configuredDays] of Object.entries(policies)) {
+    // 0 (or a stored value that does not parse) means keep forever.
+    if (!Number.isFinite(configuredDays) || configuredDays <= 0) {
+      continue;
     }
+    // An override stored before the floor existed cannot purge sooner.
+    const retentionDays = Math.max(configuredDays, MIN_RETENTION_DAYS[entity]);
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - retentionDays);
+    cutoffDates[entity] = cutoff;
+    cutoffs[entity] = cutoff.toISOString();
+  }
 
-    // Nothing destroyed, nothing to record.
-    if (Object.keys(results).length > 0) {
-      await auditService.logAction(
-        {
-          tenantId,
-          systemActor: RETENTION_ACTOR, // A-124: a job, from constants/systemActors.js
-          action: 'DELETE',
-          resourceType: 'DataRetention',
-          resourceId: null,
-          changes: {
-            operation: 'RETENTION_PURGE',
-            actor: RETENTION_ACTOR,
-            before: { retentionDays: policies },
-            after: { purged: results, cutoffs },
+  let pending = Object.keys(cutoffDates);
+  while (pending.length > 0) {
+    const pass = {};
+    const full = [];
+    await db.transaction(async (transaction) => {
+      for (const entity of pending) {
+        const deletedCount = await purgeBatch(entity, tenantId, cutoffDates[entity], batchSize, transaction);
+        if (deletedCount > 0) {
+          pass[entity] = deletedCount;
+        }
+        if (deletedCount >= batchSize) {
+          full.push(entity);
+        }
+      }
+
+      // Nothing destroyed, nothing to record.
+      if (Object.keys(pass).length > 0) {
+        await auditService.logAction(
+          {
+            tenantId,
+            systemActor: RETENTION_ACTOR, // A-124: a job, from constants/systemActors.js
+            action: "DELETE",
+            resourceType: "DataRetention",
+            resourceId: null,
+            changes: {
+              operation: "RETENTION_PURGE",
+              actor: RETENTION_ACTOR,
+              before: { retentionDays: policies },
+              after: { purged: pass, cutoffs },
+              // W-17: the pass's bound, and the tables that filled it (more remain).
+              batch: { size: batchSize, full },
+            },
           },
-        },
-        { transaction },
-      );
-    }
-  });
-
-  logger.info(`Purge completed for tenant ${tenantId}`, results);
-
-  return { tenantId, purged: results, skipped: false };
-};
-
-/**
- * Run the retention purge across every tenant. Intended for the scheduled job:
- * it has no request/tenant CLS context, so the isolation hooks run unscoped and
- * each purgeExpiredRecords call confines itself with its explicit tenantId
- * predicate. Per-tenant failures are logged and counted, never fatal.
- *
- * @returns {Promise<{tenants:number, purged:number, skipped:number, errors:number}>}
- */
-exports.runRetentionSweep = async () => {
-  const { Tenant } = require('../models');
-  const tenants = await Tenant.findAll({ attributes: ['id'] });
-
-  const summary = { tenants: tenants.length, purged: 0, skipped: 0, errors: 0 };
-
-  for (const tenant of tenants) {
-    try {
-      const result = await exports.purgeExpiredRecords(tenant.id);
-      if (result.skipped) {
-        summary.skipped += 1;
-      } else {
-        summary.purged += Object.values(result.purged || {}).reduce(
-          (sum, n) => sum + n,
-          0,
+          { transaction },
         );
       }
-    } catch (err) {
-      summary.errors += 1;
-      logger.error(
-        `Retention sweep failed for tenant ${tenant.id}: ${err.message}`,
-      );
+    });
+
+    for (const [entity, n] of Object.entries(pass)) {
+      results[entity] = (results[entity] || 0) + n;
+    }
+    pending = full;
+    if (pending.length > 0 && deadline !== null && Date.now() >= deadline) {
+      break;
     }
   }
 
-  logger.info('Retention sweep complete', summary);
+  logger.info(`Purge completed for tenant ${tenantId}`, results);
+
+  return { tenantId, purged: results, skipped: false, complete: pending.length === 0 };
+};
+
+/**
+ * Run the retention purge across every tenant — the scheduled job.
+ *
+ * W-12: each tenant's purge runs inside runForTenant(tenant), so the
+ * isolation hooks confine every read and delete it makes to that tenant, on
+ * top of the explicit predicates. The tenant list itself reads `tenants`,
+ * which is not a tenant-scoped table.
+ *
+ * W-17: tenants are read in keyset pages, and every tenant gets at least one
+ * bounded pass per run. Catch-up passes stop once `budgetMs` has passed; a
+ * tenant left with rows is counted in `incomplete` and continues next run.
+ *
+ * Per-tenant failures are logged and counted, never fatal.
+ *
+ * @param {object} [opts]
+ * @param {number} [opts.pageSize]
+ * @param {number} [opts.budgetMs]
+ * @param {number} [opts.batchSize]
+ * @returns {Promise<{tenants:number, purged:number, skipped:number, errors:number, incomplete:number}>}
+ */
+exports.runRetentionSweep = async ({
+  pageSize = SWEEP_TENANT_PAGE_SIZE,
+  budgetMs = SWEEP_BUDGET_MS,
+  batchSize = PURGE_BATCH_SIZE,
+} = {}) => {
+  const { Tenant } = require("../models");
+  const deadline = Date.now() + budgetMs;
+  const summary = { tenants: 0, purged: 0, skipped: 0, errors: 0, incomplete: 0 };
+
+  let afterId = null;
+  for (;;) {
+    const tenants = await Tenant.findAll({
+      attributes: ["id"],
+      where: afterId ? { id: { [Op.gt]: afterId } } : {},
+      order: [["id", "ASC"]],
+      limit: pageSize,
+    });
+
+    for (const tenant of tenants) {
+      summary.tenants += 1;
+      try {
+        const result = await runForTenant(tenant.id, () =>
+          exports.purgeExpiredRecords(tenant.id, { batchSize, deadline }),
+        );
+        if (result.skipped) {
+          summary.skipped += 1;
+        } else {
+          summary.purged += Object.values(result.purged || {}).reduce(
+            (sum, n) => sum + n,
+            0,
+          );
+          if (result.complete === false) {
+            summary.incomplete += 1;
+          }
+        }
+      } catch (err) {
+        summary.errors += 1;
+        logger.error(
+          `Retention sweep failed for tenant ${tenant.id}: ${err.message}`,
+        );
+      }
+    }
+
+    if (tenants.length < pageSize) {
+      break;
+    }
+    afterId = tenants[tenants.length - 1].id;
+  }
+
+  logger.info("Retention sweep complete", summary);
   return summary;
 };
 
