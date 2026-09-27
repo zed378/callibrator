@@ -38,6 +38,13 @@ frontend/entrypoint.sh
 frontend/**/*.md
 frontend/**/__tests__
 frontend/**/*.test.*
+# Test-only helpers (a11y/axe.ts, support/storeContract.ts) are not *.test.*
+# files, so the two lines above missed them — and `next build` type-checks
+# every .ts it can see. The image has no @types/jest (it lives in the root
+# workspace's devDependencies, which `npm ci --workspace frontend` omits), so
+# they failed the build on the VM on 2026-09-27. Nothing outside tests imports
+# them.
+frontend/src/tests
 frontend/**/*.spec.*
 frontend/jest.config.js
 frontend/jest.setup.ts
