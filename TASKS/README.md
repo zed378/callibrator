@@ -44,6 +44,8 @@ That is recorded as PR-4 in [`../docs/PLAN/18-RISK-REGISTER.md`](../docs/PLAN/18
 | [`DOCS-GAP-2026-09.md`](./DOCS-GAP-2026-09.md) | 📄 **17 documentation tasks**, benchmarked against a reference repository. Broken links, under-served categories, stale documents |
 | [`RUNBOOK-POSTGRES-18-UPGRADE.md`](./RUNBOOK-POSTGRES-18-UPGRADE.md) | 🚧 Moving the deployment from 17.11 to 18 (ADR-041). **The repository targets 18; the VM does not** |
 | [`PHASE-9-TYPESCRIPT-MIGRATION.md`](./PHASE-9-TYPESCRIPT-MIGRATION.md) | 🔴 Backend JavaScript → strict TypeScript (ADR-038). Not started; blocked on audit wave 0 |
+| **Upstream PHP Feature Adoption** | ⏳ Priority task after Phase 9 to adopt and merge upstream features from the original PHP fork |
+| [`PHASE-999-GO-MIGRATION-AND-DUAL-BACKEND.md`](./PHASE-999-GO-MIGRATION-AND-DUAL-BACKEND.md) | ⏳ Dual-backend Go engine porting backlog (ADR-089). 25 planned tasks; MUST NOT start before Phase 9 & Upstream PHP adoption |
 | [`BACKLOG.md`](./BACKLOG.md) | Open questions, specification gaps, deliberate deferrals, unverified claims |
 
 **Phases 0–5 are written retrospectively.** They were executed before `TASKS/` was used as intended, so those files reconstruct what was actually built from the code, the migration sequence and the audit report — not from a plan that was followed.

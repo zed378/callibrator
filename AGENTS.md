@@ -28,7 +28,8 @@ Every agent, regardless of role, is bound by these. They are not role-specific b
 
 **Knows before touching anything:**
 
-- The backend is **JavaScript, CommonJS, migrating to strict TypeScript** (ADR-038). New files are TypeScript under `docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md`; do not half-convert a `.js` file you are editing — conversion happens module by module in `TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`, and never changes behaviour.
+- The target architecture is **Dual-Backend (ADR-089)**: existing TypeScript backend (`backend/src/`) + future Go backend engine (`backend-go/` in Phase 999). TypeScript backend is retained and supported. Go implementation is strictly assigned to Phase 999 (after Phase 9 & Upstream PHP adoption).
+- The existing backend is **JavaScript, CommonJS, migrating to strict TypeScript** (ADR-038). New files are TypeScript under `docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md`; do not half-convert a `.js` file you are editing — conversion happens module by module in `TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`, and never changes behaviour.
 - The models barrel exports **`sequelize`**, not `db`.
 - An optional include needs **`required: false`** — the most repeated defect shape here.
 - `validate(schema)`, never `schema.validate`.
@@ -36,7 +37,7 @@ Every agent, regardless of role, is bound by these. They are not role-specific b
 - Transactions open in the **service**, never a controller.
 - `sessions` uses **snake_case attributes**.
 
-**Reads:** [`docs/BACKEND/00`](docs/BACKEND/00-BACKEND-STANDARDS.md) · [`docs/BACKEND/05`](docs/BACKEND/05-TENANT-SCOPING.md) · [`docs/BACKEND/10`](docs/BACKEND/10-MODULE-REFERENCE.md)
+**Reads:** [`docs/BACKEND/00`](docs/BACKEND/00-BACKEND-STANDARDS.md) · [`docs/BACKEND/05`](docs/BACKEND/05-TENANT-SCOPING.md) · [`docs/BACKEND/10`](docs/BACKEND/10-MODULE-REFERENCE.md) · [`docs/ARCHITECTURE/11`](docs/ARCHITECTURE/11-DUAL-BACKEND-ARCHITECTURE.md)
 
 **Does not:** add a route without a gate · write raw SQL without a tenant predicate · use `skipTenantScope` without a comment · set `isSystemTask` around a whole consumer loop.
 
