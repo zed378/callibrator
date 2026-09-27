@@ -4007,6 +4007,32 @@ skips the locked rows.
 
 ---
 
+## ADR-089: Dual-Backend Target Architecture (TypeScript & Go), Multi-Frontend & Shared Component Strategy
+
+**Decision:** Callibrator adopts a dual-backend target architecture consisting of the existing TypeScript backend (`backend/src/`) and a future Go backend engine (`backend-go/`), supported by a multi-frontend integration pattern and root-level shared components (`shared/`).
+
+**Rationale:**
+- The existing TypeScript backend is mature, serving 53 route modules and 71 Sequelize models. Retaining it avoids a risky and disruptive immediate rewrite.
+- A future Go backend engine provides high throughput, lower memory consumption, and superior concurrency for high-density workloads (IoT ingest, telemetry, read APIs).
+- Decoupling frontend integration targets via backend API adapters and root-level shared UI components ensures UI surfaces remain clean, maintainable, and backend-agnostic.
+- Positioning all Go implementation work in Phase 999 ensures Phase 9 (TypeScript Backend Migration) and Upstream PHP Feature Adoption remain unblocked.
+
+**Alternatives Considered:**
+- Complete immediate replacement of TypeScript backend with Go — rejected due to massive operational risk and breakage of 674 backend tests.
+- Single monolith in TypeScript indefinitely — rejected because Go offers significant latency and footprint advantages for target scaling scenarios.
+- Embedded microservices rewrite — rejected because tenant isolation is cheapest and safest when maintained inside structured monolith boundaries.
+
+**Implications:**
+- TypeScript backend remains fully supported as the reference implementation.
+- Go backend is built as an additional backend engine under Phase 999.
+- Frontend logic and presentation controls live in backend-agnostic `shared/` components.
+- Roadmap sequence: Existing Phases -> Phase 9 -> Upstream PHP Feature Adoption -> Phase 999.
+- Current scope is strictly planning and documentation only; zero Go source code implementation in current phase.
+
+**Status:** Accepted (Planning & Specification: 2026-09-27; Implementation: Phase 999)
+
+---
+
 ## Open Decisions
 
 Recorded so a future reader can tell whether their idea was evaluated and rejected, or genuinely never considered.

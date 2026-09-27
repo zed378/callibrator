@@ -4,35 +4,50 @@
 
 ## The Shape
 
-```
-                          ┌──────────────────────────┐
-                          │   Browser / API client   │
-                          └────────────┬─────────────┘
-                                       │ HTTPS
-                          ┌────────────▼─────────────┐
-                          │   nginx  (reverse proxy) │
-                          │   TLS · routing · ACME   │
-                          └──────┬─────────────┬─────┘
-                                 │             │
-                  ┌──────────────▼───┐   ┌─────▼──────────────────┐
-                  │  Next.js 16      │   │  Express (JavaScript)  │
-                  │  React 19 · SSR  │──▶│  modular monolith      │
-                  │  compiled (bun)  │   │  compiled (pkg)        │
-                  └──────────────────┘   └─────┬──────────────────┘
-                                               │
-        ┌──────────┬──────────┬────────────────┼──────────┬──────────┐
-        ▼          ▼          ▼                ▼          ▼          ▼
-  ┌──────────┐ ┌───────┐ ┌──────────┐  ┌────────────┐ ┌───────┐ ┌────────┐
-  │ Postgres │ │ Redis │ │ RabbitMQ │  │ Object     │ │ MQTT  │ │ ClamAV │
-  │ pgvector │ │       │ │          │  │ storage    │ │mqtt   │ │        │
-  │ +pgvector│ │       │ │          │  │ local|s3|  │ │(embed)│ │        │
-  │          │ │       │ │          │  │ nfs        │ │       │ │        │
-  └──────────┘ └───────┘ └──────────┘  └────────────┘ └───────┘ └────────┘
+```text
+                               CALLIBRATOR PLATFORM
+                                        │
+             ┌──────────────────────────┴──────────────────────────┐
+             │            Shared Presentation & Contracts          │
+             │           (shared/components/, shared/contracts/)   │
+             └──────────────────────────┬──────────────────────────┘
+                                        │
+                         ┌──────────────┴──────────────┐
+                         │   Browser / API Client      │
+                         └──────────────┬──────────────┘
+                                        │ HTTPS
+                         ┌──────────────▼──────────────┐
+                         │    nginx (reverse proxy)    │
+                         │    TLS · routing · ACME     │
+                         └──────┬──────────────┬───────┘
+                                │              │
+           ┌────────────────────▼──┐        ┌──▼────────────────────┐
+           │ Next.js 16 / React 19 │        │ Next.js / Go Adapter  │
+           │ TypeScript Frontend   │        │ Go Frontend Target    │
+           └──────────┬────────────┘        └──────────┬────────────┘
+                      │                                │
+           ┌──────────▼────────────┐        ┌──────────▼────────────┐
+           │ TypeScript Backend    │        │ Go Backend Engine     │
+           │ (backend/src/ — exist)│        │ (backend-go/ Phase999)│
+           └──────────┬────────────┘        └──────────┬────────────┘
+                      │                                │
+         ┌────────────┴──┬───────────┬─────────────────┴──────────┬────────────┐
+         ▼               ▼           ▼                            ▼            ▼
+   ┌──────────┐      ┌───────┐  ┌──────────┐                ┌──────────┐  ┌────────┐
+   │ Postgres │      │ Redis │  │ RabbitMQ │                │ Object   │  │ ClamAV │
+   │ pgvector │      │       │  │          │                │ storage  │  │        │
+   └──────────┘      └───────┘  └──────────┘                └──────────┘  └────────┘
 ```
 
-Socket.IO runs on the same Express server and shares its port.
+Socket.IO runs on the backend process and shares its HTTP port.
 
 ## Design Decisions That Explain Everything Else
+
+### Dual-Backend Target Architecture (ADR-089)
+
+Callibrator employs a **dual-backend target architecture**:
+- **Existing TypeScript Backend (`backend/src/`)**: The active reference implementation serving 53 route modules and 71 Sequelize models. Retained and supported throughout all phases.
+- **Future Go Backend Engine (`backend-go/`)**: Additional high-performance backend engine introduced in **Phase 999** for high-concurrency tasks (IoT ingest, telemetry, read-heavy APIs).
 
 ### It is a modular monolith, not microservices
 

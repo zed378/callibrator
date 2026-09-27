@@ -27,16 +27,16 @@ The **execution plan** built from these documents lives in [`../TASKS/`](../TASK
 
 ```
 PLAN/          19 files — product vision, requirements, business rules, roadmap
-ARCHITECTURE/  10 files — high-level system design
-API/           14 files — the complete API contract across 53 route modules
+ARCHITECTURE/  12 files — high-level system design & Dual-Backend specification
+API/           15 files — complete API contract & backend interoperability contract
 DATABASE/      14 files — the 72-model schema, grouped by domain
 SECURITY/      13 files — threat model through incident response
                           (SECURITY/05 is mandatory reading — tenant isolation is
                           the number-one control in this system)
 UI-UX/         20 files — experience design & the design system
-FRONTEND/      12 files — frontend architecture & standards
-BACKEND/       12 files — backend architecture, standards, and the module reference
-ENGINEERING/   16 files — how code is written here: standards, templates, review
+FRONTEND/      14 files — frontend architecture, multi-frontend & shared components
+BACKEND/       13 files — backend architecture, standards, module reference & Go porting spec
+ENGINEERING/   17 files — how code is written here: JS, TS & Go coding standards
 DEVOPS/        12 files — environments, CI/CD, deployment, observability
 TESTING/        8 files — the test strategy and every suite that enforces it
 DEVELOPER/      3 files — integrator-facing: authentication, IoT ingest, SCIM
@@ -54,9 +54,10 @@ The files that do exist are as-built and name their source.
 
 | Dimension | Reality |
 |---|---|
-| Backend | Express.js + Sequelize — **JavaScript/CommonJS today, strict TypeScript is the target** (ADR-038; plan in `TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`) |
+| Backend Architecture | **Dual-Backend Target Architecture (ADR-089)** — TypeScript backend (`backend/src/`) existing reference implementation; future Go backend engine (`backend-go/`) planned for Phase 999 |
+| Backend Runtime | Express.js + Sequelize — **JavaScript/CommonJS today, strict TypeScript is the target for Phase 9** (ADR-038; plan in `TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`) |
 | Database | PostgreSQL 18 + pgvector, only (ADR-039 for the engine, ADR-041 for the version — the deployment still runs 17.11 until the upgrade runbook is carried out). The engine-agnostic premise of ADR-029 was dropped; its tenant-isolation mechanism stands |
-| Frontend | Next.js 16 · React 19 · TypeScript · Tailwind CSS 4 · Zustand |
+| Frontend Architecture | **Multi-Frontend & Shared Component Architecture** — Next.js 16 · React 19 · TypeScript · Tailwind CSS 4 · Zustand · Root-level `shared/` area |
 | Realtime | Socket.IO both ends (see ADR-031) |
 | Infrastructure | Redis · RabbitMQ · MQTT (client, external broker) · ClamAV · pgvector |
 | Modules | 33 functional backend modules, 53 mounted route modules |

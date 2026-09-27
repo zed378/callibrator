@@ -20,9 +20,9 @@ Everything below is grounded in the code as of 2026-09-10. If you find a claim h
 
 | | |
 |---|---|
-| Backend | Express. **JavaScript/CommonJS today; migrating to strict TypeScript** (ADR-038, `TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`). New backend files are TypeScript; unconverted files keep their as-built JavaScript shape |
+| Backend | **Dual-Backend Target Architecture (ADR-089)** — Express/Sequelize existing backend (`backend/src/` — **JavaScript/CommonJS today; migrating to strict TypeScript** under ADR-038, `TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`). Future Go backend engine (`backend-go/`) planned for **Phase 999** (strictly after Phase 9 & Upstream PHP Feature Adoption) |
 | Database | **PostgreSQL 18 + pgvector, only** (ADR-039 for the engine, **ADR-041** for the version) — MySQL support was removed. The repository targets 18; the running deployment is still **17.11** until [`TASKS/RUNBOOK-POSTGRES-18-UPGRADE.md`](TASKS/RUNBOOK-POSTGRES-18-UPGRADE.md) is carried out — a data directory written by 17 will not start under 18 |
-| Frontend | Next.js 16 · React 19 · TypeScript · Tailwind 4 · Zustand |
+| Frontend | Next.js 16 · React 19 · TypeScript · Tailwind 4 · Zustand · **Multi-Frontend & Shared Component Architecture** (root-level `shared/` area) |
 | Realtime | Socket.IO, both ends (ADR-031) |
 | Infra | Redis · RabbitMQ · MQTT client (external broker, optional) · ClamAV · pgvector |
 | Scale | **53** route modules (+2 internal) · **71** models · **674** backend test files · **467** backend source files (counted 2026-09-27: `routes/api/*.route.js`; `models/*.model.js`, not `models/index.js`; `*.test.js`/`*.test.ts` under `backend/src/tests`; every non-test `.js`/`.ts` under `backend/src`, migrations and scripts included — 0 of them `.ts`. The previous row said 71 / 359 / 375 on 2026-09-23; counts are dated snapshots, re-count before quoting) |

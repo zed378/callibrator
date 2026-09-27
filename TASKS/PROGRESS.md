@@ -219,6 +219,30 @@ Ratchet: **370 `.js` source files** today. It only goes down.
 
 ---
 
+## Upstream PHP Feature Adoption ⏳
+
+**Post-Phase 9 Priority**: Merging and adopting upstream features from the original PHP fork. Must be completed before Phase 999 implementation begins.
+
+---
+
+## Phase 999 — Go Migration & Dual-Backend Implementation ⏳
+
+[`PHASE-999-GO-MIGRATION-AND-DUAL-BACKEND.md`](./PHASE-999-GO-MIGRATION-AND-DUAL-BACKEND.md) · ADR-089. **Dual-backend implementation container**. Porting Go backend engine, multi-frontend targets, and shared components.
+
+| Stage | Scope | Status |
+|---|---|---|
+| Foundation & Bootstrap | P999-01 … P999-02 | `Planned` |
+| Domain & Application Migration | P999-03 … P999-05 | `Planned` |
+| HTTP Transport & Security | P999-06 … P999-10 | `Planned` |
+| Integrations & Workers | P999-11 … P999-14 | `Planned` |
+| Testing & Parity Verification | P999-15 … P999-17 | `Planned` |
+| Frontend Integration & Shared Extract | P999-18 … P999-20 | `Planned` |
+| Deploy, Performance & Close-out | P999-21 … P999-25 | `Planned` |
+
+*Note: Implementation is strictly blocked until Phase 9 and Upstream PHP Feature Adoption complete.*
+
+---
+
 ## Live Health
 
 | Gate | State |

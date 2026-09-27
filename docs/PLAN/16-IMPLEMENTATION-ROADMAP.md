@@ -93,6 +93,9 @@ workflow engine ──▶ gated approval on Certificate / StockTransfer / WorkOr
 
 storage abstraction ──▶ attachments ──▶ per-tenant buckets
      (Phase 4)
+
+Phase 9 (TypeScript Migration) ──▶ Upstream PHP Feature Adoption ──▶ Phase 999 (Go Porting & Dual Backend)
+     (CRITICAL RULE: Go implementation MUST NOT begin before Phase 999)
 ```
 
 ## Definition of Phase Complete
