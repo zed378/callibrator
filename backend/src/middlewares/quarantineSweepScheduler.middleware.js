@@ -40,6 +40,11 @@ const initQuarantineSweep = () => {
     runMonitored(JOB, runSweep, {
       isFailure: (summary) =>
         summary.errors > 0 ? `${summary.errors} quarantined file(s) could not be removed` : null,
+      // ADR-082: a run that stopped at its entry limit alerts as a warning (W-17).
+      isIncomplete: (summary) =>
+        summary.truncated
+          ? `stopped at the entry limit (QUARANTINE_SWEEP_MAX_ENTRIES) with entries left; ${summary.removed} removed this run`
+          : null,
     }),
   );
   registerJob(JOB, task, schedule);

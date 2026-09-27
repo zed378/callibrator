@@ -14,6 +14,7 @@
  * The migration logic itself lives in services/storageMigration (unit-tested);
  * this wrapper only parses args, prints progress, and closes the DB.
  */
+// A-42 console-allowed: a CLI run by hand in a terminal; its console output is the operator's report, not application logging (backend/src/tests/guards/noConsole.a42.test.js).
 require("../utils/env.util");
 const { db } = require("../config");
 const { migrateAll } = require("../services/storageMigration.service");

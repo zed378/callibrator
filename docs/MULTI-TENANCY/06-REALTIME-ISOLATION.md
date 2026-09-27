@@ -152,7 +152,8 @@ The evidence is `backend/src/tests/config/socket.test.js` — 39 tests, includin
 `SECURITY/05` § Testing Isolation defines the two-tenant test for HTTP. The socket equivalent, which no suite currently runs end to end:
 
 ```
-1. createTwoTenants(); a user in A, a user in B
+1. two tenants with a real user in each — createTwoTenants() gives principals and
+   model doubles only, no database rows or socket tokens, so it does not reach this test (ADR-088)
 2. as A, create a kanban project; note its id
 3. connect a socket as B with a valid socket token
 4. emit kanban:join with A's project id, WITH an ack callback

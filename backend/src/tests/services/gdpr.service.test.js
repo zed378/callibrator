@@ -267,30 +267,44 @@ describe("gdprService", () => {
       ).rejects.toThrow("Failed to export user data");
     });
 
-    it("should run cleanup on timer expiry and delete files", async () => {
-      fs.existsSync.mockReturnValue(true);
-
+    // W-15 (ADR-079): the in-process seven-day timer is gone. The export
+    // writes a manifest with its expiry first, removes its working directory
+    // once zipped, and the retention sweep deletes the ZIP
+    // (gdpr.exportSweep.w15.test.js).
+    it("writes the manifest first, removes the working directory once zipped, and sets no timer", async () => {
+      const setTimeoutSpy = jest.spyOn(global, "setTimeout");
       const resultPromise = gdprService.exportUserData("tenant-1", "user-1");
-      jest.advanceTimersByTime(168 * 3600000);
       await jest.runAllTimersAsync();
-      await resultPromise;
+      const result = await resultPromise;
 
-      expect(fs.rmSync).toHaveBeenCalled();
-      expect(fs.unlinkSync).toHaveBeenCalled();
+      const [manifestPath, manifestText] = fs.promises.writeFile.mock.calls[0];
+      expect(manifestPath).toMatch(new RegExp(`${result.exportId}\\.json$`));
+      expect(JSON.parse(manifestText)).toEqual({
+        exportId: result.exportId,
+        tenantId: "tenant-1",
+        userId: "user-1",
+        createdAt: expect.any(String),
+        expiresAt: result.expiresAt,
+      });
+      expect(fs.promises.rm).toHaveBeenCalledWith(expect.stringMatching(new RegExp(`${result.exportId}$`)), {
+        recursive: true,
+        force: true,
+      });
+      const longTimers = setTimeoutSpy.mock.calls.filter(([, ms]) => ms >= 3600000);
+      expect(longTimers).toEqual([]);
+      setTimeoutSpy.mockRestore();
     });
 
-    it("should log warning if cleanup throws exception", async () => {
-      fs.existsSync.mockReturnValue(true);
-      fs.rmSync.mockImplementationOnce(() => {
-        throw new Error("Cannot delete");
-      });
+    it("a failed export removes its manifest and any partial ZIP too", async () => {
+      jest.useRealTimers();
+      const { CalibrationRecord } = require("../../models");
+      CalibrationRecord.findAll.mockRejectedValueOnce(new Error("table gone"));
 
-      const resultPromise = gdprService.exportUserData("tenant-1", "user-1");
-      jest.advanceTimersByTime(168 * 3600000);
-      await jest.runAllTimersAsync();
-      await resultPromise;
+      await expect(gdprService.exportUserData("tenant-1", "user-1")).rejects.toMatchObject({ status: 500 });
 
-      expect(fs.rmSync).toHaveBeenCalled();
+      const removed = fs.promises.rm.mock.calls.map(([file]) => file);
+      expect(removed.some((f) => /\.json$/.test(f))).toBe(true);
+      expect(removed.some((f) => /\.zip$/.test(f))).toBe(true);
     });
 
     it("should fallback getFileSize to 0 if stat throws exception", async () => {

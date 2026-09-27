@@ -12,8 +12,17 @@ const { v4: uuidv4 } = require("uuid");
  *   router.delete("/:aId/roles/:bId", validateUuid("aId", "bId"), controller);
  */
 
+// P6-02 (ADR-077): the SHAPE PostgreSQL's uuid type accepts — 32 hex digits
+// in 8-4-4-4-12 — not only RFC 4122 versions 1-5. The version-1-5 pattern
+// refused ids this system itself stores: every seeded menu group id is
+// `a0000000-0000-0000-0000-…` (version nibble 0), so
+// DELETE /user-permissions/:userId/:menuGroupId answered 400 for every seeded
+// menu group, and a UUIDv7 would be refused too. What the middleware exists
+// for is unchanged: a value that is not a uuid at all never reaches a query
+// (where the cast would fail as a 500); an unknown well-formed id is the
+// handler's 404.
 const uuidRegex =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const validateUuid = (...paramNames) => {
   return (req, res, next) => {

@@ -4,6 +4,7 @@
 const calibrationDevicesService = require("../services/calibrationDevices.service");
 const { asyncHandler } = require("../utils/controllerWrapper.util");
 const { auditActor } = require("../utils/auditActor.util");
+const { logger } = require("../middlewares/activityLog.middleware");
 const { success, error } = require("../utils/response.util");
 const {
   getCalibrationDevicesQuery,
@@ -122,6 +123,24 @@ exports.deleteCalibrationDevice = asyncHandler(async (req, res) => {
   send(res, result);
 });
 
+// A-133 (ADR-075): 404 for not-found and another tenant's device alike; 409
+// with a state explanation for a device that is not deleted or whose serial a
+// live device now holds.
+exports.restoreCalibrationDevice = asyncHandler(async (req, res) => {
+  const tenantId = req.tenantId || req.user.tenantId;
+  const { calibrationDeviceId } = validate(
+    req.params,
+    calibrationDeviceIdSchema,
+  );
+  const result = await calibrationDevicesService.restoreCalibrationDevice(
+    tenantId,
+    calibrationDeviceId,
+    auditActor(req),
+  );
+
+  send(res, result);
+});
+
 exports.bulkImportCalibrationDevices = asyncHandler(async (req, res) => {
   const tenantId = req.tenantId || req.user.tenantId;
 
@@ -144,7 +163,11 @@ exports.bulkImportCalibrationDevices = asyncHandler(async (req, res) => {
   } finally {
     fs.unlink(req.file.path, (err) => {
       if (err && err.code !== "ENOENT") {
-        console.error(`Failed to delete temp import file: ${req.file.path}`, err);
+        logger.error("Failed to delete temp import file", {
+          path: req.file.path,
+          code: err.code,
+          error: err.message,
+        });
       }
     });
   }

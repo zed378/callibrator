@@ -7,6 +7,7 @@ const { logger } = require("../middlewares/activityLog.middleware");
 const { AppError } = require("../utils/appError.util");
 const { DEFAULT_LIMIT } = require("../constants");
 const auditService = require("./audit.service");
+const retirement = require("./calibrationDeviceReinstate.service");
 const { db } = require("../config");
 
 /**
@@ -80,8 +81,9 @@ const validate = (data, schema) => {
 // It is NOT silently restored: a create that resurrected the old row would hand
 // back an old id with that device's calibration history attached, overwrite its
 // fields without an audit trail of the restore, and turn a "register" into a
-// "restore" the caller never asked for. No code path restores a device
-// (`restoreStatic` has no route), so the message does not promise one.
+// "restore" the caller never asked for. Restoring is its own, audited act —
+// POST /calibration-devices/:id/restore (A-133, ADR-075) — and the message names
+// the device so an administrator can take it.
 //
 // The index is per tenant, so a violation is always in the caller's own tenant:
 // answering it with a 409 discloses nothing about another tenant.
@@ -134,8 +136,10 @@ const serialConflict = (serialNumber, holder) => {
     message =
       `Serial number "${serialNumber}" is held by a deleted calibration device in this organisation. ` +
       "A serial number stays reserved after its device is deleted, so the deleted device's " +
-      "calibration history stays attributable to it. Ask an administrator to restore that device " +
-      "(restoring is not available in the application), or register this device with a different serial number.";
+      "calibration history stays attributable to it. Ask an administrator to restore that device" +
+      // findSerialHolder selects the id: the administrator restores by it (A-133).
+      ` (id ${holder.id})` +
+      ", or register this device with a different serial number.";
   } else {
     message =
       `A calibration device with serial number "${serialNumber}" already exists in this organisation. ` +
@@ -370,6 +374,12 @@ exports.updateCalibrationDevice = async (
       };
     }
 
+    // Q-02 (ADR-084): retirement is terminal; the way back is the audited
+    // reinstatement, never an edit.
+    if (retirement.leavesRetirement(device, validated)) {
+      return retirement.retirementConflict(device);
+    }
+
     normaliseSerial(validated);
 
     // A serial another device of the tenant holds — live or deleted — is a
@@ -397,6 +407,11 @@ exports.updateCalibrationDevice = async (
           validated.serialNumber,
           await findSerialHolder(tenantId, validated.serialNumber),
         );
+      }
+      // Q-02: retired by a concurrent request after the check above — the
+      // 0089 trigger refused the write.
+      if (retirement.isRetirementTerminalViolation(error)) {
+        return retirement.retirementConflict(device);
       }
       throw error;
     }
@@ -460,6 +475,135 @@ exports.deleteCalibrationDevice = async (tenantId, calibrationDeviceId, actor = 
     };
   } catch (error) {
     logger.error("Error deleting calibration device", { error: error.message });
+    throw error;
+  }
+};
+
+/**
+ * A-133 (ADR-075) — restore a soft-deleted calibration device.
+ *
+ * A device is the anchor of its calibration records and certificates (ISO
+ * 17025 §6.4.13, §7.5): a device deleted in error left that history attached
+ * to a register entry nobody could reach, and the only way back was the
+ * database. Restoring is:
+ *  - 404 for a device that does not exist, is another tenant's, or was never
+ *    deleted AND is another tenant's — indistinguishable (CLAUDE.md);
+ *  - 409 with a state explanation for a device of this tenant that is not
+ *    deleted, or whose serial number a LIVE device of this tenant now holds
+ *    (possible once the serial index is partial on is_deleted, P6-06; the
+ *    unique index is the backstop for a race);
+ *  - one transaction: the device, exactly the attachments its delete took with
+ *    it (attachment.service#restoreForResource), and an UPDATE audit row with
+ *    `operation: "RESTORE"` (auditActions.js: a restore has no ENUM member).
+ *
+ * @param {string} tenantId
+ * @param {string} calibrationDeviceId
+ * @param {{userId?: string|null, ipAddress?: string|null, userAgent?: string|null}} [actor]
+ */
+exports.restoreCalibrationDevice = async (tenantId, calibrationDeviceId, actor = {}) => {
+  try {
+    // unscoped(): the defaultScope hides deleted devices, which is exactly
+    // what is being looked for. The tenant predicate is explicit, and the
+    // global tenant hooks still apply (they are hooks, not a scope).
+    const device = await CalibrationDevice.unscoped().findOne({
+      where: { id: calibrationDeviceId, tenantId },
+      attributes: ["id", "tenantId", "name", "serialNumber", "isDeleted"],
+    });
+
+    if (!device) {
+      return { success: false, status: 404, message: "Calibration device not found", data: null };
+    }
+
+    if (!device.isDeleted) {
+      return {
+        success: false,
+        status: 409,
+        message:
+          `Calibration device "${device.name}" is not deleted, so there is nothing to restore. ` +
+          "It is already listed in the register.",
+        data: null,
+      };
+    }
+
+    const serialTakenOnRestore = () => ({
+      success: false,
+      status: 409,
+      message:
+        `Calibration device "${device.name}" cannot be restored: serial number "${device.serialNumber}" ` +
+        "is now held by another calibration device in this organisation. Change or remove that " +
+        "device's serial number first, then restore this one.",
+      data: null,
+    });
+
+    if (device.serialNumber) {
+      const liveHolder = await CalibrationDevice.findOne({
+        where: { tenantId, serialNumber: device.serialNumber, id: { [Op.ne]: device.id } },
+        attributes: ["id"],
+      });
+      if (liveHolder) {
+        return serialTakenOnRestore();
+      }
+    }
+
+    let attachmentsRestored;
+    try {
+      attachmentsRestored = await db.transaction(async (transaction) => {
+        // restoreStatic joins this transaction through Sequelize CLS, as
+        // softDelete() does on the way out.
+        const [count] = await CalibrationDevice.restoreStatic(device.id);
+        if (count !== 1) {
+          // Restored by a concurrent request between the read and the write.
+          throw Object.assign(new Error("already restored"), { alreadyRestored: true });
+        }
+        const restored = await require("./attachment.service").restoreForResource(
+          tenantId,
+          "CalibrationDevice",
+          device.id,
+          { transaction, actor },
+        );
+        await auditDevice(
+          transaction,
+          tenantId,
+          device.id,
+          "UPDATE",
+          {
+            operation: "RESTORE",
+            before: { isDeleted: true },
+            after: { isDeleted: false },
+            attachmentsRestored: restored,
+          },
+          actor,
+        );
+        return restored;
+      });
+    } catch (error) {
+      if (error.alreadyRestored) {
+        return {
+          success: false,
+          status: 409,
+          message: `Calibration device "${device.name}" has just been restored by another request.`,
+          data: null,
+        };
+      }
+      if (isSerialUniqueViolation(error)) {
+        return serialTakenOnRestore();
+      }
+      throw error;
+    }
+
+    const restoredDevice = await CalibrationDevice.findOne({ where: { id: device.id, tenantId } });
+
+    return {
+      success: true,
+      status: 200,
+      message:
+        attachmentsRestored.length > 0
+          ? `Calibration device restored, with ${attachmentsRestored.length} attachment(s) removed by its deletion`
+          : "Calibration device restored",
+      data: restoredDevice,
+    };
+  } catch (error) {
+    logger.error("Error restoring calibration device", { error: error.message });
     throw error;
   }
 };

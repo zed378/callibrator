@@ -99,9 +99,13 @@ describe("E2E Menu Groups (/api/v1/menu-groups + /menu-group-roles)", () => {
     if (!created.id) return;
     const { status } = await httpPost(
       "/menu-groups/delete",
-      { id: created.id },
+      // P6-02: the body names `menuGroupId` — what menuGroup.controller
+      // #deleteMenuGroup reads and the frontend (menuGroupRole.service.ts)
+      // sends. The spec had followed the route's Swagger block, which said
+      // `id` (corrected in the same change). It deletes the group it created.
+      { menuGroupId: created.id },
       authHeader(token),
     );
-    expect([200, 404]).toContain(status);
+    expect(status).toBe(200);
   });
 });

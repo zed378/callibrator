@@ -170,7 +170,9 @@ describe("A-114 — rotating an enabled second factor needs re-authentication", 
     expect(setup.rotation).toBe(true);
     expect(setup.secret).not.toBe(LIVE);
     expect(user.mfaSecret).toBe(LIVE);
-    expect(user.mfaPendingSecret).toBe(setup.secret);
+    // S-20: the pending seed is a KMS envelope; it opens to the new seed.
+    expect(mfaService.openSecret(USER_ID, user.mfaPendingSecret)).toBe(setup.secret);
+    expect(user.mfaPendingSecret).toMatch(/^v2:/);
 
     // While pending, the OLD authenticator still signs in, and the new one
     // does not (next step: the rotation consumed this step's code).
@@ -205,11 +207,11 @@ describe("A-114 — rotating an enabled second factor needs re-authentication", 
       message: "MFA authenticator replaced successfully",
       recoveryCodes: expect.any(Array),
     });
-    expect(user.mfaSecret).toBe(setup.secret);
+    expect(mfaService.openSecret(USER_ID, user.mfaSecret)).toBe(setup.secret);
     expect(user.mfaPendingSecret).toBeNull();
     expect(user.update).toHaveBeenLastCalledWith(
       {
-        mfaSecret: setup.secret,
+        mfaSecret: expect.stringMatching(/^v2:/),
         mfaEnabled: true,
         mfaPendingSecret: null,
         mfaPendingCreatedAt: null,
@@ -252,7 +254,7 @@ describe("A-114 — rotating an enabled second factor needs re-authentication", 
     await authService.verifyMfaSetup(USER_ID, codeAt(setup.secret));
 
     expect(user.mfaEnabled).toBe(true);
-    expect(user.mfaSecret).toBe(setup.secret);
+    expect(mfaService.openSecret(USER_ID, user.mfaSecret)).toBe(setup.secret);
     expect(auditService.logAction).toHaveBeenCalledWith(
       expect.objectContaining({
         action: "UPDATE",

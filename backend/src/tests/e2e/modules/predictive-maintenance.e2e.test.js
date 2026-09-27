@@ -99,13 +99,17 @@ describe("E2E Predictive Maintenance (HTTP)", () => {
     expect(status).toBe(404);
   });
 
-  test("POST /recommendations/:deviceId/approve — 400 without a pending recommendation", async () => {
-    const { status } = await httpPost(
+  // P6-02: 409, not 400 — no pending recommendation is a state conflict, not a
+  // malformed request (predictiveMaintenance.service#approveRecommendation,
+  // CLAUDE.md "Status Codes That Carry Meaning"). 200 when an analysis left one.
+  test("POST /recommendations/:deviceId/approve — 409 without a pending recommendation", async () => {
+    const { status, body } = await httpPost(
       `/predictive-maintenance/recommendations/${ids.device}/approve`,
       {},
       auth,
     );
-    expect([200, 400]).toContain(status);
+    expect([200, 409]).toContain(status);
+    if (status === 409) expect(body.message).toMatch(/pending recommendation/);
   });
 
   test("POST /recommendations/:deviceId/approve — 404 on unknown device", async () => {

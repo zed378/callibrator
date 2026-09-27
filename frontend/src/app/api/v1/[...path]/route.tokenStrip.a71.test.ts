@@ -22,13 +22,15 @@ jest.mock("next/headers", () => ({
 import { NextRequest } from "next/server";
 import { POST } from "./route";
 
-const backendAnswers = (body: unknown, { ok = true, status = 200 } = {}) => {
-  global.fetch = jest.fn().mockResolvedValue({
-    ok,
-    status,
-    headers: new Headers({ "content-type": "application/json" }),
-    arrayBuffer: async () => new TextEncoder().encode(JSON.stringify(body)).buffer,
-  }) as jest.Mock;
+// A real Response: since F-16 the proxy streams `res.body` for anything it
+// does not inspect, so a stub with only `arrayBuffer()` would not do.
+const backendAnswers = (body: unknown, { status = 200 } = {}) => {
+  global.fetch = jest.fn().mockResolvedValue(
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { "content-type": "application/json" },
+    }),
+  ) as jest.Mock;
 };
 
 const post = (path: string[]) =>
@@ -102,7 +104,7 @@ describe("A-71: the proxy keeps the access token out of the browser", () => {
   });
 
   it("an error body is passed through as it is", async () => {
-    backendAnswers({ success: false, status: 401, message: "Invalid MFA code" }, { ok: false, status: 401 });
+    backendAnswers({ success: false, status: 401, message: "Invalid MFA code" }, { status: 401 });
 
     const res = await post(["auth", "mfa", "login"]);
 

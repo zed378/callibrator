@@ -201,7 +201,7 @@ sequenceDiagram
 *   **OTP** is 6 digits, SHA-256 stored, 5-minute expiry; `sendOTP` returns a generic message to avoid user enumeration.
 *   **MFA:** if enabled, login returns `202` + a 5-minute `typ: "mfa"` token, issued before any session exists; `loginMfa` accepts only that type and verifies the TOTP before issuing real tokens.
 *   **Impersonation:** SUPERADMIN only, target must exist in tenant, no self-impersonation; 1-hour session, `impersonatorId` claim, user-agent annotated.
-*   Access tokens carry `sid`; the `auth` middleware checks the session is live on every request through `session.service.js#isSessionLive` (Redis, ≤60 s TTL, falling back to one primary-key read) — A-48, 2026-09-24. Sid-less tokens are still accepted while `SIDLESS_ACCESS_TOKENS_ACCEPTED` is `true`. It also blocks banned/inactive users and suspended/deleted tenants; only SUPERADMIN may override tenant via `x-tenant-code`/`x-tenant-id`.
+*   Access tokens carry `sid`; the `auth` middleware checks the session is live on every request through `session.service.js#isSessionLive` (Redis, ≤60 s TTL, falling back to one primary-key read) — A-48, 2026-09-24. A sid-less access token is refused since 2026-09-27 (`SIDLESS_ACCESS_TOKENS_ACCEPTED = false`, P6-12, ADR-085). It also blocks banned/inactive users and suspended/deleted tenants; only SUPERADMIN may override tenant via `x-tenant-code`/`x-tenant-id`.
 
 ### 12. Access Rights
 | Endpoint group | SUPERADMIN | Authenticated user | Public |

@@ -72,26 +72,62 @@ const isPurgeable = (entity) =>
  * key for anything else (a `retention_policy_audit_logs` row written before
  * A-121) is ignored, so it neither shows as configured nor reaches the purge.
  *
+ * W-16 (ADR-079): a stored override that is not a whole number of days (`""`,
+ * `"forever"`, `"30abc"`, null) is NOT applied. The entity keeps its platform
+ * default and the value is reported as an anomaly by readRetentionPolicy.
+ * `parseInt` used to turn it into NaN (or silently into 30 for `"30abc"`),
+ * and the purge then skipped that entity every night with no trace.
+ *
  * @param {string} tenantId
  * @returns {Promise<Record<string, number>>}
  */
-exports.getRetentionPolicy = async (tenantId) => {
-  const policies = await TenantSettings.findAll({
+exports.getRetentionPolicy = async (tenantId) => (await readRetentionPolicy(tenantId)).policies;
+
+/** A stored retention period: a whole, non-negative number of days, as text. */
+const STORED_DAYS = /^\d+$/;
+
+/**
+ * W-16 — the tenant's periods, and every value that could not be applied.
+ *
+ * - A stored override that does not parse falls back to the platform default
+ *   (`source: "tenant_settings"`, `appliedDays`: the default).
+ * - A platform default that does not parse (a malformed
+ *   `NOTIFICATION_RETENTION_DAYS`, say) has nothing to fall back to: that
+ *   entity is not purged, and it is reported (`source: "environment"`,
+ *   `appliedDays: null`).
+ *
+ * @param {string} tenantId
+ * @returns {Promise<{policies: Record<string, number>, anomalies: Array<{entity: string, source: string, value: *, appliedDays: number|null}>}>}
+ */
+const readRetentionPolicy = async (tenantId) => {
+  const stored = await TenantSettings.findAll({
     where: {
       tenantId,
       key: { [Op.like]: 'retention_policy_%' },
     },
   });
 
-  const result = { ...DEFAULT_RETENTION_DAYS };
-  policies.forEach((p) => {
+  const policies = { ...DEFAULT_RETENTION_DAYS };
+  const anomalies = [];
+  for (const [entity, days] of Object.entries(DEFAULT_RETENTION_DAYS)) {
+    if (!Number.isInteger(days) || days < 0) {
+      anomalies.push({ entity, source: "environment", value: days, appliedDays: null });
+    }
+  }
+  stored.forEach((p) => {
     const key = p.key.replace('retention_policy_', '');
-    if (isPurgeable(key)) {
-      result[key] = parseInt(p.value, 10);
+    if (!isPurgeable(key)) {
+      return;
+    }
+    const text = typeof p.value === "string" ? p.value.trim() : String(p.value);
+    if (STORED_DAYS.test(text)) {
+      policies[key] = Number(text);
+    } else {
+      anomalies.push({ entity: key, source: "tenant_settings", value: p.value, appliedDays: DEFAULT_RETENTION_DAYS[key] });
     }
   });
 
-  return result;
+  return { policies, anomalies };
 };
 
 /**
@@ -130,6 +166,12 @@ exports.setRetentionPolicy = async (tenantId, policyKey, days, actor = {}) => {
 
   if (!isPurgeable(policyKey)) {
     throw new AppError(400, `Unknown retention policy: ${policyKey}`);
+  }
+
+  // W-16: the route's validator already requires an integer; the service is
+  // the supported path for every caller, so it refuses one too.
+  if (!Number.isInteger(days)) {
+    throw new AppError(400, 'Retention days must be a whole number of days');
   }
 
   if (days < 0) {
@@ -363,14 +405,26 @@ exports.purgeExpiredRecords = async (tenantId, { batchSize = PURGE_BATCH_SIZE, d
     return { skipped: true, reason: "legal_hold" };
   }
 
-  const policies = await exports.getRetentionPolicy(tenantId);
+  const { policies, anomalies } = await readRetentionPolicy(tenantId);
+  // W-16: a value that could not be applied is reported loudly, and the run
+  // that met it counts it (runRetentionSweep's `anomalies`, which the
+  // scheduler treats as a failed run). It is never a silent skip.
+  for (const anomaly of anomalies) {
+    logger.error(
+      `Retention policy for tenant ${tenantId}: ${anomaly.entity} = ${JSON.stringify(anomaly.value)} ` +
+        `(${anomaly.source}) is not a whole number of days; ` +
+        (anomaly.appliedDays === null
+          ? "that entity is NOT purged until it is fixed"
+          : `the platform default of ${anomaly.appliedDays} days applies`),
+    );
+  }
   const results = {};
   const cutoffs = {};
   const cutoffDates = {};
 
   for (const [entity, configuredDays] of Object.entries(policies)) {
-    // 0 (or a stored value that does not parse) means keep forever.
-    if (!Number.isFinite(configuredDays) || configuredDays <= 0) {
+    // 0 means keep forever; a value that does not parse is an anomaly above.
+    if (!Number.isInteger(configuredDays) || configuredDays <= 0) {
       continue;
     }
     // An override stored before the floor existed cannot purge sooner.
@@ -430,7 +484,7 @@ exports.purgeExpiredRecords = async (tenantId, { batchSize = PURGE_BATCH_SIZE, d
 
   logger.info(`Purge completed for tenant ${tenantId}`, results);
 
-  return { tenantId, purged: results, skipped: false, complete: pending.length === 0 };
+  return { tenantId, purged: results, skipped: false, complete: pending.length === 0, anomalies };
 };
 
 /**
@@ -447,11 +501,19 @@ exports.purgeExpiredRecords = async (tenantId, { batchSize = PURGE_BATCH_SIZE, d
  *
  * Per-tenant failures are logged and counted, never fatal.
  *
+ * W-16: `anomalies` counts retention values that could not be applied
+ * (readRetentionPolicy); the scheduler reports a run with any as failed.
+ *
+ * W-15: after the tenants, expired GDPR export files are deleted
+ * (gdpr.service#purgeExpiredExports) — the sweep, not an in-process timer, is
+ * what enforces the export's expiry. One it could not delete is counted in
+ * `exportErrors`, which the scheduler reports as a failed run.
+ *
  * @param {object} [opts]
  * @param {number} [opts.pageSize]
  * @param {number} [opts.budgetMs]
  * @param {number} [opts.batchSize]
- * @returns {Promise<{tenants:number, purged:number, skipped:number, errors:number, incomplete:number}>}
+ * @returns {Promise<{tenants:number, purged:number, skipped:number, errors:number, incomplete:number, anomalies:number, exportsDeleted:number, exportErrors:number}>}
  */
 exports.runRetentionSweep = async ({
   pageSize = SWEEP_TENANT_PAGE_SIZE,
@@ -460,7 +522,7 @@ exports.runRetentionSweep = async ({
 } = {}) => {
   const { Tenant } = require("../models");
   const deadline = Date.now() + budgetMs;
-  const summary = { tenants: 0, purged: 0, skipped: 0, errors: 0, incomplete: 0 };
+  const summary = { tenants: 0, purged: 0, skipped: 0, errors: 0, incomplete: 0, anomalies: 0, exportsDeleted: 0, exportErrors: 0 };
 
   let afterId = null;
   for (;;) {
@@ -487,6 +549,7 @@ exports.runRetentionSweep = async ({
           if (result.complete === false) {
             summary.incomplete += 1;
           }
+          summary.anomalies += (result.anomalies || []).length;
         }
       } catch (err) {
         summary.errors += 1;
@@ -501,6 +564,11 @@ exports.runRetentionSweep = async ({
     }
     afterId = tenants[tenants.length - 1].id;
   }
+
+  // Required here, as the models are: gdpr.service loads the export stack.
+  const exportsPurge = await require("./gdpr.service").purgeExpiredExports();
+  summary.exportsDeleted = exportsPurge.deleted;
+  summary.exportErrors = exportsPurge.errors;
 
   logger.info("Retention sweep complete", summary);
   return summary;
@@ -596,6 +664,8 @@ const maskKeys = (value, keys) => {
  * @param {object} actor - auditActor(req)
  * @returns {Promise<{masked: number, fields: string[]}>}
  */
+const MASK_AUDIT_PAGE = 500;
+
 const maskAuditTrail = async (tenantId, subjectIds, actor) => {
   const { AuditLog } = require("../models");
   const subjects = new Set(subjectIds.map(String));
@@ -603,47 +673,62 @@ const maskAuditTrail = async (tenantId, subjectIds, actor) => {
   let masked = 0;
 
   await db.transaction(async (transaction) => {
-    const rows = await AuditLog.findAll({
-      where: {
-        // Explicit, as well as the tenant hooks: this runs for a super admin,
-        // whose context may not be the tenant being masked.
-        tenantId,
-        [Op.or]: [
-          { userId: { [Op.in]: subjectIds } },
-          { impersonatorId: { [Op.in]: subjectIds } },
-          { resourceType: "User", resourceId: { [Op.in]: subjectIds } },
-        ],
-      },
-      transaction,
-    });
+    // D-24 (ADR-083): a data subject's whole audit history used to be read in
+    // one statement. It is read by keyset on id, MASK_AUDIT_PAGE rows at a
+    // time, still inside the one transaction — the masking stays all or
+    // nothing. A masked row still matches the predicate, so the page after it
+    // is found by id, never by offset.
+    let after = null;
+    for (;;) {
+      const rows = await AuditLog.findAll({
+        where: {
+          // Explicit, as well as the tenant hooks: this runs for a super admin,
+          // whose context may not be the tenant being masked.
+          tenantId,
+          ...(after ? { id: { [Op.gt]: after } } : {}),
+          [Op.or]: [
+            { userId: { [Op.in]: subjectIds } },
+            { impersonatorId: { [Op.in]: subjectIds } },
+            { resourceType: "User", resourceId: { [Op.in]: subjectIds } },
+          ],
+        },
+        order: [["id", "ASC"]],
+        limit: MASK_AUDIT_PAGE,
+        transaction,
+      });
 
-    for (const row of rows) {
-      const actedBySubject =
-        subjects.has(String(row.userId)) || subjects.has(String(row.impersonatorId));
-      const aboutSubject = row.resourceType === "User" && subjects.has(String(row.resourceId));
-      const updates = {};
+      for (const row of rows) {
+        const actedBySubject =
+          subjects.has(String(row.userId)) || subjects.has(String(row.impersonatorId));
+        const aboutSubject = row.resourceType === "User" && subjects.has(String(row.resourceId));
+        const updates = {};
 
-      if (actedBySubject) {
-        for (const field of ["ipAddress", "userAgent"]) {
-          if (row[field] && row[field] !== PII_MASK) {
-            updates[field] = PII_MASK;
+        if (actedBySubject) {
+          for (const field of ["ipAddress", "userAgent"]) {
+            if (row[field] && row[field] !== PII_MASK) {
+              updates[field] = PII_MASK;
+            }
           }
         }
-      }
 
-      const keys = aboutSubject ? PERSONAL_KEYS : NETWORK_KEYS;
-      const { value, changed } = maskKeys(row.changes, keys);
-      if (changed) {
-        updates.changes = value;
-      }
+        const keys = aboutSubject ? PERSONAL_KEYS : NETWORK_KEYS;
+        const { value, changed } = maskKeys(row.changes, keys);
+        if (changed) {
+          updates.changes = value;
+        }
 
-      const fields = Object.keys(updates);
-      if (fields.length === 0) {
-        continue;
+        const fields = Object.keys(updates);
+        if (fields.length === 0) {
+          continue;
+        }
+        fields.forEach((f) => fieldsMasked.add(f));
+        await row.update(updates, { transaction });
+        masked += 1;
       }
-      fields.forEach((f) => fieldsMasked.add(f));
-      await row.update(updates, { transaction });
-      masked += 1;
+      if (rows.length < MASK_AUDIT_PAGE) {
+        break;
+      }
+      after = rows[rows.length - 1].id;
     }
 
     await auditService.logAction(

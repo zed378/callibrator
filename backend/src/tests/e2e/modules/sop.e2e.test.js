@@ -12,11 +12,55 @@
 const {
   httpGet,
   httpPost,
+  httpDelete,
   authHeader,
   extractToken,
   waitForServer,
   BASE_URL,
 } = require("../setup");
+
+// P6-02: a controlled procedure is released by someone OTHER than its author
+// (sop.service#publishDocument answers 409 to the author — 21 CFR 11 / ISO
+// 13485 two-person release). The spec used to publish as the super admin who
+// authored it, which the product now refuses. A second administrator of the
+// same tenant releases it: created here, made to replace the temporary
+// password an administrator set (A-215, PASSWORD_CHANGE_REQUIRED otherwise),
+// signed in again, and deleted afterwards.
+const HEALTHCARE_ADMIN_ROLE = "HEALTHCARE ADMIN";
+
+async function createReleaser(adminToken, tenantId) {
+  const roles = await httpGet("/roles?limit=50", authHeader(adminToken));
+  const role = (roles.body.data || []).find((r) => r.name === HEALTHCARE_ADMIN_ROLE);
+  const stamp = Date.now();
+  const email = `sop-releaser-${stamp}@example.com`;
+  const temporary = `Temp-${stamp}-Aa1!`;
+  const created = await httpPost(
+    "/users/create",
+    {
+      tenantId,
+      username: `soprel${stamp}`.slice(0, 20),
+      firstName: "Sop",
+      lastName: "Releaser",
+      email,
+      password: temporary,
+      roleId: role.id,
+    },
+    authHeader(adminToken),
+  );
+  const userId = created.body.data.id;
+  const first = await httpPost("/auth/login", { user: email, password: temporary });
+  const chosen = `Chosen-${stamp}-Bb2!`;
+  const changed = await httpPost(
+    "/auth/just-update-password",
+    { currentPassword: temporary, newPassword: chosen },
+    authHeader(extractToken(first.body)),
+  );
+  if (changed.status !== 200) {
+    throw new Error(`E2E: the SOP releaser could not set a password (${changed.status})`);
+  }
+  const second = await httpPost("/auth/login", { user: email, password: chosen });
+  return { userId, token: extractToken(second.body) };
+}
 
 async function rawPatch(path, token) {
   const resp = await fetch(`${BASE_URL}/api/v1${path}`, {
@@ -35,6 +79,7 @@ async function rawPatch(path, token) {
 describe("E2E SOP (HTTP)", () => {
   let token;
   let docId;
+  let releaser;
 
   beforeAll(async () => {
     await waitForServer();
@@ -44,6 +89,14 @@ describe("E2E SOP (HTTP)", () => {
     });
     token = extractToken(body);
     expect(token).toBeTruthy();
+    releaser = await createReleaser(token, body.data.tenantId);
+    expect(releaser.token).toBeTruthy();
+  });
+
+  afterAll(async () => {
+    if (releaser && releaser.userId) {
+      await httpDelete(`/users/delete?userId=${releaser.userId}`, authHeader(token));
+    }
   });
 
   test("GET /sop — 200 (house envelope: data=array, pagination in meta)", async () => {
@@ -68,9 +121,16 @@ describe("E2E SOP (HTTP)", () => {
     docId = body.data.id;
   });
 
-  test("PATCH /sop/:id/publish — 200 moves to PUBLISHED", async () => {
+  test("PATCH /sop/:id/publish — 409 for the document's own author", async () => {
     expect(docId).toBeTruthy();
     const { status, body } = await rawPatch(`/sop/${docId}/publish`, token);
+    expect(status).toBe(409);
+    expect(body.message).toMatch(/someone other than its author/);
+  });
+
+  test("PATCH /sop/:id/publish — 200 moves to PUBLISHED, released by a second user", async () => {
+    expect(docId).toBeTruthy();
+    const { status, body } = await rawPatch(`/sop/${docId}/publish`, releaser.token);
     expect(status).toBe(200);
     expect(body.data.status).toBe("PUBLISHED");
   });

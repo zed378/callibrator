@@ -61,6 +61,8 @@ The most important security test in the project.
 
 A one-line fixture is what decides whether this test gets written for a new endpoint. Twenty lines of setup means it gets skipped, and the sweep decays into covering only the routes someone had time for.
 
+It is `backend/src/tests/fixtures/twoTenants.js` (A-63) — synchronous, in memory, no SQL (ADR-088). Step 2's "create a resource" is a model double holding tenant A's row; the scoping hooks are tested against PostgreSQL separately. With `fixtures/seededAuthorization.js` it runs the real `dynamicAccess` over the real seeded grants (`readGates.p604.test.js`).
+
 ### Cases easy to miss
 
 - an authenticated principal with **no** tenant sees zero rows (the deny branch, `NO_TENANT_UUID`)

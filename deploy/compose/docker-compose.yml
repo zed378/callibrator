@@ -207,6 +207,12 @@ services:
     # § Moving a pinned base image), never a side effect of a pull.
     image: pgvector/pgvector:pg18@sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167bab54efd3640516a44ac1a928dd67e7a
     restart: unless-stopped
+    # P7-04 drill finding D-2 (ADR-078): without an init, the postmaster is
+    # PID 1 and adopts the healthcheck's pg_isready when Docker kills a
+    # timed-out check under load. PostgreSQL treats that "untracked child
+    # process" exit as a crash: it terminates every session and runs crash
+    # recovery (observed twice in the drill). tini reaps it instead.
+    init: true
     <<: *hardened
     cap_drop: [ALL]
     cap_add: *root-entrypoint-caps

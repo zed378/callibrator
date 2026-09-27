@@ -5367,9 +5367,11 @@ real `v4`. At HEAD `beb0c4b` with the mock in place, all 4 fail: the constant, a
 (`npm run test:coverage`) passes with 578 suites, 12164 tests and 100 % coverage. **No unit test
 relied on the constant.**
 
-**Open.** `calibrationScheduler.batch.w17.live.test.js` (W-17, being edited at the same time)
-still calls `require("uuid").v4.mockImplementation(...)` in its `beforeAll`. That line throws now,
-so the file must drop it before it runs against a live database. The comment above
-`randomPdfFileName` in `certificatePdf.service.js` still says the package "is replaced by a
-constant in the Jest environment". That is no longer true, and `crypto.randomUUID()` is still the
-right choice there. The live suites were not run: they need a database.
+**Follow-ups, since closed (batch 7).** `calibrationScheduler.batch.w17.live.test.js` (W-17, edited
+concurrently) still called `require("uuid").v4.mockImplementation(...)`, which throws against the
+real module; the call was removed. The comment above `randomPdfFileName` in
+`certificatePdf.service.js` said the package "is replaced by a constant in the Jest environment";
+it now says that was true until A-116. No `v4.mockImplementation` remains under `backend/`
+(re-checked 2026-09-27).
+
+**Open.** The twelve edited live suites were checked by lint only, not run: they need a database.

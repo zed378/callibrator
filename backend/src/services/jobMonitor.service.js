@@ -48,7 +48,7 @@ const cron = require("node-cron");
 const { scheduleSetting } = require("../utils/schedulerSwitch.util"); // W-02: one switch for every singleton scheduler
 const storagePath = require("../utils/storagePath.util");
 const { logger } = require("../middlewares/activityLog.middleware");
-const { raiseAlert, SEVERITY } = require("./alert.service");
+const { raiseAlert, SEVERITY, describeRouting } = require("./alert.service");
 
 const MINUTE_MS = 60 * 1000;
 const HOUR_MS = 60 * MINUTE_MS;
@@ -81,6 +81,14 @@ const JOBS = Object.freeze({
       "Retention purge failed: data past its retention window was NOT purged. This is a GDPR/retention-policy breach for every day it continues.",
     action:
       "Read the error, fix it, then run the purge by hand for each tenant (POST /api/v1/tenants/:tenantId/purge as a super admin) and confirm the counts.",
+    // ADR-082: a sweep that ran out of its budget (W-17) is not a failure, but
+    // data past its window is still held — somebody must know.
+    incomplete: {
+      meaning:
+        "The retention purge ran out of its time budget: some tenants still hold data past its retention window. The rest is purged on the next run.",
+      action:
+        "If this repeats, the backlog is growing faster than one run removes it: raise RETENTION_SWEEP_BUDGET_MS or RETENTION_PURGE_BATCH_SIZE, or run the purge by hand for the affected tenants.",
+    },
     singleton: true,
   },
   "calibration-scan": {
@@ -119,6 +127,13 @@ const JOBS = Object.freeze({
     meaning:
       "Files abandoned in uploads/.quarantine by a crash mid-scan were NOT removed. They are unscanned and unreachable, but they use disk.",
     action: "Read the error (usually permissions on the uploads volume).",
+    // ADR-082: the run stopped at QUARANTINE_SWEEP_MAX_ENTRIES (W-17).
+    incomplete: {
+      meaning:
+        "The quarantine sweep stopped at its entry limit: uploads/.quarantine holds more files than one run examines. Something is leaving uploads there — usually a crash loop mid-scan.",
+      action:
+        "Find what is crashing during upload scans (the backend's restarts and the virus scanner), then let the hourly sweep drain the directory.",
+    },
     singleton: true,
   },
   // ADR-070 — middlewares/webhookDeliveryPurgeScheduler.middleware.js.
@@ -127,6 +142,14 @@ const JOBS = Object.freeze({
     meaning:
       "Finished webhook deliveries past the retention window were NOT removed. Nothing is lost; webhook_deliveries keeps growing until a run succeeds.",
     action: "Read the error (usually the database); the next daily run retries and removes the backlog in bounded batches.",
+    singleton: true,
+  },
+  // D-22 (ADR-083) — middlewares/attachmentFileSweepScheduler.middleware.js.
+  "attachment-file-sweep": {
+    title: "Deleted attachment file sweep",
+    meaning:
+      "Files of attachments deleted longer ago than the retention window were NOT removed. They are unreachable, but they stay on disk until a run succeeds.",
+    action: "Read the error (usually the database or permissions on the uploads volume); the next daily run retries in bounded batches.",
     singleton: true,
   },
 });
@@ -183,6 +206,10 @@ const blankState = (name) => ({
   overdueSince: null,
   alerting: false,
   lastAlertAt: null,
+  lastIncomplete: null,
+  consecutiveIncomplete: 0,
+  incompleteAlerting: false,
+  lastIncompleteAlertAt: null,
 });
 
 /**
@@ -296,6 +323,61 @@ async function alertFailure(name, state, now) {
 }
 
 /**
+ * ADR-082 — a run that SUCCEEDED but left work behind (a bounded sweep that
+ * stopped at its budget or its entry limit, W-17). Not a failure — the next
+ * run continues — but it is a `warning` alert, throttled like a failure: the
+ * first incomplete run of a streak, then at most once per repeat interval,
+ * and once more when a run completes again.
+ * @param {string} name
+ * @param {object} state
+ * @param {string|null|undefined} reason  why the run is incomplete, or falsy
+ * @param {Date} now
+ * @returns {Promise<boolean>} true when the state changed and must be persisted
+ */
+async function trackIncomplete(name, state, reason, now) {
+  const def = definitionOf(name);
+  if (!reason) {
+    state.lastIncomplete = null;
+    state.consecutiveIncomplete = 0;
+    if (!state.incompleteAlerting) {
+      return false;
+    }
+    state.incompleteAlerting = false;
+    await raiseAlert({
+      key: `job.${name}.incomplete`,
+      severity: SEVERITY.RESOLVED,
+      title: `${def.title} complete again`,
+      meaning: `${def.title} finished all its work in one run again.`,
+      action: "Nothing; the backlog is cleared.",
+      context: { job: name, instance: instanceId },
+    });
+    return true;
+  }
+  const what = def.incomplete || {
+    meaning: `The scheduled job "${name}" finished without doing all its work; the rest waits for the next run.`,
+    action: "Read the detail; investigate if it repeats.",
+  };
+  state.lastIncomplete = String(reason);
+  state.consecutiveIncomplete += 1;
+  const due =
+    !state.incompleteAlerting || now - new Date(state.lastIncompleteAlertAt) >= repeatMs();
+  if (due) {
+    state.incompleteAlerting = true;
+    state.lastIncompleteAlertAt = now.toISOString();
+    await raiseAlert({
+      key: `job.${name}.incomplete`,
+      severity: SEVERITY.WARNING,
+      title: `${def.title} INCOMPLETE`,
+      meaning: what.meaning,
+      action: what.action,
+      detail: `${state.lastIncomplete} (consecutive incomplete runs: ${state.consecutiveIncomplete})`,
+      context: { job: name, consecutiveIncomplete: state.consecutiveIncomplete, instance: instanceId },
+    });
+  }
+  return true;
+}
+
+/**
  * Run one scheduled invocation of a job, record its outcome, alert on
  * failure. Never rejects.
  *
@@ -305,6 +387,9 @@ async function alertFailure(name, state, now) {
  * @param {(result: *) => (string|null|undefined)} [options.isFailure]
  *   a partial failure the job reports in its result rather than throws;
  *   return a reason to fail the run
+ * @param {(result: *) => (string|null|undefined)} [options.isIncomplete]
+ *   ADR-082: a successful run that left work for the next one; return a
+ *   reason to raise a `job.<name>.incomplete` warning
  * @param {boolean} [options.singleton]  overrides the definition
  * @param {Date} [options.now]  for tests
  * @returns {Promise<{outcome: "success"|"failure"|"skipped", result?: *, error?: string}>}
@@ -372,8 +457,13 @@ async function runMonitored(name, fn, options = {}) {
     }
   }
 
+  const incompleteChanged =
+    !error && options.isIncomplete
+      ? await trackIncomplete(name, state, options.isIncomplete(result), finishedAt)
+      : false;
+
   const stale = Date.now() - (lastPersistedAt.get(name) || 0) >= PERSIST_MIN_INTERVAL_MS;
-  if (error || previousOutcome !== state.lastOutcome || stale) {
+  if (error || incompleteChanged || previousOutcome !== state.lastOutcome || stale) {
     await persist(state);
   }
 
@@ -548,6 +638,16 @@ function startWatchdog() {
   if (watchdogTask) {
     return;
   }
+  // ADR-082: say once, at boot, where an alert will go — or that it goes nowhere
+  // but the log. "Nobody set up alert routing" must be visible, not assumed.
+  const routing = describeRouting();
+  if (routing.routed) {
+    logger.info(`Alert routing: webhook=${routing.webhook}, email=${routing.email}`);
+  } else {
+    logger.warn(
+      "Alert routing: NONE configured — alerts are log lines only. Set ALERT_WEBHOOK_URL (Slack-compatible) and/or ALERT_EMAIL_TO.",
+    );
+  }
   let schedule = scheduleSetting("JOB_WATCHDOG_SCHEDULER", DEFAULT_WATCHDOG_SCHEDULE);
   if (schedule === "disabled" || schedule === "off") {
     logger.warn("Job watchdog disabled via JOB_WATCHDOG_SCHEDULER: missed runs will NOT alert");
@@ -594,6 +694,7 @@ function renderMetrics() {
   family("callibrator_job_last_run_failed", "gauge", "1 when the last run failed.", (s) => [["", s.lastOutcome === "failure" ? 1 : 0]]);
   family("callibrator_job_consecutive_failures", "gauge", "Failures since the last success.", (s) => [["", s.consecutiveFailures]]);
   family("callibrator_job_overdue", "gauge", "1 when the job missed its scheduled run.", (s) => [["", s.overdueSince ? 1 : 0]]);
+  family("callibrator_job_last_run_incomplete", "gauge", "1 when the last run left work for the next one (ADR-082).", (s) => [["", s.lastIncomplete ? 1 : 0]]);
   family("callibrator_job_runs_total", "counter", "Runs by outcome, since the status file was created.", (s) =>
     ["success", "failure", "skipped"].map((outcome) => [`,outcome="${outcome}"`, s.runs[outcome]]),
   );

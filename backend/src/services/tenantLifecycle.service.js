@@ -101,6 +101,17 @@ exports.enterGracePeriod = async (tenantId) => {
     throw new AppError(404, 'Tenant not found');
   }
 
+  // W-21 (ADR-079): a grace period is the time a SUSPENDED tenant has before
+  // it is offboarded. Set on any other tenant, the deadline waited silently:
+  // a suspension after it had passed was offboarded by the next scheduler run,
+  // with no grace at all.
+  if (tenant.status !== 'suspended') {
+    throw new AppError(
+      409,
+      `This tenant is "${tenant.status}", not suspended: a grace period can only be set on a suspended tenant. Suspend it first.`,
+    );
+  }
+
   const graceExpiresAt = new Date();
   graceExpiresAt.setDate(graceExpiresAt.getDate() + GRACE_PERIOD_DAYS);
 

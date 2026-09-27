@@ -123,7 +123,12 @@ const compare = (operation, schema) => {
   if (described.type !== "object" || !described.keys) {
     return []; // not a keyed object body — nothing comparable by name
   }
-  const keys = Object.keys(described.keys);
+  // A `forbidden()` key is named only so its 400 can say why (P6-13: a
+  // caller-supplied webhook `secret`). It is refused, not accepted, so the
+  // contract does not document it.
+  const keys = Object.keys(described.keys).filter(
+    (k) => described.keys[k].flags?.presence !== "forbidden",
+  );
   const required = keys.filter((k) => described.keys[k].flags?.presence === "required").sort();
 
   if (!operation) {

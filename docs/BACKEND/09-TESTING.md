@@ -69,6 +69,8 @@ The most important test in the project.
 
 A **one-line fixture** is what decides whether this test gets written for a new endpoint. Twenty lines of setup means it gets skipped, and the sweep decays into covering only what someone had time for.
 
+It exists since 2026-09-24 (A-63): `backend/src/tests/fixtures/twoTenants.js`. **It is synchronous and in memory (ADR-088)** — `const fx = createTwoTenants()` gives `fx.tenantA`/`fx.tenantB`, `fx.principal(tenant, role)` shaped like `req.user`, `fx.superAdmin`, model doubles and a transaction double whose `rollback()` undoes writes. "Create a resource as A" in step 2 means a model double that holds the row, not an HTTP call; the fixture runs no SQL and no scoping hooks, so the hooks and grants are tested against PostgreSQL separately. Pair it with `fixtures/seededAuthorization.js` to run the real `dynamicAccess` over the real seeded grants — `readGates.p604.test.js` shows both together.
+
 ### Cases easy to miss
 
 - an authenticated principal with **no** tenant sees zero rows — the deny branch, `NO_TENANT_UUID`

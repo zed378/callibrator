@@ -103,6 +103,8 @@ secrets: ## Generate the four required secrets
 	@echo "KMS_MASTER_KEY=$$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")"
 	@echo "JWT_ACCESS_SECRET=$$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")"
 	@echo "JWT_REFRESH_SECRET=$$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")"
+	@echo "DB_PASS=$$(node -e "console.log(require('crypto').randomBytes(24).toString('hex'))")"
+	@echo -e "$(C_DIM)(DB_PASS: read by postgres only when its volume is FIRST initialised — S-09.)$(C_OFF)"
 	@rmq=$$(node -e "console.log(require('crypto').randomBytes(24).toString('hex'))")
 	@echo "RABBITMQ_PASS=$$rmq"
 	@echo "RABBITMQ_URL=amqp://callibrator:$$rmq@rabbitmq:5672"
@@ -287,7 +289,7 @@ test: ## Unit and integration tests
 	npm test
 
 .PHONY: test-e2e
-test-e2e: ## 53 live E2E specs against a RUNNING server
+test-e2e: ## the live E2E specs (count: find backend/src/tests/e2e -name '*.test.js') against a RUNNING server
 	@echo -e "$(C_WARN)Two rules for this suite:$(C_OFF)"
 	@echo -e "$(C_DIM)  1. Never suspend the default tenant — it suspends the super-admin living in$(C_OFF)"
 	@echo -e "$(C_DIM)     it and 403s every later request. Create a disposable tenant.$(C_OFF)"
@@ -297,21 +299,21 @@ test-e2e: ## 53 live E2E specs against a RUNNING server
 	cd backend && npm run test:e2e
 
 .PHONY: test-browser
-test-browser: ## Playwright browser suite
-	@echo -e "$(C_DIM)Flakes here have been self-inflicted: editing a backend file triggers nodemon,$(C_OFF)"
-	@echo -e "$(C_DIM)which restarts mid-test and produces ECONNRESET. Confirm nothing is$(C_OFF)"
-	@echo -e "$(C_DIM)recompiling before chasing one.$(C_OFF)"
-	npx playwright test
+test-browser: ## Browser smoke: sign-in, MFA, one list page, CSP (ADR-077) against a RUNNING stack
+	@echo -e "$(C_DIM)Needs the frontend (FRONTEND_URL, default http://localhost:3001), the backend$(C_OFF)"
+	@echo -e "$(C_DIM)(BASE_URL, default http://localhost:3000) and Chrome/Chromium (CHROME_PATH).$(C_OFF)"
+	@echo -e "$(C_DIM)Four checks, not the 71-test Playwright suite the documents once described (A-20).$(C_OFF)"
+	node automate/smoke.browser.js
 
 .PHONY: build
 build: ## Build both workspaces
 	npm run build
 
 .PHONY: hooks
-hooks: ## Opt in to the pre-push hook (secret scan, lint ratchet, typecheck) — P7-01
+hooks: ## Opt in to the pre-push hook (secret scan, lint ratchet, typecheck) and install the pinned gitleaks — P7-01, A-19
 	git config core.hooksPath scripts/git-hooks
 	@echo -e "$(C_OK)pre-push hook enabled$(C_OFF) $(C_DIM)(scripts/git-hooks/pre-push; make hooks-off to undo)$(C_OFF)"
-	@command -v gitleaks >/dev/null || echo -e "$(C_WARN)gitleaks is not installed — the hook will SKIP the secret scan until it is.$(C_OFF)"
+	@bash scripts/git-hooks/install-gitleaks.sh || echo -e "$(C_WARN)gitleaks could not be installed into .tools/bin — the hook will SKIP the secret scan until it is (re-run make hooks, or install gitleaks 8.30.1 yourself).$(C_OFF)"
 
 .PHONY: hooks-off
 hooks-off: ## Disable the pre-push hook
@@ -447,6 +449,18 @@ check-env: ## Verify .env exists and carries the required secrets
 				;;
 		esac
 	fi
+	# S-09 (ADR-081): docker-compose.yml builds the backend's URL as
+	# amqp://USER:PASS@rabbitmq:5672 with the two values placed VERBATIM —
+	# compose cannot percent-encode. A '@', ':', '/', '#', '%' or '?' in either
+	# one yields a URL that parses to a different host or credential, and the
+	# backend then fails to connect with an error that never names the password.
+	# Only RFC 3986 unreserved characters are safe; `make secrets` prints hex.
+	@if printf '%s%s' "$$rmq_user" "$$rmq_pass" | grep -q '[^A-Za-z0-9._~-]'; then
+		echo -e "$(C_ERR)RABBITMQ_USER or RABBITMQ_PASS contains a character that is not URL-safe.$(C_OFF)"
+		echo -e "$(C_DIM)docker-compose.yml places both in the backend's RABBITMQ_URL verbatim. Use only$(C_OFF)"
+		echo -e "$(C_DIM)A-Z a-z 0-9 . _ ~ - (make secrets prints a hex password).$(C_OFF)"
+		exit 1
+	fi
 
 .PHONY: preflight
 preflight: check-env ## Pre-deployment checks for staging and production
@@ -462,6 +476,22 @@ preflight: check-env ## Pre-deployment checks for staging and production
 	@if grep -Eq '^RABBITMQ_PASS=(|guest|CHANGE_ME.*)$$' $(COMPOSE_DIR)/.env; then
 		echo -e "$(C_ERR)RABBITMQ_PASS is empty, guest or a CHANGE_ME placeholder.$(C_OFF)"
 		echo -e "$(C_DIM)Run make secrets and paste BOTH RabbitMQ lines (password and URL).$(C_OFF)"
+		exit 1
+	fi
+	# S-09 (ADR-081): the by-the-book run of 2026-09-27 passed preflight with
+	# DB_PASS=CHANGE_ME, and nothing refused JWT_*_SECRET=CHANGE_ME either —
+	# the backend checks only that the JWT secrets are set and differ, so a
+	# forgotten paste signs every token with a key printed in the template.
+	@bad=""
+	@for v in DB_PASS JWT_ACCESS_SECRET JWT_REFRESH_SECRET; do
+		val=$$(grep "^$$v=" $(COMPOSE_DIR)/.env | cut -d= -f2-)
+		case "$$val" in ""|CHANGE_ME*|change-this*|your_*) bad="$$bad $$v" ;; esac
+	done
+	@if [ -n "$$bad" ]; then
+		echo -e "$(C_ERR)Default credential still in .env:$$bad$(C_OFF)"
+		echo -e "$(C_DIM)Run make secrets and paste the lines it prints. DB_PASS is read by postgres$(C_OFF)"
+		echo -e "$(C_DIM)only when its volume is FIRST initialised — on an existing database change$(C_OFF)"
+		echo -e "$(C_DIM)it with ALTER ROLE as well, or the backend can no longer log in.$(C_OFF)"
 		exit 1
 	fi
 	@if ! grep -Eq '^REDIS_PASSWORD=.{16,}$$' $(COMPOSE_DIR)/.env; then

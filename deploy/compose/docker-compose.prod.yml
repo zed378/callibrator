@@ -25,10 +25,13 @@ services:
       # Fail-closed: a scanner error rejects the upload.
       VIRUS_SCAN_PROVIDER: clamav
       VIRUS_SCAN_FAIL_OPEN: "false"
-      # ACME_DIRECTORY_URL DEFAULTS TO THE LET'S ENCRYPT STAGING DIRECTORY.
-      # Forgetting to point it at production yields certificates no browser
-      # trusts, and the failure appears in a browser rather than in any log.
-      ACME_DIRECTORY_URL: ${ACME_DIRECTORY_URL:?point this at the LE PRODUCTION directory}
+      # ACME_DIRECTORY_URL is NOT required here any more (S-09, ADR-081). This
+      # line used to be `${ACME_DIRECTORY_URL:?...}`, but no backend code has
+      # read the variable since the ACME stub was removed (A-256) and
+      # .env.example ships it commented out — so the first by-the-book
+      # `make up ENV=prod` stopped at interpolation, guarding a setting nothing
+      # uses. If automatic certificates are ever built, the guard comes back
+      # together with the code that reads it.
       # local storage is incompatible with more than one backend replica:
       # replica A writes an attachment, replica B cannot serve it.
       STORAGE_DRIVER: ${STORAGE_DRIVER:-local}

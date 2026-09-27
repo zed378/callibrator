@@ -38,7 +38,10 @@ exports.getBillingHistory = asyncHandler(async (req, res) => {
     endDate,
   );
 
-  return success(res, history, "Billing history retrieved");
+  // F-13 (ADR-074): the house envelope — the invoices in `data`, the
+  // pagination in a TOP-LEVEL `meta`. This used to send the service's
+  // `{ rows, meta }` whole as `data`, and the frontend read `data.rows`.
+  return success(res, history.rows, history.meta, "Billing history retrieved");
 });
 
 /**

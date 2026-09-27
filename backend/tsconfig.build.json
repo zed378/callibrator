@@ -1,0 +1,21 @@
+{
+  // The release compile: `npm run build:dist` (P9-01b, ADR-087).
+  //
+  // It emits ONLY the TypeScript sources, into dist/. The unconverted .js
+  // files are copied into dist/ byte for byte by scripts/build-dist.ts, never
+  // re-emitted by tsc — tsc re-prints JavaScript (indentation, blank lines)
+  // and, under `strict`, prefixes every file with "use strict", which would
+  // change the semantics of sloppy-mode CommonJS. A conversion changes
+  // behaviour only where a file is converted (ADR-038 rule 3).
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // A .ts file that imports a .js file fails here with TS7016 — rule 1
+    // (leaf-first) enforced mechanically. It also guarantees tsc never emits
+    // a .js source over its verbatim copy.
+    "allowJs": false,
+    "types": ["node"],
+    "noEmit": false
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "coverage", "src/tests/**", "__tests__/**", "src/**/*.test.ts"]
+}

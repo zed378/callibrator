@@ -16,21 +16,22 @@ const {
 } = require("../utils/mfaPolicy.util");
 
 /**
- * A-59 — TODO: flip to `false` to refuse access tokens that name no session.
+ * A-59 / P6-12 — an access token that names no session is REFUSED.
  *
  * Since A-59 every issuer of an access token sets `sid`: loginUser, loginMfa,
  * refreshUserToken, impersonateUser (auth.service.js) and both SSO callbacks
  * (sso.controller.js). The activation, MFA-pending and socket tokens are no
- * longer access tokens at all (jwt.util.js#generatePurposeToken). So a sid-less
- * access token can now only be one issued BEFORE that deploy — and it cannot be
- * revoked, it lasts until its own `exp` (JWT_ACCESS_EXPIRED, 1d deployed).
+ * longer access tokens at all (jwt.util.js#generatePurposeToken). A sid-less
+ * access token could only be one issued before that deploy, and it could not
+ * be revoked — it lasted until its own `exp`.
  *
- * It stays `true` because flipping it signs out every session issued before
- * the deploy. That is an announced change, not a quiet one: flip it once
- * JWT_ACCESS_EXPIRED has elapsed since the deploy (after which no sid-less
- * token can still be unexpired, and flipping it costs nobody anything).
+ * Flipped to `false` on 2026-09-27 (ADR-085). A-59 reached the VM no later
+ * than the 2026-09-24 deploy (87de9bf), and the VM's JWT_ACCESS_EXPIRED is 1d,
+ * so every sid-less token has expired: the flip signs nobody out. It is kept
+ * as a named constant so the refusal is visible and pinned by a test, not so
+ * it can be turned back on.
  */
-const SIDLESS_ACCESS_TOKENS_ACCEPTED = true;
+const SIDLESS_ACCESS_TOKENS_ACCEPTED = false;
 
 exports.SIDLESS_ACCESS_TOKENS_ACCEPTED = SIDLESS_ACCESS_TOKENS_ACCEPTED;
 

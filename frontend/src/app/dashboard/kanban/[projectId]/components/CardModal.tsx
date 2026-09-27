@@ -419,10 +419,14 @@ export default function CardModal({
             {/* Sidebar */}
             <div className="p-5 space-y-4">
               <div>
-                <label className="text-xs font-medium text-muted-foreground">
+                <label
+                  htmlFor="card-assignees"
+                  className="text-xs font-medium text-muted-foreground"
+                >
                   Assignees
                 </label>
                 <MultiSelect
+                  id="card-assignees"
                   options={users}
                   value={assigneeIds}
                   onChange={(ids) => patch({ assigneeIds: ids })}
@@ -431,10 +435,14 @@ export default function CardModal({
               </div>
 
               <div>
-                <label className="text-xs font-medium text-muted-foreground">
+                <label
+                  htmlFor="card-labels"
+                  className="text-xs font-medium text-muted-foreground"
+                >
                   Labels
                 </label>
                 <MultiSelect
+                  id="card-labels"
                   options={board.labels.map((l) => ({
                     value: l.id,
                     label: l.name,

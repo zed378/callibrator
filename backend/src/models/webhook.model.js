@@ -57,6 +57,19 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.TEXT,
         allowNull: false,
       },
+      // P6-13 (ADR-085, migration 0090): the secret a rotation replaced, as the
+      // same kms.service envelope, and when it stops signing. While
+      // previousSecretExpiresAt is in the future a delivery carries a second
+      // signature under it (X-Webhook-Signature-Previous), so a receiver can
+      // switch secrets without a coordinated cut-over. Never returned by the API.
+      previousSecret: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      previousSecretExpiresAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
       description: {
         type: DataTypes.STRING(255),
         allowNull: true,
@@ -89,9 +102,11 @@ const defineModel = (db, DataTypes) => {
     },
   );
 
-  Webhook.prototype.softDelete = async function () {
+  // P6-13: takes the caller's options, so the delete and its audit row share
+  // one transaction.
+  Webhook.prototype.softDelete = async function (options = {}) {
     this.isDeleted = true;
-    return this.save({ hooks: false });
+    return this.save({ ...options, hooks: false });
   };
 
   Webhook.associate = (models) => {

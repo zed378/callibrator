@@ -43,6 +43,7 @@ const authService = require("../../services/auth.service");
 const sessionService = require("../../services/session.service");
 const kanban = require("../../services/kanban.service");
 const { tenantStorage } = require("../../middlewares/tenantContext.middleware");
+const { logger } = require("../../middlewares/activityLog.middleware");
 
 const socketModule = require("../../config/socket");
 const { authenticateHandshake, corsOrigin, withTenantContext, AUTH_ERROR } =
@@ -66,9 +67,12 @@ let ORIGINAL_NODE_ENV;
 beforeEach(() => {
   ORIGINAL_CORS_ORIGIN = process.env.CORS_ORIGIN;
   ORIGINAL_NODE_ENV = process.env.NODE_ENV;
-  jest.spyOn(console, "log").mockImplementation(() => {});
-  jest.spyOn(console, "warn").mockImplementation(() => {});
-  jest.spyOn(console, "error").mockImplementation(() => {});
+  // A-42: the module logs through winston (and its redactor), not console.
+  jest.spyOn(logger, "info").mockImplementation(() => {});
+  jest.spyOn(logger, "warn").mockImplementation(() => {});
+  jest.spyOn(logger, "error").mockImplementation(() => {});
+  // P6-12: every socket token names its session, live unless a test says not.
+  sessionService.isSessionLive.mockResolvedValue(true);
 });
 
 afterEach(() => {
@@ -208,8 +212,20 @@ describe("socket handshake authentication", () => {
     expect(next).toHaveBeenCalledWith();
   });
 
+  it("P6-12: rejects a socket token that names no session — it could never be revoked", async () => {
+    verifyPurposeToken.mockReturnValue({ id: "user-1" });
+    authService.getAuthUserWithTenant.mockResolvedValue(activeUser());
+    const socket = handshakeSocket({ auth: { token: "t" } });
+    const next = jest.fn();
+    await authenticateHandshake(socket, next);
+    expect(sessionService.isSessionLive).not.toHaveBeenCalled();
+    expect(authService.getAuthUserWithTenant).not.toHaveBeenCalled();
+    expect(next.mock.calls[0][0].message).toBe(AUTH_ERROR);
+    expect(socket.user).toBeUndefined();
+  });
+
   it("rejects a token whose user no longer exists", async () => {
-    verifyPurposeToken.mockReturnValue({ id: "ghost" });
+    verifyPurposeToken.mockReturnValue({ id: "ghost", sid: "sess-1" });
     authService.getAuthUserWithTenant.mockResolvedValue(null);
     const next = jest.fn();
     await authenticateHandshake(
@@ -220,7 +236,7 @@ describe("socket handshake authentication", () => {
   });
 
   it("rejects a banned user (isActive false)", async () => {
-    verifyPurposeToken.mockReturnValue({ id: "user-1" });
+    verifyPurposeToken.mockReturnValue({ id: "user-1", sid: "sess-1" });
     authService.getAuthUserWithTenant.mockResolvedValue(
       activeUser({ isActive: false }),
     );
@@ -236,7 +252,7 @@ describe("socket handshake authentication", () => {
   it.each(["INACTIVE", "SUSPENDED", "erased"])(
     "rejects a user whose status is %s",
     async (status) => {
-      verifyPurposeToken.mockReturnValue({ id: "user-1" });
+      verifyPurposeToken.mockReturnValue({ id: "user-1", sid: "sess-1" });
       authService.getAuthUserWithTenant.mockResolvedValue(
         activeUser({ status }),
       );
@@ -252,7 +268,7 @@ describe("socket handshake authentication", () => {
   it.each(["suspended", "SUSPENDED", "deleted", "DELETED"])(
     "rejects a valid token whose tenant is %s",
     async (status) => {
-      verifyPurposeToken.mockReturnValue({ id: "user-1" });
+      verifyPurposeToken.mockReturnValue({ id: "user-1", sid: "sess-1" });
       authService.getAuthUserWithTenant.mockResolvedValue(
         activeUser({ tenant: { id: "tenant-1", status } }),
       );
@@ -265,7 +281,7 @@ describe("socket handshake authentication", () => {
   );
 
   it("does not disclose why a handshake was rejected", async () => {
-    verifyPurposeToken.mockReturnValue({ id: "user-1" });
+    verifyPurposeToken.mockReturnValue({ id: "user-1", sid: "sess-1" });
     authService.getAuthUserWithTenant.mockResolvedValue(
       activeUser({ tenant: { id: "tenant-1", status: "suspended" } }),
     );
@@ -292,7 +308,7 @@ describe("socket handshake authentication", () => {
   });
 
   it("accepts a valid token for an active user in an active tenant", async () => {
-    verifyPurposeToken.mockReturnValue({ id: "user-1" });
+    verifyPurposeToken.mockReturnValue({ id: "user-1", sid: "sess-1" });
     const user = activeUser();
     authService.getAuthUserWithTenant.mockResolvedValue(user);
     const socket = handshakeSocket({ auth: { token: " t " } });
@@ -301,8 +317,7 @@ describe("socket handshake authentication", () => {
     await authenticateHandshake(socket, next);
 
     expect(verifyPurposeToken).toHaveBeenCalledWith("t", "socket");
-    // No `sid` (issued from a pre-A-48 access token): not session-checked.
-    expect(sessionService.isSessionLive).not.toHaveBeenCalled();
+    expect(sessionService.isSessionLive).toHaveBeenCalledWith("sess-1", "user-1");
     expect(next).toHaveBeenCalledWith();
     expect(socket.user).toBe(user);
     expect(socket.tenantContext).toEqual({
@@ -317,7 +332,7 @@ describe("socket handshake authentication", () => {
   // a tenant-bound user is a soft-deleted or destroyed tenant — refused, as
   // sign-in (A-83) and the HTTP `auth` middleware refuse it.
   it("rejects a tenant-bound user whose tenant is soft-deleted (include is null)", async () => {
-    verifyPurposeToken.mockReturnValue({ id: "user-1" });
+    verifyPurposeToken.mockReturnValue({ id: "user-1", sid: "sess-1" });
     authService.getAuthUserWithTenant.mockResolvedValue(
       activeUser({ tenant: null }),
     );
@@ -332,7 +347,7 @@ describe("socket handshake authentication", () => {
   it.each(["SUPER_ADMIN", "SUPERADMIN"])(
     "marks a %s connection as cross-tenant in the context",
     async (roleName) => {
-      verifyPurposeToken.mockReturnValue({ id: "user-1" });
+      verifyPurposeToken.mockReturnValue({ id: "user-1", sid: "sess-1" });
       authService.getAuthUserWithTenant.mockResolvedValue(
         activeUser({ tenantId: null, tenant: null, role: { name: roleName } }),
       );
@@ -349,7 +364,7 @@ describe("socket handshake authentication", () => {
   );
 
   it("treats a user with no role as not a super admin", async () => {
-    verifyPurposeToken.mockReturnValue({ id: "user-1" });
+    verifyPurposeToken.mockReturnValue({ id: "user-1", sid: "sess-1" });
     authService.getAuthUserWithTenant.mockResolvedValue(
       activeUser({ role: null }),
     );
@@ -512,6 +527,28 @@ describe("initSocket", () => {
     expect(() => handlers.disconnect()).not.toThrow();
   });
 
+  it("P6-12: an open socket is re-checked every interval, and the timer stops on disconnect", async () => {
+    jest.useFakeTimers();
+    try {
+      const { SOCKET_RECHECK_INTERVAL_MS } = socketModule.__testables;
+      const socket = fakeSocket({ sessionId: "sess-1", disconnect: jest.fn() });
+      const handlers = connect(socket);
+      authService.getAuthUserWithTenant.mockResolvedValue(activeUser());
+
+      await jest.advanceTimersByTimeAsync(SOCKET_RECHECK_INTERVAL_MS);
+      expect(sessionService.isSessionLive).toHaveBeenCalledWith("sess-1", "user-1");
+      expect(socket.disconnect).not.toHaveBeenCalled();
+
+      sessionService.isSessionLive.mockResolvedValue(false);
+      handlers.disconnect();
+      sessionService.isSessionLive.mockClear();
+      await jest.advanceTimersByTimeAsync(SOCKET_RECHECK_INTERVAL_MS * 3);
+      expect(sessionService.isSessionLive).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it("returns the io instance from getIo and emits to a board", () => {
     expect(socketModule.getIo()).toBe(fakeIo);
     socketModule.emitToBoard("proj-1", "card:updated", { id: 1 });
@@ -568,8 +605,9 @@ describe("attachAdapter (A-54)", () => {
       expect(event).toBe("error");
       expect(() => handler(new Error("ECONNRESET"))).not.toThrow();
     }
-    expect(console.warn).toHaveBeenCalledWith(
-      "[Socket] Redis adapter connection error: ECONNRESET",
+    expect(logger.warn).toHaveBeenCalledWith(
+      "[Socket] Redis adapter connection error",
+      { error: "ECONNRESET" },
     );
   });
 
@@ -579,7 +617,7 @@ describe("attachAdapter (A-54)", () => {
 
     expect(attachAdapter(server)).toBe(false);
     expect(server.adapter).not.toHaveBeenCalled();
-    expect(console.warn).toHaveBeenCalledWith(IN_MEMORY_WARNING);
+    expect(logger.warn).toHaveBeenCalledWith(IN_MEMORY_WARNING);
   });
 
   it("A-54: falls back when there is no Redis client at all", () => {
@@ -595,10 +633,10 @@ describe("attachAdapter (A-54)", () => {
 
     expect(attachAdapter(server)).toBe(false);
     expect(server.adapter).not.toHaveBeenCalled();
-    expect(console.warn).toHaveBeenCalledWith(
-      "[Socket] Redis client unavailable: bad REDIS_URL",
-    );
-    expect(console.warn).toHaveBeenCalledWith(IN_MEMORY_WARNING);
+    expect(logger.warn).toHaveBeenCalledWith("[Socket] Redis client unavailable", {
+      error: "bad REDIS_URL",
+    });
+    expect(logger.warn).toHaveBeenCalledWith(IN_MEMORY_WARNING);
   });
 
   it("A-54: initSocket attaches the adapter to the server it builds", () => {
@@ -620,5 +658,68 @@ describe("getIo before initialisation", () => {
       expect(() => fresh.getIo()).toThrow("Socket.io is not initialized!");
       expect(() => fresh.emitToBoard("p", "e", {})).not.toThrow();
     });
+  });
+});
+
+describe("P6-12 — an open socket stops when its principal stops", () => {
+  const { recheckSocket, checkPrincipal, SOCKET_RECHECK_INTERVAL_MS } = socketModule.__testables;
+
+  const openSocket = () => ({
+    user: { id: "user-1", tenantId: "tenant-1" },
+    sessionId: "sess-1",
+    disconnect: jest.fn(),
+  });
+
+  it("re-checks at most every minute", () => {
+    expect(SOCKET_RECHECK_INTERVAL_MS).toBe(60 * 1000);
+  });
+
+  it("P6-12: a socket whose session was revoked is disconnected on the next re-check", async () => {
+    sessionService.isSessionLive.mockResolvedValue(false);
+    const socket = openSocket();
+    expect(await recheckSocket(socket)).toBe(true);
+    expect(sessionService.isSessionLive).toHaveBeenCalledWith("sess-1", "user-1");
+    expect(socket.disconnect).toHaveBeenCalledWith(true);
+  });
+
+  it("P6-12: a socket whose tenant was suspended is disconnected on the next re-check", async () => {
+    authService.getAuthUserWithTenant.mockResolvedValue(
+      activeUser({ tenant: { id: "tenant-1", status: "suspended" } }),
+    );
+    const socket = openSocket();
+    expect(await recheckSocket(socket)).toBe(true);
+    expect(socket.disconnect).toHaveBeenCalledWith(true);
+  });
+
+  it("P6-12: a socket whose user was banned is disconnected on the next re-check", async () => {
+    authService.getAuthUserWithTenant.mockResolvedValue(activeUser({ isActive: false }));
+    const socket = openSocket();
+    expect(await recheckSocket(socket)).toBe(true);
+  });
+
+  it("keeps a socket whose principal still passes", async () => {
+    authService.getAuthUserWithTenant.mockResolvedValue(activeUser());
+    const socket = openSocket();
+    expect(await recheckSocket(socket)).toBe(false);
+    expect(socket.disconnect).not.toHaveBeenCalled();
+  });
+
+  it("keeps the socket when the re-check itself errors (a blip is not a revocation)", async () => {
+    sessionService.isSessionLive.mockRejectedValue(new Error("redis and db unreachable"));
+    const socket = openSocket();
+    expect(await recheckSocket(socket)).toBe(false);
+    expect(socket.disconnect).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalled();
+  });
+
+  it("checkPrincipal refuses a missing session id without reading anything", async () => {
+    expect(await checkPrincipal(undefined, "user-1")).toEqual({ refusal: "token names no session" });
+    expect(sessionService.isSessionLive).not.toHaveBeenCalled();
+  });
+
+  it("checkPrincipal treats a tenant without a status as live (only suspended/deleted refuse)", async () => {
+    const user = activeUser({ tenant: { id: "tenant-1" } });
+    authService.getAuthUserWithTenant.mockResolvedValue(user);
+    expect(await checkPrincipal("sess-1", "user-1")).toEqual({ user });
   });
 });

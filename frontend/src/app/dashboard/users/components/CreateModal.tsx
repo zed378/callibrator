@@ -1,13 +1,14 @@
 // src/app/dashboard/users/components/CreateModal.tsx
 "use client";
 
-import React from "react";
+import React, { useId } from "react";
 import { Button, Input, Select, Alert } from "@/components/ui";
 import { User as UserIcon, Mail, Camera } from "lucide-react";
 import { UsernameAvailability } from "./UsernameAvailability";
 import PasswordChecklist from "./PasswordChecklist";
 import Image from "next/image";
 import { toSameOriginUpload } from "@/lib/uploadUrl";
+import { useModalA11y } from "@/components/ui/useModalA11y";
 
 interface CreateModalProps {
   show: boolean;
@@ -70,17 +71,28 @@ export const CreateModal: React.FC<CreateModalProps> = ({
   setPicture,
   onPictureChange,
 }) => {
+  // F-12: a modal dialog — named by its title, focus moved in and
+  // trapped, Escape closes, focus returns to the opener (useModalA11y).
+  const panelRef = useModalA11y(show, onClose);
+  const titleId = useId();
   if (!show) return null;
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto bg-card rounded-2xl shadow-2xl">
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        className="w-full max-w-lg max-h-[90vh] overflow-y-auto bg-card rounded-2xl shadow-2xl">
         <div className="flex items-center justify-between p-6 border-b border-border">
-          <h2 className="text-xl font-bold text-foreground">
+          <h2 id={titleId} className="text-xl font-bold text-foreground">
             Create New User
           </h2>
-          <Button variant="ghost" size="sm" onClick={onClose}>
+          <Button aria-label="Close" variant="ghost" size="sm" onClick={onClose}>
             <svg
+              aria-hidden="true"
               className="h-4 w-4"
               fill="none"
               stroke="currentColor"

@@ -46,6 +46,7 @@ const startProcess = () => {
       m0057: require("../../migrations/0057-calibration-records-append-only"),
       m0059: require("../../migrations/0059-stock-adjustment-reason-and-item"),
       m0063: require("../../migrations/0063-user-identity-case-insensitive"),
+      m0089: require("../../migrations/0089-calibration-device-retired-terminal"),
       stockService: require("../../services/stock.service"),
     };
   });
@@ -162,6 +163,8 @@ live("Phase 6 data integrity — live PostgreSQL (P6-03, P6-05, P6-06)", () => {
     await g.m0059.up({ context: qi });
     // The verifier expects 0063's case-insensitive identity indexes (ADR-063).
     await g.m0063.up({ context: qi });
+    // ...and 0089's retired-device trigger (ADR-084, Q-02).
+    await g.m0089.up({ context: qi });
     // db.sync({ force: true }) of 71 models can exceed jest's 10 s default.
   }, 120000);
 
@@ -547,6 +550,32 @@ live("Phase 6 data integrity — live PostgreSQL (P6-03, P6-05, P6-06)", () => {
           { t: TENANT_A },
         );
         expect(err.original.code).toBe("23505"); // unique_violation
+        expect(err.original.constraint).toBe("calibration_devices_tenant_id_serial_number_unique");
+      });
+    });
+
+    it("ADR-078: a soft-deleted device keeps its serial — the index is NOT partial on is_deleted", async () => {
+      const [[index]] = await g.db.query(
+        `SELECT pg_get_indexdef(ix.indexrelid) AS def, ix.indpred IS NULL AS whole_table
+           FROM pg_index ix JOIN pg_class i ON i.oid = ix.indexrelid
+          WHERE i.relname = 'calibration_devices_tenant_id_serial_number_unique'`,
+      );
+      expect(index.whole_table).toBe(true);
+      expect(index.def).not.toMatch(/WHERE/i);
+      await inRolledBack(g.db, async (t) => {
+        await g.db.query(
+          `INSERT INTO calibration_devices (id, tenant_id, name, serial_number, iot_enabled, is_deleted, created_at, updated_at)
+           VALUES (gen_random_uuid(), :t, 'Returned analyser', 'SN-RETURNED-1', false, true, now(), now())`,
+          { transaction: t, replacements: { t: TENANT_A } },
+        );
+        const err = await errorOf(
+          g.db,
+          t,
+          `INSERT INTO calibration_devices (id, tenant_id, name, serial_number, iot_enabled, is_deleted, created_at, updated_at)
+           VALUES (gen_random_uuid(), :t, 'Re-registered', 'SN-RETURNED-1', false, false, now(), now())`,
+          { t: TENANT_A },
+        );
+        expect(err.original.code).toBe("23505");
         expect(err.original.constraint).toBe("calibration_devices_tenant_id_serial_number_unique");
       });
     });

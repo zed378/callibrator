@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useId } from "react";
 import { Button } from "@/components/ui";
+import { useModalA11y } from "@/components/ui/useModalA11y";
 
 interface DeleteTenantModalProps {
   isOpen: boolean;
@@ -12,12 +13,22 @@ export const DeleteTenantModal: React.FC<DeleteTenantModalProps> = ({
   onClose,
   onConfirm,
 }) => {
+  // F-12: a modal dialog — named by its title, focus moved in and
+  // trapped, Escape closes, focus returns to the opener (useModalA11y).
+  const panelRef = useModalA11y(isOpen, onClose);
+  const titleId = useId();
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div className="bg-card rounded-2xl p-6 max-w-md w-full shadow-2xl">
-        <h3 className="text-lg font-bold text-foreground mb-2">
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        className="bg-card rounded-2xl p-6 max-w-md w-full shadow-2xl">
+        <h3 id={titleId} className="text-lg font-bold text-foreground mb-2">
           Confirm Delete
         </h3>
         <p className="text-muted-foreground mb-6">

@@ -85,9 +85,10 @@ describe("meteredBillingController", () => {
 
   describe("getBillingHistory", () => {
     it("should return billing history with default pagination", async () => {
+      // The service's real shape (meteredBilling.service getBillingHistory).
       const mockHistory = {
-        data: [],
-        pagination: { page: 1, limit: 20, total: 0 },
+        rows: [],
+        meta: { total: 0, page: 1, limit: 20, totalPages: 0 },
       };
 
       meteredBillingService.getBillingHistory.mockResolvedValue(mockHistory);
@@ -101,13 +102,19 @@ describe("meteredBillingController", () => {
         undefined,
         undefined,
       );
-      expect(success).toHaveBeenCalled();
+      // F-13: rows as `data`, pagination as the top-level `meta` argument.
+      expect(success).toHaveBeenCalledWith(
+        res,
+        mockHistory.rows,
+        mockHistory.meta,
+        "Billing history retrieved",
+      );
     });
 
     it("should return billing history with custom pagination", async () => {
       const mockHistory = {
-        data: [],
-        pagination: { page: 2, limit: 50, total: 100 },
+        rows: [],
+        meta: { total: 100, page: 2, limit: 50, totalPages: 2 },
       };
 
       meteredBillingService.getBillingHistory.mockResolvedValue(mockHistory);

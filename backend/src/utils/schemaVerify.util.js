@@ -58,6 +58,12 @@ const EXPECTED_OBJECTS = Object.freeze([
     why: "P6-06 / ADR-049: serial numbers are unique per tenant (migration 0026)",
   }),
   Object.freeze({
+    kind: "trigger",
+    table: "calibration_devices",
+    name: "calibration_devices_retired_terminal",
+    why: "Q-02 / ADR-084: a retired device leaves 'retired' only by audited reinstatement (migration 0089)",
+  }),
+  Object.freeze({
     kind: "constraint",
     table: "stock_adjustments",
     name: "stock_adjustments_reason_not_blank",

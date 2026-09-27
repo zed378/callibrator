@@ -407,7 +407,12 @@ describe("ai.service", () => {
       // Raw SQL bypasses the tenant hooks, so the predicate must be explicit
       // and bound — this is the highest-risk isolation surface in the system.
       expect(db.query.mock.calls[0][0]).toContain("tenant_id = $2");
-      expect(db.query.mock.calls[0][1].bind).toEqual([JSON.stringify([0.1, 0.2]), "t1", 3]);
+      expect(db.query.mock.calls[0][1].bind).toEqual([
+        JSON.stringify([0.1, 0.2]),
+        "t1",
+        3,
+        ["SopDocument"],
+      ]);
       expect(rows).toEqual([
         { content: "a", similarity: 0.9 },
         { content: "b", similarity: 0.5 },

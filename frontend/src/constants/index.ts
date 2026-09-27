@@ -32,11 +32,16 @@ export const API_VERSION = "/api/v1";
  * axios's "timeout of 30000ms exceeded" — the two used to be equal, and the
  * client's clock starts first.
  *
- *   client 35 s  >  Next proxy (should sit between; see F-14 in the audit)  >  backend 30 s
+ *   client 35 s  >  Next proxy 32 s  >  backend 30 s
  *
- * The backend's budget is `app.use(timeout("30s"))` in backend/index.js.
+ * The backend's budget is `app.use(timeout("30s"))` in backend/index.js. The
+ * proxy's (app/api/v1/[...path]/route.ts) bounds the wait for the backend's
+ * response HEADERS: past it the upstream fetch is aborted, so a request the
+ * browser has given up on does not keep running in the Next process. It sits
+ * above the backend's, so the backend's own 408 arrives first.
  */
 export const BACKEND_TIMEOUT_MS = 30000;
+export const PROXY_UPSTREAM_TIMEOUT_MS = 32000;
 export const API_TIMEOUT = 35000;
 
 // Deploy-time tenant binding. When a single-tenant frontend is deployed with

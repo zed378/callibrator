@@ -13,6 +13,7 @@
  * The seeding logic lives in services/migration.service.js (seedDemoData); this
  * wrapper only bootstraps env/DB, prints the summary, and closes the pool.
  */
+// A-42 console-allowed: a CLI run by hand in a terminal; its console output is the operator's report, not application logging (backend/src/tests/guards/noConsole.a42.test.js).
 
 /* istanbul ignore file -- operational seeding script, run manually */
 

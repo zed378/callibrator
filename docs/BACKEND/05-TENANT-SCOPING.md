@@ -146,6 +146,8 @@ Only a **two-tenant** test proves anything.
 
 `createTwoTenants()` as a **one-line fixture** is what decides whether this test gets written for a new endpoint. Twenty lines of setup means it gets skipped.
 
+**What the fixture is (ADR-088).** `backend/src/tests/fixtures/twoTenants.js` (A-63) is **synchronous and has no database**: `const fx = createTwoTenants()` returns `fx.tenantA`, `fx.tenantB`, `fx.principal(tenant, role)` (a `req.user`), `fx.superAdmin`, `Tenants`/`Users` model doubles and a rollback-able `fx.transaction()`. It drives the real route → middleware → controller → service chain with `jest.mock("../../models")`; it does not create rows, run hooks or execute SQL. Steps 1–2 above are therefore a model double holding tenant B's row, not an HTTP create. Test the hooks and SQL themselves against PostgreSQL. Worked examples: `tenant.edit.a63.test.js`, `readGates.p604.test.js`.
+
 Also assert:
 
 - an authenticated principal with **no** tenant sees zero rows — the deny branch

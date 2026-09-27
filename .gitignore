@@ -116,6 +116,9 @@ deploy/compose/nginx/certs/
 # starts cleanly and cannot verify a single certificate.
 backups/
 
+# Local developer tools (A-19: gitleaks installed by make hooks)
+.tools/
+
 # Helm
 deploy/helm/**/charts/*.tgz
 deploy/helm/**/Chart.lock

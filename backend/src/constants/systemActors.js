@@ -86,6 +86,18 @@ const SYSTEM_ACTORS = Object.freeze({
   BATCH_JOB: "system:batch-job",
   /** ADR-070 — services/webhookDeliveryPurge.service.js: finished deliveries past retention. */
   WEBHOOK_DELIVERY_PURGE: "system:webhook-delivery-purge",
+  /**
+   * A-37 (ADR-075) — SCIM provisioning (services/scim.service.js) by an
+   * identity provider's API key. The key is a machine credential, not a
+   * person (as IOT_INGEST's device token is); the key's id is named in
+   * `changes.apiKeyId`, and the administrator who minted it in api_keys.
+   */
+  SCIM_PROVISIONING: "system:scim",
+  /**
+   * D-22 (ADR-083) — services/attachmentFileSweep.service.js: the files of
+   * attachments soft-deleted longer than the retention window.
+   */
+  ATTACHMENT_FILE_SWEEP: "system:attachment-file-sweep",
 });
 
 const SYSTEM_ACTOR_NAMES = Object.freeze(Object.values(SYSTEM_ACTORS));

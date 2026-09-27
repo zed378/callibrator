@@ -89,6 +89,8 @@ The IDOR sweep is the most important test in the project, and whether it gets wr
 
 **A one-line fixture gets used. Twenty lines of setup gets skipped**, and the sweep decays into covering only what someone had time for.
 
+The fixture is `backend/src/tests/fixtures/twoTenants.js` (A-63, 2026-09-24), used by 32 test files on 2026-09-27. It is a unit/route-level fixture — synchronous, in memory, no database (ADR-088). There is no equivalent for the live E2E suite yet.
+
 ## Mutation Checking
 
 Where a test guards something load-bearing, prove the test works by **breaking the thing**:

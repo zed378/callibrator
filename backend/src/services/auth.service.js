@@ -518,6 +518,13 @@ exports.loginUser = async (input) => {
     throw new AppError(403, refusal);
   }
 
+  // A-60 item 3 (ADR-075, upholding ADR-051 Q-11): `isEmailVerified` is NOT
+  // checked here, on purpose. Every account that reaches data was vouched for
+  // by an administrator (temporary password, A-123) or an identity provider
+  // (SCIM, SSO); a self-registration has no tenant and sees nothing. The flag
+  // proves the password-reset channel. Pinned by
+  // auth.emailVerificationPolicy.a60.test.js.
+
   await loginThrottle.clearLoginThrottle(attempt);
 
   // Reset failed attempts on success
@@ -1771,7 +1778,12 @@ exports.setupMfa = async (
 
   // PENDING only. `mfaSecret` — the live factor — is not touched here.
   // Date.now(), the clock verifyMfaSetup measures the TTL with.
-  await dbUser.update({ mfaPendingSecret: secret, mfaPendingCreatedAt: new Date(Date.now()) });
+  // S-20: stored as a KMS envelope, never the seed itself. verifyMfaSetup
+  // promotes the envelope as it is — both columns share one AAD (the user id).
+  await dbUser.update({
+    mfaPendingSecret: mfaService.sealSecret(dbUser.id, secret),
+    mfaPendingCreatedAt: new Date(Date.now()),
+  });
 
   return {
     secret,

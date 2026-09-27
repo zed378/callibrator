@@ -1,7 +1,8 @@
-import React from "react";
+import React, { useId } from "react";
 import type { BackupCreateForm } from "../hooks/useTenantBackups";
 import { Card, Button } from "@/components/ui";
 import { XCircle } from "lucide-react";
+import { useModalA11y } from "@/components/ui/useModalA11y";
 
 interface BackupCreateModalProps {
   isOpen: boolean;
@@ -20,16 +21,26 @@ export const BackupCreateModal: React.FC<BackupCreateModalProps> = ({
   setForm,
   isCreating,
 }) => {
+  // F-12: a modal dialog — named by its title, focus moved in and
+  // trapped, Escape closes, focus returns to the opener (useModalA11y).
+  const panelRef = useModalA11y(isOpen, onClose);
+  const titleId = useId();
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <Card className="w-full max-w-lg">
-        <div className="flex items-center justify-between p-6 border-b border-border">
-          <h2 className="text-xl font-bold text-foreground">
+        <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        className="flex items-center justify-between p-6 border-b border-border">
+          <h2 id={titleId} className="text-xl font-bold text-foreground">
             Create New Backup
           </h2>
-          <Button
+          <Button aria-label="Close"
             variant="ghost"
             size="sm"
             onClick={onClose}

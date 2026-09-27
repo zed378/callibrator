@@ -241,7 +241,7 @@ exports.generateKeyPair = async (tenantId) => {
 
     // Store key pair in database (private key encrypted)
     const { TenantKey } = require("../models");
-    await TenantKey.create({
+    const created = await TenantKey.create({
       tenantId,
       keyId,
       keyType: "esignature",
@@ -257,7 +257,10 @@ exports.generateKeyPair = async (tenantId) => {
       algorithm: SIGNATURE_ALGORITHM,
     });
 
-    return { keyId, publicKey, privateKey: "[REDACTED]" };
+    // P6-02: `id` is the row id DELETE /key-pairs/:keyPairId takes, and the
+    // `id` the frontend's KeyPair reads. Without it the caller could not
+    // delete the key it had just created without listing first.
+    return { id: created.id, keyId, publicKey, privateKey: "[REDACTED]" };
   } catch (err) {
     if (err.status) throw err;
     logger.error("Key pair generation failed", {

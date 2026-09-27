@@ -21,6 +21,7 @@ const fs = require("fs");
 const path = require("path");
 const migration = require("../../migrations/0036-flag-never-signed-in-admin-passwords");
 const { ROLE_IDS } = require("../../constants/roleConstants");
+const { logger } = require("../../middlewares/activityLog.middleware");
 
 const SOURCE = fs.readFileSync(
   path.join(__dirname, "../../migrations/0036-flag-never-signed-in-admin-passwords.js"),
@@ -55,7 +56,8 @@ const fakeContext = ({ missingTables = [], column = true, flagged = [] } = {}) =
 
 let warn;
 beforeEach(() => {
-  warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+  // A-42: the report goes through winston (and its redactor), not console.
+  warn = jest.spyOn(logger, "warn").mockImplementation(() => {});
 });
 afterEach(() => warn.mockRestore());
 
@@ -91,14 +93,17 @@ describe("migration 0036 — flag never-signed-in accounts (A-163)", () => {
     for (const c of calls) {
       expect(c.options.transaction).toBe(tx);
     }
-    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/^0036: flagged 3 never-signed-in account/));
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/^0036: flagged never-signed-in account/), {
+      migration: "0036",
+      flagged: 3,
+    });
   });
 
   it("a second run that finds nothing reports 0", async () => {
     const { context } = fakeContext({ flagged: [] });
 
     expect(await migration.up({ context })).toBe(0);
-    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/^0036: flagged 0 /));
+    expect(warn).toHaveBeenCalledWith(expect.any(String), { migration: "0036", flagged: 0 });
   });
 
   it.each([["users"], ["sessions"], ["audit_logs"], ["tenant_settings"]])(

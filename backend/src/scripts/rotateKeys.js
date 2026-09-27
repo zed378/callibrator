@@ -11,6 +11,7 @@
  * procedure, including when the previous key may be dropped, is
  * docs/SECURITY/13-KEY-ROTATION.md. Prints key IDs (fingerprints), never keys.
  */
+// A-42 console-allowed: a CLI run by hand in a terminal; its console output is the operator's report, not application logging (backend/src/tests/guards/noConsole.a42.test.js).
 require("../utils/env.util");
 const { db } = require("../config");
 const { rewrapAll } = require("../services/keyRotation.service");
@@ -35,11 +36,11 @@ const valueOf = (name) => {
     );
     for (const r of result.reports) {
       console.log(
-        `${r.table}: scanned ${r.scanned}, re-wrapped ${r.rewrapped}, converted from legacy ${r.converted}, ` +
+        `${r.table}.${r.column}: scanned ${r.scanned}, re-wrapped ${r.rewrapped}, converted from legacy ${r.converted}, ` +
           `skipped (changed meanwhile) ${r.skipped}, failed ${r.failed.length}`,
       );
       for (const f of r.failed) {
-        console.error(`  FAILED ${r.table} ${f.id}: ${f.error}`);
+        console.error(`  FAILED ${r.table}.${r.column} ${f.id}: ${f.error}`);
       }
     }
     const pending = result.reports.reduce((n, r) => n + r.skipped, 0);

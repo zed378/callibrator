@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 const mqtt = require("mqtt");
 const { CalibrationDevice, IotReading, Notification } = require("../models");
 const { logger } = require("../middlewares/activityLog.middleware");
@@ -7,10 +8,55 @@ const auditService = require("./audit.service");
 const { SYSTEM_ACTORS } = require("../constants/systemActors");
 const { runForTenant } = require("../utils/jobContext.util");
 
+/**
+ * W-14 (ADR-079): the MQTT subscription replicas SHARE. With a plain
+ * `device/#` every replica received every message, so N replicas stored N
+ * readings and raised N tenant-wide alerts per publish. A shared subscription
+ * (`$share/<group>/device/#`, MQTT 5 and the common 3.1.1 brokers) makes the
+ * broker deliver each message to ONE subscriber of the group.
+ *
+ * MQTT_SHARED_GROUP names the group (default "callibrator"); `none` subscribes
+ * to plain `device/#`, for a broker without shared subscriptions, and then
+ * only one replica may run MQTT. A name holding `/`, `+` or `#` is invalid in
+ * a topic filter and falls back to the default, loudly.
+ */
+const DEFAULT_SHARED_GROUP = "callibrator";
+const INGEST_TOPIC = "device/#";
+
+const ingestSubscription = () => {
+  const configured = (process.env.MQTT_SHARED_GROUP ?? DEFAULT_SHARED_GROUP).trim();
+  if (configured.toLowerCase() === "none") {
+    return INGEST_TOPIC;
+  }
+  let group = configured;
+  if (!group || /[/+#]/.test(group)) {
+    logger.error(`MQTT_SHARED_GROUP "${configured}" is not a valid group name; using "${DEFAULT_SHARED_GROUP}"`);
+    group = DEFAULT_SHARED_GROUP;
+  }
+  return `$share/${group}/${INGEST_TOPIC}`;
+};
+
+/**
+ * W-14: at most this many ingests run at once per process. Past it, the next
+ * message is not read from the connection until one finishes (the client's
+ * `handleMessage` callback is withheld), so a burst, or a broker replaying a
+ * backlog on reconnect, waits in the broker and in TCP, not in memory or in
+ * the database pool.
+ */
+const DEFAULT_INGEST_CONCURRENCY = 8;
+const ingestConcurrency = () => {
+  const n = Number(process.env.MQTT_INGEST_CONCURRENCY);
+  return Number.isInteger(n) && n > 0 ? n : DEFAULT_INGEST_CONCURRENCY;
+};
+
 class IotService {
   constructor() {
     this.client = null;
     this.connected = false;
+    // W-14: ingests in flight, and the withheld callback that lets the client
+    // read the next message once one of them finishes.
+    this.inFlight = 0;
+    this.resumeReading = null;
   }
 
   async connect(port, host) {
@@ -29,7 +75,9 @@ class IotService {
     logger.info(`Connecting to MQTT broker at ${url}`);
 
     const clientOpts = {
-      clientId: `callibrator-backend-${Date.now()}`,
+      // Random suffix: two replicas starting in the same millisecond had the
+      // same client id, and the broker disconnects the first of a duplicate.
+      clientId: `callibrator-backend-${Date.now()}-${crypto.randomBytes(4).toString("hex")}`,
       clean: true,
       reconnectPeriod: 5000,
     };
@@ -40,11 +88,12 @@ class IotService {
       this.client.on("connect", () => {
         this.connected = true;
         logger.info(`IoT MQTT Client connected to broker at ${url}`);
-        this.client.subscribe("device/#", (err) => {
+        const subscription = ingestSubscription();
+        this.client.subscribe(subscription, (err) => {
           if (err) {
             logger.error("IoT MQTT Subscribe Error", { error: err.message });
           } else {
-            logger.info("IoT MQTT Client subscribed to device/#");
+            logger.info(`IoT MQTT Client subscribed to ${subscription}`);
           }
         });
       });
@@ -63,33 +112,11 @@ class IotService {
         logger.warn("IoT MQTT Client reconnecting...");
       });
 
-      this.client.on("message", (topic, payload) => {
-        try {
-          const payloadStr = payload.toString();
-          const payloadJson = JSON.parse(payloadStr);
-          const parts = topic.split("/");
-          const deviceId = parts[1] || null;
-          const tenantId = parts[2] || null;
-
-          if (deviceId && tenantId) {
-            // Unawaited AND uncaught, this rejection reached the process-level
-            // `unhandledRejection` handler in index.js, which calls shutdown():
-            // one stale retained message for an unknown or disabled device shut
-            // the server down. The failure belongs in the log, not in the exit
-            // code.
-            this.ingestReading(tenantId, deviceId, payloadJson).catch((error) => {
-              logger.error("MQTT ingest failed", {
-                error: error.message,
-                topic,
-                deviceId,
-                tenantId,
-              });
-            });
-          }
-        } catch (error) {
-          logger.error("MQTT Message Parse Error", { error: error.message, topic });
-        }
-      });
+      // W-14: ingest runs from `handleMessage`, not a "message" listener. The
+      // client reads the next packet only after `done` is called, which is
+      // what bounds the ingests in flight (handleIncoming).
+      this.client.handleMessage = (packet, done) =>
+        this.handleIncoming(packet.topic, packet.payload, done);
 
       return new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
@@ -109,6 +136,63 @@ class IotService {
     } catch (error) {
       logger.error("Failed to connect to MQTT broker", { error: error.message });
       throw error;
+    }
+  }
+
+  /**
+   * One message from the broker: parse it, start its ingest, and let the
+   * client read the next message now, or, at the concurrency cap, when an
+   * ingest finishes (W-14).
+   *
+   * A failed ingest is logged, never thrown: unawaited and uncaught, its
+   * rejection used to reach the process-level `unhandledRejection` handler in
+   * index.js, which calls shutdown(), so one stale retained message for an
+   * unknown or disabled device shut the server down.
+   *
+   * @param {string} topic - `device/<deviceId>/<tenantId>`
+   * @param {Buffer|string} payload - JSON: metric name -> value
+   * @param {Function} done - lets the client read the next packet
+   */
+  handleIncoming(topic, payload, done) {
+    let payloadJson;
+    try {
+      payloadJson = JSON.parse(payload.toString());
+    } catch (error) {
+      logger.error("MQTT Message Parse Error", { error: error.message, topic });
+      done();
+      return;
+    }
+    const parts = topic.split("/");
+    const deviceId = parts[1] || null;
+    const tenantId = parts[2] || null;
+    if (!deviceId || !tenantId) {
+      done();
+      return;
+    }
+
+    this.inFlight += 1;
+    this.ingestReading(tenantId, deviceId, payloadJson)
+      .catch((error) => {
+        logger.error("MQTT ingest failed", {
+          error: error.message,
+          topic,
+          deviceId,
+          tenantId,
+        });
+      })
+      .finally(() => {
+        this.inFlight -= 1;
+        const resume = this.resumeReading;
+        this.resumeReading = null;
+        if (resume) {
+          resume();
+        }
+      });
+
+    if (this.inFlight < ingestConcurrency()) {
+      done();
+    } else {
+      this.resumeReading = done;
     }
   }
 

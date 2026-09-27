@@ -111,10 +111,13 @@ describe("A-99: the real otplib, not a mock", () => {
     const setup = await authService.setupMfa(USER_ID);
     expect(setup.secret).toMatch(/^[A-Z2-7]{32}$/); // 20 bytes, RFC 4226's recommendation
     expect(setup.qrCodeUrl).toMatch(/^data:image\/png;base64,/);
+    // S-20: stored as a KMS envelope under the user id, never the seed.
     expect(user.update).toHaveBeenCalledWith({
-      mfaPendingSecret: setup.secret,
+      mfaPendingSecret: expect.stringMatching(/^v2:/),
       mfaPendingCreatedAt: expect.any(Date),
     });
+    expect(user.mfaPendingSecret).not.toContain(setup.secret);
+    expect(mfaService.openSecret(USER_ID, user.mfaPendingSecret)).toBe(setup.secret);
     expect(user.mfaSecret).toBeNull();
     expect(user.mfaEnabled).toBe(false);
 
@@ -127,7 +130,8 @@ describe("A-99: the real otplib, not a mock", () => {
       recoveryCodes: expect.any(Array),
     });
     expect(user.mfaEnabled).toBe(true);
-    expect(user.mfaSecret).toBe(setup.secret);
+    expect(user.mfaSecret).toMatch(/^v2:/);
+    expect(mfaService.openSecret(USER_ID, user.mfaSecret)).toBe(setup.secret);
 
     // 3. MFA login with the enrolled secret. A-115: the code that verified the
     // setup was consumed, so sign-in uses the NEXT step's code.

@@ -13,15 +13,15 @@ Phases 0–5 are **shipped**. The previous version of this board listed foundati
 | | Count |
 |---|---|
 | Backend modules | **33** |
-| Route modules | **53** under `routes/api/` + 1 internal, **56** mounts |
-| Sequelize models | **71** — the old count of 72 included `models/index.js`, which is the barrel, not a model |
-| Services / controllers / validators | **71** / **57** / 37 — 77 service files counting the storage drivers in `services/storage/` |
-| Backend test files | **359** (`*.test.js`; 363 files under `src/tests` counting fixtures) |
+| Route modules | **53** under `routes/api/` + **2** internal (`health`, `migration`) — counted 2026-09-27 |
+| Sequelize models | **71** (`models/*.model.js`, 2026-09-27) — the old count of 72 included `models/index.js`, which is the barrel, not a model |
+| Services / controllers / validators | **81** / **58** / **40** (`services/*.service.js`, `controllers/*.controller.js`, `validators/*.validator.js`, 2026-09-27) — 88 `.js` files under `services/` counting the storage drivers |
+| Backend test files | **674** (`*.test.js`/`*.test.ts` under `backend/src/tests`, 2026-09-27; 717 files there counting fixtures and helpers) |
 | Live E2E specs | 53 |
 | Frontend API services (each with a contract test) | 51 |
 | Browser tests | 71 |
 | Dashboard surfaces | ~60 |
-| Migrations | **19** — 0019 adds the signature crypto columns and **has never been run** |
+| Migrations | **63** files in `backend/src/migrations`, numbered up to `0090` (2026-09-27; numbers are reserved per agent, so there are gaps). Which have run on the reference deployment is recorded per deploy in `MEMORY/records/`, not here |
 | ADRs | **40** |
 
 ---
@@ -79,7 +79,7 @@ QMS (non-conformances, CAPA, SOP) · risk register · vendor scorecards · workf
 | Gate | State |
 |---|---|
 | Backend unit coverage (100%) | ✅ **passing** — 578 suites, 12,164 tests, 100% statements, branches, functions and lines (2026-09-25, batch 7, Node 24). **But `models/` is excluded from the gate twice, so it has never measured a model** — the A-88 model DDL test now covers foreign keys |
-| Backend lint | 🔴 **red, and it had never run at all** — a version mismatch crashed ESLint before it linted a file (A-34). It runs now and reports 1,319 errors, all formatting, none logic |
+| Backend lint | 🔴 **red, and it had never run at all** — a version mismatch crashed ESLint before it linted a file (A-34). It runs now: **1,083 errors, 302 warnings** on 2026-09-27 (`npm run lint`, which now lints `.js` and `.ts`; 1,319 on 2026-09-23, 1,297 later that day). CI gates on the ratchet instead (`scripts/ci/eslint-ratchet.js`, baseline 950) |
 | Frontend coverage (70%) | 🔴 **red, and never run** — about 14%; `npm test` does not pass `--coverage`, so nothing evaluates the threshold |
 | Live E2E in one uninterrupted run | 🔴 **never achieved** — every fix verified individually; the rate-limit window kept resetting |
 

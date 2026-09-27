@@ -4,6 +4,10 @@ const models = require("../models");
 const { Users, Role, ScimGroup, RoleMenuPermission } = models;
 const { AppError } = require("../utils/appError.util");
 const { logger } = require("../middlewares/activityLog.middleware");
+const { db } = require("../config");
+const auditService = require("./audit.service");
+const { checkAuthLockout, recordAuthFailure } = require("./rateLimiter.redis.service");
+const { SYSTEM_ACTORS } = require("../constants/systemActors");
 
 const { ROLE_IDS } = require("../constants");
 
@@ -334,29 +338,40 @@ exports.getUserById = async (tenantId, userId) => {
 };
 
 // ---------------------------------------------------------------------------
-// A-37 — the insert failure is answered generically.
+// A-37 (ADR-075) — SCIM's identity conflicts: Q-18's rule for tenant admins.
 //
-// `users.email` and `users.username` are unique ACROSS TENANTS (user.model.js),
-// while the duplicate check above is narrowed to the caller's tenant by the
-// global tenant hooks. So an address held by ANOTHER tenant passes the check
-// and is rejected by the database. That rejection used to surface as its own
-// response (a 500 carrying Sequelize's "Validation error"), distinguishable
-// from every other failure — a cross-tenant existence oracle reachable with
-// nothing but an API key.
+// `users.email` and `users.username` are unique ACROSS TENANTS (Q-18 keeps
+// account identity global), and SCIM writes the address to both. So an IdP
+// provisioning an address another hospital holds must be refused, and the
+// refusal says the address exists somewhere. ADR-051 Q-18 accepted that
+// residual oracle for tenant administrators on two conditions (A-128); an API
+// key scoped scim:write holds the same power, so it gets the same answer:
 //
-// Every failure of the insert now produces ONE response, built here: the same
-// status and the same body whether the cause is a unique violation against
-// another tenant's row, a lost connection, or anything else. What actually
-// happened goes to the log only. The in-tenant duplicate keeps its 409: the
-// caller can list its own tenant's users, so that answer discloses nothing.
+//  - ONE honest 409 — RFC 7644 § 3.3's `uniqueness` — whichever tenant holds
+//    the address, this one or another, live or soft-deleted. The check is
+//    GLOBAL (user.service#assertIdentityFree), so the two cases are
+//    byte-identical. It used to be tenant-scoped: another tenant's holder
+//    passed it and the insert failed on the index. Since 2026-09-24 that
+//    failure was answered with a generic 500 — which hid the signal but made
+//    every IdP retry the create forever (Okta and Entra ID retry a 5xx),
+//    unlimited and unaudited;
+//  - RATE-LIMITED per API key (rateLimitConstants `scimIdentityConflict`, ten
+//    an hour): past it, every create and every userName change by that key is
+//    429 BEFORE anything is looked up, so a spent budget learns nothing;
+//  - AUDITED: each conflict is a row in the key's tenant, actor
+//    `system:scim`, naming the key — never the address, never whose it was.
 //
-// This hides the oracle's SIGNAL; it does not remove the constraint behind it.
-// An address that belongs to another tenant still cannot be provisioned here —
-// whether identities should be unique per tenant (D-06) is an open decision,
-// not something this function decides.
+// A super admin (JWT, not a key) reads every tenant anyway: neither counted
+// nor audited, as in A-128. Any OTHER insert failure is still answered with
+// the one generic 500, and its cause goes to the log without the address.
 // ---------------------------------------------------------------------------
 const PROVISIONING_FAILED_STATUS = 500;
 const PROVISIONING_FAILED_MESSAGE = "The user could not be provisioned";
+const SCIM_CONFLICT_ENDPOINT = "scimIdentityConflict";
+const SCIM_IDENTITY_TAKEN_MESSAGE = "User already exists in the system";
+
+/** The one 409 every identity conflict is answered with. */
+const identityTaken = () => new AppError(409, SCIM_IDENTITY_TAKEN_MESSAGE);
 
 /**
  * Log why a SCIM user insert failed and return the one generic error every
@@ -380,7 +395,131 @@ const provisioningFailed = (tenantId, cause) => {
   return new AppError(PROVISIONING_FAILED_STATUS, PROVISIONING_FAILED_MESSAGE);
 };
 
-exports.createUser = async (tenantId, scimData) => {
+/**
+ * Whether `error` is the users unique index refusing an email or username —
+ * a create or a rename that raced past the global check.
+ *
+ * @param {{name?: string, fields?: object}} error
+ * @returns {boolean}
+ */
+const isIdentityUniqueViolation = (error) => {
+  if (error?.name !== "SequelizeUniqueConstraintError") {
+    return false;
+  }
+  // The plain unique indexes report `email` / `username`; migration 0063's
+  // expression indexes report `lower(email::text)` and name the constraint
+  // users_email_lower_unique — either is the same identity.
+  const fields = Object.keys(error.fields || {});
+  return (
+    fields.some((field) => /\b(email|username)\b/.test(field)) ||
+    /^users_(email|username)/.test(error.parent?.constraint || "")
+  );
+};
+
+/**
+ * Refuse a key whose conflict budget is spent — before any lookup.
+ *
+ * @param {{apiKeyId?: (string|null)}} actor
+ */
+const assertConflictBudget = async ({ apiKeyId }) => {
+  if (!apiKeyId) {
+    return;
+  }
+  const lockout = await checkAuthLockout({ userId: apiKeyId, endpoint: SCIM_CONFLICT_ENDPOINT });
+  if (lockout.locked) {
+    throw new AppError(
+      429,
+      "Too many user names that were already registered. Provisioning by this credential " +
+        "is paused for an hour; check the identity provider's assignments, then retry.",
+    );
+  }
+};
+
+/**
+ * Throw the 409 when any account — any tenant, soft-deleted included — holds
+ * `email` as its email or its username (SCIM writes it to both).
+ *
+ * @param {string} email - lowercased
+ * @param {string} [excludeId] - the user being renamed
+ */
+const assertAddressFree = async (email, excludeId) => {
+  const { assertIdentityFree } = require("./user.service");
+  try {
+    await assertIdentityFree("email", email, { excludeId });
+    await assertIdentityFree("username", email, { excludeId });
+  } catch (error) {
+    if (error && error.identityConflict) {
+      throw identityTaken();
+    }
+    throw error;
+  }
+};
+
+/**
+ * Count a key's conflict against its budget and audit it in the key's tenant,
+ * in its own transaction (the create's, if any, has not happened or rolled
+ * back). The row names the key and the field — never the address.
+ *
+ * @param {string} tenantId
+ * @param {{apiKeyId?: (string|null), ipAddress?: (string|null), userAgent?: (string|null)}} actor
+ * @param {"CREATE"|"UPDATE"} action
+ * @param {string|null} resourceId - the user being renamed; null on a create
+ */
+const recordConflict = async (tenantId, actor, action, resourceId) => {
+  if (!actor.apiKeyId) {
+    return;
+  }
+  await recordAuthFailure({ userId: actor.apiKeyId, endpoint: SCIM_CONFLICT_ENDPOINT });
+  await db.transaction((transaction) =>
+    auditService.logAction(
+      {
+        tenantId,
+        systemActor: SYSTEM_ACTORS.SCIM_PROVISIONING,
+        action,
+        resourceType: "User",
+        resourceId,
+        changes: {
+          operation: "IDENTITY_CONFLICT",
+          outcome: "refused",
+          field: "userName",
+          apiKeyId: actor.apiKeyId,
+        },
+        ipAddress: actor.ipAddress || null,
+        userAgent: actor.userAgent || null,
+      },
+      { transaction },
+    ),
+  );
+  logger.warn("scim: identity conflict refused (A-37)", { tenantId, apiKeyId: actor.apiKeyId, action });
+};
+
+/**
+ * The budgeted, audited global check a create or a userName change runs.
+ *
+ * @param {string} tenantId
+ * @param {object} actor - see recordConflict
+ * @param {string} email - lowercased
+ * @param {{action: "CREATE"|"UPDATE", userId?: string}} target
+ */
+const assertProvisionable = async (tenantId, actor, email, { action, userId = null }) => {
+  await assertConflictBudget(actor);
+  try {
+    await assertAddressFree(email, userId || undefined);
+  } catch (error) {
+    if (error.status === 409) {
+      await recordConflict(tenantId, actor, action, userId);
+    }
+    throw error;
+  }
+};
+
+/**
+ * @param {string} tenantId - the credential's tenant
+ * @param {object} scimData - the validated SCIM User
+ * @param {{apiKeyId?: (string|null), ipAddress?: (string|null), userAgent?: (string|null)}} [actor] -
+ *   `apiKeyId` is null for a super admin's JWT (not budgeted, not audited)
+ */
+exports.createUser = async (tenantId, scimData, actor = {}) => {
   // D-06: lowercased, as every other identity path stores an address. Sign-in
   // is by username or email across every tenant (ADR-051 Q-18), and an address
   // stored as the IdP happened to case it could sit beside another tenant's
@@ -395,10 +534,8 @@ exports.createUser = async (tenantId, scimData) => {
     throw new AppError(400, "Email/userName is required");
   }
 
-  const existing = await Users.findOne({ where: { email } });
-  if (existing) {
-    throw new AppError(409, "User already exists in the system");
-  }
+  // A-37: global, budgeted and audited — one 409 whoever holds the address.
+  await assertProvisionable(tenantId, actor, email, { action: "CREATE" });
 
   await assertAssignableRole(scimData.roleId);
 
@@ -420,6 +557,11 @@ exports.createUser = async (tenantId, scimData) => {
       isEmailVerified: true,
     });
   } catch (error) {
+    // A concurrent create took the address after the check: the same 409.
+    if (isIdentityUniqueViolation(error)) {
+      await recordConflict(tenantId, actor, "CREATE", null);
+      throw identityTaken();
+    }
     throw provisioningFailed(tenantId, error);
   }
 
@@ -452,7 +594,7 @@ exports.updateUser = async (tenantId, userId, scimData) => {
   return formatScimUser(user);
 };
 
-exports.patchUser = async (tenantId, userId, patchOps) => {
+exports.patchUser = async (tenantId, userId, patchOps, actor = {}) => {
   const user = await Users.findOne({ where: { id: userId, tenantId } });
   if (!user) {
     throw new AppError(404, "User not found");
@@ -484,7 +626,22 @@ exports.patchUser = async (tenantId, userId, patchOps) => {
     }
   }
 
-  await user.update(updates);
+  // A-37: a userName change is the same probe as a create — global, budgeted
+  // and audited. Keeping the user's own address is not a change.
+  const renames = Boolean(updates.email) && updates.email !== String(user.email).toLowerCase();
+  if (renames) {
+    await assertProvisionable(tenantId, actor, updates.email, { action: "UPDATE", userId: user.id });
+  }
+
+  try {
+    await user.update(updates);
+  } catch (error) {
+    if (renames && isIdentityUniqueViolation(error)) {
+      await recordConflict(tenantId, actor, "UPDATE", user.id);
+      throw identityTaken();
+    }
+    throw error;
+  }
   return formatScimUser(user);
 };
 

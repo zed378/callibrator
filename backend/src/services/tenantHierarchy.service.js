@@ -1,8 +1,8 @@
 /**
  * Tenant Hierarchy Service
  *
- * Manages parent-tenant → child business unit relationships and data
- * visibility rules.
+ * Manages parent-tenant → child business unit relationships. It grants no
+ * data visibility across tenants (ADR-084, Q-05).
  *
  * There is no role cascade (A-134). Roles are global, not tenant-scoped
  * (role.model.js: no tenantId, `name` unique across the platform), so every
@@ -342,63 +342,22 @@ exports.getAncestorTenants = async (tenantId) => {
 };
 
 // ==========================================
-// DATA VISIBILITY
+// DATA VISIBILITY — there is none (ADR-084, Q-05)
 // ==========================================
-
-/**
- * Get data visibility scope for a tenant
- * @param {string} tenantId - Tenant ID
- * @param {string} scope - Data scope (self, subtree, all)
- * @returns {Promise<{tenantIds: Array, scope: string}>}
- */
-exports.getDataVisibilityScope = async (tenantId, scope = "self") => {
-  if (scope === "self") {
-    return { tenantIds: [tenantId], scope: "self" };
-  }
-
-  if (scope === "subtree") {
-    const descendants = await exports.getDescendantTenants(tenantId);
-    return {
-      tenantIds: [tenantId, ...descendants],
-      scope: "subtree",
-    };
-  }
-
-  if (scope === "all") {
-    const ancestors = await exports.getAncestorTenants(tenantId);
-    const rootCode = ancestors.length > 0 ? ancestors[0].code : null;
-
-    if (rootCode) {
-      const { Tenant } = require("../models");
-      const allTenants = await Tenant.findAll({
-        where: {
-          [db.Sequelize.Op.or]: [
-            { code: rootCode },
-            { code: { [db.Sequelize.Op.like]: `${rootCode}_%` } },
-          ],
-        },
-        attributes: ["id"],
-      });
-      return {
-        tenantIds: allTenants.map((t) => t.id),
-        scope: "all",
-      };
-    }
-  }
-
-  return { tenantIds: [tenantId], scope: "self" };
-};
-
-/**
- * Build tenant-scoped query filter
- * @param {string} tenantId - Tenant ID
- * @param {string} scope - Visibility scope
- * @returns {Promise<Object>} Sequelize where clause
- */
-exports.buildTenantFilter = async (tenantId, scope = "self") => {
-  const visibility = await exports.getDataVisibilityScope(tenantId, scope);
-  return { tenantId: { [db.Sequelize.Op.in]: visibility.tenantIds } };
-};
+//
+// The hierarchy is structure, not access. A parent tenant never sees a child
+// tenant's data, a child never sees its parent's or a sibling's, and no role
+// in one tenant reaches another's rows because the tenants are linked here.
+// The global tenant hooks know exactly one tenant per principal and nothing in
+// this file widens that.
+//
+// getDataVisibilityScope / buildTenantFilter / HIERARCHY_SCOPE were removed
+// under ADR-084. Nothing called them, and they encoded the opposite decision:
+// a "subtree" scope (the parent reads every descendant) and an "all" scope
+// (any member reads the whole family, parent and siblings included), the
+// latter found by `code LIKE '<root>_%'`, which also matched an unrelated
+// tenant whose code merely starts with the root's. A future group report is
+// aggregates only, consented by each child, and needs its own ADR.
 
 // ==========================================
 // PERMISSIONS & ROLES
@@ -406,8 +365,8 @@ exports.buildTenantFilter = async (tenantId, scope = "self") => {
 
 // A-255 (ADR-065): assignRoleToUserAcrossHierarchy was removed with its
 // unrouted handler. It wrote users.role_id with no audit row and no privilege
-// check (ROLE_LEVELS), and passed the USER id where getDataVisibilityScope
-// expects a TENANT id, so it matched no hierarchy and updated nothing.
+// check (ROLE_LEVELS), and passed the USER id where the (since removed,
+// ADR-084) getDataVisibilityScope expected a TENANT id, so it matched no hierarchy and updated nothing.
 
 /**
  * Get user's roles across all tenants
@@ -643,11 +602,3 @@ exports.getStatus = () => {
   };
 };
 
-/**
- * Export constants
- */
-exports.HIERARCHY_SCOPE = {
-  SELF: "self",
-  SUBTREE: "subtree",
-  ALL: "all",
-};

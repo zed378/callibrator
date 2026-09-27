@@ -151,6 +151,8 @@ The only test that proves anything is a **two-tenant** test.
 
 `createTwoTenants()` as a one-line fixture is what decides whether this test gets written for a new endpoint. If it takes twenty lines of setup, it will be skipped.
 
+The fixture exists: `backend/src/tests/fixtures/twoTenants.js` (A-63). It is **synchronous and in memory** (ADR-088): two tenants, principals shaped like `req.user`, model doubles and a rollback-able transaction double, driven through the real route chain with `jest.mock("../../models")`. It runs no SQL and no scoping hooks — it proves the 404 behaviour of the code above the database; the hooks themselves are proven against PostgreSQL (ADR-048's include tests).
+
 Additional cases that are easy to miss:
 
 - an authenticated principal with **no** tenant sees zero rows (the deny branch)

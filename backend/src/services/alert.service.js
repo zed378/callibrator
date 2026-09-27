@@ -110,6 +110,28 @@ async function sendAlertEmail(alert) {
   return "sent";
 }
 
+/**
+ * ADR-082 — where alerts go, for the boot log. Names the webhook's HOST only:
+ * a Slack or Teams incoming-webhook URL is itself a credential.
+ * @returns {{routed: boolean, webhook: string, email: string}}
+ */
+function describeRouting() {
+  const url = webhookUrl();
+  let webhook = "off";
+  if (url) {
+    try {
+      webhook = new URL(url).host;
+    } catch {
+      webhook = "INVALID URL";
+    }
+  }
+  const addresses = emailTo()
+    .split(",")
+    .filter((address) => address.trim());
+  const email = addresses.length ? `${addresses.length} address(es)` : "off";
+  return { routed: Boolean(url || addresses.length), webhook, email };
+}
+
 const SINKS = Object.freeze([
   ["webhook", postWebhook],
   ["email", sendAlertEmail],
@@ -165,4 +187,5 @@ module.exports = {
   formatText,
   postWebhook,
   sendAlertEmail,
+  describeRouting,
 };

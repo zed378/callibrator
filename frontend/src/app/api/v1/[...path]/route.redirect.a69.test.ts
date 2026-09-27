@@ -30,6 +30,7 @@ jest.mock("@/constants", () => ({
   get API_BASE_URL() {
     return mockBackendBase;
   },
+  PROXY_UPSTREAM_TIMEOUT_MS: 32000,
 }));
 
 import { NextRequest } from "next/server";

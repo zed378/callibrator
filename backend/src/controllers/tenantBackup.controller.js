@@ -8,7 +8,12 @@ const {
   getBackupStats,
 } = require("../services/tenantBackup.service");
 const { AppError } = require("../utils/appError.util");
-const { TenantBackup, Users, Tenants } = require("../models");
+// P6-02: the services take the models barrel. This controller used to pass
+// `req.models`, which no middleware sets — so every backup was created, then
+// failed on `models.Users` with a 500 (found by the live E2E suite).
+const models = require("../models");
+
+const { TenantBackup, Users, Tenants } = models;
 const { success } = require("../utils/response.util");
 const { asyncHandler } = require("../utils/controllerWrapper.util");
 
@@ -39,7 +44,7 @@ exports.createBackup = asyncHandler(async (req, res) => {
     backupType,
     retentionDays,
     tag,
-    models: req.models,
+    models,
   });
 
   success(
@@ -69,7 +74,7 @@ exports.getBackups = asyncHandler(async (req, res) => {
       limit: parseInt(limit),
       offset,
     },
-    req.models,
+    models,
   );
 
   const meta = {
@@ -129,7 +134,7 @@ exports.downloadBackup = asyncHandler(async (req, res) => {
   // The service returns a {success,status,message,data} envelope; filePath and
   // metadata live under `.data`. Reading them off the envelope directly made
   // `result.metadata` undefined and threw on every download.
-  const { data } = await downloadBackup(backupId, req.models);
+  const { data } = await downloadBackup(backupId, models);
   const { filePath, metadata } = data;
 
   // There is no `filename` column — derive it from the stored path.
@@ -158,7 +163,7 @@ exports.restoreBackup = asyncHandler(async (req, res) => {
     backupId,
     restoredById: user.id,
     mergeData: mergeData === true || mergeData === "true",
-    models: req.models,
+    models,
   });
 
   success(
@@ -178,7 +183,7 @@ exports.deleteBackup = asyncHandler(async (req, res) => {
   const { backupId } = req.params;
   const user = req.user;
 
-  const result = await deleteBackup(backupId, user.id, req.models);
+  const result = await deleteBackup(backupId, user.id, models);
 
   success(
     res,
@@ -196,7 +201,7 @@ exports.deleteBackup = asyncHandler(async (req, res) => {
 exports.getBackupStats = asyncHandler(async (req, res) => {
   const { tenantId } = req.params;
 
-  const stats = await getBackupStats(tenantId, req.models);
+  const stats = await getBackupStats(tenantId, models);
 
   // This service returns its own {success,status,message,data} envelope (as
   // createBackup/restoreBackup above do), so unwrap `.data` — passing `stats`

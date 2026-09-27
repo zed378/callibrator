@@ -5,6 +5,7 @@ const { AppError } = require("../utils/appError.util");
 const { DEFAULT_LIMIT, MAX_LIMIT } = require("../constants");
 const { getIo } = require("../config/socket");
 const notificationChannels = require("./notificationChannels.service");
+const { logger } = require("../middlewares/activityLog.middleware");
 
 // ------------------------------------------------------------------
 // HELPERS
@@ -59,7 +60,10 @@ const deliverNotification = async (transformed, notifData, { channels, recipient
       io.to(room).emit("new_notification", transformed);
     }
   } catch (socketErr) {
-    console.warn("Socket.io emit failed (server might be booting):", socketErr.message);
+    logger.warn("Socket.io emit failed (server might be booting)", {
+      notificationId: transformed.id,
+      error: socketErr.message,
+    });
   }
 
   // --- Additional channel (email), opt-in via data.channels ---
@@ -84,7 +88,11 @@ const deliverNotification = async (transformed, notifData, { channels, recipient
         recipientName: name,
       });
     } catch (chErr) {
-      console.warn("Notification channel dispatch failed:", chErr.message);
+      logger.warn("Notification channel dispatch failed", {
+        notificationId: transformed.id,
+        channels: requested,
+        error: chErr.message,
+      });
     }
   }
 };
@@ -137,7 +145,12 @@ exports.emitNotification = async (data, { transaction } = {}) => {
     if (transaction) {
       throw error;
     }
-    console.error("Failed to emit notification:", error);
+    logger.error("Failed to emit notification", {
+      tenantId: data?.tenantId,
+      userId: data?.userId,
+      error: error.message,
+      stack: error.stack,
+    });
     // We don't throw here to prevent blocking main flows (like stock reduction) if notification fails
     return null;
   }

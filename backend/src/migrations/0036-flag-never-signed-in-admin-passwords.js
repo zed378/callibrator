@@ -44,7 +44,7 @@
  *
  * Deleted accounts (soft or paranoid) are left alone.
  *
- * REPORTS the count on the console (console.warn, as 0032 does) and returns
+ * REPORTS the count through the logger (logger.warn, as 0032 does) and returns
  * it. Verify with psql, not the log:
  *   SELECT count(*) FROM users WHERE must_change_password AND last_login_at IS NULL;
  *
@@ -63,6 +63,8 @@
  */
 
 /** migration.service.js DEFAULT_SYSTEM_USERS — the seeded platform operator. */
+const { logger } = require("../middlewares/activityLog.middleware");
+
 const SEEDED_SYSTEM_EMAILS = Object.freeze(["sys@mail.com"]);
 /** constants/roleConstants.js ROLE_IDS.SUPER_ADMIN — frozen here: a migration
  *  must mean the same thing whenever it runs. */
@@ -141,10 +143,11 @@ module.exports = {
           superAdminRoleId: SUPER_ADMIN_ROLE_ID,
         },
       });
-      console.warn(
-        `0036: flagged ${flagged.length} never-signed-in account(s) to change the password an ` +
-          "administrator set before A-123 (users.must_change_password). They are sent to the " +
-          "change-password screen at their first sign-in.",
+      logger.warn(
+        "0036: flagged never-signed-in account(s) to change the password an administrator set " +
+          "before A-123 (users.must_change_password). They are sent to the change-password screen " +
+          "at their first sign-in.",
+        { migration: "0036", flagged: flagged.length },
       );
       return flagged.length;
     });

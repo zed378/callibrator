@@ -35,7 +35,11 @@ describe("E2E API Keys (HTTP)", () => {
   test("POST /api-keys — create returns the key once", async () => {
     const { status, body } = await httpPost(
       "/api-keys",
-      { name: `E2E Key ${Date.now()}`, scopes: ["CalibrationDevices:read"] },
+      // P6-02: a scope is "<menu slug>:<read|write>" (apiKey.service
+      // #assertScopes, A-27); "CalibrationDevices" is no menu slug and has
+      // answered 400 since scopes were validated. `equipment` is a seeded menu
+      // slug (MENU_SLUGS.EQUIPMENT).
+      { name: `E2E Key ${Date.now()}`, scopes: ["equipment:read"] },
       authHeader(token),
     );
     expect(status).toBe(201);

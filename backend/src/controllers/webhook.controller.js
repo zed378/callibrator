@@ -15,13 +15,11 @@ const actorOf = (req) => ({
 // `tenantId`) out of the service even if the route's validator is ever removed.
 exports.create = asyncHandler(async (req, res) => {
   const { url, events, description, isActive } = req.body;
-  const data = await webhookService.createWebhook(req.user.tenantId, {
-    url,
-    events,
-    description,
-    isActive,
-    createdBy: req.user.id,
-  });
+  const data = await webhookService.createWebhook(
+    req.user.tenantId,
+    { url, events, description, isActive, createdBy: req.user.id },
+    actorOf(req),
+  );
   success(res, data, null, "Webhook created", 201);
 });
 
@@ -49,7 +47,7 @@ exports.update = asyncHandler(async (req, res) => {
 });
 
 exports.remove = asyncHandler(async (req, res) => {
-  const data = await webhookService.deleteWebhook(req.user.tenantId, req.params.id);
+  const data = await webhookService.deleteWebhook(req.user.tenantId, req.params.id, actorOf(req));
   success(res, data, null, "Webhook deleted", 200);
 });
 
@@ -66,8 +64,12 @@ exports.test = asyncHandler(async (req, res) => {
   success(res, data, null, "Test delivery attempted", 200);
 });
 
-// A-51. Issues a new signing secret and returns it once.
+// A-51. Issues a new signing secret and returns it once. P6-13: the validated
+// body names the overlap window (rotateWebhookSecretSchema defaults it).
 exports.rotateSecret = asyncHandler(async (req, res) => {
-  const data = await webhookService.rotateSecret(req.user.tenantId, req.params.id, actorOf(req));
+  const { overlapHours } = req.body || {};
+  const data = await webhookService.rotateSecret(req.user.tenantId, req.params.id, actorOf(req), {
+    overlapHours,
+  });
   success(res, data, null, "Webhook secret rotated", 200);
 });

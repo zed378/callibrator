@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { API_BASE_URL } from "@/constants";
+import { API_BASE_URL, PROXY_UPSTREAM_TIMEOUT_MS } from "@/constants";
 import { CLIENT_ADDRESS_HEADERS, forwardedClientIp } from "@/lib/clientIp";
 import { FORWARDED_ORIGIN_HEADERS, forwardedOriginHeaders } from "@/lib/forwardedOrigin";
 
@@ -15,6 +15,36 @@ import { FORWARDED_ORIGIN_HEADERS, forwardedOriginHeaders } from "@/lib/forwarde
  */
 const SSO_BINDING_COOKIE = "sso_oidc_binding";
 const SSO_BINDING_PATH_PREFIX = "auth/sso/oidc/";
+
+/**
+ * F-16: request headers that describe the incoming connection or its framing,
+ * not the request. The body is re-sent as a stream, so the framing is
+ * undici's to choose; `expect` (100-continue) is refused by undici outright.
+ */
+const HOP_REQUEST_HEADERS = ["transfer-encoding", "expect", "keep-alive", "upgrade"];
+
+/**
+ * F-16: whether a response body is read here, or streamed to the browser.
+ *
+ * Only a body that can carry an access token is read: a successful JSON
+ * answer that is not a download. Those are what A-71 must inspect — the
+ * sign-ins answered through this proxy (POST /auth/mfa/login,
+ * /auth/impersonate) put the token at the top level — and they are small API
+ * documents. Everything else — attachments, certificate PDFs, exports, error
+ * bodies — streams through without being held in the Next process.
+ *
+ * A declared length over this ceiling is streamed too: no sign-in answer is a
+ * megabyte, and a list that large should not be held here to look for one.
+ */
+const INSPECT_MAX_BYTES = 1024 * 1024;
+
+const shouldInspect = (res: Response): boolean => {
+  if (!res.ok) return false;
+  if (!res.headers.get("content-type")?.includes("application/json")) return false;
+  if (/attachment/i.test(res.headers.get("content-disposition") || "")) return false;
+  const declared = Number(res.headers.get("content-length"));
+  return !(Number.isFinite(declared) && declared > INSPECT_MAX_BYTES);
+};
 
 async function handleProxy(
   req: NextRequest,
@@ -46,6 +76,7 @@ async function handleProxy(
       lowercaseKey !== "origin" &&
       lowercaseKey !== "connection" &&
       lowercaseKey !== "cookie" &&
+      !HOP_REQUEST_HEADERS.includes(lowercaseKey) &&
       !CLIENT_ADDRESS_HEADERS.includes(lowercaseKey) &&
       !FORWARDED_ORIGIN_HEADERS.includes(lowercaseKey)
     ) {
@@ -76,7 +107,14 @@ async function handleProxy(
     headers.set("Cookie", `${SSO_BINDING_COOKIE}=${ssoBinding}`);
   }
 
-  // Inject authentication and tenant context headers
+  // Inject authentication and tenant context headers.
+  //
+  // F-16, deliberate: an `Authorization` header the caller sent is forwarded
+  // when there is no session cookie. nginx routes every `/api/` request to
+  // Next (ADR-046, ADR-059), so this proxy is also the path of the machine
+  // clients that authenticate with `Authorization: ApiKey <key>`
+  // (auth.middleware tryApiKeyAuth). Forwarding it grants nothing the caller
+  // does not already hold. A browser session's cookie always wins.
   if (token) {
     headers.set("Authorization", `Bearer ${token}`);
   }
@@ -92,11 +130,24 @@ async function handleProxy(
     headers.set("X-Tenant-ID", tenantId);
   }
 
-  // Get raw body as ArrayBuffer for binary compatibility (handles multipart/form-data upload)
-  let body: ArrayBuffer | undefined = undefined;
-  if (req.method !== "GET" && req.method !== "HEAD") {
-    body = await req.arrayBuffer();
-  }
+  // F-16: the request body is streamed to the backend as it arrives — an
+  // upload is never held whole in the Next process. `duplex: "half"` is what
+  // undici requires for a streamed request body.
+  const body =
+    req.method !== "GET" && req.method !== "HEAD" ? req.body : null;
+
+  // F-14: the upstream fetch is bounded. Past PROXY_UPSTREAM_TIMEOUT_MS with no
+  // response headers, or as soon as the browser goes away, it is aborted, so an
+  // abandoned request does not keep running here. The timer stops once the
+  // headers arrive: a long download is not cut off mid-stream.
+  const upstream = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    upstream.abort();
+  }, PROXY_UPSTREAM_TIMEOUT_MS);
+  const onClientGone = () => upstream.abort();
+  req.signal?.addEventListener("abort", onClientGone, { once: true });
 
   try {
     // A-69: a redirect is the BROWSER's to follow. fetch follows 3xx by
@@ -109,10 +160,11 @@ async function handleProxy(
       headers,
       body,
       redirect: "manual",
-    });
+      signal: upstream.signal,
+      ...(body ? { duplex: "half" } : {}),
+    } as RequestInit);
+    clearTimeout(timer);
 
-    const responseData = await res.arrayBuffer();
-    
     const responseHeaders = new Headers();
     res.headers.forEach((value, key) => {
       const lower = key.toLowerCase();
@@ -121,7 +173,7 @@ async function handleProxy(
       //   decompressed the body, so forwarding the original gzip encoding or
       //   byte length would make the browser fail to decode it
       //   (ERR_CONTENT_DECODING_FAILED) or truncate the response.
-      // - transfer-encoding: no longer applies to the buffered body.
+      // - transfer-encoding: framing is the response Next writes, not this one.
       if (
         lower === "set-cookie" ||
         lower === "content-encoding" ||
@@ -139,43 +191,49 @@ async function handleProxy(
       }
     }
 
-    // Check if response contains a rotated token/session in JSON
-    const isJson = res.headers.get("content-type")?.includes("application/json");
+    // F-16: everything but a small successful JSON answer streams through.
+    if (!shouldInspect(res)) {
+      return new NextResponse(res.body, {
+        status: res.status,
+        headers: responseHeaders,
+      });
+    }
+
+    const responseData = await res.arrayBuffer();
+
     // A-71: what the browser receives. A sign-in answered through this proxy
     // (POST /auth/mfa/login, /auth/impersonate) carries the access token at
     // the top-level `token`; it is written to the httpOnly cookie below and
     // REMOVED from the body — a script (an XSS) must never read it, which is
     // the point of the httpOnly cookie. The login route does the same (F-62).
     let browserBody: ArrayBuffer | string = responseData;
-    if (isJson && res.ok) {
-      try {
-        const bodyText = new TextDecoder().decode(responseData);
-        const data = JSON.parse(bodyText);
+    try {
+      const bodyText = new TextDecoder().decode(responseData);
+      const data = JSON.parse(bodyText);
 
-        if (data && typeof data === "object" && ("token" in data || "refreshToken" in data)) {
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
-          const { token: _token, refreshToken: _refreshToken, ...withoutTokens } = data;
-          browserBody = JSON.stringify(withoutTokens);
-        }
-
-        if (data && (data.token || data.session?.id)) {
-          const cookieOptions = {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "lax" as const,
-            path: "/",
-            maxAge: 7 * 24 * 60 * 60,
-          };
-          if (data.token) {
-            cookieStore.set("auth_token", data.token, cookieOptions);
-          }
-          if (data.session?.id) {
-            cookieStore.set("auth_session", data.session.id, cookieOptions);
-          }
-        }
-      } catch {
-        // Fail silently on JSON parse error
+      if (data && typeof data === "object" && ("token" in data || "refreshToken" in data)) {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { token: _token, refreshToken: _refreshToken, ...withoutTokens } = data;
+        browserBody = JSON.stringify(withoutTokens);
       }
+
+      if (data && (data.token || data.session?.id)) {
+        const cookieOptions = {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          sameSite: "lax" as const,
+          path: "/",
+          maxAge: 7 * 24 * 60 * 60,
+        };
+        if (data.token) {
+          cookieStore.set("auth_token", data.token, cookieOptions);
+        }
+        if (data.session?.id) {
+          cookieStore.set("auth_session", data.session.id, cookieOptions);
+        }
+      }
+    } catch {
+      // Fail silently on JSON parse error
     }
 
     return new NextResponse(browserBody, {
@@ -183,6 +241,19 @@ async function handleProxy(
       headers: responseHeaders,
     });
   } catch (error: unknown) {
+    clearTimeout(timer);
+    if (timedOut) {
+      // F-14: the backend answers its own 408 at 30 s; reaching this means it
+      // did not answer at all.
+      return NextResponse.json(
+        {
+          success: false,
+          status: 504,
+          message: "The server did not respond in time. Please try again.",
+        },
+        { status: 504 }
+      );
+    }
     const message = error instanceof Error ? error.message : "Proxy connection error";
     // When the backend rejects an upload mid-stream (e.g. multer's file-size
     // limit) it responds and resets the connection before the body is fully
@@ -200,6 +271,8 @@ async function handleProxy(
       },
       { status: 502 }
     );
+  } finally {
+    req.signal?.removeEventListener("abort", onClientGone);
   }
 }
 

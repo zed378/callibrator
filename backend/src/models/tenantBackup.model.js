@@ -59,13 +59,15 @@ const defineModel = (db, DataTypes) => {
         onDelete: "RESTRICT",
       },
       // Backup details
-      // LEGACY, VARCHAR(255): no longer written (S-32). updateStatus used to
-      // copy filePath here, and an absolute path longer than 255 characters
-      // (a long APP_STORAGE_PATH) failed the whole COMPLETED update with
-      // "value too long". `filePath` (VARCHAR(500)) is the path of record;
-      // readers fall back to this column for rows written before the fix.
+      // LEGACY: no longer written (S-32). updateStatus used to copy filePath
+      // here, and an absolute path longer than 255 characters (a long
+      // APP_STORAGE_PATH) failed the whole COMPLETED update with "value too
+      // long". `filePath` (VARCHAR(500)) is the path of record; readers fall
+      // back to this column for rows written before the fix. TEXT since
+      // migration 0087 (ADR-080), so the column is no longer a 255-character
+      // trap for a future writer.
       backupPath: {
-        type: DataTypes.STRING,
+        type: DataTypes.TEXT,
         allowNull: true,
       },
       size: {

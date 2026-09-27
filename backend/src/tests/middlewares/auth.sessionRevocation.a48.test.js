@@ -433,12 +433,11 @@ describe("A-48: cost and failure behaviour", () => {
     expect((await request(token)).status).toBe(401);
   });
 
-  it("a token that names no session (issued before `sid`, or by the SSO callbacks) is not session-checked", async () => {
+  it("P6-12: a token that names no session is refused, without a session read — it could never be revoked", async () => {
     const legacy = generateAccessToken({ id: USER_ID, email: "user@hospital.test" });
 
     const res = await request(legacy);
-    expect(res.status).toBe("next");
-    expect(res.req.sessionId).toBeNull();
+    expect(res.status).toBe(401);
     expect(db.sessionReads()).toBe(0);
   });
 });

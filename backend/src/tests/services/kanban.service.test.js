@@ -17,6 +17,7 @@ jest.mock("sequelize", () => ({
     in: Symbol("in"),
     notIn: Symbol("notIn"),
     ne: Symbol("ne"),
+    gt: Symbol("gt"),
   },
 }));
 
@@ -418,10 +419,51 @@ describe("updateProject", () => {
 });
 
 describe("deleteProject", () => {
-  it("destroys the project and emits", async () => {
+  const softDeleteForResource = () => require("../../services/attachment.service").softDeleteForResource;
+
+  it("destroys the project in a transaction and emits; no cards, no attachment cascade", async () => {
     const res = await svc.deleteProject(superAdmin, PID);
-    expect(KanbanProject.destroy).toHaveBeenCalledWith({ where: { id: PID } });
+    expect(KanbanProject.destroy).toHaveBeenCalledWith({ where: { id: PID }, transaction: "txn" });
+    expect(softDeleteForResource()).not.toHaveBeenCalled();
+    expect(emitToBoard).toHaveBeenCalledWith(PID, "kanban:project:deleted", { projectId: PID });
     expect(res).toEqual({ deleted: true });
+  });
+
+  // D-22 (ADR-083): the cards' files go with the project, in its transaction,
+  // each audit row naming its card and the project as `via`.
+  it("soft-deletes the attachments of the project's cards, attributed, in the same transaction", async () => {
+    KanbanCard.findAll.mockResolvedValueOnce([{ id: "c1" }, { id: "c2" }]);
+    await svc.deleteProject(superAdmin, PID);
+    expect(KanbanCard.findAll).toHaveBeenCalledTimes(1);
+    expect(KanbanCard.findAll).toHaveBeenCalledWith({
+      where: { projectId: PID },
+      attributes: ["id"],
+      order: [["id", "ASC"]],
+      limit: 500,
+      transaction: "txn",
+    });
+    expect(softDeleteForResource()).toHaveBeenCalledWith(TID, "KanbanCard", ["c1", "c2"], {
+      transaction: "txn",
+      actor: { userId: superAdmin.id },
+      via: { type: "KanbanProject", id: PID },
+    });
+  });
+
+  it("reads the cards by keyset, a page at a time, until a page comes back empty", async () => {
+    const page = Array.from({ length: 500 }, (_, i) => ({ id: `c${String(i).padStart(3, "0")}` }));
+    KanbanCard.findAll.mockResolvedValueOnce(page).mockResolvedValueOnce([]);
+    await svc.deleteProject(superAdmin, PID);
+    expect(KanbanCard.findAll).toHaveBeenCalledTimes(2);
+    const { Op } = require("sequelize");
+    expect(KanbanCard.findAll.mock.calls[1][0].where).toEqual({ projectId: PID, id: { [Op.gt]: "c499" } });
+    expect(softDeleteForResource()).toHaveBeenCalledTimes(1);
+  });
+
+  it("rolls the project delete back when the cascade fails", async () => {
+    KanbanCard.findAll.mockResolvedValueOnce([{ id: "c1" }]);
+    softDeleteForResource().mockRejectedValueOnce(new Error("audit write failed"));
+    await expectReject(svc.deleteProject(superAdmin, PID), "audit write failed");
+    expect(emitToBoard).not.toHaveBeenCalledWith(PID, "kanban:project:deleted", expect.anything());
   });
 });
 

@@ -4,6 +4,18 @@ const axios = require("axios");
 const { TenantSettings } = require("../models");
 
 /**
+ * AZ-02 (ADR-088) — the source types `POST /ai/query` may answer from.
+ *
+ * The query route is gated on `sop: read` (A-94), which is only honest while
+ * every chunk it can retrieve is an SOP. Retrieval filters on this list, so a
+ * future ingester of another type (certificates, attachments…) indexes rows
+ * that the query path cannot reach until someone adds the type HERE and
+ * decides the gate that covers it — rather than silently widening what an
+ * `sop: read` caller can read.
+ */
+const RAG_READABLE_SOURCE_TYPES = Object.freeze(["SopDocument"]);
+
+/**
  * AI Service for OCR and RAG capabilities.
  * Fetches API keys and config from TenantSettings.
  */
@@ -19,8 +31,8 @@ class AiService {
     const settings = await TenantSettings.findAll({
       where: {
         tenantId,
-        key: ['ai_api_key', 'ai_base_url', 'ai_vendor']
-      }
+        key: ["ai_api_key", "ai_base_url", "ai_vendor"],
+      },
     });
 
     const configMap = settings.reduce((acc, s) => {
@@ -32,15 +44,15 @@ class AiService {
     return {
       apiKey: configMap.ai_api_key || process.env.OPENAI_API_KEY,
       baseUrl: configMap.ai_base_url || process.env.OPENAI_BASE_URL || "https://api.openai.com/v1",
-      vendor: configMap.ai_vendor || "openai"
+      vendor: configMap.ai_vendor || "openai",
     };
   }
 
   /**
    * Process an uploaded certificate PDF/Image using Vision AI (OCR).
    * Extracts key-value pairs like Certificate Number, Calibration Date, etc.
-   * 
-   * @param {string} tenantId 
+   *
+   * @param {string} tenantId
    * @param {Buffer} fileBuffer - The file data
    * @param {string} mimeType - The MIME type (e.g., application/pdf, image/jpeg)
    * @returns {Promise<Object|null>} Extracted metadata or null if AI is disabled/fails
@@ -54,7 +66,7 @@ class AiService {
     }
 
     try {
-      const base64Data = fileBuffer.toString('base64');
+      const base64Data = fileBuffer.toString("base64");
       const dataUrl = `data:${mimeType};base64,${base64Data}`;
 
       const response = await axios.post(
@@ -64,24 +76,24 @@ class AiService {
           messages: [
             {
               role: "system",
-              content: "You are an expert at extracting data from calibration certificates. Return ONLY a JSON object with keys: certificateNumber, calibrationDate, dueDate, vendorName, deviceSerialNumber, status(PASS/FAIL)."
+              content: "You are an expert at extracting data from calibration certificates. Return ONLY a JSON object with keys: certificateNumber, calibrationDate, dueDate, vendorName, deviceSerialNumber, status(PASS/FAIL).",
             },
             {
               role: "user",
               content: [
                 { type: "text", text: "Extract the data from this calibration certificate." },
-                { type: "image_url", image_url: { url: dataUrl } }
-              ]
-            }
+                { type: "image_url", image_url: { url: dataUrl } },
+              ],
+            },
           ],
-          response_format: { type: "json_object" }
+          response_format: { type: "json_object" },
         },
         {
           headers: {
             "Authorization": `Bearer ${config.apiKey}`,
-            "Content-Type": "application/json"
-          }
-        }
+            "Content-Type": "application/json",
+          },
+        },
       );
 
       const content = response.data.choices[0].message.content;
@@ -95,7 +107,7 @@ class AiService {
 
   /**
    * Generate vector embeddings for a document chunk.
-   * 
+   *
    * @param {string} tenantId
    * @param {string} text - The text to embed
    * @returns {Promise<number[]|null>} The vector embedding or null if AI is disabled/fails
@@ -113,14 +125,14 @@ class AiService {
         `${config.baseUrl}/embeddings`,
         {
           model: "text-embedding-3-small",
-          input: text
+          input: text,
         },
         {
           headers: {
             "Authorization": `Bearer ${config.apiKey}`,
-            "Content-Type": "application/json"
-          }
-        }
+            "Content-Type": "application/json",
+          },
+        },
       );
 
       return response.data.data[0].embedding;
@@ -235,14 +247,16 @@ class AiService {
    */
   async retrieveContext(tenantId, queryVector, limit = 5) {
     const { db } = require("../config");
+    // AZ-02 (ADR-088): only the source types the query route's gate covers.
     const rows = await db.query(
       `SELECT content, 1 - (embedding <=> $1::vector) AS similarity
          FROM document_chunks
         WHERE tenant_id = $2 AND embedding IS NOT NULL
+          AND source_type = ANY($4::text[])
         ORDER BY embedding <=> $1::vector
         LIMIT $3`,
       {
-        bind: [JSON.stringify(queryVector), tenantId, limit],
+        bind: [JSON.stringify(queryVector), tenantId, limit, RAG_READABLE_SOURCE_TYPES],
         type: db.QueryTypes.SELECT,
       },
     );

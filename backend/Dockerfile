@@ -20,10 +20,10 @@
 # ==========================================
 
 # P7-07: pinned by version AND digest — the same image frontend/Dockerfile
-# uses (node:24-alpine resolved to this digest on 2026-09-24). A floating tag
+# uses (node:26.10.0-alpine resolved to this digest on 2026-09-27, ADR-076). A floating tag
 # changes the toolchain under an unchanged commit. How to move it:
 # docs/DEVOPS/02-CONTAINERIZATION.md § Moving a pinned base image.
-FROM node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS builder
+FROM node:26.10.0-alpine@sha256:0b36e8c136b94cd4fcf02188228e76c31ad5872eef3fec8cbd2eee500cfd9e80 AS builder
 
 WORKDIR /app
 
@@ -55,7 +55,7 @@ RUN npm run swagger:generate
 # Build standalone Linux binary. @yao-pkg/pkg is a backend devDependency, so
 # npx runs the locked version rather than fetching one.
 RUN npx --no-install pkg . \
-    --targets node24-linux-x64 \
+    --targets node26-linux-x64 \
     --output /out/backend
 
 # ==========================================
@@ -78,7 +78,7 @@ WORKDIR /app
 # ca-certificates — which let anything on the build network serve the trust
 # store everything afterwards verifies against (S-13).
 #
-# Instead, seed the bundle from the builder stage (node:24-alpine ships
+# Instead, seed the bundle from the builder stage (node:26-alpine ships
 # /etc/ssl/certs/ca-certificates.crt, and that image arrived over the
 # registry's own verified TLS). apt's HTTPS transport reads exactly that path by
 # default, so EVERY apt request below is verified. Installing Debian's

@@ -18,11 +18,14 @@ import { POST } from "./route";
 
 const CODE = "abcdefghijklmnopqrstuvwxyz0123456789-_ABCDE"; // 43 base64url chars
 
+// What the /sso-callback page's same-origin fetch carries (F-09).
+const SAME_ORIGIN = { origin: "http://localhost", "sec-fetch-site": "same-origin" };
+
 const post = (body: unknown, headers: Record<string, string> = {}) =>
   POST(
     new NextRequest("http://localhost/api/v1/auth/sso-session", {
       method: "POST",
-      headers: { "content-type": "application/json", ...headers },
+      headers: { "content-type": "application/json", ...SAME_ORIGIN, ...headers },
       body: typeof body === "string" ? body : JSON.stringify(body),
     }),
   );
@@ -200,5 +203,96 @@ describe("POST /api/v1/auth/sso-session (A-60)", () => {
     expect(res.status).toBe(502);
     expect(cookieStore.set).not.toHaveBeenCalled();
     errorSpy.mockRestore();
+  });
+});
+
+// F-09 — the frontend audit's card for the same endpoint. A-60 made the route
+// exchange a one-time code instead of storing a posted token; F-09 adds that
+// only a page on this origin may call it. Each Definition-of-Done case, named.
+describe("POST /api/v1/auth/sso-session (F-09)", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    global.fetch = jest.fn() as jest.Mock;
+  });
+
+  it("F-09 valid: a same-origin code the backend confirms writes the cookies", async () => {
+    backendAnswers(200, { success: true, token: "access-jwt", session: { id: "s-1" } });
+
+    const res = await post({ code: CODE });
+
+    expect(res.status).toBe(200);
+    expect(cookieStore.set).toHaveBeenCalledWith("auth_token", "access-jwt", expect.anything());
+  });
+
+  it("F-09 forged: a token the backend does not confirm writes no cookie", async () => {
+    // A forged or guessed code — the backend's exchange is the verifier.
+    backendAnswers(401, { success: false, message: "Invalid or expired SSO code" });
+
+    const res = await post({ code: "F".repeat(43) });
+
+    expect(res.status).toBe(401);
+    expect(cookieStore.set).not.toHaveBeenCalled();
+  });
+
+  it("F-09 replayed: a code spent once writes no cookie the second time", async () => {
+    backendAnswers(200, { success: true, token: "access-jwt", session: { id: "s-1" } });
+    // The backend reads the code with GETDEL (A-60): the second exchange is refused.
+    backendAnswers(401, { success: false, message: "Invalid or expired SSO code" });
+
+    expect((await post({ code: CODE })).status).toBe(200);
+    cookieStore.set.mockClear();
+
+    const replay = await post({ code: CODE });
+
+    expect(replay.status).toBe(401);
+    expect(cookieStore.set).not.toHaveBeenCalled();
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("F-09 cross-origin: another site's Origin is refused before the backend is asked", async () => {
+    const res = await post({ code: CODE }, { origin: "https://evil.example", "sec-fetch-site": "cross-site" });
+
+    expect(res.status).toBe(403);
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(cookieStore.set).not.toHaveBeenCalled();
+  });
+
+  it("F-09 cross-origin: a cross-site Sec-Fetch-Site is refused even with a matching Origin", async () => {
+    const res = await post({ code: CODE }, { "sec-fetch-site": "same-site" });
+
+    expect(res.status).toBe(403);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it("F-09 missing origin: a request with no Origin is refused", async () => {
+    const res = await POST(
+      new NextRequest("http://localhost/api/v1/auth/sso-session", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ code: CODE }),
+      }),
+    );
+
+    expect(res.status).toBe(403);
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(cookieStore.set).not.toHaveBeenCalled();
+  });
+
+  it("F-09: behind nginx the Origin is compared with the Host the request arrived on", async () => {
+    backendAnswers(200, { success: true, token: "access-jwt", session: { id: "s-1" } });
+
+    const res = await POST(
+      new NextRequest("http://10.0.0.5:3000/api/v1/auth/sso-session", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          host: "kalibrasi.example",
+          origin: "https://kalibrasi.example",
+        },
+        body: JSON.stringify({ code: CODE }),
+      }),
+    );
+
+    expect(res.status).toBe(200);
   });
 });

@@ -58,6 +58,15 @@ describe("errorStateCopy (F-07)", () => {
     expect(errorStateCopy(d({ status: 500 })).message).toBe("boom");
     expect(errorStateCopy(d({ status: 500, message: "" })).message).toBe("The request failed.");
   });
+
+  it("F-14: the proxy's 504 (no backend answer in its budget) reads as a timeout, retryable", () => {
+    const copy = errorStateCopy(
+      d({ status: 504, message: "The server did not respond in time. Please try again." }),
+    );
+    expect(copy.title).toBe("The request timed out");
+    expect(copy.message).toBe("The server did not respond in time. Please try again.");
+    expect(copy.retryable).toBe(true);
+  });
 });
 
 describe("ErrorState (F-07)", () => {

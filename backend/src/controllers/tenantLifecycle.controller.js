@@ -7,6 +7,28 @@ const {
   suspendTenantSchema,
   validate,
 } = require("../validators/tenantLifecycle.validator");
+const { withoutRedactedSettings } = require("../constants/tenantSecretSettings");
+
+/**
+ * A-263 — a Tenant row as a lifecycle response carries it: plain, and without
+ * any credential mirrored into its `settings` JSONB (the A-179 rule, which
+ * GET /tenant-lifecycle/:tenantId/export already follows). The services return
+ * the instance because their internal callers (the grace-period scheduler)
+ * want one; the redaction belongs where the row leaves the server.
+ *
+ * @param {object|null} tenant - a Tenant instance or plain row
+ * @returns {object|null}
+ */
+const tenantBody = (tenant) => {
+  if (!tenant) {
+    return tenant;
+  }
+  const plain = typeof tenant.toJSON === "function" ? tenant.toJSON() : { ...tenant };
+  if (plain.settings !== undefined) {
+    plain.settings = withoutRedactedSettings(plain.settings);
+  }
+  return plain;
+};
 
 exports.suspendTenant = asyncHandler(async (req, res) => {
   // tenantId comes from the path (:tenantId); the body carries { reason }.
@@ -18,7 +40,7 @@ exports.suspendTenant = asyncHandler(async (req, res) => {
     req.user?.id,
   );
 
-  success(res, result, null, "Tenant suspended");
+  success(res, tenantBody(result), null, "Tenant suspended");
 });
 
 exports.resumeTenant = asyncHandler(async (req, res) => {
@@ -28,14 +50,14 @@ exports.resumeTenant = asyncHandler(async (req, res) => {
     req.user?.id,
   );
 
-  success(res, result, null, "Tenant resumed");
+  success(res, tenantBody(result), null, "Tenant resumed");
 });
 
 exports.enterGracePeriod = asyncHandler(async (req, res) => {
   const validated = validate(req.params, tenantIdSchema);
   const result = await tenantLifecycleService.enterGracePeriod(validated.tenantId);
 
-  success(res, result, null, "Tenant entered grace period");
+  success(res, tenantBody(result), null, "Tenant entered grace period");
 });
 
 exports.offboardTenant = asyncHandler(async (req, res) => {
@@ -50,14 +72,17 @@ exports.offboardTenant = asyncHandler(async (req, res) => {
     { userId, ipAddress, userAgent },
   );
 
-  success(res, result, null, "Tenant offboarded");
+  // offboardTenant answers { tenant } (W-17), or the row itself when the
+  // tenant was already offboarded and force was not given.
+  const offboarded = result && result.tenant ? { ...result, tenant: tenantBody(result.tenant) } : tenantBody(result);
+  success(res, offboarded, null, "Tenant offboarded");
 });
 
 exports.cancelOffboarding = asyncHandler(async (req, res) => {
   const validated = validate(req.params, tenantIdSchema);
   const result = await tenantLifecycleService.cancelOffboarding(validated.tenantId);
 
-  success(res, result, null, "Offboarding cancelled");
+  success(res, tenantBody(result), null, "Offboarding cancelled");
 });
 
 exports.getTenantLifecycleStatus = asyncHandler(async (req, res) => {

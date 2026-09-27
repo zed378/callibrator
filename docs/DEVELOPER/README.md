@@ -10,6 +10,9 @@ The rest of `docs/` is organised by layer — [`../API/`](../API/00-API-STANDARD
 
 | | Document | Covers |
 |---|---|---|
+| 00 | [Integration Quickstart](./00-INTEGRATION-QUICKSTART.md) | start here: the ways in, which work, the envelope once |
+| 02 | [Authentication and API-Key Reach](./02-AUTHENTICATION.md) | API keys, deny-by-default, the issuable scopes, which of the 53 route modules a key can reach |
+| 03 | [Rate Limits and Error Codes](./03-RATE-LIMITS-AND-ERROR-CODES.md) | every limiter as built, what a 429 carries, whether `req.ip` is the client, the status codes a client branches on |
 | 07 | [IoT Ingest](./07-IOT-INGEST.md) | HTTP and MQTT telemetry, the provisioning gap, the broker ACL requirement |
 | 09 | [SCIM Provisioning](./09-SCIM-PROVISIONING.md) | directory-driven user lifecycle |
 

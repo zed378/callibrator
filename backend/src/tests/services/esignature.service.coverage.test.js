@@ -128,6 +128,20 @@ describe("eSignature.service (facade guard/error branches)", () => {
 
   // ================================================================
   describe("generateKeyPair", () => {
+    // P6-02: the live suite could not delete the key it created — the answer
+    // carried `keyId` only, and DELETE /key-pairs/:keyPairId takes the row id.
+    it("returns the stored row's id beside the keyId, never the private key", async () => {
+      const TenantKey = { create: jest.fn(async (attrs) => ({ id: "tk-row-1", ...attrs })) };
+      const svc = loadService({ models: { TenantKey } });
+
+      const result = await svc.generateKeyPair("tenant-1");
+
+      expect(result.id).toBe("tk-row-1");
+      expect(result.keyId).toBe(TenantKey.create.mock.calls[0][0].keyId);
+      expect(result.privateKey).toBe("[REDACTED]");
+      expect(result.publicKey).toContain("BEGIN PUBLIC KEY");
+    });
+
     it("rethrows a persistence error that already carries a status", async () => {
       // The catch rethrows anything with `.status` rather than masking it as 500.
       const err = Object.assign(new Error("duplicate keyId"), { status: 409 });

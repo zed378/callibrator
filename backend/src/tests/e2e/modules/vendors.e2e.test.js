@@ -78,7 +78,10 @@ describe("E2E Vendors (HTTP)", () => {
         name: "E2E Vendor",
         type: "CalibrationLab",
         contactPerson: "Jane QA",
-        email: "vendor@e2e.test",
+        // P6-02: example.com, not e2e.test — Joi's email() checks the TLD
+        // against the IANA list and `.test` is reserved, not delegated, so the
+        // vendor validator answered 400 before the route was ever exercised.
+        email: "vendor@e2e.example.com",
         phone: "+1-555-0100",
         status: "Active",
       },

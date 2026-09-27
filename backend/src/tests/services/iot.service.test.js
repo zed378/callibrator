@@ -130,7 +130,7 @@ describe("iot.service", () => {
       expect(mqtt.connect).toHaveBeenCalledWith("mqtt://arg-broker:8888", expect.any(Object));
     });
 
-    it("should emit connect event handler that subscribes to device/#", async () => {
+    it("should emit connect event handler that subscribes to the shared device/# subscription (W-14)", async () => {
       process.env.MQTT_HOST = "broker.local";
       process.env.MQTT_PORT = "1883";
 
@@ -148,8 +148,8 @@ describe("iot.service", () => {
       mqtt.connect.mockReturnValue(mockClient);
 
       await iot.connect(1883, "broker.local");
-      expect(mockClient.subscribe).toHaveBeenCalledWith("device/#", expect.any(Function));
-      expect(logger.info).toHaveBeenCalledWith("IoT MQTT Client subscribed to device/#");
+      expect(mockClient.subscribe).toHaveBeenCalledWith("$share/callibrator/device/#", expect.any(Function));
+      expect(logger.info).toHaveBeenCalledWith("IoT MQTT Client subscribed to $share/callibrator/device/#");
     });
 
     it("should handle subscribe error", async () => {
@@ -274,15 +274,13 @@ describe("iot.service", () => {
     });
 
     describe("message handler", () => {
-      // Captures the "message" listener the service registers on the client.
+      // W-14: ingest is the client's `handleMessage(packet, done)`. The
+      // returned function delivers one packet, as mqtt.js does.
       const connectWithMessageHandler = async () => {
         process.env.MQTT_HOST = "broker.local";
         process.env.MQTT_PORT = "1883";
-        let messageHandler;
         const mockClient = {
-          on: jest.fn((event, cb) => {
-            if (event === "message") messageHandler = cb;
-          }),
+          on: jest.fn(),
           once: jest.fn((event, cb) => {
             if (event === "connect") setImmediate(cb);
           }),
@@ -290,7 +288,7 @@ describe("iot.service", () => {
         };
         mqtt.connect.mockReturnValue(mockClient);
         await iot.connect(1883, "broker.local");
-        return messageHandler;
+        return (topic, payload, done = jest.fn()) => mockClient.handleMessage({ topic, payload }, done);
       };
 
       it("should ingest a reading parsed from a device/<deviceId>/<tenantId> topic", async () => {
