@@ -25,7 +25,7 @@ Everything below is grounded in the code as of 2026-09-10. If you find a claim h
 | Frontend | Next.js 16 · React 19 · TypeScript · Tailwind 4 · Zustand |
 | Realtime | Socket.IO, both ends (ADR-031) |
 | Infra | Redis · RabbitMQ · MQTT client (external broker, optional) · ClamAV · pgvector |
-| Scale | 53 route modules · **71** models · **359** test files · 375 backend source files (counted 2026-09-23; the previous row said 72 models and 342 tests, which was a dated snapshot) |
+| Scale | **53** route modules (+2 internal) · **71** models · **674** backend test files · **467** backend source files (counted 2026-09-27: `routes/api/*.route.js`; `models/*.model.js`, not `models/index.js`; `*.test.js`/`*.test.ts` under `backend/src/tests`; every non-test `.js`/`.ts` under `backend/src`, migrations and scripts included — 0 of them `.ts`. The previous row said 71 / 359 / 375 on 2026-09-23; counts are dated snapshots, re-count before quoting) |
 | Compliance | ISO 17025 · FDA 21 CFR Part 11 · ISO 13485 · GDPR · KARS · SNARS |
 
 ## Before You Start
@@ -224,7 +224,8 @@ Stated here because an agent reading a green board and finding a red gate wastes
 
 | | |
 |---|---|
-| Backend unit coverage gate (100%) | **passing** as of 2026-09-11 — 289 suites, 5735 tests, 100% across the board. P6-01 is done; what remains is keeping it there |
+| Backend unit coverage gate (100%) | **passing** at the last recorded green run — 578 suites, 12,164 tests, 100% on all four measures, Node 24.18, commit `8a11905` (`MEMORY/records/2026-09-25-phase0-batch7.md`). P6-01 is done; what remains is keeping it there. Run it on the Node major pinned in the root `.nvmrc` (26 on 2026-09-27, A-257): a global setup refuses any other major. A run on 2026-09-27 (`npm run test:coverage`) collected 623 suites and 12,639 tests and was **not** green — 17 failures, coverage 99.79% — and the only red suites belonged to changes other agents had in flight at that moment (new migrations `0086`–`0088`, `kmsVerify.util.js`, the Node pin itself), so quote a count only from a run on a quiet tree |
+| Backend lint (`make verify` step one) | **red** — 1,083 errors, 302 warnings on 2026-09-27 (`npm run lint`), all formatting on the categories reported (A-34). CI runs a **ratchet** instead (`make lint-ratchet`, `scripts/ci/eslint-ratchet.js`): it fails on errors above its baseline (950), so run `npx eslint <file>` on what you change |
 | Live E2E in one uninterrupted run | **never achieved** → P6-02 |
 
 ## If You Are Unsure

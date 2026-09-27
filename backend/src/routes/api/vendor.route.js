@@ -240,6 +240,8 @@ router.delete(
  *             properties:
  *               approvalStatus:
  *                 type: string
+ *                 enum: [APPROVED, PENDING, REJECTED, CONDITIONAL]
+ *                 description: Case-insensitive; stored upper-case. Any other value is a 400.
  *               scorecard:
  *                 type: integer
  *               lastAuditDate:
@@ -257,6 +259,7 @@ router.patch(
   auth,
   dynamicAccess("vendors", "update"),
   validateUuid("vendorId"),
+  validate(vendorValidator.qualifyVendor),
   vendorController.qualifyVendor
 );
 module.exports = router;

@@ -3933,6 +3933,80 @@ committed two transactions per due device.
 
 ---
 
+## ADR-075: SCIM Gets the Tenant Administrator's Identity-Conflict Rule; Sign-In Does Not Wait on Email Verification, and the Link Now Lands; a Deleted Calibration Device Can Be Restored; Lifecycle Responses Carry No Credential
+
+**Date:** 2026-09-27 · **Cards:** A-37 (Q-18 for SCIM), A-60 item 3 (Q-11), A-133, A-263 ·
+**Extends:** ADR-051 (Q-11, Q-18), ADR-070 (D-22) · **Authority:** the owner's standing instruction —
+argue each decision from two opposing positions, write both into the card, decide the best practice.
+
+**Context**
+
+Four cards were left open after batch 7. Two needed a decision ADR-051 had taken for another path
+but not for this one (SCIM, and the activation link). One needed a decision nobody had taken (device
+restore). One was a straightforward leak (A-263). Reading the code for them found one more defect:
+**the activation link has never worked** — it points at `/activation`, and no frontend page answered
+that path. So `isEmailVerified` could never become true through the application.
+
+**Decisions**
+
+| # | Decision | Compliance-first said | Operability-first said | Why this answer |
+|---|---|---|---|---|
+| **A-37** SCIM identity conflict | **A-128's rule for SCIM:** one 409 whoever holds the address (the check is global, soft-deleted accounts included); a budget of 10 conflicts an hour **per API key**, then 429 before any lookup; one audit row per conflict in the key's tenant, actor **`system:scim`** with `changes.apiKeyId`, never the address or whose it was. A `userName` PATCH is the same probe and gets the same rule. A super admin's JWT is answered but neither counted nor audited | keep the generic 500 of 2026-09-24: a 409 tells the key "this address exists somewhere". Or go per-tenant uniqueness, the only real closure | a 500 is **worse**, not safer: Okta and Entra ID retry a 5xx indefinitely, so the probe becomes unlimited and unaudited, and the IdP's operator can never see why a user will not provision. RFC 7644 § 3.3 names `409 uniqueness` for exactly this | ADR-051 Q-18 already accepted a 409 for tenant administrators on the condition that it is rate-limited and audited. A `scim:write` key holds the same power (A-250), so the same condition is the consistent answer. Per-tenant uniqueness stays the long-term model (memberships), as Q-18 says |
+| **A-60 / Q-11** unverified sign-in | **Upheld: sign-in does not check `isEmailVerified`.** The decision is now pinned by a test. **And the link lands:** a frontend `/activation` page spends the token once and removes it from history | refuse an unverified password sign-in with a 403 state explanation (the password was right, so the account is known to the caller and there is no oracle), and add a resend | every account that reaches data was vouched for by someone other than the mailbox: an administrator (temporary password, A-123, which the holder must change), SCIM or an SSO identity provider (both store `true`). The only never-vouched accounts are self-registrations, which carry no tenant and see nothing. Enforcing locks out exactly the wrong people: every account whose address was rectified (A-180 resets the flag), every legacy admin-created account (F-2), and — because the link was a 404 — **every self-registration there has ever been** | operability. The compliance paper's strongest point — "a session for an address nobody proved" — buys nothing when that session reaches no tenant. What verification actually protects is the **password-reset channel**, and it now works end to end. A 403 gate would also need a resend endpoint that is itself an unauthenticated oracle surface |
+| **A-133** device restore | **Restore exists:** `POST /calibration-devices/:id/restore`, gated `auth` → `validateUuid` → `rbac([TENANT_ADMIN])` → `calibration: write`. **404** for another tenant's device, identical to a missing id. **409** with a state explanation for a device that is not deleted, or whose serial a **live** device of the tenant now holds (the unique index is the backstop for a race). One transaction: `restoreStatic`, **exactly** the attachments the delete took (`attachment.service#restoreForResource`), and an `UPDATE` audit row with `operation: "RESTORE"` | a device is the anchor of calibration records and certificates (ISO 17025 §6.4.13, §7.5): a delete in error must be reversible, attributably, not by a database edit | a restore resurrects a register entry and its attachments; if it is the same grant as delete, a mistaken restore is as easy as a mistaken delete. And the bytes of a cascaded attachment may since have been swept | both, combined. Reversibility is the compliance requirement; the administrator gate and the 409s are operability's safeguards. The 409 serial message now names the deleted device's id so the administrator can act on it |
+| **A-263** lifecycle responses | `suspend`, `resume`, `grace-period`, `offboard` and `cancel-offboarding` answer the Tenant row through `withoutRedactedSettings` (constants/tenantSecretSettings.js), the A-179 rule | redact in the service, so no caller can ever get the raw row | the scheduler calls `offboardTenant` and wants the instance; a service returning plain objects changes every internal caller for no gain | redact where the row **leaves the server** — the controller. Nothing internal serialises these rows |
+
+**Which attachments a restore brings back.** ADR-070 designed this: the attachment is restored when
+it is still deleted **and its most recent DELETE audit row is a `cascade-soft-delete` naming this
+parent**. So an attachment deleted on its own — before the parent's delete, or after an earlier
+restore — stays deleted: a restore must not undo a decision somebody else took. The candidates are
+**locked before their history is read**. The deleted-file sweep (ADR-083) locks the rows it purges and
+writes a `file-purge` DELETE row in the same transaction, so a sweep that got there first is seen
+(its row is now the latest DELETE, and a row whose bytes are gone is not revived), and a later sweep
+skips the locked rows.
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| A-37: per-tenant uniqueness of `users.email` | Q-18 rejected it: login looks users up by address, so an address in two tenants makes every sign-in path ambiguous |
+| A-37: count every SCIM create, not only conflicts | limits ordinary provisioning (a bulk initial sync) instead of probing — the same reason A-128 counts only conflicts |
+| A-37: a system user row for SCIM | ADR-051 Q-13 forbids one: a job or a machine credential is not a principal that could log in or be impersonated |
+| Q-11: gate only tenant-less, unverified, non-operator accounts | protects accounts that can reach nothing, and needs an unauthenticated resend endpoint — an existence oracle to build and then defend |
+| Q-11: mark every existing account verified in a migration | writes a false fact into the record |
+| A-133: restore under the same grant as delete (`calibration: write`) | the 409 message already told users "ask an administrator"; a restore re-attaches history and is rarer than a delete |
+| A-133: restore every soft-deleted attachment of the device | revives files somebody deleted on purpose |
+| A-133: a `deleted_with_parent` column (ADR-070 rejected it too) | the audit trail already identifies the cascaded rows exactly |
+| A-263: redact inside the lifecycle service | see the table |
+
+**Implications — including the bad ones**
+
+- **A-37:** SCIM create for an address another tenant holds changes from **500 to 409**. An IdP that
+  treated the 500 as transient stops retrying and reports the conflict to its operator — intended.
+  The residual oracle is the one Q-18 accepts, now bounded at ten answers an hour per key and each
+  one on the record. Soft-deleted accounts still hold their address, as the unique index does.
+- **A-37:** SCIM **successful** mutations still write no audit row (A-33's open gap). Only conflicts
+  are audited here.
+- **Q-11:** an unverified address still receives password-reset codes; the reset then verifies it
+  (ADR-051). Unverified self-registrations still **hold their address** against the global unique
+  index — address squatting — and nothing expires them. That needs its own card.
+- **Q-11:** the activation link's origin is taken from the request's `Origin` or `Host` header
+  (`auth.controller#register`, and the rectification mail). It is sent only to the address the
+  caller typed, so it is not an account-takeover vector today, but it should come from configuration.
+- **A-133:** there is **no trash view** in the frontend. An administrator finds a deleted device's
+  id in the audit trail or in the serial-conflict 409 message, and restores through the API. The
+  delete modal no longer says restoring needs database tools.
+- **A-133:** a restored device resumes calibration scheduling and IoT ingest with the token it had.
+- **A-263:** only these five responses were changed. `tenant.service#transformTenant` already strips
+  the same keys from every other tenant response; the three definitions of the rule should become one.
+
+**Evidence** — the tests and the PostgreSQL 18.6 run are named on the four cards
+(`TASKS/AUDIT-2026-09-REMEDIATION.md` § A-37, A-60, A-133, A-263).
+
+**Status:** Accepted, implemented 2026-09-27.
+
+---
+
 ## Open Decisions
 
 Recorded so a future reader can tell whether their idea was evaluated and rejected, or genuinely never considered.

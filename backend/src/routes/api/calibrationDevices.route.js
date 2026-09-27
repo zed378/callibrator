@@ -4,8 +4,11 @@ const router = express.Router();
 const { auth } = require("../../middlewares/auth.middleware");
 const { dynamicAccess } = require("../../middlewares/dynamicAccess.middleware");
 const { validateUuid } = require("../../middlewares/validateUuid.middleware");
+const { rbac } = require("../../middlewares/rbac.middleware");
+const { ROLE_NAMES } = require("../../constants");
 const { upload } = require("../../utils/upload.util");
 const calibrationDevicesController = require("../../controllers/calibrationDevices.controller");
+const reinstateController = require("../../controllers/calibrationDeviceReinstate.controller");
 
 /* ------------------------------------------------------------------ */
 /* CALIBRATION DEVICES ROUTES                                         */
@@ -310,6 +313,107 @@ router.delete(
   validateUuid("calibrationDeviceId"),
   dynamicAccess("calibration", "write"),
   calibrationDevicesController.deleteCalibrationDevice,
+);
+
+/**
+ * @swagger
+ * /api/v1/calibration-devices/{calibrationDeviceId}/restore:
+ *   post:
+ *     summary: Restore a soft-deleted calibration device
+ *     description: >
+ *       A-133 (ADR-075). Requires a tenant administrator with write access to
+ *       calibration. Restores the device and exactly the attachments its
+ *       deletion removed, in one transaction with an audit row
+ *       (operation RESTORE). Another organisation's device answers 404, like
+ *       one that does not exist.
+ *     tags: [CalibrationDevices]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: calibrationDeviceId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Calibration device restored
+ *       400:
+ *         description: Invalid UUID
+ *       403:
+ *         description: Not a tenant administrator, or no calibration write access
+ *       404:
+ *         description: Calibration device not found
+ *       409:
+ *         description: The device is not deleted, or a live device now holds its serial number
+ */
+router.post(
+  "/:calibrationDeviceId/restore",
+  auth,
+  validateUuid("calibrationDeviceId"),
+  rbac([ROLE_NAMES.TENANT_ADMIN]),
+  dynamicAccess("calibration", "write"),
+  calibrationDevicesController.restoreCalibrationDevice,
+);
+
+/**
+ * @swagger
+ * /api/v1/calibration-devices/{calibrationDeviceId}/reinstate:
+ *   post:
+ *     summary: Reinstate a calibration device that was retired in error
+ *     description: >
+ *       Q-02 (ADR-084). Retirement is permanent: editing a retired device's
+ *       status answers 409. A retirement entered in error is corrected here,
+ *       by a tenant administrator with write access to calibration, with a
+ *       mandatory reason and the status to return to. The status change and
+ *       an audit row (operation REINSTATE, with the reason) are written in one
+ *       transaction. Another organisation's device answers 404, like one that
+ *       does not exist.
+ *     tags: [CalibrationDevices]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: calibrationDeviceId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [reason, status]
+ *             properties:
+ *               reason:
+ *                 type: string
+ *                 minLength: 10
+ *                 maxLength: 1000
+ *               status:
+ *                 type: string
+ *                 enum: [active, inactive, maintenance]
+ *     responses:
+ *       200:
+ *         description: Calibration device reinstated
+ *       400:
+ *         description: Invalid UUID, no reason, or no status to return to
+ *       403:
+ *         description: Not a tenant administrator, or no calibration write access
+ *       404:
+ *         description: Calibration device not found
+ *       409:
+ *         description: The device is not retired
+ */
+router.post(
+  "/:calibrationDeviceId/reinstate",
+  auth,
+  validateUuid("calibrationDeviceId"),
+  rbac([ROLE_NAMES.TENANT_ADMIN]),
+  dynamicAccess("calibration", "write"),
+  reinstateController.reinstateCalibrationDevice,
 );
 
 /**

@@ -6,6 +6,11 @@
  * the File/Document module and the tenant storage-quota accounting.
  */
 
+const {
+  ATTACHMENT_RESOURCE_TYPES,
+  isAttachmentResourceType,
+} = require("../constants/attachmentResources");
+
 const defineModel = (db, DataTypes) => {
   const Attachment = db.define(
     "Attachment",
@@ -22,10 +27,20 @@ const defineModel = (db, DataTypes) => {
         onDelete: "RESTRICT",
       },
       // Polymorphic link to the owning resource (nullable = standalone upload).
+      // D-22 (ADR-083): one of constants/attachmentResources, ignoring case.
+      // Validated when written, so a legacy row with another value can still
+      // be soft-deleted (save() validates only the attributes it changes).
       resourceType: {
         type: DataTypes.STRING(50),
         allowNull: false,
         defaultValue: "generic",
+        validate: {
+          knownResourceType(value) {
+            if (!isAttachmentResourceType(value)) {
+              throw new Error(`resourceType "${value}" is not one of: ${ATTACHMENT_RESOURCE_TYPES.join(", ")}`);
+            }
+          },
+        },
       },
       resourceId: {
         type: DataTypes.UUID,
@@ -81,6 +96,14 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.BOOLEAN,
         defaultValue: false,
         allowNull: false,
+      },
+      // D-22 (ADR-083, migration 0088): when the deleted-file sweep removed
+      // this soft-deleted row's bytes (or confirmed they were already gone).
+      // NULL on every live row and on a deleted row still inside its window.
+      filePurgedAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        defaultValue: null,
       },
     },
     {

@@ -79,6 +79,9 @@ describe("auth middleware", () => {
 
     unauthorized.mockReturnValue(undefined);
     forbidden.mockReturnValue(undefined);
+    // P6-12: every access token names its session, and the session is live
+    // unless a test says otherwise.
+    require("../../services/session.service").isSessionLive.mockResolvedValue(true);
   });
 
   describe("auth", () => {
@@ -101,7 +104,7 @@ describe("auth middleware", () => {
 
     it("should reject when user not found", async () => {
       req.headers.authorization = "Bearer valid-token";
-      verifyAccessToken.mockReturnValue({ id: "user-123" });
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
       authService.getAuthUserWithTenant.mockResolvedValue(null);
 
       await auth(req, res, next);
@@ -122,7 +125,7 @@ describe("auth middleware", () => {
 
     it("should reject banned user", async () => {
       req.headers.authorization = "Bearer valid-token";
-      verifyAccessToken.mockReturnValue({ id: "user-123" });
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
       authService.getAuthUserWithTenant.mockResolvedValue({
         id: "user-123",
         isActive: false,
@@ -135,7 +138,7 @@ describe("auth middleware", () => {
 
     it("should reject suspended user", async () => {
       req.headers.authorization = "Bearer valid-token";
-      verifyAccessToken.mockReturnValue({ id: "user-123" });
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
       authService.getAuthUserWithTenant.mockResolvedValue({
         id: "user-123",
         isActive: true,
@@ -149,7 +152,7 @@ describe("auth middleware", () => {
 
     it("A-180: rejects an erased (GDPR-anonymised) account by its status alone", async () => {
       req.headers.authorization = "Bearer valid-token";
-      verifyAccessToken.mockReturnValue({ id: "user-123" });
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
       authService.getAuthUserWithTenant.mockResolvedValue({
         id: "user-123",
         isActive: true,
@@ -214,7 +217,7 @@ describe("auth middleware", () => {
       };
 
       req.headers.authorization = "Bearer valid-token";
-      verifyAccessToken.mockReturnValue({ id: "user-123" });
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
       authService.getAuthUserWithTenant.mockResolvedValue(mockUser);
 
       await auth(req, res, next);
@@ -237,7 +240,7 @@ describe("auth middleware", () => {
 
       req.headers.authorization = "Bearer valid-token";
       req.headers["x-tenant-code"] = "override-tenant";
-      verifyAccessToken.mockReturnValue({ id: "user-123" });
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
       authService.getAuthUserWithTenant.mockResolvedValue(mockUser);
       tenantService.getTenantByCodeForMiddleware.mockResolvedValue({
         id: "override-tenant-id",
@@ -390,7 +393,7 @@ describe("auth middleware", () => {
       };
 
       req.headers.authorization = "Bearer valid-token";
-      verifyAccessToken.mockReturnValue({ id: "user-123" });
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
       authService.getAuthUserWithTenant.mockResolvedValue(mockUser);
 
       await auth(req, res, next);
@@ -410,7 +413,7 @@ describe("auth middleware", () => {
       };
 
       req.headers.authorization = "Bearer valid-token";
-      verifyAccessToken.mockReturnValue({ id: "user-123" });
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
       authService.getAuthUserWithTenant.mockResolvedValue(mockUser);
 
       await auth(req, res, next);
@@ -429,7 +432,7 @@ describe("auth middleware", () => {
       };
 
       req.headers.authorization = "Bearer valid-token";
-      verifyAccessToken.mockReturnValue({ id: "user-123" });
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
       authService.getAuthUserWithTenant.mockResolvedValue(mockUser);
 
       await auth(req, res, next);
@@ -448,7 +451,7 @@ describe("auth middleware", () => {
       };
 
       req.headers.authorization = "Bearer valid-token";
-      verifyAccessToken.mockReturnValue({ id: "user-123" });
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
       authService.getAuthUserWithTenant.mockResolvedValue(mockUser);
 
       await auth(req, res, next);
@@ -467,7 +470,7 @@ describe("auth middleware", () => {
       };
 
       req.headers.authorization = "Bearer valid-token";
-      verifyAccessToken.mockReturnValue({ id: "user-123" });
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
       authService.getAuthUserWithTenant.mockResolvedValue(mockUser);
 
       await auth(req, res, next);
@@ -488,7 +491,7 @@ describe("auth middleware", () => {
 
       req.headers.authorization = "Bearer valid-token";
       req.headers["x-tenant-id"] = "override-tenant-id-header";
-      verifyAccessToken.mockReturnValue({ id: "user-123" });
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
       authService.getAuthUserWithTenant.mockResolvedValue(mockUser);
       tenantService.getTenantByIdForMiddleware.mockResolvedValue({
         id: "override-tenant-id-header",
@@ -513,7 +516,7 @@ describe("auth middleware", () => {
 
       req.headers.authorization = "Bearer valid-token";
       req.headers["x-tenant-code"] = "nonexistent-tenant";
-      verifyAccessToken.mockReturnValue({ id: "user-123" });
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
       authService.getAuthUserWithTenant.mockResolvedValue(mockUser);
       tenantService.getTenantByCodeForMiddleware.mockResolvedValue(null);
 
@@ -535,7 +538,7 @@ describe("auth middleware", () => {
 
       req.headers.authorization = "Bearer valid-token";
       req.headers["x-tenant-id"] = "inactive-tenant-id";
-      verifyAccessToken.mockReturnValue({ id: "user-123" });
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
       authService.getAuthUserWithTenant.mockResolvedValue(mockUser);
       tenantService.getTenantByIdForMiddleware.mockResolvedValue({
         id: "inactive-tenant-id",
@@ -558,7 +561,7 @@ describe("auth middleware", () => {
       };
 
       req.headers.authorization = "Bearer valid-token";
-      verifyAccessToken.mockReturnValue({ id: "user-123" });
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
       authService.getAuthUserWithTenant.mockResolvedValue(mockUser);
 
       await auth(req, res, next);
@@ -588,7 +591,7 @@ describe("auth middleware", () => {
       };
 
       req.headers.authorization = "Bearer valid-token";
-      verifyAccessToken.mockReturnValue({ id: "user-123" });
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
       authService.getAuthUserWithTenant.mockResolvedValue(mockUser);
 
       await auth(req, res, next);
@@ -609,7 +612,7 @@ describe("auth middleware", () => {
       };
 
       req.headers.authorization = "Bearer valid-token";
-      verifyAccessToken.mockReturnValue({ id: "user-123" });
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
       authService.getAuthUserWithTenant.mockResolvedValue(mockUser);
 
       await auth(req, res, next);
@@ -629,7 +632,7 @@ describe("auth middleware", () => {
       };
 
       req.headers.authorization = "Bearer valid-token";
-      verifyAccessToken.mockReturnValue({ id: "user-123" });
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
       authService.getAuthUserWithTenant.mockResolvedValue(mockUser);
 
       await auth(req, res, next);
@@ -648,7 +651,7 @@ describe("auth middleware", () => {
 
     it("should attach user when valid token", async () => {
       req.headers.authorization = "Bearer valid-token";
-      verifyAccessToken.mockReturnValue({ id: "user-123" });
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
       authService.getAuthUserWithTenant.mockResolvedValue({
         id: "user-123",
         tenantId: "tenant-123",
@@ -689,7 +692,7 @@ describe("auth middleware", () => {
 
     it("should not attach a user whose status is neither ACTIVE nor INACTIVE", async () => {
       req.headers.authorization = "Bearer valid-token";
-      verifyAccessToken.mockReturnValue({ id: "user-123" });
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
       authService.getAuthUserWithTenant.mockResolvedValue({
         id: "user-123",
         tenantId: "tenant-123",
@@ -707,7 +710,7 @@ describe("auth middleware", () => {
 
     it("should not attach an inactive user", async () => {
       req.headers.authorization = "Bearer valid-token";
-      verifyAccessToken.mockReturnValue({ id: "user-123" });
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
       authService.getAuthUserWithTenant.mockResolvedValue({
         id: "user-123",
         tenantId: "tenant-123",
@@ -723,7 +726,7 @@ describe("auth middleware", () => {
 
     it("should not attach a user when the lookup returns nothing", async () => {
       req.headers.authorization = "Bearer valid-token";
-      verifyAccessToken.mockReturnValue({ id: "user-123" });
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
       authService.getAuthUserWithTenant.mockResolvedValue(null);
 
       await optionalAuth(req, res, next);
@@ -734,7 +737,7 @@ describe("auth middleware", () => {
 
     it("should attach a tenant-less user without setting req.tenantId", async () => {
       req.headers.authorization = "Bearer valid-token";
-      verifyAccessToken.mockReturnValue({ id: "user-123" });
+      verifyAccessToken.mockReturnValue({ id: "user-123", sid: "sess-1" });
       authService.getAuthUserWithTenant.mockResolvedValue({
         id: "user-123",
         tenantId: null,

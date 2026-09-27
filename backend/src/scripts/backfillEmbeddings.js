@@ -11,6 +11,7 @@
  * content pipeline exists). Idempotent: ingestDocument replaces prior chunks for
  * the same source.
  */
+// A-42 console-allowed: a CLI run by hand in a terminal; its console output is the operator's report, not application logging (backend/src/tests/guards/noConsole.a42.test.js).
 
 /* istanbul ignore file -- operational backfill script, run manually */
 

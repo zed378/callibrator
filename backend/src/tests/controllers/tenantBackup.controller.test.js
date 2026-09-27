@@ -54,6 +54,11 @@ const fs = require("fs");
 const tenantBackupController = require("../../controllers/tenantBackup.controller");
 const tenantBackupService = require("../../services/tenantBackup.service");
 const { TenantBackup, Users, Tenants } = require("../../models");
+// P6-02: the controller hands the services the models BARREL. It used to pass
+// `req.models`, which no middleware sets, and these tests built a request WITH
+// `models: {}` — so they passed while every live backup failed on
+// `models.Users`. The request below carries no `models`, as in production.
+const modelsBarrel = require("../../models");
 const { success } = require("../../utils/response.util");
 
 const TENANT_ID = "550e8400-e29b-41d4-a716-446655440000";
@@ -73,7 +78,6 @@ describe("tenantBackup Controller", () => {
       body: {},
       query: {},
       user: { id: USER_ID, tenantId: TENANT_ID },
-      models: {},
     };
     res = {
       status: jest.fn().mockReturnThis(),
@@ -104,6 +108,8 @@ describe("tenantBackup Controller", () => {
           name: "backup-1",
         }),
       );
+      expect(tenantBackupService.createBackup.mock.calls[0][0].models).toBe(modelsBarrel);
+      expect(modelsBarrel.Users).toBeDefined();
       expect(success).toHaveBeenCalled();
     });
 
@@ -159,7 +165,7 @@ describe("tenantBackup Controller", () => {
           limit: 10,
           offset: 0,
         }),
-        {},
+        modelsBarrel,
       );
       expect(success).toHaveBeenCalled();
     });
@@ -176,7 +182,7 @@ describe("tenantBackup Controller", () => {
 
       expect(TenantBackup.getTenantBackups).toHaveBeenCalledWith(
         expect.objectContaining({ status: "COMPLETED" }),
-        {},
+        modelsBarrel,
       );
     });
 
@@ -192,7 +198,7 @@ describe("tenantBackup Controller", () => {
 
       expect(TenantBackup.getTenantBackups).toHaveBeenCalledWith(
         expect.objectContaining({ limit: 20, offset: 0 }),
-        {},
+        modelsBarrel,
       );
       expect(success).toHaveBeenCalledWith(
         res,
@@ -248,7 +254,7 @@ describe("tenantBackup Controller", () => {
 
       await tenantBackupController.downloadBackup(req, res, next);
 
-      expect(tenantBackupService.downloadBackup).toHaveBeenCalledWith(BACKUP_ID, {});
+      expect(tenantBackupService.downloadBackup).toHaveBeenCalledWith(BACKUP_ID, modelsBarrel);
       expect(res.setHeader).toHaveBeenCalledWith("Content-Disposition", "attachment; filename=\"backup.zip\"");
       expect(res.setHeader).toHaveBeenCalledWith("Content-Type", "application/zip");
     });
@@ -330,7 +336,7 @@ describe("tenantBackup Controller", () => {
         backupId: BACKUP_ID,
         restoredById: USER_ID,
         mergeData: false,
-        models: {},
+        models: modelsBarrel,
       });
       // restoreBackup always responds 200 and falls back to its default message
       expect(success).toHaveBeenCalledWith(
@@ -355,7 +361,7 @@ describe("tenantBackup Controller", () => {
 
       await tenantBackupController.deleteBackup(req, res, next);
 
-      expect(tenantBackupService.deleteBackup).toHaveBeenCalledWith(BACKUP_ID, USER_ID, {});
+      expect(tenantBackupService.deleteBackup).toHaveBeenCalledWith(BACKUP_ID, USER_ID, modelsBarrel);
       expect(success).toHaveBeenCalled();
     });
 
@@ -389,7 +395,7 @@ describe("tenantBackup Controller", () => {
 
       await tenantBackupController.getBackupStats(req, res, next);
 
-      expect(tenantBackupService.getBackupStats).toHaveBeenCalledWith(TENANT_ID, {});
+      expect(tenantBackupService.getBackupStats).toHaveBeenCalledWith(TENANT_ID, modelsBarrel);
       expect(success).toHaveBeenCalled();
     });
   });

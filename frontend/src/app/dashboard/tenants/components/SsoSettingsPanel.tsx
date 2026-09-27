@@ -1,7 +1,7 @@
 // src/app/dashboard/tenants/components/SsoSettingsPanel.tsx
 "use client";
 
-import React from "react";
+import React, { useId } from "react";
 import type { Tenant } from "@/types";
 import { Alert } from "@/components/ui";
 import { Shield, Check, X } from "lucide-react";
@@ -9,6 +9,7 @@ import SsoConfigTab from "./sso/SsoConfigTab";
 import SsoSpTab from "./sso/SsoSpTab";
 import SsoXmlTab from "./sso/SsoXmlTab";
 import { useSsoSettings } from "./sso/useSsoSettings";
+import { useModalA11y } from "@/components/ui/useModalA11y";
 
 interface SsoSettingsPanelProps {
   tenant: Tenant | null;
@@ -42,11 +43,21 @@ export const SsoSettingsPanel: React.FC<SsoSettingsPanelProps> = ({
     handleXmlFileUpload,
   } = useSsoSettings(tenant, onClose);
 
+  // F-12: a modal dialog — named by its title, focus moved in and
+  // trapped, Escape closes, focus returns to the opener (useModalA11y).
+  const panelRef = useModalA11y(Boolean(tenant), onClose);
+  const titleId = useId();
   if (!tenant) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-      <div className="bg-background rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl animate-scale-in">
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        className="bg-background rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl animate-scale-in">
         {/* Header */}
         <div className="p-6 border-b border-border flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -54,11 +65,11 @@ export const SsoSettingsPanel: React.FC<SsoSettingsPanelProps> = ({
               <Shield className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-white">SSO SAML Configuration</h2>
+              <h2 id={titleId} className="text-xl font-bold text-white">SSO SAML Configuration</h2>
               <p className="text-xs text-muted-foreground">{tenant.name} ({tenant.code})</p>
             </div>
           </div>
-          <button
+          <button aria-label="Close"
             onClick={onClose}
             className="p-2 text-muted-foreground hover:text-muted-foreground hover:bg-white/5 rounded-xl transition-all duration-200"
           >

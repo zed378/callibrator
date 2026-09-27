@@ -4,7 +4,6 @@
 const {
   createSubOrganization,
   addChild,
-  assignRole,
   validate,
 } = require("../../validators/tenantHierarchy.validator");
 
@@ -66,40 +65,7 @@ describe("Tenant Hierarchy Validators", () => {
     });
   });
 
-  describe("assignRole", () => {
-    it("should validate with default scope", () => {
-      const value = validate(
-        { roleId: "123e4567-e89b-12d3-a456-426614174000" },
-        assignRole,
-      );
-
-      expect(value.roleId).toBe("123e4567-e89b-12d3-a456-426614174000");
-      expect(value.scope).toBe("subtree");
-    });
-
-    it("should validate with self scope", () => {
-      const value = validate(
-        { roleId: "123e4567-e89b-12d3-a456-426614174000", scope: "self" },
-        assignRole,
-      );
-
-      expect(value.scope).toBe("self");
-    });
-
-    it("should reject invalid role UUID", () => {
-      expect(() =>
-        validate({ roleId: "not-a-uuid" }, assignRole),
-      ).toThrow();
-    });
-
-    it("should reject missing role ID", () => {
-      expect(() => validate({}, assignRole)).toThrow();
-    });
-
-    it("should reject invalid scope", () => {
-      expect(() =>
-        validate({ roleId: "123e4567-e89b-12d3-a456-426614174000", scope: "invalid" }, assignRole),
-      ).toThrow();
-    });
+  it("has no cross-hierarchy role assignment schema (ADR-084, Q-05)", () => {
+    expect(require("../../validators/tenantHierarchy.validator").assignRole).toBeUndefined();
   });
 });

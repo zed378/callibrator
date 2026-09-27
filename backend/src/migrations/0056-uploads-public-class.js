@@ -55,6 +55,7 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const storagePath = require("../utils/storagePath.util");
+const { logger } = require("../middlewares/activityLog.middleware");
 
 const FILE_MOVES = [
   ["uploads/profile", "uploads/public/profile"],
@@ -172,11 +173,19 @@ module.exports = {
       return { certificates, posts, uncarried };
     });
 
-    console.log(
-      `[0056] public class: moved ${movedCounts[0].length} avatar(s), ${movedCounts[1].length} logo(s)` +
-        ` (${svgLogos} SVG — no longer served; re-upload as PNG/JPEG/WebP);` +
-        ` ${summary.certificates} certificate path(s) rewritten;` +
-        ` ${summary.posts} post(s) rewritten, ${summary.uncarried} reference(s) left (not an image or file missing)`,
+    logger.info(
+      "[0056] public class: avatars and logos moved, certificate and post paths rewritten " +
+        "(an SVG logo is no longer served: re-upload it as PNG/JPEG/WebP; a reference left is not " +
+        "an image or its file is missing)",
+      {
+        migration: "0056",
+        avatarsMoved: movedCounts[0].length,
+        logosMoved: movedCounts[1].length,
+        svgLogos,
+        certificatePathsRewritten: summary.certificates,
+        postsRewritten: summary.posts,
+        referencesLeft: summary.uncarried,
+      },
     );
   },
 

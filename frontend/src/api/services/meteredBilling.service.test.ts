@@ -42,14 +42,13 @@ describe("meteredBillingService", () => {
   });
 
   describe("getUsageHistory", () => {
-    // /history is the one endpoint that really nests { rows, meta } in data.
-    it("reads rows and meta from inside data", async () => {
-      mockedApi.get.mockResolvedValueOnce(
-        envelope({
-          rows: [{ id: "inv1", amount: 100 }],
-          meta: { total: 1, page: 1, limit: 20, totalPages: 1 },
-        }),
-      );
+    // F-13: the house envelope — invoices in data, pagination in a
+    // top-level meta (the backend's route test envelope.f13 pins the wire).
+    it("reads the rows from data and the pagination from the top-level meta", async () => {
+      mockedApi.get.mockResolvedValueOnce({
+        ...envelope([{ id: "inv1", amount: 100 }]),
+        meta: { total: 1, page: 1, limit: 20, totalPages: 1 },
+      });
 
       const res = await meteredBillingService.getUsageHistory({
         page: 1,
@@ -64,7 +63,7 @@ describe("meteredBillingService", () => {
     });
 
     it("passes the date filters the validator accepts", async () => {
-      mockedApi.get.mockResolvedValueOnce(envelope({ rows: [] }));
+      mockedApi.get.mockResolvedValueOnce(envelope([]));
 
       await meteredBillingService.getUsageHistory({
         startDate: "2026-01-01",
@@ -77,7 +76,7 @@ describe("meteredBillingService", () => {
     });
 
     it("falls back to empty rows and derived meta", async () => {
-      mockedApi.get.mockResolvedValueOnce(envelope({}));
+      mockedApi.get.mockResolvedValueOnce(envelope(null));
       const res = await meteredBillingService.getUsageHistory();
       expect(res.rows).toEqual([]);
       expect(res.meta.page).toBe(1);

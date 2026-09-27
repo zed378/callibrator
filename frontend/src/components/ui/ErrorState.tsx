@@ -49,6 +49,9 @@ export const errorStateCopy = (
         retryable: false,
       };
     case 408:
+    // F-14: the Next proxy answers 504 when the backend gave no answer at all
+    // within its budget (app/api/v1/[...path]/route.ts).
+    case 504:
       return {
         title: "The request timed out",
         message: details.message || "The server gave up on this request. Retry in a moment.",

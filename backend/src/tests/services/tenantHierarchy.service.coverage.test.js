@@ -50,7 +50,6 @@ const ACTOR = { userId: "super-1", tenantId: "t-home", ipAddress: null, userAgen
 
 const logger = mockLogger;
 const AppError = MockAppError;
-const db = { Sequelize: { Op: mockOp } };
 
 // Load the service with the given env + mocked models.
 const loadService = (env, models) => {
@@ -234,64 +233,6 @@ describe("tenantHierarchy.service (coverage)", () => {
   });
 
   // ================================================================
-  describe("getDataVisibilityScope (all)", () => {
-    it("returns every tenant under the root code when an ancestor exists", async () => {
-      const Tenant = {
-        findAll: jest
-          .fn()
-          .mockResolvedValue([{ id: "root-1" }, { id: "child-1" }, { id: "child-2" }]),
-      };
-      const TenantHierarchy = {
-        findOne: jest
-          .fn()
-          // getAncestorTenants: the tenant's own hierarchy row
-          .mockResolvedValueOnce({ path: "/root/branch", depth: 1 })
-          // then the lookup for the "/root" ancestor
-          .mockResolvedValueOnce({
-            tenant: { id: "root-1", code: "ROOT", name: "Root", status: "active" },
-            depth: 0,
-          }),
-      };
-      const svc = loadService({}, { Tenant, TenantHierarchy });
-
-      const result = await svc.getDataVisibilityScope("tenant-1", "all");
-
-      expect(result).toEqual({
-        tenantIds: ["root-1", "child-1", "child-2"],
-        scope: "all",
-      });
-      expect(Tenant.findAll).toHaveBeenCalledWith({
-        where: {
-          [db.Sequelize.Op.or]: [
-            { code: "ROOT" },
-            { code: { [db.Sequelize.Op.like]: "ROOT_%" } },
-          ],
-        },
-        attributes: ["id"],
-      });
-    });
-
-    it("falls back to self scope when the tenant has no ancestors", async () => {
-      const Tenant = { findAll: jest.fn() };
-      const TenantHierarchy = { findOne: jest.fn().mockResolvedValue(null) };
-      const svc = loadService({}, { Tenant, TenantHierarchy });
-
-      const result = await svc.getDataVisibilityScope("tenant-1", "all");
-
-      expect(result).toEqual({ tenantIds: ["tenant-1"], scope: "self" });
-      expect(Tenant.findAll).not.toHaveBeenCalled();
-    });
-
-    it("defaults to self scope when no scope argument is given", async () => {
-      const svc = loadService({}, { TenantHierarchy: { findOne: jest.fn() } });
-
-      const result = await svc.getDataVisibilityScope("tenant-1");
-
-      expect(result).toEqual({ tenantIds: ["tenant-1"], scope: "self" });
-    });
-  });
-
-  // ================================================================
   describe("getAncestorTenants", () => {
     it("skips path segments with no hierarchy row and no loaded tenant", async () => {
       const TenantHierarchy = {
@@ -311,19 +252,6 @@ describe("tenantHierarchy.service (coverage)", () => {
   });
 
   // ================================================================
-
-  // ================================================================
-  describe("buildTenantFilter", () => {
-    it("defaults to a self-scoped IN filter", async () => {
-      const svc = loadService({}, { TenantHierarchy: { findOne: jest.fn() } });
-
-      const filter = await svc.buildTenantFilter("tenant-1");
-
-      expect(filter).toEqual({
-        tenantId: { [db.Sequelize.Op.in]: ["tenant-1"] },
-      });
-    });
-  });
 
   // ================================================================
   describe("getUserRolesAcrossTenants", () => {

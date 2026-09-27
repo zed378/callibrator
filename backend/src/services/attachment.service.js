@@ -113,17 +113,12 @@ const toPublic = (a) => ({
  *
  * Any other type — `generic`, the CMS `post` (posts are platform content, not
  * a tenant's record) — is a standalone upload and may not carry a resourceId.
+ *
+ * D-22 (ADR-083): the map, and the standalone types, live in
+ * constants/attachmentResources — the one list the model validates too.
  */
-const LINKABLE_RESOURCES = Object.freeze({
-  certificate: "Certificate",
-  device: "CalibrationDevice",
-  calibrationdevice: "CalibrationDevice",
-  calibration: "CalibrationRecord",
-  calibrationrecord: "CalibrationRecord",
-  workorder: "MaintenanceWorkOrder",
-  maintenanceworkorder: "MaintenanceWorkOrder",
-  kanbancard: "KanbanCard",
-});
+const { LINKABLE_RESOURCES, ATTACHMENT_RESOURCE_TYPES, isAttachmentResourceType } =
+  require("../constants/attachmentResources");
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -140,9 +135,18 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  * @param {string} tenantId - the principal's tenant
  * @param {string|undefined} resourceType
  * @param {string|undefined|null} resourceId
- * @throws {AppError} 400 for a malformed id or an unlinkable type; 404 when no such record
+ * D-22 (ADR-083): the type itself is checked first, linked or not — a free
+ * string used to be stored as given on an unlinked upload.
+ *
+ * @throws {AppError} 400 for an unknown type, a malformed id or an unlinkable type; 404 when no such record
  */
 const assertLinkTarget = async (tenantId, resourceType, resourceId) => {
+  if (!isAttachmentResourceType(resourceType || "generic")) {
+    throw new AppError(
+      400,
+      `resourceType "${resourceType}" is not an attachment type — use one of: ${ATTACHMENT_RESOURCE_TYPES.join(", ")}`,
+    );
+  }
   if (resourceId === undefined || resourceId === null || resourceId === "") {
     return;
   }
@@ -197,17 +201,23 @@ const typesLinkingTo = (modelName) =>
  * Matching is case-insensitive over every spelling that links to the model
  * (`device` and `CalibrationDevice` alike), with the tenant predicate explicit.
  *
+ * D-22 (ADR-083): `resourceId` may be an ARRAY of parent ids — a kanban
+ * project's delete passes a page of its cards. Each audit row still names its
+ * own parent in `changes.cascade.id`, so restoring one card restores exactly
+ * its files; `options.via` (the project) is recorded as `changes.cascade.via`.
+ *
  * @param {string} tenantId - the parent's tenant
  * @param {string} modelName - the parent model, a value of LINKABLE_RESOURCES
- * @param {string} resourceId - the parent's id
+ * @param {string|string[]} resourceId - the parent's id, or a page of parent ids
  * @param {object} options
  * @param {object} options.transaction - the parent delete's transaction (required)
  * @param {{userId?: string, ipAddress?: string, userAgent?: string}} [options.actor]
+ * @param {{type: string, id: string}} [options.via] - the record whose delete took the parents with it
  * @returns {Promise<string[]>} the ids of the attachments soft-deleted
  * @throws {Error} a model that is not linkable, or no transaction — both are
  *   programming errors, never a caller's input
  */
-exports.softDeleteForResource = async (tenantId, modelName, resourceId, { transaction, actor = {} } = {}) => {
+exports.softDeleteForResource = async (tenantId, modelName, resourceId, { transaction, actor = {}, via } = {}) => {
   const types = typesLinkingTo(modelName);
   if (types.length === 0) {
     throw new Error(`softDeleteForResource: ${modelName} is not a linkable resource`);
@@ -243,6 +253,132 @@ exports.softDeleteForResource = async (tenantId, modelName, resourceId, { transa
           operation: "cascade-soft-delete",
           before: { isDeleted: false },
           after: { isDeleted: true },
+          originalName: row.originalName,
+          checksum: row.checksum,
+          resource: { type: row.resourceType, id: row.resourceId },
+          cascade: {
+            type: modelName,
+            id: Array.isArray(resourceId) ? row.resourceId : resourceId,
+            ...(via ? { via } : {}),
+          },
+        },
+        ipAddress: actor.ipAddress || null,
+        userAgent: actor.userAgent || null,
+      },
+      { transaction },
+    );
+  }
+  return ids;
+};
+
+/**
+ * A-133 (ADR-075) — the other half of D-22: restoring a parent restores exactly
+ * the attachments its delete took with it, in the restore's transaction, with
+ * one UPDATE audit row each (`operation: "cascade-restore"`, naming the parent).
+ *
+ * "Exactly" is read from the audit trail, as ADR-070 designed it: an
+ * attachment is restored when it is still deleted AND its most recent DELETE
+ * row is a `cascade-soft-delete` naming this parent. An attachment deleted on
+ * its own — before the parent's delete (the cascade then never touched it) or
+ * after an earlier restore — has a later explicit DELETE row and stays
+ * deleted: a restore must not undo a decision somebody else took. The tenant
+ * predicate is explicit on both reads.
+ *
+ * @param {string} tenantId - the parent's tenant
+ * @param {string} modelName - the parent model, a value of LINKABLE_RESOURCES
+ * @param {string} resourceId - the parent's id
+ * @param {object} options
+ * @param {object} options.transaction - the parent restore's transaction (required)
+ * @param {{userId?: string, ipAddress?: string, userAgent?: string}} [options.actor]
+ * @returns {Promise<string[]>} the ids of the attachments restored
+ * @throws {Error} a model that is not linkable, or no transaction — both are
+ *   programming errors, never a caller's input
+ */
+exports.restoreForResource = async (tenantId, modelName, resourceId, { transaction, actor = {} } = {}) => {
+  if (typesLinkingTo(modelName).length === 0) {
+    throw new Error(`restoreForResource: ${modelName} is not a linkable resource`);
+  }
+  if (!transaction) {
+    throw new Error("restoreForResource runs inside the parent restore's transaction");
+  }
+  const { AuditLog } = require("../models");
+
+  // Every attachment this parent's deletes ever cascaded to.
+  const cascaded = await AuditLog.findAll({
+    where: {
+      tenantId,
+      resourceType: "Attachment",
+      action: "DELETE",
+      changes: { operation: "cascade-soft-delete", cascade: { type: modelName, id: resourceId } },
+    },
+    attributes: ["resourceId"],
+    transaction,
+  });
+  const candidateIds = [...new Set(cascaded.map((row) => row.resourceId).filter(Boolean))];
+  if (candidateIds.length === 0) {
+    return [];
+  }
+
+  // Lock the candidates still deleted BEFORE reading their history. The
+  // deleted-file sweep (ADR-083) locks the rows it purges and writes their
+  // `file-purge` DELETE row in the same transaction: a sweep that got there
+  // first is therefore visible to the read below (its row is then the latest
+  // DELETE, and the attachment stays deleted — its bytes are gone), and one
+  // that comes later skips the rows locked here.
+  const locked = await Attachment.unscoped().findAll({
+    where: { id: candidateIds, tenantId, isDeleted: true },
+    attributes: ["id", "resourceType", "resourceId", "originalName", "checksum"],
+    lock: true,
+    transaction,
+  });
+  if (locked.length === 0) {
+    return [];
+  }
+
+  // The most recent DELETE row of each decides it.
+  const deletes = await AuditLog.findAll({
+    where: { tenantId, resourceType: "Attachment", action: "DELETE", resourceId: locked.map((row) => row.id) },
+    attributes: ["resourceId", "changes", "createdAt"],
+    order: [["createdAt", "DESC"], ["id", "DESC"]],
+    transaction,
+  });
+  const latest = new Map();
+  for (const row of deletes) {
+    if (!latest.has(row.resourceId)) {
+      latest.set(row.resourceId, row.changes || {});
+    }
+  }
+  const rows = locked.filter((row) => {
+    const changes = latest.get(row.id);
+    return (
+      changes &&
+      changes.operation === "cascade-soft-delete" &&
+      changes.cascade &&
+      changes.cascade.type === modelName &&
+      changes.cascade.id === resourceId
+    );
+  });
+  if (rows.length === 0) {
+    return [];
+  }
+
+  const ids = rows.map((row) => row.id);
+  await Attachment.unscoped().update(
+    { isDeleted: false },
+    { where: { id: ids, tenantId, isDeleted: true }, transaction },
+  );
+  for (const row of rows) {
+    await auditService.logAction(
+      {
+        tenantId,
+        userId: actor.userId || null,
+        action: "UPDATE",
+        resourceType: "Attachment",
+        resourceId: row.id,
+        changes: {
+          operation: "cascade-restore",
+          before: { isDeleted: true },
+          after: { isDeleted: false },
           originalName: row.originalName,
           checksum: row.checksum,
           resource: { type: row.resourceType, id: row.resourceId },
@@ -677,3 +813,6 @@ exports.getSignedDownload = async (id, token) => {
 };
 
 exports._verifySignedToken = verifySignedToken; // exported for tests
+// D-22 (ADR-083): the deleted-file sweep resolves a row's file with the same
+// S-15 guard, so it can never remove anything outside the uploads tree.
+exports.resolveAbsPath = resolveAbsPath;

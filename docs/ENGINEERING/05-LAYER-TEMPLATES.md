@@ -150,12 +150,15 @@ describe("GET /api/v1/devices/:deviceId", () => {
   it("returns the device to its own tenant", async () => { /* … */ });
 
   it("returns 404 — not 403 — for another tenant's device", async () => {
-    const { tenantA, tenantB } = await createTwoTenants();
-    const device = await createDevice(tenantB);
-    const res = await request(app).get(`/api/v1/devices/${device.id}`).set(authFor(tenantA));
+    const fx = createTwoTenants();                          // synchronous; no database
+    deviceRows.push({ id: DEVICE_ID, tenantId: fx.tenantB.id }); // the model double's rows
+    currentUser = fx.principal(fx.tenantA, "HEALTHCARE ADMIN");   // what `auth` sets as req.user
+    const res = await http(router, "GET", `/${DEVICE_ID}`);   // router.handle, as in readGates.p604.test.js
     expect(res.status).toBe(404);
   });
 });
 ```
+
+The sample is shaped on the real fixture, `backend/src/tests/fixtures/twoTenants.js` (A-63), and is JavaScript like every backend test today. An earlier version of this sample awaited the fixture and called `createDevice`, `authFor` and supertest `request(app)` — none of which the fixture provides (ADR-088). The fixture replaces the database with doubles; the tenant hooks and SQL are tested against PostgreSQL.
 
 Every `:id` route gets the two-tenant 404 test. Detail: [`09-TESTING-CONVENTIONS.md`](./09-TESTING-CONVENTIONS.md).

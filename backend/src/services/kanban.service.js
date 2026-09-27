@@ -526,10 +526,44 @@ exports.updateProject = async (user, projectId, data) => {
   return result;
 };
 
+/** D-22 (ADR-083): cards read per page when a project's delete cascades. */
+const PROJECT_DELETE_CARD_PAGE = 500;
+
 exports.deleteProject = async (user, projectId) => {
-  await assertAccess(user, projectId, "owner");
-  // Paranoid destroy; children cascade at the DB level.
-  await KanbanProject.destroy({ where: { id: projectId } });
+  const { project } = await assertAccess(user, projectId, "owner");
+  // Paranoid destroy; children cascade at the DB level only on a hard delete.
+  // D-22 (ADR-083): the project's cards stay (unreachable behind the deleted
+  // project), but their FILES are soft-deleted with it, in one transaction,
+  // one audit row each naming its card and, as `via`, the project. They used
+  // to stay live — listed, counted and downloadable — and the orphan report
+  // could not see them, because their cards were still live. Cards are read
+  // by keyset, a page at a time.
+  await sequelize.transaction(async (transaction) => {
+    await KanbanProject.destroy({ where: { id: projectId }, transaction });
+    let after = null;
+    for (;;) {
+      const cards = await KanbanCard.findAll({
+        where: { projectId, ...(after ? { id: { [Op.gt]: after } } : {}) },
+        attributes: ["id"],
+        order: [["id", "ASC"]],
+        limit: PROJECT_DELETE_CARD_PAGE,
+        transaction,
+      });
+      if (cards.length === 0) {
+        break;
+      }
+      await require("./attachment.service").softDeleteForResource(
+        project.tenantId,
+        "KanbanCard",
+        cards.map((card) => card.id),
+        { transaction, actor: { userId: user.id }, via: { type: "KanbanProject", id: projectId } },
+      );
+      if (cards.length < PROJECT_DELETE_CARD_PAGE) {
+        break;
+      }
+      after = cards[cards.length - 1].id;
+    }
+  });
   emitToBoard(projectId, "kanban:project:deleted", { projectId });
   return { deleted: true };
 };

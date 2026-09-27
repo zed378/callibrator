@@ -1,0 +1,197 @@
+/**
+ * D-26 (ADR-064, ADR-083) — a native ENUM's labels and the lists that mirror
+ * them are maintained separately, and nothing compared them.
+ *
+ * ADR-064 decided native ENUMs stay (a new value is an `ALTER TYPE … ADD
+ * VALUE` migration, because `sync()` never adds one). What it left open is the
+ * drift check. A value added to a constant or a validator but not to the model
+ * is accepted at the edge and then refused by PostgreSQL with a type error —
+ * a 500, not a 400; a value added to the model but not to the constant is
+ * unreachable.
+ *
+ * This reads every ENUM from the REAL models (the barrel, on an unconnected
+ * PostgreSQL-dialect Sequelize) and holds each to what mirrors it:
+ *
+ *  - a CONSTANT that lists the same values — equal, in the same order (the
+ *    order is the PostgreSQL type's sort order when sync() creates it);
+ *  - a VALIDATOR (Joi `.valid(...)` on the same key, in every exported schema
+ *    of the module that has one) — every value it admits must be a model
+ *    value, or the request passes validation and fails in the database.
+ *    `equal` validators must admit all of them too;
+ *  - NONE, with the reason: only service code writes the column.
+ *
+ * The registry must name every ENUM attribute, so a new ENUM fails here until
+ * someone says what mirrors it. The database half — each model's labels equal
+ * the labels of the column's type in `pg_enum` — is dataLayer.dbD.live.test.js
+ * on PostgreSQL 18, fresh and upgraded.
+ */
+
+jest.mock("../../config", () => {
+  const { Sequelize } = jest.requireActual("sequelize");
+  return { db: new Sequelize({ dialect: "postgres", logging: false }) };
+});
+
+const Joi = require("joi");
+const models = require("../../models");
+
+const allModels = [...new Set(Object.values(models.sequelize.models))];
+
+/** `{ "Model.attr": ["value", …] }` for every ENUM attribute of every model. */
+const modelEnums = () => {
+  const out = {};
+  for (const Model of allModels) {
+    for (const [attr, def] of Object.entries(Model.getAttributes())) {
+      if (def.type && def.type.key === "ENUM") {
+        out[`${Model.name}.${attr}`] = [...def.type.values];
+      }
+    }
+  }
+  return out;
+};
+
+const validator = (name) => require(`../../validators/${name}`);
+const constant = (name) => require(`../../constants/${name}`);
+
+/**
+ * Every `.valid(...)` list for `key` across a validator module's exported
+ * object schemas (an array schema's item list counts). `null` and `""` are not
+ * values: on a query schema they mean "no filter".
+ */
+const joiAllowLists = (mod, key) =>
+  Object.values(mod)
+    .filter((schema) => Joi.isSchema(schema) && schema.type === "object")
+    .map((schema) => (schema.describe().keys || {})[key])
+    .filter(Boolean)
+    .map((desc) => (desc.type === "array" && desc.items ? desc.items[0] : desc))
+    .filter((desc) => desc.flags && desc.flags.only)
+    .map((desc) => desc.allow.filter((value) => value !== null && value !== ""));
+
+const NO_MIRROR = "no shared list: only service code writes this column, from its own literals";
+
+/**
+ * Each ENUM attribute: its constant mirrors (equal, ordered), its validator
+ * mirrors ([module, key, "equal"|"subset"]), or `none` with the reason.
+ */
+const MIRRORS = Object.freeze({
+  "AssetFinance.depreciationMethod": { validators: [["finance.validator", "depreciationMethod", "equal"]] },
+  "AuditLog.action": {
+    constants: [
+      () => constant("auditActions").AUDIT_ACTIONS,
+      () => constant("index").AUDIT_ACTIONS,
+    ],
+  },
+  "AuditLog.actorType": { constants: [() => constant("systemActors").ACTOR_TYPE_VALUES] },
+  "BatchJob.status": { none: NO_MIRROR },
+  "CalibrationDevice.status": { validators: [["calibrationDevices.validator", "status", "equal"]] },
+  // qms.validator spreads these same constants; its `status` key is shared
+  // by the non-conformance and CAPA schemas, so the constant is the mirror.
+  "Capa.status": { constants: [() => constant("qmsConstants").CAPA_STATUSES] },
+  "Certificate.status": {
+    constants: [
+      () => Object.values(models.Certificate.STATUS),
+      () => validator("certificate.validator").CERTIFICATE_STATUS,
+    ],
+  },
+  "Certificate.type": {
+    constants: [
+      () => Object.values(models.Certificate.CERTIFICATE_TYPES),
+      () => validator("certificate.validator").CERTIFICATE_TYPES,
+    ],
+  },
+  "ConsentRecord.status": { none: NO_MIRROR },
+  "CustomDomain.domainType": { validators: [["customDomains.validator", "type", "equal"]] },
+  "CustomDomain.status": { none: "customDomains.service DOMAIN_STATUS (not loadable without the service's I/O); the live test holds the column to the model" },
+  "DsarRequest.status": { none: NO_MIRROR },
+  "DsarRequest.type": { none: NO_MIRROR },
+  "ESignatureRecord.action": { none: NO_MIRROR },
+  "ESignatureRecord.authMethod": {
+    // `sso` is written by the server for a federated session; no request may choose it.
+    validators: [
+      ["certificate.validator", "authMethod", "subset"],
+      ["workflow.validator", "authMethod", "subset"],
+    ],
+  },
+  "Invoice.status": { none: NO_MIRROR },
+  "MaintenanceWorkOrder.priority": { validators: [["maintenance.validator", "priority", "equal"]] },
+  "MaintenanceWorkOrder.status": { validators: [["maintenance.validator", "status", "equal"]] },
+  "MaintenanceWorkOrder.type": { validators: [["maintenance.validator", "type", "equal"]] },
+  "NonConformance.severity": {
+    constants: [() => constant("qmsConstants").NC_SEVERITIES],
+    validators: [["qms.validator", "severity", "equal"]],
+  },
+  "NonConformance.status": { constants: [() => constant("qmsConstants").NC_STATUSES] },
+  "Notification.type": { none: NO_MIRROR },
+  "Post.status": { validators: [["content.validator", "status", "equal"]] },
+  "Post.type": { validators: [["content.validator", "type", "equal"]] },
+  "SignatureRecord.status": { none: NO_MIRROR },
+  "SignatureWorkflow.status": { none: NO_MIRROR },
+  "SignatureWorkflowStep.status": { none: NO_MIRROR },
+  "SopDocument.status": { none: NO_MIRROR },
+  "SopTrainingAcknowledgment.status": { none: NO_MIRROR },
+  "StockAdjustment.type": { validators: [["stock.validator", "type", "equal"]] },
+  "StockOpname.status": { none: "stock.validator's `status` key is shared by the opname and transfer schemas; held by the live test" },
+  "StockTransfer.status": { none: "stock.validator's `status` key is shared by the opname and transfer schemas; held by the live test" },
+  "Subscription.billingCycle": { validators: [["billing.validator", "billingCycle", "equal"]] },
+  "Subscription.status": { validators: [["billing.validator", "status", "equal"]] },
+  "Tenant.billingCycle": { none: NO_MIRROR },
+  "Tenant.plan": { validators: [["tenantHierarchy.validator", "plan", "equal"]] },
+  "Tenant.status": { constants: [() => Object.values(constant("tenantStatus").TENANT_STATUS)] },
+  "TenantBackup.status": { constants: [() => Object.values(models.TenantBackup.STATUS)] },
+  "UsageAlert.comparison": { validators: [["meteredBilling.validator", "comparison", "equal"]] },
+  "Vendor.approvalStatus": { none: NO_MIRROR },
+  "Vendor.status": { none: NO_MIRROR },
+  "Vendor.type": { none: NO_MIRROR },
+  "Warehouse.status": { none: NO_MIRROR },
+  "WebhookDelivery.status": { none: NO_MIRROR },
+  "Workflow.resourceType": { validators: [["workflow.validator", "resourceType", "equal"]] },
+  "WorkflowAction.action": { validators: [["workflow.validator", "action", "equal"]] },
+  "WorkflowInstance.status": { none: NO_MIRROR },
+});
+
+describe("D-26 — every native ENUM is held to what mirrors it", () => {
+  const enums = modelEnums();
+
+  it("the registry names every ENUM attribute of every model, and nothing else", () => {
+    expect(Object.keys(enums).length).toBeGreaterThan(40);
+    expect(Object.keys(MIRRORS).sort()).toEqual(Object.keys(enums).sort());
+  });
+
+  it("every entry either names a mirror or says why it has none", () => {
+    for (const [key, entry] of Object.entries(MIRRORS)) {
+      const named = Boolean((entry.constants || []).length || (entry.validators || []).length);
+      expect({ key, ok: named !== Boolean(entry.none) }).toEqual({ key, ok: true });
+    }
+  });
+
+  it("a constant mirror lists exactly the model's labels, in the same order", () => {
+    for (const [key, entry] of Object.entries(MIRRORS)) {
+      for (const read of entry.constants || []) {
+        expect({ key, values: [...read()] }).toEqual({ key, values: enums[key] });
+      }
+    }
+  });
+
+  it("a validator admits only values the column can store (and all of them where it is `equal`)", () => {
+    for (const [key, entry] of Object.entries(MIRRORS)) {
+      for (const [module, field, relation] of entry.validators || []) {
+        const lists = joiAllowLists(validator(module), field);
+        // Not vacuous: the validator really constrains this key.
+        expect({ key, module, field, found: lists.length > 0 }).toEqual({ key, module, field, found: true });
+        for (const list of lists) {
+          const unstorable = list.filter((value) => !enums[key].includes(value));
+          expect({ key, module, unstorable }).toEqual({ key, module, unstorable: [] });
+          if (relation === "equal") {
+            expect({ key, module, values: [...list].sort() }).toEqual({ key, module, values: [...enums[key]].sort() });
+          }
+        }
+      }
+    }
+  });
+
+  it("bites: a validator admitting a value the ENUM lacks is reported", () => {
+    const drifted = { schema: Joi.object({ status: Joi.string().valid("Open", "Reopened") }) };
+    const [list] = joiAllowLists(drifted, "status");
+    const model = enums["MaintenanceWorkOrder.status"];
+    expect(list.filter((value) => !model.includes(value))).toEqual(["Reopened"]);
+  });
+});

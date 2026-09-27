@@ -22,6 +22,11 @@ const mockSocket = {
   }),
 };
 
+// A-42: failures are logged through winston (and its redactor), not console.
+jest.mock("../../middlewares/activityLog.middleware", () => ({
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
+}));
+
 jest.mock("../../config/socket", () => ({
   getIo: jest.fn(() => mockSocket),
 }));
@@ -71,6 +76,7 @@ const { Op } = require("sequelize");
 const { Notification, NotificationState, User } = require("../../models");
 const { getIo } = require("../../config/socket");
 const notificationChannels = require("../../services/notificationChannels.service");
+const { logger } = require("../../middlewares/activityLog.middleware");
 const {
   emitNotification,
   fetchUserNotifications,
@@ -185,17 +191,35 @@ describe("notification.service", () => {
         throw new Error("Socket not ready");
       });
 
-      const result = await emitNotification({ title: "T", message: "M" });
+      // A-42: a recipient, so the emit is actually attempted (and throws).
+      const result = await emitNotification({ title: "T", message: "M", userId: "u-1" });
       // emit is caught internally, returns transformed notification
       expect(result).toBeDefined();
       expect(result.id).toBe("n-throw");
+      expect(logger.warn).toHaveBeenCalledWith(
+        "Socket.io emit failed (server might be booting)",
+        { notificationId: "n-throw", error: "Socket not ready" },
+      );
     });
 
     it("should return null when Notification.create fails", async () => {
       Notification.create.mockRejectedValueOnce(new Error("DB down"));
 
-      const result = await emitNotification({ title: "T", message: "M" });
+      const result = await emitNotification({ title: "T", message: "M", tenantId: "t-1" });
       expect(result).toBeNull();
+      expect(logger.error).toHaveBeenCalledWith(
+        "Failed to emit notification",
+        expect.objectContaining({ tenantId: "t-1", userId: undefined, error: "DB down" }),
+      );
+    });
+
+    it("A-42: a missing payload is logged through the logger and returns null", async () => {
+      const result = await emitNotification(undefined);
+      expect(result).toBeNull();
+      expect(logger.error).toHaveBeenCalledWith(
+        "Failed to emit notification",
+        expect.objectContaining({ tenantId: undefined, userId: undefined }),
+      );
     });
 
     it("W-04: with a transaction, writes in it and delivers only after the COMMIT", async () => {
@@ -368,7 +392,7 @@ describe("notification.service", () => {
     });
 
     it("should swallow a channel dispatch failure and still return the notification", async () => {
-      const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+      const warnSpy = logger.warn;
       Notification.create.mockResolvedValueOnce(
         mockNotification({ id: "n-chfail", userId: "u-1" }),
       );
@@ -384,11 +408,11 @@ describe("notification.service", () => {
 
       // Dispatch failures must never block the caller's main flow.
       expect(result).not.toBeNull();
-      expect(warnSpy).toHaveBeenCalledWith(
-        "Notification channel dispatch failed:",
-        "SMTP down",
-      );
-      warnSpy.mockRestore();
+      expect(warnSpy).toHaveBeenCalledWith("Notification channel dispatch failed", {
+        notificationId: "n-chfail",
+        channels: ["email"],
+        error: "SMTP down",
+      });
     });
 
     it("does not emit when the notification has neither userId nor tenantId", async () => {

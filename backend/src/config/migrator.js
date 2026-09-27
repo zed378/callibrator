@@ -98,6 +98,11 @@ const migrationModules = [
   ["0067-foreign-key-and-tenant-indexes.js", require("../migrations/0067-foreign-key-and-tenant-indexes")],
   ["0070-custom-domain-partial-uniqueness.js", require("../migrations/0070-custom-domain-partial-uniqueness")],
   ["0078-user-temporary-password-expiry.js", require("../migrations/0078-user-temporary-password-expiry")],
+  ["0086-user-mfa-secrets-kms-envelope.js", require("../migrations/0086-user-mfa-secrets-kms-envelope")],
+  ["0087-tenant-backup-path-and-expiry.js", require("../migrations/0087-tenant-backup-path-and-expiry")],
+  ["0088-attachment-file-purged-at.js", require("../migrations/0088-attachment-file-purged-at")],
+  ["0089-calibration-device-retired-terminal.js", require("../migrations/0089-calibration-device-retired-terminal")],
+  ["0090-webhook-secret-rotation-overlap.js", require("../migrations/0090-webhook-secret-rotation-overlap")],
 ];
 
 const migrator = new Umzug({

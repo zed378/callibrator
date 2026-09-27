@@ -132,6 +132,29 @@ describe("D-27 — and refuse the wrong shape, naming the column", () => {
     },
   );
 
+  // P6-02: a correction copies a record's `results` — null when the record had
+  // none — and the shape check refused the null with a 500. Nullness belongs
+  // to `allowNull`, not the shape.
+  it.each(jsonAttributes().map(({ key, def }) => [key, def.allowNull !== false]))(
+    "%s: null is decided by allowNull (nullable: %s), never by the shape",
+    async (key, nullable) => {
+      const attr = key.split(".")[1];
+      let messages = [];
+      try {
+        await buildWith(key, null).validate({ fields: [attr] });
+      } catch (err) {
+        messages = err.errors.filter((e) => e.path === attr).map((e) => e.message);
+      }
+      expect(messages.some((m) => m.includes("wrong shape"))).toBe(false);
+      expect(messages.length > 0).toBe(!nullable);
+    },
+  );
+
+  it("the shape validator itself passes null through", () => {
+    expect(() => jsonShape("CalibrationRecord.results")(null)).not.toThrow();
+    expect(() => jsonShape("CalibrationRecord.results")(3)).toThrow("wrong shape");
+  });
+
   it("every declared column has good AND bad fixtures here", () => {
     expect(Object.keys(GOOD).sort()).toEqual(Object.keys(JSON_SHAPES).sort());
     expect(Object.keys(BAD).sort()).toEqual(Object.keys(JSON_SHAPES).sort());

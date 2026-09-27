@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { API_BASE_URL } from "@/constants";
 import { clientIpHeader } from "@/lib/clientIp";
 import { writeSessionCookies } from "@/lib/authCookies";
+import { isSameOriginRequest } from "@/lib/sameOrigin";
 
 /**
  * SSO session bootstrap (A-60).
@@ -19,6 +20,10 @@ import { writeSessionCookies } from "@/lib/authCookies";
  *
  * The access token is not returned to the browser: it lives only in the
  * httpOnly cookie.
+ *
+ * F-09: a request that did not come from a page on this origin — another
+ * site's `Origin`, a cross-site `Sec-Fetch-Site`, or no `Origin` at all — is
+ * refused before the body is read (lib/sameOrigin.ts).
  */
 
 // 32 random bytes, base64url — the backend's ssoExchangeSchema.
@@ -37,6 +42,10 @@ const refuse = (message: string, status: number) =>
   NextResponse.json({ success: false, status, message }, { status });
 
 export async function POST(req: NextRequest) {
+  if (!isSameOriginRequest(req.headers, req.nextUrl.host)) {
+    return refuse("Cross-origin request refused", 403);
+  }
+
   let body: unknown;
   try {
     body = await req.json();

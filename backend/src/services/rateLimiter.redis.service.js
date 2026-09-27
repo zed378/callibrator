@@ -120,7 +120,48 @@ function clientAddress(req) {
 // IN-MEMORY FALLBACK (Redis outage only)
 // ============================================================
 
+// W-19 (ADR-079) — the fallback is BOUNDED. It used to expire an entry only
+// when that key was read again, which a per-IP bucket from a one-off address
+// never is: a spray from many addresses during an outage grew the Map for the
+// life of the process. Now:
+//  - a sweep every MEMORY_SWEEP_INTERVAL_MS deletes expired entries. Its timer
+//    is unref'd (it cannot keep the process alive) and stops when the Map is
+//    empty;
+//  - the Map holds at most RATE_LIMIT_MEMORY_MAX_KEYS entries (default
+//    100000). Writing a new key at the cap evicts the entry written longest
+//    ago (a write moves its key to the end), and says so at `warn`, at most
+//    once a minute. An evicted counter restarts from zero: at the cap, the
+//    fallback under-counts rather than growing without limit.
 const memoryStore = new Map();
+const DEFAULT_MEMORY_MAX_KEYS = 100000;
+const MEMORY_SWEEP_INTERVAL_MS = 60 * 1000;
+let memorySweepTimer = null;
+let lastEvictionWarnAt = 0;
+
+const memoryMaxKeys = () => {
+  const n = Number(process.env.RATE_LIMIT_MEMORY_MAX_KEYS);
+  return Number.isInteger(n) && n > 0 ? n : DEFAULT_MEMORY_MAX_KEYS;
+};
+
+/**
+ * Delete every expired entry of the memory fallback (W-19).
+ * @param {number} [now]
+ * @returns {number} entries removed
+ */
+function sweepMemoryStore(now = Date.now()) {
+  let removed = 0;
+  for (const [key, entry] of memoryStore) {
+    if (now > entry.expiresAt) {
+      memoryStore.delete(key);
+      removed += 1;
+    }
+  }
+  if (memoryStore.size === 0 && memorySweepTimer) {
+    clearInterval(memorySweepTimer);
+    memorySweepTimer = null;
+  }
+  return removed;
+}
 
 function memoryGet(key) {
   const entry = memoryStore.get(key);
@@ -133,7 +174,27 @@ function memoryGet(key) {
 }
 
 function memorySet(key, value, ttlMs) {
+  // Re-inserted, so the Map's order is last-written order.
+  memoryStore.delete(key);
+  const max = memoryMaxKeys();
+  let evicted = 0;
+  for (const oldest of memoryStore.keys()) {
+    if (memoryStore.size < max) {break;}
+    memoryStore.delete(oldest);
+    evicted += 1;
+  }
+  if (evicted > 0 && Date.now() - lastEvictionWarnAt >= MEMORY_SWEEP_INTERVAL_MS) {
+    lastEvictionWarnAt = Date.now();
+    logger.warn(
+      `Rate limiter memory fallback is at its cap of ${max} keys (RATE_LIMIT_MEMORY_MAX_KEYS): ` +
+        "the oldest counters are being evicted while Redis is unavailable",
+    );
+  }
   memoryStore.set(key, { ...value, expiresAt: Date.now() + ttlMs });
+  if (!memorySweepTimer) {
+    memorySweepTimer = setInterval(sweepMemoryStore, MEMORY_SWEEP_INTERVAL_MS);
+    memorySweepTimer.unref();
+  }
 }
 
 function memoryDel(key) {
@@ -283,6 +344,13 @@ async function storeTtl(key, fallbackMs) {
  */
 function clearMemoryStore() {
   memoryStore.clear();
+  sweepMemoryStore();
+  lastEvictionWarnAt = 0;
+}
+
+/** W-19: the memory fallback's size and whether its sweep is running (tests, diagnostics). */
+function memoryStoreStats() {
+  return { size: memoryStore.size, maxKeys: memoryMaxKeys(), sweeping: memorySweepTimer !== null };
 }
 
 // ============================================================
@@ -1177,4 +1245,6 @@ module.exports = {
 
   // Admin functions
   clearMemoryStore,
+  sweepMemoryStore,
+  memoryStoreStats,
 };

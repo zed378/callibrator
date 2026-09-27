@@ -17,6 +17,7 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
 jest.mock("../../services/alert.service", () => ({
   SEVERITY: { CRITICAL: "critical", WARNING: "warning", RESOLVED: "resolved" },
   raiseAlert: jest.fn(async () => ({ webhook: "not-configured", email: "not-configured" })),
+  describeRouting: jest.fn(() => ({ routed: true, webhook: "hooks.example.test", email: "off" })),
 }));
 jest.mock("../../services/redis.service", () => ({ getRedisConnection: jest.fn() }));
 jest.mock("../../models", () => ({ BatchJob: { findAll: jest.fn() } }));

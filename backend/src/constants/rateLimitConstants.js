@@ -129,6 +129,18 @@ const AUTH_ENDPOINTS = {
     description: "User create/edit identity conflicts",
     persistUserLockout: false,
   },
+  // A-37 (ADR-075, Q-18 for SCIM): the same budget for a SCIM credential —
+  // an API key scoped scim:write provisions users with tenant-admin power.
+  // Keyed by the API KEY id (never the target address), so each key an
+  // administrator mints has its own ten answers an hour, each one audited.
+  // persistUserLockout: false — the id is a key's, not an account's.
+  scimIdentityConflict: {
+    maxAttempts: 10,
+    windowMs: WINDOW.HOUR,
+    lockoutMs: WINDOW.HOUR,
+    description: "SCIM user identity conflicts",
+    persistUserLockout: false,
+  },
 };
 
 /**

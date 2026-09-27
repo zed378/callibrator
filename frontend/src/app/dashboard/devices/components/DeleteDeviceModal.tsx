@@ -28,7 +28,8 @@ export const DeleteDeviceModal: React.FC<DeleteDeviceModalProps> = ({
           <div>
             <p className="font-semibold text-foreground">Are you absolutely sure?</p>
             <p className="text-sm text-muted-foreground mt-1">
-              This will soft-delete the calibration device. It can only be restored via database admin tools.
+              This will soft-delete the calibration device and its attachments. Its calibration history is kept,
+              and a tenant administrator can restore it.
             </p>
           </div>
         </div>

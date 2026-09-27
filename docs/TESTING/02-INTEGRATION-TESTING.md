@@ -163,7 +163,7 @@ it("cannot delete an audit row as the application role", async () => {
 
 | Fixture | Why |
 |---|---|
-| **`createTwoTenants()`** | one line. Twenty lines of setup means the IDOR test gets skipped |
+| **`createTwoTenants()`** | one line. Twenty lines of setup means the IDOR test gets skipped. `backend/src/tests/fixtures/twoTenants.js` (A-63) — **in memory, not a database fixture** (ADR-088): it creates no rows, so a PostgreSQL integration test still seeds its own two tenants |
 | `createUser(tenant, role)` | |
 | `seedDemo()` | ~80 rows; **defect #15 was only visible once there was data** |
 

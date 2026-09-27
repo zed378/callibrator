@@ -1,4 +1,5 @@
 const path = require('path');
+const { logger } = require('../middlewares/activityLog.middleware');
 
 module.exports = {
   async up({ context }) {
@@ -77,9 +78,9 @@ module.exports = {
           );
         `);
 
-        console.log(`RLS policy applied to ${tableName}`);
+        logger.info('RLS policy applied', { table: tableName });
       } catch (err) {
-        console.warn(`RLS setup skipped for ${tableName}: ${err.message}`);
+        logger.warn('RLS setup skipped', { table: tableName, error: err.message });
       }
     }
   },
@@ -145,9 +146,9 @@ module.exports = {
           ALTER TABLE "${tableName}" DISABLE ROW LEVEL SECURITY;
         `);
 
-        console.log(`RLS policy removed from ${tableName}`);
+        logger.info('RLS policy removed', { table: tableName });
       } catch (err) {
-        console.warn(`RLS removal skipped for ${tableName}: ${err.message}`);
+        logger.warn('RLS removal skipped', { table: tableName, error: err.message });
       }
     }
   }

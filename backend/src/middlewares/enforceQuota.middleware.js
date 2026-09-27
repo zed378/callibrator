@@ -49,9 +49,16 @@ const enforceStorageQuota = () => async (req, res, next) => {
     const incomingBytes = Number(req.headers["content-length"]) || 0;
     const status = await quotaService.checkStorageQuota(tenantId, incomingBytes);
     if (!status.allowed) {
+      // ADR-084 (Q-06): a tenant with its own bucket is still bounded, because
+      // uploads are still written to platform storage. Say so, or the refusal
+      // reads as a defect to the tenant that configured the bucket.
+      const ownStorage = status.ownStorage
+        ? " Your organisation has configured its own storage, but uploads are still written to " +
+          "platform storage, so they count against this limit."
+        : "";
       throw new AppError(
         413,
-        `Storage limit reached (${Math.round(status.usedMb)}MB of ${status.limitMb}MB used). Upgrade your plan or free up space.`,
+        `Storage limit reached (${Math.round(status.usedMb)}MB of ${status.limitMb}MB used). Upgrade your plan or free up space.${ownStorage}`,
       );
     }
     return next();

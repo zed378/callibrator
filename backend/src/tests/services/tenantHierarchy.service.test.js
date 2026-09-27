@@ -349,83 +349,6 @@ describe("tenantHierarchy.service", () => {
     });
   });
 
-  describe("getDataVisibilityScope", () => {
-    it("should return self scope", async () => {
-      jest.resetModules();
-      tenantHierarchyService = require("../../services/tenantHierarchy.service");
-
-      const result = await tenantHierarchyService.getDataVisibilityScope(
-        "tenant-1",
-        "self",
-      );
-
-      expect(result.tenantIds).toEqual(["tenant-1"]);
-      expect(result.scope).toBe("self");
-    });
-
-    it("should return subtree scope", async () => {
-      const mockHierarchy = {
-        findOne: jest.fn().mockResolvedValue({
-          path: "/parent",
-        }),
-        findAll: jest
-          .fn()
-          .mockResolvedValue([{ tenantId: "desc-1" }, { tenantId: "desc-2" }]),
-      };
-      const mockModels = { TenantHierarchy: mockHierarchy };
-      jest.doMock("../../models", () => mockModels);
-
-      jest.resetModules();
-      tenantHierarchyService = require("../../services/tenantHierarchy.service");
-
-      const result = await tenantHierarchyService.getDataVisibilityScope(
-        "tenant-1",
-        "subtree",
-      );
-
-      expect(result.tenantIds).toContain("tenant-1");
-      expect(result.tenantIds).toContain("desc-1");
-      expect(result.tenantIds).toContain("desc-2");
-      expect(result.scope).toBe("subtree");
-    });
-
-    it("should return self scope for unknown scope", async () => {
-      jest.resetModules();
-      tenantHierarchyService = require("../../services/tenantHierarchy.service");
-
-      const result = await tenantHierarchyService.getDataVisibilityScope(
-        "tenant-1",
-        "unknown",
-      );
-
-      expect(result.tenantIds).toEqual(["tenant-1"]);
-      expect(result.scope).toBe("self");
-    });
-  });
-
-  describe("buildTenantFilter", () => {
-    it("should return tenant filter with in clause", async () => {
-      const mockHierarchy = {
-        findOne: jest.fn().mockResolvedValue({
-          path: "/parent",
-        }),
-        findAll: jest.fn().mockResolvedValue([{ tenantId: "desc-1" }]),
-      };
-      const mockModels = { TenantHierarchy: mockHierarchy };
-      jest.doMock("../../models", () => mockModels);
-
-      jest.resetModules();
-      tenantHierarchyService = require("../../services/tenantHierarchy.service");
-
-      const result = await tenantHierarchyService.buildTenantFilter(
-        "tenant-1",
-        "subtree",
-      );
-
-      expect(result.tenantId).toBeDefined();
-    });
-  });
-
   describe("getUserRolesAcrossTenants", () => {
     it("should return user roles across tenants", async () => {
       const mockUser = {
@@ -490,19 +413,6 @@ describe("tenantHierarchy.service", () => {
       expect(status.maxDepth).toBe(10);
       // A-134: the role cascade is gone; the flag is no longer read or reported.
       expect(status).not.toHaveProperty("cascadeRoles");
-    });
-  });
-
-  describe("HIERARCHY_SCOPE", () => {
-    it("should have correct scope values", () => {
-      jest.resetModules();
-      const {
-        HIERARCHY_SCOPE,
-      } = require("../../services/tenantHierarchy.service");
-
-      expect(HIERARCHY_SCOPE.SELF).toBe("self");
-      expect(HIERARCHY_SCOPE.SUBTREE).toBe("subtree");
-      expect(HIERARCHY_SCOPE.ALL).toBe("all");
     });
   });
 });

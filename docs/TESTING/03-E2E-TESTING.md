@@ -94,6 +94,8 @@ describe("IDOR", () => {
 
 A **one-line fixture** is what decides whether this test gets written for a new endpoint. Twenty lines of setup means it gets skipped, and the sweep decays into covering only what someone had time for.
 
+**The sample above is the target, not code that runs today (ADR-088).** `createTwoTenants()` exists (`backend/src/tests/fixtures/twoTenants.js`, A-63) but it is a **synchronous, in-memory** unit/route fixture — it creates no tenants on a live server, and it returns `tenantA`/`tenantB`, not `{ a, b }`. `asTenant(…)` is not a helper in the E2E suite (`backend/src/tests/e2e/setup.js` exports `httpGet`/`httpPost`-style calls with one seeded principal). No live E2E spec found on 2026-09-27 acts as a user of one tenant against another tenant's resource (`tenants.e2e.test.js` creates a tenant, as the super admin), so the live IDOR sweep does not exist yet; the two-tenant 404 is proven at route level by the 32 test files that use the fixture.
+
 ### Cases easy to miss
 
 - an authenticated principal with **no** tenant sees zero rows — the deny branch

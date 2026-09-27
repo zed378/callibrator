@@ -26,13 +26,9 @@ exports.addChild = Joi.object({
     .default("free"),
 }).options({ abortEarly: false, stripUnknown: true });
 
-/**
- * Validate role assignment
- */
-exports.assignRole = Joi.object({
-  roleId: Joi.string().uuid().required(),
-  scope: Joi.string().valid("self", "subtree").default("subtree"),
-}).options({ abortEarly: false, stripUnknown: true });
+// ADR-084 (Q-05): `assignRole` — a role granted "across the hierarchy" with a
+// default scope of "subtree" — was removed. Its handler went under A-255, and
+// a hierarchy grants no reach into another tenant.
 
 /**
  * Format validation errors

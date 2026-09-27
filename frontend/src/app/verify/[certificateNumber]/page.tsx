@@ -13,7 +13,7 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import AuroraBackground from "@/components/motion/AuroraBackground";
-import { API_BASE_URL } from "@/constants";
+import { toSameOriginApiPath } from "@/lib/uploadUrl";
 
 // ------------------------------------------------------------------
 // Public certificate-validation page.
@@ -166,8 +166,10 @@ function CertificateVerifyContent() {
     };
   }, [certificateNumber]);
 
-  const pdfUrl =
-    data?.documentUrl ? `${API_BASE_URL}${data.documentUrl}` : null;
+  // F-11: the document link is a same-origin `/api/v1/...` path, served by
+  // the Next proxy — never prefixed with the backend origin, which the
+  // auditor's browser cannot reach on the documented deployment.
+  const pdfUrl = toSameOriginApiPath(data?.documentUrl);
 
   return (
     <main className="relative min-h-screen">

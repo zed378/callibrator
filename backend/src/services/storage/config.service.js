@@ -1,10 +1,15 @@
 /**
  * Storage configuration: the platform default, and each tenant's own override.
  *
- * This is the cost lever behind the whole storage module. A tenant that brings
- * its own bucket pays its own storage bill and is no longer bounded by the
- * platform's per-tenant quota; a tenant that does not falls back to the shared
- * platform bucket.
+ * This is the cost lever behind the whole storage module: a tenant that brings
+ * its own bucket pays its own storage bill; a tenant that does not falls back to
+ * the shared platform bucket.
+ *
+ * A tenant's own bucket does NOT lift its `limitStorageMb` today (ADR-084,
+ * Q-06). The quota bounds what the platform holds, and the attachment upload
+ * path still writes every file to platform storage — it was never cut over to
+ * this module (docs/STORAGE/04). The exemption applies per attachment once its
+ * bytes live only in the tenant's storage; see quota.service.js.
  *
  *   1. tenant-configured provider  (TenantSettings, credentials KMS-encrypted)
  *   2. global default provider     (environment)

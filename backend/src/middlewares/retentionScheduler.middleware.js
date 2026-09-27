@@ -52,14 +52,42 @@ const initRetentionScheduler = () => {
 
   const task = cron.schedule(schedule, () =>
     runMonitored(JOB, runSweep, {
-      isFailure: (summary) =>
-        summary.errors > 0
-          ? `${summary.errors} tenant(s) failed during the purge`
+      isFailure: failureOf,
+      // ADR-082: a sweep that ran out of its budget alerts as a warning (W-17).
+      isIncomplete: (summary) =>
+        summary.incomplete > 0
+          ? `${summary.incomplete} tenant(s) still hold data past its window after this run's budget`
           : null,
     }),
   );
   registerJob(JOB, task, schedule);
 };
+
+/**
+ * Why a completed sweep counts as failed, or null. W-16 (ADR-079): a retention
+ * value that could not be applied is a failure too; before, it made a tenant
+ * silently never purge. W-15: so is an expired GDPR export the sweep could
+ * not delete — personal data kept past its expiry.
+ *
+ * @param {{errors: number, anomalies?: number, exportErrors?: number}} summary
+ * @returns {string|null}
+ */
+function failureOf(summary) {
+  const reasons = [];
+  if (summary.errors > 0) {
+    reasons.push(`${summary.errors} tenant(s) failed during the purge`);
+  }
+  if (summary.anomalies > 0) {
+    reasons.push(
+      `${summary.anomalies} retention setting(s) are not a whole number of days ` +
+        "(the platform default was applied; the error log names each tenant and key)",
+    );
+  }
+  if (summary.exportErrors > 0) {
+    reasons.push(`${summary.exportErrors} expired GDPR export(s) could not be deleted`);
+  }
+  return reasons.length ? reasons.join("; ") : null;
+}
 
 /** One scheduled sweep: logs its summary, rethrows so the run is a failure. */
 const runSweep = async () => {
@@ -69,7 +97,8 @@ const runSweep = async () => {
     logger.info(
       `Retention sweep complete: tenants=${summary.tenants}, ` +
         `purged=${summary.purged}, skipped=${summary.skipped}, ` +
-        `errors=${summary.errors}`,
+        `errors=${summary.errors}, incomplete=${summary.incomplete}, ` +
+        `anomalies=${summary.anomalies}, exportsDeleted=${summary.exportsDeleted}`,
     );
     return summary;
   } catch (error) {
@@ -78,4 +107,4 @@ const runSweep = async () => {
   }
 };
 
-module.exports = { initRetentionScheduler };
+module.exports = { initRetentionScheduler, failureOf };

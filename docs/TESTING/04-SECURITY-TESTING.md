@@ -64,7 +64,7 @@ Fix: an independently maintained list, or a mutation check.
 
 **404, not 403.** A 403 confirms the resource exists, turning id enumeration into a tenant-membership oracle.
 
-`createTwoTenants()` as a one-line fixture is what decides whether this gets written for a new endpoint.
+`createTwoTenants()` as a one-line fixture is what decides whether this gets written for a new endpoint. It is `backend/src/tests/fixtures/twoTenants.js` (A-63): synchronous and in memory, so "create a resource as A" is a model double holding the row; the SQL-level hooks are tested against PostgreSQL (ADR-088).
 
 ### The one known oracle
 

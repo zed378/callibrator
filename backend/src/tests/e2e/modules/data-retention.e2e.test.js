@@ -9,13 +9,10 @@
  *  - DELETE /tenants/:tenantId/legal-hold — disable legal hold (super admin)
  *  - POST /tenants/:tenantId/purge        — purge expired records (super admin)
  *
- * KNOWN DEFECTS captured here:
- *  1. setRetentionPolicy validates req.BODY against a schema requiring tenantId
- *     (the tenantId lives in the PATH), so the swagger-documented body
- *     {policyKey, days} is rejected; the body must also carry tenantId.
- *  2. enableLegalHold builds its schema by spreading a Joi object
- *     ({ ...tenantIdSchema, reason }) and calling schema.validate — the spread
- *     loses the prototype .validate method, throwing and returning HTTP 500.
+ * P6-02 (2026-09-27): the policy tests set `notifications`, not `audit_logs`.
+ * Audit rows have no retention window (ADR-069, dataRetention.service
+ * #setRetentionPolicy answers 400 for `audit_logs`), so the spec asserted a
+ * contract the product deliberately removed. That refusal is asserted below.
  */
 const { httpGet, httpPost, httpPut, httpDelete, extractToken, authHeader } = require("../setup");
 
@@ -62,7 +59,7 @@ describe("E2E Data Retention (HTTP)", () => {
   test("PUT /tenants/:tenantId/policy — succeeds only when body carries tenantId", async () => {
     const { status } = await httpPut(
       `/tenants/${tenantId}/policy`,
-      { tenantId, policyKey: "audit_logs", days: 365 },
+      { tenantId, policyKey: "notifications", days: 365 },
       authHeader(token),
     );
     expect(status).toBe(200);
@@ -71,10 +68,20 @@ describe("E2E Data Retention (HTTP)", () => {
   test("PUT /tenants/:tenantId/policy — accepts body {policyKey,days} (tenantId from path)", async () => {
     const { status } = await httpPut(
       `/tenants/${tenantId}/policy`,
-      { policyKey: "audit_logs", days: 365 },
+      { policyKey: "notifications", days: 365 },
       authHeader(token),
     );
     expect([200, 201]).toContain(status);
+  });
+
+  test("PUT /tenants/:tenantId/policy — 400 for audit_logs: audit rows are never purged (ADR-069)", async () => {
+    const { status, body } = await httpPut(
+      `/tenants/${tenantId}/policy`,
+      { policyKey: "audit_logs", days: 365 },
+      authHeader(token),
+    );
+    expect(status).toBe(400);
+    expect(body.message).toMatch(/audit/i);
   });
 
   test("POST /tenants/:tenantId/legal-hold — 200 with a proper schema (tenantId from path)", async () => {

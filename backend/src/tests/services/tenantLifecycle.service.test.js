@@ -102,6 +102,7 @@ describe("tenantLifecycle.service", () => {
       const mockSave = jest.fn();
       Tenant.findByPk.mockResolvedValue({
         id: "t1",
+        status: "suspended", // W-21: only a suspended tenant has a grace period
         save: mockSave,
       });
 

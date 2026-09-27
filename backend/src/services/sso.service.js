@@ -160,9 +160,9 @@ exports.parseAndVerifyResponse = async (samlResponseBase64, ssoSettings) => {
         );
       }
     } catch (err) {
-      console.error("SSO CRYPTO ERROR:", err);
       logger.error("SAML cryptographic verification failed", {
         error: err.message,
+        stack: err.stack,
       });
       throw new AppError(
         401,

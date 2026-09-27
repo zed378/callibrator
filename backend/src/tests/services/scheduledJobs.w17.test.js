@@ -25,6 +25,10 @@ jest.mock("../../services/audit.service", () => ({ logAction: jest.fn().mockReso
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));
+// W-15: the retention sweep ends with the GDPR export sweep (gdpr.exportSweep.w15.test.js).
+jest.mock("../../services/gdpr.service", () => ({
+  purgeExpiredExports: jest.fn().mockResolvedValue({ deleted: 0, errors: 0 }),
+}));
 jest.mock("../../services/tenantBackup.service", () => ({
   BACKUP_DIR: require("path").join(require("os").tmpdir(), "w17-scheduled-jobs", "backups"),
   createBackup: jest.fn(),
@@ -80,6 +84,7 @@ describe("retention purge (W-12, W-17)", () => {
       purged: { notifications: 5, sessions: 1 },
       skipped: false,
       complete: true,
+      anomalies: [],
     });
     expect(db.transaction).toHaveBeenCalledTimes(3);
     // Every destroy is bounded.
@@ -112,7 +117,7 @@ describe("retention purge (W-12, W-17)", () => {
 
     const result = await retention.purgeExpiredRecords("t1");
 
-    expect(result).toEqual({ tenantId: "t1", purged: {}, skipped: false, complete: true });
+    expect(result).toEqual({ tenantId: "t1", purged: {}, skipped: false, complete: true, anomalies: [] });
     expect(db.transaction).not.toHaveBeenCalled();
   });
 
@@ -128,7 +133,7 @@ describe("retention purge (W-12, W-17)", () => {
 
     const summary = await retention.runRetentionSweep({ pageSize: 2 });
 
-    expect(summary).toEqual({ tenants: 3, purged: 0, skipped: 0, errors: 0, incomplete: 0 });
+    expect(summary).toEqual({ tenants: 3, purged: 0, skipped: 0, errors: 0, incomplete: 0, anomalies: 0, exportsDeleted: 0, exportErrors: 0 });
     const [first, second] = models.Tenant.findAll.mock.calls.map(([opts]) => opts);
     expect(first).toMatchObject({ where: {}, limit: 2, order: [["id", "ASC"]] });
     expect(second.where).toEqual({ id: { [Op.gt]: "t2" } });
@@ -141,7 +146,7 @@ describe("retention purge (W-12, W-17)", () => {
 
     const summary = await retention.runRetentionSweep({ batchSize: 3, budgetMs: -1 });
 
-    expect(summary).toEqual({ tenants: 1, purged: 3, skipped: 0, errors: 0, incomplete: 1 });
+    expect(summary).toEqual({ tenants: 1, purged: 3, skipped: 0, errors: 0, incomplete: 1, anomalies: 0, exportsDeleted: 0, exportErrors: 0 });
   });
 });
 

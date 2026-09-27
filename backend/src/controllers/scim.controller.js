@@ -8,6 +8,19 @@ const {
   validate,
 } = require("../validators/scim.validator");
 
+/**
+ * A-37 (ADR-075) — who is provisioning: the API key (budgeted and audited as
+ * `system:scim`), or null for a super admin's JWT, which is neither.
+ *
+ * @param {import("express").Request} req
+ * @returns {{apiKeyId: (string|null), ipAddress: (string|null), userAgent: (string|null)}}
+ */
+const scimActor = (req) => ({
+  apiKeyId: req.user?.isApiKey ? req.user.id : null,
+  ipAddress: req.ip || null,
+  userAgent: req.headers?.["user-agent"] || null,
+});
+
 exports.getUsers = asyncHandler(async (req, res) => {
   const { startIndex = 1, count = 100, filter } = req.query;
   const result = await scimService.getUsers(req.user?.tenantId, Number(startIndex), Number(count), filter);
@@ -21,7 +34,7 @@ exports.getUserById = asyncHandler(async (req, res) => {
 
 exports.createUser = asyncHandler(async (req, res) => {
   const validated = validate(req.body, scimUserSchema);
-  const result = await scimService.createUser(req.user?.tenantId, validated);
+  const result = await scimService.createUser(req.user?.tenantId, validated, scimActor(req));
   res.status(201).json({ success: true, status: 201, message: "SCIM user created", data: result });
 });
 
@@ -33,7 +46,12 @@ exports.updateUser = asyncHandler(async (req, res) => {
 
 exports.patchUser = asyncHandler(async (req, res) => {
   const validated = validate(req.body, scimPatchSchema);
-  const result = await scimService.patchUser(req.user?.tenantId, req.params.id, validated.Operations || []);
+  const result = await scimService.patchUser(
+    req.user?.tenantId,
+    req.params.id,
+    validated.Operations || [],
+    scimActor(req),
+  );
   success(res, result, null, "SCIM user patched");
 });
 

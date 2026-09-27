@@ -16,6 +16,7 @@ const path = require("path");
 
 const migration = require("../../migrations/0032-esignature-technical-roles-only");
 const { ROLE_MENU_ASSIGNMENTS, ROLE_IDS, ROLE_NAMES, MENU_SLUGS } = require("../../constants");
+const { logger } = require("../../middlewares/activityLog.middleware");
 
 const SOURCE = fs.readFileSync(
   path.join(__dirname, "../../migrations/0032-esignature-technical-roles-only.js"),
@@ -44,7 +45,8 @@ const fakeQueryInterface = ({ seeded = true, kept = [], stranded = [] } = {}) =>
 
 let warn;
 beforeEach(() => {
-  warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+  // A-42: the report goes through winston (and its redactor), not console.
+  warn = jest.spyOn(logger, "warn").mockImplementation(() => {});
 });
 afterEach(() => {
   warn.mockRestore();
@@ -107,9 +109,13 @@ describe("migration 0032 — esignature for the technical roles only (A-129)", (
     await migration.up({ context: qi });
 
     expect(qi.state.writes).toHaveLength(1); // the DELETE only
-    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/kept the "write" esignature grant of role "USER"/));
     expect(warn).toHaveBeenCalledWith(
-      expect.stringMatching(/workflow wf-1 \(tenant t-1\) step 2 names a "ROOM USER" signer/),
+      expect.stringMatching(/^0032: kept an esignature grant that is not the untouched default/),
+      { migration: "0032", role: "USER", permission: "write" },
+    );
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringMatching(/^0032: an open workflow step names a signer/),
+      { migration: "0032", tenantId: "t-1", workflowId: "wf-1", stepNumber: 2, role: "ROOM USER" },
     );
   });
 

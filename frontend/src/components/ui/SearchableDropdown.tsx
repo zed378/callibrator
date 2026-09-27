@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback, useId } from "react";
 import { Search, X } from "lucide-react";
 
 interface Option {
@@ -19,6 +19,13 @@ interface SearchableDropdownProps {
   renderOption?: (option: Option) => React.ReactNode;
   searchPlaceholder?: string;
   emptyMessage?: string;
+  /**
+   * F-12: put on the trigger button, so a `<label htmlFor>` (or a FormField)
+   * names it and its message is read with it — the pattern of ui/Select.
+   */
+  id?: string;
+  "aria-describedby"?: string;
+  "aria-label"?: string;
 }
 
 export const SearchableDropdown: React.FC<SearchableDropdownProps> = ({
@@ -32,7 +39,13 @@ export const SearchableDropdown: React.FC<SearchableDropdownProps> = ({
   renderOption,
   searchPlaceholder = "Search...",
   emptyMessage = "No results found.",
+  id,
+  "aria-describedby": ariaDescribedBy,
+  "aria-label": ariaLabel,
 }) => {
+  const generatedId = useId();
+  const listboxId = `${generatedId}-listbox`;
+  const optionId = (index: number) => `${generatedId}-option-${index}`;
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [highlightIndex, setHighlightIndex] = useState(-1);
@@ -131,6 +144,11 @@ export const SearchableDropdown: React.FC<SearchableDropdownProps> = ({
     <div ref={containerRef} className={`relative w-full ${className}`}>
       <button
         type="button"
+        id={id}
+        aria-describedby={ariaDescribedBy}
+        aria-label={ariaLabel}
+        aria-expanded={isOpen}
+        aria-controls={isOpen ? listboxId : undefined}
         disabled={disabled}
         onClick={() => {
           if (!disabled) {
@@ -172,18 +190,6 @@ export const SearchableDropdown: React.FC<SearchableDropdownProps> = ({
               {placeholder}
             </span>
           )}
-          {value && allowClear && !disabled && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleClear();
-              }}
-              className="shrink-0 p-0.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          )}
         </div>
         <svg
           className={`w-4 h-4 flex-shrink-0 transition-transform duration-200 text-muted-foreground ${
@@ -192,6 +198,7 @@ export const SearchableDropdown: React.FC<SearchableDropdownProps> = ({
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
+          aria-hidden="true"
         >
           <path
             strokeLinecap="round"
@@ -201,17 +208,39 @@ export const SearchableDropdown: React.FC<SearchableDropdownProps> = ({
           />
         </svg>
       </button>
+      {/* F-12: the clear control sits BESIDE the trigger (a button inside a
+          button is invalid and was unreachable), and says what it does. */}
+      {value && allowClear && !disabled && (
+        <button
+          type="button"
+          aria-label="Clear selection"
+          onClick={(e) => {
+            e.stopPropagation();
+            handleClear();
+          }}
+          className="absolute right-10 top-1/2 -translate-y-1/2 shrink-0 p-0.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+        >
+          <X aria-hidden="true" className="w-3.5 h-3.5" />
+        </button>
+      )}
 
       {isOpen && (
         <div
           className="absolute z-50 left-0 right-0 mt-2 rounded-xl shadow-xl overflow-hidden backdrop-blur-md animate-scale-in origin-top bg-white/95 text-foreground"
-          role="listbox"
         >
           <div className="relative border-b border-border">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+            <Search
+              aria-hidden="true"
+              className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none"
+            />
             <input
               ref={searchInputRef}
               type="text"
+              aria-label="Search options"
+              aria-controls={listboxId}
+              aria-activedescendant={
+                highlightIndex >= 0 ? optionId(highlightIndex) : undefined
+              }
               value={searchTerm}
               onChange={(e) => {
                 // A new term re-filters the list: the old highlight no longer
@@ -224,10 +253,18 @@ export const SearchableDropdown: React.FC<SearchableDropdownProps> = ({
               className="w-full pl-9 pr-4 py-2.5 bg-transparent border-none focus:outline-none text-sm text-foreground placeholder:text-muted-foreground"
             />
           </div>
-          <ul className="max-h-60 overflow-y-auto py-1">
+          {/* F-12: the listbox is the list itself, named — not a wrapper
+              that also holds the search box. */}
+          <ul
+            id={listboxId}
+            role="listbox"
+            aria-label={ariaLabel || "Options"}
+            className="max-h-60 overflow-y-auto py-1"
+          >
             {filteredOptions.map((option, index) => (
               <li
                 key={option.value}
+                id={optionId(index)}
                 onClick={() => handleOptionClick(option.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
@@ -251,12 +288,12 @@ export const SearchableDropdown: React.FC<SearchableDropdownProps> = ({
                 {renderOption ? renderOption(option) : option.label}
               </li>
             ))}
-            {filteredOptions.length === 0 && (
-              <li className="px-4 py-2 text-sm text-muted-foreground">
-                {emptyMessage}
-              </li>
-            )}
           </ul>
+          {filteredOptions.length === 0 && (
+            <p role="status" className="px-4 py-2 text-sm text-muted-foreground">
+              {emptyMessage}
+            </p>
+          )}
         </div>
       )}
     </div>

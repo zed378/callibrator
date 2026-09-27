@@ -19,6 +19,8 @@ const storagePath = require("../utils/storagePath.util");
 const { deleteUpload } = require("../utils/upload.util");
 const { db } = require("../config");
 const auditService = require("./audit.service");
+const { SYSTEM_ACTORS } = require("../constants/systemActors");
+const { runForTenant } = require("../utils/jobContext.util");
 
 // ==========================================
 // CONFIGURATION
@@ -48,8 +50,27 @@ exports.exportUserData = async (tenantId, userId, options = {}) => {
 
   const exportId = generateExportId();
   const exportDir = storagePath("exports", exportId);
+  const zipPath = storagePath("exports", `${exportId}.zip`);
+  const manifestPath = storagePath("exports", `${exportId}.json`);
+  const createdAt = new Date();
+  const expiresAt = new Date(createdAt.getTime() + EXPORT_RETENTION_HOURS * 3600000);
 
   try {
+    // W-15 (ADR-079): the manifest is written FIRST, so every file this export
+    // leaves on disk, even after a crash part-way, has a recorded expiry and
+    // owner that the retention sweep (purgeExpiredExports) enforces.
+    await fs.promises.mkdir(storagePath("exports"), { recursive: true });
+    await fs.promises.writeFile(
+      manifestPath,
+      JSON.stringify({
+        exportId,
+        tenantId,
+        userId,
+        createdAt: createdAt.toISOString(),
+        expiresAt: expiresAt.toISOString(),
+      }),
+    );
+
     // Create export directory
     await fs.promises.mkdir(exportDir, { recursive: true });
 
@@ -66,10 +87,12 @@ exports.exportUserData = async (tenantId, userId, options = {}) => {
     await exportAuditLogs(exportDir, tenantId, userId);
 
     // Create ZIP archive
-    const zipPath = await createZipArchive(exportDir, exportId);
+    await createZipArchive(exportDir, zipPath);
 
-    // Schedule cleanup
-    scheduleExportCleanup(exportDir, zipPath);
+    // W-15: the unpacked copy has no use once zipped; it used to wait for the
+    // same seven-day timer as the ZIP. The ZIP's expiry is the manifest's, and
+    // the retention sweep deletes it. There is no in-process timer.
+    await fs.promises.rm(exportDir, { recursive: true, force: true });
 
     logger.info("User data export completed", {
       tenantId,
@@ -80,9 +103,7 @@ exports.exportUserData = async (tenantId, userId, options = {}) => {
     return {
       exportId,
       downloadUrl: `/api/v1/gdpr/exports/${exportId}/download`,
-      expiresAt: new Date(
-        Date.now() + EXPORT_RETENTION_HOURS * 3600000,
-      ).toISOString(),
+      expiresAt: expiresAt.toISOString(),
       fileSize: await getFileSize(zipPath),
     };
   } catch (err) {
@@ -92,8 +113,11 @@ exports.exportUserData = async (tenantId, userId, options = {}) => {
       error: err.message,
     });
     // A-151: an unpacked export must not linger on disk for 7 days with no
-    // cleanup scheduled; `force` makes a missing directory a no-op.
+    // cleanup scheduled; `force` makes a missing directory a no-op. W-15: nor
+    // a half-written ZIP, nor the manifest of an export that does not exist.
     await fs.promises.rm(exportDir, { recursive: true, force: true });
+    await fs.promises.rm(zipPath, { force: true });
+    await fs.promises.rm(manifestPath, { force: true });
     // A-151: "no such subject" is a 404 — it was rewritten into a 500.
     if (err instanceof AppError && err.status < 500) {
       throw err;
@@ -444,8 +468,7 @@ async function exportAuditLogs(exportDir, tenantId, userId) {
 /**
  * Create ZIP archive of export
  */
-async function createZipArchive(exportDir, exportId) {
-  const zipPath = storagePath("exports", `${exportId}.zip`);
+async function createZipArchive(exportDir, zipPath) {
   const output = fs.createWriteStream(zipPath);
   const archive = archiver("zip", { zlib: { level: 9 } });
 
@@ -460,26 +483,102 @@ async function createZipArchive(exportDir, exportId) {
   });
 }
 
-/**
- * Schedule export cleanup
- */
-function scheduleExportCleanup(exportDir, zipPath) {
-  const cleanupTime = EXPORT_RETENTION_HOURS * 3600000;
+/** An export's files: `<id>.json` (manifest), `<id>.zip`, and the `<id>` working directory. */
+const EXPORT_ENTRY = /^(export-(\d+)-[0-9a-f]+)(\.zip|\.json)?$/;
 
-  setTimeout(() => {
-    try {
-      if (fs.existsSync(exportDir)) {
-        fs.rmSync(exportDir, { recursive: true, force: true });
-      }
-      if (fs.existsSync(zipPath)) {
-        fs.unlinkSync(zipPath);
-      }
-      logger.info("Export cleaned up", { exportId: path.basename(exportDir) });
-    } catch (err) {
-      logger.warn("Export cleanup failed", { error: err.message });
+/**
+ * W-15 (ADR-079): delete every GDPR export whose expiry has passed. Run by the
+ * nightly retention sweep (dataRetention.service#runRetentionSweep).
+ *
+ * The expiry used to be enforced only by a `setTimeout` in the process that
+ * built the export: any restart inside the seven days left the subject's
+ * exported personal data on disk for good. The expiry is now on disk with the
+ * file, in its manifest, and this sweep enforces it whatever process wrote it.
+ *
+ * - An export with a manifest: its ZIP and working directory are deleted, then
+ *   one audit row is written in the export's tenant, naming the retention job
+ *   (`system:retention-purge`) and the subject. The manifest goes last, so an
+ *   audit row that failed is retried by the next sweep.
+ * - An export with no manifest (written before W-15): its expiry is the
+ *   creation time in its id plus EXPORT_RETENTION_HOURS. Its owner is not
+ *   recorded anywhere, so it is deleted and logged, not audited.
+ * - Anything else in the directory is left alone.
+ *
+ * @param {object} [opts]
+ * @param {Date} [opts.now]
+ * @returns {Promise<{deleted: number, errors: number}>}
+ */
+exports.purgeExpiredExports = async ({ now = new Date() } = {}) => {
+  const dir = storagePath("exports");
+  const result = { deleted: 0, errors: 0 };
+  let names;
+  try {
+    names = await fs.promises.readdir(dir);
+  } catch (err) {
+    if (err.code === "ENOENT") {
+      return result;
     }
-  }, cleanupTime);
-}
+    logger.error(`GDPR export sweep could not read ${dir}: ${err.message}`);
+    result.errors += 1;
+    return result;
+  }
+
+  const exportsById = new Map();
+  for (const name of names) {
+    const match = EXPORT_ENTRY.exec(name);
+    if (match) {
+      const entry = exportsById.get(match[1]) || { createdMs: Number(match[2]), manifest: false };
+      entry.manifest = entry.manifest || match[3] === ".json";
+      exportsById.set(match[1], entry);
+    }
+  }
+
+  for (const [exportId, entry] of exportsById) {
+    const manifestPath = path.join(dir, `${exportId}.json`);
+    try {
+      const manifest = entry.manifest
+        ? JSON.parse(await fs.promises.readFile(manifestPath, "utf8"))
+        : null;
+      const expiresMs = manifest
+        ? Date.parse(manifest.expiresAt)
+        : entry.createdMs + EXPORT_RETENTION_HOURS * 3600000;
+      // A manifest whose expiry does not parse (NaN) is treated as expired:
+      // personal data with no readable expiry is not kept.
+      if (now.getTime() < expiresMs) {
+        continue;
+      }
+      await fs.promises.rm(path.join(dir, `${exportId}.zip`), { force: true });
+      await fs.promises.rm(path.join(dir, exportId), { recursive: true, force: true });
+      if (manifest) {
+        await runForTenant(manifest.tenantId, () =>
+          auditService.logAction({
+            tenantId: manifest.tenantId,
+            systemActor: SYSTEM_ACTORS.RETENTION_PURGE,
+            action: "DELETE",
+            resourceType: "DataExport",
+            resourceId: exportId,
+            changes: {
+              operation: "GDPR_EXPORT_EXPIRED",
+              actor: SYSTEM_ACTORS.RETENTION_PURGE,
+              subjectUserId: manifest.userId,
+              createdAt: manifest.createdAt,
+              expiresAt: manifest.expiresAt,
+            },
+          }),
+        );
+        await fs.promises.rm(manifestPath, { force: true });
+      } else {
+        logger.info(`GDPR export ${exportId} expired and deleted (no manifest: written before W-15)`);
+      }
+      result.deleted += 1;
+    } catch (err) {
+      result.errors += 1;
+      logger.error(`GDPR export sweep could not delete ${exportId}: ${err.message}`);
+    }
+  }
+
+  return result;
+};
 
 /**
  * Get file size

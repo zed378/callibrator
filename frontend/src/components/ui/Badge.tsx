@@ -14,6 +14,8 @@ interface BadgeProps {
   size?: "sm" | "md";
   removable?: boolean;
   onRemove?: () => void;
+  /** F-12: the remove button's accessible name — say WHAT it removes. */
+  removeLabel?: string;
   className?: string;
 }
 
@@ -23,6 +25,7 @@ export const Badge: React.FC<BadgeProps> = ({
   size = "md",
   removable = false,
   onRemove,
+  removeLabel = "Remove",
   className = "",
 }) => {
   const variantStyles = {
@@ -50,10 +53,12 @@ export const Badge: React.FC<BadgeProps> = ({
         <span className="inline-flex items-center gap-1">
           {children}
           <button
+            type="button"
+            aria-label={removeLabel}
             onClick={onRemove}
             className="inline-flex items-center justify-center w-4 h-4 ml-1 rounded-full hover:bg-foreground/10"
           >
-            <X className="h-3 w-3" />
+            <X aria-hidden="true" className="h-3 w-3" />
           </button>
         </span>
       ) : (

@@ -1,4 +1,5 @@
 import React, { forwardRef } from "react";
+import { useFieldA11y } from "./fieldA11y";
 
 interface DateFieldProps
   extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "onChange"> {
@@ -9,15 +10,29 @@ interface DateFieldProps
 }
 
 export const DateField = forwardRef<HTMLInputElement, DateFieldProps>(
-  ({ label, error, helperText, onChange, value, ...props }, ref) => {
+  ({ label, error, helperText, onChange, value, id, ...props }, ref) => {
+    // F-12: label, control and message are associated. Inside a FormField the
+    // field's own id / aria-invalid / aria-describedby arrive in `props` and
+    // win, since FormField renders the label and the message.
+    const { controlId, messageId, describedBy, invalid } = useFieldA11y(
+      id,
+      error,
+      helperText,
+    );
     return (
       <div>
         {label && (
-          <label className="block text-sm font-medium mb-2 text-muted-foreground">
+          <label
+            htmlFor={controlId}
+            className="block text-sm font-medium mb-2 text-muted-foreground"
+          >
             {label}
           </label>
         )}
         <input
+          id={controlId}
+          aria-invalid={invalid}
+          aria-describedby={describedBy}
           type="date"
           value={value || ""}
           onChange={(e) => onChange(e.target.value)}
@@ -34,10 +49,10 @@ export const DateField = forwardRef<HTMLInputElement, DateFieldProps>(
           {...props}
         />
         {error && (
-          <p className="mt-1 text-sm text-destructive">{error}</p>
+          <p id={messageId} className="mt-1 text-sm text-destructive">{error}</p>
         )}
         {helperText && !error && (
-          <p className="mt-1 text-sm text-muted-foreground">{helperText}</p>
+          <p id={messageId} className="mt-1 text-sm text-muted-foreground">{helperText}</p>
         )}
       </div>
     );

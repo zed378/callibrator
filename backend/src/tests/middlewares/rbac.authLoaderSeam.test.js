@@ -108,7 +108,11 @@ const drive = async (roleKey, gateRoles) => {
     .spyOn(sequelize.connectionManager, "releaseConnection")
     .mockImplementation(() => undefined);
 
-  const token = generateAccessToken({ id: USER_ID });
+  // P6-12: an access token names its session; the session is live.
+  jest
+    .spyOn(require("../../services/session.service"), "isSessionLive")
+    .mockResolvedValue(true);
+  const token = generateAccessToken({ id: USER_ID, sid: "00000000-0000-4000-8000-0000000000a1" });
   const req = {
     headers: { authorization: `Bearer ${token}` },
     params: {},

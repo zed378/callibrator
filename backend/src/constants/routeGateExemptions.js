@@ -252,13 +252,6 @@ const ROUTE_GATE_EXEMPTIONS = {
         "tenant-wide aggregate counts for the landing page every role opens after sign-in; FACILITY MAINTENANCE and WAREHOUSE STAFF hold no `dashboard` grant, so gating it breaks their landing page. Open question: grant `dashboard` read to every role, or scope metrics per role",
     },
   },
-  "api/quota.route.js": {
-    "GET /": {
-      kind: ACCEPTED,
-      decision: "ADR-058 (P6-04) — own-tenant quota",
-      reason: "the caller's own tenant's usage counts (quota.controller: req.user.tenantId); the natural gate, `billing`, is unreachable for every seeded tenant role (Q-20)",
-    },
-  },
   "internal/health.route.js": {
     "GET /live": { kind: PUBLIC, reason: "liveness probe; dependency-free, discloses nothing (A-06/A-15)" },
     "GET /ready": { kind: PUBLIC, reason: "readiness probe; aggregate verdict only (A-06/A-15)" },

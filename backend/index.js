@@ -30,6 +30,7 @@ const {
 const { notFound } = require("./src/middlewares/notFound.middleware");
 
 const { errorHandler } = require("./src/middlewares/errorHandlers.middleware");
+const { requestTimeoutHandler } = require("./src/middlewares/requestTimeout.middleware");
 
 const { cronBackup } = require("./src/middlewares/backup.middleware");
 
@@ -54,6 +55,7 @@ const {
   initQuarantineSweep,
 } = require("./src/middlewares/quarantineSweepScheduler.middleware");
 const { initWebhookDeliveryPurge } = require("./src/middlewares/webhookDeliveryPurgeScheduler.middleware");
+const { initAttachmentFileSweep } = require("./src/middlewares/attachmentFileSweepScheduler.middleware");
 const { startWatchdog: initJobWatchdog } = require("./src/services/jobMonitor.service");
 
 const { initRedis, closeRedis } = require("./src/services/redis.service");
@@ -180,8 +182,9 @@ app.use(
         process.env.NODE_ENV === "production" &&
         allowedOrigins.length === 0
       ) {
-        console.warn(
-          `CORS error: "${origin}" rejected — no CORS_ORIGIN configured in production`,
+        logger.warn(
+          "CORS error: origin rejected — no CORS_ORIGIN configured in production",
+          { origin },
         );
         return callback(new Error("Not allowed by CORS"));
       }
@@ -299,16 +302,6 @@ app.use((req, res, next) => {
   }
 });
 
-app.use((err, req, res, next) => {
-  if (err.timeout) {
-    return res.status(408).json({
-      status: "Error",
-      message: "Request timeout",
-    });
-  }
-
-  next(err);
-});
 
 // ======================================================
 // REQUEST ID
@@ -547,6 +540,13 @@ app.use(notFound);
 // ERROR HANDLER
 // ======================================================
 
+// F-14: a request that outran timeout("30s") answers 408 in the envelope.
+// connect-timeout raises its error from wherever the request has got to —
+// past every route — so the handler that catches it must sit HERE, at the
+// end. The inline 408 handler that sat right after timeout() was never
+// reached: a timed-out request answered 503 "Response timeout" from
+// errorHandler (src/tests/middlewares/requestTimeout.f14.test.js).
+app.use(requestTimeoutHandler);
 app.use(errorHandler);
 
 // ======================================================
@@ -576,26 +576,20 @@ async function startServer() {
 
     // Ensure ALL tables exist before seeding.
     // Sync model definitions with the database without alter constraints
-    await db.sync();
-    logger.info("All database tables synced");
-
     // NOTE: Postgres ROW LEVEL SECURITY is no longer applied. It is
     // Postgres-only (incompatible with running on multiple database engines)
     // and its policy carried a fail-open branch. Tenant isolation is enforced
     // in the ORM layer by utils/tenantScope.util.js (deny-by-default) for every
     // dialect. Migration 0013 drops any policies left on existing databases.
 
-    // Apply pending schema/data migrations (versioned, non-destructive) on top
-    // of the model-driven sync — for column renames, custom indexes, backfills.
+    // db.sync(), then pending schema/data migrations (versioned,
+    // non-destructive) on top of it — for column renames, custom indexes,
+    // backfills. P8-03 (ADR-086): both run under a PostgreSQL advisory lock,
+    // so of two replicas starting together one migrates and the other WAITS,
+    // then finds nothing pending.
     const { migrator } = require("./src/config/migrator");
-    const applied = await migrator.up();
-    if (applied.length) {
-      logger.info(
-        `Applied ${applied.length} migration(s): ${applied
-          .map((m) => m.name)
-          .join(", ")}`,
-      );
-    }
+    const { runSchemaSetup } = require("./src/utils/migrationLock.util");
+    await runSchemaSetup({ sequelize: db, migrator, logger });
 
     // ADR-043 step 5, phase 2 — the roles table against the role constants.
     // It needs the database, so it runs only here: after Connection() (a down
@@ -620,6 +614,12 @@ async function startServer() {
     // columns it holds no privilege on.
     const { assertSchemaMatchesModels } = require("./src/utils/schemaVerify.util");
     await assertSchemaMatchesModels({ sequelize: db, logger });
+
+    // P7-05 (ADR-078) — a database restored without the KMS_MASTER_KEY it was
+    // written under used to boot cleanly and fail per request. Every envelope's
+    // key id must be in the configured ring (KMS_VERIFY=warn to continue).
+    const { assertKmsKeysConfigured } = require("./src/utils/kmsVerify.util");
+    await assertKmsKeysConfigured({ sequelize: db, logger });
 
     // P6-03 — from here on every query runs as DB_APP_ROLE, which has no
     // UPDATE/DELETE on calibration_records. db.sync() and the migrator above
@@ -648,6 +648,8 @@ async function startServer() {
     initQuarantineSweep();
     // ADR-070: finished webhook deliveries past retention, daily, bounded, audited.
     initWebhookDeliveryPurge();
+    // D-22 (ADR-083): files of attachments deleted past retention, daily, bounded, audited.
+    initAttachmentFileSweep();
     // P7-02: every job above records its runs and alerts on failure; the
     // watchdog alerts on a run that did not happen and on stuck batch jobs.
     initJobWatchdog();
@@ -694,8 +696,8 @@ async function startServer() {
       logger.info(`Server running on port ${port}`);
     });
   } catch (error) {
-    console.error("STARTUP ERROR:", error);
-    logger.error(`Failed to start server: ${error.message}`);
+    // A-42: one redacted JSON line with the stack, not an unredacted console dump.
+    logger.error("Failed to start server", { error: error.message, stack: error.stack });
     process.exit(1);
   }
 }

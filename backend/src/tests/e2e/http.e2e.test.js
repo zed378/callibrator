@@ -16,13 +16,17 @@
 const {
   httpPost,
   httpGet,
+  API_BASE,
 } = require("./setup");
 
 // A-185: failed sign-ins are throttled per identifier and address (five per
 // fifteen minutes, an unknown identifier exactly like a real one). A fixed
 // address here would be paused by a second run inside that window; each run
 // uses its own.
-const UNKNOWN_EMAIL = `nobody-${Date.now()}@e2e.invalid`;
+// P6-02: under example.com — `.invalid` is reserved but not an IANA TLD, so
+// the login schema's email() refused it with a 400 and the 401 path was never
+// reached.
+const UNKNOWN_EMAIL = `nobody-${Date.now()}@e2e.example.com`;
 
 describe("E2E HTTP Protocol & Error Handling (HTTP)", () => {
   // ─── 1. CONTENT TYPES ──────────────────────────────────────
@@ -128,7 +132,7 @@ describe("E2E HTTP Protocol & Error Handling (HTTP)", () => {
   // ─── 6. MALFORMED JSON — via native fetch ──────────────────
 
   test("POST /auth/login — malformed JSON returns 400", async () => {
-    const resp = await fetch("http://localhost:5000/api/v1/auth/login", {
+    const resp = await fetch(`${API_BASE}/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: "{invalid json}",
@@ -184,7 +188,7 @@ describe("E2E HTTP Protocol & Error Handling (HTTP)", () => {
   // ─── 10. COMPRESSION ───────────────────────────────────────
 
   test("Response accepts gzip encoding", async () => {
-    const resp = await fetch("http://localhost:5000/api/v1/auth/login", {
+    const resp = await fetch(`${API_BASE}/auth/login`, {
       method: "GET",
       headers: { "Accept-Encoding": "gzip, deflate" },
       signal: AbortSignal.timeout(3000),

@@ -27,7 +27,8 @@ const crypto = require("crypto");
 const { Op, fn } = require("sequelize");
 // `db` from config, NOT from the models barrel (CLAUDE.md, traps).
 const { db } = require("../config");
-const { Webhook, WebhookDelivery, AuditLog } = require("../models");
+const { Webhook, WebhookDelivery } = require("../models");
+const auditService = require("./audit.service");
 const { encryptData, decryptData } = require("./kms.service");
 const { AppError } = require("../utils/appError.util");
 const { DEFAULT_LIMIT, MAX_LIMIT } = require("../constants");
@@ -98,23 +99,43 @@ const sealSecret = (tenantId, plaintext) => encryptData(tenantId, plaintext);
 // written before migration 0022 still signs with its plaintext secret.
 const secretForSigning = (webhook) => decryptData(webhook.tenantId, webhook.secret);
 
-// The audit row for a secret change. It records THAT the secret changed and
-// why, never the secret itself — old or new.
-const auditSecretRotation = (webhook, actor, reason, extra, transaction) =>
-  AuditLog.create(
+// The audit row for a webhook change, written inside the change's transaction
+// (CLAUDE.md) through audit.service#logAction — the single write path for
+// audit_logs, which names the actor (A-124) and re-throws inside a transaction,
+// so the change rolls back with a failed row. `changes` never carries a secret
+// — old, new or previous — only that it changed and why (P6-13 pins this).
+//
+// P6-13 found: this used to call AuditLog.create directly, which sets no
+// `actorType`. That column has been NOT NULL since migration 0033 (A-124), so
+// every rotation and every url change failed with a 500 and rolled back — behind
+// unit tests that mocked AuditLog.create.
+const auditWebhook = (webhook, actor, action, changes, transaction) =>
+  auditService.logAction(
     {
       tenantId: webhook.tenantId,
       userId: actor.userId || null,
-      action: "UPDATE",
+      action,
       resourceType: "Webhook",
       resourceId: webhook.id,
-      changes: { secretRotated: true, reason, ...extra },
+      changes,
       ipAddress: actor.ipAddress || null,
       userAgent: actor.userAgent || null,
     },
     { transaction },
   );
 
+const auditSecretRotation = (webhook, actor, reason, extra, transaction) =>
+  auditWebhook(webhook, actor, "UPDATE", { secretRotated: true, reason, ...extra }, transaction);
+
+// P6-13 (ADR-085): the end of a rotation's overlap window, while it is open.
+const overlapEndsAt = (w) =>
+  w.previousSecret && w.previousSecretExpiresAt && new Date(w.previousSecretExpiresAt) > new Date()
+    ? new Date(w.previousSecretExpiresAt)
+    : null;
+
+// The fields an API response may carry. The secret is returned only by the
+// three calls that issue one (create, rotate, a url change); the previous
+// secret never.
 const publicWebhook = (w) => ({
   id: w.id,
   tenantId: w.tenantId,
@@ -124,7 +145,16 @@ const publicWebhook = (w) => ({
   isActive: w.isActive,
   createdBy: w.createdBy,
   createdAt: w.createdAt,
-  // secret is returned only on creation (see createWebhook)
+  // P6-13: when the replaced secret stops signing, or null.
+  previousSecretExpiresAt: overlapEndsAt(w),
+});
+
+// The auditable, secret-free fields — the before/after of an audit row.
+const auditedFields = (w) => ({
+  url: w.url,
+  events: w.events,
+  description: w.description,
+  isActive: w.isActive,
 });
 
 // ------------------------------------------------------------------
@@ -133,7 +163,11 @@ const publicWebhook = (w) => ({
 // A-51: there is no `secret` parameter. Until 2026-09-24 one was honoured, and
 // the controller spread the request body into it — `{"secret":"a"}` created a
 // webhook whose signatures anyone could forge.
-exports.createWebhook = async (tenantId, { url, events, description, isActive, createdBy }) => {
+exports.createWebhook = async (
+  tenantId,
+  { url, events, description, isActive, createdBy },
+  actor = {},
+) => {
   if (!url) {
     throw new AppError(400, "url is required");
   }
@@ -143,14 +177,27 @@ exports.createWebhook = async (tenantId, { url, events, description, isActive, c
     throw new AppError(400, "events must be a non-empty array");
   }
   const secret = generateSecret();
-  const webhook = await Webhook.create({
-    tenantId,
-    url,
-    events,
-    description: description || null,
-    isActive: isActive !== undefined ? isActive : true,
-    secret: sealSecret(tenantId, secret),
-    createdBy: createdBy || null,
+  const webhook = await db.transaction(async (transaction) => {
+    const created = await Webhook.create(
+      {
+        tenantId,
+        url,
+        events,
+        description: description || null,
+        isActive: isActive !== undefined ? isActive : true,
+        secret: sealSecret(tenantId, secret),
+        createdBy: createdBy || null,
+      },
+      { transaction },
+    );
+    await auditWebhook(
+      created,
+      { userId: createdBy || null, ...actor },
+      "CREATE",
+      { after: auditedFields(created) },
+      transaction,
+    );
+    return created;
   });
   // Return the plaintext secret exactly once, at creation time.
   return { ...publicWebhook(webhook), secret };
@@ -207,14 +254,28 @@ exports.updateWebhook = async (tenantId, id, data, actor = {}) => {
   }
   const urlChanged = patch.url !== undefined && patch.url !== webhook.url;
   if (!urlChanged) {
-    await webhook.update(patch);
+    const before = auditedFields(webhook);
+    await db.transaction(async (transaction) => {
+      await webhook.update(patch, { transaction });
+      await auditWebhook(webhook, actor, "UPDATE", { before, after: auditedFields(webhook) }, transaction);
+    });
     return publicWebhook(webhook);
   }
 
   const previousUrl = webhook.url;
   const secret = generateSecret();
   await db.transaction(async (transaction) => {
-    await webhook.update({ ...patch, secret: sealSecret(tenantId, secret) }, { transaction });
+    // P6-13: a url change ends any rotation overlap — the new host must not be
+    // signed with a key the old host holds, under either header.
+    await webhook.update(
+      {
+        ...patch,
+        secret: sealSecret(tenantId, secret),
+        previousSecret: null,
+        previousSecretExpiresAt: null,
+      },
+      { transaction },
+    );
     await auditSecretRotation(
       webhook,
       actor,
@@ -226,23 +287,44 @@ exports.updateWebhook = async (tenantId, id, data, actor = {}) => {
   return { ...publicWebhook(webhook), secret };
 };
 
-// Issue a new secret, invalidating the old one immediately. There is no
-// overlap window: a delivery signed after this call carries the new secret,
-// so the receiver must be updated before the next event (or it rejects it and
-// the delivery retries — see 04-WEBHOOK-RETRY.md).
-exports.rotateSecret = async (tenantId, id, actor = {}) => {
+// Issue a new secret, returned once (P6-13, ADR-085). The replaced secret
+// keeps signing for `overlapHours` — every delivery in that window also
+// carries X-Webhook-Signature-Previous under it — so a receiver that accepts
+// either header switches without a coordinated cut-over. `overlapHours: 0`
+// ends the old secret at once (a suspected leak). Rotating again inside a
+// window replaces the previous secret: only one old key is ever live.
+exports.rotateSecret = async (tenantId, id, actor = {}, { overlapHours = 24 } = {}) => {
   const webhook = await loadOwned(tenantId, id);
   const secret = generateSecret();
+  const hours = Number(overlapHours) > 0 ? Number(overlapHours) : 0;
+  const expiresAt = hours > 0 ? new Date(Date.now() + hours * 60 * 60 * 1000) : null;
   await db.transaction(async (transaction) => {
-    await webhook.update({ secret: sealSecret(tenantId, secret) }, { transaction });
-    await auditSecretRotation(webhook, actor, "rotated", {}, transaction);
+    await webhook.update(
+      {
+        secret: sealSecret(tenantId, secret),
+        // The envelope as stored: the previous secret is never plaintext either.
+        previousSecret: expiresAt ? webhook.secret : null,
+        previousSecretExpiresAt: expiresAt,
+      },
+      { transaction },
+    );
+    await auditSecretRotation(
+      webhook,
+      actor,
+      "rotated",
+      { overlapHours: hours, previousSecretExpiresAt: expiresAt },
+      transaction,
+    );
   });
   return { ...publicWebhook(webhook), secret };
 };
 
-exports.deleteWebhook = async (tenantId, id) => {
+exports.deleteWebhook = async (tenantId, id, actor = {}) => {
   const webhook = await loadOwned(tenantId, id);
-  await webhook.softDelete();
+  await db.transaction(async (transaction) => {
+    await webhook.softDelete({ transaction });
+    await auditWebhook(webhook, actor, "DELETE", { before: auditedFields(webhook) }, transaction);
+  });
   return { id };
 };
 
@@ -283,6 +365,12 @@ const attemptDelivery = async (webhook, delivery) => {
   const body = JSON.stringify(bodyObj);
   const timestamp = Math.floor(Date.now() / 1000);
   const signature = sign(secretForSigning(webhook), timestamp, body);
+  // P6-13: inside a rotation's overlap window, the same bytes signed under the
+  // replaced secret too. Absent outside it — a receiver reads its absence as
+  // "the old secret no longer signs".
+  const previousSignature = overlapEndsAt(webhook)
+    ? sign(decryptData(webhook.tenantId, webhook.previousSecret), timestamp, body)
+    : null;
 
   // SSRF backstop: resolve the host and block internal addresses immediately
   // before dispatch (defends against a hostname that resolves internally, or
@@ -309,6 +397,7 @@ const attemptDelivery = async (webhook, delivery) => {
         "X-Webhook-Delivery": delivery.id,
         "X-Webhook-Timestamp": String(timestamp),
         "X-Webhook-Signature": `v1=${signature}`,
+        ...(previousSignature ? { "X-Webhook-Signature-Previous": `v1=${previousSignature}` } : {}),
       },
       body,
       signal: controller.signal,

@@ -92,6 +92,23 @@ const isRedactedSettingKey = (key) =>
   isSecretSettingKey(key) ||
   (typeof key === "string" && REDACTED_KEY_PREFIXES.some((p) => key.startsWith(p)));
 
+/**
+ * A-179 / A-263 — a `tenants.settings` JSONB value with every key
+ * `isRedactedSettingKey` names removed, for a tenant row leaving the server.
+ * A non-object value (null, an array, a string) is returned as it is.
+ *
+ * @param {*} settings - the column value
+ * @returns {*} the same shape, without credential keys
+ */
+const withoutRedactedSettings = (settings) => {
+  if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
+    return settings;
+  }
+  return Object.fromEntries(
+    Object.entries(settings).filter(([key]) => !isRedactedSettingKey(key)),
+  );
+};
+
 module.exports = {
   SECRET_SETTING_KEYS,
   SECRET_KEY_PATTERN,
@@ -101,4 +118,5 @@ module.exports = {
   isSecretSettingKey,
   isEnvelopeSettingKey,
   isRedactedSettingKey,
+  withoutRedactedSettings,
 };

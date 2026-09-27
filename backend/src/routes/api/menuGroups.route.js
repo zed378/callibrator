@@ -363,9 +363,9 @@ router.post(
  *         application/json:
  *           schema:
  *             type: object
- *             required: [id]
+ *             required: [menuGroupId]
  *             properties:
- *               id:
+ *               menuGroupId:
  *                 type: string
  *                 format: uuid
  *                 description: Menu group ID to delete

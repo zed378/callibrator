@@ -9,6 +9,11 @@ jest.mock("../../config", () => ({
 jest.mock("../../services/audit.service", () => ({
   logAction: jest.fn().mockResolvedValue({}),
 }));
+// W-15: the sweep ends by deleting expired GDPR exports; that is tested in
+// gdpr.exportSweep.w15.test.js, and here it must not touch the real directory.
+jest.mock("../../services/gdpr.service", () => ({
+  purgeExpiredExports: jest.fn().mockResolvedValue({ deleted: 0, errors: 0 }),
+}));
 // A-180: a masked account's photo file is deleted after the commit.
 jest.mock("../../utils/upload.util", () => ({ deleteUpload: jest.fn().mockResolvedValue(true) }));
 
@@ -303,16 +308,24 @@ describe("dataRetention.service", () => {
       expect(Math.round(ageDays)).toBe(30);
     });
 
-    it("keeps an entity whose stored period does not parse", async () => {
+    // W-16: this used to assert the defect: an unparsable period made the
+    // entity silently never purge. It now purges on the platform default and
+    // the value is reported (dataRetention.policy.w16.test.js).
+    it("purges an entity whose stored period does not parse on the platform default", async () => {
       TenantSettings.findOne.mockResolvedValue(null);
       TenantSettings.findAll.mockResolvedValue([
         { key: "retention_policy_sessions", value: "forever" },
       ]);
       Notification.destroy.mockResolvedValue(0);
+      Session.destroy.mockResolvedValue(0);
 
-      await dataRetention.purgeExpiredRecords("t1");
+      const result = await dataRetention.purgeExpiredRecords("t1");
 
-      expect(Session.destroy).not.toHaveBeenCalled();
+      const cutoff = Session.destroy.mock.calls[0][0].where.createdAt[Op.lt];
+      expect(Math.round((Date.now() - cutoff.getTime()) / 86400000)).toBe(30);
+      expect(result.anomalies).toEqual([
+        { entity: "sessions", source: "tenant_settings", value: "forever", appliedDays: 30 },
+      ]);
     });
 
     it("skips purge when legal hold is active", async () => {
@@ -529,7 +542,7 @@ describe("dataRetention.service", () => {
 
       expect(spy).toHaveBeenCalledWith("t1", expect.objectContaining({ batchSize: 5000 }));
       expect(spy).toHaveBeenCalledWith("t2", expect.objectContaining({ batchSize: 5000 }));
-      expect(summary).toEqual({ tenants: 2, purged: 7, skipped: 1, errors: 0, incomplete: 0 });
+      expect(summary).toEqual({ tenants: 2, purged: 7, skipped: 1, errors: 0, incomplete: 0, anomalies: 0, exportsDeleted: 0, exportErrors: 0 });
     });
 
     it("treats a missing purged map as zero", async () => {
@@ -540,7 +553,7 @@ describe("dataRetention.service", () => {
 
       const summary = await dataRetention.runRetentionSweep();
 
-      expect(summary).toEqual({ tenants: 1, purged: 0, skipped: 0, errors: 0, incomplete: 0 });
+      expect(summary).toEqual({ tenants: 1, purged: 0, skipped: 0, errors: 0, incomplete: 0, anomalies: 0, exportsDeleted: 0, exportErrors: 0 });
     });
 
     it("counts and logs a per-tenant failure without aborting the sweep", async () => {
@@ -552,7 +565,7 @@ describe("dataRetention.service", () => {
 
       const summary = await dataRetention.runRetentionSweep();
 
-      expect(summary).toEqual({ tenants: 2, purged: 3, skipped: 0, errors: 1, incomplete: 0 });
+      expect(summary).toEqual({ tenants: 2, purged: 3, skipped: 0, errors: 1, incomplete: 0, anomalies: 0, exportsDeleted: 0, exportErrors: 0 });
     });
   });
 });

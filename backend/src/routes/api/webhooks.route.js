@@ -6,7 +6,11 @@ const { ROLE_NAMES } = require("../../constants");
 const { validateUuid } = require("../../middlewares/validateUuid.middleware");
 const { requireFeature } = require("../../middlewares/enforceQuota.middleware");
 const { validate } = require("../../middlewares/validation.middleware");
-const { createWebhookSchema, updateWebhookSchema } = require("../../validators/webhook.validator");
+const {
+  createWebhookSchema,
+  updateWebhookSchema,
+  rotateWebhookSecretSchema,
+} = require("../../validators/webhook.validator");
 
 // A-02. A webhook is an outbound channel out of the tenant: its target URL
 // decides where this tenant's data is POSTed, and its secret signs it. Until
@@ -53,7 +57,7 @@ const webhookController = require("../../controllers/webhook.controller");
  *               isActive: { type: boolean }
  *     description: >
  *       The signing secret is generated server-side and returned once, in this
- *       response. A `secret` in the request body is ignored (stripped).
+ *       response. A `secret` in the request body is refused with 400 (P6-13).
  *     responses:
  *       201: { description: Webhook created (secret returned once) }
  *       400: { description: Validation error }
@@ -204,9 +208,12 @@ router.post("/:id/test", ...webhookAdmin, validateUuid("id"), webhookController.
  *   post:
  *     summary: Rotate a webhook's signing secret (new secret returned once)
  *     description: >
- *       Issues a new server-generated secret and invalidates the old one
- *       immediately — there is no overlap window, so update the receiver with
- *       the returned secret before the next delivery. Writes an audit row.
+ *       Issues a new server-generated secret, returned once. The replaced
+ *       secret keeps signing for `overlapHours` (default 24, 0 ends it at once,
+ *       at most 168): every delivery in that window also carries
+ *       `X-Webhook-Signature-Previous` under the old secret, so a receiver that
+ *       accepts either header switches without a cut-over (P6-13, ADR-085).
+ *       A `secret` in the body is refused with 400. Writes an audit row.
  *     tags: [Webhooks]
  *     security: [ { bearerAuth: [] } ]
  *     parameters:
@@ -214,10 +221,26 @@ router.post("/:id/test", ...webhookAdmin, validateUuid("id"), webhookController.
  *         name: id
  *         required: true
  *         schema: { type: string, format: uuid }
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               overlapHours: { type: integer, minimum: 0, maximum: 168, default: 24 }
  *     responses:
  *       200: { description: Secret rotated (secret returned once) }
+ *       400: { description: Validation error }
  *       404: { description: Webhook not found }
  */
-router.post("/:id/rotate-secret", ...webhookAdmin, validateUuid("id"), webhookController.rotateSecret);
+// P6-13: the optional body names the overlap window (overlapHours, 0–168).
+router.post(
+  "/:id/rotate-secret",
+  ...webhookAdmin,
+  validateUuid("id"),
+  validate(rotateWebhookSecretSchema),
+  webhookController.rotateSecret,
+);
 
 module.exports = router;

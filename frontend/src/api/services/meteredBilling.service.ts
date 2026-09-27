@@ -20,7 +20,8 @@ import { api } from "../client";
  * Response shapes differ per endpoint; each method documents its own:
  *  - /usage and /plan return a single OBJECT (not a list)
  *  - /alerts returns a plain ARRAY
- *  - /history is the one endpoint that really does nest { rows, meta } in data
+ *  - /history is a paginated list: invoices in `data`, pagination in the
+ *    top-level `meta` (F-13, ADR-074 — it used to nest { rows, meta } in data)
  */
 
 const BASE = "/api/v1/metered-billing";
@@ -150,20 +151,21 @@ export const meteredBillingService = {
   },
 
   /**
-   * GET /history — past invoices.
-   * This endpoint genuinely nests { rows, meta } inside `data`.
+   * GET /history — past invoices. The house envelope (F-13, ADR-074): the
+   * invoices are `data`, the pagination is the top-level `meta`, a sibling of
+   * `data`. The backend used to nest `{ rows, meta }` inside `data`.
    */
   getUsageHistory: async (
     params: HistoryParams = {},
   ): Promise<{ rows: Invoice[]; meta: PageMeta }> => {
     const response = await api.get<
-      BackendResponse<{ rows: Invoice[]; meta: PageMeta }>
+      BackendResponse<Invoice[] | null> & { meta?: PageMeta }
     >(`${BASE}/history`, { params });
-    const rows = response.data?.rows ?? [];
+    const rows = response.data ?? [];
     return {
       rows,
       meta:
-        response.data?.meta ?? {
+        response.meta ?? {
           total: rows.length,
           page: params.page ?? 1,
           limit: params.limit ?? 20,

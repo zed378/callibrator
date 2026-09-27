@@ -93,6 +93,8 @@ The frontend renders its sidebar from the server-resolved menu tree, so an unaut
 
 **A new route with no permission gate is authenticated-but-unauthorized-by-omission.** The route works, for everyone with a token — every role, and every API key whatever its scopes.
 
+> **Correction (ADR-088):** since A-03 the API-key half of that sentence holds only for a controller outside `asyncHandler`. A wrapped controller refuses a key no gate authorized (`backend/src/utils/controllerWrapper.util.js#apiKeyBlocked`, 403). How keys are authorized, and which route modules they reach under which scope: [`../DEVELOPER/02-AUTHENTICATION.md`](../DEVELOPER/02-AUTHENTICATION.md).
+
 Since 2026-09-24 (P6-04, ADR-058) a test fails the build when that happens:
 `backend/src/tests/routes/routePermissionGuard.p604.test.js`. It requires every module under
 `src/routes` (`api/` **and** `internal/`), walks each router's Express layer stack — the chain

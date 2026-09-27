@@ -77,17 +77,22 @@ const defineModel = (db, DataTypes) => {
         type: DataTypes.BOOLEAN,
         defaultValue: false,
       },
+      // S-20 (ADR-080): a kms.service envelope of the base32 seed, sealed
+      // under the user id (mfa.service#sealSecret) — never the seed. TEXT: an
+      // envelope is ~200 characters. Migration 0086 widened the column and
+      // encrypted the rows written before; the hooks below refuse plaintext.
       mfaSecret: {
-        type: DataTypes.STRING(255),
+        type: DataTypes.TEXT,
         allowNull: true,
       },
       // A-114: a secret being enrolled or rotated in. It is NOT the live
       // second factor — nothing signs in with it — until verifyMfaSetup
       // accepts a code from it and promotes it to mfaSecret. Held with the
       // time it was issued; an enrolment older than MFA_PENDING_TTL_MS is
-      // refused (auth.service.js). Column added by migration 0028.
+      // refused (auth.service.js). Column added by migration 0028. S-20: an
+      // envelope, like mfaSecret (migration 0086).
       mfaPendingSecret: {
-        type: DataTypes.STRING(255),
+        type: DataTypes.TEXT,
         allowNull: true,
       },
       mfaPendingCreatedAt: {
@@ -217,6 +222,25 @@ const defineModel = (db, DataTypes) => {
       },
     },
   );
+
+  // S-20 (ADR-080): the MFA seed columns hold kms.service envelopes only.
+  // Every ORM write path is checked, and a plaintext value is REFUSED rather
+  // than stored (the writer is mfa.service#sealSecret). `hooks: false` is the
+  // only bypass — the same explicit opt-out that bypasses tenant isolation.
+  const MFA_SEED_ATTRIBUTES = ["mfaSecret", "mfaPendingSecret"];
+  const { isEnvelope } = require("../services/kms.service");
+  const refusePlaintextSeed = (values, isChanged = () => true) => {
+    for (const attribute of MFA_SEED_ATTRIBUTES) {
+      const value = values ? values[attribute] : undefined;
+      if (value !== undefined && value !== null && isChanged(attribute) && !isEnvelope(value)) {
+        throw new Error(`User: refusing to store ${attribute} in plaintext (S-20; use mfa.service#sealSecret)`);
+      }
+    }
+  };
+  User.beforeSave((user) => refusePlaintextSeed(user.dataValues, (attribute) => user.changed(attribute)));
+  User.beforeBulkCreate((users) => users.forEach((user) => refusePlaintextSeed(user.dataValues)));
+  User.beforeBulkUpdate((options) => refusePlaintextSeed(options.attributes));
+  User.beforeUpsert((values) => refusePlaintextSeed(values));
 
   /**
    * Soft-delete a user. Sets is_deleted = true and persists.

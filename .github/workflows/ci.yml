@@ -9,9 +9,8 @@
 # Not yet here, deliberately (see docs/DEVOPS/01-CI-CD.md § What CI does not
 # run yet): the live E2E suite (needs a seeded, running stack and has never
 # passed in one uninterrupted run — P6-02), the browser suite, image build and
-# push (P7-01 "images pushed only from a green run" — a later workflow), the
-# backend typecheck (no tsconfig until P9-01a) and the route-gate check, which
-# runs INSIDE the backend unit suite (routePermissionGuard.p604.test.js).
+# push (P7-01 "images pushed only from a green run" — a later workflow), and the
+# route-gate check, which runs INSIDE the backend unit suite (routePermissionGuard.p604.test.js).
 #
 # Action and tool versions are pinned: actions by commit SHA (tag in the
 # comment), CLI tools by version with a sha256 checksum.
@@ -32,9 +31,9 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # The version both Dockerfiles build with (node:24.21.0-alpine). The system
+  # The version both Dockerfiles build with (node:26.10.0-alpine, ADR-076). The system
   # Node 22 fails the otplib ESM suites.
-  NODE_VERSION: "24.21.0"
+  NODE_VERSION: "26.10.0"
 
 jobs:
   # --------------------------------------------------------------------------
@@ -93,6 +92,12 @@ jobs:
       # backend/.eslint-baseline.json — or falls without the baseline being
       # lowered with it. See scripts/ci/eslint-ratchet.js.
       - run: node scripts/ci/eslint-ratchet.js
+      # P9-01a (ADR-087): the backend type-check, run directly — `turbo run
+      # typecheck` skips a package without the script and exits 0. It runs
+      # the backend's own TypeScript 7 (backend/package.json), --noEmit.
+      - name: backend typecheck
+        working-directory: backend
+        run: npm run typecheck
 
   # --------------------------------------------------------------------------
   backend-test:
@@ -246,10 +251,14 @@ jobs:
         # columns with information_schema (P6-05); a mismatch REFUSES the boot.
         # So "healthy" here means: a fresh PostgreSQL 18 database migrated
         # end to end, and the schema matches the models.
+        # `node --import tsx`: one process (so backend.pid is the server), and
+        # it resolves the TypeScript modules the tree now holds (ADR-087).
+        # `node --import tsx`: one process (so backend.pid is the server), and
+        # it resolves the TypeScript modules the tree now holds (ADR-087).
         working-directory: backend
         run: |
           set -euo pipefail
-          node index.js > boot.log 2>&1 &
+          node --import tsx index.js > boot.log 2>&1 &
           echo $! > backend.pid
           for i in $(seq 1 90); do
             if curl -fsS http://localhost:3000/health >/dev/null 2>&1; then
@@ -275,7 +284,7 @@ jobs:
         run: |
           set -euo pipefail
           kill "$(cat backend.pid)"; sleep 2
-          node index.js > boot2.log 2>&1 &
+          node --import tsx index.js > boot2.log 2>&1 &
           echo $! > backend.pid
           for i in $(seq 1 60); do
             curl -fsS http://localhost:3000/health >/dev/null 2>&1 && { echo "healthy again after ${i}s"; exit 0; }

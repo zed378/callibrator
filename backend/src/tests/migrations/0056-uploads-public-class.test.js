@@ -16,6 +16,7 @@ jest.mock("../../utils/storagePath.util", () => (...parts) =>
 );
 
 const migration = require("../../migrations/0056-uploads-public-class");
+const { logger } = require("../../middlewares/activityLog.middleware");
 
 const MANIFEST = fs.readFileSync(path.join(__dirname, "../../config/migrator.js"), "utf8");
 const at = (...p) => path.join(mockRoot, ...p);
@@ -46,7 +47,8 @@ const fakeQueryInterface = ({ tables = ["certificates", "posts"], posts = [], ce
 beforeEach(() => {
   fs.rmSync(mockRoot, { recursive: true, force: true });
   fs.mkdirSync(mockRoot, { recursive: true });
-  jest.spyOn(console, "log").mockImplementation(() => {});
+  // A-42: the summary goes through winston (and its redactor), not console.
+  jest.spyOn(logger, "info").mockImplementation(() => {});
 });
 afterEach(() => jest.restoreAllMocks());
 afterAll(() => fs.rmSync(mockRoot, { recursive: true, force: true }));
@@ -71,8 +73,14 @@ describe("migration 0056 — uploads public class", () => {
     expect(fs.existsSync(at("uploads/profile/a.png"))).toBe(false);
     expect(fs.existsSync(at("uploads/profile/.keep"))).toBe(true);
     expect(fs.existsSync(at("uploads/public/tenant/logo.svg"))).toBe(true);
-    expect(console.log).toHaveBeenCalledWith(
-      expect.stringMatching(/moved 1 avatar\(s\), 1 logo\(s\) \(1 SVG.*2 certificate path\(s\) rewritten/),
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.stringMatching(/^\[0056\] public class/),
+      expect.objectContaining({
+        avatarsMoved: 1,
+        logosMoved: 1,
+        svgLogos: 1,
+        certificatePathsRewritten: 2,
+      }),
     );
   });
 
@@ -138,8 +146,9 @@ describe("migration 0056 — uploads public class", () => {
     // Copied, not moved: the attachment may also be evidence.
     expect(fs.existsSync(at("uploads/public/cms/hero.png"))).toBe(true);
     expect(fs.existsSync(at("uploads/attachments/hero.png"))).toBe(true);
-    expect(console.log).toHaveBeenCalledWith(
-      expect.stringMatching(/1 post\(s\) rewritten, 3 reference\(s\) left/),
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ postsRewritten: 1, referencesLeft: 3 }),
     );
   });
 

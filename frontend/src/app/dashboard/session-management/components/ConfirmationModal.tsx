@@ -1,6 +1,7 @@
-import React from "react";
+import React, { useId } from "react";
 import { Button } from "@/components/ui";
 import { AlertTriangle, Trash2 } from "lucide-react";
+import { useModalA11y } from "@/components/ui/useModalA11y";
 
 interface RevokeModalProps {
   show: boolean;
@@ -10,17 +11,27 @@ interface RevokeModalProps {
 }
 
 export const ConfirmationModal: React.FC<RevokeModalProps> = ({ show, onConfirm, onCancel, type }) => {
+  // F-12: a modal dialog — named by its title, focus moved in and
+  // trapped, Escape closes, focus returns to the opener (useModalA11y).
+  const panelRef = useModalA11y(show, onCancel);
+  const titleId = useId();
   if (!show) return null;
   const isRevoke = type === "revoke";
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl p-6 bg-card shadow-xl">
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        className="w-full max-w-md rounded-2xl p-6 bg-card shadow-xl">
         <div className="flex items-center gap-3 mb-4">
           <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isRevoke ? "bg-destructive/10" : "bg-warning/10"}`}>
             {isRevoke ? <AlertTriangle className="w-5 h-5 text-destructive" /> : <Trash2 className="w-5 h-5 text-warning" />}
           </div>
           <div>
-            <h3 className="text-lg font-semibold text-foreground">{isRevoke ? "Revoke Session" : "Delete Session"}</h3>
+            <h3 id={titleId} className="text-lg font-semibold text-foreground">{isRevoke ? "Revoke Session" : "Delete Session"}</h3>
             <p className="text-sm text-muted-foreground">This action cannot be undone</p>
           </div>
         </div>

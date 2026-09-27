@@ -292,8 +292,9 @@ export default function PostEditor({ initial }: { initial?: Post }) {
           </Panel>
 
           <Panel>
-            <label className="mb-2 block text-sm font-medium text-foreground">Categories</label>
+            <label htmlFor="post-categories" className="mb-2 block text-sm font-medium text-foreground">Categories</label>
             <MultiSelect
+              id="post-categories"
               value={form.categoryIds || []}
               onChange={(ids) => set("categoryIds", ids)}
               options={catOptions}

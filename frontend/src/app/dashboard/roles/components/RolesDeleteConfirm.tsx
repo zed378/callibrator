@@ -1,6 +1,7 @@
-import React from "react";
+import React, { useId } from "react";
 import { XCircle } from "lucide-react";
 import { Button } from "@/components/ui";
+import { useModalA11y } from "@/components/ui/useModalA11y";
 
 interface RolesDeleteConfirmProps {
   isOpen: boolean;
@@ -15,17 +16,27 @@ export const RolesDeleteConfirm: React.FC<RolesDeleteConfirmProps> = ({
   onConfirm,
   isLoading,
 }) => {
+  // F-12: a modal dialog — named by its title, focus moved in and
+  // trapped, Escape closes, focus returns to the opener (useModalA11y).
+  const panelRef = useModalA11y(isOpen, onClose);
+  const titleId = useId();
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="w-full max-w-md bg-card rounded-2xl shadow-2xl">
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        className="w-full max-w-md bg-card rounded-2xl shadow-2xl">
         <div className="p-6">
           <div className="flex items-center justify-center w-12 h-12 mx-auto bg-destructive/10 rounded-full">
             <XCircle className="w-6 h-6 text-destructive" />
           </div>
           <div className="mt-4 text-center">
-            <h3 className="text-lg font-medium text-foreground">
+            <h3 id={titleId} className="text-lg font-medium text-foreground">
               Delete Role
             </h3>
             <p className="mt-2 text-sm text-muted-foreground">

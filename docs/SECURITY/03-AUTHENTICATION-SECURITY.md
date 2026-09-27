@@ -106,14 +106,41 @@ If the access and refresh secrets are the same value, an access token can be pre
 |---|---|
 | Storage | **hash only** (`token_hash`) — a database read cannot recover a token |
 | Binding | **none** — `ip_address`, `user_agent` and `device` are recorded and never compared |
-| Revocation | individually, per user in bulk, or by expiry sweep |
+| Revocation | individually, per user in bulk, or by expiry sweep — **effective on the next request** (below) |
 | Attributes | **snake_case** — `tenant_id`, not `tenantId` |
+
+### Revocation takes effect on the next request (A-48, A-59, P6-12, ADR-085)
+
+Every access token carries the id of its session (`sid`), and `auth.middleware.js` asks
+`session.service.js#isSessionLive` on **every** request. An access token with no `sid` is **refused**
+(since 2026-09-27): it names no session, so it could never be revoked. Logout, an administrator's
+revoke, a password or MFA change, a refresh (which revokes the previous session) and a suspended
+tenant all stop the token on its next request — the tenant and user are read on every request too.
+
+The window is **named**, not implied:
+
+| Path | Window |
+|---|---|
+| a revocation through the Session model — logout, an administrator’s revoke, refresh, a password or MFA change (no revocation path in `src/` uses raw SQL or `hooks: false`, checked 2026-09-27) | **the next request** — the model hooks drop the Redis entry after commit |
+| a revocation the hooks cannot reach — made while Redis was unreachable, by raw SQL, or with `hooks: false` | **at most 60 s** — `SESSION_LIVENESS_TTL_SECONDS` |
+| Redis down | none — every request reads the session row |
+| an **open Socket.IO connection** | **at most 60 s** — `SOCKET_RECHECK_INTERVAL_MS` re-runs the handshake checks on every open socket and disconnects one that fails them (plus the 60 s above when the hooks were bypassed) |
+
+`JWT_ACCESS_EXPIRED` therefore no longer bounds revocation; it bounds only how long a **stolen but
+unrevoked** token works. The repository's value is `15m` (`backend/.env.example`,
+`deploy/compose/.env.example`, `docs/BACKEND/11-CONFIGURATION.md`). **The running VM was `1d` when
+last read (2026-09-23)** — aligning it is an operator change on the VM, open under P6-12.
+
+The liveness cache key is `session:live:<sid>`, **without** the tenant id the task conventions ask
+for — a recorded exception (ADR-085): the check runs before any tenant is resolved, the token carries
+no tenant claim, the `sid` is a server-generated primary key, and the cached entry is bound to the
+user id, which is compared on every read.
 
 ### IP binding is a trade-off — and it is not implemented
 
 Corrected **2026-09-23**. This section said `sessionSecurity.middleware.js` was "where the balance is struck". It was not. That file was imported by nothing, and its raw SQL targeted a `"Sessions"` table with camelCase columns (`"isRevoked"`, `"userId"`) against a `sessions` table with snake_case ones, passing `$1` placeholders as `replacements` — Sequelize substitutes those only for `?` and `:name`, so every query in it would have thrown the moment it ran. It was deleted under audit finding A-12, and its tests with it: a passing test over an uninstalled control is a green tick for nothing.
 
-**What is actually true:** there is no IP binding, no user-agent binding, no session fixation protection and no concurrent-session limit. `auth.middleware.js` verifies the JWT and resolves the role, and says so — *"RBAC Only - No Session Validation"*. It does not read the `sessions` table, which is also the mechanism behind the revocation gap below.
+**What is actually true:** there is no IP binding, no user-agent binding, no session fixation protection and no concurrent-session limit. Since A-48 (2026-09-24) `auth.middleware.js` **does** read the session on every request — for liveness only, as above; it compares nothing about the client.
 
 **The trade-off is still real, and still undecided.** Strict IP binding breaks legitimate users on mobile networks that rotate addresses, and hospital wifi that hands out a different address per floor. Loose binding weakens the control. A concurrent-session limit has to decide whose session is evicted. These are product decisions, not technical ones, and they are Q-08 in [`../../TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md) — to be answered, not guessed at in an implementation.
 
@@ -298,6 +325,13 @@ Both transitions are audited.
 `POST /auth/socket-token` mints a short-lived token for the Socket.IO connection.
 
 The access token is not handed to a transport that keeps it in memory for the life of a connection. A long-lived credential in a long-lived connection is a long-lived exposure.
+
+The handshake makes the HTTP layer's checks (`config/socket.js#checkPrincipal`): a `socket` purpose
+token that names a live session, an active user, a tenant neither suspended nor deleted. A token with
+no `sid` is refused. **The same checks re-run on every open socket every 60 seconds** (P6-12), and a
+socket that fails them is disconnected — before that, a revoked session or a suspended tenant kept
+receiving realtime events for as long as the socket stayed open. A re-check that errors (Redis and
+the database unreachable) keeps the socket until the next one rather than disconnecting everybody.
 
 ## Error Messages
 

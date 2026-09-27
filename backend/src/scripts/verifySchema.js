@@ -10,6 +10,7 @@
  * `make migrate-host`, or against a restored copy of production before a
  * deploy. It does NOT run db.sync() or any migration: it only reads.
  */
+// A-42 console-allowed: a CLI run by hand in a terminal; its console output is the operator's report, not application logging (backend/src/tests/guards/noConsole.a42.test.js).
 require("../utils/env.util");
 const { db } = require("../config");
 require("../models");

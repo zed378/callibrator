@@ -19,6 +19,7 @@
  * It needs the database credentials (the backend .env) — holding those is the
  * break-glass. Run it on the backend host; record the ticket.
  */
+// A-42 console-allowed: a CLI run by hand in a terminal; its console output is the operator's report, not application logging (backend/src/tests/guards/noConsole.a42.test.js).
 require("../utils/env.util");
 
 const readFlag = (argv, name) => {

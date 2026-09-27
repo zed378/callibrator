@@ -1,5 +1,27 @@
 const crypto = require("crypto");
 const { logger } = require("../middlewares/activityLog.middleware");
+const kms = require("./kms.service");
+
+/**
+ * S-20 (ADR-080) — a TOTP seed is stored ONLY as a kms.service envelope.
+ *
+ * `users.mfa_secret` and `users.mfa_pending_secret` held the base32 seed in
+ * plaintext, so a database dump (`make backup`) gave out every account's
+ * second factor. Both now hold a v2 envelope under the KMS master key ring,
+ * with this AAD: the USER id, not the tenant id — a user's tenant can be null
+ * (the platform operator) and can change (a tenant move), and the seed must
+ * still read back. A value copied onto another account does not decrypt.
+ * Migration 0086 encrypted the rows written before this; keys:rotate re-wraps
+ * them (services/keyRotation.service.js); User model hooks refuse a
+ * plaintext write.
+ *
+ * @param {string} userId
+ * @returns {string} the AAD both MFA columns are sealed under
+ */
+const secretAad = (userId) => `users.mfa:${userId}`;
+
+/** A base32 TOTP seed, at least 80 bits (16 characters) — see LEGACY_MIN_SECRET_BYTES. */
+const SEED_SHAPE = /^[A-Z2-7]{16,}=*$/;
 
 /**
  * A-99: every TOTP operation in the backend goes through this module, on the
@@ -49,6 +71,33 @@ class MfaService {
    */
   createSecret() {
     return otp().generateSecret();
+  }
+
+  /**
+   * S-20 — the stored form of a seed: a KMS envelope bound to the account.
+   * @param {string} userId
+   * @param {string} secret - base32 seed
+   * @returns {string} a v2 envelope
+   */
+  sealSecret(userId, secret) {
+    return kms.encryptData(secretAad(userId), secret);
+  }
+
+  /**
+   * S-20 — the seed a stored value holds. An envelope is decrypted (a KMS
+   * failure throws — it is a misconfiguration, not a wrong code). A value
+   * that is not an envelope is a row written before migration 0086 (restored
+   * from an older dump, say) and reads as it is; nothing writes one any more.
+   *
+   * @param {string} userId
+   * @param {string|null|undefined} stored
+   * @returns {string|null|undefined}
+   */
+  openSecret(userId, stored) {
+    if (!kms.isEnvelope(stored)) {
+      return stored;
+    }
+    return kms.decryptData(secretAad(userId), stored);
   }
 
   /**
@@ -134,12 +183,13 @@ class MfaService {
    * @param {unknown} token - the code as submitted
    * @param {object} [options]
    * @param {string} [options.secret] - verify against this secret instead of
-   *   the live one (the pending secret, when enrolling)
+   *   the live one (the pending secret, when enrolling). Either is the STORED
+   *   form — an envelope — and is opened here (S-20).
    * @param {object} [options.transaction] - write the stamp in this transaction
    * @returns {Promise<boolean>} true when the code is right and unused
    */
   async consumeCode(user, token, { secret = user.mfaSecret, transaction } = {}) {
-    const step = this.matchTimeStep(token, secret);
+    const step = this.matchTimeStep(token, this.openSecret(user.id, secret));
     if (step === null) {
       return false;
     }
@@ -330,7 +380,26 @@ const base32 = (bytes) => {
 // an attribute of no model, so Sequelize dropped it on save(). Enrolment and
 // rotation live in auth.service.js (setupMfa / verifyMfaSetup).
 
+/**
+ * S-20 — the pre-0086 (plaintext) form of an MFA column, for
+ * keyRotation.service: a non-envelope value is a legacy seed, converted to an
+ * envelope by migration 0086 and by keys:rotate. `unwrap` REFUSES a value
+ * that is not a base32 seed — a corrupt or foreign value is reported by id,
+ * never guessed at and sealed.
+ */
+const LEGACY_PLAINTEXT_SEED = Object.freeze({
+  isLegacy: (stored) => !kms.isEnvelope(stored),
+  unwrap: (aad, stored) => {
+    if (!SEED_SHAPE.test(stored)) {
+      throw new Error("not a base32 TOTP seed (refusing to guess)");
+    }
+    return stored;
+  },
+});
+
 module.exports = new MfaService();
+module.exports.secretAad = secretAad;
+module.exports.LEGACY_PLAINTEXT_SEED = LEGACY_PLAINTEXT_SEED;
 module.exports.RECOVERY_CODE_COUNT = RECOVERY_CODE_COUNT;
 // A-141: every MFA column back to "never enrolled" — what a disable
 // (auth.service disableMfa) and an administrator's reset (user.service

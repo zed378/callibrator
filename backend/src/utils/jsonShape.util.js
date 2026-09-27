@@ -63,6 +63,14 @@ const jsonShape = (key) => {
     throw new Error(`No declared JSON shape for ${key}: add it to utils/jsonShape.util.js`);
   }
   const validator = (value) => {
+    // P6-02: Sequelize runs a custom attribute validator even on an explicit
+    // null, so without this a nullable column could not be written as null —
+    // a calibration-record correction copying a record with no `results`
+    // failed with a 500 (found by the live E2E suite). Whether null is allowed
+    // is the column's `allowNull`, which Sequelize checks on its own.
+    if (value === null) {
+      return;
+    }
     const { error } = schema.validate(value, { convert: false });
     if (error) {
       throw new Error(`${key} has the wrong shape: ${error.message}`);

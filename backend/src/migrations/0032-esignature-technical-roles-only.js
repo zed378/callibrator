@@ -25,7 +25,7 @@
  *     admin who re-granted `write` deliberately keeps it, even though the row
  *     looks like the default.
  * Anything else — a `read` row, a row that was updated, a row an admin touched
- * — is KEPT and reported (console.warn) for a tenant admin to review. Per-user
+ * — is KEPT and reported (logger.warn) for a tenant admin to review. Per-user
  * grants (`user_menu_permissions`) are never touched: every one of them was set
  * by hand.
  *
@@ -62,6 +62,8 @@
  *     JOIN menu_groups m ON m.id = p.menu_group_id
  *    WHERE m.slug = 'esignature' ORDER BY r.name;
  */
+
+const { logger } = require("../middlewares/activityLog.middleware");
 
 const SLUG = "esignature";
 
@@ -121,9 +123,10 @@ module.exports = {
       { replacements: [SLUG, REVOKED_ROLES] },
     );
     for (const row of kept) {
-      console.warn(
-        `0032: kept the "${row.permission}" esignature grant of role "${row.role}": it is not the ` +
-          "untouched default (an administrator set or changed it). Review it against ADR-051 Q-19.",
+      logger.warn(
+        "0032: kept an esignature grant that is not the untouched default (an administrator set or " +
+          "changed it). Review it against ADR-051 Q-19.",
+        { migration: "0032", role: row.role, permission: row.permission },
       );
     }
 
@@ -143,10 +146,16 @@ module.exports = {
       { replacements: [REVOKED_ROLES] },
     );
     for (const row of stranded) {
-      console.warn(
-        `0032: workflow ${row.workflow_id} (tenant ${row.tenant_id}) step ${row.step_number} names a ` +
-          `"${row.role}" signer, who may no longer be able to sign. Cancel the workflow or grant the ` +
-          "signer esignature write.",
+      logger.warn(
+        "0032: an open workflow step names a signer who may no longer be able to sign. Cancel the " +
+          "workflow or grant the signer esignature write.",
+        {
+          migration: "0032",
+          tenantId: row.tenant_id,
+          workflowId: row.workflow_id,
+          stepNumber: row.step_number,
+          role: row.role,
+        },
       );
     }
   },

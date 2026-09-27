@@ -189,7 +189,7 @@ describe("scim Controller", () => {
       req.body = {};
       scimService.patchUser.mockResolvedValue({ id: "user-1" });
       await scimController.patchUser(req, res, next);
-      expect(scimService.patchUser).toHaveBeenCalledWith("tenant-1", "user-1", []);
+      expect(scimService.patchUser).toHaveBeenCalledWith("tenant-1", "user-1", [], expect.any(Object));
     });
 
     it("passes an empty array when the group patch body has no Operations", async () => {

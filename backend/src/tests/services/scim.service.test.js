@@ -153,7 +153,14 @@ describe("scim.service", () => {
 
       await scim.createUser("t1", { emails: [{ value: "  Ada.Lovelace@Hospital-B.ORG " }] });
 
-      expect(Users.findOne).toHaveBeenCalledWith({ where: { email: "ada.lovelace@hospital-b.org" } });
+      // A-37: the duplicate check is the global, case-insensitive one (user.service#assertIdentityFree).
+      expect(Users.findOne).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ email: { [Op.iLike]: "ada.lovelace@hospital-b.org" } }),
+          skipTenantScope: true,
+          paranoid: false,
+        }),
+      );
       expect(Users.create).toHaveBeenCalledWith(
         expect.objectContaining({
           email: "ada.lovelace@hospital-b.org",
@@ -543,13 +550,22 @@ describe("scim.service — RFC 7644 patch paths and filters (A-33)", () => {
       expect(update).toHaveBeenCalledWith({ lastName: "Lovelace" });
     });
 
+    // A-37: a userName change runs the global identity check (two more
+    // findOne calls, answered "nobody holds it") before the update.
+    const renameable = () => {
+      Users.findOne.mockReset();
+      Users.findOne.mockResolvedValueOnce({ id: "u1", email: "old@b.com", update }).mockResolvedValue(null);
+    };
+
     it("D-06: a userName patch is stored lowercased in both columns", async () => {
+      renameable();
       await scim.patchUser("t1", "u1", [{ op: "replace", path: "userName", value: "New@B.COM" }]);
 
       expect(update).toHaveBeenCalledWith({ email: "new@b.com", username: "new@b.com" });
     });
 
     it("writes userName to both email and username, as createUser does", async () => {
+      renameable();
       await scim.patchUser("t1", "u1", [{ op: "replace", path: "userName", value: " new@b.com " }]);
 
       expect(update).toHaveBeenCalledWith({ email: "new@b.com", username: "new@b.com" });

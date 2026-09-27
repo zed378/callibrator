@@ -16,6 +16,11 @@ jest.mock("../../utils/response.util", () => ({
   error: jest.fn(),
 }));
 
+// A-42: the temp-file cleanup failure is logged through winston, not console.
+jest.mock("../../middlewares/activityLog.middleware", () => ({
+  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
+}));
+
 jest.mock("fs", () => ({
   unlink: jest.fn((path, cb) => cb && cb(null)),
 }));
@@ -44,6 +49,7 @@ jest.mock("../../validators/calibrationDevices.validator", () => {
 const calibrationDevicesController = require("../../controllers/calibrationDevices.controller");
 const calibrationDevicesService = require("../../services/calibrationDevices.service");
 const { success, error } = require("../../utils/response.util");
+const { logger } = require("../../middlewares/activityLog.middleware");
 const { validate: validatorValidate } = require("../../validators/calibrationDevices.validator");
 
 describe("calibrationDevicesController", () => {
@@ -228,7 +234,7 @@ describe("calibrationDevicesController", () => {
     // (ENOENT) is expected and must stay silent.
     it("logs when deleting the temp file fails for a reason other than ENOENT", async () => {
       const fs = require("fs");
-      const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+      const consoleSpy = logger.error;
       fs.unlink.mockImplementation((path, cb) => cb({ code: "EACCES", message: "denied" }));
       req.file = { path: "temp-path/import.csv" };
       calibrationDevicesService.bulkImportCalibrationDevices.mockResolvedValue({
@@ -237,18 +243,18 @@ describe("calibrationDevicesController", () => {
 
       await calibrationDevicesController.bulkImportCalibrationDevices(req, res);
 
-      expect(consoleSpy).toHaveBeenCalledWith(
-        "Failed to delete temp import file: temp-path/import.csv",
-        expect.objectContaining({ code: "EACCES" }),
-      );
+      expect(consoleSpy).toHaveBeenCalledWith("Failed to delete temp import file", {
+        path: "temp-path/import.csv",
+        code: "EACCES",
+        error: "denied",
+      });
       expect(success).toHaveBeenCalled();
-      consoleSpy.mockRestore();
       fs.unlink.mockImplementation((path, cb) => cb && cb(null));
     });
 
     it("stays silent when the temp file is already gone (ENOENT)", async () => {
       const fs = require("fs");
-      const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+      const consoleSpy = logger.error;
       fs.unlink.mockImplementation((path, cb) => cb({ code: "ENOENT" }));
       req.file = { path: "temp-path/import.csv" };
       calibrationDevicesService.bulkImportCalibrationDevices.mockResolvedValue({
@@ -258,7 +264,6 @@ describe("calibrationDevicesController", () => {
       await calibrationDevicesController.bulkImportCalibrationDevices(req, res);
 
       expect(consoleSpy).not.toHaveBeenCalled();
-      consoleSpy.mockRestore();
       fs.unlink.mockImplementation((path, cb) => cb && cb(null));
     });
 

@@ -35,6 +35,37 @@ export const toSameOriginUpload = (src: string): string => {
   return src;
 };
 
+/** The API prefix the Next `/api` proxy serves same-origin (ADR-046). */
+export const API_PATH_PREFIX = "/api/v1/";
+
+/**
+ * F-11: a backend-issued API link as a same-origin path, or null.
+ *
+ * The backend hands out document links as root-relative API paths — the
+ * public verification page's `documentUrl` is
+ * `/api/v1/certificates/verify/<n>/document?token=…`
+ * (certificatePdf.service.js mintDocumentUrl). The browser reaches `/api/`
+ * through the Next proxy on the page's own origin, so the path is used as it
+ * is. Prefixing `NEXT_PUBLIC_API_BASE_URL` sent the auditor's browser to the
+ * backend origin, which the documented deployment does not publish.
+ *
+ * An absolute value is reduced to its path when that path is an API path;
+ * anything else (another prefix, a malformed value) yields null — a link the
+ * page cannot vouch for is not rendered.
+ */
+export const toSameOriginApiPath = (src: string | null | undefined): string | null => {
+  if (!src) return null;
+  try {
+    const parsed = new URL(src, "http://placeholder.invalid");
+    if (parsed.pathname.startsWith(API_PATH_PREFIX)) {
+      return `${parsed.pathname}${parsed.search}`;
+    }
+  } catch {
+    // Malformed — no link.
+  }
+  return null;
+};
+
 /**
  * The placeholder shown for a user who has never uploaded a photo.
  *

@@ -15,9 +15,12 @@ const create = () => ({
     try {
       const result = await fn();
       const reason = options.isFailure ? options.isFailure(result) : null;
-      return reason
-        ? { outcome: "failure", result, error: reason }
-        : { outcome: "success", result };
+      if (reason) {
+        return { outcome: "failure", result, error: reason };
+      }
+      // ADR-082: evaluated as the real monitor does, reported, never alerted.
+      const incomplete = options.isIncomplete ? options.isIncomplete(result) : null;
+      return incomplete ? { outcome: "success", result, incomplete } : { outcome: "success", result };
     } catch (err) {
       return { outcome: "failure", error: err.message };
     }

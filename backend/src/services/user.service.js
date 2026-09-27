@@ -1773,6 +1773,11 @@ const temporaryPasswordExpiry = () => new Date(Date.now() + TEMPORARY_PASSWORD_T
 exports.TEMPORARY_PASSWORD_TTL_MS = TEMPORARY_PASSWORD_TTL_MS;
 exports.temporaryPasswordExpiry = temporaryPasswordExpiry;
 
+// A-37 (ADR-075): SCIM provisioning asks the same global question — "does any
+// account, in any tenant, deleted or not, hold this identity?" — so it asks it
+// here, where the answer is defined once (A-128).
+exports.assertIdentityFree = assertIdentityFree;
+
 /**
  * A tenant administrator replaces another user's password with a random
  * temporary one — for a user who cannot use the e-mail-code reset (no access

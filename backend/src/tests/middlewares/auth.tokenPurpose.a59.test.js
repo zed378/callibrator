@@ -638,13 +638,13 @@ describe("A-59: SSO tokens are revocable", () => {
   });
 });
 
-describe("A-59: sid-less access tokens (issued before the deploy)", () => {
-  it("are still accepted — SIDLESS_ACCESS_TOKENS_ACCEPTED is the switch that ends that", async () => {
+describe("A-59 / P6-12: sid-less access tokens (issued before the deploy)", () => {
+  it("P6-12: an access token without sid is refused — it names no session, so it could never be revoked", async () => {
     const { SIDLESS_ACCESS_TOKENS_ACCEPTED } = require("../../middlewares/auth.middleware");
-    expect(SIDLESS_ACCESS_TOKENS_ACCEPTED).toBe(true);
+    expect(SIDLESS_ACCESS_TOKENS_ACCEPTED).toBe(false);
 
     const legacy = generateAccessToken({ id: USER_ID, email: EMAIL });
-    expect((await asBearer(legacy)).status).toBe("next");
+    expect((await asBearer(legacy)).status).toBe(401);
   });
 });
 

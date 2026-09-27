@@ -40,11 +40,16 @@ Prefer asserting behaviour. When an option genuinely matters, write down *why* i
 ### 3. Every `:id` route: a two-tenant test asserting 404
 
 ```js
-const { tenantA, tenantB } = await createTwoTenants();
-const resource = await createResource(tenantB);
-const res = await request(app).get(`/api/v1/things/${resource.id}`).set(authFor(tenantA));
+const { createTwoTenants } = require("../fixtures/twoTenants");
+
+const fx = createTwoTenants();                                // synchronous; no database
+thingRows.push({ id: THING_ID, tenantId: fx.tenantB.id });     // the jest.mock'd model's rows
+currentUser = fx.principal(fx.tenantA, "HEALTHCARE ADMIN");    // what `auth` sets as req.user
+const res = await http(router, "GET", `/${THING_ID}`);         // router.handle through the real chain
 expect(res.status).toBe(404);   // not 403, not 200
 ```
+
+The fixture is `backend/src/tests/fixtures/twoTenants.js` (A-63): tenants, principals, `Tenants`/`Users` doubles and a transaction double — no SQL and no scoping hooks, so those are tested against PostgreSQL. Worked examples: `tenant.edit.a63.test.js`, `readGates.p604.test.js`. (Corrected from a sample that awaited the fixture and used `createResource`/`authFor`/supertest helpers that do not exist — ADR-088.)
 
 For a mutation, also assert **the row is unchanged** — an error response over a completed write is still a breach.
 

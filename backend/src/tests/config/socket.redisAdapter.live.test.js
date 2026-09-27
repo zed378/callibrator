@@ -60,9 +60,12 @@ liveDescribe("Socket.IO Redis adapter — live Redis (A-54)", () => {
   async function startReplica({ withRedis = true } = {}) {
     let socketModule;
     let redisService;
+    let logger;
     jest.isolateModules(() => {
       redisService = require("../../services/redis.service");
       socketModule = require("../../config/socket");
+      // A-42: the hub logs through the (mocked) winston logger of ITS registry.
+      ({ logger } = require("../../middlewares/activityLog.middleware"));
     });
     if (withRedis) {
       await redisService.initRedis();
@@ -73,6 +76,7 @@ liveDescribe("Socket.IO Redis adapter — live Redis (A-54)", () => {
     const replica = {
       socketModule,
       redisService,
+      logger,
       server,
       io,
       url: `http://127.0.0.1:${server.address().port}`,
@@ -141,7 +145,7 @@ liveDescribe("Socket.IO Redis adapter — live Redis (A-54)", () => {
   it("A-54: falls back to the in-memory adapter, with a warning, when Redis is not ready", async () => {
     const replica = await startReplica({ withRedis: false });
     expect(replica.io.of("/").adapter.constructor.name).toBe("Adapter");
-    expect(console.warn).toHaveBeenCalledWith(
+    expect(replica.logger.warn).toHaveBeenCalledWith(
       replica.socketModule.__testables.IN_MEMORY_WARNING,
     );
   });

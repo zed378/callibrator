@@ -43,9 +43,16 @@ module.exports = {
     }
 
     // Verification reads a record by its signing key; index the lookup column.
+    // D-29 (ADR-083): an index is recognised by its NAME or by what it
+    // indexes — a single-column index on signing_key_id made under another
+    // name (Sequelize's default, or by hand) must not be created twice.
     const indexes = await queryInterface.showIndex("signature_records");
     const hasIndex = indexes.some(
-      (i) => i.name === "signature_records_signing_key_id",
+      (i) =>
+        i.name === "signature_records_signing_key_id" ||
+        (Array.isArray(i.fields) &&
+          i.fields.length === 1 &&
+          i.fields[0].attribute === "signing_key_id"),
     );
     if (!hasIndex) {
       await queryInterface.addIndex("signature_records", ["signing_key_id"], {

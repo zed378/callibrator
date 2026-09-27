@@ -29,6 +29,10 @@ jest.mock("../../models", () => ({
     findOne: async () => mockRef.legalHold,
   },
 }));
+// W-15: the sweep ends with the GDPR export sweep (gdpr.exportSweep.w15.test.js).
+jest.mock("../../services/gdpr.service", () => ({
+  purgeExpiredExports: jest.fn().mockResolvedValue({ deleted: 0, errors: 0 }),
+}));
 jest.mock("../../config", () => ({
   db: { transaction: (...args) => mockRef.ledger.transaction(...args) },
 }));
@@ -121,7 +125,7 @@ describe("W-04 — the retention purge audits what it destroyed", () => {
 
     const summary = await dataRetention.runRetentionSweep();
 
-    expect(summary).toEqual({ tenants: 2, purged: 10, skipped: 0, errors: 1, incomplete: 0 });
+    expect(summary).toEqual({ tenants: 2, purged: 10, skipped: 0, errors: 1, incomplete: 0, anomalies: 0, exportsDeleted: 0, exportErrors: 0 });
     expect(mockRef.ledger.auditRows()).toEqual([
       expect.objectContaining({ tenantId: "tenant-2", action: "DELETE" }),
     ]);

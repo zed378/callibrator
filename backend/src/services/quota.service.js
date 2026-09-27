@@ -6,7 +6,9 @@
 // - Seats: counts non-deleted user accounts for the tenant.
 // - Storage: sums Attachment sizes. The Attachment registry now exists, so this
 //   reports real usage and storage enforcement is active (see
-//   middlewares/enforceQuota.middleware.js).
+//   middlewares/enforceQuota.middleware.js). A tenant with its own bucket is
+//   counted too, because its uploads are still written to platform storage
+//   (ADR-084, Q-06).
 // - Features: PLAN_FEATURES maps each plan to the capabilities it unlocks;
 //   requireFeature() (in middlewares/enforceQuota.js) gates routes on these.
 
@@ -71,6 +73,33 @@ const getStorageUsageMb = async (tenantId) => {
   return (bytes || 0) / BYTES_PER_MB;
 };
 
+// ADR-084 (Q-06): limitStorageMb bounds the bytes the PLATFORM holds for a
+// tenant. Every upload is still written to platform storage — the request path
+// was never cut over to services/storage (docs/STORAGE/04), and the migration
+// tool copies and leaves the legacy file in place — so every attachment counts,
+// including those of a tenant that has configured its own bucket. Exempting
+// such a tenant today would give it unbounded PLATFORM disk. The exemption
+// becomes true per attachment, not per tenant, once an attachment's bytes live
+// only in the tenant's own storage; that is a change to getStorageUsageMb, made
+// with the cutover.
+
+/**
+ * Whether the tenant has configured its own storage. Read only to explain a
+ * refusal; an unreadable configuration explains nothing rather than turning
+ * the refusal into a 500.
+ *
+ * @param {string} tenantId
+ * @returns {Promise<boolean>}
+ */
+const hasOwnStorage = async (tenantId) => {
+  try {
+    const storageConfig = require("./storage/config.service");
+    return Boolean(await storageConfig.getTenantConfig(tenantId));
+  } catch {
+    return false;
+  }
+};
+
 const checkStorageQuota = async (tenantId, incomingBytes = 0) => {
   const tenant = await getTenant(tenantId);
   if (!tenant) {
@@ -82,12 +111,16 @@ const checkStorageQuota = async (tenantId, incomingBytes = 0) => {
   if (isUnlimited(limitMb)) {
     return { allowed: true, usedMb, limitMb, incomingMb, unlimited: true };
   }
+  const allowed = usedMb + incomingMb <= limitMb;
   return {
-    allowed: usedMb + incomingMb <= limitMb,
+    allowed,
     usedMb,
     limitMb,
     incomingMb,
     unlimited: false,
+    // Only on a refusal: the upload is refused although the tenant has its
+    // own bucket, and the message must say why (ADR-084, Q-06).
+    ...(allowed ? {} : { ownStorage: await hasOwnStorage(tenantId) }),
   };
 };
 

@@ -2845,6 +2845,119 @@
         }
       }
     },
+    "/api/v1/calibration-devices/{calibrationDeviceId}/restore": {
+      "post": {
+        "summary": "Restore a soft-deleted calibration device",
+        "description": "A-133 (ADR-075). Requires a tenant administrator with write access to calibration. Restores the device and exactly the attachments its deletion removed, in one transaction with an audit row (operation RESTORE). Another organisation's device answers 404, like one that does not exist.\n",
+        "tags": [
+          "CalibrationDevices"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "calibrationDeviceId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Calibration device restored"
+          },
+          "400": {
+            "description": "Invalid UUID"
+          },
+          "403": {
+            "description": "Not a tenant administrator, or no calibration write access"
+          },
+          "404": {
+            "description": "Calibration device not found"
+          },
+          "409": {
+            "description": "The device is not deleted, or a live device now holds its serial number"
+          }
+        }
+      }
+    },
+    "/api/v1/calibration-devices/{calibrationDeviceId}/reinstate": {
+      "post": {
+        "summary": "Reinstate a calibration device that was retired in error",
+        "description": "Q-02 (ADR-084). Retirement is permanent: editing a retired device's status answers 409. A retirement entered in error is corrected here, by a tenant administrator with write access to calibration, with a mandatory reason and the status to return to. The status change and an audit row (operation REINSTATE, with the reason) are written in one transaction. Another organisation's device answers 404, like one that does not exist.\n",
+        "tags": [
+          "CalibrationDevices"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "calibrationDeviceId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "reason",
+                  "status"
+                ],
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "minLength": 10,
+                    "maxLength": 1000
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "active",
+                      "inactive",
+                      "maintenance"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Calibration device reinstated"
+          },
+          "400": {
+            "description": "Invalid UUID, no reason, or no status to return to"
+          },
+          "403": {
+            "description": "Not a tenant administrator, or no calibration write access"
+          },
+          "404": {
+            "description": "Calibration device not found"
+          },
+          "409": {
+            "description": "The device is not retired"
+          }
+        }
+      }
+    },
     "/api/v1/calibration-devices/bulk-import": {
       "post": {
         "summary": "Bulk import calibration devices via CSV file",
@@ -8612,10 +8725,10 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "id"
+                  "menuGroupId"
                 ],
                 "properties": {
-                  "id": {
+                  "menuGroupId": {
                     "type": "string",
                     "format": "uuid",
                     "description": "Menu group ID to delete"
@@ -10604,6 +10717,9 @@
         "responses": {
           "200": {
             "description": "Quota usage retrieved"
+          },
+          "403": {
+            "description": "No `billing` read permission in the caller's tenant"
           },
           "404": {
             "description": "Tenant not found"
@@ -19090,7 +19206,14 @@
                 "type": "object",
                 "properties": {
                   "approvalStatus": {
-                    "type": "string"
+                    "type": "string",
+                    "enum": [
+                      "APPROVED",
+                      "PENDING",
+                      "REJECTED",
+                      "CONDITIONAL"
+                    ],
+                    "description": "Case-insensitive; stored upper-case. Any other value is a 400."
                   },
                   "scorecard": {
                     "type": "integer"
@@ -20122,7 +20245,7 @@
             }
           }
         },
-        "description": "The signing secret is generated server-side and returned once, in this response. A `secret` in the request body is ignored (stripped).\n",
+        "description": "The signing secret is generated server-side and returned once, in this response. A `secret` in the request body is refused with 400 (P6-13).\n",
         "responses": {
           "201": {
             "description": "Webhook created (secret returned once)"
@@ -20354,7 +20477,7 @@
     "/api/v1/webhooks/{id}/rotate-secret": {
       "post": {
         "summary": "Rotate a webhook's signing secret (new secret returned once)",
-        "description": "Issues a new server-generated secret and invalidates the old one immediately — there is no overlap window, so update the receiver with the returned secret before the next delivery. Writes an audit row.\n",
+        "description": "Issues a new server-generated secret, returned once. The replaced secret keeps signing for `overlapHours` (default 24, 0 ends it at once, at most 168): every delivery in that window also carries `X-Webhook-Signature-Previous` under the old secret, so a receiver that accepts either header switches without a cut-over (P6-13, ADR-085). A `secret` in the body is refused with 400. Writes an audit row.\n",
         "tags": [
           "Webhooks"
         ],
@@ -20374,9 +20497,30 @@
             }
           }
         ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "overlapHours": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 168,
+                    "default": 24
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Secret rotated (secret returned once)"
+          },
+          "400": {
+            "description": "Validation error"
           },
           "404": {
             "description": "Webhook not found"

@@ -9,11 +9,14 @@
  */
 const crypto = require("crypto");
 const kms = require("../../services/kms.service");
-const { rewrapAll, rewrapTarget, TARGETS, workFor } = require("../../services/keyRotation.service");
+const { rewrapAll, rewrapTarget, TARGETS, workFor, aadOf } = require("../../services/keyRotation.service");
+const mfaService = require("../../services/mfa.service");
 const { encryptPrivateKeyForTest } = require("../utils/esignatureKey.utils");
 
 const T1 = "tenant-1";
 const T2 = "tenant-2";
+// S-20: a TOTP seed, and a user with no tenant (the platform operator).
+const SEED = "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP";
 
 /** v1 form of an envelope written now (same crypto, no key id). */
 const asV1 = (envelope) => ["v1", ...envelope.split(":").slice(2)].join(":");
@@ -29,14 +32,15 @@ beforeAll(() => {
 
 /**
  * A sequelize double over { table: rows[] }, understanding exactly the three
- * statement shapes rewrapTarget issues.
+ * statement shapes rewrapTarget issues. The column is read off the statement
+ * (S-20: `users` has two targets).
  */
 const fakeDb = (tables, { interfere } = {}) => {
   const query = jest.fn(async (sql, options = {}) => {
     const s = sql.replace(/\s+/g, " ").trim();
     const r = options.replacements || {};
     const table = /(?:FROM|UPDATE) (\w+)/.exec(s)[1];
-    const column = TARGETS.find((t) => t.table === table).column;
+    const column = (/SET (\w+) =/.exec(s) || /(\w+) AS value/.exec(s))[1];
     const rows = tables[table];
     if (s.startsWith("SELECT id::text AS id")) {
       return rows
@@ -56,6 +60,7 @@ const fakeDb = (tables, { interfere } = {}) => {
       return [[], { rowCount: hit ? 1 : 0 }];
     }
     if (s.startsWith(`SELECT ${column} AS value`)) {
+      expect(s).toContain("tenant_id IS NOT DISTINCT FROM CAST(:tenantId AS uuid)");
       const row = rows.find((x) => x.id === r.id && x.tenant_id === r.tenantId);
       return [{ value: row[column] }];
     }
@@ -76,6 +81,17 @@ const seed = () => ({
     { id: "k1", tenant_id: T1, private_key: encryptPrivateKeyForTest(PEM, process.env.ENCRYPT_KEY) },
     { id: "k2", tenant_id: T2, private_key: kms.encryptData(T2, PEM) },
   ],
+  users: [
+    // pre-0086 plaintext seed, operator with no tenant
+    { id: "u1", tenant_id: null, mfa_secret: SEED, mfa_pending_secret: null },
+    // a v1 envelope of a pending seed, and a live seed already current
+    {
+      id: "u2",
+      tenant_id: T1,
+      mfa_secret: mfaService.sealSecret("u2", SEED),
+      mfa_pending_secret: asV1(mfaService.sealSecret("u2", SEED)),
+    },
+  ],
 });
 
 describe("workFor", () => {
@@ -94,6 +110,14 @@ describe("workFor", () => {
   it("a v2 envelope under the current key needs nothing", () => {
     expect(workFor(settings, kms.encryptData(T1, "x"))).toBeNull();
   });
+
+  it("S-20: a plaintext TOTP seed is converted; its AAD is the user id, not the tenant", () => {
+    const seeds = TARGETS.find((t) => t.table === "users" && t.column === "mfa_secret");
+    expect(workFor(seeds, SEED)).toBe("convert");
+    expect(workFor(seeds, null)).toBeNull();
+    expect(aadOf(seeds, { id: "u1", tenant_id: T1 })).toBe("users.mfa:u1");
+    expect(aadOf(settings, { id: "s1", tenant_id: T1 })).toBe(T1);
+  });
 });
 
 describe("rewrapAll", () => {
@@ -105,10 +129,18 @@ describe("rewrapAll", () => {
     expect(result.failed).toBe(0);
     expect(result.keyInfo).toEqual(kms.keyInfo());
     expect(result.reports).toEqual([
-      { table: "tenant_settings", scanned: 4, rewrapped: 1, converted: 0, skipped: 0, failed: [] },
-      { table: "webhooks", scanned: 1, rewrapped: 1, converted: 0, skipped: 0, failed: [] },
-      { table: "tenant_keys", scanned: 2, rewrapped: 0, converted: 1, skipped: 0, failed: [] },
+      { table: "tenant_settings", column: "value", scanned: 4, rewrapped: 1, converted: 0, skipped: 0, failed: [] },
+      { table: "webhooks", column: "secret", scanned: 1, rewrapped: 1, converted: 0, skipped: 0, failed: [] },
+      { table: "tenant_keys", column: "private_key", scanned: 2, rewrapped: 0, converted: 1, skipped: 0, failed: [] },
+      { table: "users", column: "mfa_secret", scanned: 2, rewrapped: 0, converted: 1, skipped: 0, failed: [] },
+      { table: "users", column: "mfa_pending_secret", scanned: 2, rewrapped: 1, converted: 0, skipped: 0, failed: [] },
     ]);
+    // S-20: every seed is now a current envelope that opens under its user id.
+    for (const row of tables.users) {
+      expect(row.mfa_secret).toMatch(/^v2:/);
+      expect(mfaService.openSecret(row.id, row.mfa_secret)).toBe(SEED);
+    }
+    expect(mfaService.openSecret("u2", tables.users[1].mfa_pending_secret)).toBe(SEED);
     expect(kms.decryptData(T1, tables.tenant_settings[0].value)).toBe("stripe");
     expect(tables.tenant_settings[0].value).toMatch(/^v2:/);
     expect(tables.tenant_settings[1].value).toBe("not a secret");
@@ -122,7 +154,7 @@ describe("rewrapAll", () => {
     const snapshot = JSON.stringify(tables);
     const db = fakeDb(tables);
     const result = await rewrapAll({ sequelize: db, dryRun: true });
-    expect(result.reports.map((r) => r.rewrapped + r.converted)).toEqual([1, 1, 1]);
+    expect(result.reports.map((r) => r.rewrapped + r.converted)).toEqual([1, 1, 1, 1, 1]);
     expect(JSON.stringify(tables)).toBe(snapshot);
     expect(db.query.mock.calls.some(([sql]) => sql.includes("UPDATE"))).toBe(false);
   });
@@ -154,6 +186,15 @@ describe("rewrapAll", () => {
     expect(result.failed).toBe(1);
     expect(result.reports[0].failed).toEqual([{ id: "s1", error: "Failed to decrypt data" }]);
     expect(result.reports[1].rewrapped).toBe(1);
+  });
+
+  it("S-20: a plaintext value that is not a base32 seed is refused, never sealed", async () => {
+    const tables = seed();
+    tables.users[0].mfa_secret = "not a seed";
+    const seeds = TARGETS.find((t) => t.table === "users" && t.column === "mfa_secret");
+    const report = await rewrapTarget({ sequelize: fakeDb(tables), target: seeds });
+    expect(report.failed).toEqual([{ id: "u1", error: "not a base32 TOTP seed (refusing to guess)" }]);
+    expect(tables.users[0].mfa_secret).toBe("not a seed");
   });
 
   it("a re-read that does not hold the same secret is a failure", async () => {

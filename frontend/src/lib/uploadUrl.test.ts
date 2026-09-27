@@ -1,5 +1,6 @@
 import {
   toSameOriginUpload,
+  toSameOriginApiPath,
   avatarSrc,
   avatarImageProps,
   DEFAULT_AVATAR_SRC,
@@ -75,5 +76,25 @@ describe("avatarImageProps", () => {
       src: "/uploads/public/profile/x.jpg",
       unoptimized: false,
     });
+  });
+});
+
+describe("toSameOriginApiPath (F-11)", () => {
+  it("keeps a root-relative API path, query included", () => {
+    expect(toSameOriginApiPath("/api/v1/certificates/verify/C-1/document?token=1.a")).toBe(
+      "/api/v1/certificates/verify/C-1/document?token=1.a",
+    );
+  });
+
+  it("reduces an absolute backend URL to its API path", () => {
+    expect(toSameOriginApiPath("http://backend:3000/api/v1/x?y=1")).toBe("/api/v1/x?y=1");
+  });
+
+  it("refuses anything that is not an API path", () => {
+    expect(toSameOriginApiPath("https://evil.example/cert.pdf")).toBeNull();
+    expect(toSameOriginApiPath("/uploads/public/a.pdf")).toBeNull();
+    expect(toSameOriginApiPath("")).toBeNull();
+    expect(toSameOriginApiPath(null)).toBeNull();
+    expect(toSameOriginApiPath(undefined)).toBeNull();
   });
 });

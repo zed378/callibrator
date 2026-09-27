@@ -18,6 +18,9 @@
  *    exists, user active, account not
  *    inactive/suspended, tenant not suspended/deleted — via the same
  *    `authService.getAuthUserWithTenant` loader.
+ *  - P6-12 (2026-09-27): the same checks re-run on every OPEN socket every
+ *    SOCKET_RECHECK_INTERVAL_MS, and a socket that fails them is disconnected.
+ *    A socket token that names no session is refused.
  *  - Every rejection returns ONE opaque message. An unauthenticated socket is
  *    never told whether the user, the account status or the tenant was the
  *    reason; the detail is logged server-side only.
@@ -42,6 +45,7 @@ const { verifyPurposeToken } = require("../utils/jwt.util");
 const authService = require("../services/auth.service");
 const sessionService = require("../services/session.service");
 const { tenantStorage } = require("../middlewares/tenantContext.middleware");
+const { logger } = require("../middlewares/activityLog.middleware");
 
 const isSuperAdminRole = (name) =>
   name === "SUPER_ADMIN" || name === "SUPERADMIN";
@@ -55,7 +59,7 @@ const AUTH_ERROR = "Authentication error";
 
 const deny = (next, reason) => {
   // Server-side only. The client gets AUTH_ERROR and nothing else.
-  console.warn(`[Socket] handshake rejected: ${reason}`);
+  logger.warn("[Socket] handshake rejected", { reason });
   return next(new Error(AUTH_ERROR));
 };
 
@@ -87,7 +91,7 @@ const corsOrigin = (origin, callback) => {
     return callback(null, true);
   }
 
-  console.warn(`[Socket] CORS: origin "${origin}" rejected`);
+  logger.warn("[Socket] CORS: origin rejected", { origin });
   return callback(new Error("Not allowed by CORS"));
 };
 
@@ -102,6 +106,98 @@ const readAuthToken = (handshake) => {
     return token.trim();
   }
   return null;
+};
+
+/**
+ * The principal checks a socket must pass — at the handshake AND while it
+ * stays open (P6-12). The same checks the HTTP `auth` middleware makes: a
+ * live session (A-48), the user exists and is active and not
+ * inactive/suspended/erased, and its tenant is neither deleted nor suspended.
+ *
+ * A socket token that names no session is refused (P6-12, as an access token
+ * without `sid` is refused over HTTP): it could never be revoked.
+ *
+ * @param {string|undefined} sessionId - the token's `sid`
+ * @param {string} userId - the token's `id`
+ * @returns {Promise<{user?: object, refusal?: string}>} a server-side-only reason on refusal
+ */
+const checkPrincipal = async (sessionId, userId) => {
+  if (!sessionId) {
+    return { refusal: "token names no session" };
+  }
+  if (!(await sessionService.isSessionLive(sessionId, userId))) {
+    return { refusal: `session ${sessionId} is revoked or expired` };
+  }
+
+  const user = await authService.getAuthUserWithTenant(userId);
+
+  if (!user) {
+    return { refusal: "user not found" };
+  }
+
+  if (!user.isActive) {
+    return { refusal: `user ${user.id} is banned` };
+  }
+
+  if (user.status === "INACTIVE" || user.status === "SUSPENDED" || user.status === "erased") {
+    return { refusal: `user ${user.id} is ${user.status.toLowerCase()}` };
+  }
+
+  if (user.tenantId) {
+    // A-101: a soft-deleted or destroyed tenant is hidden by the Tenant
+    // default scope and paranoid, so the include comes back null. That is a
+    // deleted tenant, not "no tenant" — refuse it, as sign-in does (A-83).
+    if (!user.tenant) {
+      return { refusal: `tenant ${user.tenantId} is deleted` };
+    }
+    const tenantStatus = String(user.tenant.status || "").toLowerCase();
+    if (tenantStatus === "suspended" || tenantStatus === "deleted") {
+      return { refusal: `tenant ${user.tenantId} is ${tenantStatus}` };
+    }
+  }
+
+  return { user };
+};
+
+/**
+ * P6-12. How often an OPEN socket re-runs checkPrincipal. Until 2026-09-27 the
+ * checks ran at the handshake only, so a revoked session, a banned user or a
+ * suspended tenant kept receiving realtime events for as long as the socket
+ * stayed connected. This is the bound on that window: at most one interval
+ * (plus the session-liveness cache TTL when a revocation bypassed the model
+ * hooks — session.service.js#SESSION_LIVENESS_TTL_SECONDS).
+ */
+const SOCKET_RECHECK_INTERVAL_MS = 60 * 1000;
+
+/**
+ * Re-check an open socket's principal; disconnect it when it no longer passes.
+ * An error (the database or Redis briefly unreachable) is logged and the
+ * socket kept: the next interval tries again. Disconnecting every socket on a
+ * blip would turn an infrastructure hiccup into a reconnect storm, and the
+ * reconnect's handshake runs the same checks anyway.
+ *
+ * @param {import("socket.io").Socket} socket
+ * @returns {Promise<boolean>} whether the socket was disconnected
+ */
+const recheckSocket = async (socket) => {
+  try {
+    const { refusal } = await checkPrincipal(socket.sessionId, socket.user.id);
+    if (!refusal) {
+      return false;
+    }
+    logger.warn("[Socket] open socket refused on re-check", {
+      userId: socket.user.id,
+      reason: refusal,
+    });
+    socket.disconnect(true);
+    return true;
+  } catch (err) {
+    logger.warn("[Socket] re-check failed; socket kept until the next one", {
+      userId: socket.user.id,
+      error: err.message,
+    });
+    return false;
+  }
 };
 
 /**
@@ -129,43 +225,14 @@ const authenticateHandshake = async (socket, next) => {
     // are all refused here — and the socket token is refused everywhere else.
     const decoded = verifyPurposeToken(token, "socket");
 
-    // The session the socket token was issued from must still be live, as the
-    // HTTP `auth` middleware requires (A-48). Connect-time only: an open
-    // socket is not re-checked (A-05, Q-08).
-    if (decoded.sid && !(await sessionService.isSessionLive(decoded.sid, decoded.id))) {
-      return deny(next, `session ${decoded.sid} is revoked or expired`);
-    }
-
-    const user = await authService.getAuthUserWithTenant(decoded.id);
-
-    if (!user) {
-      return deny(next, "user not found");
-    }
-
-    if (!user.isActive) {
-      return deny(next, `user ${user.id} is banned`);
-    }
-
-    if (user.status === "INACTIVE" || user.status === "SUSPENDED" || user.status === "erased") {
-      return deny(next, `user ${user.id} is ${user.status.toLowerCase()}`);
-    }
-
-    if (user.tenantId) {
-      // A-101: a soft-deleted or destroyed tenant is hidden by the Tenant
-      // default scope and paranoid, so the include comes back null. That is a
-      // deleted tenant, not "no tenant" — refuse it, as sign-in does (A-83).
-      if (!user.tenant) {
-        return deny(next, `tenant ${user.tenantId} is deleted`);
-      }
-      const tenantStatus = String(
-        (user.tenant && user.tenant.status) || "",
-      ).toLowerCase();
-      if (tenantStatus === "suspended" || tenantStatus === "deleted") {
-        return deny(next, `tenant ${user.tenantId} is ${tenantStatus}`);
-      }
+    const { user, refusal } = await checkPrincipal(decoded.sid, decoded.id);
+    if (refusal) {
+      return deny(next, refusal);
     }
 
     socket.user = user;
+    // P6-12: the session this socket belongs to, re-checked while it is open.
+    socket.sessionId = decoded.sid;
     // The context the Sequelize tenant hooks read. Same shape as
     // tenantContext.middleware.js builds for an HTTP request.
     socket.tenantContext = {
@@ -216,11 +283,11 @@ const attachAdapter = (server) => {
   try {
     shared = redisService.getRedisConnection();
   } catch (err) {
-    console.warn(`[Socket] Redis client unavailable: ${err.message}`);
+    logger.warn("[Socket] Redis client unavailable", { error: err.message });
   }
 
   if (!shared || shared.status !== "ready") {
-    console.warn(IN_MEMORY_WARNING);
+    logger.warn(IN_MEMORY_WARNING);
     return false;
   }
 
@@ -228,12 +295,12 @@ const attachAdapter = (server) => {
   const subClient = shared.duplicate({ lazyConnect: false });
   for (const client of [pubClient, subClient]) {
     client.on("error", (err) => {
-      console.warn(`[Socket] Redis adapter connection error: ${err.message}`);
+      logger.warn("[Socket] Redis adapter connection error", { error: err.message });
     });
   }
 
   server.adapter(createAdapter(pubClient, subClient));
-  console.log("[Socket] Redis adapter enabled: fan-out is shared across replicas");
+  logger.info("[Socket] Redis adapter enabled: fan-out is shared across replicas");
   return true;
 };
 
@@ -254,9 +321,15 @@ exports.initSocket = (server) => {
   io.use(authenticateHandshake);
 
   io.on("connection", (socket) => {
-    console.log(
-      `[Socket] User connected: ${socket.user.id} (Tenant: ${socket.user.tenantId})`,
-    );
+    logger.info("[Socket] User connected", {
+      userId: socket.user.id,
+      tenantId: socket.user.tenantId,
+    });
+
+    // P6-12: re-check the principal while the socket is open.
+    // unref: an open socket's timer must never keep the process alive.
+    const recheckTimer = setInterval(() => recheckSocket(socket), SOCKET_RECHECK_INTERVAL_MS);
+    recheckTimer.unref();
 
     // Join tenant room for tenant-scoped broadcasts (tenant isolation).
     socket.join(`tenant_${socket.user.tenantId}`);
@@ -297,7 +370,8 @@ exports.initSocket = (server) => {
     });
 
     socket.on("disconnect", () => {
-      console.log(`[Socket] User disconnected: ${socket.user.id}`);
+      clearInterval(recheckTimer);
+      logger.info("[Socket] User disconnected", { userId: socket.user.id });
     });
   });
 
@@ -319,7 +393,7 @@ exports.emitToBoard = (projectId, event, payload) => {
   try {
     io && io.to(`board_${projectId}`).emit(event, payload);
   } catch (err) {
-    console.warn("[Socket] emitToBoard failed:", err.message);
+    logger.warn("[Socket] emitToBoard failed", { projectId, event, error: err.message });
   }
 };
 
@@ -327,6 +401,9 @@ exports.emitToBoard = (projectId, event, payload) => {
 // surface of this module and are asserted directly.
 exports.__testables = {
   authenticateHandshake,
+  checkPrincipal,
+  recheckSocket,
+  SOCKET_RECHECK_INTERVAL_MS,
   corsOrigin,
   readAuthToken,
   withTenantContext,
