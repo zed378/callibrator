@@ -102,7 +102,6 @@ These have no equivalent in a generic setup and are the ones worth building.
 |---|---|
 | Certificate PDF rendering failing | **`PUPPETEER_EXECUTABLE_PATH` wrong — fails at first use, not startup**, in a compliance-critical path |
 | Public verification endpoint failing | an auditor cannot verify a certificate |
-| ACME provisioning failing | **`ACME_DIRECTORY_URL` may still point at staging** |
 | A tenant's calibration overdue count spiking | their compliance problem, and possibly a support call incoming |
 | A scheduler double-running | more than one replica is running schedulers |
 
@@ -161,13 +160,15 @@ Every scheduler runs its job through `jobMonitor.runMonitored`:
 | `webhook-dispatch` | `WEBHOOK_DISPATCH_SCHEDULER` | every 15 s | the pass throws (a receiver refusing a delivery is the dispatcher *working*) |
 | `quarantine-sweep` (S-33) | `QUARANTINE_SWEEP_SCHEDULER` | `17 * * * *` | it throws, or a quarantined file could not be removed |
 
+**A run that succeeds but leaves work behind is a `warning` (ADR-082).** Two jobs are bounded per run (W-17) and can stop early: the retention sweep when its time budget (`RETENTION_SWEEP_BUDGET_MS`) runs out with tenants still holding expired data (`incomplete > 0`), and the quarantine sweep when it reaches `QUARANTINE_SWEEP_MAX_ENTRIES` (`truncated`). Before ADR-082 both were only a count in an `info` line. Now each raises `job.<name>.incomplete` (severity `warning`) with its own meaning and action, throttled like a failure — the first incomplete run of a streak, then at most once per `JOB_ALERT_REPEAT_HOURS`, and one `resolved` when a run completes again. `callibrator_job_last_run_incomplete` exposes it to a scrape. A run that also *failed* alerts as a failure only.
+
 A partial failure is a **failure**: "overdue devices got no work order" must not read as success.
 
 ### What happens on a failure
 
 1. **Recorded durably** — `JOB_STATUS_DIR/<job>.json` (default `<storage>/log/jobs/`, the log volume in compose): last start, finish, duration, outcome, error, consecutive failures, last success, next expected run. Written atomically. It survives a restart, which is what lets a run missed *while the process was down* be detected.
 2. **Logged at `error`** with a structured `alert` object — `alert.key` (`job.<name>.failed`), `alert.severity`, `title`, `meaning`, `action`, `detail`. Production logs JSON to stdout (A-14), so a log pipeline can alert on `alert.key` with no application change ([`06-LOGGING.md`](./06-LOGGING.md)). **This line is the alert of record.**
-3. **Pushed** when configured: `ALERT_WEBHOOK_URL` (one POST of `{ "text": …, "alert": {…} }` — `text` is what Slack/Mattermost render; the structured object is for everything else) and/or `ALERT_EMAIL_TO` (through the application's SMTP transport). A sink that fails is logged and never breaks the job.
+3. **Pushed** when configured (the route — see *Routing configuration* below): `ALERT_WEBHOOK_URL` (one POST of `{ "text": …, "alert": {…} }` — `text` is what Slack/Mattermost render; the structured object is for everything else) and/or `ALERT_EMAIL_TO` (through the application's SMTP transport). A sink that fails is logged and never breaks the job.
 
 Every alert says what it means and what to do. The retention one reads:
 
@@ -177,6 +178,20 @@ Retention purge failed: data past its retention window was NOT purged. This is a
 What to do: Read the error, fix it, then run the purge by hand for each tenant (POST /api/v1/tenants/:tenantId/purge as a super admin) and confirm the counts.
 Detail: column "tenantId" does not exist (consecutive failures: 1; last success: 2026-09-23T02:00:04.311Z)
 ```
+
+### Routing configuration (ADR-082)
+
+| Variable | Target | Format |
+|---|---|---|
+| `ALERT_WEBHOOK_URL` | any HTTPS endpoint — a Slack or Mattermost **incoming webhook** URL works as-is; Teams, Alertmanager-style receivers and custom endpoints read the structured object | one `POST`, `content-type: application/json`, body `{ "text": "[SEVERITY] title
+meaning
+What to do: …
+Detail: …", "alert": { key, severity, title, meaning, action, detail, context, raisedAt } }`; a non-2xx answer or `ALERT_WEBHOOK_TIMEOUT_MS` (default 5000) is a failed sink, logged at `error` |
+| `ALERT_EMAIL_TO` | comma-separated addresses | plain text through the application's SMTP transport (`SMTP_*`) |
+
+Both may be set; each alert goes to both. **At boot the watchdog states the route in one line** — `Alert routing: webhook=<host>, email=<n> address(es)` at `info`, or `Alert routing: NONE configured — alerts are log lines only` at `warn`. Only the webhook's **host** is logged: a Slack webhook URL is itself a credential. An unparseable URL is reported there as `webhook=INVALID URL`, at boot rather than at the first alert.
+
+**Tested path:** `backend/src/tests/services/alertRouting.p702.test.js` runs the real monitor, the real alert service and the real scheduler middlewares against a real HTTP receiver on `127.0.0.1` and asserts what arrives: a failed job, a missed run (watchdog), a retention sweep out of budget, a quarantine sweep at its entry limit (real files in a real directory), the throttle and the `resolved` message.
 
 ### Not training people to ignore alerts
 
@@ -212,10 +227,10 @@ Metrics: `callibrator_job_enabled`, `callibrator_job_last_success_timestamp_seco
 
 ### Honest limits
 
-- **Routing to a channel someone reads** is configuration: until `ALERT_WEBHOOK_URL`/`ALERT_EMAIL_TO` is set or the logs are shipped and matched, the alert is a log line. The template ([`deploy/compose/.env.example`](../../deploy/compose/.env.example)) says so.
+- **Routing to a channel someone reads** is configuration: until `ALERT_WEBHOOK_URL`/`ALERT_EMAIL_TO` is set or the logs are shipped and matched, the alert is a log line. The template ([`deploy/compose/.env.example`](../../deploy/compose/.env.example)) says so, and since ADR-082 the boot log says so too. **No deployment has a route configured yet** — that is an operator's decision (which channel, who reads it), not code.
 - In Kubernetes the status files are on an `emptyDir` (the log volume): they survive a container restart, not a pod rescheduling — the alerts and metrics are the signal of record there.
 - An **infrastructure** backup (the host `pg_dump`/WAL procedure) runs outside this process and is not monitored by it. Its runner must alert on its own exit code.
-- Not verified against a live SMTP server or a live Slack webhook; the webhook sink is tested against a local HTTP server.
+- Not verified against a live SMTP server or a live Slack workspace; the webhook route is tested end to end against a local HTTP receiver (`alertRouting.p702`). Slack ignoring the extra `alert` field is Slack's documented behaviour for unknown fields, not something tested here.
 
 ## After an Alert Fires
 

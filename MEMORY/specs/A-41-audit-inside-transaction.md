@@ -188,3 +188,56 @@ Named tests (each shown failing against the pre-change code before the change):
 - [x] Behaviour change a user can see: an audit-insert failure now **refuses** a compliance-critical action instead of letting it commit unattributed. And e-signature signing/revocation, which returned a 500 after committing, now either commits cleanly with its audit row or not at all.
 - [x] `createCertificate` → `startWorkflow` stays **after** commit, as before: a workflow-start failure leaves an issued, audited certificate and an error — the same shape as today, now attributable.
 - [x] Rollback of this change: revert the commit. No data shape changes.
+
+---
+
+## Addendum 2026-09-28 — the covered set as it stands (P6-11, ADR-085)
+
+The 25 mutations above were the first set. Later cards (A-77, A-133, W-04, ADR-060/069/070, P6-13 and others) moved most of the backend onto the same call. This is the **current** set, generated from the code on 2026-09-28 (`logAction(` call sites per file, with the function that makes each call). It is a file-level inventory, not a per-route proof; each file's own suite proves its behaviour.
+
+| File | Functions that write the audit row |
+|---|---|
+| `controllers/sso.controller.js` | `issueSsoTokens` |
+| `services/admin.service.js` | `auditPlatformActionOnTenant` |
+| `services/attachment.service.js` | `deleteAttachment` (and inline calls) |
+| `services/attachmentFileSweep.service.js` | `sweepBatch` |
+| `services/auth.service.js` | `openLoginSession`, `recordPasswordChecksExhausted` |
+| `services/batchJob.service.js` | `auditTransition` |
+| `services/billing.service.js` | `updateSubscription` |
+| `services/calibrationDeviceReinstate.service.js` | (inline) |
+| `services/calibrationDevices.service.js` | `auditDevice` |
+| `services/calibrationRecords.service.js` | `auditRecord` |
+| `services/calibrationScheduler.service.js` | (inline) |
+| `services/certificate.service.js` | `auditCertificate`, `recordSignatureAuthFailure` |
+| `services/contentMedia.service.js` | (inline) |
+| `services/customDomains.service.js` | `auditDomainChange` |
+| `services/dataRetention.service.js` | `disableLegalHold`, `enableLegalHold`, `maskAuditTrail` (and inline calls) |
+| `services/eSignature.service.js` | `auditWorkflowChange`, `expireWorkflow` (and inline calls) |
+| `services/gdpr.service.js` | `rectifyData` |
+| `services/iot.service.js` | `ingestInTenant` |
+| `services/iotDevice.service.js` | `audit` |
+| `services/maintenance.service.js` | `auditWorkOrder` |
+| `services/menuGroup.service.js` | `auditGrantChange`, `auditMenuChange` |
+| `services/predictiveMaintenance.service.js` | `analyzeDevice`, `approveRecommendation` |
+| `services/qms.service.js` | `audit` |
+| `services/roles.service.js` | `auditAccessChange` |
+| `services/scheduledBackup.service.js` | `pruneRow` |
+| `services/scim.service.js` | (inline) |
+| `services/sop.service.js` | (inline) |
+| `services/stock.service.js` | `audit` |
+| `services/tenant.service.js` | `createTenant`, `deleteTenant`, `updateTenant`, `updateTenantSettings` |
+| `services/tenantBackup.service.js` | (inline) |
+| `services/tenantHierarchy.service.js` | `moveTenant` |
+| `services/tenantLifecycle.service.js` | `hardDeleteOffboardedTenant` (and inline calls) |
+| `services/tenantUpload.service.js` | `changeLogo` |
+| `services/user.service.js` | `auditUserChange` (and inline calls) |
+| `services/userPermission.service.js` | `auditOverride` |
+| `services/webhook.service.js` | `auditWebhook` |
+| `services/webhookDeliveryPurge.service.js` | (inline) |
+| `services/workflow.service.js` | `_auditDefinition`, `_updateTargetResourceStatus`, `submitAction` |
+
+**Pinned by `src/tests/guards/auditInTransaction.p611.test.js`:** every one of these calls passes a `transaction`, except two with a stated reason (`contentMedia.service.js` — the audit row is the only write; the GDPR expired-export sweep — it deletes files, and its audit row is its only database write); nothing but `audit.service.js` writes `audit_logs` directly; and no route mounts `recordAudit`.
+
+**The middleware's remaining role: none.** `auditLog.middleware.js#recordAudit` and `#withAudit` have **no caller** in `routes/` or `index.js` since A-77 moved user create/update/delete into `user.service.js`. Nothing compliance-bearing depends on them. They are kept only because P9-19 (Phase 9) names the file; deleting them is that card's call.
+
+**Not covered — mutating services that write no audit row in their own file** (2026-09-28): `ai`, `apiKey`, `content`, `featureFlag`, `finance`, `kanban`, `meteredBilling`, `notification`, `oidcProvider`, `risk`, `supplierScorecard`, `ticket`, `vendor`, `warehouse`, `webauthn` (plus infrastructure services whose writes are not user mutations: `kms`, `session`, `rateLimiter.redis`, `migration`, `storageMigration`, `stripeWebhook`, `signingKeyWrap`, `clamAv`, `certificatePdf`, `mfa`, `sso` — several of these are audited by their caller). CLAUDE.md says **every** mutation; whether each of the first group must be, or is out of the compliance scope, is recorded as open in P6-11, not decided here. `apiKey` (credential minting) is the most consequential gap.

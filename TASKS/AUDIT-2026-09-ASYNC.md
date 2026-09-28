@@ -30,18 +30,18 @@ needs one to settle says so in its own card.
 | W-07 | a batch job interrupted by SIGTERM is **acked on redelivery and never runs again** — stuck `PROCESSING`, no DLQ row | **medium–high** | **DONE** 2026-09-25: row claim, heartbeat, sweep, drain (ADR-060) |
 | W-08 | batch jobs do nothing: the handler registry is empty and every job reports `COMPLETED`, progress 100, with a download URL | **medium–high** | **DONE** 2026-09-25: unregistered type refused or FAILED; no handlers exist (ADR-060) |
 | W-09 | the email retry both re-publishes **and** dead-letters the same message, from an in-process timer that can take the server down | medium | **DONE** 2026-09-25: broker delay queues, one DLQ message, live (ADR-061) |
-| W-10 | the nightly "tenant backup" backs up two local folders and not the database; the real backup service is scheduled by nothing | medium | **live** |
+| W-10 | the nightly "tenant backup" backs up two local folders and not the database; the real backup service is scheduled by nothing | medium | **DONE** 2026-09-24 by S-03 (`fabc3be`), verified 2026-09-27: `BACKUP_SCHEDULER` runs a per-tenant `createBackup` — `backup.test.js` "S-03 — a tick backs up every tenant, into the backup volume". The restore drill is the ops-drills card, not this one |
 | W-11 | a deleted or deactivated role keeps its permissions for up to an hour — cached authorization with no invalidation on that path | medium | **DONE** 2026-09-24 |
 | W-12 | every scheduled job runs with **no tenant predicate at all**, and `beforeCreate` does not stamp `tenantId` | medium | **DONE** 2026-09-25: every job declares a context; opt-outs are a closed list (ADR-060, ADR-069) — live on PostgreSQL 18.6 |
-| W-13 | silent failure is the norm: every job's failure path ends at `logger.error`, and production writes no stdout (A-14) | medium | **live** |
-| W-14 | MQTT ingest fans out to every replica — N duplicate readings and N duplicate alerts per message — with no backpressure | medium | latent (MQTT off) |
-| W-15 | the GDPR export ZIP is deleted by a 168-hour in-process timer; a restart leaves exported personal data on disk forever | medium | **live** |
-| W-16 | the retention purge has no transaction, and one malformed setting makes a tenant silently never purge | medium | **partial** — transaction added 2026-09-24 |
+| W-13 | silent failure is the norm: every job's failure path ends at `logger.error`, and production writes no stdout (A-14) | medium | **DONE** by P7-02 (`jobMonitor.service`) + A-14, verified 2026-09-27: `jobMonitor.service.p702.test.js` "a throw is a FAILED run: recorded, and alerted…"; coverage guard `jobMonitor.coverage.w13.test.js` |
+| W-14 | MQTT ingest fans out to every replica — N duplicate readings and N duplicate alerts per message — with no backpressure | medium | **DONE** 2026-09-27 (ADR-079): shared subscription + ingest cap; live on Mosquitto 2 + PostgreSQL 18 (`iot.sharedSubscription.w14.live.test.js`). Alert suppression window still open |
+| W-15 | the GDPR export ZIP is deleted by a 168-hour in-process timer; a restart leaves exported personal data on disk forever | medium | **DONE** 2026-09-27 (ADR-079): manifest on disk, deleted and audited by the retention sweep; live on PostgreSQL 18 (`retentionExports.w15w16.live.test.js`) |
+| W-16 | the retention purge has no transaction, and one malformed setting makes a tenant silently never purge | medium | **DONE** 2026-09-27 (ADR-079): transaction 2026-09-24; a malformed value applies the default, is reported, and fails the run; live on PostgreSQL 18 (`retentionExports.w15w16.live.test.js`) |
 | W-17 | unbounded result sets and N+1 inside the per-tenant and per-device loops | low–medium | **DONE** 2026-09-25: every scheduled job paged or batched (ADR-069); emit-path first attempts capped, the scan commits per tenant chunk, offboarding builds no export (ADR-073) — live on PostgreSQL 18.6 |
 | W-18 | connection and timer lifecycle: two AMQP connections per process, one never closed, no in-flight memo on either getter | low–medium | **DONE** 2026-09-25: one connection, one close (ADR-061) |
-| W-19 | the rate limiter's memory fallback has lazy expiry only — no sweep, unbounded growth | low | **live** |
-| W-20 | `hardDeleteOffboardedTenant` would **cascade-delete the tenant's audit trail** (`audit_logs.tenant_id ON DELETE CASCADE`), with no transaction and no audit row | **high** | **fixed** 2026-09-24 — `audit_logs.tenant_id` RESTRICT (migration 0030) |
-| W-21 | `enterGracePeriod` accepts a tenant that is not suspended; a later suspension past the deadline is offboarded immediately | medium | live |
+| W-19 | the rate limiter's memory fallback has lazy expiry only — no sweep, unbounded growth | low | **DONE** 2026-09-27 (ADR-079): unref'd sweep + `RATE_LIMIT_MEMORY_MAX_KEYS` cap (`rateLimiter.memoryBound.w19.test.js`) |
+| W-20 | `hardDeleteOffboardedTenant` would **cascade-delete the tenant's audit trail** (`audit_logs.tenant_id ON DELETE CASCADE`), with no transaction and no audit row | **high** | **DONE** 2026-09-24 by A-122 (migration 0030, `66ed45d`) + D-23 (`8a11905`), verified 2026-09-27 on PostgreSQL 18 (`tenantHardDelete.w20.live.test.js`) |
+| W-21 | `enterGracePeriod` accepts a tenant that is not suspended; a later suspension past the deadline is offboarded immediately | medium | **DONE** 2026-09-27 (ADR-079): 409 unless suspended (`tenantLifecycle.gracePeriod.w21.test.js`) |
 | W-30 | the scheduled calibration scan's work orders were **all rolled back**: it passed no actor, and `logAction` refuses one inside the transaction (A-124 + A-190) | **high** | **DONE** 2026-09-25 (ADR-061) |
 | W-31 | the batch worker acked through the shared **publishing** channel, where the delivery tag means nothing: a protocol error that closes that channel | medium | **DONE** 2026-09-25 (ADR-061) |
 | W-32 | the IoT anomaly alert was written with `type: "system"`, which the notifications ENUM refuses: **no anomaly alert had ever been stored** | medium | **DONE** 2026-09-25 (ADR-069) — live on PostgreSQL 18.6 |
@@ -948,9 +948,18 @@ before it is settled.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24 by S-03, verified 2026-09-27 |
 | **Severity** | medium |
 | **Verified** | from code. Confirming what is actually inside `backend/data` on the VM needs shell access there |
+
+**Closed 2026-09-27 — already fixed by S-03** (`fabc3be`, `TASKS/AUDIT-2026-09-INFRA.md` § S-03). Verified in
+the code: `backup.middleware.js` no longer zips `data/` and `log/`; `BACKUP_SCHEDULER` runs
+`scheduledBackup.service#runScheduledBackup`, a `tenantBackup.service#createBackup` per tenant under
+`runForTenant`, audited as `system:scheduled-backup`, writing and pruning under one `storagePath("backup",
+"tenant-backups")`. Named tests: `backup.test.js` "S-03 — a tick backs up every tenant, into the backup
+volume" and "S-14 — pruning never deletes the backup directory"; `scheduledBackup.service.test.js`
+"backs up each tenant inside that tenant's context, and records ok". **Left to its own card:** the restore
+drill (DoD box 2) belongs to the ops-drills work.
 
 **Evidence**
 
@@ -1245,9 +1254,18 @@ statements they produce, so the proof is the real hooks on real models against P
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** by P7-02 + A-14, verified 2026-09-27 |
 | **Severity** | medium |
 | **Verified** | from code; the "0 lines in `docker logs`" measurement is A-14's, on the reference deployment |
+
+**Closed 2026-09-27 — already fixed by P7-02 and A-14.** Every `cron.schedule` job runs through
+`jobMonitor.service#runMonitored` (a durable run record per job, an alert on failure, a watchdog for a run
+that never happened, `GET /api/v1/health/jobs`), and production has a Console transport (A-14).
+`notification.service.js` no longer uses `console.warn`. Named tests: `jobMonitor.service.p702.test.js`
+"a throw is a FAILED run: recorded, and alerted with what it means and what to do" and "keeps a past
+expected run that never started"; `activityLog.a14.stdout.test.js`. Added:
+`jobMonitor.coverage.w13.test.js` fails when a new scheduler is not monitored (passes on `f0d7f08` too:
+it guards a fix that already existed).
 
 **Evidence**
 
@@ -1296,9 +1314,18 @@ also the cheapest possible test for W-01, because a job that has never succeeded
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-27 (ADR-079) |
 | **Severity** | medium |
 | **Verified** | from code. **Latent** — MQTT is off on the reference deployment (`index.js:664`, A-17), and demonstrating it needs a broker and two replicas |
+
+**Fixed 2026-09-27 (ADR-079).** `iot.service.js` subscribes to `$share/<MQTT_SHARED_GROUP>/device/#`
+(default group `callibrator`; `none` for a broker without shared subscriptions) and ingests from
+`handleMessage`, withholding the client's `done` at `MQTT_INGEST_CONCURRENCY` (8) ingests in flight.
+Reading and alert were already one transaction (W-04). Named tests: `iot.ingest.w14.test.js` (subscription,
+cap, burst peak); live on Mosquitto 2.1 + PostgreSQL 18 `iot.sharedSubscription.w14.live.test.js` — "one
+publish produces exactly one reading row with two replicas running", one alert and one audit row, a burst of
+40 stored once each. **Fail-before** on `f0d7f08`: 2 readings, 2 alerts, duplicated burst rows. **Still
+open:** DoD box 3, an alert suppression window.
 
 **Evidence**
 
@@ -1353,9 +1380,18 @@ transaction. Alerts need a suppression window regardless.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-27 (ADR-079) |
 | **Severity** | medium — privacy |
 | **Verified** | from code, 2026-09-23 |
+
+**Fixed 2026-09-27 (ADR-079).** No timer. `exportUserData` writes `<exportId>.json` (owner, expiry) first
+and removes its working directory once zipped; `gdpr.service#purgeExpiredExports`, run by
+`runRetentionSweep`, deletes expired exports and writes a `DataExport` / `GDPR_EXPORT_EXPIRED` audit row in
+the export's tenant. Named tests: `gdpr.exportSweep.w15.test.js` "an export whose process died … is deleted
+by the next sweep, and a row says so"; live on PostgreSQL 18 `retentionExports.w15w16.live.test.js` "W-15:
+an expired export whose process died is deleted by the sweep, and its audit row is accepted by the table".
+Fail-before on `f0d7f08`. **Still open:** the retention window in `docs/` against the GDPR commitment (DoD
+box 3); the export's `downloadUrl` names a route that does not exist.
 
 **Evidence**
 
@@ -1398,9 +1434,17 @@ an audit row. Keep the timer as the fast path if that is wanted, but it must not
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-27 (ADR-079) |
 | **Severity** | medium |
 | **Verified** | from code, 2026-09-23 |
+
+**Fixed 2026-09-27 (ADR-079).** A stored period that is not a whole number of days applies the platform
+default, is logged at `error`, returned as `anomalies` and counted by the sweep; `retentionScheduler#failureOf`
+makes such a run FAILED (alerted by P7-02). `setRetentionPolicy` refuses a non-integer with 400. Named tests:
+`dataRetention.policy.w16.test.js`; live `retentionExports.w15w16.live.test.js` "W-16: a tenant with
+retention_policy_notifications = 'forever' purges on the default (90 days), and the sweep reports it".
+Fail-before on `f0d7f08`: the tenant's 200-day-old notification stayed. The mid-purge rollback box was closed
+2026-09-24 (`dataRetention.audit.w04.test.js`).
 
 **Evidence**
 
@@ -1686,9 +1730,15 @@ getters (`if (connecting) return connecting`). Export one `closeRabbitMQ` and ca
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-27 (ADR-079) |
 | **Severity** | low |
 | **Verified** | from code, 2026-09-23 |
+
+**Fixed 2026-09-27 (ADR-079).** `memoryStore` is swept every 60 s by an unref'd timer (stopped when
+empty) and capped at `RATE_LIMIT_MEMORY_MAX_KEYS` (100,000), evicting the entry written longest ago. Named
+tests: `rateLimiter.memoryBound.w19.test.js` "driven past RATE_LIMIT_MEMORY_MAX_KEYS by one-off addresses,
+it stays at the maximum", "the sweep timer is unref'd". Fail-before on `f0d7f08`. ADR-079 states the bound
+the A-30 outage note asked for.
 
 **Evidence**
 
@@ -1735,9 +1785,15 @@ Stated plainly, because the difference between "renders" and "works" is the poin
 
 | | |
 |---|---|
-| **Status** | TODO — **owner decision** |
+| **Status** | **DONE** 2026-09-24 by A-122 + D-23, verified 2026-09-27 |
 | **Severity** | **high** — latent; the function is not routed or scheduled |
 | **Verified** | on PostgreSQL 18.6, `\d tenants`, 2026-09-24 (W-01) |
+
+**Closed 2026-09-27 — already fixed.** Migration 0030 (A-121/A-122, `66ed45d`) made
+`audit_logs.tenant_id` ON DELETE RESTRICT; D-23 (ADR-064, `8a11905`) made the hard delete one transaction that
+refuses (409) while any retained table holds a row, with its own audit row. Named tests: live on PostgreSQL
+18 `tenantHardDelete.w20.live.test.js` (the FK's `confdeltype` is `r`; a raw `DELETE FROM tenants` fails with
+23001; `hardDeleteOffboardedTenant` answers 409 naming `audit_logs (1)`); `tenantLifecycle.hardDelete.d23.test.js`.
 
 `hardDeleteOffboardedTenant` destroys the tenant's users, subscription, invoices, settings and the
 tenant row. It runs with no transaction and writes no audit row. And `audit_logs.tenant_id` is
@@ -1755,9 +1811,14 @@ this before anyone routes the function.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-27 (ADR-079) |
 | **Severity** | medium |
 | **Verified** | from code, 2026-09-24 (W-01) |
+
+**Fixed 2026-09-27 (ADR-079).** `enterGracePeriod` answers 409 — "This tenant is "<status>", not
+suspended … Suspend it first." — and saves nothing. Named test: `tenantLifecycle.gracePeriod.w21.test.js`
+"a %s tenant is refused with 409, naming its state, and no deadline is saved". Fail-before on `f0d7f08`.
+**Still open:** entering a grace period writes no audit row.
 
 `enterGracePeriod` accepts an active tenant and sets the deadline. If that tenant is suspended after
 the deadline has passed, the next scheduled run offboards it at once, with no grace. **Fix

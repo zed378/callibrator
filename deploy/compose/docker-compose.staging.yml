@@ -29,9 +29,7 @@ services:
       # Fail-closed on a scanner error (the default) is deliberate.
       VIRUS_SCAN_PROVIDER: clamav
       VIRUS_SCAN_FAIL_OPEN: "false"
-      # ACME_DIRECTORY_URL defaults to the Let's Encrypt STAGING directory,
-      # which is correct here and wrong in production.
-      ACME_DIRECTORY_URL: ${ACME_DIRECTORY_URL:-https://acme-staging-v02.api.letsencrypt.org/directory}
+      # ACME_DIRECTORY_URL removed (ADR-081): nothing reads it since A-256.
     deploy:
       resources:
         limits:

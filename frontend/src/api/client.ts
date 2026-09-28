@@ -283,10 +283,20 @@ apiClient.interceptors.response.use(
           responseData?.code,
           window.location.pathname,
         );
+      // P6-02 (ADR-077): a gate code is never a refused action, even on the
+      // gate's own page. On /dashboard/mfa the layout's POST menu fetch is
+      // answered 403 MFA_ENROLMENT_REQUIRED; no redirect applies there, so it
+      // fell through to the modal, the modal's refusal re-fetched the menu,
+      // and the loop kept the modal over the enrolment form — an operator
+      // could not enrol (found by the browser smoke, automate/).
+      const gateCode =
+        responseData?.code === MFA_ENROLMENT_REQUIRED ||
+        responseData?.code === PASSWORD_CHANGE_REQUIRED;
       if (target) {
         browserNavigation.go(target);
       } else if (
         status === 403 &&
+        !gateCode &&
         !isCredentialEndpoint(config?.url) &&
         MUTATING_METHODS.includes((config?.method || "").toLowerCase())
       ) {

@@ -145,6 +145,18 @@ function projectForExport(row, fields) {
 }
 
 /**
+ * P7-04 drill finding D-3 (ADR-078): the API validator and the UI send
+ * "FULL" / "USER_ONLY"; the model constants (and the scheduled backup) are
+ * "full" / "user_only". Compared case-sensitively, every backup taken through
+ * the API exported NO users — a "full" backup of the tenant row alone.
+ *
+ * @param {*} value - a backupType as stored or sent
+ * @param {string} type - a TenantBackup.BACKUP_TYPES value
+ * @returns {boolean}
+ */
+const isBackupType = (value, type) => typeof value === "string" && value.toLowerCase() === type;
+
+/**
  * Export tenant data to JSON structure (simplified)
  */
 async function exportTenantData(tenantId, backupType, models) {
@@ -170,8 +182,8 @@ async function exportTenantData(tenantId, backupType, models) {
   }
 
   if (
-    backupType === TenantBackup.BACKUP_TYPES.FULL ||
-    backupType === TenantBackup.BACKUP_TYPES.USER_ONLY
+    isBackupType(backupType, TenantBackup.BACKUP_TYPES.FULL) ||
+    isBackupType(backupType, TenantBackup.BACKUP_TYPES.USER_ONLY)
   ) {
     // A-139: only allow-listed columns are selected, and only allow-listed
     // keys are written — never a credential or second factor.
@@ -529,7 +541,7 @@ function assertRestorable({ backupId, backup, data, targetTenantId }) {
 
   const backupType = data.metadata.backupType || backup.backupType;
   if (
-    backupType === TenantBackup.BACKUP_TYPES.FULL &&
+    isBackupType(backupType, TenantBackup.BACKUP_TYPES.FULL) &&
     !Array.isArray(data.users)
   ) {
     throw new ConflictError(

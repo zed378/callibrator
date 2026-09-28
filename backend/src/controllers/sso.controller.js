@@ -249,7 +249,7 @@ const readCookie = (header, name) => {
  * createSession), so neither exists without the other.
  *
  * @param {{userId: string, email: string, tenantId: string, ipAddress: string, userAgent: string, method: string}} entry
- * @returns {Promise<{accessToken: string, session: object}>}
+ * @returns {Promise<{accessToken: string, refreshToken: string, session: object}>}
  */
 const issueSsoTokens = async (entry) => {
   const refreshToken = generateOpaqueRefreshToken();
@@ -297,7 +297,10 @@ const issueSsoTokens = async (entry) => {
     amr: entry.method,
   });
 
-  return { accessToken, session };
+  // P6-02 (ADR-077): the refresh token goes back too — it was generated,
+  // stored as the session's key and then dropped, so an SSO session could
+  // never be renewed (the sso-session route reads `refreshToken`).
+  return { accessToken, refreshToken, session };
 };
 
 /**
@@ -617,13 +620,14 @@ exports.ssoExchange = asyncHandler(async (req, res) => {
     throw new AppError(403, refusal);
   }
 
-  const { accessToken, session } = await issueSsoTokens(entry);
+  const { accessToken, refreshToken, session } = await issueSsoTokens(entry);
 
   login(
     res,
     { id: entry.userId, email: entry.email, tenantId: entry.tenantId },
     accessToken,
     session,
+    { refreshToken },
   );
 });
 

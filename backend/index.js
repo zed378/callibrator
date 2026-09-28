@@ -122,13 +122,9 @@ if (
   process.env.NODE_ENV === "production" &&
   process.env.FORCE_HTTPS === "true"
 ) {
-  app.use((req, res, next) => {
-    if (!req.secure && req.get("X-Forwarded-Proto") !== "https") {
-      // Redirect to HTTPS (preserves path + query)
-      return res.redirect(301, `https://${req.get("Host")}${req.url}`);
-    }
-    next();
-  });
+  // S-09 / ADR-081: /health, /live and /ready are exempt, or the compose
+  // healthcheck follows the 301 to an https port nothing serves.
+  app.use(require("./src/routes/internal/health.route").forceHttps);
 }
 
 // Security Headers

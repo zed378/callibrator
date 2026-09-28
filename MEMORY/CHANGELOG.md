@@ -8,6 +8,30 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-09-28 — P7-01 / P7-02 / P7-03 ([record](./records/2026-09-28-p7-01-02-03.md), ADR-082)
+- Fixed: `npm run migrate` / `migrate:status` now exit (M-13); they hung on the open database pool.
+- Fixed (CI, never yet run on GitHub): `boot-and-migrate` installs dev tools (`tsx`); backend coverage no longer depends on the local `.env`.
+- Added: a retention sweep that runs out of budget, or a quarantine sweep that stops at its entry limit, raises a `warning` alert (`job.<name>.incomplete`), then `resolved`.
+- Added: the backend states its alert route at boot (webhook host / email count, or "NONE configured").
+- Changed: Vector ships alerts through their own Loki sink; the template has shipped real logs locally, with redaction verified in Loki.
+
+### 2026-09-28 — P6-02 / A-20 ([record](./records/2026-09-28-p6-02-e2e-green.md), ADR-077)
+- The live E2E suite passes in one uninterrupted run (twice): 392 tests, no 429.
+- Fixed: sign-in answers now carry the refresh token, so sessions can be renewed (password, MFA, SSO, impersonation).
+- Fixed: GDPR export (missing `/app/exports`, archiver 8 API) and tenant backup (500 on every create).
+- Fixed: a new platform operator could not enrol MFA in the browser (access-denied modal loop).
+- Fixed: table cells given as JSX rendered "[object Object]" (device list and others).
+- Fixed: vendor approve/reject (500), e-signature key delete, calibration-record correction with no results, user-permission delete on seeded menu groups.
+- `make test-browser` runs `automate/smoke.browser.js` (five checks, puppeteer-core); the 71-test Playwright claim is withdrawn.
+
+### Phase 6 open cards — 2026-09-28 ([record](./records/2026-09-28-phase6-open-cards.md), ADR-085)
+
+- **Fixed:** webhook secret rotation and webhook url changes failed with a 500 on PostgreSQL (their audit row had no `actorType`). Both work, and are audited in their transaction.
+- **Changed:** a webhook request that supplies `secret` is refused with 400 (it was silently ignored).
+- **Added:** `POST /webhooks/:id/rotate-secret` takes `overlapHours` (0–168, default 24); during the window deliveries also carry `X-Webhook-Signature-Previous`. Migration `0090`.
+- **Security:** an access token that names no session is refused; an open Socket.IO connection is re-checked every 60 s and disconnected when its session, user or tenant no longer passes.
+- **Docs:** the backend coverage figure is 100% of six layers, not the whole backend; a new `istanbul ignore` is reviewed like `eslint-disable`.
+
 ## 2026-09-25 — Phase 0 batch 7 ([record](./records/2026-09-25-phase0-batch7.md), ADR-060–ADR-073)
 
 ### Security

@@ -36,8 +36,10 @@ jest.mock("fs", () => {
   };
 });
 
+// archiver 8 is ESM with named classes; the service does `new ZipArchive(...)`
+// (P6-02). A mockImplementation returning an object is what `new` yields.
 jest.mock("archiver", () => {
-  return jest.fn().mockImplementation(() => {
+  const ZipArchive = jest.fn().mockImplementation(() => {
     const arch = {
       on: jest.fn((event, cb) => {
         if (event === "end" && arch.triggerEnd) {
@@ -57,6 +59,7 @@ jest.mock("archiver", () => {
     mockArchiverInstance = arch;
     return arch;
   });
+  return { ZipArchive };
 });
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
@@ -246,8 +249,8 @@ describe("gdprService", () => {
       // createZipArchive wires `archive.on("error", reject)`; drive that path.
       // Real timers so the setImmediate below fires on its own.
       jest.useRealTimers();
-      const archiver = require("archiver");
-      archiver.mockImplementationOnce(() => {
+      const { ZipArchive } = require("archiver");
+      ZipArchive.mockImplementationOnce(() => {
         const arch = {
           on: jest.fn((event, cb) => {
             if (event === "error") {

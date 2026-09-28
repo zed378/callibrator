@@ -92,11 +92,8 @@ ingress:
 certificates:
   verifyBaseUrl: "https://staging.callibrator.example.com/verify"
   acme:
+    # CUSTOM_DOMAINS_ENABLED only (ADR-081) — no ACME setting is read.
     enabled: true
-    # The STAGING directory is correct here. It is wrong in production, where
-    # it yields certificates no browser trusts.
-    directoryUrl: "https://acme-staging-v02.api.letsencrypt.org/directory"
-    accountEmail: "ops@example.com"
 
 # ────────────────────────────────────────────────────────────────────────────
 # A reminder that belongs beside the staging config, not in a runbook:

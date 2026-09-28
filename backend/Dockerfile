@@ -52,6 +52,11 @@ WORKDIR /app/backend
 # Generate Swagger JSON
 RUN npm run swagger:generate
 
+# P9 (ADR-087): package.json's `bin` is dist/index.js — the JavaScript copied
+# and the TypeScript compiled (TypeScript 7, ADR-076) by scripts/build-dist.ts.
+# Without this step pkg refuses: "Bin file does not exist".
+RUN npm run build:dist
+
 # Build standalone Linux binary. @yao-pkg/pkg is a backend devDependency, so
 # npx runs the locked version rather than fetching one.
 RUN npx --no-install pkg . \
@@ -110,9 +115,16 @@ RUN useradd -r -u 997 -s /usr/sbin/nologin app
 # S-40: S-12 was marked done, but neither was created, so the first write to
 # either failed EACCES under the root-owned /app. They are volumes in compose
 # and in the chart; creating them here is what makes an unmounted run work.
+#
+# /app/exports since P6-02 (ADR-077): GDPR data exports (gdpr.service
+# #exportUserData, storagePath("exports")). It was never created, so every
+# POST /gdpr/export failed EACCES under the root-owned /app and answered 500,
+# which the E2E spec and docs/TESTING/03 had filed as "no provider configured".
+# Exports are short-lived and purged (purgeExpiredExports), so it is not a
+# volume: a recreate drops pending downloads, which is the accepted cost.
 RUN mkdir -p /app/backup/tenant-backups /app/log /app/uploads/profile /app/uploads/tenant \
-        /app/storage /app/.well-known && \
-    chown -R app:app /app/backup /app/log /app/uploads /app/storage /app/.well-known
+        /app/storage /app/.well-known /app/exports && \
+    chown -R app:app /app/backup /app/log /app/uploads /app/storage /app/.well-known /app/exports
 
 # Copy binary
 COPY --from=builder /out/backend ./backend

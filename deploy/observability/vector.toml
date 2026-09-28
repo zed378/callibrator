@@ -9,8 +9,11 @@
 # directory), or install the agent on the host with this file as its config.
 # Docs: docs/DEVOPS/06-LOGGING.md § Shipping.
 #
-# VALIDATED, NOT RUN: `vector validate --no-environment` passes with
-# timberio/vector:0.58.0-alpine (2026-09-25). It has never shipped a line.
+# RUN LOCALLY, NOT DEPLOYED (ADR-082, 2026-09-28): the pinned image read a real
+# backend container's stdout through the socket and shipped its JSON lines to
+# a local Loki 3.5.5 and a file, with requestId intact and the second-line
+# redaction below verified on a line the application had not redacted
+# (MEMORY/records/2026-09-28-p7-01-02-03.md). No deployment ships through it.
 
 [sources.containers]
 type = "docker_logs"
@@ -70,14 +73,26 @@ type = "route"
 inputs = ["redact"]
 route.alerts = 'exists(.alert.key)'
 
+# Two sinks to the same Loki. ADR-082: with one sink, the `alert` label's
+# template failed on every line that is not an alert (Vector logged
+# template_failed and dropped the label) — found when this first ran.
 [sinks.loki]
 type = "loki"
-inputs = ["route._unmatched", "route.alerts"]
+inputs = ["route._unmatched"]
 # Point at your Loki. (Vector interpolates ${VAR} from its environment if you
 # prefer: endpoint = "${LOKI_URL}".)
 endpoint = "http://loki:3100"
 encoding.codec = "json"
 # Low-cardinality labels only; requestId, tenantId and userId stay in the body.
+labels.service = "{{ service }}"
+labels.level = "{{ level }}"
+out_of_order_action = "accept"
+
+[sinks.loki_alerts]
+type = "loki"
+inputs = ["route.alerts"]
+endpoint = "http://loki:3100"
+encoding.codec = "json"
 labels.service = "{{ service }}"
 labels.level = "{{ level }}"
 labels.alert = "{{ alert.key }}"

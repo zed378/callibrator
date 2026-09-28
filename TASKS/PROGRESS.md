@@ -63,16 +63,20 @@ QMS (non-conformances, CAPA, SOP) · risk register · vendor scorecards · workf
 
 | Task | Title | Status | Blocks |
 |---|---|---|---|
-| **P6-01** | Restore the backend coverage gate | ✅ **DONE** 2026-09-11 | trust in every other gate |
-| **P6-02** | One clean full E2E pass, uninterrupted | 🔴 **TODO** | release sign-off |
+| **P6-01** | Restore the backend coverage gate | ✅ **DONE** 2026-09-11; `npm run test:coverage` runs (P6-01a), evidence restated 2026-09-28 under P6-14 | trust in every other gate |
+| **P6-02** | One clean full E2E pass, uninterrupted | ✅ **DONE** 2026-09-28 — two uninterrupted green runs, 392 tests, no 429 (ADR-077) | release sign-off |
 | **P6-03** | `REVOKE UPDATE, DELETE` on `calibration_records` | ✅ **DONE** 2026-09-25 — trigger + application-role REVOKE, tested as `callibrator_app` on PG 18.6 (ADR-062) | 21 CFR Part 11 defensibility (PR-2) |
-| **P6-04** | Build guard: no route without a permission gate | 🟡 **PARTIAL** 2026-09-25 — guard test green (ADR-058); runs only in `npm test` until CI | the likeliest authorization defect |
+| **P6-04** | Build guard: no route without a permission gate | ✅ **DONE** 2026-09-25, re-verified 2026-09-28 — `routePermissionGuard.p604` + `readGates.p604` (212 tests) green; in `npm test`/`make verify` and CI `backend-test`, which has **never run on GitHub** (P7-01) | the likeliest authorization defect |
 | **P6-05** | Post-migration column verification | ✅ **DONE** 2026-09-25 — every boot verifies; fresh and upgrade boots pass on PG 18.6 (ADR-062) | silent no-op migrations (PR-5) |
-| **P6-06** | Composite unique on `(tenant_id, serial_number)` | 🟡 **PARTIAL** — constraint by ADR-049; not partial on `is_deleted` | a cross-tenant oracle |
+| **P6-06** | Composite unique on `(tenant_id, serial_number)` | ✅ **DONE** 2026-09-28 — constraint by ADR-049; **not partial on `is_deleted`, decided by ADR-078** (a deleted device keeps its serial; A-133 restore is the way back). Tests: `dataIntegrity.p6.live` "ADR-078: a soft-deleted device keeps its serial" (22/22, PG 18) | a cross-tenant oracle |
 | **P6-07** | Mandatory MFA at role level 10 | ✅ **DONE** 2026-09-25 — enrolment-only session + audited break-glass (ADR-059); E2E harness change not run live | PR-3 |
 | **P6-08** | Align Swagger with the GDPR validators | ✅ **DONE** 2026-09-25 — `swaggerValidatorAlignment.p608.test.js`; 33 other drifts pinned | AC-29 |
 | **P6-09** | Reason required on every stock quantity change | ✅ **DONE** 2026-09-25 — `0059` + stock.service (ADR-062) | an unexplained quantity change |
-| **P6-10** | Rotation procedure for the two unrotatable secrets | 🟡 **PARTIAL** 2026-09-25 — built, rehearsed on seeded data (PG 16, 18.6); production-copy rehearsal owed (ADR-062) | "rotate the key" is not currently available |
+| **P6-10** | Rotation procedure for the two unrotatable secrets | 🟡 **PARTIAL** 2026-09-28 — built (ADR-062); rehearsed on seeded data and on the P7-04 drill data, MFA seeds included (ADR-078: 12 re-wrapped, 0 failed, old TOTP seed and old/new e-signatures verify). A rehearsal on a **copy of production** is still owed | "rotate the key" is not currently available |
+| **P6-11** | Audit rows inside the transaction | 🟡 **PARTIAL** 2026-09-28 — A-41 done; covered set re-stated (38 files, spec addendum), `auditInTransaction.p611.test.js` pins one write path and the transaction (ADR-085). Open: 15 mutating services write no audit row — scope needs the owner | 21 CFR Part 11 attribution |
+| **P6-12** | Revocation that revokes | 🟡 **PARTIAL** 2026-09-28 — sid-less tokens refused; open sockets re-checked every 60 s; windows named in the security doc (ADR-085). Open: the VM runs `JWT_ACCESS_EXPIRED=1d` against the repository's `15m` (operator change) | a revoked session that keeps working |
+| **P6-13** | Webhook routes: validate the input, own the secret | ✅ **DONE** 2026-09-28 — caller secret refused (400); rotation with a 0–168 h overlap (`X-Webhook-Signature-Previous`, migration `0090`, PG 18.6 fresh/upgrade/down verified); every rotation 500ed on PostgreSQL before (no `actorType`) — fixed (ADR-085) | forgeable, unrotatable webhook signatures |
+| **P6-14** | Make the coverage figure mean what it says | ✅ **DONE** 2026-09-28 — phantom `src/app.js` gone, `index.js` excluded with a reason, six-layer scope in the docs, reviewer rule written, `coverageScope.p614.test.js`; fresh run 638 suites / 12,780 tests at 100% (ADR-085) | a gate cited rather than checked |
 
 ### The state of the gates
 
@@ -112,7 +116,9 @@ something else** — which is the only way defects of this shape are found.
 | Findings recorded | **231** |
 | Done and verified by a named test | **219** |
 | Partly done | 6 |
-| Open | 6 — A-08, A-19, A-20, A-24, A-257, A-263 |
+| Open | 5 — A-08, A-19, A-24, A-257, A-263 (A-20 done 2026-09-28, ADR-077) |
+
+> 2026-09-27 (ADR-076): **A-19, A-42 and A-257 are DONE** and A-18 is further along (partial: two deletions await the owner). Node 26 and TypeScript 7.0.2 are pinned. The backend coverage gate was green on Node 26.10.0: 637 suites, 12,775 tests, 100 % on all four measures. The table above is the batch-7 snapshot; re-count before quoting.
 
 ### The ones that matter most, still open
 
@@ -147,7 +153,7 @@ dump, a fresh volume and a restore, with the old volume kept as the rollback.
 | Repository | ✅ on 18 |
 | Deployment | 🔴 **17.11** — not started |
 | Application changes needed | none; access is through Sequelize 6 and the only extension is `pgvector` |
-| Evidence it works on 18 | **none yet.** No CI (A-19), and the E2E suite has never passed in one run (P6-02). The runbook's manual pass is the evidence |
+| Evidence it works on 18 | **none yet.** No CI (A-19). The E2E suite passed in one run twice on PostgreSQL 18 on 2026-09-28 (P6-02, ADR-077). The runbook's manual pass is the evidence |
 
 ---
 
@@ -157,18 +163,18 @@ dump, a fresh volume and a restore, with the old volume kept as the rollback.
 
 | Task | Title | Status | Depends on |
 |---|---|---|---|
-| P7-01 | CI pipeline running the gates that run only locally | 🟡 **PARTIAL** 2026-09-25 — `.github/workflows/ci.yml` written (ADR-066); actionlint, gitleaks, the lint ratchet, the frontend gates, helm+kubeconform and compose config verified locally, and two red-on-day-one stages fixed. **Never run on GitHub**; `backend-test`, `boot-and-migrate`, `npm audit`, `next build` not run in CI form; no image build/push | P6-01 |
-| P7-02 | **Alerting on scheduled-job outcomes** | 🟡 **PARTIAL** 2026-09-25 — in the application: every scheduler monitored, watchdog for missed runs and stuck batch jobs, webhook/email sinks, `/health/jobs`, `/health/metrics` (ADR-066; `jobMonitor.service.p702`, `alert.service.p702`, `health.jobs.p702`, `metricsAuth.p702` — 100% covered; metrics served live). Open: the infrastructure backup runs outside the process, and routing to a channel is configuration nobody has set | — |
-| P7-03 | Structured log shipping | 🟡 **PARTIAL** 2026-09-25 — JSON on stdout with `requestId` on every request line (`activityLog.requestId.p703`); Vector template passes `vector validate` and **has never shipped a line**; 52 `console.*` sites remain (A-42 sweep) | — |
-| P7-04 | **A full restore drill** | ⏳ TODO | — |
-| P7-05 | Formalise the secret backup procedure | ⏳ TODO | P6-10 |
+| P7-01 | CI pipeline running the gates that run only locally | 🟡 **PARTIAL** 2026-09-28 — `.github/workflows/ci.yml` written (ADR-066). 2026-09-28 (ADR-082): `backend-test` (12,790 tests, 100%), `boot-and-migrate` (PG 18, 63 migrations, schema-verify OK, idempotent second boot) and `dependency-audit` (0 high) **run in their CI form and pass**, after fixing three red-on-day-one defects (`npm ci` skipped `tsx` under `NODE_ENV=production`; `migrate:status` never exited, M-13; coverage depended on `.env`); each proved in the failing direction. **Never run on GitHub**; lint ratchet red (1,061 vs 950); `next build` not run in CI form; no image build/push | P6-01 |
+| P7-02 | **Alerting on scheduled-job outcomes** | 🟡 **PARTIAL** 2026-09-25 — in the application: every scheduler monitored, watchdog for missed runs and stuck batch jobs, webhook/email sinks, `/health/jobs`, `/health/metrics` (ADR-066; `jobMonitor.service.p702`, `alert.service.p702`, `health.jobs.p702`, `metricsAuth.p702` — 100% covered; metrics served live). 2026-09-28 (ADR-082): routing tested end to end into a real HTTP receiver (`alertRouting.p702`), retention `incomplete` / quarantine `truncated` alert as warnings, the boot log states the route. Open: the infrastructure backup runs outside the process, and no deployment has a route set | — |
+| P7-03 | Structured log shipping | 🟡 **PARTIAL** 2026-09-25 — JSON on stdout with `requestId` on every request line (`activityLog.requestId.p703`); 2026-09-28 (ADR-082): the pinned Vector shipped a real backend container's stdout to a local Loki 3.5.5 and a file — `requestId` on every request line, 0 secrets, a stray unredacted line redacted by Vector; the `alert` label moved to its own sink; **no deployment ships**; 52 `console.*` sites remain (A-42 sweep) | — |
+| P7-04 | **A full restore drill** | ✅ **DONE** 2026-09-28 (ADR-078) — compose, PG 18: dump + objects + escrowed secrets restored, checklist identical before/after, **RTO 234 s**, RPO = dump age; 7 findings (D-1 PDF rendering in the image, open; D-2 postgres init; D-3 tenant backup held no users; D-4 role before pg_restore; D-5 secrets first; D-6 wrong KMS key booted; D-7 `migrate:status` hangs) | — |
+| P7-05 | Formalise the secret backup procedure | ✅ **DONE** 2026-09-28 (ADR-078) — `docs/SECURITY/14-SECRET-ESCROW.md`; the boot refuses a database whose KMS key is missing (`kmsVerify.util.p705`, 9); secrets restore was part of the drill | P6-10 |
 | P7-06 | Validate the Helm charts against a real cluster | ⏳ TODO | a cluster |
 | P7-07 | Pin the two `:latest` base images | ✅ **DONE** 2026-09-25 — every base image pinned by digest (both Dockerfiles, compose, the Vector overlay; MinIO dev-only by release tag); process in `docs/DEVOPS/02` § Moving a pinned base image; compose digests pulled successfully in a live run (ADR-066) | — |
 | P7-08 | Split swagger onto its own CSP | 🟡 **PARTIAL** 2026-09-25 — API origin drops `'unsafe-inline'` for scripts; `/docs` has its own policy and serves no inline script (checked live); Swagger off in production unless `SWAGGER_ENABLED` (`csp.p708`, ADR-066). **Content origin done 2026-09-25 (ADR-071).** The Next.js pages send a per-request nonce CSP with `'strict-dynamic'`, minted in `src/proxy.ts`. Every page now renders per request. `<style>` elements need the nonce; `style` attributes stay inline. nosniff, Referrer-Policy and Permissions-Policy are set, and X-Powered-By is off. Tests: `lib/securityHeaders.test.ts` and `proxy.test.ts` § "the page CSP". Checked live on a production build with the standalone server: curl showed a different nonce on each request. Headless Chrome loaded 11 pages with 0 violations. A `contentHtml` carrying `<script>`, a `data:` script, `onerror` and `<style>` had all four blocked. Open: that `contentHtml` check was a one-off run and is not in a suite (the frontend has no browser runner). Also open: the websocket was not exercised against a live backend, and there is no `MEMORY/records` entry yet. **Follow-ups done 2026-09-25 (ADR-071 amendment 1).** The certificate PDF frame is not blocked: the document route already allows `'self'` plus `CORS_ORIGIN` with no `X-Frame-Options`, and the `/api` proxy relays that. `certificateFrame.p708.test.js` pins it, and headless Chrome rendered the PDF in the frame on a real backend. Tenant logos are uploads only, and `img-src` is not widened. A URL or path is refused (400), and a stored absolute URL gets `logoBaseUrl: null`, so the UI falls back, with no migration. Tests: `tenant.logoUrl.p708.test.js` and `useTenantBranding.p708.test.tsx`, both failing against HEAD | — |
 
 **P7-02 first.** A scheduled compliance job failing silently is the failure mode this system is most exposed to, and it has already happened — the retention purge failed every night with `column "tenantId" does not exist` until someone looked.
 
-**P7-04 matters more than it looks.** No restore drill has ever been performed, so the 4-hour RTO is a guess, and the lost-secrets failure is possible today.
+**P7-04 was worth running** (ADR-078, 2026-09-28). The first drill restored cleanly only after two procedure fixes, found that a restore under the wrong KMS key booted and failed per request (now refused at boot), that API tenant backups held no users, and that the image cannot render certificate PDFs (D-1, open). One compose drill on a small data set; the RTO at production volume is still unmeasured.
 
 ---
 

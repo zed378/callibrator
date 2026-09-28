@@ -105,7 +105,7 @@ exports.enterGracePeriod = async (tenantId) => {
   // it is offboarded. Set on any other tenant, the deadline waited silently:
   // a suspension after it had passed was offboarded by the next scheduler run,
   // with no grace at all.
-  if (tenant.status !== 'suspended') {
+  if (tenant.status !== "suspended") {
     throw new AppError(
       409,
       `This tenant is "${tenant.status}", not suspended: a grace period can only be set on a suspended tenant. Suspend it first.`,

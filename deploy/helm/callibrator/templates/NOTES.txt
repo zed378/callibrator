@@ -41,16 +41,6 @@ VERIFY THE DEPLOYMENT
   Also: the backend runs migrations at boot. Two replicas starting together
   will both attempt them — use an init container, or advisory-lock.
 {{ end }}
-{{- if eq .Values.certificates.acme.directoryUrl "https://acme-staging-v02.api.letsencrypt.org/directory" }}
-────────────────────────────────────────────────────────────────────────────
-  ⚠  ACME_DIRECTORY_URL POINTS AT LET'S ENCRYPT STAGING
-────────────────────────────────────────────────────────────────────────────
-  Certificates issued from the staging directory are trusted by no browser,
-  and the failure appears in a browser rather than in any log.
-
-  Production:
-    --set certificates.acme.directoryUrl=https://acme-v02.api.letsencrypt.org/directory
-{{ end }}
 {{- if .Values.backend.env.SEED_DEMO }}
 ────────────────────────────────────────────────────────────────────────────
   ⚠  SEED_DEMO IS SET

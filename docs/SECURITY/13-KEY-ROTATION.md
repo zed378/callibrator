@@ -2,8 +2,9 @@
 
 > As-built 2026-09-24 (P6-10, S-08, S-26 — ADR-062). Source files named in each section.
 > **Rehearsed on PostgreSQL 16 and 18.6 against seeded data** (`backend/src/tests/services/keyRotation.s08.live.test.js`),
-> **not against a copy of production.** Do that rehearsal before the first real rotation — a procedure that has
-> never met real data is the P6-10 abuse case.
+> **and on 2026-09-28 against the P7-04 drill database** (two tenants, restored from a dump, the full stack running —
+> § Rehearsal against the drill data, ADR-078). Not yet against a copy of production data: the drill data is realistic in
+> shape, not in volume.
 
 "Rotate the key" is only a response to a suspected compromise if it can be done calmly. Every secret below
 can now be rotated without a flag day, and each rotation has the same three-step shape:
@@ -146,9 +147,28 @@ S-26 mistake.
 
 ---
 
+## Rehearsal against the drill data (P6-10, ADR-078)
+
+The `KMS_MASTER_KEY` procedure above, followed step by step on the restored P7-04 drill stack (compose, PostgreSQL 18),
+with `keys:rotate` run from a checkout of the release against the drill database:
+
+| Step | Observed |
+|---|---|
+| 0. `--dry-run` | current `f67717ab60683b5e`, previous `917befe5f6728d2f`; would re-wrap `tenant_settings.value` 2, `webhooks.secret` 4, `tenant_keys.private_key` 5, `users.mfa_secret` 1, `users.mfa_pending_secret` 0; failed 0 |
+| 1. deploy with both keys | boot `[kms-verify] OK: 12 stored envelope(s)`; the super administrator's TOTP sign-in (seed still under the old key) succeeded |
+| 2. `keys:rotate`, then `--dry-run` | 12 re-wrapped, failed 0, skipped 0, exit 0 in 22 s; the second dry run reports 0 everywhere; psql shows every envelope under `f67717ab60683b5e` |
+| 3. deploy without the previous key | boot `[kms-verify] OK`; a **real TOTP code from the pre-rotation seed** signs in; e-signatures made before the rotation verify; a **new** e-signature (the tenant key unwrapped under the new master key) signs and verifies in both tenants; `POST /webhooks/:id/rotate-secret` works; all 8 certificates keep their integrity hashes and documents, all 14 attachments download byte-identical |
+
+`keys:rotate` exits on its own under Node 26 + tsx (22 s and 3 s). `npm run migrate:status` in the same drill did **not**:
+it printed its queries and hung until killed by a timeout (twice, 90 s) — the non-exit reported for `npm run migrate`.
+
+**Backups taken before a rotation are under the old key.** Restoring one with only the new key is refused at boot,
+naming the old key id (proven in the drill). Keep every retired master key in escrow for as long as a backup under it is
+retained ([`14-SECRET-ESCROW.md`](14-SECRET-ESCROW.md)).
+
 ## What has NOT been done
 
-- **No rehearsal against a copy of production data.** The PG16 rehearsal seeds v1 envelopes, legacy CBC signing
+- **No rehearsal against a copy of production data** (the drill data above is realistic in shape, not volume; no legacy `v1` rows). The PG16 rehearsal seeds v1 envelopes, legacy CBC signing
   keys, runs 0058, rotates A → B, reads everything back with only B, interrupts and resumes a rotation, and runs
   0058 `down`. The production copy will have volumes, malformed legacy rows and backups this does not.
 - **No external KMS.** The "KMS" is a key in the environment. Moving the master key into a real KMS/HSM is a

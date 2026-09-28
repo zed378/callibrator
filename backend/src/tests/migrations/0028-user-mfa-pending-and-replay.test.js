@@ -66,16 +66,22 @@ describe("migration 0028 — users MFA pending secret and replay step", () => {
     expect(modelFields).toEqual(["mfa_last_used_step", "mfa_pending_created_at", "mfa_pending_secret"]);
   });
 
-  it("gives each column the model's type, nullable", () => {
+  it("gives each column the model's type, nullable — except the pending secret, which 0086 widens", () => {
+    // S-20 (ADR-080): 0028 created mfa_pending_secret as VARCHAR(255); the
+    // model now declares TEXT (a KMS envelope), and migration 0086 changes the
+    // column. 0028 is history and keeps what it created.
+    const LATER = { mfaPendingSecret: { type: "STRING", by: "0086-user-mfa-secrets-kms-envelope" } };
     for (const attribute of ATTRIBUTES) {
       const modelAttr = User.rawAttributes[attribute];
       const spec = migration.COLUMNS[modelAttr.field](DataTypes);
       expect({ attribute, type: spec.type.key, allowNull: spec.allowNull }).toEqual({
         attribute,
-        type: modelAttr.type.key,
+        type: LATER[attribute] ? LATER[attribute].type : modelAttr.type.key,
         allowNull: true,
       });
     }
+    expect(User.rawAttributes.mfaPendingSecret.type.key).toBe("TEXT");
+    expect(require("../../migrations/0086-user-mfa-secrets-kms-envelope").COLUMNS).toContain("mfa_pending_secret");
   });
 
   it("up adds every missing column, and a second run changes nothing", async () => {

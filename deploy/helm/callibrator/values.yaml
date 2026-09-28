@@ -345,9 +345,11 @@ alerts:
 certificates:
   verifyBaseUrl: ""
   acme:
+    # ADR-081: `enabled` sets CUSTOM_DOMAINS_ENABLED (tenant domain
+    # registration and DNS verification) and nothing else. No certificate is
+    # issued automatically (A-256; acme-client removed, ADR-076):
+    # directoryUrl and accountEmail are NOT rendered and NOT read. They are
+    # kept so an existing override still renders.
     enabled: false
-    # DEFAULTS TO THE LET'S ENCRYPT STAGING DIRECTORY. Forgetting to point this
-    # at production yields certificates no browser trusts, and the failure
-    # appears in a browser rather than in any log.
-    directoryUrl: "https://acme-staging-v02.api.letsencrypt.org/directory"
+    directoryUrl: ""
     accountEmail: ""

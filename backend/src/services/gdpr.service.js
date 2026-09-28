@@ -11,7 +11,11 @@
 
 const fs = require("fs");
 const path = require("path");
-const archiver = require("archiver");
+// archiver 8 is an ES module with named classes and no default export: the
+// `require` yields its namespace, so the old `archiver("zip", …)` threw
+// "archiver is not a function" and every GDPR export answered 500 (P6-02,
+// found live — every unit test mocked archiver as a function).
+const { ZipArchive } = require("archiver");
 const { logger } = require("../middlewares/activityLog.middleware");
 const { AppError } = require("../utils/appError.util");
 const { Op } = require("sequelize");
@@ -470,7 +474,7 @@ async function exportAuditLogs(exportDir, tenantId, userId) {
  */
 async function createZipArchive(exportDir, zipPath) {
   const output = fs.createWriteStream(zipPath);
-  const archive = archiver("zip", { zlib: { level: 9 } });
+  const archive = new ZipArchive({ zlib: { level: 9 } });
 
   return new Promise((resolve, reject) => {
     archive.on("error", (err) => reject(err));

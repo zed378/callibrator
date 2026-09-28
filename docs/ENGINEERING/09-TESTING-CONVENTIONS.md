@@ -12,7 +12,7 @@ How tests are written here, and the specific ways tests in this repository have 
 | frontend unit | `frontend/src/**/*.test.ts(x)` | components, stores, API clients | 70 suites, 687 tests |
 | contract | `frontend/src/api/services/*.test.ts` | the client sends what it believes the API accepts | 51 — **a belief, not a guarantee** until `packages/contracts` (P9-22) |
 | live E2E | `backend/src/tests/e2e/` | real HTTP against a real server and PostgreSQL | 53 specs; **never green in one uninterrupted run** (P6-02) |
-| browser | `automate/` | a user flow in a browser | **directory not in the repository** (A-20) |
+| browser | `automate/smoke.browser.js` | a user flow in a browser | five checks, puppeteer-core (A-20, ADR-077) |
 
 `npm run test:coverage` is the gate. It excludes `config/`, `constants/`, `models/` and `scripts/` from measurement — so a defect in `config/index.js` is invisible to it.
 

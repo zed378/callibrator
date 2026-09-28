@@ -676,6 +676,7 @@ describe("authController", () => {
       authService.loginMfa.mockResolvedValue({
         data: { id: "user-1" },
         token: "jwt",
+        refreshToken: "opaque-refresh",
         session: { id: "sess-1" },
       });
 
@@ -690,11 +691,13 @@ describe("authController", () => {
         req.headers["user-agent"],
         { recoveryCode: undefined },
       );
+      // P6-02: the refresh token is answered too (the Next route cookies it).
       expect(login).toHaveBeenCalledWith(
         res,
         { id: "user-1" },
         "jwt",
         { id: "sess-1" },
+        { refreshToken: "opaque-refresh" },
       );
     });
 

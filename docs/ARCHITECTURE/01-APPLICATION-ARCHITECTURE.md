@@ -165,7 +165,7 @@ Zustand stores exist for state that outlives a page: auth, menu tree, tenant bra
 | `backend/src/tests/e2e/modules/` | live-server E2E, one per module | 51 specs |
 | `frontend/src/api/services/*.service.test.ts` | mocked contract tests | 51 |
 | `frontend/**/__tests__/` | component tests | — |
-| `automate/` | Playwright browser suite | 71 tests |
+| `automate/` | browser smoke, `smoke.browser.js` (puppeteer-core; ADR-077 — the 71-test Playwright claim is withdrawn) | 5 checks |
 
 The backend unit suite runs against a 100% coverage gate; the frontend against 70%. See [`../TESTING/00-TEST-STRATEGY.md`](../TESTING/00-TEST-STRATEGY.md).
 

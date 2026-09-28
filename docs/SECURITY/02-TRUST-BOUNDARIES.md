@@ -115,7 +115,7 @@ The platform makes requests **from its own network position** to addresses that 
 |---|---|---|
 | Stripe | operator | n/a |
 | SMTP | operator | n/a |
-| ACME directory | operator | n/a — **defaults to Let's Encrypt staging** |
+| ACME directory | — | **not contacted**: no certificate is issued automatically (A-256, ADR-081) |
 | LLM endpoint | operator, or **per tenant** | tenant-supplied must be |
 | Tenant webhook URL | **tenant** | **yes** |
 | Tenant S3 endpoint | **tenant** | **yes** |

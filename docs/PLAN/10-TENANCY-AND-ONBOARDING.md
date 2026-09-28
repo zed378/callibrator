@@ -79,7 +79,7 @@ A tenant may bring its own S3-compatible bucket (`/dashboard/storage`), which mo
 
 `custom_domains` with `domainType` of `custom`, `subdomain` or `vanity`, moving through `pending_verification → active`, or `verification_failed`, `deleting`, `deleted`.
 
-Verification uses a `verificationToken`. TLS is provisioned over ACME when `CUSTOM_DOMAINS_ENABLED` and `TLS_AUTO_PROVISION` are set. `ACME_DIRECTORY_URL` **defaults to the Let's Encrypt staging directory** — a deployment that forgets to point it at production gets certificates no browser trusts, and the failure appears at the browser rather than in any log.
+Verification uses a `verificationToken`. *As-built (A-256, ADR-081):* `CUSTOM_DOMAINS_ENABLED` turns on registration and DNS verification; **no TLS certificate is provisioned** — the ACME code had no caller and was removed, `acme-client` is no longer a dependency (ADR-076), and `TLS_AUTO_PROVISION`/`ACME_*` are not read. Automatic TLS remains a planned capability.
 
 ACME HTTP-01 challenge files are written at runtime and served from `storagePath(".well-known")`, not a CWD-relative path. A path that shifts with the launch directory produces challenge failures that look like DNS problems.
 

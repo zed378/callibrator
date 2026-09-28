@@ -79,7 +79,7 @@ The reverse is worse: a sandbox key in production makes every order look paid wh
 
 Only a rule comparing the key's environment marker against `NODE_ENV` catches either.
 
-The same shape applies to `ACME_DIRECTORY_URL`, which **defaults to the Let's Encrypt staging directory**. A production deployment that forgets to change it gets certificates no browser trusts, and the failure appears in a browser rather than in any log.
+*(ADR-081: no ACME setting is read since A-256; `acme-client` was removed in ADR-076. No certificate is issued automatically.)*
 
 ### Data
 
@@ -97,7 +97,6 @@ Compose on a single host by default (ADR-032), or Helm where a Kubernetes estate
 | `SEED_DEMO` | **unset** |
 | `BATCH_JOBS_INLINE` | **unset** |
 | `RATE_LIMIT_MAX` | default or deliberate |
-| `ACME_DIRECTORY_URL` | the **production** directory |
 | `STORAGE_DRIVER` | `s3` or `nfs` if more than one replica |
 | Database ports | **not published** |
 
@@ -159,6 +158,5 @@ Before promoting to production:
 - [ ] migration results verified by inspecting columns, not by trusting the log
 - [ ] `NODE_ENV=production` and the settings above confirmed
 - [ ] provider keys match the environment
-- [ ] `ACME_DIRECTORY_URL` points at production
 - [ ] `SEED_DEMO` unset
 - [ ] rollback rehearsed, not assumed

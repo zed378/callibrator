@@ -33,7 +33,14 @@ const SCANNED_DIRS = ["services", "controllers", "utils", "middlewares", "models
  * Raw statements that span tenants on purpose. Key: `<relative file>#<table>`.
  * Each needs a reason a reviewer can check.
  */
-const CROSS_TENANT = {};
+const CROSS_TENANT = {
+  // P7-05 (ADR-078): the boot check that every stored KMS envelope names a
+  // configured master key. It runs before any request, across every tenant by
+  // design, and reads only key ids and counts (plus one v1 sample, decrypted
+  // with its own tenant id / AAD and discarded) — never a value it returns.
+  "utils/kmsVerify.util.js#${table}":
+    "boot-time KMS key check over every tenant's envelopes (ADR-078); reads key ids and counts only",
+};
 
 const tenantScopedTables = () => {
   const sequelize = new Sequelize({ dialect: "postgres", logging: false });

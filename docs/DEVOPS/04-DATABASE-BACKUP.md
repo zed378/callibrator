@@ -19,6 +19,15 @@ Restoring one tenant from an infrastructure backup means a full restore into a s
 
 `tenant_backups`, exposed at `/api/v1/tenants/:tenantId/backups`, gated at `TENANT_ADMIN` (level 8).
 
+**What it contains — measured in the P7-04 drill (ADR-078):** the tenant row and the tenant's user
+accounts (an allow-list of identity columns, A-139). **Nothing else** — no devices, calibration
+records, certificates, attachments, stock or audit rows. It answers "an administrator deleted or
+changed user accounts", not "a warehouse was deleted": everything else needs layer 2. Until
+2026-09-28 a backup taken **through the API** did not even hold the users: the validator sends
+`"FULL"`, the export compared against `"full"`, and both drill tenants' archives came back with
+`"users": []` (D-3, fixed in `tenantBackup.service.js#isBackupType`, test
+`tenantBackup.backupType.p704.test.js`).
+
 | Column | Purpose |
 |---|---|
 | `backupType`, `tag` | full or partial, plus a label |
@@ -67,6 +76,15 @@ archive_command = 'test ! -f /archive/%f && cp %p /archive/%f'
 ```
 
 WAL archiving is what makes the 1-hour RPO achievable. Nightly dumps alone give a 24-hour RPO.
+**Nothing in this repository configures WAL archiving**: with compose as shipped, the RPO is the age of
+the last dump. `make backup` is the dump; it runs on the host against the compose stack
+(`docker compose exec postgres pg_dump -Fc`), and a scheduler for it is the operator's.
+
+**The dump does not contain the application role.** `pg_dump` writes the `GRANT … TO
+callibrator_app` statements but not the role (roles are cluster-wide, ADR-062). Restored into a new
+cluster, every grant fails, `pg_restore` exits 1 ("errors ignored on restore: 85" in the drill), and the
+backend then refuses to boot with `role "callibrator_app" does not exist`. Create the role **before**
+restoring — see Restore Order (drill finding D-4, ADR-078).
 
 ### Retention
 
@@ -88,37 +106,65 @@ WAL archiving is what makes the 1-hour RPO achievable. Nightly dumps alone give 
 
 ## The Third Thing, and It Is the One That Ends Recoveries
 
-**Back up the secrets, separately from the database and separately from the host.**
+**Back up the secrets, separately from the database and separately from the host.** What, why and
+how: [`../SECURITY/14-SECRET-ESCROW.md`](../SECURITY/14-SECRET-ESCROW.md).
 
 ```
-CERT_SIGNING_SECRET      losing it: EVERY issued certificate permanently fails
-                         public verification. The key cannot be re-derived.
-ENCRYPT_KEY              losing it: every tenant private key and every stored
-                         storage credential becomes undecryptable.
-ATTACHMENT_URL_SECRET    losing it: existing signed URLs stop validating.
+KMS_MASTER_KEY (+ any _PREVIOUS a retained backup needs)
+                         losing it: every tenant signing key, webhook secret,
+                         tenant credential and every user's TOTP seed is gone.
+                         UNRECOVERABLE. The backend refuses to boot (ADR-078).
+ENCRYPT_KEY              only for a backup taken before migration 0058.
+everything else          regenerate on loss — measured in the P7-04 drill.
 ```
 
-A restore that recovers the database and loses these produces a system that **starts cleanly and is permanently broken**. Nothing errors at boot. The failure appears the first time an auditor scans a QR code.
-
-A backup strategy that captures the data and loses the keys has captured **ciphertext**.
-
-Neither of the first two is practically rotatable ([`../SECURITY/07-CRYPTOGRAPHY-AND-SECRETS.md`](../SECURITY/07-CRYPTOGRAPHY-AND-SECRETS.md)).
+**Corrected 2026-09-28 (ADR-078).** This section used to name `CERT_SIGNING_SECRET` as the key whose
+loss makes every certificate fail verification, and left `KMS_MASTER_KEY` out. Since A-241 no issued
+certificate depends on `CERT_SIGNING_SECRET` — the drill replaced it and every certificate still
+verified with an identical integrity hash — and since P6-10/S-20 the KMS master key protects what
+`ENCRYPT_KEY` used to, and more. The "starts cleanly and is permanently broken" restore was real: in the
+drill, a restore under a new `KMS_MASTER_KEY` booted, answered `/health` 200 and served every list,
+while signing and every MFA sign-in answered 500. The boot now refuses instead.
 
 ## Restore Order
 
 The backend runs migrations at boot and will fail against a partially restored database, so order matters.
+**Rehearsed end to end on 2026-09-28 (P7-04, ADR-078)** — the order below is the one that worked; the
+previous list put the secrets fourth, but nothing (not even PostgreSQL) starts without the `.env`
+they live in, and it had no step for the application role.
 
 ```
-1. provision the host, install Docker
-2. restore the database volume, or dump + WAL
-3. restore the object store, or repoint STORAGE_DRIVER at the surviving bucket
-4. RESTORE THE SECRETS                    ← the step that ends recoveries
-5. start postgres, redis, rabbitmq; wait for healthy
-6. start the backend; it runs migrations
+1. provision the host, install Docker, check out the release (the image tag you ran)
+2. RESTORE THE SECRETS AND THE .env      ← 14-SECRET-ESCROW.md; compose reads DB_* from it
+3. start postgres alone; wait until it accepts connections to DB_NAME
+     (healthy is not enough on first boot: the init script restarts the server)
+4. restore the database — one of:
+   a) the volume snapshot (./volumes/postgres) — roles come with it; or
+   b) a dump, role first:
+        docker compose … exec -T postgres psql -U $DB_USER -d postgres \
+          -c "DROP DATABASE $DB_NAME" \
+          -c "CREATE ROLE callibrator_app NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS" \
+          -c "GRANT callibrator_app TO $DB_USER" \
+          -c "CREATE DATABASE $DB_NAME OWNER $DB_USER"
+        docker compose … exec -T postgres pg_restore -U $DB_USER -d $DB_NAME \
+          --no-owner --exit-on-error < backups/db-<date>.dump
+      (use DB_APP_ROLE's value if it is not callibrator_app; --exit-on-error makes a
+       missing role a failure instead of "errors ignored")
+5. restore the object store: ./volumes/uploads (attachments AND certificates/ PDFs),
+   ./volumes/storage, ./volumes/backup — or repoint STORAGE_DRIVER at the surviving bucket
+6. start redis, rabbitmq (empty volumes are fine), then the backend. Its boot migrates,
+   verifies the schema ([schema-verify] OK) and the KMS ring ([kms-verify] OK) and
+   refuses on either
 7. verify /health returns 200 with {"status":"ok"}
 8. start the frontend and nginx
 9. verify — see below
 ```
+
+**Measured (compose, one host, 14 devices / 28 calibration records / 8 certificates / 14 attachments /
+134 audit rows):** 234 s from "restore start" to `/health` 200 with the order above — about 110 s of it
+was the first attempt's missing-role failure. Most of a real RTO is step 1 and finding the escrow; the
+4-hour target is not threatened by the restore itself at this size. The data loss equals the age of the
+dump: the device written 17 s after the dump was absent after the restore, as expected (no WAL archive).
 
 ## What a Restore Test Must Prove
 
@@ -133,6 +179,15 @@ Restoring without verifying is restoring into hope.
 - [ ] the audit trail is continuous across the restore point
 
 The two bold checks are the ones that catch a **lost-secrets restore**. Without them a broken recovery looks successful for weeks.
+
+**Correction from the drill (ADR-078):** neither bold check catches a lost `KMS_MASTER_KEY` — both
+passed on a restore under the wrong key. What catches it is the boot's `[kms-verify]` check, and, as a
+manual step, **one MFA sign-in and one e-signature** after the restore.
+
+All seven were asserted in the drill (`MEMORY/records/2026-09-27-p7-04-restore-drill.md`): every
+per-tenant count, every certificate's integrity hash and document bytes, every attachment's bytes
+through a fresh signed URL, the e-signatures, and the audit trail up to the dump (134 rows, identical
+digest) were the same before the incident and after the restore; nothing pending.
 
 ## Verify the Backup, Not Just the Job
 
@@ -150,10 +205,12 @@ The middle step is the only one that proves anything.
 
 | Gap | Consequence |
 |---|---|
-| **No full restore drill has been performed** | the 4-hour RTO is unverified — it is a guess |
+| One restore drill performed (2026-09-28, compose, small data set — P7-04) | the restore itself took 234 s; the RTO at production volume and on Kubernetes is still unmeasured |
 | No scheduled monthly restore verification | backups are assumed good, not known good |
-| **Secret backup procedure not formalised** | the lost-secrets failure is possible today |
+| Secret escrow is a procedure ([`../SECURITY/14-SECRET-ESCROW.md`](../SECURITY/14-SECRET-ESCROW.md)), not a mechanism | nothing enforces that the escrow exists; the boot refuses a wrong KMS key (ADR-078) |
+| No WAL archiving configured | RPO = age of the last dump |
 | No offsite replica | host loss means restore, not failover |
+| No `make restore` target | the restore is the manual sequence above |
 
 Each is in [`../../TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md).
 
@@ -166,7 +223,7 @@ A backup document listing only its strengths is a marketing document. The first 
 | **`audit_logs`** | append-only, no delete path, grows monotonically. Purging needs a **compliance** decision, not an engineering one |
 | **`calibration_records`** | evidence; retained far beyond device life |
 | `iot_readings` | the only high-volume table purged by retention |
-| `tenant_keys` | encrypted with `ENCRYPT_KEY` — useless without it |
+| `tenant_keys`, `webhooks`, `tenant_settings`, `users` (MFA seeds) | KMS envelopes under `KMS_MASTER_KEY` (since 0058/0086) — useless without it; `ENCRYPT_KEY` only for a pre-0058 backup |
 
 ## Compose Volumes
 

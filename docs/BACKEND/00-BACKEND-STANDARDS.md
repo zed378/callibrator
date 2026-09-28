@@ -2,7 +2,7 @@
 
 > **Language status — target: TypeScript, strict (ADR-038).** The backend is **JavaScript/CommonJS today**; the migration is [`TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`](../../TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md). Behaviour described here is **as-built** unless marked *target*. New backend code follows [`docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md`](../../docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md). Remove this banner only when every module this document describes is converted.
 
-**As-built: the backend is JavaScript (CommonJS)** — `"type": "commonjs"`, entry `index.js`, Node 24. **Target: strict TypeScript** (ADR-038, superseding ADR-030), converted module by module under Phase 9.
+**As-built: the backend is JavaScript (CommonJS)** — `"type": "commonjs"`, entry `index.js`, Node 26 (root `.nvmrc`, ADR-076). **Target: strict TypeScript** (ADR-038, superseding ADR-030), converted module by module under Phase 9.
 
 Two instructions follow from that, and both matter:
 

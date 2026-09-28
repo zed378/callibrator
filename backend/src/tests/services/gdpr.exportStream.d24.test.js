@@ -58,14 +58,15 @@ jest.mock("../../models", () => {
   return models;
 });
 
-jest.mock("archiver", () => () => {
+// archiver 8 is ESM with named classes; the service does `new ZipArchive(...)` (P6-02).
+jest.mock("archiver", () => ({ ZipArchive: function MockZipArchive() {
   const EventEmitter = require("events");
   const archive = new EventEmitter();
   archive.pipe = () => {};
   archive.directory = () => {};
   archive.finalize = () => setImmediate(() => archive.emit("end"));
   return archive;
-});
+} }));
 
 jest.mock("../../config", () => ({ db: {} }));
 jest.mock("../../services/audit.service", () => ({ logAction: jest.fn() }));

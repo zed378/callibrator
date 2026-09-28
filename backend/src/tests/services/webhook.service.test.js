@@ -35,7 +35,7 @@ jest.mock("../../utils/ssrf.util", () => ({
 }));
 
 const webhookService = require("../../services/webhook.service");
-const { Webhook, WebhookDelivery } = require("../../models");
+const { Webhook, WebhookDelivery, AuditLog } = require("../../models");
 const { db } = require("../../config");
 const { logger } = require("../../middlewares/activityLog.middleware");
 
@@ -169,10 +169,12 @@ describe("webhook.service", () => {
           createdBy: null,
         });
 
-        const result = await webhookService.createWebhook("t1", {
-          url: "https://test.com",
-          events: ["*"],
-        });
+        // P6-13: no createdBy, so the audit row names the actor argument.
+        const result = await webhookService.createWebhook(
+          "t1",
+          { url: "https://test.com", events: ["*"] },
+          { userId: "user-1" },
+        );
 
         expect(result.description).toBeNull();
         expect(result.isActive).toBe(true);
@@ -191,6 +193,7 @@ describe("webhook.service", () => {
           url: "https://test.com",
           events: ["*"],
           isActive: false,
+          createdBy: "user-1",
         });
 
         expect(result.isActive).toBe(false);
@@ -264,19 +267,46 @@ describe("webhook.service", () => {
         const mockUpdate = jest.fn();
         Webhook.findOne.mockResolvedValue({ id: "w1", tenantId: "t1", update: mockUpdate });
 
-        await webhookService.updateWebhook("t1", "w1", { url: "https://new.com", events: ["event1"] });
+        await webhookService.updateWebhook(
+          "t1",
+          "w1",
+          { url: "https://new.com", events: ["event1"] },
+          { userId: "user-1" },
+        );
         expect(mockUpdate).toHaveBeenCalledWith(
-          { url: "https://new.com", events: ["event1"], secret: expect.stringMatching(/^v2:/) }, // P6-10: v2 names its key
+          {
+            url: "https://new.com",
+            events: ["event1"],
+            secret: expect.stringMatching(/^v2:/), // P6-10: v2 names its key
+            // P6-13: a url change ends any rotation overlap.
+            previousSecret: null,
+            previousSecretExpiresAt: null,
+          },
           { transaction: { id: "tx" } },
         );
       });
 
-      it("updates without a transaction or a secret when the url is unchanged", async () => {
+      // P6-13: an unchanged url no longer means "no transaction" — every
+      // update writes its audit row inside one. It still issues no secret.
+      it("updates without a secret, audited in a transaction, when the url is unchanged", async () => {
         const mockUpdate = jest.fn();
         Webhook.findOne.mockResolvedValue({ id: "w1", tenantId: "t1", url: "https://same.com", update: mockUpdate });
 
-        await webhookService.updateWebhook("t1", "w1", { url: "https://same.com", isActive: false });
-        expect(mockUpdate).toHaveBeenCalledWith({ url: "https://same.com", isActive: false });
+        const result = await webhookService.updateWebhook(
+          "t1",
+          "w1",
+          { url: "https://same.com", isActive: false },
+          { userId: "user-1" },
+        );
+        expect(mockUpdate).toHaveBeenCalledWith(
+          { url: "https://same.com", isActive: false },
+          { transaction: { id: "tx" } },
+        );
+        expect(result.secret).toBeUndefined();
+        expect(AuditLog.create).toHaveBeenCalledWith(
+          expect.objectContaining({ action: "UPDATE", resourceType: "Webhook", userId: "user-1" }),
+          { transaction: { id: "tx" } },
+        );
       });
 
       it("throws 400 if updating events with invalid array", async () => {
@@ -292,9 +322,19 @@ describe("webhook.service", () => {
         const mockSoftDelete = jest.fn();
         Webhook.findOne.mockResolvedValue({ id: "w1", tenantId: "t1", softDelete: mockSoftDelete });
 
-        const result = await webhookService.deleteWebhook("t1", "w1");
+        const result = await webhookService.deleteWebhook("t1", "w1", { userId: "user-1" });
         expect(result.id).toBe("w1");
-        expect(mockSoftDelete).toHaveBeenCalled();
+        expect(mockSoftDelete).toHaveBeenCalledWith({ transaction: { id: "tx" } });
+        expect(AuditLog.create).toHaveBeenCalledWith(
+          expect.objectContaining({ action: "DELETE", resourceType: "Webhook", resourceId: "w1" }),
+          { transaction: { id: "tx" } },
+        );
+      });
+
+      // P6-13: a delete names who did it, or it does not happen (A-124).
+      it("refuses a delete that names no actor", async () => {
+        Webhook.findOne.mockResolvedValue({ id: "w1", tenantId: "t1", softDelete: jest.fn() });
+        await expect(webhookService.deleteWebhook("t1", "w1")).rejects.toThrow(/must name its actor/);
       });
     });
 

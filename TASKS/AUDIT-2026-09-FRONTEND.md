@@ -28,18 +28,18 @@ below is read from code, and the cards say where that leaves a doubt.
 | F-02 | The dashboard's "System Health — All Systems Go" panel is **hardcoded**; it has never called `/health` | **high** | integrity | **DONE** 2026-09-24 |
 | F-03 | **`make verify` cannot pass, and never checked the frontend**: 85 lint errors, `typecheck` type-checks nothing, `test` never runs the coverage gate | **high** | gate | **PARTIAL** 2026-09-25 — `typecheck` script (turbo runs it); `npx eslint` 0 errors (60 warnings); `npm test` runs the coverage gate and CI now runs `jest --ci --coverage` (ADR-067). Open: `make verify` never run end to end (no `make` on this host) |
 | F-04 | **0% coverage above the service layer** — every page, every hook, `client.ts`'s interceptors, `proxy.ts` and `socket.ts` | **high** | tests | **DONE** 2026-09-25 — a handler test for every file under `src/app/api/v1/**`; `client.ts` 95.95% statements (`client.session.f05`); `proxy.test.ts`; the service-test statement in `docs/FRONTEND/10` § What the service tests prove; figures re-measured 2026-09-25 (ADR-067) |
-| F-05 | **Token refresh is dead end to end**, and the 401 path races a redirect against the cookie clear | **high** | auth | **PARTIAL** 2026-09-25 — refresh, single redirect and rotated-cookie paths tested (`client.session.f05`, `auth/login/route.f05`, `auth/refresh/route.test`). Open: the manual `JWT_ACCESS_EXPIRED=60s` run |
+| F-05 | **Token refresh is dead end to end**, and the 401 path races a redirect against the cookie clear | **high** | auth | **PARTIAL** 2026-09-27 — the expiry run done headless against a stand-in backend: one refresh, the typed input kept, no navigation; a refused refresh clears every cookie and lands on `/login` once (ADR-074, `MEMORY/records/2026-09-27-frontend-board-fe2.md`). Open: the same run against the real backend with `JWT_ACCESS_EXPIRED=60s` |
 | F-06 | `x_tenant_id` **survives logout** — a super admin's next session is silently scoped to the tenant they last impersonated | medium | tenancy | **DONE** 2026-09-24 |
-| F-07 | No error boundary, no 403/404/409/429/offline handling, no `X-Request-Id`; `AccessDeniedModal` is rendered nowhere | medium | errors | **PARTIAL** 2026-09-25 — `app/error.tsx` and `app/dashboard/error.tsx`, status and `X-Request-Id` on rejections, `AccessDeniedModal` rendered (`RouteError.f07`, `DashboardLayout.f07`, `ErrorState.f07`, `session-management/page.f07`). Open: one screen per status shown manually |
+| F-07 | No error boundary, no 403/404/409/429/offline handling, no `X-Request-Id`; `AccessDeniedModal` is rendered nowhere | medium | errors | **DONE** 2026-09-27 — one screen per status (403/404/408/409/429/offline), each with its `X-Request-Id`, shown headless against a stand-in backend; 504 reads as a timeout (`ErrorState.f07` › F-14) (ADR-074, `MEMORY/records/2026-09-27-frontend-board-fe2.md`) |
 | F-08 | **Two `proxy.ts` files** with different auth logic | medium | routing | **DONE** 2026-09-25 — `frontend/proxy.ts` removed, `src/proxy.ts` tested (`proxy.test.ts`); `next build` (2026-09-25) lists it as the Proxy |
-| F-09 | `POST /api/v1/auth/sso-session` writes the auth cookie from an **unverified request body** | medium | auth | TODO |
-| F-10 | Global search is shown to every role and 403s on **every keystroke** for roles A-04 now excludes | medium | ux / authz | **PARTIAL** 2026-09-25 — the box renders only with a searchable menu, and a 403 removes it (`GlobalSearch.f10`, `menuStore.f15` › F-10). Open: the manual network-tab check |
-| F-11 | The public certificate-verification PDF link prefixes the backend origin onto an already same-origin path | medium | public surface | TODO |
-| F-12 | ~142 of 156 `<label>`s are unassociated; 16 modals, zero `role="dialog"`; `axe` is not installed | medium | accessibility | **PARTIAL** 2026-09-25 — Input, Textarea, FormField, Select, Dialog, ConfirmDialog and AccessDeniedModal associated and axe-clean (`a11y.f12`). Open: DateField, MultiSelect, the screen-reader walk |
-| F-13 | Two endpoints return `data.rows`/`data.meta` and the frontend is **coded to match** | medium | envelope | TODO |
-| F-14 | The client timeout equals the server timeout, so the user never sees the backend's 408 | medium | errors | **PARTIAL** 2026-09-25 — client 35 s > server 30 s. Open: the proxy does not abort its upstream fetch, and the 408 was not shown manually |
+| F-09 | `POST /api/v1/auth/sso-session` writes the auth cookie from an **unverified request body** | medium | auth | **DONE** 2026-09-27 — A-60 had already made it exchange a single-use code, verified server-to-server; same-origin only now (`lib/sameOrigin.ts`). `sso-session/route.test` › *F-09 valid / forged / replayed / cross-origin / missing origin* (ADR-074) |
+| F-10 | Global search is shown to every role and 403s on **every keystroke** for roles A-04 now excludes | medium | ux / authz | **DONE** 2026-09-27 — headless: no searchable menu → no search box and 0 `/search` requests; with Devices → the box, one request (`MEMORY/records/2026-09-27-frontend-board-fe2.md`) |
+| F-11 | The public certificate-verification PDF link prefixes the backend origin onto an already same-origin path | medium | public surface | **DONE** 2026-09-27 — `toSameOriginApiPath`; `page.f11` (3 fail before); headless with an unreachable `NEXT_PUBLIC_API_BASE_URL`: the PDF loads same-origin, 0 requests to the backend origin (ADR-074) |
+| F-12 | ~142 of 156 `<label>`s are unassociated; 16 modals, zero `role="dialog"`; `axe` is not installed | medium | accessibility | **PARTIAL** 2026-09-27 — DateField, MultiSelect, SearchableDropdown and the 10 bare overlays done and axe-clean (`a11y.f12b`, `a11y.f12.overlays`; ADR-074). Open: the screen-reader walk; axe in the browser suite |
+| F-13 | Two endpoints return `data.rows`/`data.meta` and the frontend is **coded to match** | medium | envelope | **DONE** 2026-09-27 — `/metered-billing/history` now in the house envelope (sessions: A-111); both pinned through their routers by `envelope.f13.test.js` (ADR-074) |
+| F-14 | The client timeout equals the server timeout, so the user never sees the backend's 408 | medium | errors | **DONE** 2026-09-27 — proxy aborts at 32 s or on disconnect, 504 in the envelope (`route.stream.f16` › F-14); the backend's 408 was never sent — a timeout answered 503 — now 408 in the envelope (`requestTimeout.f14`); headless: the timeout copy at 33 s (ADR-074) |
 | F-15 | `menuStore` falls back to the **full static menu** when `roleId` is missing | low | rbac-in-ui | **DONE** 2026-09-25 — no `roleId` → empty menu and a visible error with a retry; a failed fetch is visible (`menuStore.f15`) |
-| F-16 | The proxy buffers every request and response whole; uploads and downloads are held twice in the Next process | low | performance | TODO |
+| F-16 | The proxy buffers every request and response whole; uploads and downloads are held twice in the Next process | low | performance | **DONE** 2026-09-27 — both bodies stream; only small 2xx JSON is read (A-71); caller `Authorization` forwarded without a cookie, on purpose (`route.stream.f16`, 6 of 9 fail before); Next peaked at 186 MB over a 400 MB download (ADR-074) |
 | F-17 | Unread badge drifts; two unused dependencies | low | hygiene | **DONE** 2026-09-25 — the count is re-read, not incremented, and refetched on reconnect (`useLiveNotifications.f17`); `framer-motion` and `@lottiefiles/dotlottie-react` removed, and `next build` passes (2026-09-25) |
 | F-18 | the webhook screen cannot show a server-generated or rotated secret | **high** | 0 | **DONE** 2026-09-24 |
 
@@ -253,7 +253,7 @@ and proves nothing new.
 
 | | |
 |---|---|
-| **Status** | **PARTIAL** 2026-09-25 — see the summary row (ADR-067) |
+| **Status** | **PARTIAL** 2026-09-27 — see the summary row (ADR-067, ADR-074) |
 | **Severity** | **high** |
 | **Verified** | the dead refresh is verified from code on both sides. The redirect race is **reasoned, not reproduced** — it depends on whether a `window.location` assignment outlives an in-flight `fetch`, which I could not test without a browser |
 | **Evidence** | **(a)** `frontend/src/app/api/v1/[...path]/route.ts:95` rotates the cookie only when the parsed body has `data.token` or `data.session?.id` at the **top level**. `backend/src/controllers/auth.controller.js:243` answers refresh with `success(res, result.data, …)`, and `backend/src/services/auth.service.js:586-594` puts `token`, `refreshToken` and `session` **inside** `data`. So the condition is never true for a refresh and the rotated token is discarded. **(b)** `grep -rn "authService.refresh\|\.refresh(" frontend/src` finds only `router.refresh()` and `ScrollTrigger.refresh()` — `authService.refresh` (`frontend/src/api/services/auth.service.ts:212-231`) has **no caller**. **(c)** its signature requires a `refreshToken` argument, and the client never receives one: the login response carries only `token` and `session`. **(d)** `backend/src/utils/jwt.util.js:202` defaults the access token to `15m`; the cookie is written with `maxAge: 7 * 24 * 60 * 60` at `route.ts:101`, `login/route.ts:45` and `sso-session/route.ts:32`. **(e)** `frontend/src/api/client.ts:47-52` handles 401 with `window.location.href = "/login"` and clears nothing; `frontend/src/proxy.ts:19-21` then redirects `/login` **back** to `/dashboard` whenever the `auth_token` cookie exists |
@@ -354,7 +354,7 @@ context. Recorded here so it is not lost.
 
 | | |
 |---|---|
-| **Status** | **PARTIAL** 2026-09-25 — see the summary row (ADR-067) |
+| **Status** | **DONE** 2026-09-27 — see the summary row (ADR-067, ADR-074) |
 | **Severity** | medium |
 | **Verified** | from code, by exhaustive grep over `frontend/src` |
 | **Evidence** | `find frontend/src/app -name "error.tsx" -o -name "global-error.tsx"` → **nothing**; only `app/not-found.tsx` exists. `grep -rn "status === 4\|status === 5" frontend/src` → the only HTTP branch in the app is `client.ts:47` (401) and `app/api/v1/auth/login/route.ts:32` (202). `grep -rn "409" frontend/src` → one false positive (`eSignature.service.ts:28`, a key-size type). `AccessDeniedModal` exists at `frontend/src/components/AccessDeniedModal.tsx` and `grep -rn "AccessDenied" frontend/src` finds **no import of it** — it is dead code. No `EmptyState` or `ErrorState` component exists. `grep -rni "request-id" frontend/src` → nothing, although `backend/index.js:317` sets `X-Request-Id` on every response. Swallowed failures: `frontend/src/app/dashboard/session-management/page.tsx:62`, `:71`, `:93`, `:99` are all `catch { /* ignore */ }` — covering the session list load, the stats load, **revoke** and **delete**; `:103` (`handleRevokeAll`) has no catch at all |
@@ -437,7 +437,7 @@ fold in the cookie-clearing the root copy does, since F-05 needs it. Record the 
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-27 — see the summary row (ADR-074) |
 | **Severity** | medium |
 | **Verified** | from code. Whether the route is reachable cross-origin depends on CORS and was **not** tested |
 | **Evidence** | `frontend/src/app/api/v1/auth/sso-session/route.ts:12-46`: the handler reads `body.token`, checks only that it is present (`:18`), and writes it straight into the httpOnly `auth_token` cookie (`:35`) plus `auth_logged_in=true` (`:41-44`). It never calls the backend, never verifies a signature, and there is no CSRF token, no origin check and no state parameter tying the call to an SSO flow it started. Called from `frontend/src/stores/authStore.ts:206-210` |
@@ -475,7 +475,7 @@ does not match. Reject any request whose `Origin`/`Sec-Fetch-Site` is not same-o
 
 | | |
 |---|---|
-| **Status** | **PARTIAL** 2026-09-25 — see the summary row (ADR-067) |
+| **Status** | **DONE** 2026-09-27 — see the summary row (ADR-067, ADR-074) |
 | **Severity** | medium |
 | **Verified** | from code on both sides. The exact 403 message string a user would see was **not** captured from a live call |
 | **Evidence** | `frontend/src/components/layouts/TopBar.tsx:47` renders `<GlobalSearch />` unconditionally for every authenticated role. `frontend/src/components/layouts/GlobalSearch.tsx:108-110` fires a search 300 ms after the input stops changing, for any query of two characters or more (`:98`). `:80-85` puts any failure — including a 403 — into `error` and `:198-201` renders it as red text in the dropdown. There is no status branch and no capability check anywhere in the component. Backend: `backend/src/routes/api/search.route.js:43-48` now gates the route with `dynamicAccess(SEARCH_MENUS, "read")`, so a role holding read on **none** of device, stock or certificate is refused at the gate (A-04, landed 2026-09-23) |
@@ -512,7 +512,7 @@ message. While there, `GlobalSearch.tsx:100-104` is one of the 85 lint errors in
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-27 — see the summary row (ADR-074) |
 | **Severity** | medium |
 | **Verified** | from code. Whether the backend origin is browser-reachable in a given deployment was **not** verified — on a deployment where it is, the link works |
 | **Evidence** | `frontend/src/app/verify/[certificateNumber]/page.tsx:159-160` — `const pdfUrl = data?.documentUrl ? `${API_BASE_URL}${data.documentUrl}` : null`. `backend/src/services/certificatePdf.service.js:205` writes `filePath = "/uploads/certificates/<file>.pdf"` and `:313` returns it as `documentUrl` — an already-root-relative path. `frontend/next.config.ts:14-21` rewrites `/uploads/:path*` to the backend, and `frontend/src/lib/uploadUrl.ts:19-30` exists solely to **strip** an origin off such a path for exactly this reason. Same pattern at `frontend/src/app/dashboard/tenants/hooks/useTenants.ts:141`, which builds a tenant logo URL as `${NEXT_PUBLIC_API_BASE_URL \|\| ""}/uploads/${tenant.logo}` |
@@ -545,7 +545,7 @@ concatenation of `API_BASE_URL` with a path that came from the API.
 
 | | |
 |---|---|
-| **Status** | **PARTIAL** 2026-09-25 — see the summary row (ADR-067) |
+| **Status** | **PARTIAL** 2026-09-27 — see the summary row (ADR-067, ADR-074) |
 | **Severity** | medium |
 | **Verified** | by grep over `frontend/src`. **No screen reader and no automated a11y scan was run** — `axe` is not installed, so this is a static review of markup, not an audit against assistive technology |
 | **Evidence** | **Labels:** 156 `<label>` elements in the codebase, **14** with `htmlFor`. The shared primitives are the problem: `frontend/src/components/ui/Input.tsx:31-35` renders `<label>` with no `htmlFor` and `:43-59` renders the `<input>` with no `id`; `frontend/src/components/ui/FormField.tsx:22-27` does the same for every field built on it. **Error text:** `grep -rn "aria-invalid\|aria-describedby" frontend/src` → **0 matches**, so `Input.tsx`'s `error` prop and `FormField.tsx:29-31`'s error paragraph are visual only. **Dialogs:** 16 components render a `fixed inset-0` overlay; `grep -rn 'role="dialog"\|aria-modal' frontend/src` → **0 matches**. `frontend/src/components/ui/Dialog.tsx:32-53` has no `role`, no `aria-modal`, no `aria-labelledby` pointing at its own `<h2>` (`:38`), no Escape handler, no focus trap, no focus restore, no scroll lock, and its close control (`:41-48`) is an icon-only button with no accessible name. **Skip link:** none. **Tooling:** `axe` appears nowhere in `frontend/package.json` or in any test |
@@ -588,7 +588,7 @@ Install `axe` and wire it into the component suite so the standards document sto
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-27 — see the summary row (ADR-074) |
 | **Severity** | medium |
 | **Verified** | from code on both sides |
 | **Evidence** | **Sessions:** `backend/src/controllers/session.controller.js:99-110` calls `success(res, { sessions, meta: { total, page, limit, totalPages } }, …)` — rows and pagination both **inside** `data`. `frontend/src/api/services/session.service.ts:37-43` types it that way and `frontend/src/app/dashboard/session-management/page.tsx:48`, `:52`, `:53`, `:56` read `response.data.sessions` and `response.data.meta`. **Metered billing:** `backend/src/services/meteredBilling.service.js:523-535` returns `{ rows, meta }` and `backend/src/controllers/meteredBilling.controller.js:41` passes it through as `data`; `frontend/src/api/services/meteredBilling.service.ts:158-172` reads `response.data.rows` and `response.data.meta`, with a comment at `:154` stating the endpoint "genuinely nests { rows, meta } inside `data`" |
@@ -631,7 +631,7 @@ the same change. If the decision is instead to accept the nesting, that is a dev
 
 | | |
 |---|---|
-| **Status** | **PARTIAL** 2026-09-25 — see the summary row (ADR-067) |
+| **Status** | **DONE** 2026-09-27 — see the summary row (ADR-067, ADR-074) |
 | **Severity** | medium |
 | **Verified** | from code. The race was **not** measured |
 | **Evidence** | `frontend/src/constants/index.ts:42` — `API_TIMEOUT = 30000`, used as the axios `timeout` at `frontend/src/api/client.ts:7`. `backend/index.js:291` — `app.use(timeout("30s"))`, and `:299-307` answers `408` with `{ status: "Error", message: "Request timeout" }`. Every browser request also traverses the Next proxy (`frontend/src/app/api/v1/[...path]/route.ts`), which adds a hop and imposes no timeout of its own |
@@ -701,7 +701,7 @@ menu — retry" state. Keep `DASHBOARD_MENU` only if something else needs it; if
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-27 — see the summary row (ADR-074) |
 | **Severity** | low |
 | **Verified** | from code. No memory measurement was taken |
 | **Evidence** | `frontend/src/app/api/v1/[...path]/route.ts:56` — `body = await req.arrayBuffer()` for every non-GET; `:66` — `const responseData = await res.arrayBuffer()` for every response; `:115` returns the buffer. Nothing streams. Attachment downloads go through this path (`frontend/src/api/services/attachment.service.ts:119-123`) as do uploads (`:94-105`). Also at `:25-35`: incoming headers are copied wholesale and `Authorization` is overwritten **only if** the `auth_token` cookie exists (`:38-40`), so a client-supplied `Authorization` header reaches the backend unchanged when it does not |

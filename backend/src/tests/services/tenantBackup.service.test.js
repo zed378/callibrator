@@ -85,10 +85,11 @@ const mockTenantBackup = {
   findAll: jest.fn(),
   findOne: jest.fn(),
   DEFAULT_RETENTION_DAYS: 30,
+  // P7-04 D-3 (ADR-078): the REAL model's values. This mock said "FULL" — the
+  // validator's spelling — and so hid that the export never matched it.
   BACKUP_TYPES: {
-    FULL: "FULL",
-    PARTIAL: "PARTIAL",
-    USER_ONLY: "USER_ONLY",
+    FULL: "full",
+    USER_ONLY: "user_only",
   },
   // S-32: the real model's STATUS is exactly its ENUM — no RESTORING,
   // RESTORED or DELETING (tests/models/tenantBackup.status.s32.test.js).

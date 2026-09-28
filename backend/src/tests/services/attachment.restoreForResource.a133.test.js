@@ -113,7 +113,7 @@ describe("A-133 — restoreForResource", () => {
     await expect(restore()).resolves.toEqual([]);
   });
 
-  it("the latest DELETE is the deleted-file sweep's (ADR-083): stays deleted — its bytes are gone", async () => {
+  it("the latest DELETE is the deleted-file sweep's (D-22, attachmentFileSweep.service.js): stays deleted — its bytes are gone", async () => {
     mockModels.auditRows = [
       deleteRow(ATT, { operation: "file-purge", file: "removed" }, "2026-12-01"),
       deleteRow(ATT, cascadeOf(DEVICE), "2026-09-01"),
@@ -166,7 +166,7 @@ describe("A-133 — restoreForResource", () => {
     mockModels.auditRows = [deleteRow(ATT, cascadeOf(DEVICE), "2026-09-01")];
 
     await expect(restore()).resolves.toEqual([ATT]);
-    // Locked before the history is read (ADR-083's sweep locks what it purges).
+    // Locked before the history is read (the D-22 deleted-file sweep locks what it purges).
     expect(mockLockedWith).toEqual([true]);
     expect(mockModels.updated).toEqual([
       { values: { isDeleted: false }, where: { id: [ATT], tenantId: TENANT, isDeleted: true } },

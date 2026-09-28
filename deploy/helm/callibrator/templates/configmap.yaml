@@ -100,13 +100,11 @@ data:
   {{- end }}
 
   {{- if .Values.certificates.acme.enabled }}
+  # ADR-081: only CUSTOM_DOMAINS_ENABLED is read (registration + DNS
+  # verification). No certificate is issued automatically since A-256, and
+  # acme-client is no longer a dependency (ADR-076), so TLS_AUTO_PROVISION and
+  # ACME_* are not rendered: a key nothing reads looks like a working control.
   CUSTOM_DOMAINS_ENABLED: "true"
-  TLS_AUTO_PROVISION: "true"
-  # DEFAULTS TO THE LET'S ENCRYPT STAGING DIRECTORY. Forgetting to point this
-  # at production yields certificates no browser trusts, and the failure
-  # appears in a browser rather than in any log.
-  ACME_DIRECTORY_URL: {{ .Values.certificates.acme.directoryUrl | quote }}
-  ACME_ACCOUNT_EMAIL: {{ .Values.certificates.acme.accountEmail | quote }}
   {{- end }}
 
   # ------------------------------------------------------------------------

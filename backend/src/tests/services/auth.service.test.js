@@ -1118,6 +1118,9 @@ describe("auth.service", () => {
           .mockReturnValue(
             "otpauth://totp/Callibrator:test@example.com?secret=test-secret",
           ),
+        // S-20: the stored form is sealed by mfa.service (the real sealing is
+        // mfa.secretAtRest.s20.test.js and the real otplib path mfa.realOtplib.a99).
+        sealSecret: jest.fn((userId, secret) => `v2:sealed:${userId}:${secret}`),
       };
       jest.doMock("../../services/mfa.service", () => mockTotp);
 
@@ -1142,8 +1145,10 @@ describe("auth.service", () => {
       expect(result.secret).toBe("test-secret");
       expect(result.qrCodeUrl).toBe("qr-data-url");
       // A-114: PENDING — the live mfaSecret is not written by setup.
+      // S-20: sealed under the user id, never the seed itself.
+      expect(mockTotp.sealSecret).toHaveBeenCalledWith("user-1", "test-secret");
       expect(mockUser.update).toHaveBeenCalledWith({
-        mfaPendingSecret: "test-secret",
+        mfaPendingSecret: "v2:sealed:user-1:test-secret",
         mfaPendingCreatedAt: expect.any(Date),
       });
       expect(result.rotation).toBe(false);

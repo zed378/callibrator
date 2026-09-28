@@ -54,11 +54,14 @@ function walk(dir: string, out: Walked): void {
 }
 
 /**
- * The `tsc` launcher of the backend's own `typescript` devDependency. TypeScript
- * 7's package `exports` hide `bin/`, so the path is read from its manifest.
+ * The `tsc` launcher of TypeScript 7, the backend's `@typescript/native`
+ * devDependency (an alias of typescript@7). `typescript` itself is the
+ * TypeScript 6 compatibility package that typescript-eslint needs (ADR-076),
+ * and it has no `tsc` bin. TypeScript 7's package `exports` hide `bin/`, so the
+ * path is read from its manifest.
  */
 function tscEntry(): string {
-  const manifestPath = require.resolve("typescript/package.json", { paths: [BACKEND] });
+  const manifestPath = require.resolve("@typescript/native/package.json", { paths: [BACKEND] });
   const manifest: unknown = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
   const bin =
     typeof manifest === "object" && manifest !== null && "bin" in manifest ? manifest.bin : undefined;

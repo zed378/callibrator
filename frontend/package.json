@@ -9,7 +9,7 @@
     "build:binary": "next build && next-bun-compile --target=bun-linux-musl-x64",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "node ../node_modules/@typescript/native/bin/tsc --noEmit",
     "test": "jest --coverage",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage"
@@ -53,6 +53,7 @@
     "jsdom": "^30.1.1",
     "next-bun-compile": "^2.0.0",
     "tailwindcss": "^4.3.3",
+    "ts-jest": "^29.4.14",
     "typescript": "npm:@typescript/typescript6@^6.0.2"
   },
   "overrides": {

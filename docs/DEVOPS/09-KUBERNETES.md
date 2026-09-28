@@ -204,11 +204,10 @@ CORS_ORIGIN: "https://…"      # explicit, never a wildcard
 FORCE_HTTPS: "true"
 SEED_DEMO: ""                 # unset
 BATCH_JOBS_INLINE: ""         # unset
-ACME_DIRECTORY_URL: "https://acme-v02.api.letsencrypt.org/directory"
 STORAGE_DRIVER: "s3"          # if replicaCount > 1
 ```
 
-`ACME_DIRECTORY_URL` **defaults to the Let's Encrypt staging directory**. Forgetting it yields certificates no browser trusts, and the failure appears in a browser rather than in any log.
+*(ADR-081: no ACME setting is read since A-256; `acme-client` was removed in ADR-076. No certificate is issued automatically.)* `certificates.acme.enabled` renders `CUSTOM_DOMAINS_ENABLED` only; `directoryUrl`/`accountEmail` are kept as values so old overrides still render, and are not rendered.
 
 ## Frontend Images Are Per-Environment
 

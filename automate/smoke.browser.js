@@ -3,7 +3,7 @@
  * Browser smoke suite (A-20, ADR-077).
  *
  * The 71-test Playwright suite the documents described was never in this
- * repository. This is what replaces it: FOUR checks that only a real browser
+ * repository. This is what replaces it: four things only a real browser
  * can make, driven through the repository's existing `puppeteer-core` (hoisted
  * from the backend's `puppeteer`) and an installed Chrome/Chromium — no new
  * dependency.
@@ -348,8 +348,11 @@ async function main() {
     console.log(`\n  HTTP errors the pages received (informational):\n    ${log.httpErrors.join("\n    ")}`);
   }
   const passed = results.filter((r) => r.ok).length;
-  console.log(`\n${passed}/4 checks passed in ${Date.now() - started} ms${failed || passed !== 4 ? " — FAILED" : ""}`);
-  process.exit(failed || passed !== 4 ? 1 : 0);
+  // Five checks: the MFA flow is two (enrol, then sign in with a code).
+  const EXPECTED = 5;
+  const ok = !failed && passed === EXPECTED;
+  console.log(`\n${passed}/${EXPECTED} checks passed in ${Date.now() - started} ms${ok ? "" : " — FAILED"}`);
+  process.exit(ok ? 0 : 1);
 }
 
 main().catch((err) => {

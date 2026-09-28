@@ -92,6 +92,7 @@ Stated exactly:
 | `X-Webhook-Delivery` | the **delivery** id (`webhook_deliveries.id`) — unique per delivery, stable across every retry of it, and the `id` inside the body |
 | `X-Webhook-Timestamp` | unix seconds when **this attempt** was signed |
 | `X-Webhook-Signature` | `v1=<hex>` |
+| `X-Webhook-Signature-Previous` | `v1=<hex>` under the replaced secret — **only** inside a rotation's overlap window (P6-13, below) |
 
 The body is byte-identical on every retry; the timestamp and the signature are not. Any other header on the wire comes from Node's `fetch` and is not part of the contract.
 
@@ -170,34 +171,41 @@ Compare in constant time. A byte-by-byte `==` on a hex digest is a timing oracle
 
 ## The Secret
 
+Corrected **2026-09-28** (P6-13, ADR-085). This section described the pre-A-51 code: a plaintext,
+caller-choosable, unrotatable secret. None of that is true any more.
+
 | | |
 |---|---|
-| Column | `webhooks.secret`, `STRING(128)`, `allowNull: false` |
-| Default | `crypto.randomBytes(24).toString("hex")` — 48 hex characters, 192 bits of entropy |
-| At rest | **plaintext.** Not encrypted with `KMS_MASTER_KEY`; the model registers no `SENSITIVE_KEYS` handling, unlike tenant storage credentials (`tenantSettings.model.js`). Anyone with a database read, or a database backup, has every tenant's signing key. |
-| Returned | **once**, from `POST /api/v1/webhooks`, in `{ ...publicWebhook(webhook), secret }` (`webhook.service.js:65`). `publicWebhook` omits it everywhere else, so `GET /`, `GET /:id` and `PATCH /:id` never expose it. |
-| Rotation | **there is none.** `updateWebhook` patches only `url`, `events`, `description`, `isActive` (`webhook.service.js:100`). A leaked secret can be replaced only by deleting the webhook and registering a new one — which means a new webhook id and a gap. |
+| Column | `webhooks.secret`, `TEXT`, `allowNull: false`, no default |
+| Generated | server-side only — `crypto.randomBytes(32).toString("hex")`, 64 hex characters, 256 bits (`webhook.service.js#generateSecret`) |
+| At rest | a `kms.service` envelope (`v2:<keyId>:…`, tenant id as AAD; migration `0022` encrypted the older rows). A database read or a backup yields ciphertext bound to its tenant |
+| Returned | **once**, by the three calls that issue one: `POST /webhooks`, `POST /webhooks/:id/rotate-secret`, and a `PATCH /webhooks/:id` that changes the `url`. No other response carries it |
+| A caller-supplied `secret` | **refused with 400** on create, patch and rotate (`webhook.validator.js#noCallerSecret`). Until 2026-09-27 it was silently stripped, so an integrator who sent one believed they had set it |
+| Audit | create, patch, rotate and delete each write an `audit_logs` row inside the same transaction, naming the actor; `changes` records **that** the secret changed, never a secret |
 
-### The secret can be chosen by the caller
+### Rotation with an overlap window
 
-`createWebhook` accepts `secret` in its options object, and the controller spreads the request body into it:
+`POST /webhooks/:id/rotate-secret` takes an optional body `{ "overlapHours": 0–168 }`, default **24**.
 
-```js
-// webhook.controller.js
-webhookService.createWebhook(req.user.tenantId, { ...req.body, createdBy: req.user.id });
-// webhook.service.js:61
-...(secret ? { secret } : {}),
-```
+- The new secret is returned once and signs `X-Webhook-Signature` from the next delivery on.
+- For `overlapHours`, the **replaced** secret keeps signing too: every delivery carries
+  `X-Webhook-Signature-Previous: v1=<hex>` — the same bytes (`timestamp.body`) signed under the old
+  secret. The replaced secret is stored as the same envelope (`webhooks.previous_secret`, migration
+  `0090`), with its end in `previous_secret_expires_at`, reported as `previousSecretExpiresAt` on the
+  webhook.
+- `overlapHours: 0` ends the old secret at once — the answer to a suspected leak.
+- Rotating again inside a window replaces the previous secret: at most **one** old key is ever live.
 
-There is no validator on the route — `webhooks.route.js` mounts no `validate(schema)` on any endpoint — so `{"url": "...", "events": ["*"], "secret": "a"}` creates a webhook whose signatures are forgeable by anyone who guesses one character. Nothing rejects it, nothing warns, and the secret is never shown again so nobody notices.
+**What a receiver does:** accept a delivery if **either** `X-Webhook-Signature` or
+`X-Webhook-Signature-Previous` verifies under a secret it holds (constant-time comparison for each).
+Then rotate on its own schedule inside the window: install the new secret, and stop accepting the
+old one. A receiver that checks only `X-Webhook-Signature` keeps working if it installs the new secret
+before the next delivery — the pre-P6-13 behaviour.
 
-This is deliberate-looking (it allows a receiver to bring a pre-shared secret) but unguarded. **A caller-supplied secret must be at least 32 bytes of random data.** Until a validator enforces a minimum length, omit `secret` and let the platform generate it.
+### Changing the URL rotates the secret, with no overlap
 
-The other consequence of the missing validator is that `url`, `events`, `description` and `isActive` reach the service unvalidated too; the service's own checks (`url` required, `events` a non-empty array, `assertSafeUrl`) are the only ones that run.
-
-### Changing the URL does not change the secret
-
-`PATCH /:id` with a new `url` keeps the existing secret. The new host receives deliveries signed with a key the old host already holds. Where a receiver is being migrated between vendors, delete and re-register rather than patch.
+A `PATCH` that changes `url` issues a new secret (returned once) and **clears** any previous secret:
+the new host must never be signed with a key the old host holds, under either header.
 
 ## SSRF
 

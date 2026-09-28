@@ -97,7 +97,7 @@ describe("A-42: console.* guard", () => {
   describe("the detector", () => {
     it("flags every form of reaching the console", () => {
       expect(findConsoleUses('console.log("x");')).toEqual([1]);
-      expect(findConsoleUses('a();\n  console.error(err);')).toEqual([2]);
+      expect(findConsoleUses("a();\n  console.error(err);")).toEqual([2]);
       expect(findConsoleUses('console["warn"]("x");')).toEqual([1]);
       expect(findConsoleUses("const { info } = console;")).toEqual([1]);
       expect(findConsoleUses("const c = console; c.debug(1);")).toEqual([1]);

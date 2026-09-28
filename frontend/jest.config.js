@@ -1,3 +1,16 @@
+// ADR-076 — the transform under TypeScript 7.
+//
+// ts-jest calls the TypeScript compiler API, which TypeScript 7 does not ship.
+// `typescript` in this workspace is therefore the TypeScript 6 compatibility
+// package (npm:@typescript/typescript6, the side-by-side arrangement the TS 7
+// release recommends), and TypeScript 7 is `@typescript/native`, run by
+// `npm run typecheck`. With tsconfig's `isolatedModules: true`, ts-jest only
+// TRANSPILES (ts.transpileModule) — it type-checks nothing; the TypeScript 7
+// typecheck gate, which CI and `make verify` run, is where types are checked.
+//
+// next/jest (SWC) was tried and refused: it emits imports in ESM order, ahead
+// of the module-scope mock objects 13 suites declare before their imports, and
+// those suites fail with "Cannot access 'x' before initialization".
 /** @type {import('jest').Config} */
 const config = {
   setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],

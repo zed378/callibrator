@@ -170,7 +170,7 @@ Three rules that catch a worthless test:
 Two claims currently live in this repository, and both are stated carefully on purpose:
 
 - The Helm charts **render**. No cluster has been reachable, so they are **not known to deploy**.
-- The E2E suite has been verified **fix by fix**. It has **never passed in one uninterrupted run**.
+- The E2E suite **passed in one uninterrupted run, twice in a row, on 2026-09-28** (P6-02, ADR-077) — on a local compose stack, by hand. **CI does not run it** (A-19), so a later change can break it unnoticed.
 
 Do not round these up. `TASKS/BACKLOG.md` § Unverified Claims lists all six of them.
 
@@ -205,6 +205,11 @@ make migrate       # then: make migrate-verify — the log is not evidence
 needs ES-module-only dependencies. A bare `npx jest` on the suites that use it fails with "Must use
 import to load ES Module".
 
+**Type-check with `npm run typecheck`, never bare `npx tsc`** (ADR-076). Two TypeScripts are
+installed: `@typescript/native` is TypeScript 7.0.2, the compiler, and `typescript` is the TypeScript 6
+compatibility package that typescript-eslint, `next build` and ts-jest need for its API. Both claim the
+`tsc` bin name, and `npx tsc` resolves to **6**, silently. Node is **26**, pinned by the root `.nvmrc`.
+
 ## Code Style
 
 Match the surrounding code. Both workspaces have standards documents:
@@ -224,9 +229,9 @@ Stated here because an agent reading a green board and finding a red gate wastes
 
 | | |
 |---|---|
-| Backend unit coverage gate (100%) | **passing** at the last recorded green run — 578 suites, 12,164 tests, 100% on all four measures, Node 24.18, commit `8a11905` (`MEMORY/records/2026-09-25-phase0-batch7.md`). P6-01 is done; what remains is keeping it there. Run it on the Node major pinned in the root `.nvmrc` (26 on 2026-09-27, A-257): a global setup refuses any other major. A run on 2026-09-27 (`npm run test:coverage`) collected 623 suites and 12,639 tests and was **not** green — 17 failures, coverage 99.79% — and the only red suites belonged to changes other agents had in flight at that moment (new migrations `0086`–`0088`, `kmsVerify.util.js`, the Node pin itself), so quote a count only from a run on a quiet tree |
+| Backend unit coverage gate (100%) | **passing** at the last recorded green run — 637 suites (23 skipped), 12,775 tests, 100% on all four measures, **Node 26.10.0**, 2026-09-28 on `c905e74` plus the uncommitted ADR-076 tree (ADR-076's change record). The one before it was 578 suites / 12,164 tests on Node 24.18, commit `8a11905`. P6-01 is done; what remains is keeping it there. Run it on the Node major pinned in the root `.nvmrc` (26 on 2026-09-27, A-257): a global setup refuses any other major. A run on 2026-09-27 (`npm run test:coverage`) collected 623 suites and 12,639 tests and was **not** green — 17 failures, coverage 99.79% — and the only red suites belonged to changes other agents had in flight at that moment (new migrations `0086`–`0088`, `kmsVerify.util.js`, the Node pin itself), so quote a count only from a run on a quiet tree |
 | Backend lint (`make verify` step one) | **red** — 1,083 errors, 302 warnings on 2026-09-27 (`npm run lint`), all formatting on the categories reported (A-34). CI runs a **ratchet** instead (`make lint-ratchet`, `scripts/ci/eslint-ratchet.js`): it fails on errors above its baseline (950), so run `npx eslint <file>` on what you change |
-| Live E2E in one uninterrupted run | **never achieved** → P6-02 |
+| Live E2E in one uninterrupted run | **achieved 2026-09-28**, twice (P6-02, ADR-077): 392 tests, no 429, one environment-dependent 500 (`/ai/query`). Not in CI |
 
 ## If You Are Unsure
 

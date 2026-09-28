@@ -320,7 +320,7 @@ exports.restoreForResource = async (tenantId, modelName, resourceId, { transacti
   }
 
   // Lock the candidates still deleted BEFORE reading their history. The
-  // deleted-file sweep (ADR-083) locks the rows it purges and writes their
+  // deleted-file sweep (D-22, attachmentFileSweep.service.js) locks the rows it purges and writes their
   // `file-purge` DELETE row in the same transaction: a sweep that got there
   // first is therefore visible to the read below (its row is then the latest
   // DELETE, and the attachment stays deleted — its bytes are gone), and one

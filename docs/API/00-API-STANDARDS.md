@@ -45,6 +45,8 @@ Produced by `backend/src/utils/response.util.js`. Every endpoint uses it.
 
 This is stated forcefully because it has been violated in shipped code. `GET /qms/nc`, `GET /qms/capa` and `GET /sop` returned `{ total, ..., nonConformances: [] }` inside `data`, and every corresponding frontend list rendered empty — with no error anywhere. A client written against the envelope fails silently when the envelope changes, which is the worst failure mode available.
 
+Two more were found by the frontend audit (F-13) and brought onto the envelope, backend and frontend together (ADR-074): `GET /sessions` sent `data: { sessions, meta }` (fixed by A-111), and `GET /metered-billing/history` sent `data: { rows, meta }`. Both now answer rows in `data` and pagination in the top-level `meta`, pinned through their real routers by `backend/src/tests/routes/envelope.f13.test.js`. The 408 a timed-out request receives is in the envelope too (`requestTimeout.middleware.js`, F-14).
+
 `customCounts` is optional and carries domain-specific tallies.
 
 ### Error

@@ -364,7 +364,8 @@ exports.auth = async (req, res, next) => {
       method: signInMethod,
     });
     req.token = token;
-    req.sessionId = decoded.sid || null;
+    // P6-12: always set here — a token without `sid` was refused above.
+    req.sessionId = decoded.sid;
     // A-216: how this session signed in — a federated one's password (and
     // address, A-214) belong to its identity provider.
     req.signInMethod = signInMethod;
