@@ -44,7 +44,8 @@ jest.mock("../../config", () => {
   };
   return { db };
 });
-jest.mock("archiver", () => () => {
+// archiver 8 is ESM with named classes; the service does `new ZipArchive(...)` (P6-02).
+jest.mock("archiver", () => ({ ZipArchive: function MockZipArchive() {
   const handlers = {};
   return {
     on: (event, cb) => {
@@ -58,7 +59,7 @@ jest.mock("archiver", () => () => {
       Promise.resolve().then(() => handlers.end());
     },
   };
-});
+} }));
 
 const fs = require("fs");
 const models = require("../../models");

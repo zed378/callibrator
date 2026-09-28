@@ -160,4 +160,31 @@ internalHealthRoutes.get("/jobs", ...platformOnly, jobStatus);
  */
 internalHealthRoutes.get("/metrics", metricsAuth, jobMetrics);
 
-module.exports = { publicHealthRoutes, internalHealthRoutes };
+// ======================================================
+// HTTPS REDIRECT — the probe paths are exempt (S-09, ADR-081)
+// ======================================================
+
+/** The three public probe paths above. A probe is plain HTTP by nature. */
+const PROBE_PATHS = Object.freeze(["/health", "/live", "/ready"]);
+
+/**
+ * FORCE_HTTPS=true redirects every plain-HTTP request that did not arrive
+ * through a TLS-terminating proxy. It used to redirect the probes too. The
+ * compose healthcheck (`wget http://localhost:3000/health`) then followed a
+ * 301 to https://localhost:3000, which nothing serves, so a by-the-book
+ * `make up ENV=prod` never became healthy (ADR-081). A kubelet httpGet probe
+ * counts any 3xx as success, so under Helm the readiness probe passed while
+ * the database was down. The probes carry a verdict and nothing else (A-06),
+ * so answering them over HTTP discloses nothing.
+ *
+ * @type {import("express").RequestHandler}
+ */
+const forceHttps = (req, res, next) => {
+  if (req.secure || req.get("X-Forwarded-Proto") === "https" || PROBE_PATHS.includes(req.path)) {
+    return next();
+  }
+  // Redirect to HTTPS (preserves path + query)
+  return res.redirect(301, `https://${req.get("Host")}${req.url}`);
+};
+
+module.exports = { publicHealthRoutes, internalHealthRoutes, forceHttps, PROBE_PATHS };

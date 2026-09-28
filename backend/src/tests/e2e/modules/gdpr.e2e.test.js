@@ -94,8 +94,13 @@ describe("E2E GDPR/CCPA (HTTP)", () => {
     expect(status).toBe(404);
   });
 
-  test("POST /gdpr/export — reachable (200 export, or 500 if export backend unavailable)", async () => {
-    const { status } = await httpPost("/gdpr/export", { format: "json" }, authHeader(token));
-    expect([200, 500]).toContain(status);
+  // P6-02: 200 only. The 500 this used to accept was not an "export backend
+  // unavailable" — the image never created /app/exports, so every export
+  // failed EACCES (fixed in backend/Dockerfile, guarded by
+  // tests/guards/runtimeDirs.p602.test.js).
+  test("POST /gdpr/export — 200 with a download link", async () => {
+    const { status, body } = await httpPost("/gdpr/export", { format: "json" }, authHeader(token));
+    expect(status).toBe(200);
+    expect(body.data.downloadUrl).toMatch(/^\/api\/v1\/gdpr\/exports\/[^/]+\/download$/);
   });
 });

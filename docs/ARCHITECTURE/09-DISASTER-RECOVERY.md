@@ -8,8 +8,8 @@ Procedures are in [`../DEVOPS/04-DATABASE-BACKUP.md`](../DEVOPS/04-DATABASE-BACK
 
 | Metric | Target | Currently achievable? |
 |---|---|---|
-| RPO — maximum data loss | 1 hour | yes, with hourly database backup |
-| RTO — maximum downtime | 4 hours | **unverified** — no full restore drill has been performed |
+| RPO — maximum data loss | 1 hour | **no, as shipped** — nothing configures WAL archiving or an hourly dump; the RPO is the age of the last dump (the drill lost exactly what was written after it) |
+| RTO — maximum downtime | 4 hours | **measured once** (P7-04, 2026-09-28): 234 s from restore start to `/health` 200 on compose with a small data set; production volume and Kubernetes unmeasured |
 | Backup retention | 30 days rolling, 12 monthly | yes |
 | Restore verification | monthly | **not yet scheduled** |
 
@@ -63,28 +63,17 @@ The Redis row used to say an outage opened a window for duplicate side effects, 
 
 ## Restore Order
 
-Order matters, because the backend runs migrations at boot and will fail against a partially restored database.
+The procedure, rehearsed end to end in the P7-04 drill, is [`../DEVOPS/04-DATABASE-BACKUP.md`](../DEVOPS/04-DATABASE-BACKUP.md) § Restore Order. Two things the drill changed (ADR-078): the **secrets and the `.env` come first** — nothing, PostgreSQL included, starts without them — and a dump restore needs the **application role created before `pg_restore`**.
 
-```
-1. Provision the host and install Docker
-2. Restore the database volume, or restore from dump + WAL
-3. Restore the object store (or repoint STORAGE_DRIVER at the surviving bucket)
-4. Restore secrets — CERT_SIGNING_SECRET, ENCRYPT_KEY, ATTACHMENT_URL_SECRET
-5. Start postgres, redis, rabbitmq; wait for healthy
-6. Start the backend; it runs migrations
-7. Verify /health returns 200 with database: "connected"
-8. Start the frontend and nginx
-9. Verify: login, a tenant-scoped list, a certificate verification URL
-```
+### The secret that ends recoveries is `KMS_MASTER_KEY`
 
-### Step 4 is the one that ends recoveries
+This section used to name `CERT_SIGNING_SECRET` and `ENCRYPT_KEY`. The drill measured each secret (ADR-078, [`../SECURITY/14-SECRET-ESCROW.md`](../SECURITY/14-SECRET-ESCROW.md)):
 
-**Restoring the database without `CERT_SIGNING_SECRET` and `ENCRYPT_KEY` produces a system that starts cleanly and is permanently broken:**
+- **`KMS_MASTER_KEY` lost:** every tenant signing key, webhook secret, tenant credential and TOTP seed is undecryptable. A restore under a new key booted, served `/health` 200 and every list, and then answered 500 to every signature and every MFA sign-in. **The boot now refuses** (`[kms-verify] FAILED`, naming the missing key id).
+- **`CERT_SIGNING_SECRET` lost:** nothing stored depends on it (A-241). Every certificate still verified, with an identical integrity hash, and its public document downloaded.
+- **`ENCRYPT_KEY`:** needed only for a backup taken before migration 0058.
 
-- Every issued certificate fails public verification, because the HMAC no longer matches. There is no way to re-derive the old key from the data.
-- Every encrypted e-signature private key and every stored tenant storage credential is undecryptable.
-
-These secrets must be backed up **separately from the database and separately from the host**, and their restore must be part of the drill. A backup strategy that captures the data and loses the keys has captured ciphertext.
+These must be backed up **separately from the database and separately from the host**, and their restore is part of the drill. A backup strategy that captures the data and loses the keys has captured ciphertext.
 
 ## What a Restore Test Must Prove
 
@@ -106,9 +95,9 @@ Stated plainly, because a disaster-recovery document that lists only its strengt
 
 | Gap | Consequence |
 |---|---|
-| **No full restore drill has been performed** | the 4-hour RTO is unverified |
+| One restore drill performed (P7-04, compose, small data set) | RTO at production volume and on Kubernetes unmeasured |
 | No scheduled monthly restore verification | backups are assumed good, not known good |
-| Secret backup procedure not formalised | the failure above is possible today |
+| Secret escrow is a procedure ([`../SECURITY/14-SECRET-ESCROW.md`](../SECURITY/14-SECRET-ESCROW.md)), not a mechanism | a lost `KMS_MASTER_KEY` now refuses the boot (ADR-078) instead of failing per request |
 | No offsite replica | host loss means restore, not failover |
 | Helm charts not cluster-validated | the Kubernetes recovery path is untested |
 

@@ -147,8 +147,10 @@ jobs:
       - name: typecheck
         # Run directly: `turbo run typecheck` silently skips a package with no
         # `typecheck` script and exits 0 — a gate that ran nothing (P7-01).
+        # ADR-076: the script runs TypeScript 7 (@typescript/native); a bare
+        # `npx tsc` resolves to TypeScript 6's bin, which shares the name.
         working-directory: frontend
-        run: npx tsc --noEmit
+        run: npm run typecheck
       - name: test + coverage gate
         # --coverage is what evaluates the thresholds in frontend/jest.config.js
         # (F-03). Plain `jest --ci` ran the suites and never checked the gate.
@@ -237,7 +239,12 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-      - run: npm ci
+      # ADR-082: this job's env sets NODE_ENV=production, and `npm ci` then
+      # OMITS devDependencies, among them tsx, which both boots below load
+      # (`node --import tsx`). Found by running this job's steps locally in
+      # its service images on 2026-09-28: the boot died with
+      # ERR_MODULE_NOT_FOUND 'tsx' before touching the database.
+      - run: npm ci --include=dev
       - name: Random application secrets
         run: |
           set -euo pipefail
@@ -356,8 +363,8 @@ jobs:
           cd deploy/compose
           cp .env.example .env
           # A structurally valid .env: the overlays' `:?` guards need values.
+          # (ADR-081: nothing reads ACME_* any more, so none is written here.)
           { echo "IMAGE_TAG=ci"; echo "CORS_ORIGIN=https://ci.invalid"; \
-            echo "ACME_DIRECTORY_URL=https://acme-v02.api.letsencrypt.org/directory"; \
             echo "PUBLIC_URL=http://ci.invalid"; } >> .env
           for overlay in dev staging prod vm; do
             docker compose --env-file .env -f docker-compose.yml -f "docker-compose.$overlay.yml" config -q

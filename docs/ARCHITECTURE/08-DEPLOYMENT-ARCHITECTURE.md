@@ -73,7 +73,7 @@ Requiring ClamAV to be *healthy* would block the entire stack on an optional com
 ### Backend — two stages, two base images
 
 ```
-builder: node:24-alpine   → npm install, swagger:generate, pkg → /app/backend
+builder: node:26-alpine   → npm ci, swagger:generate, build:dist, pkg (node26) → /app/backend
 runtime: debian:bookworm-slim
 ```
 

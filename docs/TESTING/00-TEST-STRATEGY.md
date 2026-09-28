@@ -21,7 +21,7 @@ Everything below follows from that.
 | Contract (mock) | `frontend/src/api/services/*.test.ts` | 51 | the client sends the right request |
 | **Live E2E** | `backend/src/tests/e2e/modules/` | **51** | **the endpoint exists and answers that way** |
 | Component | `frontend/**/__tests__/` | — | a screen renders correctly |
-| Browser | `automate/` | 71 | the whole flow works — **but the directory is absent from this repository; see U-07** |
+| Browser | `automate/smoke.browser.js` | 5 checks | sign-in, MFA, one list page and CSP work in a real browser (ADR-077; the 71-test claim is withdrawn, U-07) |
 
 The bolded row is the one that was missing.
 
@@ -29,11 +29,11 @@ The bolded row is the one that was missing.
 
 | Workspace | Gate | Status |
 |---|---|---|
-| Backend unit | **100%** | **currently failing** |
+| Backend unit | **100%** of six layers (not models, config, constants, scripts or `index.js` — P6-14) | passing at the last green run (P6-01) |
 | Frontend | 70% | |
 | Live E2E | none — proves contracts, not lines | |
 
-The backend gate is below threshold: the demo seeder, certificate submit-for-approval, `qms.validator`, the retention `legalHoldSchema`, the tenant subdomain-derivation branch and the param-merge branches all added uncovered code.
+The backend gate was restored by P6-01. What the figure covers is stated in [`../BACKEND/09-TESTING.md`](../BACKEND/09-TESTING.md) § What 100% covers.
 
 **A gate that is currently failing is a gate nobody trusts.** Restoring it is the first item in [`../PLAN/16-IMPLEMENTATION-ROADMAP.md`](../PLAN/16-IMPLEMENTATION-ROADMAP.md).
 
@@ -158,7 +158,7 @@ Defect #15 — the certificate list returning zero rows because four includes we
 ```bash
 make verify         # lint + typecheck + test + build
 make test-e2e       # 53 live specs against a running server
-make test-browser   # Playwright
+make test-browser   # browser smoke, running stack required
 ```
 
 `make verify` does **not** cover the live or browser suites. A green `verify` is not a green release.

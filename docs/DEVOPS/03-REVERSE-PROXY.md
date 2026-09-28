@@ -94,7 +94,7 @@ add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" alway
 
 Port 80 redirects to 443 — **except** `/.well-known/acme-challenge/`, which must stay reachable over HTTP for HTTP-01 validation.
 
-The backend also has `FORCE_HTTPS`, which redirects when `X-Forwarded-Proto` is not `https`. Both layers, deliberately: the proxy handles it normally, and the application does not depend on the proxy being configured correctly.
+The backend also has `FORCE_HTTPS`, which redirects when `X-Forwarded-Proto` is not `https`. Both layers, deliberately: the proxy handles it normally, and the application does not depend on the proxy being configured correctly. **The probe paths `/health`, `/live` and `/ready` are exempt** (ADR-081): the compose healthcheck calls `http://localhost:3000/health` inside the container, and before the exemption it followed a 301 to an https port nothing serves, so the prod and staging overlays could never become healthy; a kubelet `httpGet` probe counts a 3xx as success, so under Helm the probes passed while the database was down. The probes return a verdict and nothing else (A-06).
 
 ## Headers to Forward
 
@@ -179,14 +179,12 @@ location /health {
 
 ## Custom Domains
 
-A tenant may register its own domain, DNS-verify it, and have TLS provisioned over ACME.
+A tenant may register its own domain and DNS-verify it (`CUSTOM_DOMAINS_ENABLED`). **As-built, no certificate is provisioned** (A-256, ADR-081): the ACME code had no caller and was removed, `acme-client` is no longer a dependency (ADR-076), and `TLS_AUTO_PROVISION`/`ACME_*` are not read. TLS for a tenant domain is arranged by the operator.
 
-Two requirements on this layer:
+If automatic TLS is built, this layer will need:
 
-1. `/.well-known/acme-challenge/` reachable over **HTTP** on every domain,
+1. `/.well-known/acme-challenge/` reachable over **HTTP** on every domain (the route already exists),
 2. dynamic certificate loading, or a reload after issuance.
-
-`ACME_DIRECTORY_URL` **defaults to the Let's Encrypt staging directory**. Forgetting to point it at production yields certificates no browser trusts, and the failure appears in a browser rather than in any log.
 
 ## Checklist
 

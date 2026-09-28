@@ -101,7 +101,8 @@ live("W-15 / W-16 — the retention sweep on live PostgreSQL", () => {
     expect(summary.errors).toBe(0);
     // A's purge is recorded like any other, with the default it applied.
     const [row] = await q(
-      `SELECT changes FROM audit_logs WHERE tenant_id = :t AND resource_type = 'DataRetention' AND actor_name = 'system:retention-purge'`,
+      `SELECT changes FROM audit_logs
+        WHERE tenant_id = :t AND resource_type = 'DataRetention' AND actor_name = 'system:retention-purge'`,
       { t: A },
     );
     expect(row.changes.after.purged).toEqual({ notifications: 1 });

@@ -41,6 +41,21 @@ make dev          # bring the local stack up
 
 The base compose file is **not deployable on its own** — it has no port publishing and no environment-specific settings. Always combine it with an overlay. `make up ENV=dev|staging|prod|vm` does that for you.
 
+**Staging and production, by the book** (run end to end for the first time on 2026-09-28, ADR-081):
+
+```bash
+make env                                   # deploy/compose/.env from the example
+make secrets                               # paste EVERY line it prints into .env
+# set CORS_ORIGIN, HOST_URL, CERT_VERIFY_BASE_URL, FRONTEND_URL, MAIL_* for the real host
+mkdir -p deploy/compose/volumes/certs      # TLS for nginx — no step creates these:
+cp fullchain.pem privkey.pem deploy/compose/volumes/certs/
+make images TAG=<sha>                      # or pull images promoted from CI
+make preflight ENV=prod TAG=<sha>
+make up ENV=prod TAG=<sha>
+```
+
+`make up` waits for the **backend** only. `make check-env` refuses a missing certificate for `ENV=staging|prod`, because nginx restarts forever without one while `make up` reports success. `make secrets` prints `DB_PASS` too: postgres reads it only when its volume is **first** initialised.
+
 **The database is not seeded on first boot.** See [First Boot](#first-boot) below, or the stack comes up with 72 tables, zero rows and no account to log in with.
 
 ## The Four Required Secrets
@@ -69,9 +84,9 @@ Both stacks fail **at configuration time** rather than deploying something that 
 |---|---|
 | `IMAGE_TAG` required in staging and prod | a **presence** check (`${IMAGE_TAG:?}`) — it rejects unset or empty, and **cannot** reject the value `latest`. `.env.example` therefore ships it **empty** (S-10); the value check is `make preflight` / `make deploy`, which refuse `TAG=latest`. A direct `docker compose … -f docker-compose.prod.yml up` with `IMAGE_TAG=latest` in `.env` is **not** refused |
 | `CORS_ORIGIN` required in staging and prod | with no origins in production the app rejects everything |
-| `ACME_DIRECTORY_URL` required in prod | the **default is Let's Encrypt staging** — certificates no browser trusts |
-| `make preflight` | rejects `TAG=latest`, `NODE_ENV != production`, `SEED_DEMO=true`, a wildcard CORS origin, a staging ACME URL, an empty / `guest` / `CHANGE_ME` `RABBITMQ_PASS`, and (S-09) a `REDIS_PASSWORD` that is empty or shorter than 16 characters, or set alongside a credentialed `REDIS_URL` |
-| `make check-env` (every `make up`) | rejects missing required secrets, and a `RABBITMQ_URL` whose credentials differ from `RABBITMQ_USER`/`RABBITMQ_PASS` (S-09). Inside compose the backend's URL is now BUILT from those two (ADR-066), so the `.env` line only matters for a backend run outside compose |
+| ~~`ACME_DIRECTORY_URL` required in prod~~ | **removed 2026-09-28 (ADR-081)**: nothing reads it since A-256, and the guard stopped the first by-the-book `make up ENV=prod` |
+| `make preflight` | rejects `TAG=latest`, `NODE_ENV != production`, `SEED_DEMO=true`, a wildcard CORS origin, an empty / `guest` / `CHANGE_ME` `RABBITMQ_PASS`, a placeholder `DB_PASS` / `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` (ADR-081), and (S-09) a `REDIS_PASSWORD` that is empty or shorter than 16 characters, or set alongside a credentialed `REDIS_URL` |
+| `make check-env` (every `make up`) | rejects missing required secrets, a `RABBITMQ_URL` whose credentials differ from `RABBITMQ_USER`/`RABBITMQ_PASS` (S-09), and a `RABBITMQ_USER`/`RABBITMQ_PASS` with a character outside `A-Z a-z 0-9 . _ ~ -` (ADR-081: compose places them in the URL verbatim). Inside compose the backend's URL is now BUILT from those two (ADR-066), so the `.env` line only matters for a backend run outside compose |
 
 ### Helm
 

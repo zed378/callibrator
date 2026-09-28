@@ -87,12 +87,12 @@ A demo seeder running against real data is a data-integrity incident. The guard 
 | `make typecheck` | **frontend only** — the backend is JavaScript (ADR-030) |
 | `make test` | unit and integration |
 | `make test-e2e` | 51 live specs against a **running** server |
-| `make test-browser` | Playwright |
+| `make test-browser` | the five-check browser smoke, `automate/smoke.browser.js`, against a running stack (ADR-077) |
 | `make build` | both workspaces |
 | `make verify` | lint + typecheck + test + build — CI runs the same stages (`.github/workflows/ci.yml`, [`01-CI-CD.md`](./01-CI-CD.md)) |
 | `make lint-ratchet` | the backend ESLint ratchet CI runs: fails when the error count rises above `backend/.eslint-baseline.json` |
 | `make secret-scan` | gitleaks over the whole git history, as CI does (needs `gitleaks` installed) |
-| `make hooks` / `make hooks-off` | opt in / out of `scripts/git-hooks/pre-push` (secret scan of the pushed commits, lint ratchet, frontend typecheck) |
+| `make hooks` / `make hooks-off` | opt in / out of `scripts/git-hooks/pre-push` (secret scan of the pushed commits, lint ratchet, frontend typecheck); `make hooks` also installs the pinned, checksum-verified gitleaks 8.30.1 into `.tools/bin` (A-19, ADR-076) |
 
 ### `make test-e2e` prints two rules first
 
@@ -138,7 +138,7 @@ Runs before any staging or production deploy and **refuses** on:
 | `NODE_ENV != production` in prod | it gates CORS, the rate limit (**100,000/15 min outside production**) and error detail |
 | `SEED_DEMO=true` | a demo seeder against real data is a data-integrity incident |
 | `CORS_ORIGIN=*` | the policy runs with `credentials: true` — a wildcard lets any site make authenticated cross-origin requests |
-| `acme-staging` in prod | staging certificates are trusted by **no browser**, and the failure appears in a browser rather than in any log |
+| placeholder `DB_PASS`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` | the backend only checks the JWT secrets are set and differ, so a template value signs every token with a published key (ADR-081). *(The `acme-staging` check was removed: nothing reads `ACME_*`.)* |
 
 Each of these is a configuration mistake that produces a working-looking deployment.
 

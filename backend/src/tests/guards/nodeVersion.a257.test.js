@@ -27,25 +27,26 @@ const MAJOR = requiredNodeMajor();
 
 describe("A-257: Node major pin", () => {
   describe("the jest globalSetup check", () => {
-    it("the root .nvmrc pins Node 24", () => {
-      expect(MAJOR).toBe(24);
+    it("the root .nvmrc pins Node 26 (ADR-076)", () => {
+      expect(MAJOR).toBe(26);
     });
 
-    it("refuses Node 22 with a message that names the required major and the fix", () => {
-      expect(() => checkNodeMajor("22.11.0", 24)).toThrow(
-        /A-257: the backend tests need Node 24 .*this is Node 22\.11\.0.*nvm use/s,
+    it("refuses Node 24 and Node 22 with a message that names the required major and the fix", () => {
+      expect(() => checkNodeMajor("24.18.0", 26)).toThrow(
+        /A-257: the backend tests need Node 26 .*this is Node 24\.18\.0.*nvm use/s,
       );
+      expect(() => checkNodeMajor("22.11.0", 26)).toThrow(/need Node 26/);
     });
 
-    it("refuses a newer major too (Node 26), and a v-prefixed version", () => {
-      expect(() => checkNodeMajor("26.10.0", 24)).toThrow(/need Node 24/);
-      expect(() => checkNodeMajor("v25.0.0", 24)).toThrow(/this is Node v25\.0\.0/);
+    it("refuses a newer major too (Node 27), and a v-prefixed version", () => {
+      expect(() => checkNodeMajor("27.0.0", 26)).toThrow(/need Node 26/);
+      expect(() => checkNodeMajor("v25.0.0", 26)).toThrow(/this is Node v25\.0\.0/);
     });
 
     it("accepts any minor and patch of the pinned major", () => {
-      expect(() => checkNodeMajor("24.0.0", 24)).not.toThrow();
-      expect(() => checkNodeMajor("24.21.0", 24)).not.toThrow();
-      expect(() => checkNodeMajor("v24.18.0", 24)).not.toThrow();
+      expect(() => checkNodeMajor("26.0.0", 26)).not.toThrow();
+      expect(() => checkNodeMajor("26.10.0", 26)).not.toThrow();
+      expect(() => checkNodeMajor("v26.8.1", 26)).not.toThrow();
     });
 
     it("defaults to this process's version and the .nvmrc pin (this run is on the pinned major)", async () => {
@@ -81,7 +82,7 @@ describe("A-257: Node major pin", () => {
     it.each(["backend/Dockerfile", "frontend/Dockerfile"])(
       "%s builds every node stage on the pinned major",
       (dockerfile) => {
-        const froms = [...read(dockerfile).matchAll(/^FROM\s+node:(\d+)[.\-]/gm)].map((m) =>
+        const froms = [...read(dockerfile).matchAll(/^FROM\s+node:(\d+)[.-]/gm)].map((m) =>
           Number(m[1]),
         );
         expect(froms.length).toBeGreaterThan(0);

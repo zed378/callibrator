@@ -8,7 +8,7 @@ Two images, both running a **compiled binary** with no language runtime in the f
 
 Callibrator is deployed on-premise inside hospital networks. Every additional runtime is a procurement conversation, a patching obligation and an attack surface someone has to sign off.
 
-A single executable plus a reverse proxy is far easier to get through a hospital IT review than "install Node 24 and keep it patched".
+A single executable plus a reverse proxy is far easier to get through a hospital IT review than "install Node 26 and keep it patched".
 
 ## Backend Image
 
@@ -16,7 +16,7 @@ Built from the **repository root** — `docker build -f backend/Dockerfile .` �
 
 ```dockerfile
 # ── builder ──────────────────────────────────
-FROM node:24-alpine AS builder
+FROM node:26-alpine AS builder
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY backend/package.json backend/package.json
@@ -26,7 +26,8 @@ RUN npm ci --workspace backend --no-audit --no-fund
 COPY backend/ backend/
 WORKDIR /app/backend
 RUN npm run swagger:generate
-RUN npx --no-install pkg . --targets node24-linux-x64 --output /out/backend
+RUN npm run build:dist   # P9: pkg's bin is dist/index.js
+RUN npx --no-install pkg . --targets node26-linux-x64 --output /out/backend
 
 # ── runtime ──────────────────────────────────
 FROM debian:bookworm-slim
@@ -59,7 +60,7 @@ CMD ["./backend"]
 
 **2. `PUPPETEER_SKIP_DOWNLOAD=true` at build.** The packager cannot embed a browser. The runtime uses system Chromium via `PUPPETEER_EXECUTABLE_PATH`.
 
-**3. The CA bundle comes from the builder stage.** Plain HTTP to the Debian mirrors is blocked in the deployment subnet, and `bookworm-slim` ships no CA bundle, so apt over HTTPS cannot verify the mirror. The bundle is copied from `node:24-alpine` (which arrived over the registry's verified TLS) to the path apt reads by default, so **every** apt request is verified; Debian's `ca-certificates` package then regenerates it.
+**3. The CA bundle comes from the builder stage.** Plain HTTP to the Debian mirrors is blocked in the deployment subnet, and `bookworm-slim` ships no CA bundle, so apt over HTTPS cannot verify the mirror. The bundle is copied from `node:26-alpine` (which arrived over the registry's verified TLS) to the path apt reads by default, so **every** apt request is verified; Debian's `ca-certificates` package then regenerates it.
 
 This replaced bootstrapping `ca-certificates` with `Verify-Peer=false` (S-13), which let anything on the build network serve the trust store everything afterwards verified against.
 
@@ -100,7 +101,7 @@ docker build -f frontend/Dockerfile .
 Abridged — [`frontend/Dockerfile`](../../frontend/Dockerfile) is the source:
 
 ```dockerfile
-FROM node:24.21.0-alpine@sha256:<digest> AS builder
+FROM node:26.10.0-alpine@sha256:<digest> AS builder
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY frontend/package.json frontend/package.json
@@ -111,7 +112,7 @@ WORKDIR /app/frontend
 RUN npm run build
 RUN test -f .next/standalone/frontend/server.js || (echo "ERROR: ..." && exit 1)
 
-FROM node:24.21.0-alpine@sha256:<digest> AS runner
+FROM node:26.10.0-alpine@sha256:<digest> AS runner
 WORKDIR /app
 RUN apk add --no-cache wget && addgroup -S -g 1001 app && adduser -S -u 1001 -G app app
 ENV NODE_ENV=production HOSTNAME=0.0.0.0 PORT=3000
@@ -127,7 +128,7 @@ CMD ["node", "server.js"]
 
 **`npm ci --workspace frontend` against the committed root lockfile** (ADR-044). The previous image ran `npm install` with no lockfile in a `frontend/` context: over 10 minutes, and a different transitive tree on every build. What the root context sends is controlled by [`frontend/Dockerfile.dockerignore`](../../frontend/Dockerfile.dockerignore), an allow-list (the three manifests and `frontend/`, minus `node_modules`, `.next`, local `.env*` files and tests). BuildKit reads `<Dockerfile>.dockerignore` in preference to the context's `.dockerignore`; `frontend/.dockerignore` is not consulted by this build.
 
-**No bun in the image.** `next-bun-compile` (a devDependency) has a postinstall that runs `bun -e` to create a self-symlink used only by the opt-in compiled-binary path. The root `package.json` `allowScripts` denies it, and npm 11 in `node:24` honours that list, so the script does not run. The old image copied bun in only so `npm install` could run that postinstall.
+**No bun in the image.** `next-bun-compile` (a devDependency) has a postinstall that runs `bun -e` to create a self-symlink used only by the opt-in compiled-binary path. The root `package.json` `allowScripts` denies it, and npm in `node:26` honours that list, so the script does not run. The old image copied bun in only so `npm install` could run that postinstall.
 
 **`next.config.ts` sets `turbopack.root` and `outputFileTracingRoot` to the workspace root.** Under the npm workspace, `next` is hoisted to `<repo>/node_modules`, and Turbopack refuses to resolve outside its root — with root at `frontend/`, `next build` fails with "couldn't find the Next.js package". A consequence: the standalone bundle mirrors the repository layout, so the server is `.next/standalone/frontend/server.js` with the traced `node_modules` beside it, and the runtime `WORKDIR` is `/app/frontend`.
 
@@ -183,9 +184,9 @@ Pinned **by version and digest** on 2026-09-24 (digests read from Docker Hub's r
 
 | Service | Image | Pin |
 |---|---|---|
-| backend builder | `node:24.21.0-alpine` | `@sha256:ebfe2f90…c1c1` (same as the frontend) |
+| backend builder | `node:26.10.0-alpine` | `@sha256:0b36e8c1…9e80` (same as the frontend; ADR-076, 2026-09-27) |
 | backend runtime | `debian:bookworm-slim` | `@sha256:3783cc01…6251` |
-| frontend (both stages) | `node:24.21.0-alpine` | `@sha256:ebfe2f90…c1c1` |
+| frontend (both stages) | `node:26.10.0-alpine` | `@sha256:0b36e8c1…9e80` |
 | postgres | **`pgvector/pgvector:pg18`** — plain `postgres:18-alpine` lacks the `vector` extension; migration `0018` fails | `@sha256:2ba9ca5f…67e7a` |
 | redis | `redis:8.6-alpine` | `@sha256:bb2e2e3a…de67` |
 | rabbitmq | `rabbitmq:3.13-management-alpine` — the management UI is worth the size on-premise | `@sha256:606d8c0d…e281` |

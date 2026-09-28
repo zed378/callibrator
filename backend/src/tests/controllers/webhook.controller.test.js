@@ -69,6 +69,8 @@ describe("webhook Controller", () => {
           url: "https://example.com/hook",
           createdBy: "user-1",
         }),
+        // P6-13: the actor, for the audit row written inside the create.
+        { userId: "user-1", ipAddress: "10.0.0.1", userAgent: "jest-agent" },
       );
       expect(success).toHaveBeenCalled();
     });
@@ -88,13 +90,17 @@ describe("webhook Controller", () => {
 
       await webhookController.create(req, res, next);
 
-      expect(webhookService.createWebhook).toHaveBeenCalledWith(TENANT_ID, {
-        url: "https://example.com/hook",
-        events: ["*"],
-        description: "d",
-        isActive: true,
-        createdBy: "user-1",
-      });
+      expect(webhookService.createWebhook).toHaveBeenCalledWith(
+        TENANT_ID,
+        {
+          url: "https://example.com/hook",
+          events: ["*"],
+          description: "d",
+          isActive: true,
+          createdBy: "user-1",
+        },
+        { userId: "user-1", ipAddress: "10.0.0.1", userAgent: "jest-agent" },
+      );
     });
   });
 
@@ -170,15 +176,17 @@ describe("webhook Controller", () => {
   describe("rotateSecret", () => {
     it("rotates the secret with the actor, and returns it", async () => {
       req.params = { id: WEBHOOK_ID };
+      req.body = { overlapHours: 6 };
       webhookService.rotateSecret.mockResolvedValue({ id: WEBHOOK_ID, secret: "new" });
 
       await webhookController.rotateSecret(req, res, next);
 
-      expect(webhookService.rotateSecret).toHaveBeenCalledWith(TENANT_ID, WEBHOOK_ID, {
-        userId: "user-1",
-        ipAddress: "10.0.0.1",
-        userAgent: "jest-agent",
-      });
+      expect(webhookService.rotateSecret).toHaveBeenCalledWith(
+        TENANT_ID,
+        WEBHOOK_ID,
+        { userId: "user-1", ipAddress: "10.0.0.1", userAgent: "jest-agent" },
+        { overlapHours: 6 },
+      );
       expect(success).toHaveBeenCalledWith(
         res,
         { id: WEBHOOK_ID, secret: "new" },
@@ -189,6 +197,18 @@ describe("webhook Controller", () => {
     });
   });
 
+  describe("rotateSecret — bodyless (P6-13)", () => {
+    it("passes an undefined overlap when there is no body, so the service default applies", async () => {
+      req.params = { id: WEBHOOK_ID };
+      req.body = undefined;
+      webhookService.rotateSecret.mockResolvedValue({ id: WEBHOOK_ID, secret: "new" });
+
+      await webhookController.rotateSecret(req, res, next);
+
+      expect(webhookService.rotateSecret.mock.calls[0][3]).toEqual({ overlapHours: undefined });
+    });
+  });
+
   describe("remove", () => {
     it("should delete a webhook", async () => {
       req.params = { id: WEBHOOK_ID };
@@ -196,7 +216,11 @@ describe("webhook Controller", () => {
 
       await webhookController.remove(req, res, next);
 
-      expect(webhookService.deleteWebhook).toHaveBeenCalledWith(TENANT_ID, WEBHOOK_ID);
+      expect(webhookService.deleteWebhook).toHaveBeenCalledWith(TENANT_ID, WEBHOOK_ID, {
+        userId: "user-1",
+        ipAddress: "10.0.0.1",
+        userAgent: "jest-agent",
+      });
       expect(success).toHaveBeenCalled();
     });
   });

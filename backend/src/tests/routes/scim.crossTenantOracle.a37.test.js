@@ -343,6 +343,27 @@ describe("A-37 — each conflict is audited in the key's tenant", () => {
     expect(models.Users.create).not.toHaveBeenCalled();
   });
 
+  it("called without a request address or agent, the conflict row records nulls", async () => {
+    const scim = require("../../services/scim.service");
+    const { tenantStorage } = require("../../middlewares/tenantContext.middleware");
+
+    await expect(
+      tenantStorage.run({ tenantId: TENANT_A, isSuperAdmin: false, isSystemTask: false }, () =>
+        scim.createUser(TENANT_A, { userName: "clinician@hospital-b.example.com" }, { apiKeyId: KEY_A }),
+      ),
+    ).rejects.toMatchObject({ status: 409 });
+    expect(conflictRows()[0]).toMatchObject({ ipAddress: null, userAgent: null });
+  });
+
+  it("a bare unique-violation error (no fields, no constraint) is not an identity conflict: generic 500", async () => {
+    mockDb.failNextInsertWith = Object.assign(new Error("duplicate"), { name: "SequelizeUniqueConstraintError" });
+
+    const res = await provision(apiKey(KEY_A, TENANT_A), "nobody@hospital-a.example.com");
+
+    expect(res.status).toBe(500);
+    expect(conflictRows()).toEqual([]);
+  });
+
   it("a unique violation on another column is not an identity conflict: generic 500, not counted", async () => {
     mockDb.failNextInsertWith = new UniqueConstraintError({ message: "Validation error", fields: { id: "x" } });
 

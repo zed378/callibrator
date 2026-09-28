@@ -239,7 +239,7 @@ describe("A-19: make hooks installs the hook and a pinned gitleaks", () => {
 
   it("the installer refuses a checksum mismatch before installing anything", () => {
     const verify = installer.indexOf("CHECKSUM MISMATCH");
-    const install = installer.indexOf('install -m 0755');
+    const install = installer.indexOf("install -m 0755");
     expect(verify).toBeGreaterThan(0);
     expect(install).toBeGreaterThan(verify);
   });

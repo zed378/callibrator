@@ -124,7 +124,7 @@ Automated tools catch roughly a third of WCAG failures. The manual checks — ke
 
 ## Browser Suite
 
-Playwright, `automate/`, 71 tests: auth, navigation, tenants, roles, users, kanban, notifications, account, profile, module health, theme.
+`automate/smoke.browser.js` (puppeteer-core, ADR-077): sign-in, MFA enrolment, MFA sign-in, one list page, CSP. The 71-test Playwright suite once described here was never in the repository; that claim is withdrawn (U-07).
 
 ### Flakes have been self-inflicted
 
@@ -213,7 +213,7 @@ tested; the target for branches stays behind the others until step 3.
 npm test              # jest --coverage — the gate
 npm run typecheck     # tsc --noEmit (turbo runs it for `make typecheck`)
 npm run test:watch
-npx playwright test   # browser suite
+make test-browser     # browser smoke (automate/smoke.browser.js), running stack required
 ```
 
 ## Before a PR

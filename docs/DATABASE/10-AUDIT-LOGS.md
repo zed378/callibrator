@@ -135,15 +135,19 @@ This means `auditLog.middleware.js` and the service transaction have to cooperat
 [`MEMORY/specs/A-41-audit-inside-transaction.md`](../../MEMORY/specs/A-41-audit-inside-transaction.md):
 certificates, calibration records, e-signatures, roles and overrides, attachment delete, SOP publish,
 tenant restore and the retention purge. Each writes through `auditService.logAction(entry, { transaction })`,
-and a failed audit write rolls the change back. **Every other mutation is still audited by
-`auditLog.middleware.js` after the response, outside any transaction, best-effort** — the rule above
-is the target for them, not the current behaviour.
+and a failed audit write rolls the change back.
+
+**As built (2026-09-28, P6-11, ADR-085):** the set has since grown to 38 files; the current list is the
+addendum to that spec. Every service call passes the transaction, except two with a stated reason, and
+**no route mounts `auditLog.middleware.js` any more** — it has no caller, and nothing
+compliance-bearing depends on it. Pinned by `src/tests/guards/auditInTransaction.p611.test.js`.
+Mutations in the services the addendum lists as not covered write **no** audit row at all.
 
 ## Query Surface
 
 Exactly one endpoint: `GET /api/v1/audit`, read-only, gated on `security` read.
 
-No create, no update, no delete over HTTP. The write path is the services named above, and the middleware for everything else; the read path is a filter over `action`, `resourceType`, `resourceId`, `userId` and a date range.
+No create, no update, no delete over HTTP. The write path is `audit.service.js#logAction`, called by the services named above inside their transactions (no middleware writes rows since P6-11); the read path is a filter over `action`, `resourceType`, `resourceId`, `userId` and a date range.
 
 Large exports run as batch jobs, and are themselves audited.
 

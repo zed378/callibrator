@@ -1,4 +1,5 @@
-# Optional log shipper for the compose stack (P7-03). NOT RUN YET — see
+# Optional log shipper for the compose stack (P7-03). Run locally against a
+# real backend container (ADR-082, 2026-09-28), never deployed — see
 # vector.toml's header and docs/DEVOPS/06-LOGGING.md § Shipping.
 #
 #   docker compose -f deploy/compose/docker-compose.yml \

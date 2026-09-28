@@ -10,7 +10,7 @@ Everything here sits underneath what Phases 0–5 built. Building Phase 7 on top
 
 | | |
 |---|---|
-| **Status** | ✅ DONE — verified 2026-09-11 · **NEEDS EDIT (2026-09-23)** |
+| **Status** | ✅ DONE — verified 2026-09-11; **restated 2026-09-28 under P6-14 (ADR-085)**: `npm run test:coverage` runs (P6-01a closed — the scripts call `../node_modules/jest/bin/jest.js` under Node 26), a full `npm run test:coverage -- --ci` on 2026-09-28 (Node 26.10, working tree over `c905e74`) exited 0: **638 suites passed (23 skipped, opt-in live), 12,780 tests passed (148 skipped), 100% statements / branches / functions / lines** — of the six measured layers (P6-14) |
 | **Depends on** | — |
 | **Spec refs** | `docs/BACKEND/09-TESTING.md` · `docs/TESTING/01-UNIT-TESTING.md` |
 | **Spec required** | no |
@@ -45,7 +45,7 @@ exit 0
 - [x] the suite passes at the configured threshold (via `npx jest --coverage`)
 - [x] each uncovered branch is either tested, or excluded with a **recorded reason**
 - [x] the exact result from a full run is captured above
-- [ ] **`npm run test:coverage` itself runs** — P6-01a
+- [x] **`npm run test:coverage` itself runs** — P6-01a (verified 2026-09-28, Node 26.10, see Status)
 
 **Abuse cases**
 - The threshold is lowered rather than the tests written
@@ -57,7 +57,7 @@ exit 0
 
 | | |
 |---|---|
-| **Status** | 🔴 TODO — **NEEDS EDIT (2026-09-23)** |
+| **Status** | ✅ DONE — verified 2026-09-28 (ADR-077). Two consecutive uninterrupted runs, `npm run test:e2e` (Node 26.10) against a disposable compose stack (`-p callib-e2e`, base + dev overlay, backend :25000, seeded by `/migration/seeding` + `/migration/seed-demo`). Count re-derived: `find backend/src/tests/e2e -name '*.test.js'` → **54** (53 contract specs + the opt-in `liveContract.smoke.test.js`, skipped without `LIVE_CONTRACT=1`). **Run A** 11:34:46: 53 suites passed, 1 skipped; 392 tests passed, 5 skipped, 0 failed; 35 s. **Run B** 11:35:23: identical counts; 48 s. **No 429** in either, checked in the backend access log (519 and 518 requests). **5xx: one per run, `POST /ai/query`** — environment-dependent (no AI key), accepted by its spec and named here, not counted as a verified pass. GDPR export now 200 (it was a real defect, not an environment one). No spec touched the default tenant destructively. SCIM (A-49) passes. First run: 12 suites / 24 tests failed → 11 app fixes + 9 stale specs, listed in ADR-077 and `MEMORY/records/2026-09-28-p6-02-e2e-green.md`. **Open:** runs < 60 s apart can meet `tenantCreate`'s 10/min limit; `/ai/query` should not be a 500 |
 | **Depends on** | — |
 | **Spec refs** | `docs/TESTING/03-E2E-TESTING.md` |
 
@@ -116,7 +116,7 @@ Contrast `audit_logs`, protected by having no delete path at all. Under 21 CFR P
 
 | | |
 |---|---|
-| **Status** | ⏳ TODO — **NEEDS EDIT (2026-09-23)**, and the case for it is now empirical rather than theoretical |
+| **Status** | ✅ DONE 2026-09-25 (ADR-058), **re-verified 2026-09-28** — `routePermissionGuard.p604.test.js` and `readGates.p604.test.js` (212 tests) green on the current tree. Whole-tree walk of `api/` and `internal/`, resolved slugs checked against the seeded menu set (A-07), both directions tested, exemptions in `constants/routeGateExemptions.js` with `publicRoutes()` the list P9-21 reads. Runs in `npm test` → `make verify`, and in CI `backend-test` (`npm run test:coverage`). **Caveat, owned by P7-01:** that CI stage has never run on GitHub; the opt-in `pre-push` hook does not run unit suites |
 | **Spec refs** | `docs/SECURITY/04-AUTHORIZATION-RBAC.md` § "The failure mode nothing prevents" · [`AUDIT-2026-09-REMEDIATION.md`](./AUDIT-2026-09-REMEDIATION.md) A-01, A-02, A-03, A-27 · `AUDIT-2026-09-AUTHZ-MATRIX.md` |
 
 > **What changed (2026-09-23):** the audit found the defect this guard exists to prevent, four
@@ -135,13 +135,13 @@ Contrast `audit_logs`, protected by having no delete path at all. Under 21 CFR P
 **Why:** a new route with no `dynamicAccess` or `rbac` call **works for everyone with a token**, and nothing fails the build. This is the single most likely authorization defect in the codebase, and it has no mechanism against it.
 
 **Definition of Done**
-- [ ] a script failing any diff that adds a `router.<verb>` call with no permission gate
-- [ ] it walks `src/routes/**` recursively — `api/` **and** `internal/`
-- [ ] it checks the **resolved resource name against the menu-slug set**, not merely that a gate is present (A-07). A gate naming a slug that does not exist is the same hole with a longer line of code
-- [ ] wired into `make verify` **and** a real hook or pipeline — no `pre-push` hook exists yet, whatever older documents say (A-19: no `.husky/`, no `lefthook`, no `core.hooksPath`)
-- [ ] **tested both directions**: a gated route passes, an ungated one fails
-- [ ] documented exemptions for the public endpoints, listed explicitly — and it is the **same list** P9-21's `public()` marker uses, not a second one that drifts
-- [ ] run once over the whole tree, not only over diffs, and the result recorded. A diff-only guard never sees the routes that were already wrong
+- [x] a script failing any diff that adds a `router.<verb>` call with no permission gate
+- [x] it walks `src/routes/**` recursively — `api/` **and** `internal/`
+- [x] it checks the **resolved resource name against the menu-slug set**, not merely that a gate is present (A-07). A gate naming a slug that does not exist is the same hole with a longer line of code
+- [x] wired into `make verify` **and** a real hook or pipeline (CI `backend-test`; never run on GitHub — P7-01) — no `pre-push` hook exists yet, whatever older documents say (A-19: no `.husky/`, no `lefthook`, no `core.hooksPath`)
+- [x] **tested both directions**: a gated route passes, an ungated one fails
+- [x] documented exemptions for the public endpoints, listed explicitly — and it is the **same list** P9-21's `public()` marker uses, not a second one that drifts
+- [x] run once over the whole tree, not only over diffs, and the result recorded. A diff-only guard never sees the routes that were already wrong
 
 **Abuse cases**
 - The exemption list becomes a place to put anything inconvenient
@@ -174,7 +174,7 @@ Contrast `audit_logs`, protected by having no delete path at all. Under 21 CFR P
 
 | | |
 |---|---|
-| **Status** | 🟡 PARTIAL — the constraint is done by D-04 / ADR-049 (migration `0026`, `UNIQUE (tenant_id, serial_number)`, refuses on in-tenant duplicates); re-verified on PG 18.6 by `dataIntegrity.p6.live.test.js` "two tenants hold the same serial; one tenant cannot hold it twice", and the index is a P6-05 control object. **Not done:** the DoD's *partial on `is_deleted = false`* — a soft-deleted device still holds its serial. That needs a decision, not a migration |
+| **Status** | ✅ DONE 2026-09-28 — **the partial clause is decided against (ADR-078):** a soft-deleted device keeps its serial, because it still anchors append-only calibration evidence and its public verification prints the serial; a returned device is brought back by A-133 restore (ADR-075), whose history comes with it. Measured on the P7-04 drill stack: re-register a deleted device's serial → 409 naming its id; other tenant, same serial → 201; restore → 200. Pinned by `dataIntegrity.p6.live.test.js` "ADR-078: a soft-deleted device keeps its serial — the index is NOT partial on is_deleted" (22/22 on PG 18). No migration (0083 unused). Earlier: the constraint is done by D-04 / ADR-049 (migration `0026`, `UNIQUE (tenant_id, serial_number)`, refuses on in-tenant duplicates); re-verified on PG 18.6 by `dataIntegrity.p6.live.test.js` "two tenants hold the same serial; one tenant cannot hold it twice", and the index is a P6-05 control object. **Not done:** the DoD's *partial on `is_deleted = false`* — a soft-deleted device still holds its serial. That needs a decision, not a migration |
 | **Spec refs** | `docs/DATABASE/06-DEVICE-TABLES.md` · `docs/SECURITY/05` |
 | **Spec required** | **yes** |
 
@@ -196,16 +196,16 @@ Contrast `audit_logs`, protected by having no delete path at all. Under 21 CFR P
 
 | | |
 |---|---|
-| **Status** | ⏳ TODO |
+| **Status** | ✅ DONE 2026-09-25 (ADR-059; record `MEMORY/records/2026-09-25-phase0-batch6.md`) — **this card was stale; re-verified 2026-09-28**: `auth.superAdminMfa.p607.test.js` (middleware and service suites) green. A level-10 account without MFA gets an enrolment-only session (403 `MFA_ENROLMENT_REQUIRED` elsewhere); break-glass is the audited CLI `scripts/breakGlassMfaReset.js`, which clears the enrolment and never disables the check. **Open:** the E2E harness's MFA enrolment has not run live (P6-02) |
 | **Spec refs** | `docs/SECURITY/03-AUTHENTICATION-SECURITY.md` |
 
 **Why:** `SUPERADMIN` bypasses every permission check and every tenant predicate, and **there is no second gate behind it**. MFA is available and not enforced, so that account is one credential away from total compromise of every tenant (PR-3).
 
 **Definition of Done**
-- [ ] MFA enforced at login for `ROLE_LEVELS >= 10`, not merely requested at onboarding
-- [ ] an enrolment path that does not lock out an existing super-admin
-- [ ] a documented break-glass procedure — and it must not be "disable the check"
-- [ ] tests: a super-admin without MFA cannot complete a login
+- [x] MFA enforced at login for `ROLE_LEVELS >= 10`, not merely requested at onboarding
+- [x] an enrolment path that does not lock out an existing super-admin
+- [x] a documented break-glass procedure — and it must not be "disable the check" (`docs/SECURITY/03-AUTHENTICATION-SECURITY.md`)
+- [x] tests: a super-admin without MFA cannot complete a login
 
 **Abuse cases**
 - The check is client-side
@@ -217,16 +217,16 @@ Contrast `audit_logs`, protected by having no delete path at all. Under 21 CFR P
 
 | | |
 |---|---|
-| **Status** | ⏳ TODO |
+| **Status** | ✅ DONE 2026-09-25 (record `MEMORY/records/2026-09-25-phase0-batch6.md`) — **this card was stale; re-verified 2026-09-28**: `swaggerValidatorAlignment.p608.test.js` green. The GDPR endpoints agree exactly; the rest of the tree's drift is pinned in its `KNOWN_DRIFT` list (a new drift fails, a fixed one forces the list to shrink). `npm run build` runs `swagger:generate` first. 2026-09-28 (P6-13): the comparison ignores a `forbidden()` key, which is refused rather than accepted |
 | **Spec refs** | `docs/API/13-INTEGRATION-API.md` · `docs/BACKEND/03-VALIDATION.md` |
 
 **Why:** the published contract and the enforced Joi schemas disagree for the GDPR endpoints. **Documented drift is still drift**, and a client written from the spec will fail (AC-29).
 
 **Definition of Done**
-- [ ] annotations match the validators for every `/gdpr` endpoint
-- [ ] `npm run swagger:generate` reflects it
-- [ ] a check that the spec is regenerated on build — it already is, but verify
-- [ ] a sweep for the same divergence elsewhere
+- [x] annotations match the validators for every `/gdpr` endpoint
+- [x] `npm run swagger:generate` reflects it
+- [x] a check that the spec is regenerated on build — `build` = `swagger:generate && build:dist && pkg` (backend/package.json)
+- [x] a sweep for the same divergence elsewhere (`KNOWN_DRIFT`)
 
 ---
 
@@ -253,7 +253,7 @@ Contrast `audit_logs`, protected by having no delete path at all. Under 21 CFR P
 
 | | |
 |---|---|
-| **Status** | 🟡 PARTIAL — built and rehearsed on seeded data, 2026-09-25 (ADR-062, migration `0058`). Key-id envelopes (`v2:<keyId>`), the `KMS_MASTER_KEY_PREVIOUS` ring, `npm run keys:rotate`; signing keys moved from AES-CBC/`ENCRYPT_KEY` into KMS envelopes with tenant AAD; the certificate HMAC names its key. Tests: `keyRotation.s08.live.test.js` (5, PG 18.6), `keyRotation.service.s08`, `kms.rotation.s08`, `signingKeyWrap.s08`, `keyring.util.p610`, `certificatePdf.keyId.p610`. **Not done:** the rehearsal against a copy of production data (`docs/SECURITY/13-KEY-ROTATION.md`) |
+| **Status** | 🟡 PARTIAL — **2026-09-28: rehearsed on the P7-04 drill data (ADR-078)**, MFA seeds included: 12 envelopes re-wrapped, 0 failed; after the old key was dropped an old TOTP seed verified a real code and old and new e-signatures verified (`docs/SECURITY/13` § Rehearsal against the drill data). Still owed: a copy of **production** data. Earlier: built and rehearsed on seeded data, 2026-09-25 (ADR-062, migration `0058`). Key-id envelopes (`v2:<keyId>`), the `KMS_MASTER_KEY_PREVIOUS` ring, `npm run keys:rotate`; signing keys moved from AES-CBC/`ENCRYPT_KEY` into KMS envelopes with tenant AAD; the certificate HMAC names its key. Tests: `keyRotation.s08.live.test.js` (5, PG 18.6), `keyRotation.service.s08`, `kms.rotation.s08`, `signingKeyWrap.s08`, `keyring.util.p610`, `certificatePdf.keyId.p610`. **Not done:** the rehearsal against a copy of production data (`docs/SECURITY/13-KEY-ROTATION.md`) |
 | **Spec refs** | `docs/SECURITY/07-CRYPTOGRAPHY-AND-SECRETS.md` · `docs/SECURITY/12-INCIDENT-RESPONSE.md` |
 | **Spec required** | **yes** |
 
@@ -285,7 +285,7 @@ are not `DONE` until their `A-` card is.
 
 | | |
 |---|---|
-| **Status** | 🔴 TODO — **references [A-41](./AUDIT-2026-09-REMEDIATION.md)** (wave 0, high) |
+| **Status** | 🟡 PARTIAL 2026-09-28 (ADR-085) — **references [A-41](./AUDIT-2026-09-REMEDIATION.md)** (DONE). Everything but agreement on scope is done: the covered set is re-stated from the code (38 files, addendum to `MEMORY/specs/A-41-audit-inside-transaction.md`), and `auditInTransaction.p611.test.js` pins that every `logAction` call passes a transaction (two named file-only exceptions), that nothing but `audit.service.js` writes `audit_logs`, and that no route mounts `recordAudit`. Found and fixed: `webhook.service.js` wrote `AuditLog.create` with no `actorType`, so every webhook rotation 500ed on PostgreSQL (see P6-13). **Open:** 15 mutating services write no audit row at all (`apiKey`, `kanban`, `ticket`, `vendor`, `warehouse`, …, listed in the addendum) — whether each is in the compliance scope needs the owner |
 | **Depends on** | — · blocks **P9-19** (do not convert `auditLog.middleware.js` first) |
 | **Spec refs** | `docs/PLAN/15-COMPLIANCE-STANDARDS.md` · `docs/BACKEND/10-MODULE-REFERENCE.md` · `00-TASK-CONVENTIONS.md` § Compliance |
 | **Spec required** | **yes** — the covered set is a decision, not a patch |
@@ -300,11 +300,11 @@ This is the phase that exists for *"the debt that blocks a defensible release"*,
 control the ISO 17025 and 21 CFR Part 11 claims rest on. It belongs here and nowhere else.
 
 **Definition of Done**
-- [ ] A-41 closed with its own verification: a rolled-back mutation leaves **no** audit row, proved with a forced rollback
-- [ ] a failing audit insert rolls the mutation back
-- [ ] **the list of covered mutations is written down** — a spec, agreed, not inferred from which services happened to be changed
-- [ ] the middleware's remaining role is stated: what it still records, and that nothing compliance-bearing depends on it
-- [ ] a failed audit write is **visible** — which is A-42, routed to P7-03. This card is not `DONE` while the only report of a failure is a `console.error` production discards
+- [x] A-41 closed with its own verification: a rolled-back mutation leaves **no** audit row, proved with a forced rollback (`*.audit.a41.test.js`)
+- [x] a failing audit insert rolls the mutation back (`audit.service.a42.test.js` "inside a transaction, a failed write is re-thrown")
+- [ ] **the list of covered mutations is written down** — a spec, agreed, not inferred from which services happened to be changed — *written (spec addendum 2026-09-28); not yet agreed, and 15 services are outside it*
+- [x] the middleware's remaining role is stated: **none** — no route mounts it, nothing compliance-bearing depends on it (spec addendum, `docs/DATABASE/10-AUDIT-LOGS.md`, pinned by `auditInTransaction.p611.test.js`)
+- [x] a failed audit write is **visible** — which is A-42, routed to P7-03. This card is not `DONE` while the only report of a failure is a `console.error` production discards
 
 **Abuse cases**
 - The transaction is passed to the audit write but the write is still `await`-less, so a rejection floats and the commit proceeds
@@ -316,7 +316,7 @@ control the ISO 17025 and 21 CFR Part 11 claims rest on. It belongs here and now
 
 | | |
 |---|---|
-| **Status** | 🔴 TODO — **references [A-48](./AUDIT-2026-09-REMEDIATION.md)** (wave 0, high) |
+| **Status** | 🟡 PARTIAL 2026-09-28 (ADR-085) — **references [A-48](./AUDIT-2026-09-REMEDIATION.md)** (DONE). A token without `sid` is now **refused** (`SIDLESS_ACCESS_TOKENS_ACCEPTED = false`, closing A-59's last item); an open Socket.IO connection re-runs the handshake checks every 60 s and is disconnected when its session, user or tenant fails them; the windows are named in `docs/SECURITY/03-AUTHENTICATION-SECURITY.md`; the cache-key-without-tenant is a recorded exception. **Open:** the VM's `JWT_ACCESS_EXPIRED` was `1d` at the last read against `15m` in the repository — an operator change on the VM, not made here |
 | **Depends on** | — · blocks **P9-12** (it changes the shape of the authenticated principal) |
 | **Spec refs** | `docs/SECURITY/03-AUTHENTICATION-SECURITY.md` · `docs/BACKEND/10-MODULE-REFERENCE.md` § 23 |
 | **Spec required** | **yes** — per-request session lookup is an architecture change |
@@ -335,12 +335,12 @@ someone leaves, or when a tenant is suspended mid-session. It reports success an
 a day.
 
 **Definition of Done**
-- [ ] A-48 closed: a revoked session's access token is rejected on the **next** request
-- [ ] a suspended tenant's live sessions stop working without waiting for expiry
-- [ ] `JWT_ACCESS_EXPIRED` is the **same number** in `.env.example`, on the VM, and in the documentation
-- [ ] the same question answered for Socket.IO, whose checks are connect-time only (A-05, Q-08)
-- [ ] if the answer is the honest mitigation rather than the control — shorten the lifetime and call revocation eventual — **the window is named in the security documentation**, not left implied
-- [ ] the session lookup is cached in Redis (working since A-24) and **the cache key includes the tenant id** (`00-TASK-CONVENTIONS.md` § Security)
+- [x] A-48 closed: a revoked session's access token is rejected on the **next** request — and since 2026-09-28 a token with no session is rejected outright
+- [x] a suspended tenant's live sessions stop working without waiting for expiry
+- [ ] `JWT_ACCESS_EXPIRED` is the **same number** in `.env.example`, on the VM, and in the documentation — `15m` in both `.env.example` files and the docs; **the VM is `1d`** (operator action)
+- [x] the same question answered for Socket.IO: open sockets are re-checked every 60 s (`socket.test.js` "P6-12 — an open socket stops when its principal stops")
+- [x] the window is named in the security documentation (§ Revocation takes effect on the next request)
+- [x] the session lookup is cached in Redis — the key is `session:live:<sid>` **without** the tenant id, a recorded exception (ADR-085 §4)
 
 **Abuse cases**
 - The lookup is added and then cached without invalidation on revoke, so revocation is still eventual and now also looks solved
@@ -352,7 +352,7 @@ a day.
 
 | | |
 |---|---|
-| **Status** | 🔴 TODO — **references [A-51](./AUDIT-2026-09-REMEDIATION.md)** (wave 0, high) |
+| **Status** | ✅ DONE 2026-09-28 (ADR-085, migration `0090`) — **references [A-51](./AUDIT-2026-09-REMEDIATION.md)** (DONE). A caller `secret` is **refused** (400) on create, patch and rotate; rotation takes `overlapHours` (0–168, default 24) and the replaced secret signs `X-Webhook-Signature-Previous` until then; a url change rotates with no overlap; create/patch/rotate/delete are audited in their transaction. **Found:** every rotation and url change failed on PostgreSQL (audit row without `actorType`) behind mocked tests — proved on `f0d7f08` against PG 18.6 and fixed. `0090` verified on PG 18.6: fresh boot, upgrade with a live row, re-run, down, up (`0090-webhook-secret-rotation-overlap.p613.live.test.js`, 5/5). Frontend has no rotate button yet (F-18) |
 | **Depends on** | P6-04 would have caught the missing gates; it does not catch a missing **validator** |
 | **Spec refs** | `docs/BACKEND/03-VALIDATION.md` · `docs/SECURITY/07-CRYPTOGRAPHY-AND-SECRETS.md` · `docs/API/13-INTEGRATION-API.md` |
 | **Spec required** | **yes** — rotation with an overlap window is a contract change for receivers |
@@ -368,13 +368,13 @@ rotation**: patching the `url` keeps the old secret, so a new host is signed wit
 host still holds.
 
 **Definition of Done**
-- [ ] A-51 closed: a Joi schema on every one of the seven routes, mounted as `validate(schema)` — **not** `schema.validate`, which 500s every request to the route it is passed to
-- [ ] path parameters reach the validator: `{ ...req.params, ...req.body }`, or the route 400s on every request
-- [ ] the secret is **generated server-side only** and never accepted from a caller; a request that supplies one is rejected, not ignored
-- [ ] stored through `kms.service.js` like the other tenant secrets, and added to `SENSITIVE_KEYS`
-- [ ] a rotation endpoint returning the new secret **once**, with an overlap window
-- [ ] a test that the secret is absent from every response body, every log line and `audit_logs.changes`
-- [ ] the two-tenant 404 test on each `:id` route (`CLAUDE.md`, and A-55 — the fixture it depends on does not exist yet)
+- [x] A-51 closed: every route that takes a body mounts `validate(schema)` (create, patch, rotate); the four bodyless routes validate their `:id` with `validateUuid` — a body schema on a GET would validate nothing
+- [x] path parameters reach the validator: the body schemas take no `id`; `validateUuid("id")` checks the path, and the controller reads `req.params`
+- [x] the secret is **generated server-side only**; a request that supplies one is **rejected** (400, `webhook.validator.test.js` "P6-13: REFUSES a caller-supplied secret…")
+- [x] stored through `kms.service.js` (A-51, migration `0022`); `SENSITIVE_KEYS` is now the `tenant_settings` list, and `secret`/`previousSecret` are caught by both redactors (ADR-085 §10)
+- [x] a rotation endpoint returning the new secret **once**, with an overlap window
+- [x] a test that the secret is absent from every response body, every log line and `audit_logs.changes` (`webhook.secret.a51.test.js` "P6-13: no secret — new, old or previous — reaches…")
+- [x] the two-tenant 404 test on each `:id` route (`webhooks.twoTenant.test.js`, six routes) (`CLAUDE.md`, and A-55 — the fixture it depends on does not exist yet)
 
 **Abuse cases**
 - A schema is added that accepts `secret` and drops it silently, so an integrator believes they set one
@@ -386,7 +386,7 @@ host still holds.
 
 | | |
 |---|---|
-| **Status** | 🔴 TODO — **references [A-32](./AUDIT-2026-09-REMEDIATION.md)** (wave 0, low) |
+| **Status** | ✅ DONE 2026-09-28 (ADR-085) — **references [A-32](./AUDIT-2026-09-REMEDIATION.md)** (DONE: 31 directives, each with a reason, ratchet `istanbulIgnore.a32.test.js`). `src/app.js` removed from `collectCoverageFrom`; `index.js` excluded with a reason and its boot covered by CI `boot-and-migrate` and `liveContract.smoke.test.js`; the six-layer scope stated in `docs/BACKEND/09-TESTING.md` § What 100% covers and the two testing docs; the reviewer rule in `docs/ENGINEERING/14-CODE-REVIEW-CHECKLIST.md`; pinned by `coverageScope.p614.test.js`. P6-01's evidence restated: a full `npm run test:coverage -- --ci` on 2026-09-28 (Node 26.10, working tree over `c905e74`) exited 0: **638 suites passed (23 skipped, opt-in live), 12,780 tests passed (148 skipped), 100% statements / branches / functions / lines** — of the six measured layers (P6-14) |
 | **Depends on** | P6-01 · blocks **P9-03a**, and through it every Stage B–D card whose DoD says "still at 100%" |
 | **Spec refs** | `docs/BACKEND/09-TESTING.md` · `docs/TESTING/01-UNIT-TESTING.md` · `00-TASK-CONVENTIONS.md` § Evidence |
 
@@ -409,13 +409,13 @@ Several directives mark code as *unreachable* — "`transformTenants` is never r
 hidden** rather than deleted, and in one case it hid a whole broken feature (A-30).
 
 **Definition of Done**
-- [ ] A-32 closed: zero unexplained directives; every remaining one carries a reason
-- [ ] code described as unreachable is **deleted**, not ignored — and if it cannot be deleted, the reason says why
-- [ ] `collectCoverageFrom` names files that exist; the phantom `src/app.js` entry removed
-- [ ] `backend/index.js` measured, or excluded **with a written reason and a named E2E spec covering its boot path**
-- [ ] the six-layer scope stated wherever "100%" appears in `docs/`, so the number is not read as the whole backend
-- [ ] a reviewer rule written down: a new `istanbul ignore` is treated like a new `eslint-disable`
-- [ ] P6-01's evidence block restated from a fresh run, with the current suite and test counts
+- [x] A-32 closed: zero unexplained directives; every remaining one carries a reason
+- [x] code described as unreachable is **deleted**, not ignored — and if it cannot be deleted, the reason says why (the four left — exhaustive-switch defaults and a path-escape check — say what they guard against)
+- [x] `collectCoverageFrom` names files that exist; the phantom `src/app.js` entry removed
+- [x] `backend/index.js` excluded **with a written reason and a named E2E spec covering its boot path** (`liveContract.smoke.test.js`, plus CI `boot-and-migrate`)
+- [x] the six-layer scope stated where "100%" is the gate in `docs/` (`BACKEND/09-TESTING.md`, `TESTING/00-TEST-STRATEGY.md`, `TESTING/01-UNIT-TESTING.md`, `ENGINEERING/14-CODE-REVIEW-CHECKLIST.md`)
+- [x] a reviewer rule written down: a new `istanbul ignore` is treated like a new `eslint-disable`
+- [x] P6-01's evidence block restated from a fresh run (see P6-01 Status)
 
 **Abuse cases**
 - The exclusions are widened so the figure survives

@@ -234,6 +234,22 @@ describe("response utils", () => {
       expect(jsonCalls[0].success).toBe(true);
     });
 
+    // P6-02: the refresh token rides at the top level beside `token`, where
+    // the Next login route takes it into an httpOnly cookie.
+    it("answers the refresh token and a custom message when given", () => {
+      login(res, { user: "test" }, "token-abc", null, { refreshToken: "r-1", message: "Hi" });
+
+      expect(jsonCalls[0].refreshToken).toBe("r-1");
+      expect(jsonCalls[0].message).toBe("Hi");
+    });
+
+    it("omits refreshToken when there is none", () => {
+      login(res, { user: "test" }, "token-abc", null);
+
+      expect(jsonCalls[0]).not.toHaveProperty("refreshToken");
+      expect(jsonCalls[0].message).toBe("Login successful");
+    });
+
     it("should handle null session", () => {
       login(res, { user: "test" }, "token-abc", null);
 

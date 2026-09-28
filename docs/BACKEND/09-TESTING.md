@@ -20,13 +20,37 @@ npm run test:coverage   # the gate
 
 `--max-old-space-size=4096` is set on every jest invocation. The suite is large enough to exhaust the default heap.
 
-## The Coverage Gate Is Currently Failing
+## The Coverage Gate
 
-The unit suite runs against a **100%** threshold.
+The unit suite runs against a **100%** threshold (`backend/jest.config.js`). It was restored by P6-01
+(2026-09-11) after the demo seeder, certificate submit-for-approval, `qms.validator`, the retention
+`legalHoldSchema`, the tenant subdomain branch and the param-merge branches had pushed it below.
+**A gate that is failing is a gate nobody trusts** — so the rule is to keep it green, and to quote a
+figure only from a named run on a quiet tree.
 
-It is presently below it: the demo seeder, the certificate submit-for-approval path, `qms.validator`, the data-retention `legalHoldSchema`, the tenant subdomain-derivation branch and the param-merge branches all added uncovered code.
+### What 100% covers (P6-14, ADR-085)
 
-**A gate that is currently failing is a gate nobody trusts.** Restoring it is the first item in [`../PLAN/16-IMPLEMENTATION-ROADMAP.md`](../PLAN/16-IMPLEMENTATION-ROADMAP.md), and the alternative — isolating the demo seeder to an ignored path — is a legitimate answer too.
+**Six layers, not the whole backend:** `src/controllers/`, `src/middlewares/`, `src/routes/`,
+`src/services/`, `src/utils/`, `src/validators/`. Outside the figure:
+
+| Excluded | Why |
+|---|---|
+| `src/config/` | wiring (Sequelize, Redis, Socket.IO, the migrator). `config/socket.js` holds the socket authentication gate and is kept at 100% by `tests/config/socket.test.js` — under an explicit `--collectCoverageFrom` run, **not** by the gate |
+| `src/constants/` | data, no branches |
+| `src/docs/` | swagger components |
+| `src/models/` | the **71 models** — their hooks and validators are exercised by the service and live suites, and are not measured |
+| `src/scripts/` | operator CLIs |
+| `backend/index.js` | the boot sequence. Covered by a real boot, not by a unit test: CI `boot-and-migrate` and `src/tests/e2e/liveContract.smoke.test.js` |
+
+Pinned by `src/tests/guards/coverageScope.p614.test.js`: every collected pattern matches a real file
+(the phantom `src/app.js` entry is gone), and the excluded layers are exactly these.
+
+### `istanbul ignore` is reviewed like `eslint-disable`
+
+A new directive needs `istanbul ignore <kind> -- <reason>`, and the reason says why the code is
+**kept**, not what it does. Code described as unreachable is deleted; one that is kept says what it
+guards against. The count only goes down: `src/tests/utils/istanbulIgnore.a32.test.js` fails on an
+unexplained directive or a count above its ceiling, and raising the ceiling is a reviewed change.
 
 ## The Lesson This Suite Was Built From
 

@@ -37,9 +37,9 @@ Task ids are `A-nn`. They are referenced from [`PHASE-9-TYPESCRIPT-MIGRATION.md`
 | A-15 | `/health` checks only the database | medium | 1 | **DONE** 2026-09-23 |
 | A-16 | whether `req.ip` is the client through a three-proxy chain | **unverified** | 1 | **DONE** 2026-09-24 — verified on the VM: session and audit rows record the real client IP |
 | A-17 | MQTT: public port with nothing behind it; the MQTT path authenticates nobody | low | 0 | **DONE** 2026-09-23 |
-| A-18 | dead code and unused dependencies | low | 2 | **PARTIAL** 2026-09-25 — dead `paginated` and `inputValidation.middleware` removed; unused deps (`aedes`, `aedes-server-factory`, `clamdjs`, `fs-extra`, `randomstring`) listed, not yet removed |
-| A-19 | no secret scanner, no hook, no gate of any kind | medium | 2 | **PARTIAL** 2026-09-25 — gitleaks in CI and in the opt-in `pre-push` hook; the scan was red on its own commits and is now clean over all 41 (ADR-066). The hook is installed by `make hooks`, not by `npm install` (a decision: a forced hook is the first thing people skip) |
-| A-20 | the `automate/` Playwright suite is not in the repository | medium | 2 | TODO |
+| A-18 | dead code and unused dependencies | low | 2 | **PARTIAL** 2026-09-27 (ADR-076) — 11 unused deps removed after a usage grep and depcheck-style scan of each workspace (backend: `acme-client`, `aedes`, `aedes-server-factory`, `clamdjs`, `fs-extra`, `randomstring`; frontend: `@testing-library/user-event`, `@tiptap/extension-link`, `eslint-plugin-react`, `jest-cli`; root: `eslint-plugin-react`); `npm audit` 0; `build:bun` gone; package renamed `callibrator-backend`; backend image built and booted to `/health` 200. **Left open:** deleting `backend/.eslintrc.js` and the dead `utils/checkMenu.util.js` was refused by the permission system — owner action |
+| A-19 | no secret scanner, no hook, no gate of any kind | medium | 2 | **DONE** 2026-09-27 — gitleaks in CI and the opt-in `pre-push` hook (ADR-066); `make hooks` now also installs CI's gitleaks 8.30.1, checksum-verified, into `.tools/bin`, which the hook uses first (ADR-076). Tested against the real hook and the real gitleaks: `prePushHook.a19.test.js` (11). Opt-in by decision (ADR-066), not `npm install` |
+| A-20 | the `automate/` Playwright suite is not in the repository | medium | 2 | **DONE** 2026-09-28 — claim withdrawn; `automate/smoke.browser.js` (five checks, puppeteer-core) replaces it (ADR-077) |
 | A-21 | no lockfile is committed | medium | 2 | **DONE** 2026-09-23 (ADR-044) |
 | A-22 | one React Compiler lint error in `GlobalSearch.tsx` | low | 2 | **DONE** 2026-09-24 |
 | A-23 | search runs one query per type, sequentially, and logs a warning per call | low | 2 | **DONE** 2026-09-24 |
@@ -56,12 +56,12 @@ Task ids are `A-nn`. They are referenced from [`PHASE-9-TYPESCRIPT-MIGRATION.md`
 | A-34 | **the backend lint gate has never run** — a version mismatch crashed ESLint; behind it, 1,319 errors | medium | 0 | partly DONE 2026-09-23 |
 | A-35 | **every per-user permission override silently did nothing** — including a `none` revocation | **high** | 0 | **DONE** 2026-09-23 |
 | A-36 | RabbitMQ connections are never reused and never closed: `connection.isOpen` does not exist in amqplib | **high** | 0 | **DONE** 2026-09-23 |
-| A-37 | **SCIM user creation is a cross-tenant existence oracle** — global unique email, tenant-scoped duplicate check | **high** | 0 | **PARTIAL** 2026-09-24 — signal hidden; the constraint is Q-18 |
+| A-37 | **SCIM user creation is a cross-tenant existence oracle** — global unique email, tenant-scoped duplicate check | **high** | 0 | **DONE** 2026-09-27 (ADR-075) — one global 409, budget per API key, audited as `system:scim` |
 | A-38 | SCIM Groups are global roles: every tenant's groups are listed, and a delete removes one for everyone | medium | 1 | **DONE** 2026-09-24 — groups are a tenant-owned `scim_groups` table (ADR-053, migration 0042) |
 | A-39 | a SCIM-provisioned group grants nothing, silently — `roleLevel` defaults to 1 and it gets no menu permissions | medium | 1 | **DONE** 2026-09-24 — a group maps to an existing role that grants something; unmapped says so and refuses members (ADR-053) |
 | A-40 | storage: the driver cache is per process, and a null-checksum migration reports `migrated` unverified | low | 2 | **DONE** 2026-09-25 — cross-replica driver invalidation via Redis generation; migration verifies every copy (ADR-057); `storage.index.test.js`, `storageMigration.service.test.js` |
 | A-41 | **audit rows are written after the response, outside the transaction** — the rule `CLAUDE.md` calls non-negotiable | **high** | 0 | **DONE** 2026-09-24 for the 25 mutations named in the spec; the rest stay on the middleware |
-| A-42 | a failed audit write is reported to `console.error` only — and production writes no stdout anywhere | **high** | 0 | **PARTIAL** 2026-09-24 — audit path done; 24 other `console.*` sites remain |
+| A-42 | a failed audit write is reported to `console.error` only — and production writes no stdout anywhere | **high** | 0 | **DONE** 2026-09-27 — audit path (2026-09-24), then the other 24 runtime sites moved to the logger with structured fields; the guard `noConsole.a42.test.js` fails on any new `console` outside the reviewed allow-list (six terminal CLIs, and `checkMenu.util.js` pending removal). Fail-before: it names all 24 sites at `2acce51` (ADR-076) |
 | A-43 | `auditAction` logs full request and response bodies, unredacted — dead code, and a loaded gun | medium | 1 | **DONE** 2026-09-24 — deleted |
 | A-44 | the access log was never pruned: `history` is a filename, not a retention period | medium | 0 | **DONE** 2026-09-23 |
 | A-45 | a soft-deleted IoT device still ingested; one bad MQTT message shut the server down | **high** | 0 | **DONE** 2026-09-23 |
@@ -79,7 +79,7 @@ Task ids are `A-nn`. They are referenced from [`PHASE-9-TYPESCRIPT-MIGRATION.md`
 | A-57 | the **public** verification endpoint returns the PDF path of a `draft` certificate | **high** | 0 | **DONE** 2026-09-24 |
 | A-58 | five workflow routes gate on `"workflow"`; the slug is `"workflows"` — they deny everyone but SUPERADMIN | **high** | 0 | **DONE** 2026-09-24 |
 | A-59 | the **email activation token** and the MFA-pending token are full bearer access tokens; SSO tokens cannot be revoked | **high** | 0 | **DONE** 2026-09-24 — sid-less tokens still accepted until the switch is flipped |
-| A-60 | SSO tokens travel in the redirect URL; `/auth/sso-session` stores any posted token unverified; login never checks `isEmailVerified` | **high** | 0 | **PARTIAL** 2026-09-24 — items 1 and 2 done; item 3 is Q-11 |
+| A-60 | SSO tokens travel in the redirect URL; `/auth/sso-session` stores any posted token unverified; login never checks `isEmailVerified` | **high** | 0 | **DONE** 2026-09-27 — item 3 decided (ADR-075: sign-in not gated; the activation link now lands on `/activation`) |
 | A-61 | **every e-signature signing and revocation failed its audit insert** — out-of-ENUM actions, non-existent columns — after the signature had committed | **critical** | 0 | **DONE** 2026-09-24 |
 | A-62 | `approveCertificate` takes `approvedBy` from the request body, so the recorded approver can differ from the caller | **high** | 0 | **DONE** 2026-09-24 |
 | A-63 | **any authenticated user can edit — or suspend — any tenant**: the `checkSelf` bypass trusts a body `userId` and returns before the tenant check | **critical** | 0 | **DONE** 2026-09-24 — not yet verified on a running server |
@@ -146,7 +146,7 @@ Task ids are `A-nn`. They are referenced from [`PHASE-9-TYPESCRIPT-MIGRATION.md`
 | A-130 | deletion refused for approved, signed and revoked certificates and signed workflows; verification reads deleted rows (F-11); cancel route; email-only signers refused; ADR-051 A-107 and A-86 | **high** | 0 | **DONE** 2026-09-24 |
 | A-131 | change password for every user outside the matrix; the signing email links to a hard-coded `app.callibrator.io`; the completion email looks up a non-existent `role` column | medium | 0 | **DONE** 2026-09-25 — links and completion email fixed by A-158/A-170; Change Password always in the user menu; `UserDropdown.changePassword.a131.test.tsx` |
 | A-132 | **production hides every thrown 4xx explanation**: `fileValidation.util.js#sanitizeError` replaces any thrown error's message with "An unexpected error occurred…", so today's 409 state explanations never reach a user | **high** | 0 | **DONE** 2026-09-24 |
-| A-133 | calibration-device create, update, delete and bulk import write no audit row; a soft-deleted device cannot be restored (no route calls `restoreStatic`) | **high** | 0 | **PARTIAL** 2026-09-24 — audit rows done; device restore is a decision |
+| A-133 | calibration-device create, update, delete and bulk import write no audit row; a soft-deleted device cannot be restored (no route calls `restoreStatic`) | **high** | 0 | **DONE** 2026-09-27 (ADR-075) — `POST /calibration-devices/:id/restore`, admin-gated, 404/409, restores exactly the cascaded attachments |
 | A-134 | `tenantHierarchy#cascadeRoles` has never worked (an alias-less include and a `level` attribute that does not exist, the throw swallowed as "non-fatal"); `getUserRolesAcrossTenants` can return at most one row | medium | 0 | **DONE** 2026-09-24 — **decision: removed, not fixed**: roles are global (no `tenantId`, platform-unique `name`), so a child tenant already has every role; `HIERARCHY_CASCADE_ROLES` no longer read, `getStatus` drops `cascadeRoles`. One row is by design (a user has one tenant). Found: `createSubOrganization` itself fails on the real `Tenant` model (A-134 section) |
 | A-135 | the frontend retention page uses keys the backend has never accepted and still offers an "Audit Logs" row; `maskPII("audit_logs")` has never worked (it looks up a model `Audit_log`) — and Q-12 relies on masking | **high** | 0 | **DONE** 2026-09-24 |
 | A-136 | `GET /data-retention/:tenantId/policy` and `/legal-hold` have no permission gate | medium | 0 | **DONE** 2026-09-24 |
@@ -236,7 +236,7 @@ Task ids are `A-nn`. They are referenced from [`PHASE-9-TYPESCRIPT-MIGRATION.md`
 | A-254 | the `dynamicAccess` error path logged `JSON.stringify(req.user)` — password hash, MFA secret, recovery codes — inside the message, beyond key redaction | high | 0 | **DONE** 2026-09-25 — `dynamicAccess.test.js` › A-254 |
 | A-255 | seven `tenantHierarchy.controller` handlers unrouted, including `assignRoleAcrossHierarchy` | low | 2 | **DONE** 2026-09-25 (ADR-065) — the seven unrouted handlers and `assignRoleToUserAcrossHierarchy` removed. `tenantHierarchy.controller.test.js`, `bodyless.a09.test.js` |
 | A-256 | `resolveTenantByDomain` / `provisionTLSCertificate` have no callers — custom domains never resolve | medium | 1 | **DONE** 2026-09-25 (ADR-065) — decided: not implemented; the two uncalled functions removed, instructions no longer promise TLS, `tlsAutoProvision: false`. `customDomains.service.test.js` › A-256 |
-| A-257 | backend jest cannot load ESM-only dependencies under Node 22; the project targets Node 24 | tooling | 2 | known — pin Node 24 |
+| A-257 | backend jest cannot load ESM-only dependencies under Node 22; the project targets Node 24 | tooling | 2 | **DONE** 2026-09-27 — pinned to **Node 26** by the owner: root `.nvmrc`, `engines` in all three manifests, both Dockerfiles `node:26.10.0-alpine@sha256`, CI, pkg `node26-*`; a jest globalSetup refuses any other major; `nodeVersion.a257.test.js` (14) keeps every pin in step (ADR-076) |
 | A-258 | `username-check` uses `Op.like` on raw input, tenant-scoped against a globally unique column | low | 1 | **DONE** 2026-09-25 (ADR-065) — the probe asks `assertIdentityFree`'s exact, case-insensitive question; a "taken" answer is budgeted and audited. `user.usernameCheck.a258.test.js` (6 of 9 fail at `fabc3be`) |
 | A-259 | since P6-03 (0057) the backend runs as the application role: `unseedDemoData` force-deletes calibration records the trigger now refuses (non-transactional, stops part-way); `migration.service#syncTables` (`sync({ force: true })`) fails without owner rights | medium | 0 | **DONE** 2026-09-25 — unseed is one transaction and refuses before any delete once demo records exist; `syncTables`/`resetAndSeed` removed (no caller; owner-only) (ADR-068); `migration.unseedDemo.a259.test.js`, `migration.service.test.js` › A-259, `authCards.a215.live.test.js` |
 | A-67 | the rate limiter's failure recording on login, register, OTP and reset **never runs** — it is mounted before the handler | **high** | 0 | **DONE** 2026-09-24 — `AUTH_RATE_LIMIT_BY_IP=true` enabled on the VM after A-16 was verified |
@@ -248,7 +248,7 @@ Task ids are `A-nn`. They are referenced from [`PHASE-9-TYPESCRIPT-MIGRATION.md`
 | A-260 | the signed-in password checks (`pass-is-valid`, change-password, and the `reauthenticate` paths: passkey removal, email rectification, MFA rotation and disable) have no per-user limit, so a session is an unthrottled password oracle | medium | 0 | **DONE** 2026-09-25 (ADR-072) — one per-user budget, 5 wrong in 15 min (`auth.service#verifySessionPassword`). The spending attempt revokes its session and writes `ACCOUNT_LOCKED` in its own transaction; it and every later check get 429 + `Retry-After`; never `locked_until`. `auth.passwordCheckBudget.a260.test.js`, `auth.passwordCheckRetryAfter.a260.test.js` |
 | A-261 | `migration.service#dropSeededTables` has no caller and force-deletes every user, tenant, role and stock row without a transaction | medium | 0 | **DONE** 2026-09-25 (ADR-072) — removed; no route, controller, script or boot path called it. `migration.service.test.js` › A-261 |
 | A-262 | there is no admin way to remove another user's passkey; an SSO-only user cannot remove their own | medium | 0 | **DONE** 2026-09-25 (ADR-072) — `DELETE /users/:userId/webauthn`, with `loadAdminResetTarget` guards (other tenant or missing 404, self 400, higher role 403, none 409). It revokes every session and audits `WEBAUTHN_ADMIN_RESET` in the transaction; users page "Remove passkey". `user.passkeyReset.a262.test.js` (two-tenant 404), frontend `CredentialResetActions.a262.test.tsx`, `user.passkeyReset.a262.test.ts` |
-| A-263 | the super admin `offboard`, `suspend`, `resume` and `cancelOffboarding` responses return the raw `Tenant` row, whose `settings` JSON can still carry a credential (found by W-17; `mirroredAiKey` in the A-179 test) | medium | 0 | TODO |
+| A-263 | the super admin `offboard`, `suspend`, `resume` and `cancelOffboarding` responses return the raw `Tenant` row, whose `settings` JSON can still carry a credential (found by W-17; `mirroredAiKey` in the A-179 test) | medium | 0 | **DONE** 2026-09-27 (ADR-075) — redacted in the controller with `withoutRedactedSettings` |
 
 ---
 
@@ -1408,7 +1408,7 @@ so a caller can tell; a duplicate email is recoverable, a silently dropped one i
 
 **Definition of Done**
 - [ ] gitleaks (or equivalent) configured and run in a committed hook and in CI (P7-01)
-- [ ] the hook installed by `npm install`, not by instructions
+- [x] the hook installed by `make hooks`, which also installs the pinned, checksum-verified gitleaks (ADR-076). *(Not `npm install`: ADR-066 refused a forced hook.)*
 
 ### A-20 — The browser suite is missing
 
@@ -2028,7 +2028,7 @@ with the tenant, user, action, resource and stack, and `console.error` is gone.
 Tests: `audit.service.a42.test.js`. 4 of its tests failed against the old code, including *"inside a
 transaction, a failed write is re-thrown"* and *"out-of-ENUM action (RESTORE) is refused"*.
 
-**Still open:** the sweep of the other 24 `console.*` call sites.
+**Still open:** the sweep of the other 24 `console.*` call sites. *(Closed 2026-09-27 by ADR-076: all 24 log through the logger, and `src/tests/guards/noConsole.a42.test.js` guards the tree.)*
 
 ---
 
@@ -2935,7 +2935,7 @@ posted raw token"*. Full suites: backend 336 suites and 6,667 tests at 100 %; fr
 
 **At deploy:** both halves must ship together. SSO sign-ins in flight at that moment fail once.
 
-**Still open:** item 3, which is the owner's decision (Q-11). Also A-69: **SSO has probably never
+**Item 3 — closed 2026-09-27 by ADR-075** (see *A-37, A-60 item 3, A-133, A-263 — What was changed*). Also A-69: **SSO has probably never
 worked through the Next `/api` proxy on this deployment**, and this change does not fix that.
 *(2026-09-24: A-69 is fixed in the proxy, and A-68 found three more reasons OIDC never worked. See
 both sections. Neither has yet been seen with a live IdP.)*
@@ -4472,6 +4472,137 @@ against the old code. **Restoring a device** remains a decision — its 409 mess
 restoring is unavailable.
 
 ---
+
+### A-37, A-60 item 3, A-133, A-263 — What was changed (2026-09-27, ADR-075)
+
+Each decision was argued from two sides, as the owner directs; the ADR has the full table.
+
+**A-263 — lifecycle responses.** No decision was needed.
+- `suspend`, `resume`, `grace-period`, `offboard` (`{ tenant }`, or a bare row when already offboarded)
+  and `cancel-offboarding` answer through `tenantBody()` in `tenantLifecycle.controller.js`. It uses
+  `withoutRedactedSettings`, new in `constants/tenantSecretSettings.js` and built on
+  `isRedactedSettingKey`.
+- The redaction is in the controller, not the service: the grace-period scheduler calls
+  `offboardTenant` and wants the instance.
+- **Test:** `tenantLifecycle.redaction.a263.test.js`, 11 tests. It uses the real Tenant model, the
+  real `response.util` serialization, and hand-written credential keys and values: `ai_api_key`,
+  `aiApiKey`, `smtp_password`, `smtpPassword`, `storage_credentials`, `oidc_rp_portal`,
+  `webhook_signing_secret`. The public `sso_idp_cert` must survive.
+- **Finding:** the A-179 test's `mirroredAiKey` is a value label, not a key name, and
+  `SECRET_KEY_PATTERN` would **not** redact a key named `aiKey`. That was left alone: widening the
+  pattern changes what is encrypted at rest, and needs its own card.
+
+**A-60 item 3 (Q-11) — sign-in and email verification.**
+- *Compliance-first:* refuse a password sign-in for an unverified address with a 403 state
+  explanation. The password was right, so this is no oracle. Add a resend endpoint.
+- *Operability-first:* every account that can reach data was vouched for by someone other than the
+  mailbox:
+  - an administrator, through a temporary password the holder must change (A-123);
+  - SCIM or SSO, which both store `true`.
+
+  Self-registrations have no tenant and see nothing. A gate would lock out rectified addresses
+  (A-180), legacy admin-created accounts (F-2) and every self-registration ever made, because **the
+  activation link has never worked**: it points at `/activation`, and no frontend page answered that
+  path.
+- **Decided:** operability. ADR-051 is upheld, and the link is fixed.
+  - `frontend/src/app/activation/page.tsx` spends the token once, removes it from history, and shows
+    the backend's explanation.
+  - A comment in `auth.service#loginUser` records the decision.
+- **Tests:**
+  - `auth.emailVerificationPolicy.a60.test.js`, 3 tests. They pin the decision and passed before
+    this change as well, by design.
+  - `frontend/src/app/activation/__tests__/page.a60.test.tsx`, 5 tests.
+- **Left open:**
+  - Unverified self-registrations keep their address against the global unique index. That is
+    squatting, and nothing expires them.
+  - Activation links are built from the request's `Origin`/`Host` header. They should come from
+    configuration.
+
+**A-37 (Q-18 for SCIM) — identity conflicts.**
+- *Compliance-first:* keep the 2026-09-24 generic 500. A 409 says the address exists.
+- *Operability-first:* identity providers retry a 5xx forever, so the probe was unlimited and
+  unaudited, and its operator never saw why. RFC 7644 § 3.3 says `409 uniqueness`.
+- **Decided:** A-128's rule, because a `scim:write` key has tenant-admin power.
+  - **One 409:** the check is global (`user.service#assertIdentityFree`, now exported), with
+    soft-deleted accounts included and case ignored.
+  - **Budget:** 10 an hour **per API key** (`scimIdentityConflict`); after that, a 429 before any
+    lookup.
+  - **Audit:** one row per conflict in the key's tenant. The actor is the new `system:scim`, and the
+    row carries `changes.apiKeyId`. It never names the address or the holder.
+  - **Scope:** a `userName` PATCH gets the same rule.
+  - **Races:** a unique-index race answers the same 409. It is recognised by field, or by the
+    constraint name that migration 0063's `lower()` indexes report.
+  - **Super admin:** a super admin's JWT is neither counted nor audited.
+- **Test:** `scim.crossTenantOracle.a37.test.js`, 23 tests, rewritten for the new contract. It uses
+  real models and hooks on SQL-answering Sequelize, the real rate limiter and the audit ledger. It
+  includes:
+  - *"two tenants: tenant A's key creating an address tenant B holds gets a response byte-identical
+    to an address tenant A holds"*;
+  - *"the check is global: its SELECT carries no tenant predicate…"*;
+  - *"after 10 conflicts the key is refused with 429 BEFORE any lookup"*;
+  - *"tenant A's key cannot rename tenant B's user: 404…"*.
+- **Adjusted:** `scim.service.test.js` (2 patch tests and the D-06 lookup shape),
+  `scim.controller.test.js` (the actor argument) and `systemActors.a124.test.js` (the new name).
+- **Left open:** successful SCIM mutations still write no audit row (A-33).
+
+**A-133 — device restore.**
+- *Compliance-first:* a device anchors its calibration records and certificates (ISO 17025
+  §6.4.13). A delete made in error must be reversible, with an audit trail, not by a database edit.
+- *Operability-first:* the same grant as delete makes a mistaken restore as easy as a mistaken
+  delete, and a cascaded attachment's bytes may already be gone.
+- **Decided:** both.
+  - **Route:** `POST /calibration-devices/:id/restore`, behind `auth` → `validateUuid` →
+    `rbac([TENANT_ADMIN])` → `calibration: write`.
+  - **404** for another tenant's device, identical to a missing id.
+  - **409** with a state explanation when:
+    - the device is not deleted;
+    - a live device now holds its serial (P6-06's partial index, with the unique index as the
+      race backstop);
+    - a concurrent request already restored it.
+  - **One transaction** holds `restoreStatic`, `attachment.service#restoreForResource` and the
+    `UPDATE` audit row with `operation: "RESTORE"`.
+  - **Which attachments:** exactly those still deleted whose latest DELETE audit row is this
+    parent's `cascade-soft-delete`. They are locked before their history is read, so the D-22
+    deleted-file sweep's `file-purge` row wins.
+  - **Serial conflict:** the 409 message now names the deleted device's id.
+  - **Frontend:** there is **no devices trash view**. Only the delete modal's text changed; it no
+    longer says restoring needs database tools.
+- **Tests:**
+  - `calibrationDevices.restore.a133.test.js`, 17 tests, through the router, the real models and
+    hooks, and the ledger. They include:
+    - *"tenant A's administrator restoring tenant B's deleted device gets exactly the not-found
+      answer"*;
+    - *"restores exactly the attachments its deletion took…"*;
+    - *"a failed audit insert rolls the whole restore back"*;
+    - *"a technician … is refused with 403, and nothing is read or written"*.
+  - `attachment.restoreForResource.a133.test.js`, 12 tests.
+
+**Fail-before.** The new tests were run in a `git worktree` at `f0d7f08`:
+
+| Suite | Result at `f0d7f08` |
+|---|---|
+| a263 | 8 of 11 failed |
+| a37 | 12 of 21 failed (before the last 2 were added) |
+| restore a133 | 15 of 17 failed |
+| restoreForResource | 11 of 11 failed |
+| emailVerificationPolicy | 3 of 3 passed, by design |
+| frontend activation | could not load: `Cannot find module '../page'` |
+
+**PostgreSQL 18.6** (`pgvector/pgvector:pg18`, throwaway, removed). The schema came from a fresh
+boot: `db.sync()` plus every migration, 0 pending. All of the following passed:
+- **Two tenants:** B restoring A's device answered 404, byte-identical to a random id.
+- **Restore:** A's restore answered 200. The cascaded attachment came back; the one deleted on its
+  own stayed deleted. It wrote one `RESTORE` and one `cascade-restore` row.
+- **Restoring a live device** answered 409.
+- **Serial index:** with it rebuilt partial (`WHERE is_deleted = false`), a live device holding the
+  serial gave a 409. A forced race was refused by the index with 23505, answered as the same 409,
+  and rolled back.
+- **SCIM:** the cross-tenant and same-tenant creates answered the same 409. Both conflict rows
+  passed `audit_logs_actor_check` as `system:scim`, and nothing was written to tenant B's trail.
+- **SCIM races:** a forced race on the plain index and on 0063's `lower()` index each gave a 409.
+  A fresh address gave a 201.
+
+**No migration was needed.**
 
 ### A-122 / A-88 / W-20 — What was changed (2026-09-24, ADR-051 Q-16)
 

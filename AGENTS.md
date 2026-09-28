@@ -112,7 +112,7 @@ Every agent, regardless of role, is bound by these. They are not role-specific b
 
 - Both applications compile to **binaries**. Runtime assets — `swagger.json`, `src/templates`, `docs/` — must be copied explicitly, or the API starts fine and fails on the first PDF or email.
 - **Puppeteer needs a system Chromium**, and it fails at **first use, not startup**.
-- **`ACME_DIRECTORY_URL` defaults to Let's Encrypt staging** — certificates no browser trusts, failing in a browser rather than in any log.
+- **No certificate is issued automatically** — `ACME_*` and `TLS_AUTO_PROVISION` are not read (A-256, ADR-081); only `CUSTOM_DOMAINS_ENABLED` is.
 - **`/socket.io/*` needs upgrade headers**, or Socket.IO silently falls back to long-polling.
 - **`/oidc/*` is at the root**, not under `/api/v1`.
 - **Schedulers run once per replica.**
@@ -126,7 +126,7 @@ Every agent, regardless of role, is bound by these. They are not role-specific b
 
 ## QA Engineer
 
-**Owns:** 342 backend test files, 53 live E2E specs, 51 contract tests, and a Playwright suite that is **not in this repository** (see U-07).
+**Owns:** 342 backend test files, 53 live E2E specs, 51 contract tests, and the five-check browser smoke `automate/smoke.browser.js` (ADR-077; the 71-test Playwright claim is withdrawn, U-07).
 
 **The founding lesson:** **3,863 tests passed while 13 endpoints were broken.** Services had been written against endpoints that did not exist, with tests mocking the fabrication.
 

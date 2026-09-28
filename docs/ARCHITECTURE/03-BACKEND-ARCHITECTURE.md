@@ -8,7 +8,7 @@ Coding standards are in [`../BACKEND/00-BACKEND-STANDARDS.md`](../BACKEND/00-BAC
 
 ## What It Is
 
-An Express modular monolith, **as-built in JavaScript (CommonJS)** and migrating to strict TypeScript (ADR-038, superseding ADR-030). `"type": "commonjs"`, entry `index.js`, Node 24.
+An Express modular monolith, **as-built in JavaScript (CommonJS)** and migrating to strict TypeScript (ADR-038, superseding ADR-030). `"type": "commonjs"`, entry `index.js`, Node 26 (pinned by the root `.nvmrc`, ADR-076).
 
 Anyone acting on an instruction to "remove the `any` types" or "enable strict mode" in `backend/` is working from a stale premise. There are no types to remove.
 
@@ -179,4 +179,4 @@ Two things run inside the Express process rather than beside it:
 | **Socket.IO** | same server, same port |
 | **MQTT** | a **client** to an external broker, optional, for IoT telemetry ingest |
 
-**The backend is an MQTT *client*, not a broker.** When both `MQTT_HOST` and `MQTT_PORT` are set, `src/services/iot.service.js` connects to an **external** broker and subscribes to `device/#`; with either unset it logs `IoT MQTT Broker not configured` and MQTT ingest is off. `aedes` and `aedes-server-factory` sit in `package.json` and are referenced by no code — earlier documentation described an embedded broker that was never built.
+**The backend is an MQTT *client*, not a broker.** When both `MQTT_HOST` and `MQTT_PORT` are set, `src/services/iot.service.js` connects to an **external** broker and subscribes to `$share/<MQTT_SHARED_GROUP>/device/#` — a shared subscription, so each message reaches one replica, with at most `MQTT_INGEST_CONCURRENCY` ingests in flight per process (ADR-079, W-14; `MQTT_SHARED_GROUP=none` for a broker without shared subscriptions, then with one replica only); with either unset it logs `IoT MQTT Broker not configured` and MQTT ingest is off. `aedes` and `aedes-server-factory` sit in `package.json` and are referenced by no code — earlier documentation described an embedded broker that was never built.

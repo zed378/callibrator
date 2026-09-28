@@ -76,6 +76,7 @@ const deliverOnce = async (webhook) => {
   return {
     body: init.body,
     signature: init.headers["X-Webhook-Signature"],
+    previous: init.headers["X-Webhook-Signature-Previous"],
     timestamp: init.headers["X-Webhook-Timestamp"],
   };
 };
@@ -111,6 +112,7 @@ describe("A-51 — webhook secret handling", () => {
     const result = await webhookService.createWebhook(TENANT, {
       url: "https://receiver.example.com/hook",
       events: ["*"],
+      createdBy: "u-1",
     });
 
     const stored = Webhook.create.mock.calls[0][0].secret;
@@ -126,6 +128,7 @@ describe("A-51 — webhook secret handling", () => {
     const created = await webhookService.createWebhook(TENANT, {
       url: "https://receiver.example.com/hook",
       events: ["*"],
+      createdBy: "u-1",
     });
     const stored = Webhook.create.mock.calls[0][0].secret;
 
@@ -148,17 +151,18 @@ describe("A-51 — webhook secret handling", () => {
     expect(signature).toBe(hmac("legacy-plaintext-secret", body, timestamp));
   });
 
-  it("rotation issues a new secret once, invalidates the old one, and writes an audit row in the same transaction", async () => {
+  it("rotation with overlapHours 0 issues a new secret once, invalidates the old one at once, and writes an audit row in the same transaction", async () => {
     const oldSecret = "0".repeat(64);
     const webhook = row({ secret: kms.encryptData(TENANT, oldSecret) });
     Webhook.findOne.mockResolvedValue(webhook);
 
-    const result = await webhookService.rotateSecret(TENANT, "w1", ACTOR);
+    const result = await webhookService.rotateSecret(TENANT, "w1", ACTOR, { overlapHours: 0 });
 
     expect(result.secret).toMatch(/^[0-9a-f]{64}$/);
     expect(result.secret).not.toBe(oldSecret);
+    expect(result.previousSecretExpiresAt).toBeNull();
     expect(webhook.update).toHaveBeenCalledWith(
-      { secret: expect.stringMatching(/^v2:/) },
+      { secret: expect.stringMatching(/^v2:/), previousSecret: null, previousSecretExpiresAt: null },
       { transaction: TX },
     );
     expect(AuditLog.create).toHaveBeenCalledWith(
@@ -178,20 +182,21 @@ describe("A-51 — webhook secret handling", () => {
     expect(audited).not.toContain(result.secret);
     expect(audited).not.toContain(oldSecret);
 
-    const { body, signature, timestamp } = await deliverOnce(webhook);
+    const { body, signature, previous, timestamp } = await deliverOnce(webhook);
     expect(signature).toBe(hmac(result.secret, body, timestamp));
     expect(signature).not.toBe(hmac(oldSecret, body, timestamp));
+    expect(previous).toBeUndefined();
   });
 
-  it("rotation without an actor still writes an audit row, attributed to nobody", async () => {
+  // P6-13: this used to pass with a row "attributed to nobody". audit_logs has
+  // required a named actor since A-124 (migration 0033), and the service now
+  // writes through audit.service#logAction, which refuses one — inside the
+  // transaction, so the rotation rolls back rather than commit unattributed.
+  it("P6-13: rotation without an actor is refused, and the refusal is thrown inside the transaction", async () => {
     Webhook.findOne.mockResolvedValue(row({ secret: kms.encryptData(TENANT, "1".repeat(64)) }));
 
-    await webhookService.rotateSecret(TENANT, "w1");
-
-    expect(AuditLog.create).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: null, ipAddress: null, userAgent: null }),
-      { transaction: TX },
-    );
+    await expect(webhookService.rotateSecret(TENANT, "w1")).rejects.toThrow(/must name its actor/);
+    expect(AuditLog.create).not.toHaveBeenCalled();
   });
 
   it("rotation of another tenant's webhook is a 404", async () => {
@@ -256,5 +261,122 @@ describe("A-51 — webhook secret handling", () => {
     await webhookService.updateWebhook(TENANT, "w1", { secret: "a", description: "x" }, ACTOR);
 
     expect(webhook.secret).toBe(stored);
+  });
+});
+
+describe("P6-13 — rotation with an overlap window (ADR-085)", () => {
+  const originalFetch = global.fetch;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    db.transaction.mockImplementation((cb) => cb(TX));
+    Webhook.create.mockImplementation(async (values) => ({ id: "w1", createdAt: new Date(), ...values }));
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+  });
+
+  it("P6-13: by default the replaced secret keeps signing for 24 hours, under X-Webhook-Signature-Previous", async () => {
+    const oldSecret = "0".repeat(64);
+    const oldEnvelope = kms.encryptData(TENANT, oldSecret);
+    const webhook = row({ secret: oldEnvelope });
+    Webhook.findOne.mockResolvedValue(webhook);
+    const before = Date.now();
+
+    const result = await webhookService.rotateSecret(TENANT, "w1", ACTOR);
+
+    // The previous secret is kept as the envelope it was stored as — never plaintext.
+    expect(webhook.previousSecret).toBe(oldEnvelope);
+    const ends = new Date(result.previousSecretExpiresAt).getTime();
+    expect(ends).toBeGreaterThanOrEqual(before + 24 * 3600 * 1000);
+    expect(ends).toBeLessThanOrEqual(Date.now() + 24 * 3600 * 1000);
+
+    const { body, signature, previous, timestamp } = await deliverOnce(webhook);
+    expect(signature).toBe(hmac(result.secret, body, timestamp));
+    expect(previous).toBe(hmac(oldSecret, body, timestamp));
+  });
+
+  it("P6-13: after the window the previous signature is gone, and the response says so", async () => {
+    const webhook = row({
+      secret: kms.encryptData(TENANT, "a".repeat(64)),
+      previousSecret: kms.encryptData(TENANT, "b".repeat(64)),
+      previousSecretExpiresAt: new Date(Date.now() - 1000),
+    });
+    Webhook.findOne.mockResolvedValue(webhook);
+
+    expect((await webhookService.getWebhook(TENANT, "w1")).previousSecretExpiresAt).toBeNull();
+    const { previous } = await deliverOnce(webhook);
+    expect(previous).toBeUndefined();
+  });
+
+  it("P6-13: rotating again inside a window replaces the previous secret — only one old key is ever live", async () => {
+    const first = kms.encryptData(TENANT, "1".repeat(64));
+    const second = kms.encryptData(TENANT, "2".repeat(64));
+    const webhook = row({ secret: second, previousSecret: first, previousSecretExpiresAt: new Date(Date.now() + 3600e3) });
+    Webhook.findOne.mockResolvedValue(webhook);
+
+    await webhookService.rotateSecret(TENANT, "w1", ACTOR, { overlapHours: 6 });
+
+    expect(webhook.previousSecret).toBe(second);
+  });
+
+  it("P6-13: a url change ends the overlap — the new host is never signed with a key the old host holds", async () => {
+    const webhook = row({
+      secret: kms.encryptData(TENANT, "a".repeat(64)),
+      previousSecret: kms.encryptData(TENANT, "b".repeat(64)),
+      previousSecretExpiresAt: new Date(Date.now() + 3600e3),
+    });
+    Webhook.findOne.mockResolvedValue(webhook);
+
+    const result = await webhookService.updateWebhook(TENANT, "w1", { url: "https://new.example.com/hook" }, ACTOR);
+
+    expect(webhook.previousSecret).toBeNull();
+    expect(result.previousSecretExpiresAt).toBeNull();
+    const { previous } = await deliverOnce(webhook);
+    expect(previous).toBeUndefined();
+  });
+
+  it("P6-13: no secret — new, old or previous — reaches a response body, a log line or audit_logs.changes", async () => {
+    const { logger } = require("../../middlewares/activityLog.middleware");
+    const oldSecret = "9".repeat(64);
+    const oldEnvelope = kms.encryptData(TENANT, oldSecret);
+    const webhook = row({ secret: oldEnvelope });
+    webhook.softDelete = jest.fn(async () => undefined);
+    Webhook.findOne.mockResolvedValue(webhook);
+    Webhook.findAndCountAll.mockResolvedValue({ count: 1, rows: [webhook] });
+
+    const created = await webhookService.createWebhook(TENANT, { url: "https://r.example.com/h", events: ["*"], createdBy: "u-1" });
+    const rotated = await webhookService.rotateSecret(TENANT, "w1", ACTOR);
+    const patched = await webhookService.updateWebhook(TENANT, "w1", { description: "x" }, ACTOR);
+    const listed = await webhookService.listWebhooks(TENANT);
+    const one = await webhookService.getWebhook(TENANT, "w1");
+    await webhookService.deleteWebhook(TENANT, "w1", ACTOR);
+
+    const secrets = [created.secret, rotated.secret, oldSecret, oldEnvelope, webhook.secret];
+    // Only the issuing calls return a secret, and only their own.
+    for (const body of [patched, listed, one]) {
+      const text = JSON.stringify(body);
+      for (const s of secrets) {
+        expect(text).not.toContain(s);
+      }
+      expect(text).not.toMatch(/"(secret|previousSecret)":/);
+    }
+    expect(JSON.stringify(rotated)).not.toContain(oldSecret);
+    const sinks = JSON.stringify([
+      AuditLog.create.mock.calls,
+      logger.info.mock.calls,
+      logger.warn.mock.calls,
+      logger.error.mock.calls,
+    ]);
+    for (const s of secrets) {
+      expect(sinks).not.toContain(s);
+    }
+    // Every change above wrote its audit row inside its transaction.
+    expect(AuditLog.create.mock.calls.map(([v]) => v.action)).toEqual(["CREATE", "UPDATE", "UPDATE", "DELETE"]);
+    for (const [, options] of AuditLog.create.mock.calls) {
+      expect(options).toEqual({ transaction: TX });
+    }
+    expect(webhook.softDelete).toHaveBeenCalledWith({ transaction: TX });
   });
 });

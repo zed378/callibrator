@@ -165,8 +165,11 @@ describe("P7-05 — the boot refuses a database whose KMS master key is missing"
     try {
       await expect(verify.assertKmsKeysConfigured({ sequelize: db, logger: logger() })).resolves.toMatchObject({ envelopes: 1 });
     } finally {
-      if (saved === undefined) delete process.env.KMS_VERIFY;
-      else process.env.KMS_VERIFY = saved;
+      if (saved === undefined) {
+        delete process.env.KMS_VERIFY;
+      } else {
+        process.env.KMS_VERIFY = saved;
+      }
     }
   });
 

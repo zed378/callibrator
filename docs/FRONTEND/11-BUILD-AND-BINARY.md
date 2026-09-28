@@ -8,7 +8,7 @@ The frontend compiles to a **standalone Linux binary**. The production image con
 
 Callibrator is deployed on-premise inside hospital networks. Every additional runtime is a procurement conversation, a patching obligation and an attack surface someone has to sign off.
 
-A single executable and a reverse proxy is a much easier thing to get through a hospital IT review than "install Node 24 and keep it patched".
+A single executable and a reverse proxy is a much easier thing to get through a hospital IT review than "install Node 26 and keep it patched".
 
 The backend does the same thing with `@yao-pkg/pkg` ([`../DEVOPS/02-CONTAINERIZATION.md`](../DEVOPS/02-CONTAINERIZATION.md)).
 

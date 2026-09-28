@@ -131,7 +131,7 @@ exports.login = asyncHandlerWithMapping(
       userAgent: req.headers["user-agent"],
     });
 
-    login(res, result.data, result.token, result.session);
+    login(res, result.data, result.token, result.session, { refreshToken: result.refreshToken });
   }),
   LOGIN_ERRORS,
 );
@@ -343,7 +343,7 @@ exports.loginMfa = asyncHandlerWithMapping(
       { recoveryCode },
     );
 
-    login(res, result.data, result.token, result.session);
+    login(res, result.data, result.token, result.session, { refreshToken: result.refreshToken });
   }),
   MFA_LOGIN_ERRORS,
 );
@@ -366,7 +366,7 @@ exports.impersonateUser = asyncHandlerWithMapping(async (req, res) => {
     req.headers["user-agent"]
   );
 
-  login(res, result.data, result.token, result.session);
+  login(res, result.data, result.token, result.session, { refreshToken: result.refreshToken });
 }, {
   "Only Super Admins can impersonate users": 403,
   "Target user not found in the specified tenant": 404,

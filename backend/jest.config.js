@@ -16,7 +16,9 @@ const TYPESCRIPT_TRANSFORM = [
   {
     babelrc: false,
     configFile: false,
-    presets: [["@babel/preset-typescript", { allowDeclareFields: true }]],
+    // Babel 8 (ADR-076) removed `allowDeclareFields`: it is always on, and
+    // passing it now throws on every .ts file.
+    presets: ["@babel/preset-typescript"],
     plugins: ["@babel/plugin-transform-modules-commonjs"],
   },
 ];
@@ -40,8 +42,17 @@ module.exports = {
   restoreMocks: true,
   resetMocks: false,
   collectCoverage: true,
+  // P6-14 (ADR-085): the figure covers controllers, middlewares, routes,
+  // services, utils and validators — six layers, not the whole backend.
+  // `src/app.js` was listed here and does not exist (removed). The real entry
+  // point, `backend/index.js`, is NOT measured, on purpose: it is the boot
+  // sequence (every router mount, db.sync(), the migrator, the schema check),
+  // which a unit test can only exercise by mocking all of it. Its boot path is
+  // covered instead by a real boot — CI's `boot-and-migrate` stage
+  // (.github/workflows/ci.yml) and the live E2E spec
+  // src/tests/e2e/liveContract.smoke.test.js, which loads every module index.js
+  // mounts and calls every route on a running server.
   collectCoverageFrom: [
-    "src/app.js",
     "src/config/**/*.js",
     "src/config/**/*.ts",
     "src/constants/**/*.js",

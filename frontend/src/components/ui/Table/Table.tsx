@@ -17,6 +17,20 @@ export interface TableProps {
   emptyMessage?: string;
 }
 
+/**
+ * A cell with no `render`: an element (or an array of nodes) as-is, anything
+ * else as text. P6-02 (ADR-077): this was `String(value)` for everything, so
+ * a screen that builds its cells as JSX in `data` (DevicesTable and others)
+ * rendered "[object Object]" in every such column — found by the browser
+ * smoke (automate/smoke.browser.js), invisible to tests that mock the table.
+ */
+export const renderCell = (value: unknown): React.ReactNode => {
+  if (React.isValidElement(value) || Array.isArray(value)) {
+    return value as React.ReactNode;
+  }
+  return String(value ?? "");
+};
+
 export const Table: React.FC<TableProps> = ({
   columns,
   data,
@@ -77,7 +91,7 @@ export const Table: React.FC<TableProps> = ({
                   >
                     {column.render
                       ? column.render(row[column.key], row)
-                      : String(row[column.key] ?? "")}
+                      : renderCell(row[column.key])}
                   </td>
                 ))}
               </tr>

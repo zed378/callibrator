@@ -40,12 +40,9 @@ An application that refuses to start names the problem at the moment it can stil
 
 ### These must be backed up separately from the database
 
-**A restore that recovers the database and loses these keys is not a recovery.** It produces a system that starts cleanly and is permanently broken:
+**Corrected by the P7-04 drill (ADR-078).** Of the four, only **`KMS_MASTER_KEY`** is unrecoverable on a current database (and `ENCRYPT_KEY` for a backup taken before migration 0058). Losing it makes every tenant signing key, webhook secret, tenant credential and — since migration 0086 — every user's TOTP seed undecryptable. `CERT_SIGNING_SECRET` and `ATTACHMENT_URL_SECRET` protect nothing stored: the drill replaced both on a restored database and every certificate and attachment still verified and downloaded. The earlier claim here, that losing them makes every certificate fail verification, predates A-241.
 
-- every certificate fails verification,
-- every encrypted private key and storage credential is unreadable.
-
-`ATTACHMENT_URL_SECRET` is the one exception: rotating it invalidates outstanding signed URLs, which is an inconvenience rather than a permanent loss.
+A restore under the wrong KMS key used to start cleanly and fail per request. **Every boot now checks the key ring against the stored envelopes and refuses on a miss** (`utils/kmsVerify.util.js`, `KMS_VERIFY=warn` to continue). What to escrow, and how to restore it: [`14-SECRET-ESCROW.md`](14-SECRET-ESCROW.md).
 
 A backup strategy that captures the data and loses the keys has captured ciphertext. See [`../ARCHITECTURE/09-DISASTER-RECOVERY.md`](../ARCHITECTURE/09-DISASTER-RECOVERY.md), where the restore drill explicitly asserts that a pre-incident certificate still verifies — the check that catches this.
 
@@ -86,7 +83,7 @@ The reverse is worse: a sandbox key in production makes every order look paid wh
 
 Only a rule comparing the key's environment marker against `NODE_ENV` catches either. Per-field validation is structurally incapable of it.
 
-The same shape applies to `ACME_DIRECTORY_URL`, which **defaults to the Let's Encrypt staging directory**: a production deployment that forgets to change it gets certificates no browser trusts, and the failure appears in a browser rather than in any log.
+*(ADR-081: no ACME setting is read since A-256; `acme-client` was removed in ADR-076. No certificate is issued automatically.)*
 
 ## What Is Stored, and How
 

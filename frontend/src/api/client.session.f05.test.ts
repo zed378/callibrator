@@ -231,6 +231,33 @@ describe("F-07: every rejection carries status, message and the X-Request-Id", (
   });
 });
 
+describe("P6-02: a gate code on the gate's own page is neither a redirect nor a refusal", () => {
+  // On /dashboard/mfa the layout's POST menu fetch is answered 403
+  // MFA_ENROLMENT_REQUIRED. It used to open the modal, whose refusal
+  // re-fetched the menu — a loop that kept the modal over the enrolment form.
+  it.each([
+    ["/dashboard/mfa", "MFA_ENROLMENT_REQUIRED"],
+    ["/dashboard/change-password", "PASSWORD_CHANGE_REQUIRED"],
+  ])("on %s a POST answered 403 %s opens no modal and navigates nowhere", async (page, code) => {
+    window.history.pushState({}, "", page);
+    handler = () => ({ status: 403, data: { code, message: "Set it up before continuing" } });
+
+    await api.post("/api/v1/menu-groups/get-assignments", {}).catch(() => undefined);
+
+    expect(useAccessDeniedStore.getState()).toMatchObject({ isOpen: false, refusals: 0 });
+    expect(assign).not.toHaveBeenCalled();
+  });
+
+  it("an ordinary 403 on a mutation still opens the modal on those pages", async () => {
+    window.history.pushState({}, "", "/dashboard/mfa");
+    handler = () => ({ status: 403, data: { message: "no" } });
+
+    await api.post("/api/v1/devices", {}).catch(() => undefined);
+
+    expect(useAccessDeniedStore.getState().isOpen).toBe(true);
+  });
+});
+
 describe("request interceptor", () => {
   it("drops the JSON Content-Type for a FormData body so the browser sets the boundary", async () => {
     let sent: InternalAxiosRequestConfig | undefined;

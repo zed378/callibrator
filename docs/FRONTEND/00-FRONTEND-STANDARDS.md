@@ -135,7 +135,7 @@ No CSS-in-JS. No component-scoped stylesheets except where a third-party library
 
 Semantic HTML first, ARIA second. Every control labelled, every focus visible, `prefers-reduced-motion` honoured.
 
-`axe` runs in the component and browser suites. See [`../UI-UX/17-ACCESSIBILITY.md`](../UI-UX/17-ACCESSIBILITY.md).
+`axe` (axe-core) runs in the **component** suite (`src/tests/a11y/axe.ts`; `a11y.f12`, `a11y.f12b`, `a11y.f12.overlays`), with colour contrast and page-level rules off because jsdom has no layout. **The browser suite does not run it yet**, and no screen-reader walk has been recorded (F-12, ADR-074). See [`../UI-UX/17-ACCESSIBILITY.md`](../UI-UX/17-ACCESSIBILITY.md).
 
 ## Before Opening a PR
 

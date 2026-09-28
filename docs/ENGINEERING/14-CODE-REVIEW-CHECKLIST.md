@@ -49,7 +49,8 @@ Copy into the PR description and tick. An unticked item needs a reason written n
 - [ ] the tests would fail without the change — checked, not assumed
 - [ ] mocks expose only what the real dependency exposes
 - [ ] no assertion copied from an implementation detail; behaviour asserted instead
-- [ ] backend gate still at 100%, suite named with its count in the PR
+- [ ] backend gate still at 100% (of the six measured layers — `docs/BACKEND/09-TESTING.md`), suite named with its count in the PR
+- [ ] a new `istanbul ignore` is reviewed like a new `eslint-disable`: it carries `-- <reason>` saying why the code is kept, and the ceiling in `istanbulIgnore.a32.test.js` did not go up
 
 ## Operations
 

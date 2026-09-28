@@ -23,7 +23,7 @@ One axios instance owning four things:
 | Tenant header | `X-Tenant-ID` when `NEXT_PUBLIC_TENANT_ID` is set |
 | **Envelope unwrap** | `data` returned, `meta` surfaced separately |
 
-Plus error normalisation and a 401 handler that clears the session.
+Plus error normalisation and a 401 handler that refreshes the session once and, when that is refused, clears it before navigating (F-05, ADR-074).
 
 ## The Envelope
 
@@ -97,11 +97,12 @@ Generating types from `swagger.json` would close part of this gap. It is in [`..
 | Status | Handling |
 |---|---|
 | 400 | field detail mapped back to form fields |
-| 401 | clear the session, redirect to login |
-| 403 | `AccessDeniedModal` |
+| 401 | one silent `POST /api/v1/auth/refresh` (the httpOnly `auth_refresh` cookie) and a retry; if refused, the refresh route has already cleared every session cookie, and the browser goes to `/login` once (F-05) |
+| 403 | on a mutation, `AccessDeniedModal` and a menu refetch; on a read, the screen's `ErrorState` (a background read must not pop a modal) |
 | 404 | not-found state — **includes cross-tenant**, which is deliberate |
 | **409** | surface as a **state explanation**, never a generic error |
 | 429 | "too many requests", with the window |
+| 408 / 504 | "the request timed out", with retry — 408 is the backend's own budget, 504 the proxy's when the backend gave no answer (F-14) |
 | 5xx | error state with retry, and the `X-Request-Id` |
 
 409 is the one most often mishandled. "This certificate is in `draft` and must be submitted first" is the message; "Something went wrong" is not.
@@ -118,6 +119,15 @@ It is exposed through CORS specifically so a client can read it. It is the one p
 | Browser → same-origin `/api/v1/...` → Next proxy → API | strict CSP, or a corporate proxy |
 
 Decided by `NEXT_PUBLIC_API_BASE_URL`. **The proxy forwards the caller's credentials and adds none of its own** — a proxy that attaches a service credential turns every route behind it into an unauthenticated one.
+
+**As built (ADR-074, F-16).** On the documented deployment nginx routes every `/api/` request to Next, so the second path is the only one a browser uses. `app/api/v1/[...path]/route.ts`:
+
+- sends the httpOnly `auth_token` cookie as `Authorization: Bearer …`; with no cookie it forwards an `Authorization` the caller sent (the `ApiKey` integrations), and a cookie always wins;
+- **streams** request and response bodies — an upload or a download is never held whole in the Next process. Only a successful JSON answer that is not an attachment (and declares no more than 1 MiB) is read, so a sign-in's top-level `token` can be moved into the cookie and stripped (A-71);
+- hands redirects to the browser (A-69), and carries no backend cookie but the OIDC sign-in binding (A-68);
+- aborts its upstream fetch 32 s after sending it if no response headers have arrived, or as soon as the browser goes away, and answers **504** in the envelope (F-14). The budgets are client 35 s > proxy 32 s > backend 30 s, in `src/constants/index.ts`.
+
+A backend-issued API link (a certificate's `documentUrl`) is used as the same-origin path it is, never prefixed with `NEXT_PUBLIC_API_BASE_URL` (`toSameOriginApiPath`, F-11).
 
 ## Uploads
 

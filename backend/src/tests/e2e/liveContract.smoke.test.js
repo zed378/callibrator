@@ -180,7 +180,9 @@ function loadRoutes() {
   const out = path.join(os.tmpdir(), `callibrator-live-routes-${process.pid}.json`);
   const child = spawnSync(process.execPath, [__filename, "--dump-routes", out], {
     cwd: BACKEND_ROOT,
-    env: process.env,
+    // Without JEST_WORKER_ID: the child is the CLI, not a Jest worker (see the
+    // guard at the bottom of this file).
+    env: Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== "JEST_WORKER_ID")),
     encoding: "utf8",
     timeout: 180000,
   });
@@ -1136,7 +1138,11 @@ async function main() {
 
 module.exports = { main, dumpRoutes, extractFrontendCalls, envelopeViolations, complaintsOf, applyComplaint };
 
-if (require.main === module) {
+// P6-02: under Jest `require.main === module` is TRUE for the test file, so
+// the CLI branch used to run inside `npm run test:e2e` — main() ran with no
+// LIVE_CONTRACT opt-in and its process.exit(1) killed the whole suite after
+// ~20 s. JEST_WORKER_ID is set in every Jest worker, --runInBand included.
+if (require.main === module && !process.env.JEST_WORKER_ID) {
   if (process.argv.includes("--dump-routes")) {
     try {
       dumpRoutes(process.argv[process.argv.indexOf("--dump-routes") + 1]);

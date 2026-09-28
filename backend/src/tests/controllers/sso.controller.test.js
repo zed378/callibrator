@@ -1128,7 +1128,10 @@ describe("sso.controller", () => {
         { id: "user-1", email: "user@test.com", tenantId: "tenant-1" },
         "mock-access-token",
         { id: "session-123" },
+        // P6-02: the session's refresh token, which was generated and dropped.
+        { refreshToken: createSession.mock.calls[0][0].refreshToken },
       );
+      expect(createSession.mock.calls[0][0].refreshToken).toBeTruthy();
       expect(createSession).toHaveBeenCalledTimes(1);
       expect(redis.getDel).toHaveBeenCalledWith(expect.stringMatching(/^sso:handoff:[0-9a-f]{64}$/));
 

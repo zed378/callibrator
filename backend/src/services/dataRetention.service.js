@@ -103,7 +103,7 @@ const readRetentionPolicy = async (tenantId) => {
   const stored = await TenantSettings.findAll({
     where: {
       tenantId,
-      key: { [Op.like]: 'retention_policy_%' },
+      key: { [Op.like]: "retention_policy_%" },
     },
   });
 
@@ -115,7 +115,7 @@ const readRetentionPolicy = async (tenantId) => {
     }
   }
   stored.forEach((p) => {
-    const key = p.key.replace('retention_policy_', '');
+    const key = p.key.replace("retention_policy_", "");
     if (!isPurgeable(key)) {
       return;
     }

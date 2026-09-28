@@ -13,7 +13,9 @@ logger.info("Certificate signed", { requestId: req.requestId, certificateId, ten
 logger.error("Webhook delivery exhausted", { deliveryId, url: redactUrl(webhook.url) });
 ```
 
-winston, JSON format, timestamped. **No `console.*` in application code** — as-built, there are **25 `console.*` call sites** in runtime backend code (`config/socket.js`, `index.js`'s startup and CORS paths, `notification.service.js`, `sso.service.js`, `checkMenu.util.js`, `audit.service.js` and others). All of them write to stdout/stderr and to no file, so in production they reach `docker logs` and nothing else.
+winston, JSON format, timestamped. **No `console.*` in application code** — enforced since 2026-09-27 (A-42, ADR-076) by `backend/src/tests/guards/noConsole.a42.test.js`, a static scan of `backend/src` (tests excluded) and `backend/index.js` that fails on any `console` reference outside a reviewed allow-list. The 24 runtime sites (`config/socket.js`, `index.js`'s startup and CORS paths, the notification and SSO services, a controller, four migrations) now log through `activityLog.middleware`'s `logger` with structured fields, so they pass the A-14 redactor. The allow-list is the six terminal CLIs under `src/scripts/` (each carries an `A-42 console-allowed:` comment) and `utils/checkMenu.util.js`, dead code pending removal.
+
+> Corrected 2026-09-27 (ADR-076). This paragraph said 25 `console.*` sites remained; the audit one was fixed by A-42's first half on 2026-09-24.
 
 > Corrected 2026-09-23. This sentence used to say `config/socket.js` was the only such output. The material one is `audit.service.js`, which announces a **failed audit write** — a compliance record that did not persist — to `console.error` alone (A-42).
 

@@ -66,7 +66,7 @@ fi
 # 3. frontend typecheck
 if printf '%s\n' "$changed" | grep -q '^frontend/'; then
   say "frontend typecheck"
-  (cd frontend && npx --no-install tsc --noEmit) || fail=1
+  (cd frontend && npm run --silent typecheck) || fail=1 # TypeScript 7 (ADR-076)
 fi
 
 if [ "$fail" -ne 0 ]; then

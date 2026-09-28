@@ -461,6 +461,20 @@ check-env: ## Verify .env exists and carries the required secrets
 		echo -e "$(C_DIM)A-Z a-z 0-9 . _ ~ - (make secrets prints a hex password).$(C_OFF)"
 		exit 1
 	fi
+	# ADR-081: nginx/default.conf (staging, prod) serves TLS from
+	# volumes/certs/{fullchain,privkey}.pem. Nothing created them, so the first
+	# by-the-book `make up ENV=prod` crash-looped nginx while `make up` reported
+	# success — wait-healthy watches the backend only.
+	@if [ "$(ENV)" = "prod" ] || [ "$(ENV)" = "staging" ]; then
+		for f in fullchain.pem privkey.pem; do
+			if [ ! -s $(COMPOSE_DIR)/volumes/certs/$$f ]; then
+				echo -e "$(C_ERR)$(COMPOSE_DIR)/volumes/certs/$$f is missing (ENV=$(ENV)).$(C_OFF)"
+				echo -e "$(C_DIM)nginx terminates TLS with it and restarts forever without it. Put the$(C_OFF)"
+				echo -e "$(C_DIM)certificate chain and key for the public host there (deploy/README.md).$(C_OFF)"
+				exit 1
+			fi
+		done
+	fi
 
 .PHONY: preflight
 preflight: check-env ## Pre-deployment checks for staging and production
@@ -514,12 +528,8 @@ preflight: check-env ## Pre-deployment checks for staging and production
 		echo -e "$(C_ERR)would let any site make authenticated cross-origin requests.$(C_OFF)"
 		exit 1
 	fi
-	@if [ "$(ENV)" = "prod" ] && grep -q 'acme-staging' $(COMPOSE_DIR)/.env; then
-		echo -e "$(C_ERR)ACME_DIRECTORY_URL points at Let's Encrypt STAGING.$(C_OFF)"
-		echo -e "$(C_DIM)Staging certificates are trusted by no browser, and the failure appears in a$(C_OFF)"
-		echo -e "$(C_DIM)browser rather than in any log.$(C_OFF)"
-		exit 1
-	fi
+	# (The ACME_DIRECTORY_URL staging check was removed — ADR-081: nothing has
+	# read ACME_* since A-256, so it refused a harmless line.)
 	@echo -e "$(C_OK)Preflight passed.$(C_OFF)"
 
 .PHONY: postdeploy

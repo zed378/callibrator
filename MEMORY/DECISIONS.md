@@ -3933,6 +3933,113 @@ committed two transactions per due device.
 
 ---
 
+## ADR-074: The Proxy Streams, Bounds Its Upstream Wait and Forwards a Caller's Key; List Endpoints Keep the House Envelope; a Timed-Out Request Answers 408 in It; Backend Links Stay Same-Origin; SSO Hand-Off Is Same-Origin Only
+
+**Date:** 2026-09-27 · **Cards:** F-05, F-07, F-09, F-10, F-11, F-12, F-13, F-14, F-16 (AUDIT-2026-09-FRONTEND) · **Extends:** ADR-059 (A-71), ADR-067, ADR-071
+
+**Context.** The frontend board's open and partial cards. Code in `a31c601` already cited this ADR
+(`meteredBilling.controller.js`, `requestTimeout.middleware.js`, the `f13`/`f14` tests) before it was
+written — audit finding F-28. This is the record those citations point at.
+
+**Decision**
+
+1. **The Next proxy streams both bodies (F-16).** `app/api/v1/[...path]/route.ts` passes `req.body`
+   upstream with `duplex: "half"` and returns `res.body` as it arrives. It reads a response body only
+   when it may carry an access token: a 2xx `application/json` answer that is not
+   `Content-Disposition: attachment` and declares no more than 1 MiB. That is the A-71 strip and the
+   cookie rotation, unchanged. Hop-by-hop request headers (`transfer-encoding`, `expect`,
+   `keep-alive`, `upgrade`) are not re-sent. A-69 (redirects pass through) and A-68 (only the OIDC
+   binding cookie crosses) are unchanged.
+2. **A caller's `Authorization` is forwarded when there is no session cookie, on purpose (F-16).**
+   nginx sends every `/api/` request to Next (ADR-046, ADR-059), so the proxy is also the path of
+   the machine clients that send `Authorization: ApiKey <key>`. The cookie's token always wins.
+3. **The proxy bounds its wait (F-14).** Budgets: client 35 s > proxy 32 s > backend 30 s, in
+   `src/constants/index.ts`. The proxy aborts its upstream fetch if no response headers arrive within
+   32 s, or when the browser goes away. It then answers **504** in the envelope. The timer stops at
+   the headers, so a long download is not cut off. `ErrorState` reads 504 like 408: a retryable
+   timeout.
+4. **A timed-out backend request answers 408 in the envelope (F-14).** `connect-timeout` raises its
+   error from wherever the request has reached, past the matched route. So the inline 408 handler that
+   sat right after `timeout("30s")` in `index.js` was **never reached**. A timed-out request answered
+   **503 "Response timeout"** from `errorHandler`. `requestTimeout.middleware.js` now sits
+   immediately before `errorHandler` and answers `error(res, "Request timeout", 408)`.
+5. **List endpoints keep the house envelope; the frontend is not coded around exceptions (F-13).**
+   `GET /metered-billing/history` now sends rows in `data` and pagination in the top-level `meta`.
+   `GET /sessions` was fixed the same way by A-111. The frontend services read only that shape.
+6. **Backend-issued API links are used as the same-origin paths they are (F-11).** The verification
+   page's `documentUrl` is `/api/v1/certificates/verify/<n>/document?token=…`. It is rendered through
+   `toSameOriginApiPath` (`lib/uploadUrl.ts`), never prefixed with `NEXT_PUBLIC_API_BASE_URL`. A
+   value that is not an `/api/v1/` path gets no link. This supersedes ADR-071 Amendment 1's
+   description of the frame as "`NEXT_PUBLIC_API_BASE_URL` + `documentUrl`". The frame is now
+   `'self'`, which `frame-src 'self'` and the document route's `frame-ancestors 'self'` already allow.
+7. **The SSO hand-off accepts only a same-origin request (F-09).** A-60 already made
+   `/api/v1/auth/sso-session` exchange a one-time, single-use code server-to-server, and write no
+   cookie unless the backend confirms it. F-09 adds `lib/sameOrigin.ts`: `Sec-Fetch-Site`, when sent,
+   must be `same-origin`, and `Origin` must be present and match the `Host` the request arrived with.
+   Anything else is refused with 403 before the body is read.
+8. **Every page overlay is a modal dialog (F-12).** The ten bare `fixed inset-0` overlays gained
+   `role="dialog"`, `aria-modal` and `aria-labelledby`, and use `useModalA11y`: focus moves in, Tab is
+   trapped, Escape closes, and focus returns to the opener. Their icon-only close buttons are named.
+   `DateField`, `MultiSelect` and `SearchableDropdown` associate label, control and message.
+   `MultiSelect` gained a real trigger `<button>`, a named multi-select `listbox` and keyboard
+   selection. `Badge`'s remove button is named and is `type="button"`, so it no longer submits a
+   surrounding form.
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| Keep buffering, add a size ceiling | Still holds every in-ceiling transfer twice. A ceiling on a hospital's attachments is a product limit, not a proxy one |
+| Stream everything, move A-71's strip to the dedicated auth routes only | `POST /auth/mfa/login` and `/auth/impersonate` are answered through the catch-all. Moving them is a larger change, and missing one leaks a bearer token to script |
+| Strip every client `Authorization` | Breaks every API-key integration on the documented deployment, since nginx routes `/api/` to Next |
+| `AbortSignal.timeout(32 s)` on the whole fetch | Also aborts a download that is still streaming after 32 s |
+| Accept the nested envelope for the two endpoints and document it | The deviation `CLAUDE.md` names as the silent-empty-list failure. The next person to fix it "correctly" empties the screen without an error |
+| Move the 408 handler above the routes | It is already above them. The error travels forward from the route, so no position before the routes can catch it |
+| A `state` value minted by the Next route for the SSO hand-off | The backend's one-time code is already a server-minted, single-use, 60-second capability bound to a verified identity (A-60). A second token would add storage and replicate that |
+| Refuse a missing `Origin` only on a cross-site `Sec-Fetch-Site` | Browsers send `Origin` on every POST. A caller that sends none is not a page of ours |
+
+**Implications, including the bad ones**
+
+- **A JSON response over 1 MiB, or sent as an attachment, is never inspected.** If the backend ever
+  put a top-level `token` in such a response, it would reach the browser. No endpoint does.
+- **An `Expect: 100-continue` request used to be refused by undici (502).** It is now sent without
+  the header.
+- **A request that really needs more than 32 s gets a 504** even if the backend would have finished.
+  The backend's own 30 s budget already cut it off.
+- **Before this change a timed-out backend request answered 503.** Any client or dashboard that
+  keyed on that 503 now sees 408.
+- **The SSO hand-off now depends on nginx forwarding `Host` as `$host`.** It does, in every template
+  (`deploy/compose/nginx/*.conf`). A proxy that rewrites `Host` would break SSO with a 403.
+- **`MultiSelect`'s chip remove buttons are live while the control is disabled**, as before. Not
+  changed here.
+- **No screen reader has been used.** axe runs only in jsdom (component suite). The browser suite
+  does not run it.
+
+**Evidence**
+
+- Unit tests, each run against the pre-change tree (`git worktree` at `f0d7f08`) to prove it fails
+  first. Details are in `MEMORY/records/2026-09-27-frontend-board-fe2.md`:
+  - `route.stream.f16` (9 tests, 6 fail before);
+  - `requestTimeout.f14` (the pre-change stack answered 503);
+  - `envelope.f13` (2 of 3 fail before; the sessions one was fixed by A-111);
+  - `page.f11` (3 of 3);
+  - `sso-session/route.test` › F-09 (3 fail before);
+  - `a11y.f12b` (8 of 9);
+  - `a11y.f12.overlays` (4 of 4).
+- Headless Chrome 154 against `next build` + `next start`, with `NEXT_PUBLIC_API_BASE_URL` set to an
+  unreachable origin. The backend was a **stand-in**, not the real one: session management showed
+  403, 404, 408, 409, 429 and offline states, each with its reference. An expired access token
+  refreshed once and kept the typed filter. A refused refresh cleared every cookie and landed on
+  `/login` once. A backend that never answered produced the 504 copy at 33 s, and the stand-in saw
+  the connection closed at 32 s. The verification PDF loaded same-origin, with no request to the
+  backend origin. A role with none of the searchable menus had no search box and sent no `/search`.
+  During a 400 MB download and a 300 MB upload the Next process's working set peaked at 186 MB and
+  185 MB.
+
+**Status:** Accepted, implemented 2026-09-27.
+
+---
+
 ## ADR-075: SCIM Gets the Tenant Administrator's Identity-Conflict Rule; Sign-In Does Not Wait on Email Verification, and the Link Now Lands; a Deleted Calibration Device Can Be Restored; Lifecycle Responses Carry No Credential
 
 **Date:** 2026-09-27 · **Cards:** A-37 (Q-18 for SCIM), A-60 item 3 (Q-11), A-133, A-263 ·
@@ -3960,7 +4067,7 @@ that path. So `isEmailVerified` could never become true through the application.
 it is still deleted **and its most recent DELETE audit row is a `cascade-soft-delete` naming this
 parent**. So an attachment deleted on its own — before the parent's delete, or after an earlier
 restore — stays deleted: a restore must not undo a decision somebody else took. The candidates are
-**locked before their history is read**. The deleted-file sweep (ADR-083) locks the rows it purges and
+**locked before their history is read**. The D-22 deleted-file sweep (`attachmentFileSweep.service.js`) locks the rows it purges and
 writes a `file-purge` DELETE row in the same transaction, so a sweep that got there first is seen
 (its row is now the latest DELETE, and a row whose bytes are gone is not revived), and a later sweep
 skips the locked rows.
@@ -4007,6 +4114,593 @@ skips the locked rows.
 
 ---
 
+## ADR-079: MQTT Replicas Share One Subscription and Read Under a Cap; a GDPR Export's Expiry Lives on Disk and the Retention Sweep Enforces It; a Retention Value That Cannot Be Applied Is a Failed Run; the Rate Limiter's Memory Fallback Is Bounded; a Grace Period Needs a Suspended Tenant
+
+**Date:** 2026-09-27 · **Findings:** W-14, W-15, W-16, W-19, W-21 (`TASKS/AUDIT-2026-09-ASYNC.md`); W-10, W-13 and W-20 verified already fixed (S-03, P7-02 + A-14, A-122 + D-23) · **Extends:** ADR-069 (the sweep's context and audit rules), P7-02 (`jobMonitor.service`) · **Migrations:** none (0085 was offered and not needed)
+
+**Context**
+
+The last open cards of the async audit:
+
+- **W-14.** Every replica subscribed to plain `device/#` with its own client id. The broker delivered each
+  message to all of them, so N replicas stored N readings and raised N tenant-wide anomaly alerts. The
+  handler ran each ingest detached, with no limit on how many ran at once.
+- **W-15.** A GDPR subject-access export ZIP was deleted only by a 168-hour `setTimeout` in the process
+  that built it. A restart inside the week left the subject's exported personal data on disk forever.
+  The unpacked working directory waited on the same timer.
+- **W-16.** `getRetentionPolicy` parsed stored periods with `parseInt`. `""`, `"forever"` and null became
+  NaN, which the purge skipped every night with no trace, and `"30abc"` became 30.
+- **W-19.** The rate limiter's in-memory fallback (the store whenever Redis is not ready) expired an entry
+  only when that key was read again. A one-off IP's bucket never is.
+- **W-21.** `enterGracePeriod` stamped a deadline on a tenant in any state. A tenant suspended after that
+  deadline had passed was offboarded by the next scheduler run, with no grace.
+
+**Decision**
+
+1. **MQTT ingest uses a shared subscription** (`iot.service.js`): `$share/<MQTT_SHARED_GROUP>/device/#`,
+   group `callibrator` by default. `MQTT_SHARED_GROUP=none` subscribes to plain `device/#` for a broker
+   without shared subscriptions; only one replica may then run MQTT. A group name holding `/`, `+` or `#`
+   falls back to the default and logs an error. Client ids get a random suffix.
+2. **Ingest reads under a cap** (`MQTT_INGEST_CONCURRENCY`, 8). Ingest runs from the client's
+   `handleMessage(packet, done)`, not a `"message"` listener. mqtt.js reads the next packet only after
+   `done`, so at the cap `done` is withheld until an ingest finishes. The backlog waits in the broker and
+   in TCP, not in memory or in the database pool.
+3. **A GDPR export's expiry is on disk.** `exportUserData` writes `<exportId>.json` (tenant, subject,
+   created, expires) **before** any other file, deletes its working directory as soon as the ZIP exists,
+   and sets no timer. `gdpr.service#purgeExpiredExports`, called at the end of the nightly
+   `runRetentionSweep`, deletes each expired ZIP and working directory, writes one audit row in the
+   export's tenant (`runForTenant`, actor `system:retention-purge`, `resourceType: "DataExport"`,
+   `operation: "GDPR_EXPORT_EXPIRED"`), and deletes the manifest **last**, so a failed audit row is
+   retried by the next sweep. The rules for other cases:
+   - An export with no manifest (written before this change) expires by the timestamp in its id. It is
+     deleted and logged, not audited, because its owner is not recorded anywhere.
+   - A manifest whose expiry does not parse counts as expired.
+   - A manifest that is not JSON is an error, and its files are kept.
+   - Names that do not match an export id are never touched.
+4. **A retention value that cannot be applied is reported, and the run fails.**
+   - A stored override must be a whole number of days (`/^\d+$/` after trimming). Anything else falls back
+     to the platform default.
+   - A malformed platform default (the environment) has nothing to fall back to. That entity is not
+     purged.
+   - Both cases are logged at `error`, returned as `anomalies`, and counted in the sweep summary.
+   - `retentionScheduler#failureOf` makes a run with anomalies, per-tenant errors or export failures
+     (`exportErrors`) a FAILED run, which `jobMonitor` alerts on.
+   - `setRetentionPolicy` refuses a non-integer with 400 itself, not only through the route validator.
+5. **The memory fallback is bounded** (`rateLimiter.redis.service.js`):
+   - A sweep of expired entries runs every 60 s on an unref'd timer, which stops when the Map is empty.
+   - The Map holds at most `RATE_LIMIT_MEMORY_MAX_KEYS` (100,000). Writing a new key at the cap evicts the
+     entry written longest ago, because a write re-inserts its key.
+   - Eviction is logged at `warn`, at most once a minute.
+6. **A grace period needs a suspended tenant.** Any other state is a 409 that names the state and says to
+   suspend first. Nothing is saved.
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| Route MQTT through RabbitMQ (the card's first suggestion) | brings prefetch and the DLQ, but it adds a hop and a second at-least-once system to a feature that is off on every deployment (A-17, A-29). The shared subscription removes the fan-out at the broker, and the cap gives the backpressure |
+| An idempotency key on `iot_readings` (a producer-side message id, unique per device) | needs migration 0085 and a payload contract no device yet sends. Subscriptions are QoS 0, so the broker never redelivers, and the fan-out was the only source of duplicates. This is the right next step if QoS 1 ingest is wanted |
+| Drop messages past a queue size | a dropped reading is lost environmental evidence. Withholding `done` loses nothing |
+| A `gdpr_exports` table for the expiry | needs a migration, and the file and its expiry could still disagree after a restore of one without the other. A manifest next to the ZIP is the same durable fact, stored where the data is |
+| Keep the timer as a fast path beside the sweep | two deletion paths, and the timer's path could not write the audit row in a tenant context without duplicating the sweep. The file is deleted up to one sweep interval late instead (below) |
+| On a malformed retention value, keep the entity forever (the previous effective behaviour) | this is the defect. Keeping data longer than the tenant's policy, silently, is what W-16 reported |
+| Refuse to purge the whole tenant on any malformed value | one bad key would stop the purge of the other entities, which is W-16 again in another shape |
+| An LRU on reads for the rate-limit fallback | every read would reorder the Map. Write order is enough, because a live counter is written on every request |
+| Refuse new keys at the cap | a refused key would be un-counted, which fails open for exactly the addresses a spray uses |
+| Accept a grace period on an active tenant and clear it on suspension | it hides the operator's mistake. A 409 tells them the state |
+
+**Implications, including the bad ones**
+
+- **MQTT shared subscriptions need broker support.** Mosquitto 2, EMQX, HiveMQ and VerneMQ have it. A broker
+  without it either refuses the subscription (logged as `IoT MQTT Subscribe Error`) or treats `$share/...`
+  as a literal topic and delivers nothing. `MQTT_SHARED_GROUP=none` is then the setting, with one replica.
+- **Shared subscriptions receive no retained messages** (MQTT 5 §4.8.2). A reading published as retained
+  before the backend connected is no longer ingested on connect. That replay was one of W-14's own
+  complaints.
+- **Ingest throughput per replica is bounded** at `MQTT_INGEST_CONCURRENCY` concurrent database
+  transactions. A sustained rate above that backs up in the broker, whose own queue limits then apply.
+- **Still open on W-14:** no alert suppression window. A flapping sensor still raises one tenant-wide alert,
+  and one audit row, per out-of-tolerance reading (ADR-069's implication stands).
+- **A GDPR export can outlive its stated `expiresAt` by up to one sweep interval** (`RETENTION_SCHEDULER`,
+  daily by default), and indefinitely if the retention scheduler is disabled. Before, a restart made it
+  indefinite in any case.
+- **Exports written before this change have no audit row on deletion.**
+- **A GDPR export's creation is still not audited.** Only its expiry is.
+- **The `downloadUrl` an export returns points at no route.** No `/gdpr/exports/:id/download` exists. This
+  was true before this ADR and needs its own card.
+- **A retention anomaly makes the job red every night until the setting is fixed.** Alerts repeat at most
+  every `JOB_ALERT_REPEAT_HOURS`. That is intended.
+- **At the rate-limit cap, the fallback under-counts.** An evicted counter, which could be a lockout written
+  during the outage, restarts from zero. The cap is 100,000 keys, far above one process's normal key count,
+  and it applies only while Redis is down.
+- **The grace-period 409 is a new failure for any caller that set a grace period on an active tenant.** No
+  frontend call site was changed here.
+
+**Verified.**
+
+- Unit suites: `iot.ingest.w14.test.js`, `gdpr.exportSweep.w15.test.js`, `dataRetention.policy.w16.test.js`,
+  `rateLimiter.memoryBound.w19.test.js`, `tenantLifecycle.gracePeriod.w21.test.js`.
+- Live, on PostgreSQL 18 (`pgvector/pgvector:pg18`, schema by `db.sync()` + every migration) and
+  Mosquitto 2.1: `iot.sharedSubscription.w14.live.test.js`, `retentionExports.w15w16.live.test.js`.
+- Fail-before: every one of those suites fails on `f0d7f08`, the tree before this change. Live, the old
+  code stored **2** readings and **2** alerts per publish with two replicas, duplicated burst messages,
+  and left the malformed-setting tenant's 200-day-old notification in place.
+- Guards for the already-fixed cards: `jobMonitor.coverage.w13.test.js` (W-13) and
+  `tenantHardDelete.w20.live.test.js` (W-20). Both pass on `f0d7f08`, because the fixes predate them.
+
+**Status:** Accepted, implemented 2026-09-27.
+
+---
+
+## ADR-080: A TOTP Seed Is a KMS Envelope Bound to Its User; the Backup Status ENUM Is Not Widened, and Its Legacy Path Column Is TEXT
+
+**Date:** 2026-09-27/28 · **Findings:** S-20, S-32 · **Migrations:** `0086`, `0087` · **Extends:** ADR-062 (5)
+
+**Context**
+
+- **S-20.** `users.mfa_secret` (the live TOTP seed) and `users.mfa_pending_secret` (an enrolment,
+  A-114) were plaintext `VARCHAR(255)`. A `pg_dump` — `make backup` writes one, unencrypted — gave out
+  every account's second factor. On `f0d7f08`, PostgreSQL 18, `setupMfa` stored the seed it returned
+  byte for byte. The rest of the at-rest inventory was checked against the models (2026-09-27):
+  `tenant_settings` secrets, `webhooks.secret` (A-51), `tenant_keys.private_key` (S-08) and custom-domain
+  TLS keys are KMS envelopes; API keys, refresh tokens, IoT tokens (A-29), recovery codes (A-141) and
+  e-mail OTP codes are hashes; `webauthn_public_key` and `webauthn_credential_id` are public material;
+  `custom_domains.verification_token` is published in DNS by design. The TOTP seeds were what remained.
+- **S-32.** The board row still said TODO, but the code had been fixed on 2026-09-24: the service uses
+  only `status` ENUM members (restoring → `in_progress` claimed from `completed`; restored →
+  `completed` + `restored_at`; deleting → `deleted` + soft delete in one transaction), the HTTP backup
+  writes its `CREATE` audit row and stamps `expires_at`, and `backup_path` is no longer written. Left:
+  the 255-character column, and completed backups taken over HTTP before the fix with no `expires_at`.
+
+**Decision**
+
+1. **A TOTP seed is stored only as a `kms.service` v2 envelope, with AAD `users.mfa:<userId>`**
+   (`mfa.service#sealSecret` / `#openSecret`). The AAD is the **user** id, not the tenant id: a user's
+   tenant can be null (the platform operator) and can change (a tenant move). Both columns share it, so
+   `verifyMfaSetup` promotes the pending envelope unchanged. `consumeCode` opens whatever it is given, so
+   every verify path (`loginMfa`, rotation, e-signature/certificate signing) is unchanged for callers.
+2. **The User model refuses a plaintext seed** on every ORM write path — instance save, `bulkCreate`,
+   static `update`, `upsert`. `hooks: false` is the only bypass.
+3. **Migration `0086`** widens both columns to `TEXT` and seals every plaintext seed through
+   `keyRotation.service#rewrapTarget` (optimistic write, re-read, decrypt-compare), soft-deleted users
+   included. It **refuses** — naming the user id and column, never the value — a value that is not a
+   base32 seed of at least 16 characters, or an envelope the ring cannot open; the transaction then
+   leaves every row and both types as they were. `down` decrypts back to plaintext and restores
+   `VARCHAR(255)` (the pre-0086 code reads nothing else), and refuses on a row it cannot open.
+4. **`keys:rotate` and the boot KMS check cover the seeds.** `keyRotation.service` TARGETS gain
+   `users.mfa_secret` and `users.mfa_pending_secret` with an `aad` derivation and a legacy converter
+   (plaintext seed → envelope). The UPDATE predicate became `tenant_id IS NOT DISTINCT FROM`, since a
+   user's tenant can be null. Reports carry `column`. `kmsVerify.util` decrypts its v1 sample under the
+   target's AAD.
+5. **S-32: the status ENUM is NOT widened.** `deleting`, `restoring` and `restored` would be values
+   nothing writes; the model's `STATUS` stays exactly the ENUM (pinned by
+   `tenantBackup.status.s32.test.js`). **Migration `0087`** makes `backup_path` `TEXT` (a legacy
+   column, read as a fallback, no longer a trap for a future writer) and backfills `expires_at =
+   created_at + retention_days days` for a `completed` row with none — the pruner's own rule. A row with
+   no positive `retention_days` is left NULL: the pruner's fallback is a runtime setting, not guessed.
+   `down` restores `VARCHAR(255)`, refusing while a longer path exists, and keeps the backfill (it equals
+   what the pruner derived without it).
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| Tenant id as the AAD, like every other envelope | null for the operator; a tenant move would make the seed unreadable |
+| A different AAD per column | the promotion pending → live would have to decrypt and re-encrypt; binding to the column adds nothing an attacker with write access lacks |
+| Encrypt transparently in model hooks (as `tenant_settings`) | the AAD needs the id on every static path, and a decrypting `afterFind` puts the plaintext in `toJSON`; an explicit seal plus a refusing hook fails closed |
+| Accept only envelopes on read | a row restored from a pre-0086 dump would lock its user out; such a row is still sealed by the next `keys:rotate` or migration run |
+| Add the three states to the ENUM (the card's wording) | the service was already fixed to ENUM members, and schema that no code writes is drift |
+| Leave `backup_path` at 255 | nothing writes it today; the next writer would meet the same "value too long" |
+
+**Implications — including the bad ones**
+
+- **A seed now depends on the KMS ring.** A database restored without its `KMS_MASTER_KEY` fails MFA
+  sign-in with a 500 (a misconfiguration, deliberately not reported as a wrong code), and the boot check
+  (ADR-078) refuses first. `KMS_MASTER_KEY` escrow now also protects every second factor.
+- **A legacy plaintext value still reads**, so the plaintext-refusing guarantee is on WRITE and on the
+  data 0086 converted, not on arbitrary rows put in by hand with raw SQL.
+- **0086 can refuse the boot** on a corrupt seed; the message says to reset that user's MFA.
+- **Recovery codes stay SHA-256 hashes** (80-bit codes; A-141). E-mail OTP codes are unsalted SHA-256 of
+  six digits — trivially reversible from a dump but valid only until `otp_expired_at`; not changed here.
+- **`npm run migrate` did not exit** after `[migrate] up` on this run (Node 26, `tsx`); the migrations
+  had applied. Not investigated here.
+
+**Verification (PostgreSQL 18.6, `pgvector/pgvector:pg18`)**
+
+- **Fresh boot and down/up**, `secretsAtRest.s20.live.test.js` (9 tests, `DB_APP_ROLE=callibrator_app`):
+  `db.sync()` builds TEXT; every migration applies; schema and KMS verifiers pass; an upgrade from
+  VARCHAR with plaintext seeds (operator with no tenant, soft-deleted user, pending enrolment) applies
+  exactly 0086 and 0087; re-run is a no-op; down restores plaintext and VARCHAR(255); a non-seed is
+  refused naming the user; as the application role the real-otplib path seals at setup, promotes, verifies
+  the next code and refuses its replay; the model refuses a plaintext write; an HTTP-path backup is
+  `completed` with `expires_at` and a `CREATE` row, and a delete succeeds with its `DELETE` row.
+- **Upgrade from the real pre-change code:** `f0d7f08` built the schema and enrolled a user through its
+  own `setupMfa` (plaintext stored); `npm run migrate` on `c905e74` applied 0086–0090; then, as
+  `callibrator_app`: `verifySchema` no problems, `verifyKmsKeys` 3 envelopes and no problems, the pre-0086
+  enrolment completed with a real code, the next code accepted and its replay refused; `pg_dump | grep`
+  found none of the three seeds.
+- Unit: `mfa.secretAtRest.s20`, `user.mfaSeedAtRest.s20`, `0086-user-mfa-secrets-kms-envelope`,
+  `0087-tenant-backup-path-and-expiry`, `keyRotation.service.s08`, `mfa.realOtplib.a99`,
+  `mfa.rotation.a114`, `auth.service` (setupMfa), `0028-user-mfa-pending-and-replay`,
+  `kmsVerify.util.p705`. Fail-before on `f0d7f08`: every S-20 suite fails (34 tests).
+
+**Status:** Accepted, implemented 2026-09-27/28.
+
+---
+
+## ADR-076: Node 26 Is Pinned Everywhere; TypeScript 7 Runs Beside the TypeScript 6 API; No `console.*` Outside Terminal CLIs; the Pre-Push Hook Installs Its Own Gitleaks; Unused Dependencies Are Removed
+
+**Date:** 2026-09-27/28 · **Findings:** A-42, A-18, A-257, A-19 (remainder) · **Owner instructions:** 2026-09-27 (Node 26, every dependency to latest, TypeScript 7.0.2) · **Extends:** A-14, ADR-066, ADR-087
+
+**Context.** Four hygiene cards, then two owner instructions on top of them. A-42 left 24 runtime `console.*` sites that bypass the winston logger and the A-14 redactor. A-18 listed unused dependencies. A-257: the suite silently breaks on the wrong Node major. A-19 left the pre-push hook without a way to get the scanner it runs. The owner then moved the target from Node 24 to **Node 26**, asked for every dependency at its latest release, and overrode the earlier TypeScript 6 hold: **TypeScript 7.0.2 in every workspace**. TypeScript 7 is the native compiler and ships **no JavaScript compiler API**. Its main export is `lib/version.cjs`, and only `typescript/unstable/*` is exported besides.
+
+Most of this change was committed unverified in `a31c601`, when the owner committed every agent's in-flight edits. This ADR records what it contains, what was wrong in it, and the evidence.
+
+### Decision
+
+1. **Node 26, one source of truth (A-257).** The root `.nvmrc` is `26`, and `engines.node` is `>=26 <27` in all three manifests. Both Dockerfiles use `node:26.10.0-alpine@sha256:0b36e8c136b94cd4fcf02188228e76c31ad5872eef3fec8cbd2eee500cfd9e80`; the digest was read from a real `docker pull`, not just from the Hub API. CI's `NODE_VERSION` is `26.10.0`. The pkg targets are `node26-linux-x64` and `node26-win-x64`. `@yao-pkg/pkg` 6.22.0 / pkg-fetch 3.6 publish node26 base binaries (v26.2.0 up to v26.8.1), so moving the binary to 26 was not a trade-off. The built binary embeds **v26.5.1**, the newest base its patch set covers, not 26.10.0. A jest `globalSetup` (`src/tests/setup/nodeMajor.globalSetup.js`) reads `.nvmrc` and refuses any other major with one message, before any suite runs.
+2. **TypeScript 7 beside the TypeScript 6 API — the side-by-side layout the TypeScript 7.0 announcement recommends.** In both workspaces:
+   - `"@typescript/native": "npm:typescript@^7.0.2"` is **the compiler**. `npm run typecheck` runs `node ../node_modules/@typescript/native/bin/tsc … --noEmit`. It is called by path because `node_modules/.bin/tsc` is claimed by **both** TypeScript 7 and TypeScript 6's nested `@typescript/old`, and npm linked 6.0.3 there. A bare `npx tsc` would silently check with 6. CI's frontend step and the pre-push hook now call `npm run typecheck`, and `backend/scripts/build-dist.ts` resolves `@typescript/native/package.json` for its `tsc`.
+   - `"typescript": "npm:@typescript/typescript6@^6.0.2"` is **the API** for the tools that still need one. That is typescript-eslint 8.70.1, whose latest and canary releases both peer `typescript >=4.8.4 <6.1.0`; with TypeScript 7 installed as `typescript` it throws "typescript-eslint does not support TS 7.0" (probed). The others are `next build`'s own type-check step and ts-jest.
+   - **`next build`** keeps its type-check. Next 16.3.6 loads `typescript/lib/typescript.js`, which the TypeScript 6 package provides, so `ignoreBuildErrors` is **not** set. The build is therefore gated twice: by TypeScript 6 inside `next build`, and by TypeScript 7 in `typecheck` (CI and `make verify`).
+   - **Frontend jest: ts-jest stays, transpile-only.** `frontend/tsconfig.json` sets `isolatedModules: true`, so ts-jest calls `ts.transpileModule` and **type-checks nothing** (it never did). It needs only the TypeScript 6 API. next/jest (SWC) was tried and **refused**: it emits imports in ESM order, ahead of the module-scope mock objects 13 suites declare before their imports. Those 13 suites failed with "Cannot access 'x' before initialization"; the other 142 passed.
+   - **Backend jest** keeps ADR-087's babel-jest with `@babel/preset-typescript`. It is now on **Babel 8** (8.0.1 presets, `@babel/core` 8.0.6). Babel 8 removed `allowDeclareFields` and throws on every `.ts` file when it is passed, so the option was deleted from `backend/jest.config.js`. `babel-jest` 30.5.2 loads the root `@babel/core` 7.29.7 with the Babel 8 presets. A probe `.ts` module with a `declare` field transformed and ran, and `jest.spyOn` on its export worked, which is ADR-087's reason for Babel.
+3. **No `console.*` outside terminal CLIs (A-42).** The 24 runtime sites now log through `activityLog.middleware`'s `logger`, at the level the call used, with structured fields instead of interpolation. They are in `config/socket.js` (9), `backend/index.js` (2), `notification.service.js` (3), `sso.service.js` (1, a duplicate of the logger line beside it), `calibrationDevices.controller.js` (1) and migrations `0012` (4), `0032` (2), `0036` (1) and `0056` (1). `index.js`'s startup failure is now one redacted line with the stack, instead of an unredacted `console.error` of the whole error. There is no pre-logger boot exception: the logger requires only winston, winston-daily-rotate-file and a path helper, and loads before anything that logs. The guard `src/tests/guards/noConsole.a42.test.js` scans `backend/src` (tests excluded) and `backend/index.js` for **any** reference to the global `console`, with comments stripped and strings kept. The **allow-list** has seven entries:
+   - the six terminal CLIs in `src/scripts/`: `backfillEmbeddings`, `breakGlassMfaReset`, `migrateStorage`, `rotateKeys`, `seedDemo`, `verifySchema`. Each must carry an in-file `// A-42 console-allowed:` comment;
+   - `src/utils/checkMenu.util.js`, marked `pendingRemoval`. It is a module-load debug dump of every role and menu row with no caller; deleting it was refused by the permission system in this change, and is left to the owner.
+
+   The guard also fails on a stale entry (a file that no longer exists or no longer uses the console), and on an allowed file outside `src/scripts/` that is not pending removal.
+4. **The pre-push hook installs its own scanner (A-19).** `make hooks` now also runs `scripts/git-hooks/install-gitleaks.sh`. It installs gitleaks **8.30.1**, CI's version, into the git-ignored `.tools/bin`. The script carries the release's sha256 for linux, darwin and windows (x64 and arm64); the linux_x64 value is CI's own. It verifies the checksum before installing anything and is idempotent. The hook puts `$PWD/.tools/bin` first on its `PATH`: `$PWD`, not the `git rev-parse --show-toplevel` value, because on Windows that value is `C:/…` and its colon split the `PATH` entry. That was found by the test, not by review. The hook also ignores blank stdin lines and runs `npm run typecheck` for the frontend.
+5. **Unused dependencies are removed (A-18).** The removals rest on a per-dependency grep of `require`/`import`/`jest.mock` specifiers and file mentions, plus a single-pass depcheck-style scan of each workspace (the scan's source is not committed):
+   - **backend:** `acme-client`, `aedes`, `aedes-server-factory`, `clamdjs`, `fs-extra`, `randomstring`;
+   - **frontend:** `@testing-library/user-event`, `@tiptap/extension-link`, `eslint-plugin-react` (it comes in through `eslint-config-next`), `jest-cli`;
+   - **root:** `eslint-plugin-react`.
+
+   `pg` and `pg-hstore` were kept: Sequelize's postgres dialect `require`s both. `nodemon`, `prettier`, `@yao-pkg/pkg` and `eslint` stay; the scripts use them. `backend/package.json` is renamed `express-boilerplate` → `callibrator-backend`, and its "Harvester" description is replaced. `build:bun` is gone (P9 had also dropped it). `ai.service#chunkText`'s comment had already been corrected.
+
+   **Not done:** `backend/.eslintrc.js` is still present. It is ignored by ESLint 9, and its deletion was refused by the permission system together with `checkMenu.util.js`.
+6. **Every dependency at its latest release, with two majors held.** The holds and their reasons:
+   - **ESLint 9.39.5, not 10.11.0**, and `@eslint/js` 9.39.5, not 10.0.1, which must match it. `eslint-config-next` 16.3.6 brings `eslint-plugin-react` 7.37.5 (peer `eslint … ^9.7`), `eslint-plugin-import` 2.32.0 (`… ^9`) and `eslint-plugin-jsx-a11y` 6.10.2 (`… ^9`). None accepts ESLint 10, checked on the registry 2026-09-27. The root `overrides.eslint` stays 9.39.5.
+   - **ts-jest 29.4.14** (peer `typescript <7`) runs on the TypeScript 6 package by design (item 2); it is not a hold on TypeScript.
+
+   `npm-check-updates` reports nothing else outstanding. `npm audit`: **0 vulnerabilities**. `allowScripts` was reviewed. The one install script it does not name, `fsevents` 2.3.3, is darwin-only and optional, and was already in the lockfile before this change. Nothing new needs approval.
+7. **The backend image runs `npm run build:dist` before `pkg`.** Phase 9 moved `package.json`'s `bin` to `dist/index.js`, and the Dockerfile in `a31c601` never built `dist/`. `pkg` refused with "Bin file does not exist": **the committed backend image did not build**. That was found by this change's `docker build`.
+
+### Alternatives considered
+
+| Alternative | Why not |
+|---|---|
+| Keep the pkg binary on Node 24 while everything else moves to 26 | not needed: pkg-fetch publishes node26 bases. Two majors would make every "tested on" claim ambiguous |
+| TypeScript 7 as `typescript`, and `--legacy-peer-deps` for typescript-eslint | typescript-eslint refuses to load at runtime ("does not support TS 7.0"), and Next's in-build check and ts-jest need `lib/typescript.js`. It installs and then breaks lint, the build and every test |
+| npm `overrides` to nest TypeScript 6 under typescript-eslint only | npm refuses it with ERESOLVE: a peer cannot be split from the root's copy. Probed |
+| `ignoreBuildErrors` in `next.config.ts`, with TypeScript 7 as the only checker | unnecessary: Next finds the TypeScript 6 API in the side-by-side layout, and it removes a gate for nothing |
+| next/jest (SWC) for the frontend | 13 suites fail on import order (item 2). Rewriting them belongs to the frontend board's owner and would change what they test, for no type-safety gain: ts-jest already transpiles only |
+| @swc/jest for the backend | ADR-087 already refused it: SWC's getter exports break `jest.spyOn` |
+| Keep Babel 7 for the backend | the owner's instruction was latest. Babel 8's one breaking option is removed, and a probe proves the transform and `spyOn` |
+| ESLint 10 now | three plugins that `eslint-config-next` pins peer ESLint ≤ 9 |
+| A forced hook installed by `npm install` (A-19's original DoD) | ADR-066 refused it: a forced hook is the first thing people `--no-verify` |
+| Allow-list the migrations for `console` | a migration runs **at boot**, inside the production process, and its output was the only record of an unsigned-signer or flagged-account report. It is exactly what the redactor and the JSON stream exist for |
+
+### Implications, including the bad ones
+
+- **Two TypeScripts are installed.** `typescript` means 6 and `@typescript/native` means 7. `npx tsc` means **6**: a developer who types it checks with the wrong compiler and gets no warning. Every committed entry point calls 7 by path. This lasts until TypeScript 7.1 ships an API and typescript-eslint supports it (typescript-eslint#10940). Then `typescript` becomes 7, `@typescript/native` goes, and ts-jest must be replaced or dropped.
+- `next build` type-checks with **6**, `typecheck` with **7**. They can disagree, and a change must pass both.
+- ts-jest and Babel type-check nothing. **Types are only as safe as the `typecheck` step**, and `make verify` is manual (CLAUDE.md).
+- The backend jest transform mixes `@babel/core` 7 (babel-jest's) with Babel 8 presets. It works today, as probed. A babel-jest release that pins core 8, or a preset that asserts `api.assertVersion(8)`, would surface as every `.ts` suite failing to run.
+- The binary runs Node **26.5.1** while the images and CI run 26.10.0. That is a patch-level gap, bounded by pkg-fetch's release cadence.
+- The console guard is static. It cannot see `globalThis["con"+"sole"]`, and it does not police `process.stdout.write`.
+- `checkMenu.util.js` and `backend/.eslintrc.js` remain until the owner deletes them.
+- **Lint is red independently of this change.** The ratchet reports 1,061 errors against a baseline of 950, from files outside this change (migrations `0006`, `0007` and the e2e smoke suite). `notification.service.js:360`'s `curly` error dates from 2026-09-10. Every file this change wrote lints clean.
+
+### Change record — evidence (Node v26.10.0, npm 12.0.1, tree at `c905e74` plus the working changes)
+
+- **Backend:** `npm run test:coverage` → **637 suites passed (23 skipped), 12,775 tests passed (148 skipped), 100 % statements, branches, functions and lines**, exit 0. An earlier run the same day (626/633 suites, 17 failures) failed only in suites other agents had in flight (webhook, auth MFA, migration 0028, D-05's `kmsVerify.util.js`), plus the A-257 test, which still said 24 and was fixed.
+- **Backend:** `npm run typecheck` (TypeScript 7.0.2) exit 0; `npm run build:dist` → 477 JavaScript files copied.
+- **Frontend:** `npm run typecheck` (TypeScript 7.0.2) — 1,542 files, exit 0; a planted `const x: number = "no"` → TS2322, exit 1. `npx jest --ci --coverage` → **155 suites, 1,380 tests passed**, thresholds met (43.38 / 37.99 / 36.84 / 43.64). `npx eslint` → 0 errors, 60 warnings. `npx next build` → exit 0, "Running TypeScript … Finished".
+- **Images** (built from the repo root, then removed):
+  - `docker build -f backend/Dockerfile .` → exit 0 (after item 7). The container, with PostgreSQL 18 (pgvector), Redis 8.6 and an AMQP broker, answered **`GET /health` → 200 `{"status":"ok"}`**. Its `docker logs` were 45 lines, all JSON, none unparsed. RabbitMQ 3.13 itself would not start under this Docker Desktop (`.erlang.cookie: eacces`, even as root), so the broker was LavinMQ, an AMQP 0-9-1 server.
+  - `docker build -f frontend/Dockerfile .` → exit 0. The container runs Node v26.10.0 and served `/login` 200.
+- **Named tests:**
+  - `src/tests/guards/noConsole.a42.test.js` (6): "flags every form of reaching the console"; "does not flag comments, other identifiers or object keys"; "no console.* in backend/src (tests excluded) or backend/index.js outside the reviewed allow-list"; "every allow-list entry still exists and still uses the console (no stale exceptions)"; "every allowed file carries the in-file marker comment, unless it is pending removal"; "every allowed file that is not pending removal is a CLI script under src/scripts".
+  - `src/tests/guards/nodeVersion.a257.test.js` (14): the globalSetup refuses 24, 22 and 27 with the fix in the message, accepts any 26.x, refuses an `.nvmrc` that names no major, and is registered; the three `engines`, both Dockerfiles, CI's `NODE_VERSION` and every `setup-node`, and the pkg targets all name 26.
+  - `src/tests/guards/prePushHook.a19.test.js` (11), all against the real hook in scratch git repositories: a gitleaks finding refuses the push, and the scan is exactly the pushed range; a clean push; a new branch as `--not --remotes`; a delete or empty input does nothing; a loud SKIP with no gitleaks; **with the real gitleaks, a generated AWS key in a pushed commit is refused and redacted**. Also: `make hooks` sets `core.hooksPath` and runs the installer; `.tools/bin` comes first on the `PATH` and is git-ignored; the installer pins CI's version and checksum; the checksum is verified before install; the hook is mode 100755.
+  - Updated for the logger: `socket.test.js`, `socket.redisAdapter.live.test.js`, `calibrationDevices.controller.test.js`, `notification.service.test.js` (plus "A-42: a missing payload is logged through the logger and returns null"), and migrations `0032`, `0036`, `0056`.
+- **Fail-before**, in a `git worktree` at `2acce51` (before `a31c601`) with the three guard files copied in: all three suites fail.
+  - The A-42 guard names **exactly the 24 runtime sites** listed in item 3, and the marker check fails.
+  - The A-257 suite fails on the absent `.nvmrc`.
+  - The A-19 suite fails on the absent installer.
+
+  The worktree was removed (the `node_modules` junction first, with `rm` on the link).
+- **Console sites:** before, `backend/src` had 52 `console.*` lines outside tests. Two of those were comment mentions in migrations `0032` and `0036`, so 50 calls, plus 2 in `backend/index.js`: 52 calls in all. The 24 runtime calls were converted. After: 0 outside the allow-list, and 28 inside it (21 in the six CLIs and 7 in `checkMenu.util.js`).
+
+**Dependency table** (ranges in the manifests; the lockfile resolves each to the newest matching release).
+
+| Workspace | Package | Before (`2acce51`) | After | Hold / reason |
+|---|---|---|---|---|
+| root | `turbo` | `^2.11.3` | `^2.11.5` | |
+| root | `eslint-plugin-react` | `^7.37.5` | removed | unused at the root |
+| root | `eslint` (override) | `9.39.5` | `9.39.5` | **held**: see item 6 |
+| backend | `@aws-sdk/client-s3`, `@aws-sdk/s3-request-presigner` | `^3.1139.0` | `^3.1141.0` | |
+| backend | `@simplewebauthn/server` | `^14.0.2` | `^14.0.3` | |
+| backend | `amqplib` | `^2.0.1` | `^2.1.0` | |
+| backend | `dotenv` | `^18.0.3` | `^18.0.4` | |
+| backend | `nodemailer` | `^10.0.10` | `^10.0.11` | |
+| backend | `socket.io` | `^4.8.3` | `^4.8.4` | |
+| backend | `acme-client`, `aedes`, `aedes-server-factory`, `clamdjs`, `fs-extra`, `randomstring` | various | removed | no reference in any code (A-18) |
+| backend | `typescript` | — | `npm:@typescript/typescript6@^6.0.2` | the TypeScript 6 API for typescript-eslint (item 2) |
+| backend | `@typescript/native` | — | `npm:typescript@^7.0.2` | the compiler |
+| backend | `@babel/core`, `@babel/preset-typescript`, `@babel/plugin-transform-modules-commonjs` | — | `^8.0.1` | ADR-087's transform, Babel 8 |
+| backend | `@types/express` `^5.0.6`, `@types/jest` `^30.0.0`, `@types/node` `^26.6.3`, `tsx` `^4.23.15`, `typescript-eslint` `^8.70.1` | — | added by P9 | typescript-eslint peers TypeScript < 6.1 |
+| backend | `@eslint/js`, `eslint` | `^9.39.5` | `^9.39.5` | **held**: 10 needs every plugin on ESLint 10 |
+| frontend | `motion` | `^13.4.3` | `^13.4.4` | |
+| frontend | `socket.io-client` | `^4.8.3` | `^4.8.4` | |
+| frontend | `@types/node` | `^26.6.2` | `^26.6.3` | |
+| frontend | `ts-jest` | `^29.4.13` | `^29.4.14` | peer TypeScript < 7: runs on the TypeScript 6 package |
+| frontend | `typescript` | `^6.0.3` | `npm:@typescript/typescript6@^6.0.2` | the API for Next, ts-jest and typescript-eslint |
+| frontend | `@typescript/native` | — | `npm:typescript@^7.0.2` | the compiler |
+| frontend | `@testing-library/user-event`, `@tiptap/extension-link`, `eslint-plugin-react`, `jest-cli` | various | removed | unused; `eslint-plugin-react` comes through `eslint-config-next` |
+| frontend | `eslint` | `^9.39.5` | `^9.39.5` | **held**: as above |
+
+**Docs amended (deviation protocol):**
+- Node 24 → 26: `docs/DEVOPS/02-CONTAINERIZATION.md` (image table, snippets, the `build:dist` step), `docs/ARCHITECTURE/03-BACKEND-ARCHITECTURE.md`, `docs/ARCHITECTURE/08-DEPLOYMENT-ARCHITECTURE.md`, `docs/BACKEND/00-BACKEND-STANDARDS.md`, `docs/ENGINEERING/02-PROJECT-STRUCTURE.md`, `docs/FRONTEND/11-BUILD-AND-BINARY.md`.
+- The hook: `docs/DEVOPS/01-CI-CD.md` and `docs/DEVOPS/11-MAKEFILE-REFERENCE.md`.
+- The console rule: `docs/ENGINEERING/12-LOGGING-CONVENTIONS.md`.
+- **Not amended:** `docs/ARCHITECTURE/11-DUAL-BACKEND-ARCHITECTURE.md` still says Node 24; it is ADR-089's document, left to its owner.
+
+**Status:** Accepted, implemented 2026-09-27/28, uncommitted in the working tree (no agent commits).
+
+---
+
+## ADR-078: A Restore Under the Wrong KMS Key Refuses to Boot; Two Secrets Are Escrowed, the Rest Regenerated; a Dump Restores Role First; a Soft-Deleted Device Keeps Its Serial
+
+**Date:** 2026-09-28 · **Cards:** P7-04, P7-05, P6-10, P6-06 · **Record:**
+`MEMORY/records/2026-09-27-p7-04-restore-drill.md` · **Migration:** none (0083 not used)
+
+**Context**
+
+No restore had ever been performed (P7-04). The documents named `CERT_SIGNING_SECRET` and
+`ENCRYPT_KEY` as the secrets that end recoveries and left `KMS_MASTER_KEY` out; the rotation runbook
+had met only seeded data (P6-10); and whether a soft-deleted calibration device holds its serial
+number was an open decision (P6-06). The drill ran all four on one throwaway compose stack
+(`-p callib-drill`, PostgreSQL 18, the backend image built from the release): two tenants with
+devices, calibration records, signed certificates with rendered PDFs, attachments, e-signatures,
+webhooks, an SSO secret and an MFA-enrolled super administrator; `make backup`'s `pg_dump`, a tarball
+of the upload/storage/backup volumes, the tenant backup through the API and the secrets taken
+separately; every volume and the `.env` destroyed; the documented restore followed; the checklist
+asserted before and after.
+
+What it found:
+
+- **D-1** — the backend image cannot render a certificate PDF: `pkg` does not package the ESM
+  `puppeteer-core` (`ERR_MODULE_NOT_FOUND …/puppeteer-core/lib/puppeteer/api/Browser.js`), so
+  `POST /certificates/:id/pdf` answers 500. The drill rendered the PDFs with the same service code on
+  the host. `--fallback-to-source` and adding the packages as `pkg` assets did not fix it. **Open.**
+- **D-2** — PostgreSQL ran crash recovery twice under load: the postmaster was PID 1 and treated a
+  killed health check's `pg_isready` as a crashed child ("untracked child process … exited with exit
+  code 2"), terminating every session. **Fixed:** `init: true` on the compose `postgres` service.
+  (RabbitMQ showed the same shape at teardown: a zombie that could not be stopped.)
+- **D-3** — a tenant backup taken through the API contained **no users**: the validator and the UI
+  send `"FULL"`, the export compared against `"full"`. Both drill archives held the tenant row and
+  `"users": []`. **Fixed** (`tenantBackup.service.js#isBackupType`). Separately, a "full" tenant backup
+  is the tenant row and its users and nothing else — the documents said "an admin deleted a warehouse
+  and wants it back".
+- **D-4** — a dump restored into a new cluster fails on every `GRANT … TO callibrator_app` (roles are
+  cluster-wide and not in `pg_dump`); `pg_restore` exits 1 with "errors ignored", and the backend then
+  refuses to boot with `role "callibrator_app" does not exist`. **Fixed in the procedure:** create the
+  role (and grant it to the owner) before `pg_restore --exit-on-error`.
+- **D-5** — the documented restore order put the secrets fourth; nothing, PostgreSQL included, starts
+  without the `.env` they live in. **Fixed in the procedure.**
+- **D-6** — **a restore under a new `KMS_MASTER_KEY` starts cleanly without the boot check** (measured with
+  it switched off, `KMS_VERIFY=warn`, which is the boot as it was before this ADR): `/health` 200, sign-in without
+  MFA, every list, public certificate verification — and then 500 on every e-signature and every MFA
+  sign-in (the super administrator, who must have MFA, is locked out). The two "bold" checks the
+  documents said would catch a lost-secrets restore both passed. Replacing `CERT_SIGNING_SECRET`,
+  `ATTACHMENT_URL_SECRET` and both JWT secrets, and removing `ENCRYPT_KEY`, broke **nothing** (the
+  checklist was identical apart from the probe devices).
+- **D-7** — `npm run migrate:status` (tsx, Node 26) printed its queries and never exited (killed by a
+  timeout, twice). `keys:rotate` exited normally. **Reported, not fixed.**
+
+**Decision**
+
+1. **Every boot verifies the KMS key ring against the database, and refuses on a miss (P7-05, D-6).**
+   `utils/kmsVerify.util.js`, called in `index.js` after the schema verification. For each column
+   `keys:rotate` re-wraps (`keyRotation.service` `TARGETS`, the MFA seeds included since S-20) it
+   groups the `v2:` envelopes by key id and requires every id to be in the ring; it decrypts one `v1:`
+   envelope per column as a sample, under `aadOf(target, row)`. It reads key ids and counts, never a
+   value it keeps. It is raw SQL across every tenant by design — listed in
+   `rawSqlTenantPredicate.d05.test.js` `CROSS_TENANT` with that reason. `KMS_VERIFY=warn` logs every
+   problem at error level and continues; it exists for the recovery in which the key is known lost.
+2. **Two secrets are escrowed; everything else is regenerate-on-loss (P7-05).** `KMS_MASTER_KEY` —
+   and every previous master key a retained backup is under — and, while a pre-0058 backup is kept,
+   `ENCRYPT_KEY`. Separately from the database and the host, by key id, verified whenever a backup is
+   verified. `docs/SECURITY/14-SECRET-ESCROW.md`.
+3. **The restore order is: secrets and `.env`, PostgreSQL alone, the database (role first for a
+   dump), the objects, then the application** (D-4, D-5). `docs/DEVOPS/04-DATABASE-BACKUP.md`.
+4. **The key rotation is rehearsed on the restored drill data (P6-10)** — `docs/SECURITY/13` § Rehearsal
+   against the drill data. The P6-10 DoD's "copy of production data" is still owed; the drill data is
+   realistic in shape, not in volume.
+5. **The serial-number index stays whole-table: a soft-deleted device keeps its serial (P6-06).** No
+   migration; 0083 is not used.
+
+   | | Argument |
+   |---|---|
+   | **Compliance** | A serial number identifies a physical instrument. A soft-deleted device is still the anchor of calibration records and certificates, which are append-only evidence (ADR-062) and whose public verification prints the serial (`verifyByCertificateNumber`). With a partial index, a second live row could take the serial, and "which device is `SN-123`" gets two answers inside one hospital — one of them carrying the history. ADR-049 already refused to let a migration decide which record is right; a partial index would let every user do it |
+   | **Operability** | A returned or re-acquired device must be registrable. With the whole-table index the create is a 409 — but since A-133 (ADR-075) that 409 names the deleted device's id and the administrator restores it, which brings its calibration history back with it. That is the correct outcome for the *same* physical device. The residual cost: a deleted device registered under a **wrong** serial blocks that serial until it is restored and corrected — rare, and resolvable in the application |
+   | **Decided** | Compliance, because operability's case is served by restore. The DoD's "partial on `is_deleted = false`" item is closed as decided against |
+
+   **Combined with A-133 (ADR-075), as measured on the drill stack:** create a device, delete it,
+   create the same serial again → **409** "held by a deleted calibration device … restore that device
+   (id …)"; the same serial in the other tenant → **201**; the other tenant restoring it → **404**;
+   restore → **200**; restore again → **409** "not deleted". A-133's "a live device now holds its serial"
+   409 cannot occur while the index is whole-table (no second row can hold the serial); it stays as the
+   backstop it describes itself as, and its comment's "possible once the serial index is partial" is
+   now a condition that was decided against.
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| Check the KMS key by decrypting every envelope at boot | boot time grows with the data, and the key id already answers the question for every `v2` value without touching plaintext |
+| Refuse only when **no** envelope decrypts | a half-restored ring (one key of two) would boot and fail on the other half |
+| Warn at boot instead of refusing | the failure mode being fixed is exactly a boot that looks fine; `KMS_VERIFY=warn` is the explicit opt-out |
+| Put the KMS check in `/health` | `/health` is polled and cached, and a health check that turns red after the boot has already let traffic in |
+| Escrow every secret in the inventory | escrow is a cost and a risk; the drill measured that only the KMS key (and the legacy key) are unrecoverable, and the rest are cheaper to regenerate than to guard |
+| A `make restore` target | it would encode a procedure rehearsed once, on compose only; written down first, automated after the second drill |
+| Include roles in the backup (`pg_dumpall --roles-only`) | it carries the owner's password hash and cluster-wide roles of other databases; creating the one role the application needs is smaller and explicit |
+| Partial serial index (P6-06, the DoD as written) | see decision 5 |
+| Unique on `(tenant_id, manufacturer, model, serial_number)` | the honest answer to "two different instruments share a serial"; a schema and UI change nobody has asked for yet. Open decision |
+
+**Implications — including the bad ones**
+
+- **A database with a value under a key nobody has refuses to boot.** Before, it served everything but
+  that value. A deployment carrying one orphaned webhook secret now needs `KMS_VERIFY=warn` or a
+  re-issue before it starts.
+- **Every boot runs five grouped queries over five columns** (plus a sample decrypt per column with v1
+  rows). Measured on the drill: not noticeable; not measured at production volume.
+- **The escrow is a procedure.** Nothing enforces that it exists or audits reads of it; there is no
+  external KMS.
+- **D-1 is open: the shipped image cannot render certificate PDFs.** Signing works; the document does
+  not. This is a release blocker for certificates and belongs to the image/packaging owner.
+- **RPO is the dump's age.** Nothing configures WAL archiving; the 1-hour RPO in
+  `docs/ARCHITECTURE/09` was marked "yes" and is not achievable as shipped.
+- **The RTO was measured once**, on compose, with a small data set: 234 s from restore start to
+  `/health` 200, of which ~110 s was the first attempt's missing-role failure. Kubernetes and
+  production volume are unmeasured.
+- **A soft-deleted device's serial stays reserved** until an administrator restores it.
+
+**Verification**
+
+- Drill, PostgreSQL 18 (`pgvector/pgvector:pg18`), compose project `callib-drill`, backend image from
+  `c905e74`: pre-incident and post-restore checklists (`04-check.js`) **identical** — per-tenant counts
+  (A: 8 devices / 16 records / 5 certificates / 8 attachments; B: 6 / 12 / 3 / 6), no foreign rows,
+  cross-tenant device 404, every certificate `valid` with the same integrity hash and a byte-identical
+  document, every attachment byte-identical through a fresh signed URL, both e-signatures valid;
+  audit trail: the 134 rows up to the dump identical (md5 digest), migrations pending 0 of 63.
+- Wrong KMS key: `[kms-verify] UNREADABLE` for `tenant_keys.private_key` (5), `tenant_settings.value`
+  (2), `users.mfa_secret` (1), `webhooks.secret` (4), `[kms-verify] FAILED`, no `/health`, restart loop.
+- Rotation rehearsal: 12 envelopes re-wrapped, failed 0; after the previous key was removed, an old
+  TOTP seed verified a real code, old and new e-signatures verified.
+- Tests: `kmsVerify.util.p705.test.js` (9; fails at `2acce51`: the module does not exist),
+  `tenantBackup.backupType.p704.test.js` (4; the "FULL" and "USER_ONLY" cases fail at `c905e74`),
+  `tenantBackup.service.test.js` (mock corrected to the model's real `BACKUP_TYPES`),
+  `rawSqlTenantPredicate.d05.test.js` (the `CROSS_TENANT` entry),
+  `dataIntegrity.p6.live.test.js` "ADR-078: a soft-deleted device keeps its serial — the index is NOT
+  partial on is_deleted" (opt-in live: the suite ran 22 of 22 green on a scratch `pgvector/pgvector:pg18`,
+  2026-09-28, the new case included).
+
+**Status:** Accepted, implemented 2026-09-27/28, uncommitted in the working tree (no agent commits).
+
+---
+
+## ADR-085: A Token That Names No Session Is Refused, and an Open Socket Is Re-Checked Every Minute; a Webhook Secret Rotates With a Bounded Overlap and Is Never Accepted From a Caller; Audit Rows Have One Write Path; the Coverage Figure States Its Scope
+
+**Date:** 2026-09-27/28 · **Findings:** P6-11, P6-12, P6-13, P6-14 (with A-41, A-48, A-59, A-51, A-32) · **Extends:** ADR-051 Q-13 (A-124), ADR-054, ADR-062, ADR-070
+
+**Context.** The four Phase 6 cards P6-11 to P6-14 each had an audit card (A-41, A-48, A-51, A-32)
+closed on 2026-09-24/25, and each carried Definition-of-Done items the audit card did not: revocation
+for sockets and sid-less tokens, a rotation overlap, a caller secret *refused* rather than dropped,
+the coverage figure's scope written down. Working them found one live defect: every webhook rotation
+and every webhook url change **failed on PostgreSQL** — `webhook.service.js` wrote its audit row with
+`AuditLog.create` and no `actorType`, a column NOT NULL since migration 0033 (A-124). The unit tests
+mocked `AuditLog.create`, so they passed. Proved on a pre-change worktree (`f0d7f08`) against
+PostgreSQL 18.6: `SequelizeValidationError: notNull Violation: AuditLog.actorType cannot be null`.
+
+**Decision**
+
+1. **An access token without `sid` is refused (P6-12).** `SIDLESS_ACCESS_TOKENS_ACCEPTED` is `false`.
+   Every issuer has set `sid` since A-59; the VM has run that code since the 2026-09-24 deploy
+   (`87de9bf`) with a 1-day token lifetime, so no valid sid-less token remains and the flip signs
+   nobody out. A socket token without `sid` is refused at the handshake too.
+2. **An open socket is re-checked every 60 s (P6-12).** `config/socket.js#checkPrincipal` is the
+   handshake check (live session, active user, tenant neither suspended nor deleted), and a per-socket
+   `setInterval` re-runs it and disconnects a socket that fails. A re-check that *errors* keeps the
+   socket. This is not a stricter rule than HTTP (Q-08) — it is the same rule, applied while open.
+3. **The revocation window is named in `docs/SECURITY/03-AUTHENTICATION-SECURITY.md`:** the next
+   request through the model hooks; at most 60 s when the hooks are bypassed or Redis was away; at most
+   60 s for an open socket. `JWT_ACCESS_EXPIRED` bounds only an unrevoked stolen token.
+4. **The liveness cache key stays `session:live:<sid>`, without the tenant id** — an exception to the
+   task conventions' rule. The check runs before any tenant is resolved, the token carries no tenant
+   claim, the sid is a server-generated primary key, and the cached entry is bound to the user id,
+   compared on every read.
+5. **A caller-supplied webhook `secret` is refused with 400 (P6-13)**, on create, patch and rotate
+   (`Joi.any().forbidden()` with a message). Stripping it silently was the card's named abuse case.
+6. **Rotation has a bounded overlap (P6-13).** `POST /webhooks/:id/rotate-secret` takes
+   `overlapHours` (0–168, default 24). The replaced secret is kept as its KMS envelope in
+   `webhooks.previous_secret` (migration **0090**, with `previous_secret_expires_at`), and while the
+   window is open every delivery also carries `X-Webhook-Signature-Previous` under it. `0` ends the old
+   secret at once. Rotating inside a window replaces the previous one: one old key at most. A url
+   change rotates with **no** overlap and clears any previous secret.
+7. **Webhook create, patch, rotate and delete write their audit row through
+   `audit.service#logAction` inside their transaction**, naming the actor. An actorless change is
+   refused (A-124), and rolls back.
+8. **`audit.service#logAction` is the only writer of `audit_logs` (P6-11).** Pinned by
+   `auditInTransaction.p611.test.js`, with every call passing a transaction except two named file
+   writes. `auditLog.middleware.js` has no caller; nothing compliance-bearing depends on it. The
+   covered set is re-stated as an addendum to `MEMORY/specs/A-41-audit-inside-transaction.md`.
+9. **The coverage figure is 100% of six layers (P6-14):** controllers, middlewares, routes, services,
+   utils, validators. The phantom `src/app.js` is removed from `collectCoverageFrom`; `backend/index.js`
+   is excluded with a written reason, its boot covered by CI `boot-and-migrate` and
+   `liveContract.smoke.test.js`. A new `istanbul ignore` is reviewed like an `eslint-disable`
+   (`docs/ENGINEERING/14-CODE-REVIEW-CHECKLIST.md`). Pinned by `coverageScope.p614.test.js`.
+10. **`SENSITIVE_KEYS` is not extended for webhooks.** The name now belongs to `tenant_settings`
+    (`constants/tenantSecretSettings.js`); the webhook secret is a column of its own, already a KMS
+    envelope (A-51), and `secret`/`previousSecret` are caught by both the log redactor
+    (`activityLog.middleware.js`) and the audit redactor (`auditRedaction.util.js`).
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| Keep accepting sid-less tokens "for compatibility" | nothing issues them any more; the only ones left are unrevocable, which is the defect |
+| Disconnect sockets from the revoke path (a `session:<sid>` room and `disconnectSockets`) | exact, but covers only revocation through the service; a suspended tenant, a banned user or a raw-SQL revoke would still be missed. The interval covers all of them with one rule. It can be added later as a fast path |
+| A shorter `JWT_ACCESS_EXPIRED` as the control | revocation is enforced per request; the lifetime is now a secondary bound, and the VM value is an operator change (open, below) |
+| Multiple signatures in one header (`v1=a,v1=b`) | breaks every receiver written from the current recipe, which compares the whole header |
+| Sign with the OLD secret until the window ends | a receiver that has switched early fails for the whole window |
+| No overlap (the A-51 behaviour) | every rotation is a coordinated cut-over, and a rotation after a leak is an outage |
+| Mock `audit.service` in the webhook tests | a mock of the audit write is how the actorType defect shipped; the tests now run the real `logAction` over a mocked model, and a live PG18 test runs it for real |
+| Delete `auditLog.middleware.js` now | correct in principle (A-32: dead code is deleted), but P9-19 names the file; left to that card |
+| Measure `index.js` in the unit gate | it can only be exercised by mocking every router, the ORM and the migrator — a number, not evidence |
+
+**Implications, including the bad ones**
+
+- **Any client still holding a pre-A-59 token is signed out** on the next deploy. By the dates above
+  there are none.
+- **An open socket costs one liveness check (Redis) and one user read per minute.** Thousands of
+  sockets means thousands of reads a minute; the interval is a constant to tune, not a setting.
+- **A socket keeps receiving events for up to a minute after revocation.** Named, not hidden.
+- **Integrators who sent a `secret` now get a 400** where they got a 201. That is the point, and it
+  is a contract change: `docs/WEBHOOK/03-WEBHOOK-SECURITY.md` and the swagger say so.
+- **During an overlap two keys sign every delivery.** A leaked old key stays useful until the window
+  closes — which is why `0` exists, and why the maximum is a week.
+- **An actorless webhook change is refused.** No such caller exists; a future system job that manages
+  webhooks must pass a `systemActor`.
+- **`GET /webhooks` gains `previousSecretExpiresAt`.** The frontend does not show it yet, and has no
+  rotate button (F-18, frontend board).
+- **Services with no audit row at all remain** — `apiKey`, `kanban`, `ticket`, `vendor`, `warehouse`,
+  `finance`, `risk`, `featureFlag`, `notification`, `content`, `supplierScorecard`, `meteredBilling`,
+  `oidcProvider`, `webauthn`, `ai`. CLAUDE.md says every mutation; whether each is in the compliance
+  scope is open on P6-11.
+- **The VM's `JWT_ACCESS_EXPIRED` was `1d`** at the last read; the repository says `15m`. Aligning it
+  is an operator action on the VM, open on P6-12.
+
+**Tests** (fail-before on a `f0d7f08` worktree, 2026-09-28: 25 of the P6 tests below fail there; 3 more `socket.test.js` failures there belong to the A-42 logger change, not to this ADR):
+`auth.tokenPurpose.a59.test.js` "P6-12: an access token without sid is refused",
+`auth.sessionRevocation.a48.test.js` "P6-12: a token that names no session is refused…",
+`socket.test.js` "P6-12 — an open socket stops when its principal stops" (7) and "P6-12: rejects a
+socket token that names no session", `webhook.validator.test.js` "P6-13: REFUSES a caller-supplied
+secret…" and `rotateWebhookSecretSchema` (4), `webhook.secret.a51.test.js` "P6-13 — rotation with an
+overlap window" (5, incl. "no secret … reaches a response body, a log line or audit_logs.changes"),
+`webhook.service.test.js`, `webhook.controller.test.js`, `webhooks.twoTenant.test.js` (every `:id`
+route 404 cross-tenant), `auditInTransaction.p611.test.js` (5), `coverageScope.p614.test.js` (4), and
+the opt-in live `0090-webhook-secret-rotation-overlap.p613.live.test.js` (5, PostgreSQL 18.6: fresh
+boot through the real migrator, upgrade from a pre-0090 schema with a live row, re-run no-op, down and
+up again, and a rotation and url change writing real audit rows).
+
+**Status:** Accepted, implemented 2026-09-27/28. Part of it reached `a31c601` unverified (committed by
+the owner with every agent's in-flight edits); the fixes and tests above are in the working tree.
+
+---
+
 ## ADR-089: Dual-Backend Target Architecture (TypeScript & Go), Multi-Frontend & Shared Component Strategy
 
 **Decision:** Callibrator adopts a dual-backend target architecture consisting of the existing TypeScript backend (`backend/src/`) and a future Go backend engine (`backend-go/`), supported by a multi-frontend integration pattern and root-level shared components (`shared/`).
@@ -4033,6 +4727,266 @@ skips the locked rows.
 
 ---
 
+## ADR-077: The Live E2E Suite Is Green in One Run on a Disposable Compose Stack; Specs Follow the Documented Contract, Not Observed Behaviour; Path UUIDs Are Checked for Shape Only; the Browser Suite Is a Five-Check Smoke Built on the Existing puppeteer-core
+
+**Date:** 2026-09-28 · **Cards:** P6-02, A-20 (BACKLOG U-02, U-07) · **Record:**
+`MEMORY/records/2026-09-28-p6-02-e2e-green.md`
+
+**Context**
+
+The live E2E suite had never passed in one uninterrupted run (U-02). The browser suite that six
+documents described (`automate/`, 71 Playwright tests) was not in the repository, and
+`make test-browser` ran `npx playwright test` against nothing (U-07, A-20).
+
+The suite was run against a disposable local stack: `docker compose -p callib-e2e` with the base
+file, the dev overlay and a named-volume overlay, on ports 25000 (backend) and 25001 (frontend),
+seeded through `GET /migration/seeding` and `GET /migration/seed-demo`. The first run failed 12 of
+53 suites (24 tests). Each failure was put in one of two classes:
+
+- **The application was wrong.** Eleven defects, each fixed with a unit or route test that fails
+  without the fix (mutation-checked).
+- **The spec was stale.** It asserted behaviour the product has deliberately changed since the spec
+  was written, or used a fixture the validators now refuse. The spec was moved to the documented
+  contract and says why in a comment.
+
+**Decision**
+
+1. **What "green" means for P6-02.** Every spec that `find backend/src/tests/e2e -name '*.test.js'`
+   finds (54 on 2026-09-28) runs in one `npm run test:e2e`. Nothing is skipped to reach green. The
+   one skipped suite is `liveContract.smoke.test.js`, which is opt-in by design (`LIVE_CONTRACT=1`)
+   and is not one of the 53 contract specs. The run has **no 429**, checked in the server's access
+   log and not only in the Jest output. Every 5xx the suite tolerates is named as
+   environment-dependent. Two consecutive runs must both be green.
+2. **Application fixes (each named with its test in the record):**
+   - `utils/jsonShape.util.js`: a JSON column's shape check lets `null` through. Nullness is
+     `allowNull`'s decision. A calibration-record correction copying a record with no `results`
+     answered 500.
+   - `eSignature.service#generateKeyPair` answers the row `id` that `DELETE /key-pairs/:keyPairId`
+     takes, as well as the `keyId`.
+   - `tenantBackup.controller` passes the models barrel to the services. It had passed
+     `req.models`, which nothing sets, so every tenant backup answered 500.
+   - `middlewares/validateUuid.middleware.js` accepts the **shape** PostgreSQL's `uuid` type
+     accepts (8-4-4-4-12 hex digits), not only RFC 4122 versions 1–5. Every seeded menu group id is
+     `a0000000-0000-0000-0000-…` (version nibble 0), so a permission override on a seeded menu
+     group could never be deleted, and a UUIDv7 would also have been refused. The middleware still
+     keeps a non-uuid away from a query, where the cast fails as a 500.
+   - `PATCH /vendors/:vendorId/qualify` gets a validator. The value is matched case-insensitively
+     and stored in the enum's upper case. The frontend sends `approved` and `rejected`; both had
+     reached PostgreSQL as invalid enum values and answered 500.
+   - `backend/Dockerfile` creates `/app/exports` and gives it to the app user. It had never been
+     created, so every `POST /gdpr/export` failed with EACCES.
+   - `gdpr.service` uses archiver 8's `new ZipArchive(...)`. archiver 8 is ESM with no default
+     export, so `archiver("zip")` threw "archiver is not a function". Every unit test had mocked
+     archiver as a function. A test now exercises the real library.
+   - `response.util#login` answers the opaque `refreshToken` at the top level for password
+     sign-in, the MFA step and impersonation. `sso.controller#issueSsoTokens` also returns the
+     refresh token it generated and then dropped. The Next routes already read `refreshToken` into
+     an httpOnly cookie and strip it from the browser body (F-05, F-62). Because the backend never
+     sent it, no browser session could be renewed. The suite's two refresh tests had passed without
+     asserting anything.
+   - `liveContract.smoke.test.js`: its CLI branch ran inside Jest (`require.main === module` is
+     true for a Jest test file) and `process.exit(1)` killed the whole suite. It is now guarded by
+     `JEST_WORKER_ID`.
+   - Frontend `api/client.ts`: a 403 carrying `MFA_ENROLMENT_REQUIRED` or
+     `PASSWORD_CHANGE_REQUIRED` never opens the access-denied modal, including on that gate's own
+     page. On `/dashboard/mfa` the layout's POST menu fetch opened the modal. The modal's refusal
+     re-fetched the menu, and the loop (about 150 requests) kept the modal over the enrolment form.
+     **A new platform operator could not enrol, so could not use the product.**
+   - Frontend `components/ui/Table/Table.tsx`: a cell given as JSX renders as the element. It had
+     rendered `String(value)`, which is "[object Object]" on every such column; the device list is
+     one of them.
+3. **Stale specs, moved to the contract:**
+   - `data-retention`: set a policy on `notifications`. `audit_logs` is refused (ADR-069), and the
+     spec now asserts that 400.
+   - `predictive-maintenance`: approving with no pending recommendation is **409**, a state
+     conflict, not 400.
+   - `menuGroups`: delete sends `menuGroupId`, which the controller reads and the frontend sends.
+     The route's Swagger block said `id` and is corrected.
+   - `sop`: a controlled procedure is released by someone other than its author. The author gets
+     409. A second administrator, created and deleted by the spec, publishes the document.
+   - `api-keys`: a scope is `<menu slug>:<read|write>`; the spec now uses `equipment:read`.
+   - `vendors`, `http`: `@e2e.test` and `@e2e.invalid` are not IANA TLDs, so Joi's `email()`
+     refuses them before the route runs. The specs use `example.com`. `http` also stops
+     hard-coding `localhost:5000`.
+   - `auth`: the wrong-password probe uses a per-run identifier (A-185 pauses an identifier and
+     address after five failures). The refresh tests sign in as a user the spec creates, and assert
+     unconditionally.
+   - `gdpr`: export is **200** with a download link. The 500 it tolerated was the missing
+     directory, not "no provider".
+4. **A-20: the browser suite is `automate/smoke.browser.js`.** It is a five-check smoke driven by
+   the repository's existing `puppeteer-core` and an installed Chrome/Chromium, with no new
+   dependency:
+   - password sign-in routes a new operator to MFA enrolment;
+   - enrolment from the secret on the page, with recovery codes issued;
+   - sign-in again with password and code;
+   - `/dashboard/devices` renders a device created through the API;
+   - every document carried a nonce CSP, with no violations and no page errors.
+
+   `make test-browser` runs it. The 71-test claim is withdrawn everywhere it was made.
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| For A-20: drop every browser reference and record that browser coverage is the CSP agent's one-off check (ADR-071) | cheaper and adds no file to maintain, but it would have left the MFA enrolment loop and the "[object Object]" table undetected. Both were found only by this smoke's first runs, and 1,386 frontend unit tests passed with both defects present. A one-off check proves one day; a script re-proves every release |
+| Restore a Playwright suite | a new dependency and browser download for four checks; the audit's 71 tests cannot be reconstructed from anything in the repository |
+| Keep the version-1–5 UUID pattern and give seeded rows v4 ids | the seeded ids are referenced by migrations and constants; re-keying them is a data migration for a validator's taste, and UUIDv7 would still be refused |
+| Mark the throttled `auth` specs as allowed-429 | that is abuse case 3 on the P6-02 card: a 429 counted as a pass |
+| Run the suite against the dev server (`npm run dev`) instead of the compose image | the image is what deploys. The `/app/exports` and archiver defects exist only in the packaged binary under a non-root user, and a dev server would have hidden both |
+
+**Implications — including the bad ones**
+
+- `POST /ai/query` still answers **500** with no AI key configured. The spec accepts it, and it is
+  named here as environment-dependent. A missing provider should be a 503 or a 409 with an
+  explanation; that is not fixed here.
+- `tenants.e2e` creates a tenant, and three other specs create disposable ones. `tenantCreate` is
+  limited to 10 a minute, so back-to-back runs **less than a minute apart** can meet a 429 there.
+  The recorded green pair was run after the window had passed. The limiter is right; the suite's
+  budget is simply tight.
+- `/app/exports` is not a volume. A container recreate drops pending GDPR downloads, and the
+  subject asks again.
+- The browser smoke is five checks. It does not cover realtime notifications, the verification
+  page, the three list states, or keyboard access (docs/TESTING/06 keeps them as the
+  specification).
+- The login answer now carries the refresh token in its body. That was always the contract the
+  Next routes were written against, and they strip it from what the browser sees. A direct API
+  caller (a test, a script) now receives it.
+- A path parameter such as `ffffffff-ffff-ffff-ffff-ffffffffffff` now passes the middleware; it
+  reaches the handler and is a 404 there, never a query error.
+
+**Status:** Accepted, implemented 2026-09-28.
+
+---
+
+## ADR-081: A By-the-Book Production Start Works: Probes Are Exempt from the HTTPS Redirect, No Overlay Requires a Setting Nothing Reads, and `make` Refuses Default Credentials, Unsafe Broker Passwords and a Missing Certificate
+
+**Date:** 2026-09-28 · **Findings:** S-09 (remainder), S-13, S-23, S-25, S-31, S-33, S-34 (`TASKS/AUDIT-2026-09-INFRA.md`) · **Extends:** ADR-066 (S-09, S-23, S-17), ADR-060 (the scheduler switch), ADR-065 and A-256 (the ACME stub's removal), ADR-076 (`acme-client` removed)
+
+**Context**
+
+`make env; make secrets; make up ENV=prod` had never been run in order. It was run on 2026-09-28 against a copy of the working tree.
+
+- **How it was run:** GNU Make 4.4.1 ran in a container (`docker:29-cli` plus `make`, `bash` and `node`) and drove the host Docker daemon. The compose project was `sdeploy-s09`.
+- **The one departure from the book:** nginx published `127.0.0.1:19580` and `127.0.0.1:19543` instead of `80` and `443`, which were not free.
+
+The run found four things that either stopped it or would have shipped:
+
+1. **`docker compose config` refused the prod overlay.** The overlay required `ACME_DIRECTORY_URL` through `${…:?}`. `.env.example` ships that line commented out, and no code has read the variable since the ACME stub was removed (A-256).
+2. **The backend never became healthy.** The backend had migrated, verified its schema and connected to all three datastores, but the healthcheck could not pass.
+   - The prod overlay sets `FORCE_HTTPS=true`.
+   - The compose healthcheck is `wget http://localhost:3000/health`. The redirect sent it to `https://localhost:3000`, which nothing serves.
+   - `make up` failed with `container … is unhealthy`.
+   - A kubelet `httpGet` probe counts any 3xx as success. Every Helm values file sets `FORCE_HTTPS: "true"`, so under Helm the readiness probe passed while the database was down.
+3. **nginx restarted forever.** `nginx/default.conf` loads `volumes/certs/fullchain.pem`, and no step creates that file. `make up` still printed "backend healthy" and exited 0, because `wait-healthy` watches only the backend.
+4. **Preflight passed with `DB_PASS=CHANGE_ME`.** Nothing refused `JWT_ACCESS_SECRET=CHANGE_ME` either, because the backend checks only that the two JWT secrets are set and differ. `make secrets` did not print `DB_PASS`.
+
+The card also asked whether `make secrets` prints a password that is safe in a URL. It does: hex is URL-safe. A password chosen by hand might not be, because compose places it in `amqp://USER:PASS@rabbitmq:5672` verbatim.
+
+**Decision**
+
+1. **The probe paths `/health`, `/live` and `/ready` are exempt from the `FORCE_HTTPS` redirect.**
+   - The middleware is `routes/internal/health.route.js#forceHttps`. `index.js` mounts it where the inline copy used to be.
+   - Every other plain-HTTP request is still redirected.
+   - The probes return a verdict and nothing else (A-06), so answering them over HTTP discloses nothing.
+2. **No manifest requires or renders a setting nothing reads.**
+   - The prod overlay's `ACME_DIRECTORY_URL` guard is removed, and so is the staging overlay's default.
+   - `make preflight`'s `acme-staging` check is removed.
+   - Under `certificates.acme.enabled`, the Helm ConfigMap renders only `CUSTOM_DOMAINS_ENABLED`. It no longer renders `TLS_AUTO_PROVISION` or `ACME_*`, and the NOTES staging warning is gone.
+   - `directoryUrl` and `accountEmail` stay in the values schema, so an existing override still renders.
+   - Both env templates say that no certificate is issued automatically.
+3. **`make check-env` refuses two more inputs.** Every `make up` runs it.
+   - A `RABBITMQ_USER` or `RABBITMQ_PASS` containing any character outside `A-Z a-z 0-9 . _ ~ -`.
+   - For `ENV=staging|prod`, a missing or empty `volumes/certs/fullchain.pem` or `privkey.pem`.
+4. **`make preflight` refuses a placeholder `DB_PASS`, `JWT_ACCESS_SECRET` or `JWT_REFRESH_SECRET`.** A placeholder is an empty value, `CHANGE_ME*`, `change-this*` or `your_*`. `make secrets` now prints `DB_PASS` too.
+5. **The rest of the scope was verified and closed as it stood.**
+   - **S-13, frontend half:** S-29 had already done it. The image runs `npm ci` against the committed root lockfile. Its base image is pinned by digest, and bun is gone. apk reads its two repositories over `https://`, and nothing disables verification.
+   - **S-23:** ADR-066 had already done it. Swagger is off in production unless `SWAGGER_ENABLED=true`. The stale comment in `vm-http.conf` is corrected.
+   - **S-31:** the chart renders the three ClamAV keys, as recorded.
+   - **S-33:** ADR-060/P7-02 and the quarantine sweep had already done it. The Redis minute claim holds two replicas to one run, and the sweep removes abandoned files.
+   - **S-34:** both documents were already amended on 2026-09-24 (`beb0c4b`), and ADR-066 records the S-17 deviation.
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| Keep `ACME_DIRECTORY_URL` required and add it to `.env.example` | it would demand a value that does nothing, which is a control in name only. The guard should come back with code that reads the variable |
+| Make the healthcheck send `X-Forwarded-Proto: https` | the fix would have to go into every manifest: compose, the Helm probes, and any load balancer an operator adds. The next manifest forgets it. The application fixes it once for every caller |
+| Set `FORCE_HTTPS=false` in prod, as the VM overlay does | it drops the application layer of HTTPS enforcement, which `docs/DEVOPS/03` keeps deliberately so the application does not depend on the proxy being right |
+| Percent-encode the RabbitMQ password in compose | compose interpolation cannot encode. Encoding it in `.env` would break `RABBITMQ_DEFAULT_PASS`, which reads the same value raw |
+| Make `make up` wait for nginx and the frontend too | worth doing, but it still fails late and says less than a refusal before `up` does. The refusal came first |
+| Refuse placeholder secrets in the backend at boot | the right long-term place. It changes the backend's startup contract in every environment, including tests. Left open |
+
+**Implications, including the bad ones**
+
+- **`/health`, `/live` and `/ready` answer over plain HTTP in production.** Anyone who reaches the backend port directly reads an up/down verdict. That is no more than a TCP connect tells them, and nginx still redirects the public edge.
+- **A staging or prod `make up` now needs a certificate on disk before it starts.** An operator who terminates TLS elsewhere has to supply one or change the nginx config. This is deliberate: the alternative is a crash-looping nginx behind a green `make up`.
+- **An existing `.env` that still holds `DB_PASS=CHANGE_ME` now fails preflight.** Changing the value in `.env` alone breaks the backend's login, because postgres reads it only at first initialisation. It needs `ALTER ROLE` as well, and the refusal says so.
+- **The CI compose step still writes an `ACME_DIRECTORY_URL` line** (`.github/workflows/ci.yml:362`). The line is harmless, and it was left alone because that file belongs to another workstream.
+- **The Helm charts still only render.** Nothing was deployed to a cluster.
+
+**Evidence** (2026-09-28; commands and output are in `MEMORY/records/2026-09-28-adr081-deploy-by-the-book.md`)
+
+- **The by-the-book run:**
+  - `make env`, then `make secrets` (10 lines pasted), then `make preflight ENV=prod TAG=sdeploy-s09` passed.
+  - `make images` built both images on Node 26.10.0.
+  - `make up ENV=prod` exited 0 with the backend healthy.
+- **The full stack:** after a stand-in certificate, all eight services were healthy or completed. Clamav, the frontend and nginx ran under the prod overlay for the first time.
+- **The edge:** `https://…/health` answered 200 through nginx, and plain HTTP answered 301. `/docs` and `/docs.json` answered 404 on the backend under `NODE_ENV=production`.
+- **Credentials and privileges:** RabbitMQ listed one connection, from user `callibrator`. An unauthenticated `redis-cli ping` answered `NOAUTH`. The backend ran as uid 997 with `CapEff` 0.
+- **The refusals:**
+  - Preflight exited 2 on each of `DB_PASS=CHANGE_ME`, `JWT_ACCESS_SECRET=CHANGE_ME`, an empty `JWT_REFRESH_SECRET`, `RABBITMQ_PASS=p@ss:w/rd`, `RABBITMQ_PASS=guest` and an empty `REDIS_PASSWORD`.
+  - `check-env ENV=prod` exited 2 without certificates and 0 with them.
+- **Tests:**
+  - New: `health.forceHttps.s09.test.js`.
+  - Existing, passing: `health.route.test.js`, `health.jobs.p702.test.js`, `quarantineSweep.s33.test.js`, `quarantineSweepScheduler.s33.test.js`, `jobMonitor.service.p702.test.js`, `appRoutes.a253.test.js`, `csp.p708.test.js` and `upload.quarantine.s17.test.js`.
+
+**Status:** Accepted, implemented 2026-09-28.
+
+---
+
+## ADR-082: CI Stages Are Proved by Running Their Own Steps in Their Own Images; a Bounded Job That Leaves Work Behind Is a Warning Alert; the Alert Route Is Stated at Boot; Log Shipping Has Run
+
+**Date:** 2026-09-28 · **Findings:** P7-01, P7-02, P7-03, M-13, W-17 (the `incomplete`/`truncated` outcomes) · **Cited before it was written** by `jobMonitor.service.js`, `alert.service.js`, `retentionScheduler.middleware.js` and `quarantineSweepScheduler.middleware.js` (audit finding F-28: the agent that wrote those citations was stopped before writing this record; this is it).
+
+**Context.** ADR-066 left three stages of `.github/workflows/ci.yml` never run in their CI form (`backend-test`, `boot-and-migrate`, `dependency-audit`), alert routing that nobody had configured and whose end-to-end path was untested, two bounded jobs (W-17) whose "stopped early" outcomes were only counts in an `info` line, and a Vector template that had never shipped a line. No GitHub runner is available; Docker is.
+
+**Decision**
+
+- **A CI stage counts as run locally only when its own `run:` steps execute verbatim in its own images.** A generator (`gen-job.py`, scratch) reads `ci.yml` and emits each job's steps with the workflow and job `env`, `working-directory`, `bash -eo pipefail`, `$GITHUB_ENV` and `if: always()` semantics. The runner is Ubuntu 24.04 (`buildpack-deps:noble`) with the official Node 26.10.0 tarball (sha256-checked), as `setup-node` installs it. Service containers are the workflow's digest-pinned images, sharing the runner's network namespace so `localhost:5432/6379/5672` resolve as on GitHub, and started only once healthy. The workspace is a **Linux git checkout** of HEAD plus the uncommitted diff (LF, index file modes), because a Windows-tree copy was not faithful (CRLF scripts, no `.git`).
+- **Three CI defects that running found are fixed.**
+  - `boot-and-migrate` ran `npm ci` under the job's `NODE_ENV=production`, which **omits devDependencies**, among them `tsx`. Both boots (`node --import tsx`) died with `ERR_MODULE_NOT_FOUND`. It is now `npm ci --include=dev`.
+  - `npm run migrate:status` (and `migrate`) never exited (M-13). umzug's CLI returned, but the open Sequelize pool kept the event loop alive, with plain `node` as well as `tsx`. The step would have hung until the 20-minute job timeout. `src/scripts/migrate.js` now closes the pool when the command finishes. A failed command still exits 1.
+  - `backend-test` failed the 100% branch gate because **coverage depended on `.env`**. The workstation's `.env` has no `MAX_FILE_SIZE`; CI copies `.env.example`, which sets it, so only one side of `parseInt(process.env.MAX_FILE_SIZE) || 5 MB` ran in each place (`tenant.route.js` ×3, `upload.util.js`). `maxFileSize.envFallback.p701.test.js` pins both sides whatever `.env` holds.
+- **A successful run that left work behind raises `job.<name>.incomplete` at severity `warning`** (`runMonitored`'s `isIncomplete` option). It covers the retention sweep with `incomplete > 0` (out of `RETENTION_SWEEP_BUDGET_MS`) and the quarantine sweep with `truncated` (at `QUARANTINE_SWEEP_MAX_ENTRIES`). It is throttled like a failure: the first of a streak, then once per `JOB_ALERT_REPEAT_HOURS`, then one `resolved`. A run that also failed alerts as a failure only. The job's state carries `lastIncomplete`/`consecutiveIncomplete`, and the metric is `callibrator_job_last_run_incomplete`.
+- **Alert routing stays `ALERT_WEBHOOK_URL` (Slack-compatible `text` + structured `alert`) and/or `ALERT_EMAIL_TO`, and the boot log states the route.** `describeRouting()` names the webhook's host only, since the URL is a credential. It reports an unparseable URL at boot, and it warns at boot when nothing is routed. The route is tested end to end against a real HTTP receiver (`alertRouting.p702.test.js`).
+- **Vector's alert label moves to its own sink.** One Loki sink with `labels.alert = "{{ alert.key }}"` failed its template on every non-alert line (`template_failed`, and the label was dropped). `route._unmatched` now goes to `loki` and `route.alerts` goes to `loki_alerts`.
+- **The deploy-config compose step no longer writes `ACME_DIRECTORY_URL`** (ADR-081: nothing reads it).
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| `act` | not required, and it needs its own runner images. The generator runs the same `run:` text with fewer moving parts. Its gap is `uses:` steps, which the container stands in for |
+| Copying the Windows working tree into the container | it failed six `prePushHook.a19` tests that pass on a real checkout (CRLF in the hook, no `.git`). A stage "failing" for a reason CI would not have is noise |
+| Dropping `NODE_ENV=production` from the boot job | the boot is meant to prove the production code path. Only the install needs the dev tools |
+| `process.exit()` after the migrate CLI | can truncate piped stdout, which the step `tee`s and greps. Closing the pool lets the process end naturally |
+| Deleting `MAX_FILE_SIZE` from `backend/.env.example`, or unsetting it in the CI step | hides the dependency instead of removing it. The next variable with a fallback repeats it. The test controls its own env |
+| Treating `incomplete`/`truncated` as a failure | the work continues next run, so nothing is lost yet. A `critical` every night for a backlog trains people to ignore the channel (P7-02's abuse case) |
+| Logging the full webhook URL at boot | a Slack incoming-webhook URL is its own bearer token |
+
+**Implications, including the bad ones**
+
+- **The workflow has still never run on GitHub.** "Passed locally" means the steps passed in a stand-in for `ubuntu-24.04`. The runner image, the `setup-node` cache and GitHub's service-container networking are approximated, not the real thing. `backend-lint` (the ratchet is red: 1,061 against 950), `frontend`/`next build`, `secret-scan` and `deploy-config`'s helm steps were not re-run by this ADR.
+- **`boot-and-migrate` installs the dev tree** (~1,400 packages instead of ~660). It proves the boot and migration code under `NODE_ENV=production`, not the image. The image runs `build:dist` output under pkg and is not exercised here (M-11 still stands).
+- The `backend-test` stage passes on a quiet tree snapshot (HEAD `c905e74` plus the working tree on 2026-09-28). Like every 100% gate it is sensitive to concurrent work.
+- **The incomplete alert is new traffic.** A tenant set whose backlog outgrows one run's budget produces one `warning` a day until it is cleared. That is the intent, and it is also the thing to tune (`RETENTION_SWEEP_BUDGET_MS`).
+- **No deployment has an alert route or a log shipper configured.** Both are operator decisions. The code and the evidence say they work; nobody reads a channel yet.
+- **Vector's `loki` healthcheck fails once when Loki starts after Vector** (503). Vector keeps running and ships once Loki is ready. The compose file has no `depends_on` for an external Loki.
+
+**Status:** Accepted, implemented 2026-09-28. The evidence is in `MEMORY/records/2026-09-28-p7-01-02-03.md`.
+
+---
+
 ## Open Decisions
 
 Recorded so a future reader can tell whether their idea was evaluated and rejected, or genuinely never considered.
@@ -4041,7 +4995,8 @@ Recorded so a future reader can tell whether their idea was evaluated and reject
 |---|---|
 | `REVOKE UPDATE, DELETE` on `calibration_records` | **closed** — done by ADR-062: a trigger for every role plus the application-role REVOKE (P6-03) |
 | A separate `LOGIN` application role with no path back to the owner | **open** — the stronger form of ADR-062's `SET ROLE` (which `RESET ROLE` undoes); needs a second credential in every deployment template, Helm included |
-| A composite unique on `(tenant_id, serial_number)` | **closed** — done by ADR-049 (migration `0026`); not partial on `is_deleted` |
+| A composite unique on `(tenant_id, serial_number)` | **closed** — done by ADR-049 (migration `0026`); **not partial on `is_deleted`, decided by ADR-078** (a soft-deleted device keeps its serial; restore, ADR-075, is the way back) |
+| Serial uniqueness per `(tenant, manufacturer, model, serial)` | **open** — ADR-078: the honest answer to two different instruments sharing a serial; nobody has asked yet |
 | Mandatory MFA for role level 10 | should happen (PR-3) |
 | A build guard failing any route without a permission gate | should happen — the most likely authorization defect has no mechanism against it |
 | Post-migration column verification | **closed** — every boot verifies the schema and refuses on a mismatch (ADR-062, P6-05) |

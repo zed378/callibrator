@@ -10,7 +10,7 @@ Almost everything here is currently **absent rather than incomplete**. Saying so
 
 | | |
 |---|---|
-| **Status** | 🟡 **PARTIAL (2026-09-25)** — workflow written and its local half verified; never run on GitHub. See `PROGRESS.md` and ADR-066 |
+| **Status** | 🟡 **PARTIAL (2026-09-28)** — workflow written; `backend-test`, `boot-and-migrate` and `dependency-audit` now run **in their CI form** (verbatim steps, Ubuntu 24.04 + Node 26.10.0, the workflow's service images) and pass after three fixes (ADR-082). **Still never run on GitHub**; no image build/push; the lint ratchet is red (1,061 vs 950). See `PROGRESS.md`, ADR-066, ADR-082 |
 | **Depends on** | **P6-01** · **P9-02a** (lint) · **P9-01a** (typecheck) · **P6-14** (coverage scope) — do not build a pipeline around a failing gate |
 | **Spec refs** | `docs/DEVOPS/01-CI-CD.md` · [`AUDIT-2026-09-REMEDIATION.md`](./AUDIT-2026-09-REMEDIATION.md) A-19, A-21, A-34 |
 
@@ -36,7 +36,7 @@ The risk of deferring CI was recorded and is real: skipping it would have silent
 **Definition of Done**
 - [ ] a lockfile is committed and the install uses the frozen-lockfile flag (A-21) — without it every stage below runs against a different dependency tree
 - [ ] cheapest signal first: lint, format, typecheck → unit + coverage → secret scan → IDOR enforcement → **route-gate check (P6-04)** → **`ts-ratchet` (P9-04)** → images → migrations **with column verification (P6-05)** → E2E → browser
-- [ ] **each stage is proved in the failing direction before the pipeline is trusted** — break the thing, watch that stage go red. A-34 and the turbo `typecheck` skip are both gates that reported green having run nothing; a pipeline inherits that failure mode unless each stage is seen to fail once
+- [ ] **each stage is proved in the failing direction before the pipeline is trusted** *(2026-09-28, ADR-082: `backend-test` (branch gate at 99.96% → exit 1), `boot-and-migrate` (a pending migration → exit 1) and `dependency-audit` (`lodash@4.17.20` → exit 1) proved; the rest per ADR-066; none on GitHub)* — break the thing, watch that stage go red. A-34 and the turbo `typecheck` skip are both gates that reported green having run nothing; a pipeline inherits that failure mode unless each stage is seen to fail once
 - [ ] the E2E stage gets rate-limit headroom
 - [ ] images pushed only from a green run
 - [ ] the same **image** promoted across environments — except the frontend, where `NEXT_PUBLIC_*` forces a rebuild per environment by design
@@ -52,7 +52,7 @@ The risk of deferring CI was recorded and is real: skipping it would have silent
 
 | | |
 |---|---|
-| **Status** | 🟡 **PARTIAL (2026-09-25)** — in the application; infra-backup alert and channel routing open. ADR-066 |
+| **Status** | 🟡 **PARTIAL (2026-09-28)** — in the application; routing configured by env and **tested end to end into a real HTTP receiver** (`alertRouting.p702`); retention `incomplete` and quarantine `truncated` now alert as warnings; the boot log states the route (ADR-082). Open: the infra-backup alert, and no deployment has a route set. ADR-066, ADR-082 |
 | **Spec refs** | `docs/DEVOPS/07-ALERTING.md` |
 
 **Why:** **a scheduled compliance job failing silently is worse than one that never ran, because everyone believes it did.**
@@ -63,9 +63,9 @@ If only one thing in this phase gets built, it is this one.
 
 **Definition of Done**
 - [ ] alerts on: a scheduler did not run in its window; a scheduler ran and **failed**; a tenant backup failed; an infrastructure backup failed; the calibration sweep did not complete
-- [ ] each alert says **what it means and what to do** — "Retention purge failed: data past its window was NOT purged" beats "Scheduler failed"
-- [ ] a batch job resting in `PROCESSING` past a threshold alerts
-- [ ] routed to a channel someone reads
+- [x] each alert says **what it means and what to do** *(ADR-066; the `incomplete` warnings too, ADR-082)* — "Retention purge failed: data past its window was NOT purged" beats "Scheduler failed"
+- [x] a batch job resting in `PROCESSING` past a threshold alerts *(`batch-jobs.stuck`, `jobMonitor.service.p702`)*
+- [ ] routed to a channel someone reads *(2026-09-28: the route exists and is tested — `ALERT_WEBHOOK_URL` (Slack-compatible) / `ALERT_EMAIL_TO`, `alertRouting.p702`; open until an operator sets it in a deployment and someone reads it)*
 
 **Abuse cases**
 - The alert fires nightly, is ignored, and trains everyone to ignore alerts
@@ -76,7 +76,7 @@ If only one thing in this phase gets built, it is this one.
 
 | | |
 |---|---|
-| **Status** | 🟡 **PARTIAL (2026-09-25)** — JSON + requestId done; shipping validated, never run; A-42 sweep open. ADR-066 |
+| **Status** | 🟡 **PARTIAL (2026-09-28)** — JSON + requestId done; **the pinned Vector shipped a real backend container's stdout to a local Loki and a file**, requestId and redaction intact, one template defect fixed (ADR-082). Open: no deployment ships; A-42 sweep; rotation vs A-44. ADR-066, ADR-082 |
 | **Spec refs** | `docs/DEVOPS/06-LOGGING.md` · `docs/ENGINEERING/12-LOGGING-CONVENTIONS.md` · [`AUDIT-2026-09-REMEDIATION.md`](./AUDIT-2026-09-REMEDIATION.md) A-14, A-42, A-44 |
 
 > **What changed (2026-09-23):** this card said logs "live in container stdout and a volume". A-42
@@ -98,10 +98,10 @@ If only one thing in this phase gets built, it is this one.
 **Definition of Done**
 - [ ] structured JSON output
 - [ ] `X-Request-Id` on every line
-- [ ] shipped to an aggregator
+- [ ] shipped to an aggregator *(2026-09-28: done locally — Vector → Loki 3.5.5, ADR-082; open until a deployment ships)*
 - [ ] **A-42 closed**: the failed-audit-write path goes through winston at `error` level so it lands in the file sinks and the aggregator, and the other 24 `console.*` sites are swept. This is the checkbox **P6-11 depends on** — an audit failure nobody can see is the same as no audit
 - [ ] A-14 closed: per-request lines are not dropped, and the file sinks are bounded
-- [ ] **redaction verified after shipping** — an aggregator with its own parsing can re-expose a field the application redacted, and a leak into a third-party store is a leak
+- [x] **redaction verified after shipping** *(2026-09-28, local Loki and file sink: 0 secret strings, app-redacted URLs intact, an unredacted stray line redacted by Vector — ADR-082; repeat for a third-party store when one is chosen)* — an aggregator with its own parsing can re-expose a field the application redacted, and a leak into a third-party store is a leak
 - [ ] rotation confirmed **against the A-44 fix**, not against the setting it replaced; a full disk stops writes, including `audit_logs`
 
 **Abuse cases**
@@ -114,7 +114,7 @@ If only one thing in this phase gets built, it is this one.
 
 | | |
 |---|---|
-| **Status** | ⏳ TODO |
+| **Status** | ✅ DONE 2026-09-28 (ADR-078, `MEMORY/records/2026-09-27-p7-04-restore-drill.md`) — compose on PG 18: dump + object volumes + escrowed secrets restored after `down -v` and a deleted `.env`; every checklist item asserted and identical before/after (counts, isolation 404, 8 certificates valid with identical hashes and documents, 14 attachments byte-identical, e-signatures, audit trail up to the dump, 0 pending migrations, logins incl. TOTP). **RTO 234 s** (small data set), **RPO = dump age**. What failed: D-1 image cannot render PDFs (open), D-2 postgres crash recovery (init), D-3 API tenant backups held no users, D-4 role missing on pg_restore, D-5 secrets must come first, D-6 a wrong KMS key booted cleanly (now refused), D-7 `migrate:status` hangs |
 | **Spec refs** | `docs/ARCHITECTURE/09-DISASTER-RECOVERY.md` · `docs/DEVOPS/04-DATABASE-BACKUP.md` |
 | **Spec required** | **yes** |
 
@@ -146,7 +146,7 @@ The two bold checks are what catch a lost-secrets restore. Without them a broken
 
 | | |
 |---|---|
-| **Status** | ⏳ TODO |
+| **Status** | ✅ DONE 2026-09-28 (ADR-078) — `docs/SECURITY/14-SECRET-ESCROW.md`: measured which secrets are unrecoverable (`KMS_MASTER_KEY` + retired keys a backup needs; `ENCRYPT_KEY` for pre-0058 backups) and which regenerate; escrow separate from DB and host, by key id; restore steps. **A restore without the right KMS key now refuses to boot** (`utils/kmsVerify.util.js`, `kmsVerify.util.p705.test.js`), proven on the drill stack. Access control/audit of the escrow is a procedure, not a mechanism |
 | **Depends on** | P6-10 |
 | **Spec refs** | `docs/SECURITY/07-CRYPTOGRAPHY-AND-SECRETS.md` |
 

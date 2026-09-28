@@ -1,13 +1,23 @@
 # 06 — Browser Testing
 
-Playwright. `automate/`, 71 tests.
-
-> **⚠ The `automate/` directory is not in this repository.** It is untracked by git and absent from disk; the 71-test result is from the 2026-07 audit and **nothing here can currently reproduce it**. `make test-browser` will not find a suite to run. Recorded as **U-07** in [`../../TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md). Everything below describes the suite as it was, and is kept because it is the specification for restoring it.
+**As built (ADR-077, A-20):** `automate/smoke.browser.js` — five checks, driven by the repository's existing `puppeteer-core` and an installed Chrome/Chromium. No Playwright, no new dependency.
 
 ```bash
-npx playwright test
+FRONTEND_URL=http://localhost:3001 BASE_URL=http://localhost:3000 node automate/smoke.browser.js
 make test-browser
 ```
+
+| Check | What it proves |
+|---|---|
+| sign-in | the password step through the Next app routes a new platform operator to MFA enrolment |
+| MFA enrolment | the secret the page shows verifies; recovery codes are issued |
+| MFA sign-in | password then a code opens the dashboard in a fresh browser |
+| list page | `/dashboard/devices` renders a device created through the API |
+| CSP | every document carried a nonce policy; no violation, no page error |
+
+It creates its own operator and device and deletes both. Verified 5/5 twice on 2026-09-28. Its first runs found two defects no unit test had: the access-denied modal looping over the MFA enrolment form, and every JSX table cell rendering "[object Object]".
+
+> **The 71-test Playwright suite (`automate/`, 2026-07 audit) was never in this repository, and the claim is withdrawn** (U-07). The sections below described it; they are kept as the **specification** of what a fuller browser suite should cover, not as a description of anything that runs.
 
 ---
 

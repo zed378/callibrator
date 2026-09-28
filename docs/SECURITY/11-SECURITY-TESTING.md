@@ -175,7 +175,7 @@ That is a gap, not a pass. It is in [`../PLAN/16-IMPLEMENTATION-ROADMAP.md`](../
 
 ## Browser Suite
 
-Playwright, `automate/`, 71 tests across auth, navigation, tenants, roles, users, kanban, notifications, account, profile, module health, and theme.
+`automate/smoke.browser.js` (ADR-077): five checks, including that every page carries a nonce CSP with no violation. The 71-test Playwright suite once described here was never in the repository; the claim is withdrawn (U-07).
 
 Transient failures during long runs have been **self-inflicted** — editing a backend file triggers nodemon, which restarts mid-test and produces `ECONNRESET`. Clean re-runs pass. Do not chase a flake until you have confirmed nothing was recompiling.
 

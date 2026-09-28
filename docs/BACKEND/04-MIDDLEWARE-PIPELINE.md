@@ -10,7 +10,7 @@
 
 ```
 compression
-  → HTTPS redirect            production + FORCE_HTTPS only
+  → HTTPS redirect            production + FORCE_HTTPS only; /health, /live, /ready exempt (ADR-081)
   → helmet                    CSP · object-src none · frame-ancestors none
   → hpp                       parameter pollution
   → CORS                      explicit allowlist · credentials true · never "*"

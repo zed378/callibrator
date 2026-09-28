@@ -31,7 +31,64 @@ const TEST_USER = {
   password: "TestPass123",
 };
 
+// P6-02: the refresh tests need an account that CAN sign in. TEST_USER is
+// self-registered and never activated, so its sign-in always failed: the two
+// refresh tests passed with no assertion at all ("if login fails, test passes
+// without assertion"), and every run spent two failed sign-ins on that
+// identifier, so from the third run in fifteen minutes it answered 429 (A-185).
+// A signer is created per run by the seeded operator instead, and replaces
+// the temporary password an administrator set (A-215), so the refresh tests
+// assert unconditionally.
+const HEALTHCARE_ADMIN_ROLE = "HEALTHCARE ADMIN";
+const signer = { email: null, password: null, userId: null, adminToken: null };
+
+async function createSigner() {
+  const op = await httpPost("/auth/login", { user: "sys@mail.com", password: "123123" });
+  signer.adminToken = extractToken(op.body);
+  const admin = authHeader(signer.adminToken);
+  const roles = await httpGet("/roles?limit=50", admin);
+  const role = (roles.body.data || []).find((r) => r.name === HEALTHCARE_ADMIN_ROLE);
+  const stamp = Date.now();
+  const temporary = `Temp-${stamp}-Aa1!`;
+  signer.email = `auth-refresh-${stamp}@example.com`;
+  signer.password = `Chosen-${stamp}-Bb2!`;
+  const created = await httpPost(
+    "/users/create",
+    {
+      tenantId: op.body.data.tenantId,
+      username: `authref${stamp}`.slice(0, 20),
+      firstName: "Auth",
+      lastName: "Refresh",
+      email: signer.email,
+      password: temporary,
+      roleId: role.id,
+    },
+    admin,
+  );
+  signer.userId = created.body.data.id;
+  const first = await httpPost("/auth/login", { email: signer.email, password: temporary });
+  const changed = await httpPost(
+    "/auth/just-update-password",
+    { currentPassword: temporary, newPassword: signer.password },
+    authHeader(extractToken(first.body)),
+  );
+  if (changed.status !== 200) {
+    throw new Error(`E2E: the refresh signer could not set a password (${changed.status})`);
+  }
+}
+
 describe("E2E Authentication Flow (HTTP)", () => {
+  beforeAll(createSigner);
+
+  afterAll(async () => {
+    if (signer.userId) {
+      const resp = await fetch(
+        `${require("./setup").API_BASE}/users/delete?userId=${signer.userId}`,
+        { method: "DELETE", headers: authHeader(signer.adminToken) },
+      );
+      await resp.text();
+    }
+  });
   // ─── 1. REGISTER ───────────────────────────────────────────
 
   test("POST /auth/register — returns valid response structure", async () => {
@@ -151,8 +208,13 @@ describe("E2E Authentication Flow (HTTP)", () => {
   // ─── 3. LOGIN ──────────────────────────────────────────────
 
   test("POST /auth/login — 401 on wrong password", async () => {
+    // P6-02: a per-run identifier. Failed sign-ins are throttled per
+    // identifier AND address — five in fifteen minutes (A-185) — so the fixed
+    // TEST_USER address was paused (429) from the fifth run in a quarter hour.
+    // An unknown identifier answers exactly as a wrong password for a real one
+    // (A-185: the same 401, by design), so the contract asserted is unchanged.
     const { status, body } = await httpPost("/auth/login", {
-      email: TEST_USER.email,
+      email: `wrong-password-${Date.now()}@e2e.example.com`,
       password: "WrongPassword99",
     });
 
@@ -219,29 +281,28 @@ describe("E2E Authentication Flow (HTTP)", () => {
   test("POST /auth/refresh — opaque tokens are 64-char hex", async () => {
     // Login first to get a valid refresh token
     const loginRes = await httpPost("/auth/login", {
-      email: TEST_USER.email,
-      password: TEST_USER.password,
+      email: signer.email,
+      password: signer.password,
     });
 
-    if (loginRes.status === 200) {
-      expect(loginRes.body).toHaveProperty("token");
-      expect(loginRes.body).toHaveProperty("refreshToken");
+    expect(loginRes.status).toBe(200);
+    expect(loginRes.body).toHaveProperty("token");
+    expect(loginRes.body).toHaveProperty("refreshToken");
 
-      const refreshToken = extractRefreshToken(loginRes.body);
-      expect(refreshToken).toBeTruthy();
-      expect(refreshToken.length).toBe(64); // 32 bytes hex
-      expect(refreshToken).toMatch(/^[0-9a-f]{64}$/);
-    }
-    // If login fails (locked/not activated), test passes without assertion
+    const refreshToken = extractRefreshToken(loginRes.body);
+    expect(refreshToken).toBeTruthy();
+    expect(refreshToken.length).toBe(64); // 32 bytes hex
+    expect(refreshToken).toMatch(/^[0-9a-f]{64}$/);
   });
 
   test("POST /auth/refresh — token rotation invalidates old token", async () => {
     const loginRes = await httpPost("/auth/login", {
-      email: TEST_USER.email,
-      password: TEST_USER.password,
+      email: signer.email,
+      password: signer.password,
     });
 
-    if (loginRes.status === 200) {
+    expect(loginRes.status).toBe(200);
+    {
       const refreshToken = extractRefreshToken(loginRes.body);
       expect(refreshToken).toBeTruthy();
 

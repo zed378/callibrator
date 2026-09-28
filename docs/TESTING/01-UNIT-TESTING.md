@@ -21,10 +21,10 @@ npm run test:coverage   # the gate
 
 | Workspace | Threshold | Status |
 |---|---|---|
-| Backend | **100%** | **currently failing** |
+| Backend | **100%** of six layers — controllers, middlewares, routes, services, utils, validators | passing at the last green run (P6-01); scope in [`../BACKEND/09-TESTING.md`](../BACKEND/09-TESTING.md) § What 100% covers |
 | Frontend | 70% | |
 
-The backend is below threshold: the demo seeder, certificate submit-for-approval, `qms.validator`, the retention `legalHoldSchema`, the tenant subdomain-derivation branch and the param-merge branches all added uncovered code.
+The backend figure does **not** include models, config, constants, scripts or `index.js` (P6-14, ADR-085).
 
 A 100% line gate does not mean the code is well tested. It means every line executed at least once — which a single happy-path call achieves for most functions. **The gate is a floor, not a goal.**
 

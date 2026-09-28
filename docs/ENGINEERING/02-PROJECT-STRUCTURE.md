@@ -51,7 +51,7 @@ backend/
 ├── public/                   static files at /public — shipped in the image since 2026-09-11
 ├── uploads/                  runtime data — gitignored; a volume in every deployment
 ├── tsconfig.json             (target, P9-01)
-└── Dockerfile                node:24 builder → debian slim runtime with Chromium
+└── Dockerfile                node:26 builder → debian slim runtime with Chromium
 ```
 
 ### Two directories that look like source and are not

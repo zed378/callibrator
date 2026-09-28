@@ -124,9 +124,9 @@ An empty database hides an entire class of query defect.
 
 Every fix has been verified live and **individually**.
 
-**A single clean full-suite pass in one uninterrupted run has not been achieved**, because the rate-limit window kept needing to reset.
+**Passed in one uninterrupted run, twice in a row, on 2026-09-28** (P6-02, ADR-077): `npm run test:e2e` against a fresh compose stack (base + dev overlay, PostgreSQL 18.6, seeded with `/migration/seeding` and `/migration/seed-demo`). 54 files found, 53 suites passed, the opt-in `liveContract.smoke.test.js` skipped; 392 tests passed, 0 failed; no 429 in the backend's access log. The first run failed 12 suites: eleven application defects and nine stale specs, all listed in ADR-077.
 
-**That is a gap, not a pass.** A suite that has never passed as a suite has not passed, and saying so is more useful than a status report that rounds up.
+It has **not** been run by CI (A-19). Runs less than a minute apart can meet `tenantCreate`'s 10-a-minute limit; wait for the window.
 
 It is the third item under "now" in [`../PLAN/16-IMPLEMENTATION-ROADMAP.md`](../PLAN/16-IMPLEMENTATION-ROADMAP.md).
 
@@ -136,8 +136,7 @@ Not code defects, and worth recognising as such:
 
 | Endpoint | Fails because |
 |---|---|
-| `POST /ai/query` | no AI/embeddings provider configured |
-| `POST /gdpr/export` | same |
+| `POST /ai/query` | no AI/embeddings provider configured — answers 500 (should be a 503/409; open, ADR-077) |
 | Certificate PDF | `PUPPETEER_EXECUTABLE_PATH` unset outside Docker — **fails at first use, not startup** |
 
 ## Writing a New Spec

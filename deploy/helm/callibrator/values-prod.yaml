@@ -133,9 +133,5 @@ ingress:
 certificates:
   verifyBaseUrl: "https://callibrator.example.com/verify"
   acme:
+    # CUSTOM_DOMAINS_ENABLED only (ADR-081) — no ACME setting is read.
     enabled: true
-    # THE PRODUCTION DIRECTORY. The default is Let's Encrypt STAGING, which
-    # issues certificates no browser trusts — and the failure appears in a
-    # browser rather than in any log.
-    directoryUrl: "https://acme-v02.api.letsencrypt.org/directory"
-    accountEmail: "ops@example.com"

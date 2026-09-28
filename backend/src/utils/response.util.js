@@ -74,6 +74,7 @@ const success = (
 
   if (authData) {
     if (authData.token) response.token = authData.token;
+    if (authData.refreshToken) response.refreshToken = authData.refreshToken;
     if (authData.session) response.session = authData.session;
   }
 
@@ -182,9 +183,19 @@ const forbidden = (res, message = "Forbidden") => {
  * @param {Object} session - Session object
  * @param {string} message - Success message
  */
-const login = (res, data, token, session, message = "Login successful") => {
+/**
+ * A sign-in answer: the access token, the session, and — since P6-02
+ * (ADR-077) — the opaque refresh token. The Next login route
+ * (frontend/src/app/api/v1/auth/login/route.ts) takes `refreshToken` off this
+ * body into an httpOnly cookie and never forwards it to the browser; it was
+ * never sent, so no session could be renewed and every sign-in ended when its
+ * 15-minute access token did (found by the live E2E suite, whose refresh tests
+ * had passed with no assertion).
+ */
+const login = (res, data, token, session, { refreshToken = null, message = "Login successful" } = {}) => {
   return success(res, data, null, message, 200, {
     token,
+    refreshToken,
     session: session
       ? {
         id: session.id,
