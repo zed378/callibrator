@@ -9,7 +9,7 @@ const { DEFAULT_LIMIT, MAX_LIMIT } = require("../constants");
 // HELPERS
 // ------------------------------------------------------------------
 const transformRecord = (record) => {
-  if (!record) return null;
+  if (!record) {return null;}
   return record.toJSON ? record.toJSON() : { ...record };
 };
 
@@ -221,8 +221,8 @@ exports.fetchInvoices = async ({
       offset,
       order: [["createdAt", "DESC"]],
       include: [
-        { model: Subscription, as: "subscription", attributes: ["id", "planId"] }
-      ]
+        { model: Subscription, as: "subscription", attributes: ["id", "planId"] },
+      ],
     });
 
     return {

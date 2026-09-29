@@ -26,7 +26,7 @@ export default function NewsPage() {
       <div className="mx-auto max-w-4xl px-4 pb-24 pt-32 sm:px-6 lg:pt-36">
         <header className="max-w-2xl">
           <Eyebrow>News</Eyebrow>
-          <SectionHeading className="mt-5">
+          <SectionHeading as="h1" className="mt-5">
             Product updates, releases, and company news.
           </SectionHeading>
         </header>

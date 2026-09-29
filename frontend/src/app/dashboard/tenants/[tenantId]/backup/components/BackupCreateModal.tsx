@@ -51,10 +51,10 @@ export const BackupCreateModal: React.FC<BackupCreateModalProps> = ({
         <form onSubmit={onSubmit}>
           <div className="p-6 space-y-4">
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">
+              <label htmlFor="backup-create-1" className="block text-sm font-medium text-foreground mb-1">
                 Backup Name *
               </label>
-              <input
+              <input id="backup-create-1"
                 type="text"
                 value={form.name}
                 onChange={(e) =>
@@ -66,10 +66,10 @@ export const BackupCreateModal: React.FC<BackupCreateModalProps> = ({
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">
+              <label htmlFor="backup-create-2" className="block text-sm font-medium text-foreground mb-1">
                 Description
               </label>
-              <textarea
+              <textarea id="backup-create-2"
                 value={form.description}
                 onChange={(e) =>
                   setForm({
@@ -84,10 +84,10 @@ export const BackupCreateModal: React.FC<BackupCreateModalProps> = ({
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">
+                <label htmlFor="backup-create-3" className="block text-sm font-medium text-foreground mb-1">
                   Backup Type
                 </label>
-                <select
+                <select id="backup-create-3"
                   value={form.backupType}
                   onChange={(e) =>
                     setForm({
@@ -106,10 +106,10 @@ export const BackupCreateModal: React.FC<BackupCreateModalProps> = ({
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">
+                <label htmlFor="backup-create-4" className="block text-sm font-medium text-foreground mb-1">
                   Retention (days)
                 </label>
-                <input
+                <input id="backup-create-4"
                   type="number"
                   value={form.retentionDays}
                   onChange={(e) =>
@@ -123,10 +123,10 @@ export const BackupCreateModal: React.FC<BackupCreateModalProps> = ({
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">
+              <label htmlFor="backup-create-5" className="block text-sm font-medium text-foreground mb-1">
                 Tag
               </label>
-              <input
+              <input id="backup-create-5"
                 type="text"
                 value={form.tag}
                 onChange={(e) =>

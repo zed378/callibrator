@@ -260,7 +260,7 @@ seed-demo: ## Seed demo data (dev only — ~80 rows, idempotent)
 		echo -e "$(C_ERR)Refusing: a demo seeder against real data is a data-integrity incident.$(C_OFF)"
 		exit 1
 	fi
-	cd backend && node src/scripts/seedDemo.js
+	cd backend && npx --no-install tsx src/scripts/seedDemo.js
 
 .PHONY: backup
 backup: ## Dump the database to ./backups
@@ -280,9 +280,17 @@ backup: ## Dump the database to ./backups
 lint: ## Lint both workspaces
 	npm run lint
 
+.PHONY: ts-ratchet
+ts-ratchet: ## Fail on any new backend .js file; lower the floor on a conversion (P9-04, ADR-087)
+	cd backend && npm run --silent ratchet
+
 .PHONY: typecheck
-typecheck: ## Type-check (frontend only today — the backend has no tsconfig yet, ADR-038/P9-01a)
-	npm run typecheck
+typecheck: ## Type-check both workspaces with TypeScript 7 (P9-01a, ADR-087)
+	@# Each workspace directly, not `turbo run typecheck`: turbo skips a package
+	@# without the script and exits 0, and at the root it currently refuses to
+	@# resolve the workspace at all (no packageManager field).
+	cd backend && npm run --silent typecheck
+	cd frontend && npm run --silent typecheck
 
 .PHONY: test
 test: ## Unit and integration tests
@@ -328,7 +336,7 @@ secret-scan: ## Scan the whole git history for secrets, as CI does (needs gitlea
 	gitleaks git --config .gitleaks.toml --redact .
 
 .PHONY: verify
-verify: lint typecheck test build ## The full gate (by hand; CI runs the same stages — .github/workflows/ci.yml)
+verify: lint ts-ratchet typecheck test build ## The full gate (by hand; CI runs the same stages — .github/workflows/ci.yml)
 	@echo ""
 	@echo -e "$(C_OK)Gates passed.$(C_OFF)"
 	@echo -e "$(C_DIM)Not covered here: the live E2E suite (make test-e2e) and the browser suite.$(C_OFF)"

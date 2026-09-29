@@ -135,7 +135,7 @@ descendant's `path` and `depth`** rewritten, one PLATFORM audit row (`MOVE_TENAN
 parent, a parent inside its own subtree (a cycle), already under that parent, **already a root** (was 404), a
 tenant or parent with no `code`, or a subtree the move would push past `HIERARCHY_MAX_DEPTH`.
 
-**Hierarchy does not grant visibility.** A parent tenant does not automatically see child data; the tenant predicate is still exact-match. Cross-tenant visibility needs an explicit, audited path.
+**Hierarchy does not grant visibility.** A parent tenant does not automatically see child data; the tenant predicate is still exact-match. Cross-tenant visibility needs an explicit, audited path. **ADR-084 (Q-05) decided it never does:** the hierarchy is structure, not access. The unused helpers that encoded a "subtree"/"all" visibility scope were removed. A future group report is aggregates only, consented by each child, and needs its own ADR.
 
 ## `/api/v1/custom-domains` — 7 endpoints
 

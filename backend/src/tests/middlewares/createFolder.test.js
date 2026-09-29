@@ -20,7 +20,7 @@ describe("createFolder middleware", () => {
     jest.clearAllMocks();
     originalExit = process.exit;
     process.exit = jest.fn();
-    
+
     spyExists = jest.spyOn(fs, "existsSync").mockImplementation(() => true);
     spyMkdir = jest.spyOn(fs, "mkdirSync").mockImplementation(() => {});
   });

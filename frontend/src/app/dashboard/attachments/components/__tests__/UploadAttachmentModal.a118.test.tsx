@@ -45,7 +45,10 @@ const formState = (): AttachmentFormState =>
   JSON.parse(screen.getByTestId("form-state").textContent || "null");
 
 const choose = (current: string, label: string) => {
-  fireEvent.click(screen.getByRole("button", { name: current }));
+  // ADR-090: the trigger is named by its field label, then its value.
+  fireEvent.click(
+    screen.getByRole("button", { name: (name) => name.endsWith(current) }),
+  );
   fireEvent.click(screen.getByRole("option", { name: label }));
 };
 

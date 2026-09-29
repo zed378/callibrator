@@ -173,9 +173,9 @@ export default function TicketResponsePage() {
           <Card>
             <CardContent className="p-16 text-center">
               <TicketCheck className="mx-auto h-16 w-16 text-muted-foreground" />
-              <h3 className="text-xl font-semibold text-foreground mt-4">
+              <h2 className="text-xl font-semibold text-foreground mt-4">
                 Queue is clear
-              </h3>
+              </h2>
               <p className="text-muted-foreground mt-2 max-w-sm mx-auto">
                 No tickets match this view. New support requests will appear here
                 as tenants raise them.

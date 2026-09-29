@@ -94,6 +94,8 @@ Soft delete (`paranoid` plus `isDeleted`). Calibration records, certificates, wo
 
 Retiring is different from deleting: set `status = 'retired'`. Retirement is a lifecycle state; deletion is an administrative correction.
 
+**Retirement is terminal — ADR-084 (Q-02), migration `0089`.** Editing a retired device's status answers **409**, and the trigger `calibration_devices_retired_terminal` refuses the same UPDATE from any path. A retirement entered in error is corrected by `POST /api/v1/calibration-devices/:id/reinstate` (tenant administrator, calibration write, mandatory reason and target status), audited `REINSTATE` in the same transaction. Three different acts: **retire** is a status (the device still exists and keeps its history); **restore** (A-133, ADR-075) undoes a soft *delete* and leaves the status as it was — a retired device restored is still retired; **reinstate** undoes a *retirement* and refuses a deleted device (restore it first).
+
 ## Filtering and Search
 
 `GET /` accepts filters on `status`, `category`, `locationId`, and calibration-due windows, plus free text over `name`, `serialNumber`, `manufacturer` and `model`.

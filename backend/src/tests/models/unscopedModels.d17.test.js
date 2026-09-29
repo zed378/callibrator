@@ -171,8 +171,14 @@ const namesParent = (where, keys) => {
 };
 
 /** [{ line, model, method }] for child-model queries with no parent key. */
-const scanSource = (source) => {
-  const ast = espree.parse(source, { ecmaVersion: "latest", sourceType: "script", loc: true });
+// ADR-087 Amendment 4: a converted (.ts) file is parsed with typescript-estree,
+// which yields the same ESTree node shapes espree does (plus TS-only nodes the
+// visitor walks past), so the rule reads converted files exactly as before.
+const tsEstree = require("@typescript-eslint/typescript-estree");
+const scanSource = (source, file = "") => {
+  const ast = /\.ts$/.test(file)
+    ? tsEstree.parse(source, { loc: true })
+    : espree.parse(source, { ecmaVersion: "latest", sourceType: "script", loc: true });
   const found = [];
   const visit = (node) => {
     if (!node || typeof node.type !== "string") {return;}
@@ -223,7 +229,7 @@ const sourceFiles = () => {
       const full = path.join(dir, name);
       if (fs.statSync(full).isDirectory()) {
         if (!["tests", "migrations", "models"].includes(name)) {walk(full);}
-      } else if (name.endsWith(".js")) {
+      } else if (/\.(js|ts)$/.test(name) && !name.endsWith(".d.ts")) {
         out.push(full);
       }
     }
@@ -254,7 +260,7 @@ describe("D-17 — every query on a child model names its scoped parent", () => 
       // POSIX separators: the review keys are written with "/", and on Windows
       // path.relative answers with backslashes, so every reviewed exception read as new.
       const rel = path.relative(SRC, file).split(path.sep).join("/");
-      for (const f of scanSource(fs.readFileSync(file, "utf8"))) {
+      for (const f of scanSource(fs.readFileSync(file, "utf8"), file)) {
         if (REVIEWED_WITHOUT_PARENT[`${rel} *`]) {continue;}
         const key = `${rel} ${f.model}.${f.method}`;
         tally[key] = (tally[key] || 0) + 1;

@@ -34,8 +34,14 @@ const hasForce = (arg) =>
  * In a file that touches a signature model: every `<Model>.destroy(...)` on a
  * signature model (a bulk delete), and every `x.destroy({ force })` at all.
  */
-const scan = (source) => {
-  const ast = espree.parse(source, { ecmaVersion: "latest", sourceType: "script", loc: true });
+// ADR-087 Amendment 4: a converted (.ts) file is parsed with typescript-estree,
+// which yields the same ESTree node shapes espree does (plus TS-only nodes the
+// visitor walks past), so the rule reads converted files exactly as before.
+const tsEstree = require("@typescript-eslint/typescript-estree");
+const scan = (source, file = "") => {
+  const ast = /\.ts$/.test(file)
+    ? tsEstree.parse(source, { loc: true })
+    : espree.parse(source, { ecmaVersion: "latest", sourceType: "script", loc: true });
   const found = [];
   const visit = (node) => {
     if (!node || typeof node.type !== "string") {return;}
@@ -71,7 +77,7 @@ const filesTouchingSignatures = () => {
       const full = path.join(dir, name);
       if (fs.statSync(full).isDirectory()) {
         if (!["tests", "migrations", "models"].includes(name)) {walk(full);}
-      } else if (name.endsWith(".js")) {
+      } else if (/\.(js|ts)$/.test(name) && !name.endsWith(".d.ts")) {
         const text = fs.readFileSync(full, "utf8");
         if (/\bSignature(Workflow|WorkflowStep|Record)s?\b/.test(text)) {out.push([full, text]);}
       }
@@ -102,7 +108,7 @@ describe("D-18 — no hard delete of signature evidence", () => {
   it("no force: true destroy and no bulk destroy of SignatureWorkflow / SignatureWorkflowStep / SignatureRecord", () => {
     const offenders = [];
     for (const [file, text] of filesTouchingSignatures()) {
-      for (const f of scan(text)) {offenders.push(`${path.relative(SRC, file)}:${f.line} ${f.what}`);}
+      for (const f of scan(text, file)) {offenders.push(`${path.relative(SRC, file)}:${f.line} ${f.what}`);}
     }
     expect(offenders).toEqual([]);
   });

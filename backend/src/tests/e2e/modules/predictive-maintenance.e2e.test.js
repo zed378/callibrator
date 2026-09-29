@@ -57,7 +57,7 @@ describe("E2E Predictive Maintenance (HTTP)", () => {
   });
 
   afterAll(async () => {
-    if (ids.device) await httpDelete(`/calibration-devices/${ids.device}`, auth);
+    if (ids.device) {await httpDelete(`/calibration-devices/${ids.device}`, auth);}
   });
 
   test("GET /predictive-maintenance/recommendations — 200, data array", async () => {
@@ -109,7 +109,7 @@ describe("E2E Predictive Maintenance (HTTP)", () => {
       auth,
     );
     expect([200, 409]).toContain(status);
-    if (status === 409) expect(body.message).toMatch(/pending recommendation/);
+    if (status === 409) {expect(body.message).toMatch(/pending recommendation/);}
   });
 
   test("POST /recommendations/:deviceId/approve — 404 on unknown device", async () => {

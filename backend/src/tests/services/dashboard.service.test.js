@@ -1,4 +1,3 @@
-// eslint-disable-next-line no-undef
 jest.mock("../../models", () => ({
   Op: {
     between: Symbol("between"),

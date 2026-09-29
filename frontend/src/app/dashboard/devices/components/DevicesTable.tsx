@@ -103,7 +103,7 @@ export const DevicesTable: React.FC<DevicesTableProps> = ({
                         onClick={() => openIotModal(dev)}
                         className="text-muted-foreground hover:text-primary hover:bg-muted"
                       >
-                        <Radio className="h-4 w-4" />
+                        <Radio className="h-4 w-4" aria-hidden="true" />
                       </Button>
                     )}
                     {hasWriteAccess && (
@@ -112,17 +112,19 @@ export const DevicesTable: React.FC<DevicesTableProps> = ({
                           variant="ghost"
                           size="sm"
                           onClick={() => openEditModal(dev)}
+                          aria-label={`Edit ${dev.name}`}
                           className="text-primary hover:text-primary hover:bg-muted"
                         >
-                          <Edit className="h-4 w-4" />
+                          <Edit className="h-4 w-4" aria-hidden="true" />
                         </Button>
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => handleDeleteClick(dev.id)}
+                          aria-label={`Delete ${dev.name}`}
                           className="text-destructive hover:text-destructive hover:bg-muted"
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Trash2 className="h-4 w-4" aria-hidden="true" />
                         </Button>
                       </>
                     )}

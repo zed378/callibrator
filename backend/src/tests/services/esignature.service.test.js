@@ -9,8 +9,6 @@ jest.mock("../../config", () => {
   return actual;
 });
 
-// eslint-disable-next-line no-undef
-
 const {
   generateKeyPair,
   signDocument,

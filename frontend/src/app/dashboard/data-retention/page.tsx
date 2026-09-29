@@ -190,8 +190,8 @@ export default function DataRetentionPage() {
 
         <Card className="bg-card/50 backdrop-blur-sm border-border">
           <CardContent className="pt-6">
-            <label className="block text-sm font-medium mb-1.5">Tenant</label>
-            <Select
+            <label htmlFor="data-retention-page-f1" className="block text-sm font-medium mb-1.5">Tenant</label>
+            <Select id="data-retention-page-f1"
               value={tenantId}
               onChange={setSelectedTenantId}
               placeholder="Select a tenant"

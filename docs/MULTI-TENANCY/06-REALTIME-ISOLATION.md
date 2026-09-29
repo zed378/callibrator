@@ -6,7 +6,7 @@ This document **extends** [`../SECURITY/05-MULTI-TENANCY-SECURITY.md`](../SECURI
 
 The transport itself — handshake, rooms, events, reconnection — is [`../ARCHITECTURE/10-REALTIME-ARCHITECTURE.md`](../ARCHITECTURE/10-REALTIME-ARCHITECTURE.md).
 
-> **Target standard: TypeScript, strict (ADR-038).** The code described here is **JavaScript/CommonJS as built**: `backend/src/config/socket.js`, `backend/src/utils/tenantScope.util.js`, `backend/src/middlewares/tenantContext.middleware.js`, `backend/src/services/kanban.service.js`. Conversion is tracked in [`../../TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`](../../TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md) and changes no behaviour.
+> **Target standard: TypeScript, strict (ADR-038).** The code described here is **JavaScript/CommonJS as built** — `backend/src/config/socket.js`, `backend/src/services/kanban.service.js` — except two files Phase 9 (ADR-087) converted by 2026-09-28: `backend/src/utils/tenantScope.util.ts` and `backend/src/middlewares/tenantContext.middleware.ts`. The `.js:<line>` references to those two below are to the former `.js` files (ADR-088). Conversion is tracked in [`../../TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`](../../TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md) and changes no behaviour.
 
 ---
 
@@ -114,24 +114,20 @@ One cosmetic wart with no known leak: a principal with no tenant joins the liter
 
 These are open as of 2026-09-23. None of them is softened.
 
-### 1. The checks are connect-time only
+### 1. The checks were connect-time only — closed 2026-09-27 except for a role change
 
-**A tenant suspended after the handshake keeps its live socket until it disconnects.**
+> **Corrected 2026-09-28 (ADR-088).** The paragraphs that stood here said nothing re-evaluates an open connection. Since P6-12 (ADR-085, 2026-09-27) that is false: `config/socket.js` starts a `setInterval(recheckSocket, SOCKET_RECHECK_INTERVAL_MS)` (60 s) per connection, and `recheckSocket` re-runs `checkPrincipal` — live session, user exists and is active, tenant not deleted, suspended or soft-deleted — and **disconnects** the socket on a refusal. A database or Redis error keeps the socket until the next interval. Evidence named on the board: `socket.test.js` › "P6-12 — an open socket stops when its principal stops". The line numbers elsewhere in this document are of `socket.js` before that change.
 
-`authenticateHandshake` runs once, in `io.use` (`socket.js:184`). Nothing re-evaluates the connection afterwards: there is no periodic revalidation, no `tenants.status` watcher, no server-side disconnect on suspension. `socket.tenantContext` is a snapshot taken at connect time and reused by `withTenantContext` for the life of the connection.
-
-The same applies to every other principal-state change the handshake checks:
+`socket.tenantContext` is still a snapshot taken at connect time and reused by `withTenantContext` for the life of the connection; the re-check refuses or keeps a socket, it does not rebuild the context.
 
 | Changed after connect | HTTP | Socket |
 |---|---|---|
-| tenant suspended or deleted | next request is refused (`auth.middleware.js`, BR-3) | **existing connection survives**; `new_notification` and `kanban:*` keep flowing |
-| user set `INACTIVE` / `SUSPENDED` / `isActive: false` | next request is refused | **existing connection survives** |
-| role changed | next request uses the new role | `socket.tenantContext.isSuperAdmin` keeps the **old** value |
-| session revoked | not checked over HTTP either | not checked |
+| tenant suspended or deleted | next request is refused (`auth.middleware.js`, BR-3) | disconnected at the next re-check — up to 60 s (ADR-088) |
+| user set `INACTIVE` / `SUSPENDED` / `isActive: false` | next request is refused | disconnected at the next re-check (ADR-088) |
+| role changed | next request uses the new role | `socket.tenantContext.isSuperAdmin` keeps the **old** value — a role change is not a refusal, so the re-check keeps the socket |
+| session revoked | refused — `auth.middleware.js#sessionIsUsable` checks the session is live (ADR-085) | disconnected at the next re-check (ADR-088) |
 
-A reconnect closes the window — and the client's token is only good for 300 seconds, so a dropped connection will be re-gated. A connection that never drops is never re-gated.
-
-Making sockets stricter than HTTP is a decision the owner has not made. A-05 records it as an **Open Question**, not a judgement call. Do not fix it in a bug fix.
+A reconnect still re-runs the full handshake. What remains open is the role change: a connection that never drops keeps the `isSuperAdmin` it was opened with (ADR-088; the former A-05 Open Question was answered by P6-12 / ADR-085 for everything else).
 
 ### 2. Only one handler is wrapped, and nothing enforces it
 

@@ -20,7 +20,7 @@ const sequelize = new Sequelize({ dialect: "postgres", logging: false });
 
 const models = {};
 for (const file of fs.readdirSync(MODELS_DIR)) {
-  if (!file.endsWith(".model.js")) {
+  if (!/\.model\.(js|ts)$/.test(file)) { // ADR-087 Amendment 4
     continue;
   }
   const model = require(path.join(MODELS_DIR, file))(sequelize, DataTypes);

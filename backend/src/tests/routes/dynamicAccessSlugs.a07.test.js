@@ -83,7 +83,7 @@ const listRouteFiles = (dir) => {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
       out.push(...listRouteFiles(full));
-    } else if (entry.name.endsWith(".js")) {
+    } else if (/\.(js|ts)$/.test(entry.name)) { // ADR-087 Amendment 4
       out.push(full);
     }
   }

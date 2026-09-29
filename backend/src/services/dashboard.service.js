@@ -271,7 +271,7 @@ exports.getDashboardMetrics = async (tenantId = null) => {
 
   const toMap = (rows) =>
     rows.reduce((acc, row) => {
-      if (row.tenantId) acc[row.tenantId] = parseInt(row.count, 10);
+      if (row.tenantId) {acc[row.tenantId] = parseInt(row.count, 10);}
       return acc;
     }, {});
   const userCounts = toMap(usersByTenant);

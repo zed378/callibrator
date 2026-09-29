@@ -25,6 +25,7 @@ async function BlogIndex({ searchParams }: { searchParams: Promise<{ category?: 
 
   return (
     <div className="mt-10 space-y-10">
+      <h2 className="sr-only">Articles</h2>
       {categories.length > 0 && <CategoryFilter categories={categories} basePath="/blog" />}
 
       {featured && (
@@ -56,7 +57,7 @@ export default function BlogPage({
       <div className="mx-auto max-w-7xl px-4 pb-24 pt-32 sm:px-6 lg:px-8 lg:pt-36">
         <header className="max-w-2xl">
           <Eyebrow>Blog</Eyebrow>
-          <SectionHeading className="mt-5">
+          <SectionHeading as="h1" className="mt-5">
             Field notes on calibration, compliance, and staying audit-ready.
           </SectionHeading>
           <p className="mt-5 text-lg leading-relaxed text-muted-foreground">

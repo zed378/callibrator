@@ -3,8 +3,8 @@ jest.mock("sanitize-html", () => {
   mock.defaults = {
     allowedTags: ["p", "div", "b", "i", "em", "strong", "a"],
     allowedAttributes: {
-      a: ["href", "name", "target"]
-    }
+      a: ["href", "name", "target"],
+    },
   };
   mock.simpleTransform = jest.fn().mockReturnValue(jest.fn());
   return mock;

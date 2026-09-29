@@ -43,7 +43,7 @@ export const SsoConfigTab: React.FC<SsoConfigTabProps> = ({
       {/* SSO Enabled Toggle */}
       <div className="flex items-center justify-between p-4 bg-muted/50 rounded-2xl shadow-sm">
         <div>
-          <h4 className="font-semibold text-white">Enable SAML Single Sign-On</h4>
+          <h4 className="font-semibold text-foreground">Enable SAML Single Sign-On</h4>
           <p className="text-xs text-muted-foreground">Allow users to log in using Enterprise credentials</p>
         </div>
         <label className="relative inline-flex items-center cursor-pointer">
@@ -59,37 +59,37 @@ export const SsoConfigTab: React.FC<SsoConfigTabProps> = ({
 
       {/* IdP Entry Point */}
       <div className="space-y-2">
-        <label className="text-sm font-semibold text-muted-foreground block">Identity Provider SSO URL (Entry Point)</label>
-        <input
+        <label htmlFor="tenants-components-sso-ssoconfigtab-f1" className="text-sm font-semibold text-muted-foreground block">Identity Provider SSO URL (Entry Point)</label>
+        <input id="tenants-components-sso-ssoconfigtab-f1"
           type="url"
           value={form.sso_idp_entry_point}
           onChange={(e) => onChange({ ...form, sso_idp_entry_point: e.target.value })}
           placeholder="https://example.okta.com/app/saml/..."
-          className="w-full bg-muted/50 rounded-xl px-4 py-3 text-white placeholder:text-muted-foreground focus:ring-2 focus:ring-ring/50 focus:border-primary/50 transition-all text-sm ring-1 ring-border"
+          className="w-full bg-muted/50 rounded-xl px-4 py-3 text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-ring/50 focus:border-primary/50 transition-all text-sm ring-1 ring-border"
         />
       </div>
 
       {/* IdP Entity ID */}
       <div className="space-y-2">
-        <label className="text-sm font-semibold text-muted-foreground block">Identity Provider Issuer (Entity ID)</label>
-        <input
+        <label htmlFor="sso-config-1" className="text-sm font-semibold text-muted-foreground block">Identity Provider Issuer (Entity ID)</label>
+        <input id="sso-config-1"
           type="text"
           value={form.sso_idp_entity_id}
           onChange={(e) => onChange({ ...form, sso_idp_entity_id: e.target.value })}
           placeholder="http://www.okta.com/..."
-          className="w-full bg-muted/50 rounded-xl px-4 py-3 text-white placeholder:text-muted-foreground focus:ring-2 focus:ring-ring/50 focus:border-primary/50 transition-all text-sm ring-1 ring-border"
+          className="w-full bg-muted/50 rounded-xl px-4 py-3 text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-ring/50 focus:border-primary/50 transition-all text-sm ring-1 ring-border"
         />
       </div>
 
       {/* IdP Cert */}
       <div className="space-y-2">
-        <label className="text-sm font-semibold text-muted-foreground block">Identity Provider Public Certificate (PEM)</label>
-        <textarea
+        <label htmlFor="sso-config-2" className="text-sm font-semibold text-muted-foreground block">Identity Provider Public Certificate (PEM)</label>
+        <textarea id="sso-config-2"
           value={form.sso_idp_cert}
           onChange={(e) => onChange({ ...form, sso_idp_cert: e.target.value })}
           rows={4}
           placeholder="-----BEGIN CERTIFICATE-----\nMIIFCzCCAvOgAwIBAgIJAI...\n-----END CERTIFICATE-----"
-          className="w-full bg-muted/50 rounded-xl px-4 py-3 text-white placeholder:text-muted-foreground focus:ring-2 focus:ring-ring/50 focus:border-primary/50 transition-all text-xs font-mono ring-1 ring-border"
+          className="w-full bg-muted/50 rounded-xl px-4 py-3 text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-ring/50 focus:border-primary/50 transition-all text-xs font-mono ring-1 ring-border"
         />
       </div>
 
@@ -101,23 +101,23 @@ export const SsoConfigTab: React.FC<SsoConfigTabProps> = ({
         </summary>
         <div className="space-y-4 mt-4">
           <div className="space-y-2">
-            <label className="text-xs font-semibold text-muted-foreground block">Override SP Entity ID</label>
-            <input
+            <label htmlFor="sso-config-3" className="text-xs font-semibold text-muted-foreground block">Override SP Entity ID</label>
+            <input id="sso-config-3"
               type="text"
               value={form.sso_sp_entity_id}
               onChange={(e) => onChange({ ...form, sso_sp_entity_id: e.target.value })}
               placeholder={defaultSpEntityId}
-              className="w-full bg-muted/50 rounded-xl px-4 py-3 text-white placeholder:text-muted-foreground focus:ring-2 focus:ring-ring/50 focus:border-primary/50 transition-all text-sm ring-1 ring-border"
+              className="w-full bg-muted/50 rounded-xl px-4 py-3 text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-ring/50 focus:border-primary/50 transition-all text-sm ring-1 ring-border"
             />
           </div>
           <div className="space-y-2">
-            <label className="text-xs font-semibold text-muted-foreground block">Override ACS Callback URL</label>
-            <input
+            <label htmlFor="sso-config-4" className="text-xs font-semibold text-muted-foreground block">Override ACS Callback URL</label>
+            <input id="sso-config-4"
               type="url"
               value={form.sso_sp_callback_url}
               onChange={(e) => onChange({ ...form, sso_sp_callback_url: e.target.value })}
               placeholder={defaultAcsUrl}
-              className="w-full bg-muted/50 rounded-xl px-4 py-3 text-white placeholder:text-muted-foreground focus:ring-2 focus:ring-ring/50 focus:border-primary/50 transition-all text-sm ring-1 ring-border"
+              className="w-full bg-muted/50 rounded-xl px-4 py-3 text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-ring/50 focus:border-primary/50 transition-all text-sm ring-1 ring-border"
             />
           </div>
         </div>

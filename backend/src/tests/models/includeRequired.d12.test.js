@@ -182,8 +182,14 @@ const spreadStatesRequired = (arg) => {
  * Scan one source text; return `[{ line, what }]` for every include entry of
  * a default-scoped model with no explicit `required`, plus the entry count.
  */
-const scanSource = (source) => {
-  const ast = espree.parse(source, { ecmaVersion: "latest", sourceType: "script", loc: true });
+// ADR-087 Amendment 4: a converted (.ts) file is parsed with typescript-estree,
+// which yields the same ESTree node shapes espree does (plus TS-only nodes the
+// visitor walks past), so the rule reads converted files exactly as before.
+const tsEstree = require("@typescript-eslint/typescript-estree");
+const scanSource = (source, file = "") => {
+  const ast = /\.ts$/.test(file)
+    ? tsEstree.parse(source, { loc: true })
+    : espree.parse(source, { ecmaVersion: "latest", sourceType: "script", loc: true });
   const renamed = new Map(); // `const { User: U } = models` → U means User
   const offenders = [];
   let entries = 0;
@@ -266,6 +272,11 @@ const scanSource = (source) => {
         }
       }
     }
+    // ADR-087 Amendment 4: the TypeScript spelling of the same rename,
+    // `import { User as U } from "../models"`.
+    if (node.type === "ImportSpecifier" && node.imported && node.imported.type === "Identifier" && scopedNames.has(node.imported.name)) {
+      renamed.set(node.local.name, node.imported.name);
+    }
     // `include: …`
     if (node.type === "Property" && keyOf(node) === "include") {entry(node.value);}
     // `const include = …` / `const CATEGORY_INCLUDE = …` / `x.include = …`
@@ -316,7 +327,7 @@ const sourceFiles = () => {
       const full = path.join(dir, name);
       if (fs.statSync(full).isDirectory()) {
         if (!["tests", "migrations"].includes(name)) {walk(full);}
-      } else if (name.endsWith(".js")) {
+      } else if (/\.(js|ts)$/.test(name) && !name.endsWith(".d.ts")) {
         out.push(full);
       }
     }
@@ -324,6 +335,60 @@ const sourceFiles = () => {
   walk(SRC);
   return out;
 };
+
+/**
+ * P9-10 (ADR-087 Amendment 7; spec item 6): a CONVERTED model declares the
+ * phantom brand `defaultScoped: DefaultScoped` among its statics exactly when
+ * its runtime defaultScope carries a `where`. The brand emits nothing, so only
+ * this test keeps it honest: the branded set must EQUAL the runtime set,
+ * restricted to the converted (.model.ts) files.
+ */
+// A declaration line — not a mention inside a comment.
+const BRAND = /^\s*(?:readonly\s+)?defaultScoped\s*:\s*DefaultScoped\b/m;
+const MODEL_NAME = /\bmodelName\s*:\s*"(\w+)"/;
+const brandedSets = (files) => {
+  const branded = [];
+  const converted = [];
+  for (const [file, text] of files) {
+    const m = MODEL_NAME.exec(text);
+    if (!m) {throw new Error(`${file}: no modelName`);}
+    converted.push(m[1]);
+    if (BRAND.test(text)) {branded.push(m[1]);}
+  }
+  return { branded: branded.sort(), converted: converted.sort() };
+};
+const convertedModelFiles = () =>
+  fs
+    .readdirSync(path.join(SRC, "models"))
+    .filter((f) => /\.model\.ts$/.test(f))
+    .map((f) => [f, fs.readFileSync(path.join(SRC, "models", f), "utf8")]);
+
+describe("D-12 — the phantom brand on converted models equals the runtime default-scoped set", () => {
+  it("the brand check bites: a missing brand and a stray brand are both seen", () => {
+    const { branded, converted } = brandedSets([
+      ["a.model.ts", 'interface AStatics {\n  readonly defaultScoped: DefaultScoped;\n}\n{ modelName: "A" }'],
+      ["b.model.ts", 'interface BStatics { associate: () => void }\n{ modelName: "B" }'],
+      // A brand mentioned in a comment is not a brand.
+      ["c.model.ts", 'interface CStatics {\n  // readonly defaultScoped: DefaultScoped;\n}\n{ modelName: "C" }'],
+    ]);
+    expect(converted).toEqual(["A", "B", "C"]);
+    expect(branded).toEqual(["A"]);
+    // Against a runtime where B is default-scoped and A is not, both directions differ.
+    const runtime = ["B"];
+    expect(branded.filter((n) => !runtime.includes(n))).toEqual(["A"]);
+    expect(runtime.filter((n) => !branded.includes(n))).toEqual(["B"]);
+  });
+
+  it("every converted model is branded iff its defaultScope has a where", () => {
+    const { branded, converted } = brandedSets(convertedModelFiles());
+    // A scanner that finds no converted model cannot pass (batch 1: nine Kanban models; batch 2: six inventory).
+    expect(converted.length).toBeGreaterThanOrEqual(15);
+    // Batch 2 brings the first two default-scoped models: the brand is exercised, not vacuous.
+    expect(branded).toEqual(expect.arrayContaining(["Stock", "Warehouse"]));
+    const runtimeScoped = scopedModels.map((m) => m.name).filter((n) => converted.includes(n)).sort();
+    expect(branded).toEqual(runtimeScoped);
+  });
+});
 
 describe("D-12 — the rule: every include of a default-scoped model states `required`", () => {
   it("the scanner bites: bare includes of default-scoped models are flagged, stated ones are not", () => {
@@ -349,7 +414,7 @@ describe("D-12 — the rule: every include of a default-scoped model states `req
 
   it("found the include sites (a scanner that finds nothing cannot pass)", () => {
     const entries = sourceFiles().reduce(
-      (n, file) => n + scanSource(fs.readFileSync(file, "utf8")).entries,
+      (n, file) => n + scanSource(fs.readFileSync(file, "utf8"), file).entries,
       0,
     );
     expect(entries).toBeGreaterThanOrEqual(120);
@@ -358,7 +423,7 @@ describe("D-12 — the rule: every include of a default-scoped model states `req
   it("no production include of a default-scoped model leaves `required` to the defaultScope", () => {
     const offenders = [];
     for (const file of sourceFiles()) {
-      for (const o of scanSource(fs.readFileSync(file, "utf8")).offenders) {
+      for (const o of scanSource(fs.readFileSync(file, "utf8"), file).offenders) {
         offenders.push(`${path.relative(SRC, file)}:${o.line} ${o.what}`);
       }
     }

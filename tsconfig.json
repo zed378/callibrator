@@ -4,9 +4,11 @@
   // NOTE: this file previously extended "config/tsconfig.base.json", which does
   // not exist — the root tsconfig was broken.
   //
-  // TypeScript is meaningful only in frontend/. The backend is JavaScript,
-  // CommonJS (ADR-030); there is nothing to type-check there, and `pnpm
-  // typecheck` runs against the frontend alone.
+  // Each workspace has its own configuration, and this one compiles nothing
+  // (`include: []`): frontend/tsconfig.json for the frontend, and
+  // backend/tsconfig.json for the backend, which is migrating from JavaScript
+  // to strict TypeScript module by module (ADR-038, ADR-087). `make typecheck`
+  // runs both with TypeScript 7.
   //
   // frontend/tsconfig.json is authoritative for the frontend build. This file
   // exists so editors opening the repository root resolve something valid.

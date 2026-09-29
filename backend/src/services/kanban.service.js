@@ -63,7 +63,7 @@ const RELATION_INVERSE = {
  */
 const codePrefix = (project) => {
   const fromCode = (project.code || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
-  if (fromCode) return fromCode;
+  if (fromCode) {return fromCode;}
 
   const fromName = (project.name || "")
     .toUpperCase()
@@ -132,7 +132,7 @@ const assertAccess = async (user, projectId, minLevel = "viewer") => {
   if (!level || LEVELS[level] < LEVELS[minLevel]) {
     // 404 (not 403) for a viewer-level miss so we don't reveal the project
     // exists to someone with no access at all.
-    if (!level) throw new AppError(404, "Project not found");
+    if (!level) {throw new AppError(404, "Project not found");}
     throw new AppError(403, `Requires ${minLevel} access to this project`);
   }
   return { project, level };
@@ -200,7 +200,7 @@ const cardInclude = () => [
  */
 const loadCard = async (id) => {
   const card = await KanbanCard.findByPk(id);
-  if (!card) return null;
+  if (!card) {return null;}
   const [assignees, labels, relations] = await Promise.all([
     card.getAssignees({
       attributes: ["id", "firstName", "lastName", "email"],
@@ -237,11 +237,11 @@ const loadRelations = async (cardId) => {
     type: r.type,
     card: r.targetCard
       ? {
-          id: r.targetCard.id,
-          cardKey: r.targetCard.cardKey,
-          title: r.targetCard.title,
-          columnId: r.targetCard.columnId,
-        }
+        id: r.targetCard.id,
+        cardKey: r.targetCard.cardKey,
+        title: r.targetCard.title,
+        columnId: r.targetCard.columnId,
+      }
       : null,
   }));
 };
@@ -511,12 +511,12 @@ const serializeSprint = (s) => ({
 exports.updateProject = async (user, projectId, data) => {
   await assertAccess(user, projectId, "owner");
   const patch = {};
-  if (data.name !== undefined) patch.name = data.name;
+  if (data.name !== undefined) {patch.name = data.name;}
   if (data.code !== undefined) {
     patch.code = data.code ? data.code.toUpperCase() : null;
   }
-  if (data.description !== undefined) patch.description = data.description;
-  if (data.color !== undefined) patch.color = data.color;
+  if (data.description !== undefined) {patch.description = data.description;}
+  if (data.color !== undefined) {patch.color = data.color;}
   if (data.archived !== undefined) {
     patch.archivedAt = data.archived ? new Date() : null;
   }
@@ -593,7 +593,7 @@ exports.updateMember = async (user, projectId, memberId, data) => {
   const member = await KanbanProjectMember.findOne({
     where: { id: memberId, projectId },
   });
-  if (!member) throw new AppError(404, "Member not found");
+  if (!member) {throw new AppError(404, "Member not found");}
   await member.update({ accessLevel: data.accessLevel });
   const result = await exports.getProject(user, projectId);
   emitToBoard(projectId, "kanban:project:updated", { project: result });
@@ -605,7 +605,7 @@ exports.removeMember = async (user, projectId, memberId) => {
   const member = await KanbanProjectMember.findOne({
     where: { id: memberId, projectId },
   });
-  if (!member) throw new AppError(404, "Member not found");
+  if (!member) {throw new AppError(404, "Member not found");}
   // Never leave a board without an owner.
   if (member.accessLevel === "owner") {
     const owners = await KanbanProjectMember.count({
@@ -666,10 +666,10 @@ exports.updateColumn = async (user, projectId, columnId, data) => {
   const column = await KanbanColumn.findOne({
     where: { id: columnId, projectId },
   });
-  if (!column) throw new AppError(404, "Column not found");
+  if (!column) {throw new AppError(404, "Column not found");}
   const patch = {};
-  if (data.name !== undefined) patch.name = data.name;
-  if (data.wipLimit !== undefined) patch.wipLimit = data.wipLimit;
+  if (data.name !== undefined) {patch.name = data.name;}
+  if (data.wipLimit !== undefined) {patch.wipLimit = data.wipLimit;}
   // Position is managed via reorderColumns (which keeps Done last); ignore any
   // direct position write on the Done column to avoid dislodging it.
   if (data.position !== undefined && !column.isDone) {
@@ -692,7 +692,7 @@ exports.deleteColumn = async (user, projectId, columnId) => {
   const column = await KanbanColumn.findOne({
     where: { id: columnId, projectId },
   });
-  if (!column) throw new AppError(404, "Column not found");
+  if (!column) {throw new AppError(404, "Column not found");}
   if (column.isDone) {
     throw new AppError(400, "The Done column cannot be deleted");
   }
@@ -716,7 +716,7 @@ exports.reorderColumns = async (user, projectId, order) => {
     // Apply the requested order but force the Done column to the very end,
     // regardless of where the client tried to place it.
     const seq = order.filter((id) => id !== doneId);
-    if (doneId) seq.push(doneId);
+    if (doneId) {seq.push(doneId);}
     for (let i = 0; i < seq.length; i++) {
       await KanbanColumn.update(
         { position: i },
@@ -749,7 +749,7 @@ exports.createCard = async (user, projectId, data) => {
   const column = await KanbanColumn.findOne({
     where: { id: data.columnId, projectId },
   });
-  if (!column) throw new AppError(404, "Column not found");
+  if (!column) {throw new AppError(404, "Column not found");}
 
   // Resolve the target sprint: explicit value wins ("backlog"/null => backlog);
   // otherwise the card lands in the project's active sprint.
@@ -760,7 +760,7 @@ exports.createCard = async (user, projectId, data) => {
     const sprint = await KanbanSprint.findOne({
       where: { id: data.sprintId, projectId },
     });
-    if (!sprint) throw new AppError(404, "Sprint not found");
+    if (!sprint) {throw new AppError(404, "Sprint not found");}
     sprintId = sprint.id;
   } else {
     const active = await KanbanSprint.findOne({
@@ -843,14 +843,14 @@ exports.updateCard = async (user, projectId, cardId, data) => {
     where: { id: cardId, projectId },
     include: cardInclude(),
   });
-  if (!card) throw new AppError(404, "Card not found");
+  if (!card) {throw new AppError(404, "Card not found");}
 
   const previousAssignees = new Set((card.assignees || []).map((u) => u.id));
 
   await sequelize.transaction(async (transaction) => {
     const patch = {};
     for (const f of ["title", "description", "priority", "dueDate"]) {
-      if (data[f] !== undefined) patch[f] = data[f];
+      if (data[f] !== undefined) {patch[f] = data[f];}
     }
     if (data.sprintId !== undefined) {
       patch.sprintId =
@@ -905,11 +905,11 @@ exports.updateCard = async (user, projectId, cardId, data) => {
 exports.moveCard = async (user, projectId, cardId, { columnId, position }) => {
   await assertAccess(user, projectId, "editor");
   const card = await KanbanCard.findOne({ where: { id: cardId, projectId } });
-  if (!card) throw new AppError(404, "Card not found");
+  if (!card) {throw new AppError(404, "Card not found");}
   const destColumn = await KanbanColumn.findOne({
     where: { id: columnId, projectId },
   });
-  if (!destColumn) throw new AppError(404, "Destination column not found");
+  if (!destColumn) {throw new AppError(404, "Destination column not found");}
 
   const fromColumn = card.columnId;
 
@@ -964,7 +964,7 @@ exports.moveCard = async (user, projectId, cardId, { columnId, position }) => {
 exports.deleteCard = async (user, projectId, cardId) => {
   await assertAccess(user, projectId, "editor");
   const card = await KanbanCard.findOne({ where: { id: cardId, projectId } });
-  if (!card) throw new AppError(404, "Card not found");
+  if (!card) {throw new AppError(404, "Card not found");}
   // D-22 (ADR-070): the card's attachments are soft-deleted with it, in one
   // transaction, each with its audit row.
   await sequelize.transaction(async (transaction) => {
@@ -1001,10 +1001,10 @@ exports.updateLabel = async (user, projectId, labelId, data) => {
   const label = await KanbanLabel.findOne({
     where: { id: labelId, projectId },
   });
-  if (!label) throw new AppError(404, "Label not found");
+  if (!label) {throw new AppError(404, "Label not found");}
   const patch = {};
-  if (data.name !== undefined) patch.name = data.name;
-  if (data.color !== undefined) patch.color = data.color;
+  if (data.name !== undefined) {patch.name = data.name;}
+  if (data.color !== undefined) {patch.color = data.color;}
   await label.update(patch);
   const payload = { id: label.id, name: label.name, color: label.color };
   emitToBoard(projectId, "kanban:label:updated", { label: payload });
@@ -1016,7 +1016,7 @@ exports.deleteLabel = async (user, projectId, labelId) => {
   const label = await KanbanLabel.findOne({
     where: { id: labelId, projectId },
   });
-  if (!label) throw new AppError(404, "Label not found");
+  if (!label) {throw new AppError(404, "Label not found");}
   await label.destroy(); // card_label join rows cascade
   emitToBoard(projectId, "kanban:label:deleted", { labelId });
   return { deleted: true };
@@ -1068,10 +1068,10 @@ exports.updateSprint = async (user, projectId, sprintId, data) => {
   const sprint = await KanbanSprint.findOne({
     where: { id: sprintId, projectId },
   });
-  if (!sprint) throw new AppError(404, "Sprint not found");
+  if (!sprint) {throw new AppError(404, "Sprint not found");}
   const patch = {};
   for (const f of ["name", "goal", "status", "startDate", "endDate", "position"]) {
-    if (data[f] !== undefined) patch[f] = data[f];
+    if (data[f] !== undefined) {patch[f] = data[f];}
   }
   await sprint.update(patch);
   const payload = serializeSprint(sprint);
@@ -1084,7 +1084,7 @@ exports.deleteSprint = async (user, projectId, sprintId) => {
   const sprint = await KanbanSprint.findOne({
     where: { id: sprintId, projectId },
   });
-  if (!sprint) throw new AppError(404, "Sprint not found");
+  if (!sprint) {throw new AppError(404, "Sprint not found");}
   // Cards fall back to the backlog (sprint_id -> NULL via FK on delete).
   await sprint.destroy();
   emitToBoard(projectId, "kanban:sprint:deleted", { sprintId });
@@ -1105,7 +1105,7 @@ exports.migrateCards = async (user, projectId, data) => {
     const target = await KanbanSprint.findOne({
       where: { id: targetSprintId, projectId },
     });
-    if (!target) throw new AppError(404, "Target sprint not found");
+    if (!target) {throw new AppError(404, "Target sprint not found");}
     targetId = target.id;
   }
 
@@ -1119,7 +1119,7 @@ exports.migrateCards = async (user, projectId, data) => {
       attributes: ["id"],
     });
     const doneIds = doneColumns.map((c) => c.id);
-    if (doneIds.length) where.columnId = { [Op.notIn]: doneIds };
+    if (doneIds.length) {where.columnId = { [Op.notIn]: doneIds };}
     if (fromSprintId !== undefined) {
       where.sprintId =
         fromSprintId === "backlog" || fromSprintId === null
@@ -1149,7 +1149,7 @@ exports.addRelation = async (user, projectId, cardId, data) => {
   await assertAccess(user, projectId, "editor");
   const { targetCardId, type } = data;
   const inverse = RELATION_INVERSE[type];
-  if (!inverse) throw new AppError(400, "Unknown relation type");
+  if (!inverse) {throw new AppError(400, "Unknown relation type");}
   if (targetCardId === cardId) {
     throw new AppError(400, "A card cannot relate to itself");
   }
@@ -1158,8 +1158,8 @@ exports.addRelation = async (user, projectId, cardId, data) => {
     KanbanCard.findOne({ where: { id: cardId, projectId } }),
     KanbanCard.findOne({ where: { id: targetCardId, projectId } }),
   ]);
-  if (!source) throw new AppError(404, "Card not found");
-  if (!target) throw new AppError(404, "Target card not found");
+  if (!source) {throw new AppError(404, "Card not found");}
+  if (!target) {throw new AppError(404, "Target card not found");}
 
   // Store both directions so either card sees the link without an OR query.
   await sequelize.transaction(async (transaction) => {
@@ -1187,7 +1187,7 @@ exports.removeRelation = async (user, projectId, cardId, relationId) => {
   const relation = await KanbanCardRelation.findOne({
     where: { id: relationId, projectId, sourceCardId: cardId },
   });
-  if (!relation) throw new AppError(404, "Relation not found");
+  if (!relation) {throw new AppError(404, "Relation not found");}
   // Remove the mirror row too.
   await sequelize.transaction(async (transaction) => {
     await KanbanCardRelation.destroy({
@@ -1233,8 +1233,8 @@ exports.getMetrics = async (user, projectId, options = {}) => {
 
   const view = options.sprintId || "all";
   const cardWhere = { projectId, archivedAt: null };
-  if (view === "backlog") cardWhere.sprintId = null;
-  else if (view !== "all") cardWhere.sprintId = view;
+  if (view === "backlog") {cardWhere.sprintId = null;}
+  else if (view !== "all") {cardWhere.sprintId = view;}
 
   const cards = await KanbanCard.findAll({
     where: cardWhere,

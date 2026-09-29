@@ -329,7 +329,7 @@ const logSignature = async (tenantId, certificate, userId, action, authOptions, 
 
   await ESignatureRecord.create({
     tenantId,
-    entityType: 'Certificate',
+    entityType: "Certificate",
     entityId: certificate.id,
     userId,
     action,

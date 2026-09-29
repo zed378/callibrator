@@ -48,7 +48,7 @@ describe("E2E QMS (HTTP)", () => {
     const { status, body } = await httpPost(
       "/qms/nc",
       { title: "E2E NC", description: "e2e", severity: "HIGH" },
-      authHeader(token)
+      authHeader(token),
     );
     expect(status).toBe(201);
     expect(body.data).toHaveProperty("id");
@@ -62,7 +62,7 @@ describe("E2E QMS (HTTP)", () => {
     const { status } = await rawPatch(
       `/qms/nc/${ncId}`,
       { status: "UNDER_INVESTIGATION", rootCause: "root" },
-      token
+      token,
     );
     expect(status).toBe(200);
   });
@@ -72,7 +72,7 @@ describe("E2E QMS (HTTP)", () => {
     const { status } = await rawPatch(
       `/qms/nc/${ncId}`,
       { status: "IN_PROGRESS" }, // not a valid NC status
-      token
+      token,
     );
     expect(status).toBe(400);
   });
@@ -91,7 +91,7 @@ describe("E2E QMS (HTTP)", () => {
     const { status, body } = await httpPost(
       "/qms/capa",
       { ncId, title: "E2E CAPA", actionPlan: "fix" },
-      authHeader(token)
+      authHeader(token),
     );
     expect(status).toBe(201);
     expect(body.data.capaNumber).toMatch(/^CAPA-/);
@@ -105,7 +105,7 @@ describe("E2E QMS (HTTP)", () => {
         title: "x",
         actionPlan: "y",
       },
-      authHeader(token)
+      authHeader(token),
     );
     expect(status).toBe(404);
   });

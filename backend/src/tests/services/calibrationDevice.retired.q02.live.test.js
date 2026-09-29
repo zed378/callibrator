@@ -101,6 +101,15 @@ live("Q-02 — retired is terminal, on live PostgreSQL (migration 0089)", () => 
       );
       return row.id;
     };
+    const [[admin]] = await g.db.query(
+      `INSERT INTO users (id, tenant_id, username, email, password, first_name, last_name, avatar_url,
+                          status, must_change_password, is_deleted, created_at, updated_at)
+       VALUES (gen_random_uuid(), :t, 'q84-admin', 'q84-admin@live.test', 'x', 'Q84', 'Admin', 'default.svg',
+               'ACTIVE', false, false, now(), now())
+       RETURNING id`,
+      { replacements: { t: TENANT_A } },
+    );
+    ids.adminA = admin.id;
     // UPGRADE: these exist before the migration, as on a live deployment.
     ids.retiredA = await device(TENANT_A, "Retired analyser", "retired");
     ids.retiredA2 = await device(TENANT_A, "Second retired analyser", "retired");
@@ -220,19 +229,19 @@ live("Q-02 — retired is terminal, on live PostgreSQL (migration 0089)", () => 
         TENANT_A,
         ids.retiredA,
         { reason: "Retired in error at stock take", status: "inactive" },
-        { userId: null, ipAddress: "10.0.0.1", userAgent: "live" },
+        { userId: ids.adminA, ipAddress: "10.0.0.1", userAgent: "live" },
       ),
     );
     expect(result.status).toBe(200);
     expect(await statusOf(ids.retiredA)).toBe("inactive");
 
     const [rows] = await g.db.query(
-      `SELECT action::text AS action, resource_type, changes FROM audit_logs
+      `SELECT action::text AS action, resource_type, user_id, changes FROM audit_logs
         WHERE tenant_id = :t AND resource_id = :id`,
       { replacements: { t: TENANT_A, id: ids.retiredA } },
     );
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ action: "UPDATE", resource_type: "CalibrationDevice" });
+    expect(rows[0]).toMatchObject({ action: "UPDATE", resource_type: "CalibrationDevice", user_id: ids.adminA });
     expect(rows[0].changes).toMatchObject({
       operation: "REINSTATE",
       reason: "Retired in error at stock take",

@@ -50,8 +50,8 @@ describe("E2E Supplier Scorecard (HTTP)", () => {
   });
 
   afterAll(async () => {
-    if (ids.scorecard) await httpDelete(`/supplier-scorecard/${ids.scorecard}`, auth);
-    if (ids.vendor) await httpDelete(`/vendors/${ids.vendor}`, auth);
+    if (ids.scorecard) {await httpDelete(`/supplier-scorecard/${ids.scorecard}`, auth);}
+    if (ids.vendor) {await httpDelete(`/vendors/${ids.vendor}`, auth);}
   });
 
   test("GET /supplier-scorecard — 200, data array, meta top-level", async () => {

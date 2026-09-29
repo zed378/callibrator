@@ -1,5 +1,5 @@
-const path = require('path');
-const { logger } = require('../middlewares/activityLog.middleware');
+const path = require("path");
+const { logger } = require("../middlewares/activityLog.middleware");
 
 module.exports = {
   async up({ context }) {
@@ -7,52 +7,52 @@ module.exports = {
     // wrapper this file used to assume, as 0011 already does.
     const queryInterface = context.queryInterface || context;
 
-    if (queryInterface.sequelize.getDialect() !== 'postgres') {
+    if (queryInterface.sequelize.getDialect() !== "postgres") {
       return;
     }
 
     const tableNames = [
-      'users',
-      'sessions',
-      'warehouses',
-      'storage_locations',
-      'stocks',
-      'stock_transfers',
-      'stock_adjustments',
-      'stock_opnames',
-      'calibration_devices',
-      'calibration_records',
-      'certificates',
-      'vendor_documents',
-      'vendors',
-      'maintenance_work_orders',
-      'notifications',
-      'subscriptions',
-      'invoices',
-      'audit_logs',
-      'attachments',
-      'webhooks',
-      'webhook_deliveries',
-      'api_keys',
-      'workflows',
-      'workflow_steps',
-      'workflow_instances',
-      'workflow_actions',
-      'posts',
-      'categories',
-      'post_categories',
-      'capas',
-      'non_conformances',
-      'sop_documents',
-      'sop_training_acknowledgments',
-      'e_signature_records',
-      'iot_readings',
-      'risks',
-      'supplier_scorecards',
-      'asset_finances',
-      'batch_jobs',
-      'tenant_backups',
-      'tenant_settings',
+      "users",
+      "sessions",
+      "warehouses",
+      "storage_locations",
+      "stocks",
+      "stock_transfers",
+      "stock_adjustments",
+      "stock_opnames",
+      "calibration_devices",
+      "calibration_records",
+      "certificates",
+      "vendor_documents",
+      "vendors",
+      "maintenance_work_orders",
+      "notifications",
+      "subscriptions",
+      "invoices",
+      "audit_logs",
+      "attachments",
+      "webhooks",
+      "webhook_deliveries",
+      "api_keys",
+      "workflows",
+      "workflow_steps",
+      "workflow_instances",
+      "workflow_actions",
+      "posts",
+      "categories",
+      "post_categories",
+      "capas",
+      "non_conformances",
+      "sop_documents",
+      "sop_training_acknowledgments",
+      "e_signature_records",
+      "iot_readings",
+      "risks",
+      "supplier_scorecards",
+      "asset_finances",
+      "batch_jobs",
+      "tenant_backups",
+      "tenant_settings",
     ];
 
     for (const tableName of tableNames) {
@@ -78,9 +78,9 @@ module.exports = {
           );
         `);
 
-        logger.info('RLS policy applied', { table: tableName });
+        logger.info("RLS policy applied", { table: tableName });
       } catch (err) {
-        logger.warn('RLS setup skipped', { table: tableName, error: err.message });
+        logger.warn("RLS setup skipped", { table: tableName, error: err.message });
       }
     }
   },
@@ -88,52 +88,52 @@ module.exports = {
   async down({ context }) {
     const queryInterface = context.queryInterface || context;
 
-    if (queryInterface.sequelize.getDialect() !== 'postgres') {
+    if (queryInterface.sequelize.getDialect() !== "postgres") {
       return;
     }
 
     const tableNames = [
-      'users',
-      'sessions',
-      'warehouses',
-      'storage_locations',
-      'stocks',
-      'stock_transfers',
-      'stock_adjustments',
-      'stock_opnames',
-      'calibration_devices',
-      'calibration_records',
-      'certificates',
-      'vendor_documents',
-      'vendors',
-      'maintenance_work_orders',
-      'notifications',
-      'subscriptions',
-      'invoices',
-      'audit_logs',
-      'attachments',
-      'webhooks',
-      'webhook_deliveries',
-      'api_keys',
-      'workflows',
-      'workflow_steps',
-      'workflow_instances',
-      'workflow_actions',
-      'posts',
-      'categories',
-      'post_categories',
-      'capas',
-      'non_conformances',
-      'sop_documents',
-      'sop_training_acknowledgments',
-      'e_signature_records',
-      'iot_readings',
-      'risks',
-      'supplier_scorecards',
-      'asset_finances',
-      'batch_jobs',
-      'tenant_backups',
-      'tenant_settings',
+      "users",
+      "sessions",
+      "warehouses",
+      "storage_locations",
+      "stocks",
+      "stock_transfers",
+      "stock_adjustments",
+      "stock_opnames",
+      "calibration_devices",
+      "calibration_records",
+      "certificates",
+      "vendor_documents",
+      "vendors",
+      "maintenance_work_orders",
+      "notifications",
+      "subscriptions",
+      "invoices",
+      "audit_logs",
+      "attachments",
+      "webhooks",
+      "webhook_deliveries",
+      "api_keys",
+      "workflows",
+      "workflow_steps",
+      "workflow_instances",
+      "workflow_actions",
+      "posts",
+      "categories",
+      "post_categories",
+      "capas",
+      "non_conformances",
+      "sop_documents",
+      "sop_training_acknowledgments",
+      "e_signature_records",
+      "iot_readings",
+      "risks",
+      "supplier_scorecards",
+      "asset_finances",
+      "batch_jobs",
+      "tenant_backups",
+      "tenant_settings",
     ];
 
     for (const tableName of tableNames) {
@@ -146,10 +146,10 @@ module.exports = {
           ALTER TABLE "${tableName}" DISABLE ROW LEVEL SECURITY;
         `);
 
-        logger.info('RLS policy removed', { table: tableName });
+        logger.info("RLS policy removed", { table: tableName });
       } catch (err) {
-        logger.warn('RLS removal skipped', { table: tableName, error: err.message });
+        logger.warn("RLS removal skipped", { table: tableName, error: err.message });
       }
     }
-  }
+  },
 };

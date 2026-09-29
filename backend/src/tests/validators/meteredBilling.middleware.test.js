@@ -15,7 +15,7 @@ const run = (mw, req) =>
     const next = jest.fn((err) => resolve({ err, req }));
     const res = {};
     const maybe = mw(req, res, next);
-    if (maybe && typeof maybe.then === "function") maybe.then(() => {});
+    if (maybe && typeof maybe.then === "function") {maybe.then(() => {});}
   });
 
 describe("meteredBilling validator middleware", () => {

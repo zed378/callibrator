@@ -158,11 +158,18 @@ Also carries the demo seeder:
 
 **`SEED_DEMO` must never be true in production.** A demo seeder running against real data is a data-integrity incident.
 
-## Unauthenticated Health
+## Health
 
-| Endpoint | Returns |
-|---|---|
-| `GET /health` | 200 with uptime, memory, pid, node version, `database: "connected"`; **503** with `database: "disconnected"` |
-| `GET /` | 200 liveness |
+> **Corrected (ADR-088).** This section used to show `GET /health` returning uptime, memory, pid, the Node version and `database: "connected"`, and `GET /` as liveness. That was the handler before A-06/A-15; none of those fields exists any more.
 
-`/health` calls `db.authenticate()`, so it is a genuine readiness probe. Using it as a liveness probe would restart a healthy process during a database blip.
+| Endpoint | Gate | Returns |
+|---|---|---|
+| `GET /live` | none | 200 `OK` (plain text), dependency-free — liveness |
+| `GET /ready` | none | 200 `READY` / **503** `NOT READY` (plain text) |
+| `GET /health` | none | 200 `{"status":"ok"}` / **503** `{"status":"unavailable"}` — verdict only |
+| `GET /api/v1/health` | `auth` + `denyApiKey` + `superAdminOnly` | per-dependency breakdown (`postgres`, `redis`, `rabbitmq` required; `mqtt`, `clamav` optional); **503** when a required one is unhealthy |
+| `GET /api/v1/health/jobs` | same chain | scheduled-job state (P7-02); **503** when a job failed or is overdue |
+| `GET /api/v1/health/metrics` | bearer `METRICS_TOKEN` | Prometheus text (P7-02); **404** until the token is set (≥ 32 characters) |
+| `GET /` | none | 200 `{"status":"Success","message":"Your API is running"}` — not a probe |
+
+`/ready` and `/health` return the same aggregate verdict over PostgreSQL, Redis and RabbitMQ, so they are genuine readiness probes; using either as a liveness probe would restart a healthy process during a datastore blip. Source: `backend/src/routes/internal/health.route.js` and its controller and service; full description in [`../DEVOPS/05-MONITORING.md`](../DEVOPS/05-MONITORING.md#health-endpoints).

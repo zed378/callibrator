@@ -136,13 +136,15 @@ for — a recorded exception (ADR-085): the check runs before any tenant is reso
 no tenant claim, the `sid` is a server-generated primary key, and the cached entry is bound to the
 user id, which is compared on every read.
 
-### IP binding is a trade-off — and it is not implemented
+### IP binding, fixation and concurrent sessions — decided (ADR-084)
+
+**Decided 2026-09-28 — ADR-084 (Q-08).** *Fixation:* impossible by construction — a session id is minted only when authentication completes, a new row every time; the MFA password step issues a purpose token with no `sid` and creates no session (pinned by `auth.sessionFixation.q08.test.js`). *Concurrent sessions:* **no cap**. *IP/user-agent binding:* **none** — a changed address or browser never ends a session; both are recorded at sign-in and refresh and shown to the user. The control in their place is `GET /api/v1/sessions/mine` and `POST /api/v1/sessions/mine/:id/revoke`: a user sees every live session of their own and ends any one, audited in the revoking transaction. *Sockets:* the same rule as HTTP, re-checked while open (ADR-085).
 
 Corrected **2026-09-23**. This section said `sessionSecurity.middleware.js` was "where the balance is struck". It was not. That file was imported by nothing, and its raw SQL targeted a `"Sessions"` table with camelCase columns (`"isRevoked"`, `"userId"`) against a `sessions` table with snake_case ones, passing `$1` placeholders as `replacements` — Sequelize substitutes those only for `?` and `:name`, so every query in it would have thrown the moment it ran. It was deleted under audit finding A-12, and its tests with it: a passing test over an uninstalled control is a green tick for nothing.
 
 **What is actually true:** there is no IP binding, no user-agent binding, no session fixation protection and no concurrent-session limit. Since A-48 (2026-09-24) `auth.middleware.js` **does** read the session on every request — for liveness only, as above; it compares nothing about the client.
 
-**The trade-off is still real, and still undecided.** Strict IP binding breaks legitimate users on mobile networks that rotate addresses, and hospital wifi that hands out a different address per floor. Loose binding weakens the control. A concurrent-session limit has to decide whose session is evicted. These are product decisions, not technical ones, and they are Q-08 in [`../../TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md) — to be answered, not guessed at in an implementation.
+**The trade-off below was the question; ADR-084 answered it (no binding, no cap, a self-service session list).** Strict IP binding breaks legitimate users on mobile networks that rotate addresses, and hospital wifi that hands out a different address per floor. Loose binding weakens the control. A concurrent-session limit has to decide whose session is evicted. These are product decisions, not technical ones, and they are Q-08 in [`../../TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md) — to be answered, not guessed at in an implementation.
 
 ## MFA
 
@@ -173,8 +175,8 @@ codes. Nothing else works until that is done, and nothing is locked.
 **Break-glass** (the only operator lost both the authenticator and every recovery code), in order:
 1. the operator's own recovery codes ("use a recovery code" at sign-in);
 2. another super admin: `POST /users/:userId/mfa/reset`;
-3. last: `node src/scripts/breakGlassMfaReset.js --user <username|email> --requested-by "<name>"
-   --ticket <ref>` on the backend host (it needs the database credentials). It clears the enrolment,
+3. last: `npx tsx src/scripts/breakGlassMfaReset.js --user <username|email> --requested-by "<name>"
+   --ticket <ref>`, from `backend/` on the backend host (it needs the database credentials). It clears the enrolment,
    revokes every session and writes an audit row (actor `system:break-glass`, with the name and the
    ticket) in one transaction. **It does not turn the requirement off**: the next sign-in is the
    enrolment-only session again.

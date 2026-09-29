@@ -49,7 +49,7 @@ Indexes: `status`, `subdomain`, `domain`, `email`, `code`, `is_deleted`, and `(s
 
 A materialised path rather than recursive CTEs, because the platform had to run on MySQL and CTE support differs. Ancestor and descendant queries become prefix matches. *(Chosen while MySQL was a target. PostgreSQL-only (ADR-039) now permits recursive CTEs; the materialised path stands until a decision changes it.)*
 
-**Hierarchy does not grant visibility.** A parent tenant does not automatically see child data — the tenant predicate is still exact-match on `tenantId`.
+**Hierarchy does not grant visibility.** A parent tenant does not automatically see child data — the tenant predicate is still exact-match on `tenantId`. **ADR-084 (Q-05) decided it never does:** the hierarchy is structure, not access. The unused helpers that encoded a "subtree"/"all" visibility scope were removed. A future group report is aggregates only, consented by each child, and needs its own ADR.
 
 ## `tenant_settings`
 

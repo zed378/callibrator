@@ -61,7 +61,7 @@ describe("E2E Vendors (HTTP)", () => {
   });
 
   afterAll(async () => {
-    if (vendorId) await httpDelete(`/vendors/${vendorId}`, auth);
+    if (vendorId) {await httpDelete(`/vendors/${vendorId}`, auth);}
   });
 
   test("GET /vendors — 200, data array, meta top-level", async () => {

@@ -72,9 +72,9 @@ describe("E2E Stock Module (HTTP)", () => {
   });
 
   afterAll(async () => {
-    if (ids.stock) await httpDelete(`/stocks/${ids.stock}`, auth);
-    if (ids.wh1) await httpDelete(`/warehouses/${ids.wh1}`, auth);
-    if (ids.wh2) await httpDelete(`/warehouses/${ids.wh2}`, auth);
+    if (ids.stock) {await httpDelete(`/stocks/${ids.stock}`, auth);}
+    if (ids.wh1) {await httpDelete(`/warehouses/${ids.wh1}`, auth);}
+    if (ids.wh2) {await httpDelete(`/warehouses/${ids.wh2}`, auth);}
   });
 
   test("GET /stocks — 200 list with top-level meta", async () => {

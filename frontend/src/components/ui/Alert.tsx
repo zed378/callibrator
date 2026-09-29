@@ -50,15 +50,16 @@ export const Alert: React.FC<AlertProps> = ({
         {icons[variant]}
       </div>
       <div className="flex-1">
-        {title && <h3 className="text-sm font-semibold">{title}</h3>}
+        {title && <p className="text-sm font-semibold">{title}</p>}
         <div className="text-sm mt-1">{children}</div>
       </div>
       {onClose && (
         <button
           onClick={onClose}
+          aria-label="Dismiss"
           className="shrink-0 p-1 rounded hover:bg-foreground/10"
         >
-          <X className="h-4 w-4" />
+          <X className="h-4 w-4" aria-hidden="true" />
         </button>
       )}
     </div>

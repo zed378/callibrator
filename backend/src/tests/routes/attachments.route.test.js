@@ -98,7 +98,7 @@ describe("Attachments Routes", () => {
     expect(routes.length).toBe(1);
   });
 
-    it("should have middleware or routes in stack", () => {
+  it("should have middleware or routes in stack", () => {
     const hasMiddleware = attachmentsRoutes.stack.some(
       (layer) => !layer.route,
     );
@@ -109,7 +109,7 @@ describe("Attachments Routes", () => {
     expect(hasMiddleware || hasRoutes).toBe(true);
   });
 
-    it("should have middleware or routes in stack", () => {
+  it("should have middleware or routes in stack", () => {
     const hasMiddleware = attachmentsRoutes.stack.some(
       (layer) => !layer.route,
     );

@@ -171,7 +171,9 @@ export const AuditTable: React.FC<AuditTableProps> = ({
           <table className="w-full border-collapse">
             <thead className="bg-muted border-b border-border">
               <tr>
-                <th className="px-4 py-4 w-10" aria-label="Expand" />
+                <th className="px-4 py-4 w-10">
+                  <span className="sr-only">Expand</span>
+                </th>
                 <th className="px-6 py-4 text-left text-xs font-bold uppercase tracking-wider text-muted-foreground">
                   Timestamp
                 </th>

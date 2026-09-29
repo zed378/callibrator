@@ -151,17 +151,19 @@ export const VendorsTable: React.FC<VendorsTableProps> = ({
                           variant="ghost"
                           size="sm"
                           onClick={() => openEditModal(vendor)}
+                          aria-label={`Edit ${vendor.name}`}
                           className="text-primary hover:text-primary hover:bg-muted"
                         >
-                          <Edit className="h-4 w-4" />
+                          <Edit className="h-4 w-4" aria-hidden="true" />
                         </Button>
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => handleDeleteClick(vendor.id)}
+                          aria-label={`Delete ${vendor.name}`}
                           className="text-destructive hover:text-destructive hover:bg-muted"
                         >
-                          <Trash2 className="h-4 w-4" />
+                          <Trash2 className="h-4 w-4" aria-hidden="true" />
                         </Button>
                       </>
                     )}

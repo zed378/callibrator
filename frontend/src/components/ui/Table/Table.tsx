@@ -48,7 +48,13 @@ export const Table: React.FC<TableProps> = ({
                 key={column.key}
                 className={`px-6 py-4 text-left text-xs font-bold uppercase tracking-wider min-w-0 text-muted-foreground ${column.className || ""}`}
               >
-                {column.header}
+                {column.header || (
+                  // An empty <th> names nothing for a screen reader (axe
+                  // empty-table-header); the action column is still a column.
+                  <span className="sr-only">
+                    {column.key === "actions" ? "Actions" : column.key}
+                  </span>
+                )}
               </th>
             ))}
           </tr>

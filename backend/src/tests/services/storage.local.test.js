@@ -72,7 +72,7 @@ describe("local driver — round trip", () => {
 
     const stream = await driver.get(KEY);
     const chunks = [];
-    for await (const chunk of stream) chunks.push(chunk);
+    for await (const chunk of stream) {chunks.push(chunk);}
     expect(Buffer.concat(chunks).toString()).toBe("hello world");
   });
 
@@ -80,7 +80,7 @@ describe("local driver — round trip", () => {
     await driver.put(KEY, Buffer.from("hello world"));
     const stream = await driver.get(KEY, { start: 6, end: 10 });
     const chunks = [];
-    for await (const chunk of stream) chunks.push(chunk);
+    for await (const chunk of stream) {chunks.push(chunk);}
     expect(Buffer.concat(chunks).toString()).toBe("world");
   });
 

@@ -19,7 +19,7 @@ describe("Audit Routes", () => {
       (layer) => layer.route && layer.route.path === "/" && layer.route.methods.get,
     );
     expect(getRoutes.length).toBe(1);
-    
+
     // Check that we have middlewares registered on this route (auth, dynamicAccess, fetchAuditLogs)
     const route = getRoutes[0].route;
     expect(route.stack.length).toBeGreaterThan(2);

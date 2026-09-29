@@ -1,12 +1,12 @@
 # 08 — Cross-Tenant Protection
 
-The controls that stop one hospital reaching another's data — and the four places where, today, something still crosses the boundary.
+The controls that stop one hospital reaching another's data — and the four places where, on 2026-09-23, something still crossed the boundary. Layer 5 records which have closed since (ADR-088).
 
 This document **extends** [`../SECURITY/05-MULTI-TENANCY-SECURITY.md`](../SECURITY/05-MULTI-TENANCY-SECURITY.md), which is mandatory reading and defines the mechanism. It is not repeated here. This one is the *inventory*: which controls exist, which models they do not reach, and what is currently leaking through the gaps.
 
 Isolation over a socket is [`./06-REALTIME-ISOLATION.md`](./06-REALTIME-ISOLATION.md).
 
-> **Target standard: TypeScript, strict (ADR-038).** Every backend file named below is **JavaScript/CommonJS as built**. Conversion is tracked in [`../../TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`](../../TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md) and changes no behaviour.
+> **Target standard: TypeScript, strict (ADR-038).** Every backend file named below is **JavaScript/CommonJS as built** — except `utils/tenantScope.util`, which Phase 9 converted to `backend/src/utils/tenantScope.util.ts` by 2026-09-28; its line numbers below are those of the former `.js` (ADR-088). Conversion is tracked in [`../../TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`](../../TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md) and changes no behaviour.
 
 ---
 
@@ -45,7 +45,7 @@ Two of them are load-bearing:
 | Model | File | Consequence |
 |---|---|---|
 | **`Tenant`** | `backend/src/models/tenant.model.js` — no `tenantId` attribute | `Tenant.findByPk(req.params.tenantId)` reads **any** tenant; `Tenant.update(…, { where: { id } })` **writes** any tenant. This was A-01 |
-| **`Role`** | `backend/src/models/role.model.js` — no `tenantId`, and `name` is `unique: true` at line 26 | roles are **global**. Every tenant shares the role table. This is A-38 and A-39 |
+| **`Role`** | `backend/src/models/role.model.js` — no `tenantId`, and `name` is `unique: true` at line 28 | roles are **global**. Every tenant shares the role table. This was the root of A-38 and A-39; SCIM no longer creates, renames or deletes a role — its groups are the tenant-owned `scim_groups` table since 2026-09-24 (ADR-053) (ADR-088) |
 
 Others exist — `kanbanProjectMember`, `kanbanColumn`, `kanbanLabel`, `kanbanSprint` and the kanban join tables carry no `tenantId`; only `kanbanProject` and `kanbanCard` do. Those are reachable only through a project, and the project lookup is tenant-bound, so they are guarded upstream rather than by the hooks. That is a different risk class from `Tenant` and `Role`, which are addressed directly by id from routes.
 
@@ -104,18 +104,20 @@ The vector retrieval at `ai.service.js:233` is called out in `SECURITY/05` as th
 
 ## Layer 5 — Global Uniqueness Is An Existence Oracle
 
-This is live, in three places, and it is the trap `CLAUDE.md` names by name.
+It is the trap `CLAUDE.md` names by name. When this section was written (2026-09-23) it was live in three places. **As of 2026-09-28 the code has closed all three on the paths below** — by a global duplicate check that answers one 409 either way (A-37, ADR-075), by tenant-owned SCIM groups (A-38, ADR-053) and by a per-tenant serial index (D-04, ADR-049). The global `username`/`email` indexes remain by decision (BACKLOG Q-18). The table and the two step-by-steps below are kept as the record of the defect shape; each row now says what the code does today (ADR-088).
 
 The shape is always the same: **a uniqueness constraint that spans tenants, plus a duplicate check that does not.** The application's pre-check is narrowed to the caller's own tenant by the global hooks; the database constraint is not narrowed at all. So a value already held by *another* tenant produces a different failure from a value nobody holds — and the difference is the oracle.
 
 | Value | Constraint | Duplicate check | Finding |
 |---|---|---|---|
-| `users.username` | `{ fields: ["username"], unique: true }` — `user.model.js:156`, and `unique: true` inline at line 30 | — | **A-37** |
-| `users.email` | `{ fields: ["email"], unique: true }` — `user.model.js:157`. A **non-unique** composite `["tenant_id", "email"]` sits right beneath it at line 158, which reads like tenant scoping and is not | `scim.service.js:334`: `Users.findOne({ where: { email } })` — the hooks narrow this to the caller's tenant | **A-37** |
-| `roles.name` | `unique: true` — `role.model.js:26`, on a model with no `tenantId` | `scim.service.js:494`: `Role.findOne({ where: { name: displayName.toUpperCase() } })` — nothing narrows this, because the model is unscoped | **A-38** |
-| `calibration_devices.serialNumber` | `unique: true` on the column | — | tracked in [`../../TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md); described in [`../SECURITY/05-MULTI-TENANCY-SECURITY.md`](../SECURITY/05-MULTI-TENANCY-SECURITY.md) § The `serialNumber` oracle |
+| `users.username` | `{ fields: ["username"], unique: true }` — `user.model.js:206`, and `unique: true` inline at line 30 | *today:* `user.service.js#assertIdentityFree` — deliberately global (`skipTenantScope`, A-128), so "held here" and "held elsewhere" are the same 409 (ADR-088) | **A-37** |
+| `users.email` | `{ fields: ["email"], unique: true }` — `user.model.js:207`. A **non-unique** composite `["tenant_id", "email"]` sits right beneath it at line 208, which reads like tenant scoping and is not | *was:* `scim.service.js` `Users.findOne({ where: { email } })`, narrowed by the hooks. *Today:* `scim.service.js#assertAddressFree` calls the global `assertIdentityFree` for both fields — one 409, rate-limited per key, audited as `system:scim` (ADR-075) (ADR-088) | **A-37** |
+| `roles.name` | `unique: true` — `role.model.js:28`, on a model with no `tenantId` | *was:* `scim.service.js` `Role.findOne({ where: { name } })`, unscoped. *Today:* SCIM checks names in `scim_groups`, unique per `(tenant_id, lower(display_name))` (migration 0042), and creates no role (ADR-088) | **A-38** |
+| `calibration_devices.serialNumber` | *was* `unique: true` on the column. *Today:* `UNIQUE (tenant_id, serial_number)`, created by migration 0026 — `calibrationDevice.model.js:35-38` (D-04, ADR-049) (ADR-088) | — | closed; [`../SECURITY/05-MULTI-TENANCY-SECURITY.md`](../SECURITY/05-MULTI-TENANCY-SECURITY.md) § The `serialNumber` oracle still describes the old constraint |
 
 ### A-37 — SCIM user creation, step by step
+
+> **Historical (ADR-088).** This is the defect as found on 2026-09-23. Since 2026-09-27 (ADR-075) step 2 is a **global** check and every conflict is one 409; the decision the last paragraph asks for was taken as "keep global identity" (BACKLOG Q-18). See A-37 on the board.
 
 1. An IdP (or anyone with a SCIM API key) posts a user with an email address.
 2. `scim.service.js:334` checks for a duplicate. The global hooks add `tenantId = <caller's tenant>`, so the check sees only the caller's own tenant. It passes.
@@ -127,6 +129,8 @@ The caller has learned that some other tenant on the platform holds that address
 **Do not patch this.** It needs a decision: either make `username`/`email` unique **per tenant** — a migration and an ADR, and it changes what "an account" means across the platform — or keep global uniqueness and make both paths answer **identically**, which hides the oracle but leaves an address unusable in a second hospital for reasons no administrator can see. A-37 records both options as an Open Question.
 
 ### A-38 — SCIM Groups are global roles
+
+> **Historical (ADR-088).** Closed 2026-09-24 by ADR-053: SCIM groups are rows of the tenant-owned `scim_groups` table; every group query names `tenantId`, another tenant's group is 404, and SCIM never creates, renames or deletes a role. A-39 was closed by the same ADR — a group maps to an existing role that grants something, and an unmapped group refuses members with 409. Roles an IdP created through the old code remain global. The line numbers below are of the old `scim.service.js`.
 
 Because `Role` has no `tenantId`:
 
@@ -147,12 +151,12 @@ A-39 is the adjacent one worth knowing about: a SCIM-created group takes the `ro
 
 Every route in `backend/src/routes/api/tenantHierarchy.route.js` carried `auth` and nothing else. Because the `Tenant` model is unscoped, `addChildTenant`, `updateTenantParent` and `removeTenantParent` reached **any** tenant: any authenticated user of any tenant — or any API key, whatever its scope — could create a sub-organisation under another hospital, or re-parent and detach one. The menu matrix said `SUPERADMIN` only; the backend enforced nothing. It was hidden in the UI, which is not a control.
 
-The gates now:
+The gates now (line numbers re-read 2026-09-28, ADR-088; the living table is [`./01-TENANT-HIERARCHY-AND-SUBORGS.md`](./01-TENANT-HIERARCHY-AND-SUBORGS.md) § Gate Table):
 
 | Route | Gate | Line |
 |---|---|---|
-| `GET /tree` | `auth` — the controller reads `req.user.tenantId`, never a path id (`tenantHierarchy.controller.js:36`) | `104` |
-| `GET /:tenantId/children`, `/parent`, `/descendants`, `/ancestors` | `ownTenantOnly(...)` — a cross-tenant id is **404**, not 403 | `147`, `194`, `242`, `283` |
+| `GET /tree` | `auth` — the controller reads `req.user.tenantId`, never a path id (`tenantHierarchy.controller.js:30`) | `103` |
+| `GET /:tenantId/children`, `/parent`, `/descendants`, `/ancestors` | `ownTenantOnly(...)` — a cross-tenant id is **404**, not 403 | `146`, `193`, `241`, `282` |
 | `POST /:parentId/children` | `[auth, denyApiKey, superAdminOnly]` | `357` |
 | `PUT /:tenantId/parent`, `DELETE /:tenantId/parent` | `[auth, denyApiKey, superAdminOnly]` | `409`, `451` |
 | `GET /cross-tenant-roles` | `[auth, denyApiKey, superAdminOnly]` — it reads role assignments for an arbitrary user id | `499` |

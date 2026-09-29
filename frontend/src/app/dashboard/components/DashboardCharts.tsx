@@ -96,9 +96,10 @@ export const DashboardCharts: React.FC<DashboardChartsProps> = ({
             <Button
               variant="ghost"
               onClick={onRefresh}
+              aria-label="Refresh trends"
               className="p-2 rounded-lg transition-colors duration-300 hover:bg-muted/50 text-muted-foreground hover:text-foreground"
             >
-              <RefreshCw className="w-4 h-4" />
+              <RefreshCw className="w-4 h-4" aria-hidden="true" />
             </Button>
           )}
         </div>

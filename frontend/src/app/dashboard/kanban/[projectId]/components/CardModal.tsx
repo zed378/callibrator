@@ -238,12 +238,13 @@ export default function CardModal({
                 size="sm"
                 onClick={() => setConfirmDelete(true)}
                 className="text-destructive"
+                aria-label="Delete card"
               >
-                <Trash2 className="h-4 w-4" />
+                <Trash2 className="h-4 w-4" aria-hidden="true" />
               </Button>
             )}
-            <Button variant="ghost" size="sm" onClick={onClose}>
-              <X className="h-4 w-4" />
+            <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close">
+              <X className="h-4 w-4" aria-hidden="true" />
             </Button>
           </div>
         </div>
@@ -258,6 +259,7 @@ export default function CardModal({
             <div className="md:col-span-2 p-5 space-y-4 border-r border-border">
               <input
                 value={title}
+                aria-label="Card title"
                 disabled={!canEdit}
                 onChange={(e) => setTitle(e.target.value)}
                 onBlur={saveTitle}
@@ -265,10 +267,10 @@ export default function CardModal({
               />
 
               <div>
-                <label className="text-xs font-medium text-muted-foreground">
+                <label htmlFor="kanban-projectid-components-cardmodal-f1" className="text-xs font-medium text-muted-foreground">
                   Description
                 </label>
-                <Textarea
+                <Textarea id="kanban-projectid-components-cardmodal-f1"
                   value={description}
                   disabled={!canEdit}
                   onChange={(e) => setDescription(e.target.value)}
@@ -334,7 +336,8 @@ export default function CardModal({
                         {canEdit && (
                           <button
                             onClick={() => removeAttachment(a.id)}
-                            className="absolute top-1 right-1 bg-black/60 text-white rounded p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                            aria-label={`Remove attachment ${a.originalName}`}
+                            className="absolute top-1 right-1 bg-black/60 text-white rounded p-0.5 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
                           >
                             <X className="h-3 w-3" />
                           </button>
@@ -371,6 +374,7 @@ export default function CardModal({
                       {canEdit && (
                         <button
                           onClick={() => removeRelation(r.id)}
+                          aria-label={`Remove relation to ${r.card?.cardKey || r.card?.title || "card"}`}
                           className="text-muted-foreground hover:text-destructive"
                         >
                           <X className="h-3 w-3" />
@@ -454,10 +458,10 @@ export default function CardModal({
               </div>
 
               <div>
-                <label className="text-xs font-medium text-muted-foreground">
+                <label htmlFor="kanban-projectid-components-cardmodal-f2" className="text-xs font-medium text-muted-foreground">
                   Priority
                 </label>
-                <Select
+                <Select id="kanban-projectid-components-cardmodal-f2"
                   value={card.priority || ""}
                   onChange={(v) =>
                     patch({ priority: (v || null) as Priority | null })
@@ -475,10 +479,10 @@ export default function CardModal({
               </div>
 
               <div>
-                <label className="text-xs font-medium text-muted-foreground">
+                <label htmlFor="kanban-projectid-components-cardmodal-f3" className="text-xs font-medium text-muted-foreground">
                   Sprint
                 </label>
-                <Select
+                <Select id="kanban-projectid-components-cardmodal-f3"
                   value={card.sprintId || "backlog"}
                   onChange={(v) =>
                     patch({ sprintId: v === "backlog" ? null : v })
@@ -495,10 +499,10 @@ export default function CardModal({
               </div>
 
               <div>
-                <label className="text-xs font-medium text-muted-foreground">
+                <label htmlFor="kanban-projectid-components-cardmodal-f4" className="text-xs font-medium text-muted-foreground">
                   Due date
                 </label>
-                <Input
+                <Input id="kanban-projectid-components-cardmodal-f4"
                   type="date"
                   disabled={!canEdit}
                   value={card.dueDate ? card.dueDate.slice(0, 10) : ""}

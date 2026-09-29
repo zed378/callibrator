@@ -37,11 +37,11 @@ class PredictiveMaintenanceService {
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
     const totalReadings = await IotReading.count({
-      where: { 
-        deviceId, 
+      where: {
+        deviceId,
         tenantId,
-        timestamp: { [Op.gte]: thirtyDaysAgo }
-      }
+        timestamp: { [Op.gte]: thirtyDaysAgo },
+      },
     });
 
     if (totalReadings < 10) {
@@ -50,12 +50,12 @@ class PredictiveMaintenanceService {
     }
 
     const anomalyReadings = await IotReading.count({
-      where: { 
-        deviceId, 
+      where: {
+        deviceId,
         tenantId,
         isAnomaly: true,
-        timestamp: { [Op.gte]: thirtyDaysAgo }
-      }
+        timestamp: { [Op.gte]: thirtyDaysAgo },
+      },
     });
 
     const anomalyRate = anomalyReadings / totalReadings;

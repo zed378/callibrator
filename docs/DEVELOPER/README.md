@@ -20,7 +20,7 @@ The numbering leaves gaps for guides referenced elsewhere in the repository and 
 
 ## A Standing Warning For This Category
 
-An integration surface in this category can be **built and unreachable** — the code exists, the tests are green, and no external party can actually use it, because provisioning does not exist. IoT ingest is exactly that ([`07-IOT-INGEST.md`](./07-IOT-INGEST.md) § Read This First). Where it applies, the document says so in its own section, at the top, and names the remediation item.
+An integration surface in this category can be **built and unreachable** — the code exists, the tests are green, and no external party can actually use it, because provisioning does not exist. IoT ingest was exactly that until 2026-09-24, when A-29 added device provisioning ([`07-IOT-INGEST.md`](./07-IOT-INGEST.md), its update banner — corrected here under ADR-088); its MQTT path still authenticates by topic only (A-17). Where it applies, the document says so in its own section, at the top, and names the remediation item.
 
 Believe that section over anything a task board, a changelog or a green test run says. See [`../../CLAUDE.md`](../../CLAUDE.md) § Distinguish "Renders" From "Works", and [`../../TASKS/AUDIT-2026-09-REMEDIATION.md`](../../TASKS/AUDIT-2026-09-REMEDIATION.md).
 

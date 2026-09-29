@@ -164,7 +164,7 @@ describe("roles Controller", () => {
         name: "MANAGER",
         description: "Manager role",
       },
-        ACTOR,
+      ACTOR,
       );
       expect(rolesService.getRoleById).toHaveBeenCalledWith("role-new");
       expect(res.status).toHaveBeenCalledWith(201);
@@ -191,7 +191,7 @@ describe("roles Controller", () => {
         description: "Updated",
         status: "active",
       },
-        ACTOR,
+      ACTOR,
       );
       expect(res.status).toHaveBeenCalledWith(200);
     });
@@ -414,9 +414,9 @@ describe("roles Controller", () => {
         id: "mg-new",
         name: "Reports",
         icon: "bar-chart-2",
-        route: "/reports"
+        route: "/reports",
       };
-      jest.spyOn(rolesService, 'createMenu').mockReturnValueOnce(menuMock);
+      jest.spyOn(rolesService, "createMenu").mockReturnValueOnce(menuMock);
 
       await rolesController.createMenu(req, res, next);
 
@@ -437,10 +437,10 @@ describe("roles Controller", () => {
       const menuMock = {
         id: "mg-1",
         name: "Dashboard",
-        icon: "settings"
+        icon: "settings",
       };
       req.params = { id: "mg-1" };
-      jest.spyOn(rolesService, 'updateMenu').mockReturnValueOnce(menuMock);
+      jest.spyOn(rolesService, "updateMenu").mockReturnValueOnce(menuMock);
 
       await rolesController.updateMenu(req, res, next);
 
@@ -457,14 +457,14 @@ describe("roles Controller", () => {
   describe("deleteMenu", () => {
     it("should delete a menu group", async () => {
       req.params = { id: "mg-1" };
-      jest.spyOn(rolesService, 'deleteMenu').mockReturnValueOnce({ message: "Menu group deleted" });
+      jest.spyOn(rolesService, "deleteMenu").mockReturnValueOnce({ message: "Menu group deleted" });
 
       await rolesController.deleteMenu(req, res, next);
 
       expect(rolesService.deleteMenu).toHaveBeenCalledWith("mg-1", ACTOR);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
-        message: expect.stringContaining("deleted")
+        message: expect.stringContaining("deleted"),
       });
     });
   });

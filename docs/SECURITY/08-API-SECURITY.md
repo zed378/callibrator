@@ -137,6 +137,8 @@ Fail-closed, with a warning logged naming the rejected origin. The development b
 
 Plus Redis-backed per-endpoint limiters that count failures and can lock accounts: login 5/15 min, register 3/hour, forgot-password 3/15 min, reset-password 5/5 min.
 
+> **Corrected 2026-09-28 (ADR-088).** The `auth` and `OTP / reset` limiters above are **defined in `backend/index.js` and mounted nowhere** — only the global `defaultLimiter` runs. Sign-in is governed by ADR-059's per-identifier-and-address throttle, which **never locks an account** (A-185). The global limiter sends draft-6 `RateLimit-*` headers, not `X-RateLimit-*`. Code-grounded detail: [`../DEVELOPER/03-RATE-LIMITS-AND-ERROR-CODES.md`](../DEVELOPER/03-RATE-LIMITS-AND-ERROR-CODES.md).
+
 ### The 100,000 figure
 
 A full browser E2E run — 71 tests, each page load fanning out to several API calls — exhausts a production budget and then fails for reasons that have nothing to do with the code under test.
@@ -211,7 +213,7 @@ Unrecognised errors become a generic 500 with the request id, which is what a bu
 | **404** | non-existent, soft-deleted, and belonging to another tenant — all identical |
 | **403** | permission failure **inside your own tenant**, where existence is not a secret from you |
 | **409** | invalid state transition — a conflict, not a validation failure and not a server error |
-| **429** | with `X-RateLimit-*` |
+| **429** | global limiter: draft-6 `RateLimit-*` headers (ADR-088) |
 
 Returning 403 for a cross-tenant resource turns id enumeration into a tenant-membership oracle.
 

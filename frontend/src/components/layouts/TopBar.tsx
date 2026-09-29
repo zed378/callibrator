@@ -30,9 +30,10 @@ export const TopBar: React.FC<TopBarProps> = ({
       <div className="flex items-center gap-4">
         <button
           onClick={onToggleSidebar}
+          aria-label="Open navigation"
           className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors lg:hidden"
         >
-          <Menu className="w-5 h-5" />
+          <Menu className="w-5 h-5" aria-hidden="true" />
         </button>
         <div>
           <h2 className="text-sm font-semibold text-foreground">

@@ -137,7 +137,7 @@ describe("customDomainsService", () => {
           domainType: "subdomain",
           sslEnabled: true,
           status: "pending_verification",
-        }), { transaction: "TX" }
+        }), { transaction: "TX" },
       );
       expect(res.verification.cname.value).toBe("cname.callibrator.io.");
       expect(mockSendMail).toHaveBeenCalledTimes(1);
@@ -189,7 +189,7 @@ describe("customDomainsService", () => {
       await svc.addDomain("tenant-1", { domain: "app.example.com" });
 
       expect(CustomDomain.create).toHaveBeenCalledWith(
-        expect.objectContaining({ domainType: "subdomain", sslEnabled: true }), { transaction: "TX" }
+        expect.objectContaining({ domainType: "subdomain", sslEnabled: true }), { transaction: "TX" },
       );
     });
 
@@ -197,7 +197,7 @@ describe("customDomainsService", () => {
       await svc.addDomain("tenant-1", { domain: "app.example.com", sslEnabled: false });
 
       expect(CustomDomain.create).toHaveBeenCalledWith(
-        expect.objectContaining({ sslEnabled: false }), { transaction: "TX" }
+        expect.objectContaining({ sslEnabled: false }), { transaction: "TX" },
       );
     });
 
@@ -560,7 +560,7 @@ describe("customDomainsService", () => {
       expect(res.verified).toBe(true);
       expect(res.status).toBe("active");
       expect(rec.update).toHaveBeenCalledWith(
-        expect.objectContaining({ status: "active" }), { transaction: "TX" }
+        expect.objectContaining({ status: "active" }), { transaction: "TX" },
       );
     });
 
@@ -575,7 +575,7 @@ describe("customDomainsService", () => {
       expect(res.status).toBe("verification_failed");
       expect(res.record).toBeNull();
       expect(rec.update).toHaveBeenCalledWith(
-        expect.objectContaining({ status: "verification_failed", verifiedAt: null }), { transaction: "TX" }
+        expect.objectContaining({ status: "verification_failed", verifiedAt: null }), { transaction: "TX" },
       );
     });
 

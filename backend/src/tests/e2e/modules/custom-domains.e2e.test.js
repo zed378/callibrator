@@ -52,7 +52,7 @@ describe("E2E Custom Domains (HTTP)", () => {
     );
     // Feature flag: 400 "Custom domains are disabled" when off; 201 when on.
     expect([201, 400]).toContain(status);
-    if (status === 400) expect(body.message).toMatch(/disabled/i);
+    if (status === 400) {expect(body.message).toMatch(/disabled/i);}
   });
 
   test("GET /custom-domains/domains/:id/status -> 400 on non-uuid id (validateUuid)", async () => {

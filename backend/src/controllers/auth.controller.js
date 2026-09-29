@@ -363,7 +363,7 @@ exports.impersonateUser = asyncHandlerWithMapping(async (req, res) => {
     tenantId,
     userId,
     req.ip,
-    req.headers["user-agent"]
+    req.headers["user-agent"],
   );
 
   login(res, result.data, result.token, result.session, { refreshToken: result.refreshToken });

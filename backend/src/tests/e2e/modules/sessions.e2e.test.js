@@ -23,7 +23,7 @@ const {
 let token = null;
 
 async function login() {
-  if (token) return token;
+  if (token) {return token;}
   const { body } = await httpPost("/auth/login", {
     user: "sys@mail.com",
     password: "123123",

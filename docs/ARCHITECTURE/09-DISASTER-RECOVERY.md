@@ -50,7 +50,7 @@ Does **not** answer: "restore just this tenant" — that is a full restore into 
 | Scenario | Detection | Response | Data loss |
 |---|---|---|---|
 | Backend process crash | `/health` 503, container restart policy | automatic restart | none |
-| Database unreachable | `/health` 503 with `database: "disconnected"` | investigate; the app fails closed rather than serving stale data | none |
+| Database unreachable | `/health` 503 `{"status":"unavailable"}`; `GET /api/v1/health` shows the database `unhealthy` (ADR-088) | investigate; the app fails closed rather than serving stale data | none |
 | Redis down | passkeys and OIDC fail, registration 429s, rate limiting falls back to per-replica memory | restart | in-progress sign-ins |
 | RabbitMQ down | jobs queue up in `PENDING` | restart; queued messages persist on the volume | none if the volume survives |
 | Disk full | writes fail | expand; check `./data` and `./log` | none |
@@ -79,7 +79,7 @@ These must be backed up **separately from the database and separately from the h
 
 Restoring without verifying is restoring into hope. The drill must assert:
 
-- [ ] `/health` returns 200 with `database: "connected"`
+- [ ] `/health` returns 200 `{"status":"ok"}` (PostgreSQL, Redis and RabbitMQ all reachable; per-dependency detail at the super-admin `GET /api/v1/health` — ADR-088)
 - [ ] a user can log in
 - [ ] a tenant-scoped list returns that tenant's rows **and no others**
 - [ ] a certificate issued **before** the incident still verifies at its public URL

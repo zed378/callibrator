@@ -9,7 +9,7 @@ const { get, set, delPattern, cacheKeys } = require("./redis.service");
 // HELPERS
 // ------------------------------------------------------------------
 const transformVendor = (vendor) => {
-  if (!vendor) return null;
+  if (!vendor) {return null;}
   return vendor.toJSON ? vendor.toJSON() : { ...vendor };
 };
 
@@ -193,10 +193,10 @@ exports.qualifyVendor = async ({ tenantId, id, approvalStatus, scorecard, lastAu
       throw new AppError(404, "Vendor not found");
     }
 
-    if (approvalStatus) vendor.approvalStatus = approvalStatus;
-    if (scorecard !== undefined) vendor.scorecard = scorecard;
-    if (lastAuditDate) vendor.lastAuditDate = lastAuditDate;
-    if (nextAuditDate) vendor.nextAuditDate = nextAuditDate;
+    if (approvalStatus) {vendor.approvalStatus = approvalStatus;}
+    if (scorecard !== undefined) {vendor.scorecard = scorecard;}
+    if (lastAuditDate) {vendor.lastAuditDate = lastAuditDate;}
+    if (nextAuditDate) {vendor.nextAuditDate = nextAuditDate;}
 
     await vendor.save();
 

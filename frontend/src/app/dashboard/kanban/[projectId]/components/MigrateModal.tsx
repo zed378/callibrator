@@ -81,8 +81,8 @@ export default function MigrateModal({
         )}
 
         <div>
-          <label className="text-sm font-medium">Target sprint</label>
-          <Select
+          <label htmlFor="kanban-projectid-components-migratemodal-f1" className="text-sm font-medium">Target sprint</label>
+          <Select id="kanban-projectid-components-migratemodal-f1"
             value={target}
             onChange={setTarget}
             placeholder="Select target…"

@@ -29,7 +29,7 @@ describe("env.util", () => {
     jest.resetModules();
     const dotenv = require("dotenv");
     const dotenvSpy = jest.spyOn(dotenv, "config").mockImplementation(() => {});
-    
+
     process.pkg = {};
     const originalExecPath = process.execPath;
     // Platform-native separators so the assertion holds on win32 and posix
@@ -41,7 +41,7 @@ describe("env.util", () => {
       require("../../utils/env.util");
       expect(dotenvSpy).toHaveBeenCalledWith({
         path: path.join(path.dirname(fakeExec), ".env"),
-        quiet: true
+        quiet: true,
       });
     } finally {
       delete process.pkg;

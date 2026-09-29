@@ -141,7 +141,7 @@ live("dbC — D-22 cascade + orphan report, webhook delivery purge — live Post
     expect(result.status).toBe(200);
 
     const flags = await q(
-      `SELECT id, is_deleted FROM attachments WHERE id IN (:list) ORDER BY id`,
+      "SELECT id, is_deleted FROM attachments WHERE id IN (:list) ORDER BY id",
       { list: [a1, a2, onDevice, foreign] },
     );
     const deleted = Object.fromEntries(flags.map((r) => [r.id, r.is_deleted]));
@@ -168,7 +168,7 @@ live("dbC — D-22 cascade + orphan report, webhook delivery purge — live Post
       g.devices.deleteCalibrationDevice(A, ids.deviceA, { userId: ids.user }),
     );
     expect(result.status).toBe(200);
-    const rows = await q(`SELECT is_deleted FROM attachments WHERE id IN (:list)`, { list: [onDevice, device] });
+    const rows = await q("SELECT is_deleted FROM attachments WHERE id IN (:list)", { list: [onDevice, device] });
     expect(rows.map((r) => r.is_deleted)).toEqual([true, true]);
   });
 
@@ -251,7 +251,7 @@ live("dbC — D-22 cascade + orphan report, webhook delivery purge — live Post
     const summary = await g.purge.purgeFinishedDeliveries();
     expect(summary.deleted).toBeGreaterThanOrEqual(3);
 
-    const left = (await q(`SELECT id FROM webhook_deliveries WHERE tenant_id IN (:a, :b)`, { a: A, b: B })).map(
+    const left = (await q("SELECT id FROM webhook_deliveries WHERE tenant_id IN (:a, :b)", { a: A, b: B })).map(
       (r) => r.id,
     );
     expect(left.sort()).toEqual(kept.sort());

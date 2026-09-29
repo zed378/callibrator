@@ -181,7 +181,7 @@ signature id. That is tracked there.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-27 — every G-01…G-06 row gated and proven through the real `dynamicAccess` over the real seeded grants; see § Row-by-Row Verification. One gate changed (`GET /quota`, ADR-088) |
 | **Severity** | **medium** |
 | **Verified** | from code, 2026-09-23, route by route (G-01 … G-03 above) |
 | **Spec refs** | `docs/SECURITY/04-AUTHORIZATION-RBAC.md` |
@@ -211,7 +211,7 @@ record the decision; inventing a slug that matches no menu creates an instance o
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-27 — gate on `sop: read` (A-94) plus retrieval filtered to the gate's source types (ADR-088) |
 | **Severity** | **medium** |
 | **Verified** | from code, 2026-09-23 |
 
@@ -343,7 +343,7 @@ for whoever lands it — `sanitizeError` copies `err.errors` in every environmen
 
 | | |
 |---|---|
-| **Status** | TODO — **edits an existing task** |
+| **Status** | **DONE** — P6-04 was built on this premise (ADR-058): `constants/routeGateExemptions` is the allow-list with kinds `public`/`self`/`service`/`inline`/`pending`/`accepted`, and `routePermissionGuard.p604.test.js` fails on a missing gate, a stale entry, or a `service` entry naming a function that does not exist. Runs in `npm test` and CI `backend-test`; CI has never run on GitHub (P7-01) |
 | **Severity** | medium — a guard that cries wolf gets disabled |
 | **Verified** | this document is the evidence |
 
@@ -361,6 +361,51 @@ check.
 - [ ] the guard passes on the current tree with the allow-list, and fails when a marker names a function that does not exist
 - [ ] adding an ungated route fails CI
 - [ ] P6-04's card records the markers
+
+---
+
+## Row-by-Row Verification — 2026-09-27
+
+Every gap row above, with the gate it carries now and the test that proves it. **Every test named
+here stubs `auth` only**: `dynamicAccess` is the real middleware, and the matrix is the real seed
+read back through the real `getRolePermissionsMatrix` (`tests/fixtures/seededAuthorization.js`) —
+the method of `finance.access.a07.test.js`. The allowed roles in each file are written by hand from
+`ROLE_MENU_ASSIGNMENTS`; they are the claim. Run on Node 26.10.0 through `npm test`.
+
+| Row | Route(s) | Gate now | Proven by |
+|---|---|---|---|
+| G-01 | `GET /network-security/ip-allowlist`, `/geofence` | `network-security: read` + `checkTenant` | `readGates.a155.test.js` |
+| G-01 | `POST /network-security/evaluate-login` | `network-security: read` | `networkSecurity.evaluateLogin.a179.test.js` |
+| G-01 | `GET /oidc/clients` | `oidc: read` | `readGates.p604.test.js` |
+| G-01 | `GET /data-retention/:tenantId/policy`, `/legal-hold` | `data-retention: read` + `checkTenant` (foreign id → 404, byte-identical) | `dataRetention.gate.a136.test.js` |
+| G-02 | `GET /reports/*` (5) | `reports: read` — the slug decision is ADR-058 | `readGates.p604.test.js` |
+| G-03 | `GET /qms/nc`, `GET /qms/capa`, and the four writes | `qms: read` / `write` / `update`; writes also `denyApiKey` | **`qms.gate.az01.test.js`** (new, 66 tests). Until it, the only test was `routeGuards.a66.test.js`, which mocks `dynamicAccess` (the V-08 shape). Mutation-checked: removing the `GET /nc` gate fails 8 |
+| G-03 | `GET /supplier-scorecard`, `/:id` | `supplier-scorecard: read` | `readGates.p604.test.js` (with two-tenant 404) |
+| G-03 | `GET /quota` | **`billing: read` — changed 2026-09-27 (ADR-088)**; was `auth` plus an `accepted` exemption whose premise was false | **`quota.gate.az01.test.js`** (new, 13 tests). Mutation-checked: restoring `auth` alone fails 9 |
+| G-03 | `GET /feature-flags`, `/:tenantId/:flagKey`, `/definitions` | `feature-flags: read` (+ `checkTenant` on the tenant forms) | `readGates.a155.test.js`, `readGates.p604.test.js` |
+| G-04 | `POST /ai/query`, `POST /ai/ocr` | `sop: read`, `certificate: write` (A-94) | `ai.gate.a94.test.js`; reach: **`ai.ragReach.az02.test.js`** (AZ-02) |
+| G-05 | `GET /jobs`, `/jobs/:id`, `POST /jobs/test` | `batch-jobs: read` / `write` | `readGates.p604.test.js` |
+| G-06 | `GET /menu-groups/menu-groups`, `POST /filter`, `/get-assignments` | own role only (`ownRoleOnly`, inline) | `readGates.p604.test.js` |
+| tracked | `POST /esignature/verify`, `GET /esignature/history` | `esignature: read` (A-129 narrows history without `qms`) | A-28 / A-129 on the remediation board |
+| — | the whole tree | every route gated or exempted | `routePermissionGuard.p604.test.js` |
+
+All of the files above passed together on 2026-09-28 (Node 26.10.0).
+
+**Matrix or route — which was wrong?** For every row but one the route was wrong and the matrix
+right: the fix direction named the module's own slug, and that is what each gate uses. `GET /quota`
+was the exception the other way — ADR-058 had recorded it as deliberately ungated because `billing`
+was "unreachable for every seeded tenant role", while ADR-056 (Q-20) granted `billing: read` to both
+admin roles the same day. Both views are argued in ADR-088; the route now carries the billing gate.
+
+**Not a matrix row, still open:** `GET /dashboard/metrics` stays `accepted` on `auth` (ADR-058). It is
+every role's landing page (`LOGIN_REDIRECT = "/dashboard"`), and FACILITY MAINTENANCE and WAREHOUSE
+STAFF hold no `dashboard` grant, yet it exposes the compliance and overdue aggregates G-02 gated.
+Granting `dashboard` to those two roles needs a migration and is an owner decision, not a gate line.
+
+**DoD, AZ-01:** gates ✓; `USER` 403 proven in each named file ✓; reporting slug recorded (ADR-058) ✓;
+no resource name outside the seeded slugs — the guard checks it ✓. **DoD, AZ-02:** content of a
+non-SOP document cannot reach `/ai/query` (`ai.ragReach.az02.test.js`; SQL also run once on
+pgvector / PostgreSQL 18.6) ✓; `/ai/ocr` gated ✓; the model written down (ADR-088, P5-04) ✓.
 
 ---
 

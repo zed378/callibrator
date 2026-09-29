@@ -1,4 +1,3 @@
-// eslint-disable-next-line no-undef
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: {
     info: jest.fn(),

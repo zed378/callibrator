@@ -63,6 +63,14 @@ if printf '%s\n' "$changed" | grep -q '^backend/'; then
   node scripts/ci/eslint-ratchet.js || fail=1
 fi
 
+# 2b. backend typecheck — TypeScript 7 (P9-01a, ADR-087)
+if printf '%s\n' "$changed" | grep -q '^backend/'; then
+  say "backend typecheck"
+  (cd backend && npm run --silent typecheck) || fail=1
+  say "backend TypeScript ratchet"
+  (cd backend && npm run --silent ratchet) || fail=1 # P9-04: no new .js file
+fi
+
 # 3. frontend typecheck
 if printf '%s\n' "$changed" | grep -q '^frontend/'; then
   say "frontend typecheck"

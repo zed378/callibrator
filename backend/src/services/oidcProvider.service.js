@@ -33,7 +33,7 @@ const b64url = (buf) =>
 // forgot the gate would have skipped PKCE. Without it, a missing challenge
 // cannot verify.
 function verifyPkce(codeVerifier, codeChallenge, method) {
-  if (!codeVerifier) return false;
+  if (!codeVerifier) {return false;}
   const computed =
     method === "plain"
       ? codeVerifier
@@ -316,13 +316,13 @@ exports.verifySecret = async (tenantId, clientId, clientSecret) => {
  * globally-unique UUID, so the (tenant_id, key) row is unambiguous.
  */
 exports.findClientByClientId = async (clientId) => {
-  if (!clientId) return null;
+  if (!clientId) {return null;}
   const setting = await TenantSettings.findOne({
     where: { key: clientKey(clientId) },
   });
-  if (!setting) return null;
+  if (!setting) {return null;}
   const data = parseClientSetting(setting);
-  if (!data || !data.clientId) return null;
+  if (!data || !data.clientId) {return null;}
   return { ...data, tenantId: setting.tenantId };
 };
 
@@ -386,7 +386,7 @@ exports.beginAuthorization = async (params) => {
 /** The consent screen reads the staged request to show the client + scopes. */
 exports.getAuthRequest = async (requestId) => {
   const req = requestId ? await redis.get(authReqKey(requestId)) : null;
-  if (!req) return null;
+  if (!req) {return null;}
   return {
     clientName: req.clientName,
     scope: req.scope,

@@ -23,7 +23,7 @@ describe("WebAuthn Validators", () => {
             displayName: Joi.string().required(),
           }).required(),
           pubKeyCredParams: Joi.array().items(
-            Joi.object({ type: Joi.string().required(), alg: Joi.number().required() })
+            Joi.object({ type: Joi.string().required(), alg: Joi.number().required() }),
           ).min(1).required(),
         }),
       ),
@@ -47,7 +47,7 @@ describe("WebAuthn Validators", () => {
             displayName: Joi.string().required(),
           }).required(),
           pubKeyCredParams: Joi.array().items(
-            Joi.object({ type: Joi.string().required(), alg: Joi.number().required() })
+            Joi.object({ type: Joi.string().required(), alg: Joi.number().required() }),
           ).min(1).required(),
         }),
       ),
@@ -72,7 +72,7 @@ describe("WebAuthn Validators", () => {
             displayName: Joi.string().required(),
           }).required(),
           pubKeyCredParams: Joi.array().items(
-            Joi.object({ type: Joi.string().required(), alg: Joi.number().required() })
+            Joi.object({ type: Joi.string().required(), alg: Joi.number().required() }),
           ).min(1).required(),
         }),
       ),

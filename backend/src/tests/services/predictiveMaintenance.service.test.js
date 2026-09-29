@@ -1,4 +1,3 @@
-// eslint-disable-next-line no-undef
 jest.mock("../../models", () => ({
   CalibrationDevice: {
     findOne: jest.fn(),

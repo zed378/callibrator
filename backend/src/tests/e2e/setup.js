@@ -31,7 +31,7 @@ async function waitForServer(retries = 30, delayMs = 1000) {
     await new Promise((r) => setTimeout(r, delayMs));
   }
   throw new Error(
-    `Server at ${BASE_URL} not ready after ${retries} attempts`
+    `Server at ${BASE_URL} not ready after ${retries} attempts`,
   );
 }
 
@@ -357,7 +357,7 @@ async function httpOptions(path, headers = {}) {
  * Extract token from a login response body.
  */
 function extractToken(body) {
-  if (!body) return null;
+  if (!body) {return null;}
   return body.token || (body.data && body.data.token) || null;
 }
 
@@ -365,7 +365,7 @@ function extractToken(body) {
  * Extract refresh token from a login response body.
  */
 function extractRefreshToken(body) {
-  if (!body) return null;
+  if (!body) {return null;}
   return body.refreshToken || (body.data && body.data.refreshToken) || null;
 }
 

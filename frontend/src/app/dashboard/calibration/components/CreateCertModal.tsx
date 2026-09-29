@@ -43,10 +43,10 @@ export const CreateCertModal: React.FC<CreateCertModalProps> = ({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+            <label htmlFor="calibration-components-createcertmodal-f1" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
               Certificate Type
             </label>
-            <Select
+            <Select id="calibration-components-createcertmodal-f1"
               value={form.type}
               onChange={(val) =>
                 setForm({ ...form, type: val as CreateCertificateForm["type"] })
@@ -60,10 +60,10 @@ export const CreateCertModal: React.FC<CreateCertModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+            <label htmlFor="calibration-components-createcertmodal-f2" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
               Valid Until Date *
             </label>
-            <Input
+            <Input id="calibration-components-createcertmodal-f2"
               required
               type="date"
               value={form.validUntil}
@@ -73,10 +73,10 @@ export const CreateCertModal: React.FC<CreateCertModalProps> = ({
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+          <label htmlFor="calibration-components-createcertmodal-f3" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
             Summary / Statement of Compliance
           </label>
-          <Textarea
+          <Textarea id="calibration-components-createcertmodal-f3"
             required
             value={form.summary}
             onChange={(e) => setForm({ ...form, summary: e.target.value })}
@@ -86,20 +86,20 @@ export const CreateCertModal: React.FC<CreateCertModalProps> = ({
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+          <label htmlFor="calibration-components-createcertmodal-f4" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
             Environmental / Operating Conditions
           </label>
-          <Input
+          <Input id="calibration-components-createcertmodal-f4"
             value={form.conditions}
             onChange={(e) => setForm({ ...form, conditions: e.target.value })}
           />
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+          <label htmlFor="calibration-components-createcertmodal-f5" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
             Additional Notes
           </label>
-          <Textarea
+          <Textarea id="calibration-components-createcertmodal-f5"
             value={form.notes}
             onChange={(e) => setForm({ ...form, notes: e.target.value })}
             placeholder="Traceability metrics or comments..."

@@ -183,8 +183,8 @@ export default function TenantLifecyclePage() {
 
         <Card className="bg-card/50 backdrop-blur-sm border-border relative z-50">
           <CardContent className="pt-6">
-            <label className="block text-sm font-medium mb-1.5">Tenant</label>
-            <Select
+            <label htmlFor="tenant-lifecycle-page-f1" className="block text-sm font-medium mb-1.5">Tenant</label>
+            <Select id="tenant-lifecycle-page-f1"
               value={tenantId}
               onChange={setTenantId}
               placeholder="Select a tenant"

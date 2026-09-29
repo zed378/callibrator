@@ -7,7 +7,7 @@ exports.createRisk = asyncHandlerWithMapping(
     const data = await riskService.createRisk(req.user.tenantId, req.body || {}, req.user.id);
     success(res, data, null, "Risk created successfully", 201);
   },
-  {}
+  {},
 );
 
 exports.getRisks = asyncHandlerWithMapping(
@@ -23,7 +23,7 @@ exports.getRisks = asyncHandlerWithMapping(
     const limit = parseInt(req.query.limit, 10) || 10;
     success(res, rows, { total, page, limit, totalPages }, "Risks retrieved successfully", 200);
   },
-  {}
+  {},
 );
 
 exports.getRiskById = asyncHandlerWithMapping(
@@ -33,7 +33,7 @@ exports.getRiskById = asyncHandlerWithMapping(
   },
   {
     "Risk not found": 404,
-  }
+  },
 );
 
 exports.updateRisk = asyncHandlerWithMapping(
@@ -43,7 +43,7 @@ exports.updateRisk = asyncHandlerWithMapping(
   },
   {
     "Risk not found": 404,
-  }
+  },
 );
 
 exports.deleteRisk = asyncHandlerWithMapping(
@@ -53,5 +53,5 @@ exports.deleteRisk = asyncHandlerWithMapping(
   },
   {
     "Risk not found": 404,
-  }
+  },
 );

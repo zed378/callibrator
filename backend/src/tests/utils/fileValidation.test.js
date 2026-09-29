@@ -416,13 +416,13 @@ describe("fileValidation", () => {
       });
       const mockErr = new Error("Custom error message");
       wrapped(mockErr, {}, mockRes, jest.fn());
-      
+
       await new Promise((resolve) => {
         originalJsonMock.mockImplementation(() => {
           resolve();
         });
       });
-      
+
       expect(originalJsonMock).toHaveBeenCalled();
       const body = originalJsonMock.mock.calls[0][0];
       expect(body.success).toBe(false);
@@ -463,14 +463,14 @@ describe("fileValidation", () => {
         });
       });
       wrapped(new Error("Prod error message"), {}, mockRes, jest.fn());
-      
+
       await new Promise((resolve) => {
         originalJsonMock.mockImplementation(() => {
           resolve();
         });
       });
       process.env.NODE_ENV = origEnv;
-      
+
       const body = originalJsonMock.mock.calls[0][0];
       expect(body.message).toBe("An unexpected error occurred. Please try again later.");
     });

@@ -124,7 +124,7 @@ Covered in [`../PLAN/11-DOCUMENT-AND-ASSET-MANAGEMENT.md`](../PLAN/11-DOCUMENT-A
 
 `tenants.limitStorageMb` is enforced by `enforceQuota.middleware.js` **before** the write (BR-15), so a rejected upload never leaves a partial object behind.
 
-A tenant on its own bucket is spending its own capacity; whether the platform limit still applies to it is a product decision, and the current behaviour is that it does.
+**Decided — ADR-084 (Q-06): the limit bounds what the platform holds, so a tenant on its own bucket still counts today.** The attachment upload path was never cut over to the storage module, and the migration tool copies without deleting the legacy file, so every byte is on platform storage whatever the tenant configured. A refusal says so to a tenant with its own storage. When an attachment's bytes live only in the tenant's own storage (after the cutover), it stops counting — per attachment, in `quota.service#getStorageUsageMb`, not per tenant.
 
 ## Scaling Constraint, Stated Plainly
 

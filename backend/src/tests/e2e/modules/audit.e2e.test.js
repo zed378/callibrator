@@ -39,7 +39,7 @@ describe("E2E Audit (HTTP)", () => {
   test("GET /audit — accepts filter params without error", async () => {
     const { status, body } = await httpGet(
       "/audit?action=LOGIN&page=1&limit=10",
-      authHeader(token)
+      authHeader(token),
     );
     expect(status).toBe(200);
     expect(Array.isArray(body.data)).toBe(true);

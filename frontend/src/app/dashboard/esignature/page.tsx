@@ -825,6 +825,7 @@ export default function ESignaturePage() {
                       size="sm"
                       variant="ghost"
                       className="text-destructive"
+                      aria-label={`Remove signer ${i + 1}`}
                       onClick={() =>
                         setForm((f) => ({
                           ...f,

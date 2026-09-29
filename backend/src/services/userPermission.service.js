@@ -50,12 +50,12 @@ const CACHE_TTL_SECONDS = 300;
 const formatMenu = (menu) =>
   menu
     ? {
-        id: menu.id,
-        name: menu.name,
-        slug: menu.slug,
-        icon: menu.icon,
-        parentId: menu.parentId,
-      }
+      id: menu.id,
+      name: menu.name,
+      slug: menu.slug,
+      icon: menu.icon,
+      parentId: menu.parentId,
+    }
     : null;
 
 /**
@@ -84,9 +84,9 @@ exports.getUserPermissions = async (userId) => {
   const [rolePerms, overrides, menus] = await Promise.all([
     user.role
       ? RoleMenuPermission.findAll({
-          where: { roleId: user.role.id },
-          include: [{ model: MenuGroup, as: "menu" }],
-        })
+        where: { roleId: user.role.id },
+        include: [{ model: MenuGroup, as: "menu" }],
+      })
       : Promise.resolve([]),
     UserMenuPermission.findAll({
       where: { userId },
@@ -136,10 +136,10 @@ exports.getUserPermissions = async (userId) => {
         tenantId: user.tenantId,
         role: user.role
           ? {
-              id: user.role.id,
-              name: user.role.name,
-              nameToShow: user.role.nameToShow,
-            }
+            id: user.role.id,
+            name: user.role.name,
+            nameToShow: user.role.nameToShow,
+          }
           : null,
       },
       rolePermissions: rolePerms

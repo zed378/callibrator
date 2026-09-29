@@ -21,7 +21,7 @@ export const SsoXmlTab: React.FC<SsoXmlTabProps> = ({
   return (
     <div className="space-y-5">
       <div className="p-4 bg-primary/5 border border-primary/10 rounded-2xl text-xs text-muted-foreground space-y-1">
-        <span className="font-semibold text-white block mb-1">Auto-Configuration with Metadata XML</span>
+        <span className="font-semibold text-foreground block mb-1">Auto-Configuration with Metadata XML</span>
         Upload or paste the SAML Metadata XML provided by your Identity Provider to automatically populate the IdP Issuer, Single Sign-On URL, and Public Certificate.
       </div>
 
@@ -41,19 +41,19 @@ export const SsoXmlTab: React.FC<SsoXmlTabProps> = ({
           className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
         />
         <Upload className="w-8 h-8 text-muted-foreground group-hover:text-primary mb-2 transition-all" />
-        <span className="text-sm font-semibold text-white group-hover:text-primary">Upload IdP Metadata XML File</span>
+        <span className="text-sm font-semibold text-foreground group-hover:text-primary">Upload IdP Metadata XML File</span>
         <span className="text-xs text-muted-foreground mt-1">Accepts XML formats</span>
       </div>
 
       {/* XML Text Paste */}
       <div className="space-y-2">
-        <label className="text-xs font-semibold text-muted-foreground block">Or Paste Metadata XML content directly</label>
-        <textarea
+        <label htmlFor="sso-xml-1" className="text-xs font-semibold text-muted-foreground block">Or Paste Metadata XML content directly</label>
+        <textarea id="sso-xml-1"
           value={xmlContent}
           onChange={(e) => setXmlContent(e.target.value)}
           rows={6}
           placeholder="<?xml version='1.0'?>\n<EntityDescriptor ..."
-          className="w-full bg-muted/50 rounded-xl px-4 py-3 text-white placeholder:text-muted-foreground focus:ring-2 focus:ring-ring/50 focus:border-primary/50 transition-all text-xs font-mono ring-1 ring-border"
+          className="w-full bg-muted/50 rounded-xl px-4 py-3 text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-ring/50 focus:border-primary/50 transition-all text-xs font-mono ring-1 ring-border"
         />
       </div>
 

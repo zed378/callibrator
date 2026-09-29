@@ -112,7 +112,7 @@ describe("E2E SOP (HTTP)", () => {
     const { status, body } = await httpPost(
       "/sop",
       { title: "E2E SOP", requiresTraining: false },
-      authHeader(token)
+      authHeader(token),
     );
     expect(status).toBe(201);
     expect(body.data).toHaveProperty("id");
@@ -142,7 +142,7 @@ describe("E2E SOP (HTTP)", () => {
     const { status } = await httpPost(
       `/sop/${docId}/acknowledge`,
       {},
-      authHeader(token)
+      authHeader(token),
     );
     expect(status).toBe(404);
   });

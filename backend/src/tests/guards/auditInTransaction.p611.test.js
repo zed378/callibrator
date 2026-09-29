@@ -28,7 +28,8 @@ const listJs = (dir) =>
     if (entry.isDirectory()) {
       return listJs(full);
     }
-    return entry.name.endsWith(".js") ? [full] : [];
+    // ADR-087 Amendment 4: .ts too — a converted file must not leave this guard.
+    return /\.(js|ts)$/.test(entry.name) ? [full] : [];
   });
 
 const rel = (file) => path.relative(SRC, file).split(path.sep).join("/");
@@ -68,7 +69,7 @@ const NO_TRANSACTION = {
 
 describe("P6-11 — audit rows inside the transaction", () => {
   const files = [...listJs(path.join(SRC, "services")), ...listJs(path.join(SRC, "controllers"))].filter(
-    (f) => !f.endsWith("audit.service.js"),
+    (f) => !/audit\.service\.(js|ts)$/.test(f),
   );
 
   it("the scan found call sites (a scan that finds nothing is not a pass)", () => {
@@ -101,7 +102,7 @@ describe("P6-11 — audit rows inside the transaction", () => {
   it("nothing but audit.service writes audit_logs directly", () => {
     const direct = listJs(SRC)
       .filter((f) => !f.includes(`${path.sep}tests${path.sep}`) && !f.includes(`${path.sep}migrations${path.sep}`))
-      .filter((f) => !f.endsWith(`services${path.sep}audit.service.js`))
+      .filter((f) => !f.endsWith(`services${path.sep}audit.service.js`) && !f.endsWith(`services${path.sep}audit.service.ts`))
       .filter((f) => /AuditLogs?\.(create|bulkCreate|upsert)\(/.test(fs.readFileSync(f, "utf8")))
       .map(rel);
     expect(direct).toEqual([]);

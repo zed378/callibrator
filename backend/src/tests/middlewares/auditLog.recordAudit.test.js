@@ -26,7 +26,7 @@ const makeRes = () => {
       handlers[evt] = cb;
     }),
     _finish() {
-      if (handlers.finish) handlers.finish();
+      if (handlers.finish) {handlers.finish();}
     },
   };
 };

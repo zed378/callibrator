@@ -18,7 +18,7 @@ exports.processOcr = asyncHandlerWithMapping(
 
     success(res, result, null, "OCR extraction successful", 200);
   },
-  {}
+  {},
 );
 
 exports.queryRAG = asyncHandlerWithMapping(
@@ -36,5 +36,5 @@ exports.queryRAG = asyncHandlerWithMapping(
 
     success(res, { answer: result }, null, "RAG query successful", 200);
   },
-  {}
+  {},
 );

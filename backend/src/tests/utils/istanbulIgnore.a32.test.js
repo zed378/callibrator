@@ -18,18 +18,20 @@ const fs = require("fs");
 const path = require("path");
 
 const SRC = path.join(__dirname, "..", "..");
-const CEILING = 31;
+// 30 on 2026-09-28 (P9-03a): lowered to the count, and the scan now reads .ts
+// too — a converted file carries its directives into TypeScript (ADR-092).
+const CEILING = 30;
 
-const listJs = (dir) =>
+const listSource = (dir) =>
   fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
-      return entry.name === "tests" ? [] : listJs(full);
+      return entry.name === "tests" ? [] : listSource(full);
     }
-    return entry.name.endsWith(".js") ? [full] : [];
+    return /\.(js|ts)$/.test(entry.name) ? [full] : [];
   });
 
-const directives = listJs(SRC).flatMap((file) =>
+const directives = listSource(SRC).flatMap((file) =>
   fs
     .readFileSync(file, "utf8")
     .split("\n")

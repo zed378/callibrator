@@ -65,7 +65,7 @@ Contrast `tenantId`, which **does** cascade — deleting a tenant is meant to ta
 
 Passing `nextCalibrationDate` does **not** change `status` (BR-11). Overdue is a computed reportable state. The platform makes the fact impossible to miss; it does not disable the device, because the decision to stop using an overdue defibrillator belongs to the facility.
 
-`retired` is terminal by convention, not by constraint — reviving a retired device is possible at the database level and should not be. Also tracked.
+**Retirement is terminal — ADR-084 (Q-02), migration `0089`.** Editing a retired device's status answers **409**, and the trigger `calibration_devices_retired_terminal` refuses the same UPDATE from any path. A retirement entered in error is corrected by `POST /api/v1/calibration-devices/:id/reinstate` (tenant administrator, calibration write, mandatory reason and target status), audited `REINSTATE` in the same transaction. Three different acts: **retire** is a status (the device still exists and keeps its history); **restore** (A-133, ADR-075) undoes a soft *delete* and leaves the status as it was — a retired device restored is still retired; **reinstate** undoes a *retirement* and refuses a deleted device (restore it first).
 
 ### `iotDeviceToken` is a credential
 

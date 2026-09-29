@@ -1,6 +1,6 @@
 # Phase 5 — Analytics, Telemetry and Quality
 
-**Status: 🟡 partially DONE.** Predictive maintenance and RAG shipped; **the data lake did not, deliberately.**
+**Status: ✅ DONE, with one card deliberately not built.** Predictive maintenance and RAG shipped; **the data lake did not, and will not as scoped** — P5-08 is closed as superseded by P8-04 (ADR-088, on the measurement in ADR-086 §3). The phase was "🟡 partially DONE" until 2026-09-28 only because of that card.
 
 Written retrospectively. This phase also absorbed the entire quality-management surface, which was not in its original scope.
 
@@ -70,6 +70,8 @@ For telemetry — where a dropped reading is a gap in a trend, not lost evidence
 | **Status** | ✅ DONE — **beyond the plan**, PostgreSQL only |
 
 **What shipped:** `document_chunks` with a `vector(1536)` embedding (migration `0018`, which runs `CREATE EXTENSION vector`), OCR, and retrieval-augmented question answering.
+
+**Reach narrowed 2026-09-27 (AZ-02, ADR-088).** `POST /ai/query` is gated on `sop: read` (A-94), and retrieval now also filters `source_type = ANY($4)` over `RAG_READABLE_SOURCE_TYPES` (`ai.service.js`, today `["SopDocument"]`), so a second ingested type cannot be read through a question until its gate is decided. Pinned by `ai.ragReach.az02.test.js`.
 
 **This is why compose uses `pgvector/pgvector:pg18`** rather than plain `postgres:18-alpine`.
 
@@ -154,7 +156,7 @@ Only `kanban_projects` and `kanban_cards` carry `tenantId`; the rest inherit thr
 
 | | |
 |---|---|
-| **Status** | ❌ **NOT DONE — deliberately** |
+| **Status** | ❌ **NOT DONE — deliberately; closed 2026-09-28 as superseded by P8-04** (ADR-088) |
 | **Follow-up** | P8-04 |
 
 **⚠ Divergence.** The plan called for a data lake. There is none, and there should not be one yet.
@@ -166,6 +168,8 @@ That is a correct choice at current scale and a wrong one eventually. **The trig
 Building a warehouse now would be infrastructure to maintain, a second copy of the data to keep consistent, and a second place tenant isolation could leak — for a problem nobody has measured.
 
 **That trigger cannot fire without measurement**, which is the strongest argument for P8-07.
+
+**Resolved 2026-09-28 — closed as superseded, not built (ADR-088).** P8-07 took the measurement (ADR-086 §3): over 35,963 requests on 5,000 devices and 2.16M readings per tenant, concurrent dashboard traffic took the device-list p95 from 320 to 726 ms — the trigger **fired in part**. The decision recorded on P8-04 is **query-shaped fixes first** (bounded or estimated counts, a default audit date window), then a **read replica** only if p95 still fails. A warehouse is not on that path at all. So this card has no remaining work of its own: what it asked for is carried by P8-04, and the premise below it was checked against the code on 2026-09-28 — the reporting indexes exist as stated (`calibrationDevice.model.js` `next_calibration_date`, `calibrationRecord.model.js` `is_compliant`, `iotReading.model.js` `(device_id, timestamp)` plus migration `0067`'s `(tenant_id, device_id, timestamp)`, `post.model.js` `published_at`).
 
 ---
 
@@ -189,7 +193,7 @@ Building a warehouse now would be infrastructure to maintain, a second copy of t
 | | → |
 |---|---|
 | RAG retrieval is the **highest-risk isolation surface** | continuous review |
-| No measurement of reporting impact on operational p95 | P8-07 |
+| ~~No measurement of reporting impact on operational p95~~ — measured 2026-09-28 (ADR-086 §3); the fix is query-shaped first, then a replica | P8-04 |
 | `iot_readings` and `audit_logs` unpartitioned | P8-05, P8-06 |
 
 **What to watch:** any change to `document_chunks` retrieval. A missing tenant predicate there does not error, does not warn, and produces a fluent answer citing another hospital's documents.

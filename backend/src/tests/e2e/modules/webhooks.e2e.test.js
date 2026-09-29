@@ -33,7 +33,7 @@ describe("E2E Webhooks (HTTP)", () => {
   });
 
   afterAll(async () => {
-    if (hookId) await httpDelete(`/webhooks/${hookId}`, authHeader(token));
+    if (hookId) {await httpDelete(`/webhooks/${hookId}`, authHeader(token));}
   });
 
   test("GET /webhooks — list, envelope + top-level meta", async () => {

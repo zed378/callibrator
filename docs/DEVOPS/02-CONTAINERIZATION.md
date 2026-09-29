@@ -176,6 +176,8 @@ The one exception is **`<Dockerfile>.dockerignore`**: BuildKit (every `docker bu
 
 `/health` probes the required datastores, so it is a genuine **readiness** probe (the dependency-free liveness probe is `/live`). Using it as a liveness probe would restart a healthy process during a database blip ([`09-KUBERNETES.md`](./09-KUBERNETES.md)).
 
+The backend check is the compose `healthcheck` (`wget --spider http://localhost:3000/health` in `deploy/compose/docker-compose.yml`); `backend/Dockerfile` declares no `HEALTHCHECK`. The full surface is three public probes — `/live` (`OK`), `/ready` (`READY`/`NOT READY`, same verdict as `/health`), `/health` — none of which returns runtime detail, plus the super-admin-only per-dependency breakdown at `GET /api/v1/health` ([`05-MONITORING.md`](./05-MONITORING.md#health-endpoints); ADR-088).
+
 A frontend that is healthy while the API is down is correct: it renders error states, which is the right behaviour.
 
 ## Compose Service Images — every third-party image pinned (P7-07)

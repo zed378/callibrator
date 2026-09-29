@@ -32,10 +32,10 @@ export const MenuGroupCrudModal: React.FC<MenuGroupCrudModalProps> = ({
     >
       <form onSubmit={onSubmit} className="space-y-4 pt-2">
         <div>
-          <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+          <label htmlFor="menu-groups-components-menugroupcrudmodal-f1" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
             Name *
           </label>
-          <Input
+          <Input id="menu-groups-components-menugroupcrudmodal-f1"
             required
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -45,10 +45,10 @@ export const MenuGroupCrudModal: React.FC<MenuGroupCrudModalProps> = ({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+            <label htmlFor="menu-groups-components-menugroupcrudmodal-f2" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
               Slug
             </label>
-            <Input
+            <Input id="menu-groups-components-menugroupcrudmodal-f2"
               value={form.slug}
               onChange={(e) => setForm({ ...form, slug: e.target.value })}
               placeholder="e.g. inventory-management"
@@ -56,10 +56,10 @@ export const MenuGroupCrudModal: React.FC<MenuGroupCrudModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+            <label htmlFor="menu-groups-components-menugroupcrudmodal-f3" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
               Icon
             </label>
-            <Input
+            <Input id="menu-groups-components-menugroupcrudmodal-f3"
               value={form.icon}
               onChange={(e) => setForm({ ...form, icon: e.target.value })}
               placeholder="e.g. LayoutGrid"
@@ -69,10 +69,10 @@ export const MenuGroupCrudModal: React.FC<MenuGroupCrudModalProps> = ({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
           <div>
-            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+            <label htmlFor="menu-groups-components-menugroupcrudmodal-f4" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
               Sort Order
             </label>
-            <Input
+            <Input id="menu-groups-components-menugroupcrudmodal-f4"
               type="number"
               value={form.sortOrder}
               onChange={(e) =>

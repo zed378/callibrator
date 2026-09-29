@@ -39,7 +39,7 @@ async function httpPatch(path, data = {}, headers = {}) {
 let token = null;
 
 async function login() {
-  if (token) return token;
+  if (token) {return token;}
   const { body } = await httpPost("/auth/login", {
     user: "sys@mail.com",
     password: "123123",
@@ -89,7 +89,7 @@ describe("E2E Users (/api/v1/users)", () => {
   });
 
   test("POST /users/create — create user", async () => {
-    if (!roleId) return;
+    if (!roleId) {return;}
     const stamp = Date.now();
     const { status, body } = await httpPost(
       "/users/create",
@@ -109,7 +109,7 @@ describe("E2E Users (/api/v1/users)", () => {
   });
 
   test("POST /users/detail — fetch created user", async () => {
-    if (!created.userId) return;
+    if (!created.userId) {return;}
     const { status, body } = await httpPost(
       "/users/detail",
       { userId: created.userId },
@@ -120,7 +120,7 @@ describe("E2E Users (/api/v1/users)", () => {
   });
 
   test("PATCH /users/edit — update user", async () => {
-    if (!created.userId) return;
+    if (!created.userId) {return;}
     const { status, body } = await httpPatch(
       "/users/edit",
       { userId: created.userId, firstName: "Edited" },
@@ -131,7 +131,7 @@ describe("E2E Users (/api/v1/users)", () => {
   });
 
   test("POST /users/role-update — reassign role", async () => {
-    if (!created.userId || !altRoleId || altRoleId === roleId) return;
+    if (!created.userId || !altRoleId || altRoleId === roleId) {return;}
     const { status, body } = await httpPost(
       "/users/role-update",
       { userId: created.userId, roleId: altRoleId },
@@ -147,7 +147,7 @@ describe("E2E Users (/api/v1/users)", () => {
   });
 
   test("DELETE /users/delete?userId= — remove created user", async () => {
-    if (!created.userId) return;
+    if (!created.userId) {return;}
     // deleteUser validates req.query.userId (userParamSchema), not the body.
     const { status, body } = await httpDelete(
       `/users/delete?userId=${created.userId}`,

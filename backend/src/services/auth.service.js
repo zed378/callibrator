@@ -559,10 +559,10 @@ exports.loginUser = async (input) => {
         id: dbUser.id,
         username: dbUser.username,
         email: dbUser.email,
-        mfaRequired: true
+        mfaRequired: true,
       },
       token: mfaToken,
-      refreshToken: null
+      refreshToken: null,
     };
   }
 
@@ -588,10 +588,10 @@ exports.loginUser = async (input) => {
   // Include role info with the user data
   const role = dbUser.role
     ? {
-        id: dbUser.role.id,
-        name: dbUser.role.name,
-        roleLevel: dbUser.role.roleLevel,
-      }
+      id: dbUser.role.id,
+      name: dbUser.role.name,
+      roleLevel: dbUser.role.roleLevel,
+    }
     : null;
 
   return {
@@ -828,10 +828,10 @@ exports.verifyUserSession = async (userId, _session) => {
       roleId: user.roleId,
       role: user.role
         ? {
-            id: user.role.id,
-            name: user.role.name,
-            roleLevel: user.role.roleLevel,
-          }
+          id: user.role.id,
+          name: user.role.name,
+          roleLevel: user.role.roleLevel,
+        }
         : null,
       tenantId: user.tenantId,
       // A-123: "who am I" is one of the routes a flagged account may call,
@@ -1590,7 +1590,7 @@ exports.loginMfa = async (userId, tokenCode, inputIp, inputUserAgent, { recovery
       tenantInclude(),
     ],
   });
-  
+
   if (!dbUser || !dbUser.mfaEnabled || !dbUser.mfaSecret) {
     throw new AppError(400, "MFA is not enabled for this account");
   }
@@ -1656,10 +1656,10 @@ exports.loginMfa = async (userId, tokenCode, inputIp, inputUserAgent, { recovery
 
   const role = dbUser.role
     ? {
-        id: dbUser.role.id,
-        name: dbUser.role.name,
-        roleLevel: dbUser.role.roleLevel,
-      }
+      id: dbUser.role.id,
+      name: dbUser.role.name,
+      roleLevel: dbUser.role.roleLevel,
+    }
     : null;
 
   return {
@@ -2002,7 +2002,7 @@ exports.impersonateUser = async (superAdminId, targetTenantId, targetUserId, inp
   if (!targetUser) {
     throw new AppError(404, "Target user not found in the specified tenant");
   }
-  
+
   if (targetUser.id === superAdmin.id) {
     throw new AppError(400, "Cannot impersonate yourself");
   }

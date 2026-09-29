@@ -195,9 +195,9 @@ function TicketDetailContent() {
 
               {/* Conversation */}
               <div>
-                <h3 className="text-sm font-semibold text-foreground mb-2">
+                <h2 className="text-sm font-semibold text-foreground mb-2">
                   Conversation ({ticket.comments?.length ?? 0})
-                </h3>
+                </h2>
                 <div className="space-y-2">
                   {(ticket.comments ?? []).map((c) => (
                     <Card
@@ -277,10 +277,10 @@ function TicketDetailContent() {
               <Card>
                 <CardContent className="p-5 space-y-4">
                   <div>
-                    <label className="text-xs font-medium text-muted-foreground">
+                    <label htmlFor="tickets-ticketid-page-f1" className="text-xs font-medium text-muted-foreground">
                       Status
                     </label>
-                    <Select
+                    <Select id="tickets-ticketid-page-f1"
                       value={ticket.status}
                       onChange={(v) =>
                         patch({ status: v as Ticket["status"] })
@@ -294,10 +294,10 @@ function TicketDetailContent() {
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-medium text-muted-foreground">
+                    <label htmlFor="tickets-ticketid-page-f2" className="text-xs font-medium text-muted-foreground">
                       Priority
                     </label>
-                    <Select
+                    <Select id="tickets-ticketid-page-f2"
                       value={ticket.priority}
                       onChange={(v) =>
                         patch({ priority: v as Ticket["priority"] })
@@ -312,10 +312,10 @@ function TicketDetailContent() {
                   </div>
                   {isResponder && (
                     <div>
-                      <label className="text-xs font-medium text-muted-foreground">
+                      <label htmlFor="tickets-ticketid-page-f3" className="text-xs font-medium text-muted-foreground">
                         Assignee
                       </label>
-                      <Select
+                      <Select id="tickets-ticketid-page-f3"
                         value={ticket.assignedTo || ""}
                         onChange={(v) => patch({ assignedTo: v || null })}
                         options={users}

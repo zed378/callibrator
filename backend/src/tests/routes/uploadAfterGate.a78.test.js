@@ -80,7 +80,7 @@ const isUpload = (arg) => /\bupload\s*\(|\.single\s*\(|\.array\s*\(|\.fields\s*\
 const uploadsAfterGate = () => {
   const out = [];
   for (const file of fs.readdirSync(path.join(ROUTES_DIR, "api"))) {
-    if (!file.endsWith(".js")) {
+    if (!/\.(js|ts)$/.test(file)) { // ADR-087 Amendment 4
       continue;
     }
     const source = fs.readFileSync(path.join(ROUTES_DIR, "api", file), "utf8");

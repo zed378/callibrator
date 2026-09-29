@@ -7,7 +7,7 @@ const {
   MaintenanceWorkOrder,
   User,
   Role,
-  sequelize
+  sequelize,
 } = require("../models");
 // NOTE: utils/appError exports an object — AppError must be destructured.
 // (`const AppError = require(...)` made `new AppError(...)` throw
@@ -81,7 +81,7 @@ class WorkflowService {
       order: [[{ model: WorkflowStep, as: "steps" }, "stepOrder", "ASC"]],
     });
 
-    if (!workflow) throw new AppError(404, "Workflow not found");
+    if (!workflow) {throw new AppError(404, "Workflow not found");}
     return workflow;
   }
 
@@ -132,7 +132,7 @@ class WorkflowService {
       transaction: t,
       lock: Transaction.LOCK.UPDATE,
     });
-    if (!workflow) throw new AppError(404, "Workflow not found");
+    if (!workflow) {throw new AppError(404, "Workflow not found");}
     return workflow;
   }
 
@@ -143,7 +143,7 @@ class WorkflowService {
       if (data.isActive !== false) {
         await Workflow.update(
           { isActive: false },
-          { where: { tenantId, resourceType: data.resourceType, isActive: true }, transaction: t }
+          { where: { tenantId, resourceType: data.resourceType, isActive: true }, transaction: t },
         );
       }
 
@@ -154,7 +154,7 @@ class WorkflowService {
           resourceType: data.resourceType,
           isActive: data.isActive !== undefined ? data.isActive : true,
         },
-        { transaction: t }
+        { transaction: t },
       );
 
       const steps = data.steps.map((step) => ({
@@ -215,13 +215,13 @@ class WorkflowService {
         }
       }
 
-      if (data.name !== undefined) workflow.name = data.name;
+      if (data.name !== undefined) {workflow.name = data.name;}
 
       if (data.isActive !== undefined && data.isActive !== workflow.isActive) {
         if (data.isActive) {
           await Workflow.update(
             { isActive: false },
-            { where: { tenantId, resourceType: workflow.resourceType, isActive: true }, transaction: t }
+            { where: { tenantId, resourceType: workflow.resourceType, isActive: true }, transaction: t },
           );
         }
         workflow.isActive = data.isActive;
@@ -318,7 +318,6 @@ class WorkflowService {
         throw err;
       }
       try {
-        // eslint-disable-next-line global-require
         const { logger } = require("../middlewares/activityLog.middleware");
         logger.warn(`Workflow lookup failed (${resourceType}): ${err.message}`);
       } catch {
@@ -339,7 +338,7 @@ class WorkflowService {
         status: "PENDING",
         currentStepOrder: workflow.steps[0].stepOrder,
       },
-      { transaction }
+      { transaction },
     );
 
     return instance;
@@ -392,13 +391,13 @@ class WorkflowService {
             {
               model: WorkflowStep,
               as: "steps",
-            }
-          ]
+            },
+          ],
         },
         {
           model: WorkflowAction,
           as: "actions",
-        }
+        },
       ],
     });
 
@@ -409,13 +408,13 @@ class WorkflowService {
       // A-204 — an instance whose workflow was deleted before deletion was
       // refused for pending instances has no steps to act on; it must not take
       // the whole inbox down with a TypeError.
-      if (!instance.workflow) return false;
+      if (!instance.workflow) {return false;}
       const currentStep = instance.workflow.steps.find(s => s.stepOrder === instance.currentStepOrder);
-      if (!currentStep) return false;
-      if (currentStep.roleId !== user.roleId) return false;
+      if (!currentStep) {return false;}
+      if (currentStep.roleId !== user.roleId) {return false;}
 
       const hasActionInCurrentStep = instance.actions.some(
-        action => action.stepId === currentStep.id && action.userId === user.id
+        action => action.stepId === currentStep.id && action.userId === user.id,
       );
       return !hasActionInCurrentStep;
     });
@@ -471,7 +470,7 @@ class WorkflowService {
         transaction: t,
         lock: Transaction.LOCK.UPDATE,
       });
-      if (!locked) throw new AppError(404, "Workflow instance not found");
+      if (!locked) {throw new AppError(404, "Workflow instance not found");}
 
       // Read again with the definition and the actions, under the lock: no
       // other decision on this instance can commit until this one does.
@@ -488,7 +487,7 @@ class WorkflowService {
           {
             model: WorkflowAction,
             as: "actions",
-          }
+          },
         ],
         transaction: t,
       });
@@ -504,7 +503,7 @@ class WorkflowService {
 
       const { resourceType } = instance.workflow;
       const currentStep = instance.workflow.steps.find(s => s.stepOrder === instance.currentStepOrder);
-      if (!currentStep) throw new AppError(500, "Workflow step configuration error");
+      if (!currentStep) {throw new AppError(500, "Workflow step configuration error");}
 
       if (currentStep.roleId !== user.roleId) {
         throw new AppError(403, "You do not have the required role to approve this step");
@@ -572,7 +571,7 @@ class WorkflowService {
           action,
           comments,
         },
-        { transaction: t }
+        { transaction: t },
       );
 
       if (action === "REJECTED") {

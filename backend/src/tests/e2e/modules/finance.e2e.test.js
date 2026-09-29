@@ -51,8 +51,8 @@ describe("E2E Finance (HTTP)", () => {
   });
 
   afterAll(async () => {
-    if (financeId) await httpDelete(`/finance/${financeId}`, authHeader(token));
-    if (deviceId) await httpDelete(`/calibration-devices/${deviceId}`, authHeader(token));
+    if (financeId) {await httpDelete(`/finance/${financeId}`, authHeader(token));}
+    if (deviceId) {await httpDelete(`/calibration-devices/${deviceId}`, authHeader(token));}
   });
 
   test("GET /finance — 200 with array data and top-level meta", async () => {

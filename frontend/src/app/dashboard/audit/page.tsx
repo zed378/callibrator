@@ -74,10 +74,10 @@ export default function AuditLogPage() {
           <CardContent className="pt-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-2 text-foreground">
+                <label htmlFor="audit-page-f1" className="block text-sm font-medium mb-2 text-foreground">
                   Action
                 </label>
-                <Select
+                <Select id="audit-page-f1"
                   value={actionFilter}
                   onChange={handleActionFilterChange}
                   options={[

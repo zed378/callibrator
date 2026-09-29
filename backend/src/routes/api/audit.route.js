@@ -61,7 +61,7 @@ router.get(
   dynamicAccess("audit", "read", {
     checkTenant: true,
   }),
-  auditController.fetchAuditLogs
+  auditController.fetchAuditLogs,
 );
 
 module.exports = router;

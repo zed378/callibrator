@@ -48,7 +48,7 @@ function LoginForm() {
   const { name, logoUrl } = useAuthBrand();
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden">
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden">
       <AuthBackground />
 
       <div className="relative z-10 mx-4 flex w-full max-w-6xl overflow-hidden rounded-3xl border border-border bg-card shadow-2xl animate-scale-in">
@@ -180,7 +180,7 @@ function LoginForm() {
           </div>
         </div>
       </div>
-    </div>
+    </main>
   );
 }
 

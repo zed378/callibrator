@@ -125,7 +125,7 @@ More seriously: **the lost-secrets failure is possible today.** A restore that r
 **Definition of Done**
 - [ ] a restore into a clean host, timed
 - [ ] the checklist asserted, not assumed:
-  - [ ] `/health` 200 with `database: "connected"`
+  - [ ] `/health` 200 `{"status":"ok"}` (the payload no longer carries `database`; corrected 2026-09-28, ADR-088)
   - [ ] a user can log in
   - [ ] a tenant-scoped list returns that tenant's rows **and no others**
   - [ ] **a certificate issued before the incident still verifies at its public URL**

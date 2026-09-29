@@ -165,4 +165,13 @@ The backend runs `db.sync()` and migrations **at boot**. Two consequences:
   sync and migrations only. One consequence: the internal `/api/v1/migration` "migrate" and "drop" endpoints run
   `db.sync()` as the application role and now **fail** — creating or dropping tables is not something the running
   application may do. Migrate by restarting the backend (`make migrate`).
-- On more than one replica, two instances will attempt migrations simultaneously. Exactly one should run them, or migrations need to be advisory-locked. This is a prerequisite for horizontal scaling, alongside the two in [`../ARCHITECTURE/08-DEPLOYMENT-ARCHITECTURE.md`](../ARCHITECTURE/08-DEPLOYMENT-ARCHITECTURE.md).
+- **On more than one replica, the schema step is advisory-locked** (P8-03, ADR-086, since 2026-09-28).
+  `db.sync()` and `migrator.up()` run inside `runSchemaSetup` (`backend/src/utils/migrationLock.util.js`),
+  which holds a PostgreSQL session advisory lock on a connection of its own. A second instance polls
+  `pg_try_advisory_lock` every second and **waits** — it never starts against a half-migrated schema — and then
+  finds nothing pending. It gives up after `MIGRATION_LOCK_TIMEOUT_MS` (default 600000, ten minutes) and
+  refuses the boot. `npm run migrate` and `migrate:undo` (`src/scripts/migrate.js up|down`) take the same lock;
+  `migrate:status` does not. Before this, two replicas starting together on a fresh database crashed one of
+  them inside `db.sync()` ("relname must be unique"). An init container was the alternative and was not
+  chosen (ADR-086). The other replica prerequisites are in
+  [`../ARCHITECTURE/08-DEPLOYMENT-ARCHITECTURE.md`](../ARCHITECTURE/08-DEPLOYMENT-ARCHITECTURE.md).

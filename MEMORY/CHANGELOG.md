@@ -8,6 +8,62 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-09-29 — P9-10: calibration, certificate and signature models are TypeScript ([record](./records/2026-09-29-p9-10-models-batches-5-6.md), ADR-087 Amendment 9)
+- Changed: the calibration device, calibration record, certificate, IoT reading, attachment and document-chunk models and the four electronic-signature models are TypeScript, with no change to what they define or do; verified against live PostgreSQL 18 as the application role, including the append-only calibration records and the retired-device rule. 46 of 71 models are converted.
+
+### 2026-09-29 — P9-10: workflow, quality, supplier, billing, usage and notification models are TypeScript ([record](./records/2026-09-29-p9-10-models-batches-3-4.md), ADR-087 Amendment 8)
+- Changed: 21 more models (approval workflows, CAPA / non-conformance / SOP, vendors, risks, supplier scorecards, invoices and subscriptions, plan quotas and usage, notifications, batch jobs, maintenance work orders, asset finance) are TypeScript, with no change to what they define; verified against live PostgreSQL 18 as the application role. 36 of 71 models are converted.
+
+### 2026-09-29 — P9-10: Kanban and inventory models are TypeScript ([record](./records/2026-09-29-p9-10-models-kanban-inventory.md), ADR-087 Amendment 7)
+- Changed: the nine Kanban models and the six inventory models (warehouses, storage locations, stock and its transfers, adjustments and counts) are TypeScript, with no change to what they define; verified against live PostgreSQL 18 as the application role.
+- Changed: the documented model-typing pattern is amended — the one first proposed does not compile for models that refer to each other.
+
+### 2026-09-29 — Phase 9 round 6: job context, migration lock, configuration accessors ([record](./records/2026-09-29-p9-round6-jobcontext-config.md), ADR-087 Amendment 6)
+- Changed: the background-job tenant context, the migration lock, the authorization-wiring check, the public-base-URL and scheduler-switch helpers, the JSON-shape validator and the IoT validator are TypeScript, with no behaviour change; the job context was verified on live PostgreSQL 18 as the application role.
+- Changed: converted code reads the environment only through `src/config/env.ts`; an empty variable still means "use the default" (P9-06 part 1). The fail-fast environment schema (part 2) is not yet in.
+
+### 2026-09-29 — Phase 9: leaves, constants done, baseline on a converted image ([record](./records/2026-09-29-p9-leaves-baseline-image.md), ADR-087 Amendment 5)
+- Changed: the response helpers, upload, file validation, controller wrapper, OTP and SSRF utilities and the route-gate exemptions are TypeScript, with no behaviour change; `constants/` is entirely TypeScript.
+- Verified: the full live E2E baseline (53 specs) passes unchanged against an image built from the partly converted backend.
+
+### ADR-088 — authorization matrix, records, docs ([record](./records/2026-09-27-az-authz-matrix-and-records.md))
+- **`GET /quota` now needs `billing: read`** — it answered every role. A custom role without `billing` loses it.
+- RAG answers are drawn only from SOP documents, enforced in the retrieval SQL.
+- Documentation corrected where it contradicted the code: health endpoints, rate limits, Swagger paths, the two-tenant fixture, webhooks and search.
+
+### 2026-09-28 — Phase 9 guard sweep and tenantScope ([record](./records/2026-09-28-p9-guard-sweep-tenantscope.md), ADR-087 Amendment 4)
+- Fixed: 20 source-scanning guard suites ignored `.ts` files, so every conversion silently left them; they now scan `.ts` and were each proved to fail on a planted `.ts` violation.
+- Changed: the tenant-isolation engine (`utils/tenantScope.util`) is TypeScript, with no behaviour change; verified against live PostgreSQL 18 as the application role.
+
+### 2026-09-28 — Phase 9 P9-00, P9-02, P9-02a, P9-03a ([record](./records/2026-09-28-p9-helper-lint-baseline-coverage.md), [baseline](./records/P9-00.md), ADR-092)
+- Added: the Phase 9 behaviour baseline — 53 live E2E specs, all passing twice on the pre-conversion commit `35ebd76`.
+- Changed: backend lint has 0 errors (was 1,050; formatting only, proved AST-identical) and the ratchet baseline is 0, so any new lint error fails CI and the pre-push hook.
+- Changed: one ESLint config (`backend/.eslintrc.js` deleted); global ignores actually global; `backend/.prettierrc` is the backend's Prettier config.
+- Changed: the `istanbul ignore` guard scans `.ts` files too; docs no longer show `node src/…` commands that cannot run since ADR-087.
+
+### 2026-09-28 — Phase 9 P9-05a ([record](./records/2026-09-28-p9-05a-logger-tenant-context.md), ADR-087 Amendment 2)
+- Changed: the logger (`activityLog.middleware`), the tenant context (`tenantContext.middleware`), `dbReady` and `circuitBreaker` are TypeScript, with no behaviour change; a live two-tenant check on PostgreSQL 18 as the application role passed.
+- Changed: new backend test files are TypeScript (the ratchet counts tests).
+
+### 2026-09-28 — Phase 9 ratchet and constants ([record](./records/2026-09-28-p9-ratchet-constants-paths.md), ADR-087 Amendment 1)
+- Added: `npm run ratchet` — any new backend `.js` file (tests included) fails `make verify`, CI and the pre-push hook.
+- Fixed: jest transformed TypeScript with Babel 7 core + Babel 8 presets, which left explicit type arguments in the output; `backend/jest.transform.js` uses Babel 8 throughout.
+- Changed: every `constants/` module except `routeGateExemptions`, and `utils/storagePath` / `utils/appPath`, are TypeScript, with no behaviour change; a role without a `ROLE_LEVELS` entry no longer compiles.
+
+### 2026-09-28 — Phase 8: migration lock and load baseline ([record](./records/2026-09-28-p8-scale-cards.md), ADR-086)
+- Fixed: two backend replicas starting together no longer run `db.sync()` and the migrations twice (one used to crash). The schema step holds a PostgreSQL advisory lock; the other replica waits, up to `MIGRATION_LOCK_TIMEOUT_MS` (default 10 min).
+- Changed: `npm run migrate` / `migrate:undo` take the same lock and wait for a booting replica.
+- Added: `scripts/load/` — the P8-07 volume seed and k6 baseline, with per-response cross-tenant checks.
+- Measured: no cross-tenant leakage under concurrency; the list p95 target is missed above low concurrency, and PostgreSQL is the ceiling.
+
+### 2026-09-28 — Phase 9 toolchain and first conversions ([record](./records/2026-09-28-p9-toolchain-and-first-leaves.md), ADR-087)
+- Added: `backend/tsconfig.json` (strict + ADR-038 flags), `npm run typecheck` (TypeScript 7) in CI, `make typecheck` and the pre-push hook.
+- Added: `npm run build:dist` — the binary is built from `dist/` (JavaScript copied, TypeScript compiled); a `.ts` file importing `.js` fails the build.
+- Added: jest runs `.ts` sources and tests (babel-jest); ESLint lints `.ts` with typescript-eslint strict type-checked rules.
+- Added: `backend/src/types/` for shared types, with a lint rule against shared shapes declared elsewhere.
+- Changed: `utils/packaged.util` and eight `constants/` modules are TypeScript, with no behaviour change.
+- Changed: backend source runs through tsx (`npm start`, `dev`, the migrate/swagger/keys scripts, `make seed-demo`, CI boots); plain `node src/…` no longer works. `nodemon` removed.
+
 ### 2026-09-28 — P7-01 / P7-02 / P7-03 ([record](./records/2026-09-28-p7-01-02-03.md), ADR-082)
 - Fixed: `npm run migrate` / `migrate:status` now exit (M-13); they hung on the open database pool.
 - Fixed (CI, never yet run on GitHub): `boot-and-migrate` installs dev tools (`tsx`); backend coverage no longer depends on the local `.env`.
@@ -55,6 +111,20 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 - Demo unseed stopped part-way.
 - CI would have failed its first run.
 
+
+## 2026-09-25 — Phase 0 batch 6 ([record](./records/2026-09-25-phase0-batch6.md), ADR-055–ADR-059, ADR-066, ADR-067)
+
+*Section added 2026-09-28 from the record (ADR-088); the batch shipped without one.*
+
+### Security
+- Every route carries a permission gate or a reasoned exemption, checked over the real route tree (P6-04, ADR-058). Read paths are gated like their writes (AZ-01).
+- Failed sign-ins are throttled per identifier and address; an account is never locked by anonymous attempts, and every failure answers the same 401 (A-185, ADR-059).
+- The browser never holds the access token (A-71); OIDC is configured by discovery (A-188); a platform operator without MFA gets an enrolment-only session (P6-07).
+- Files are served through a capability, not a public static mount (S-01, ADR-057).
+
+### Changed
+- Tenant administrators reach users, vendors, billing and the audit log (Q-20, ADR-056, migration `0054`).
+- Workflow decisions on certificates re-authenticate and are signatures (ADR-055).
 
 ## 2026-09-25 — Phase 0 batch 5 ([record](./records/2026-09-25-phase0-batch5.md), ADR-053, ADR-054)
 
@@ -227,6 +297,12 @@ Claims found false in the 2026-09-21 audit, each corrected where it was made:
 - The Helm charts render; **no cluster has been reachable** to validate them.
 
 ---
+
+## 2026-09-23 — The lockfile is committed ([record](./records/2026-09-23-a21-lockfile-npm.md), ADR-044)
+
+*Entry added 2026-09-27 (ADR-088).*
+
+- `package-lock.json` is committed and `make install` is `npm ci`; every Makefile target uses npm (A-21).
 
 ## 2026-07 — Full-stack integration audit
 

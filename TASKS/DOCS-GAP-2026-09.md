@@ -212,7 +212,7 @@ freely.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-28 — `docs/DEVELOPER/02-AUTHENTICATION.md` — 53 modules, 407 routes; A-07 names gone from code; V-02 (scopes vs gated slugs) and V-05 listed open |
 | **Priority** | **0** |
 | **Audience** | backend engineers wiring a new route; anyone reviewing whether a route is safely reachable by an API key |
 | **Grounding** | `backend/src/middlewares/auth.middleware.js` (`tryApiKeyAuth`, `allowApiKey`), `backend/src/middlewares/dynamicAccess.middleware.js` (`checkApiKeyScope`, sets `req.apiKeyAuthorized`), `backend/src/utils/controllerWrapper.util.js` (`asyncHandler`/`asyncHandlerWithMapping` — the deny-by-default chokepoint), `backend/src/services/apiKey.service.js` (`assertScopes`), `backend/src/routes/api/scim.route.js` (`requireApiKeyOrAdmin`, the one self-authorizing exception), `TASKS/AUDIT-2026-09-REMEDIATION.md` §§ A-03, A-27 |
@@ -240,7 +240,7 @@ them.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-28 — `MEMORY/specs/A-02-tenant-config-access.md`, retroactive; custom-domains grant mismatch recorded as open. Sweep: A-11 cites no spec (report only) |
 | **Priority** | **0** |
 | **Audience** | whoever reviews `A-02`'s implementation against its stated requirement, and whoever next touches webhook/storage/custom-domain access control |
 | **Grounding** | `TASKS/AUDIT-2026-09-REMEDIATION.md` § A-02 (the "What was changed" section already states the decision reached — TENANT_ADMIN-only for webhooks and storage settings, `dynamicAccess` for custom domains); `MEMORY/templates/FEATURE-SPEC-TEMPLATE.md` for the expected shape; `CLAUDE.md` § Workflow step 2 |
@@ -262,7 +262,7 @@ the way every other `Spec required: yes` card's spec is.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-28 — `docs/WEBHOOK/00-WEBHOOK-ARCHITECTURE.md`; README row; 01/03 corrected (ADR-088). The ARCHITECTURE/00 link (now line 64) resolves |
 | **Priority** | **1** |
 | **Audience** | a backend engineer or an integrator's engineer forming a mental model of the outbound webhook system before reading the security/retry/event-catalogue detail docs |
 | **Grounding** | `backend/src/services/webhook.service.js`, `backend/src/controllers/webhook.controller.js`, `backend/src/routes/api/webhooks.route.js`, `backend/src/models/webhook.model.js`, `backend/src/models/webhookDelivery.model.js`; `docs/WEBHOOK/README.md` (already states this doc's intended scope); `docs/ARCHITECTURE/00-SYSTEM-ARCHITECTURE.md:49` (the broken link this closes) |
@@ -284,7 +284,7 @@ under "The Short Version," expanded and diagrammed rather than duplicated.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-28 — `docs/SEARCH/02-FULL-TEXT.md`; A-56 and A-23 found fixed in code; SEARCH/01 corrected (ADR-088) |
 | **Priority** | **1** |
 | **Audience** | backend engineers touching `search.service.js`; whoever picks up `A-56` |
 | **Grounding** | `backend/src/services/search.service.js`, `backend/src/migrations/0003-add-search-vectors.js`; `docs/SEARCH/01-GLOBAL-SEARCH.md` (cites this doc at line 184); `docs/ARCHITECTURE/00-SYSTEM-ARCHITECTURE.md:49` (the other half of the same broken line) |
@@ -305,7 +305,7 @@ silently omitted.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-28 — `docs/MULTI-TENANCY/README.md` (07 is now assigned) |
 | **Priority** | **1** |
 | **Audience** | anyone landing in this folder — currently the only one of the three thin, README-less categories that also happens to be the one `CLAUDE.md` calls mandatory reading (via `SECURITY/05`) |
 | **Grounding** | `docs/DEVELOPER/README.md`, `docs/WEBHOOK/README.md`, `docs/OBSERVABILITY/README.md` — the three existing examples of this exact pattern; `docs/BACKEND/10-MODULE-REFERENCE.md` modules 5–7 |
@@ -326,7 +326,7 @@ individually; the README should say it once, at the top).
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-28 — `docs/MULTI-TENANCY/01-TENANT-HIERARCHY-AND-SUBORGS.md`. The card's premise was wrong: `tenantHierarchy` has a `tenantId` and is scoped; `Tenant` is not |
 | **Priority** | **1** |
 | **Audience** | anyone building on or reviewing tenant hierarchy, tenant lifecycle or tenant backup — three modules that are all deliberately capable of crossing the normal per-row tenant boundary |
 | **Grounding** | `backend/src/models/tenant.model.js`, `tenantHierarchy.model.js` (no `tenantId` attribute — the actual root cause named in `A-01`'s evidence), `backend/src/controllers/tenantHierarchy.controller.js`, `tenantLifecycle.controller.js`, `tenantBackup.controller.js`; `backend/src/routes/api/tenantHierarchy.route.js` (the `ownTenantGuard` / `superAdminOnly` + `denyApiKey` shape `A-01` put in place); `TASKS/AUDIT-2026-09-REMEDIATION.md` § A-01 |
@@ -351,7 +351,7 @@ admin capability and how it is scoped.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-28 — `docs/MULTI-TENANCY/07-SUPERADMIN-CROSS-TENANT-OPERATIONS.md` — 71 super-admin-only routes, 80 crossing routes; A-37/38/39 are DONE, not open |
 | **Priority** | **2** |
 | **Audience** | security reviewers and anyone adding a new SUPERADMIN-only or cross-tenant capability |
 | **Grounding** | `backend/src/routes/api/scim.route.js`, `tenantBackup.route.js`, `tenantHierarchy.route.js`, `billing.route.js` (admin paths); `backend/src/constants/roleConstants.js` (`ROLE_IDS.SUPER_ADMIN`); `TASKS/AUDIT-2026-09-REMEDIATION.md` §§ A-27, A-37, A-38, A-39 (every one of which is a SCIM/cross-tenant privilege-boundary defect) |
@@ -374,7 +374,7 @@ that list from a remediation log.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-28 — `docs/STORAGE/README.md` |
 | **Priority** | **1** |
 | **Audience** | anyone landing in this folder |
 | **Grounding** | same three-README pattern as `DOC-05`; `docs/STORAGE/04-TENANT-STORAGE.md`'s own implementation table |
@@ -389,7 +389,7 @@ that list from a remediation log.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-28 — `docs/STORAGE/02-STORAGE-OPERATIONS-AND-MIGRATION.md`; A-40 found done in code |
 | **Priority** | **2** |
 | **Audience** | whoever operates a legacy-attachment migration into the pluggable storage layer, or investigates `A-40` |
 | **Grounding** | `backend/src/services/storageMigration.service.js`, `backend/src/scripts/migrateStorage.js`; `TASKS/AUDIT-2026-09-REMEDIATION.md` § A-40 ("a null-checksum migration reports `migrated` unverified"); `docs/STORAGE/04-TENANT-STORAGE.md`'s existing implementation table (currently the only place the migration tool is even named) |
@@ -410,7 +410,7 @@ of naming absences rather than smoothing them).
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-28 — `docs/SEARCH/README.md` (02 now written, so not unassigned) |
 | **Priority** | **1** |
 | **Audience** | anyone landing in this folder |
 | **Grounding** | same pattern as `DOC-05`/`DOC-08` |
@@ -425,7 +425,7 @@ of naming absences rather than smoothing them).
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-28 — `docs/DEVELOPER/00-INTEGRATION-QUICKSTART.md` |
 | **Priority** | **2** |
 | **Audience** | an integrator's engineer (hospital IT, a device vendor, an SI implementing SSO) arriving with no prior context — the reader `docs/DEVELOPER/README.md` says this whole category exists for |
 | **Grounding** | `docs/API/00-API-STANDARDS.md` (envelope, status codes), `docs/API/01-AUTHENTICATION-API.md`, the (once written) `DOC-01`, `docs/DEVELOPER/07-IOT-INGEST.md` and `09-SCIM-PROVISIONING.md` as the two existing examples of this category's voice |
@@ -448,7 +448,7 @@ reads first, and the warning is wasted if it is only ever read by people already
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-28 — `docs/DEVELOPER/03-RATE-LIMITS-AND-ERROR-CODES.md`; A-16 verified on the reference VM only. Found `authLimiter`/`otpLimiter` never mounted; three docs corrected (ADR-088) |
 | **Priority** | **2** |
 | **Audience** | an integrator whose client needs to handle 429/lockout responses correctly |
 | **Grounding** | `backend/src/services/rateLimiter.redis.service.js` (post-`A-30` — the Lua `EVAL` counter, the fail-to-memory-not-fail-open outage behaviour); `TASKS/AUDIT-2026-09-REMEDIATION.md` § A-30, A-16 (unverified: whether `req.ip` survives the proxy chain) |
@@ -468,7 +468,7 @@ sharing an egress IP with other tenants' traffic should know that is an open que
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-28 — 12 docs corrected: the fixture exists (A-63) and is synchronous, in memory, no SQL; invented helpers removed (ADR-088). A-55's remaining box can be ticked |
 | **Priority** | **1** |
 | **Audience** | every engineer who reads any of the eleven testing/security documents before writing a cross-tenant test |
 | **Grounding** | `TASKS/AUDIT-2026-09-REMEDIATION.md` § A-55; `CLAUDE.md`'s own corrected paragraph (the model to match); the eleven files: `docs/BACKEND/05-TENANT-SCOPING.md`, `docs/BACKEND/09-TESTING.md`, `docs/ENGINEERING/05-LAYER-TEMPLATES.md`, `docs/ENGINEERING/09-TESTING-CONVENTIONS.md`, `docs/MULTI-TENANCY/06-REALTIME-ISOLATION.md`, `docs/SECURITY/05-MULTI-TENANCY-SECURITY.md`, `docs/SECURITY/11-SECURITY-TESTING.md`, `docs/TESTING/00-TEST-STRATEGY.md`, `docs/TESTING/02-INTEGRATION-TESTING.md`, `docs/TESTING/03-E2E-TESTING.md`, `docs/TESTING/04-SECURITY-TESTING.md` |
@@ -490,7 +490,7 @@ or (until then) show the setup it is meant to replace so the code samples in `EN
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-28 — `docs/README.md` Folder Structure recounted 2026-09-28; the false "do not exist" paragraph replaced |
 | **Priority** | **0** |
 | **Audience** | every reader — this is the entry point named first in `CLAUDE.md` § Before You Start |
 | **Grounding** | direct directory listing: `docs/MULTI-TENANCY/` (2 files), `docs/SEARCH/` (1 file), `docs/WEBHOOK/` (4 files) |
@@ -510,7 +510,7 @@ this report documents (§3) instead — which is accurate, where "do not exist" 
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-28 — 84 `file:///` lines converted; 7 `context.md` references annotated. No `file:///` link remains outside this board's own prose |
 | **Priority** | **2** |
 | **Audience** | low — `ARCHIVE/` is explicitly never-authoritative; this is a hygiene pass, not a correctness fix |
 | **Grounding** | § 2.3 above; `docs/ARCHIVE/README.md`'s provenance table (confirms `context.md` was superseded, not merely moved) |
@@ -532,7 +532,7 @@ anchor a line range against.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-28 — `docs/TESTING/05-PERFORMANCE-TESTING.md` § Hot-Path Budgets, each figure TARGET or MEASURED (P8-07); search and PDF not measured; U-06 links it |
 | **Priority** | **2** |
 | **Audience** | whoever eventually acts on `TASKS/BACKLOG.md`'s `U-06` ("no load testing has been performed; no baseline exists") — this document is preparation for that work, not a substitute for it |
 | **Grounding** | `docs/TESTING/05-PERFORMANCE-TESTING.md` (existing, to be extended rather than replaced); `TASKS/BACKLOG.md` § Unverified Claims, `U-06`; the benchmark's `PERFORMANCE/00-PERFORMANCE-REQUIREMENTS.md` pattern (§4) as the structural idea being adopted at a fraction of its scale |
@@ -555,7 +555,7 @@ were not tested.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-28 — the six named docs plus five more (`DEVOPS/07`, `08`, `11`, `ARCHITECTURE/09`, PHASE-7) corrected (ADR-088) |
 | **Priority** | **1** |
 | **Audience** | DevOps/SRE-facing readers, and anyone configuring a load-balancer or Kubernetes probe against these documents |
 | **Grounding** | `backend/src/services/health.service.js`, `backend/src/controllers/health.controller.js`, `backend/src/routes/internal/health.route.js` (all new, per `A-15`); `TASKS/AUDIT-2026-09-REMEDIATION.md` §§ A-06, A-15; the six stale files: `docs/DEVOPS/05-MONITORING.md`, `docs/DEVOPS/02-CONTAINERIZATION.md`, `docs/API/12-PLATFORM-API.md`, `docs/ARCHITECTURE/03-BACKEND-ARCHITECTURE.md`, `docs/ARCHITECTURE/08-DEPLOYMENT-ARCHITECTURE.md`, `docs/PLAN/12-ADMIN-SURFACE.md` |

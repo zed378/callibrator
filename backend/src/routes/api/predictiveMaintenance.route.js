@@ -37,7 +37,7 @@ router.post(
   "/analyze/:deviceId",
   validateUuid("deviceId"),
   dynamicAccess("calibration", "write", { checkTenant: true }),
-  predictiveMaintenanceController.analyzeDevice
+  predictiveMaintenanceController.analyzeDevice,
 );
 
 /**
@@ -58,7 +58,7 @@ router.post(
 router.get(
   "/recommendations",
   dynamicAccess("calibration", "read", { checkTenant: true }),
-  predictiveMaintenanceController.getRecommendations
+  predictiveMaintenanceController.getRecommendations,
 );
 
 /**
@@ -96,7 +96,7 @@ router.post(
   "/recommendations/:deviceId/approve",
   validateUuid("deviceId"),
   dynamicAccess("calibration", "write", { checkTenant: true }),
-  predictiveMaintenanceController.approveRecommendation
+  predictiveMaintenanceController.approveRecommendation,
 );
 
 module.exports = router;

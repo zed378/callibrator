@@ -46,20 +46,20 @@ describe("E2E Tenants (HTTP)", () => {
   });
 
   test("POST /tenants/detail -> 200 for a real tenant id", async () => {
-    if (!tenantId) return;
+    if (!tenantId) {return;}
     const { status, body } = await httpPost("/tenants/detail", { tenantId }, authHeader(token));
     expect(status).toBe(200);
     expect(body.data).toHaveProperty("id", tenantId);
   });
 
   test("POST /tenants/settings -> 200 for a real tenant id", async () => {
-    if (!tenantId) return;
+    if (!tenantId) {return;}
     const { status } = await httpPost("/tenants/settings", { tenantId }, authHeader(token));
     expect(status).toBe(200);
   });
 
   test("POST /tenants/user-count -> 200 for a real tenant id", async () => {
-    if (!tenantId) return;
+    if (!tenantId) {return;}
     const { status } = await httpPost("/tenants/user-count", { tenantId }, authHeader(token));
     expect(status).toBe(200);
   });
@@ -83,6 +83,6 @@ describe("E2E Tenants (HTTP)", () => {
     );
     // 201 is the contract; 409 if re-run; 500 is the observed defect.
     expect([201, 409, 500]).toContain(status);
-    if (status === 201) expect(body.data).toHaveProperty("id");
+    if (status === 201) {expect(body.data).toHaveProperty("id");}
   });
 });

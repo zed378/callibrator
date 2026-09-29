@@ -35,7 +35,7 @@ below is read from code, and the cards say where that leaves a doubt.
 | F-09 | `POST /api/v1/auth/sso-session` writes the auth cookie from an **unverified request body** | medium | auth | **DONE** 2026-09-27 — A-60 had already made it exchange a single-use code, verified server-to-server; same-origin only now (`lib/sameOrigin.ts`). `sso-session/route.test` › *F-09 valid / forged / replayed / cross-origin / missing origin* (ADR-074) |
 | F-10 | Global search is shown to every role and 403s on **every keystroke** for roles A-04 now excludes | medium | ux / authz | **DONE** 2026-09-27 — headless: no searchable menu → no search box and 0 `/search` requests; with Devices → the box, one request (`MEMORY/records/2026-09-27-frontend-board-fe2.md`) |
 | F-11 | The public certificate-verification PDF link prefixes the backend origin onto an already same-origin path | medium | public surface | **DONE** 2026-09-27 — `toSameOriginApiPath`; `page.f11` (3 fail before); headless with an unreachable `NEXT_PUBLIC_API_BASE_URL`: the PDF loads same-origin, 0 requests to the backend origin (ADR-074) |
-| F-12 | ~142 of 156 `<label>`s are unassociated; 16 modals, zero `role="dialog"`; `axe` is not installed | medium | accessibility | **PARTIAL** 2026-09-27 — DateField, MultiSelect, SearchableDropdown and the 10 bare overlays done and axe-clean (`a11y.f12b`, `a11y.f12.overlays`; ADR-074). Open: the screen-reader walk; axe in the browser suite |
+| F-12 | ~142 of 156 `<label>`s are unassociated; 16 modals, zero `role="dialog"`; `axe` is not installed | medium | accessibility | **PARTIAL** 2026-09-27 — DateField, MultiSelect, SearchableDropdown and the 10 bare overlays done and axe-clean (`a11y.f12b`, `a11y.f12.overlays`; ADR-074). Open: the screen-reader walk; axe in the browser suite. 2026-09-29: a WCAG 2.1 AA axe sweep of all 70 routes in Chrome, both themes, went from 513 (light) / 304 (dark) findings to 0, and 24 dialogs pass axe and the keyboard contract (`a11y.adr090`; ADR-090) |
 | F-13 | Two endpoints return `data.rows`/`data.meta` and the frontend is **coded to match** | medium | envelope | **DONE** 2026-09-27 — `/metered-billing/history` now in the house envelope (sessions: A-111); both pinned through their routers by `envelope.f13.test.js` (ADR-074) |
 | F-14 | The client timeout equals the server timeout, so the user never sees the backend's 408 | medium | errors | **DONE** 2026-09-27 — proxy aborts at 32 s or on disconnect, 504 in the envelope (`route.stream.f16` › F-14); the backend's 408 was never sent — a timeout answered 503 — now 408 in the envelope (`requestTimeout.f14`); headless: the timeout copy at 33 s (ADR-074) |
 | F-15 | `menuStore` falls back to the **full static menu** when `roleId` is missing | low | rbac-in-ui | **DONE** 2026-09-25 — no `roleId` → empty menu and a visible error with a retry; a failed fetch is visible (`menuStore.f15`) |
@@ -581,6 +581,104 @@ Install `axe` and wire it into the component suite so the standards document sto
 **Abuse cases**
 - Adding `aria-label` to the input and leaving the visible `<label>` unassociated
 - Counting a passing `axe` run on a page with no dialog open as covering the dialogs
+
+#### Browser sweep, WCAG 2.1 AA (2026-09-29, ADR-090)
+
+*Appended by the a11y-sweep agent; the section above is the frontend-board agent's (ADR-074).*
+
+**What was run.** axe-core (the frontend devDependency, loaded from `node_modules/axe-core/axe.min.js`) injected by the root `puppeteer-core` into the installed Chrome, headless, 1366×900, against a production build (`next build` + `next start`) of the working tree. The backend was the real one (`node --import tsx index.js`) on a throwaway `pgvector/pgvector:pg18` with Redis 8.6, booted like the app and seeded with `migrationService.seedAll()` + `seedDemoData()`. Public pages were visited signed out; dashboard pages with a real session, **signed in through the login form as the seeded tenant administrator `demo.healtcare_admin@demo.callibrator.test`** (no MFA is required of that role, so no enrolment was needed). Every one of the 70 `page.tsx` routes was visited, dynamic segments filled with seeded ids. Rule set: `wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa` (counted as WCAG) plus `best-practice` (landmarks, heading order; counted separately). Both themes: light, and dark via `hdc-theme-preference`. Counts are violating **nodes**. The scripts are scratch-only and were not added to the repository.
+
+**Before → after, per page** (before = HEAD `35ebd76` + the working tree on 2026-09-29, i.e. after ADR-074's F-12 work):
+
+| Page | Light before (WCAG / BP) | Dark before (WCAG / BP) | After, both themes |
+|---|---|---|---|
+| `/` | 5 / 1 | 4 / 1 | 0 / 0 |
+| `/activation` | 0 / 1 | 2 / 1 | 0 / 0 |
+| `/blog` | 8 / 1 | 2 / 1 | 0 / 0 |
+| `/blog/demo-getting-started` | 10 / 1 | 1 / 1 | 0 / 0 |
+| `/login` | 2 / 11 | 1 / 11 | 0 / 0 |
+| `/news` | 14 / 2 | 0 / 2 | 0 / 0 |
+| `/news/demo-platform-update` | 0 / 0 | 1 / 0 | 0 / 0 |
+| `/oauth/consent` | 1 / 3 | 1 / 3 | 0 / 0 |
+| `/register` | 1 / 13 | 1 / 13 | 0 / 0 |
+| `/sso-callback` | 1 / 5 | 2 / 5 | 0 / 0 |
+| `/verify/CERT-DEMO-0003` | 0 / 0 | 0 / 0 | 0 / 0 |
+| `/dashboard` | 6 / 0 | 5 / 0 | 0 / 0 |
+| `/dashboard/ai-assistant` | 3 / 0 | 3 / 0 | 0 / 0 |
+| `/dashboard/api-keys` | 3 / 0 | 3 / 0 | 0 / 0 |
+| `/dashboard/attachments` | 3 / 0 | 3 / 0 | 0 / 0 |
+| `/dashboard/audit` | 10 / 1 | 3 / 1 | 0 / 0 |
+| `/dashboard/batch-jobs` | 8 / 1 | 4 / 1 | 0 / 0 |
+| `/dashboard/billing` | 5 / 1 | 3 / 1 | 0 / 0 |
+| `/dashboard/calibration` | 14 / 0 | 8 / 0 | 0 / 0 |
+| `/dashboard/calibration-scheduler` | 10 / 0 | 9 / 0 | 0 / 0 |
+| `/dashboard/change-password` | 4 / 0 | 4 / 0 | 0 / 0 |
+| `/dashboard/content` | 4 / 0 | 5 / 0 | 0 / 0 |
+| `/dashboard/content/<id>/edit` | 4 / 0 | 3 / 0 | 0 / 0 |
+| `/dashboard/content/new` | 3 / 0 | 3 / 0 | 0 / 0 |
+| `/dashboard/custom-domains` | 8 / 0 | 4 / 0 | 0 / 0 |
+| `/dashboard/data-retention` | 4 / 0 | 6 / 0 | 0 / 0 |
+| `/dashboard/devices` | 20 / 0 | 10 / 0 | 0 / 0 |
+| `/dashboard/esignature` | 6 / 1 | 4 / 1 | 0 / 0 |
+| `/dashboard/feature-flags` | 9 / 0 | 4 / 0 | 0 / 0 |
+| `/dashboard/finance` | 7 / 1 | 4 / 1 | 0 / 0 |
+| `/dashboard/gdpr` | 9 / 0 | 7 / 0 | 0 / 0 |
+| `/dashboard/kanban` | 3 / 1 | 4 / 1 | 0 / 0 |
+| `/dashboard/kanban/<id>` | 4 / 0 | 3 / 0 | 0 / 0 |
+| `/dashboard/kanban/<id>/dashboard` | 4 / 0 | 3 / 0 | 0 / 0 |
+| `/dashboard/maintenance` | 20 / 0 | 10 / 0 | 0 / 0 |
+| `/dashboard/menu-groups` | 4 / 0 | 4 / 0 | 0 / 0 |
+| `/dashboard/metered-billing` | 8 / 0 | 4 / 0 | 0 / 0 |
+| `/dashboard/mfa` | 3 / 0 | 3 / 0 | 0 / 0 |
+| `/dashboard/network-security` | 6 / 0 | 7 / 0 | 0 / 0 |
+| `/dashboard/notifications` | 13 / 0 | 10 / 0 | 0 / 0 |
+| `/dashboard/oidc` | 8 / 0 | 4 / 0 | 0 / 0 |
+| `/dashboard/permissions` | 3 / 0 | 2 / 0 | 0 / 0 |
+| `/dashboard/predictive-maintenance` | 10 / 0 | 5 / 0 | 0 / 0 |
+| `/dashboard/profile` | 4 / 0 | 5 / 0 | 0 / 0 |
+| `/dashboard/qms` | 13 / 0 | 5 / 0 | 0 / 0 |
+| `/dashboard/reports` | 4 / 0 | 4 / 0 | 0 / 0 |
+| `/dashboard/risk` | 13 / 0 | 3 / 0 | 0 / 0 |
+| `/dashboard/roles` | 5 / 1 | 6 / 1 | 0 / 0 |
+| `/dashboard/scim` | 10 / 0 | 6 / 0 | 0 / 0 |
+| `/dashboard/session-management` | 6 / 0 | 2 / 0 | 0 / 0 |
+| `/dashboard/sop` | 10 / 0 | 3 / 0 | 0 / 0 |
+| `/dashboard/stock` | 9 / 0 | 6 / 0 | 0 / 0 |
+| `/dashboard/storage` | 4 / 1 | 4 / 1 | 0 / 0 |
+| `/dashboard/supplier-scorecard` | 15 / 0 | 3 / 0 | 0 / 0 |
+| `/dashboard/tenant-hierarchy` | 12 / 0 | 6 / 0 | 0 / 0 |
+| `/dashboard/tenant-lifecycle` | 4 / 0 | 2 / 0 | 0 / 0 |
+| `/dashboard/tenants` | 7 / 1 | 5 / 1 | 0 / 0 |
+| `/dashboard/tenants/<id>/backup` | 4 / 0 | 4 / 0 | 0 / 0 |
+| `/dashboard/tickets` (redirects to `/raise`) | 3 / 1 | 4 / 1 | 0 / 0 |
+| `/dashboard/tickets/<id>` | 5 / 1 | 3 / 1 | 0 / 0 |
+| `/dashboard/tickets/raise` | 3 / 1 | 4 / 1 | 0 / 0 |
+| `/dashboard/tickets/response` | 7 / 0 | 2 / 0 | 0 / 0 |
+| `/dashboard/user-permissions` | 3 / 0 | 2 / 0 | 0 / 0 |
+| `/dashboard/users` | 41 / 0 | 25 / 0 | 0 / 0 |
+| `/dashboard/vendors` | 21 / 0 | 9 / 0 | 0 / 0 |
+| `/dashboard/warehouse` | 11 / 0 | 5 / 0 | 0 / 0 |
+| `/dashboard/warehouses` | 12 / 0 | 6 / 0 | 0 / 0 |
+| `/dashboard/webauthn` | 5 / 0 | 4 / 0 | 0 / 0 |
+| `/dashboard/webhooks` | 3 / 0 | 3 / 0 | 0 / 0 |
+| `/dashboard/workflows` | 11 / 0 | 4 / 0 | 0 / 0 |
+| **Total (70 pages)** | **513 / 50** | **304 / 50** | **0 / 0** |
+
+By rule, before (light / dark): `color-contrast` 465 / 256 · `button-name` 36 / 36 · `select-name` 6 / 6 · `aria-prohibited-attr` 6 / 6 · `empty-table-header` 4 / 4 · `region` 27 / 27 · `heading-order` 11 / 11 · `landmark-one-main` 5 / 5 · `page-has-heading-one` 3 / 3.
+
+**Dialogs, with the dialog open** (the abuse case above). On every dashboard page the first visible "Add / New / Create / Raise / Upload / Register…" button in `<main>` was clicked; **24 opened a dialog** (the others navigate or open a file picker). For each, axe ran on the dialog and the keyboard contract was driven: focus inside on open, 25 × Tab stays inside, Escape closes, focus returns to the opener. After: **all 24 pass all five, in both themes, 0 axe findings**. The first run found one (`RolesModal`: an `<h4>` under the dialog's `<h2>`), fixed. The ten F-12 overlays of ADR-074 are among the 24 and held.
+
+**Fixes** (accessibility attributes and markup only; ADR-090 records the policy):
+- *Contrast* — seven theme tokens in `app/globals.css` (table in ADR-090); `text-muted-foreground/60` on the sidebar group labels and `opacity-60` on the pagination total removed; `text-white` → `text-destructive-foreground` (`NotificationBell`, `warehouse/DeleteConfirmModal`) and → `text-foreground` in the three SSO tabs, where white text sat on a light surface in the light theme; the SSO callback card was hard-coded `bg-white` → `bg-card`.
+- *Names* — every icon-only control the sweep or a static scan of `frontend/src` found (0 remain by that scan): row edit/delete in Devices, Maintenance, Vendors, Users, Tenants (named after the row), `LogoPreview`, `DashboardCharts` refresh, `CategoriesDialog`, `PostEditor`, content pagination, e-signature signer removal, Kanban (`CardModal`, `ManageBoardModal`, `MembersModal`, `CreateProjectModal`, `BoardColumn`), `SessionRow` (with `aria-expanded`), user photo removal (both modals; the edit one also becomes visible on keyboard focus), `LocationsModal`, the sidebar close and top-bar menu buttons, `Alert`'s dismiss, the password toggles on sign-in and registration (with `aria-pressed`). `Pagination` names its page-size `<select>` and its four buttons and announces "Page 2 of 5".
+- *Labels* — 78 visual `<label>`s in 26 forms are now associated by `htmlFor`/`id` (plus 12 in `BackupCreateModal`, `RolesModal`, the SSO tabs and `CreateProjectModal`), not replaced by `aria-label`; four placeholder-only inputs got a name. **`ui/Select` now names its trigger by its label and then its value** (`aria-labelledby="<id> <id>-value"`): associating a label replaced the value in the button's name, which `UploadAttachmentModal.a118.test.tsx` caught; its helper now finds the trigger by the value at the end of the name.
+- *Structure* — `<main>` on `/login`, `/register` (both states), `/activation`, `/oauth/consent`, `/sso-callback`; `<h1>` on `/blog`, `/news`, `/sso-callback`; heading levels in `Footer`, `CardHeader` (h3 → h2), `TenantCard`, the Kanban, ticket and roles empty states, the ticket conversation, `SubscriptionCard`, `RolesModal`, and a visually hidden "Articles" `<h2>` on `/blog`; `Alert`'s title is a paragraph. `role="img"` for the testimonial star rating and the unread dot (whose `aria-label`s were prohibited on a bare `div`/`span`); an empty `<th>` in `ui/Table` and the audit table reads "Actions"/"Expand" to a screen reader. `ui/Input`'s icon buttons show a focus ring (`focus:outline-none` had removed it).
+
+**Tests.** `frontend/src/components/ui/a11y.adr090.test.tsx` — 22 tests: the ADR-090 contrast policy asserted from the `globals.css` token values (both themes, every status token, on the surfaces and on its own `/10` and `/15` tints), and axe plus role/name assertions for `Pagination`, `Select` with an associated label, `Table`'s empty header, `Alert`, `CardHeader`, the sign-in password toggle, `DevicesTable` and `TenantCard`. Fail-before is by construction for the contrast tests (slate-500 on slate-100 is 4.34:1) and by the sweep for the rest; they were not run against HEAD.
+
+**Gates on the final tree** — see the agent's report of 2026-09-29 for the exact figures: frontend `npx jest --coverage`, `npm run typecheck` (TypeScript 7), `npx eslint` (0 errors), `next build`; `automate/smoke.browser.js` (ADR-077) against the same stack **5/5 passed, 0 CSP violations**.
+
+**Still open** — the screen-reader walk (NVDA or VoiceOver: one form, one dialog) is still owed; axe is still not part of the browser suite; the sweep covers what a tenant administrator sees (pages that role cannot open were swept in their access-denied or error state, and only the first create dialog per page was opened); a tenant-set brand `--primary` is not contrast-checked (ADR-090, open); 200% zoom and reduced motion were not re-checked; the scrollable `Table` wrapper is not keyboard-focusable (axe `scrollable-region-focusable`, seen once on `/dashboard/devices` in the first run on 2026-09-27 and not reproduced since, when rows fit the viewport).
 
 ---
 

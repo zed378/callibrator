@@ -70,7 +70,7 @@ jest.mock("../../utils/jwt.util", () => ({
 describe("rateLimiter.redis.service - coverage boost", () => {
   let rl;
 
-beforeEach(() => {
+  beforeEach(() => {
     // Reset mock call history only — preserves mockResolvedValue / mockRejectedValue setup
     mockSessions.update.mockClear();
     mockUsers.findByPk.mockClear();
@@ -251,7 +251,7 @@ beforeEach(() => {
           isRevoked: true,
           revokedReason: "TEST_REASON",
         }),
-        expect.any(Object)
+        expect.any(Object),
       );
     });
 
@@ -272,7 +272,7 @@ beforeEach(() => {
           isRevoked: true,
           revokedReason: "SECURITY",
         }),
-        expect.any(Object)
+        expect.any(Object),
       );
     });
 
@@ -389,7 +389,7 @@ beforeEach(() => {
       expect(res.set).toHaveBeenCalledWith(
         expect.objectContaining({
           "X-RateLimit-Limit": "10",
-        })
+        }),
       );
     });
 
@@ -412,7 +412,7 @@ beforeEach(() => {
         expect.objectContaining({
           success: false,
           status: 429,
-        })
+        }),
       );
     });
 

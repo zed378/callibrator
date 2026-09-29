@@ -87,4 +87,4 @@ When fixing a bug, the test that proves it:
 
 ## TypeScript (target)
 
-Tests convert **with** their module under Phase 9, transformed by `@swc/jest`. The 100% threshold does not move. Test files follow the same strictness as source — an `any` in a test hides a contract change as well as one in source does.
+Tests convert **with** their module under Phase 9, transformed by Babel 8 with `@babel/preset-typescript` through `backend/jest.transform.js` (ADR-087 — `@swc/jest`, ADR-038's choice, breaks `jest.spyOn` on a converted export; babel-jest paired the root Babel 7 core with Babel 8 presets and leaked type arguments). **A NEW backend test file is `.ts`** (ADR-087 Amendment 1, accepted 2026-09-28): the ratchet (`npm run ratchet`) counts tests and refuses any new `.js` name. A `.ts` test may import a module that is still `.js`; existing `.js` tests convert with their module, not before. The transform erases types; `npm run typecheck` (TypeScript 7) checks them. The 100% threshold does not move. Test files follow the same strictness as source — an `any` in a test hides a contract change as well as one in source does.

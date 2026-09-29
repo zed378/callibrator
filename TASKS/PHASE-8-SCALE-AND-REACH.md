@@ -18,7 +18,7 @@ The Helm chart guards one of the four (schedulers). The other three fail **quiet
 
 | | |
 |---|---|
-| **Status** | ⏳ TODO — **NEEDS EDIT (2026-09-23)** |
+| **Status** | 🚫 **BLOCKED** (2026-09-28, ADR-086). A-40 is done. What remains needs a **target environment**: an S3 or NFS store and an **ambient credential chain** (IAM role / service account). Neither is reachable here |
 | **Trigger** | before `replicaCount > 1` |
 | **Spec refs** | `docs/ARCHITECTURE/05-STORAGE-ARCHITECTURE.md` · [`AUDIT-2026-09-REMEDIATION.md`](./AUDIT-2026-09-REMEDIATION.md) A-40 |
 
@@ -34,7 +34,7 @@ The Helm chart guards one of the four (schedulers). The other three fail **quiet
 The abstraction already exists — this is a configuration change plus a migration of existing objects, not new code.
 
 **Definition of Done**
-- [ ] A-40 closed first: the driver cache is not per process, and a null-checksum copy is **verified**, not reported
+- [x] A-40 closed first: the driver cache is not per process, and a null-checksum copy is **verified**, not reported. DONE 2026-09-25 (ADR-057)
 - [ ] `STORAGE_DRIVER=s3` or `nfs` in the target environment
 - [ ] existing objects migrated with `npm run migrate:storage`, **and the count of objects verified at the destination** rather than read from the tool's own report
 - [ ] S3 credentials from the **ambient chain** (IAM role / service account), not static keys in a Secret
@@ -47,7 +47,7 @@ The abstraction already exists — this is a configuration change plus a migrati
 
 | | |
 |---|---|
-| **Status** | ⏳ TODO — **NEEDS EDIT (2026-09-23)**, now confirmed from the code |
+| **Status** | 🟡 **PARTIAL** (2026-09-28, ADR-086). The adapter and the cross-replica test are done (A-54), and open-socket revocation is done (ADR-085). **Open:** the fan-out test after a reconnect, and a live notification through the reverse proxy |
 | **Trigger** | before `replicaCount > 1` |
 | **Spec refs** | `docs/FRONTEND/06-REALTIME.md` · ADR-031 · [`AUDIT-2026-09-REMEDIATION.md`](./AUDIT-2026-09-REMEDIATION.md) A-54, A-53, A-52, A-05 |
 
@@ -72,11 +72,11 @@ The abstraction already exists — this is a configuration change plus a migrati
 **Why:** without it, a notification reaches **only the replica holding that client's connection**. Which users hear about an event becomes a function of load balancing.
 
 **Definition of Done**
-- [ ] the Redis adapter wired in (A-54)
-- [ ] a test: an event emitted on instance A reaches a client connected to instance B
+- [x] the Redis adapter wired in (A-54): `config/socket.js#attachAdapter`, 2026-09-24
+- [x] a test: an event emitted on instance A reaches a client connected to instance B: `socket.redisAdapter.live.test.js`, "A-54: an emit on replica A reaches a client connected only to replica B"
 - [ ] **the same test after a reconnect** — A-53 fixed first, or the test proves only the happy path
 - [ ] the reverse proxy still passes upgrade headers — verified by a **live notification**, not by reading the annotation
-- [ ] connect-time checks are not the only checks: a session revoked mid-connection disconnects the socket (P6-12 / A-48, Q-08)
+- [x] connect-time checks are not the only checks: a session revoked mid-connection disconnects the socket (P6-12 / A-48, Q-08). Every open socket is re-checked every 60 s (ADR-085)
 
 **Abuse case:** long-polling fallback masks the problem in testing. Socket.IO falls back silently, and a test that only checks the notification arrives will pass over a broken WebSocket path.
 
@@ -88,7 +88,7 @@ The abstraction already exists — this is a configuration change plus a migrati
 
 | | |
 |---|---|
-| **Status** | ⏳ TODO |
+| **Status** | ✅ **DONE** 2026-09-28 (ADR-086): an advisory lock, not an init container |
 | **Trigger** | before `replicaCount > 1` |
 | **Spec refs** | `docs/DATABASE/13-MIGRATIONS.md` |
 
@@ -101,10 +101,10 @@ landed under ADR-040). More migrations means a longer window for two replicas to
 smaller one.
 
 **Definition of Done**
-- [ ] either an init container running migrations once, or a PostgreSQL advisory lock around the migration step
-- [ ] a test: two instances starting simultaneously produce one migration run
-- [ ] the losing instance waits rather than starting against a half-migrated schema
-- [ ] the run is verified by **inspecting columns** (P6-05), not by the migration log — a blanket `try/catch` records a migration as applied while doing nothing, which is how 0008, 0013 and 0014 came to be marked done with their columns absent
+- [x] either an init container running migrations once, or a PostgreSQL advisory lock around the migration step. It is the lock, around `db.sync()` + `migrator.up()` (`utils/migrationLock.util.js#runSchemaSetup`, called from `index.js`). `npm run migrate` and `migrate:undo` take it too
+- [x] a test: two instances starting simultaneously produce one migration run. `migrationLock.p803.live.test.js` passed 4/4 on PostgreSQL 18.6, and failed before the change on a HEAD worktree ("relname must be unique"). On two real replicas of the image, one logged `Applied 63 migration(s)`; the other waited and applied none
+- [x] the losing instance waits rather than starting against a half-migrated schema. It polls every second and refuses the boot after `MIGRATION_LOCK_TIMEOUT_MS` (`migrationLock.p803.test.js`, 17 tests)
+- [x] the run is verified by **inspecting columns** (P6-05), not by the migration log. Covered by the live case "the run is verified by inspecting columns"; both real replicas logged `[schema-verify] OK: 72 tables, 867 columns` — a blanket `try/catch` records a migration as applied while doing nothing, which is how 0008, 0013 and 0014 came to be marked done with their columns absent
 
 ---
 
@@ -112,7 +112,7 @@ smaller one.
 
 | | |
 |---|---|
-| **Status** | ⏳ TODO |
+| **Status** | ⏳ TODO. The **trigger fired in part** (2026-09-28, P8-07 baseline, ADR-086 §3): concurrent dashboard traffic took the device-list p95 from 320 to 726 ms. **Decided: query-shaped fixes come first** (bounded or estimated counts, a default audit date window); a replica only if p95 still fails after them |
 | **Trigger** | **measured** impact of reporting queries on operational p95 |
 | **Spec refs** | `docs/PLAN/14-ANALYTICS-AND-REPORTING.md` (PR-10) |
 
@@ -121,7 +121,7 @@ smaller one.
 **The answer is a read replica before it is a warehouse.** A warehouse is a second copy of the data to keep consistent and a second place tenant isolation could leak — for a problem a replica solves more cheaply.
 
 **Definition of Done**
-- [ ] the trigger **measured**, not assumed — P8-07 first
+- [x] the trigger **measured**, not assumed — P8-07 first (ADR-086 §3)
 - [ ] report and dashboard queries routed to the replica
 - [ ] replication lag bounded and **surfaced** — a compliance figure read from a stale replica needs an "as of" timestamp
 - [ ] tenant scoping verified on the replica path; the hooks must apply there too
@@ -134,7 +134,7 @@ smaller one.
 
 | | |
 |---|---|
-| **Status** | ⏳ TODO |
+| **Status** | ⏳ TODO. **Not triggered** (2026-09-28, ADR-086 §3): at 2.16M rows per tenant, the measured cost was counts, not table size |
 | **Trigger** | row count makes retention purging insufficient |
 
 **Why:** the highest-volume table in the system, currently managed by retention purge alone (PR-11).
@@ -153,7 +153,7 @@ smaller one.
 
 | | |
 |---|---|
-| **Status** | ⏳ TODO |
+| **Status** | ⏳ TODO. **Not triggered, and not scopable** (2026-09-28, ADR-086 §3). At 500,000 rows per tenant, the audit list costs 67 ms per request in an **exact count over all history**, which date partitioning does not bound. Retention is still undecided (Q-03) |
 | **Trigger** | volume |
 
 **Why:** `audit_logs` grows **monotonically and has no delete path**, by design.
@@ -176,7 +176,7 @@ Partitioning is therefore the *only* engineering answer available: it keeps ever
 
 | | |
 |---|---|
-| **Status** | ⏳ TODO |
+| **Status** | 🟡 **PARTIAL** 2026-09-28 (ADR-086 §3). Baseline taken over 35,963 requests: **0 cross-tenant leaks, 0 × 408, 0 × 429, 0 × 5xx, 0 acquire timeouts**. The p95 target fails above low concurrency, and the ceiling is PostgreSQL. **Open:** PDF memory (blocked, M-11) and the MQTT ingest path |
 | **Trigger** | **before any of the above is sized** |
 | **Spec refs** | `docs/TESTING/05-PERFORMANCE-TESTING.md` |
 
@@ -185,14 +185,14 @@ Partitioning is therefore the *only* engineering answer available: it keeps ever
 This task is what makes P8-04, P8-05 and P8-06 fire on evidence rather than on someone's impression.
 
 **Definition of Done**
-- [ ] realistic data volumes — 5,000 devices per tenant, five years of records, real `iot_readings` volume
-- [ ] `RATE_LIMIT_MAX` set deliberately, and **confirmation that throughput was measured rather than the limiter**
-- [ ] p95 targets measured for tenant-scoped lists and the dashboard
-- [ ] **zero 408s**
-- [ ] **no cross-tenant leakage under concurrency** — the `AsyncLocalStorage` context must not bleed between requests
-- [ ] no connection acquire timeouts
-- [ ] memory stable under sustained PDF rendering — **Chromium is bursty**, and a limit sized for the steady state OOM-kills on the first certificate
-- [ ] the MQTT ingest path measured; the broker **shares the API process**
+- [x] realistic data volumes — 5,000 devices per tenant, five years of records, real `iot_readings` volume. `scripts/load/p807-seed.sql` gives each tenant 5,000 devices, 50,000 records, 2.16M readings and 500,000 audit rows
+- [x] `RATE_LIMIT_MAX` set deliberately, and **confirmation that throughput was measured rather than the limiter**. It was 100,000,000; there were 0 × 429, and the `RateLimit-*` headers showed that budget
+- [x] p95 targets measured for tenant-scoped lists and the dashboard: 49–140 ms unloaded, 576–732 ms at 10 users, 0.8–2.2 s at 25–50 users. The target is missed (ADR-086 §3)
+- [x] **zero 408s**
+- [x] **no cross-tenant leakage under concurrency** — the `AsyncLocalStorage` context must not bleed between requests. Every row's `tenantId` and every `meta.total` was checked against the caller in 35,963 responses: 0 leaks (`scripts/load/p807-baseline.k6.js`)
+- [x] no connection acquire timeouts: 0 in both replicas' logs. The dashboard's 20 parallel counts against the 20-connection pool are recorded as a finding (ADR-086 §3)
+- [ ] memory stable under sustained PDF rendering — **Chromium is bursty**, and a limit sized for the steady state OOM-kills on the first certificate. **BLOCKED:** the image cannot render certificate PDFs (M-11). API memory under sustained load was stable at ~320–345 MiB
+- [ ] the MQTT ingest path measured. **Not run.** Premise corrected: there is **no embedded broker** (A-17). The backend is an MQTT *client*, and its message handler shares the API event loop
 
 **The third bold item is the one a conventional load test omits and this system cannot afford to.** Tenant isolation depends on `AsyncLocalStorage`; a context that leaks under concurrency is a cross-tenant read that no functional test would find.
 
@@ -204,7 +204,7 @@ This task is what makes P8-04, P8-05 and P8-06 fire on evidence rather than on s
 
 | | |
 |---|---|
-| **Status** | ⏳ TODO |
+| **Status** | 🚫 **BLOCKED** (2026-09-28, ADR-086) on a customer data-residency requirement. None exists |
 | **Trigger** | **a customer requirement**, not a technical one |
 
 Not an engineering ambition. It becomes real when a customer's data-residency policy requires it, and not before.

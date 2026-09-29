@@ -130,10 +130,16 @@ const SessionRow: React.FC<SessionRowProps> = ({
                   onClick={() => onDelete(session.id)}
                   title="Delete Session"
                 >
-                  <Trash2 className="w-4 h-4 text-warning" />
+                  <Trash2 className="w-4 h-4 text-warning" aria-hidden="true" />
                 </Button>
               )}
-              <Button variant="ghost" size="sm" onClick={() => setExpanded(!expanded)}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setExpanded(!expanded)}
+                aria-label={expanded ? "Hide session details" : "Show session details"}
+                aria-expanded={expanded}
+              >
                 <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${expanded ? "rotate-180" : ""}`} />
               </Button>
             </div>

@@ -31,10 +31,10 @@ export const RecordCalibrationModal: React.FC<RecordCalibrationModalProps> = ({
     >
       <form onSubmit={onSubmit} className="space-y-4 pt-2">
         <div>
-          <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+          <label htmlFor="calibration-components-recordcalibrationmodal-f1" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
             Calibration Device *
           </label>
-          <Select
+          <Select id="calibration-components-recordcalibrationmodal-f1"
             value={form.deviceId}
             onChange={(val) => setForm({ ...form, deviceId: val })}
             options={[
@@ -49,10 +49,10 @@ export const RecordCalibrationModal: React.FC<RecordCalibrationModalProps> = ({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+            <label htmlFor="calibration-components-recordcalibrationmodal-f2" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
               Calibration Date
             </label>
-            <Input
+            <Input id="calibration-components-recordcalibrationmodal-f2"
               required
               type="date"
               value={form.calibrationDate}
@@ -61,10 +61,10 @@ export const RecordCalibrationModal: React.FC<RecordCalibrationModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+            <label htmlFor="calibration-components-recordcalibrationmodal-f3" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
               Testing Standard
             </label>
-            <Input
+            <Input id="calibration-components-recordcalibrationmodal-f3"
               value={form.standard}
               onChange={(e) => setForm({ ...form, standard: e.target.value })}
               placeholder="e.g. ISO 17025 Reference"
@@ -74,10 +74,10 @@ export const RecordCalibrationModal: React.FC<RecordCalibrationModalProps> = ({
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 border-t border-b border-border py-3">
           <div>
-            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+            <label htmlFor="calibration-components-recordcalibrationmodal-f4" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
               Test Temp Reading (°C)
             </label>
-            <Input
+            <Input id="calibration-components-recordcalibrationmodal-f4"
               type="number"
               step="0.01"
               value={form.results.temperatureReading}
@@ -92,10 +92,10 @@ export const RecordCalibrationModal: React.FC<RecordCalibrationModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+            <label htmlFor="calibration-components-recordcalibrationmodal-f5" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
               Ref Humidity (%)
             </label>
-            <Input
+            <Input id="calibration-components-recordcalibrationmodal-f5"
               type="number"
               step="0.01"
               value={form.results.humidityReading}
@@ -110,10 +110,10 @@ export const RecordCalibrationModal: React.FC<RecordCalibrationModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+            <label htmlFor="calibration-components-recordcalibrationmodal-f6" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
               Deviation Variance *
             </label>
-            <Input
+            <Input id="calibration-components-recordcalibrationmodal-f6"
               required
               type="number"
               step="0.01"
@@ -158,10 +158,10 @@ export const RecordCalibrationModal: React.FC<RecordCalibrationModalProps> = ({
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+          <label htmlFor="calibration-components-recordcalibrationmodal-f7" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
             Audit Notes / Findings
           </label>
-          <Textarea
+          <Textarea id="calibration-components-recordcalibrationmodal-f7"
             value={form.notes}
             onChange={(e) => setForm({ ...form, notes: e.target.value })}
             placeholder="Details of calibration, adjusted parameters, calibration standards checks..."

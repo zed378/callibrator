@@ -39,8 +39,8 @@ describe("E2E Content CMS (HTTP)", () => {
   });
 
   afterAll(async () => {
-    if (postId) await httpDelete(`/content/posts/${postId}`, authHeader(token));
-    if (categoryId) await httpDelete(`/content/categories/${categoryId}`, authHeader(token));
+    if (postId) {await httpDelete(`/content/posts/${postId}`, authHeader(token));}
+    if (categoryId) {await httpDelete(`/content/categories/${categoryId}`, authHeader(token));}
   });
 
   test("GET /content/posts — admin list, envelope + top-level meta", async () => {

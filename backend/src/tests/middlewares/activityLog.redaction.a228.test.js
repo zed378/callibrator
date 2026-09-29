@@ -41,7 +41,7 @@ describe("A-228 — email addresses are masked wherever they appear", () => {
   });
 
   it("masks every address inside a message or an error, and leaves the rest of the text", () => {
-    const err = new Error('Key (email)=(frank@hospital.example) already exists');
+    const err = new Error("Key (email)=(frank@hospital.example) already exists");
     const out = redact({
       level: "error",
       message: "Could not notify grace@hospital.example or heidi@hospital.example: timeout",

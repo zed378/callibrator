@@ -108,7 +108,8 @@ const listJs = (dir) =>
     if (entry.isDirectory()) {
       return listJs(full);
     }
-    return entry.name.endsWith(".js") ? [full] : [];
+    // ADR-087 Amendment 4: .ts too — a converted file must not leave this guard.
+    return /\.(js|ts)$/.test(entry.name) ? [full] : [];
   });
 
 const isRouter = (value) => typeof value === "function" && Array.isArray(value.stack);
@@ -385,7 +386,7 @@ describe("P6-04 — every route carries a permission gate or a reviewed exemptio
     const index = fs.readFileSync(INDEX_FILE, "utf8");
     const unmounted = [];
     for (const file of ROUTE_FILES) {
-      const rel = `./src/routes/${path.relative(ROUTES_DIR, file).split(path.sep).join("/").replace(/\.js$/, "")}`;
+      const rel = `./src/routes/${path.relative(ROUTES_DIR, file).split(path.sep).join("/").replace(/\.(js|ts)$/, "")}`;
       const req = index.match(
         new RegExp(`const\\s+(\\{[^}]*\\}|[A-Za-z_$][\\w$]*)\\s*=\\s*require\\(["']${rel.replace(/[.]/g, "\\.")}(?:\\.js)?["']\\)`),
       );

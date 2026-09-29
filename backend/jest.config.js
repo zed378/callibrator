@@ -1,7 +1,7 @@
 /** @type {import('jest').Config} */
 require("dotenv").config({ path: ".env" });
 
-// P9-03 / ADR-087 — TypeScript sources and tests are transformed by babel-jest
+// P9-03 / ADR-087 — TypeScript sources and tests are transformed by Babel 8
 // with @babel/preset-typescript: types are ERASED, never checked (the check is
 // `npm run typecheck`, TypeScript 7, which has no compiler API for a jest
 // transform to call). @babel/plugin-transform-modules-commonjs emits exports
@@ -11,17 +11,11 @@ require("dotenv").config({ path: ".env" });
 // converted. @swc/jest (ADR-038's choice) emits non-configurable GETTERS
 // instead, and every jest.spyOn on a converted export throws "Cannot redefine
 // property" (ADR-087 records the probe). JavaScript stays untransformed.
-const TYPESCRIPT_TRANSFORM = [
-  "babel-jest",
-  {
-    babelrc: false,
-    configFile: false,
-    // Babel 8 (ADR-076) removed `allowDeclareFields`: it is always on, and
-    // passing it now throws on every .ts file.
-    presets: ["@babel/preset-typescript"],
-    plugins: ["@babel/plugin-transform-modules-commonjs"],
-  },
-];
+//
+// The transformer is ./jest.transform.js, not babel-jest: babel-jest loads the
+// root @babel/core 7 with the backend's Babel 8 presets, and that pairing
+// leaves explicit type arguments (`new X<T>()`) in the output (ADR-087).
+const TYPESCRIPT_TRANSFORM = "<rootDir>/jest.transform.js";
 
 module.exports = {
   testEnvironment: "node",
@@ -55,7 +49,8 @@ module.exports = {
   collectCoverageFrom: [
     "src/config/**/*.js",
     "src/config/**/*.ts",
-    "src/constants/**/*.js",
+    // constants/ is all TypeScript since 2026-09-29 (ADR-087 Amendment 5); a .js
+    // pattern here would match nothing (coverageScope.p614).
     "src/constants/**/*.ts",
     "src/controllers/**/*.js",
     "src/controllers/**/*.ts",

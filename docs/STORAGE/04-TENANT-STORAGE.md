@@ -222,10 +222,10 @@ Encryption is envelope encryption via `services/kms.service.js`, driven by **`KM
 `services/storageMigration.service.js`, driven by `src/scripts/migrateStorage.js`.
 
 ```bash
-node src/scripts/migrateStorage.js --dry-run        # report only
-node src/scripts/migrateStorage.js                  # everything
-node src/scripts/migrateStorage.js --tenant <id>    # one tenant
-node src/scripts/migrateStorage.js --limit 100      # a bounded batch
+npm run migrate:storage -- --dry-run        # report only   (from backend/; runs tsx)
+npm run migrate:storage                     # everything
+npm run migrate:storage -- --tenant <id>    # one tenant
+npm run migrate:storage -- --limit 100      # a bounded batch
 ```
 
 It copies a legacy on-disk attachment — `<storage root>/<attachment.folder>/<attachment.fileName>` — into the configured backend at `t/<tenantId>/attachments/<fileName>`, verifies it, and backfills `attachment.storageKey` (column `storage_key`, added nullable by migration `0016-add-attachment-storage-key.js`).

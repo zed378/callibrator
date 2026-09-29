@@ -212,9 +212,9 @@ exports.listTickets = async (user, filters = {}) => {
   const where = { ...tenantScope(user) };
   const responder = isResponder(user);
 
-  if (filters.status) where.status = filters.status;
-  if (filters.priority) where.priority = filters.priority;
-  if (filters.category) where.category = filters.category;
+  if (filters.status) {where.status = filters.status;}
+  if (filters.priority) {where.priority = filters.priority;}
+  if (filters.category) {where.category = filters.category;}
   // A requester is ALWAYS scoped to their own tickets (raised by or assigned to
   // them), regardless of the requested filters — they cannot browse the queue
   // or filter by another assignee. Responders get the full queue (their tenant,
@@ -222,7 +222,7 @@ exports.listTickets = async (user, filters = {}) => {
   if (!responder) {
     where[Op.or] = [{ createdBy: user.id }, { assignedTo: user.id }];
   } else {
-    if (filters.assignedTo) where.assignedTo = filters.assignedTo;
+    if (filters.assignedTo) {where.assignedTo = filters.assignedTo;}
     if (filters.mine) {
       where[Op.or] = [{ createdBy: user.id }, { assignedTo: user.id }];
     }
@@ -358,9 +358,9 @@ exports.updateTicket = async (user, ticketId, data) => {
   const previousAssignee = ticket.assignedTo;
   const patch = {};
   for (const f of ["subject", "description", "priority", "category", "dueDate"]) {
-    if (data[f] !== undefined) patch[f] = data[f];
+    if (data[f] !== undefined) {patch[f] = data[f];}
   }
-  if (data.assignedTo !== undefined) patch.assignedTo = data.assignedTo || null;
+  if (data.assignedTo !== undefined) {patch.assignedTo = data.assignedTo || null;}
 
   if (data.status !== undefined && data.status !== ticket.status) {
     patch.status = data.status;
@@ -476,7 +476,7 @@ exports.getMetrics = async (user) => {
     const out = Object.fromEntries(keys.map((k) => [k, 0]));
     for (const t of tickets) {
       const v = t[key];
-      if (v in out) out[v] += 1;
+      if (v in out) {out[v] += 1;}
     }
     return out;
   };

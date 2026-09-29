@@ -25,7 +25,7 @@ Everything below is grounded in the code as of 2026-09-10. If you find a claim h
 | Frontend | Next.js 16 · React 19 · TypeScript · Tailwind 4 · Zustand · **Multi-Frontend & Shared Component Architecture** (root-level `shared/` area) |
 | Realtime | Socket.IO, both ends (ADR-031) |
 | Infra | Redis · RabbitMQ · MQTT client (external broker, optional) · ClamAV · pgvector |
-| Scale | **53** route modules (+2 internal) · **71** models · **674** backend test files · **467** backend source files (counted 2026-09-27: `routes/api/*.route.js`; `models/*.model.js`, not `models/index.js`; `*.test.js`/`*.test.ts` under `backend/src/tests`; every non-test `.js`/`.ts` under `backend/src`, migrations and scripts included — 0 of them `.ts`. The previous row said 71 / 359 / 375 on 2026-09-23; counts are dated snapshots, re-count before quoting) |
+| Scale | **53** route modules (+2 internal) · **71** models · **674** backend test files · **467** backend source files (counted 2026-09-27: `routes/api/*.route.js`; `models/*.model.js`, not `models/index.js`; `*.test.js`/`*.test.ts` under `backend/src/tests`; every non-test `.js`/`.ts` under `backend/src`, migrations and scripts included — 0 of them `.ts` then; since 2026-09-29, 97 modules are `.ts` (all constants, 30 of 36 utils including `tenantScope`, `jobContext` and `upload`, the `activityLog`/`tenantContext` middlewares, `validators/iot.validator`, `config/env`, and 46 of 71 models — P9-10 batches 1–6 — with `models/initModel`, ADR-087 Amendments 6–9; the models barrel is still `.js`), backend source runs through `tsx` or the built `dist/`, never plain `node src/…`, and **a new backend `.js` file — test files included — fails `npm run ratchet`** (in `make verify`, CI and the pre-push hook). The previous row said 71 / 359 / 375 on 2026-09-23; counts are dated snapshots, re-count before quoting) |
 | Compliance | ISO 17025 · FDA 21 CFR Part 11 · ISO 13485 · GDPR · KARS · SNARS |
 
 ## Before You Start
@@ -83,8 +83,15 @@ Not 403. Not 200.
 **`createTwoTenants()` exists since 2026-09-24** — `backend/src/tests/fixtures/twoTenants.js` (A-63).
 For about a month this file called it "a one-line fixture" while it existed in no code file (A-55).
 It gives two tenants, principals by role in either, and a transaction double. Its first users are
-`tenant.edit.a63.test.js` and `user.profile.a63.test.js`, which show how to wire it. **Most `:id`
-routes still have no two-tenant test**, so writing one is still part of any change to such a route.
+`tenant.edit.a63.test.js` and `user.profile.a63.test.js`, which show how to wire it.
+
+**Every `:id` route is now accounted for, and a guard keeps it so** (2026-09-29). Of the **201**
+routes with a path parameter, **150** have a two-tenant test asserting 404 and **51** are on a
+reviewed allow-list (platform-only, public, capability-token or not-tenant-owned, each checked
+against the route's chain or model) — `backend/src/tests/guards/twoTenantRoutes.guard.test.ts`
+fails the build on a new `:id` route with neither. Write the test with `fixtures/twoTenantSuite.ts`
+over `fixtures/memoryDb.ts` (the REAL models and tenant hooks in memory; `vendor.twoTenant.test.js`,
+`qms.twoTenant.test.ts`) and mark it `@two-tenant <route file> <METHOD> <path>`.
 
 ## The Traps
 
@@ -223,15 +230,16 @@ Match the surrounding code. Both workspaces have standards documents:
 
 Do not disable React Compiler lint rules to make a build pass. The rule is usually right about the component.
 
-## Two Things Currently Failing
+## What Is Currently Failing
 
-Stated here because an agent reading a green board and finding a red gate wastes an afternoon:
+Stated here because an agent reading a green board and finding a red gate wastes an afternoon. On 2026-09-28 the three gates this section used to list red are green; what is still open is below. (This section was "Two Things Currently Failing" — both items and the later lint row have since passed; ADR-088 records the refresh.)
 
 | | |
 |---|---|
-| Backend unit coverage gate (100%) | **passing** at the last recorded green run — 637 suites (23 skipped), 12,775 tests, 100% on all four measures, **Node 26.10.0**, 2026-09-28 on `c905e74` plus the uncommitted ADR-076 tree (ADR-076's change record). The one before it was 578 suites / 12,164 tests on Node 24.18, commit `8a11905`. P6-01 is done; what remains is keeping it there. Run it on the Node major pinned in the root `.nvmrc` (26 on 2026-09-27, A-257): a global setup refuses any other major. A run on 2026-09-27 (`npm run test:coverage`) collected 623 suites and 12,639 tests and was **not** green — 17 failures, coverage 99.79% — and the only red suites belonged to changes other agents had in flight at that moment (new migrations `0086`–`0088`, `kmsVerify.util.js`, the Node pin itself), so quote a count only from a run on a quiet tree |
-| Backend lint (`make verify` step one) | **red** — 1,083 errors, 302 warnings on 2026-09-27 (`npm run lint`), all formatting on the categories reported (A-34). CI runs a **ratchet** instead (`make lint-ratchet`, `scripts/ci/eslint-ratchet.js`): it fails on errors above its baseline (950), so run `npx eslint <file>` on what you change |
-| Live E2E in one uninterrupted run | **achieved 2026-09-28**, twice (P6-02, ADR-077): 392 tests, no 429, one environment-dependent 500 (`/ai/query`). Not in CI |
+| Backend unit coverage gate (100%) | **passing** — 683 suites passed (24 skipped), 12,890 tests, 100% statements / branches / functions / lines, Node 26.10.0, `npm run test:coverage -- --ci`, 2026-09-28 (`MEMORY/records/2026-09-28-p9-helper-lint-baseline-coverage.md`). Run it on the Node major pinned in the root `.nvmrc` (26, A-257/ADR-076): a global setup refuses any other major. **Models are outside the 100% figure** (ADR-085, ADR-092) — measured separately at 93.5% statements, 65.58% branches. Quote a count only from a run on a quiet tree |
+| Backend lint | **0 errors**, ratchet baseline **0** (ADR-092, P9-02a), 2026-09-28 — so every change must lint clean: run `npx eslint <file>` in `backend/`. Warnings are not zero (263 `no-unused-vars`, 19 `no-console` open under P9-02a) |
+| Live E2E in one uninterrupted run | **achieved 2026-09-28, twice** (P6-02, ADR-077; again at the P9-00 baseline `35ebd76`, ADR-092): 53 of 53 specs, 392 tests, on a disposable compose stack. **Not in CI**, and never run against the reference deployment |
+| Still open | CI has **never run on GitHub** (P7-01); the Helm charts render but are not known to deploy; `make verify` includes `typecheck`, which the TypeScript ratchet governs (ADR-087) — check `TASKS/PROGRESS.md` for its current state before assuming it is green |
 
 ## If You Are Unsure
 

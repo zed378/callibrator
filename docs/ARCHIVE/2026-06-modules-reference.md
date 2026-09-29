@@ -68,13 +68,13 @@ sequenceDiagram
 *   All users have read-write access to their own authentication metadata and session keys.
 
 ### 13. Database
-*   Table: `[Users](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/models/user.model.js)` (Primary Key: `id`)
-*   Table: `[Roles](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/models/role.model.js)` (Primary Key: `id`)
-*   Table: `[Sessions](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/models/session.model.js)` (Foreign Key: `userId`)
+*   Table: `Users` (`backend/src/models/user.model.js`) (Primary Key: `id`)
+*   Table: `Roles` (`backend/src/models/role.model.js`) (Primary Key: `id`)
+*   Table: `Sessions` (`backend/src/models/session.model.js`) (Foreign Key: `userId`)
 
 ### 14. API
-*   `POST /api/v1/auth/login` (Authenticates credentials) - `[auth.route.js](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/routes/api/auth.route.js)`
-*   `POST /api/v1/auth/refresh` (Rotates JWTs) - `[auth.route.js](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/routes/api/auth.route.js)`
+*   `POST /api/v1/auth/login` (Authenticates credentials) - `backend/src/routes/api/auth.route.js`
+*   `POST /api/v1/auth/refresh` (Rotates JWTs) - `backend/src/routes/api/auth.route.js`
 
 ### 15. Integration
 *   Keycloak/Auth0 (OIDC Providers).
@@ -97,7 +97,7 @@ sequenceDiagram
 *   Login Page, MFA Setup Page, Session History dashboard.
 
 ### 21. Diagrams
-*   Refer to `[context.md](file:///c:/Users/Zed/Documents/Project/Callibrator/context.md#L76-L89)` for the OIDC authentication sequence diagram.
+*   Refer to `context.md` lines 76–89 (superseded pre-monorepo PRD, no longer in the repository; the reference cannot be opened) for the OIDC authentication sequence diagram.
 
 ### 22. Non-Functional Requirements
 *   Encryption of tokens at rest/in transit.
@@ -172,12 +172,12 @@ sequenceDiagram
 *   Superadmin has root administrative access. Tenant Admins can modify settings for their own tenant.
 
 ### 13. Database
-*   Table: `[Tenants](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/models/tenant.model.js)` (Primary Key: `id`)
-*   Table: `[TenantSettings](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/models/tenantSettings.model.js)` (Foreign Key: `tenantId`)
+*   Table: `Tenants` (`backend/src/models/tenant.model.js`) (Primary Key: `id`)
+*   Table: `TenantSettings` (`backend/src/models/tenantSettings.model.js`) (Foreign Key: `tenantId`)
 
 ### 14. API
-*   `POST /api/v1/tenants` (Create Tenant) - `[tenant.route.js](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/routes/api/tenant.route.js)`
-*   `GET /api/v1/tenants/:id/settings` - `[tenant.route.js](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/routes/api/tenant.route.js)`
+*   `POST /api/v1/tenants` (Create Tenant) - `backend/src/routes/api/tenant.route.js`
+*   `GET /api/v1/tenants/:id/settings` - `backend/src/routes/api/tenant.route.js`
 
 ### 15. Integration
 *   DNS / Reverse Proxy providers for custom domain resolving.
@@ -198,7 +198,7 @@ sequenceDiagram
 *   Superadmin Portal, Tenant Branding and Settings panel.
 
 ### 21. Diagrams
-*   Refer to `[context.md](file:///c:/Users/Zed/Documents/Project/Callibrator/context.md#L57-L65)` for the Tenant context model.
+*   Refer to `context.md` lines 57–65 (superseded pre-monorepo PRD, no longer in the repository; the reference cannot be opened) for the Tenant context model.
 
 ### 22. Non-Functional Requirements
 *   Zero performance overhead for RLS checks.
@@ -271,13 +271,13 @@ graph TD
 *   Only Warehouse Staff and Admins have write access to inventory files.
 
 ### 13. Database
-*   Table: `[Warehouse](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/models/warehouse.model.js)`
-*   Table: `[Stock](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/models/stock.model.js)`
-*   Table: `[StockTransfer](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/models/stockTransfer.model.js)`
+*   Table: `Warehouse` (`backend/src/models/warehouse.model.js`)
+*   Table: `Stock` (`backend/src/models/stock.model.js`)
+*   Table: `StockTransfer` (`backend/src/models/stockTransfer.model.js`)
 
 ### 14. API
-*   `GET /api/v1/stock` (View levels) - `[stock.route.js](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/routes/api/stock.route.js)`
-*   `POST /api/v1/stock/transfers` (Start transfer) - `[stock.route.js](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/routes/api/stock.route.js)`
+*   `GET /api/v1/stock` (View levels) - `backend/src/routes/api/stock.route.js`
+*   `POST /api/v1/stock/transfers` (Start transfer) - `backend/src/routes/api/stock.route.js`
 
 ### 15. Integration
 *   Barcoding / QR scanners for inventory counting.
@@ -298,7 +298,7 @@ graph TD
 *   Stock Directory, Transfer Logs, Stock Opname Form.
 
 ### 21. Diagrams
-*   Refer to `[context.md](file:///c:/Users/Zed/Documents/Project/Callibrator/context.md#L140-L152)` for the Warehouse Domain structure.
+*   Refer to `context.md` lines 140–152 (superseded pre-monorepo PRD, no longer in the repository; the reference cannot be opened) for the Warehouse Domain structure.
 
 ### 22. Non-Functional Requirements
 *   Real-time stock balance updates within 100ms of transaction completion.
@@ -373,12 +373,12 @@ sequenceDiagram
 *   Supervisors can update schedule parameters. Technicians have access to log executions.
 
 ### 13. Database
-*   Table: `[CalibrationDevice](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/models/calibrationDevice.model.js)`
-*   Table: `[MaintenanceWorkOrder](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/models/maintenanceWorkOrder.model.js)`
+*   Table: `CalibrationDevice` (`backend/src/models/calibrationDevice.model.js`)
+*   Table: `MaintenanceWorkOrder` (`backend/src/models/maintenanceWorkOrder.model.js`)
 
 ### 14. API
-*   `POST /api/v1/calibration-devices` (Create device) - `[calibrationDevices.route.js](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/routes/api/calibrationDevices.route.js)`
-*   `POST /api/v1/maintenance/work-orders` (Create work order) - `[maintenance.route.js](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/routes/api/maintenance.route.js)`
+*   `POST /api/v1/calibration-devices` (Create device) - `backend/src/routes/api/calibrationDevices.route.js`
+*   `POST /api/v1/maintenance/work-orders` (Create work order) - `backend/src/routes/api/maintenance.route.js`
 
 ### 15. Integration
 *   Biomedical sensor streams via IoT route endpoints.
@@ -399,7 +399,7 @@ sequenceDiagram
 *   Device Profile page, Maintenance Planner dashboard, Technician task checklist.
 
 ### 21. Diagrams
-*   Refer to `[context.md](file:///c:/Users/Zed/Documents/Project/Callibrator/context.md#L155-L168)` for the Medical Device Domain relationships.
+*   Refer to `context.md` lines 155–168 (superseded pre-monorepo PRD, no longer in the repository; the reference cannot be opened) for the Medical Device Domain relationships.
 
 ### 22. Non-Functional Requirements
 *   Device profiles search return time < 150ms.
@@ -475,13 +475,13 @@ sequenceDiagram
 *   Technicians: Write records (Exec). Supervisors: Write approvals and apply e-Signatures.
 
 ### 13. Database
-*   Table: `[CalibrationRecord](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/models/calibrationRecord.model.js)`
-*   Table: `[Certificate](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/models/certificate.model.js)`
-*   Table: `[ESignatureRecord](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/models/eSignatureRecord.model.js)`
+*   Table: `CalibrationRecord` (`backend/src/models/calibrationRecord.model.js`)
+*   Table: `Certificate` (`backend/src/models/certificate.model.js`)
+*   Table: `ESignatureRecord` (`backend/src/models/eSignatureRecord.model.js`)
 
 ### 14. API
-*   `POST /api/v1/calibration-records` - `[calibrationRecords.route.js](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/routes/api/calibrationRecords.route.js)`
-*   `POST /api/v1/e-signature/sign` - `[eSignature.route.js](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/routes/api/eSignature.route.js)`
+*   `POST /api/v1/calibration-records` - `backend/src/routes/api/calibrationRecords.route.js`
+*   `POST /api/v1/e-signature/sign` - `backend/src/routes/api/eSignature.route.js`
 
 ### 15. Integration
 *   Object Storage / S3 for PDF file hosting.
@@ -502,7 +502,7 @@ sequenceDiagram
 *   Calibration Form, Review Workbench, Certificate Archive.
 
 ### 21. Diagrams
-*   Refer to `[context.md](file:///c:/Users/Zed/Documents/Project/Callibrator/context.md#L170-L200)` for the Calibration Domain.
+*   Refer to `context.md` lines 170–200 (superseded pre-monorepo PRD, no longer in the repository; the reference cannot be opened) for the Calibration Domain.
 
 ### 22. Non-Functional Requirements
 *   e-Signature execution processing < 300ms.
@@ -575,14 +575,14 @@ graph TD
 *   Only QA Auditors and Supervisors can approve CAPA closures. Technicians have read-write access to raise issues.
 
 ### 13. Database
-*   Table: `[Capa](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/models/capa.model.js)`
-*   Table: `[NonConformance](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/models/nonConformance.model.js)`
-*   Table: `[Risk](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/models/risk.model.js)`
-*   Table: `[SopDocument](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/models/sopDocument.model.js)`
+*   Table: `Capa` (`backend/src/models/capa.model.js`)
+*   Table: `NonConformance` (`backend/src/models/nonConformance.model.js`)
+*   Table: `Risk` (`backend/src/models/risk.model.js`)
+*   Table: `SopDocument` (`backend/src/models/sopDocument.model.js`)
 
 ### 14. API
-*   `POST /api/v1/qms/capa` - `[qms.route.js](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/routes/api/qms.route.js)`
-*   `POST /api/v1/qms/non-conformance` - `[qms.route.js](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/routes/api/qms.route.js)`
+*   `POST /api/v1/qms/capa` - `backend/src/routes/api/qms.route.js`
+*   `POST /api/v1/qms/non-conformance` - `backend/src/routes/api/qms.route.js`
 
 ### 15. Integration
 *   External documentation systems.
@@ -678,15 +678,15 @@ sequenceDiagram
 *   Developers and Healthcare Admins can configure keys and webhooks.
 
 ### 13. Database
-*   Table: `[ApiKey](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/models/apiKey.model.js)`
-*   Table: `[Webhook](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/models/webhook.model.js)`
-*   Table: `[WebhookDelivery](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/models/webhookDelivery.model.js)`
-*   Table: `[IotReading](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/models/iotReading.model.js)`
+*   Table: `ApiKey` (`backend/src/models/apiKey.model.js`)
+*   Table: `Webhook` (`backend/src/models/webhook.model.js`)
+*   Table: `WebhookDelivery` (`backend/src/models/webhookDelivery.model.js`)
+*   Table: `IotReading` (`backend/src/models/iotReading.model.js`)
 
 ### 14. API
-*   `POST /api/v1/api-keys` - `[apiKeys.route.js](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/routes/api/apiKeys.route.js)`
-*   `POST /api/v1/webhooks` - `[webhooks.route.js](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/routes/api/webhooks.route.js)`
-*   `POST /api/v1/iot/readings` - `[iot.route.js](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/routes/api/iot.route.js)`
+*   `POST /api/v1/api-keys` - `backend/src/routes/api/apiKeys.route.js`
+*   `POST /api/v1/webhooks` - `backend/src/routes/api/webhooks.route.js`
+*   `POST /api/v1/iot/readings` - `backend/src/routes/api/iot.route.js`
 
 ### 15. Integration
 *   External hospital HIS databases.
@@ -780,13 +780,13 @@ graph TD
 *   Healthcare Admins and Superadmins have access to billing and pricing files.
 
 ### 13. Database
-*   Table: `[Subscription](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/models/subscription.model.js)`
-*   Table: `[Invoice](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/models/invoice.model.js)`
-*   Table: `[AssetFinance](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/models/assetFinance.model.js)`
+*   Table: `Subscription` (`backend/src/models/subscription.model.js`)
+*   Table: `Invoice` (`backend/src/models/invoice.model.js`)
+*   Table: `AssetFinance` (`backend/src/models/assetFinance.model.js`)
 
 ### 14. API
-*   `GET /api/v1/billing/invoices` - `[billing.route.js](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/routes/api/billing.route.js)`
-*   `POST /api/v1/billing/subscriptions` - `[billing.route.js](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/routes/api/billing.route.js)`
+*   `GET /api/v1/billing/invoices` - `backend/src/routes/api/billing.route.js`
+*   `POST /api/v1/billing/subscriptions` - `backend/src/routes/api/billing.route.js`
 
 ### 15. Integration
 *   Stripe SDK, Midtrans Payment Gateway API.
@@ -880,11 +880,11 @@ sequenceDiagram
 *   System services write notifications. All users can read their own alert rows.
 
 ### 13. Database
-*   Table: `[Notification](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/models/notification.model.js)`
+*   Table: `Notification` (`backend/src/models/notification.model.js`)
 
 ### 14. API
-*   `GET /api/v1/notifications` - `[notifications.route.js](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/routes/api/notifications.route.js)`
-*   `PUT /api/v1/notifications/:id/read` - `[notifications.route.js](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/routes/api/notifications.route.js)`
+*   `GET /api/v1/notifications` - `backend/src/routes/api/notifications.route.js`
+*   `PUT /api/v1/notifications/:id/read` - `backend/src/routes/api/notifications.route.js`
 
 ### 15. Integration
 *   SMTP Server (SendGrid/Amazon SES).
@@ -977,14 +977,14 @@ graph TD
 *   Only admins define workflows. Designated users handle actions on active steps.
 
 ### 13. Database
-*   Table: `[Workflow](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/models/workflow.model.js)`
-*   Table: `[WorkflowStep](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/models/workflowStep.model.js)`
-*   Table: `[WorkflowInstance](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/models/workflowInstance.model.js)`
-*   Table: `[WorkflowAction](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/models/workflowAction.model.js)`
+*   Table: `Workflow` (`backend/src/models/workflow.model.js`)
+*   Table: `WorkflowStep` (`backend/src/models/workflowStep.model.js`)
+*   Table: `WorkflowInstance` (`backend/src/models/workflowInstance.model.js`)
+*   Table: `WorkflowAction` (`backend/src/models/workflowAction.model.js`)
 
 ### 14. API
-*   `POST /api/v1/workflows` - `[workflows.route.js](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/routes/api/workflows.route.js)`
-*   `POST /api/v1/workflows/instances/:id/action` - `[workflows.route.js](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/routes/api/workflows.route.js)`
+*   `POST /api/v1/workflows` - `backend/src/routes/api/workflows.route.js`
+*   `POST /api/v1/workflows/instances/:id/action` - `backend/src/routes/api/workflows.route.js`
 
 ### 15. Integration
 *   Internal backend services.
@@ -1076,12 +1076,12 @@ graph TD
 *   Only Calibrator Admins and QA supervisors can register or edit vendors.
 
 ### 13. Database
-*   Table: `[Vendor](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/models/vendor.model.js)`
-*   Table: `[SupplierScorecard](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/models/supplierScorecard.model.js)`
+*   Table: `Vendor` (`backend/src/models/vendor.model.js`)
+*   Table: `SupplierScorecard` (`backend/src/models/supplierScorecard.model.js`)
 
 ### 14. API
-*   `GET /api/v1/vendors` - `[vendor.route.js](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/routes/api/vendor.route.js)`
-*   `POST /api/v1/vendors` - `[vendor.route.js](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/routes/api/vendor.route.js)`
+*   `GET /api/v1/vendors` - `backend/src/routes/api/vendor.route.js`
+*   `POST /api/v1/vendors` - `backend/src/routes/api/vendor.route.js`
 
 ### 15. Integration
 *   External vendor inventory APIs.
@@ -1173,11 +1173,11 @@ sequenceDiagram
 *   Read-only access is restricted to auditors and administrators. Writes are system-automated.
 
 ### 13. Database
-*   Table: `[AuditLog](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/models/auditLog.model.js)`
+*   Table: `AuditLog` (`backend/src/models/auditLog.model.js`)
 
 ### 14. API
-*   `GET /api/v1/audit-logs` - `[audit.route.js](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/routes/api/audit.route.js)`
-*   `GET /api/v1/audit-logs/export` - `[audit.route.js](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/routes/api/audit.route.js)`
+*   `GET /api/v1/audit-logs` - `backend/src/routes/api/audit.route.js`
+*   `GET /api/v1/audit-logs/export` - `backend/src/routes/api/audit.route.js`
 
 ### 15. Integration
 *   External Security Information and Event Management (SIEM) systems.
@@ -1198,7 +1198,7 @@ sequenceDiagram
 *   Audit Trail Explorer, Export Center.
 
 ### 21. Diagrams
-*   Refer to `[context.md](file:///c:/Users/Zed/Documents/Project/Callibrator/context.md#L220-L236)` for Audit requirements.
+*   Refer to `context.md` lines 220–236 (superseded pre-monorepo PRD, no longer in the repository; the reference cannot be opened) for Audit requirements.
 
 ### 22. Non-Functional Requirements
 *   Audit hook write latency < 5ms.
@@ -1267,11 +1267,11 @@ graph TD
 *   Only superadministrators and system crons can invoke backup creation or recovery.
 
 ### 13. Database
-*   Table: `[TenantBackup](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/models/tenantBackup.model.js)`
+*   Table: `TenantBackup` (`backend/src/models/tenantBackup.model.js`)
 
 ### 14. API
-*   `POST /api/v1/backups/execute` - `[tenantBackup.route.js](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/routes/api/tenantBackup.route.js)`
-*   `GET /api/v1/backups/history` - `[tenantBackup.route.js](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/routes/api/tenantBackup.route.js)`
+*   `POST /api/v1/backups/execute` - `backend/src/routes/api/tenantBackup.route.js`
+*   `GET /api/v1/backups/history` - `backend/src/routes/api/tenantBackup.route.js`
 
 ### 15. Integration
 *   Amazon S3 / Google Cloud Storage buckets.
@@ -1292,7 +1292,7 @@ graph TD
 *   Backup & Restore Console, Recovery Job Log.
 
 ### 21. Diagrams
-*   Refer to `[context.md](file:///c:/Users/Zed/Documents/Project/Callibrator/context.md#L238-L252)` for the Backup strategy.
+*   Refer to `context.md` lines 238–252 (superseded pre-monorepo PRD, no longer in the repository; the reference cannot be opened) for the Backup strategy.
 
 ### 22. Non-Functional Requirements
 *   Backup generation duration < 10 minutes (for average tenant sizes).
@@ -1365,13 +1365,13 @@ graph TD
 *   Only registered editors and administrators can write posts. Reading is open to the public.
 
 ### 13. Database
-*   Table: `[Post](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/models/post.model.js)`
-*   Table: `[Category](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/models/category.model.js)`
-*   Table: `[PostCategory](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/models/postCategory.model.js)`
+*   Table: `Post` (`backend/src/models/post.model.js`)
+*   Table: `Category` (`backend/src/models/category.model.js`)
+*   Table: `PostCategory` (`backend/src/models/postCategory.model.js`)
 
 ### 14. API
-*   `GET /api/v1/content/posts` - `[content.route.js](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/routes/api/content.route.js)`
-*   `POST /api/v1/content/posts` - `[content.route.js](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/routes/api/content.route.js)`
+*   `GET /api/v1/content/posts` - `backend/src/routes/api/content.route.js`
+*   `POST /api/v1/content/posts` - `backend/src/routes/api/content.route.js`
 
 ### 15. Integration
 *   Image host services.
@@ -1469,11 +1469,11 @@ sequenceDiagram
 *   Role permissions map download capabilities (e.g., Room users read device manuals but cannot delete them).
 
 ### 13. Database
-*   Table: `[Attachment](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/models/attachment.model.js)`
+*   Table: `Attachment` (`backend/src/models/attachment.model.js`)
 
 ### 14. API
-*   `POST /api/v1/attachments` - `[attachments.route.js](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/routes/api/attachments.route.js)`
-*   `GET /api/v1/attachments/:id/download` - `[attachments.route.js](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/routes/api/attachments.route.js)`
+*   `POST /api/v1/attachments` - `backend/src/routes/api/attachments.route.js`
+*   `GET /api/v1/attachments/:id/download` - `backend/src/routes/api/attachments.route.js`
 
 ### 15. Integration
 *   Amazon S3, MinIO, or local disk array.
@@ -1565,11 +1565,11 @@ graph TD
 *   Only system components can write tasks to queues. Admins can view and manage job runs.
 
 ### 13. Database
-*   Table: `[BatchJob](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/models/batchJob.model.js)`
+*   Table: `BatchJob` (`backend/src/models/batchJob.model.js`)
 
 ### 14. API
-*   `GET /api/v1/batch-jobs/:id` - `[batchJobs.route.js](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/routes/api/batchJobs.route.js)`
-*   `POST /api/v1/batch-jobs/:id/retry` - `[batchJobs.route.js](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/routes/api/batchJobs.route.js)`
+*   `GET /api/v1/batch-jobs/:id` - `backend/src/routes/api/batchJobs.route.js`
+*   `POST /api/v1/batch-jobs/:id/retry` - `backend/src/routes/api/batchJobs.route.js`
 
 ### 15. Integration
 *   Redis queue broker.
@@ -1671,11 +1671,11 @@ sequenceDiagram
 *   Technicians have view-only access to their personal work statistics. Managers can view tenant-wide stats.
 
 ### 13. Database
-*   No dedicated database tables are owned by this module. It runs aggregate queries on `[CalibrationRecord](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/models/calibrationRecord.model.js)` and `[CalibrationDevice](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/models/calibrationDevice.model.js)`.
+*   No dedicated database tables are owned by this module. It runs aggregate queries on `CalibrationRecord` (`backend/src/models/calibrationRecord.model.js`) and `CalibrationDevice` (`backend/src/models/calibrationDevice.model.js`).
 
 ### 14. API
-*   `GET /api/v1/dashboard/metrics` - `[dashboard.route.js](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/routes/api/dashboard.route.js)`
-*   `GET /api/v1/reports/compliance` - `[reports.route.js](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/routes/api/reports.route.js)`
+*   `GET /api/v1/dashboard/metrics` - `backend/src/routes/api/dashboard.route.js`
+*   `GET /api/v1/reports/compliance` - `backend/src/routes/api/reports.route.js`
 
 ### 15. Integration
 *   Internal backend services.
@@ -1766,11 +1766,11 @@ graph TD
 *   Requires Admin and Data Protection Officer authorization steps.
 
 ### 13. Database
-*   No dedicated tables. Mutates `[User](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/models/user.model.js)` records and wipes matching session values.
+*   No dedicated tables. Mutates `User` (`backend/src/models/user.model.js`) records and wipes matching session values.
 
 ### 14. API
-*   `POST /api/v1/gdpr/export` - `[gdpr.route.js](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/routes/api/gdpr.route.js)`
-*   `POST /api/v1/gdpr/anonymize` - `[gdpr.route.js](file:///c:/Users/Zed/Documents/Project/Callibrator/backend/src/routes/api/gdpr.route.js)`
+*   `POST /api/v1/gdpr/export` - `backend/src/routes/api/gdpr.route.js`
+*   `POST /api/v1/gdpr/anonymize` - `backend/src/routes/api/gdpr.route.js`
 
 ### 15. Integration
 *   Secure archive directories.

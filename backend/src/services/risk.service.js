@@ -14,8 +14,8 @@ exports.getRisks = async (tenantId, query) => {
   const offset = (page - 1) * limit;
 
   const where = { tenantId };
-  if (status) where.status = status;
-  if (category) where.category = category;
+  if (status) {where.status = status;}
+  if (category) {where.category = category;}
 
   const { count, rows } = await Risk.findAndCountAll({
     where,
@@ -24,15 +24,15 @@ exports.getRisks = async (tenantId, query) => {
     order: [["createdAt", "DESC"]],
     include: [
       { model: User, as: "identifier", attributes: ["id", "firstName", "lastName", "email"], required: false },
-      { model: User, as: "assignee", attributes: ["id", "firstName", "lastName", "email"], required: false }
-    ]
+      { model: User, as: "assignee", attributes: ["id", "firstName", "lastName", "email"], required: false },
+    ],
   });
 
   return {
     rows,
     total: count,
     page: parseInt(page),
-    totalPages: Math.ceil(count / limit)
+    totalPages: Math.ceil(count / limit),
   };
 };
 
@@ -41,10 +41,10 @@ exports.getRiskById = async (tenantId, id) => {
     where: { id, tenantId },
     include: [
       { model: User, as: "identifier", attributes: ["id", "firstName", "lastName", "email"], required: false },
-      { model: User, as: "assignee", attributes: ["id", "firstName", "lastName", "email"], required: false }
-    ]
+      { model: User, as: "assignee", attributes: ["id", "firstName", "lastName", "email"], required: false },
+    ],
   });
-  if (!risk) throw new AppError(404, "Risk not found");
+  if (!risk) {throw new AppError(404, "Risk not found");}
   return risk;
 };
 

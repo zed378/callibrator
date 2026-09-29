@@ -47,7 +47,7 @@ const OUT_OF_SCOPE = [];
 describe("A-09 — every validators/ `validate` helper coerces an absent body", () => {
   const helpers = fs
     .readdirSync(VALIDATOR_DIR)
-    .filter((f) => f.endsWith(".js") && !OUT_OF_SCOPE.includes(f))
+    .filter((f) => /\.(js|ts)$/.test(f) && !OUT_OF_SCOPE.includes(f)) // ADR-087 Amendment 4
     .map((f) => [f, require(path.join(VALIDATOR_DIR, f))])
     .filter(([, mod]) => typeof mod.validate === "function");
 

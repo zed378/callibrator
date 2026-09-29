@@ -106,7 +106,7 @@ describe("E2E Authorization (HTTP)", () => {
     expect(
       headers["x-frame-options"] ||
         headers["content-security-policy"] ||
-        headers["x-permitted-cross-domain-policies"]
+        headers["x-permitted-cross-domain-policies"],
     ).toBeDefined();
   });
 

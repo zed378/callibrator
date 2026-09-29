@@ -67,9 +67,9 @@ export default function KanbanProjectsPage() {
                       </span>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
-                          <h3 className="font-semibold text-foreground truncate">
+                          <h2 className="font-semibold text-foreground truncate">
                             {p.name}
-                          </h3>
+                          </h2>
                           {p.code && (
                             <Badge variant="secondary" size="sm">
                               {p.code}
@@ -101,9 +101,9 @@ export default function KanbanProjectsPage() {
           <Card>
             <CardContent className="p-16 text-center">
               <KanbanSquare className="mx-auto h-16 w-16 text-muted-foreground" />
-              <h3 className="text-xl font-semibold text-foreground mt-4">
+              <h2 className="text-xl font-semibold text-foreground mt-4">
                 No boards yet
-              </h3>
+              </h2>
               <p className="text-muted-foreground mt-2 max-w-sm mx-auto">
                 Create your first project board to start tracking work.
               </p>

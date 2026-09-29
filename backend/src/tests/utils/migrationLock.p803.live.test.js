@@ -117,4 +117,30 @@ live("P8-03 schema lock — two instances, real PostgreSQL", () => {
     );
     expect(n).toBe(0);
   });
+  test("P8-03: `npm run migrate` (scripts/migrate.js up) WAITS for a held lock, then runs and exits 0", async () => {
+    const { spawn } = require("child_process");
+    const path = require("path");
+    const holder = await a.db.connectionManager.getConnection({ type: "write" });
+    await holder.query("SELECT pg_advisory_lock($1::bigint)", [a.lock.MIGRATION_LOCK_KEY]);
+    let output = "";
+    // ADR-087 Amendment 4: `--import tsx` — the script loads TypeScript modules
+    // (the logger among them); plain `node` cannot resolve them.
+    const child = spawn(process.execPath, ["--import", "tsx", path.join(__dirname, "../../scripts/migrate.js"), "up"], {
+      cwd: path.join(__dirname, "../../.."),
+      env: { ...process.env, NODE_ENV: "test" },
+    });
+    child.stdout.on("data", (d) => (output += d));
+    child.stderr.on("data", (d) => (output += d));
+    const exited = new Promise((resolve) => child.on("exit", resolve));
+    try {
+      const early = await Promise.race([exited, new Promise((r) => setTimeout(() => r("still-waiting"), 4000))]);
+      expect(early).toBe("still-waiting");
+      expect(output).toMatch(/another instance is migrating the schema; waiting/);
+    } finally {
+      await holder.query("SELECT pg_advisory_unlock($1::bigint)", [a.lock.MIGRATION_LOCK_KEY]);
+      a.db.connectionManager.releaseConnection(holder);
+    }
+    await expect(exited).resolves.toBe(0);
+    expect(output).toMatch(/lock acquired after waiting/);
+  });
 });

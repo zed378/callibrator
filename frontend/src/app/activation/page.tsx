@@ -58,7 +58,7 @@ function ActivationHandler() {
   }, [searchParams]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-6">
+    <main className="flex min-h-screen items-center justify-center bg-background p-6">
       <div
         className="w-full max-w-md rounded-3xl border border-border bg-card p-8 text-center shadow-2xl"
         role="status"
@@ -103,7 +103,7 @@ function ActivationHandler() {
           </>
         )}
       </div>
-    </div>
+    </main>
   );
 }
 

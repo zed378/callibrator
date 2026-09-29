@@ -67,7 +67,7 @@ describe("scim.service", () => {
             isActive: true,
             status: "ACTIVE",
           }),
-        })
+        }),
       );
     });
 
@@ -80,7 +80,7 @@ describe("scim.service", () => {
             isActive: false,
             status: "SUSPENDED",
           }),
-        })
+        }),
       );
     });
 
@@ -92,7 +92,7 @@ describe("scim.service", () => {
           where: expect.objectContaining({
             email: "a@b.com",
           }),
-        })
+        }),
       );
     });
   });
@@ -143,7 +143,7 @@ describe("scim.service", () => {
     it("throws 409 when user already exists", async () => {
       Users.findOne.mockResolvedValue({ id: "u1" });
       await expect(
-        scim.createUser("t1", { userName: "existing@test.com" })
+        scim.createUser("t1", { userName: "existing@test.com" }),
       ).rejects.toThrow("User already exists in the system");
     });
 
@@ -179,7 +179,7 @@ describe("scim.service", () => {
       });
 
       expect(Users.create).toHaveBeenCalledWith(
-        expect.objectContaining({ email: "from-emails@test.com", username: "from-emails@test.com" })
+        expect.objectContaining({ email: "from-emails@test.com", username: "from-emails@test.com" }),
       );
     });
 
@@ -206,7 +206,7 @@ describe("scim.service", () => {
           isActive: true,
           status: "ACTIVE",
           isEmailVerified: true,
-        })
+        }),
       );
     });
 
@@ -217,7 +217,7 @@ describe("scim.service", () => {
       const result = await scim.createUser("t1", { userName: "a@b.com", active: false, roleId: "r9" });
 
       expect(Users.create).toHaveBeenCalledWith(
-        expect.objectContaining({ isActive: false, status: "SUSPENDED", roleId: "r9" })
+        expect.objectContaining({ isActive: false, status: "SUSPENDED", roleId: "r9" }),
       );
       expect(result.active).toBe(false);
     });

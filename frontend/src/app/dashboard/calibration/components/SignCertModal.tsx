@@ -50,17 +50,17 @@ export const SignCertModal: React.FC<SignCertModalProps> = ({
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+          <label htmlFor="calibration-components-signcertmodal-f1" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
             Secure Key Container / Key ID
           </label>
-          <Input required disabled value={form.digitalSignatureKeyId} />
+          <Input id="calibration-components-signcertmodal-f1" required disabled value={form.digitalSignatureKeyId} />
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+          <label htmlFor="calibration-components-signcertmodal-f2" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
             Generated Cryptographic Token
           </label>
-          <Textarea
+          <Textarea id="calibration-components-signcertmodal-f2"
             required
             disabled
             rows={3}

@@ -90,7 +90,7 @@ describe("D-29 residual risk 1 — the `context.queryInterface || context` fallb
   it("is frozen to the sixteen reviewed migrations: a new one uses `context` directly", () => {
     const carrying = fs
       .readdirSync(MIGRATIONS_DIR)
-      .filter((name) => name.endsWith(".js"))
+      .filter((name) => /\.(js|ts)$/.test(name)) // ADR-087 Amendment 4
       .filter((name) => FALLBACK.test(fs.readFileSync(path.join(MIGRATIONS_DIR, name), "utf8")))
       .sort();
     expect(carrying).toEqual([

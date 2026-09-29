@@ -40,10 +40,10 @@ export function ESignatureFields<T extends ESignatureFormFields>({
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
-          <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+          <label htmlFor="calibration-components-esignaturefields-f1" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
             Method
           </label>
-          <Select
+          <Select id="calibration-components-esignaturefields-f1"
             value={form.authMethod}
             onChange={(value) =>
               setForm({ ...form, authMethod: value as "password" | "mfa" })
@@ -56,10 +56,10 @@ export function ESignatureFields<T extends ESignatureFormFields>({
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+          <label htmlFor="calibration-components-esignaturefields-f2" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
             {form.authMethod === "mfa" ? "Authenticator code *" : "Password *"}
           </label>
-          <Input
+          <Input id="calibration-components-esignaturefields-f2"
             required
             type={form.authMethod === "mfa" ? "text" : "password"}
             // Never let a browser store the signing credential.
@@ -75,10 +75,10 @@ export function ESignatureFields<T extends ESignatureFormFields>({
       </div>
 
       <div>
-        <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+        <label htmlFor="calibration-components-esignaturefields-f3" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
           Meaning of signature *
         </label>
-        <Input
+        <Input id="calibration-components-esignaturefields-f3"
           required
           list={meaningOptions ? "esig-meaning-options" : undefined}
           value={form.meaning}

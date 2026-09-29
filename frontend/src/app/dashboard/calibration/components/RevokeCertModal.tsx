@@ -44,10 +44,10 @@ export const RevokeCertModal: React.FC<RevokeCertModalProps> = ({
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+          <label htmlFor="calibration-components-revokecertmodal-f1" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
             Reason for Revocation *
           </label>
-          <Textarea
+          <Textarea id="calibration-components-revokecertmodal-f1"
             required
             value={form.reason}
             // Spread the existing form — replacing it wholesale wiped the

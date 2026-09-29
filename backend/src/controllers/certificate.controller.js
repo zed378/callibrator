@@ -139,7 +139,7 @@ exports.approveCertificate = asyncHandler(async (req, res) => {
       meaning: validated.meaning,
       ipAddress: req.ip,
       userAgent: req.headers["user-agent"],
-    }
+    },
   );
 
   sendResult(res, result);
@@ -176,7 +176,7 @@ exports.signCertificate = asyncHandler(async (req, res) => {
       meaning: validated.meaning,
       ipAddress: req.ip,
       userAgent: req.headers["user-agent"],
-    }
+    },
   );
 
   sendResult(res, result);
@@ -201,7 +201,7 @@ exports.revokeCertificate = asyncHandler(async (req, res) => {
       meaning: validated.meaning,
       ipAddress: req.ip,
       userAgent: req.headers["user-agent"],
-    }
+    },
   );
 
   sendResult(res, result);

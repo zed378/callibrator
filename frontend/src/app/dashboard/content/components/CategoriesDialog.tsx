@@ -80,6 +80,7 @@ export default function CategoriesDialog({
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="New category name"
+            aria-label="New category name"
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
@@ -87,8 +88,8 @@ export default function CategoriesDialog({
               }
             }}
           />
-          <Button onClick={create} isLoading={busy} className="shrink-0">
-            <Plus className="h-4 w-4" />
+          <Button onClick={create} isLoading={busy} className="shrink-0" aria-label="Add category">
+            <Plus className="h-4 w-4" aria-hidden="true" />
           </Button>
         </div>
 
@@ -106,16 +107,22 @@ export default function CategoriesDialog({
                     autoFocus
                     className="flex-1 rounded-lg bg-muted px-3 py-1.5 text-sm ring-1 ring-border focus:outline-none focus:ring-2 focus:ring-ring/50"
                     value={editing.name}
+                    aria-label={`Rename ${c.name}`}
                     onChange={(e) => setEditing({ ...editing, name: e.target.value })}
                   />
-                  <button onClick={saveEdit} className="rounded-lg p-1.5 text-success hover:bg-muted">
-                    <Check className="h-4 w-4" />
+                  <button
+                    onClick={saveEdit}
+                    aria-label="Save category name"
+                    className="rounded-lg p-1.5 text-success hover:bg-muted"
+                  >
+                    <Check className="h-4 w-4" aria-hidden="true" />
                   </button>
                   <button
                     onClick={() => setEditing(null)}
+                    aria-label="Cancel rename"
                     className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted"
                   >
-                    <X className="h-4 w-4" />
+                    <X className="h-4 w-4" aria-hidden="true" />
                   </button>
                 </>
               ) : (
@@ -126,15 +133,17 @@ export default function CategoriesDialog({
                   </Badge>
                   <button
                     onClick={() => setEditing({ id: c.id, name: c.name })}
+                    aria-label={`Rename ${c.name}`}
                     className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted"
                   >
-                    <Pencil className="h-3.5 w-3.5" />
+                    <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
                   </button>
                   <button
                     onClick={() => remove(c.id)}
+                    aria-label={`Delete ${c.name}`}
                     className="rounded-lg p-1.5 text-destructive hover:bg-destructive/10"
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                   </button>
                 </>
               )}

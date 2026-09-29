@@ -28,12 +28,11 @@ const slugify = (str) =>
 const ensureUniqueSlug = async (Model, base, excludeId = null) => {
   let slug = base;
   let n = 1;
-  // eslint-disable-next-line no-constant-condition
   while (true) {
     const where = { slug };
-    if (excludeId) where.id = { [Op.ne]: excludeId };
+    if (excludeId) {where.id = { [Op.ne]: excludeId };}
     const existing = await Model.unscoped().findOne({ where, paranoid: false });
-    if (!existing) return slug;
+    if (!existing) {return slug;}
     n += 1;
     slug = `${base}-${n}`;
   }
@@ -130,9 +129,9 @@ const PUBLIC_LIST_ATTRS = [
 exports.listPosts = async ({ type, status, category, find, page = 1, limit = DEFAULT_LIMIT }) => {
   try {
     const where = {};
-    if (type) where.type = type;
-    if (status) where.status = status;
-    if (find) where.title = { [Op.like]: `%${find}%` };
+    if (type) {where.type = type;}
+    if (status) {where.status = status;}
+    if (find) {where.title = { [Op.like]: `%${find}%` };}
     const { safeLimit, offset } = paginate(page, limit);
 
     const { count, rows } = await Post.findAndCountAll({
@@ -163,7 +162,7 @@ exports.listPosts = async ({ type, status, category, find, page = 1, limit = DEF
 exports.getPostById = async (id) => {
   try {
     const post = await findPostWithCategories(id);
-    if (!post) throw new AppError(404, "Post not found");
+    if (!post) {throw new AppError(404, "Post not found");}
     return { success: true, status: 200, message: "Post retrieved successfully", data: transformPost(post) };
   } catch (error) {
     throw { status: error.status || 500, message: error.message || "Failed to retrieve post" };
@@ -206,7 +205,7 @@ exports.createPost = async (data, userId) => {
 
 exports.updatePost = async (id, data) => {
   const post = await Post.findByPk(id);
-  if (!post) throw new AppError(404, "Post not found");
+  if (!post) {throw new AppError(404, "Post not found");}
 
   const t = await db.transaction();
   try {
@@ -214,7 +213,7 @@ exports.updatePost = async (id, data) => {
     const patch = { ...fields };
 
     // Slug only changes when explicitly provided (keeps URLs stable on rename).
-    if (fields.slug) patch.slug = await ensureUniqueSlug(Post, slugify(fields.slug), post.id);
+    if (fields.slug) {patch.slug = await ensureUniqueSlug(Post, slugify(fields.slug), post.id);}
     if (fields.contentHtml !== undefined) {
       patch.contentHtml = sanitizeContent(fields.contentHtml);
       patch.readingMinutes = computeReadingMinutes(patch.contentHtml);
@@ -241,7 +240,7 @@ exports.updatePost = async (id, data) => {
 exports.deletePost = async (id) => {
   try {
     const post = await Post.findByPk(id);
-    if (!post) throw new AppError(404, "Post not found");
+    if (!post) {throw new AppError(404, "Post not found");}
     await post.softDelete();
     return { success: true, status: 200, message: "Post deleted successfully" };
   } catch (error) {
@@ -277,7 +276,7 @@ exports.checkSlug = async (rawSlug, excludeId) => {
 exports.listPublishedPosts = async ({ type, category, page = 1, limit = DEFAULT_LIMIT }) => {
   try {
     const where = { status: "PUBLISHED" };
-    if (type) where.type = String(type).toUpperCase();
+    if (type) {where.type = String(type).toUpperCase();}
     const { safeLimit, offset } = paginate(page, limit);
 
     const { count, rows } = await Post.findAndCountAll({
@@ -319,7 +318,7 @@ exports.getPublishedPostBySlug = async (slug) => {
       // only soft-deleted ones) answered 404 by slug while the list showed it.
       include: [{ ...CATEGORY_INCLUDE, required: false }],
     });
-    if (!post) throw new AppError(404, "Post not found");
+    if (!post) {throw new AppError(404, "Post not found");}
     return { success: true, status: 200, message: "OK", data: transformPost(post) };
   } catch (error) {
     throw { status: error.status || 500, message: error.message || "Failed to fetch post" };
@@ -355,11 +354,11 @@ exports.createCategory = async (data) => {
 exports.updateCategory = async (id, data) => {
   try {
     const cat = await Category.findByPk(id);
-    if (!cat) throw new AppError(404, "Category not found");
+    if (!cat) {throw new AppError(404, "Category not found");}
     const patch = {};
-    if (data.name !== undefined) patch.name = data.name;
-    if (data.description !== undefined) patch.description = data.description;
-    if (data.slug) patch.slug = await ensureUniqueSlug(Category, slugify(data.slug), cat.id);
+    if (data.name !== undefined) {patch.name = data.name;}
+    if (data.description !== undefined) {patch.description = data.description;}
+    if (data.slug) {patch.slug = await ensureUniqueSlug(Category, slugify(data.slug), cat.id);}
     await cat.update(patch);
     return { success: true, status: 200, message: "Category updated successfully", data: cat.toJSON() };
   } catch (error) {
@@ -370,7 +369,7 @@ exports.updateCategory = async (id, data) => {
 exports.deleteCategory = async (id) => {
   try {
     const cat = await Category.findByPk(id);
-    if (!cat) throw new AppError(404, "Category not found");
+    if (!cat) {throw new AppError(404, "Category not found");}
     await cat.softDelete();
     return { success: true, status: 200, message: "Category deleted successfully" };
   } catch (error) {

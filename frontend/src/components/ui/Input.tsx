@@ -82,7 +82,7 @@ export const Input: React.FC<InputProps> = ({
             <button
               type="button"
               onClick={onRightIconClick}
-              className="p-2.5 text-muted-foreground hover:text-foreground focus:outline-none transition-colors"
+              className="p-2.5 rounded-md text-muted-foreground hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors"
             >
               {rightIcon}
             </button>
@@ -93,7 +93,7 @@ export const Input: React.FC<InputProps> = ({
             type="button"
             onClick={() => setShowPassword(!showPassword)}
             aria-label={showPassword ? "Hide password" : "Show password"}
-            className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-muted-foreground hover:text-foreground focus:outline-none transition-colors"
+            className="absolute inset-y-0 right-0 pr-3.5 flex items-center rounded-md text-muted-foreground hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring transition-colors"
           >
             {showPassword ? (
               <EyeOff className="h-4 w-4" />

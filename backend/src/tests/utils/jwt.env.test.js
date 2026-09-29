@@ -22,14 +22,14 @@ describe("jwt.util env validation", () => {
 
   it("should throw if JWT_ACCESS_SECRET is missing", () => {
     expect(() => require("../../utils/jwt.util")).toThrow(
-      "JWT_ACCESS_SECRET environment variable is required"
+      "JWT_ACCESS_SECRET environment variable is required",
     );
   });
 
   it("should throw if JWT_REFRESH_SECRET is missing", () => {
     process.env.JWT_ACCESS_SECRET = "test-access-secret";
     expect(() => require("../../utils/jwt.util")).toThrow(
-      "JWT_REFRESH_SECRET environment variable is required"
+      "JWT_REFRESH_SECRET environment variable is required",
     );
   });
 

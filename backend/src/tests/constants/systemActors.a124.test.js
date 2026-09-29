@@ -27,7 +27,8 @@ const sourceFiles = (dir = SRC) =>
   fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {return entry.name === "tests" ? [] : sourceFiles(full);}
-    return entry.name.endsWith(".js") ? [full] : [];
+    // ADR-087 Amendment 4: .ts too — a converted file must not leave this guard.
+    return /\.(js|ts)$/.test(entry.name) ? [full] : [];
   });
 
 describe("A-124 — system actors", () => {
