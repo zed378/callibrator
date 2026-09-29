@@ -3,15 +3,7 @@ require("dotenv").config({ path: ".env" });
 
 // P9-03 / ADR-087 — the same TypeScript transform as jest.config.js (see the
 // comment there), so the e2e suite keeps running when its first spec converts.
-const TYPESCRIPT_TRANSFORM = [
-  "babel-jest",
-  {
-    babelrc: false,
-    configFile: false,
-    presets: [["@babel/preset-typescript", { allowDeclareFields: true }]],
-    plugins: ["@babel/plugin-transform-modules-commonjs"],
-  },
-];
+const TYPESCRIPT_TRANSFORM = "<rootDir>/jest.transform.js";
 
 module.exports = {
   testEnvironment: "node",

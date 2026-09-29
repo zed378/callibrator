@@ -347,7 +347,8 @@ const REGULATED = /\bsign|approv|revok|submit|publish|acknowledg|certificate|cal
 /** Every write route that looks like a regulated act, and whether it is guarded. */
 const candidates = () => {
   const out = [];
-  for (const file of fs.readdirSync(ROUTES_DIR).filter((f) => f.endsWith(".js")).sort()) {
+  // ADR-087 Amendment 4: .ts too; exemptions stay keyed by the file's name.
+  for (const file of fs.readdirSync(ROUTES_DIR).filter((f) => /\.(js|ts)$/.test(f)).sort()) {
     const source = fs.readFileSync(path.join(ROUTES_DIR, file), "utf8");
     for (const call of routeCalls(source)) {
       if (call.method === "GET") {
@@ -416,6 +417,7 @@ const NOT_GUARDED = {
   "predictiveMaintenance.route.js POST /recommendations/:deviceId/approve":
     "A-145 reviewed: sets a device's calibrationIntervalDays — equipment master data that PUT /calibration-devices/:id edits unguarded under the same grant, so guarding here alone would be theatre. Audited in its transaction (APPROVE, APPLY_RECOMMENDED_INTERVAL)",
   "session.route.js POST /:id/revoke": "session revocation, not a record",
+  "session.route.js POST /mine/:id/revoke": "the caller ends one of their own sessions (Q-08, ADR-084), not a record",
   "session.route.js POST /user/:userId/revoke-all": "session revocation, not a record",
   "workflows.route.js DELETE /:id": "workflow definition management, not a record",
   "workflows.route.js POST /": "workflow definition management, not a record",

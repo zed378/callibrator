@@ -135,13 +135,14 @@ export const EditModal: React.FC<EditModalProps> = ({
                       height={64}
                       className="w-16 h-16 rounded-full object-cover border-2 border-primary/50"
                     />
-                    <div className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <div className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center justify-center">
                       <button
                         type="button"
                         className="bg-white rounded-full p-1.5 shadow-lg hover:bg-muted transition-colors"
                         onClick={onClearPicture}
+                        aria-label="Remove photo"
                       >
-                        <Camera className="h-4 w-4 text-primary" />
+                        <Camera className="h-4 w-4 text-primary" aria-hidden="true" />
                       </button>
                     </div>
                   </div>

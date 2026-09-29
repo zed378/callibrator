@@ -262,7 +262,7 @@ exports.generateKeyPair = async (tenantId) => {
     // delete the key it had just created without listing first.
     return { id: created.id, keyId, publicKey, privateKey: "[REDACTED]" };
   } catch (err) {
-    if (err.status) throw err;
+    if (err.status) {throw err;}
     logger.error("Key pair generation failed", {
       tenantId,
       error: err.message,
@@ -383,7 +383,7 @@ exports.deleteKeyPair = async (keyPairId, tenantId) => {
     logger.info("E-signature key pair deleted", { tenantId, keyPairId });
     return { success: true };
   } catch (err) {
-    if (err.status) throw err;
+    if (err.status) {throw err;}
     logger.error("Failed to delete key pair", {
       keyPairId,
       error: err.message,
@@ -581,7 +581,7 @@ exports.createSignatureWorkflow = async (tenantId, data, actor = {}) => {
       })),
     };
   } catch (err) {
-    if (err.status) throw err;
+    if (err.status) {throw err;}
     logger.error("Failed to create signature workflow", {
       tenantId,
       error: err.message,
@@ -960,7 +960,7 @@ exports.signDocument = async (stepId, userId, signatureData) => {
       certificate: generateSignatureCertificate(signature, workflow),
     };
   } catch (err) {
-    if (err.status) throw err;
+    if (err.status) {throw err;}
     logger.error("Signature failed", {
       stepId,
       userId,
@@ -1629,7 +1629,7 @@ exports.updateWorkflow = async (workflowId, tenantId, updates = {}, actor = {}) 
       return workflow;
     });
   } catch (err) {
-    if (err.status) throw err;
+    if (err.status) {throw err;}
     logger.error("Failed to update workflow", {
       workflowId,
       error: err.message,
@@ -1680,7 +1680,7 @@ exports.deleteWorkflow = async (workflowId, tenantId, actor = {}) => {
     logger.info("Signature workflow deleted", { tenantId, workflowId });
     return { success: true };
   } catch (err) {
-    if (err.status) throw err;
+    if (err.status) {throw err;}
     logger.error("Failed to delete workflow", {
       workflowId,
       error: err.message,
@@ -1863,7 +1863,7 @@ exports.cancelWorkflow = async (workflowId, userId, tenantId, actor = {}, reason
 
     return { success: true };
   } catch (err) {
-    if (err.status) throw err;
+    if (err.status) {throw err;}
     logger.error("Failed to cancel workflow", {
       workflowId,
       error: err.message,

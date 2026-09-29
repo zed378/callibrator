@@ -43,8 +43,9 @@ export const LogoPreview: React.FC<LogoPreviewProps> = ({
               size="sm"
               className="absolute -top-2 -right-2 h-6 w-6 rounded-full p-0"
               onClick={onClear}
+              aria-label="Remove logo"
             >
-              <X className="h-3 w-3" />
+              <X className="h-3 w-3" aria-hidden="true" />
             </Button>
           </div>
         ) : (

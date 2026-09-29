@@ -34,7 +34,7 @@ async function httpPatch(path, data = {}, headers = {}) {
 let token = null;
 
 async function login() {
-  if (token) return token;
+  if (token) {return token;}
   const { body } = await httpPost("/auth/login", {
     user: "sys@mail.com",
     password: "123123",
@@ -83,14 +83,14 @@ describe("E2E Roles (/api/v1/roles)", () => {
   });
 
   test("GET /roles/:id — fetch created role", async () => {
-    if (!created.roleId) return;
+    if (!created.roleId) {return;}
     const { status, body } = await httpGet(`/roles/${created.roleId}`, authHeader(token));
     expect(status).toBe(200);
     expect(body.data.id).toBe(created.roleId);
   });
 
   test("PATCH /roles/:id — update role", async () => {
-    if (!created.roleId) return;
+    if (!created.roleId) {return;}
     const { status, body } = await httpPatch(
       `/roles/${created.roleId}`,
       { description: "updated by e2e", status: "active" },

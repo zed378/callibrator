@@ -134,8 +134,9 @@ export const CreateModal: React.FC<CreateModalProps> = ({
                       size="sm"
                       className="absolute -top-2 -right-2 h-5 w-5 rounded-full p-0 bg-card"
                       onClick={() => setPicture("")}
+                      aria-label="Remove photo"
                     >
-                      <Camera className="h-3 w-3" />
+                      <Camera className="h-3 w-3" aria-hidden="true" />
                     </Button>
                   </div>
                 ) : (

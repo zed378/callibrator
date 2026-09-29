@@ -5311,7 +5311,8 @@ forced change is exempt.
 - `docs/API/01-AUTHENTICATION-API.md`, the `/just-update-password` row.
 
 **Verified — PostgreSQL 18.6 (`pgvector/pgvector:pg18`, throwaway container, removed afterwards):**
-- **Fresh boot** (`node index.js`, `DB_APP_ROLE=callibrator_app`, empty database): 58 migrations
+- **Fresh boot** (`node index.js` as run then; today `npm start` = `node --import tsx index.js`,
+  ADR-087 — `DB_APP_ROLE=callibrator_app`, empty database): 58 migrations
   applied, ending with `0078`. `[schema-verify] OK: 72 tables, 864 columns and 7 control objects`, and
   queries ran as `callibrator_app`.
 - **Upgrade boot** (column dropped, `0078` row deleted, a flagged legacy account inserted): only `0078`

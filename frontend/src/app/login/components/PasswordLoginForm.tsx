@@ -75,12 +75,14 @@ export function PasswordLoginForm({
           <button
             type="button"
             onClick={() => setShowPassword(!showPassword)}
+            aria-label={showPassword ? "Hide password" : "Show password"}
+            aria-pressed={showPassword}
             className="absolute inset-y-0 right-0 pr-4 flex items-center text-muted-foreground hover:text-foreground transition-colors"
           >
             {showPassword ? (
-              <EyeOff className="h-5 w-5" />
+              <EyeOff className="h-5 w-5" aria-hidden="true" />
             ) : (
-              <Eye className="h-5 w-5" />
+              <Eye className="h-5 w-5" aria-hidden="true" />
             )}
           </button>
         </div>

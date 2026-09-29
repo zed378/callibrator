@@ -112,7 +112,7 @@ describe("Q-02 (ADR-084): retired is terminal", () => {
       expect(result.status).toBe(409);
     });
 
-    it("attributes the audit row to nobody when no actor is given", async () => {
+    it("with no actor given, passes nulls on (audit.service is what refuses an actor-less row)", async () => {
       const auditService = require("../../services/audit.service");
       const { db } = require("../../config");
       mockDevice.current = { id: DEVICE, name: "Infusion pump", status: "retired", update: jest.fn() };

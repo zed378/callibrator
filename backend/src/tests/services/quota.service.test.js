@@ -1,4 +1,3 @@
-// eslint-disable-next-line no-undef
 jest.mock("../../models", () => {
   const mockTenant = {
     findByPk: jest.fn(),

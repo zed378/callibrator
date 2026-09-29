@@ -99,7 +99,7 @@ describe("jwt utility", () => {
       expect(mockSign).toHaveBeenCalledWith(
         { id: "user-123", typ: "access" },
         expect.any(String),
-        expect.any(Object)
+        expect.any(Object),
       );
     });
 
@@ -179,7 +179,7 @@ describe("jwt utility", () => {
         throw new Error("invalid");
       });
       expect(() => jwtUtils.verifyAccessToken("invalid-token")).toThrow(
-        "Invalid or expired access token"
+        "Invalid or expired access token",
       );
       expect(mockVerify).toHaveBeenCalledTimes(1);
     });

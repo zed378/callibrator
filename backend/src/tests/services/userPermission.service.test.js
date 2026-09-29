@@ -1,4 +1,3 @@
-// eslint-disable-next-line no-undef
 // A-41: mutations run in a managed transaction and audit through logAction.
 // In-transaction effects are asserted against a schema-enforcing ledger in
 // roles.audit.a41.test.js.

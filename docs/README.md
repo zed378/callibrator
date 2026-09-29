@@ -27,28 +27,35 @@ The **execution plan** built from these documents lives in [`../TASKS/`](../TASK
 
 ```
 PLAN/          19 files — product vision, requirements, business rules, roadmap
-ARCHITECTURE/  12 files — high-level system design & Dual-Backend specification
+ARCHITECTURE/  13 files — high-level system design & Dual-Backend specification
 API/           15 files — complete API contract & backend interoperability contract
 DATABASE/      14 files — the 72-model schema, grouped by domain
-SECURITY/      13 files — threat model through incident response
+SECURITY/      15 files — threat model through incident response
                           (SECURITY/05 is mandatory reading — tenant isolation is
                           the number-one control in this system)
-UI-UX/         20 files — experience design & the design system
+MULTI-TENANCY/  5 files — extends SECURITY/05: hierarchy, lifecycle & backup,
+                          realtime isolation, super-admin operations, cross-tenant gaps
+UI-UX/         21 files — experience design & the design system
 FRONTEND/      14 files — frontend architecture, multi-frontend & shared components
 BACKEND/       13 files — backend architecture, standards, module reference & Go porting spec
 ENGINEERING/   17 files — how code is written here: JS, TS & Go coding standards
 DEVOPS/        12 files — environments, CI/CD, deployment, observability
 TESTING/        8 files — the test strategy and every suite that enforces it
-DEVELOPER/      3 files — integrator-facing: authentication, IoT ingest, SCIM
+DEVELOPER/      6 files — integrator-facing: quickstart, authentication, rate limits, IoT ingest, SCIM
+WEBHOOK/        5 files — outbound webhooks: architecture, events, signing, retry
+SEARCH/         3 files — global search and its full-text layer
 OBSERVABILITY/  2 files — what this system actually logs, and where it goes
-STORAGE/        1 file  — pluggable object storage, per tenant
+STORAGE/        3 files — pluggable object storage, per tenant, and its operations
 ARCHIVE/        9 files — superseded documents, kept for provenance, never authoritative
 ```
 
-The last four categories are new as of 2026-09-23 and are **incomplete**: several
-documents elsewhere link to files in them that have not been written yet
-(`MULTI-TENANCY/`, `SEARCH/`, `WEBHOOK/` do not exist at all). Those links are broken today.
-The files that do exist are as-built and name their source.
+Counts are `find docs/<folder> -name "*.md"`, README included, taken 2026-09-28; they sum to 194, and
+with this file to 195. Other documents were being added the same day — **re-count before quoting**.
+
+The categories from `DEVELOPER/` down were added from 2026-09-23 and are **incomplete by design**:
+each numbers its documents with gaps left for guides not yet written, and — except `OBSERVABILITY/` —
+its `README.md` names the unassigned numbers. A link to a path absent from a category's README table is a broken link, not a
+hidden document. The files that do exist are as-built and name their source.
 
 ## What This Documents
 

@@ -4,19 +4,28 @@
 
 ## Health Endpoints
 
-| Endpoint | Returns |
-|---|---|
-| `GET /health` | 200 with uptime, memory, pid, node version, `database: "connected"`; **503** with `database: "disconnected"` |
-| `GET /` | 200 liveness |
+> **Corrected (ADR-088).** This section used to show `/health` returning uptime, memory, pid, the Node version and `database: "connected"`, and `GET /` as the liveness probe. That was the pre-A-06/A-15 handler; none of those fields is returned any more, and none should be assumed by a client.
 
-`/health` calls `db.authenticate()`, which makes it a genuine **readiness** probe.
+| Endpoint | Gate | Returns |
+|---|---|---|
+| `GET /live` | none | 200 `OK` (plain text). **Dependency-free** — liveness |
+| `GET /ready` | none | 200 `READY` / **503** `NOT READY` (plain text) — readiness over PostgreSQL, Redis and RabbitMQ |
+| `GET /health` | none | 200 `{"status":"ok"}` / **503** `{"status":"unavailable"}` — the same verdict as `/ready`, as JSON. Nothing else: no runtime detail, no dependency named |
+| `GET /api/v1/health` | `auth` + `denyApiKey` + `superAdminOnly` | the per-dependency breakdown in the response envelope — `postgres`, `redis`, `rabbitmq` (required), `mqtt`, `clamav` (optional; `"not configured"` when switched off, ClamAV `"unknown"` when enabled) with `latencyMs`/`error`; **503** when a required dependency is unhealthy |
+| `GET /api/v1/health/jobs` | super admin (same chain) | scheduled-job state (P7-02); **503** when a job's last run failed or it is overdue |
+| `GET /api/v1/health/metrics` | `Authorization: Bearer <METRICS_TOKEN>` | Prometheus text (P7-02); **404** while `METRICS_TOKEN` is unset or shorter than 32 characters, 401 on a wrong token |
+| `GET /` | none | 200 `{"status":"Success","message":"Your API is running"}` — not used by any probe |
 
-**Do not use it as a liveness probe.** A liveness probe that fails restarts the container, and restarting a healthy process during a database blip turns a brief outage into a crash loop.
+Sources: `backend/src/routes/internal/health.route.js`, `backend/src/controllers/health.controller.js`, `backend/src/services/health.service.js`, `backend/src/middlewares/metricsAuth.middleware.js`; mounted in `backend/index.js` (`/api/v1/health` before the public probes). The public verdict is cached for `HEALTH_CACHE_TTL_MS` (default 5000 ms), each probe is capped at `HEALTH_PROBE_TIMEOUT_MS` (default 2000 ms), and the gated breakdown always probes fresh. The three public paths are exempt from the `FORCE_HTTPS` redirect (S-09, ADR-081).
+
+`/health` and `/ready` are genuine **readiness** probes: they fail when PostgreSQL, Redis or RabbitMQ is unreachable, not the database alone.
+
+**Do not use them as a liveness probe.** A liveness probe that fails restarts the container, and restarting a healthy process during a datastore blip turns a brief outage into a crash loop.
 
 | Probe | Endpoint |
 |---|---|
-| Liveness | `GET /` |
-| Readiness | `GET /health` |
+| Liveness | `GET /live` |
+| Readiness (and the Helm startup probe, and the compose healthcheck) | `GET /health` |
 
 The frontend health check (`wget --spider :3000`) proves the server is serving. A frontend that is healthy while the API is down is **correct** — it renders error states.
 
@@ -27,7 +36,7 @@ The frontend health check (`wget --spider :3000`) proves the server is serving. 
 | Signal | Alert when |
 |---|---|
 | `/health` non-200 | any, sustained |
-| `database: "disconnected"` | any |
+| a required dependency `unhealthy` in `GET /api/v1/health` (the public `/health` names none — ADR-088) | any |
 | Container restarts | more than expected |
 | Redis, RabbitMQ reachability | any failure |
 

@@ -96,7 +96,7 @@ A session here is an audit record, not a cache entry (ADR-034). It answers "whic
 
 This section said "recorded and checked" until **2026-09-23**, pointing at `sessionSecurity.middleware.js`. That file was imported by nothing and its SQL targeted a `"Sessions"` table with camelCase columns, so it never ran; it was deleted under audit finding A-12. **Binding is not implemented.**
 
-Whether it should be is a product decision — strict IP binding breaks legitimate users on mobile networks that rotate addresses — and is Q-08 in [`../../TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md).
+It will not be: **ADR-084 (Q-08)** decided against IP and user-agent binding — strict binding breaks legitimate users on mobile networks that rotate addresses. The two columns are shown to the user in `GET /api/v1/sessions/mine`, which is the control instead.
 
 ## `consent_records`
 

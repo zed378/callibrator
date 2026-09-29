@@ -117,10 +117,13 @@ Two of these are easy to miss and both fail confusingly:
 
 | Endpoint | Meaning |
 |---|---|
-| `GET /health` | 200 with uptime, memory, pid and `database: "connected"`; **503** with `database: "disconnected"` |
-| `GET /` | liveness |
+| `GET /live` | liveness — 200 `OK`, dependency-free. The Helm liveness probe |
+| `GET /ready` | readiness — 200 `READY` / **503** `NOT READY` (plain text) |
+| `GET /health` | readiness — 200 `{"status":"ok"}` / **503** `{"status":"unavailable"}`, verdict only. The Helm readiness and startup probes and the compose healthcheck |
+| `GET /api/v1/health` | the per-dependency breakdown — super admin only (`auth` + `denyApiKey` + `superAdminOnly`); `/jobs` and `/metrics` (bearer `METRICS_TOKEN`, 404 until set) beside it (P7-02) |
+| `GET /` | 200 `{"status":"Success",...}` — not a probe |
 
-`/health` is a genuine readiness probe — it proves the database is reachable. A container returning 503 here is correctly kept out of rotation, and using it as a liveness probe would restart a healthy process during a database blip.
+`/ready` and `/health` are genuine readiness probes — they fail when PostgreSQL, Redis or RabbitMQ is unreachable. A container returning 503 here is correctly kept out of rotation, and using either as a liveness probe would restart a healthy process during a datastore blip. The public probes disclose no runtime detail and name no dependency; the probe paths are exempt from `FORCE_HTTPS` (S-09, ADR-081). *(Corrected, ADR-088: this table used to show uptime, memory, pid and `database: "connected"`, and `GET /` as liveness — the pre-A-06/A-15 handler.)* Details: [`../DEVOPS/05-MONITORING.md`](../DEVOPS/05-MONITORING.md#health-endpoints).
 
 ## Scaling
 

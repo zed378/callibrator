@@ -52,9 +52,9 @@ export const CardHeader: React.FC<CardHeaderProps> = ({
       <div className="flex items-center justify-between gap-4">
         <div>
           {typeof title === "string" ? (
-            <h3 className="text-lg font-bold tracking-tight text-foreground">
+            <h2 className="text-lg font-bold tracking-tight text-foreground">
               {title}
-            </h3>
+            </h2>
           ) : (
             <span className="font-bold text-foreground">
               {title}

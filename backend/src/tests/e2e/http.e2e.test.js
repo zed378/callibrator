@@ -155,7 +155,7 @@ describe("E2E HTTP Protocol & Error Handling (HTTP)", () => {
 
   test("Multiple concurrent requests don't crash the server", async () => {
     const promises = Array.from({ length: 10 }, () =>
-      httpGet("/auth/login").catch(() => null)
+      httpGet("/auth/login").catch(() => null),
     );
 
     const results = await Promise.all(promises);

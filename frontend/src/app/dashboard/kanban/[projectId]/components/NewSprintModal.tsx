@@ -39,8 +39,8 @@ export default function NewSprintModal({ isOpen, onClose, onCreate }: Props) {
           required
         />
         <div>
-          <label className="text-sm font-medium">Goal</label>
-          <Textarea
+          <label htmlFor="kanban-projectid-components-newsprintmodal-f1" className="text-sm font-medium">Goal</label>
+          <Textarea id="kanban-projectid-components-newsprintmodal-f1"
             value={goal}
             onChange={(e) => setGoal(e.target.value)}
             rows={2}

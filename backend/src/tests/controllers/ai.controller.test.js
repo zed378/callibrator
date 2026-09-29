@@ -100,7 +100,7 @@ describe("ai Controller", () => {
       req.body = { question: "What is the calibration interval for ventilator X?" };
 
       aiService.queryDocuments.mockResolvedValue(
-        "The calibration interval for ventilator X is 12 months as per manufacturer guidelines."
+        "The calibration interval for ventilator X is 12 months as per manufacturer guidelines.",
       );
 
       await aiController.queryRAG(req, res, next);

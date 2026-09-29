@@ -31,7 +31,7 @@ function createMockInstance(overrides = {}) {
   const mockInstance = {
     update: jest.fn().mockResolvedValue({}),
     destroy: jest.fn().mockResolvedValue(true),
-    get({ plain = false } = {}) { return plain ? { ...this } : this; }
+    get({ plain = false } = {}) { return plain ? { ...this } : this; },
   };
   return { ...mockInstance, ...overrides };
 }
@@ -192,7 +192,7 @@ describe("riskService", () => {
         id: riskId,
         title: "Test Risk",
         status: "open",
-        get({ plain = false } = {}) { return plain ? { ...this } : this; }
+        get({ plain = false } = {}) { return plain ? { ...this } : this; },
       };
 
       Risk.findOne.mockResolvedValueOnce(mockRisk);
@@ -242,13 +242,13 @@ describe("riskService", () => {
       const tenantId = "tenant-1";
       const riskId = "risk-1";
       const updateData = { status: "closed" };
-      
+
       const mockRisk = createMockInstance({
         id: riskId,
         title: "Test Risk",
         status: "open",
       });
-      
+
       // Override update to mutate the instance
       mockRisk.update.mockImplementation(async (data) => {
         Object.assign(mockRisk, data);
@@ -262,7 +262,7 @@ describe("riskService", () => {
 
       // The update should have been called with the updateData
       expect(mockRisk.update).toHaveBeenCalledWith(updateData);
-      
+
       // The result should have the updated properties
       expect(result).toHaveProperty("id", riskId);
       expect(result).toHaveProperty("title", "Test Risk");

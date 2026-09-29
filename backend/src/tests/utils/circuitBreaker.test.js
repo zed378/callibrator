@@ -171,7 +171,7 @@ describe("circuitBreaker", () => {
     it("should log error when event listener throws", () => {
       const cb = new CircuitBreaker({ name: "listener_test" });
       const { logger } = require("../../middlewares/activityLog.middleware");
-      
+
       cb.on("open", () => {
         throw new Error("Listener crash");
       });

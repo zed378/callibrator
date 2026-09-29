@@ -46,7 +46,7 @@ describe("reporting.service", () => {
         [{ key: "a", label: "A" }],
         [{ a: "@SUM(1,2)" }],
       );
-      expect(csv.split("\n")[1]).toBe(`"'@SUM(1,2)"`);
+      expect(csv.split("\n")[1]).toBe("\"'@SUM(1,2)\"");
     });
 
     // The guard must not corrupt real data: a negative quantity is a number,

@@ -88,6 +88,7 @@ export default function ManageBoardModal({
                     <Input
                       value={editName}
                       onChange={(e) => setEditName(e.target.value)}
+                      aria-label={`Rename column ${c.name}`}
                       className="flex-1"
                     />
                     <Button
@@ -99,15 +100,17 @@ export default function ManageBoardModal({
                           setEditingId(null);
                         })
                       }
+                      aria-label="Save column name"
                     >
-                      <Check className="h-4 w-4" />
+                      <Check className="h-4 w-4" aria-hidden="true" />
                     </Button>
                     <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => setEditingId(null)}
+                      aria-label="Cancel rename"
                     >
-                      <X className="h-4 w-4" />
+                      <X className="h-4 w-4" aria-hidden="true" />
                     </Button>
                   </>
                 ) : (
@@ -120,6 +123,7 @@ export default function ManageBoardModal({
                       <>
                         <button
                           onClick={() => move(c.id, -1)}
+                          aria-label={`Move ${c.name} up`}
                           disabled={idx === 0}
                           className="text-muted-foreground hover:text-foreground disabled:opacity-30"
                         >
@@ -127,6 +131,7 @@ export default function ManageBoardModal({
                         </button>
                         <button
                           onClick={() => move(c.id, 1)}
+                          aria-label={`Move ${c.name} down`}
                           disabled={idx === movable.length - 1}
                           className="text-muted-foreground hover:text-foreground disabled:opacity-30"
                         >
@@ -145,6 +150,7 @@ export default function ManageBoardModal({
                           onClick={() =>
                             guard(() => onDeleteColumn(c.id))
                           }
+                          aria-label={`Delete column ${c.name}`}
                           className="text-muted-foreground hover:text-destructive"
                         >
                           <Trash2 className="h-4 w-4" />
@@ -197,7 +203,10 @@ export default function ManageBoardModal({
                 style={{ backgroundColor: l.color || "#94a3b8" }}
               >
                 {l.name}
-                <button onClick={() => guard(() => onDeleteLabel(l.id))}>
+                <button
+                  onClick={() => guard(() => onDeleteLabel(l.id))}
+                  aria-label={`Delete label ${l.name}`}
+                >
                   <X className="h-3 w-3" />
                 </button>
               </span>
@@ -206,6 +215,7 @@ export default function ManageBoardModal({
           <div className="flex gap-2 items-center">
             <input
               type="color"
+              aria-label="Label colour"
               value={labelColor}
               onChange={(e) => setLabelColor(e.target.value)}
               className="h-9 w-12 rounded border border-border bg-transparent"
@@ -214,6 +224,7 @@ export default function ManageBoardModal({
               value={labelName}
               onChange={(e) => setLabelName(e.target.value)}
               placeholder="Label name"
+              aria-label="Label name"
               className="flex-1"
             />
             <Button

@@ -111,8 +111,10 @@ Both are Phase 6, and both are stated here because a board that hides its failur
 
 | | Status |
 |---|---|
-| Backend unit-test coverage gate (100%) | **failing** |
-| Live E2E suite in one uninterrupted run | **never achieved** — every fix verified individually |
+| Backend unit-test coverage gate (100%) | **passing** since 2026-09-11 (P6-01); latest 12,890 tests at 100%, 2026-09-28 — see `CLAUDE.md` § What Is Currently Failing |
+| Live E2E suite in one uninterrupted run | **achieved 2026-09-28, twice** (P6-02, ADR-077) — by hand on a compose stack, not in CI |
+
+*Both rows were stale until 2026-09-28 (ADR-088); `CLAUDE.md` carries the current list of what is still open.*
 
 A gate that is currently failing is a gate nobody trusts. A suite that has never passed as a suite has not passed.
 

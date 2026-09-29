@@ -9,9 +9,9 @@ import { testimonials, type Testimonial } from "@/data/landing";
 
 function Stars({ className = "" }: { className?: string }) {
   return (
-    <div className={`flex gap-0.5 ${className}`} aria-label="5 out of 5">
+    <div className={`flex gap-0.5 ${className}`} role="img" aria-label="5 out of 5">
       {Array.from({ length: 5 }).map((_, i) => (
-        <Star key={i} className="h-4 w-4 fill-warning text-warning" />
+        <Star key={i} className="h-4 w-4 fill-warning text-warning" aria-hidden="true" />
       ))}
     </div>
   );

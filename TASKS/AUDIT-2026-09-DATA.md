@@ -46,14 +46,14 @@ describes the hooks and the raw-SQL rule more confidently than the code supports
 | D-19 | `iot_readings` has no retention policy and no `(tenant_id, timestamp)` index | medium | from code | **DONE** 2026-09-25 (ADR-064) — iot_readings is a retention entity (default keep, floor 730 d); `(tenant_id, device_id, timestamp)` and `(tenant_id, timestamp)`; not partitioned |
 | D-20 | fifteen models declare **no `indexes` block at all** — foreign keys without indexes | medium | from code | **DONE** 2026-09-25 (ADR-064) — `0067`: 75 reviewed indexes (tenant columns, `(tenant_id, status)`, every unindexed FK); PG 18.6-verified |
 | D-21 | DECIMAL comes back from `pg` as a **string**; `invoices.amount` / `tax` are never coerced | medium | from code | **DONE** 2026-09-25 (ADR-064) — a `get()` on every DECIMAL attribute; rule in the backend standards |
-| D-22 | `attachments.resource_id` is a polymorphic id with **no foreign key** and no cleanup | medium | from code | **PARTIAL** 2026-09-25 (ADR-064, ADR-070) — linked types validated (A-97); a parent's soft delete soft-deletes its attachments, audited; orphan report `GET /attachments/orphans`. Open: free-string type on unlinked uploads; orphan query not yet run on the deployed database |
+| D-22 | `attachments.resource_id` is a polymorphic id with **no foreign key** and no cleanup | medium | from code | **DONE** 2026-09-28 (ADR-064, ADR-070, ADR-083) — linked types validated (A-97); parent cascade; orphan report; `resource_type` from one list (`constants/attachmentResources`); a kanban project delete reaches its cards' files; deleted files swept after 90 days (`attachmentFileSweep`, migration 0088). Open: the orphan query not yet run on the deployed database |
 | D-23 | `hardDeleteOffboardedTenant` force-deletes four tables and leaves the rest to CASCADE or to fail | medium | from code | **DONE** 2026-09-25 (ADR-064) — one transaction; refuses (409) while any retained table holds rows; PG 18.6-verified |
-| D-24 | unbounded reads: DSAR export, dashboard trend, SOP fan-out, signature history | medium | from code | **PARTIAL** 2026-09-25 (ADR-064, ADR-070) — `monthlyTrend` in SQL; DSAR export streamed and complete; SOP fan-out batched; signature history paginated. Open: the review check for an unbounded `findAll` |
-| D-25 | two soft-delete mechanisms coexist (`paranoid` + `isDeleted`) with no rule for which | low | from code | **PARTIAL** 2026-09-25 — decision (ADR-064): `paranoid` for new models; the eleven dual models not converted |
-| D-26 | 46 native `ENUM` types, none derived from the constants they mirror | low | from code | **PARTIAL** 2026-09-25 — decision (ADR-064): native ENUMs stay; a new value is a migration |
+| D-24 | unbounded reads: DSAR export, dashboard trend, SOP fan-out, signature history | medium | from code | **DONE** 2026-09-28 (ADR-064, ADR-070, ADR-083) — the paged reads, plus the review check (`unboundedFindAll.d24`: every unbounded `findAll` in services is on a reviewed list; 24 marked OPEN) and `maskAuditTrail` keyset-paged |
+| D-25 | two soft-delete mechanisms coexist (`paranoid` + `isDeleted`) with no rule for which | low | from code | **PARTIAL** 2026-09-28 — decision (ADR-064); pinned (ADR-083, `softDeleteMechanisms.d25`): 12 dual models + `Session`, a new flagged model fails; conversion deferred by decision |
+| D-26 | 46 native `ENUM` types, none derived from the constants they mirror | low | from code | **DONE** 2026-09-28 — decision (ADR-064): native ENUMs stay; every ENUM held to its constant/validator mirror (`enumMirrors.d26`) and to `pg_enum` on PG 18 (`dataLayer.dbD.live`) (ADR-083) |
 | D-27 | 14 `JSON`/`JSONB` columns with no declared shape | low | from code | **DONE** 2026-09-25 (ADR-070) — all 14 columns declare a validated shape; `audit_logs.changes` redacted at write, tested on fixtures |
 | D-28 | `"UsageMetrics"` is the only camelCase, non-`underscored` table in the schema | low | from code | **DONE** 2026-09-25 — decision (ADR-064): kept, documented in `11-BILLING-TABLES.md` |
-| D-29 | migration `0019` reviewed line by line — **correct**; two residual risks named | info | from code | — |
+| D-29 | migration `0019` reviewed line by line — **correct**; two residual risks named | info | from code | **DONE** 2026-09-28 (ADR-083) — index recognised by column as well as name; the `context.queryInterface \|\| context` contract tested and frozen to 16 migrations (`0019-signature-crypto-fields.d29`) |
 
 **Counts:** 1 critical · 8 high · 15 medium · 4 low · 1 informational.
 
@@ -1348,7 +1348,7 @@ Then a test that reads a row back and asserts the **type**.
 
 | | |
 |---|---|
-| **Status** | **PARTIAL** 2026-09-25 (ADR-064, ADR-070). A linked attachment's `resourceType` must be on `LINKABLE_RESOURCES` and its `resourceId` a live record of the caller's tenant (A-97). **ADR-070:** deleting a certificate, calibration device, work order or kanban card soft-deletes its attachments in the same transaction, one DELETE audit row each naming the parent (`changes.cascade`), file kept; a calibration record's void does not cascade (retained evidence). Orphan report `GET /api/v1/attachments/orphans` (tenant admin + `equipment: read`, tenant-bound on attachment AND parent). Tests: `attachment.cascade.d22` (10), `attachments.orphans.d22` (6), the parent services' delete tests; live PG 18.6 as the app role: `dataLayer.dbC.live`. **Still open:** a free-string type on unlinked uploads; the orphan query run against the deployed database; a kanban **project** delete does not cascade to its cards' files |
+| **Status** | **DONE** 2026-09-28 (ADR-064, ADR-070, ADR-083). A linked attachment's `resourceType` must be on `LINKABLE_RESOURCES` and its `resourceId` a live record of the caller's tenant (A-97). **ADR-070:** deleting a certificate, calibration device, work order or kanban card soft-deletes its attachments in the same transaction, one DELETE audit row each naming the parent (`changes.cascade`), file kept; a calibration record's void does not cascade (retained evidence). Orphan report `GET /api/v1/attachments/orphans` (tenant admin + `equipment: read`, tenant-bound on attachment AND parent). Tests: `attachment.cascade.d22` (10), `attachments.orphans.d22` (6), the parent services' delete tests; live PG 18.6 as the app role: `dataLayer.dbC.live`. **ADR-083:** `resource_type` is one of `constants/attachmentResources` (case-insensitive) on every upload — 400 before the scan — and on every model create; a kanban project delete soft-deletes its cards' files (`cascade.via`); files of rows deleted > `ATTACHMENT_FILE_RETENTION_DAYS` (90) are removed by the daily, bounded, audited `attachmentFileSweep` (`file_purged_at`, migration 0088). Tests: `attachment.resourceType.d22`, `attachmentFileSweep.d22`, `attachmentFileSweepScheduler.d22`, `kanban.service` deleteProject, PG 18.6 `dataLayer.dbD.live` (fresh + upgrade). **Still open:** the orphan query run against the deployed database  |
 | **Severity** | medium |
 | **Verified** | from code, 2026-09-23 |
 
@@ -1433,7 +1433,7 @@ function's behaviour on real data is unknown.
 
 | | |
 |---|---|
-| **Status** | **PARTIAL** 2026-09-25 (ADR-064, ADR-070). `monthlyTrend` groups by month in SQL (ADR-064). **ADR-070:** the DSAR export streams keyset pages of 500 through `writeFile(asyncIterable)` and is complete (was truncated at 1,000/5,000) — `gdpr.exportStream.d24` (12,345 audit rows); the SOP fan-out reads and inserts 500 at a time in the publish's transaction — `sop.fanout.d24`; `GET /esignature/history` takes `page`/`limit` (25/200) with rows in `data` and `meta {total,page,limit,totalPages}` top-level — `esignature.newmethods`, `eSignature.envelope.a105a106`, `eSignature.a129a130`, frontend `eSignature.service.test.ts`. **Open:** a review check that flags a new unbounded `findAll`; `dataRetention.service`'s anonymise read (async area) |
+| **Status** | **DONE** 2026-09-28 (ADR-064, ADR-070, ADR-083). `monthlyTrend` groups by month in SQL (ADR-064). **ADR-070:** the DSAR export streams keyset pages of 500 through `writeFile(asyncIterable)` and is complete (was truncated at 1,000/5,000) — `gdpr.exportStream.d24` (12,345 audit rows); the SOP fan-out reads and inserts 500 at a time in the publish's transaction — `sop.fanout.d24`; `GET /esignature/history` takes `page`/`limit` (25/200) with rows in `data` and `meta {total,page,limit,totalPages}` top-level — `esignature.newmethods`, `eSignature.envelope.a105a106`, `eSignature.a129a130`, frontend `eSignature.service.test.ts`. **ADR-083:** the review check is `unboundedFindAll.d24` (every unbounded `findAll` in services on a reviewed list with its reason; 24 OPEN reads recorded as follow-ups); the whole-dataset anonymise read was removed by A-152, and the subject-masking read (`maskAuditTrail`) is keyset-paged — `dataRetention.maskAuditPaged.d24`  |
 | **Severity** | medium |
 | **Verified** | from code, 2026-09-23 |
 
@@ -1472,7 +1472,7 @@ signature history takes a `limit` and a cursor, like every other list route.
 
 | | |
 |---|---|
-| **Status** | **PARTIAL** 2026-09-25 — **decision, ADR-064:** `paranoid` (`deleted_at`) is the mechanism for new models. The eleven dual models, `search.service`'s per-table `softDelete` strings and a both-flags-agree test are **open** |
+| **Status** | **PARTIAL** 2026-09-25 — **decision, ADR-064:** `paranoid` (`deleted_at`) is the mechanism for new models. The eleven dual models, `search.service`'s per-table `softDelete` strings and a both-flags-agree test are **open** . **2026-09-28 (ADR-083):** pinned — `softDeleteMechanisms.d25` lists the 12 dual models and `Session`, fails on a new flagged model, and proves every flagged defaultScope filters `is_deleted` (a default read needs both flags live). Conversion deferred by decision (ADR-083 alternatives) |
 | **Severity** | low |
 | **Verified** | from code, 2026-09-23 |
 
@@ -1508,7 +1508,7 @@ and a comment on each dual model saying which flag is authoritative.
 
 | | |
 |---|---|
-| **Status** | **PARTIAL** 2026-09-25 — **decision, ADR-064:** native ENUMs stay; adding a value is an `ALTER TYPE … ADD VALUE` migration, because `sync()` never adds one (`docs/DATABASE/13-MIGRATIONS.md` 5a). The model-list-equals-constant test is **open** (with Phase 9 typing) |
+| **Status** | **DONE** 2026-09-28 — **decision, ADR-064:** native ENUMs stay; adding a value is an `ALTER TYPE … ADD VALUE` migration, because `sync()` never adds one (`docs/DATABASE/13-MIGRATIONS.md` 5a). The model-list-equals-constant test was open (with Phase 9 typing) . **ADR-083:** `enumMirrors.d26` holds all 48 ENUMs to their constant (equal, ordered) or validator (storable) mirrors, or a stated none; `dataLayer.dbD.live` holds them to `pg_enum` on PG 18.6, fresh and upgrade |
 | **Severity** | low |
 | **Verified** | from code, 2026-09-23 |
 
@@ -1608,7 +1608,7 @@ small.
 
 | | |
 |---|---|
-| **Status** | — (informational) |
+| **Status** | **DONE** 2026-09-28 (ADR-083). Risk 2 mitigated: 0019 recognises the signing-key index by name or by a single-column index on `signing_key_id`. Risk 1 tested, not edited: the manifest passes the QueryInterface itself, which has no `.queryInterface`, and the fallback is frozen to its 16 migrations. `0019-signature-crypto-fields.d29` (6); PG 18.6 `dataLayer.dbD.live` |
 | **Severity** | info |
 | **Verified** | from code, 2026-09-23. **It has never been run**; this audit does not change that |
 

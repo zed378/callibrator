@@ -98,6 +98,12 @@ jobs:
       - name: backend typecheck
         working-directory: backend
         run: npm run typecheck
+      # P9-04 (ADR-087): no new backend .js file — the floor is the committed
+      # list in backend/.ts-ratchet.json. A rewrite of the floor here (files
+      # converted) is discarded with the runner; the check itself is what gates.
+      - name: backend TypeScript ratchet
+        working-directory: backend
+        run: npm run ratchet
 
   # --------------------------------------------------------------------------
   backend-test:

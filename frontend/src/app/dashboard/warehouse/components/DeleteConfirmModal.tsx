@@ -35,7 +35,7 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
           <Button
             variant="primary"
             onClick={onConfirm}
-            className="bg-destructive hover:bg-destructive text-white border-destructive hover:border-destructive"
+            className="bg-destructive hover:bg-destructive text-destructive-foreground border-destructive hover:border-destructive"
           >
             Delete
           </Button>

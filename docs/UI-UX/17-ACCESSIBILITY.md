@@ -15,6 +15,7 @@ The verification page is held to a higher standard than the rest, because it is 
 | UI components, graphical objects | 3:1 |
 | Focus indicator | 3:1 against adjacent colours |
 | **Both themes checked** | a pair that passes in light and fails in dark is a failure |
+| **Tokens pass on their own tints** | a status colour is 4.5:1 as text on its `/10` (and, light, `/15`) tint, and its foreground is 4.5:1 on the solid — [ADR-090](../../MEMORY/DECISIONS.md) |
 
 ### Never colour alone
 

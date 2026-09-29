@@ -38,7 +38,7 @@ describe("search Controller", () => {
     jest.clearAllMocks();
     readableMenus = ["calibration", "warehouse", "certificate"];
     failingMenus = [];
-    req ={ params: {}, body: {}, query: {}, user: { id: "user-1", tenantId: "tenant-1" } };
+    req = { params: {}, body: {}, query: {}, user: { id: "user-1", tenantId: "tenant-1" } };
     res = { status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis() };
     next = jest.fn();
   });

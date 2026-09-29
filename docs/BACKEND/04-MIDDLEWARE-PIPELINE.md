@@ -88,7 +88,9 @@ This section described a `sessionSecurity` middleware performing "session bindin
 
 So: **session fixation protection, a concurrent-session limit and IP/user-agent binding do not exist.** `ip_address` and `user_agent` are recorded on the session row and are never compared against the request. `auth.middleware.js` says so in as many words — *"RBAC Only - No Session Validation"* — and does not consult the `sessions` table at all, which is also why a revoked session stays usable until its access token expires ([`../SECURITY/03-AUTHENTICATION-SECURITY.md`](../SECURITY/03-AUTHENTICATION-SECURITY.md)).
 
-Whether these controls **should** exist is a product decision, not a technical one — strict IP binding logs users out when a mobile network rotates an address, and a concurrent-session cap has to decide whose session is evicted. It is Q-08 in [`../../TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md), not something to implement on judgement.
+**Decided 2026-09-28 — ADR-084 (Q-08).** *Fixation:* impossible by construction — a session id is minted only when authentication completes, a new row every time; the MFA password step issues a purpose token with no `sid` and creates no session (pinned by `auth.sessionFixation.q08.test.js`). *Concurrent sessions:* **no cap**. *IP/user-agent binding:* **none** — a changed address or browser never ends a session; both are recorded at sign-in and refresh and shown to the user. The control in their place is `GET /api/v1/sessions/mine` and `POST /api/v1/sessions/mine/:id/revoke`: a user sees every live session of their own and ends any one, audited in the revoking transaction. *Sockets:* the same rule as HTTP, re-checked while open (ADR-085).
+
+The paragraphs above are the history. Whether these controls **should** exist was a product decision, not a technical one — strict IP binding logs users out when a mobile network rotates an address, and a concurrent-session cap has to decide whose session is evicted. It is Q-08 in [`../../TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md), not something to implement on judgement.
 
 ## The Middlewares That Are Not Middleware
 

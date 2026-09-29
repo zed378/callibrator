@@ -46,7 +46,7 @@ const tenantScopedTables = () => {
   const sequelize = new Sequelize({ dialect: "postgres", logging: false });
   const tables = new Set();
   for (const file of fs.readdirSync(path.join(SRC, "models"))) {
-    if (!file.endsWith(".model.js")) {
+    if (!/\.model\.(js|ts)$/.test(file)) {
       continue;
     }
     const model = require(path.join(SRC, "models", file))(sequelize, DataTypes);
@@ -64,7 +64,7 @@ const sourceFiles = () => {
       const full = path.join(dir, entry.name);
       if (entry.isDirectory()) {
         walk(full);
-      } else if (entry.name.endsWith(".js")) {
+      } else if (/\.(js|ts)$/.test(entry.name)) { // ADR-087 Amendment 4
         out.push(full);
       }
     }

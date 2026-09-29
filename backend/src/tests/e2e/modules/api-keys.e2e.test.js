@@ -22,7 +22,7 @@ describe("E2E API Keys (HTTP)", () => {
   });
 
   afterAll(async () => {
-    if (keyId) await httpDelete(`/api-keys/${keyId}`, authHeader(token));
+    if (keyId) {await httpDelete(`/api-keys/${keyId}`, authHeader(token));}
   });
 
   test("GET /api-keys — list, envelope + top-level meta", async () => {

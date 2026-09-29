@@ -28,7 +28,7 @@ Two consequences follow, and both belong in a threat model before a line of webh
 const webhookAdmin = [auth, denyApiKey, rbac([ROLE_NAMES.TENANT_ADMIN])];
 ```
 
-Applied to all seven: `POST /`, `GET /`, `GET /:id`, `PATCH /:id`, `DELETE /:id`, `GET /:id/deliveries`, `POST /:id/test`. `POST /` additionally carries `requireFeature("webhooks")`, which returns **402** on a plan without the feature (`professional` and above, per `quota.service.js`).
+Applied to all eight: `POST /`, `GET /`, `GET /:id`, `PATCH /:id`, `DELETE /:id`, `GET /:id/deliveries`, `POST /:id/test`, `POST /:id/rotate-secret` (ADR-088: this said seven, before the A-51 rotation route). `POST /` additionally carries `requireFeature("webhooks")`, which returns **402** on a plan without the feature (`professional` and above, per `quota.service.js`).
 
 Each of the three parts is doing distinct work:
 
@@ -44,12 +44,14 @@ Each of the three parts is doing distinct work:
 
 **Before 2026-09-23 every one of these routes carried `auth` alone.** Any authenticated principal in the tenant — the lowest-privileged room user, or any API key — could `PATCH /api/v1/webhooks/:id` and point the tenant's webhook at a host it controlled, then read the tenant's device events off it indefinitely. Recorded as [A-02](../../TASKS/AUDIT-2026-09-REMEDIATION.md); fixed in commit `e326ae5`.
 
-The guard is asserted by `backend/src/tests/routes/routeGuards.a02.test.js`, which checks each of the seven routes for `auth`, `denyApiKey` and `__roles === [TENANT_ADMIN]`, and then sweeps the router for any route left on `auth` alone. That sweep is the part that matters: it fails on a route added later without a gate, which is how the original defect got in.
+The guard is asserted by `backend/src/tests/routes/routeGuards.a02.test.js`, which checks each of the eight routes (ADR-088: this said seven) for `auth`, `denyApiKey` and `__roles === [TENANT_ADMIN]`, and then sweeps the router for any route left on `auth` alone. That sweep is the part that matters: it fails on a route added later without a gate, which is how the original defect got in.
 
 ### Cross-tenant reads return 404
 
-`loadOwned` (`webhook.service.js:87`) does `Webhook.findOne({ where: { id, tenantId } })` and throws `AppError(404, "Webhook not found")`. A webhook id belonging to another tenant is indistinguishable from one that never existed — correct, and the rule stated in `CLAUDE.md`.
+`loadOwned` (`webhook.service.js:225`; ADR-088: this cited `:87`) does `Webhook.findOne({ where: { id, tenantId } })` and throws `AppError(404, "Webhook not found")`. A webhook id belonging to another tenant is indistinguishable from one that never existed — correct, and the rule stated in `CLAUDE.md`.
 
+> **Superseded (ADR-088):** `backend/src/tests/routes/webhooks.twoTenant.test.js` now covers every `:id` route (`GET`, `PATCH`, `DELETE /:id`, `GET /:id/deliveries`, `POST /:id/test`, `POST /:id/rotate-secret`) with `createTwoTenants()` principals on the real router, service, models and tenant hooks. The note below records the state on 2026-09-23.
+>
 > **As-built, 2026-09-23: no test asserts it.** There is no two-tenant test on any `/webhooks/:id` route. `webhooks.route.test.js` asserts only that the module exports a router with routes on valid HTTP methods. `tests/e2e/modules/webhooks.e2e.test.js` logs in as the seeded `SUPER_ADMIN` and walks the happy path — a principal that bypasses `rbac` and, being super-admin, is scoped by neither the hooks nor a second tenant. The behaviour above is read out of the service, not demonstrated by a suite.
 
 ## The Signature
@@ -211,14 +213,14 @@ the new host must never be signed with a key the old host holds, under either he
 
 Two layers, both in `backend/src/utils/ssrf.util.js`, both wired into the webhook path.
 
-**Layer 1 — at registration and at update.** `assertSafeUrl(url)` runs in `createWebhook` (`webhook.service.js:51`) and again in `updateWebhook` whenever `url` is present in the patch (`webhook.service.js:107`). Synchronous, and it rejects with **400**:
+**Layer 1 — at registration and at update.** `assertSafeUrl(url)` runs in `createWebhook` (`webhook.service.js:175`) and again in `updateWebhook` whenever `url` is present in the patch (`webhook.service.js:250`). *(ADR-088: these cited `:51` and `:107`.)* Synchronous, and it rejects with **400**:
 
 - any scheme but `http:` or `https:`
 - embedded credentials (`https://user:pass@host/`)
 - `localhost`, `*.localhost`, `*.local`
 - a literal IP in a blocked range
 
-**Layer 2 — immediately before every dispatch.** `assertResolvedHostIsPublic(webhook.url)` runs at the top of `attemptDelivery` (`webhook.service.js:158`), on **every attempt**, including every retry. It re-runs `assertSafeUrl`, then `dns.lookup(host, { all: true })` and rejects if **any** resolved address is blocked.
+**Layer 2 — immediately before every dispatch.** `assertResolvedHostIsPublic(webhook.url)` runs in `attemptDelivery` before the `fetch` (`webhook.service.js:378`, after the body is built and signed; ADR-088: this said "at the top", `:158`), on **every attempt**, including every retry. It re-runs `assertSafeUrl`, then `dns.lookup(host, { all: true })` and rejects if **any** resolved address is blocked.
 
 Layer 2 exists because layer 1 cannot be sufficient: a hostname that resolved publicly at registration can be repointed at `10.0.0.5` an hour later, and DNS rebinding makes that an attack rather than an accident. Running it per-attempt rather than per-delivery is the right call and should survive any refactor.
 
@@ -227,6 +229,8 @@ Blocked ranges (`BLOCKED_IPV4`, `isBlockedIpv6`): `0.0.0.0/8`, `10/8`, `100.64/1
 A DNS failure is also a 400 — so a receiver whose DNS is down produces `lastError: "URL host could not be resolved"` rather than a timeout.
 
 ### The gap: redirects are followed, and not re-checked
+
+> **Fixed — A-50 (ADR-088: this section said "not fixed").** `attemptDelivery` now passes `redirect: "manual"` to `fetch` (`webhook.service.js:392`), and a `3xx` is recorded as a failed attempt with `lastError` `Redirect (<status>) not followed: re-register the webhook at its new url` (`:405–411`). It retries on the normal schedule. The rest of this section describes the defect as found on 2026-09-23.
 
 `attemptDelivery` calls `fetch` without setting `redirect`, so the runtime default — **follow** — applies. `assertResolvedHostIsPublic` validates the *registered* URL. It does not run again on a redirect target.
 
@@ -244,7 +248,7 @@ That comment predates `ssrf.util.js` and is wrong today: the hardening exists, i
 
 ## The Delivery Log Is Tenant Data
 
-`webhook_deliveries` stores the full `payload` JSONB of every delivery, indefinitely. There is no retention policy on the table and no redaction. `GET /api/v1/webhooks/:id/deliveries` returns the raw rows — `payload`, `lastError`, `responseStatus` — to any tenant admin, scoped by `loadOwned` and by `where: { tenantId, webhookId: id }`.
+`webhook_deliveries` stores the full `payload` JSONB of every delivery, with no redaction. **Retention (ADR-070; ADR-088: this said "indefinitely" and "no retention policy"):** finished rows (`success`, `exhausted`) are deleted once older than `WEBHOOK_DELIVERY_RETENTION_DAYS`, default 30, by `webhookDeliveryPurge.service.js`. `pending` and `failed` rows are kept until they finish. `GET /api/v1/webhooks/:id/deliveries` returns the raw rows — `payload`, `lastError`, `responseStatus` — to any tenant admin, scoped by `loadOwned` and by `where: { tenantId, webhookId: id }`.
 
 That is the right audience for it. It also means every future event payload is retained in the platform's own database as well as sent, and any field added to an event payload is added to this table too.
 
@@ -255,8 +259,8 @@ That is the right audience for it. It also means every future event payload is r
 - [ ] the route still carries `auth, denyApiKey, rbac([ROLE_NAMES.TENANT_ADMIN])`, and `routeGuards.a02.test.js` still sweeps for a route on `auth` alone
 - [ ] `assertSafeUrl` on every path that writes `webhooks.url`; `assertResolvedHostIsPublic` on every path that dispatches
 - [ ] the explicit `where: { tenantId }` in `emitEvent` is intact — on the cron path the hooks add nothing (see [`01-EVENT-CATALOG.md`](./01-EVENT-CATALOG.md) § Tenant Scoping)
-- [ ] the secret is not in any response but the 201 from `POST /`
-- [ ] a cross-tenant `:id` returns 404, not 403 — and, unlike today, a test says so
+- [ ] the secret is in no response but the three that issue one: the 201 from `POST /`, `POST /:id/rotate-secret`, and a `PATCH /:id` that changes the `url` (ADR-088: this said only the 201)
+- [ ] a cross-tenant `:id` returns 404, not 403 — and `webhooks.twoTenant.test.js` still says so for every `:id` route, including any new one
 - [ ] the signed bytes did not change. Any change to the body shape breaks every existing receiver's signature check silently, with no error on the sending side
 
 ## Related

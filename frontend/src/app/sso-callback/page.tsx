@@ -70,10 +70,10 @@ function SsoCallbackHandler() {
   }, [searchParams, loginWithSSOCode, router]);
 
   const cardBg =
-    "bg-white backdrop-blur-xl shadow-xl";
+    "bg-card backdrop-blur-xl shadow-xl";
 
   return (
-    <div className="min-h-screen flex items-center justify-center relative bg-linear-to-br from-muted via-info/10 to-primary/10 overflow-hidden p-6">
+    <main className="min-h-screen flex items-center justify-center relative bg-linear-to-br from-muted via-info/10 to-primary/10 overflow-hidden p-6">
       <AnimatedBackground />
 
       <div
@@ -87,9 +87,9 @@ function SsoCallbackHandler() {
               </div>
               <div className="absolute inset-0 bg-primary/20 rounded-full blur-lg -z-10" />
             </div>
-            <h2 className="text-2xl font-bold text-foreground mb-2">
+            <h1 className="text-2xl font-bold text-foreground mb-2">
               SSO Authentication
-            </h2>
+            </h1>
             <p className="text-muted-foreground mb-6">
               Verifying secure single sign-on response...
             </p>
@@ -126,9 +126,9 @@ function SsoCallbackHandler() {
               </div>
               <div className="absolute inset-0 bg-success/20 rounded-full blur-lg -z-10" />
             </div>
-            <h2 className="text-2xl font-bold text-foreground mb-2">
+            <h1 className="text-2xl font-bold text-foreground mb-2">
               Success
-            </h2>
+            </h1>
             <p className="text-muted-foreground">
               Successfully authenticated. Redirecting to dashboard...
             </p>
@@ -143,10 +143,10 @@ function SsoCallbackHandler() {
               </div>
               <div className="absolute inset-0 bg-destructive/20 rounded-full blur-lg -z-10" />
             </div>
-            <h2 className="text-2xl font-bold text-foreground mb-2">
+            <h1 className="text-2xl font-bold text-foreground mb-2">
               Authentication Error
-            </h2>
-            <p className="text-destructive/90 text-sm mb-8 max-w-sm mx-auto">
+            </h1>
+            <p className="text-destructive text-sm mb-8 max-w-sm mx-auto">
               {error || authError || "Unknown authentication error"}
             </p>
 
@@ -160,7 +160,7 @@ function SsoCallbackHandler() {
           </div>
         )}
       </div>
-    </div>
+    </main>
   );
 }
 

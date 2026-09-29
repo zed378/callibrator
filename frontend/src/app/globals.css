@@ -87,24 +87,24 @@
   --popover: #ffffff;
   --popover-foreground: #0f172a;
   --muted: #f1f5f9; /* slate-100 */
-  --muted-foreground: #64748b; /* slate-500 */
+  --muted-foreground: #475569; /* slate-600 — ADR-090: 4.5:1 on muted and on tints */
   --border: #e2e8f0; /* slate-200 */
   --input: #e2e8f0;
 
-  --primary: #2563eb; /* blue-600 — trust blue (tenant-overridable) */
+  --primary: #1d4ed8; /* blue-700 — trust blue (tenant-overridable); ADR-090 */
   --primary-foreground: #ffffff;
   --secondary: #f1f5f9; /* slate-100 */
   --secondary-foreground: #1e293b; /* slate-800 */
-  --accent: #0e7490; /* cyan-700 — clinical teal (safe 4.5:1 as text/solid) */
+  --accent: #155e75; /* cyan-800 — clinical teal; ADR-090: 4.5:1 on its own tint */
   --accent-foreground: #ffffff;
 
-  --success: #059669; /* emerald-600 — health green */
+  --success: #046c4e; /* emerald-700/800 — health green; ADR-090 */
   --success-foreground: #ffffff;
-  --warning: #d97706; /* amber-600 */
+  --warning: #92400e; /* amber-800 — ADR-090 (amber-600 was 3.2:1 under white) */
   --warning-foreground: #ffffff;
-  --destructive: #e11d48; /* rose-600 */
+  --destructive: #be123c; /* rose-700 — ADR-090 */
   --destructive-foreground: #ffffff;
-  --info: #0284c7; /* sky-600 */
+  --info: #0369a1; /* sky-700 — ADR-090 */
   --info-foreground: #ffffff;
 
   --ring: var(--primary);
@@ -123,8 +123,8 @@
   --border: #334155; /* slate-700 */
   --input: #334155;
 
-  --primary: #3b82f6; /* blue-500 — trust blue, brighter on dark */
-  --primary-foreground: #ffffff;
+  --primary: #60a5fa; /* blue-400 — ADR-090: 4.5:1 as text on card */
+  --primary-foreground: #0f172a; /* dark text on the light blue (7:1) */
   --secondary: #334155; /* slate-700 */
   --secondary-foreground: #f1f5f9;
   --accent: #22d3ee; /* cyan-400 — clinical teal, bright on dark */
@@ -134,8 +134,8 @@
   --success-foreground: #052e16;
   --warning: #f59e0b; /* amber-500 */
   --warning-foreground: #1c1207;
-  --destructive: #f43f5e; /* rose-500 */
-  --destructive-foreground: #ffffff;
+  --destructive: #fb7185; /* rose-400 — ADR-090: 4.5:1 as text on card */
+  --destructive-foreground: #4c0519; /* rose-950 on the light rose (5.8:1) */
   --info: #38bdf8; /* sky-400 */
   --info-foreground: #082f49;
 

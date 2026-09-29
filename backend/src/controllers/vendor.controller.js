@@ -67,4 +67,3 @@ exports.qualifyVendor = asyncHandler(async (req, res) => {
 
   success(res, result, null, "Vendor qualification updated", 200);
 });
-

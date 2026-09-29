@@ -288,7 +288,7 @@ Base: `/api/v1/auth`, `/api/v1/sessions`, `/api/v1/webauthn` — see [auth.route
 *   **Duplicate MFA controller definitions:** later `mfaService`-based overrides win; `/mfa/login` resolves to a handler that throws `501 MFA login flow not fully implemented`, contradicting the working `authService.loginMfa`.
 *   **WebAuthn is effectively stubbed:** attestation verification stores a randomly generated key; challenge store is in-process (not multi-instance safe); several `webauthn*` columns referenced but not defined on the model.
 *   **`mfa.service.js` references a non-existent `mfaSecretTemp` column.**
-*   **No session security middleware: session fixation protection, a concurrent-session limit and IP/user-agent binding are not implemented.** `sessionSecurity.middleware.js` claimed all three, but nothing imported it and its SQL used the wrong table and column casing; it was deleted **2026-09-23** under audit finding A-12. Whether these controls should exist is Q-08 in [`../../TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md).
+*   **No session security middleware: session fixation protection, a concurrent-session limit and IP/user-agent binding are not implemented.** `sessionSecurity.middleware.js` claimed all three, but nothing imported it and its SQL used the wrong table and column casing; it was deleted **2026-09-23** under audit finding A-12. ADR-084 (Q-08) decided: fixation is impossible by construction; no concurrent-session cap and no IP/UA binding; a user lists and revokes their own sessions (`ownSessions.service.js`).
 *   Session is created *before* MFA completes, persisting a full 7-day session on a 202 response.
 
 ### 24. Change Log
@@ -3470,7 +3470,7 @@ graph TD
 *   None (controller parses `types` CSV; service clamps limit).
 
 ### 11. Business Rules
-*   FTS via `ts_rank(search_vector, plainto_tsquery('english', q))` filtered by `search_vector @@ plainto_tsquery`, ordered by rank; on FTS failure → ILIKE fallback (rank 0); second failure → empty.
+*   FTS via `ts_rank(search_vector, plainto_tsquery('english', q))` filtered by `search_vector @@ plainto_tsquery`, ordered by rank; on FTS failure → ILIKE fallback (rank 0); second failure → a 500 for the whole request, both causes logged (A-56; this line said "empty" until ADR-088 — see `../SEARCH/02-FULL-TEXT.md`).
 *   Tenant-scoped via `tenant_id`; soft-deleted rows excluded; empty query → empty result.
 
 ### 12. Access Rights

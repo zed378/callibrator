@@ -53,7 +53,8 @@ const listJs = (dir) =>
     if (entry.isDirectory()) {
       return listJs(full);
     }
-    return entry.name.endsWith(".js") ? [full] : [];
+    // ADR-087 Amendment 4: .ts too — a converted file must not leave this guard.
+    return /\.(js|ts)$/.test(entry.name) ? [full] : [];
   });
 
 /**

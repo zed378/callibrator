@@ -57,7 +57,7 @@ function ConsentScreen() {
   };
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center bg-background p-4">
+    <main className="relative flex min-h-screen items-center justify-center bg-background p-4">
       <div className="w-full max-w-md rounded-2xl border border-border bg-card p-8 shadow-xl">
         <div className="mb-6 flex flex-col items-center text-center">
           <div className="mb-3 rounded-full bg-primary/10 p-3">
@@ -124,7 +124,7 @@ function ConsentScreen() {
           </>
         ) : null}
       </div>
-    </div>
+    </main>
   );
 }
 

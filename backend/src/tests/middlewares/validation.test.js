@@ -13,7 +13,7 @@ jest.mock("../../utils/response.util", () => {
       .fn()
       .mockImplementation((res, message, statusCode = 400, details = null) => {
         const body = { success: false, status: statusCode, message, data: null };
-        if (details) body.details = details;
+        if (details) {body.details = details;}
         return res.status(statusCode).json(body);
       }),
   };

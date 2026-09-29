@@ -42,6 +42,8 @@ The non-production figure is high on purpose: a full browser E2E run — 71 test
 
 Plus request-quota limiters (429 with `X-RateLimit-*` headers, no account lock) for operations such as tenant creation and uploads.
 
+> **Corrected 2026-09-28 (ADR-088).** The `auth` and `OTP / reset` limiters above are **defined in `backend/index.js` and mounted nowhere** — only the global `defaultLimiter` runs. Sign-in is governed by ADR-059's per-identifier-and-address throttle, which **never locks an account** (A-185). The global limiter sends draft-6 `RateLimit-*` headers, not `X-RateLimit-*`. Code-grounded detail: [`../DEVELOPER/03-RATE-LIMITS-AND-ERROR-CODES.md`](../DEVELOPER/03-RATE-LIMITS-AND-ERROR-CODES.md).
+
 The distinction is real: an auth limiter defends a credential and therefore locks; an API limiter defends capacity and therefore only throttles.
 
 ## WebAuthn Challenges

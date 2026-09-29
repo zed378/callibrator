@@ -154,8 +154,13 @@ export const UserRow: React.FC<UserRowProps> = ({
           {canResetCredentials && (
             <CredentialResetActions user={user} onReset={() => void refetchUsers()} />
           )}
-          <Button variant="ghost" size="sm" onClick={() => onEdit(user)}>
-            <Edit2 className="h-4 w-4" />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onEdit(user)}
+            aria-label={`Edit ${user.username || user.email}`}
+          >
+            <Edit2 className="h-4 w-4" aria-hidden="true" />
           </Button>
           {showDeleteConfirm === user.id ? (
             <div className="flex items-center gap-2">
@@ -175,8 +180,9 @@ export const UserRow: React.FC<UserRowProps> = ({
               variant="ghost"
               size="sm"
               onClick={() => onDeleteRequest(user.id)}
+              aria-label={`Delete ${user.username || user.email}`}
             >
-              <Trash2 className="h-4 w-4 text-destructive" />
+              <Trash2 className="h-4 w-4 text-destructive" aria-hidden="true" />
             </Button>
           )}
         </div>

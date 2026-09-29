@@ -51,9 +51,9 @@ export const TenantCard: React.FC<TenantCardProps> = ({
               className="rounded-lg"
             />
             <div>
-              <h3 className="font-bold text-foreground text-base">
+              <h2 className="font-bold text-foreground text-base">
                 {tenant.name}
-              </h3>
+              </h2>
               <p className="text-sm text-muted-foreground font-medium">
                 {tenant.code}
               </p>
@@ -87,6 +87,7 @@ export const TenantCard: React.FC<TenantCardProps> = ({
             size="sm"
             onClick={() => router.push(`/dashboard/tenants/${tenant.id}/backup`)}
             title="Manage Backups"
+            aria-label={`Manage backups for ${tenant.name}`}
           >
             <HardDrive className="h-4 w-4" />
           </Button>
@@ -95,6 +96,7 @@ export const TenantCard: React.FC<TenantCardProps> = ({
             size="sm"
             onClick={() => onSsoConfig(tenant)}
             title="Configure SAML SSO"
+            aria-label={`Configure SAML SSO for ${tenant.name}`}
           >
             <Shield className="h-4 w-4 text-primary" />
           </Button>
@@ -109,16 +111,22 @@ export const TenantCard: React.FC<TenantCardProps> = ({
               <ShieldCheck className="h-4 w-4" />
             </Button>
           )}
-          <Button variant="ghost" size="sm" onClick={() => onEdit(tenant)}>
-            <Edit2 className="h-4 w-4" />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onEdit(tenant)}
+            aria-label={`Edit ${tenant.name}`}
+          >
+            <Edit2 className="h-4 w-4" aria-hidden="true" />
           </Button>
           {onDelete && (
             <Button
               variant="ghost"
               size="sm"
               onClick={() => onDelete(tenant.id)}
+              aria-label={`Delete ${tenant.name}`}
             >
-              <Trash2 className="h-4 w-4 text-destructive" />
+              <Trash2 className="h-4 w-4 text-destructive" aria-hidden="true" />
             </Button>
           )}
         </div>

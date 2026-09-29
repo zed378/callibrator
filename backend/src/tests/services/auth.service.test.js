@@ -1,4 +1,3 @@
-// eslint-disable-next-line no-undef
 // Math and crypto are global objects used in jest.spyOn()
 jest.mock("../../config");
 jest.mock("../../models", () => ({

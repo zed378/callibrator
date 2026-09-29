@@ -37,7 +37,7 @@ Each has a phase file written **retrospectively**, naming the divergences, the d
 | **2** Warehouse | inventory, transfers, opname | ✅ shipped — locations are **one level**, not a tree | [P2](./PHASE-2-WAREHOUSE.md) |
 | **3** Calibration | devices, records, certificates | ✅ shipped — **plus** multi-party e-signature; approval was **unreachable** until ADR-035 | [P3](./PHASE-3-CALIBRATION.md) |
 | **4** Enterprise | SSO, advanced features | ✅ largely shipped — **plus** pluggable storage, developer API, GDPR, feature flags, network security | [P4](./PHASE-4-ENTERPRISE.md) |
-| **5** Analytics | data lake, predictive maintenance | 🟡 partial — predictive maintenance and pgvector RAG shipped, **plus** the whole QMS surface, workflow engine, Kanban and tickets; **no data lake, deliberately** (PR-10) | [P5](./PHASE-5-ANALYTICS.md) |
+| **5** Analytics | data lake, predictive maintenance | ✅ shipped (2026-09-28, ADR-088: P5-08 closed as superseded by P8-04) — predictive maintenance and pgvector RAG shipped, **plus** the whole QMS surface, workflow engine, Kanban and tickets; **no data lake, deliberately** (PR-10) | [P5](./PHASE-5-ANALYTICS.md) |
 
 ### The defects those phases produced, and what each taught
 
@@ -82,13 +82,14 @@ QMS (non-conformances, CAPA, SOP) · risk register · vendor scorecards · workf
 
 | Gate | State |
 |---|---|
-| Backend unit coverage (100%) | ✅ **passing** — 578 suites, 12,164 tests, 100% statements, branches, functions and lines (2026-09-25, batch 7, Node 24). **But `models/` is excluded from the gate twice, so it has never measured a model** — the A-88 model DDL test now covers foreign keys |
-| Backend lint | 🔴 **red, and it had never run at all** — a version mismatch crashed ESLint before it linted a file (A-34). It runs now: **1,083 errors, 302 warnings** on 2026-09-27 (`npm run lint`, which now lints `.js` and `.ts`; 1,319 on 2026-09-23, 1,297 later that day). CI gates on the ratchet instead (`scripts/ci/eslint-ratchet.js`, baseline 950) |
-| Frontend coverage (70%) | 🔴 **red, and never run** — about 14%; `npm test` does not pass `--coverage`, so nothing evaluates the threshold |
-| Live E2E in one uninterrupted run | 🔴 **never achieved** — every fix verified individually; the rate-limit window kept resetting |
+| Backend unit coverage (100%) | ✅ **passing** — 683 suites (24 skipped), 12,890 tests, 100% on all four measures (2026-09-28, Node 26.10.0, `MEMORY/records/2026-09-28-p9-helper-lint-baseline-coverage.md`; refreshed under ADR-088). **But `models/` is excluded from the gate twice, so it has never measured a model** — the A-88 model DDL test now covers foreign keys |
+| Backend lint | ✅ **0 errors, ratchet baseline 0** (2026-09-28, ADR-092, P9-02a). History: it had never run at all (A-34, a version mismatch crashed ESLint); then 1,319 errors (2026-09-23), 1,083 (2026-09-27). Warnings remain (263 `no-unused-vars`, 19 `no-console`) |
+| Frontend coverage (70%) | ✅ **runs and passes** — ADR-067 made the gate the measured figure, ratcheted to 70%; batch 7 recorded 150 suites, 1,339 tests above the gate (`MEMORY/records/2026-09-25-phase0-batch7.md`). The row said "about 14%, never run" until 2026-09-28 (ADR-088) |
+| Live E2E in one uninterrupted run | ✅ **achieved 2026-09-28, twice** (P6-02, ADR-077; again at `35ebd76`, ADR-092) — by hand on a compose stack, not in CI |
 
-`make verify` runs lint first, so it has **never** passed on any machine. That is not a new
-regression; it is a gate nobody could have been running.
+`make verify` runs lint first, so until 2026-09-28 it had **never** passed on any machine. Lint no
+longer stops it (ADR-092); a full `make verify` pass has not been recorded — name the run before
+claiming one.
 
 **A gate that is currently failing is a gate nobody trusts. A suite that has never passed as a suite has not passed.**
 
@@ -182,15 +183,16 @@ dump, a fresh volume and a restore, with the old volume kept as the rollback.
 
 [`PHASE-8-SCALE-AND-REACH.md`](./PHASE-8-SCALE-AND-REACH.md). Each is **trigger-driven**, not scheduled.
 
-| Task | Title | Trigger |
-|---|---|---|
-| P8-01 | Object storage off local disk | before replica count > 1 |
-| P8-02 | Socket.IO Redis adapter | same |
-| P8-03 | Migration advisory lock or init container | same |
-| P8-04 | Read replica for reporting | measured impact on operational p95 |
-| P8-05 | Partition `iot_readings` | row count makes retention insufficient |
-| P8-06 | Partition `audit_logs` | same — and it has **no delete path** |
-| P8-07 | Load and abuse testing at scale | before any of the above is sized |
+| Task | Title | Trigger | Status |
+|---|---|---|---|
+| P8-01 | Object storage off local disk | before replica count > 1 | 🚫 **BLOCKED** 2026-09-28 (ADR-086). A-40 is done; the rest needs a target S3/NFS environment and an ambient credential chain |
+| P8-02 | Socket.IO Redis adapter | same | 🟡 **PARTIAL**. The adapter and cross-replica test are done (A-54), and open-socket revocation is done (ADR-085). Open: the fan-out test after a reconnect, and a live notification through the proxy |
+| P8-03 | Migration advisory lock or init container | same | ✅ **DONE** 2026-09-28 (ADR-086). `db.sync()` + migrations run under a PostgreSQL advisory lock (`utils/migrationLock.util.js`), and `npm run migrate` takes the same lock. Tests: `migrationLock.p803.test.js` (17) and `migrationLock.p803.live.test.js` (4, PostgreSQL 18.6), with fail-before on a HEAD worktree. On two real replicas, one applied 63 migrations and the other waited and applied none |
+| P8-04 | Read replica for reporting | measured impact on operational p95 | ⏳ The trigger fired in part (P8-07). Decided: query-shaped fixes first, a replica only if p95 still fails (ADR-086 §3) |
+| P8-05 | Partition `iot_readings` | row count makes retention insufficient | ⏳ not triggered (ADR-086 §3) |
+| P8-06 | Partition `audit_logs` | same — and it has **no delete path** | ⏳ not triggered. The measured cost is an exact count, which partitioning does not bound. Retention is still undecided (Q-03) |
+| P8-07 | Load and abuse testing at scale | before any of the above is sized | 🟡 **PARTIAL** 2026-09-28 (ADR-086 §3). Over 35,963 requests: 0 cross-tenant leaks, 0 × 408, 0 × 429, 0 × 5xx, 0 acquire timeouts. The p95 target is missed above low concurrency, and the ceiling is PostgreSQL. Open: PDF memory (M-11) and MQTT ingest |
+| P8-08 | Multi-region | a customer requirement | 🚫 **BLOCKED** on a customer data-residency requirement |
 
 **P8-01, P8-02 and P8-03 are the hard prerequisites for more than one backend replica**, and none is difficult. They simply have to happen before the replica count changes, not after somebody notices duplicated backups.
 
@@ -209,9 +211,25 @@ dump, a fresh volume and a restore, with the old volume kept as the rollback.
 
 ---
 
-## Phase 9 — Backend TypeScript Migration 🔴
+## Phase 9 — Backend TypeScript Migration 🟡
 
-[`PHASE-9-TYPESCRIPT-MIGRATION.md`](./PHASE-9-TYPESCRIPT-MIGRATION.md) · ADR-038. **The backend is JavaScript until this closes**; backend documents state TypeScript as the target.
+[`PHASE-9-TYPESCRIPT-MIGRATION.md`](./PHASE-9-TYPESCRIPT-MIGRATION.md) · ADR-038 · **ADR-087** (the toolchain as built). **The backend is JavaScript until this closes**; backend documents state TypeScript as the target. As-built 2026-09-29: **42 modules are TypeScript** — all 16 `constants/`, 24 `utils/` (`tenantScope`, `response`, `upload` among them), and the two infrastructure middlewares (`activityLog`, `tenantContext`); everything else is JavaScript.
+
+| Card | State 2026-09-28 |
+|---|---|
+| P9-01 compiler · P9-01a typecheck gate · P9-03 jest runs `.ts` · P9-04 ratchet | **done** (ADR-087, Amendment 1) |
+| P9-01b `build:dist` → pkg, image | **done** (ADR-087 Am. 5) — the P9-00 baseline set passes against the converted image: 53/53 specs, 392 tests, per-spec counts identical, 0 × 429 |
+| P9-00 behaviour baseline | **done** (ADR-092) — `35ebd76` (0 `.ts`), fresh compose stack, **53/53 specs passed twice** (392 tests, 0 × 429); the set by name in `MEMORY/records/P9-00.md` |
+| P9-02 lint | **done** (ADR-087 item 6, ADR-092) — `.eslintrc.js` deleted; global `ignores` in their own object (474 `dist/` files no longer visited); `backend/.prettierrc` governs `backend/`, the root file scoped by a comment |
+| P9-02a lint debt | **started** — **0 errors** (was 1,050; baseline 950 → 0), fixed rule by rule and shown AST-identical to `HEAD`; 12 unused directives removed. Open: 263 `no-unused-vars`, 19 `no-console` to triage by hand. **Commit the 137 formatted files alone** |
+| P9-03a coverage config | **done** (ADR-085, ADR-092) — models stay outside the figure (measured 93.5/65.58/93.17/93.39) and P9-10's check is replaced; the A-32 guard reads `.ts`, ceiling 30 |
+| P9-05 shared types | **started** — `src/types/`: `node-process.d.ts`, `express.d.ts`, `ids.ts` (`TenantId`), `apiResponse.ts` (`ApiResponse<T>`) |
+| P9-05a infrastructure modules | **done** — `activityLog`, `tenantContext` (four gates incl. a live PG 18.6 two-tenant check), `packaged`, `storagePath` |
+| P9-09 `utils/` | **started** — 30 of 36 `utils/` are `.ts` (3 of them the path utils under P9-05a): 12 leaves (helper 2); `dbReady`, `circuitBreaker`, `tenantScope`, `fileValidation`, `otp`, `response`, `ssrf`, `controllerWrapper`, `upload`, `authorizationWiring`, `publicBaseUrl`, `schedulerSwitch`, `jobContext`, `migrationLock`, `jsonShape` (lead; ADR-087 Am. 4–6). `validators/iot.validator` is `.ts` too (still Joi — the jsonShape ordering gap, closed). Left: `kmsVerify` (P9-18), `jwt` (P9-12), `generateSwagger` (P9-21), `checkMenu`/`session`/`seedMenuGroups` (after P9-10) |
+| P9-06 configuration | **part 1 done** (2026-09-29, ADR-087 Am. 6) — `src/config/env.ts` accessors; no `process.env` in any converted module outside `src/config/`. Part 2 (the Zod schema, fail-listing boot) open |
+| P9-08 `constants/` | **done** — all 16; `ROLE_LEVELS` checked at compile time |
+| P9-10 `models/` | **started** (2026-09-29, ADR-087 Am. 7–9) — **46 of 71** models are `.ts`: batch 1 Kanban (9), batch 2 inventory (6), batch 3 workflow/QMS/suppliers (11, the class variant settled), batch 4 billing/usage/notifications/operations (10, D-21 and D-27 typed), batch 5 calibration/certificates (6; p6 + q02 live green), batch 6 signatures (4; d18 green). Each definition-identical to its JavaScript original over the whole barrel; D-12 holds the `DefaultScoped` brand to the runtime set; model figure did not fall. The spec pattern is amended (TS2502 between mutually-referring models). The barrel stays `.js` until the last batch |
+| P9-07, P9-11 … P9-24 | TODO |
 
 | Stage | Tasks | Scope |
 |---|---|---|
@@ -221,7 +239,7 @@ dump, a fresh volume and a restore, with the old volume kept as the rollback.
 | D — HTTP layer | P9-19 … P9-21 | middlewares, controllers, routes, `index` |
 | E — close-out | P9-22 … P9-24 | shared contracts package, frozen migration names, `allowJs: false` |
 
-Ratchet: **370 `.js` source files** today. It only goes down.
+Ratchet: **1,172 `.js` files** counted by `npm run ratchet` on 2026-09-29 (source, tests and `backend/scripts`, plus `backend/index.js`; floor in `backend/.ts-ratchet.json`). A new `.js` name fails `make verify`, CI and the pre-push hook. It only goes down.
 
 ---
 

@@ -31,7 +31,7 @@ class JwksCache {
 
   get(key) {
     const entry = this._cache.get(key);
-    if (!entry) return null;
+    if (!entry) {return null;}
 
     if (Date.now() > entry.expiresAt) {
       this._cache.delete(key);
@@ -109,7 +109,7 @@ async function fetchJwks(issuer, jwksUri) {
 
     return jwks;
   } catch (err) {
-    if (err instanceof AppError) throw err;
+    if (err instanceof AppError) {throw err;}
     if (err.response) {
       logger.error("JWKS fetch failed", {
         issuer,
@@ -227,7 +227,7 @@ exports.verifyIdToken = async (idToken, issuer, clientId, { jwksUri } = {}) => {
 
     return decoded;
   } catch (err) {
-    if (err instanceof AppError) throw err;
+    if (err instanceof AppError) {throw err;}
     if (err.name === "TokenExpiredError") {
       throw new AppError(401, "id_token has expired");
     }

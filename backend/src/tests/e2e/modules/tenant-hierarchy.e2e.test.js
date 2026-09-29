@@ -41,25 +41,25 @@ describe("E2E Tenant Hierarchy (HTTP)", () => {
   });
 
   test("GET /tenant-hierarchy/:id/children -> 200", async () => {
-    if (!tenantId) return;
+    if (!tenantId) {return;}
     const { status } = await httpGet(`/tenant-hierarchy/${tenantId}/children`, authHeader(token));
     expect(status).toBe(200);
   });
 
   test("GET /tenant-hierarchy/:id/parent -> 200", async () => {
-    if (!tenantId) return;
+    if (!tenantId) {return;}
     const { status } = await httpGet(`/tenant-hierarchy/${tenantId}/parent`, authHeader(token));
     expect(status).toBe(200);
   });
 
   test("GET /tenant-hierarchy/:id/descendants -> 200", async () => {
-    if (!tenantId) return;
+    if (!tenantId) {return;}
     const { status } = await httpGet(`/tenant-hierarchy/${tenantId}/descendants`, authHeader(token));
     expect(status).toBe(200);
   });
 
   test("GET /tenant-hierarchy/:id/ancestors -> 200", async () => {
-    if (!tenantId) return;
+    if (!tenantId) {return;}
     const { status } = await httpGet(`/tenant-hierarchy/${tenantId}/ancestors`, authHeader(token));
     expect(status).toBe(200);
   });
@@ -70,7 +70,7 @@ describe("E2E Tenant Hierarchy (HTTP)", () => {
   });
 
   test("POST /tenant-hierarchy/:parentId/children -> 400 on missing name (self-validated)", async () => {
-    if (!tenantId) return;
+    if (!tenantId) {return;}
     const { status } = await httpPost(
       `/tenant-hierarchy/${tenantId}/children`,
       { code: "nocode" },

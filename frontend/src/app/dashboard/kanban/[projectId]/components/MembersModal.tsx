@@ -109,6 +109,7 @@ export default function MembersModal({
               </div>
               <button
                 onClick={() => guard(() => onRemove(m.id))}
+                aria-label={`Remove ${m.user ? [m.user.firstName, m.user.lastName].filter(Boolean).join(" ") || m.user.email : m.role?.name}`}
                 className="text-muted-foreground hover:text-destructive"
               >
                 <X className="h-4 w-4" />

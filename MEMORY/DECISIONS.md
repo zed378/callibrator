@@ -394,7 +394,7 @@ Each ADR follows this pattern:
 
 **Status:** Accepted — **never implemented.** Recorded 2026-09-23.
 
-Nothing in the request path has ever compared a session's `ip_address` or `user_agent` against the incoming request. The only code that claimed to, `sessionSecurity.middleware.js`, was imported by nothing and its SQL targeted a `"Sessions"` table with camelCase columns that does not exist; it was deleted under audit finding A-12. This ADR is the origin of a claim that reached six `docs/` files as fact, which is the PR-4 failure shape. It stands as the decision that was taken; the controls it describes are a **target**, and whether they should be built — and how they behave on a changed IP — is Q-08 in [`../TASKS/BACKLOG.md`](../TASKS/BACKLOG.md).
+Nothing in the request path has ever compared a session's `ip_address` or `user_agent` against the incoming request. The only code that claimed to, `sessionSecurity.middleware.js`, was imported by nothing and its SQL targeted a `"Sessions"` table with camelCase columns that does not exist; it was deleted under audit finding A-12. This ADR is the origin of a claim that reached six `docs/` files as fact, which is the PR-4 failure shape. It stands as the decision that was taken; the controls it describes are a **target**, and whether they should be built — and how they behave on a changed IP — is Q-08 in [`../TASKS/BACKLOG.md`](../TASKS/BACKLOG.md). **Superseded by ADR-084 (2026-09-28): no IP/UA binding and no concurrent-session cap; a user lists and ends their own sessions instead.**
 
 ---
 
@@ -813,7 +813,7 @@ Being a provider as well emerged from enterprise tenants wanting Callibrator ide
 **Implications:**
 
 - Only `token_hash` is stored — a database read cannot recover a token.
-- Sessions carry `ip_address`, `user_agent` and `device`. They are **recorded and never checked** — corrected 2026-09-23. `sessionSecurity.middleware.js`, named here as where the balance was struck, was dead code and was deleted under A-12. Strict IP binding breaks users on mobile networks, so the balance is a product decision; it is Q-08 in [`../TASKS/BACKLOG.md`](../TASKS/BACKLOG.md), not something the code currently expresses.
+- Sessions carry `ip_address`, `user_agent` and `device`. They are **recorded and never checked** — corrected 2026-09-23. `sessionSecurity.middleware.js`, named here as where the balance was struck, was dead code and was deleted under A-12. Strict IP binding breaks users on mobile networks, so the balance is a product decision; it is Q-08 in [`../TASKS/BACKLOG.md`](../TASKS/BACKLOG.md), not something the code currently expresses. Decided in ADR-084: they stay recorded, are shown to the user (`GET /sessions/mine`), and are never compared.
 - **`sessions` uses snake_case attribute names** — `tenant_id`, not `tenantId`. `Session.destroy({ where: { tenantId } })` fails with `column "tenantId" does not exist`, which broke the nightly retention purge. This is recorded as a real inconsistency (PR-14), not a convention.
 
 **Status:** Accepted
@@ -973,7 +973,7 @@ ADR-030's reasoning was sound for the question it answered. The 2026-09 audit ch
 - **Coverage must not dip.** Each conversion runs the full suite, not just its own tests.
 - **Every backend document carries a target-vs-current banner** until Phase 9 closes. Removing a banner is part of finishing the module it describes.
 
-**Status:** Accepted
+**Status:** Accepted. **Amended by ADR-087** (2026-09-28): the test transform is babel-jest, not `@swc/jest`; the build copies unconverted JavaScript into `dist/` instead of emitting it with `tsc`; the target is ES2025; shared types live in `backend/src/types/`
 
 ---
 
@@ -4701,6 +4701,1046 @@ the owner with every agent's in-flight edits); the fixes and tests above are in 
 
 ---
 
+## ADR-083: A Deleted Attachment's File Is Swept After 90 Days; Attachment Types Come From One List; a Kanban Project's Delete Reaches Its Cards' Files; Unbounded Reads Are a Reviewed List; ENUM Mirrors and Soft-Delete Mechanisms Are Checked, Not Converted
+
+**Date:** 2026-09-27/28 · **Findings:** D-22, D-24, D-25, D-26, D-29 (`TASKS/AUDIT-2026-09-DATA.md`) · **Extends:** ADR-064 (items 8, 9, 10), ADR-070, ADR-060, ADR-075 (A-133 restore) · **Migration:** `0088-attachment-file-purged-at`
+
+**Context**
+
+ADR-064 and ADR-070 left five data-layer items partial:
+
+- **D-22.** A parent's soft delete soft-deletes its attachments and keeps their files, so a restore can bring them back (ADR-070). Nothing ever removed those files afterwards. `resource_type` was still a free string on an upload without a `resourceId`. Deleting a kanban **project** did not reach its cards' files, because the cards stay live behind the deleted project.
+- **D-24.** Nothing stopped a new unbounded `findAll`. `dataRetention`'s whole-dataset anonymise read had since been removed (A-152). Its subject-masking read (`maskAuditTrail`) still read a data subject's whole audit history in one statement.
+- **D-25 and D-26.** ADR-064 recorded the decisions: paranoid for new models, and native ENUMs stay. It did not add the checks those decisions need.
+- **D-29.** Migration 0019 had two residual risks: the `context.queryInterface || context` fallback, and index detection by name only.
+
+**Decision**
+
+1. **The deleted-file sweep (D-22).** This is `services/attachmentFileSweep.service.js`.
+   - **What it selects.** A row that has been deleted for longer than the window. That means `is_deleted = true` with `updated_at` before the cutoff, or paranoid `deleted_at` before the cutoff. The row's new `file_purged_at` (migration 0088) must also be NULL. A live row is never selected.
+   - **Window.** `ATTACHMENT_FILE_RETENTION_DAYS` sets it. The default is **90** and the floor is 30. The window is the time a parent's restore can still bring the files back.
+   - **What it removes.** It removes the legacy disk file, which is resolved through `attachment.service#resolveAbsPath` (the S-15 guard). A path outside the uploads tree is recorded as `outside-uploads`, and nothing is removed for it. If the row was migrated into pluggable storage, its storage object is removed too.
+   - **What it records.** It sets `file_purged_at`. It writes one audit row **per attachment** in the batch's transaction: action `DELETE`, `changes.operation = "file-purge"`, `changes.file` = `removed` | `absent` | `outside-uploads`, and actor `system:attachment-file-sweep` (a new `SYSTEM_ACTORS` entry).
+   - **How it interacts with restore.** The rows are locked (`FOR UPDATE SKIP LOCKED`). The purge row becomes the attachment's latest DELETE, so `restoreForResource` (ADR-075) leaves a row whose bytes are gone deleted.
+   - **Failures.** A file or object that cannot be removed is logged and counted. It is not marked, and the next run retries it.
+   - **Bounds.** The sweep runs tenant by tenant under `runForTenant`, walking each tenant by keyset on id. It takes 200 rows per transaction and at most 5,000 examined per run, and says when it stopped early. Tenants are also read 500 per page.
+   - **Schedule.** Daily at 04:13 (`ATTACHMENT_FILE_SWEEP_SCHEDULER`) through `scheduleSetting`, so `SCHEDULERS_ENABLED=false` stops it. It is registered with the job monitor (`attachment-file-sweep`). It is off in the chart's API-pod branch and listed in both `.env.example` files.
+2. **One list of attachment types (D-22).** `constants/attachmentResources.js` holds the list:
+   - `LINKABLE_RESOURCES`, moved there from the service unchanged;
+   - the standalone types `generic`, `ticket` (the ticket editor's images) and `post` (kept for older clients).
+
+   Matching ignores case. `createAttachment` refuses any other type with a 400 that names the list, for linked and unlinked uploads alike. The check runs before the virus scan, and the uploaded file is removed. The model validates the same list (`knownResourceType`) on every create path. It validates only when the column is written, because `save()` validates only changed attributes, so a legacy row with another value can still be soft-deleted. There is **no database CHECK**: see the alternatives.
+3. **A kanban project's delete reaches its cards' files (D-22).** `kanban.service#deleteProject` destroys the project in a transaction. It reads the project's live cards by keyset, 500 at a time, and calls `softDeleteForResource(tenant, "KanbanCard", [card ids], { via: { type: "KanbanProject", id } })`.
+   - `softDeleteForResource` now accepts an array of parent ids. Each audit row still names its own card in `changes.cascade.id`, with the project as `changes.cascade.via`, so a card restore would still restore exactly its files.
+   - The cards themselves stay live, unreachable behind the deleted project, as before.
+4. **Unbounded reads are a reviewed list (D-24).** `unboundedFindAll.d24.test.js` parses every file under `src/services` with espree. It finds each `.findAll(` whose options carry no `limit`, keyed as `<file>::<enclosing function>::<receiver>` with a count.
+   - Each such read must be on `REVIEWED` with a reason from a fixed set: parent-bounded, fixed keys, caller's ids, aggregate, closed set, operator script, or **OPEN**.
+   - OPEN means the read grows with the tenant. There are 24 such entries. They are listed so they cannot multiply unseen. Each is a follow-up, not an endorsement.
+   - A new site fails the test, and so does a stale entry.
+   - `dataRetention#maskAuditTrail` now reads by keyset on id, 500 at a time, inside its one transaction.
+5. **ENUM mirrors are checked, not derived (D-26).** Native ENUMs stay, per ADR-064. `enumMirrors.d26.test.js` reads all 48 ENUM attributes from the real models. Each must appear in a registry that names what mirrors it:
+   - **a constant**, which must be equal and in the same order: 7 such, including `AUDIT_ACTIONS`, `ACTOR_TYPE_VALUES`, the QMS lists, `TENANT_STATUS` and the Certificate/TenantBackup statics;
+   - **a validator**, whose Joi `.valid` list on the key must hold only storable values, and all of them where marked `equal`;
+   - **none**, with the reason.
+
+   `dataLayer.dbD.live.test.js` compares every model's labels with `pg_enum` for the column's type, in order, on PostgreSQL 18. No drift exists today.
+6. **The soft-delete split is pinned, not converted (D-25).** `softDeleteMechanisms.d25.test.js` pins what exists today:
+   - the 12 models that carry both `is_deleted` and paranoid `deleted_at` (`ApiKey`, `Attachment`, `CalibrationDevice`, `CalibrationRecord`, `Category`, `Post`, `Role`, `Stock`, `Tenant`, `User`, `Warehouse`, `Webhook`);
+   - the one model that carries only the flag (`Session`).
+
+   A new flagged model fails the test: use paranoid. On every flagged model the defaultScope filters `is_deleted = false`. A default read is therefore live only when both flags say so. The application's soft delete writes `isDeleted`, and `deleted_at` is set only by `destroy()`.
+7. **D-29, both risks.**
+   - **The fallback.** The contract is now tested: the manifest passes `db.getQueryInterface()`, a real QueryInterface has no `.queryInterface`, and the fallback is frozen to the 16 migrations that carry it. The 16 are not edited, because they are applied and frozen by name.
+   - **Index detection.** 0019 now recognises the signing-key index by name **or** by a single-column index on `signing_key_id`. This changes nothing on a database that ran it.
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| Unlink the file in the cascade itself | ADR-070 already rejected it: it destroys draft evidence at once and makes a restore impossible |
+| Mark swept rows only by the audit trail (`NOT EXISTS` over `audit_logs`) | a raw anti-join over the largest table on every run; a nullable column is cheaper, indexed by the tenant key, and survives audit masking |
+| Remove the bytes after the transaction commits (as `deleteAttachment` does) | a failed unlink would leave a row marked purged whose bytes remain, and nothing would look again; unlinking first leaves at worst an unmarked row the next run records as `absent` |
+| One summary audit row per batch (as the webhook purge does) | the per-row DELETE row is what stops a later restore from reviving a row with no bytes, and it names the file |
+| A database CHECK on `resource_type` | a CHECK is evaluated on every UPDATE of a row, so a `NOT VALID` constraint would make soft-deleting any legacy row with another value fail; rewriting legacy values needs to know what a typo meant |
+| Soft-delete the kanban project's cards too | no restore exists for a project; the cards are already unreachable, and deleting them adds rows to reason about without a reader |
+| Derive each ENUM from its constant at model definition (D-26) | 41 of 48 enums have no constant; for the seven that do, the test proves equality today, and deriving changes model files every agent edits for no behaviour change |
+| Convert the 12 dual models to paranoid only (D-25) | touches every service that writes `isDeleted`, `search.service`'s raw SQL, the orphan report, the attachment cascade and restore, and the append-only `calibration_records` trigger; a behaviour change for every `restore`. Deferred, not rejected |
+| Delete the `context.queryInterface \|\| context` line from the 16 migrations (D-29) | a no-op on every path; editing sixteen applied migrations adds diff and review for nothing the test does not already hold |
+
+**Implications, including the bad ones**
+
+- **After 90 days, a parent's restore gets its rows back but not its files.** The restore leaves swept rows deleted, so nothing points at missing bytes. The evidence is still gone.
+- Rows that `deleteAttachment` deleted explicitly already had their files unlinked. The first run records each of them as `absent`, a one-time backlog of audit rows bounded at 5,000 per run.
+- **A narrow race remains.** If a restore reads the audit trail before the sweep's lock and updates after it, it can revive a row whose file was just removed. `restoreForResource` locks the rows before reading, which closes the ordinary interleavings.
+- **Case-insensitive types are stored as given.** `KanbanCard` and `kanbancard` both exist, and the list filter on `GET /attachments` is still exact-match.
+- **The OPEN list holds 24 reads that grow with a tenant**: reports, exports, inventory, notifications, signer lists and more. It records them. It does not bound them.
+- **The ENUM registry is hand-written.** It proves that the lists agree today. It cannot tell whether a `none` entry should have a mirror.
+
+**Evidence**
+
+On PostgreSQL **18.6** (`pgvector/pgvector:pg18`, throwaway container), booted as `backend/index.js` boots (`runSchemaSetup`: sync, then every migration, then schema verification):
+
+- **Fresh.** 63 migrations were applied, including `0088`. Schema verification passed.
+- **Upgrade.** A database was built by `f0d7f08` (58 migrations, no `file_purged_at`), then booted by this tree. That applied `0086` to `0090` including `0088`, and schema verification passed.
+- `dataLayer.dbD.live.test.js` (6 tests) passed on **both**, as the application role. It shows:
+  - the column shape;
+  - the D-29 re-run with the index under another name, and showIndex's `fields[].attribute` shape;
+  - the sweep removing only expired files, marking them and writing `system:attachment-file-sweep` audit rows that satisfy 0033's CHECK, with a re-run adding none;
+  - a legacy free-string row soft-deleted through the model while a new one is refused;
+  - a project delete cascading to two cards' files with `cascade.via`;
+  - every model ENUM equal to `pg_enum`, in order.
+
+Unit tests: `attachmentFileSweep.d22` (10), `attachmentFileSweepScheduler.d22` (8), `attachment.resourceType.d22` (13), `kanban.service` deleteProject (4), `systemActors.a124`, `unboundedFindAll.d24` (8), `dataRetention.maskAuditPaged.d24` (2), `enumMirrors.d26` (5), `softDeleteMechanisms.d25` (3), `0088-attachment-file-purged-at` (6), `0019-signature-crypto-fields.d29` (6).
+
+These tests fail on the pre-change tree `f0d7f08`: the sweep, scheduler, type, 0088 and live suites (modules absent), the deleteProject tests, both `maskAuditPaged` tests, the unbounded-read list, and 0019's other-name case. `enumMirrors.d26` and `softDeleteMechanisms.d25` pass there. They pin a state that had not drifted, and each is shown to bite on a synthetic case.
+
+**Status:** Accepted, implemented 2026-09-27/28. The code reached `a31c601` unverified and was verified on `35ebd76`. D-22, D-24, D-26 and D-29 are done. D-25 stays partial by decision (see alternatives). D-22's orphan query against the deployed database has still not been run.
+
+---
+
+## ADR-084: The Owner Questions Q-01 to Q-08 Are Closed — a Retired Device Stays Retired Except by Audited Reinstatement; the Hierarchy Grants No Visibility; an Own Bucket Still Counts While the Platform Holds the Bytes; No Session Cap and No Address Binding, but Every User Sees and Ends Their Own Sessions
+
+**Date:** 2026-09-27/28 · **Questions:** Q-01 to Q-08 (`../TASKS/BACKLOG.md`) · **Debate:**
+[`DEBATE-owner-questions-C-retired-devices.md`](../TASKS/DEBATE-owner-questions-C-retired-devices.md) ·
+[`DEBATE-owner-questions-C-parent-visibility.md`](../TASKS/DEBATE-owner-questions-C-parent-visibility.md) ·
+[`DEBATE-owner-questions-C-own-bucket-quota.md`](../TASKS/DEBATE-owner-questions-C-own-bucket-quota.md) ·
+[`DEBATE-owner-questions-C-sessions.md`](../TASKS/DEBATE-owner-questions-C-sessions.md) · **Authority:** the owner's
+standing instruction (ADR-051) that open questions are settled by a debate between a compliance-first and an
+operability-first position, then decided · **Extends:** ADR-034, ADR-051, ADR-062, ADR-075 (A-133 restore),
+ADR-078 (serial stays reserved), ADR-085, ADR-072 · **Migration:** `0089`
+
+**Context.** Eight questions had been parked for the owner since the September audits. Four were already decided in
+effect by later ADRs and only needed closing with evidence. Four needed a decision. This number was cited in code
+(about 21 files, from 2026-09-27) before this entry existed — the F-28 finding; this is that entry.
+
+**Decisions**
+
+| # | Decision | Decided by | Evidence |
+|---|---|---|---|
+| **Q-01** immutable calibration records | Append-only in the database for every role; corrections are new records | **ADR-062** (P6-03) — closed here | `dataIntegrity.p6.live.test.js` (22 passed, PostgreSQL 18.6, 2026-09-28) |
+| **Q-03** audit retention | Indefinite; no job and no setting deletes an audit row | **ADR-069 §5** (after ADR-051 Q-12) — closed here | `dataRetention.a121.test.js` |
+| **Q-07** break-glass MFA | Enrolment-only session for an operator without MFA; audited CLI reset that never switches the requirement off | **ADR-059 §4** (P6-07) — closed here | `auth.superAdminMfa.p607.test.js` "P6-07: the break-glass reset" (7) |
+| **Q-04** IP binding strictness | Superseded by Q-08: none | this ADR | — |
+| **Q-02** retired devices | **1** below | this ADR (A's enforcement, B's correction path) | |
+| **Q-05** parent sees child data | **2** below | this ADR (A) | |
+| **Q-06** own bucket and `limitStorageMb` | **3** below | this ADR (A, with B's two demands) | |
+| **Q-08** fixation, cap, binding, sockets | **4** below | this ADR (A on fixation, B on cap and binding) | |
+
+1. **A retired calibration device is permanently retired; the one way back is an audited reinstatement (Q-02).**
+   - `PUT /calibration-devices/:id` with a status other than `retired` on a retired device answers **409** with a state
+     explanation that names the reinstatement (`calibrationDeviceReinstate.service.js#retirementConflict`). Retiring,
+     re-saving `retired`, and editing a retired device's other fields stay allowed.
+   - **Migration `0089`**: trigger `calibration_devices_retired_terminal`, `BEFORE UPDATE OF status`, refuses leaving
+     `retired` for every role with SQLSTATE 23514 — unless the transaction has named *that* device in the
+     transaction-local setting `callibrator.reinstate_device`. The edit path maps the trigger's error to the same 409
+     (the device retired between its read and its write). The trigger is in `schemaVerify` `EXPECTED_OBJECTS`, so a
+     boot without it fails. The migration throws rather than skips when the table is absent, and has no try/catch.
+   - **`POST /calibration-devices/:id/reinstate`**: `auth`, `validateUuid`, `rbac([TENANT_ADMIN])`,
+     `dynamicAccess("calibration", "write")` — the same gates as A-133's restore. Body: `reason` (10–1000 characters)
+     and `status` (`active`, `inactive` or `maintenance`). One transaction: `set_config(…, true)`, the status change,
+     and an `UPDATE` audit row with `operation: "REINSTATE"`, the reason, before and after. Another tenant's device is
+     **404**, byte-identical to a missing one; a device that is not retired is **409**.
+   - **Retire, restore and reinstate are three acts.** *Retire* is a status; the device keeps its history and its
+     serial. *Restore* (A-133, ADR-075) undoes a soft **delete** and leaves the status alone: a retired device that is
+     restored is still retired (it touches `is_deleted`, not `status`, so the trigger does not fire). *Reinstate* undoes
+     a **retirement**, and a deleted device is 404 to it — restore first. Because a soft-deleted device keeps its serial
+     (ADR-078) and so does a retired one, "register the instrument again" is not available as a correction; that is why
+     the reinstatement exists.
+2. **A parent tenant never sees a child tenant's data by virtue of the hierarchy (Q-05).** The hierarchy is structure,
+   not access, and nothing may widen a principal's tenant through it. `getDataVisibilityScope`, `buildTenantFilter`,
+   `HIERARCHY_SCOPE` and the `assignRole` validator — unused, and encoding the opposite answer (a "subtree" scope, and
+   an "all" scope that showed a child its siblings, found by a `code LIKE '<root>_%'` that also matched unrelated
+   tenants) — are removed. Group reporting, if the owner wants it, is a new feature with its own ADR: aggregates only,
+   enabled and revocable by each child tenant's administrator, audited in both tenants.
+3. **`limitStorageMb` bounds what the platform holds; a tenant on its own bucket still counts today (Q-06).** The
+   attachment upload path was never cut over to the storage module and the migration tool leaves the legacy file in
+   place, so every byte is on platform storage. The count is unchanged; the false claim in
+   `storage/config.service.js` ("no longer bounded by the platform's per-tenant quota") is corrected; a 413 to a tenant
+   with its own storage says why; an unreadable storage configuration explains nothing and is still a 413, never a
+   500. **When the cutover lands**, the exemption is per attachment — one whose bytes live only in the tenant's
+   storage stops counting in `getStorageUsageMb` — never a per-tenant switch, which would exempt the platform-held
+   legacy copies too.
+4. **Sessions (Q-08, and Q-04 with it).**
+   - **Fixation: required, and structural.** A session row and its `sid` exist only once authentication completes
+     (password-only sign-in, the MFA step, SSO, refresh rotation, impersonation), a new row every time. The MFA
+     password step issues an `mfa` purpose token with no `sid` and creates no session (A-59). Pinned so it stays true.
+   - **No concurrent-session cap**, platform-wide or per tenant. `MAX_CONCURRENT_SESSIONS` stays unread.
+   - **No IP or user-agent binding.** A changed address or browser never ends a session. Both stay recorded at
+     sign-in and refresh (ADR-050 resolves the address once, at the edge).
+   - **The control instead: a user sees and ends their own sessions.** `GET /api/v1/sessions/mine` lists every live
+     session of the caller — recorded address and browser, sign-in method, created, last activity, expiry, which one is
+     *this* session, and whether it is a platform operator's support session (the operator is not named).
+     `POST /api/v1/sessions/mine/:id/revoke` ends one: the revocation and an `UPDATE` audit row
+     (`resourceType: "Session"`, `operation: "REVOKE_OWN_SESSION"`) in one transaction, in the user's tenant, the
+     session's tenant, or PLATFORM for a tenant-less operator. Another user's session — this tenant or another — is
+     **404**, like a missing one; an ended or expired one of one's own is 404 too. API keys are refused. The Session
+     model hooks drop the liveness cache after commit, so the token is refused on its next request (A-48) and its open
+     sockets at the next 60-second re-check (ADR-085).
+   - **Sockets: the same rule as HTTP**, at the handshake and while open (ADR-085 §2) — not a stricter one.
+   - **ADR-072 is unchanged:** the own-password budget still caps a stolen session at five guesses and signs it out;
+     that, and signing's re-authentication (ADR-047), are what close the credential-sharing harm a cap was meant for.
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| Q-02: retired is final, no way back ("register it again") | the old device keeps its serial (ADR-078), so the same instrument cannot be registered under its own serial, and its history would split across two entries |
+| Q-02: allow leaving `retired` through `PUT`, audited as an edit | the trail would show an edit where a reversal happened, and nothing distinguishes an accident from a correction |
+| Q-02: service check only, no trigger | a script, a future endpoint or a raw UPDATE revives the device; ADR-062 set the two-layer precedent |
+| Q-02: trigger with no escape (reinstatement by DDL only) | puts the correction in the hands of whoever can disable a trigger — the most privileged access, unaudited |
+| Q-05: an opt-in parent role reading children's rows | row-level cross-tenant access is the hardest thing in the product to get right, and not needed for the group reporting asked for; aggregates first, under their own ADR |
+| Q-05: keep the helpers, unused | dead code that means "see everything" is the ADR-051 Q-10 anti-pattern; the next group-report card would wire it in |
+| Q-06: exempt a tenant with its own bucket now | its bytes are still on platform storage: unbounded platform disk for that tenant, at every other tenant's expense |
+| Q-08: a per-tenant cap evicting the oldest session (NIST AC-10) | AC-10 is a High-baseline control; a cap of one breaks multi-device clinicians and a cap of N does not stop sharing N ways; the signing harm is closed by re-authentication |
+| Q-08: bind to IP (/24) or user agent | hospital Wi-Fi and mobile networks rotate addresses; a user agent is spoofed by anyone holding a stolen token, so binding inconveniences only the real user |
+| Q-08: disconnect sockets from the revoke path | considered in ADR-085 and left as a possible fast path; the 60-second re-check already applies the one rule |
+
+**Implications, including the bad ones**
+
+- **Q-02:** a device retired in error needs a tenant administrator; a technician who retired it cannot undo it. The
+  escape hatch is a transaction-local setting: it stops the ordinary path and accidents, not someone with SQL access
+  who chooses to set it — the audit row is what makes the deliberate act visible. A retired device still accepts new
+  calibration records, IoT readings and work orders; refusing them needs a retirement date the table does not have
+  (open).
+- **Q-05:** a hospital group gets no group view until the aggregate feature is designed.
+- **Q-06:** a tenant that configured its own bucket can still be refused at its platform limit until the cutover.
+- **Q-08:** there is no automatic defence against a stolen session used from another network; detection depends on
+  the user looking at the list (and revocation on them acting). Ending another session does not ask for the password
+  again (ASVS V3.3.4 suggests it); it only reduces access, like `logout-all`. The frontend page for the list is not
+  built. A new-device sign-in notification is not built.
+- **`docs/` amended** with this ADR: `SECURITY/01-THREAT-MODEL.md` (T2), `SECURITY/03-AUTHENTICATION-SECURITY.md`,
+  `BACKEND/04-MIDDLEWARE-PIPELINE.md`, `BACKEND/10-MODULE-REFERENCE.md`, `DATABASE/02-TENANCY-TABLES.md`,
+  `DATABASE/03-IDENTITY-TABLES.md`, `DATABASE/06-DEVICE-TABLES.md`, `PLAN/06-DEVICE-LIFECYCLE.md`,
+  `PLAN/10-TENANCY-AND-ONBOARDING.md`, `API/04-TENANT-API.md`, `API/06-DEVICE-API.md`,
+  `ARCHITECTURE/05-STORAGE-ARCHITECTURE.md`.
+
+**Tests**
+- Q-02: `calibrationDevices.reinstate.q02.test.js` (13: the real route chain over the two-tenant fixture — PUT 409,
+  reinstate with its audit row in the transaction after naming the device, cross-tenant 404 identical to missing,
+  audit failure leaves it retired, 409 not retired, 400s, 403 technician); `calibrationDeviceReinstate.q02.test.js`
+  (trigger-error recognition, the race mapped to 409, which edits leave retirement);
+  `0089-calibration-device-retired-terminal.test.js` (7); `schemaVerify.util.p605.test.js`; and the opt-in
+  **`calibrationDevice.retired.q02.live.test.js` (10, PostgreSQL 18.6)** — UPGRADE: retired rows written before the
+  migration, revival proven possible before it, `up` twice, refused for the owner with SQLSTATE 23514,
+  the model error mapped, allowed updates allowed, the setting scoped to one device and one transaction, the service
+  409, cross-tenant 404, a real reinstatement with its real audit row, `down` then `up`. FRESH: an empty PostgreSQL
+  18.6 database booted as `index.js` does (`db.sync()` then the full migrator, 63 migrations): trigger present,
+  `verifySchema` no problems, a second `up` runs nothing, and `psql` shows the revival refused.
+- Q-05: `tenantHierarchy.visibility.q05.test.js` (12) — tenant A made the parent of B; the four reads 404 both ways,
+  identical to a missing id.
+- Q-06: `quota.ownBucket.q06.test.js` (5).
+- Q-08: `auth.sessionFixation.q08.test.js` (3), `session.own.q08.test.js` (12, two tenants, 404 identical to missing,
+  audit row in the transaction, rollback on audit failure, PLATFORM for a tenant-less principal),
+  `routePermissionGuard.p604.test.js` (the two self-service routes listed in `routeGateExemptions.js`).
+- **Fail-before** on a worktree at `f0d7f08` (before any of this, 2026-09-28): `calibrationDevices.reinstate.q02`
+  11 of 13 fail, `quota.ownBucket.q06` 3 of 5, `tenantHierarchy.visibility.q05` 2 of 12; the 0089, reinstate-service
+  and own-session suites cannot load (their modules did not exist). `auth.sessionFixation.q08` passes there — it pins
+  behaviour that was already right.
+
+**Status:** Accepted, implemented 2026-09-27/28. Part of it reached `a31c601` unverified (committed with every agent's
+in-flight edits); the rest, the tests' completion and this entry are in the working tree.
+
+---
+
+## ADR-086: The Schema Step Runs Under a PostgreSQL Advisory Lock, Not in an Init Container; Phase 8's Remaining Cards Wait on Their Triggers
+
+**Date:** 2026-09-28 · **Cards:** P8-03 (done), P8-07 (baseline, partial), P8-02/04/05/06/08 (dispositions) ·
+**Cited before it was written** by `backend/index.js`, `backend/src/utils/migrationLock.util.js`,
+`src/scripts/migrate.js` and the two `migrationLock.p803` suites (audit finding F-28). The agent that wrote those
+citations was stopped by the session limit; this is the record.
+
+### 1. The lock (P8-03)
+
+**Problem.** `backend/index.js` ran `await db.sync()` and then `await migrator.up()` at every boot, with nothing
+between two processes. Reproduced on PostgreSQL 18.6: with two instances booting at once on an empty database, one
+**crashed inside `db.sync()`** with `relname must be unique`. That replica crash-loops. On an existing database, a
+migration that is not idempotent fails on the second replica, and one that is (a backfill `UPDATE`) runs twice.
+
+**Decision.** The whole schema step (`db.sync()` + `migrator.up()`) runs inside `runSchemaSetup`
+(`utils/migrationLock.util.js`). That function holds a PostgreSQL **session** advisory lock (key
+`8003000000000000803`) on a connection taken straight from `sequelize.connectionManager`:
+
+- The first instance migrates. Any other instance polls `pg_try_advisory_lock` every second, logs once that it is
+  waiting, and then re-runs the step. By then every migration is recorded, so it applies nothing.
+- A waiter gives up after `MIGRATION_LOCK_TIMEOUT_MS` (default 600000) and **refuses the boot**, rather than
+  starting against a schema that may be half-migrated. A malformed value refuses the boot too.
+- A process that dies holding the lock releases it with its connection.
+- `src/scripts/migrate.js` (`npm run migrate`, `migrate:undo`) takes the same lock for `up` and `down`. `pending`
+  and `executed` only read, so they do not wait. A lock timeout there sets exit code 1.
+
+**Why a session lock on a raw connection, not `pg_advisory_xact_lock` in a transaction.** `config/index.js` enables
+Sequelize CLS. Every query issued inside a managed transaction's callback therefore *joins* that transaction, so
+the entire sync and every migration would have run inside the lock's transaction. That would change what the
+migrations do and how they fail. A raw connection is invisible to model queries.
+
+**Alternatives considered.**
+
+| Option | For | Against | Verdict |
+|---|---|---|---|
+| **Init container / a Helm pre-upgrade Job running `npm run migrate`** | migrations run once, before any replica, visibly as a Kubernetes object | compose, the VM and a bare `node index.js` have no init containers, so it would protect Helm only. The boot would still need `db.sync()`, which creates tables no migration creates. The charts are not known to deploy (U-01, P7-06) | rejected: protects one of four deployment shapes |
+| `pg_advisory_xact_lock` in a transaction | released automatically at commit | CLS pulls every query into that transaction (above) | rejected |
+| Blocking `pg_advisory_lock` | simplest | waits forever behind a stuck migration; no log line saying why the replica is not up | rejected in favour of polling with a bound |
+| **Session lock, polled, bounded** | works in every deployment shape; the loser waits, logs, and then verifies (P6-05 runs after the step on every replica) | one extra pooled connection during boot; the lock key is a constant every replica must share | **chosen** |
+
+**Implications, including the bad ones.**
+- A slow migration now delays **every** replica's start, not only one. That is intended. A migration longer than
+  ten minutes will make the waiting replicas refuse to boot and restart. Raise `MIGRATION_LOCK_TIMEOUT_MS` for such
+  a release.
+- The lock covers the schema step only. Seeding (`GET /migration/seeding`, `/seed-demo`) is still an HTTP action,
+  not a boot step, and is not locked.
+- `migrationLock.util.js` is JavaScript. It was written before the P9-01 toolchain landed (ADR-087). It converts under
+  Phase 9 as a leaf, but converting it also means changing the live test: that test spawns `src/scripts/migrate.js`
+  with plain `node`, which cannot resolve an extensionless `.ts` require (ADR-087 §1, the `storagePath.util` case).
+
+**Evidence.**
+- Unit: `src/tests/utils/migrationLock.p803.test.js`, 17 tests, 100% of the util.
+- Live (`MIGRATION_LOCK_LIVE_TEST=1`, PostgreSQL 18.6, 4 of 4):
+  - "P8-03: two instances starting simultaneously produce ONE migration run; the other waits and applies nothing"
+  - "P8-03: the run is verified by inspecting columns (P6-05), not by the migration log"
+  - "P8-03: the lock is free afterwards — a third boot takes it at once and applies nothing"
+  - "P8-03: `npm run migrate` (scripts/migrate.js up) WAITS for a held lock, then runs and exits 0"
+- **Fail-before**, `git worktree` of HEAD. HEAD's unlocked boot step run by two instances failed all three boot
+  cases ("relname must be unique"). At `35ebd76`, the migrate-CLI case fails with `Expected: "still-waiting",
+  Received: 0`: the CLI migrated while another instance held the lock.
+- **Real replicas.** On a compose stack of the image built from the working tree, two backend replicas started
+  together on an empty PostgreSQL 18 database:
+  - `backend-2` logged `Applied 63 migration(s)` at 06:33:56–58.
+  - `backend-1` logged `[migration-lock] another instance is migrating the schema; waiting…` and then
+    `lock acquired after waiting` at 06:33:58.759. It synced, applied nothing, and started.
+  - Both logged `[schema-verify] OK: 72 tables, 867 columns and 8 control objects`.
+  - `schema_migrations` holds 63 rows, 63 distinct.
+
+### 2. The other Phase 8 cards
+
+Phase 8 is trigger-driven. The decision recorded here is **not to build a card whose trigger has not fired**. The
+trigger for P8-04/05/06 is the P8-07 measurement, not an impression.
+
+- **P8-02** — the adapter and the cross-replica test exist (A-54). An open socket's revocation is re-checked every
+  60 s (ADR-085). Still open: the fan-out test *after a reconnect*, and a live notification through the proxy.
+  Both are recorded on the card as TODO.
+- **P8-04 / P8-05 / P8-06** — their triggers are measured impact on p95 and row counts. The measurement is in §3:
+  P8-04's trigger fired only in part, and query-shaped fixes come first. P8-05 and P8-06 are not triggered. P8-06
+  additionally has no retention decision to scope against (Q-03).
+- **P8-08** — **BLOCKED** on a customer data-residency requirement, which does not exist.
+- **P8-01** — not started. Its prerequisite A-40 is done (ADR-057). What remains needs a target S3/NFS environment
+  and an ambient-credential chain (IAM role / service account), which this environment does not have.
+
+### 3. The first load baseline (P8-07), and what it says about P8-04 and P8-06
+
+**Setup.**
+- **Stack:** the backend image built from the working tree, two replicas (each 2 CPU / 4 GiB, the Helm limits),
+  PostgreSQL 18 (pgvector image) and Redis, all on one Docker Desktop host (16 CPUs).
+- **Settings:** `NODE_ENV=production`, so `DB_POOL_MAX` 20. `RATE_LIMIT_MAX=100000000`, set deliberately.
+- **Data** (`scripts/load/p807-seed.sql`, over the demo seed): two tenants, each with 5,000 devices, 50,000
+  calibration records (two a year for five years), 2.16M `iot_readings` (1,000 IoT devices, hourly, 90 days) and
+  500,000 `audit_logs` rows.
+- **Load:** k6 in a container on the stack's network (`scripts/load/p807-baseline.k6.js`). Each virtual user
+  alternates between the two tenants' tokens and requests one of: the device list (random page), device search,
+  the records list, the audit list, `GET /dashboard/metrics`.
+
+**Every response is checked for its tenant.** Every returned row's `tenantId` must be the caller's. `meta.total`
+must equal the caller's own count (5,000 devices, 50,000 records). The dashboard's device total must be 5,000.
+A context that bled between concurrent requests would fail either check, in either direction.
+
+**Results.** 35,963 requests over 15 runs.
+
+| Measure | Result |
+|---|---|
+| **Cross-tenant leakage under concurrency** | **0** in 35,963 checked responses, up to 50 concurrent users across two tenants and two replicas |
+| 408 | **0** |
+| 429 (limiter measured instead of throughput) | **0** — the limiter's headers showed the deliberate budget |
+| 5xx / failed requests | **0** |
+| Connection acquire timeouts | **0** in both replicas' logs |
+| Backend memory | stable at ~320–345 MiB under sustained load (4 GiB limit) |
+| p95, 1 user (unloaded) | devices 49 ms, search 54 ms, records 56 ms, dashboard 64 ms, audit 140 ms |
+| p95, 10 users, one replica | 576–732 ms across the mix; ~37 req/s |
+| p95, 25 / 50 users, one replica | 0.8–1.8 s; 40–64 req/s (run-to-run variance on a shared desktop host) |
+| p95, 50 users, **two** replicas | 1.8–2.2 s; **51 req/s — adding a replica added no throughput** |
+
+**The < 500 ms p95 target for tenant-scoped lists holds only at low concurrency** (roughly ≤ 5 in-flight requests
+per replica) at this data volume.
+
+**The ceiling is PostgreSQL, not the API process.**
+- During the two-replica run each Node process sat at ~100–130% CPU, while PostgreSQL sat at **790–940%**.
+- Sampling `pg_stat_activity` under load:
+  - **39 of 72 active queries were the audit list's `SELECT count(...)`** over the whole tenant history, with two
+    LEFT JOINs to `users`. `EXPLAIN ANALYZE`: a parallel sequential scan of 500,000 rows with 3 workers, **67 ms**
+    per request.
+  - Most of the rest were the other lists' exact `count(...)` and the dashboard's aggregates.
+- Every list request pays an exact count of everything the tenant has ever had. That cost grows with history, not
+  with the page.
+
+**Finding (recorded as asked, not fixed): the dashboard's 20 parallel counts against a 20-connection pool.**
+- `dashboard.service.js#getDashboardMetrics` issues 20 queries in one `Promise.all`. The production pool is 20
+  (`config/index.js`). One dashboard request can therefore hold every connection.
+- Measured with 10 users each, on one replica:
+
+  | Pool | Device-list p95, alone | Device-list p95, with concurrent dashboard traffic | Combined throughput |
+  |---|---|---|---|
+  | 20 | 320 ms | **726 ms** | 60 → 37 req/s |
+  | 60 (`DB_POOL_MAX=60`) | 360 ms | 574 ms | 47 req/s |
+
+- So the pool explains part of the interference, and the database's CPU the rest. It is not fixed here:
+  - bounding the dashboard's fan-out, or sizing the pool against it, is a capacity decision;
+  - raising the pool alone moves load onto an already saturated PostgreSQL.
+
+**Decision on P8-04 (read replica), by debate.**
+- *For building it now:* reporting traffic measurably degrades operational p95 (device list 320 → 726 ms), which
+  is the card's trigger.
+- *Against:* the measured cost is not "reporting". It is exact counts over full history on every **operational**
+  list (audit, records, devices). A replica would move that load, not remove it, and it adds a staleness window to
+  compliance figures and a second connection path for the tenant hooks.
+- **Decided:** the trigger has fired only in part. The **first** response is query-shaped: bounded or estimated
+  counts, and a default date window on the audit list. A replica comes only if p95 still fails after that. This
+  is new work and is not started here (no new implementation in this change). It is recorded on the P8-04 card.
+
+**P8-05 / P8-06.**
+- At 2.16M `iot_readings` and 500,000 `audit_logs` per tenant, the measured cost came from counts, not from table
+  size on indexed reads. Partitioning by date would not bound an unbounded count.
+- **Not triggered.** P8-06 still also waits on Q-03.
+
+**Not measured, and why.**
+- **Memory under sustained PDF rendering:** the image cannot render certificate PDFs (M-11 / P7-04 D-1).
+- **The MQTT ingest path:** not run; a telemetry flood test is still owed. The card's premise that "the broker
+  shares the API process" is **stale**: there is no embedded broker (A-17). The backend is an MQTT *client*, and
+  its message handler shares the API event loop.
+- **The load generator** ran on the same host as the stack, so absolute numbers are a lower bound for a
+  dedicated host. The shape — database-bound, count-dominated — is the finding.
+
+**Status:** Accepted, implemented 2026-09-28 (P8-03). The P8-07 baseline is taken; the card stays PARTIAL for PDF
+memory and MQTT ingest.
+
+---
+
+## ADR-087: The Backend Runs Mixed JavaScript and TypeScript From One `dist/` Tree; Tests Erase Types With Babel, TypeScript 7 Checks Them; Shared Types Live in `backend/src/types/`
+
+**Date:** 2026-09-27/28 · **Cards:** P9-01, P9-01a, P9-01b, P9-02 (part), P9-03, P9-08 (part) · **Amends:** ADR-038 (test transform, compiler target, where types live) · **Works with:** ADR-076 (Node 26, TypeScript 7 beside the TypeScript 6 API, Babel 8)
+
+**Context.** Phase 9 had no toolchain: no `backend/tsconfig.json`, no `typecheck` script, `transform: {}` in jest, no ESLint configuration that matched a `.ts` file, and a pkg build that globbed `src/**/*.js`. ADR-038 chose `@swc/jest` and a `tsc → dist → pkg` build. Three facts found while building the toolchain changed parts of that:
+
+1. **Node cannot `require` an extensionless `.ts` module.** Node 26 strips types, but its CommonJS resolver tries `.js`, `.json` and `.node` only. Probed on 26.10.0: `require("./a")` with only `a.ts` present throws `MODULE_NOT_FOUND`. So once one module is `.ts`, **every entry point that runs source with plain `node` breaks** — `npm start`, the `migrate*`, `swagger:generate` and `keys:rotate` scripts, `make seed-demo` and CI's boot job — and the unconverted `.js` callers of a converted module must still resolve it in jest, in dev and in the binary.
+2. **`tsc` does not pass JavaScript through unchanged.** With `allowJs`, `tsc` re-prints every `.js` file, and under `strict` (`alwaysStrict`) it prefixes `"use strict"`. That changes the semantics of sloppy-mode CommonJS (an assignment to an undeclared name throws; `this` in a plain function is `undefined`). Emitting the whole tree through `tsc` would change the behaviour of ~470 files nobody converted — ADR-038 rule 3 broken wholesale.
+3. **`@swc/jest` breaks `jest.spyOn` on a converted module.** SWC emits exports as non-configurable getters. A probe `.ts` module under `@swc/jest` failed `jest.spyOn(m, "f")` with `TypeError: Cannot redefine property: f`; the same module under babel-jest with `@babel/plugin-transform-modules-commonjs` passed. The backend suite spies on module exports throughout, so SWC would make each conversion rewrite its callers' tests — a conversion that changes tests is not provably behaviour-identical.
+
+The owner then set **TypeScript 7.0.2**, which has **no compiler API**: nothing that must call TypeScript in-process (ts-jest, a type-checking jest transform) can use it. ADR-076 installed it as `@typescript/native` beside the TypeScript 6 API package.
+
+### Decision
+
+1. **The compiler (P9-01).** `backend/tsconfig.json` carries `strict` and every ADR-038 flag, `allowJs: true`, `checkJs: false`, `module`/`moduleResolution: Node16` (CommonJS emit, `"type": "commonjs"` kept), `outDir: dist`, `rootDir: "."`, `skipLibCheck` as the only relaxation, and `verbatimModuleSyntax` off. **Two deviations from the standards document:** `target`/`lib` are **`ES2025`** (Node 26 is the runtime, and ES2025 is the newest target TypeScript 7 accepts), not ES2023; and `types: ["node", "jest"]` is explicit, because TypeScript 6+ no longer loads every `@types` package. It includes `src/**/*.ts`, `scripts/**/*.ts` and `__tests__/**/*.ts`.
+2. **The check is TypeScript 7; nothing else is (P9-01a).** `npm run typecheck` runs `@typescript/native`'s `tsc -p tsconfig.json --noEmit` by path (ADR-076: a bare `npx tsc` finds TypeScript 6). It is wired where a gate runs: `make typecheck` (both workspaces, each directly), CI's backend-lint job, and the pre-push hook for pushes touching `backend/`. **`turbo run typecheck` is not the path:** it skips a package without the script and exits 0, and at the root it currently refuses to run at all ("Missing `packageManager` field", observed 2026-09-28).
+3. **One `dist/` tree, JavaScript copied, TypeScript compiled (P9-01b).** `npm run build:dist` (`scripts/build-dist.ts`, run by tsx) empties `dist/index.js` and `dist/src/`, **copies** `index.js` and every non-test, non-`.ts` file under `src/` byte for byte, then compiles the `.ts` sources with TypeScript 7 using `tsconfig.build.json`. That file extends the base with **`allowJs: false`**, so a `.ts` file that imports an unconverted `.js` file fails the build with TS7016: **leaf-first order (ADR-038 rule 1) is enforced by the compiler.** The script also refuses a module present as both `x.js` and `x.ts`, and refuses a `.ts` source for which nothing was emitted. `package.json` `bin`/`main` are `dist/index.js` and `pkg.scripts` is `dist/src/**/*.js`. `npm run build` is `swagger:generate → build:dist → pkg`. `build:bun` is gone, and so is `nodemon`.
+4. **Source runs through tsx.** `start` is `node --import tsx index.js` (one process, so a PID file is the server's); `dev` is `tsx watch index.js`; `swagger:generate`, the `migrate*` scripts and `keys:rotate` run under `tsx`; so do `make seed-demo` and CI's two boots. The binary never needs tsx.
+5. **Tests erase types with Babel, never check them (P9-03).** `jest.config.js` and `jest.e2e.config.js` transform `^.+\.ts$` with babel-jest, `@babel/preset-typescript` and `@babel/plugin-transform-modules-commonjs` (Babel 8 since ADR-076). JavaScript stays untransformed, exactly as before. `moduleFileExtensions` is `["js", "ts", "json"]` — `js` first, so every existing resolution is unchanged — and `testMatch` and `collectCoverageFrom` gained the `.ts` twins of every `.js` entry. Thresholds are unchanged at 100%. **This replaces ADR-038's `@swc/jest`** for the `spyOn` reason in the context.
+6. **Lint covers `.ts` (P9-02, part).** `eslint.config.js` adds typescript-eslint `strictTypeChecked` + `stylisticTypeChecked` for `**/*.ts`, type-aware (`projectService`; typed linting runs on the TypeScript 6 API, ADR-076), with every rule in the standards document as an error. Two refinements: `no-namespace` allows `declare global { namespace … }` (`allowDeclarations`), which is how a global is augmented; and `no-restricted-properties` bans `process.env` outside `src/config/`. Before this, ESLint matched **no** `.ts` file ("File ignored because no matching configuration was supplied"), so a conversion silently removed its file from the lint gate.
+7. **Shared types live in `backend/src/types/` (owner instruction, 2026-09-28).** It holds backend-internal shared types: augmentations of runtime and library globals, the request/principal context, branded ids, the response envelope, and domain/model types used across layers. This **agrees with** ADR-038 and the standards document, which already place `express.d.ts` and `ids.ts` there (P9-05). A **cross-workspace contract** stays in `packages/contracts` (P9-22, ADR-038), not here. A type derived from a constant's value stays beside the value (`AuditAction` in `constants/auditActions.ts`) so the two cannot drift. It is seeded with **one** file, `node-process.d.ts` (`process.pkg`, read by `utils/packaged.util.ts`), and a `README.md` stating what belongs there. **Guard:** `no-restricted-syntax` makes a `declare global` block, or a type or interface named `*Envelope`/`ApiResponse*`, an error in any `.ts` file outside `src/types/`. The coordinator's note named this "open question Q-29"; no Q-29 exists in `TASKS/BACKLOG.md` or anywhere else in the repository on 2026-09-28, so this ADR records the placement as decided rather than citing a question that was never written.
+8. **The first conversions (P9-03 canary, P9-08 part).** `utils/packaged.util` and eight constants modules — `auditActions`, `platformTenant`, `qmsConstants`, `tenantAdminSettings`, `tenantConstants`, `tenantLogo`, `tenantStatus`, `webhookEvents` — are `.ts`. Each had no uncommitted change when converted, imports nothing, and is read by JavaScript callers only. Types are derived from values (`as const`, `(typeof X)[number]`); `Object.freeze` stays wherever it was, and nothing was frozen that was not. Three predicate parameters are typed as the values their JavaScript callers can pass (`string | number | null | undefined`), so the `String(…)` call stays exactly as it was; `isActiveTenantStatus` now spells `x === undefined || x === null ? "" : x` as `x ?? ""`, which is the same expression. `isTenantAdminSettingKey` became a type predicate, which is a compile-time narrowing only. **Not converted, on purpose:** `utils/storagePath.util` — `activityLog.a14.stdout.test.js` spawns a plain `node` child that `require.resolve`s it by extensionless path, so converting it means changing that test; `utils/appPath.util` waits with it. `constants/rateLimitConstants`, `systemActors` and `tenantSecretSettings` had uncommitted changes from other agents. `constants/index` imports `roleConstants` and `appConstants`, which come first.
+
+### Evidence (2026-09-28, Node 26.10.0, TypeScript 7.0.2)
+
+| Check | Result |
+|---|---|
+| `npm run typecheck` (TypeScript 7, `--noEmit`) | exit 0 |
+| …failing direction: `src/utils/zzP9probe.a087.ts` with `const x: number = "x"` | exit 1, `TS2322` — probe deleted |
+| `npm run build:dist` | "471 JavaScript files copied, 9 TypeScript files compiled -> dist/"; `diff -rq src dist/src` shows only the 9 `.js` files that exist as `.ts` in `src`, so every copied file is byte-identical |
+| …failing direction: a `.ts` file importing `constants/appConstants` (still `.js`) | exit 1, `TS7016` (rule 1) — probe deleted |
+| …failing direction: `x.js` and `x.ts` side by side | exit 1, "a module exists as both .js and .ts" — probe deleted |
+| Behaviour identity: each original (`git show HEAD:…`) against its compiled `dist/` module | same export names in the same order, deep-equal values, same freeze state at every depth, and the same result from every exported function over 15 sample inputs (`undefined`, `null`, `""`, cases of `"active"`, numbers, `{}`, `[]`, the platform id, an object with a custom `toString`…): 60 checks, all identical |
+| jest collects and fails a `.ts` test | a probe test asserting `expect(true).toBe(false)` was collected and **failed** (`FAIL src/tests/p9probe/probe.a087.test.ts`) — probe deleted |
+| The converted modules' own tests, unchanged | `src/tests/utils/packaged.test.js` (6 cases), `appPath.test.js`, `storagePath.test.js`, the `env` tests: 30 passed |
+| Full backend suite, `npm run test:coverage -- --ci --forceExit` | **642 suites passed, 24 skipped (666); 12,808 tests passed, 155 skipped; 100% statements, branches, functions and lines**; `packaged.util.ts` listed at 100/100/100/100; 173 s. No test file was changed by a conversion |
+| `npx eslint` on the 9 converted files, `src/types/node-process.d.ts` and `scripts/build-dist.ts` | 0 problems (after the lint findings recorded in item 8 were resolved) |
+| …the shared-types guard, failing direction: a `declare global` and an `interface ListEnvelope` in `src/utils/` | 2 errors, "Shared types live in src/types/" — probe deleted |
+| `docker build -f backend/Dockerfile .` from the repository root (builder `node:26.10.0-alpine`, pinned digest) | exit 0. Inside the builder, `swagger:generate` ran under tsx, `build:dist` printed "471 JavaScript files copied, 9 TypeScript files compiled" (TypeScript 7 on alpine), and pkg built `node26-linux-x64` |
+| The image booted on a disposable network with `pgvector/pgvector:pg18`, Redis 8.6 and RabbitMQ 3.13 (the digests CI uses) | `GET /health` → **200 `{"status":"ok"}` after 5 s**; 63 migrations applied; "Server running on port 3000". The binary seeded the PLATFORM tenant `00000000-0000-4000-8000-000000000001` (from the converted `platformTenant.ts`), and `enum_audit_logs_action` holds exactly the eight `AUDIT_ACTIONS`. `/app/src/templates`, `/app/swagger.json`, `/app/docs` and `/app/public` listed present. Image, containers and network removed afterwards |
+
+### Alternatives considered
+
+| Alternative | Why not |
+|---|---|
+| **Emit the whole tree with `tsc` (`allowJs` emit)** | re-prints ~470 unconverted files and adds `"use strict"` to each — a behaviour change to every file nobody converted (context, item 2) |
+| **Emit `.ts` beside the source (`src/x.js` next to `src/x.ts`)** | a generated `.js` in the source tree shadows the `.ts` for jest (it resolves `.js` first) and gets committed or linted by accident; two files per module is the ambiguity the build now refuses |
+| **A CommonJS `require` hook registered in `index.js`** | changes the entry point's behaviour, and pkg's snapshot does not run `.ts` anyway |
+| **`@swc/jest` (ADR-038)** | breaks `jest.spyOn` on every converted export (context, item 3) |
+| **ts-jest** | needs the TypeScript compiler API, which TypeScript 7 does not ship; on the TypeScript 6 package it would check with a different compiler from the gate |
+| **esbuild or swc as the release emitter, `tsc --noEmit` as the gate** | TypeScript 7 emits CommonJS correctly and fast (probed: the 9 files in under a second inside `build:dist`), so a second emitter adds a tool without adding anything |
+| **Keep `turbo run typecheck` as the gate** | it skips a package with no such script and exits 0, and today it cannot resolve the workspace at all |
+| **Convert `storagePath.util` and edit the a14 test** | a conversion that changes a test cannot be shown to be behaviour-identical; it waits for its own change |
+| **Put shared types in `packages/contracts` now** | that workspace is for the frontend-facing contract (P9-22) and does not exist; backend-internal types would leak into the frontend's dependency |
+
+### Implications, including the bad ones
+
+- **Plain `node` can no longer run backend source.** Anything that does — an old runbook line, a script someone keeps locally — fails with `MODULE_NOT_FOUND` on the first converted module it reaches. The package scripts, the Makefile and CI were moved to tsx; `docs/DEVOPS/01-CI-CD.md`, `docs/SECURITY/03-AUTHENTICATION-SECURITY.md`, `docs/STORAGE/04-TENANT-STORAGE.md` and `backend/README.md` still contain `node src/…` command lines in prose and are listed for the docs owner.
+- **A test that spawns plain `node` on source blocks conversion of what it loads.** Today that is `activityLog.a14.stdout.test.js` (it loads `activityLog.middleware` and `storagePath.util`). P9-05a, which converts both, must change how that test launches its child (e.g. `--import tsx`), in its own change.
+- **Nothing type-checks during `jest`.** A type error in a `.ts` test passes the suite and fails `npm run typecheck`; the gate is the typecheck, and it must run (CI, `make verify`, pre-push).
+- **`typecheck` accepts a `.ts` → `.js` import; only `build:dist` refuses it.** The base config keeps `allowJs` for editor resolution. So rule 1 fails at build time, not at typecheck time.
+- **The lint ratchet now sees `.ts` files**, and deleting a `.js` file removes its old errors from the count. The ratchet was already red when this landed (1,051 errors against a baseline of 950, from other in-flight changes); the nine originals had **0** lint errors, so these conversions do not move it.
+- **`dist/` now holds two things** — the assembled tree and pkg's binaries. `build:dist` removes only `dist/index.js` and `dist/src/`.
+- **Typed linting runs on TypeScript 6** while the check runs on TypeScript 7; a construct only one of them understands shows up as a lint-only or check-only error until typescript-eslint supports 7 (ADR-076).
+
+### Amendment 1 (2026-09-28, later the same day) — the ratchet, the test transform, the rest of `constants/`, and one reverted conversion
+
+1. **The ratchet (P9-04).** `backend/scripts/ts-ratchet.ts` (`npm run ratchet`) keeps the floor as the **sorted list of every counted `.js` file** in `backend/.ts-ratchet.json`, not a number. It fails when any counted `.js` path is not on the list — a new file or a renamed one — so converting one file cannot make room for adding another. When files have gone and none is new, it rewrites the list and passes, so the lower floor is committed with the conversion. Counted: `index.js`, `src/**`, `__tests__/**`, `scripts/**`. Not counted: the backend-root tool files (`jest.config.js`, `jest.e2e.config.js`, `jest.transform.js`, `eslint.config.js`). Migrations are counted; P9-23 decides how they leave. It runs in `make verify` (`ts-ratchet`), CI's backend-lint job and the pre-push hook. **Tests count too** (ADR-038: the count covers `backend/src`), so a new test file must be `.ts` from now on — for a test of a module that is still `.js`, that means importing JavaScript into a `.ts` test, which `typecheck` accepts (`allowJs`) and the build never sees (tests are not built).
+2. **The test transform is `backend/jest.transform.js`, not babel-jest.** babel-jest 30 loads the **root** `@babel/core`, 7.29.7, with the backend's Babel 8 presets (ADR-076). Babel 7's parser keeps a call's type arguments under `typeParameters`; Babel 8's TypeScript plugin strips `typeArguments`; so `new AsyncLocalStorage<T>()` reached jest with `<T>` still in it. The first converted module that wrote an explicit type argument failed to parse, and **every suite that loaded it failed** — the "240 suites, 446 × Jest encountered an unexpected token, 79% coverage" run the Phase 8 agent saw. The transformer calls the **backend's** `@babel/core` 8 with the same two presets; jest instruments its output for coverage. ADR-076's probe (a `declare` field) could not catch this: it has no type arguments. `jest.e2e.config.js` still passed `allowDeclareFields`, which Babel 8 rejects; it now uses the same transformer.
+3. **`constants/` is converted except one file (P9-08).** Also converted: `appConstants`, `attachmentResources`, `roleConstants`, `index` (the barrel), `rateLimitConstants`, `systemActors` and `tenantSecretSettings` — 15 of 16. `routeGateExemptions` has another agent's uncommitted change and waits. How the new ones were done:
+   - **Key order is kept.** Declarations follow the old `module.exports` order, or an `export { … }` list at the end reproduces it.
+   - **`ROLE_LEVELS` `satisfies Record<keyof typeof ROLE_NAMES, number>`**, so a role in `ROLE_NAMES` without a level no longer compiles. Probed: adding `P9_PROBE_ROLE` to `ROLE_NAMES` gave `TS2741 … Property 'P9_PROBE_ROLE' is missing`.
+   - **The barrel captures values at load.** It uses `export const X = role.X`, not `export … from`, which would compile to a live, non-writable getter.
+   - **Three line-level lint directives, each with a reason:**
+     - `SUPER_ADMIN_ROLE_ID` still reads `process.env` at module load (P9-06 moves the read to `src/config/`) and keeps `||`: an empty variable has always meant "use the default".
+     - The barrel re-exports the `@deprecated` `ROLE_PERMISSIONS` for its JavaScript callers.
+     - `utils/storagePath.util.ts` reads `APP_STORAGE_PATH`, for the same two reasons as `SUPER_ADMIN_ROLE_ID`.
+4. **`utils/storagePath.util` and `utils/appPath.util` are converted (P9-05a, part).** They use `export =` so `require()` still returns the function itself. `activityLog.a14.stdout.test.js` now launches its child with `--import tsx`, because the child loads backend source; **that is the one test change**, and the child script is unchanged.
+5. **`middlewares/tenantContext.middleware` was converted, then reverted.** The owner's scope for this pass is constants and pure utilities, and this middleware is the root of tenant isolation. The conversion passed its own tests and a 13-shape identity comparison. But the full run showed that `tenantHierarchy.visibility.q05.test.js` reads `tenantContext.middleware.js` **as text** (to prove the tenant context never reads the hierarchy), so converting it also means changing an isolation guard. The file is restored byte for byte from `HEAD` (`git status` clean) and its floor entry is restored. The draft `.ts` and the two types it needed (`src/types/express.d.ts`, `src/types/ids.ts`) are kept outside the tree for P9-05a's own reviewed change. Nothing converted uses them, so under the owner's "no speculative types" rule they are not in `src/types/` either. **P9-05 therefore still has only `node-process.d.ts`.**
+
+**Evidence:**
+
+| Check | Result |
+|---|---|
+| Identity: the 15 converted constants and `packaged.util`, originals (`git show HEAD:`) against `dist/` | **402 checks identical** — export names and order, deep-equal values, freeze state, and every exported function's result over 28 sample inputs (including `"toString"` for the rate-limit lookups, and a settings object carrying secret keys). `SUPER_ADMIN_ROLE_ID` checked with the variable unset, empty and set |
+| Identity: `storagePath.util` and `appPath.util` | 60 calls identical across `APP_STORAGE_PATH` unset / empty / set × packaged / not; not-packaged results compared relative to each module's own root (their `__dirname` differs by construction) |
+| `npm run ratchet` failing direction | a new `src/utils/zzRatchetProbe.a087.js` → exit 1 naming it; removed → exit 0; each conversion lowered the floor (1208 → 1201, then one entry put back for the reverted file) |
+| Full suite after the revert | `npm run test:coverage -- --ci --forceExit` exit 0: 642/666 suites (24 skipped), 12,808 tests (155 skipped), 100/100/100/100 |
+| Full suite after the last three constants | exit 0: 642/666 suites (24 skipped), 12,808 tests (155 skipped), 100/100/100/100 |
+| `node dist/index.js` (the assembled tree, plain Node 26, no database) | loaded every module, "Authorization wiring validated: 171 dynamicAccess gate(s), 11 role-menu assignment(s), 12 role name(s)" — the converted `roleConstants` through the converted barrel — then "Initializing database connection". The Docker image was not rebuilt for this amendment |
+
+### Amendment 2 (2026-09-28) — the logger, the tenant context, and two logger-dependent utilities
+
+**Decided by the orchestrator** under the owner's standing instruction to settle these by best practice.
+
+1. **New backend test files are `.ts`.** The ratchet counts tests (Amendment 1, item 1), and that is kept on purpose. `docs/ENGINEERING/09-TESTING-CONVENTIONS.md` says so.
+2. **The tenant store keeps `null` for "no tenant".** `tenantScope.util` keeps mapping `null` to the deny sentinel `NO_TENANT_UUID`. The P9-05a card asked the store to hold the sentinel; that request is withdrawn, because the code wins and a conversion never changes behaviour. The card is amended to match.
+
+**`middlewares/activityLog.middleware` is TypeScript (P9-05a).**
+- **Environment reads:** it reads the environment at load exactly as before. It is wrapped in a region-level lint directive that gives the reason: P9-06 moves these reads to `src/config/`.
+- **`||` stays** wherever the JavaScript had it, because an empty string has always meant "unset".
+- **Error spread:** the spread of an `Error` into the redacted copy goes through an `object`-typed alias. At run time it copies the same own enumerable properties; the alias only stops the checker assuming `name` and `message` are among them.
+- **`createDir`:** the rotating-file options keep `createDir`, which the transport's type declarations do not list. It sits behind an intersection type, not a cast.
+- **Record typing:** the winston record is built key by key in its original order, and then asserted as `TransformableInfo` (a variable, not an object literal).
+- **Tests:** unchanged. `activityLog.a14.stdout.test.js` already launches its child with `--import tsx` (Amendment 1).
+- **New shared types:** `src/types/express.d.ts` (`requestId`, `user`, `tenantId` on `Request`) and `src/types/ids.ts` (`TenantId`) land now, because this module is their first converted user.
+
+**`middlewares/tenantContext.middleware` is TypeScript (P9-05a), under the orchestrator's four gates. All passed.**
+
+| Gate | Evidence |
+|---|---|
+| (a) q05 guard | `tenantHierarchy.visibility.q05.test.js` reads `tenantContext.middleware.ts`. Its two assertions are unchanged (no `/hierarch/i`, no `/descendant\|ancestor\|parent_?code/i` in the source). **Failing direction:** a planted line `// planted: reads the tenant hierarchy (descendants)` gave "1 failed, 11 passed". With the line removed, 12 passed |
+| (b) identity | Original vs `dist/`, **80 checks identical**: 15 request shapes, compared on store, `next` calls, return value and the store after `run`. Shapes include `tenantId` `""`, `0` and `null`; `user` `null`, `{}` and a role of `null`; `SUPERADMIN`, `SUPER_ADMIN` and lower-case; and two PLATFORM-context requests (the operator, and an ordinary role pointed at the PLATFORM id). Also covered: the no-context case (`getStore()` is `undefined` in both, including after a nested system `run`), and the path utilities' 60 calls |
+| (c) isolation suites | 39 suites, **1,192 tests passed**. They include `tenantScope.test`, `.sequelize`, `.includes.a87`, `.bulkDestroy.w33`, `.hookless.w34`, `rawSqlTenantPredicate.d05`, `includes.a90`/`a109`, `maintenance.includes.a190`, `qms.includes.a75`, `includeRequired.d12`, every `*.twoTenant*` suite (apiKeys, batchJobs, calibrationDevices, certificates.a145, customDomains, finance, maintenance, meteredBilling, notifications, risk, stock, supplierScorecard, vendor, warehouse, webhooks, search.a56), `tenant.edit.a63`, `user.profile.a63`, `scim.crossTenantOracle.a37`, `user.service.crossTenant.az04`, the four `tenantHierarchy.*` suites, both `denyPlatformAuthoring` suites, `jobContext.w12` and `tenantContext.test`. The full run: every suite passed. Coverage was 99.62% only because helper 2's five `utils/*.ts` files sat beside their `.js` twins mid-conversion, so jest loaded the `.js` and never measured the `.ts`. `tenantContext.middleware.ts` itself was 100/100/100/100 |
+| (d) live PostgreSQL 18 | PostgreSQL **18.6** (pgvector image, CI digest), migrated by booting the backend from source (`node --import tsx index.js`, "Database queries now run as the application role "callibrator_app""). A scratch script then switched every connection with the backend's own `enterApplicationRole` and established contexts through the converted `tenantContextMiddleware`. **13 checks passed:** `current_user` is `callibrator_app`; A reads its own warehouse by id; A cannot read B's warehouse by id (`null`, i.e. 404), by an explicit `where` on its id, or by asking for B's `tenantId` (the hook forces A's own id, as built); A's list holds only A's row; A's update of B's row touched 0 rows; B cannot read A's row; a request with no tenant sees neither row (deny by default); and B's row is unchanged. The containers were removed afterwards |
+
+**`utils/dbReady.util` and `utils/circuitBreaker.util` are TypeScript (P9-09 b).**
+- **dbReady:** keeps a bare `import "sequelize"`. The `.js` required sequelize for a JSDoc type, and the import keeps that module load where it was.
+- **circuitBreaker, late binding:** `exports.getBreaker(...)` was late-bound. It is now a named self-import, which both emitters compile to a property read on the module's exports at call time. The identity script proves that replacing the export still reaches `withCircuitBreaker`.
+- **circuitBreaker, fields:** class fields are `declare`d, so both emitters create each property in the constructor, in the same order, as before.
+- **circuitBreaker, null arithmetic:** `Date.now() - null` became `Date.now() - Number(x)`, which is the same number and has no branch. An earlier `?? 0` had added a branch the tests cannot reach, and cost 100% branch coverage.
+- **Identity:** dbReady 15 checks and circuitBreaker a 22-step trace (states, errors, log calls, listener calls, property order, pool, late binding), all identical. Both files are at 100% coverage.
+
+**Not converted, with the reason:**
+- `utils/generateSwagger.util`: it imports `docs/components` and `docs/tags`, which are JavaScript (P9-21).
+- `utils/upload.util`: it imports `utils/fileValidation.util`, which is JavaScript with another agent's uncommitted change.
+- `utils/tenantScope.util`: it is the tenant-isolation engine. It gets its own step under the same four gates, and `rawSqlTenantPredicate.d05` walks only `.js` files, so it must learn `.ts` first (below).
+- `constants/routeGateExemptions`: still carries another agent's uncommitted change.
+
+**Found (helper 2, confirmed here): source-walking guards ignore `.ts`.** At least 16 guard suites filter on `.js` when they walk the source tree: `systemActors.a124`, `auditInTransaction.p611`, `includeRequired.d12`, `unscopedModels.d17`, `denyPlatformAuthoring.a127`, `dynamicAccessSlugs.a07`, `routePermissionGuard.p604`, `swaggerValidatorAlignment.p608`, `uploadAfterGate.a78`, `migration.service`, `signatureEvidence.d18`, `unboundedFindAll.d24`, `webhookEmit.a11`, `istanbulIgnore.a32`, `jobContext.w12`, `rawSqlTenantPredicate.d05` and `schedulerSwitch.w02`. A converted file therefore leaves each such guard **silently**. For the files converted so far this loses nothing: none holds raw SQL, an `istanbul ignore`, a scheduler, a system-actor literal, a route, a model include or an audit call. But the next layers do. **Every such guard must accept `.ts` before its layer converts**, or a guard reports green having scanned less. This is recorded as a precondition on P9-09 (tenantScope), P9-10, P9-12…P9-21.
+
+**Build fact:** `import * as x from "<commonjs module>"` compiles, under Babel, to an interop helper whose branches are counted against the importing file. Where the import was a self-import, it cost 100% branch coverage. Named imports, or `export =` modules imported by default, do not have this problem.
+
+### Amendment 3 (2026-09-28) — the twelve true-leaf utilities (P9-09, helper 2)
+
+**Converted** (`.ts`, `.js` removed): `utils/{activationToken, appError, auditActor, auditRedaction, csp, dbRole, env, fileResponse, keyring, mfaPolicy, password, schemaVerify}.util`. Each requires nothing unconverted. The require graphs, and the leaves that wait with their reasons, are in `MEMORY/records/2026-09-28-p9-09-utils-leaves.md`: `fileValidation`, `otp`, `response`, `ssrf` and `migrationLock` have another agent's uncommitted diff; `controllerWrapper` depends on two of those; `jsonShape` depends on a validator; `jwt` belongs to P9-12 and has no `@types/jsonwebtoken`.
+
+**Decisions:**
+
+1. **Injected dependencies are typed by the members used, in the module.** `dbRole` and `schemaVerify` type the Sequelize instance and the logger as local structural interfaces. Raw-SQL rows are typed once at the query boundary (`as Row[]` from `unknown[]`). `dbRole`'s single `pg_roles` row is typed as a non-empty tuple, so a missing row still fails where it did. `auditActor` takes a structural `AuditActorRequest` instead of Express's `Request`, because it reads `req.impersonatorId`, which `src/types/express.d.ts` does not declare. When a `.ts` caller first passes a real `Request`, the field moves into the augmentation (ask the lead) and the local type can go.
+2. **`AppError`'s hierarchy is typed in `utils/appError.util.ts`, with no shared type.** `toJSON()` returns a module-local `AppErrorBody`. Fields are `declare`d, so the own-property order is unchanged. **`ApiResponse<T>` is not added yet.** `response.util` is its only builder and is not convertible today; the type lands with it as `src/types/apiResponse.ts` (agreed with the lead: no speculative types).
+3. **As-built coercions stay, each with a line-level lint directive and a reason.** These are `||` where empty meant unset, `String(x)`/`Number(x)` on what a JavaScript caller passes, and the three `process.env` reads (P9-06). Rewrites are made only where the value is identical for every input:
+   - `a && a.b` became `a?.b` where the result is only tested for truth or passed to `|| null`;
+   - `return resolve()` became `resolve(); return;` in a callback whose return value is never read;
+   - `split(";")[0]` became `split(";", 1).join("")`. The first form needs `?? ""` under `noUncheckedIndexedAccess`, and that branch is unreachable: it cost 100% branch coverage on the first full run.
+4. **Named imports for CommonJS libraries** (`createHash`, `hash`/`compare`, `config`). Both emitters compile them to a property read at call time, so `jest.spyOn(crypto, …)` and `jest.mock("bcryptjs", factory)` still apply.
+
+**Accepted differences, each checked:**
+- `password.util`'s two exports now have a `name`. `exports.x = async () => …` gave `""`; `export const x` gives `"hashPassword"` and `"comparePassword"`. Nothing reads either.
+- The emitted files begin with `"use strict"`. None of the twelve assigns an undeclared name, uses `this` in a plain function, or writes to a frozen object.
+
+**The guard gap (Amendment 2) is not "nothing lost" for these files.** `dbRole` and `schemaVerify` hold raw `sequelize.query` SQL. Today it names `pg_roles`, `information_schema` and catalog tables, never a tenant-scoped table, so `rawSqlTenantPredicate.d05` had nothing to flag in them. But a future edit to either file is no longer scanned until that guard accepts `.ts`.
+
+**Evidence:**
+- **Checks:** `npm run typecheck` exit 0; `npx eslint` on the 12 files, 0 problems.
+- **Identity:** originals (`git show HEAD:`) against `dist/`, **1,197 checks, 1,195 identical**. The 2 differences are the `Function.name` pair above.
+- **Ratchet:** 1197 → 1183.
+- **Own suites:** 14 suites, 146 tests passed.
+- **Full run:** `npm run test:coverage -- --ci --forceExit` exit 0, 642/666 suites (24 skipped), 12,808 tests (155 skipped), 100/100/100/100.
+
+### Amendment 4 (2026-09-28) — every source-scanning guard reads `.ts`; `tenantScope` is TypeScript
+
+**Decided by the orchestrator:** the guard sweep is a precondition for every further layer.
+
+**1. The sweep: 20 guard suites.** These are the 17 named in Amendment 2, plus `jsonShape.d27`, which also filters on `.model.js`. The 20 include `istanbulIgnore.a32`, which helper 1 had already converted under ADR-092; I built on that and did not overwrite it. `migrationLock.p803.live` is fixed separately in item 5.
+
+**What changed in the guards:**
+- Each file filter now accepts `.ts`. The `.model.js` filters now accept `.model.(js|ts)`.
+- Guards that name a file by its extension now accept both: p604's mount check strips `.(js|ts)`, and p611's audit-service exemption matches either.
+- The four guards that **parse** source with espree now parse a `.ts` file with `@typescript-eslint/typescript-estree`, a new backend devDependency (8.70.1): `includeRequired.d12`, `unscopedModels.d17`, `signatureEvidence.d18` and `unboundedFindAll.d24`. typescript-estree yields the same ESTree node shapes; the visitors walk past the TS-only nodes. Declaration files (`.d.ts`) are skipped.
+- `includeRequired.d12` also learned the TypeScript spelling of a model rename, `import { User as U } from "../models"`, beside the existing `const { User: U } = require(...)`.
+- No allow-list needed re-keying: no guard lists a file that has converted (checked by searching every guard for the old `.js` path of each converted module).
+
+**Bite proof, per guard.** For each guard, a scratch `.ts` file carrying the forbidden pattern was planted inside the scanned tree. Only that guard was run, it had to FAIL, and the plant was removed (scratch `p9/bite.js`, results in `p9/bite-results.json`). **All 20 bit:**
+
+| Guard | Plant (removed afterwards) | Failed on |
+|---|---|---|
+| `systemActors.a124` | `utils/zzP9plant.a087.ts`: `"system:probe-invented"` | "no source file invents a 'system:' actor". The first plant, `system:p9-invented`, missed: the guard's pattern is `[a-z-]` with no digits. This was a plant error, not a guard error |
+| `auditInTransaction.p611` | a service calling `logAction({ action: "CREATE" })` with no transaction | "every logAction call passes a transaction" |
+| `0019-signature-crypto-fields.d29` | a migration with `context.queryInterface \|\| context` | "is frozen to the sixteen reviewed migrations" |
+| `includeRequired.d12` | a service with a bare `{ model: User }` include; again with `import { User as U }` | the production-include rule, naming `zzP9plant.a087.service.ts:3 User` |
+| `unscopedModels.d17` | `KanbanColumn.findOne({ where: { id } })` | "no unreviewed child-model query omits the parent key" |
+| `denyPlatformAuthoring.a127` | a route `POST /sign` with no guard | "every other candidate is in the reviewed NOT_GUARDED list" |
+| `dynamicAccessSlugs.a07` | `dynamicAccess("p9-no-such-slug", "read")` | the RUNTIME and count-agreement tests |
+| `routePermissionGuard.p604` | an ungated, unmounted route | "every route is gated or exempted" and "every route module is mounted" |
+| `swaggerValidatorAlignment.p608` | an undocumented validated route | "no divergence beyond the pinned list" |
+| `uploadAfterGate.a78` | `upload.single()` after `dynamicAccess` | "every upload-after-gate route is in the reviewed list" |
+| `migration.service` | `db.sync({ force: true })` | "no application source forces a sync" |
+| `signatureEvidence.d18` | `SignatureRecord.destroy({ where: {} })` | "no force: true destroy and no bulk destroy" |
+| `unboundedFindAll.d24` | `Vendor.findAll({ where: {} })` | "no service adds an unbounded findAll that is not on the reviewed list" |
+| `webhookEmit.a11` | two steps: a catalogue event with no emit site made it fail; then a planted `.ts` service as the ONLY emit site made it pass | proves the scan reads `.ts` (this guard fails on absence, so a plant alone cannot make it fail). The catalogue was restored byte for byte |
+| `jobContext.w12` | `{ isSystemTask: true }` outside jobContext | "no source file but jobContext.util sets isSystemTask: true" |
+| `rawSqlTenantPredicate.d05` | `sequelize.query("SELECT * FROM kanban_projects")` | "every statement that names a tenant-scoped table … mentions tenant_id" |
+| `schedulerSwitch.w02` | `cron.schedule` without `scheduleSetting` | "every cron.schedule call site reads its expression through scheduleSetting" |
+| `bodylessBody.a09` | a validator whose `validate` returns `undefined` | "validate(undefined, <required schema>) is refused" |
+| `jsonShape.d27` | a model with an undeclared JSONB column | "finds the fourteen JSON/JSONB columns" and two more |
+| `istanbulIgnore.a32` | a bare `/* istanbul ignore next */` | "every directive states why" and "the count does not rise above 30" |
+
+**2. `utils/tenantScope.util` is TypeScript (P9-09), under the same four gates as `tenantContext`.**
+
+**How the types were written.** They are **local structural interfaces** for the parts of Sequelize this module reads, private members included (`_scope`, `_conformIncludes`, `_expandIncludeAll`, `_getIncludedAssociation`). The models are not typed yet (P9-10), and JavaScript callers may pass anything, so every defensive check the `.js` made is still made. Every line-level lint directive gives its reason:
+- `||` stays as built.
+- `include.required === undefined` is not rewritten as `??=`, which would also overwrite an explicit `null`.
+- `String(owner)` stays, so a tenant id of any JavaScript type compares as its string.
+- The "unnecessary condition" after `_conformIncludes` is kept: that call mutates `options`, and the checker cannot see it.
+- `withTenantPredicate` gained a `typeof where === "object"` test in front of its prototype check. A primitive's prototype is never `Object.prototype`, so the result is the same; the test only narrows the type for the spread.
+
+| Gate | Evidence |
+|---|---|
+| (a) the guards that watch it bite on it | A planted `getDataVisibilityScope` in `tenantScope.util.ts` fails q05 ("no source file calls a hierarchy visibility helper"). A planted `sequelize.query("SELECT * FROM kanban_projects")` in it fails d05, naming `utils/tenantScope.util.ts: kanban_projects`. The file was restored byte for byte (`cmp`) |
+| (b) identity | **2,810 checks identical** (scratch `p9/compare6.js`) between the original (with its original `tenantContext`) and the compiled `dist/` (with the compiled one). Every export was compared across 6 contexts (none, system, super admin, tenant, `tenantId` null, `tenantId` ""). The comparison covered: `tenantKeyOf` over 8 model shapes; `resolveScope` over 6 option shapes; `applyTenantWhere` over 5 model shapes × 3 `byField` values × 8 `where` shapes × 2 `skipTenantScope` values; `applyTenantToIncludes` over 13 include trees (defaultScope `where`, explicit `required: false` and `null`, separate / limit / pseudo / skip, a throwing association, a `through` model, a literal `where`) × 2 conform modes × 2 skip values; the three create-shaped guards over 8 rows and 3 keys; `applyTenantAssignmentBulk` over 6 instance lists × 4 `fields` shapes; `refuseScopedTruncate`; `scopeHooklessStatics` (the wrapped `aggregate` and `increment`, their recorded calls, idempotence); and `register` (hook names and order, each hook invoked). Mutated options, return values, thrown messages and `Op` symbol keys were all compared |
+| (c) isolation suites | 40 suites, **1,196 tests passed**, with `tenantScope.util.ts` at **100/100/100/100**. These are the 39 suites of Amendment 2 plus `uuidDefaults.a116`. The full run passed as well (below) |
+| (d) live PostgreSQL 18.6 as `callibrator_app` | The same script as Amendment 2, extended with the A-87 include shape and W-34/D-01 checks. **18/18 passed.** It confirmed that `tenantScope` and `tenantContext` are both the `.ts` modules and that queries run as `callibrator_app`, plus the 13 earlier checks and five new ones: a LEFT include of B's warehouse through A's storage location joins as `null`; an INNER include drops that row and keeps A's own; `count` sees only A's warehouse; `bulkCreate` of a B row from A's context is refused with the exact D-01 message; A cannot update B's row. The containers were removed afterwards |
+
+**3. Evidence at the boundary.**
+- `npm run typecheck`: exit 0.
+- `npx eslint` on every touched file: 0 errors. `node scripts/ci/eslint-ratchet.js`: "0 error(s), 287 warning(s); baseline 0".
+- `npm run ratchet`: 1182, at the floor.
+- `npm run test:coverage -- --ci --forceExit`: exit 0, 683 of 707 suites (24 skipped), 12,890 tests (155 skipped), **100/100/100/100**.
+
+**4. Follow-ups recorded (not done here).**
+- **D-12 and the branded default-scoped set.** Once the models convert, `includeRequired.d12` should assert that the branded default-scoped set equals the runtime set (the P9-10 spec asks for this).
+- **Ordering gap.** `utils/jsonShape.util` imports `validators/iot.validator`, so both must be `.ts` before the first model with a JSON column converts. This is recorded on the P9-09 and P9-10 cards.
+
+**5. `migrationLock.p803.live.test.js` starts `scripts/migrate.js` with `--import tsx`.** The migrate script loads the logger, which is TypeScript, so a plain `node` child can no longer resolve it. The test is live and skipped without a database, which is why no unit run showed the break. The fix was made; the test was not run live here.
+
+**6. Still not converted.**
+- `constants/routeGateExemptions` carries another agent's uncommitted change, and the docs-and-authz agent is editing route gates.
+- `utils/upload` waits for `utils/fileValidation`. `fileValidation`, `otp`, `response`, `ssrf` and `controllerWrapper` are now free (helper 1 finished) and are next. Their identity baseline must be the **working-copy** `.js`, not `HEAD`, because helper 1's lint edits are in them uncommitted.
+
+### Amendment 5 (2026-09-29) — the released leaves, the last constant, `ApiResponse<T>`, and the baseline against a converted image
+
+**1. Seven more modules are TypeScript.** They are `utils/otp`, `ssrf`, `fileValidation`, `response`, `controllerWrapper` and `upload`, plus `constants/routeGateExemptions`, which leaves **no JavaScript in `constants/`**.
+- **Baseline for the identity checks.** Each file was taken from the **working copy**, not `HEAD`, because helper 1's committed-later lint edits were in them. The copies were snapshotted before conversion (scratch `p9/wc/`), each was confirmed unchanged at the moment it was removed (`cmp`), and each was compared against its compiled `dist/` module.
+- **What the conversions preserve:**
+  - **Late-bound calls.** Wherever the `.js` called `exports.x(...)` (otp's `hashOTP`; fileValidation's `isDangerousExtension`, `isExposableError`, `publicErrorMessage` and `sanitizeError`), a named self-import reads the export at call time, so a replacement still reaches the caller. The identity scripts test this.
+  - **Load-time capture.** Wherever the `.js` destructured another module at load (controllerWrapper's three helpers; upload's `v4`, logger, `AppError` and `validateFileMagicBytes`), a `const` captures the value at load the same way.
+  - **CommonJS builtins are default imports** (`import fs from "fs"`, `dns`, `net`, `path`, `crypto`). The module object itself is used, so `dns.promises.lookup` is read at call time and the tests' `jest.spyOn(dns.promises, "lookup")` still reaches ssrf. A namespace import would have gone through an interop copy.
+  - **Export key order** is kept with an `export { … }` list in the `.js` assignment order.
+- **Two load-level differences, both without an observable effect.**
+  - `upload` now requires `uuid` **after** its other imports instead of fourth. uuid 14 is ESM-only, so it is loaded with a `require` (a type-only import satisfies the checker: `import type * as UuidModule from "uuid" with { "resolution-mode": "import" }`), and a `require` statement runs after the hoisted imports. uuid has no load-time side effect.
+  - `upload` builds its unused module-level default uploader as `void multer({...})` instead of `const upload = multer({...})`. The name would have collided with the exported `upload`; the construction still happens at load.
+- **Lint directives, each with a reason:**
+  - `process.env` is read per call or at load, as built (P9-06 moves these reads).
+  - `||` is kept where `??` would change what an empty string or `0` does.
+  - upload's `return next(err)` callbacks are unchanged: `no-confusing-void-expression` is disabled for that file, because `next` returns nothing.
+  - Buffer `slice` (deprecated, the same view as `subarray`) is kept.
+- **Evidence:**
+  - otp, ssrf, fileValidation, response, controllerWrapper: **695 checks identical** (`p9/compare7.js`). They cover 24 IPs, 13 URLs and 5 DNS answers through the SSRF guards; 10 real files × 11 MIME types through `validateFileMagicBytes`; every envelope helper in production and development (the JSON bodies compared as strings, so key order counts); and both controller wrappers over 11 error shapes × 2 environments × 3 API-key states.
+  - upload: **41 checks identical** (`p9/compare8.js`). 14 real multipart requests went through the real multer, covering the quarantine, promotion, magic-byte rejection, size limit and file-count limit paths, and what is left in quarantine was compared too. The public guard, the static-file options and headers, `mountPublicUploads`, `getUploadUrl` and `deleteUpload` were also compared.
+  - routeGateExemptions: exports, deep values, freeze state and key order in all 24 route files, and `publicRoutes()` (41 routes) identical.
+
+**2. `ApiResponse<T>` is in `src/types/apiResponse.ts`.** It holds `ApiSuccessResponse<T>`, `ApiErrorResponse` and their union. It is typed from what `response.util` builds, its first converted user; `meta` is a top-level sibling of `data`. `express.d.ts` gained the request fields these modules read: `apiKeyAuthorized`, `uploadFolder`, `allowedMimes`, `allowedExtensions` and `uploadFilename` on `Request`, and `isApiKey` on the principal.
+
+**3. One lint rule is switched off, in `eslint.config.js`.** `@typescript-eslint/non-nullable-type-assertion-style` asks for `x!` instead of `x as T`, which is the `!` that `no-non-null-assertion` bans. With both rules on, a checked narrowing could satisfy neither. Two directives written for it earlier were removed, from circuitBreaker and tenantScope. Helper 1 had finished, and I was the only agent at the time.
+
+**4. `jest.config.js` drops `src/constants/**/*.js` from `collectCoverageFrom`.** No `.js` file remains there, and `coverageScope.p614` refuses a pattern that matches nothing. `src/constants/**/*.ts` stays.
+
+**5. The P9-00 baseline passes against a converted image (P9-01b's last item).**
+- **Setup:** helper 1's stack (`MEMORY/records/P9-00.md`, the same three compose files and overlay), with the build context pointed at the **working tree**.
+- **The image:** built by compose from `backend/Dockerfile` on Node 26.10.0-alpine. `build:dist`: "438 JavaScript files copied, 44 TypeScript files compiled".
+- **Boot:** `[schema-verify] OK: 72 tables, 867 columns and 8 control objects match the models`, then "queries now run as the application role callibrator_app". Templates, `swagger.json`, `docs` and `public` were present.
+- **Seed:** `seeding` 200, then `seed-demo` 200.
+- **Runs:** three consecutive runs of `BASE_URL=http://127.0.0.1:25000 npm run test:e2e`, spaced for the `tenantCreate` budget:
+  - A: 12:11:43 +07:00, 53 of 54 suites passed (1 skipped), 392 tests passed, 5 skipped, 19.3 s.
+  - B: 12:13:23 +07:00, the same result, 17.3 s.
+  - C: 12:15:38 +07:00 with a JSON report. The **same 53 specs with the same per-spec pass counts as the P9-00 set**, from `auth` (32) to `workflows` (5); `liveContract.smoke` skipped (opt-in, 5 tests); 0 failed.
+- **Access log across A and B:** 1,042 requests, **0 × 429**, and 5xx only **2 × `POST /api/v1/ai/query` 500**. These are the same figures the baseline recorded (no AI provider on the stack; `ai.e2e` accepts it).
+- **Cleanup:** `down -v`, then the image was removed; the `.env` with secrets was deleted.
+- **This is also the end-of-round Docker rebuild and boot.**
+
+### Amendment 6 (2026-09-29) — round 6: the context-dependent utils, `jobContext` under the isolation gates, `migrationLock` live, `jsonShape` with `iot.validator`, and P9-06 part 1
+
+**1. Seven more modules are TypeScript.** They are `utils/authorizationWiring`, `publicBaseUrl`, `schedulerSwitch`, `jobContext`, `migrationLock` and `jsonShape`, plus `validators/iot.validator`. **30 of the 36 `utils/` are now `.ts`.** The six left cannot convert yet: `kmsVerify` (P9-18), `jwt` (P9-12), `generateSwagger` (P9-21), and `checkMenu`, `session` and `seedMenuGroups` (after P9-10). The identity baseline was the working-copy `.js`, snapshotted before removal (scratch `p9/wc2/`).
+- **`authorizationWiring`, `publicBaseUrl`, `schedulerSwitch`: 150 checks identical** (`p9/compare9.js`). The originals were placed into a copy of `dist/src`, so their `__dirname`-relative scans read the same route tree and seed.
+  - `authorizationWiring` still scans `routes/api/*.route.js` only, and reads `seedMenuGroups.util.js` by name. Both reads must learn `.ts` before P9-21 (routes) and P9-10 (`seedMenuGroups`); this is noted on the P9-09 card.
+- **`jobContext`, under the four tenant-isolation gates the owner set:**
+  - (a) **The watching guards bite on the `.ts` file.** A planted `isSystemTask: true`, and a literal `runAsSystem` reason in another `.ts` file, each failed their w12 guard. With the plants removed, `jobContext.w12` passed 12/12.
+    - Its one expectation changed from `utils/jobContext.util.js` to `utils/jobContext.util.ts`; that is a file-name expectation, the kind of test edit these conversions allow.
+  - (b) **141 identity checks identical** (`p9/compare10.js`), across contexts: nested, concurrent, thrown and absent.
+  - (c) **The isolation suites, `backgroundJobs.w12` and the scheduler suites:** 71 suites and 1,563 tests passed, at 100%.
+  - (d) **Live on PostgreSQL 18.6 as `callibrator_app`: 15/15 passed** (`p9/live-jobcontext.js`):
+    - A `runForTenant(A)` job's read sees only A. B by id is `null`. A bulk update touches only A's row. Writing a B row is refused. Deleting B's row by code deletes nothing, and B's row is untouched afterwards.
+    - `runAsSystem` refuses an unlisted reason before running anything. With a listed reason it spans both tenants.
+    - As built, a `create` naming B **inside** an A job is stamped A: validation (`allowNull`) runs before `beforeCreate`, so the create must name *a* tenant, and the hook then overwrites it with the context's. That is recorded as it is, not changed.
+  - The live suites `backgroundJobs.w12` (8), `calibrationScheduler.w03` (3), `batch.w17` (2) and `tenantHookless.w34` (6) also passed on PostgreSQL 18.
+- **`migrationLock`: 21 checks identical** (`p9/compare11.js`). These use fake connections over the lock-held, lock-after-n-tries, timeout, throw and migrator paths, plus `resolveTimeoutMs` over 8 values.
+  - **The p803 live suite passed 4/4 on PostgreSQL 18**, on the scratch database `callibrator_p9_scratch`, including "npm run migrate WAITS for a held lock" (5,077 ms).
+- **`jsonShape` + `iot.validator`: 266 checks identical** (`p9/compare12.js`). They cover every `JSON_SHAPES` key over 15 values, the tolerance schema over 12 inputs, and both body schemas.
+  - `iot.validator` stays **Joi, byte for byte**; P9-11 keeps its Joi → Zod move. Helper 3's `iot.validator.contract.test.ts` passed **unchanged**.
+  - This closes helper 3's ordering gap: both files had to be `.ts` before the first model with a JSON column converts.
+  - `jsonShape` sets `shapeKey` with `Object.assign(validator, { shapeKey: key })`. That is the same property on the same function, and gives a typed `ShapeValidator`.
+
+**2. P9-06 part 1: `src/config/env.ts`, and no `process.env` in a converted module outside `src/config/`.**
+- **The accessors.** Each reproduces exactly the expression it replaces, and reads at **call** time; nothing is cached at load.
+  - `env(name)` is `process.env[name]`.
+  - `envOr(name, fallback)` is `process.env[name] || fallback`. It keeps `||` on purpose: an **empty** variable has always meant "use the default" here.
+  - `environment()` is the live `process.env` object itself, for functions that take an injectable `env`.
+  - `isProduction()` is `NODE_ENV === "production"`.
+- **The retrofit.** Every `no-restricted-properties` directive written in Stage B is gone; `grep` finds `process.env` outside `src/config/` only in comments. The retrofitted modules are:
+  - `appError`, `controllerWrapper`, `dbRole`, `fileValidation`, `response`, `schemaVerify`, `storagePath` and `upload`;
+  - `constants/roleConstants` and `middlewares/activityLog`, whose region directive went too;
+  - and this round's `publicBaseUrl`, `schedulerSwitch` and `migrationLock`.
+- **Evidence:**
+  - **62 environment cases identical** (`p9/compare13.js`). Each case is a fresh process, because several reads happen at load, and each observes all ten retrofitted modules at once. The cases cover `NODE_ENV`, `SUPER_ADMIN_ROLE_ID`, `APP_STORAGE_PATH`, `LOG_TO_FILE`, `LOG_LEVEL`, `DB_APP_ROLE`, `SCHEMA_VERIFY` and `MAX_FILE_SIZE`, each unset, **empty** and set, in both the packaged and the source layout. The originals and the compiled modules also crash identically in the one packaged case whose logger cannot create its directory.
+    - `MAX_FILE_SIZE` feeds a module-private constant, so it is checked by its compiled expression.
+  - A new test, **`src/tests/config/env.p906.test.ts`** (4 tests), pins each accessor's semantics against hand-written expectations. It **bites**: with `envOr` switched to `??`, 1 of its 4 tests fails.
+    - `src/config/` is outside the coverage figure (ADR-085 scope), so this test is its only direct measure.
+  - `activityLog.a14.stdout` still passes.
+- **Not in part 1: the Zod schema over every variable, and a boot that fails listing every problem.** That changes behaviour, because a boot that starts today could refuse, so it is its own change (P9-06 part 2). The unconverted `.js` still read `process.env` directly and move as they convert.
+
+**3. The round-end boundary.**
+- **Full backend coverage run** (`npm run test:coverage -- --ci --forceExit`): **698 of 722 suites passed (24 skipped), 13,052 tests passed (155 skipped), 100% on all four measures**. That run preceded `env.p906.test.ts`, which passed on its own run (4/4).
+- **Typecheck:** TypeScript 7 `--noEmit` clean.
+- **Lint:** `eslint-ratchet` 0 errors against a baseline of 0.
+- **Ratchet floor:** 1172 → 1167 → **1165**.
+- **Build:** `build:dist` compiles **52** TypeScript files beside 431 JavaScript files.
+
+**4. The end-of-round Docker rebuild and boot.**
+- **Image:** built by compose from `backend/Dockerfile` (Node 26.10.0-alpine) on the P9-00 scratch stack. The `.env` was generated with fresh secrets the way `make secrets` does, with `ALLOW_SEEDING=true`, `FORCE_HTTPS=false`, `VIRUS_SCAN_PROVIDER=none`, and `DB_APP_ROLE` defaulted to `callibrator_app`. `build:dist`: "431 JavaScript files copied, 52 TypeScript files compiled".
+- **Boot:** `[schema-verify] OK: 72 tables, 867 columns and 8 control objects match the models`; queries run as the application role `callibrator_app`; the authorization wiring validated 171 `dynamicAccess` gates; `/health` returned 200.
+- **Seed and login:** seeding returned 200, and login as the seeded super admin succeeded.
+- **Restart:** "roles table agrees with ROLE_LEVELS for 11 seeded role(s)". This exercises `SUPER_ADMIN_ROLE_ID` through `envOr`.
+- **Files:** `docs`, `public` and `swagger.json` were present in `/app`.
+- **Cleanup:** `down -v --rmi local`; no container, image, network or volume is left, and the `.env` was deleted.
+
+### Amendment 7 (2026-09-29) — P9-10 starts: the model pattern amended, batches 1 (Kanban) and 2 (inventory)
+
+**1. The spec's model pattern does not compile for models that name each other; it is amended.** This is a deviation from `MEMORY/specs/P9-10-model-typing-pattern.md` items 1 and 2, recorded here and in the spec's header.
+- **The failure.** The spec's pattern puts `class X extends Model<InferAttributes<X>, …> { declare … }` inside the factory. It fails with **TS2502** as soon as two converted models refer to each other through `Models[...]`, for example `KanbanCard.project` and `KanbanProject.cards`. Each factory's return type is inferred from its class, and the class's base type (`InferAttributes<X>`, which reads every field) needs the other factory's return type, and so round.
+  - I reproduced it with two models in scratch (`p9/cyc`, `p9/cyc2`), both with the spec's `function` form and with a `const` arrow. The spec's probes never met it: they converted one model of each pair.
+- **Decision: the pattern as built** (`src/models/initModel.ts`):
+  - The row type is a **module-level interface**: `interface X extends Model<InferAttributes<X>, InferCreationAttributes<X>> { …attributes, NonAttribute associations, instance methods… }`.
+  - The statics are a second interface: `XStatics { associate; restoreStatic; readonly defaultScoped?: DefaultScoped }`.
+  - The factory is an **explicitly typed** `const defineModel: DefineX = (db, DataTypes) => { … }`. That keeps the arrow the `.js` had; a `function` declaration would add a `prototype`.
+  - The class is built with `initModel<X, XStatics>(class extends Model {}, attributes, { …options, modelName, sequelize: db })`.
+  - **At run time this is exactly `db.define`:** `define` sets `options.modelName` and `options.sequelize`, then calls `init` on a fresh anonymous `class extends Model {}`.
+- **Unchanged from the spec:**
+  - `export =`;
+  - timestamps declared but never passed to `init`;
+  - the defaultScope `where: { is_deleted: false }` and `includeDeleted: { where: null }`, each with its reasoned `@ts-expect-error` (probes 3 and 2). Both directives are **used**: the typecheck would fail on an unused one;
+  - `Models` in `src/types/models.ts` until the barrel converts;
+  - statics and prototype methods assigned as the `.js` assigned them. Function names therefore stay what they were: `X.associate = (…) => …` stays nameless, where `Object.assign({ associate })` would have named it `associate`.
+- **`initModel` makes one assertion:** the class Sequelize initialised is `ModelStatic<X> & XStatics`. It is the same claim a `declare` field makes. The statics are assigned on the next lines; the brand is phantom and never read.
+- **Alternatives considered:**
+
+  | Option | Why not |
+  |---|---|
+  | The spec's class with `declare` fields | Does not compile for mutually referring models (TS2502) |
+  | Keep the class, merge a module-level interface into it | Compiles, but needs `no-unsafe-declaration-merging` and `no-empty-object-type` disabled in every model file |
+  | `db.define<X, Omit<…>>()` itself | No assertion at all, but no class form for the 16 models written as `class X extends Model {}` with methods, so two patterns. Kept as the fallback if the assertion proves a problem |
+  | Module-level class | Breaks the tests that re-`init` a factory on their own Sequelize (spec item 1) |
+- **Bad implications:**
+  - Attributes are no longer `declare` fields on a class. They are interface members, so `this` inside a prototype method must be annotated (`function (this: Warehouse)`).
+  - Every model now has three small type declarations: the interface, the statics and the factory type.
+  - `docs/ENGINEERING/04` § Models is amended to this pattern, referencing this amendment. The spec's own open question 3 had asked for that.
+
+**2. Batch 1 — Kanban (9):** `kanbanCard`, `kanbanCardAssignee`, `kanbanCardLabel`, `kanbanCardRelation`, `kanbanColumn`, `kanbanLabel`, `kanbanProject`, `kanbanProjectMember`, `kanbanSprint`. **Batch 2 — inventory (6):** `warehouse`, `storageLocation`, `stock`, `stockTransfer`, `stockAdjustment`, `stockOpname`. **15 of 71 models are `.ts`.**
+- **Baseline:** the working-copy `.js`, identical to `HEAD` for all fifteen. Each was snapshotted to scratch `p9/models-wc/` and confirmed unchanged (`cmp`) when removed.
+- **Brands:** `UserId` was added to `src/types/ids.ts` (the Kanban and inventory user keys); tenant keys are `TenantId`.
+- **ENUMs** come from `as const` tuples (`DataTypes.ENUM(...WAREHOUSE_STATUSES)`), which give the same values and so the same column.
+- **STRING columns** documented as a closed list but not enforced (Kanban `priority`, `status`, `accessLevel`, `type`) are typed `string`, because that is what the database holds.
+- **The brand:** `Warehouse` and `Stock` are the first default-scoped models converted, and carry `readonly defaultScoped: DefaultScoped`.
+
+**3. The four checks (ADR-092 item 4), at each batch boundary:**
+- **(a) Typecheck:** TypeScript 7 `--noEmit` is clean.
+  - **New `src/tests/models/modelTypes.p910.test.ts`** pins ten negative checks, each a used `@ts-expect-error`: a raw string or a `TenantId` where a `TenantId` / `UserId` goes, a missing required attribute, `is_deleted` in values, an ENUM outside its list, an unknown attribute or an association in a `where`, and a DECIMAL-style numeric read as a string. It also has 3 runtime tests: a fresh class per Sequelize, timestamps `allowNull: false`, and the column-key defaultScope.
+  - **It bites:** widening `Warehouse.status` to `string`, or `KanbanProject.tenantId` to `string`, each fails the typecheck with TS2578.
+- **(b) Definition equality over the WHOLE barrel** (`p9/compareModels.js`). A twin of `dist/src` holds the `.js` originals; both barrels load on unconnected Sequelize instances with associations run. The harness compares for **every** model:
+  - name, table and primary key;
+  - `rawAttributes` (DataTypes by constructor and SQL);
+  - options, and `Object.keys(options)`;
+  - `_scope`, scope names and indexes;
+  - hooks and associations (type, target, `as`, keys, through, options);
+  - the prototype's and the class's own keys and property descriptors, with function names and lengths.
+
+  Results:
+  - After each batch: **71 models plus the barrel keys identical**.
+  - **The harness bites:** each of these fails it: an unknown option key, `createdAt` declared in `init`, `allowNull` flipped, a named `associate` function, an extra static, a changed association alias.
+  - A named class and a moved known option are indistinguishable at run time, as Sequelize's `init` makes them.
+- **(c) The model guard suites** are green, together with the migration suites that re-`init` factories on their own Sequelize (the spec's module-shape regression), `jsonShape.d27` and `rawSqlTenantPredicate.d05`: 67 suites and 2,089 tests after batch 2. The inventory and Kanban unit, route, controller, service and two-tenant suites are included.
+- **(d) The models' own figure,** by ADR-092's named command widened to `src/models/**/*.{js,ts}`:
+  - after batch 1: 95.49 / 75.32 / 95.14 / 95.41;
+  - after batch 2: 95.57 / 75.32 / 95.14 / 95.50;
+  - ADR-092's reference was 93.5 / 65.58 / 93.17 / 93.39. The figure did not fall, and every converted model and `initModel` is at 100%.
+
+**4. D-12's follow-up is done.** `includeRequired.d12` now asserts that, among the converted `.model.ts` files, the models declaring `defaultScoped: DefaultScoped` **equal** the models whose runtime defaultScope carries a `where`.
+- It asserts at least 15 converted files and the presence of `Stock` and `Warehouse`.
+- **It bites** both ways: a stray brand on `KanbanSprint` and a removed brand on `Warehouse` each fail it. A synthetic case pins that a brand inside a comment does not count.
+
+**5. No production `.ts` file may import the `.js` models barrel.** This is a new `no-restricted-imports` entry in `backend/eslint.config.js` for `src/**/*.ts`; tests are exempt, because they type the barrel locally.
+- The pattern matches `../models`, `../models/index`, `./index` and `.`.
+- **It bites:** planted imports of `../models`, `./index` and `.` each fail. `../types/models` and `./initModel` pass.
+- **Why it matters:** the plant showed a type taken from the `.js` barrel is `any`, which is the reason the rule exists.
+
+**6. Live on PostgreSQL 18.6 as `callibrator_app`.** The scratch databases were booted as `index.js` boots (`runSchemaSetup`: `db.sync()` then 63 migrations, 75 tables) with the **converted** models. After each batch:
+- `dataLayer.dbD` 6/6 (including D-26's enum mirror against `pg_enum`, and the Kanban project delete), `dataLayer.dbC` 4/4 and `bulkDestroyRoutes.w33` 12/12 (including the paranoid `KanbanProject` delete) passed on the booted database.
+- `dataLayer.dbB` 10/10 and `dataIntegrity.p6` 22/22 passed on fresh empty databases.
+- **Batch 2 live probe, 21/21** (`p9/live-inventory.js`):
+  - defaults as before; an ENUM outside its list is refused;
+  - `softDelete` hides the row through the defaultScope;
+  - a bare include of a soft-deleted `Warehouse` **drops** its stock (INNER JOIN), and `required: false` keeps it with `warehouse: null`;
+  - `restoreStatic` restores one row, and from tenant A it touches none of B's;
+  - B's row is unchanged.
+- The container and its volume were removed.
+
+**7. The boundaries.** Full `npm run test:coverage -- --ci --forceExit`:
+- after batch 1: 699 suites, 13,058 tests;
+- after batch 2: **700 suites, 13,061 tests**, 100% on all four measures;
+- ESLint ratchet: 0 errors;
+- `ts-ratchet` floor: 1165 → **1150**;
+- `build:dist`: 416 JavaScript files copied, 69 TypeScript files compiled.
+
+### Amendment 8 (2026-09-29) — P9-10 batches 3–4: the class variant, D-21 and D-27 typing, and `initModel`'s timestamp parameter
+
+**1. The class variant, for the 16 models the JavaScript wrote as `class X extends Model { static associate(){…} }`.** It was settled on batch 3, which holds 9 of them.
+- The factory keeps an inner class with the same members (`class XModel extends Model { static associate(models: Models): void {…} }`). It passes that class to `initModel` in place of `class extends Model {}`, and returns the typed result.
+- Statics and methods stay **class members, so they stay non-enumerable**, as they were. A method reading attributes declares `this: X`.
+- The class's own name differs (`XModel`), but `init` sets `name` to the `modelName` with the same descriptor, as for the anonymous class `define` made. The descriptor comparison holds it identical.
+- **Proved:** making `associate` enumerable in the compiled file fails the full-barrel comparison. A reassignment onto the existing non-enumerable method changes nothing and correctly passes. `modelTypes.p910` asserts `Object.keys(Workflow)` has no `associate` and its descriptor is `enumerable: false`.
+- **One recorded difference, not a model difference:** these 16 files exported an **anonymous** arrow (`module.exports = (sequelize) => …`). Converted, the factory is the typed `const defineModel`, so the module export's `Function.name` is `"defineModel"`, not `""`.
+  - An `export =` of an annotated arrow was tried in scratch; it re-enters the TS2502/TS7022 cycle.
+  - Nothing reads a model factory's name. Every factory's arity is unchanged: `(sequelize)` stays one argument, and `(sequelize, DataTypes)` two.
+
+**2. D-21 (DECIMAL)**, in `invoice` and `assetFinance`:
+- The attribute is typed `number`, the getter's output.
+- `toNumber` is `(value: unknown): unknown` with the JavaScript body unchanged: `null` **and `undefined`** returned as they are. The spec named `value ?? null` as the mistake not to make.
+- Each getter declares `this: X` and returns `unknown`, which is Sequelize's own getter type.
+- **Proved** by the harness's new behaviour check, which evaluates every attribute getter on built instances with sample values, all-null values and an empty build. It shows the string→number, `null` and `undefined` paths, and it bites on the `?? null` mistake and on a getter returning the raw string.
+- `decimalGetters.d21` is green.
+- **Live on PostgreSQL 18.6:** a real `NUMERIC` read back as 1250.5 / 250.25; `amountDue - amountPaid === 1000.25`; `raw: true` still returns the driver's string, as documented; and `min: 0` validation still refuses a negative price.
+
+**3. D-27 (JSON)**, in `usageAlert`:
+- `NotificationChannels = ("email" | "webhook")[]` is written by hand in `utils/jsonShape.util.ts`, **beside its Joi shape**, and added with the model that first uses it.
+- `modelTypes.p910` pins it: `["sms"]` is a type error (a used `@ts-expect-error`), and the Joi validator also refuses `["sms"]` and accepts the typed sample.
+- `jsonShape.d27` is green. **Live:** a write of `["sms"]` is refused with `SequelizeValidationError`.
+
+**4. `initModel` gained a third type parameter, `Auto`,** naming the timestamp attributes Sequelize adds. The default is all three.
+- `NotificationState` declares `deletedAt` itself: a per-user hide on a model that is **not** paranoid. It passes `"createdAt" | "updatedAt"`, so that column goes to `init` as before.
+- This is types only; `modelTypes.p910` asserts `paranoid` is `false` and the column is nullable.
+- **Live:** a hidden state row is still found.
+
+**5. The harness's behaviour check.** For every model with a `get` or `set`, it builds instances four ways (sample values, shifted samples, all `null`, empty) and compares the getter outputs and `dataValues`. Generated `UUIDV4` and `NOW` defaults are normalised, so only their presence and type are compared.
+- It covers the VIRTUAL getters (`Risk.rpn`, `SupplierScorecard.overallScore`) and D-21.
+- It bites on a changed `rpn` formula.
+
+**6. Batches:**
+- **Batch 3, workflow/QMS/suppliers (11):** `workflow`, `workflowStep`, `workflowInstance`, `workflowAction`, `capa`, `nonConformance`, `sopDocument`, `sopTrainingAcknowledgment`, `vendor` (all class-shaped), `risk` and `supplierScorecard` (define, VIRTUAL getters).
+- **Batch 4, billing/usage/notifications/operations (10):** `invoice`, `subscription`, `notification`, `notificationState`, `batchJob`, `maintenanceWorkOrder` (class-shaped), `planQuota`, `usageMetric`, `usageAlert` and `assetFinance` (define).
+- **Total: 36 of 71.**
+- The working-copy `.js` was the baseline: six of these files carried other agents' earlier uncommitted edits. Each was snapshotted and confirmed unchanged (`cmp`) when removed.
+- `CalibrationDevice` joined the `Unconverted` entries in `Models`.
+- **Held for their own batch,** as the owner directs: `Session`, `User`, `Tenant` and the tenant-isolation-critical models, with **`AuditLog`** (the compliance ledger) among them. That batch runs the isolation suites and a live two-tenant probe.
+
+**7. The four checks and the boundaries.**
+
+| Check | After batch 3 | After batch 4 |
+|---|---|---|
+| (a) TypeScript 7 typecheck | clean | clean |
+| (b) Full-barrel definition equality | 71 identical (26 originals placed) | 71 identical (36 originals placed) |
+| (c) Model guards, migrations, d05, d27 and the domain suites | 94 suites, 2,407 tests | 106 suites, 2,612 tests (`decimalGetters.d21` + `jsonShape.d27`: 89/89) |
+| (d) Models' own figure | 95.73 / 75.32 / 95.14 / 95.66 | **95.87 / 75.32 / 95.14 / 95.81** |
+| Full gate, 100% on all four measures | 700 suites, 13,061 tests | **700 suites, 13,065 tests** |
+
+- Every converted model is at 100%.
+- **Live on PostgreSQL 18.6 as `callibrator_app`** (schema booted by `runSchemaSetup` with the converted models), after each batch: `dbD` 6/6, `dbC` 4/4, `w33` 12/12, `dbB` 10/10, `p6` 22/22.
+- **Per-batch probes:** batch 3 **25/25** (`p9/live-b3.js`); batch 4 **25/25** (`p9/live-b4.js`). They cover defaults, ENUM and email validation, VIRTUAL getters read back, D-21, D-27, joins, and tenant B never reading or updating A's rows.
+- The container and its volume were removed. The three older dangling volumes were left alone, as directed.
+- **Ratchets:** `ts-ratchet` floor 1150 → **1129**; the ESLint ratchet is at 0.
+- **Build:** `build:dist` compiles 90 TypeScript files beside 395 JavaScript files.
+
+### Amendment 9 (2026-09-29) — P9-10 batches 5–6: calibration and certificates, signatures; method behaviour in the equality check; `skipTenantScope` typed
+
+**1. Batch 5, calibration and certificates (6):** `calibrationDevice`, `calibrationRecord`, `certificate`, `iotReading`, `attachment`, `documentChunk`. **Batch 6, signatures (4):** `eSignatureRecord`, `signatureRecord`, `signatureWorkflow`, `signatureWorkflowStep`. **46 of 71 models are `.ts`.**
+- **Brands:** `CalibrationDevice`, `CalibrationRecord` and `Attachment` carry the D-12 brand. D-12 holds the branded set (now five models) equal to the runtime set.
+
+**2. What these models carry, typed without changing it:**
+- **A-29 `toJSON` override.** It is typed `function <T>(this: CalibrationDevice): T`, matching `Model#toJSON<T>()`. It stays anonymous, as before; helper 3's sketch named it, which would have changed `Function.name`. A reasoned directive covers `no-unnecessary-type-parameters`. `iotTokenHash` is declared as an attribute: an unscoped read and `create()` carry it.
+- **P6-03 lifecycle columns** on `CalibrationRecord` are plain nullable attributes. The append-only guarantee is the database trigger and the grant, not a type.
+- **Certificate.**
+  - Its four transitions are typed instance methods with `this: Certificate`, anonymous as before. The two statics take the barrel as `CertificateModels`: `{ Certificate; Sequelize: typeof Sequelize & { Op } }`. Sequelize's typings omit the static `Op` that exists at run time.
+  - `STATUS` and `CERTIFICATE_TYPES` gained `as const`, which is types only.
+  - Kept with reasoned directives: `tenantCode || "T"` and `signedBy || approvedBy`, because an empty string must keep falling back.
+  - The raw `COUNT` rows are asserted to `{ status; count }[]`.
+  - One multi-line ternary keeps its original layout under `// prettier-ignore`, because the ESLint `indent` rule and Prettier disagree on it.
+- **D-22.** Attachment's custom validator is typed `(value: unknown): void`, with `${String(value)}` in its message (the same text).
+- **D-27, written beside the Joi shapes in `jsonShape.util.ts`:**
+  - `UncertaintyBudget` and `IotMetrics` (`JsonObject`);
+  - `CalibrationResults` (`JsonObject | ""`);
+  - `ReadingTolerance` / `MetricBounds` (at least one of `min` / `max`);
+  - `SignaturePolygon` (`JsonObject | JsonValue[]`);
+  - `SignatureBiometricData` (`string | JsonObject`).
+
+  `JsonValue` and `JsonObject` are in the new `src/types/json.ts`, per spec item 5.
+- **`skipTenantScope` is typed** by module augmentation of `FindOptions`, in the new `src/types/sequelize.d.ts` (spec § Security). It only adds the optional key; nothing gets stricter, and nothing types tenant isolation itself.
+
+**3. The equality harness now also checks behaviour, not only shape:**
+- **Every function-valued attribute validator** (custom ones, and every D-27 `jsonShape`) is run on 20 fixed samples, comparing pass or the error message.
+- **Instance methods** on built instances with `save()` stubbed: `toJSON` keys for every model; `softDelete` (the flag set and the save options); and Certificate's four transitions from every status, with `signedBy` null **and** `""`.
+- **It bites on each plant:**
+  - `toJSON` no longer stripping `iotTokenHash`;
+  - `submitForApproval` landing on the wrong status;
+  - `sign`'s `||` changed to `??`, which the empty-`signedBy` case catches;
+  - `revoke` no longer idempotent;
+  - the D-22 validator accepting everything;
+  - a D-27 shape key swapped.
+
+**4. The checks.**
+
+| Check | Batch 5 | Batch 6 |
+|---|---|---|
+| (a) Typecheck | clean | clean |
+| (b) Full-barrel equality, with validators and methods | 71 identical (42 originals placed) | 71 identical (46 placed) |
+| (c) Model guards, migrations, d05, d27 and domain suites | 137 suites, 3,417 tests | 87 suites, 2,291 tests (`signatureEvidence.d18` + the eSignature two-tenant suite: 7/7; the Part 11 eSignature suites green) |
+| (d) Models' own figure | 95.93 / 75.32 / 95.14 / 95.87 | **95.99 / 75.32 / 95.14 / 95.93** |
+| Full gate, 100% | 700 suites, 13,065 tests | **700 suites, 13,065 tests** |
+
+- Attachment and Certificate were already below 100% as JavaScript: they are two of ADR-092's ten. They did not fall: 84.61 → 86.66 and 88.13 → 88.52. The uncovered lines are the same code (`softDelete`, and the transition error paths).
+- **Live on PostgreSQL 18.6 as `callibrator_app`,** with the schema booted by `runSchemaSetup` using the converted models:
+  - **batch 5 probe, 41/41** (`p9/live-b5.js`):
+    - A-29 on create, scoped read and unscoped read;
+    - `softDelete` and **A-133** `restoreStatic`;
+    - **Q-02**: retired to active refused by the trigger, while a remarks edit is untouched;
+    - **P6-03**: a content change refused, DELETE refused, a void allowed once, and a void final;
+    - Certificate numbering, and submit → approve → sign in one transaction, then revoke idempotent and `countByStatus`;
+    - **D-22**: an unknown type refused, and a legacy free-string row still soft-deletable;
+    - D-27 refusals, and tenant B touching nothing of A's, `restoreStatic` included.
+  - **batch 6 probe, 18/18** (`p9/live-b6.js`): defaults, D-27 polygon and biometric round-trip and refusals, **D-18** hard delete of a signed step refused, the A-149 revoker FK, joins, and isolation.
+  - **Live suites after each batch:** `dbD` 6/6, `dbC` 4/4, `w33` 12/12, `dbB` 10/10, **`p6` 22/22** and **`q02` (`calibrationDevice.retired.q02.live`) 10/10**.
+  - The container and exactly its volume were removed.
+- **A pre-existing finding, not caused by the models:** `keyRotation.s08.live` fails 2 of 5 on a fresh database. `keyRotation.service` walks `users.mfa_secret` / `mfa_pending_secret` since S-20 (migration 0086, commit `a31c601`), but the test's expected report, last touched in `8a11905`, lists no `users` rows.
+  - No converted model is involved (`User` is JavaScript).
+  - Recorded for the owner; not changed here.
+- **Ratchets:** `ts-ratchet` floor 1129 → **1119**; the ESLint ratchet is at 0.
+- **Build:** `build:dist` compiles 101 TypeScript files.
+
+**Status:** Accepted, implemented 2026-09-28; amended 2026-09-28/29 (Amendments 1–9).
+
+---
+
+## ADR-092: The Behaviour Baseline Is the JavaScript Tree at `35ebd76`; the Lint Gate Is at Zero, Fixed Rule by Rule and Proved AST-Identical; One ESLint Config With Global Ignores of Its Own; `backend/.prettierrc` Governs the Backend; Models Stay Outside the 100% Figure
+
+**Date:** 2026-09-28 · **Cards:** P9-00, P9-02 (rest), P9-02a (part), P9-03a · **Agent:** Phase 9 helper 1 · **Works with:** ADR-087 (the toolchain), ADR-085 (the coverage scope), ADR-077 (the live suite) · **Records:** `MEMORY/records/P9-00.md`, `MEMORY/records/2026-09-28-p9-helper-lint-baseline-coverage.md`
+
+**Context.** Four Stage A cards were open beside the lead's conversions. P9-00 wanted a baseline "after the remediation, before the first conversion", but by 2026-09-28 the working tree already held converted modules and nine utils were mid-conversion, so `build:dist` refused it. The backend lint ratchet was red (1,050 errors against a baseline of 950). `backend/.eslintrc.js` still existed; ESLint's `ignores` sat beside `rules`; two Prettier files disagreed. P9-03a's findings were mostly closed by P6-14/A-32 (ADR-085), except the models question and one hole: the A-32 guard read `.js` files only.
+
+### Decision
+
+1. **P9-00: the baseline is `35ebd76`, not the working tree.** The committed `HEAD` has 0 `.ts` files under `backend/src`. It was exported with `git archive`, built by `backend/Dockerfile` on a disposable compose stack (PostgreSQL 18.6), seeded, and the live suite ran twice: **53 of 53 specs passed both times** (392 tests; `liveContract.smoke` skipped by design), 0 × 429 in the server log, 2 × `POST /ai/query` 500 with no AI provider (environment-dependent, as in ADR-077). The set, by spec name, is in `MEMORY/records/P9-00.md`. The SCIM spec the card expected to fail (A-49) passes. **Rule:** every conversion card and P9-01b's last item re-run this set against their own image; a spec that leaves the set is a behaviour change.
+2. **P9-02: one ESLint config, global ignores alone, one Prettier config for the backend.** `backend/.eslintrc.js` is deleted. `dist/`, `coverage/`, `build/`, `docs/`, `*.config.js` move into a config object with **no other key** — the only form flat config treats as global. Checked with `ESLint#isPathIgnored` over every file under `backend/`: before, 474 `dist/` and 6 `coverage/` files were visited and `jest.config.js` was linted without the house rules; after, all ignored, and `src/` unchanged at 1,206 files. **`backend/.prettierrc` governs `backend/`** (Prettier takes the nearest file and never merges; `--find-config-path backend/index.js` → `backend/.prettierrc`). Its choices match the ESLint rules. The root `.prettierrc.js` is kept and **scoped by a header comment** saying it does not govern `backend/`.
+3. **P9-02a: the 1,050 errors were fixed by ESLint's own fixers, restricted to the nine error-level rules** (`curly`, `indent`, `quotes`, `comma-dangle`, `no-trailing-spaces`, `eol-last`, `no-multiple-empty-lines`, `space-infix-ops`, `prefer-const`) through `ESLint({ fix: m => m.severity === 2 && ALLOWED.has(m.ruleId) })`, so **no warning-level fixer ran** (`prefer-arrow-callback` would change `this`). 127 files, none carrying another agent's uncommitted change at the time. **Proof, not review:** each fixed file was parsed with espree next to its `HEAD` version and compared with positions, quote style (`raw`), a one-statement block around an `if`/loop body, and expression-free template literals normalised: **126 of 127 AST-identical**; the one that is not, `meteredBilling.service.js`, differs by one hand edit (`let total;` + assignment became `const total = …`, the one `prefer-const` the fixer cannot do). The comparer is not vacuous: before template normalisation it flagged three files. Four dangling `{…}` blocks the fixer produced were rewrapped by hand. The 12 unused `eslint-disable` directives were removed the same way (12 of 12 AST-identical). **`backend/.eslint-baseline.json` is 0**, so any new error fails the ratchet.
+4. **P9-03a: models stay outside the 100% figure; P9-10's "still at 100%" is replaced.** Measured with the whole suite and `--collectCoverageFrom "src/models/**/*.js"`: **93.5% statements, 65.58% branches, 93.17% functions, 93.39% lines**; 62 of 72 models at 100%, 10 below (`tenantBackup`, `role`, `session`, `category`, `post`, `attachment`, `webhook`, `certificate`, `tenant`, `user`). Bringing `models/` into the gate would fail it today and would mostly measure `sequelize.define` calls that run on `require`. For P9-10, "tests converted and still at 100%" means instead: (a) `npm run typecheck` passes with the models strict-typed; (b) for every converted model, its definition compared equal to the JavaScript original — `rawAttributes` (type, `allowNull`, `defaultValue`, `field`), `tableName`, the options (`paranoid`, `underscored`, `defaultScope`, `scopes`, hook names) and every association (`as`, `foreignKey`, type); (c) the model guard suites (`includeRequired.d12`, `enumMirrors.d26`, `softDeleteMechanisms.d25`, `tenantForeignKeys.a88`, `associationForeignKeys.a148`, `unscopedModels.d17`, `uuidDefaults.a116`) stay green; (d) the models' own figure, measured by that named command, does not fall. **The A-32 guard now reads `.ts`** (a converted file carries its `istanbul ignore` into TypeScript; proved by a probe `.ts` with a bare directive, which failed the guard). Its ceiling went from 31 to the count, **30**; all 30 carry a reason.
+
+### Alternatives considered
+
+| Alternative | Why not |
+|---|---|
+| Baseline against the working tree | it did not build (`build:dist` refused nine half-converted utils), and it was already partly TypeScript — the card's abuse case "taking the baseline after the first conversion" |
+| Reuse P6-02's green runs as the baseline | recorded by suite count, not spec name, and on an earlier tree; the card needs names and a reproducible commit |
+| `npm run lint:fix` over `src/` | also applies warning-level fixers (`prefer-arrow-callback` changes `this` binding) — the card's abuse case "`--fix` run across the residue" |
+| `prettier --write` as the sweep | not a gate anywhere; it rewraps to width 80 and would change far more lines than the lint errors; ESLint's rules are the gate, and they already encode `backend/.prettierrc`'s choices |
+| Raise the ratchet baseline to the current count | hides errors; the card forbids it |
+| Delete the root `.prettierrc.js` | then the frontend falls to Prettier's defaults; that is the frontend owner's decision (below) |
+| Put `src/models/` into `collectCoverageFrom` now | fails the gate today (65.58% branches), and `jest.config.js` belongs to the lead's in-flight work |
+
+### Implications, including the bad ones
+
+- **`git blame` churns in 137 backend files** (whitespace, quotes, braces, removed directives). The change must be committed **on its own**, with a message saying it is formatting, and nothing else in it (P9-02a abuse case 1). The files are listed in the record.
+- **The ratchet is at zero, so any agent's new lint error now fails `make lint-ratchet`, CI and pre-push.** That is the point, but an agent used to a red lint will meet it for the first time.
+- **ESLint `indent` and Prettier can still disagree** on some constructs (`eslint-config-prettier` turns `indent` off, the house block turns it back on). ESLint is the gate; `npm run prettier:fix` is not safe to assume lint-clean.
+- **`E2E_MFA_STATE_FILE` shares one state file across every identifier.** Set it only for a run that signs in as one identifier; otherwise a spec signing in as a user it created is handed the operator's cached session (a void first attempt at the baseline failed 41 tests this way).
+- **The root `.prettierrc.js` says `singleQuote: true` while `frontend/src` has 2,043 double-quoted imports to 26 single** (counted 2026-09-28). A root `npm run format` would rewrite the frontend. Left to the frontend owner — not decided here.
+- **P9-02a is not done:** 263 `no-unused-vars` and 19 `no-console` warnings need hand triage, and `no-unused-vars` goes to `error` only after that. Plain `eslint` could now replace the ratchet script; it has not.
+- **`CLAUDE.md` § "Two Things Currently Failing" still says lint is red** (1,083 errors, baseline 950). That row is now false; `CLAUDE.md` was being edited by another agent, so it is left for them in the same change.
+
+**Status:** Accepted, implemented 2026-09-28.
+
+---
+
+## ADR-088: The Quota Read Carries the Billing Gate; RAG Answers Only From the Source Types Its Gate Covers; Phase 5's Data Lake Is Closed as Superseded; Docs That Contradicted the Code Are Corrected
+
+**Date:** 2026-09-27/28 · **Cards:** AZ-01, AZ-02, AZ-03 (`TASKS/AUDIT-2026-09-AUTHZ-MATRIX.md`), R-01…R-04 (`TASKS/AUDIT-2026-09-RECORDS.md`), DOC-01…DOC-17 (`TASKS/DOCS-GAP-2026-09.md`), P5-08 · **Extends:** ADR-058, ADR-056, A-94, ADR-086 · **Record:** `MEMORY/records/2026-09-27-az-authz-matrix-and-records.md`
+
+**Context.** The authorization matrix listed 33 gap routes (G-01…G-06). By 2026-09-27 most had been gated by batches 5–6, but the board still said TODO, and two rows had no test that ran the real `dynamicAccess` against the real seeded grants: the QMS reads (only `routeGuards.a66.test.js`, which mocks the gate) and `GET /quota`. `GET /quota` was still on `auth` alone, exempted as `accepted` by ADR-058 because "`billing` is unreachable for every seeded tenant role (Q-20)". ADR-056 had granted `billing: read` to HEALTHCARE ADMIN and CALIBRATOR ADMIN the same day, so that reason was false. Separately, `POST /ai/query` was gated on `sop: read` (A-94) on the premise that the index holds only SOPs. Nothing enforced that premise: retrieval filtered on the tenant only.
+
+### Decision
+
+1. **`GET /quota` is gated `dynamicAccess("billing", "read")`, and its `accepted` exemption is removed.** Its only consumer is the billing page's `PlanQuotaCard`.
+   - *For keeping it on `auth`:* the data is low-sensitivity counts; a future UI might want to warn any user near the seat limit; one more gate is one more way to lock someone out.
+   - *For the gate:* it discloses the plan, entitlements, seat and storage usage — commercial information — to every role, including ROOM USER. Its one screen is already behind `billing`. The exemption's stated reason was false. Least privilege is the rule the matrix applies everywhere else.
+   - **Decided: gate.** A future non-billing consumer gets its own endpoint or a recorded decision.
+   - Proven by `quota.gate.az01.test.js` (13 tests; restoring `auth` alone fails 9).
+2. **The QMS reads are proven, not re-gated.** `qms.gate.az01.test.js` (66 tests) drives all six QMS routes through the real gate over the real seed. Removing the `GET /nc` gate fails 8 tests.
+3. **RAG retrieval filters `source_type = ANY($4)` over `RAG_READABLE_SOURCE_TYPES` (`["SopDocument"]`, `ai.service.js`).**
+   - *Alternative:* per-chunk permission filtering by the source's menu slug. That is the correct end state, but it needs a slug column on `document_chunks` and a migration, with only one source type today.
+   - *Alternative:* leave it and rely on "only one ingester". That reach is invisible until someone adds a second ingester.
+   - **Decided:** the allow-list. It makes the `sop: read` gate's premise structural. Widening it becomes a gate decision.
+   - Proven by `ai.ragReach.az02.test.js`. The SQL was also run once against pgvector on PostgreSQL 18.6.
+4. **`GET /dashboard/metrics` stays `accepted`.** It is not a matrix row. Gating it needs `dashboard` granted to FACILITY MAINTENANCE and WAREHOUSE STAFF, which requires a migration, and is left for the owner.
+5. **P5-08 (data lake) is closed as superseded by P8-04, not built.** P8-07 measured the trigger (ADR-086 §3), and the decided path is query-shaped fixes and then a read replica. Phase 5 is recorded as DONE with one card deliberately not built.
+6. **Documents that contradicted the code were corrected in place, each spot marked "(ADR-088)":**
+   - the `createTwoTenants()` passages in 12 documents. The fixture is synchronous and in memory with no SQL, and the E2E sample used helpers that do not exist;
+   - the pre-A-06 `/health` payload in 11 documents;
+   - rate-limit tables in `API/00`, `SECURITY/08` and `ARCHITECTURE/06`, which listed `authLimiter`/`otpLimiter`. Both are defined in `backend/index.js` and never mounted. Those tables also said sign-in can lock accounts (not since A-185) and named `X-RateLimit-*` headers where the limiter sends draft-6 `RateLimit-*`;
+   - the Swagger paths (`/docs`, `/docs.json`, not `/api-docs`, `/swagger.json`);
+   - `SECURITY/04`'s claim that an ungated route admits every API key. The wrapper refuses an unauthorized key;
+   - WEBHOOK/ and SEARCH/ line citations and states: A-50, A-56 and A-23 are fixed, and there are eight webhook routes;
+   - the embedded-broker line in `TESTING/05`;
+   - the stale IoT example in `DEVELOPER/README`;
+   - the failing-gates sections of `CLAUDE.md`, `TASKS/README.md` and `TASKS/PROGRESS.md`.
+
+   The per-document list is in the record.
+
+### Implications, including the bad ones
+
+- **Behaviour changes for custom roles.** A custom role without `billing` loses `GET /quota`. An API key needs a `billing` scope to call it.
+- **A second RAG source type needs a code change as well as an ingester.** That is the point, but it will surprise whoever adds one.
+- **The AZ-02 filter is proven by SQL shape plus one manual run on PostgreSQL 18.6.** No suite runs it against PostgreSQL.
+- **`STORAGE/04` still has two contradictions.** It says nothing outside `storageMigration.service.js` touches `storageKey`, but `attachmentFileSweep.service.js` does. It also dates the A-40 fix inconsistently. Another agent's uncommitted diff held that file, so it was left alone.
+- **Code comments that disagree with the code were reported, not changed:**
+  - "secret is stripped" in `webhooks.route.js` and `webhook.controller.js`;
+  - `v1:` envelope comments in `webhook.service.js` and `webhook.model.js`;
+  - the `node src/scripts/…` usage line in `migrateStorage.js`.
+- **A-02's claim about who holds `custom-domains` disagrees with the seed.** The seed gives WRITE to SUPERADMIN only and READ to HEALTHCARE ADMIN only. This is recorded as an open question in `MEMORY/specs/A-02-tenant-config-access.md`.
+
+**Status:** Accepted, implemented 2026-09-27/28.
+
+---
+
 ## ADR-089: Dual-Backend Target Architecture (TypeScript & Go), Multi-Frontend & Shared Component Strategy
 
 **Decision:** Callibrator adopts a dual-backend target architecture consisting of the existing TypeScript backend (`backend/src/`) and a future Go backend engine (`backend-go/`), supported by a multi-frontend integration pattern and root-level shared components (`shared/`).
@@ -4984,6 +6024,70 @@ The card also asked whether `make secrets` prints a password that is safe in a U
 - **Vector's `loki` healthcheck fails once when Loki starts after Vector** (503). Vector keeps running and ships once Loki is ready. The compose file has no `depends_on` for an external Loki.
 
 **Status:** Accepted, implemented 2026-09-28. The evidence is in `MEMORY/records/2026-09-28-p7-01-02-03.md`.
+
+---
+
+## ADR-090: Theme Colour Tokens Are Chosen to Pass 4.5:1 as Text on Their Own Tints, in Both Themes; the Dark Primary and Destructive Are Light Fills With Dark Text; Every Page Has One `<main>` and One `<h1>`; Icon-Only Controls Are Named After Their Object
+
+**Date:** 2026-09-29 · **Findings:** F-12 (the WCAG 2.1 AA browser sweep) · **Builds on** ADR-074 (F-12's labels and dialogs), ADR-071 (CSP), ADR-077 (browser smoke)
+
+**Context.** F-12's component work (ADR-074) made the primitives and the overlays accessible, but no page had ever been checked in a browser: axe-core's `color-contrast`, landmark and heading rules cannot run in jsdom. A sweep of all 70 routes in headless Chrome (axe-core 4.x from `node_modules`, tags `wcag2a/2aa/21a/21aa` plus `best-practice`, a real HEALTHCARE_ADMIN session on a throwaway PostgreSQL 18 stack seeded with `seedAll` + `seedDemoData`) found **513 WCAG failures in the light theme and 304 in the dark**, plus 50 best-practice findings in each. **465 of the 513 light failures and 256 of the 304 dark ones were colour contrast**, and they came from a handful of tokens in `frontend/src/app/globals.css`, not from individual screens:
+
+| Token (light) | Was | Failure |
+|---|---|---|
+| `--muted-foreground` slate-500 `#64748b` | 4.34:1 on `--muted`, 4.21:1 on any `/10` tint | 208 nodes: every muted caption on a muted surface, the table header row, the pagination bar |
+| `--primary` blue-600 `#2563eb` | 4.49:1 on `bg-primary/10` | 79 nodes: the active sidebar item, primary badges, the page counter |
+| `--success` emerald-600, `--warning` amber-600, `--info` sky-600, `--destructive` rose-600 | 2.6–4.5:1 on their `/10` tints; **white on amber-600 3.2:1, on emerald-600 3.8:1, on sky-600 4.1:1** | every status badge and alert |
+
+In the dark theme `--primary` blue-500 was 3.98:1 as text on `--card` and **3.68:1 under its own white foreground**, so no single blue satisfied both uses; the same for rose-500. The remaining failures were markup: 36 icon-only buttons with no name, 6 unnamed `<select>`s, 4 empty `<th>`s, `aria-label` on plain `<div>`/`<span>`s, five public pages with no `<main>`, three with no `<h1>`, and 11 heading-level skips.
+
+**Decision**
+
+- **A theme colour token is chosen so that it passes WCAG 1.4.3 (4.5:1) in every way it is used, not only on white.** For the light theme that means: as text on `--background` and `--card`, **as text on its own `/10` and `/15` tint** over either (the codebase's badge and alert pattern, 150+ uses), and its `-foreground` on the solid fill. For the dark theme: as text on `--background` and `--card`, on its own `/10` tint, and its `-foreground` on the solid. The values:
+
+  | Token | Light (was → is) | Dark (was → is) |
+  |---|---|---|
+  | `--muted-foreground` | slate-500 → **slate-600 `#475569`** | slate-400, unchanged |
+  | `--primary` / `-foreground` | blue-600 → **blue-700 `#1d4ed8`** / white | blue-500 / white → **blue-400 `#60a5fa` / slate-900 `#0f172a`** |
+  | `--destructive` / `-foreground` | rose-600 → **rose-700 `#be123c`** / white | rose-500 / white → **rose-400 `#fb7185` / rose-950 `#4c0519`** |
+  | `--success` | emerald-600 → **`#046c4e`** (between emerald-700 and -800) | emerald-500, unchanged |
+  | `--warning` | amber-600 → **amber-800 `#92400e`** | amber-500, unchanged |
+  | `--info` | sky-600 → **sky-700 `#0369a1`** | sky-400, unchanged |
+  | `--accent` | cyan-700 → **cyan-800 `#155e75`** | cyan-400, unchanged |
+
+  The policy is executable: `frontend/src/components/ui/a11y.adr090.test.tsx` reads the two theme blocks out of `globals.css` and asserts every one of those ratios, so a token edited back below the line fails the component suite (jsdom cannot measure contrast; this test does not need to).
+- **In the dark theme, primary and destructive are light fills with dark text**, the pattern accent, success, warning and info already used there. A hard-coded `text-white` on `bg-destructive` (`NotificationBell`, `warehouse/DeleteConfirmModal`) now uses `text-destructive-foreground`.
+- **No opacity on text to de-emphasise it.** `text-muted-foreground/60` (sidebar group labels, 2.2:1) and `opacity-60` on the pagination total (2.9:1) are removed; hierarchy comes from size and weight.
+- **Every page has one `<main>` and one `<h1>`**, and headings do not skip levels: the auth and callback pages (`/login`, `/register`, `/activation`, `/oauth/consent`, `/sso-callback`) render their outer container as `<main>`; `/blog` and `/news` make their page heading the `<h1>` (`SectionHeading as="h1"`); `CardHeader`'s string title is an `<h2>` (a dashboard page's title is the `<h1>`); `Alert`'s title is a paragraph, not a heading, because an alert can appear anywhere in the outline.
+- **An icon-only control is named after its object** — `aria-label={\`Edit ${device.name}\`}`, not "Edit" — so a screen reader's button list distinguishes twenty rows' actions; the icon is `aria-hidden`. A visual `<label>` that sits beside its control is associated with `htmlFor` and an `id` (78 more fields across 26 forms), never replaced by an `aria-label` (F-12's abuse case).
+
+**Alternatives considered**
+
+| Alternative | Why not |
+|---|---|
+| Fix contrast per screen (`text-slate-700` where axe complained) | 465 nodes in 60 pages trace to six tokens; per-screen overrides would drift from the theme and fail again on the next screen built from the tokens |
+| Keep the brand blues and darken only the `/10` tint backgrounds | the tint is a Tailwind opacity of the same token; a separate tint token per status is ten new tokens and every `bg-x/10` in the codebase rewritten |
+| A different light `--primary` for text and for fills (`--primary-text`) | two blues that differ by a shade look like a mistake, and every `text-primary` would need auditing to choose; blue-700 passes both uses |
+| Dark primary blue-500 with a darker blue-600 fill | fails as text on the card (3.98:1); the fill-vs-text split is the problem above in the other theme |
+| Checking only the WCAG-tagged rules | landmarks and heading order are axe `best-practice`, but they are how a screen-reader user moves around a page (1.3.1, 2.4.1, 2.4.6); both sets were fixed and are reported separately |
+| Adding the sweep to the repository as a suite | the task kept its scripts scratch-only, and a browser suite that needs a seeded stack is ADR-077's shape to extend deliberately, not a side effect of this pass |
+
+**Implications, including the bad ones**
+
+- **The product looks different.** Light-theme status colours are one to two steps darker (the warning amber is now brown-orange), muted text is darker, and the dark theme's primary buttons are light blue with dark text. That is a visible brand change made for conformance; if the owner wants the old blues back, the only compliant route is a different tint pattern, not the old values.
+- **A tenant's brand colour is not checked.** `TenantBrandingProvider` overrides `--primary` with whatever colour the tenant set and picks black or white foreground by luminance; nothing guarantees 4.5:1 for that colour as text or on its tint. Open, below.
+- **The sweep covers what one role sees.** It signed in as a seeded HEALTHCARE_ADMIN; screens that role cannot open (rendered as an access-denied or error state), rows that only exist with more data, and states behind interactions other than the first "Add/New/Create" dialog on each page were not exercised. 24 dialogs were opened and passed axe plus the keyboard contract (focus in, Tab trapped, Escape closes, focus restored) in both themes; the others were not.
+- **Automated tools catch a fraction of WCAG failures.** No screen reader was run (F-12's Definition of Done still owes one form and one dialog walked with NVDA or VoiceOver), and 200% zoom and reduced motion were not re-checked.
+- The heading changes alter the document outline; a test querying `getByRole("heading", { level: 3 })` for a card title would need updating (none did).
+
+**Open**
+
+| Question | State |
+|---|---|
+| Contrast of a tenant-set brand `--primary` | **open** — validate on save (refuse or adjust a colour below 4.5:1 as text and on its `/10` tint), or derive the text shade from the brand colour |
+| An axe pass in the browser suite (`automate/smoke.browser.js`) | **open** — `docs/UI-UX/17-ACCESSIBILITY.md` asks for it; this pass ran axe in the browser once, from scratch scripts |
+
+**Status:** Accepted, implemented 2026-09-29. Evidence: the F-12 card's "Browser sweep (ADR-090)" section in `TASKS/AUDIT-2026-09-FRONTEND.md`.
 
 ---
 

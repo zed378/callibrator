@@ -110,7 +110,9 @@ Colour contrast and page-level rules (landmarks, one `<h1>`) are off there —
 jsdom has no layout, and a lone component has no page; they belong to the
 browser suite. First users: `src/components/ui/a11y.f12.test.tsx` (Input,
 Textarea, FormField, Select, Dialog, ConfirmDialog, AccessDeniedModal) and
-`ErrorState.f07.test.tsx`. *(F-12, 2026-09-24.)* Plus assertions that automated tools cannot make:
+`ErrorState.f07.test.tsx`. *(F-12, 2026-09-24.)* `src/components/ui/a11y.adr090.test.tsx`
+asserts the theme tokens' contrast from `app/globals.css` (the policy of
+[ADR-090](../../MEMORY/DECISIONS.md)), since axe cannot measure it in jsdom. *(2026-09-29.)* Plus assertions that automated tools cannot make:
 
 | Assertion |
 |---|

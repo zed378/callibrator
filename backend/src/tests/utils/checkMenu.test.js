@@ -1,6 +1,6 @@
 /**
  * Tests for checkMenu.util
- * 
+ *
  * The checkMenu.util.js script calls check() at module load time.
  * check() is async - process.exit is called after the promise chain resolves.
  * We need to drain the event loop before asserting.
@@ -19,7 +19,7 @@ describe("checkMenu util", () => {
 
   it("should call process.exit(0) on success", async () => {
     jest.doMock("../../utils/env.util");
-    
+
     jest.doMock("../../config", () => ({
       Connection: jest.fn().mockResolvedValue(undefined),
       db: {
@@ -53,7 +53,7 @@ describe("checkMenu util", () => {
 
   it("should call process.exit(1) on error", async () => {
     jest.doMock("../../utils/env.util");
-    
+
     jest.doMock("../../config", () => ({
       Connection: jest.fn().mockResolvedValue(undefined),
       db: {

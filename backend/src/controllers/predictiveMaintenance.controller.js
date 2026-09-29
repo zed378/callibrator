@@ -36,7 +36,7 @@ exports.getRecommendations = async (req, res, next) => {
           [Op.ne]: null,
         },
       },
-      attributes: ["id", "name", "serialNumber", "calibrationIntervalDays", "recommendedCalibrationInterval", "recommendationReason"]
+      attributes: ["id", "name", "serialNumber", "calibrationIntervalDays", "recommendedCalibrationInterval", "recommendationReason"],
     });
 
     return success(res, devices, null, "Recommendations retrieved");

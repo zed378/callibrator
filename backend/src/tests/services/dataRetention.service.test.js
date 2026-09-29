@@ -508,7 +508,7 @@ describe("dataRetention.service", () => {
       delete models.User;
 
       await expect(dataRetention.maskPII("t1", "users", [1])).rejects.toThrow("Model not found for entity type");
-      
+
       models.User = originalUser;
     });
   });

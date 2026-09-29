@@ -624,15 +624,17 @@ describe("Session Controller", () => {
     it("should return session statistics", async () => {
       req.query = {};
       mockSessions.count.mockImplementation((where) => {
-        if (where.is_revoked === true) return Promise.resolve(5);
-        if (where.expired_at && where.expired_at[Op.lt])
+        if (where.is_revoked === true) {return Promise.resolve(5);}
+        if (where.expired_at && where.expired_at[Op.lt]) {
           return Promise.resolve(10);
+        }
         if (
           where.is_revoked === false &&
           where.expired_at &&
           where.expired_at[Op.gte]
-        )
+        ) {
           return Promise.resolve(15);
+        }
         return Promise.resolve(30);
       });
 
@@ -880,7 +882,7 @@ describe("Session Controller", () => {
       expect(data[0].status).toBe("expired");
     });
   });
-// detectBrowser/detectOS parse the stored user_agent for every mapped
+  // detectBrowser/detectOS parse the stored user_agent for every mapped
   // session; both fall back to "Unknown" for agents they cannot classify.
   describe("user-agent parsing", () => {
     const baseRow = {

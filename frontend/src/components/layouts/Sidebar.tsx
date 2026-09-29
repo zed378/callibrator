@@ -150,15 +150,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <button
             onClick={onClose}
             className="lg:hidden p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            aria-label="Close navigation"
           >
-            <X className="w-5 h-5" />
+            <X className="w-5 h-5" aria-hidden="true" />
           </button>
         </div>
 
         {/* Navigation */}
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto overflow-x-hidden">
           <div className="pt-3 pb-1">
-            <p className="px-3 text-[10px] font-semibold text-muted-foreground/60 uppercase tracking-widest">
+            <p className="px-3 text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">
               Menu
             </p>
           </div>

@@ -175,7 +175,7 @@ describe("Menu Groups Routes", () => {
     expect(routes.length).toBe(1);
   });
 
-    it("should have middleware or routes in stack", () => {
+  it("should have middleware or routes in stack", () => {
     const hasMiddleware = menuGroupsRoutes.stack.some(
       (layer) => !layer.route,
     );
@@ -186,7 +186,7 @@ describe("Menu Groups Routes", () => {
     expect(hasMiddleware || hasRoutes).toBe(true);
   });
 
-    it("should have middleware or routes in stack", () => {
+  it("should have middleware or routes in stack", () => {
     const hasMiddleware = menuGroupsRoutes.stack.some(
       (layer) => !layer.route,
     );

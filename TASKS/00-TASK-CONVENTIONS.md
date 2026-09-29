@@ -115,7 +115,7 @@ Every task inherits this. A task-specific DoD **adds** to it.
 ### Build
 
 - [ ] `pnpm lint` — React Compiler rules included, not disabled
-- [ ] `pnpm typecheck` — frontend; the backend is JavaScript (ADR-030)
+- [ ] `make typecheck` — both workspaces, TypeScript 7 (`npm run typecheck` in each). The backend is mostly JavaScript still; its converted `.ts` modules are checked strict (ADR-038, ADR-087)
 - [ ] `pnpm build`
 - [ ] Migrations apply to a clean database **and** to production-shaped data
 - [ ] **Migration results verified by inspecting columns**, not by trusting the log

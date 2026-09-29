@@ -75,6 +75,10 @@ export const Select: React.FC<SelectProps> = ({
       <button
         type="button"
         id={id}
+        // ADR-090: with an id, a <label htmlFor> names the trigger, and a
+        // label replaces a button's content in its name — the value would be
+        // lost. Naming it by itself then its value reads "Status, Active".
+        aria-labelledby={id ? `${id} ${id}-value` : undefined}
         aria-describedby={ariaDescribedBy}
         aria-label={ariaLabel}
         disabled={disabled}
@@ -91,6 +95,7 @@ export const Select: React.FC<SelectProps> = ({
           }`}
       >
         <span
+          id={id ? `${id}-value` : undefined}
           className={selectedOption ? "" : "text-muted-foreground"}
         >
           {selectedOption?.label || placeholder}

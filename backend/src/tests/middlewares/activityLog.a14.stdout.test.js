@@ -90,7 +90,10 @@ const runChild = (env, arg) => {
   const childEnv = { ...process.env, NODE_ENV: "production", ...env };
   delete childEnv.LOG_LEVEL;
   if (!("LOG_TO_FILE" in env)) {delete childEnv.LOG_TO_FILE;}
-  const args = ["-e", childScript(storageRoot)];
+  // P9-05a (ADR-087): `--import tsx`, because the child loads backend source
+  // and some of it is TypeScript now (utils/storagePath.util.ts). Plain `node`
+  // cannot resolve an extensionless `.ts` module. The script itself is unchanged.
+  const args = ["--import", "tsx", "-e", childScript(storageRoot)];
   if (arg) {args.push(arg);}
   const result = spawnSync(process.execPath, args, {
     cwd: BACKEND,

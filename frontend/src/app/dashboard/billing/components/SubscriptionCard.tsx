@@ -124,15 +124,15 @@ export const SubscriptionCard: React.FC<SubscriptionCardProps> = ({
 
         {canEdit && (
           <div className="mt-6 pt-6 border-t border-border">
-            <h4 className="text-sm font-semibold text-foreground mb-4">
+            <h3 className="text-sm font-semibold text-foreground mb-4">
               Edit subscription
-            </h4>
+            </h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-2 text-foreground">
+                <label htmlFor="billing-components-subscriptioncard-f1" className="block text-sm font-medium mb-2 text-foreground">
                   Plan
                 </label>
-                <Select
+                <Select id="billing-components-subscriptioncard-f1"
                   value={form.planId}
                   onChange={(value) =>
                     setForm((prev) => ({ ...prev, planId: value }))
@@ -145,10 +145,10 @@ export const SubscriptionCard: React.FC<SubscriptionCardProps> = ({
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-2 text-foreground">
+                <label htmlFor="billing-components-subscriptioncard-f2" className="block text-sm font-medium mb-2 text-foreground">
                   Billing Cycle
                 </label>
-                <Select
+                <Select id="billing-components-subscriptioncard-f2"
                   value={form.billingCycle}
                   onChange={(value) =>
                     setForm((prev) => ({
@@ -163,10 +163,10 @@ export const SubscriptionCard: React.FC<SubscriptionCardProps> = ({
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-2 text-foreground">
+                <label htmlFor="billing-components-subscriptioncard-f3" className="block text-sm font-medium mb-2 text-foreground">
                   Status
                 </label>
-                <Select
+                <Select id="billing-components-subscriptioncard-f3"
                   value={form.status}
                   onChange={(value) =>
                     setForm((prev) => ({

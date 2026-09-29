@@ -2,13 +2,13 @@
 
 Every event name this system will ever POST to a webhook, and every event name it accepts a subscription for and then never sends.
 
-Source: `backend/src/constants/webhookEvents.js` (the catalogue), `backend/src/services/webhook.service.js`, and the emit sites named below. Decision: A-11 and **ADR-054** (`MEMORY/DECISIONS.md`).
+Source: `backend/src/constants/webhookEvents.ts` (the catalogue; `.ts` since Phase 9, ADR-087 — this line said `.js` until 2026-09-28, ADR-088), `backend/src/services/webhook.service.js`, and the emit sites named below. Decision: A-11 and **ADR-054** (`MEMORY/DECISIONS.md`).
 
 ---
 
 ## Read This Before The Table
 
-> **As-built since 2026-09-24 (A-11).** Until then the only code that called `emitEvent` was the calibration scan, and every other name a tenant could subscribe to — including the `certificate.signed` in the Swagger example — was stored and never fired. The catalogue below lists what the code **emits**; `tests/services/webhookEmit.a11.test.js` fails if a name in `constants/webhookEvents.js` has no emit site, or if the frontend's list differs from it.
+> **As-built since 2026-09-24 (A-11).** Until then the only code that called `emitEvent` was the calibration scan, and every other name a tenant could subscribe to — including the `certificate.signed` in the Swagger example — was stored and never fired. The catalogue below lists what the code **emits**; `tests/services/webhookEmit.a11.test.js` fails if a name in `constants/webhookEvents.ts` has no emit site, or if the frontend's list differs from it.
 
 The subscription model still accepts any well-formed name (`webhook.validator.js`: lowercase dotted, max 50 per webhook). A name outside this catalogue is stored and **never fires** — the form lets an admin type a custom one, and older subscriptions may hold names from before the catalogue existed.
 
@@ -16,13 +16,13 @@ The subscription model still accepts any well-formed name (`webhook.validator.js
 
 | Event | Fired when | Emit site | Timing |
 |---|---|---|---|
-| `device.calibration_due` | the calibration scan finds a device due | `calibrationScheduler.service.js#runCalibrationScan` | after the scan's work-order insert (autocommitted) |
+| `device.calibration_due` | the calibration scan finds a device due | `calibrationScheduler.service.js#runCalibrationScan` | after the scan chunk's transaction commits (`scheduleChunk`, W-04; ADR-088: this said "autocommitted") |
 | `device.overdue` | the scan finds a device past its date | same | same |
 | `certificate.approved` | `pending_approval` → `approved` | `certificate.service.js#approveCertificate` | `transaction.afterCommit` |
 | `certificate.signed` | `approved` → `signed` | `certificate.service.js#signCertificate` | `transaction.afterCommit` |
 | `certificate.revoked` | → `revoked` | `certificate.service.js#revokeCertificate` | `transaction.afterCommit` |
-| `work_order.created` | a maintenance work order is created (by a user or by the calibration scan) | `maintenance.service.js#createWorkOrder` | after the insert (autocommitted — the service opens no transaction) |
-| `work_order.completed` | a work order's status changes **into** `Completed` | `maintenance.service.js#updateWorkOrder` | after the update (autocommitted) |
+| `work_order.created` | a maintenance work order is created (by a user or by the calibration scan) | `maintenance.service.js#createWorkOrder` | `transaction.afterCommit` — `createWorkOrder` and, for the scan's orders, `createAutoScheduledWorkOrders` (ADR-088: this said the service opens no transaction; it does, `maintenance.service.js:218`, `:281`) |
+| `work_order.completed` | a work order's status changes **into** `Completed` | `maintenance.service.js#updateWorkOrder` | `transaction.afterCommit` (`maintenance.service.js:356`; ADR-088: this said autocommitted) |
 | `stock_transfer.completed` | a stock transfer is completed and the stock moved | `stock.service.js#updateTransferStatus` | `transaction.afterCommit` |
 | `capa.created` | a CAPA is raised against a non-conformance | `qms.service.js#createCapa` | `transaction.afterCommit` |
 | `capa.closed` | a CAPA's status changes **into** `CLOSED` | `qms.service.js#updateCapa` | `transaction.afterCommit` |
@@ -136,13 +136,15 @@ The same object is re-serialized identically on every retry, so the **body** is 
 
 The rule this repository applies to audit rows — write it inside the transaction — inverts for webhooks: an event announced for a change that then rolls back announces something that did not happen, so emission must follow the commit.
 
-> **As-built since 2026-09-24 (A-11): by design.** Inside a transaction, a service calls `webhookService.emitAfterCommit(transaction, tenantId, event, payload)` next to its audit row. That registers the emit on `transaction.afterCommit`: it runs only after a successful COMMIT, and a rollback — a thrown error, a refused transition, a failed COMMIT — discards it. Where a service opens no transaction (`maintenance.service.js`), the write has already autocommitted and `emitAfterCommit(null, …)` emits at once. **Calling `emitEvent` directly inside a transaction callback is a defect.** Proven against PostgreSQL in `tests/services/webhook.durable.a10.live.test.js` ("emitAfterCommit: a rolled-back transaction emits nothing; a committed one emits exactly once") and per service in `tests/services/webhookEmit.a11.test.js`.
+> **As-built since 2026-09-24 (A-11): by design.** Inside a transaction, a service calls `webhookService.emitAfterCommit(transaction, tenantId, event, payload)` next to its audit row. That registers the emit on `transaction.afterCommit`: it runs only after a successful COMMIT, and a rollback — a thrown error, a refused transition, a failed COMMIT — discards it. With no transaction (an autocommitted write), `emitAfterCommit(null, …)` emits at once. *(ADR-088: this sentence named `maintenance.service.js` as such a service; since it opens transactions at `:218`, `:281`, `:356`, every A-11 emit site passes a transaction.)* **Calling `emitEvent` directly inside a transaction callback is a defect.** Proven against PostgreSQL in `tests/services/webhook.durable.a10.live.test.js` ("emitAfterCommit: a rolled-back transaction emits nothing; a committed one emits exactly once") and per service in `tests/services/webhookEmit.a11.test.js`.
 
 The emit is not in the transaction, so a process killed between the COMMIT and the delivery-row insert loses that one event. The window is milliseconds; ADR-054 records it.
 
 `emitEvent` itself is best-effort and **cannot fail its caller**: the whole body is wrapped in `try/catch`, returning `{ matched: 0, error }` and logging at `error` level. A calibration scan — or a certificate approval — never fails because a webhook could not be enqueued. The corollary is that a webhook that was never enqueued leaves no trace except a log line — and in production those go to a file, not stdout (see [`../OBSERVABILITY/01-LOGGING.md`](../OBSERVABILITY/01-LOGGING.md)).
 
 ## Tenant Scoping On The Emit Path
+
+> **Corrected 2026-09-28 (ADR-088).** The next three paragraphs describe the code before W-12. Today the scan reads due devices under `runAsSystem`, then runs each tenant's chunk, including its `emitEvent` calls, inside `runForTenant(device.tenantId)` (`calibrationScheduler.service.js:330`). So on the cron path the hooks **do** add the tenant predicate. The dispatcher also runs each delivery inside `runForTenant` (`webhook.service.js#deliverInTenant`), and only its claim is cross-tenant ([`00-WEBHOOK-ARCHITECTURE.md`](./00-WEBHOOK-ARCHITECTURE.md) § Tenant Isolation Along The Pipeline). The conclusion below still holds for any caller without a context: **the explicit `where: { tenantId }` must stay.**
 
 The scan runs from cron, outside any request (and the delivery dispatcher likewise — see [`04-WEBHOOK-RETRY.md`](./04-WEBHOOK-RETRY.md) § How The Queue Works), so there is **no `AsyncLocalStorage` context**. `tenantScope.util.js#resolveScope` returns `{ mode: "skip" }` when there is no context — deliberately, so schedulers and migrations can work — which means the global Sequelize hooks add **no** tenant predicate to the `Webhook.findAll` inside `emitEvent`.
 
@@ -152,7 +154,7 @@ Anyone refactoring `emitEvent` to drop that predicate as "redundant, the hooks h
 
 ## Adding An Event
 
-The registry is `backend/src/constants/webhookEvents.js`. The steps are:
+The registry is `backend/src/constants/webhookEvents.ts` (ADR-088: this said `.js`). The steps are:
 
 1. Add the name to `WEBHOOK_EVENTS` — `<domain>.<verb>`, snake_case, matching `work_order.completed`.
 2. Emit it with `webhookService.emitAfterCommit(transaction, tenantId, WEBHOOK_EVENTS.X, payload)` inside the mutation's transaction (or with `null` after an autocommitted write). Identifiers and statuses only in the payload.

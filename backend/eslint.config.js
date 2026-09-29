@@ -1,7 +1,31 @@
 const js = require("@eslint/js");
 const prettier = require("eslint-config-prettier");
+const tseslint = require("typescript-eslint");
+
+// ADR-087 — shared types live in src/types/. A global augmentation, or a type
+// named like the response envelope, declared anywhere else is a lint error, so
+// a second copy of a shared shape fails review instead of drifting from the first.
+const SHARED_TYPE_MESSAGE = "Shared types live in src/types/ (ADR-087, src/types/README.md).";
+const SHARED_TYPES_ONLY_IN_TYPES_DIR = [
+  { selector: "TSModuleDeclaration[kind='global']", message: SHARED_TYPE_MESSAGE },
+  { selector: "TSTypeAliasDeclaration[id.name=/Envelope$|^ApiResponse/]", message: SHARED_TYPE_MESSAGE },
+  { selector: "TSInterfaceDeclaration[id.name=/Envelope$|^ApiResponse/]", message: SHARED_TYPE_MESSAGE },
+];
 
 module.exports = [
+  // P9-02 — GLOBAL ignores. In flat config, `ignores` is global only in an
+  // object that has no other key; beside `rules` it scoped that one object, so
+  // `dist/` and `coverage/` were linted and `*.config.js` merely escaped the
+  // house rules (verified by isPathIgnored over the tree, 2026-09-28).
+  {
+    ignores: [
+      "dist/",
+      "coverage/",
+      "build/",
+      "docs/",
+      "*.config.js",
+    ],
+  },
   js.configs.recommended,
   prettier,
   {
@@ -86,13 +110,99 @@ module.exports = [
       // Constant conditions are common in middleware (always-true guards)
       "no-constant-condition": "warn",
     },
-    ignores: [
-      "node_modules/",
-      "dist/",
-      "coverage/",
-      "*.config.js",
-      "docs/",
-      "build/",
-    ],
+  },
+  // P9-02 (ADR-038, ADR-087) — converted TypeScript files. Before this block
+  // ESLint matched no .ts file at all, so a conversion silently took its file
+  // out of the lint gate. Type-aware (typed linting runs on the `typescript`
+  // 6 API package: typescript-eslint does not support TypeScript 7 — ADR-076;
+  // the type CHECK is TypeScript 7, `npm run typecheck`). Every rule the
+  // standards document names is an error, never a warning.
+  ...tseslint.configs.strictTypeChecked.map((config) => ({ ...config, files: ["**/*.ts"] })),
+  ...tseslint.configs.stylisticTypeChecked.map((config) => ({ ...config, files: ["**/*.ts"] })),
+  {
+    files: ["**/*.ts"],
+    languageOptions: {
+      parserOptions: { projectService: true, tsconfigRootDir: __dirname },
+    },
+    rules: {
+      "@typescript-eslint/no-explicit-any": "error",
+      "@typescript-eslint/no-unsafe-assignment": "error",
+      "@typescript-eslint/no-unsafe-member-access": "error",
+      "@typescript-eslint/no-unsafe-call": "error",
+      "@typescript-eslint/no-unsafe-return": "error",
+      "@typescript-eslint/no-unsafe-argument": "error",
+      "@typescript-eslint/no-floating-promises": "error",
+      "@typescript-eslint/no-misused-promises": "error",
+      "@typescript-eslint/switch-exhaustiveness-check": "error",
+      "@typescript-eslint/no-non-null-assertion": "error",
+      // ADR-087 Amendment 5: this stylistic rule asks for `x!` instead of
+      // `x as T` — the very `!` the rule above bans. With both on, a checked
+      // narrowing can satisfy neither, so the stylistic one is off.
+      "@typescript-eslint/non-nullable-type-assertion-style": "off",
+      // `declare global { namespace NodeJS { … } }` is how a global is
+      // augmented (docs/ENGINEERING/04 does the same for Express); a runtime
+      // namespace stays banned.
+      "@typescript-eslint/no-namespace": ["error", { allowDeclarations: true }],
+      "@typescript-eslint/ban-ts-comment": [
+        "error",
+        { "ts-ignore": true, "ts-nocheck": true, "ts-expect-error": "allow-with-description" },
+      ],
+      "@typescript-eslint/consistent-type-assertions": [
+        "error",
+        { assertionStyle: "as", objectLiteralTypeAssertions: "never" },
+      ],
+      "@typescript-eslint/explicit-module-boundary-types": "error",
+      "@typescript-eslint/consistent-type-imports": "error",
+      "no-restricted-syntax": [
+        "error",
+        { selector: "TSEnumDeclaration", message: "Use an `as const` object and a union (docs/ENGINEERING/04)." },
+        ...SHARED_TYPES_ONLY_IN_TYPES_DIR,
+      ],
+    },
+  },
+  {
+    // src/types/ is where shared types live (ADR-087, src/types/README.md):
+    // the enum ban still applies there, the shared-type ban does not.
+    files: ["src/types/**/*.ts"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        { selector: "TSEnumDeclaration", message: "Use an `as const` object and a union (docs/ENGINEERING/04)." },
+      ],
+    },
+  },
+  {
+    // process.env is read raw only inside src/config/ (docs/ENGINEERING/04).
+    files: ["**/*.ts"],
+    ignores: ["src/config/**"],
+    rules: {
+      "no-restricted-properties": [
+        "error",
+        { object: "process", property: "env", message: "Read configuration through src/config/." },
+      ],
+    },
+  },
+  {
+    // P9-10 (ADR-087 Amendment 7): until the barrel converts in the same merge
+    // as the last model batch, no production .ts file imports the JavaScript
+    // models barrel — a type taken from it is inferred loosely under allowJs
+    // and the typecheck accepts it silently. Types come from src/types/models.ts.
+    // Tests are exempt: they type the barrel locally (fixtures/memoryDb.ts).
+    files: ["src/**/*.ts"],
+    ignores: ["src/tests/**", "src/**/__tests__/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              regex: "^(?:\\.\\./)+models(?:/index)?$|^\\.(?:/index)?$",
+              message:
+                "The models barrel is JavaScript until P9-10's last batch: take model types from src/types/models.ts (ADR-087 Amendment 7).",
+            },
+          ],
+        },
+      ],
+    },
   },
 ];

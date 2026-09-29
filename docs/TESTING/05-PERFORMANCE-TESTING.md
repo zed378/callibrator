@@ -19,11 +19,32 @@ The verification page gets the strictest budget and the fewest dependencies, bec
 
 ## Current State
 
-**No load testing has been performed.** No baseline exists.
+**One baseline exists, taken 2026-09-28 (P8-07, ADR-086 §3), and it does not meet the list target above low concurrency.** Until then no load testing had been performed; this section said so until the baseline was recorded. The figures are in [Hot-Path Budgets](#hot-path-budgets) below, each labelled.
 
 Targets above are design intentions, not measurements. Saying so is more useful than reporting numbers nobody has taken.
 
 Load testing sits in [`../PLAN/16-IMPLEMENTATION-ROADMAP.md`](../PLAN/16-IMPLEMENTATION-ROADMAP.md) under operational maturity.
+
+## Hot-Path Budgets
+
+Every number here is labelled **TARGET** (a budget, not yet shown to hold) or **MEASURED** (taken, with its source). A number with neither label is a defect in this table. This section is what [`TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md) **U-06** points at; it prepares U-06 for closing and does not close it.
+
+**Where MEASURED comes from:** the P8-07 baseline — [`MEMORY/records/2026-09-28-p8-scale-cards.md`](../../MEMORY/records/2026-09-28-p8-scale-cards.md) § P8-07. Load `scripts/load/p807-baseline.k6.js` (grafana/k6, `limit=10`, two tenants, every response checked for the caller's tenant); data `scripts/load/p807-seed.sql` (per tenant: 5,000 devices, 50,000 calibration records, 2.16M `iot_readings`, 500,000 `audit_logs`); one backend replica (2 CPU / 4 GiB), PostgreSQL 18, Redis, no RabbitMQ, `RATE_LIMIT_MAX` raised out of the way. **The load generator shared a desktop Docker host with the stack**, so every measured figure is a lower bound on what a separate-host run would show, not a production number.
+
+| Hot path | Endpoint | Budget (method) | Label | Result |
+|---|---|---|---|---|
+| Device list | `GET /api/v1/calibration-devices?page=&limit=10` | p95 **< 500 ms** (AC-31), tenant of 5,000 devices | TARGET | **MEASURED** p95 49 ms at 1 VU; **576 ms at 10 VU — not met**; 1.01–1.71 s at 50 VU |
+| Device list, filtered | `GET /api/v1/calibration-devices?find=…&limit=10` | p95 **< 500 ms** (AC-31) | TARGET | **MEASURED** p95 54 ms at 1 VU; **603 ms at 10 VU — not met**. The record's "search" column is this request, not global search |
+| Calibration record list | `GET /api/v1/calibration-records?page=&limit=10` | p95 **< 500 ms** (AC-31), 50,000 records | TARGET | **MEASURED** p95 56 ms at 1 VU; **616 ms at 10 VU — not met** |
+| Dashboard metrics | `GET /api/v1/dashboard/metrics` | p95 **< 500 ms**, so AC-30's "first paint under 2 s on a hospital network" is not spent on the API alone. The 500 ms figure is proposed here, extending AC-31; AC-30 itself is a frontend measure | TARGET | **MEASURED** p95 64 ms at 1 VU; **613 ms at 10 VU — not met**. `getDashboardMetrics` issues 20 queries in one `Promise.all` against a pool of 20: at 10 VU each, it raised the device-list p95 from 320 ms to 726 ms (pool 60: 360 → 574 ms) — a finding, not fixed |
+| Global search | `GET /api/v1/search` | p95 **< 500 ms**, the tenant-scoped read budget (AC-31) applied to a union over many tables — proposed here | TARGET | **Not measured.** The P8-07 script does not call `/search` |
+| Certificate PDF generation | `POST /api/v1/certificates/:certificateId/pdf` | render **< 5 s** (AC-33), and backend memory stable under sustained rendering | TARGET | **Not measured, and cannot be yet:** the shipped backend image answers 500 on this route (`TASKS/BACKLOG.md` **M-11** — `puppeteer-core` not packaged) |
+| Audit list (context) | `GET /api/v1/audit?page=&limit=10` | p95 **< 500 ms** (AC-31), 500,000 rows | TARGET | **MEASURED** p95 140 ms at 1 VU; **732 ms at 10 VU**. Its exact `count(...)` was 39 of 72 active queries under load — the main PostgreSQL cost |
+| Timeouts, tenant isolation | all of the above | 0 × 408 (AC-32), 0 cross-tenant rows | TARGET | **MEASURED** over 35,963 requests / 15 runs: 0 × 408, 0 × 429, 0 acquire timeouts, **0 tenant leaks**; backend memory 320–345 MiB |
+
+What the measured rows say: the lists meet AC-31 unloaded and miss it from 10 concurrent users on one replica, and the ceiling is PostgreSQL (790–940% CPU under two-replica load; exact counts over all history), so a second replica added no throughput. ADR-086 §3 records the decision: query-shaped fixes first (bounded or estimated counts, an audit date window), a read replica only if p95 still fails.
+
+Still to measure before U-06 can close: global search; certificate PDF render time and memory (after M-11); IoT ingest; any run from a host separate from the stack.
 
 ## Test With Data, Not With an Empty Database
 
@@ -75,7 +96,7 @@ The non-production figure exists precisely because test traffic exhausts a produ
 
 ### The one that shares a process
 
-The **MQTT broker is embedded in the Express process**. A telemetry flood degrades the API, and that coupling is worth measuring rather than assuming.
+There is **no embedded MQTT broker** (A-17; corrected under ADR-088 — this line said there was). The backend is an MQTT *client* of an external broker, and its message handler runs on the API's event loop, so a telemetry flood still degrades the API, and that coupling is worth measuring rather than assuming.
 
 ## Saturation to Watch
 

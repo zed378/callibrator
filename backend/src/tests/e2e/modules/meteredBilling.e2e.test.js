@@ -30,7 +30,7 @@ describe("E2E Metered Billing (HTTP)", () => {
   });
 
   afterAll(async () => {
-    if (alertId) await httpDelete(`/metered-billing/alerts/${alertId}`, authHeader(token));
+    if (alertId) {await httpDelete(`/metered-billing/alerts/${alertId}`, authHeader(token));}
   });
 
   test("GET /metered-billing/usage — 200", async () => {

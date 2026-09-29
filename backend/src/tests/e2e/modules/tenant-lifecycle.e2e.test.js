@@ -37,13 +37,13 @@ describe("E2E Tenant Lifecycle (HTTP)", () => {
   });
 
   test("GET /tenants/:id/status -> 200 for a real tenant", async () => {
-    if (!tenantId) return;
+    if (!tenantId) {return;}
     const { status } = await httpGet(`/tenants/${tenantId}/status`, authHeader(token));
     expect(status).toBe(200);
   });
 
   test("GET /tenants/:id/status -> 401 without token", async () => {
-    if (!tenantId) return;
+    if (!tenantId) {return;}
     const { status } = await httpGet(`/tenants/${tenantId}/status`);
     expect(status).toBe(401);
   });
@@ -57,7 +57,7 @@ describe("E2E Tenant Lifecycle (HTTP)", () => {
   });
 
   test("POST /tenants/:id/suspend with body {reason} -> 200 (tenantId from path)", async () => {
-    if (!tenantId) return;
+    if (!tenantId) {return;}
     const { status, body } = await httpPost(
       `/tenants/${tenantId}/suspend`,
       { reason: "e2e" },
@@ -70,7 +70,7 @@ describe("E2E Tenant Lifecycle (HTTP)", () => {
   });
 
   test("GET /tenants/:id/export -> 200 for a real tenant (super admin)", async () => {
-    if (!tenantId) return;
+    if (!tenantId) {return;}
     const { status } = await httpGet(`/tenants/${tenantId}/export`, authHeader(token));
     expect([200, 404]).toContain(status);
   });

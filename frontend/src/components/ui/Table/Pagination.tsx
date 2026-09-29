@@ -61,6 +61,7 @@ export const Pagination: React.FC<PaginationProps> = ({
             <select
               value={pageSize}
               onChange={(e) => onPageSizeChange(Number(e.target.value))}
+              aria-label="Rows per page"
               className="px-3 py-2 rounded-xl text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-ring/50 transition-all duration-300 cursor-pointer ring-1 ring-border bg-card text-foreground"
             >
               {pageSizes.map((size) => (
@@ -78,6 +79,7 @@ export const Pagination: React.FC<PaginationProps> = ({
         <div className="flex items-center gap-2">
           <button
             onClick={() => onPageChange(1)}
+            aria-label="First page"
             disabled={currentPage === 1}
             className="px-3.5 py-2 rounded-xl text-sm font-semibold disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-200 active:scale-95 ring-1 ring-border text-muted-foreground hover:bg-muted hover:text-foreground"
           >
@@ -85,6 +87,7 @@ export const Pagination: React.FC<PaginationProps> = ({
           </button>
           <button
             onClick={() => onPageChange(currentPage - 1)}
+            aria-label="Previous page"
             disabled={currentPage === 1}
             className="px-3.5 py-2 rounded-xl text-sm font-semibold disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-200 active:scale-95 ring-1 ring-border text-muted-foreground hover:bg-muted hover:text-foreground"
           >
@@ -92,20 +95,25 @@ export const Pagination: React.FC<PaginationProps> = ({
           </button>
           <div
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-primary/10 text-primary"
+            aria-live="polite"
           >
+            <span className="sr-only">Page </span>
             <span
               className="text-sm font-bold"
             >
               {currentPage}
             </span>
             <span
-              className="text-sm opacity-60"
+              className="text-sm"
             >
-              / {totalPages}
+              <span aria-hidden="true">/ </span>
+              <span className="sr-only"> of </span>
+              {totalPages}
             </span>
           </div>
           <button
             onClick={() => onPageChange(currentPage + 1)}
+            aria-label="Next page"
             disabled={currentPage === totalPages}
             className="px-3.5 py-2 rounded-xl text-sm font-semibold disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-200 active:scale-95 ring-1 ring-border text-muted-foreground hover:bg-muted hover:text-foreground"
           >
@@ -113,6 +121,7 @@ export const Pagination: React.FC<PaginationProps> = ({
           </button>
           <button
             onClick={() => onPageChange(totalPages)}
+            aria-label="Last page"
             disabled={currentPage === totalPages}
             className="px-3.5 py-2 rounded-xl text-sm font-semibold disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-200 active:scale-95 ring-1 ring-border text-muted-foreground hover:bg-muted hover:text-foreground"
           >

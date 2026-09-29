@@ -12583,6 +12583,61 @@
         }
       }
     },
+    "/api/v1/sessions/mine": {
+      "get": {
+        "tags": [
+          "Sessions"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "List your own active sessions",
+        "description": "Q-08 (ADR-084). Every live session of the signed-in user, newest first, with the address and browser recorded when it signed in or last refreshed, how it signed in, whether it is this session, and whether it is a platform operator's support session. Not available to API keys.\n",
+        "responses": {
+          "200": {
+            "description": "Your active sessions"
+          }
+        }
+      }
+    },
+    "/api/v1/sessions/mine/{id}/revoke": {
+      "post": {
+        "tags": [
+          "Sessions"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Sign out one of your own sessions",
+        "description": "Q-08 (ADR-084). Revokes one live session of the signed-in user and writes an audit row in the same transaction. Its access token is refused on its next request; its open sockets end at the next re-check (ADR-085). Another user's session answers 404, like one that does not exist.\n",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The session has been signed out"
+          },
+          "400": {
+            "description": "Invalid UUID"
+          },
+          "404": {
+            "description": "Session not found"
+          }
+        }
+      }
+    },
     "/api/v1/sessions/stats": {
       "get": {
         "tags": [

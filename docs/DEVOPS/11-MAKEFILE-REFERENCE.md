@@ -147,7 +147,7 @@ Each of these is a configuration mistake that produces a working-looking deploym
 Prints the verification checklist rather than pretending to run it:
 
 ```
-[ ] /health returns 200 with database: "connected"
+[ ] /health returns 200 {"status":"ok"} — DB, Redis and RabbitMQ all up (ADR-088)
 [ ] a user can log in
 [ ] a tenant-scoped list returns that tenant's rows AND NO OTHERS
 [ ] a certificate issued BEFORE this deploy still verifies at its public URL

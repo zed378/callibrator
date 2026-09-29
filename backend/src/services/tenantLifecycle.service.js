@@ -1,12 +1,12 @@
-const { Op, Transaction } = require('sequelize');
-const { Tenant, TenantSettings, User, Subscription, Invoice } = require('../models');
-const { AppError } = require('../utils/appError.util');
-const { logger } = require('../middlewares/activityLog.middleware');
-const { isEnabled } = require('./featureFlag.service');
-const auditService = require('./audit.service');
-const { SYSTEM_ACTORS } = require('../constants/systemActors');
-const { db } = require('../config');
-const { runForTenant } = require('../utils/jobContext.util');
+const { Op, Transaction } = require("sequelize");
+const { Tenant, TenantSettings, User, Subscription, Invoice } = require("../models");
+const { AppError } = require("../utils/appError.util");
+const { logger } = require("../middlewares/activityLog.middleware");
+const { isEnabled } = require("./featureFlag.service");
+const auditService = require("./audit.service");
+const { SYSTEM_ACTORS } = require("../constants/systemActors");
+const { db } = require("../config");
+const { runForTenant } = require("../utils/jobContext.util");
 const {
   isRedactedSettingKey,
   SECRET_SETTING_MASK,
@@ -21,8 +21,8 @@ const {
  */
 const TENANT_LIFECYCLE_ACTOR = SYSTEM_ACTORS.TENANT_LIFECYCLE;
 
-const GRACE_PERIOD_DAYS = parseInt(process.env.TENANT_GRACE_PERIOD_DAYS || '7', 10);
-const OFFBOARD_RETENTION_DAYS = parseInt(process.env.TENANT_OFFBOARD_RETENTION_DAYS || '30', 10);
+const GRACE_PERIOD_DAYS = parseInt(process.env.TENANT_GRACE_PERIOD_DAYS || "7", 10);
+const OFFBOARD_RETENTION_DAYS = parseInt(process.env.TENANT_OFFBOARD_RETENTION_DAYS || "30", 10);
 
 /**
  * Tenant Lifecycle Service
@@ -40,14 +40,14 @@ const OFFBOARD_RETENTION_DAYS = parseInt(process.env.TENANT_OFFBOARD_RETENTION_D
 exports.suspendTenant = async (tenantId, reason, suspendedBy = null) => {
   const tenant = await Tenant.findByPk(tenantId);
   if (!tenant) {
-    throw new AppError(404, 'Tenant not found');
+    throw new AppError(404, "Tenant not found");
   }
 
-  if (tenant.status === 'suspended') {
+  if (tenant.status === "suspended") {
     return tenant;
   }
 
-  tenant.status = 'suspended';
+  tenant.status = "suspended";
   tenant.suspensionReason = reason;
   tenant.suspendedAt = new Date();
   tenant.suspendedBy = suspendedBy;
@@ -57,8 +57,8 @@ exports.suspendTenant = async (tenantId, reason, suspendedBy = null) => {
 
   await TenantSettings.upsert({
     tenantId,
-    key: 'lifecycle_status',
-    value: 'SUSPENDED',
+    key: "lifecycle_status",
+    value: "SUSPENDED",
   });
 
   return tenant;
@@ -67,14 +67,14 @@ exports.suspendTenant = async (tenantId, reason, suspendedBy = null) => {
 exports.resumeTenant = async (tenantId, resumedBy = null) => {
   const tenant = await Tenant.findByPk(tenantId);
   if (!tenant) {
-    throw new AppError(404, 'Tenant not found');
+    throw new AppError(404, "Tenant not found");
   }
 
-  if (tenant.status === 'active') {
+  if (tenant.status === "active") {
     return tenant;
   }
 
-  tenant.status = 'active';
+  tenant.status = "active";
   tenant.suspensionReason = null;
   tenant.suspendedAt = null;
   tenant.suspendedBy = null;
@@ -88,8 +88,8 @@ exports.resumeTenant = async (tenantId, resumedBy = null) => {
 
   await TenantSettings.upsert({
     tenantId,
-    key: 'lifecycle_status',
-    value: 'ACTIVE',
+    key: "lifecycle_status",
+    value: "ACTIVE",
   });
 
   return tenant;
@@ -98,7 +98,7 @@ exports.resumeTenant = async (tenantId, resumedBy = null) => {
 exports.enterGracePeriod = async (tenantId) => {
   const tenant = await Tenant.findByPk(tenantId);
   if (!tenant) {
-    throw new AppError(404, 'Tenant not found');
+    throw new AppError(404, "Tenant not found");
   }
 
   // W-21 (ADR-079): a grace period is the time a SUSPENDED tenant has before
@@ -157,10 +157,10 @@ exports.offboardTenant = async (
 ) => {
   const tenant = await Tenant.findByPk(tenantId);
   if (!tenant) {
-    throw new AppError(404, 'Tenant not found');
+    throw new AppError(404, "Tenant not found");
   }
 
-  if (tenant.status === 'deleted' && !force) {
+  if (tenant.status === "deleted" && !force) {
     return tenant;
   }
 
@@ -179,7 +179,7 @@ exports.offboardTenant = async (
   retentionExpiresAt.setDate(retentionExpiresAt.getDate() + OFFBOARD_RETENTION_DAYS);
 
   await db.transaction(async (transaction) => {
-    tenant.status = 'deleted';
+    tenant.status = "deleted";
     tenant.offboardedAt = offboardedAt;
     tenant.offboardRetentionExpiresAt = retentionExpiresAt;
     await tenant.save({ transaction });
@@ -189,8 +189,8 @@ exports.offboardTenant = async (
     await TenantSettings.upsert(
       {
         tenantId,
-        key: 'lifecycle_status',
-        value: 'OFFBOARDED',
+        key: "lifecycle_status",
+        value: "OFFBOARDED",
       },
       { transaction },
     );
@@ -200,19 +200,19 @@ exports.offboardTenant = async (
         tenantId,
         // A-124: exactly one actor — the operator, or else the scheduler.
         ...(userId ? { userId } : { systemActor: TENANT_LIFECYCLE_ACTOR }),
-        action: 'DELETE',
-        resourceType: 'Tenant',
+        action: "DELETE",
+        resourceType: "Tenant",
         resourceId: tenantId,
         ipAddress,
         userAgent,
         changes: {
-          operation: 'TENANT_OFFBOARD',
+          operation: "TENANT_OFFBOARD",
           ...(userId ? {} : { actor: TENANT_LIFECYCLE_ACTOR }),
           force: Boolean(force),
           before,
           after: {
-            status: 'deleted',
-            lifecycleStatus: 'OFFBOARDED',
+            status: "deleted",
+            lifecycleStatus: "OFFBOARDED",
             offboardedAt: offboardedAt.toISOString(),
             offboardRetentionExpiresAt: retentionExpiresAt.toISOString(),
             retentionDays: OFFBOARD_RETENTION_DAYS,
@@ -234,14 +234,14 @@ exports.offboardTenant = async (
 exports.cancelOffboarding = async (tenantId) => {
   const tenant = await Tenant.findByPk(tenantId);
   if (!tenant) {
-    throw new AppError(404, 'Tenant not found');
+    throw new AppError(404, "Tenant not found");
   }
 
-  if (tenant.status !== 'deleted') {
-    throw new AppError(400, 'Tenant is not offboarded');
+  if (tenant.status !== "deleted") {
+    throw new AppError(400, "Tenant is not offboarded");
   }
 
-  tenant.status = 'active';
+  tenant.status = "active";
   tenant.offboardedAt = null;
   tenant.offboardRetentionExpiresAt = null;
   // As in resumeTenant: an expired deadline must not survive into a later
@@ -485,13 +485,13 @@ exports.exportTenantData = async (tenantId) => {
 exports.getTenantLifecycleStatus = async (tenantId) => {
   const tenant = await Tenant.findByPk(tenantId);
   if (!tenant) {
-    throw new AppError(404, 'Tenant not found');
+    throw new AppError(404, "Tenant not found");
   }
 
   const lifecycleSetting = await TenantSettings.findOne({
     where: {
       tenantId,
-      key: 'lifecycle_status',
+      key: "lifecycle_status",
     },
   });
 
@@ -536,7 +536,7 @@ exports.processExpiredGracePeriods = async ({ pageSize = LIFECYCLE_PAGE_SIZE } =
     // The ENUM's own lowercase value — PostgreSQL does not coerce, and
     // 'SUSPENDED' raised `invalid input value for enum enum_tenants_status`.
     const where = {
-      status: 'suspended',
+      status: "suspended",
       gracePeriodExpiresAt: { [Op.lte]: now },
     };
     if (afterId) {
@@ -544,8 +544,8 @@ exports.processExpiredGracePeriods = async ({ pageSize = LIFECYCLE_PAGE_SIZE } =
     }
     const tenants = await Tenant.findAll({
       where,
-      attributes: ['id'],
-      order: [['id', 'ASC']],
+      attributes: ["id"],
+      order: [["id", "ASC"]],
       limit: pageSize,
     });
 
@@ -553,9 +553,9 @@ exports.processExpiredGracePeriods = async ({ pageSize = LIFECYCLE_PAGE_SIZE } =
       try {
         // W-12: the job helper, so every job's context is declared the same way.
         await runForTenant(tenant.id, () => exports.offboardTenant(tenant.id));
-        results.push({ tenantId: tenant.id, action: 'offboarded' });
+        results.push({ tenantId: tenant.id, action: "offboarded" });
       } catch (err) {
-        results.push({ tenantId: tenant.id, action: 'failed', error: err.message });
+        results.push({ tenantId: tenant.id, action: "failed", error: err.message });
         logger.error(`Tenant lifecycle: offboarding ${tenant.id} failed`, {
           tenantId: tenant.id,
           error: err.message,

@@ -81,8 +81,14 @@ const functionName = (node, parent) => {
  * @param {string} source
  * @returns {string[]}
  */
-const unboundedFindAlls = (source) => {
-  const ast = espree.parse(source, { ecmaVersion: "latest", sourceType: "script" });
+// ADR-087 Amendment 4: a converted (.ts) file is parsed with typescript-estree,
+// which yields the same ESTree node shapes espree does (plus TS-only nodes the
+// visitor walks past), so the rule reads converted files exactly as before.
+const tsEstree = require("@typescript-eslint/typescript-estree");
+const unboundedFindAlls = (source, file = "") => {
+  const ast = /\.ts$/.test(file)
+    ? tsEstree.parse(source)
+    : espree.parse(source, { ecmaVersion: "latest", sourceType: "script" });
   const found = [];
   const names = [];
   const visit = (node, parent) => {
@@ -130,7 +136,7 @@ const serviceFiles = () => {
       const full = path.join(dir, name);
       if (fs.statSync(full).isDirectory()) {
         walk(full);
-      } else if (name.endsWith(".js")) {
+      } else if (/\.(js|ts)$/.test(name) && !name.endsWith(".d.ts")) {
         out.push(full);
       }
     }
@@ -144,7 +150,7 @@ const scanServices = () => {
   const counts = {};
   for (const file of serviceFiles()) {
     const rel = path.relative(SERVICES, file).split(path.sep).join("/");
-    for (const site of unboundedFindAlls(fs.readFileSync(file, "utf8"))) {
+    for (const site of unboundedFindAlls(fs.readFileSync(file, "utf8"), file)) {
       const key = `${rel}::${site}`;
       counts[key] = (counts[key] || 0) + 1;
     }

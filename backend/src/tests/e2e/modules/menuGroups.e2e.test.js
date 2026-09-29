@@ -27,7 +27,7 @@ const {
 let token = null;
 
 async function login() {
-  if (token) return token;
+  if (token) {return token;}
   const { body } = await httpPost("/auth/login", {
     user: "sys@mail.com",
     password: "123123",
@@ -80,7 +80,7 @@ describe("E2E Menu Groups (/api/v1/menu-groups + /menu-group-roles)", () => {
   });
 
   test("POST /menu-groups/update — update menu group", async () => {
-    if (!created.id) return;
+    if (!created.id) {return;}
     const { status, body } = await httpPost(
       "/menu-groups/update",
       { id: created.id, name: `E2E MG upd ${Date.now()}` },
@@ -96,7 +96,7 @@ describe("E2E Menu Groups (/api/v1/menu-groups + /menu-group-roles)", () => {
   });
 
   test("POST /menu-groups/delete — delete menu group (cleanup)", async () => {
-    if (!created.id) return;
+    if (!created.id) {return;}
     const { status } = await httpPost(
       "/menu-groups/delete",
       // P6-02: the body names `menuGroupId` — what menuGroup.controller

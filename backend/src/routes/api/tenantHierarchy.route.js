@@ -54,7 +54,6 @@ const ownTenantOnly = (param) =>
 
 const platformOnly = [auth, denyApiKey, superAdminOnly];
 
-
 /**
  * @swagger
  * /api/v1/tenant-hierarchy/tree:

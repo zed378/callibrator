@@ -55,7 +55,8 @@ describe("ADR-069 — the cross-tenant opt-outs are a closed, reviewed list", ()
       if (entry.isDirectory()) {
         return entry.name === "tests" ? [] : sourceFiles(full);
       }
-      return entry.name.endsWith(".js") ? [full] : [];
+      // ADR-087 Amendment 4: .ts too — a converted file must not leave this guard.
+      return /\.(js|ts)$/.test(entry.name) ? [full] : [];
     });
 
   it("the list is frozen and names exactly the reviewed jobs", () => {
@@ -74,7 +75,8 @@ describe("ADR-069 — the cross-tenant opt-outs are a closed, reviewed list", ()
     const offenders = sourceFiles()
       .filter((file) => /isSystemTask:\s*true/.test(fs.readFileSync(file, "utf8")))
       .map((file) => path.relative(SRC, file).split(path.sep).join("/"));
-    expect(offenders).toEqual(["utils/jobContext.util.js"]);
+    // P9-09 (ADR-087 Amendment 6): the module is TypeScript now; the same assertion.
+    expect(offenders).toEqual(["utils/jobContext.util.ts"]);
   });
 
   it("every runAsSystem call names a SYSTEM_TASKS entry, never a literal", () => {

@@ -102,10 +102,10 @@ export const CreateApiKeyModal: React.FC<CreateApiKeyModalProps> = ({
     <Dialog isOpen={isOpen} onClose={onClose} title="Create API Key">
       <form onSubmit={onSubmit} className="space-y-4 pt-2">
         <div>
-          <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+          <label htmlFor="api-keys-components-createapikeymodal-f1" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
             Name *
           </label>
-          <Input
+          <Input id="api-keys-components-createapikeymodal-f1"
             required
             maxLength={100}
             value={form.name}
@@ -163,10 +163,10 @@ export const CreateApiKeyModal: React.FC<CreateApiKeyModalProps> = ({
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+          <label htmlFor="api-keys-components-createapikeymodal-f2" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
             Expires At
           </label>
-          <Input
+          <Input id="api-keys-components-createapikeymodal-f2"
             type="date"
             value={form.expiresAt}
             onChange={(e) => setForm({ ...form, expiresAt: e.target.value })}

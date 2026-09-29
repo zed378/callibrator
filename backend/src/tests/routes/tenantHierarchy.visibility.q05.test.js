@@ -187,7 +187,9 @@ describe("Q-05 (ADR-084): the hierarchy grants no visibility across tenants", ()
 
     it("the request tenant context never reads the hierarchy", () => {
       const source = fs.readFileSync(
-        path.resolve(__dirname, "../../middlewares/tenantContext.middleware.js"),
+        // P9-05a (ADR-087 Amendment 2): the module is TypeScript now; the same
+        // assertions, on the same source.
+        path.resolve(__dirname, "../../middlewares/tenantContext.middleware.ts"),
         "utf8",
       );
 

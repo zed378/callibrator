@@ -142,7 +142,7 @@ describe("asyncHandlerWithMapping", () => {
       {
         credentials: 401,
         verify: 403,
-      }
+      },
     );
 
     const req = {};
@@ -164,7 +164,7 @@ describe("asyncHandlerWithMapping", () => {
       },
       {
         credentials: 401,
-      }
+      },
     );
 
     const req = {};
@@ -207,7 +207,7 @@ describe("asyncHandlerWithMapping", () => {
       },
       {
         credentials: 401,
-      }
+      },
     );
 
     const req = {};

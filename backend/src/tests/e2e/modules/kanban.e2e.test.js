@@ -33,7 +33,7 @@ describe("E2E Kanban (HTTP)", () => {
   });
 
   afterAll(async () => {
-    if (projectId) await httpDelete("/kanban/projects/" + projectId, authHeader(token));
+    if (projectId) {await httpDelete("/kanban/projects/" + projectId, authHeader(token));}
   });
 
   test("GET /kanban/projects -> 200 list", async () => {

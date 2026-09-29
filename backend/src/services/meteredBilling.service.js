@@ -163,7 +163,6 @@ exports.getUsage = async (tenantId, metric, options = {}) => {
   const { period = "daily", days = 30 } = options;
 
   try {
-    let total;
     let history = [];
 
     // PostgreSQL only (ADR-039). `bind`, not `replacements`: `$1`-style
@@ -187,7 +186,7 @@ exports.getUsage = async (tenantId, metric, options = {}) => {
       type: db.QueryTypes.SELECT,
     });
 
-    total = results.reduce((sum, r) => sum + parseInt(r.total || 0), 0);
+    const total = results.reduce((sum, r) => sum + parseInt(r.total || 0), 0);
     history = results.map((r) => ({
       period: r.period,
       count: parseInt(r.total || 0),
@@ -395,11 +394,15 @@ exports.generateUsageReport = async (tenantId, days = 30) => {
     };
 
     // Update summary
-    if (metric === "api_calls") report.summary.totalApiCalls = data.total;
-    if (metric === "storage_bytes")
+    if (metric === "api_calls") {
+      report.summary.totalApiCalls = data.total;
+    }
+    if (metric === "storage_bytes") {
       report.summary.totalStorageBytes = data.total;
-    if (metric === "calibrations")
+    }
+    if (metric === "calibrations") {
       report.summary.totalCalibrations = data.total;
+    }
   }
 
   return report;
@@ -651,7 +654,7 @@ exports.resetUsage = async (tenantId, metric) => {
 
   // PostgreSQL only (ADR-039); `bind` for `$n` placeholders — see getUsage.
   await db.query(
-    `DELETE FROM "UsageMetrics" WHERE "tenantId" = $1 AND metric = $2`,
+    "DELETE FROM \"UsageMetrics\" WHERE \"tenantId\" = $1 AND metric = $2",
     { bind: [tenantId, metric] },
   );
 

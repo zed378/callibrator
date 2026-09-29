@@ -112,7 +112,7 @@ export default function CreateProjectModal({
 
         <div className="grid grid-cols-3 gap-4">
           <div className="col-span-2">
-            <label className="text-sm font-medium text-foreground">Name</label>
+            <label htmlFor="create-project-1" className="text-sm font-medium text-foreground">Name</label>
             <Input
               value={form.name}
               onChange={(e) =>
@@ -123,10 +123,10 @@ export default function CreateProjectModal({
             />
           </div>
           <div>
-            <label className="text-sm font-medium text-foreground">
+            <label htmlFor="kanban-components-createprojectmodal-f1" className="text-sm font-medium text-foreground">
               Code
             </label>
-            <Input
+            <Input id="kanban-components-createprojectmodal-f1"
               value={form.code}
               onChange={(e) =>
                 setForm((f) => ({
@@ -144,10 +144,10 @@ export default function CreateProjectModal({
         </div>
 
         <div>
-          <label className="text-sm font-medium text-foreground">
+          <label htmlFor="kanban-components-createprojectmodal-f2" className="text-sm font-medium text-foreground">
             Description
           </label>
-          <Textarea
+          <Textarea id="kanban-components-createprojectmodal-f2"
             value={form.description}
             onChange={(e) =>
               setForm((f) => ({ ...f, description: e.target.value }))
@@ -158,7 +158,7 @@ export default function CreateProjectModal({
 
         <div className="flex items-center gap-3">
           <label className="text-sm font-medium text-foreground">Color</label>
-          <input
+          <input id="create-project-1"
             type="color"
             value={form.color}
             onChange={(e) =>
@@ -190,6 +190,7 @@ export default function CreateProjectModal({
                 <button
                   type="button"
                   onClick={() => removeMember(idx)}
+                  aria-label={`Remove ${nameOf(m)}`}
                   className="ml-1 hover:text-destructive"
                 >
                   <X className="h-3 w-3" />

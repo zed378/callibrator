@@ -215,10 +215,10 @@ export default function PredictiveMaintenancePage() {
           <CardContent className="pt-6">
             <div className="flex flex-col sm:flex-row gap-4 sm:items-end">
               <div className="flex-1">
-                <label className="block text-sm font-medium mb-1.5">
+                <label htmlFor="predictive-maintenance-page-f1" className="block text-sm font-medium mb-1.5">
                   Analyze a device
                 </label>
-                <Select
+                <Select id="predictive-maintenance-page-f1"
                   value={selectedDeviceId}
                   onChange={setSelectedDeviceId}
                   placeholder="Select an IoT-enabled device"

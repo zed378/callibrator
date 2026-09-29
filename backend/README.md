@@ -296,11 +296,12 @@ services:
 
 | Command                    | Description                       |
 | -------------------------- | --------------------------------- |
-| `npm run dev`              | Development server (nodemon)      |
-| `npm start`                | Production server                 |
+| `npm run dev`              | Development server (`tsx watch`, ADR-087) |
+| `npm start`                | Server from source (`node --import tsx`) |
 | `npm test`                 | Jest test suite                   |
 | `npm run swagger:generate` | Generate swagger.json             |
-| `npm run build`            | Package executable (Bun compiler) |
+| `npm run build`            | `build:dist` (copy JS + compile TS → `dist/`), then pkg the binary |
+| `npm run typecheck`        | TypeScript 7 check of the converted `.ts` modules |
 
 ## Authentication Flow
 

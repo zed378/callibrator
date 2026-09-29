@@ -107,7 +107,7 @@ Cross-checked against `git log --oneline` (last 5 commits) and the audit board.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-23 in `4c085ef` — P3-05 carries "⚠ The defect — A-47 / ADR-040" (verification could never pass; zero signature rows on the reference deployment) and P3-06 "⚠ Carries the same defect"; checked 2026-09-27 |
 | **Severity** | medium — not a false "done" (the feature is now genuinely fixed, per ADR-040), but the phase file is the retrospective record of what shipped, and it is silent about the most severe defect ever found in the module it describes |
 | **Verified** | from code, 2026-09-23 |
 
@@ -140,7 +140,7 @@ was ever used to sign anything (A-47, `ADR-040`). Neither P3-05 nor P3-06 says t
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-27 (ADR-088) — `CLAUDE.md` § Scale and `TASKS/PROGRESS.md`'s count table re-counted, each count naming its method and date, plus the one-line counting convention in PROGRESS. `PHASE-9`'s inventory is left to the Phase 9 lead: its own rule ("re-derived from the tree at the start of each stage") and P9-00's baseline at `35ebd76` (ADR-092) replace the 2026-09-21 figure |
 | **Severity** | low — no claim is falsified in a way that misleads a decision; the counts are two commits stale and drift in the direction the ratchet is supposed to forbid |
 | **Verified** | from code, 2026-09-23 (`find`/`ls` counts against the current tree) |
 
@@ -191,7 +191,7 @@ if taken from this file as written.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-28 — superseded by the fix: backend lint is **0 errors, ratchet baseline 0** (ADR-092). Every count now written carries its date and command (`TASKS/PROGRESS.md` § The state of the gates, `CLAUDE.md`) |
 | **Severity** | low — the qualitative claim ("red, all formatting, none logic") holds; only the exact counts drifted |
 | **Verified** | 2026-09-23, by running `npx eslint src/ --ext .js` live in `backend/` |
 
@@ -284,3 +284,24 @@ claim (grepped across all of `backend/src/tests` and `docs/`); the lint-count cl
    code. Six of nine remaining phase files, 34 of 40 ADRs, and 46 of 56 audit findings were sampled
    for consistency rather than independently re-derived — see § Sampled vs Exhaustive for the exact
    list. No full `jest` run was performed.
+
+---
+
+## R-04 — Records the Workflow Requires, Missing for Past Commits (swept 2026-09-27)
+
+| | |
+|---|---|
+| **Status** | **DONE** 2026-09-28 (ADR-088) |
+| **Method** | every commit from `4c085ef` to `35ebd76` checked against `MEMORY/records/`, `MEMORY/MEMORY-INDEX.md` and `MEMORY/CHANGELOG.md` (by SHA and by title) |
+
+| Commit(s) | What was missing | Written |
+|---|---|---|
+| `4c085ef` (audit round, 2026-09-23) | record, index row | [`2026-09-23-audit-round-seven-boards.md`](../MEMORY/records/2026-09-23-audit-round-seven-boards.md), index row |
+| `f1caf6b` (A-21, ADR-044) | record, index row, changelog | [`2026-09-23-a21-lockfile-npm.md`](../MEMORY/records/2026-09-23-a21-lockfile-npm.md), index row, changelog line |
+| `244b63b`, `af9fd5c`, `beb0c4b` (batch 6) | index row and changelog section — the record existed | index row, changelog section built from the record |
+| `2a157f1`, `05985ef` (revert, batch-5 WIP) | nothing further — both are covered by the batch-5 record and the remediation board | — |
+| `87de9bf`, `c8808c9`, `547ffe2` | nothing — `2026-09-24-dependency-upgrade.md` covers all three | — |
+| `a31c601`, `35ebd76` | nothing — batch 8's per-agent records carry them | — |
+
+Every retroactive record says it is retroactive, cites its commit, and claims no test run the commit
+or a board does not name.

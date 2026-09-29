@@ -49,7 +49,7 @@ router.get(
   "/",
   auth,
   dynamicAccess("vendors", "read", { checkTenant: true }),
-  vendorController.fetchVendors
+  vendorController.fetchVendors,
 );
 
 /**
@@ -79,7 +79,7 @@ router.get(
   auth,
   validateUuid("vendorId"),
   dynamicAccess("vendors", "read", { checkTenant: true }),
-  vendorController.getVendorById
+  vendorController.getVendorById,
 );
 
 /**
@@ -126,7 +126,7 @@ router.post(
   auth,
   dynamicAccess("vendors", "create", { checkTenant: true }),
   validate(vendorValidator.createVendor),
-  vendorController.createVendor
+  vendorController.createVendor,
 );
 
 /**
@@ -182,7 +182,7 @@ router.patch(
   validateUuid("vendorId"),
   dynamicAccess("vendors", "update", { checkTenant: true }),
   validate(vendorValidator.updateVendor),
-  vendorController.updateVendor
+  vendorController.updateVendor,
 );
 
 /**
@@ -212,7 +212,7 @@ router.delete(
   auth,
   validateUuid("vendorId"),
   dynamicAccess("vendors", "delete", { checkTenant: true }),
-  vendorController.deleteVendor
+  vendorController.deleteVendor,
 );
 
 /**
@@ -260,6 +260,6 @@ router.patch(
   dynamicAccess("vendors", "update"),
   validateUuid("vendorId"),
   validate(vendorValidator.qualifyVendor),
-  vendorController.qualifyVendor
+  vendorController.qualifyVendor,
 );
 module.exports = router;

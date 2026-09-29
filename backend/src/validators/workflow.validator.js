@@ -9,7 +9,7 @@ const createWorkflowSchema = Joi.object({
       stepOrder: Joi.number().integer().min(1).required(),
       roleId: Joi.string().uuid().required(),
       requiredApprovals: Joi.number().integer().min(1).optional(),
-    })
+    }),
   ).min(1).required(),
 });
 
@@ -21,7 +21,7 @@ const updateWorkflowSchema = Joi.object({
       stepOrder: Joi.number().integer().min(1).required(),
       roleId: Joi.string().uuid().required(),
       requiredApprovals: Joi.number().integer().min(1).optional(),
-    })
+    }),
   ).min(1).optional(),
 });
 

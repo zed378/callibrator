@@ -32,10 +32,10 @@ export const VendorModal: React.FC<VendorModalProps> = ({
       <form onSubmit={onSubmit} className="space-y-4 pt-2">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+            <label htmlFor="vendors-components-vendormodal-f1" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
               Vendor Name *
             </label>
-            <Input
+            <Input id="vendors-components-vendormodal-f1"
               required
               minLength={2}
               maxLength={100}
@@ -46,10 +46,10 @@ export const VendorModal: React.FC<VendorModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+            <label htmlFor="vendors-components-vendormodal-f2" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
               Type
             </label>
-            <Select
+            <Select id="vendors-components-vendormodal-f2"
               value={form.type}
               onChange={(value) =>
                 setForm({ ...form, type: value as VendorType })
@@ -65,10 +65,10 @@ export const VendorModal: React.FC<VendorModalProps> = ({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+            <label htmlFor="vendors-components-vendormodal-f3" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
               Contact Person
             </label>
-            <Input
+            <Input id="vendors-components-vendormodal-f3"
               value={form.contactPerson}
               onChange={(e) =>
                 setForm({ ...form, contactPerson: e.target.value })
@@ -78,10 +78,10 @@ export const VendorModal: React.FC<VendorModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+            <label htmlFor="vendors-components-vendormodal-f4" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
               Email
             </label>
-            <Input
+            <Input id="vendors-components-vendormodal-f4"
               type="email"
               value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
@@ -92,10 +92,10 @@ export const VendorModal: React.FC<VendorModalProps> = ({
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
-            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+            <label htmlFor="vendors-components-vendormodal-f5" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
               Phone
             </label>
-            <Input
+            <Input id="vendors-components-vendormodal-f5"
               value={form.phone}
               onChange={(e) => setForm({ ...form, phone: e.target.value })}
               placeholder="e.g. +62 812 3456 7890"
@@ -103,10 +103,10 @@ export const VendorModal: React.FC<VendorModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+            <label htmlFor="vendors-components-vendormodal-f6" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
               Status
             </label>
-            <Select
+            <Select id="vendors-components-vendormodal-f6"
               value={form.status}
               onChange={(value) =>
                 setForm({ ...form, status: value as VendorStatus })
@@ -119,10 +119,10 @@ export const VendorModal: React.FC<VendorModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+            <label htmlFor="vendors-components-vendormodal-f7" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
               Rating (1-5)
             </label>
-            <Input
+            <Input id="vendors-components-vendormodal-f7"
               type="number"
               min={1}
               max={5}
@@ -135,10 +135,10 @@ export const VendorModal: React.FC<VendorModalProps> = ({
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+          <label htmlFor="vendors-components-vendormodal-f8" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
             Address
           </label>
-          <Textarea
+          <Textarea id="vendors-components-vendormodal-f8"
             value={form.address}
             onChange={(e) => setForm({ ...form, address: e.target.value })}
             placeholder="Street, city, postal code..."

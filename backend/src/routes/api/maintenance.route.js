@@ -59,7 +59,7 @@ router.get(
   "/",
   auth,
   dynamicAccess("maintenance", "read", { checkTenant: true }),
-  maintenanceController.fetchWorkOrders
+  maintenanceController.fetchWorkOrders,
 );
 
 /**
@@ -89,7 +89,7 @@ router.get(
   auth,
   validateUuid("orderId"),
   dynamicAccess("maintenance", "read", { checkTenant: true }),
-  maintenanceController.getWorkOrderById
+  maintenanceController.getWorkOrderById,
 );
 
 /**
@@ -140,7 +140,7 @@ router.post(
   auth,
   dynamicAccess("maintenance", "create", { checkTenant: true }),
   validate(maintenanceValidator.createWorkOrder),
-  maintenanceController.createWorkOrder
+  maintenanceController.createWorkOrder,
 );
 
 /**
@@ -197,7 +197,7 @@ router.patch(
   validateUuid("orderId"),
   dynamicAccess("maintenance", "update", { checkTenant: true }),
   validate(maintenanceValidator.updateWorkOrder),
-  maintenanceController.updateWorkOrder
+  maintenanceController.updateWorkOrder,
 );
 
 /**
@@ -227,7 +227,7 @@ router.delete(
   auth,
   validateUuid("orderId"),
   dynamicAccess("maintenance", "delete", { checkTenant: true }),
-  maintenanceController.deleteWorkOrder
+  maintenanceController.deleteWorkOrder,
 );
 
 module.exports = router;

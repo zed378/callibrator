@@ -101,9 +101,9 @@ export default function RaiseTicketPage() {
           <Card>
             <CardContent className="p-16 text-center">
               <LifeBuoy className="mx-auto h-16 w-16 text-muted-foreground" />
-              <h3 className="text-xl font-semibold text-foreground mt-4">
+              <h2 className="text-xl font-semibold text-foreground mt-4">
                 No tickets yet
-              </h3>
+              </h2>
               <p className="text-muted-foreground mt-2 max-w-sm mx-auto">
                 Raise your first support ticket to get help tracked and resolved.
               </p>

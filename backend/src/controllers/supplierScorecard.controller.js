@@ -9,7 +9,7 @@ exports.createScorecard = asyncHandlerWithMapping(
   },
   {
     "Vendor not found": 404,
-  }
+  },
 );
 
 exports.getScorecards = asyncHandlerWithMapping(
@@ -24,7 +24,7 @@ exports.getScorecards = asyncHandlerWithMapping(
     const limit = parseInt(req.query.limit, 10) || 10;
     success(res, rows, { total, page, limit, totalPages }, "Scorecards retrieved successfully", 200);
   },
-  {}
+  {},
 );
 
 exports.getScorecardById = asyncHandlerWithMapping(
@@ -34,7 +34,7 @@ exports.getScorecardById = asyncHandlerWithMapping(
   },
   {
     "Scorecard not found": 404,
-  }
+  },
 );
 
 exports.updateScorecard = asyncHandlerWithMapping(
@@ -44,7 +44,7 @@ exports.updateScorecard = asyncHandlerWithMapping(
   },
   {
     "Scorecard not found": 404,
-  }
+  },
 );
 
 exports.deleteScorecard = asyncHandlerWithMapping(
@@ -54,5 +54,5 @@ exports.deleteScorecard = asyncHandlerWithMapping(
   },
   {
     "Scorecard not found": 404,
-  }
+  },
 );

@@ -95,10 +95,10 @@ export const UploadAttachmentModal: React.FC<UploadAttachmentModalProps> = ({
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+          <label htmlFor="attachments-components-uploadattachmentmodal-f1" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
             Link To
           </label>
-          <Select
+          <Select id="attachments-components-uploadattachmentmodal-f1"
             value={form.resourceType}
             onChange={(value) =>
               setForm({

@@ -204,8 +204,8 @@ describe("Migration Routes", () => {
     const ORIGINAL_SEEDING = process.env.ALLOW_SEEDING;
 
     afterEach(() => {
-      if (ORIGINAL_SEEDING === undefined) delete process.env.ALLOW_SEEDING;
-      else process.env.ALLOW_SEEDING = ORIGINAL_SEEDING;
+      if (ORIGINAL_SEEDING === undefined) {delete process.env.ALLOW_SEEDING;}
+      else {process.env.ALLOW_SEEDING = ORIGINAL_SEEDING;}
     });
 
     it("is wired onto the bootstrap-capable routes", () => {
@@ -264,8 +264,8 @@ describe("Migration Routes", () => {
     const ORIGINAL_SEED_DEMO = process.env.SEED_DEMO;
 
     afterEach(() => {
-      if (ORIGINAL_SEED_DEMO === undefined) delete process.env.SEED_DEMO;
-      else process.env.SEED_DEMO = ORIGINAL_SEED_DEMO;
+      if (ORIGINAL_SEED_DEMO === undefined) {delete process.env.SEED_DEMO;}
+      else {process.env.SEED_DEMO = ORIGINAL_SEED_DEMO;}
     });
 
     it("is wired onto the seed-demo route", () => {

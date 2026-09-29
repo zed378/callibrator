@@ -40,7 +40,7 @@ describe("seedMenuGroups utility", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     MenuGroup.findAll.mockResolvedValue([]);
-    
+
     const parentSlugs = ["home", "dashboard", "account", "management", "equipment", "security", "warehouse", "mgmt-organization", "mgmt-work", "mgmt-quality", "mgmt-finance", "mgmt-partners", "mgmt-developer", "mgmt-content"];
     MenuGroup.findOne.mockImplementation((query) => {
       const slug = query && query.where && query.where.slug;
@@ -64,7 +64,7 @@ describe("seedMenuGroups utility", () => {
       MenuGroup.findOne.mockImplementation((query) => {
         callCount++;
         const slug = query && query.where && query.where.slug;
-        if (callCount <= 7) return Promise.resolve(null);
+        if (callCount <= 7) {return Promise.resolve(null);}
         if (slug && parentSlugs.includes(slug)) {
           return Promise.resolve({ id: "parent-id", update: jest.fn().mockResolvedValue(undefined) });
         }
@@ -139,7 +139,7 @@ describe("seedMenuGroups utility", () => {
       MenuGroup.findOne.mockImplementation((query) => {
         callCount++;
         const slug = query && query.where && query.where.slug;
-        if (callCount <= 7) return Promise.resolve(null);
+        if (callCount <= 7) {return Promise.resolve(null);}
         if (slug && parentSlugs.includes(slug)) {
           return Promise.resolve({ id: "parent-id", update: jest.fn().mockResolvedValue(undefined) });
         }
@@ -169,7 +169,7 @@ describe("seedMenuGroups utility", () => {
         slug: "table-permission",
         destroy: jest.fn().mockRejectedValue({
           message: "Destroy failed",
-          errors: [{ path: "id", message: "Foreign key constraint" }]
+          errors: [{ path: "id", message: "Foreign key constraint" }],
         }),
       };
       MenuGroup.findAll.mockResolvedValue([deprecatedGroup]);
@@ -241,8 +241,8 @@ describe("seedMenuGroups utility", () => {
       const mockGroup = () => ({ id: "mg-1" });
 
       Roles.findOne.mockImplementation((query) => {
-        if (query.where.name === "SUPERADMIN") return mockRole("superadmin");
-        if (query.where.name === "USER") return mockRole("user");
+        if (query.where.name === "SUPERADMIN") {return mockRole("superadmin");}
+        if (query.where.name === "USER") {return mockRole("user");}
         return null;
       });
 

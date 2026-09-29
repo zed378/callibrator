@@ -40,10 +40,10 @@ export const DeviceModal: React.FC<DeviceModalProps> = ({
       <form onSubmit={onSubmit} className="space-y-4 pt-2">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+            <label htmlFor="devices-components-devicemodal-f1" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
               Device Name *
             </label>
-            <Input
+            <Input id="devices-components-devicemodal-f1"
               required
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -52,10 +52,10 @@ export const DeviceModal: React.FC<DeviceModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+            <label htmlFor="devices-components-devicemodal-f2" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
               Serial Number
             </label>
-            <Input
+            <Input id="devices-components-devicemodal-f2"
               value={form.serialNumber}
               onChange={(e) => setForm({ ...form, serialNumber: e.target.value })}
               placeholder="e.g. SN-883921"
@@ -65,10 +65,10 @@ export const DeviceModal: React.FC<DeviceModalProps> = ({
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
-            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+            <label htmlFor="devices-components-devicemodal-f3" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
               Manufacturer
             </label>
-            <Input
+            <Input id="devices-components-devicemodal-f3"
               value={form.manufacturer}
               onChange={(e) => setForm({ ...form, manufacturer: e.target.value })}
               placeholder="e.g. Fluke"
@@ -76,10 +76,10 @@ export const DeviceModal: React.FC<DeviceModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+            <label htmlFor="devices-components-devicemodal-f4" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
               Model
             </label>
-            <Input
+            <Input id="devices-components-devicemodal-f4"
               value={form.model}
               onChange={(e) => setForm({ ...form, model: e.target.value })}
               placeholder="e.g. 714B"
@@ -87,10 +87,10 @@ export const DeviceModal: React.FC<DeviceModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+            <label htmlFor="devices-components-devicemodal-f5" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
               Category
             </label>
-            <Input
+            <Input id="devices-components-devicemodal-f5"
               value={form.category}
               onChange={(e) => setForm({ ...form, category: e.target.value })}
               placeholder="e.g. Temperature"
@@ -100,10 +100,10 @@ export const DeviceModal: React.FC<DeviceModalProps> = ({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+            <label htmlFor="devices-components-devicemodal-f6" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
               Warehouse Assignment
             </label>
-            <Select
+            <Select id="devices-components-devicemodal-f6"
               value={form.locationId || ""}
               onChange={(value) => setForm({ ...form, locationId: value })}
               options={[
@@ -117,10 +117,10 @@ export const DeviceModal: React.FC<DeviceModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+            <label htmlFor="devices-components-devicemodal-f7" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
               Status
             </label>
-            <Select
+            <Select id="devices-components-devicemodal-f7"
               value={form.status || "active"}
               onChange={(value) => setForm({ ...form, status: value as Device["status"] })}
               options={[
@@ -135,10 +135,10 @@ export const DeviceModal: React.FC<DeviceModalProps> = ({
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
-            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+            <label htmlFor="devices-components-devicemodal-f8" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
               Installation Date
             </label>
-            <Input
+            <Input id="devices-components-devicemodal-f8"
               type="date"
               value={form.installationDate}
               onChange={(e) => setForm({ ...form, installationDate: e.target.value })}
@@ -146,10 +146,10 @@ export const DeviceModal: React.FC<DeviceModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+            <label htmlFor="devices-components-devicemodal-f9" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
               Next Calibration Date
             </label>
-            <Input
+            <Input id="devices-components-devicemodal-f9"
               type="date"
               value={form.nextCalibrationDate}
               onChange={(e) => setForm({ ...form, nextCalibrationDate: e.target.value })}
@@ -157,10 +157,10 @@ export const DeviceModal: React.FC<DeviceModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+            <label htmlFor="devices-components-devicemodal-f10" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
               Interval Days
             </label>
-            <Input
+            <Input id="devices-components-devicemodal-f10"
               type="number"
               min={1}
               value={form.calibrationIntervalDays}
@@ -171,10 +171,10 @@ export const DeviceModal: React.FC<DeviceModalProps> = ({
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+          <label htmlFor="devices-components-devicemodal-f11" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
             Remarks
           </label>
-          <Textarea
+          <Textarea id="devices-components-devicemodal-f11"
             value={form.remarks}
             onChange={(e) => setForm({ ...form, remarks: e.target.value })}
             placeholder="Calibration details or compliance notes..."

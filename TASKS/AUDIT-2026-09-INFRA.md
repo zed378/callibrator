@@ -982,7 +982,8 @@ sites, the way `local.driver.js` does. Then correct `docs/STORAGE/04-TENANT-STOR
   `npm run migrate` runs there.
 - `Makefile:14` sets `.ONESHELL`, so the whole recipe is one shell and the `cd` persists into later
   lines of that recipe.
-- `backend/package.json` `scripts.migrate` is `node src/scripts/migrate.js up`.
+- `backend/package.json` `scripts.migrate` is `node src/scripts/migrate.js up` (at audit time; since
+  ADR-087 it is `tsx src/scripts/migrate.js up` — plain `node` can no longer run backend source).
 
 **Why it matters here.** The intent is an in-container migration with a host fallback. What it does
 is run the host migration every time — either against nothing (no `node_modules`/no `.env` at the

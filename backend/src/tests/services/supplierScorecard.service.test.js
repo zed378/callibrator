@@ -64,7 +64,7 @@ describe("supplierScorecard.service", () => {
       Vendor.findOne.mockResolvedValue(null);
 
       await expect(
-        createScorecard("tenant123", { vendorId: "v999", score: 90 }, "user1")
+        createScorecard("tenant123", { vendorId: "v999", score: 90 }, "user1"),
       ).rejects.toThrow("Vendor not found");
     });
 
@@ -75,7 +75,7 @@ describe("supplierScorecard.service", () => {
       const result = await createScorecard("t1", { vendorId: "v1" }, "u1");
 
       expect(SupplierScorecard.create).toHaveBeenCalledWith(
-        expect.objectContaining({ tenantId: "t1", evaluatedBy: "u1" })
+        expect.objectContaining({ tenantId: "t1", evaluatedBy: "u1" }),
       );
       expect(result).toEqual({ id: "s2" });
     });
@@ -115,7 +115,7 @@ describe("supplierScorecard.service", () => {
       expect(SupplierScorecard.findAndCountAll).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { tenantId: "t1", vendorId: "v1", status: "active" },
-        })
+        }),
       );
     });
 
@@ -128,7 +128,7 @@ describe("supplierScorecard.service", () => {
         expect.objectContaining({
           limit: 15,
           offset: 30,
-        })
+        }),
       );
       expect(result.totalPages).toBe(3);
     });

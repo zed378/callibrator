@@ -1,6 +1,14 @@
 # Phase 9 — Backend TypeScript Migration
 
-**Status: 🔴 NOT STARTED.** Decided in [ADR-038](../MEMORY/DECISIONS.md) (2026-09-21), superseding ADR-030.
+**Status: 🟡 STARTED 2026-09-28.** Decided in [ADR-038](../MEMORY/DECISIONS.md) (2026-09-21), superseding ADR-030; the toolchain as built is **ADR-087**.
+
+> **2026-09-29 — 42 modules are TypeScript** (ADR-087 and Amendments 1–5; records under
+> `MEMORY/records/2026-09-2[89]-p9-*`). Done: P9-01, P9-01a, **P9-01b**, P9-03, P9-04, P9-05a,
+> **P9-08**. Started: P9-02 (helper 1's), P9-05 (`src/types/`: four files), P9-09 (24 of 36
+> utils). As-built: all 16 `constants/`, 23 `utils/`, the `activityLog` and `tenantContext`
+> middlewares; everything else under `backend/src` is JavaScript. **The P9-00 baseline set passes
+> against a converted image** (53/53 specs, 392 tests, identical per-spec counts).
+> **The paragraph below is the 2026-09-23 state, kept for the record.**
 
 > **Refreshed 2026-09-23** against the tree as it is now. The card list was written on 2026-09-21
 > and the audit remediation of 2026-09-23 changed roughly ninety files under `backend/src`: five
@@ -147,7 +155,7 @@ No production module is converted in this stage. Its output is a toolchain in wh
 
 | | |
 |---|---|
-| **Status** | TODO — **NEEDS EDIT (2026-09-23)** |
+| **Status** | **DONE 2026-09-28** (ADR-092 item 1, `MEMORY/records/P9-00.md`) — taken on commit `35ebd76` (0 `.ts` files), not the working tree, which was mid-conversion and did not build |
 | **Depends on** | AUDIT wave 0 |
 | **Spec refs** | `docs/TESTING/03-E2E-TESTING.md` · ADR-038 rule 3 |
 | **Spec required** | no |
@@ -162,10 +170,10 @@ No production module is converted in this stage. Its output is a toolchain in wh
 **Why:** "No behaviour change" is unfalsifiable without a baseline. The unit suite mocks the database and the HTTP layer; the live E2E suite is the only thing that exercises real contracts, and it has never been green in one run.
 
 **Definition of Done**
-- [ ] the **53** E2E specs (`src/tests/e2e/*.test.js`, counted 2026-09-23 — the Makefile's "51" is stale) run against a fresh stack; the passing set is recorded by spec name in `MEMORY/records/P9-00.md`
-- [ ] every failing spec has a one-line reason (known defect with an audit task id, flake, environment)
-- [ ] the run command and stack commit are recorded, so the baseline can be reproduced
-- [ ] the SCIM e2e spec that **cannot pass** (A-49) is named as such, not counted as a failure to be fixed later
+- [x] the **53** E2E specs (`src/tests/e2e/*.test.js`, counted 2026-09-23 — the Makefile's "51" is stale) run against a fresh stack; the passing set is recorded by spec name in `MEMORY/records/P9-00.md` — **53 of 53 passed, in two consecutive runs** (392 tests; `liveContract.smoke` opt-in, skipped), 0 × 429 in the server log
+- [x] every failing spec has a one-line reason (known defect with an audit task id, flake, environment) — none failed; `ai` passes only because its spec accepts the no-provider 500, recorded as environment-dependent
+- [x] the run command and stack commit are recorded, so the baseline can be reproduced
+- [x] the SCIM e2e spec that **cannot pass** (A-49) is named as such, not counted as a failure to be fixed later — A-49 closed 2026-09-24 and `scim.e2e.test.js` **passes** (4/4); it is in the set
 
 **Abuse cases**
 - Recording a baseline from a run where failing specs were skipped rather than failed
@@ -177,7 +185,7 @@ No production module is converted in this stage. Its output is a toolchain in wh
 
 | | |
 |---|---|
-| **Status** | TODO — **NEEDS EDIT (2026-09-23)**, split |
+| **Status** | **DONE 2026-09-28** (ADR-087) — `target`/`lib` are ES2025, not ES2023 (Node 26; ADR-087 item 1) |
 | **Depends on** | P9-00 |
 | **Spec refs** | ADR-038 · `docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md` |
 | **Spec required** | no |
@@ -198,12 +206,12 @@ there"* — **ADR-030 is superseded by ADR-038**, so that comment is PR-4 living
 pins it for the backend.
 
 **Definition of Done**
-- [ ] `backend/tsconfig.json` with every flag in the standards document (`strict` + `noUncheckedIndexedAccess` + `exactOptionalPropertyTypes` + `noImplicitOverride` + `noImplicitReturns` + `noFallthroughCasesInSwitch` + `noPropertyAccessFromIndexSignature` + `noUnusedLocals` + `noUnusedParameters` + `isolatedModules` + `forceConsistentCasingInFileNames`), `allowJs: true`, `checkJs: false`, `module: Node16`, `moduleResolution: Node16`, `target: ES2023`, `outDir: dist`, `rootDir: "."`
-- [ ] `verbatimModuleSyntax` **off** — it is incompatible with the CommonJS emit ADR-038 requires. If a future editor turns it on, the build breaks silently in `pkg`, not in `tsc`
-- [ ] `skipLibCheck: true` is the **only** relaxation, and a comment says it covers third-party `.d.ts` and never our code
-- [ ] `tsconfig.build.json` extends it and excludes `src/tests/**` and `__tests__/**`
-- [ ] the root `tsconfig.json` comment corrected: it cites a superseded ADR
-- [ ] `typescript`, `@types/node`, `@types/express` (v5) pinned **in `backend/package.json`**, not inherited from the frontend's hoist
+- [x] `backend/tsconfig.json` with every flag in the standards document (`strict` + `noUncheckedIndexedAccess` + `exactOptionalPropertyTypes` + `noImplicitOverride` + `noImplicitReturns` + `noFallthroughCasesInSwitch` + `noPropertyAccessFromIndexSignature` + `noUnusedLocals` + `noUnusedParameters` + `isolatedModules` + `forceConsistentCasingInFileNames`), `allowJs: true`, `checkJs: false`, `module: Node16`, `moduleResolution: Node16`, `target: ES2023` (**as built: ES2025**, ADR-087), `outDir: dist`, `rootDir: "."`
+- [x] `verbatimModuleSyntax` **off** — it is incompatible with the CommonJS emit ADR-038 requires. If a future editor turns it on, the build breaks silently in `pkg`, not in `tsc`
+- [x] `skipLibCheck: true` is the **only** relaxation, and a comment says it covers third-party `.d.ts` and never our code
+- [x] `tsconfig.build.json` extends it and excludes `src/tests/**` and `__tests__/**` — and sets `allowJs: false`, so a `.ts` → `.js` import fails the build (TS7016, proved)
+- [x] the root `tsconfig.json` comment corrected: it cites a superseded ADR
+- [x] `typescript`, `@types/node`, `@types/express` (v5) pinned **in `backend/package.json`** (TypeScript 7 as `@typescript/native`, the TypeScript 6 API as `typescript` — ADR-076), not inherited from the frontend's hoist
 
 **Abuse cases**
 - Starting with `strict: false` "for now"
@@ -217,7 +225,7 @@ pins it for the backend.
 
 | | |
 |---|---|
-| **Status** | TODO — **new 2026-09-23** |
+| **Status** | **DONE 2026-09-28** (ADR-087) — through `make typecheck` directly, not turbo (below) |
 | **Depends on** | P9-01 |
 | **Spec refs** | ADR-038 · `docs/DEVOPS/11-MAKEFILE-REFERENCE.md` · `00-TASK-CONVENTIONS.md` § Build |
 | **Spec required** | no |
@@ -243,11 +251,11 @@ it was found before it cost anything rather than after.
 superseded ADR; correcting it is part of this card.
 
 **Definition of Done**
-- [ ] `backend/package.json` gains `"typecheck": "tsc -p tsconfig.json --noEmit"`
-- [ ] `turbo run typecheck` is observed to **run it** — recorded by a run whose output names `backend`, not by reading `turbo.json`
-- [ ] the Makefile comment on the `typecheck` target corrected (it cites ADR-030)
-- [ ] **tested in the failing direction**: a deliberate type error in a `.ts` file makes `make verify` exit non-zero. A gate never seen to fail is not known to work
-- [ ] `00-TASK-CONVENTIONS.md` § Build updated once the backend is in the task
+- [x] `backend/package.json` gains `"typecheck"` — TypeScript 7 by path, `-p tsconfig.json --noEmit` (ADR-076)
+- [x] ~~`turbo run typecheck` is observed to **run it**~~ **replaced**: `turbo run typecheck` at the root refuses to run at all on 2026-09-28 ("Missing `packageManager` field"), and skips silently when it does run. `make typecheck` now runs `npm run typecheck` in each workspace directly; CI's backend-lint job and the pre-push hook call it too — recorded by a run whose output names `backend`, not by reading `turbo.json`
+- [x] the Makefile comment on the `typecheck` target corrected (it cites ADR-030)
+- [x] **tested in the failing direction** (the backend step of `make typecheck`; no `make` on the machine that ran it): `src/utils/zzP9probe.a087.ts` with `const x: number = "x"` → `npm run typecheck` exit 1, TS2322; removed → exit 0. A deliberate type error in a `.ts` file makes `make verify` exit non-zero. A gate never seen to fail is not known to work
+- [x] `00-TASK-CONVENTIONS.md` § Build updated once the backend is in the task
 
 **Abuse cases**
 - The script is added and never observed to run, because turbo's skip is silent
@@ -259,7 +267,7 @@ superseded ADR; correcting it is part of this card.
 
 | | |
 |---|---|
-| **Status** | TODO — **new 2026-09-23** (split out of P9-01) |
+| **Status** | **DONE 2026-09-29** (ADR-087 Amendment 5) — the P9-00 baseline set passes against the converted image; the `/health` dependency block was verified on the P9-00 compose stack (PostgreSQL 18.6, Redis 8.6, RabbitMQ 3.13 — no separate staging host exists) |
 | **Depends on** | P9-01 |
 | **Spec refs** | ADR-038 (build row) · `docs/DEVOPS/02-CONTAINERIZATION.md` |
 | **Spec required** | no |
@@ -280,14 +288,14 @@ ADR-038 removes. Leaving it means a TypeScript tree with one build that is maint
 is not, and the unmaintained one is the one nobody notices breaking.
 
 **Definition of Done**
-- [ ] `npm run build` = `swagger:generate` → `tsc -p tsconfig.build.json` → `pkg dist/index.js`
-- [ ] `pkg.scripts` and `pkg.assets` re-based on `dist/`; `bin` and `main` repointed
-- [ ] `build:bun` and the `bun.lock` build path removed
-- [ ] `tsx` for `dev` and every script entry; `nodemon` removed (and with it the flake in `make test-browser` that a nodemon restart causes mid-run)
-- [ ] the backend Dockerfile compiles before packaging; the image boots
-- [ ] `/health` returns 200 **and its dependency block is correct** on a staging stack — `services/health.service.js` now checks Redis, RabbitMQ, MQTT and ClamAV as well as the database (A-15), so a 200 from the binary is a stronger statement than it was on 2026-09-21
-- [ ] the templates, `swagger.json`, `docs/` and `public/` are **verified present inside the container**, by listing them — the missing `public/` COPY shipped a 404 on every `/public` request in every container and was invisible from a source checkout
-- [ ] **the binary behaves identically**: the P9-00 baseline set still passes against the new image
+- [x] `npm run build` = `swagger:generate` → `build:dist` (JavaScript **copied**, TypeScript compiled with `tsconfig.build.json` — ADR-087 item 3) → `pkg .` on `bin: dist/index.js`
+- [x] `pkg.scripts` re-based on `dist/`; `bin` and `main` repointed. `pkg.assets` stay source-relative: templates, `swagger.json` and `docs/` are not compiled, and the runtime reads them next to the binary (`appPath`)
+- [x] `build:bun` removed (the `bun.lock` file itself is ignored by the image build; deleting it is left with A-18)
+- [x] `tsx` for `dev` and every script entry; `nodemon` removed (`tsx watch` restarts on a file change too, so the flake's cause is unchanged) (and with it the flake in `make test-browser` that a nodemon restart causes mid-run)
+- [x] the backend Dockerfile compiles before packaging; the image boots (record: `2026-09-28-p9-toolchain-and-first-leaves.md`)
+- [x] `/health` returns 200 **and its dependency block is correct** on a staging stack (the P9-00 compose stack: `/health` 200 with all three datastores up, `[schema-verify] OK: 72 tables, 867 columns`; no staging host exists) — `services/health.service.js` now checks Redis, RabbitMQ, MQTT and ClamAV as well as the database (A-15), so a 200 from the binary is a stronger statement than it was on 2026-09-21
+- [x] the templates, `swagger.json`, `docs/` and `public/` are **verified present inside the container**, by listing them — the missing `public/` COPY shipped a 404 on every `/public` request in every container and was invisible from a source checkout
+- [x] **the binary behaves identically**: the P9-00 baseline set still passes against the new image — three runs, each 53/53 specs and 392 tests; run C's per-spec counts equal P9-00's; access log 0 × 429 and the same 2 × `ai/query` 500 (ADR-087 Amendment 5)
 
 **Abuse cases**
 - `pkg` succeeds on an empty `scripts` glob and the failure surfaces at runtime, in the container
@@ -299,7 +307,7 @@ is not, and the unmaintained one is the one nobody notices breaking.
 
 | | |
 |---|---|
-| **Status** | TODO — **NEEDS EDIT (2026-09-23)** |
+| **Status** | **DONE 2026-09-28** — the TypeScript rules (ADR-087 item 6); the legacy config, global `ignores` and the Prettier scope (ADR-092 item 2) |
 | **Depends on** | P9-01, **P9-02a** |
 | **Spec refs** | ADR-038 · `docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md` § The Lint Rules · `docs/ENGINEERING/10-TOOLING-LINT-FORMAT.md` |
 | **Spec required** | no |
@@ -321,13 +329,13 @@ not globally ignored, and `*.config.js` excludes itself from its own rules. A gl
 its own `{ ignores: [...] }` entry.
 
 **Definition of Done**
-- [ ] `backend/.eslintrc.js` deleted; `eslint.config.js` is the only config
-- [ ] `ignores` moved into a config object of its own, and the effect confirmed by listing the files ESLint actually visits (`--debug` or `eslint --print-config`), not by reading the file
-- [ ] `typescript-eslint` `strictTypeChecked` + `stylisticTypeChecked` with every rule in the standards document as an **error** — `no-explicit-any`, the five `no-unsafe-*`, `no-floating-promises`, `no-misused-promises`, `switch-exhaustiveness-check`, `no-non-null-assertion`, `ban-ts-comment`, `consistent-type-assertions` (`objectLiteralTypeAssertions: "never"`), `explicit-module-boundary-types`, `consistent-type-imports`, `no-restricted-syntax` on `enum`
-- [ ] `no-restricted-properties` bans `process.env` outside `src/config/`
-- [ ] `typescript-eslint` added to `backend/package.json` — it is not installed anywhere in the repository today
-- [ ] one Prettier configuration governs `backend/`; the conflicting one is deleted or scoped with a written reason
-- [ ] lint covers `.ts` **and** the remaining `.js`
+- [x] `backend/.eslintrc.js` deleted; `eslint.config.js` is the only config
+- [x] `ignores` moved into a config object of its own, and the effect confirmed by listing the files ESLint actually visits (`--debug` or `eslint --print-config`), not by reading the file — `ESLint#isPathIgnored` over every file: before, 474 `dist/` + 6 `coverage/` files visited and `jest.config.js` without the house rules; after, all ignored, `src/` unchanged at 1,206
+- [x] `typescript-eslint` `strictTypeChecked` + `stylisticTypeChecked` with every rule in the standards document as an **error** — `no-explicit-any`, the five `no-unsafe-*`, `no-floating-promises`, `no-misused-promises`, `switch-exhaustiveness-check`, `no-non-null-assertion`, `ban-ts-comment`, `consistent-type-assertions` (`objectLiteralTypeAssertions: "never"`), `explicit-module-boundary-types`, `consistent-type-imports`, `no-restricted-syntax` on `enum`
+- [x] `no-restricted-properties` bans `process.env` outside `src/config/`
+- [x] `typescript-eslint` added to `backend/package.json` — it is not installed anywhere in the repository today
+- [x] one Prettier configuration governs `backend/`; the conflicting one is deleted or scoped with a written reason — `backend/.prettierrc` (`--find-config-path backend/index.js`); the root `.prettierrc.js` carries a header saying it does not govern `backend/`. Its `singleQuote` against a double-quoted `frontend/` is left to the frontend owner (ADR-092)
+- [x] lint covers `.ts` **and** the remaining `.js` (before this, ESLint matched no `.ts` file at all)
 
 **Abuse cases**
 - Rules set to `warn` so the build passes
@@ -340,7 +348,7 @@ its own `{ ignores: [...] }` entry.
 
 | | |
 |---|---|
-| **Status** | TODO — **new 2026-09-23** |
+| **Status** | **STARTED 2026-09-28** (ADR-092 item 3) — **0 errors** (1,050 before; baseline 950 → 0); the `no-unused-vars` / `no-console` triage is open |
 | **Depends on** | — (independent of the compiler; do it in parallel with P9-01) |
 | **Spec refs** | [`AUDIT-2026-09-REMEDIATION.md`](./AUDIT-2026-09-REMEDIATION.md) A-34 · `docs/ENGINEERING/10-TOOLING-LINT-FORMAT.md` |
 | **Spec required** | no |
@@ -372,11 +380,11 @@ exactly with A-42's finding that 25 runtime `console.*` sites write to a stream 
 discards. Those two are read, not swept.
 
 **Definition of Done**
-- [ ] the Prettier-owned rules resolved by a **single** formatting commit, after P9-02 settles which Prettier config governs `backend/` — sweeping to the wrong config means doing it twice
+- [x] the Prettier-owned rules resolved by a **single** formatting commit, after P9-02 settles which Prettier config governs `backend/` — sweeping to the wrong config means doing it twice — fixed by ESLint's fixers for the nine error-level rules only, 127 files, each AST-identical to `HEAD` (one hand `prefer-const`); **not yet committed: it must be committed alone** (file list in `MEMORY/records/2026-09-28-p9-helper-lint-baseline-coverage.md`)
 - [ ] the 298 `no-unused-vars` triaged by hand: each is a deletion or a `_`-prefix with a reason, never a rule downgrade
 - [ ] the 24 `no-console` sites cross-checked against A-42; runtime sites move to the winston logger, script sites are exempted explicitly
-- [ ] the 12 unused `eslint-disable` directives removed — each one is a claim about a problem that no longer exists
-- [ ] `npm run lint` exits 0 in `backend/`, and the exit code is recorded in the change record
+- [x] the 12 unused `eslint-disable` directives removed — each one is a claim about a problem that no longer exists
+- [x] `npm run lint` exits 0 in `backend/`, and the exit code is recorded in the change record — exit 0, 0 errors, 287 warnings (2026-09-28)
 - [ ] `no-unused-vars` raised from `warn` to `error` once the count is zero, so it cannot silently return
 
 **Abuse cases**
@@ -390,7 +398,7 @@ discards. Those two are read, not swept.
 
 | | |
 |---|---|
-| **Status** | TODO — **NEEDS EDIT (2026-09-23)** |
+| **Status** | **DONE 2026-09-28** (ADR-087) — babel-jest, not `@swc/jest`; the before/after duration was not measured |
 | **Depends on** | P9-01, **P9-03a** |
 | **Spec refs** | `docs/ENGINEERING/09-TESTING-CONVENTIONS.md` · `docs/BACKEND/09-TESTING.md` |
 | **Spec required** | no |
@@ -403,12 +411,12 @@ discards. Those two are read, not swept.
 > test, it is an absent one.
 
 **Definition of Done**
-- [ ] `@swc/jest` added to `backend/package.json` and wired into `transform` (it is absent today; `transform: {}` currently disables transformation outright)
-- [ ] `moduleFileExtensions` gains `"ts"`; `testMatch` gains `**/tests/**/*.test.ts` and `**/__tests__/**/*.ts`
-- [ ] **the match is proved in the failing direction**: a `.ts` test containing `expect(true).toBe(false)` is observed to fail. A `.ts` test that is never collected reports as nothing at all
-- [ ] `collectCoverageFrom` includes `.ts` for every layer it already lists — and `jest.e2e.config.js` gets the same transform, or the e2e suite stops running the moment its first spec is converted
-- [ ] thresholds unchanged at 100%
-- [ ] one trivial util converted as a canary, with its test, proving `.ts` source + `.ts` test + coverage work end to end. **`utils/packaged.util.js` is the right canary** — it is a true leaf (see Dependency Reality) and nothing else can be converted without it
+- [x] ~~`@swc/jest`~~ **babel-jest + `@babel/preset-typescript`** (ADR-087: SWC's getter exports break `jest.spyOn`) added to `backend/package.json` and wired into `transform` (it is absent today; `transform: {}` currently disables transformation outright)
+- [x] `moduleFileExtensions` gains `"ts"`; `testMatch` gains `**/tests/**/*.test.ts` and `**/__tests__/**/*.ts`
+- [x] **the match is proved in the failing direction** (`src/tests/p9probe/probe.a087.test.ts` failed, then was deleted): a `.ts` test containing `expect(true).toBe(false)` is observed to fail. A `.ts` test that is never collected reports as nothing at all
+- [x] `collectCoverageFrom` includes `.ts` for every layer it already lists — and `jest.e2e.config.js` gets the same transform, or the e2e suite stops running the moment its first spec is converted
+- [x] thresholds unchanged at 100%
+- [x] one trivial util converted as a canary (`utils/packaged.util.ts`; its test stays `.js` — rule 3, tests unchanged — and it reports 100% as a `.ts` file in the full run), with its test, proving `.ts` source + `.ts` test + coverage work end to end. **`utils/packaged.util.js` is the right canary** — it is a true leaf (see Dependency Reality) and nothing else can be converted without it
 - [ ] suite duration recorded before and after; a regression over 25% is investigated, not accepted
 
 **Abuse cases**
@@ -421,7 +429,7 @@ discards. Those two are read, not swept.
 
 | | |
 |---|---|
-| **Status** | TODO — **new 2026-09-23** |
+| **Status** | **DONE 2026-09-28** — items 1–3, 5, 6 by P6-14/A-32 (ADR-085); the models item and the `.ts` hole by ADR-092 item 4 |
 | **Depends on** | — |
 | **Spec refs** | `docs/BACKEND/09-TESTING.md` · `docs/TESTING/01-UNIT-TESTING.md` · [`AUDIT-2026-09-REMEDIATION.md`](./AUDIT-2026-09-REMEDIATION.md) A-32 |
 | **Spec required** | no |
@@ -442,12 +450,12 @@ finding applied to the migration. It is listed here rather than duplicated: the 
 cleanup, this card owns making the Phase 9 Definition of Done checkable.
 
 **Definition of Done**
-- [ ] `collectCoverageFrom` names files that exist; the nonexistent `src/app.js` entry is removed
-- [ ] `backend/index.js` is either measured, or **excluded with a written reason and a named E2E spec that covers its boot path** — an entry point nothing measures is where a conversion breaks invisibly
-- [ ] the six-layer scope is stated in `docs/BACKEND/09-TESTING.md` wherever "100%" appears, so the figure is not read as the whole backend
-- [ ] `models/` is either brought into the gate before P9-10, or P9-10's "still at 100%" line is replaced with a check that means something for models
-- [ ] the 25 unexplained `istanbul ignore` directives are resolved under A-32 **before** their files convert
-- [ ] a reviewer rule written down: a new `istanbul ignore` is treated like a new `eslint-disable`
+- [x] `collectCoverageFrom` names files that exist; the nonexistent `src/app.js` entry is removed (P6-14; pinned by `guards/coverageScope.p614.test.js`, which checks the `.js` patterns — the `.ts` twins are deliberately ahead of the files, ADR-087)
+- [x] `backend/index.js` is either measured, or **excluded with a written reason and a named E2E spec that covers its boot path** — an entry point nothing measures is where a conversion breaks invisibly
+- [x] the six-layer scope is stated in `docs/BACKEND/09-TESTING.md` wherever "100%" appears, so the figure is not read as the whole backend
+- [x] `models/` is either brought into the gate before P9-10, or P9-10's "still at 100%" line is replaced with a check that means something for models — replaced (ADR-092 item 4): models measure 93.5 / 65.58 / 93.17 / 93.39 today; P9-10 is checked by typecheck + a definition-equality check per model + the model guard suites + that figure not falling
+- [x] the 25 unexplained `istanbul ignore` directives are resolved under A-32 **before** their files convert — 30 remain, every one with a reason; the A-32 guard now scans `.ts` too (probe proved), ceiling 31 → 30
+- [x] a reviewer rule written down: a new `istanbul ignore` is treated like a new `eslint-disable`
 
 **Abuse cases**
 - The exclusions are widened so the converted files stay green
@@ -459,7 +467,7 @@ cleanup, this card owns making the Phase 9 Definition of Done checkable.
 
 | | |
 |---|---|
-| **Status** | TODO — **NEEDS EDIT (2026-09-23)**, and it is now the most urgent card in Stage A |
+| **Status** | **DONE 2026-09-28** (ADR-087 Amendment 1) — the floor is a list of file names, not a count; the hook is `make hooks` (opt-in), not `npm install` |
 | **Depends on** | P9-01, P9-02a (it is wired into `make verify`, which cannot pass until the lint debt clears) |
 | **Spec refs** | ADR-038 rule 2 · [`AUDIT-2026-09-REMEDIATION.md`](./AUDIT-2026-09-REMEDIATION.md) A-19 |
 | **Spec required** | no |
@@ -480,12 +488,12 @@ cleanup, this card owns making the Phase 9 Definition of Done checkable.
 permanent blind spot.
 
 **Definition of Done**
-- [ ] `scripts/ts-ratchet` counts `.js` under `backend/src` **plus `backend/index.js`** against `backend/.ts-ratchet` and **fails if the count rose**
-- [ ] the **19 migration files are excluded from the floor, not from the count** — their names are frozen with the `.js` suffix in `config/migrator.js` (P9-23), so their *filenames* may end up `.ts` while their manifest strings do not. Whichever the decision, a ratchet that can never reach its floor is a ratchet nobody finishes
-- [ ] `backend/scripts/` (8 documentation generators, outside `src`) is named as in or out, with a reason. Today it is neither
-- [ ] when the count falls, the script rewrites the baseline, so the new floor is committed with the conversion
-- [ ] wired into `make verify` **and** into CI when P7-01 lands — and, until CI exists, into a real `pre-push` hook that is committed and installed by `npm install` (A-19: no hook tooling of any kind exists — no `.husky/`, no `lefthook`, no `core.hooksPath`)
-- [ ] tested both ways: adding a `.js` file fails; converting one passes and lowers the floor
+- [x] `scripts/ts-ratchet` counts `.js` under `backend/src` **plus `backend/index.js`** against `backend/.ts-ratchet` and **fails if the count rose**
+- [x] ~~the **19 migration files are excluded from the floor, not from the count**~~ **decided otherwise**: migrations are counted and sit in the floor like any file; P9-23 decides how they leave it. The — their names are frozen with the `.js` suffix in `config/migrator.js` (P9-23), so their *filenames* may end up `.ts` while their manifest strings do not. Whichever the decision, a ratchet that can never reach its floor is a ratchet nobody finishes
+- [x] `backend/scripts/` (8 documentation generators, outside `src`) is named as in or out, with a reason — **in**: they are JavaScript someone maintains; the backend-root tool files (`jest*.js`, `eslint.config.js`) are out
+- [x] when the count falls, the script rewrites the baseline, so the new floor is committed with the conversion
+- [x] wired into `make verify` (`ts-ratchet`) **and** into CI (backend-lint job) and the committed pre-push hook (installed by `make hooks`, not by `npm install`) when P7-01 lands — and, until CI exists, into a real `pre-push` hook that is committed and installed by `npm install` (A-19: no hook tooling of any kind exists — no `.husky/`, no `lefthook`, no `core.hooksPath`)
+- [x] tested both ways: adding a `.js` file fails (`zzRatchetProbe.a087.js` → exit 1, named); converting one passes and lowers the floor (1208 → 1199 over this pass)
 
 **Abuse cases**
 - Raising the baseline by hand in the same PR that adds a `.js` file
@@ -498,7 +506,7 @@ permanent blind spot.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **STARTED** — `backend/src/types/` holds `node-process.d.ts`, `express.d.ts` (`requestId`, `user`, `tenantId`, `apiKeyAuthorized`, the upload fields; `isApiKey` on the principal), `ids.ts` (`TenantId`) and **`apiResponse.ts` (`ApiResponse<T>`)** — each added with the converted module that reads it (ADR-087 Amendments 2, 5). Open: `toTenantId` and the other brands, `tenant`/`validated` on `Request`, the state-machine unions |
 | **Depends on** | P9-03 |
 | **Spec refs** | `docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md` §§ branded ids, state machines |
 | **Spec required** | **yes** — `MEMORY/specs/P9-05-shared-types.md` |
@@ -521,7 +529,7 @@ permanent blind spot.
 
 | | |
 |---|---|
-| **Status** | TODO — **new 2026-09-23** |
+| **Status** | **DONE 2026-09-28** (ADR-087 Amendment 2) — all four modules are `.ts`; `tenantContext` passed the orchestrator's four gates (q05 guard both ways, 80-check identity, 39 isolation suites / 1,192 tests, a live PostgreSQL 18.6 two-tenant check as `callibrator_app`, 13/13) |
 | **Depends on** | P9-03, P9-05 |
 | **Spec refs** | ADR-029 (tenant context) · `docs/BACKEND/05-TENANT-SCOPING.md` · `docs/ENGINEERING/12-LOGGING-CONVENTIONS.md` |
 | **Spec required** | no |
@@ -539,9 +547,18 @@ context, filed under the wrong directory.
 
 `utils/packaged.util.js` → `utils/storagePath.util.js` come first, as P9-03's canary.
 
+> **2026-09-28.** Two tests hold the middlewares to their `.js` form, and each needs its own change
+> with the conversion: `activityLog.a14.stdout.test.js` spawned plain `node` (fixed — it now uses
+> `--import tsx`), and `tenantHierarchy.visibility.q05.test.js` reads `tenantContext.middleware.js`
+> **as text**. The tenantContext conversion is written and passed a 13-shape identity comparison; it
+> lands only with that guard test updated and a reviewed diff, because it is the root of tenant
+> isolation. **Decided 2026-09-28 (ADR-087 Amendment 1, the code wins):** the store keeps holding
+> `null` for "no tenant", and `tenantScope.util` keeps mapping it to the deny sentinel — a
+> conversion never changes behaviour. The DoD line below is amended accordingly.
+
 **Definition of Done**
-- [ ] `utils/packaged.util`, `utils/storagePath.util`, `middlewares/tenantContext.middleware` and `middlewares/activityLog.middleware` are `.ts`, with their tests
-- [ ] the AsyncLocalStorage store is a **named type**, and the no-tenant branch returns the branded `NO_TENANT_UUID` from P9-05 — not `string | undefined`, which is what makes a missing context look like a valid one
+- [x] `utils/packaged.util`, `utils/storagePath.util`, `middlewares/tenantContext.middleware` and `middlewares/activityLog.middleware` are `.ts`, with their tests (tests stay `.js`; two changed: a14's child launch, q05's file name)
+- [ ] the AsyncLocalStorage store is a **named type** (`TenantContextStore`), and its no-tenant value is typed `TenantId | null` — **amended 2026-09-28 (ADR-087 Amendment 1):** it stays `null`, as built; `tenantScope.util` maps `null` to the branded deny sentinel `NO_TENANT_UUID`. Returning the sentinel from the store would change what every reader of the store sees
 - [ ] the logger's exported surface has explicit return types; `logger.error(msg, meta)` types `meta` rather than accepting anything (A-42 turns on routing failures through this logger, so its signature stops being cosmetic)
 - [ ] **no behaviour change**: log file names, rotation settings and the `docs/ENGINEERING/12` claims about what reaches stdout are unchanged by this card
 - [ ] P9-19's file count drops from 21 to 19, in the same PR
@@ -556,7 +573,7 @@ context, filed under the wrong directory.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | IN PROGRESS — **part 1 done 2026-09-29** (ADR-087 Amendment 6): `src/config/env.ts` holds the accessors (`env`, `envOr`, `environment`, `isProduction`), each reproducing the expression it replaced and reading at call time; every converted module reads through them, and the `no-restricted-properties` directives written in Stage B are gone (0 left outside `src/config/`). **Part 2 open:** the Zod schema and fail-listing-every-problem boot — a behaviour change (a boot that starts today could refuse), so it is its own change |
 | **Depends on** | P9-05 |
 | **Spec refs** | `docs/BACKEND/11-CONFIGURATION.md` · ADR-039 |
 | **Spec required** | no |
@@ -568,7 +585,7 @@ context, filed under the wrong directory.
 - [ ] `src/config/env.ts`: one Zod schema for every variable in `.env.example`; startup fails listing **all** failures at once
 - [ ] cross-field rules from `docs/BACKEND/11` (JWT secrets differ; Stripe key environment matches `NODE_ENV`; production ACME directory) are refinements in that schema
 - [ ] `DB_DIALECT`: optional, `postgres` only (ADR-039)
-- [ ] no `process.env` read outside `src/config/` (enforced by P9-02)
+- [ ] no `process.env` read outside `src/config/` (enforced by P9-02) — **true of every converted `.ts` module since 2026-09-29** (part 1); the unconverted `.js` still read it directly and move as they convert
 - [ ] `.env.example` and `docs/BACKEND/11` generated from, or checked against, the schema — they cannot drift
 
 **Abuse cases**
@@ -604,12 +621,20 @@ context, filed under the wrong directory.
 
 | | |
 |---|---|
-| **Status** | TODO · **Depends on** P9-05 · **Size** S |
+| **Status** | **DONE 2026-09-29** — all 16 files (ADR-087 item 8, Amendments 1 and 5; `routeGateExemptions` last) · **Depends on** P9-05 · **Size** S |
 | **Spec refs** | `docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md` |
 
+> **As-built 2026-09-28.** The directory holds **16** files, not 5. **15 are `.ts`**: `appConstants`,
+> `attachmentResources`, `auditActions`, `index`, `platformTenant`, `qmsConstants`,
+> `rateLimitConstants`, `roleConstants`, `systemActors`, `tenantAdminSettings`, `tenantConstants`,
+> `tenantLogo`, `tenantSecretSettings`, `tenantStatus`, `webhookEvents`. Left: `routeGateExemptions`
+> (another agent's uncommitted change; its guard test names the `.js` file in a failure message
+> only, so the conversion is safe when the file is clean). `PLATFORM_TENANT_ID` stays a `string`
+> until P9-05's `TenantId` lands.
+
 **Definition of Done**
-- [ ] 5 files; every constant object `as const`; types derived from values (`typeof ROLE_NAMES[keyof typeof ROLE_NAMES]`), never duplicated by hand
-- [ ] `ROLE_LEVELS` typed so a role absent from it is a **compile error** — today it silently resolves to the lowest privilege
+- [x] ~~5~~ 16 files; every constant object `as const`; types derived from values (`typeof ROLE_NAMES[keyof typeof ROLE_NAMES]`), never duplicated by hand
+- [x] `ROLE_LEVELS` typed so a role absent from it is a **compile error** (`satisfies Record<keyof typeof ROLE_NAMES, number>`; probed: TS2741) — today it silently resolves to the lowest privilege
 
 ---
 
@@ -617,8 +642,24 @@ context, filed under the wrong directory.
 
 | | |
 |---|---|
-| **Status** | TODO — **NEEDS EDIT (2026-09-23)** · **Depends on** P9-08, P9-05a · **Size** M |
+| **Status** | **STARTED** — **30 of 36** `utils/` are `.ts`: 12 leaves (helper 2), `dbReady`, `circuitBreaker`, `tenantScope` (lead), then `otp`, `ssrf`, `fileValidation`, `response`, `controllerWrapper`, `upload` (lead, 2026-09-29, ADR-087 Amendment 5), then `authorizationWiring`, `publicBaseUrl`, `schedulerSwitch`, `jobContext`, `migrationLock`, `jsonShape` (lead, 2026-09-29, ADR-087 Amendment 6) — plus the three path utils under P9-05a. **Left (6), none convertible yet:** `kmsVerify` (P9-18), `jwt` (P9-12), `generateSwagger` (P9-21), `checkMenu`/`session`/`seedMenuGroups` (after P9-10) · **Depends on** P9-08, P9-05a · **Size** M |
 | **Spec refs** | `docs/ENGINEERING/06-ERROR-RESPONSE-STANDARDS.md` |
+
+> **As-built 2026-09-28 (helper 2).** `utils/` now holds **34** files, not 20. The true leaves —
+> files that require none of `middlewares/activityLog`, `middlewares/tenantContext` or `../models`,
+> directly or through another unconverted module — are converted: **`activationToken`, `appError`,
+> `auditActor`, `auditRedaction`, `csp`, `dbRole`, `env`, `fileResponse`, `keyring`, `mfaPolicy`,
+> `password`, `schemaVerify`** (`.ts`, `.js` removed; identity-checked against `HEAD`, 1,197
+> checks, 1,195 identical; the 2 others are `Function.name` only, see the record). Leaves **not**
+> converted, and why:
+>
+> | File | Why it waits |
+> |---|---|
+> | `fileValidation`, `otp`, `response`, `ssrf`, `migrationLock` | uncommitted lint-debt edits from another agent (curly braces). Convert when clean |
+> | `controllerWrapper` | requires `fileValidation` and `response` (rule 1) |
+> | `jsonShape` | requires `validators/iot.validator.js` (P9-11) |
+> | `jwt` | P9-12 owns it (and waits for A-48); also needs `@types/jsonwebtoken`, which is not installed |
+> | `kmsVerify`, `authorizationWiring`, `publicBaseUrl`, `schedulerSwitch`, `jobContext` | require `services/` or one of the two middlewares |
 
 > **What changed:** `utils/` is not one batch. **8 of its 20 files import a layer that this plan
 > places after them**, so converting `utils/` as a layer violates rule 1 eight times:
@@ -633,10 +674,42 @@ context, filed under the wrong directory.
 
 **Definition of Done**
 - [ ] the 20 files split into three PRs by the dependency order above; the three model-dependent utils are explicitly **deferred to after P9-10** and the card says so rather than discovering it mid-branch
-- [ ] `ApiResponse<T>` models the envelope (`data` + top-level `meta`) so `data.rows` is unrepresentable
-- [ ] `AppError` hierarchy typed; `catch (e: unknown)` narrowed with a type guard
-- [ ] `response.util#paginated` — **dead code** (no callers, and it reads `res.query`) — deleted rather than typed
+- [ ] `ApiResponse<T>` models the envelope (`data` + top-level `meta`) so `data.rows` is unrepresentable — **lands with `response.util`'s conversion** as `src/types/apiResponse.ts` (agreed with the P9 lead 2026-09-28: no speculative types; `response.util` is its only builder and is not yet clean)
+- [ ] `AppError` hierarchy typed; `catch (e: unknown)` narrowed with a type guard — **hierarchy typed 2026-09-28** (`utils/appError.util.ts`; `toJSON()` returns the module-local `AppErrorBody`). No converted util contains a `catch`; the narrowing lands with the first one that does (`controllerWrapper`, `upload`…)
+- [x] `response.util#paginated` — **dead code** (no callers, and it reads `res.query`) — deleted rather than typed — **already gone**: removed in commit `244b63b` (2026-09-24, "batch 6"). Checked 2026-09-28: `response.util.js` exports `success, error, notFound, badRequest, unauthorized, forbidden, paginate, login, sendResult`; no `paginated(` call exists under `backend/src` (`paginate` is a different, live helper)
 - [ ] `asyncHandler`'s behaviour is **preserved** here; its defects (it sends the raw error message before the central handler can sanitise it, then calls `next` anyway) are fixed in AUDIT task A-13, not in this conversion
+
+
+> **Group (b) — the logger- and context-dependent utils (lead, ADR-087 Amendment 2).**
+> `dbReady` and `circuitBreaker` are `.ts` (identity: 15 checks and a 22-step trace; 100%).
+> `generateSwagger` waits for `docs/components` and `docs/tags` (JavaScript, P9-21);
+> **`upload`, `fileValidation`, `response` (+ `ApiResponse<T>`), `controllerWrapper`, `otp`, `ssrf`
+> are `.ts`** (2026-09-29, ADR-087 Amendment 5; 695 + 41 identity checks against the working copy).
+> **Left (12):** `authorizationWiring`, `jobContext`, `publicBaseUrl`, `schedulerSwitch` (their
+> imports are all TypeScript now — next); `migrationLock` (its live test now launches with
+> `--import tsx`); `kmsVerify` (imports services — P9-18); `jwt` (P9-12, A-48); `jsonShape`
+> (with `validators/iot.validator` — the ordering gap below); `generateSwagger` (`docs/*`, P9-21);
+> `checkMenu`, `session`, `seedMenuGroups` (models — after P9-10);
+> **`tenantScope` is `.ts`** (ADR-087 Amendment 4) — after the guard sweep (20 source-scanning
+> guards read `.ts`, each proved to bite on a planted `.ts` file), under the four gates:
+> the q05 and d05 guards bite on it, 2,810 identity checks, 40 isolation suites (1,196 tests,
+> 100%), and a live PostgreSQL 18.6 two-tenant check as `callibrator_app` (18/18, includes and
+> hookless statics among them).
+>
+> **Ordering gap (helper 3, 2026-09-28):** `utils/jsonShape.util` imports
+> `validators/iot.validator`, so both must be `.ts` before the first model with a JSON column
+> converts (P9-10) — `jsonShape` cannot wait for P9-11 to reach `iot.validator` in order.
+> **Closed 2026-09-29** (ADR-087 Amendment 6): both are `.ts`, still Joi (266 identity checks;
+> `iot.validator.contract.test.ts` passes unchanged). P9-11 keeps the Joi → Zod move for it.
+>
+> **Round 6 (lead, 2026-09-29, ADR-087 Amendment 6):** `authorizationWiring`, `publicBaseUrl`,
+> `schedulerSwitch` (150 identity checks); `jobContext` under the tenant-isolation gates (the w12
+> guards bite on the `.ts`; 141 identity checks; 71 suites / 1,563 tests at 100%; live PostgreSQL
+> 18.6 as `callibrator_app`, 15/15: a `runForTenant(A)` job never reads or writes B, and
+> `runAsSystem` refuses an unlisted reason); `migrationLock` (21 identity checks; the p803 live
+> suite 4/4 on PostgreSQL 18 including "npm run migrate WAITS for a held lock").
+> `authorizationWiring` still scans `routes/api/*.route.js` and reads `seedMenuGroups.util.js`
+> by name — both must learn `.ts` before P9-21 (routes) and after P9-10 (`seedMenuGroups`).
 
 ---
 
@@ -644,9 +717,10 @@ context, filed under the wrong directory.
 
 | | |
 |---|---|
-| **Status** | TODO — **NEEDS EDIT (2026-09-23)** · **Depends on** P9-09, P9-03a · **Size** XL |
+| **Status** | **STARTED 2026-09-29** — **46 of 71 models are `.ts`**: batch 1 **Kanban** (9: `kanbanCard`, `kanbanCardAssignee`, `kanbanCardLabel`, `kanbanCardRelation`, `kanbanColumn`, `kanbanLabel`, `kanbanProject`, `kanbanProjectMember`, `kanbanSprint`), batch 2 **inventory** (6: `warehouse`, `storageLocation`, `stock`, `stockTransfer`, `stockAdjustment`, `stockOpname`) — ADR-087 Amendment 7, record `MEMORY/records/2026-09-29-p9-10-models-kanban-inventory.md`; batch 3 **workflow, QMS, suppliers** (11: `workflow`, `workflowStep`, `workflowInstance`, `workflowAction`, `capa`, `nonConformance`, `sopDocument`, `sopTrainingAcknowledgment`, `vendor`, `risk`, `supplierScorecard`), batch 4 **billing, usage, notifications, operations** (10: `invoice`, `subscription`, `planQuota`, `usageMetric`, `usageAlert`, `notification`, `notificationState`, `batchJob`, `maintenanceWorkOrder`, `assetFinance`) — ADR-087 Amendment 8 (the class variant; D-21/D-27 typing), record `MEMORY/records/2026-09-29-p9-10-models-batches-3-4.md`; batch 5 **calibration and certificates** (6: `calibrationDevice`, `calibrationRecord`, `certificate`, `iotReading`, `attachment`, `documentChunk`), batch 6 **signatures** (4: `eSignatureRecord`, `signatureRecord`, `signatureWorkflow`, `signatureWorkflowStep`) — ADR-087 Amendment 9, record `MEMORY/records/2026-09-29-p9-10-models-batches-5-6.md`. **Left (25), in the owner's order:** content/tickets/GDPR (`post`, `category`, `postCategory`, `ticket`, `ticketComment`, `ticketCounter`, `consentRecord`, `dsarRequest`); platform (`customDomain`, `tenantBackup`, `scimGroup`, `webhook`, `webhookDelivery`); LAST, with the barrel in the same merge, the tenant-isolation-critical batch (`session`, `user`, `tenant`, `role`, `auditLog`, `apiKey`, `tenantKey`, `tenantSettings`, `tenantHierarchy`, `userMenuPermission`, `roleMenuPermission`, `menuGroup`). **The spec pattern is amended** (TS2502 between models that name each other): module-level instance interface + statics interface + explicitly typed factory + `initModel<M, S>(class extends Model {}, …)`. The barrel stays `.js` until the last batch · **spec written** (`MEMORY/specs/P9-10-model-typing-pattern.md`, helper 3) · **Depends on** P9-09, P9-03a, and `jsonShape.util` + `validators/iot.validator` as `.ts` (ordering gap, P9-09) · **Size** XL |
 | **Spec refs** | `docs/DATABASE/*` · ADR-038 (models row) · `docs/BACKEND/05-TENANT-SCOPING.md` |
 | **Spec required** | **yes** — the association typing pattern, before 72 models copy a wrong one |
+| **Spec** | **Written 2026-09-28** — [`MEMORY/specs/P9-10-model-typing-pattern.md`](../MEMORY/specs/P9-10-model-typing-pattern.md): class inside the factory + `export =`; timestamps left to Sequelize via one `initModel()` helper (declaring them in `init` drops `allowNull: false`, probed); defaultScope `where` keeps the COLUMN key `is_deleted` and `includeDeleted` keeps `where: null` (both load-bearing, probed); phantom `DefaultScoped` brand + D-12 rule extended to `.ts`; `jsonShape.util` + `iot.validator` must be `.ts` before the first JSON-column model. Coverage per ADR-092 item 4. Record: `MEMORY/records/2026-09-28-p9-10-p9-11-specs.md` |
 
 > **What changed:** two things the 2026-09-21 card did not account for.
 > **(a)** `models/index.js` is a barrel with 78 `require()` calls, imported as `../models` by 118
@@ -656,13 +730,20 @@ context, filed under the wrong directory.
 > **(b)** `src/models/` is in `coveragePathIgnorePatterns`, so "tests converted and still at 100%"
 > is **vacuously true for every model**. P9-03a has to settle what the gate means here first.
 
+> **Follow-up for this card (ADR-087 Amendment 4):** when the models are typed,
+> `includeRequired.d12` asserts that the BRANDED default-scoped set equals the runtime set, so a
+> model gaining a `defaultScope` without its brand fails (the P9-10 spec asks for this).
+> **Done 2026-09-29** (Amendment 7): among the converted `.model.ts` files the branded set equals
+> the runtime set (`Stock`, `Warehouse` so far); proved both ways (a stray brand and a removed
+> brand each fail it); a brand in a comment does not count.
+
 **Definition of Done**
-- [ ] 72 models as `Model<InferAttributes<M>, InferCreationAttributes<M>>` with `declare` fields; associations typed
+- [ ] 72 models as `Model<InferAttributes<M>, InferCreationAttributes<M>>` with `declare` fields; associations typed — **46 of 71 done** (Kanban, inventory, workflow/QMS/suppliers, billing/usage/notifications/operations, calibration/certificates, signatures); fields live on a module-level interface, not `declare` (Amendments 7–9)
 - [ ] `models/index.js` converted **in the same merge** as the last model batch; no `.ts` consumer imports a `.js` barrel at any point that reaches `main`
 - [ ] **`sessions` keeps its snake_case attributes and the type says so** — `tenantId` on `Session` becomes a compile error, which is the bug that broke the nightly retention purge
 - [ ] `tenantScope.util` typed; the deny branch returns `TenantId` (`NO_TENANT_UUID`), not `string`
-- [ ] `defaultScope` models flagged in a type so an include on them without `required: false` is caught by a lint rule — the most repeated defect shape in this codebase
-- [ ] converted in domain batches of ≤ 12 models per PR
+- [ ] `defaultScope` models flagged in a type so an include on them without `required: false` is caught by a lint rule — the most repeated defect shape in this codebase — **the brand exists (`DefaultScoped`, `src/types/models.ts`) and D-12 holds it to the runtime set; the rule itself stays the D-12 source test (spec item 6)**
+- [ ] converted in domain batches of ≤ 12 models per PR — batches 1 (9), 2 (6), 3 (11), 4 (10), 5 (6), 6 (4) so far
 
 **Abuse cases**
 - `declare foo: any` on a column "to be typed later"
@@ -673,11 +754,17 @@ context, filed under the wrong directory.
 
 | | |
 |---|---|
-| **Status** | TODO · **Depends on** P9-10 · **Size** L |
+| **Status** | TODO — `validators/iot.validator` is already `.ts` (**still Joi**, converted ahead for the P9-09 ordering gap, ADR-087 Amendment 6; its Joi → Zod move stays here) · **spec written** (`MEMORY/specs/P9-11-validation-error-contract.md`), 41 `.ts` contract suites pin today's Joi 400s (`src/tests/contracts/validation`, helper 3) · **Depends on** P9-10 · **Size** L |
 | **Spec refs** | `docs/BACKEND/03-VALIDATION.md` · `docs/API/00-API-STANDARDS.md` § Validation |
 | **Spec required** | **yes** — the error shape Zod must reproduce |
+| **Spec** | **Written 2026-09-28** — [`MEMORY/specs/P9-11-validation-error-contract.md`](../MEMORY/specs/P9-11-validation-error-contract.md): five validation-400 surfaces, not one; `validate(schema)` answers `"Validation Error"` (docs say "Validation failed") and validates `req.body` only. **Oracle:** `backend/src/tests/contracts/validation/` (41 suites, 82 tests, byte-level over real HTTP) must pass unchanged. Record: `MEMORY/records/2026-09-28-p9-10-p9-11-specs.md` |
 
 **Why:** a Joi schema's type does not reach the handler, so `req.body` stays unchecked at compile time. A Zod schema is the runtime check **and** the type.
+
+> **Orchestrator decisions, 2026-09-28:** the validation error `details` stay **fully
+> byte-compatible** (the spec's recommended option); folding metered billing's own
+> `validateBody`/`validateQuery` (surface B) into `validate()` is **deferred to this card's
+> conversion itself**, not done before it.
 
 **Definition of Done**
 - [ ] 37 validators → Zod; `validate(schema)` merges `{ ...req.params, ...req.body }` (the trap that 400ed every request on several routes) and writes a typed `req.validated`

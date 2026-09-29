@@ -41,10 +41,10 @@ export const WorkOrderModal: React.FC<WorkOrderModalProps> = ({
     >
       <form onSubmit={onSubmit} className="space-y-4 pt-2">
         <div>
-          <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+          <label htmlFor="maintenance-components-workordermodal-f1" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
             Device *
           </label>
-          <Select
+          <Select id="maintenance-components-workordermodal-f1"
             value={form.deviceId}
             onChange={(value) => setForm({ ...form, deviceId: value })}
             placeholder="Select a device..."
@@ -58,10 +58,10 @@ export const WorkOrderModal: React.FC<WorkOrderModalProps> = ({
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+          <label htmlFor="maintenance-components-workordermodal-f2" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
             Title *
           </label>
-          <Input
+          <Input id="maintenance-components-workordermodal-f2"
             required
             value={form.title}
             onChange={(e) => setForm({ ...form, title: e.target.value })}
@@ -70,10 +70,10 @@ export const WorkOrderModal: React.FC<WorkOrderModalProps> = ({
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+          <label htmlFor="maintenance-components-workordermodal-f3" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
             Description
           </label>
-          <Textarea
+          <Textarea id="maintenance-components-workordermodal-f3"
             value={form.description}
             onChange={(e) => setForm({ ...form, description: e.target.value })}
             placeholder="Describe the maintenance work required..."
@@ -83,10 +83,10 @@ export const WorkOrderModal: React.FC<WorkOrderModalProps> = ({
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
-            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+            <label htmlFor="maintenance-components-workordermodal-f4" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
               Type
             </label>
-            <Select
+            <Select id="maintenance-components-workordermodal-f4"
               value={form.type}
               onChange={(value) =>
                 setForm({ ...form, type: value as WorkOrderType })
@@ -100,10 +100,10 @@ export const WorkOrderModal: React.FC<WorkOrderModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+            <label htmlFor="maintenance-components-workordermodal-f5" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
               Priority
             </label>
-            <Select
+            <Select id="maintenance-components-workordermodal-f5"
               value={form.priority}
               onChange={(value) =>
                 setForm({ ...form, priority: value as WorkOrderPriority })
@@ -118,10 +118,10 @@ export const WorkOrderModal: React.FC<WorkOrderModalProps> = ({
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+            <label htmlFor="maintenance-components-workordermodal-f6" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
               Status
             </label>
-            <Select
+            <Select id="maintenance-components-workordermodal-f6"
               value={form.status}
               onChange={(value) =>
                 setForm({ ...form, status: value as WorkOrderStatus })
@@ -137,10 +137,10 @@ export const WorkOrderModal: React.FC<WorkOrderModalProps> = ({
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+          <label htmlFor="maintenance-components-workordermodal-f7" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
             Vendor
           </label>
-          <Select
+          <Select id="maintenance-components-workordermodal-f7"
             value={form.vendorId}
             onChange={(value) => setForm({ ...form, vendorId: value })}
             options={[

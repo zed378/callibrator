@@ -14,7 +14,7 @@ const ORIGINAL_ENV = { ...process.env };
 
 const clearStorageEnv = () => {
   for (const key of Object.keys(process.env)) {
-    if (key.startsWith("STORAGE_")) delete process.env[key];
+    if (key.startsWith("STORAGE_")) {delete process.env[key];}
   }
 };
 

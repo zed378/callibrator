@@ -54,17 +54,17 @@ describe("iot.service", () => {
   });
 
   afterAll(() => {
-    if (origHost !== undefined) process.env.MQTT_HOST = origHost;
-    else delete process.env.MQTT_HOST;
-    if (origPort !== undefined) process.env.MQTT_PORT = origPort;
-    else delete process.env.MQTT_PORT;
+    if (origHost !== undefined) {process.env.MQTT_HOST = origHost;}
+    else {delete process.env.MQTT_HOST;}
+    if (origPort !== undefined) {process.env.MQTT_PORT = origPort;}
+    else {delete process.env.MQTT_PORT;}
   });
 
   describe("connect", () => {
     it("should log info and return early when MQTT_HOST not set", async () => {
       await iot.connect(1883, "broker.local");
       expect(logger.info).toHaveBeenCalledWith(
-        "MQTT broker not configured (set MQTT_HOST and MQTT_PORT to enable)"
+        "MQTT broker not configured (set MQTT_HOST and MQTT_PORT to enable)",
       );
       expect(mqtt.connect).not.toHaveBeenCalled();
     });
@@ -73,7 +73,7 @@ describe("iot.service", () => {
       process.env.MQTT_HOST = "broker.local";
       await iot.connect(1883, "broker.local");
       expect(logger.info).toHaveBeenCalledWith(
-        "MQTT broker not configured (set MQTT_HOST and MQTT_PORT to enable)"
+        "MQTT broker not configured (set MQTT_HOST and MQTT_PORT to enable)",
       );
     });
 
@@ -84,8 +84,8 @@ describe("iot.service", () => {
       const mockClient = {
         on: jest.fn().mockReturnThis(),
         once: jest.fn().mockImplementation((event, cb) => {
-          if (event === "connect") cb();
-          if (event === "error") cb(new Error("fail"));
+          if (event === "connect") {cb();}
+          if (event === "error") {cb(new Error("fail"));}
         }),
         subscribe: jest.fn(),
       };
@@ -103,7 +103,7 @@ describe("iot.service", () => {
       const mockClient = {
         on: jest.fn().mockReturnThis(),
         once: jest.fn().mockImplementation((event, cb) => {
-          if (event === "connect") cb();
+          if (event === "connect") {cb();}
         }),
         subscribe: jest.fn(),
       };
@@ -120,7 +120,7 @@ describe("iot.service", () => {
       const mockClient = {
         on: jest.fn().mockReturnThis(),
         once: jest.fn().mockImplementation((event, cb) => {
-          if (event === "connect") cb();
+          if (event === "connect") {cb();}
         }),
         subscribe: jest.fn(),
       };
@@ -136,13 +136,13 @@ describe("iot.service", () => {
 
       const mockClient = {
         on: jest.fn().mockImplementation((event, cb) => {
-          if (event === "connect") setImmediate(cb);
+          if (event === "connect") {setImmediate(cb);}
         }),
         once: jest.fn().mockImplementation((event, cb) => {
-          if (event === "connect") setImmediate(cb);
+          if (event === "connect") {setImmediate(cb);}
         }),
         subscribe: jest.fn((topic, cb) => {
-          if (typeof cb === "function") cb(null);
+          if (typeof cb === "function") {cb(null);}
         }),
       };
       mqtt.connect.mockReturnValue(mockClient);
@@ -158,13 +158,13 @@ describe("iot.service", () => {
 
       const mockClient = {
         on: jest.fn().mockImplementation((event, cb) => {
-          if (event === "connect") setImmediate(cb);
+          if (event === "connect") {setImmediate(cb);}
         }),
         once: jest.fn().mockImplementation((event, cb) => {
-          if (event === "connect") setImmediate(cb);
+          if (event === "connect") {setImmediate(cb);}
         }),
         subscribe: jest.fn((topic, cb) => {
-          if (typeof cb === "function") cb(new Error("subscribe failed"));
+          if (typeof cb === "function") {cb(new Error("subscribe failed"));}
         }),
       };
       mqtt.connect.mockReturnValue(mockClient);
@@ -179,10 +179,10 @@ describe("iot.service", () => {
 
       const mockClient = {
         on: jest.fn().mockImplementation((event, cb) => {
-          if (event === "error") setImmediate(() => cb(new Error("conn err")));
+          if (event === "error") {setImmediate(() => cb(new Error("conn err")));}
         }),
         once: jest.fn().mockImplementation((event, cb) => {
-          if (event === "error") setImmediate(() => cb(new Error("conn err")));
+          if (event === "error") {setImmediate(() => cb(new Error("conn err")));}
         }),
       };
       mqtt.connect.mockReturnValue(mockClient);
@@ -197,10 +197,10 @@ describe("iot.service", () => {
 
       const mockClient = {
         on: jest.fn().mockImplementation((event, cb) => {
-          if (event === "close") setImmediate(cb);
+          if (event === "close") {setImmediate(cb);}
         }),
         once: jest.fn().mockImplementation((event, cb) => {
-          if (event === "connect") setImmediate(cb);
+          if (event === "connect") {setImmediate(cb);}
         }),
       };
       mqtt.connect.mockReturnValue(mockClient);
@@ -216,10 +216,10 @@ describe("iot.service", () => {
 
       const mockClient = {
         on: jest.fn().mockImplementation((event, cb) => {
-          if (event === "reconnect") setImmediate(cb);
+          if (event === "reconnect") {setImmediate(cb);}
         }),
         once: jest.fn().mockImplementation((event, cb) => {
-          if (event === "connect") setImmediate(cb);
+          if (event === "connect") {setImmediate(cb);}
         }),
       };
       mqtt.connect.mockReturnValue(mockClient);
@@ -249,7 +249,7 @@ describe("iot.service", () => {
       await expect(iot.connect(1883, "broker.local")).rejects.toThrow("bad url");
       expect(logger.error).toHaveBeenCalledWith(
         "Failed to connect to MQTT broker",
-        { error: "bad url" }
+        { error: "bad url" },
       );
     });
 
@@ -282,7 +282,7 @@ describe("iot.service", () => {
         const mockClient = {
           on: jest.fn(),
           once: jest.fn((event, cb) => {
-            if (event === "connect") setImmediate(cb);
+            if (event === "connect") {setImmediate(cb);}
           }),
           subscribe: jest.fn(),
         };
@@ -306,7 +306,7 @@ describe("iot.service", () => {
           attributes: ["id", "name", "readingTolerance"],
         });
         expect(IotReading.create).toHaveBeenCalledWith(
-          expect.objectContaining({ tenantId: "t1", deviceId: "dev1", metrics: { temperature: 22 } })
+          expect.objectContaining({ tenantId: "t1", deviceId: "dev1", metrics: { temperature: 22 } }),
         );
       });
 
@@ -366,7 +366,7 @@ describe("iot.service", () => {
 
         expect(logger.error).toHaveBeenCalledWith(
           "MQTT Message Parse Error",
-          expect.objectContaining({ topic: "device/dev1/t1" })
+          expect.objectContaining({ topic: "device/dev1/t1" }),
         );
         expect(IotReading.create).not.toHaveBeenCalled();
       });
@@ -394,7 +394,7 @@ describe("iot.service", () => {
         "commands/dev1/t1",
         JSON.stringify({ cmd: "reset" }),
         { qos: 1 },
-        expect.any(Function)
+        expect.any(Function),
       );
     });
 

@@ -72,8 +72,8 @@ describe("E2E Maintenance (HTTP)", () => {
   });
 
   afterAll(async () => {
-    if (ids.order) await httpDelete(`/maintenance/${ids.order}`, auth);
-    if (ids.device) await httpDelete(`/calibration-devices/${ids.device}`, auth);
+    if (ids.order) {await httpDelete(`/maintenance/${ids.order}`, auth);}
+    if (ids.device) {await httpDelete(`/calibration-devices/${ids.device}`, auth);}
   });
 
   test("GET /maintenance — 200, data array, meta top-level", async () => {

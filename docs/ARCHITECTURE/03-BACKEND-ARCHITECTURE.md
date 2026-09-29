@@ -27,7 +27,7 @@ Anyone acting on an instruction to "remove the `any` types" or "enable strict mo
 8.  sanitising    globalSanitizer
 9.  docs          swagger UI + swagger.json
 10. routing       53 route modules
-11. health        GET /health (503 when the database is unreachable), GET /
+11. health        GET /live, GET /ready, GET /health (503 when PostgreSQL, Redis or RabbitMQ is down), then GET /
 12. errors        notFound, errorHandler
 ```
 
@@ -36,7 +36,7 @@ The order is behaviour, not style. Four consequences worth stating:
 - The raw-body hook fires **only** for `/api/v1/billing/webhook`. Moving that mount without moving the prefix silently breaks Stripe signature verification.
 - `globalSanitizer` rewrites `req.body`, `req.query`, `req.params` — and not `req.rawBody`, which is why the webhook still works.
 - Static `/uploads` sits **before** the sanitizer and before routing, so upload serving does not pay for either.
-- `/health` calls `db.authenticate()` and returns **503** on failure. It is a readiness probe, not a liveness ping.
+- The public probes live in `backend/src/routes/internal/health.route.js` (A-06, A-15). `/live` is dependency-free liveness (`OK`). `/ready` (`READY`/`NOT READY`) and `/health` (`{"status":"ok"}`/`{"status":"unavailable"}`) return one aggregate verdict over PostgreSQL, Redis and RabbitMQ and **503** when any is down — readiness probes, not liveness pings — and disclose nothing else. The per-dependency breakdown is `GET /api/v1/health` (plus `/jobs` and `/metrics`, P7-02), mounted in step 10 behind `auth` + `denyApiKey` + `superAdminOnly` (`/metrics`: bearer `METRICS_TOKEN`). The three public paths are exempt from the step-1 HTTPS redirect (S-09, ADR-081). *(Corrected, ADR-088: this line said `/health` called only `db.authenticate()`.)*
 
 ## Directory Responsibilities
 

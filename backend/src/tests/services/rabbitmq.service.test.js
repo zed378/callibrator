@@ -335,7 +335,7 @@ describe("supervised consumers (W-06)", () => {
       if (n === 1) {
         throw new Error("handler exploded");
       }
-      throw "a string"; // eslint-disable-line no-throw-literal
+      throw "a string";
     });
     broker.publish("work", { n: 1 });
     broker.publish("work", { n: 2 });

@@ -261,16 +261,16 @@ export default function PostEditor({ initial }: { initial?: Post }) {
           <Panel>
             <div className="space-y-4">
               <div>
-                <label className="mb-2 block text-sm font-medium text-foreground">Type</label>
-                <Select
+                <label htmlFor="content-components-posteditor-f1" className="mb-2 block text-sm font-medium text-foreground">Type</label>
+                <Select id="content-components-posteditor-f1"
                   value={form.type}
                   onChange={(v) => set("type", v as PostInput["type"])}
                   options={TYPE_OPTIONS}
                 />
               </div>
               <div>
-                <label className="mb-2 block text-sm font-medium text-foreground">Status</label>
-                <Select
+                <label htmlFor="content-components-posteditor-f2" className="mb-2 block text-sm font-medium text-foreground">Status</label>
+                <Select id="content-components-posteditor-f2"
                   value={form.status || "DRAFT"}
                   onChange={(v) => set("status", v as PostInput["status"])}
                   options={STATUS_OPTIONS}
@@ -315,9 +315,10 @@ export default function PostEditor({ initial }: { initial?: Post }) {
                 <button
                   type="button"
                   onClick={() => set("coverImageUrl", "")}
+                  aria-label="Remove cover image"
                   className="absolute right-2 top-2 rounded-lg bg-black/60 p-1.5 text-white hover:bg-black/80"
                 >
-                  <Trash2 className="h-4 w-4" />
+                  <Trash2 className="h-4 w-4" aria-hidden="true" />
                 </button>
               </div>
             ) : (

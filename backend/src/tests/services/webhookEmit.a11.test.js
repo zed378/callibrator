@@ -317,7 +317,7 @@ describe("A-11 — the catalogue is what is emitted", () => {
   const services = path.join(__dirname, "../../services");
   const source = fs
     .readdirSync(services)
-    .filter((f) => f.endsWith(".js"))
+    .filter((f) => /\.(js|ts)$/.test(f)) // ADR-087 Amendment 4
     .map((f) => fs.readFileSync(path.join(services, f), "utf8"))
     .join("\n");
 

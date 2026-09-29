@@ -87,9 +87,9 @@ export const RolesModal: React.FC<RolesModalProps> = ({
               leftIcon={<Shield className="h-4 w-4" />}
             />
             <div className="border border-border rounded-lg p-4 space-y-4">
-              <h4 className="text-sm font-medium text-foreground">
+              <h3 className="text-sm font-medium text-foreground">
                 Advanced Settings
-              </h4>
+              </h3>
               <Textarea
                 label="Description"
                 value={form.description}
@@ -100,10 +100,10 @@ export const RolesModal: React.FC<RolesModalProps> = ({
               />
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1">
+                  <label htmlFor="role-modal-1" className="block text-sm font-medium text-foreground mb-1">
                     Role Level
                   </label>
-                  <input
+                  <input id="role-modal-1"
                     type="number"
                     min="1"
                     max="10"

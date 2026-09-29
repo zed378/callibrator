@@ -62,12 +62,12 @@ describe("E2E Risk (HTTP)", () => {
         likelihood: 2,
         mitigationPlan: "n/a",
       },
-      authHeader(token)
+      authHeader(token),
     );
     expect(status).toBe(201);
     expect(body.data).toHaveProperty("id");
     expect(body.data.rpn).toBe(6);
-    if (body.data && body.data.id) created.push(body.data.id);
+    if (body.data && body.data.id) {created.push(body.data.id);}
   });
 
   test("GET /risk/:id — DOCUMENTED DEFECT: 404 for assignee-less risk (INNER JOIN)", async () => {
@@ -84,7 +84,7 @@ describe("E2E Risk (HTTP)", () => {
     const { status } = await httpPut(
       `/risk/${id}`,
       { severity: 4 },
-      authHeader(token)
+      authHeader(token),
     );
     expect([200, 404]).toContain(status);
   });
@@ -92,7 +92,7 @@ describe("E2E Risk (HTTP)", () => {
   test("GET /risk/:id — 404 for a random uuid", async () => {
     const { status } = await httpGet(
       "/risk/00000000-0000-4000-8000-000000000000",
-      authHeader(token)
+      authHeader(token),
     );
     expect(status).toBe(404);
   });

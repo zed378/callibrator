@@ -161,6 +161,7 @@ export const LocationsModal: React.FC<LocationsModalProps> = ({
                         variant="ghost"
                         size="sm"
                         onClick={() => onEditLocationSelect(loc)}
+                        aria-label={`Edit ${loc.name}`}
                         className="p-1"
                       >
                         <Edit className="h-4 w-4" />
@@ -169,6 +170,7 @@ export const LocationsModal: React.FC<LocationsModalProps> = ({
                         variant="ghost"
                         size="sm"
                         onClick={() => onDeleteLocationConfirm(loc.id)}
+                        aria-label={`Delete ${loc.name}`}
                         className="p-1 text-destructive hover:bg-destructive/10"
                       >
                         <Trash2 className="h-4 w-4" />

@@ -100,11 +100,14 @@ Flags are set per tenant per key: `POST /:tenantId/:flagKey` with `{ enabled }`.
 
 ## Health and Root
 
-Two unauthenticated endpoints outside `/api/v1`:
+Four unauthenticated endpoints outside `/api/v1`, and a gated breakdown inside it:
 
 | Endpoint | Returns |
 |---|---|
-| `GET /health` | 200 with uptime, memory, pid, node version and `database: "connected"`; **503** with `database: "disconnected"` when `db.authenticate()` fails |
-| `GET /` | 200 liveness |
+| `GET /live` | 200 `OK` — dependency-free liveness |
+| `GET /ready` | 200 `READY` / **503** `NOT READY` (plain text) |
+| `GET /health` | 200 `{"status":"ok"}` / **503** `{"status":"unavailable"}` when PostgreSQL, Redis or RabbitMQ is unreachable — verdict only |
+| `GET /` | 200 `{"status":"Success","message":"Your API is running"}` — not a probe |
+| `GET /api/v1/health` | super admin only (`auth` + `denyApiKey` + `superAdminOnly`): per-dependency breakdown; `/jobs` (same gate) and `/metrics` (bearer `METRICS_TOKEN`) beside it (P7-02) |
 
-`/health` is a genuine readiness probe — it proves the database is reachable, not merely that the process is running. Compose and Kubernetes both use it, and a container that returns 503 here is correctly kept out of rotation.
+`/ready` and `/health` are genuine readiness probes — they prove the required datastores are reachable, not merely that the process is running. Compose and the Helm readiness/startup probes use `/health`; Helm liveness uses `/live`. A container that returns 503 here is correctly kept out of rotation. *(Corrected, ADR-088: this table used to show uptime, memory, pid, node version and `database: "connected"` — the handler before A-06/A-15 — and `GET /` as liveness.)*

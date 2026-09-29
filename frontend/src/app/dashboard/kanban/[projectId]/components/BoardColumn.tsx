@@ -114,6 +114,7 @@ export default function BoardColumn({
                 }}
                 onBlur={submitAdd}
                 placeholder="Card title…"
+                aria-label="New card title"
                 rows={2}
                 className="w-full resize-none bg-transparent text-sm text-foreground outline-none"
               />

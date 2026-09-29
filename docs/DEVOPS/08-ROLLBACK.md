@@ -113,7 +113,7 @@ Keep previous images. A rebuild is not a rollback.
 
 ## After Rollback
 
-- [ ] `/health` returns 200 with `database: "connected"`
+- [ ] `/health` returns 200 `{"status":"ok"}` (PostgreSQL, Redis and RabbitMQ all reachable; per-dependency detail at the super-admin `GET /api/v1/health` — ADR-088)
 - [ ] a user can log in
 - [ ] a tenant-scoped list returns that tenant's rows and no others
 - [ ] **a certificate verifies at its public URL**

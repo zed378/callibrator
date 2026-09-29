@@ -23,7 +23,7 @@ Every alert below has to be actionable: a person receiving it must know what to 
 | Alert | Condition |
 |---|---|
 | Service down | `/health` non-200 sustained |
-| Database unreachable | `database: "disconnected"` |
+| Database unreachable | `/health` 503, and `GET /api/v1/health` (super admin) shows the database `unhealthy` — the public payload no longer names dependencies (ADR-088) |
 | **Suspected cross-tenant exposure** | any signal — treated as SEV-1 until **proven** otherwise |
 | Evidence integrity | any suggestion `audit_logs` or `calibration_records` were altered |
 | Operator credential compromise | anomalous `SUPERADMIN` activity |

@@ -92,8 +92,8 @@ export default function CreateTicketModal({ isOpen, onClose, onCreated }: Props)
         )}
 
         <div>
-          <label className="text-sm font-medium text-foreground">Subject</label>
-          <Input
+          <label htmlFor="tickets-components-createticketmodal-f1" className="text-sm font-medium text-foreground">Subject</label>
+          <Input id="tickets-components-createticketmodal-f1"
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
             placeholder="Briefly, what's the problem?"
@@ -103,20 +103,20 @@ export default function CreateTicketModal({ isOpen, onClose, onCreated }: Props)
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="text-sm font-medium text-foreground">
+            <label htmlFor="tickets-components-createticketmodal-f2" className="text-sm font-medium text-foreground">
               Priority
             </label>
-            <Select
+            <Select id="tickets-components-createticketmodal-f2"
               value={priority}
               onChange={(v) => setPriority(v as TicketPriority)}
               options={PRIORITIES}
             />
           </div>
           <div>
-            <label className="text-sm font-medium text-foreground">
+            <label htmlFor="tickets-components-createticketmodal-f3" className="text-sm font-medium text-foreground">
               Category
             </label>
-            <Select
+            <Select id="tickets-components-createticketmodal-f3"
               value={category}
               onChange={(v) => setCategory(v as TicketCategory)}
               options={CATEGORIES}

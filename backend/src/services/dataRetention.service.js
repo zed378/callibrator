@@ -1,13 +1,13 @@
-const { Op } = require('sequelize');
-const { IotReading, Notification, Session, TenantSettings } = require('../models');
-const { AppError } = require('../utils/appError.util');
-const { logger } = require('../middlewares/activityLog.middleware');
-const auditService = require('./audit.service');
-const { db } = require('../config');
+const { Op } = require("sequelize");
+const { IotReading, Notification, Session, TenantSettings } = require("../models");
+const { AppError } = require("../utils/appError.util");
+const { logger } = require("../middlewares/activityLog.middleware");
+const auditService = require("./audit.service");
+const { db } = require("../config");
 const { runForTenant } = require("../utils/jobContext.util");
 
 /** The actor recorded on the purge's audit row: a job, not a user (W-04). */
-const RETENTION_ACTOR = 'system:retention-purge';
+const RETENTION_ACTOR = "system:retention-purge";
 
 /**
  * The entities the retention purge may destroy, and their platform default
@@ -21,8 +21,8 @@ const RETENTION_ACTOR = 'system:retention-purge';
  * deleting the row. There is one purge engine, this one (Q-10, F-4).
  */
 const DEFAULT_RETENTION_DAYS = {
-  notifications: parseInt(process.env.NOTIFICATION_RETENTION_DAYS || '90', 10),
-  sessions: parseInt(process.env.SESSION_RETENTION_DAYS || '30', 10),
+  notifications: parseInt(process.env.NOTIFICATION_RETENTION_DAYS || "90", 10),
+  sessions: parseInt(process.env.SESSION_RETENTION_DAYS || "30", 10),
   // D-19: device telemetry, one row per device per interval. The platform
   // default is 0 — kept — because readings are the environmental record a
   // calibration relies on (ISO 17025 6.3.3; 0037 made their device link
@@ -153,14 +153,14 @@ exports.setRetentionPolicy = async (tenantId, policyKey, days, actor = {}) => {
   if (!tenantId) {
     throw new AppError(
       400,
-      'Retention policies are set per tenant. The platform default is set by NOTIFICATION_RETENTION_DAYS and SESSION_RETENTION_DAYS.',
+      "Retention policies are set per tenant. The platform default is set by NOTIFICATION_RETENTION_DAYS and SESSION_RETENTION_DAYS.",
     );
   }
 
-  if (policyKey === 'audit_logs') {
+  if (policyKey === "audit_logs") {
     throw new AppError(
       400,
-      'Audit logs are not subject to retention purge: audit rows are kept, never deleted.',
+      "Audit logs are not subject to retention purge: audit rows are kept, never deleted.",
     );
   }
 
@@ -171,11 +171,11 @@ exports.setRetentionPolicy = async (tenantId, policyKey, days, actor = {}) => {
   // W-16: the route's validator already requires an integer; the service is
   // the supported path for every caller, so it refuses one too.
   if (!Number.isInteger(days)) {
-    throw new AppError(400, 'Retention days must be a whole number of days');
+    throw new AppError(400, "Retention days must be a whole number of days");
   }
 
   if (days < 0) {
-    throw new AppError(400, 'Retention days must be non-negative');
+    throw new AppError(400, "Retention days must be non-negative");
   }
 
   const floor = MIN_RETENTION_DAYS[policyKey];

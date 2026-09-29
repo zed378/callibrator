@@ -285,4 +285,3 @@ exports.getStatus = asyncHandler(async (req, res) => {
 
   return success(res, status, "Service status retrieved");
 });
-

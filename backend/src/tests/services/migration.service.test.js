@@ -455,7 +455,7 @@ describe("migration.service", () => {
             if (entry.name !== "tests") {
               walk(full);
             }
-          } else if (entry.name.endsWith(".js") && /dropSeededTables\s*\(/.test(fs.readFileSync(full, "utf8"))) {
+          } else if (/\.(js|ts)$/.test(entry.name) && /dropSeededTables\s*\(/.test(fs.readFileSync(full, "utf8"))) {
             offenders.push(path.relative(root, full));
           }
         }
@@ -491,7 +491,7 @@ describe("migration.service", () => {
             if (entry.name !== "tests") {
               walk(full);
             }
-          } else if (entry.name.endsWith(".js") && /sync\(\s*\{\s*force:\s*true/.test(fs.readFileSync(full, "utf8"))) {
+          } else if (/\.(js|ts)$/.test(entry.name) && /sync\(\s*\{\s*force:\s*true/.test(fs.readFileSync(full, "utf8"))) {
             offenders.push(path.relative(root, full));
           }
         }

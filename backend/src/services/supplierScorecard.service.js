@@ -3,7 +3,7 @@ const { AppError } = require("../utils/appError.util");
 
 exports.createScorecard = async (tenantId, data, userId) => {
   const vendor = await Vendor.findOne({ where: { id: data.vendorId, tenantId } });
-  if (!vendor) throw new AppError(404, "Vendor not found");
+  if (!vendor) {throw new AppError(404, "Vendor not found");}
 
   return await SupplierScorecard.create({
     ...data,
@@ -17,8 +17,8 @@ exports.getScorecards = async (tenantId, query) => {
   const offset = (page - 1) * limit;
 
   const where = { tenantId };
-  if (vendorId) where.vendorId = vendorId;
-  if (status) where.status = status;
+  if (vendorId) {where.vendorId = vendorId;}
+  if (status) {where.status = status;}
 
   const { count, rows } = await SupplierScorecard.findAndCountAll({
     where,
@@ -29,15 +29,15 @@ exports.getScorecards = async (tenantId, query) => {
       { model: Vendor, as: "vendor", attributes: ["id", "name"] },
       // LEFT JOIN (A-90): without it User's defaultScope makes this INNER, and
       // a scorecard whose evaluator was deleted or is outside the tenant vanished.
-      { model: User, as: "evaluator", attributes: ["id", "firstName", "lastName", "email"], required: false }
-    ]
+      { model: User, as: "evaluator", attributes: ["id", "firstName", "lastName", "email"], required: false },
+    ],
   });
 
   return {
     rows,
     total: count,
     page: parseInt(page),
-    totalPages: Math.ceil(count / limit)
+    totalPages: Math.ceil(count / limit),
   };
 };
 
@@ -48,10 +48,10 @@ exports.getScorecardById = async (tenantId, id) => {
       { model: Vendor, as: "vendor", attributes: ["id", "name"] },
       // LEFT JOIN (A-90): without it User's defaultScope makes this INNER, and
       // a scorecard whose evaluator was deleted or is outside the tenant vanished.
-      { model: User, as: "evaluator", attributes: ["id", "firstName", "lastName", "email"], required: false }
-    ]
+      { model: User, as: "evaluator", attributes: ["id", "firstName", "lastName", "email"], required: false },
+    ],
   });
-  if (!scorecard) throw new AppError(404, "Scorecard not found");
+  if (!scorecard) {throw new AppError(404, "Scorecard not found");}
   return scorecard;
 };
 

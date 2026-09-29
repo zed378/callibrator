@@ -95,9 +95,9 @@ export default function RolesPage() {
           <Card>
             <CardContent className="p-12 text-center">
               <Shield className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-foreground mb-2">
+              <h2 className="text-lg font-medium text-foreground mb-2">
                 No roles found
-              </h3>
+              </h2>
               <p className="text-muted-foreground mb-4">
                 Get started by creating a new role.
               </p>

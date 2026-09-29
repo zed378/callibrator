@@ -78,10 +78,10 @@ export const WebhookModal: React.FC<WebhookModalProps> = ({
     >
       <form onSubmit={onSubmit} className="space-y-4 pt-2">
         <div>
-          <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+          <label htmlFor="webhooks-components-webhookmodal-f1" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
             Endpoint URL *
           </label>
-          <Input
+          <Input id="webhooks-components-webhookmodal-f1"
             required
             type="url"
             pattern="https?://.*"
@@ -171,10 +171,10 @@ export const WebhookModal: React.FC<WebhookModalProps> = ({
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+          <label htmlFor="webhooks-components-webhookmodal-f2" className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
             Description
           </label>
-          <Input
+          <Input id="webhooks-components-webhookmodal-f2"
             value={form.description}
             onChange={(e) => setForm({ ...form, description: e.target.value })}
             placeholder="e.g. Notify CMMS when devices become overdue"

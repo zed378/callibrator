@@ -357,7 +357,7 @@ const setState = async (notificationId, userId, patch) => {
  * has never interacted with get a state row created here.
  */
 const setStateForMany = async (notificationIds, userId, patch) => {
-  if (notificationIds.length === 0) return 0;
+  if (notificationIds.length === 0) {return 0;}
 
   const existing = await NotificationState.findAll({
     where: { notificationId: { [Op.in]: notificationIds }, userId },

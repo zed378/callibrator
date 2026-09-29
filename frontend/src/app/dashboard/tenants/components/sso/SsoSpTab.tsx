@@ -20,7 +20,7 @@ export const SsoSpTab: React.FC<SsoSpTabProps> = ({
   return (
     <div className="space-y-5">
       <div className="p-4 bg-primary/5 border border-primary/10 rounded-2xl text-xs text-muted-foreground space-y-1">
-        <span className="font-semibold text-white block mb-1">Service Provider Integration Parameters</span>
+        <span className="font-semibold text-foreground block mb-1">Service Provider Integration Parameters</span>
         Copy these parameters and paste them in your Identity Provider (e.g. Okta, Azure AD, OneLogin) configuration panel.
       </div>
 
