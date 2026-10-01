@@ -11,6 +11,7 @@
 // carries its source in doc 20 §11, and src/tests/copyTruthfulness.p1011.test.ts
 // fails the build on a banned term or an unsourced number.
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight, Mail, MessageCircle, Plus, QrCode } from "@/components/icons/static";
@@ -24,12 +25,6 @@ import { contactChannels } from "@/components/public/contact";
 import { WorkflowStory, type WorkflowStep } from "@/components/public/landing/WorkflowStory";
 import { CERTIFICATE_LOOKUP_ENABLED } from "@/lib/publicFeatures";
 import { PRODUCT_SHOTS } from "@/components/public/landing/productShots";
-
-// The landing page reads the `locale` cookie via getServerI18n() on every
-// request and cannot be prerendered. `instant = false` is the cacheComponents-
-// compatible way to declare a blocking route in Next.js 16 (the `dynamic`
-// segment config is rejected when nextConfig.cacheComponents is enabled).
-export const instant = false;
 
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getServerI18n();
@@ -134,7 +129,38 @@ const FAQ: ReadonlyArray<[MessageKey, MessageKey]> = [
   ["landing.faq.q6", "landing.faq.a6"],
 ];
 
-export default async function Home() {
+// ── Skeleton shown while the locale cookie resolves ────────────────────────
+// Matches the above-the-fold height so there is no layout shift once
+// HomeContent streams in. cacheComponents caches HomeContent's sub-tree
+// per locale, so subsequent requests for the same locale skip the work.
+function HomeLoading() {
+  return (
+    <div className="flex min-h-dvh flex-col" aria-hidden="true">
+      {/* Header placeholder */}
+      <div className="h-16 border-b border-pub-border bg-pub-bg/80" />
+      {/* Hero placeholder */}
+      <div className="mx-auto w-full max-w-[1200px] px-4 py-20 sm:px-6 lg:px-8">
+        <div className="grid gap-12 lg:grid-cols-2 lg:gap-14">
+          <div className="space-y-5">
+            <div className="h-4 w-24 animate-pulse rounded bg-pub-border" />
+            <div className="h-10 w-3/4 animate-pulse rounded bg-pub-border" />
+            <div className="h-10 w-1/2 animate-pulse rounded bg-pub-border" />
+            <div className="h-5 w-full animate-pulse rounded bg-pub-border" />
+            <div className="h-5 w-5/6 animate-pulse rounded bg-pub-border" />
+            <div className="flex gap-3 pt-4">
+              <div className="h-10 w-36 animate-pulse rounded-lg bg-pub-border" />
+              <div className="h-10 w-32 animate-pulse rounded-lg bg-pub-border" />
+            </div>
+          </div>
+          <div className="h-80 animate-pulse rounded-xl bg-pub-border lg:h-96" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Locale-aware content (streams in, cached per locale by cacheComponents) ──
+async function HomeContent() {
   const { locale, t } = await getServerI18n();
   const year = new Date().getFullYear();
   const shots = PRODUCT_SHOTS;
@@ -148,7 +174,7 @@ export default async function Home() {
   }));
 
   return (
-    <PublicSurface>
+    <>
       <a href="#konten" className="pub-skip">
         {t("pub.skip")}
       </a>
@@ -384,6 +410,17 @@ export default async function Home() {
       </main>
 
       <PublicFooter locale={locale} t={t} year={year} />
+    </>
+  );
+}
+
+// ── Page shell — prerenderable, no cookie access ─────────────────────────────
+export default function Home() {
+  return (
+    <PublicSurface>
+      <Suspense fallback={<HomeLoading />}>
+        <HomeContent />
+      </Suspense>
     </PublicSurface>
   );
 }
