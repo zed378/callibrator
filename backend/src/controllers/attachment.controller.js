@@ -5,6 +5,7 @@ const { success } = require("../utils/response.util");
 // A-189: the configured public origin, never the proxy-facing Host header.
 const { baseUrlOf } = require("../utils/publicBaseUrl.util");
 const { sendStoredFile } = require("../utils/fileResponse.util");
+const { auditPrincipal } = require("../utils/auditPrincipal.util");
 
 // POST /api/v1/attachments (multipart: file + resourceType/resourceId)
 exports.upload = asyncHandler(async (req, res) => {
@@ -13,13 +14,18 @@ exports.upload = asyncHandler(async (req, res) => {
   // `.resourceType` off it threw a TypeError (500) instead of reaching the
   // service's own 400.
   const { resourceType, resourceId } = req.body || {};
+  // A-282 (ADR-100): an API key is not a user — `uploaded_by` and the audit
+  // row's user reference `users`, so a key uploads as no user and is named
+  // by `apiKeyId` (system:api-key) instead.
+  const principal = auditPrincipal(req);
   const data = await attachmentService.createAttachment(req.user.tenantId, req.file, {
     resourceType,
     resourceId,
-    uploadedBy: req.user.id,
+    uploadedBy: principal.userId,
+    apiKeyId: principal.apiKeyId,
     // A-117: for the CREATE audit row written with the attachment.
-    ipAddress: req.ip,
-    userAgent: req.get("user-agent"),
+    ipAddress: principal.ipAddress,
+    userAgent: principal.userAgent,
   });
   success(res, data, null, "Attachment uploaded", 201);
 });
@@ -84,10 +90,7 @@ exports.downloadSigned = asyncHandler(async (req, res) => {
 // A-28: the actor is carried into the service so the audit row written inside
 // the delete transaction is attributable.
 exports.remove = asyncHandler(async (req, res) => {
-  const data = await attachmentService.deleteAttachment(req.user.tenantId, req.params.id, {
-    userId: req.user.id,
-    ipAddress: req.ip,
-    userAgent: req.get("user-agent"),
-  });
+  // A-282 (ADR-100): an API key is audited as system:api-key.
+  const data = await attachmentService.deleteAttachment(req.user.tenantId, req.params.id, auditPrincipal(req));
   success(res, data, null, "Attachment deleted", 200);
 });

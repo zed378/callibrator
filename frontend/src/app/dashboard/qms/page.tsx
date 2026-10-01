@@ -30,6 +30,7 @@ import {
   type NonConformance,
 } from "@/api/services/qms.service";
 import { useToastStore } from "@/stores/toastStore";
+import { usePermissions } from "@/hooks/usePermissions";
 
 type Tab = "nc" | "capa";
 
@@ -72,6 +73,11 @@ const statusVariant = (
 const fmt = (v?: string | null) => (v ? new Date(v).toLocaleDateString() : "—");
 
 export default function QmsPage() {
+  // ADR-102: every NC/CAPA write is gated on `qms` write (qms.route.js).
+  // A reader sees no write control; nothing is writable before the
+  // permissions load.
+  const { canWrite } = usePermissions();
+  const mayWrite = canWrite("qms");
   const addToast = useToastStore((s) => s.addToast);
 
   const [tab, setTab] = useState<Tab>("nc");
@@ -402,12 +408,14 @@ export default function QmsPage() {
               against them.
             </p>
           </div>
-          <Button
-            onClick={() => (tab === "nc" ? setIsNcOpen(true) : setIsCapaOpen(true))}
-            leftIcon={<Plus className="h-4 w-4" />}
-          >
-            {tab === "nc" ? "Raise NC" : "New CAPA"}
-          </Button>
+          {mayWrite && (
+            <Button
+              onClick={() => (tab === "nc" ? setIsNcOpen(true) : setIsCapaOpen(true))}
+              leftIcon={<Plus className="h-4 w-4" />}
+            >
+              {tab === "nc" ? "Raise NC" : "New CAPA"}
+            </Button>
+          )}
         </div>
 
         {error && <Alert variant="error">{error}</Alert>}
@@ -466,7 +474,9 @@ export default function QmsPage() {
         </Card>
 
         <Table
-          columns={tab === "nc" ? ncColumns : capaColumns}
+          columns={(tab === "nc" ? ncColumns : capaColumns).filter(
+            (col) => mayWrite || col.key !== "actions",
+          )}
           data={rows as unknown as Record<string, unknown>[]}
           isLoading={isLoading}
           emptyMessage={

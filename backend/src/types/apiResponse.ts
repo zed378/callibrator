@@ -4,35 +4,18 @@
  *   { "success": true, "status": 200, "message": "...", "data": [...], "meta": { "total": 0 } }
  *
  * Rows go in `data`. Pagination goes in a top-level `meta`, a SIBLING of `data`
- * — never `data.rows`, `data.items` or `data.meta`. Built by `utils/response.util`,
- * its first converted user. Backend-internal: the contract the frontend reads
- * goes in `packages/contracts` (P9-22). Types only; this file emits nothing.
+ * — never `data.rows`, `data.items` or `data.meta`. Built by `utils/response.util`.
+ *
+ * P9-22 (ADR-097, and the ADR-087 amendment recording the move): the envelope is
+ * a cross-workspace contract, so its definition lives in
+ * `@callibrator/contracts/envelope` (packages/contracts/src/envelope.ts), as Zod
+ * schemas with these types inferred from them. This file stays the backend's one
+ * place for the envelope types (the src/types/ lint guard) and re-exports them.
+ * Types only; this file emits nothing.
  */
-
-/** A success body. `meta`, `token`, `refreshToken` and `session` appear only when set. */
-export interface ApiSuccessResponse<T = unknown> {
-  success: true;
-  status: number;
-  message: string;
-  data: T;
-  meta?: object;
-  token?: unknown;
-  refreshToken?: unknown;
-  session?: unknown;
-}
-
-/**
- * An error body. `details` appears outside production only; `extra` fields
- * (field `errors`, a production `requestId`) are spread in at the top level.
- */
-export interface ApiErrorResponse {
-  success: false;
-  status: number;
-  message: string;
-  data: null;
-  details?: unknown;
-  [extra: string]: unknown;
-}
-
-/** Either envelope. */
-export type ApiResponse<T = unknown> = ApiSuccessResponse<T> | ApiErrorResponse;
+export type {
+  ApiErrorResponse,
+  ApiListResponse,
+  ApiResponse,
+  ApiSuccessResponse,
+} from "@callibrator/contracts/envelope";

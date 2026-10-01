@@ -37,7 +37,7 @@ figure only from a named run on a quiet tree.
 |---|---|
 | `src/config/` | wiring (Sequelize, Redis, Socket.IO, the migrator). `config/socket.js` holds the socket authentication gate and is kept at 100% by `tests/config/socket.test.js` — under an explicit `--collectCoverageFrom` run, **not** by the gate |
 | `src/constants/` | data, no branches |
-| `src/docs/` | swagger components |
+| `src/docs/` | the legacy JSDoc components and tags, and since P9-25 (ADR-103) the OpenAPI builder helpers (`docs/openapi/`) and the reference's mount (`apiDocs.ts`) — tested through `tests/guards/openapiRoutes.p925`, `tests/routes/apiDocs.p925` and `swaggerValidatorAlignment.p608` |
 | `src/models/` | the **71 models** — their hooks and validators are exercised by the service and live suites, and are not measured |
 | `src/scripts/` | operator CLIs |
 | `backend/index.js` | the boot sequence. Covered by a real boot, not by a unit test: CI `boot-and-migrate` and `src/tests/e2e/liveContract.smoke.test.js` |

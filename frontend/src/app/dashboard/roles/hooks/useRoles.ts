@@ -86,13 +86,18 @@ export function useRoles() {
     setFormError("");
     setIsSubmitting(true);
     try {
+      // F-19 (ADR-105): a blank Display Name clears it, and the level is sent
+      // only when it changed — a system role's level is fixed (the API
+      // answers 409 to a change), and resending it would be a no-op anyway.
       await updateRole({
         id: editingRole.id,
         name: editForm.name,
         description: editForm.description || undefined,
-        nameToShow: editForm.nameToShow || undefined,
+        nameToShow: editForm.nameToShow,
         isActive: editForm.isActive,
-        roleLevel: editForm.roleLevel,
+        ...(editForm.roleLevel !== (editingRole.roleLevel ?? 1)
+          ? { roleLevel: editForm.roleLevel }
+          : {}),
       });
       setShowEditModal(false);
       setEditingRole(null);

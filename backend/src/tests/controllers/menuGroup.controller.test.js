@@ -32,6 +32,16 @@ jest.mock("../../services/redis.service", () => ({
   cacheKeys: { permissions: (roleId) => `permissions:role:${roleId}` },
 }));
 
+// ADR-102: the menu shows what the effective permission lets the role use
+// (tested on the real seed in menuEffectiveAccess.adr102.test.ts); here the
+// pages the role can use are listed by slug.
+const mockVisible = new Set();
+jest.mock("../../services/effectivePermission.service", () => ({
+  loadPermissionSources: jest.fn(async () => ({ superAdmin: false, matrix: {}, overrides: {} })),
+  menuEntryVisible: jest.fn((_principal, _sources, slug) => mockVisible.has(slug)),
+  effectivePermissionMap: jest.fn(() => ({})),
+}));
+
 // Mock success and error responses
 jest.mock("../../utils/response.util", () => ({
   success: jest.fn((res, data, meta, message, status) => {
@@ -42,7 +52,7 @@ jest.mock("../../utils/response.util", () => ({
   }),
 }));
 
-const { filterMenuGroups, getRoleMenuAssignments, getAvailableRoles, createMenuGroup, updateMenuGroup, deleteMenuGroup, assignMenuGroupToRole, revokeMenuGroupFromRole, bulkAssignMenuGroups, bulkRevokeMenuGroups } = require("../../controllers/menuGroup.controller");
+const { filterMenuGroups, getRoleMenuAssignments, getMyPermissions, getAvailableRoles, createMenuGroup, updateMenuGroup, deleteMenuGroup, assignMenuGroupToRole, revokeMenuGroupFromRole, bulkAssignMenuGroups, bulkRevokeMenuGroups } = require("../../controllers/menuGroup.controller");
 const { Role, MenuGroup, RoleMenuPermission } = require("../../models");
 const { success } = require("../../utils/response.util");
 const auditService = require("../../services/audit.service");
@@ -111,7 +121,7 @@ describe("MenuGroup Controller Tests", () => {
             id: "parent-1",
             label: "Home",
             icon: "home-icon",
-            path: "/",
+            path: "/dashboard", // S7 (ADR-102): Home is the dashboard home
             sortOrder: 1,
             isAssigned: undefined,
             items: [
@@ -300,12 +310,11 @@ describe("MenuGroup Controller Tests", () => {
       );
     });
 
-    it("should return assigned menus and items", async () => {
+    it("should return the menus whose pages the role can use, with the requester passed on", async () => {
       req.body.roleId = "3fa85f64-5717-4562-b3fc-2c963f66afa6";
-      RoleMenuPermission.findAll.mockResolvedValue([
-        { menuGroupId: "parent-1" },
-        { menuGroupId: "child-1" },
-      ]);
+      req.user = { id: "u-1", role: { id: "3fa85f64-5717-4562-b3fc-2c963f66afa6", name: "HEALTHCARE ADMIN" } };
+      mockVisible.clear();
+      mockVisible.add("profile-page").add("change-password");
 
       const mockGroups = [
         {
@@ -360,7 +369,7 @@ describe("MenuGroup Controller Tests", () => {
             id: "parent-1",
             label: "Home",
             icon: "home-icon",
-            path: "/",
+            path: "/dashboard", // S7 (ADR-102): Home is the dashboard home
             sortOrder: 1,
             items: [
               {
@@ -382,6 +391,23 @@ describe("MenuGroup Controller Tests", () => {
         ],
         null,
         "Role menu assignments fetched successfully",
+        200,
+      );
+    });
+  });
+
+  describe("getMyPermissions (ADR-102)", () => {
+    it("answers the caller's effective permissions", async () => {
+      req.user = { id: "u-1", role: { id: "r-1", name: "CALIBRATOR ADMIN" } };
+      MenuGroup.findAll.mockResolvedValueOnce([{ slug: "calibration" }, { slug: "vendors" }]);
+
+      await getMyPermissions(req, res);
+
+      expect(success).toHaveBeenCalledWith(
+        res,
+        { superAdmin: false, permissions: {} },
+        null,
+        "Effective permissions fetched successfully",
         200,
       );
     });
@@ -495,6 +521,12 @@ describe("MenuGroup Controller Tests", () => {
       req.body = { name: "Update Name" };
       await updateMenuGroup(req, res);
       expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: false,
+          message: "Validation failed: Invalid input: expected string, received undefined",
+        }),
+      );
     });
 
     it("should return 404 if menu group does not exist", async () => {
@@ -569,6 +601,18 @@ describe("MenuGroup Controller Tests", () => {
 
   describe("deleteMenuGroup", () => {
     it("should return 400 if menuGroupId is missing", async () => {
+      await deleteMenuGroup(req, res);
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: false,
+          message: "menuGroupId is required",
+        }),
+      );
+    });
+
+    it("should return 400, not throw, when the request carries no body (A-09)", async () => {
+      req.body = undefined;
       await deleteMenuGroup(req, res);
       expect(res.status).toHaveBeenCalledWith(400);
       expect(res.json).toHaveBeenCalledWith(
@@ -892,22 +936,25 @@ describe("MenuGroup Controller Tests", () => {
     });
   });
 
-  describe("MenuGroup Validator - formatErrors", () => {
-    it("should format Joi validation errors correctly", () => {
-      const menuGroupValidator = require("../../validators/menuGroup.validator");
-      const mockDetails = [
+  // P9-11: the validator's own formatErrors is gone; checkInput (validators/input)
+  // lists one { field, message } per Zod issue, the path joined with dots.
+  describe("MenuGroup Validator - field errors", () => {
+    it("names a nested failure by its dotted path", () => {
+      const { bulkAssignMenuGroupsSchema } = require("../../validators/menuGroup.validator");
+      const { checkInput } = require("../../validators/input");
+
+      const checked = checkInput(
         {
-          path: ["body", "name"],
-          message: '"name" is required',
+          roleId: "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+          menuGroupIds: ["3fa85f64-5717-4562-b3fc-2c963f66afa7", "not-a-uuid"],
         },
-      ];
-      const formatted = menuGroupValidator.formatErrors(mockDetails);
-      expect(formatted).toEqual([
-        {
-          field: "body.name",
-          message: '"name" is required',
-        },
-      ]);
+        bulkAssignMenuGroupsSchema,
+      );
+
+      expect(checked).toEqual({
+        ok: false,
+        errors: [{ field: "menuGroupIds.1", message: "Invalid GUID" }],
+      });
     });
   });
 });

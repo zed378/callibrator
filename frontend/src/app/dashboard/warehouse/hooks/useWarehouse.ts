@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useWarehouseStore } from "@/stores/warehouseStore";
 import { useAuthStore } from "@/stores/authStore";
 import { Warehouse, StorageLocation } from "@/types";
+import { usePermissions } from "@/hooks/usePermissions";
 
 export function useWarehouse() {
   const { user } = useAuthStore();
@@ -39,6 +40,16 @@ export function useWarehouse() {
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<{ id: string; type: "warehouse" | "location" } | null>(null);
 
+  // F-19: a refused save or delete is shown in the dialog that made it — the
+  // page alert sits behind the open modal. `in` names that dialog, so a
+  // location delete's refusal shows in the confirm on top, not also in the
+  // sub-locations dialog beneath it.
+  const [dialogError, setDialogError] = useState<{ in: "warehouse" | "locations" | "delete"; message: string } | null>(null);
+  const failInDialog = (where: "warehouse" | "locations" | "delete", err: unknown, fallback: string) => {
+    setDialogError({ in: where, message: err instanceof Error && err.message ? err.message : fallback });
+    setError(null);
+  };
+
   // Forms State
   const [warehouseForm, setWarehouseForm] = useState({
     name: "",
@@ -55,11 +66,10 @@ export function useWarehouse() {
     isActive: true,
   });
 
-  // Check write access
-  const hasWriteAccess =
-    user?.role?.name === "SUPERADMIN" ||
-    user?.role?.name === "HEALTHCARE ADMIN" ||
-    user?.role?.name === "WAREHOUSE STAFF";
+  // ADR-102: warehouse and location writes are gated on `warehouse` write
+  // (warehouse.route.js) — the effective permission the API checks.
+  const { canWrite } = usePermissions();
+  const hasWriteAccess = canWrite("warehouse");
 
   // Fetch warehouses
   useEffect(() => {
@@ -81,6 +91,7 @@ export function useWarehouse() {
     });
     setWarehouseModalType("create");
     setSelectedWarehouse(null);
+    setDialogError(null);
     setIsWarehouseModalOpen(true);
   };
 
@@ -94,12 +105,14 @@ export function useWarehouse() {
     });
     setWarehouseModalType("edit");
     setSelectedWarehouse(warehouse);
+    setDialogError(null);
     setIsWarehouseModalOpen(true);
   };
 
   const handleWarehouseSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setDialogError(null);
     try {
       if (warehouseModalType === "create") {
         await createWarehouse(warehouseForm);
@@ -109,12 +122,13 @@ export function useWarehouse() {
       setIsWarehouseModalOpen(false);
       fetchWarehouses(currentPage, pageSize, searchTerm);
     } catch (err) {
-      // Handled by store
+      failInDialog("warehouse", err, "Failed to save the warehouse");
     }
   };
 
   const confirmDeleteWarehouse = (id: string) => {
     setItemToDelete({ id, type: "warehouse" });
+    setDialogError(null);
     setIsDeleteConfirmOpen(true);
   };
 
@@ -122,6 +136,7 @@ export function useWarehouse() {
     setSelectedWarehouse(warehouse);
     await fetchLocations(warehouse.id);
     resetLocationForm();
+    setDialogError(null);
     setIsLocationsModalOpen(true);
   };
 
@@ -140,6 +155,7 @@ export function useWarehouse() {
     e.preventDefault();
     if (!selectedWarehouse) return;
     setError(null);
+    setDialogError(null);
     try {
       if (locationFormType === "create") {
         await createLocation({
@@ -157,7 +173,7 @@ export function useWarehouse() {
       resetLocationForm();
       fetchLocations(selectedWarehouse.id);
     } catch (err) {
-      // Handled by store
+      failInDialog("locations", err, "Failed to save the sub-location");
     }
   };
 
@@ -174,12 +190,14 @@ export function useWarehouse() {
 
   const confirmDeleteLocation = (id: string) => {
     setItemToDelete({ id, type: "location" });
+    setDialogError(null);
     setIsDeleteConfirmOpen(true);
   };
 
   const handleDeleteConfirm = async () => {
     if (!itemToDelete) return;
     setError(null);
+    setDialogError(null);
     try {
       if (itemToDelete.type === "warehouse") {
         await deleteWarehouse(itemToDelete.id);
@@ -191,7 +209,7 @@ export function useWarehouse() {
       setIsDeleteConfirmOpen(false);
       setItemToDelete(null);
     } catch (err) {
-      // Handled by store
+      failInDialog("delete", err, "Failed to delete");
     }
   };
 
@@ -231,6 +249,9 @@ export function useWarehouse() {
     locationForm,
     setLocationForm,
     hasWriteAccess,
+    warehouseDialogError: dialogError?.in === "warehouse" ? dialogError.message : null,
+    locationsDialogError: dialogError?.in === "locations" ? dialogError.message : null,
+    deleteDialogError: dialogError?.in === "delete" ? dialogError.message : null,
     handleSearchChange,
     openCreateWarehouse,
     openEditWarehouse,

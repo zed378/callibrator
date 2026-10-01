@@ -12,6 +12,7 @@ jest.mock("@/api/services/vendor.service", () => ({ vendorService }));
 
 import { useVendors } from "../useVendors";
 import { useAuthStore } from "@/stores/authStore";
+import { useMenuStore } from "@/stores/menuStore";
 import { useToastStore } from "@/stores/toastStore";
 import type { User } from "@/types";
 
@@ -24,6 +25,9 @@ beforeEach(() => {
   useToastStore.setState({ toasts: [] });
   vendorService.getAll.mockResolvedValue(list);
   useAuthStore.setState({ user: { id: "u1", role: { name: "CALIBRATOR ADMIN" } } as unknown as User });
+  // ADR-102: the write gate is the effective `vendors` permission (the seeded
+  // CALIBRATOR ADMIN holds `vendors` write), not the role name.
+  useMenuStore.setState({ effectivePermissions: { superAdmin: false, permissions: { vendors: "write" } } });
 });
 
 const setup = async () => {
@@ -50,20 +54,22 @@ describe("useVendors", () => {
     await waitFor(() => expect(result.current.vendorsError).toBe("Vendors unavailable"));
   });
 
-  it("create sends a trimmed payload with empty fields omitted and a numeric rating", async () => {
+  // P9-22 (ADR-097): create sends no `rating` — the create contract has none
+  // (the API stripped it before, so nothing stored changes). Edit still sends it.
+  it("create sends a trimmed payload with empty fields omitted and no rating", async () => {
     const { result } = await setup();
     vendorService.create.mockResolvedValue({ id: "v1" });
     act(() => result.current.openCreateModal());
     act(() =>
       result.current.setForm({
         name: "  Lab One ", type: "CalibrationLab", contactPerson: " ", email: "lab@x.test ",
-        phone: "", address: "", status: "Active", rating: "4",
+        phone: "", address: "", notes: " ", status: "Active", rating: "4",
       }),
     );
     await act(async () => result.current.handleFormSubmit(ev));
     expect(vendorService.create).toHaveBeenCalledWith({
       name: "Lab One", type: "CalibrationLab", contactPerson: undefined, email: "lab@x.test",
-      phone: undefined, address: undefined, status: "Active", rating: 4,
+      phone: undefined, address: undefined, status: "Active",
     });
     expect(result.current.isVendorModalOpen).toBe(false);
     expect(lastToast()?.title).toBe("Vendor created");
@@ -84,7 +90,8 @@ describe("useVendors", () => {
 
     vendorService.update.mockResolvedValue({});
     await act(async () => result.current.handleFormSubmit(ev));
-    expect(vendorService.update).toHaveBeenLastCalledWith(expect.objectContaining({ id: "v1", rating: 3 }));
+    // Q-52: an empty Notes on edit is sent as null, so a stored note is cleared.
+    expect(vendorService.update).toHaveBeenLastCalledWith(expect.objectContaining({ id: "v1", rating: 3, notes: null }));
     expect(lastToast()?.title).toBe("Vendor updated");
   });
 

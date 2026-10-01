@@ -114,7 +114,7 @@ const CASES = [
   },
   {
     name: "deleteRole (system role → deactivate and revoke grants)",
-    setup: () => { mockRef.role.is_system = true; },
+    setup: () => { mockRef.role.isSystem = true; },
     run: () => RolesService.deleteRole("role-1", actor),
     table: "role_menu_permissions",
     action: "DELETE",
@@ -208,7 +208,7 @@ const CASES = [
 describe("A-41 — role and permission changes audit inside their transaction", () => {
   beforeEach(() => {
     mockRef.ledger = createLedger({ cls: false });
-    mockRef.role = mockRow("roles", { id: "role-1", name: "Tech", status: "active", is_system: false });
+    mockRef.role = mockRow("roles", { id: "role-1", name: "Tech", status: "active", isSystem: false });
     mockRef.user = mockRow("users", { id: "user-9", tenantId: "tenant-user", role_id: "role-0" });
     mockRef.grant = null;
     mockRef.removed = 1;

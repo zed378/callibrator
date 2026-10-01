@@ -26,6 +26,10 @@ jest.mock("../../config", () => ({
 
 jest.mock("../../models", () => ({
   Users: { findOne: jest.fn(), findByPk: jest.fn(), update: jest.fn() },
+  // ADR-108 Amendment 1: the passkeys are rows; disable counts them for the audit row
+  // (the User model's hook removes them when the flag goes off — tested with the real
+  // model in webauthnCredentials.twoTenant.test.ts).
+  WebauthnCredential: { count: jest.fn(async () => 2) },
   Role: {},
   User: {},
   Tenants: {},
@@ -96,7 +100,7 @@ beforeEach(() => {
 });
 
 const cleared = () =>
-  mockRef.ledger.committed("users").filter((row) => row.webauthnEnabled === false && row.webauthnCredentialId === null);
+  mockRef.ledger.committed("users").filter((row) => row.webauthnEnabled === false);
 const auditRows = () => mockRef.ledger.auditRows();
 const context = { ipAddress: "198.51.100.4", userAgent: "ua" };
 
@@ -127,7 +131,8 @@ describe("A-213: removing a passkey re-authenticates", () => {
 
     expect(result).toEqual({ success: true });
     expect(cleared()).toEqual([
-      { webauthnEnabled: false, webauthnCredentialId: null, webauthnPublicKey: null, webauthnSignCount: 0 },
+      // ADR-108 Amendment 1: the flag only; the passkeys go with it (User model hook).
+      { webauthnEnabled: false },
     ]);
     const [row] = auditRows();
     expect(auditRows()).toHaveLength(1);
@@ -137,7 +142,7 @@ describe("A-213: removing a passkey re-authenticates", () => {
       action: "UPDATE",
       resourceType: "User",
       resourceId: USER_ID,
-      changes: { operation: "WEBAUTHN_DISABLE", reauthenticatedWith: "password" },
+      changes: { operation: "WEBAUTHN_DISABLE", reauthenticatedWith: "password", passkeysRemoved: 2 },
       ipAddress: "198.51.100.4",
       userAgent: "ua",
     });
@@ -180,7 +185,7 @@ describe("A-213: removing a passkey re-authenticates", () => {
 
       expect(cleared()).toHaveLength(1);
       expect(mockRef.ledger.committed("mfa_spend")).toEqual([{ code: "123456" }]);
-      expect(auditRows()[0].changes).toEqual({ operation: "WEBAUTHN_DISABLE", reauthenticatedWith: "password+totp" });
+      expect(auditRows()[0].changes).toEqual({ operation: "WEBAUTHN_DISABLE", reauthenticatedWith: "password+totp", passkeysRemoved: 2 });
     });
 
     it("a wrong recovery code is the same combined 400, and nothing changes", async () => {

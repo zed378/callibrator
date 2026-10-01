@@ -47,6 +47,23 @@ describe("sopService", () => {
       expect(res.page).toBe(2);
     });
 
+    it("reads the house envelope sop.controller sends: rows in data, a top-level meta", async () => {
+      mockedApi.get.mockResolvedValueOnce({
+        ...envelope([{ id: "d1", documentNumber: "SOP-0001" }]),
+        meta: { total: 11, page: 2, limit: 10, totalPages: 2 },
+      });
+
+      const res = await sopService.listDocuments({ page: 2, limit: 10 });
+
+      expect(res).toEqual({
+        rows: [{ id: "d1", documentNumber: "SOP-0001" }],
+        total: 11,
+        page: 2,
+        limit: 10,
+        totalPages: 2,
+      });
+    });
+
     it("degrades to an empty page on an unexpected payload", async () => {
       mockedApi.get.mockResolvedValueOnce(envelope({}));
       const res = await sopService.listDocuments();

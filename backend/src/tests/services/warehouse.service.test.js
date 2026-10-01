@@ -9,6 +9,7 @@
 jest.mock("sequelize", () => ({
   Op: {
     like: Symbol("like"),
+    iLike: Symbol("iLike"), // A-320: the search matches with ILIKE
     ne: Symbol("ne"),
     or: Symbol("or"),
   },
@@ -37,6 +38,11 @@ jest.mock("../../models", () => ({
   },
 }));
 
+// P6-11: every write commits with one audit row in its transaction.
+jest.mock("../../services/audit.service", () => ({
+  logAction: jest.fn(),
+}));
+
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: {
     info: jest.fn(),
@@ -56,40 +62,14 @@ jest.mock("../../utils/appError.util", () => {
   return { AppError };
 });
 
-jest.mock("../../validators/warehouse.validator", () => {
-  const Joi = require("joi");
-  return {
-    validate: jest.fn((data, schema) => {
-      // Simulate Joi validation return
-      if (data.failValidation) {
-        return {
-          error: {
-            details: [{ path: ["name"], message: "Validation error" }],
-          },
-          value: null,
-        };
-      }
-      return { error: null, value: data };
-    }),
-    formatErrors: jest.fn((details) => {
-      return details.map((item) => ({
-        field: item.path.join("."),
-        message: item.message,
-      }));
-    }),
-    createWarehouseSchema: "createWarehouseSchema",
-    updateWarehouseSchema: "updateWarehouseSchema",
-    createLocationSchema: "createLocationSchema",
-    updateLocationSchema: "updateLocationSchema",
-  };
-});
+// The validator is REAL (P9-11: Zod schemas through validators/input), so the
+// inputs below are ones the API would accept and the 400 cases are real refusals.
 
 // ================================================================
 // IMPORTS (after mocks)
 // ================================================================
 const { db } = require("../../config");
 const { Warehouse, StorageLocation, Stock } = require("../../models");
-const { validate: validateInput } = require("../../validators/warehouse.validator");
 
 const {
   fetchWarehouses,
@@ -114,6 +94,14 @@ const expectRejectsWithMessage = async (promise, message) => {
   }
 };
 
+/** A warehouse id the schema accepts (the create-location body carries it). */
+const WH_ID = "11111111-1111-4111-8111-111111111111";
+
+/** The 400 validateInput throws, with the field errors in Zod's words. */
+const expectValidationFailure = async (promise, errors) => {
+  await expect(promise).rejects.toEqual({ status: 400, message: "Validation failed", errors });
+};
+
 const mockTransaction = () => ({
   commit: jest.fn().mockResolvedValue(),
   rollback: jest.fn().mockResolvedValue(),
@@ -122,23 +110,12 @@ const mockTransaction = () => ({
 describe("warehouse.service", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    validateInput.mockImplementation((data, schema) => {
-      if (data.failValidation) {
-        return {
-          error: {
-            details: [{ path: ["name"], message: "Validation error" }],
-          },
-          value: null,
-        };
-      }
-      return { error: null, value: data };
-    });
   });
 
   describe("fetchWarehouses", () => {
     it("should fetch warehouses successfully without find query", async () => {
       Warehouse.findAndCountAll.mockResolvedValueOnce({
-        rows: [{ id: "wh-1", name: "Warehouse 1" }],
+        rows: [{ id: WH_ID, name: "Warehouse 1" }],
         count: 1,
       });
 
@@ -151,7 +128,7 @@ describe("warehouse.service", () => {
 
     it("should fetch warehouses with find search term", async () => {
       Warehouse.findAndCountAll.mockResolvedValueOnce({
-        rows: [{ id: "wh-1", name: "Search WH" }],
+        rows: [{ id: WH_ID, name: "Search WH" }],
         count: 1,
       });
 
@@ -185,12 +162,12 @@ describe("warehouse.service", () => {
   describe("fetchSpecificWarehouse", () => {
     it("should fetch a warehouse successfully by id", async () => {
       Warehouse.findOne.mockResolvedValueOnce({
-        id: "wh-1",
+        id: WH_ID,
         name: "WH 1",
         locations: [],
       });
 
-      const result = await fetchSpecificWarehouse("tenant-1", "wh-1");
+      const result = await fetchSpecificWarehouse("tenant-1", WH_ID);
       expect(result.success).toBe(true);
       expect(result.data.name).toBe("WH 1");
     });
@@ -198,7 +175,7 @@ describe("warehouse.service", () => {
     it("should throw 404 if warehouse not found", async () => {
       Warehouse.findOne.mockResolvedValueOnce(null);
       await expectRejectsWithMessage(
-        fetchSpecificWarehouse("tenant-1", "wh-1"),
+        fetchSpecificWarehouse("tenant-1", WH_ID),
         "Warehouse not found",
       );
     });
@@ -206,7 +183,7 @@ describe("warehouse.service", () => {
     it("should propagate database error", async () => {
       Warehouse.findOne.mockRejectedValueOnce(new Error("Database error"));
       await expectRejectsWithMessage(
-        fetchSpecificWarehouse("tenant-1", "wh-1"),
+        fetchSpecificWarehouse("tenant-1", WH_ID),
         "Database error",
       );
     });
@@ -214,10 +191,11 @@ describe("warehouse.service", () => {
 
   describe("createWarehouse", () => {
     it("should throw 400 if validation fails", async () => {
-      await expectRejectsWithMessage(
-        createWarehouse("tenant-1", { failValidation: true }),
-        "Validation failed",
-      );
+      await expectValidationFailure(createWarehouse("tenant-1", { code: "C" }), [
+        { field: "name", message: "Invalid input: expected string, received undefined" },
+        { field: "code", message: "Too small: expected string to have >=2 characters" },
+      ]);
+      expect(db.transaction).not.toHaveBeenCalled();
     });
 
     it("should throw 409 if warehouse code already exists", async () => {
@@ -254,6 +232,20 @@ describe("warehouse.service", () => {
       expect(result.status).toBe(201);
       expect(result.data.id).toBe("wh-new");
       expect(tx.commit).toHaveBeenCalled();
+    });
+
+    it("stores status \"active\" when the body sends status: null (the schema allows null)", async () => {
+      const tx = mockTransaction();
+      db.transaction.mockResolvedValueOnce(tx);
+      Warehouse.findOne.mockResolvedValueOnce(null);
+      Warehouse.create.mockResolvedValueOnce({ id: "wh-new" });
+
+      await createWarehouse("tenant-1", { name: "WH New", code: "CODE-1", status: null });
+
+      expect(Warehouse.create).toHaveBeenCalledWith(
+        expect.objectContaining({ status: "active", address: null, description: null }),
+        { transaction: tx },
+      );
     });
 
     it("should rollback transaction and throw error on database failure", async () => {
@@ -293,10 +285,10 @@ describe("warehouse.service", () => {
 
   describe("updateWarehouse", () => {
     it("should throw 400 if validation fails", async () => {
-      await expectRejectsWithMessage(
-        updateWarehouse("tenant-1", "wh-1", { failValidation: true }),
-        "Validation failed",
-      );
+      await expectValidationFailure(updateWarehouse("tenant-1", WH_ID, { status: "archived" }), [
+        { field: "status", message: 'Invalid option: expected one of "active"|"inactive"' },
+      ]);
+      expect(db.transaction).not.toHaveBeenCalled();
     });
 
     it("should throw 404 if warehouse not found", async () => {
@@ -305,7 +297,7 @@ describe("warehouse.service", () => {
       Warehouse.findOne.mockResolvedValueOnce(null);
 
       await expectRejectsWithMessage(
-        updateWarehouse("tenant-1", "wh-1", { name: "Updated WH" }),
+        updateWarehouse("tenant-1", WH_ID, { name: "Updated WH" }),
         "Warehouse not found",
       );
       expect(tx.rollback).toHaveBeenCalled();
@@ -314,11 +306,11 @@ describe("warehouse.service", () => {
     it("should throw 409 if updated code already exists on another warehouse", async () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
-      Warehouse.findOne.mockResolvedValueOnce({ id: "wh-1", name: "WH 1", code: "CODE-1" });
+      Warehouse.findOne.mockResolvedValueOnce({ id: WH_ID, name: "WH 1", code: "CODE-1" });
       Warehouse.findOne.mockResolvedValueOnce({ id: "wh-2", name: "WH 2", code: "CODE-2" }); // duplicate check
 
       await expectRejectsWithMessage(
-        updateWarehouse("tenant-1", "wh-1", { code: "CODE-2" }),
+        updateWarehouse("tenant-1", WH_ID, { code: "CODE-2" }),
         "Warehouse code already exists",
       );
       expect(tx.rollback).toHaveBeenCalled();
@@ -328,7 +320,7 @@ describe("warehouse.service", () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
       const mockWarehouse = {
-        id: "wh-1",
+        id: WH_ID,
         name: "WH 1",
         code: "CODE-1",
         address: "Old address",
@@ -339,7 +331,7 @@ describe("warehouse.service", () => {
       Warehouse.findOne.mockResolvedValueOnce(mockWarehouse); // find current
       Warehouse.findOne.mockResolvedValueOnce(null); // duplicate check for updated code
 
-      const result = await updateWarehouse("tenant-1", "wh-1", {
+      const result = await updateWarehouse("tenant-1", WH_ID, {
         name: "Updated WH 1",
         code: "CODE-NEW",
         address: "New address",
@@ -365,7 +357,7 @@ describe("warehouse.service", () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
       const mockWarehouse = {
-        id: "wh-1",
+        id: WH_ID,
         name: "WH 1",
         code: "CODE-1",
         address: "Address 1",
@@ -375,7 +367,7 @@ describe("warehouse.service", () => {
       };
       Warehouse.findOne.mockResolvedValueOnce(mockWarehouse);
 
-      await updateWarehouse("tenant-1", "wh-1", {});
+      await updateWarehouse("tenant-1", WH_ID, {});
 
       expect(mockWarehouse.update).toHaveBeenCalledWith(
         {
@@ -392,7 +384,7 @@ describe("warehouse.service", () => {
     it("should handle transaction start error in updateWarehouse", async () => {
       db.transaction.mockRejectedValueOnce(new Error("Tx start failed"));
       await expectRejectsWithMessage(
-        updateWarehouse("tenant-1", "wh-1", { name: "Updated WH" }),
+        updateWarehouse("tenant-1", WH_ID, { name: "Updated WH" }),
         "Tx start failed",
       );
     });
@@ -404,7 +396,7 @@ describe("warehouse.service", () => {
       Warehouse.findOne.mockRejectedValueOnce(new Error("Query failed"));
 
       await expectRejectsWithMessage(
-        updateWarehouse("tenant-1", "wh-1", { name: "Updated WH" }),
+        updateWarehouse("tenant-1", WH_ID, { name: "Updated WH" }),
         "Query failed",
       );
       expect(tx.rollback).toHaveBeenCalled();
@@ -418,7 +410,7 @@ describe("warehouse.service", () => {
       Warehouse.findOne.mockResolvedValueOnce(null);
 
       await expectRejectsWithMessage(
-        deleteWarehouse("tenant-1", "wh-1"),
+        deleteWarehouse("tenant-1", WH_ID),
         "Warehouse not found",
       );
       expect(tx.rollback).toHaveBeenCalled();
@@ -427,11 +419,11 @@ describe("warehouse.service", () => {
     it("should throw 400 if warehouse has active stocks", async () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
-      Warehouse.findOne.mockResolvedValueOnce({ id: "wh-1" });
+      Warehouse.findOne.mockResolvedValueOnce({ id: WH_ID });
       Stock.count.mockResolvedValueOnce(5);
 
       await expectRejectsWithMessage(
-        deleteWarehouse("tenant-1", "wh-1"),
+        deleteWarehouse("tenant-1", WH_ID),
         "Cannot delete warehouse with 5 items in stock",
       );
       expect(tx.rollback).toHaveBeenCalled();
@@ -441,22 +433,24 @@ describe("warehouse.service", () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
       const mockWarehouse = {
-        id: "wh-1",
-        softDelete: jest.fn().mockResolvedValue(),
+        id: WH_ID,
+        save: jest.fn().mockResolvedValue(),
       };
       Warehouse.findOne.mockResolvedValueOnce(mockWarehouse);
       Stock.count.mockResolvedValueOnce(0);
 
-      const result = await deleteWarehouse("tenant-1", "wh-1");
+      const result = await deleteWarehouse("tenant-1", WH_ID);
       expect(result.success).toBe(true);
-      expect(mockWarehouse.softDelete).toHaveBeenCalled();
+      // P6-11: soft-deleted INSIDE the transaction (softDelete() takes no options).
+      expect(mockWarehouse.isDeleted).toBe(true);
+      expect(mockWarehouse.save).toHaveBeenCalledWith({ hooks: false, transaction: tx });
       expect(tx.commit).toHaveBeenCalled();
     });
 
     it("should handle transaction start error in deleteWarehouse", async () => {
       db.transaction.mockRejectedValueOnce(new Error("Tx start failed"));
       await expectRejectsWithMessage(
-        deleteWarehouse("tenant-1", "wh-1"),
+        deleteWarehouse("tenant-1", WH_ID),
         "Tx start failed",
       );
     });
@@ -468,7 +462,7 @@ describe("warehouse.service", () => {
       Warehouse.findOne.mockRejectedValueOnce(new Error("Query failed"));
 
       await expectRejectsWithMessage(
-        deleteWarehouse("tenant-1", "wh-1"),
+        deleteWarehouse("tenant-1", WH_ID),
         "Query failed",
       );
       expect(tx.rollback).toHaveBeenCalled();
@@ -481,7 +475,7 @@ describe("warehouse.service", () => {
       Warehouse.findOne.mockRejectedValueOnce(new Error("Query failed"));
 
       await expectRejectsWithMessage(
-        deleteWarehouse("tenant-1", "wh-1"),
+        deleteWarehouse("tenant-1", WH_ID),
         "Query failed",
       );
       expect(tx.rollback).not.toHaveBeenCalled();
@@ -492,16 +486,16 @@ describe("warehouse.service", () => {
     it("should throw 404 if warehouse not found", async () => {
       Warehouse.findOne.mockResolvedValueOnce(null);
       await expectRejectsWithMessage(
-        fetchLocations("tenant-1", "wh-1"),
+        fetchLocations("tenant-1", WH_ID),
         "Warehouse not found",
       );
     });
 
     it("should fetch locations successfully", async () => {
-      Warehouse.findOne.mockResolvedValueOnce({ id: "wh-1" });
+      Warehouse.findOne.mockResolvedValueOnce({ id: WH_ID });
       StorageLocation.findAll.mockResolvedValueOnce([{ id: "loc-1", name: "Loc 1" }]);
 
-      const result = await fetchLocations("tenant-1", "wh-1");
+      const result = await fetchLocations("tenant-1", WH_ID);
       expect(result.success).toBe(true);
       expect(result.data).toHaveLength(1);
     });
@@ -509,10 +503,10 @@ describe("warehouse.service", () => {
 
   describe("createLocation", () => {
     it("should throw 400 if validation fails", async () => {
-      await expectRejectsWithMessage(
-        createLocation("tenant-1", { failValidation: true }),
-        "Validation failed",
-      );
+      await expectValidationFailure(createLocation("tenant-1", { warehouseId: "wh-1", name: "Loc 1", code: "L1" }), [
+        { field: "warehouseId", message: "Invalid GUID" },
+      ]);
+      expect(db.transaction).not.toHaveBeenCalled();
     });
 
     it("should throw 404 if warehouse not found", async () => {
@@ -521,7 +515,7 @@ describe("warehouse.service", () => {
       Warehouse.findOne.mockResolvedValueOnce(null);
 
       await expectRejectsWithMessage(
-        createLocation("tenant-1", { warehouseId: "wh-1", name: "Loc 1", code: "L1" }),
+        createLocation("tenant-1", { warehouseId: WH_ID, name: "Loc 1", code: "L1" }),
         "Warehouse not found",
       );
       expect(tx.rollback).toHaveBeenCalled();
@@ -530,11 +524,11 @@ describe("warehouse.service", () => {
     it("should throw 409 if storage location code already exists in the warehouse", async () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
-      Warehouse.findOne.mockResolvedValueOnce({ id: "wh-1" });
+      Warehouse.findOne.mockResolvedValueOnce({ id: WH_ID });
       StorageLocation.findOne.mockResolvedValueOnce({ id: "loc-existing" });
 
       await expectRejectsWithMessage(
-        createLocation("tenant-1", { warehouseId: "wh-1", name: "Loc 1", code: "L1" }),
+        createLocation("tenant-1", { warehouseId: WH_ID, name: "Loc 1", code: "L1" }),
         "Storage location code already exists in this warehouse",
       );
       expect(tx.rollback).toHaveBeenCalled();
@@ -543,7 +537,7 @@ describe("warehouse.service", () => {
     it("should create location successfully", async () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
-      Warehouse.findOne.mockResolvedValueOnce({ id: "wh-1" });
+      Warehouse.findOne.mockResolvedValueOnce({ id: WH_ID });
       StorageLocation.findOne.mockResolvedValueOnce(null);
       StorageLocation.create.mockResolvedValueOnce({
         id: "loc-new",
@@ -552,7 +546,7 @@ describe("warehouse.service", () => {
       });
 
       const result = await createLocation("tenant-1", {
-        warehouseId: "wh-1",
+        warehouseId: WH_ID,
         name: "Loc New",
         code: "L2",
         description: "Top shelf",
@@ -567,12 +561,12 @@ describe("warehouse.service", () => {
     it("should default description to null and isActive to true when omitted", async () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
-      Warehouse.findOne.mockResolvedValueOnce({ id: "wh-1" });
+      Warehouse.findOne.mockResolvedValueOnce({ id: WH_ID });
       StorageLocation.findOne.mockResolvedValueOnce(null);
       StorageLocation.create.mockResolvedValueOnce({ id: "loc-new" });
 
       await createLocation("tenant-1", {
-        warehouseId: "wh-1",
+        warehouseId: WH_ID,
         name: "Loc New",
         code: "L2",
       });
@@ -580,7 +574,7 @@ describe("warehouse.service", () => {
       expect(StorageLocation.create).toHaveBeenCalledWith(
         {
           tenantId: "tenant-1",
-          warehouseId: "wh-1",
+          warehouseId: WH_ID,
           name: "Loc New",
           code: "L2",
           description: null,
@@ -590,15 +584,39 @@ describe("warehouse.service", () => {
       );
     });
 
+    // The schema itself defaults isActive to true, so the service's own
+    // fallback is reached only by a caller that skips the schema. Load the
+    // service against a pass-through validateInput to pin that fallback too.
+    it("the service still defaults isActive to true when validation hands it no value", async () => {
+      await jest.isolateModulesAsync(async () => {
+        jest.doMock("../../validators/input", () => ({ validateInput: (data) => ({ ...data }) }));
+        const isolatedModels = require("../../models");
+        const isolatedDb = require("../../config").db;
+        const isolatedService = require("../../services/warehouse.service");
+        const tx = mockTransaction();
+        isolatedDb.transaction.mockResolvedValueOnce(tx);
+        isolatedModels.Warehouse.findOne.mockResolvedValueOnce({ id: WH_ID });
+        isolatedModels.StorageLocation.findOne.mockResolvedValueOnce(null);
+        isolatedModels.StorageLocation.create.mockResolvedValueOnce({ id: "loc-new" });
+
+        await isolatedService.createLocation("tenant-1", { warehouseId: WH_ID, name: "Loc New", code: "L2" });
+
+        expect(isolatedModels.StorageLocation.create).toHaveBeenCalledWith(
+          expect.objectContaining({ isActive: true }),
+          { transaction: tx },
+        );
+      });
+    });
+
     it("should preserve an explicit isActive:false rather than defaulting it to true", async () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
-      Warehouse.findOne.mockResolvedValueOnce({ id: "wh-1" });
+      Warehouse.findOne.mockResolvedValueOnce({ id: WH_ID });
       StorageLocation.findOne.mockResolvedValueOnce(null);
       StorageLocation.create.mockResolvedValueOnce({ id: "loc-new" });
 
       await createLocation("tenant-1", {
-        warehouseId: "wh-1",
+        warehouseId: WH_ID,
         name: "Loc New",
         code: "L2",
         isActive: false,
@@ -613,7 +631,7 @@ describe("warehouse.service", () => {
     it("should handle transaction start error in createLocation", async () => {
       db.transaction.mockRejectedValueOnce(new Error("Tx start failed"));
       await expectRejectsWithMessage(
-        createLocation("tenant-1", { warehouseId: "wh-1", name: "Loc 1", code: "L1" }),
+        createLocation("tenant-1", { warehouseId: WH_ID, name: "Loc 1", code: "L1" }),
         "Tx start failed",
       );
     });
@@ -625,7 +643,7 @@ describe("warehouse.service", () => {
       Warehouse.findOne.mockRejectedValueOnce(new Error("Query failed"));
 
       await expectRejectsWithMessage(
-        createLocation("tenant-1", { warehouseId: "wh-1", name: "Loc 1", code: "L1" }),
+        createLocation("tenant-1", { warehouseId: WH_ID, name: "Loc 1", code: "L1" }),
         "Query failed",
       );
       expect(tx.rollback).toHaveBeenCalled();
@@ -634,10 +652,10 @@ describe("warehouse.service", () => {
 
   describe("updateLocation", () => {
     it("should throw 400 if validation fails", async () => {
-      await expectRejectsWithMessage(
-        updateLocation("tenant-1", "loc-1", { failValidation: true }),
-        "Validation failed",
-      );
+      await expectValidationFailure(updateLocation("tenant-1", "loc-1", { isActive: "maybe" }), [
+        { field: "isActive", message: "Invalid input: expected boolean, received string" },
+      ]);
+      expect(db.transaction).not.toHaveBeenCalled();
     });
 
     it("should throw 404 if storage location not found", async () => {
@@ -655,8 +673,8 @@ describe("warehouse.service", () => {
     it("should throw 409 if updated code already exists in the warehouse", async () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
-      StorageLocation.findOne.mockResolvedValueOnce({ id: "loc-1", warehouseId: "wh-1" });
-      StorageLocation.findOne.mockResolvedValueOnce({ id: "loc-2", warehouseId: "wh-1" }); // duplicate check
+      StorageLocation.findOne.mockResolvedValueOnce({ id: "loc-1", warehouseId: WH_ID });
+      StorageLocation.findOne.mockResolvedValueOnce({ id: "loc-2", warehouseId: WH_ID }); // duplicate check
 
       await expectRejectsWithMessage(
         updateLocation("tenant-1", "loc-1", { code: "CODE-DUP" }),
@@ -670,7 +688,7 @@ describe("warehouse.service", () => {
       db.transaction.mockResolvedValueOnce(tx);
       const mockLoc = {
         id: "loc-1",
-        warehouseId: "wh-1",
+        warehouseId: WH_ID,
         name: "Old Name",
         code: "Old Code",
         description: "Old desc",
@@ -705,7 +723,7 @@ describe("warehouse.service", () => {
       db.transaction.mockResolvedValueOnce(tx);
       const mockLoc = {
         id: "loc-1",
-        warehouseId: "wh-1",
+        warehouseId: WH_ID,
         name: "Old Name",
         code: "Old Code",
         description: "Old desc",
@@ -848,14 +866,14 @@ describe("warehouse.service", () => {
       const tx = failingCommitTransaction();
       db.transaction.mockResolvedValueOnce(tx);
       Warehouse.findOne.mockResolvedValueOnce({
-        id: "wh-1",
+        id: WH_ID,
         name: "Old",
         code: "W1",
         update: jest.fn().mockResolvedValue(true),
       });
 
       await expectRejectsWithMessage(
-        updateWarehouse("tenant-1", "wh-1", { name: "New" }),
+        updateWarehouse("tenant-1", WH_ID, { name: "New" }),
         "Commit failed",
       );
       expect(tx.rollback).not.toHaveBeenCalled();
@@ -865,13 +883,13 @@ describe("warehouse.service", () => {
       const tx = failingCommitTransaction();
       db.transaction.mockResolvedValueOnce(tx);
       Warehouse.findOne.mockResolvedValueOnce({
-        id: "wh-1",
-        softDelete: jest.fn().mockResolvedValue(true),
+        id: WH_ID,
+        save: jest.fn().mockResolvedValue(true),
       });
       Stock.count.mockResolvedValueOnce(0);
 
       await expectRejectsWithMessage(
-        deleteWarehouse("tenant-1", "wh-1"),
+        deleteWarehouse("tenant-1", WH_ID),
         "Commit failed",
       );
       expect(tx.rollback).not.toHaveBeenCalled();
@@ -880,12 +898,12 @@ describe("warehouse.service", () => {
     it("createLocation does not roll back when commit fails", async () => {
       const tx = failingCommitTransaction();
       db.transaction.mockResolvedValueOnce(tx);
-      Warehouse.findOne.mockResolvedValueOnce({ id: "wh-1" });
+      Warehouse.findOne.mockResolvedValueOnce({ id: WH_ID });
       StorageLocation.findOne.mockResolvedValueOnce(null);
       StorageLocation.create.mockResolvedValueOnce({ id: "loc-new" });
 
       await expectRejectsWithMessage(
-        createLocation("tenant-1", { warehouseId: "wh-1", name: "L", code: "L1" }),
+        createLocation("tenant-1", { warehouseId: WH_ID, name: "Lo", code: "L1" }),
         "Commit failed",
       );
       expect(tx.rollback).not.toHaveBeenCalled();
@@ -896,7 +914,7 @@ describe("warehouse.service", () => {
       db.transaction.mockResolvedValueOnce(tx);
       StorageLocation.findOne.mockResolvedValueOnce({
         id: "loc-1",
-        warehouseId: "wh-1",
+        warehouseId: WH_ID,
         update: jest.fn().mockResolvedValue(true),
       });
 

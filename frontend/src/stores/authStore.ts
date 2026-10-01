@@ -1,6 +1,7 @@
 import { create } from "zustand";
-import { User } from "@/types";
+import type { SignInLocation, User } from "@/types";
 import { authService } from "@/api/services/auth.service";
+import type { AssertionJSON } from "@/lib/passkey";
 import { useMenuStore } from "./menuStore";
 import { useTenantStore } from "./tenantStore";
 import { useTenantBrandingStore } from "./tenantBrandingStore";
@@ -32,15 +33,34 @@ interface AuthState {
   // Resolves with { mfaRequired: true, mfaToken } when the account has MFA
   // enabled — the caller must then call completeMfaLogin. Otherwise the user is
   // authenticated on resolve.
+  // P10-16: resolves with { passwordChangeRequired: true, passwordChangeToken }
+  // when a one-time password was just used — no session exists; the caller
+  // must replace the password (authService.completeFirstSignIn), then sign in.
   login: (
     username: string,
     password: string,
-  ) => Promise<{ mfaRequired: boolean; mfaToken?: string }>;
+    /** A-288: the position, sent only after a 403 LOCATION_REQUIRED. */
+    location?: SignInLocation,
+  ) => Promise<{
+    mfaRequired: boolean;
+    mfaToken?: string;
+    passwordChangeRequired?: boolean;
+    passwordChangeToken?: string;
+  }>;
   // A-141: `useRecoveryCode` sends `code` as a one-time recovery code.
   completeMfaLogin: (
     mfaToken: string,
     code: string,
     useRecoveryCode?: boolean,
+    location?: SignInLocation,
+  ) => Promise<void>;
+  // P10-10: a passwordless passkey sign-in — the assertion already verified
+  // the user (a UV passkey is the second factor, Q-46), so this always ends
+  // with a session. A-288: `location` only after a 403 LOCATION_REQUIRED.
+  loginWithPasskey: (
+    ceremonyId: string,
+    credential: AssertionJSON,
+    location?: SignInLocation,
   ) => Promise<void>;
   // A-60: redeems the one-time code from the SSO redirect. The tokens never
   // reach the browser; the server route sets the httpOnly cookies.
@@ -149,7 +169,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     }
   },
 
-  login: async (username: string, password: string) => {
+  login: async (username: string, password: string, location?: SignInLocation) => {
     set({ isLoading: true, error: null });
     // A password login establishes the caller's OWN tenant. Drop any tenant
     // override left by a path that never ran logout (e.g. the 401 redirect,
@@ -157,16 +177,31 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     deleteCookie("x_tenant_id");
     deleteCookie("impersonating");
     try {
-      const response = await authService.login({ user: username, password });
+      const response = await authService.login(
+        location ? { user: username, password, location } : { user: username, password },
+      );
       // Actual backend response: { success, status, message, data: user, token, session }
 
       // MFA-enabled account: the backend returns data.mfaRequired plus a
       // short-lived token instead of a session. Stay unauthenticated and hand
       // the temp token back so the caller can drive the second-factor step.
-      const mfaData = response.data as User & { mfaRequired?: boolean };
+      const mfaData = response.data as User & {
+        mfaRequired?: boolean;
+        passwordChangeRequired?: boolean;
+      };
       if (mfaData?.mfaRequired) {
         set({ isLoading: false });
         return { mfaRequired: true, mfaToken: response.token };
+      }
+      // P10-16 (ADR-099): a one-time password's first (and only) use. Stay
+      // unauthenticated; the token opens nothing but the password change.
+      if (mfaData?.passwordChangeRequired) {
+        set({ isLoading: false });
+        return {
+          mfaRequired: false,
+          passwordChangeRequired: true,
+          passwordChangeToken: response.token,
+        };
       }
 
       const userData = response.data;
@@ -207,6 +242,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     mfaToken: string,
     code: string,
     useRecoveryCode = false,
+    location?: SignInLocation,
   ) => {
     set({ isLoading: true, error: null });
     try {
@@ -214,6 +250,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
         mfaToken,
         code,
         useRecoveryCode,
+        location,
       );
       const userData = response.data;
       const enrichedUser = {
@@ -241,6 +278,34 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
       const message =
         error instanceof Error ? error.message : "MFA verification failed";
       set({ isLoading: false, error: message, isAuthenticated: false });
+      throw error;
+    }
+  },
+
+  loginWithPasskey: async (ceremonyId: string, credential: AssertionJSON, location?: SignInLocation) => {
+    set({ isLoading: true, error: null });
+    deleteCookie("x_tenant_id");
+    deleteCookie("impersonating");
+    try {
+      const response = await authService.passkeyVerify(ceremonyId, credential, location);
+      const userData = response.data;
+      const enrichedUser = {
+        ...userData,
+        firstName: userData?.firstName || userData?.first_name || "",
+        lastName: userData?.lastName || userData?.last_name || "",
+        picture: userData?.picture || userData?.avatarUrl || "",
+        roleId: userData?.roleId || null,
+        role: userData?.role || null,
+      } as User;
+      set({
+        user: enrichedUser,
+        avatarUrl: enrichedUser?.picture || "",
+        isAuthenticated: true,
+        isLoading: false,
+        error: null,
+      });
+    } catch (error: unknown) {
+      set({ isLoading: false, isAuthenticated: false });
       throw error;
     }
   },

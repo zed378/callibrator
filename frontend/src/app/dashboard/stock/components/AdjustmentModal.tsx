@@ -1,6 +1,7 @@
 // src/app/dashboard/stock/components/AdjustmentModal.tsx
 import React from "react";
 import {
+  Alert,
   Dialog,
   FormField,
   Input,
@@ -29,6 +30,8 @@ interface AdjustmentModalProps {
     }>
   >;
   onSubmit: (e: React.FormEvent) => void;
+  /** F-19: a refused save, shown inside the dialog (a page alert sits behind it). */
+  error?: string | null;
 }
 
 export const AdjustmentModal: React.FC<AdjustmentModalProps> = ({
@@ -38,6 +41,7 @@ export const AdjustmentModal: React.FC<AdjustmentModalProps> = ({
   form,
   setForm,
   onSubmit,
+  error = null,
 }) => {
   return (
     <Dialog
@@ -47,6 +51,11 @@ export const AdjustmentModal: React.FC<AdjustmentModalProps> = ({
       size="md"
     >
       <form onSubmit={onSubmit} className="space-y-4">
+        {error && (
+          <div role="alert">
+            <Alert variant="error">{error}</Alert>
+          </div>
+        )}
         <div className="p-3 bg-muted/40 rounded-xl">
           <div className="text-xs text-muted-foreground">Adjusting Inventory For:</div>
           <div className="font-bold text-foreground">{selectedStock?.itemName}</div>

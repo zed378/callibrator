@@ -1,6 +1,7 @@
 const ticketService = require("../services/ticket.service");
 const { asyncHandler } = require("../utils/controllerWrapper.util");
 const { success } = require("../utils/response.util");
+const { auditPrincipal } = require("../utils/auditPrincipal.util");
 
 exports.listTickets = asyncHandler(async (req, res) => {
   const { status, priority, category, assignedTo, mine, q, page, limit } =
@@ -29,7 +30,7 @@ exports.getTicket = asyncHandler(async (req, res) => {
 });
 
 exports.createTicket = asyncHandler(async (req, res) => {
-  const ticket = await ticketService.createTicket(req.user, req.body);
+  const ticket = await ticketService.createTicket(req.user, req.body, auditPrincipal(req));
   success(res, ticket, null, "Ticket created", 201);
 });
 
@@ -38,6 +39,7 @@ exports.updateTicket = asyncHandler(async (req, res) => {
     req.user,
     req.params.ticketId,
     req.body,
+    auditPrincipal(req),
   );
   success(res, ticket, null, "Ticket updated");
 });
@@ -47,12 +49,13 @@ exports.assignTicket = asyncHandler(async (req, res) => {
     req.user,
     req.params.ticketId,
     req.body.assignedTo,
+    auditPrincipal(req),
   );
   success(res, ticket, null, "Ticket assigned");
 });
 
 exports.deleteTicket = asyncHandler(async (req, res) => {
-  const result = await ticketService.deleteTicket(req.user, req.params.ticketId);
+  const result = await ticketService.deleteTicket(req.user, req.params.ticketId, auditPrincipal(req));
   success(res, result, null, "Ticket deleted");
 });
 
@@ -61,6 +64,7 @@ exports.addComment = asyncHandler(async (req, res) => {
     req.user,
     req.params.ticketId,
     req.body,
+    auditPrincipal(req),
   );
   success(res, comment, null, "Comment added", 201);
 });

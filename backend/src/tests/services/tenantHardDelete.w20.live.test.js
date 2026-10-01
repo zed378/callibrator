@@ -12,12 +12,20 @@
  *    naming each retained table, while any regulated record remains, and
  *    writes its own audit row when it does run.
  *
- * OPT-IN — needs a database built by db.sync() of the current models plus
- * every migration (migrator.up()):
+ * OPT-IN — needs a PostgreSQL server where DB_USER may CREATE DATABASE:
  *
- *   W20_PG_LIVE_TEST=1 DB_HOST=... DB_PORT=... DB_NAME=... DB_USER=... DB_PASS=... \
+ *   W20_PG_LIVE_TEST=1 DB_HOST=... DB_PORT=... DB_USER=... DB_PASS=... \
  *     npm test -- src/tests/services/tenantHardDelete.w20.live --coverage=false
+ *
+ * ADR-095 O-2: the suite builds its own database as the backend boots
+ * (db.sync() + every migration, 0091 included) and runs as `callibrator_app`.
+ * Its audit row is append-only, so the suite does not delete it (0091 refuses
+ * that for the owner too): the database is dropped afterwards
+ * (fixtures/disposableDatabase.ts). DB_NAME is not used.
  */
+const { createDisposableDatabase, LIVE_BOOT_TIMEOUT_MS } = require("../fixtures/disposableDatabase");
+const { bootSchemaAsApplicationRole } = require("../fixtures/liveBoot");
+
 const live = process.env.W20_PG_LIVE_TEST === "1" ? describe : describe.skip;
 
 const T = "20202020-0000-4000-8000-0000000000a1";
@@ -30,18 +38,14 @@ live("W-20 — the audit trail survives a tenant delete (live PostgreSQL)", () =
   const auditRows = async () =>
     Number((await q("SELECT count(*)::int AS n FROM audit_logs WHERE tenant_id = :t", { t: T }))[0].n);
 
-  const cleanup = async () => {
-    // audit rows are append-only in spirit; this test's own rows are removed
-    // so a re-run starts clean.
-    await q("DELETE FROM audit_logs WHERE tenant_id = :t", { t: T });
-    await q("DELETE FROM tenants WHERE id = :t", { t: T });
-  };
+  let scratch;
 
   beforeAll(async () => {
+    scratch = await createDisposableDatabase("w20");
     ({ db } = require("../../config"));
     db.options.logging = false;
     require("../../models");
-    await cleanup();
+    await bootSchemaAsApplicationRole(db);
     await q(
       `INSERT INTO tenants (id, name, subdomain, email, status, offboarded_at, offboard_retention_expires_at, created_at, updated_at)
        VALUES (:t, 'w20-live', 'w20-live', 'w20@example.test', 'deleted', now() - interval '60 days', now() - interval '30 days', now(), now())`,
@@ -52,13 +56,26 @@ live("W-20 — the audit trail survives a tenant delete (live PostgreSQL)", () =
        VALUES (gen_random_uuid(), :t, 'system', 'system:tenant-lifecycle', 'UPDATE', 'Tenant', :t, '{"operation":"TENANT_OFFBOARD"}', now())`,
       { t: T },
     );
-  });
+  }, LIVE_BOOT_TIMEOUT_MS);
 
   afterAll(async () => {
     if (db) {
-      await cleanup();
       await db.close();
     }
+    if (scratch) {
+      await scratch.drop();
+    }
+  }, LIVE_BOOT_TIMEOUT_MS);
+
+  it("runs as the application role, which can neither delete nor truncate an audit row", async () => {
+    const [row] = await q(
+      `SELECT current_user AS u, has_table_privilege('audit_logs', 'DELETE') AS d,
+              has_table_privilege('audit_logs', 'TRUNCATE') AS t`,
+    );
+    expect(row).toEqual({ u: "callibrator_app", d: false, t: false });
+    const err = await q("DELETE FROM audit_logs WHERE tenant_id = :t", { t: T }).catch((e) => e);
+    expect(err.message).toMatch(/permission denied for table audit_logs/);
+    expect(await auditRows()).toBe(1);
   });
 
   it("the constraint itself: audit_logs.tenant_id is ON DELETE RESTRICT", async () => {

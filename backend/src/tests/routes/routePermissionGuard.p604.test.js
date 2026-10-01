@@ -22,7 +22,7 @@
  *
  * A route passes when its chain holds a gate, or when it is listed in
  * `constants/routeGateExemptions.js` with a kind the chain agrees with (see
- * that file). The routes `index.js` and `docs/swagger.js` register directly on
+ * that file). The routes `index.js` and `docs/apiDocs.ts` register directly on
  * the app cannot be required without booting the server, so they are read from
  * source text and must all be listed.
  *
@@ -57,7 +57,7 @@ const {
 const SRC = path.join(__dirname, "..", "..");
 const ROUTES_DIR = path.join(SRC, "routes");
 const INDEX_FILE = path.join(SRC, "..", "index.js");
-const SWAGGER_FILE = path.join(SRC, "docs", "swagger.js");
+const API_DOCS_FILE = path.join(SRC, "docs", "apiDocs.ts"); // P9-25 (ADR-103): was docs/swagger.js
 
 // ---------------------------------------------------------------------------
 // Tag the gate factories before any router is loaded.
@@ -109,7 +109,9 @@ const listJs = (dir) =>
       return listJs(full);
     }
     // ADR-087 Amendment 4: .ts too — a converted file must not leave this guard.
-    return /\.(js|ts)$/.test(entry.name) ? [full] : [];
+    // P9-25 (ADR-103): a route's `*.openapi.ts` contract module and a `.d.ts`
+    // are not route modules — they export no router.
+    return /\.(js|ts)$/.test(entry.name) && !/\.(openapi|d)\.ts$/.test(entry.name) ? [full] : [];
   });
 
 const isRouter = (value) => typeof value === "function" && Array.isArray(value.stack);
@@ -159,7 +161,7 @@ const walkRouter = (router, file) => {
 /**
  * Routes registered directly on the app in a source file, read from text.
  *
- * @param {string} source - index.js or docs/swagger.js source
+ * @param {string} source - index.js or docs/apiDocs.ts source
  * @returns {string[]} "METHOD /path" keys
  */
 const appRoutesIn = (source) => {
@@ -351,7 +353,7 @@ beforeAll(() => {
     routerCount,
     appRoutes: {
       "index.js": appRoutesIn(fs.readFileSync(INDEX_FILE, "utf8")),
-      "docs/swagger.js": appRoutesIn(fs.readFileSync(SWAGGER_FILE, "utf8")),
+      "docs/apiDocs.ts": appRoutesIn(fs.readFileSync(API_DOCS_FILE, "utf8")),
     },
   };
 });
@@ -385,8 +387,25 @@ describe("P6-04 — every route carries a permission gate or a reviewed exemptio
   it("every route module is mounted by index.js (an unmounted router is dead or forgotten)", () => {
     const index = fs.readFileSync(INDEX_FILE, "utf8");
     const unmounted = [];
+    // P9-25 (ADR-103): the API reference's routers are mounted by docs/apiDocs.ts,
+    // under SWAGGER_ENABLED — imported there, and each app.use()d there.
+    const MOUNTED_BY_API_DOCS = {
+      "./src/routes/internal/apiDocs.route": ["apiDocsRoutes", "apiDocsSpecRoutes"],
+    };
+    const apiDocsSource = fs.readFileSync(API_DOCS_FILE, "utf8");
     for (const file of ROUTE_FILES) {
       const rel = `./src/routes/${path.relative(ROUTES_DIR, file).split(path.sep).join("/").replace(/\.(js|ts)$/, "")}`;
+      if (MOUNTED_BY_API_DOCS[rel]) {
+        if (!apiDocsSource.includes(`from "${rel.replace("./src/", "../")}"`)) {
+          unmounted.push(`${rel}: not imported by docs/apiDocs.ts`);
+        }
+        for (const name of MOUNTED_BY_API_DOCS[rel]) {
+          if (!new RegExp(`app\\.use\\(\\s*["'][^"']+["']\\s*,\\s*${name}\\s*\\)`).test(apiDocsSource)) {
+            unmounted.push(`${rel}: ${name} never app.use()d by docs/apiDocs.ts`);
+          }
+        }
+        continue;
+      }
       const req = index.match(
         new RegExp(`const\\s+(\\{[^}]*\\}|[A-Za-z_$][\\w$]*)\\s*=\\s*require\\(["']${rel.replace(/[.]/g, "\\.")}(?:\\.js)?["']\\)`),
       );

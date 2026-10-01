@@ -25,7 +25,7 @@ Everything below is grounded in the code as of 2026-09-10. If you find a claim h
 | Frontend | Next.js 16 · React 19 · TypeScript · Tailwind 4 · Zustand · **Multi-Frontend & Shared Component Architecture** (root-level `shared/` area) |
 | Realtime | Socket.IO, both ends (ADR-031) |
 | Infra | Redis · RabbitMQ · MQTT client (external broker, optional) · ClamAV · pgvector |
-| Scale | **53** route modules (+2 internal) · **71** models · **674** backend test files · **467** backend source files (counted 2026-09-27: `routes/api/*.route.js`; `models/*.model.js`, not `models/index.js`; `*.test.js`/`*.test.ts` under `backend/src/tests`; every non-test `.js`/`.ts` under `backend/src`, migrations and scripts included — 0 of them `.ts` then; since 2026-09-29, 97 modules are `.ts` (all constants, 30 of 36 utils including `tenantScope`, `jobContext` and `upload`, the `activityLog`/`tenantContext` middlewares, `validators/iot.validator`, `config/env`, and 46 of 71 models — P9-10 batches 1–6 — with `models/initModel`, ADR-087 Amendments 6–9; the models barrel is still `.js`), backend source runs through `tsx` or the built `dist/`, never plain `node src/…`, and **a new backend `.js` file — test files included — fails `npm run ratchet`** (in `make verify`, CI and the pre-push hook). The previous row said 71 / 359 / 375 on 2026-09-23; counts are dated snapshots, re-count before quoting) |
+| Scale | **53** route modules (+2 internal) · **71** models · **674** backend test files · **467** backend source files (counted 2026-09-27: `routes/api/*.route.js`; `models/*.model.js`, not `models/index.js`; `*.test.js`/`*.test.ts` under `backend/src/tests`; every non-test `.js`/`.ts` under `backend/src`, migrations and scripts included — 0 of them `.ts` then; since 2026-09-29, 125 modules are `.ts` (all constants, 30 of 36 utils including `tenantScope`, `jobContext` and `upload`, the `activityLog`/`tenantContext` middlewares, `validators/iot.validator`, `config/env`, all 71 models and the barrel `models/index.ts` — P9-10 DONE, ADR-087 Amendments 6–11 — so `require("../models")` is typed and `db` from it is a compile error), backend source runs through `tsx` or the built `dist/`, never plain `node src/…`, and **a new backend `.js` file — test files included — fails `npm run ratchet`** (in `make verify`, CI and the pre-push hook). The previous row said 71 / 359 / 375 on 2026-09-23; counts are dated snapshots, re-count before quoting) |
 | Compliance | ISO 17025 · FDA 21 CFR Part 11 · ISO 13485 · GDPR · KARS · SNARS |
 
 ## Before You Start
@@ -176,7 +176,7 @@ Three rules that catch a worthless test:
 
 Two claims currently live in this repository, and both are stated carefully on purpose:
 
-- The Helm charts **render**. No cluster has been reachable, so they are **not known to deploy**.
+- The Helm charts **install, upgrade and serve on ONE local kind cluster** (P7-06, ADR-106, 2026-09-30): a single node, kindnet, local-path volumes, ingress-nginx and throwaway datastores, with the backend image built from `ce74932`. That is **not a production cluster**: no managed CNI, real StorageClass, second node, cert-manager or external secrets was involved, and the prod/staging values files were only rendered. They are **not known to deploy to production**. With the shipped `FORCE_HTTPS: "true"`, browser sign-in through the frontend fails (A-310, open).
 - The E2E suite **passed in one uninterrupted run, twice in a row, on 2026-09-28** (P6-02, ADR-077) — on a local compose stack, by hand. **CI does not run it** (A-19), so a later change can break it unnoticed.
 
 Do not round these up. `TASKS/BACKLOG.md` § Unverified Claims lists all six of them.
@@ -188,7 +188,7 @@ Do not round these up. `TASKS/BACKLOG.md` § Unverified Claims lists all six of 
 2. if "Spec required", write MEMORY/specs/<task-id>-<slug>.md FIRST
 3. branch:   feat/P6-04-route-permission-guard
 4. implement
-5. verify:   make verify      (lint · typecheck · test · build)
+5. verify:   make verify      (lint · typecheck · test · build · load-check)
              make test-e2e    (against a running server)
 6. record:   MEMORY/records/  + MEMORY-INDEX + CHANGELOG + ADR if a decision
 7. update:   TASKS/PROGRESS.md — in the SAME commit
@@ -202,10 +202,19 @@ Do not round these up. `TASKS/BACKLOG.md` § Unverified Claims lists all six of 
 ```bash
 make help          # every target
 make dev           # local stack
-make verify        # the gate — manual; no hook or CI runs it
-make test-e2e      # 53 live specs, running server required
+make verify        # lint · ts-ratchet · typecheck · test · build · load-check — by hand; CI runs the same stages
+cd backend && npm run load:check [-- --src]  # every module loads: dist/ under node, src/ under tsx (ADR-087 Am. 15)
+make test-e2e      # 53 live specs, running server required (not in verify, not in CI)
 make migrate       # then: make migrate-verify — the log is not evidence
+make hooks         # opt in to the pre-push hook (gitleaks, lint ratchet, typecheck, ts-ratchet)
+
+node scripts/ci/eslint-ratchet.js        # backend lint gate, from the repo root: baseline 0 errors (ADR-092)
+cd backend && npm run typecheck          # TypeScript 7 (frontend: the same script)
+cd backend && npm run ratchet            # fails on any new .js file, tests included (ADR-087)
+cd backend && npx eslint <file>          # on every file you change — the gate lints src/ only
 ```
+
+`make` is not installed on every workstation; each target is one or two commands in the `Makefile`, runnable directly. **Backend source runs through `tsx`** (`npm start` = `node --import tsx index.js`, `npm run dev`, the `migrate*` scripts): plain `node` on backend source fails with `MODULE_NOT_FOUND` at the first `.ts` module (ADR-087). Full command table: [`docs/ENGINEERING/10-TOOLING-LINT-FORMAT.md`](docs/ENGINEERING/10-TOOLING-LINT-FORMAT.md).
 
 **Run backend tests through the npm scripts** (`npm test`, `npm run test:coverage`), not bare
 `npx jest`. Since A-99 the scripts pass `--experimental-vm-modules`, because the real `otplib` 13
@@ -214,8 +223,10 @@ import to load ES Module".
 
 **Type-check with `npm run typecheck`, never bare `npx tsc`** (ADR-076). Two TypeScripts are
 installed: `@typescript/native` is TypeScript 7.0.2, the compiler, and `typescript` is the TypeScript 6
-compatibility package that typescript-eslint, `next build` and ts-jest need for its API. Both claim the
-`tsc` bin name, and `npx tsc` resolves to **6**, silently. Node is **26**, pinned by the root `.nvmrc`.
+compatibility package that typescript-eslint, `next build` and ts-jest need for its API. `npx tsc` is
+**not** TypeScript 7: ADR-076 found it resolving to 6, silently, and on 2026-09-29 it failed outright
+with `MODULE_NOT_FOUND` (the 6 package's binary is `tsc6`). Jest type-checks nothing, so the typecheck
+is the only type gate. Node is **26**, pinned by the root `.nvmrc`.
 
 ## Code Style
 
@@ -224,11 +235,25 @@ Match the surrounding code. Both workspaces have standards documents:
 - [`docs/BACKEND/00-BACKEND-STANDARDS.md`](docs/BACKEND/00-BACKEND-STANDARDS.md)
 - [`docs/FRONTEND/00-FRONTEND-STANDARDS.md`](docs/FRONTEND/00-FRONTEND-STANDARDS.md)
 
-**New backend code is TypeScript, held to [`docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md`](docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md)** — `strict` plus the ADR-038 flags, no `any`. Do not half-convert an existing `.js` file while editing it; conversion is module by module under Phase 9, and a conversion never changes behaviour. Until a file is converted, JSDoc on its exports is the only type information it has.
+Also [`docs/ENGINEERING/09-TESTING-CONVENTIONS.md`](docs/ENGINEERING/09-TESTING-CONVENTIONS.md), [`10-TOOLING-LINT-FORMAT.md`](docs/ENGINEERING/10-TOOLING-LINT-FORMAT.md) and the PR checklist [`14-CODE-REVIEW-CHECKLIST.md`](docs/ENGINEERING/14-CODE-REVIEW-CHECKLIST.md).
 
-**Do not describe the backend as TypeScript in a document until the module it describes is converted.** Backend documents state TypeScript as the *target* and label current behaviour *as-built* — writing the target as fact is PR-4, the failure this file opens with.
+**The backend is mixed JavaScript and TypeScript, CommonJS, today** (ADR-087): `constants/`, `models/` (and the barrel), `validators/`, most of `utils/`, `config/env.ts` and three middlewares are `.ts`; controllers, services, routes and most middlewares are still `.js`.
 
-Do not disable React Compiler lint rules to make a build pass. The rule is usually right about the component.
+**New backend code is TypeScript — tests included — held to [`docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md`](docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md)**: `strict` plus the ADR-038 flags, no `any`, reasons on every `@ts-expect-error` and `eslint-disable`. `npm run ratchet` fails on a new `.js` file. Do not half-convert an existing `.js` file while editing it; conversion is module by module under Phase 9, **leaf-first**, and never changes behaviour — it is proved by an identity check, not asserted (04 § Converting a Module). Until a file is converted, JSDoc on its exports is the only type information it has.
+
+The as-built conventions a new `.ts` file follows (each is a lint error, a guard or a compile error, not a preference):
+
+- **Raw SQL through `sql()`** (`utils/sql.util.ts`, P9-07): bind parameters only, the tenant predicate **bound** (`tenant_id = $n`). A direct `sequelize.query` in `.ts` is a lint error.
+- **Validation through `validate(schema, { from })`** (Zod, P9-11): the only middleware form; a `.ts` handler reads `validated(req, schema)`. Controllers and services use `validateInput` / `checkInput` from `validators/input.ts`.
+- **Configuration through `config/env.ts`** (`env`, `envOr`, `isProduction`); `process.env` outside `src/config/` is a lint error.
+- **Shared types in `src/types/`**; a brand assertion (`as TenantId`) only in `src/types/ids.ts`; `skipTenantScope` is typed there too (`sequelize.d.ts`).
+- **Models** follow `initModel` with `export =` (04 § Models); the barrel is typed.
+- **Logging** through the winston `logger`; `console.*` only in the six CLIs of `src/scripts/`.
+- **Tests:** a new `:id` route gets `twoTenantSuite` + `memoryDb` and an `@two-tenant` marker; a grant or trigger test on PostgreSQL runs as `callibrator_app`.
+
+**Do not describe a backend module as TypeScript in a document until that module is converted.** Backend documents state TypeScript as the *target* and label current behaviour *as-built* — writing the target as fact is PR-4, the failure this file opens with.
+
+Frontend (ADR-071, ADR-090): pages render per request under a nonce CSP — no inline `<script>`, no `<style>` element without the nonce, no third-party image origin; one `<main>` and one `<h1>` per page; icon-only controls named after their object; colours from the theme tokens. Do not disable React Compiler lint rules to make a build pass. The rule is usually right about the component.
 
 ## What Is Currently Failing
 
@@ -239,7 +264,7 @@ Stated here because an agent reading a green board and finding a red gate wastes
 | Backend unit coverage gate (100%) | **passing** — 683 suites passed (24 skipped), 12,890 tests, 100% statements / branches / functions / lines, Node 26.10.0, `npm run test:coverage -- --ci`, 2026-09-28 (`MEMORY/records/2026-09-28-p9-helper-lint-baseline-coverage.md`). Run it on the Node major pinned in the root `.nvmrc` (26, A-257/ADR-076): a global setup refuses any other major. **Models are outside the 100% figure** (ADR-085, ADR-092) — measured separately at 93.5% statements, 65.58% branches. Quote a count only from a run on a quiet tree |
 | Backend lint | **0 errors**, ratchet baseline **0** (ADR-092, P9-02a), 2026-09-28 — so every change must lint clean: run `npx eslint <file>` in `backend/`. Warnings are not zero (263 `no-unused-vars`, 19 `no-console` open under P9-02a) |
 | Live E2E in one uninterrupted run | **achieved 2026-09-28, twice** (P6-02, ADR-077; again at the P9-00 baseline `35ebd76`, ADR-092): 53 of 53 specs, 392 tests, on a disposable compose stack. **Not in CI**, and never run against the reference deployment |
-| Still open | CI has **never run on GitHub** (P7-01); the Helm charts render but are not known to deploy; `make verify` includes `typecheck`, which the TypeScript ratchet governs (ADR-087) — check `TASKS/PROGRESS.md` for its current state before assuming it is green |
+| Still open | CI has **never run on GitHub** (P7-01); the Helm charts are proven on one kind cluster only, not on a production cluster (ADR-106), and sign-in under `FORCE_HTTPS=true` fails (A-310); `make verify` includes `typecheck`, which the TypeScript ratchet governs (ADR-087) — check `TASKS/PROGRESS.md` for its current state before assuming it is green |
 
 ## If You Are Unsure
 

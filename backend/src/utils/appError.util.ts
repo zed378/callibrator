@@ -4,7 +4,7 @@
  *
  * P9-09 (ADR-087): converted from appError.util.js with no behaviour change.
  * The hierarchy is typed here; `details` stays `unknown` because callers pass
- * Joi detail arrays, objects and strings alike.
+ * validation detail arrays (`{ message }` items), objects and strings alike.
  */
 
 import { isProduction } from "../config/env";
@@ -132,7 +132,7 @@ class InternalServerError extends AppError {
   }
 }
 
-/** A validation detail as Joi reports it; only `message` is read. */
+/** A validation detail (`{ field?, message }`); only `message` is read. */
 interface MessageDetail {
   message: unknown;
 }

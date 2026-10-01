@@ -21,6 +21,9 @@ module.exports = {
   testEnvironment: "node",
   // A-257: fail once, clearly, on a Node major other than the root .nvmrc's.
   globalSetup: "<rootDir>/src/tests/setup/nodeMajor.globalSetup.js",
+  // S-20 / A-331 (ADR-100 Amendment 4): scan every real Express response body
+  // for credential material; a finding fails the test.
+  setupFilesAfterEnv: ["<rootDir>/src/tests/setup/secretScan.setup.ts"],
   testMatch: [
     "**/__tests__/**/*.js",
     "**/__tests__/**/*.ts",
@@ -62,8 +65,10 @@ module.exports = {
     "src/services/**/*.ts",
     "src/utils/**/*.js",
     "src/utils/**/*.ts",
-    "src/validators/**/*.js",
     "src/validators/**/*.ts",
+    // A declaration file (`x.d.ts` beside a still-JavaScript module, P9-12) emits
+    // nothing; it is types for the `.js` that IS measured, never code to cover.
+    "!src/**/*.d.ts",
   ],
   coverageDirectory: "coverage",
   coveragePathIgnorePatterns: [

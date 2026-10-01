@@ -112,6 +112,22 @@ describe("customDomainService", () => {
       expect(res[0].type).toBe("CNAME");
     });
 
+    it("reads the TXT and CNAME records out of the backend's instructions object", async () => {
+      // customDomains.service getDnsVerificationInstructions — the real answer.
+      mockedApi.get.mockResolvedValueOnce(
+        envelope({
+          verification: { type: "TXT", name: "_domain_verify.clinic.example", value: "tok" },
+          cname: { type: "CNAME", name: "clinic.example", value: "cname.callibrator.io." },
+          instructions: ["1. Add the TXT record"],
+        }),
+      );
+
+      await expect(customDomainService.getDnsRecords("d1")).resolves.toEqual([
+        { type: "TXT", name: "_domain_verify.clinic.example", value: "tok" },
+        { type: "CNAME", name: "clinic.example", value: "cname.callibrator.io." },
+      ]);
+    });
+
     it("returns [] when there are no records", async () => {
       mockedApi.get.mockResolvedValueOnce(envelope(null));
       await expect(customDomainService.getDnsRecords("d1")).resolves.toEqual([]);

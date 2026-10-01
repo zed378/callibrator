@@ -51,6 +51,15 @@ const UNSCOPED = Object.freeze({
   Post: { group: "global", why: "platform CMS; slugs globally unique by design (Reference Table 2, rank 8)" },
   Category: { group: "global", why: "platform CMS taxonomy (rank 7)" },
   PostCategory: { group: "global", why: "join of two global CMS tables" },
+  AccessRequest: {
+    group: "global",
+    why: "P10-05 (ADR-098 §6): a request precedes any tenant; public intake writes, the queue is super-admin only (admin router rbac)",
+  },
+  WebauthnCredential: {
+    group: "child",
+    parentKeys: ["userId"],
+    why: "ADR-108 Am. 1: a user's passkey; every query names the owning user (the caller, or the account a credential id names before sign-in)",
+  },
   UserMenuPermission: {
     group: "child",
     parentKeys: ["userId"],
@@ -83,6 +92,19 @@ const UNSCOPED = Object.freeze({
  * and why each is safe. A new one fails until it is reviewed here.
  */
 const REVIEWED_WITHOUT_PARENT = Object.freeze({
+  // ADR-108 Amendment 1: a passkey found by its credential id, globally unique.
+  "services/passkeyLogin.service.ts WebauthnCredential.findOne": {
+    count: 1,
+    why:
+      "the passwordless sign-in: the credential id NAMES the account (pre-authentication, no " +
+      "caller yet); its owner is then loaded and every sign-in rule applied to that owner",
+  },
+  "services/webauthn.service.ts WebauthnCredential.count": {
+    count: 1,
+    why:
+      "verifyRegistration's duplicate check: is this credential id enrolled on ANY account (the " +
+      "unique index would refuse it); only the yes/no is used, as a 409, and no row is read",
+  },
   "services/kanban.service.js KanbanProjectMember.findAll": {
     count: 1,
     why:

@@ -8,11 +8,12 @@
  * included. A mock of `response.util` would prove the test, not the contract
  * (CLAUDE.md, Evidence) — nothing here is mocked.
  *
- * The expected strings in the tests are literals copied from what the Joi
- * validators answer on 2026-09-28. They pin behaviour; they do not judge it.
- * When P9-11 moves a validator to Zod, its test must keep passing unchanged —
- * that is the byte compatibility the P9-11 card asks for
- * (MEMORY/specs/P9-11-validation-error-contract.md).
+ * The expected strings in the tests are literals. They were recorded from the
+ * previous validators on 2026-09-28 and re-recorded from the Zod validators when
+ * P9-11 moved them (ADR-093: the owner kept the status, the envelope, the
+ * top-level message and the production rule, and let the wording inside
+ * `details` change; ADR-093 lists every changed string). They pin behaviour;
+ * they do not judge it (MEMORY/specs/P9-11-validation-error-contract.md).
  */
 import express from "express";
 import type { ErrorRequestHandler, RequestHandler } from "express";
@@ -127,7 +128,7 @@ export async function send(request: ProbeRequest): Promise<WireResponse> {
  * key order and spacing are part of the assertion.
  *
  * @param mode - production omits `details`
- * @param details - the field errors, in Joi's order
+ * @param details - the field errors, in the schema's order
  * @returns the JSON text of the 400 body
  */
 export function expectedValidationBody(mode: Mode, details: readonly FieldError[]): string {
@@ -141,7 +142,7 @@ export function expectedValidationBody(mode: Mode, details: readonly FieldError[
   return `${base},"details":[${items}]}`;
 }
 
-/** A schema as `validate()` takes it — a Joi schema today, whatever P9-11 exports tomorrow. */
+/** A schema as `validate()` takes it (a Zod schema since P9-11). */
 export type ValidatorSchema = Parameters<typeof validate>[0];
 
 /**
@@ -163,43 +164,4 @@ export async function expectValidationContract(
     expect(wire.contentType).toBe(JSON_CONTENT_TYPE);
     expect(wire.text).toBe(expectedValidationBody(mode, details));
   }
-}
-
-/** How a validator file's own `validate(data, schema)` helper ended. */
-export type HelperOutcome =
-  | { readonly kind: "returned"; readonly value: unknown }
-  | { readonly kind: "thrownError"; readonly message: string }
-  | { readonly kind: "thrownValue"; readonly value: unknown };
-
-/**
- * Call a validator file's own helper and record how it ended, so a test can
- * pin the shape the controllers receive.
- *
- * @param fn - the call to make
- * @returns the returned value, or what was thrown
- */
-export function captureHelper(fn: () => unknown): HelperOutcome {
-  try {
-    return { kind: "returned", value: fn() };
-  } catch (err: unknown) {
-    if (err instanceof Error) {
-      return { kind: "thrownError", message: err.message };
-    }
-    return { kind: "thrownValue", value: err };
-  }
-}
-
-/**
- * The field errors of a Joi result, as the helper's caller maps them — for a
- * helper that returns Joi's `{ error, value }` instead of throwing.
- *
- * @param outcome - a "returned" outcome whose value is a Joi validation result
- * @returns each detail's path and message, in order
- */
-export function joiResultDetails(outcome: HelperOutcome): FieldError[] {
-  if (outcome.kind !== "returned") {
-    throw new Error(`expected the helper to return, it ended as ${outcome.kind}`);
-  }
-  const result = outcome.value as { error?: { details: { path: (string | number)[]; message: string }[] } };
-  return (result.error?.details ?? []).map((d) => ({ field: d.path.join("."), message: d.message }));
 }

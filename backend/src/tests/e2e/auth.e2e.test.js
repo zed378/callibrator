@@ -21,6 +21,8 @@ const {
   extractRefreshToken,
   authHeader,
 } = require("./setup");
+// P10-16 (ADR-099): no default operator password — set E2E_OPERATOR_PASSWORD (see setup.js).
+const { OPERATOR_PASSWORD } = require("./setup");
 
 // Test user credentials
 const TEST_USER = {
@@ -43,7 +45,7 @@ const HEALTHCARE_ADMIN_ROLE = "HEALTHCARE ADMIN";
 const signer = { email: null, password: null, userId: null, adminToken: null };
 
 async function createSigner() {
-  const op = await httpPost("/auth/login", { user: "sys@mail.com", password: "123123" });
+  const op = await httpPost("/auth/login", { user: "sys@mail.com", password: OPERATOR_PASSWORD });
   signer.adminToken = extractToken(op.body);
   const admin = authHeader(signer.adminToken);
   const roles = await httpGet("/roles?limit=50", admin);
@@ -67,11 +69,12 @@ async function createSigner() {
   );
   signer.userId = created.body.data.id;
   const first = await httpPost("/auth/login", { email: signer.email, password: temporary });
-  const changed = await httpPost(
-    "/auth/just-update-password",
-    { currentPassword: temporary, newPassword: signer.password },
-    authHeader(extractToken(first.body)),
-  );
+  // P10-16 (ADR-099): an administrator-set password is ONE-TIME — its first
+  // sign-in answers a password-change token, spent at /auth/first-sign-in/password.
+  const changed = await httpPost("/auth/first-sign-in/password", {
+    token: extractToken(first.body),
+    newPassword: signer.password,
+  });
   if (changed.status !== 200) {
     throw new Error(`E2E: the refresh signer could not set a password (${changed.status})`);
   }
@@ -90,6 +93,20 @@ describe("E2E Authentication Flow (HTTP)", () => {
     }
   });
   // ─── 1. REGISTER ───────────────────────────────────────────
+  //
+  // P10-12 (Q-44): self-registration is OFF in production unless
+  // SELF_REGISTRATION_ENABLED=true, and the route then answers the app's own
+  // absent-route 404 before validating anything. These tests assert the 400s
+  // where registration is on, and the 404 where it is off (P10-13 found them
+  // failing on a production-mode stack).
+  let registrationOffCache = null;
+  async function registrationIsOff() {
+    if (registrationOffCache === null) {
+      const probe = await httpPost("/auth/register", {});
+      registrationOffCache = probe.status === 404 && /route not found/i.test(String(probe.body?.message));
+    }
+    return registrationOffCache;
+  }
 
   test("POST /auth/register — returns valid response structure", async () => {
     const { status, body } = await httpPost("/auth/register", TEST_USER);
@@ -109,6 +126,10 @@ describe("E2E Authentication Flow (HTTP)", () => {
       password: "TestPass123",
     });
 
+    if (await registrationIsOff()) {
+      expect(status).toBe(404);
+      return;
+    }
     expect(status).toBe(400);
     expect(body).toHaveProperty("message");
     expect(body.success).toBe(false);
@@ -123,6 +144,10 @@ describe("E2E Authentication Flow (HTTP)", () => {
       password: "TestPass123",
     });
 
+    if (await registrationIsOff()) {
+      expect(status).toBe(404);
+      return;
+    }
     expect(status).toBe(400);
     expect(body).toHaveProperty("message");
   });
@@ -136,6 +161,10 @@ describe("E2E Authentication Flow (HTTP)", () => {
       password: "testpass123", // all lowercase
     });
 
+    if (await registrationIsOff()) {
+      expect(status).toBe(404);
+      return;
+    }
     expect(status).toBe(400);
     expect(body).toHaveProperty("message");
   });
@@ -149,6 +178,10 @@ describe("E2E Authentication Flow (HTTP)", () => {
       password: "TestPassNoNumber", // no digit
     });
 
+    if (await registrationIsOff()) {
+      expect(status).toBe(404);
+      return;
+    }
     expect(status).toBe(400);
     expect(body).toHaveProperty("message");
   });
@@ -162,6 +195,10 @@ describe("E2E Authentication Flow (HTTP)", () => {
       password: "TestPass123",
     });
 
+    if (await registrationIsOff()) {
+      expect(status).toBe(404);
+      return;
+    }
     expect(status).toBe(400);
   });
 
@@ -174,6 +211,10 @@ describe("E2E Authentication Flow (HTTP)", () => {
       password: "TestPass123",
     });
 
+    if (await registrationIsOff()) {
+      expect(status).toBe(404);
+      return;
+    }
     expect(status).toBe(400);
   });
 
@@ -344,16 +385,26 @@ describe("E2E Authentication Flow (HTTP)", () => {
   });
 
   // ─── 7. PASSWORD RESET FLOW ────────────────────────────────
+  //
+  // P10-13: these check the SHAPE rules, not the ADR-100 budgets, so they
+  // come from their own client address (the backend trusts one hop, A-16, and
+  // the suite talks to it directly) and an unknown address unique per run.
+  // From the shared address they spent the production password-reset budget
+  // (20 an hour per address, and the window restarts with each request), so
+  // back-to-back runs in production mode failed on 429 by the third.
+  const OTP_CLIENT = {
+    "X-Forwarded-For": `198.18.${Math.floor(Math.random() * 250) + 1}.${Math.floor(Math.random() * 250) + 1}`,
+  };
 
   test("POST /auth/send-otp — 400 without email", async () => {
-    const { status, body } = await httpPost("/auth/send-otp", {});
+    const { status, body } = await httpPost("/auth/send-otp", {}, OTP_CLIENT);
     expect(status).toBe(400);
   });
 
   test("POST /auth/send-otp — returns 200 for unknown email (info leak — should be 404)", async () => {
     const { status } = await httpPost("/auth/send-otp", {
-      email: "nonexistent_user_xyz@test.com",
-    });
+      email: `nonexistent-${Date.now()}@test.com`,
+    }, OTP_CLIENT);
     // Current behavior: returns 200 (info leak). Documented as observation.
     // This is a security concern worth noting.
     expect(status).toBe(200);
@@ -362,14 +413,14 @@ describe("E2E Authentication Flow (HTTP)", () => {
   test("POST /auth/send-otp — 400 on invalid email format", async () => {
     const { status } = await httpPost("/auth/send-otp", {
       email: "not-an-email",
-    });
+    }, OTP_CLIENT);
     expect(status).toBe(400);
   });
 
   test("POST /auth/reset-password — 400 on missing fields", async () => {
     const { status } = await httpPost("/auth/reset-password", {
       email: TEST_USER.email,
-    });
+    }, OTP_CLIENT);
     expect(status).toBe(400);
   });
 
@@ -378,7 +429,7 @@ describe("E2E Authentication Flow (HTTP)", () => {
       email: TEST_USER.email,
       otp: "12345", // 5 digits, needs 6
       password: "NewPass123",
-    });
+    }, OTP_CLIENT);
     expect(status).toBe(400);
   });
 
@@ -387,7 +438,7 @@ describe("E2E Authentication Flow (HTTP)", () => {
       email: TEST_USER.email,
       otp: "123456",
       password: "simple", // too short, no uppercase
-    });
+    }, OTP_CLIENT);
     expect(status).toBe(400);
   });
 

@@ -16,8 +16,16 @@ jest.mock("stripe", () => mockStripeFactory);
 jest.mock("../../models", () => ({
   Subscription: { findOne: jest.fn() },
   Invoice: { findOne: jest.fn(), create: jest.fn() },
-  Tenant: { update: jest.fn() },
+  // A-276 (ADR-094): status decisions read the tenant and save it in a
+  // transaction with their audit rows. No tenant row unless a test sets one.
+  Tenant: { update: jest.fn(), findByPk: jest.fn().mockResolvedValue(null) },
+  TenantSettings: { upsert: jest.fn() },
 }));
+jest.mock("../../config", () => ({ db: { transaction: jest.fn(async (cb) => cb("tx")) } }));
+jest.mock("../../services/audit.service", () => ({ logAction: jest.fn().mockResolvedValue({}) }));
+
+/** A tenant row as the webhook reads it, whose save() records nothing. */
+const tenantRow = (values) => ({ id: "t1", status: "active", suspensionReason: null, suspendedBy: null, save: jest.fn(), ...values });
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
@@ -144,7 +152,7 @@ describe("stripeWebhook.service (coverage)", () => {
         data: { object: { id: "in1", subscription: "sub_x", customer: "cus_1" } },
       });
 
-      expect(r).toEqual({ handled: true, subscriptionId: "sub1" });
+      expect(r).toEqual({ handled: true, subscriptionId: "sub1", tenant: "no-tenant" });
       expect(Subscription.findOne).toHaveBeenNthCalledWith(1, {
         where: { stripeSubscriptionId: "sub_x" },
       });
@@ -244,6 +252,8 @@ describe("stripeWebhook.service (coverage)", () => {
     it("suspends after 3 attempts even when not already past due", async () => {
       const sub = { id: "sub1", tenantId: "t1", status: "Active", update: jest.fn() };
       Subscription.findOne.mockResolvedValue(sub);
+      const tenant = tenantRow();
+      Tenant.findByPk.mockResolvedValueOnce(tenant);
 
       const r = await stripeWebhook.handleEvent({
         type: "invoice.payment_failed",
@@ -252,10 +262,21 @@ describe("stripeWebhook.service (coverage)", () => {
 
       expect(r).toEqual({ handled: true, subscriptionId: "sub1", suspended: true });
       expect(sub.update).toHaveBeenCalledWith({ status: "PastDue" });
-      expect(Tenant.update).toHaveBeenCalledWith(
-        { status: "suspended" },
-        { where: { id: "t1" } },
-      );
+      expect(tenant.status).toBe("suspended");
+    });
+
+    // A-276 (ADR-094)
+    it("a dunning suspension needs a tenant: a subscription with none suspends nothing", async () => {
+      const sub = { id: "sub1", tenantId: null, status: "PastDue", update: jest.fn() };
+      Subscription.findOne.mockResolvedValue(sub);
+
+      const r = await stripeWebhook.handleEvent({
+        type: "invoice.payment_failed",
+        data: { object: { id: "in7", subscription: "sub_x", attempt_count: 3 } },
+      });
+
+      expect(r.suspended).toBe(false);
+      expect(Tenant.findByPk).not.toHaveBeenCalled();
     });
 
     it("does not suspend on a first failure with a low attempt count", async () => {
@@ -306,6 +327,8 @@ describe("stripeWebhook.service (coverage)", () => {
     it("patches the billing period and reads the plan from the price nickname", async () => {
       const sub = { id: "sub1", tenantId: "t1", status: "Active", update: jest.fn() };
       Subscription.findOne.mockResolvedValue(sub);
+      const tenant = tenantRow({ plan: "professional" });
+      Tenant.findByPk.mockResolvedValueOnce(tenant);
 
       const start = 1767225600; // 2026-01-01T00:00:00Z
       const end = 1769904000;
@@ -329,10 +352,22 @@ describe("stripeWebhook.service (coverage)", () => {
         currentPeriodEnd: new Date(end * 1000),
         planId: "enterprise",
       });
-      expect(Tenant.update).toHaveBeenCalledWith(
-        { plan: "enterprise" },
-        { where: { id: "t1" } },
-      );
+      // A-305: written on the row in a transaction, with its audit rows.
+      expect(tenant.plan).toBe("enterprise");
+      expect(tenant.save).toHaveBeenCalledWith({ transaction: "tx" });
+    });
+
+    it("A-305: a plan for a tenant that no longer exists writes nothing", async () => {
+      const sub = { id: "sub1", tenantId: "t1", status: "PastDue", update: jest.fn() };
+      Subscription.findOne.mockResolvedValue(sub);
+      Tenant.findByPk.mockResolvedValueOnce(null);
+
+      await stripeWebhook.handleEvent({
+        type: "customer.subscription.updated",
+        data: { object: { id: "sub_x", status: "past_due", metadata: { plan: "business" } } },
+      });
+
+      expect(Tenant.update).not.toHaveBeenCalled();
     });
 
     it("keeps the existing status when Stripe sends an unmapped status", async () => {
@@ -367,6 +402,8 @@ describe("stripeWebhook.service (coverage)", () => {
     it("ignores an items array with no usable price nickname", async () => {
       const sub = { id: "sub1", tenantId: "t1", status: "Active", update: jest.fn() };
       Subscription.findOne.mockResolvedValue(sub);
+      const tenant = tenantRow({ status: "suspended", suspensionReason: "billing:dunning" });
+      Tenant.findByPk.mockResolvedValueOnce(tenant);
 
       await stripeWebhook.handleEvent({
         type: "customer.subscription.updated",
@@ -374,10 +411,7 @@ describe("stripeWebhook.service (coverage)", () => {
       });
 
       expect(sub.update).toHaveBeenCalledWith({ status: "Active" });
-      expect(Tenant.update).toHaveBeenCalledWith(
-        { status: "active" },
-        { where: { id: "t1" } },
-      );
+      expect(tenant.status).toBe("active");
     });
 
     it("returns handled:false when the subscription is missing", async () => {
@@ -397,6 +431,8 @@ describe("stripeWebhook.service (coverage)", () => {
     it("cancels the subscription and downgrades the tenant to free", async () => {
       const sub = { id: "sub1", tenantId: "t1", status: "Active", update: jest.fn() };
       Subscription.findOne.mockResolvedValue(sub);
+      const tenant = tenantRow({ plan: "professional" });
+      Tenant.findByPk.mockResolvedValueOnce(tenant);
 
       const r = await stripeWebhook.handleEvent({
         type: "customer.subscription.deleted",
@@ -405,10 +441,9 @@ describe("stripeWebhook.service (coverage)", () => {
 
       expect(r).toEqual({ handled: true, subscriptionId: "sub1" });
       expect(sub.update).toHaveBeenCalledWith({ status: "Canceled" });
-      expect(Tenant.update).toHaveBeenCalledWith(
-        { plan: "free" },
-        { where: { id: "t1" } },
-      );
+      // A-305: written on the row in a transaction, with its audit rows.
+      expect(tenant.plan).toBe("free");
+      expect(tenant.save).toHaveBeenCalledWith({ transaction: "tx" });
     });
 
     it("returns handled:false when the subscription is missing", async () => {

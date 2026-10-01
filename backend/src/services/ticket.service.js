@@ -20,7 +20,11 @@ const { Ticket, TicketComment, User, Tenant } = models;
 // off `.sequelize`.
 const sequelize = models.sequelize;
 const { AppError } = require("../utils/appError.util");
+// A-318: the description is rich HTML (the ticket editor), sanitized at save.
+const { storedRichText } = require("../utils/richText.util");
 const notificationService = require("../services/notification.service");
+const auditService = require("./audit.service");
+const { auditEntryActor, actorChanges } = require("../utils/auditPrincipal.util");
 const { DEFAULT_LIMIT, MAX_LIMIT } = require("../constants");
 
 const STATUS_OPEN = "open";
@@ -30,10 +34,8 @@ const TERMINAL = { resolved: "resolvedAt", closed: "closedAt" };
 // Access
 // ------------------------------------------------------------------
 
-const isSuperAdmin = (user) => {
-  const name = user?.role?.name;
-  return name === "SUPER_ADMIN" || name === "SUPERADMIN";
-};
+// N-01: the one super-admin predicate (utils/role.util.ts), both spellings.
+const { isSuperAdmin, SUPER_ADMIN_ROLE_NAMES } = require("../utils/role.util");
 
 // Roles that staff the "response" desk. These mirror the roles seeded with the
 // `tickets-response` menu: the super admin (platform-wide) plus per-tenant
@@ -41,8 +43,7 @@ const isSuperAdmin = (user) => {
 // internal notes, and can triage. Everyone else is a "requester" who only sees
 // the tickets they are party to and never sees internal notes.
 const RESPONDER_ROLES = new Set([
-  "SUPER_ADMIN",
-  "SUPERADMIN",
+  ...SUPER_ADMIN_ROLE_NAMES,
   "HEALTHCARE ADMIN",
   "CALIBRATOR ADMIN",
   "ENGINEERING MANAGER",
@@ -70,6 +71,25 @@ const loadTicket = async (user, ticketId, options = {}) => {
     throw new AppError(404, "Ticket not found");
   }
   return ticket;
+};
+
+/**
+ * A-277 (ADR-094) — a ticket's assignee must be a user of the TICKET's tenant
+ * (the caller's own when raising; a super admin works every tenant's queue, so
+ * on an update it is the ticket's). The id used to be stored as given: another
+ * tenant's user joined as `null` (A-75/ADR-048) and was notified in the wrong
+ * tenant. Missing, soft-deleted and another tenant's are one 404 (A-129), and
+ * the tenant predicate is explicit: a super admin's context skips the hooks.
+ */
+const ASSIGNEE_NOT_FOUND = "Assignee not found in this organisation";
+exports.ASSIGNEE_NOT_FOUND = ASSIGNEE_NOT_FOUND;
+
+const assertAssignee = async (tenantId, assignedTo, transaction) => {
+  if (!assignedTo) {return;}
+  const assignee = await User.findOne({ where: { id: assignedTo, tenantId }, attributes: ["id"], transaction });
+  if (!assignee) {
+    throw new AppError(404, ASSIGNEE_NOT_FOUND);
+  }
 };
 
 /**
@@ -228,13 +248,15 @@ exports.listTickets = async (user, filters = {}) => {
     }
   }
   if (filters.q && String(filters.q).trim()) {
-    const term = `%${String(filters.q).trim().toLowerCase()}%`;
+    // A-320: ILIKE on the term as typed (it was lower-cased under a
+    // case-sensitive LIKE, so "Printer" and "TKT-7" found nothing).
+    const term = `%${String(filters.q).trim()}%`;
     where[Op.and] = [
       ...(where[Op.and] || []),
       {
         [Op.or]: [
-          { subject: { [Op.like]: term } },
-          { ticketKey: { [Op.like]: term } },
+          { subject: { [Op.iLike]: term } },
+          { ticketKey: { [Op.iLike]: term } },
         ],
       },
     ];
@@ -312,7 +334,42 @@ exports.getTicket = async (user, ticketId) => {
 // Mutations
 // ------------------------------------------------------------------
 
-exports.createTicket = async (user, data) => {
+/** The fields of a ticket an audit row records — never the description (rich text, on the ticket). */
+const AUDIT_FIELDS = ["subject", "priority", "category", "assignedTo", "dueDate", "status"];
+const pickAudit = (row) => Object.fromEntries(AUDIT_FIELDS.map((k) => [k, row[k] ?? null]));
+
+/**
+ * P6-11 (A-41 addendum) — a ticket write commits with one audit row in its
+ * transaction; a rolled-back write leaves none. The row is in the TICKET's
+ * tenant (a super admin answering the desk acts across tenants, as A-165
+ * records a platform operator). The actor is auditPrincipal(req); a caller
+ * without one is named by `user` (the principal the service already has).
+ *
+ * @param {object} transaction
+ * @param {object|null} actor - auditPrincipal(req)
+ * @param {object} user - req.user
+ * @param {string} tenantId - the ticket's tenant
+ * @param {"CREATE"|"UPDATE"|"DELETE"} action
+ * @param {string} resourceType - "Ticket" or "TicketComment"
+ * @param {string} resourceId
+ * @param {object} changes - { operation, before?, after? }
+ */
+const auditTicket = (transaction, actor, user, tenantId, action, resourceType, resourceId, changes) => {
+  const who = actor || { userId: user.isApiKey ? null : user.id, apiKeyId: user.isApiKey ? user.id : null };
+  return auditService.logAction(
+    {
+      tenantId,
+      ...auditEntryActor(who),
+      action,
+      resourceType,
+      resourceId,
+      changes: { ...changes, ...actorChanges(who) },
+    },
+    { transaction },
+  );
+};
+
+exports.createTicket = async (user, data, actor = null) => {
   // The raise desk is for tenants reaching out to the platform. A super admin
   // IS the platform — they answer tickets, they do not raise them.
   if (isSuperAdmin(user)) {
@@ -320,14 +377,15 @@ exports.createTicket = async (user, data) => {
   }
 
   const created = await sequelize.transaction(async (transaction) => {
+    await assertAssignee(user.tenantId, data.assignedTo, transaction);
     const number = await nextTicketNumber(user.tenantId, transaction);
-    return Ticket.create(
+    const ticket = await Ticket.create(
       {
         tenantId: user.tenantId,
         number,
         ticketKey: `TKT-${number}`,
         subject: data.subject,
-        description: data.description || null,
+        description: storedRichText(data.description),
         priority: data.priority || "medium",
         category: data.category || "support",
         assignedTo: data.assignedTo || null,
@@ -337,6 +395,12 @@ exports.createTicket = async (user, data) => {
       },
       { transaction },
     );
+    await auditTicket(transaction, actor, user, ticket.tenantId, "CREATE", "Ticket", ticket.id, {
+      operation: "TICKET_CREATE",
+      ticketKey: ticket.ticketKey,
+      after: pickAudit(ticket),
+    });
+    return ticket;
   });
 
   // A ticket assigned at creation notifies the agent.
@@ -351,7 +415,7 @@ exports.createTicket = async (user, data) => {
   return exports.getTicket(user, created.id);
 };
 
-exports.updateTicket = async (user, ticketId, data) => {
+exports.updateTicket = async (user, ticketId, data, actor = null) => {
   const ticket = await loadTicket(user, ticketId);
   assertCanManage(user, ticket);
 
@@ -360,7 +424,9 @@ exports.updateTicket = async (user, ticketId, data) => {
   for (const f of ["subject", "description", "priority", "category", "dueDate"]) {
     if (data[f] !== undefined) {patch[f] = data[f];}
   }
+  if (patch.description !== undefined) {patch.description = storedRichText(patch.description);}
   if (data.assignedTo !== undefined) {patch.assignedTo = data.assignedTo || null;}
+  await assertAssignee(ticket.tenantId, patch.assignedTo);
 
   if (data.status !== undefined && data.status !== ticket.status) {
     patch.status = data.status;
@@ -369,7 +435,17 @@ exports.updateTicket = async (user, ticketId, data) => {
     patch.closedAt = data.status === "closed" ? new Date() : null;
   }
 
-  await ticket.update(patch);
+  const before = pickAudit(ticket);
+  await sequelize.transaction(async (transaction) => {
+    await ticket.update(patch, { transaction });
+    await auditTicket(transaction, actor, user, ticket.tenantId, "UPDATE", "Ticket", ticket.id, {
+      operation: "TICKET_UPDATE",
+      ticketKey: ticket.ticketKey,
+      before,
+      after: pickAudit(ticket),
+      descriptionChanged: patch.description !== undefined,
+    });
+  });
 
   // Notify a newly-assigned agent. Notifications land in the TICKET's tenant
   // (not the actor's — a super admin has none), so they reach the right desk.
@@ -397,22 +473,29 @@ exports.updateTicket = async (user, ticketId, data) => {
   return exports.getTicket(user, ticketId);
 };
 
-exports.assignTicket = async (user, ticketId, assignedTo) => {
+exports.assignTicket = async (user, ticketId, assignedTo, actor = null) => {
   // Thin wrapper so a dedicated assign endpoint reuses the same rules/notifs.
-  return exports.updateTicket(user, ticketId, { assignedTo });
+  return exports.updateTicket(user, ticketId, { assignedTo }, actor);
 };
 
-exports.deleteTicket = async (user, ticketId) => {
+exports.deleteTicket = async (user, ticketId, actor = null) => {
   const ticket = await loadTicket(user, ticketId);
   // Deletion is stricter than editing: only the requester or a super admin.
   if (!isSuperAdmin(user) && ticket.createdBy !== user.id) {
     throw new AppError(403, "Only the requester or an admin can delete a ticket");
   }
-  await ticket.destroy(); // comments cascade
+  await sequelize.transaction(async (transaction) => {
+    await ticket.destroy({ transaction }); // comments cascade
+    await auditTicket(transaction, actor, user, ticket.tenantId, "DELETE", "Ticket", ticket.id, {
+      operation: "TICKET_DELETE",
+      ticketKey: ticket.ticketKey,
+      before: pickAudit(ticket),
+    });
+  });
   return { deleted: true };
 };
 
-exports.addComment = async (user, ticketId, data) => {
+exports.addComment = async (user, ticketId, data, actor = null) => {
   const ticket = await loadTicket(user, ticketId);
 
   const responder = isResponder(user);
@@ -421,13 +504,26 @@ exports.addComment = async (user, ticketId, data) => {
     throw new AppError(404, "Ticket not found");
   }
 
-  const comment = await TicketComment.create({
-    ticketId: ticket.id,
-    userId: user.id,
-    body: data.body,
-    // Only responders can leave internal notes; a requester's message is forced
-    // public.
-    isInternal: responder ? !!data.isInternal : false,
+  const comment = await sequelize.transaction(async (transaction) => {
+    const created = await TicketComment.create(
+      {
+        ticketId: ticket.id,
+        userId: user.id,
+        body: data.body,
+        // Only responders can leave internal notes; a requester's message is forced
+        // public.
+        isInternal: responder ? !!data.isInternal : false,
+      },
+      { transaction },
+    );
+    // The body is the conversation, kept on the comment; the row records that it was posted.
+    await auditTicket(transaction, actor, user, ticket.tenantId, "CREATE", "TicketComment", created.id, {
+      operation: "TICKET_COMMENT_CREATE",
+      ticketId: ticket.id,
+      ticketKey: ticket.ticketKey,
+      isInternal: created.isInternal,
+    });
+    return created;
   });
 
   // Public replies notify both parties; internal notes never reach the

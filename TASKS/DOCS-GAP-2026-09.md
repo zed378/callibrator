@@ -5,6 +5,8 @@ reference, every category that is thin relative to the code it should describe, 
 against a second project by the same owner suggests Callibrator should — and should deliberately not —
 adopt. **No documentation content was written and no code was changed to produce this file.**
 
+> **State on 2026-09-30.** All 17 DOC cards (§ 6) are **DONE** (2026-09-28). The findings tables in §§ 1, 2 and 5 are the **original snapshot** that produced those cards and were not updated as each card closed. Read a row there as "what was found", and the card's Status line as "what is true now". Reconciled in `MEMORY/records/2026-09-30-board-hygiene-decisions.md`.
+
 ## 0. Could the Benchmark Be Reached
 
 **Yes.** `https://github.com/zed378/image-management` was reachable via `WebFetch` — the repo root, the
@@ -203,7 +205,7 @@ benchmark.
 
 ## 6. Proposed Documents — Task Cards
 
-Same shape as `TASKS/AUDIT-2026-09-REMEDIATION.md`. All Status **TODO**. Priority follows that file's
+Same shape as `TASKS/AUDIT-2026-09-REMEDIATION.md`. All Status **TODO** when written; **all DONE** by 2026-09-28 (each card's Status line). Priority follows that file's
 convention: **0** = fixes something a completed, higher-severity task's own Definition of Done depends on;
 **1** = a named broken reference or a security/compliance-relevant category gap; **2** = hygiene, schedule
 freely.

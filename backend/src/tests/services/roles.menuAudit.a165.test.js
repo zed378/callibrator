@@ -80,8 +80,8 @@ const CASES = [
     resourceId: "menu-1",
     changes: {
       operation: "UPDATE_MENU",
-      before: { name: "Dashboard", is_active: true },
-      after: { name: "Renamed", is_active: false },
+      before: { name: "Dashboard", isActive: true },
+      after: { name: "Renamed", isActive: false },
     },
   },
   {
@@ -100,7 +100,7 @@ const CASES = [
 describe("A-165 — global menu changes audit under PLATFORM inside their transaction", () => {
   beforeEach(() => {
     mockRef.ledger = createLedger({ cls: false });
-    mockRef.menu = mockMenuRow({ id: "menu-1", name: "Dashboard", slug: "dashboard", is_active: true });
+    mockRef.menu = mockMenuRow({ id: "menu-1", name: "Dashboard", slug: "dashboard", isActive: true });
     mockRef.revoked = 2;
     redis.delPattern.mockClear();
     jest.spyOn(logger, "error").mockImplementation(() => logger);

@@ -118,7 +118,7 @@ Several agent-written specs originally asserted the **broken** behaviour — the
 
 An empty database hides an entire class of query defect.
 
-**`SEED_DEMO` must never be true in production.**
+**`SEED_DEMO` must never be true in production.** Since P10-16 (ADR-099 Amendment 1) the code enforces it: `seedDemoData` answers 403 when `NODE_ENV=production`. A stack that needs demo data (`liveContract.smoke`, which signs in as the demo users) runs with `NODE_ENV=development`. The operator's password is `E2E_OPERATOR_PASSWORD`; there is no default (see `backend/src/tests/e2e/setup.js`).
 
 ## Current State, Stated Honestly
 

@@ -22,6 +22,10 @@ interface BulkActionBarProps {
   onToggleGroup: (id: string, assigned: boolean) => void;
   onAssignGroup: (id: string) => void;
   onRevokeGroup: (id: string) => void;
+  /** A-300: the groups selected for a bulk action (not the assigned ones). */
+  selectedIds: string[];
+  allSelected: boolean;
+  onToggleSelect: (id: string) => void;
   onToggleAll: () => void;
   onBulkAssign: () => void;
   onBulkRevoke: () => void;
@@ -44,6 +48,9 @@ export function BulkActionBar({
   onToggleGroup,
   onAssignGroup,
   onRevokeGroup,
+  selectedIds,
+  allSelected,
+  onToggleSelect,
   onToggleAll,
   onBulkAssign,
   onBulkRevoke,
@@ -51,7 +58,7 @@ export function BulkActionBar({
   onEditGroup,
   onDeleteGroup,
 }: BulkActionBarProps) {
-  const hasAssigned = menuGroups.some((g) => g.isAssigned);
+  const count = selectedIds.length;
 
   return (
     <Card>
@@ -72,31 +79,31 @@ export function BulkActionBar({
               variant="outline"
               size="sm"
               onClick={onToggleAll}
-              disabled={actionLoading}
+              disabled={actionLoading || menuGroups.length === 0}
             >
-              {hasAssigned ? "Deselect All" : "Select All"}
+              {allSelected ? "Deselect All" : "Select All"}
             </Button>
             <Button
               variant="primary"
               size="sm"
               onClick={onBulkAssign}
-              disabled={actionLoading || !hasAssigned}
+              disabled={actionLoading || count === 0}
             >
               {actionLoading && (
                 <Loader2 className="w-4 h-4 mr-1 animate-spin" />
               )}
-              Assign Selected
+              Assign Selected{count > 0 ? ` (${count})` : ""}
             </Button>
             <Button
               variant="danger"
               size="sm"
               onClick={onBulkRevoke}
-              disabled={actionLoading || !hasAssigned}
+              disabled={actionLoading || count === 0}
             >
               {actionLoading && (
                 <Loader2 className="w-4 h-4 mr-1 animate-spin" />
               )}
-              Revoke Selected
+              Revoke Selected{count > 0 ? ` (${count})` : ""}
             </Button>
           </div>
         }
@@ -108,6 +115,8 @@ export function BulkActionBar({
               key={group.id}
               group={group}
               groupState={getGroupAssignmentState(group)}
+              selected={selectedIds.includes(group.id ?? "")}
+              onToggleSelect={onToggleSelect}
               actionLoading={actionLoading}
               onToggleGroup={onToggleGroup}
               onAssignGroup={onAssignGroup}

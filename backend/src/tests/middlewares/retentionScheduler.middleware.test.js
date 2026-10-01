@@ -21,10 +21,18 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
 jest.mock("../../services/dataRetention.service", () => ({
   runRetentionSweep: jest.fn(),
 }));
+jest.mock("../../services/accessRequest.service", () => ({
+  runAccessRequestRetention: jest.fn(),
+}));
 
 const cron = require("node-cron");
 const { logger } = require("../../middlewares/activityLog.middleware");
 const { runRetentionSweep } = require("../../services/dataRetention.service");
+const { runAccessRequestRetention } = require("../../services/accessRequest.service");
+
+beforeEach(() => {
+  runAccessRequestRetention.mockResolvedValue({ expired: 0, purged: 0 });
+});
 const {
   initRetentionScheduler,
 } = require("../../middlewares/retentionScheduler.middleware");
@@ -150,6 +158,35 @@ describe("retentionScheduler middleware", () => {
     expect(logger.error).toHaveBeenCalledWith(
       "Error during scheduled retention sweep: sweep failed",
     );
+  });
+
+  describe("P10-05 (Q-42) — the access-request retention step", () => {
+    it("runs after the tenants and reports its counts in the run's summary", async () => {
+      cron.validate.mockReturnValue(true);
+      delete process.env.RETENTION_SCHEDULER;
+      runRetentionSweep.mockResolvedValue({ tenants: 1, purged: 0, skipped: 0, errors: 0 });
+      runAccessRequestRetention.mockResolvedValue({ expired: 2, purged: 5 });
+      initRetentionScheduler();
+      const run = await cron.schedule.mock.calls[0][1]();
+      expect(run.outcome).toBe("success");
+      expect(runAccessRequestRetention).toHaveBeenCalledTimes(1);
+      expect(runRetentionSweep.mock.invocationCallOrder[0]).toBeLessThan(
+        runAccessRequestRetention.mock.invocationCallOrder[0],
+      );
+    });
+
+    it("a failing access-request step is a FAILED run, and the tenant sweep's result is kept", async () => {
+      cron.validate.mockReturnValue(true);
+      delete process.env.RETENTION_SCHEDULER;
+      runRetentionSweep.mockResolvedValue({ tenants: 1, purged: 3, skipped: 0, errors: 0 });
+      runAccessRequestRetention.mockRejectedValue(new Error("db down"));
+      initRetentionScheduler();
+      const run = await cron.schedule.mock.calls[0][1]();
+      expect(run).toEqual(expect.objectContaining({
+        outcome: "failure", error: "the access-request retention step failed: db down",
+      }));
+      expect(logger.error).toHaveBeenCalledWith("Access-request retention failed: db down");
+    });
   });
 
   describe("P7-02 job monitoring", () => {

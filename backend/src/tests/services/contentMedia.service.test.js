@@ -65,6 +65,15 @@ describe("contentMedia.service — recordMediaUpload", () => {
     );
   });
 
+  it("A-282 (ADR-100): an upload by an API key is system:api-key, the key in changes, never a user", async () => {
+    auditService.logAction.mockResolvedValue({ id: 2 });
+    await recordMediaUpload(FILE, { userId: null, apiKeyId: "key-1", tenantId: "t-1" });
+    const [entry] = auditService.logAction.mock.calls[0];
+    expect(entry).toMatchObject({ tenantId: "t-1", systemActor: "system:api-key" });
+    expect(entry).not.toHaveProperty("userId");
+    expect(entry.changes.apiKeyId).toBe("key-1");
+  });
+
   it("refuses a request with no file", async () => {
     await expect(recordMediaUpload(undefined)).rejects.toMatchObject({ status: 400 });
     expect(auditService.logAction).not.toHaveBeenCalled();

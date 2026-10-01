@@ -11,12 +11,14 @@
  *  - GET  /gdpr/erasure/:id      — erasure status (UUID validated)
  *
  * NOTE: the swagger request bodies documented on the routes DIVERGE from the
- * Joi validators actually enforced — e.g. consent validator wants
+ * validators actually enforced — e.g. consent validator wants
  * {categories,consent} not {consents,withdrawAll}; erasure wants {reason,confirm}
  * not {reason,confirmDeletion}. These tests assert the VALIDATOR contract.
  * POST /gdpr/erasure is intentionally NOT exercised (it erases the account).
  */
 const { httpGet, httpPost, httpPut, extractToken, authHeader } = require("../setup");
+// P10-16 (ADR-099): no default operator password — set E2E_OPERATOR_PASSWORD (see setup.js).
+const { OPERATOR_PASSWORD } = require("../setup");
 
 describe("E2E GDPR/CCPA (HTTP)", () => {
   let token;
@@ -24,7 +26,7 @@ describe("E2E GDPR/CCPA (HTTP)", () => {
   beforeAll(async () => {
     const { body } = await httpPost("/auth/login", {
       user: "sys@mail.com",
-      password: "123123",
+      password: OPERATOR_PASSWORD,
     });
     token = extractToken(body);
     expect(token).toBeTruthy();

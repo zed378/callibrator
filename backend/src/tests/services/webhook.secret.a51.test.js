@@ -37,6 +37,9 @@ jest.mock("../../utils/ssrf.util", () => ({
   assertSafeUrl: jest.fn(),
   assertResolvedHostIsPublic: jest.fn().mockResolvedValue(undefined),
   isBlockedIp: jest.fn(),
+  // A-307: delivery goes through ssrf.util#pinnedFetch (fetch-shaped); these
+  // tests keep asserting on `global.fetch`, which the double forwards to.
+  pinnedFetch: (...args) => global.fetch(...args),
 }));
 
 const webhookService = require("../../services/webhook.service");

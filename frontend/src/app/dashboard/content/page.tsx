@@ -24,6 +24,7 @@ import {
 } from "@/api/services/content.service";
 import type { PaginatedResponse } from "@/types";
 import CategoriesDialog from "./components/CategoriesDialog";
+import { usePermissions } from "@/hooks/usePermissions";
 
 const TYPE_FILTER = [
   { value: "", label: "All types" },
@@ -41,6 +42,10 @@ const statusVariant = (s: PostStatus): "success" | "warning" | "default" =>
   s === "PUBLISHED" ? "success" : s === "DRAFT" ? "warning" : "default";
 
 export default function ContentPage() {
+  // ADR-102: posts and categories are written on `content` write
+  // (content.route.js create/update/delete all normalise to write).
+  const { canWrite } = usePermissions();
+  const mayWrite = canWrite("content");
   const router = useRouter();
   const addToast = useToastStore((s) => s.addToast);
   const [data, setData] = useState<PaginatedResponse<Post> | null>(null);
@@ -95,16 +100,18 @@ export default function ContentPage() {
               Author and publish the marketing content shown on the public site.
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => setCatsOpen(true)} className="flex items-center gap-2">
-              <Tags className="h-4 w-4" /> Categories
-            </Button>
-            <Link href="/dashboard/content/new">
-              <Button className="flex items-center gap-2">
-                <Plus className="h-4 w-4" /> New post
+          {mayWrite && (
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={() => setCatsOpen(true)} className="flex items-center gap-2">
+                <Tags className="h-4 w-4" /> Categories
               </Button>
-            </Link>
-          </div>
+              <Link href="/dashboard/content/new">
+                <Button className="flex items-center gap-2">
+                  <Plus className="h-4 w-4" /> New post
+                </Button>
+              </Link>
+            </div>
+          )}
         </div>
 
         {error && <Alert variant="error">{error}</Alert>}
@@ -134,7 +141,7 @@ export default function ContentPage() {
 
         {loading ? (
           <TableSkeleton rows={6} cols={5} />
-        ) : posts.length === 0 ? (
+        ) : error ? null : posts.length === 0 ? (
           <div className="rounded-2xl border border-border bg-card p-12 text-center text-muted-foreground">
             No posts yet — create your first one.
           </div>
@@ -198,6 +205,8 @@ export default function ContentPage() {
                               <ExternalLink className="h-4 w-4" />
                             </a>
                           )}
+                          {mayWrite && (
+                          <>
                           <button
                             onClick={() => router.push(`/dashboard/content/${p.id}/edit`)}
                             title="Edit"
@@ -228,6 +237,8 @@ export default function ContentPage() {
                             >
                               <Trash2 className="h-4 w-4" />
                             </button>
+                          )}
+                          </>
                           )}
                         </div>
                       </td>

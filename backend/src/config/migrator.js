@@ -6,10 +6,10 @@
  * things `sync` cannot safely do on an existing database: column renames,
  * custom indexes (e.g. GIN/tsvector), backfills, and constraints.
  *
- * Migration files live in `src/migrations/*.js` and export:
- *   module.exports = {
- *     async up({ context })   { // context = Sequelize QueryInterface },
- *     async down({ context }) { ... },
+ * Migration files live in `src/migrations/*.ts` (P9-23) and export:
+ *   export = {
+ *     up: async ({ context }: { context: QueryInterface }) => { ... },
+ *     down: async ({ context }: { context: QueryInterface }) => { ... },
  *   };
  *
  * Applied migrations are tracked in the `schema_migrations` table.
@@ -39,6 +39,11 @@ function fmt(o) {
 // Names keep the ".js" suffix to match the entries Umzug's glob resolver
 // previously wrote to `schema_migrations`, so existing databases treat them as
 // already-applied instead of re-running them.
+//
+// P9-23: the files are TypeScript now and the names did NOT change. A name is
+// `<module path>.js` whatever the file's extension, frozen when first applied;
+// the require stays extensionless (tsx/jest resolve the .ts, dist/ the compiled
+// .js). manifestNames.p923.test.ts holds the historical names, typed by hand.
 const migrationModules = [
   ["0001-underscore-class-models.js", require("../migrations/0001-underscore-class-models")],
   ["0002-add-stripe-invoice-id.js", require("../migrations/0002-add-stripe-invoice-id")],
@@ -103,6 +108,38 @@ const migrationModules = [
   ["0088-attachment-file-purged-at.js", require("../migrations/0088-attachment-file-purged-at")],
   ["0089-calibration-device-retired-terminal.js", require("../migrations/0089-calibration-device-retired-terminal")],
   ["0090-webhook-secret-rotation-overlap.js", require("../migrations/0090-webhook-secret-rotation-overlap")],
+  // Q-34 (ADR-095): the first TypeScript migration. Its manifest name keeps the
+  // ".js" suffix like every other entry (P9-23), so a later rename cannot re-run it.
+  ["0091-audit-logs-append-only.js", require("../migrations/0091-audit-logs-append-only")],
+  // P8-04 (ADR-096): per-tenant ORDER BY indexes for the lists, built CONCURRENTLY.
+  ["0093-list-order-indexes.js", require("../migrations/0093-list-order-indexes")],
+  // P10-16 (ADR-099): users.password_one_time — the bootstrap super admin's one-time password.
+  ["0094-user-password-one-time.js", require("../migrations/0094-user-password-one-time")],
+  // ADR-101: certificates.submitted_by — separation of duties on certificate approval.
+  ["0095-certificate-submitted-by.js", require("../migrations/0095-certificate-submitted-by")],
+  // A-293 (ADR-100): certificates.verification_token — the QR code's secret; back-filled, NOT NULL, UNIQUE.
+  ["0096-certificate-verification-token.js", require("../migrations/0096-certificate-verification-token")],
+  // ADR-102: the Stock and Object Storage menu entries, and the grants the effective-permission sidebar needs.
+  ["0097-menu-effective-access.js", require("../migrations/0097-menu-effective-access")],
+  // Q-38 (ADR-100): HEALTHCARE ADMIN may set its own tenant's allowlist and geofence (network-security write).
+  ["0098-network-security-tenant-admin-write.js", require("../migrations/0098-network-security-tenant-admin-write")],
+  // P10-05 (ADR-098 §6): access_requests — the public intake and the super admin's queue.
+  ["0099-access-requests.js", require("../migrations/0099-access-requests")],
+  // P10-10 (ADR-098 §5): users.webauthn_credential_id unique. Inert since 0104 moved the credentials to
+  // webauthn_credentials (the sign-in reads that table); dropped by the pending legacy-columns migration.
+  ["0100-user-webauthn-credential-unique.js", require("../migrations/0100-user-webauthn-credential-unique")],
+  // P10-07 (ADR-098 §6): the access-requests menu entry and its SUPERADMIN grant.
+  ["0101-access-requests-menu.js", require("../migrations/0101-access-requests-menu")],
+  // A-303: the tenant profile columns (address and contact; ISO/IEC 17025 7.8.2 issuer on certificates).
+  ["0102-tenant-profile-columns.js", require("../migrations/0102-tenant-profile-columns")],
+  // ADR-107 (Q-50): certificates.signed_snapshot — what a signed certificate prints, fixed at signing (the v3 hash binds it).
+  ["0103-certificate-signed-snapshot.js", require("../migrations/0103-certificate-signed-snapshot")],
+  // ADR-108 Amendment 1: several passkeys per user — webauthn_credentials, the old one-per-user columns moved in.
+  ["0104-webauthn-credentials.js", require("../migrations/0104-webauthn-credentials")],
+  // Q-51: an API key may be the actor of a calibration record, stock adjustment or transfer request — api_key_id + an exactly-one CHECK.
+  ["0105-api-key-actor-columns.js", require("../migrations/0105-api-key-actor-columns")],
+  // Q-52 (ADR-109 §6): vendors.notes — accepted by the API, now stored.
+  ["0106-vendor-notes.js", require("../migrations/0106-vendor-notes")],
 ];
 
 const migrator = new Umzug({

@@ -79,7 +79,24 @@ jest.mock("../../utils/ssrf.util", () => ({
   assertSafeUrl: jest.fn(),
   assertResolvedHostIsPublic: jest.fn().mockResolvedValue(undefined),
   isBlockedIp: jest.fn(),
+  // A-307: the REAL pinned transport, so these deliveries cross a real socket
+  // through the pinned lookup (the signature must survive byte for byte).
+  // Loopback is let through by the development allow-list set below.
+  pinnedFetch: jest.requireActual("../../utils/ssrf.util").pinnedFetch,
 }));
+
+// A-307: see the ssrf.util double above; never honoured in production.
+const ORIGINAL_SSRF_DEV_ALLOW_HOSTS = process.env.SSRF_DEV_ALLOW_HOSTS;
+beforeAll(() => {
+  process.env.SSRF_DEV_ALLOW_HOSTS = "127.0.0.1,localhost";
+});
+afterAll(() => {
+  if (ORIGINAL_SSRF_DEV_ALLOW_HOSTS === undefined) {
+    delete process.env.SSRF_DEV_ALLOW_HOSTS;
+  } else {
+    process.env.SSRF_DEV_ALLOW_HOSTS = ORIGINAL_SSRF_DEV_ALLOW_HOSTS;
+  }
+});
 
 const { startReceiver, verifyWebhook } = require("../fixtures/webhookReceiver");
 

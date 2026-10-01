@@ -5,7 +5,7 @@
  * This is the cheap way to write one without a database. It builds:
  *
  *  - two tenants, A and B, as Sequelize-instance-shaped rows (`update`, `get`)
- *    with real UUID ids, so real Joi validators accept them;
+ *    with real UUID ids, so the real validators accept them;
  *  - principals shaped exactly like `req.user` as auth.middleware builds it
  *    (authService.getAuthUserWithTenant: `role { id, name, roleLevel }`,
  *    `tenant { id, name, status }`, `tenantId`, `isActive`, `status`);

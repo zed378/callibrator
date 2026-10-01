@@ -83,8 +83,9 @@ export const DEFAULT_UPLOAD_PLACEHOLDER = "default.svg";
 // DEFAULT PAGINATION SETTINGS
 // =============================================================================
 export const DEFAULT_PAGE = 1;
-export const DEFAULT_LIMIT = 25;
-export const MAX_LIMIT = 200;
+// P9-22 (ADR-097): the page sizes are canonical in @callibrator/contracts, because
+// the list-query schemas that bound `limit` are a contract; same bindings re-exported.
+export { DEFAULT_LIMIT, MAX_LIMIT } from "@callibrator/contracts/pagination";
 
 // =============================================================================
 // USER STATUS VALUES

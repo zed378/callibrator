@@ -72,11 +72,12 @@ jest.mock("../../config", () => ({
   db: {
     transaction: async (cb) => cb({ id: "tx" }),
     // The per-tenant counter claim (A-73): one counter per tenant and kind.
-    query: async (sql, { replacements: { tenantId, kind } }) => {
+    // P9-07: through sql() — bind [$1 tenant, $2 kind, $3 pattern], type SELECT.
+    query: async (sql, { bind: [tenantId, kind] }) => {
       const key = `${tenantId}:${kind}`;
       const seq = (mockFx.store.counters.get(key) || 0) + 1;
       mockFx.store.counters.set(key, seq);
-      return [[{ seq }]];
+      return [{ seq }];
     },
   },
 }));

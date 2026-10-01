@@ -1,5 +1,4 @@
 const { Op } = require("sequelize");
-const bcrypt = require("bcryptjs");
 
 jest.mock("bcryptjs", () => ({
   genSalt: jest.fn().mockResolvedValue("salt"),
@@ -59,6 +58,13 @@ jest.mock("../../config", () => ({
   db: { sync: jest.fn() },
 }));
 
+// P10-16 (ADR-099): the system super admin's creation and its one-time
+// password belong to bootstrapCredential.service (tested over the real models
+// in services/bootstrapCredential.p1016.test.ts); here, only the delegation.
+jest.mock("../../services/bootstrapCredential.service", () => ({
+  ensureSystemSuperAdmin: jest.fn(),
+}));
+
 const {
   Users,
   Roles,
@@ -69,6 +75,7 @@ const {
 const { db } = require("../../config");
 const { seedMenuGroups } = require("../../utils/seedMenuGroups.util");
 const migrationService = require("../../services/migration.service");
+const bootstrapCredential = require("../../services/bootstrapCredential.service");
 
 describe("migration.service", () => {
   beforeEach(() => {
@@ -290,44 +297,45 @@ describe("migration.service", () => {
   });
 
   describe("seedUsers", () => {
-    it("should create default users that do not exist yet", async () => {
-      // Current behavior: upsert by email (paranoid:false). Non-existent users
-      // are created; there is no hard-delete step (existing system users may be
-      // referenced by other tables via FK, so they are updated in place).
-      Users.findOne.mockResolvedValue(null);
-      Users.create.mockResolvedValue(true);
+    it("creates the system super admin through the bootstrap service and reports the file path", async () => {
+      bootstrapCredential.ensureSystemSuperAdmin.mockResolvedValue({
+        created: true,
+        updated: false,
+        bootstrapPasswordFile: "/app/.bootstrap/superadmin-password",
+      });
 
       const result = await migrationService.seedUsers();
 
-      expect(Users.create).toHaveBeenCalledWith(
-        expect.objectContaining({ password: expect.any(String) }),
+      expect(bootstrapCredential.ensureSystemSuperAdmin).toHaveBeenCalledWith(
+        expect.objectContaining({ email: "sys@mail.com", username: "sys", isEmailVerified: true }),
       );
-      expect(Users.destroy).not.toHaveBeenCalled();
-      expect(result.usersCreated).toBeGreaterThan(0);
-      expect(result.usersSkipped).toBe(0);
+      // P10-16: the seed carries no password of its own.
+      expect(bootstrapCredential.ensureSystemSuperAdmin.mock.calls[0][0]).not.toHaveProperty("password");
+      expect(Users.create).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        usersCreated: 1,
+        usersSkipped: 0,
+        bootstrapPasswordFile: "/app/.bootstrap/superadmin-password",
+        errors: [],
+      });
     });
 
-    it("should update (not recreate) users that already exist", async () => {
-      // Existing users are updated in place — never hard-deleted — and counted
-      // as skipped; a soft-deleted row is restored first.
-      const existing = {
-        deletedAt: null,
-        update: jest.fn().mockResolvedValue(true),
-        restore: jest.fn().mockResolvedValue(true),
-      };
-      Users.findOne.mockResolvedValue(existing);
+    it("counts an existing system user as skipped, with no file", async () => {
+      bootstrapCredential.ensureSystemSuperAdmin.mockResolvedValue({
+        created: false,
+        updated: true,
+        bootstrapPasswordFile: null,
+      });
 
       const result = await migrationService.seedUsers();
 
-      expect(existing.update).toHaveBeenCalled();
-      expect(Users.create).not.toHaveBeenCalled();
       expect(result.usersCreated).toBe(0);
-      expect(result.usersSkipped).toBeGreaterThan(0);
+      expect(result.usersSkipped).toBe(1);
+      expect(result.bootstrapPasswordFile).toBeNull();
     });
 
     it("should handle errors", async () => {
-      Users.findOne.mockResolvedValue(null);
-      Users.create.mockRejectedValue(new Error("DB Error"));
+      bootstrapCredential.ensureSystemSuperAdmin.mockRejectedValue(new Error("DB Error"));
 
       const result = await migrationService.seedUsers();
 
@@ -548,47 +556,6 @@ describe("migration.service", () => {
       Tenant.findOne.mockRejectedValue(new Error("tenant table missing"));
 
       await expect(migrationService.seedAll()).rejects.toThrow("tenant table missing");
-    });
-  });
-
-  // ==========================================
-  // COVERAGE — seedUsers restore path
-  // ==========================================
-
-  describe("seedUsers — soft-deleted rows", () => {
-    it("should restore a soft-deleted system user before updating it", async () => {
-      const existing = {
-        deletedAt: new Date("2024-01-01"),
-        restore: jest.fn().mockResolvedValue(true),
-        update: jest.fn().mockResolvedValue(true),
-      };
-      Users.findOne.mockResolvedValue(existing);
-
-      const result = await migrationService.seedUsers();
-
-      expect(existing.restore).toHaveBeenCalled();
-      expect(existing.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          email: "sys@mail.com",
-          password: "hashedPassword",
-          isEmailVerified: true,
-        }),
-      );
-      expect(Users.create).not.toHaveBeenCalled();
-      expect(result.usersSkipped).toBe(1);
-      expect(result.usersCreated).toBe(0);
-    });
-
-    it("should look the user up including soft-deleted rows", async () => {
-      Users.findOne.mockResolvedValue(null);
-      Users.create.mockResolvedValue(true);
-
-      await migrationService.seedUsers();
-
-      expect(Users.findOne).toHaveBeenCalledWith({
-        where: { email: "sys@mail.com" },
-        paranoid: false,
-      });
     });
   });
 

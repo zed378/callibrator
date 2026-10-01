@@ -9,6 +9,19 @@ jest.mock("../../models", () => ({
   Users: {
     findByPk: jest.fn(),
   },
+  Tenant: {
+    findByPk: jest.fn(),
+  },
+}));
+
+// A-275 / A-280 (ADR-094): client changes and consent decisions are audited
+// inside a transaction. The transaction double passes a marker through, so a
+// test can see that the write and the audit row share it.
+jest.mock("../../config", () => ({
+  db: { transaction: jest.fn(async (cb) => cb("tx")) },
+}));
+jest.mock("../../services/audit.service", () => ({
+  logAction: jest.fn().mockResolvedValue({}),
 }));
 
 jest.mock("../../services/redis.service", () => ({
@@ -22,8 +35,11 @@ const jwt = require("jsonwebtoken");
 const { Op } = require("sequelize");
 
 const oidc = require("../../services/oidcProvider.service");
-const { TenantSettings, Users } = require("../../models");
+const { TenantSettings, Users, Tenant } = require("../../models");
 const redis = require("../../services/redis.service");
+const auditService = require("../../services/audit.service");
+const { db } = require("../../config");
+const { PLATFORM_TENANT_ID } = require("../../constants/platformTenant");
 
 describe("oidcProvider.service", () => {
   beforeEach(() => jest.clearAllMocks());
@@ -238,7 +254,7 @@ describe("oidcProvider.service", () => {
       expect(stored.clientSecretHash).not.toBe("old");
       expect(stored.name).toBe("App");
       expect(stored.rotatedAt).toBeDefined();
-      expect(options).toEqual({ where: { tenantId: "t1", key: "oidc_rp_c1" } });
+      expect(options).toEqual({ where: { tenantId: "t1", key: "oidc_rp_c1" }, transaction: "tx" });
     });
 
     it("tolerates a row with no value", async () => {
@@ -268,12 +284,83 @@ describe("oidcProvider.service", () => {
       expect(result.deleted).toBe(true);
       expect(TenantSettings.destroy).toHaveBeenCalledWith({
         where: { tenantId: "t1", key: "oidc_rp_c1" },
+        transaction: "tx",
       });
     });
 
-    it("reports deleted=false when nothing matched", async () => {
+    it("reports deleted=false when nothing matched, and records nothing", async () => {
       TenantSettings.destroy.mockResolvedValue(0);
       expect(await oidc.deleteClient("t1", "c1")).toEqual({ deleted: false });
+      expect(auditService.logAction).not.toHaveBeenCalled();
+    });
+  });
+
+  // A-280 (ADR-094): every client change is recorded under PLATFORM and under
+  // the client's tenant, in the change's transaction, with no secret.
+  describe("A-280 — client changes are audited twice, inside the transaction", () => {
+    const ACTOR = { userId: "op-1", ipAddress: "10.0.0.1", userAgent: "UA" };
+    const rowsFor = () => auditService.logAction.mock.calls.map(([entry, opts]) => ({ entry, opts }));
+
+    it("registerClient: CREATE under PLATFORM and the tenant, no secret in the row", async () => {
+      TenantSettings.upsert.mockResolvedValue({});
+      const result = await oidc.registerClient("t1", { name: "App", redirectUris: ["http://cb"] }, ACTOR);
+
+      expect(TenantSettings.upsert.mock.calls[0][1]).toEqual({ transaction: "tx" });
+      const rows = rowsFor();
+      expect(rows.map((r) => r.entry.tenantId)).toEqual([PLATFORM_TENANT_ID, "t1"]);
+      for (const { entry, opts } of rows) {
+        expect(opts).toEqual({ transaction: "tx" });
+        expect(entry).toMatchObject({
+          userId: "op-1",
+          action: "CREATE",
+          resourceType: "OidcClient",
+          resourceId: result.clientId,
+          ipAddress: "10.0.0.1",
+          userAgent: "UA",
+        });
+        expect(JSON.stringify(entry)).not.toContain(result.clientSecret);
+      }
+    });
+
+    it("rotateSecret: UPDATE twice, never the new secret", async () => {
+      TenantSettings.findOne.mockResolvedValue({ value: JSON.stringify({ clientId: "c1" }) });
+      TenantSettings.update.mockResolvedValue([1]);
+      const result = await oidc.rotateSecret("t1", "c1", ACTOR);
+
+      const rows = rowsFor();
+      expect(rows.map((r) => [r.entry.tenantId, r.entry.action])).toEqual([
+        [PLATFORM_TENANT_ID, "UPDATE"],
+        ["t1", "UPDATE"],
+      ]);
+      expect(JSON.stringify(rows)).not.toContain(result.clientSecret);
+    });
+
+    it("deleteClient: DELETE twice", async () => {
+      TenantSettings.destroy.mockResolvedValue(1);
+      await oidc.deleteClient("t1", "c1", ACTOR);
+      expect(rowsFor().map((r) => [r.entry.tenantId, r.entry.action])).toEqual([
+        [PLATFORM_TENANT_ID, "DELETE"],
+        ["t1", "DELETE"],
+      ]);
+    });
+
+    it("an actor with no fields records nulls (the insert then fails closed)", async () => {
+      TenantSettings.destroy.mockResolvedValue(1);
+      await oidc.deleteClient("t1", "c1");
+      expect(rowsFor()[0].entry).toMatchObject({ userId: null, ipAddress: null, userAgent: null });
+    });
+  });
+
+  describe("A-280 — assertTenantExists", () => {
+    it("404 for no id, and for an id the Tenant model does not find", async () => {
+      await expect(oidc.assertTenantExists("")).rejects.toMatchObject({ status: 404 });
+      Tenant.findByPk.mockResolvedValue(null);
+      await expect(oidc.assertTenantExists("t9")).rejects.toMatchObject({ status: 404, message: "Tenant not found" });
+    });
+
+    it("passes for a tenant that exists", async () => {
+      Tenant.findByPk.mockResolvedValue({ id: "t1" });
+      await expect(oidc.assertTenantExists("t1")).resolves.toBeUndefined();
     });
   });
 
@@ -385,6 +472,7 @@ describe("oidcProvider.service", () => {
   describe("authorization code flow", () => {
     const USER = {
       id: "user-1",
+      tenantId: "t1",
       email: "a@b.c",
       firstName: "Ada",
       lastName: "Lovelace",
@@ -533,34 +621,89 @@ describe("oidcProvider.service", () => {
 
       it("returns the display fields for the consent screen", async () => {
         redis.get.mockResolvedValue({
+          tenantId: "t1",
           clientName: "Acme RP",
           scope: ["openid"],
           redirectUri: "https://rp.example/cb",
         });
-        expect(await oidc.getAuthRequest("r1")).toEqual({
+        expect(await oidc.getAuthRequest("r1", USER)).toEqual({
           clientName: "Acme RP",
           scope: ["openid"],
           redirectUri: "https://rp.example/cb",
         });
+      });
+      // A-275 (ADR-094)
+      it("returns null for a user of another tenant, a user with no tenant, and no user", async () => {
+        redis.get.mockResolvedValue({ tenantId: "t1", clientName: "Acme RP" });
+        expect(await oidc.getAuthRequest("r1", { ...USER, tenantId: "t2" })).toBeNull();
+        expect(await oidc.getAuthRequest("r1", { ...USER, tenantId: null })).toBeNull();
+        expect(await oidc.getAuthRequest("r1", undefined)).toBeNull();
       });
     });
 
     describe("decideAuthorization", () => {
-      it("throws when the request expired", async () => {
+      it("throws 404 when the request expired", async () => {
         redis.get.mockResolvedValue(null);
-        await expect(oidc.decideAuthorization("r1", USER, true)).rejects.toThrow(
-          "expired or invalid",
+        await expect(oidc.decideAuthorization("r1", USER, true)).rejects.toMatchObject({
+          status: 404,
+          message: "Authorization request not found",
+        });
+      });
+
+      // A-275 (ADR-094)
+      it("throws the same 404 for another tenant's request, and neither consumes it nor mints a code", async () => {
+        redis.get.mockResolvedValue({ tenantId: "t2", clientId: "c9", redirectUri: "https://rp.example/cb" });
+        await expect(oidc.decideAuthorization("r1", USER, true)).rejects.toMatchObject({
+          status: 404,
+          message: "Authorization request not found",
+        });
+        expect(redis.del).not.toHaveBeenCalled();
+        expect(redis.set).not.toHaveBeenCalled();
+        expect(auditService.logAction).not.toHaveBeenCalled();
+      });
+
+      it("records the approval in the client's tenant inside the transaction that mints the code", async () => {
+        redis.get.mockResolvedValue({ tenantId: "t1", clientId: "c1", clientName: "Acme", redirectUri: "https://rp.example/cb", scope: ["openid"] });
+        await oidc.decideAuthorization("r1", USER, true, { ipAddress: "10.0.0.2", userAgent: "UA" });
+        expect(db.transaction).toHaveBeenCalledTimes(1);
+        expect(auditService.logAction).toHaveBeenCalledWith(
+          expect.objectContaining({
+            tenantId: "t1",
+            userId: "user-1",
+            action: "APPROVE",
+            resourceType: "OidcClient",
+            resourceId: "c1",
+            ipAddress: "10.0.0.2",
+            userAgent: "UA",
+            changes: expect.objectContaining({ outcome: "approved", clientName: "Acme" }),
+          }),
+          { transaction: "tx" },
         );
       });
 
-      it("returns access_denied (preserving state) when denied", async () => {
+      it("a code Redis did not store is a 503 inside the transaction (the audit row rolls back)", async () => {
+        redis.get.mockResolvedValue({ tenantId: "t1", clientId: "c1", redirectUri: "https://rp.example/cb" });
+        redis.set.mockResolvedValueOnce(false);
+        await expect(oidc.decideAuthorization("r1", USER, true)).rejects.toMatchObject({ status: 503 });
+      });
+
+      it("returns access_denied (preserving state) when denied, and records the denial", async () => {
         redis.get.mockResolvedValue({
+          tenantId: "t1",
           redirectUri: "https://rp.example/cb",
           state: "st8",
         });
         const { redirectTo } = await oidc.decideAuthorization("r1", USER, false);
         expect(redirectTo).toBe("https://rp.example/cb?state=st8&error=access_denied");
         expect(redis.del).toHaveBeenCalled();
+        expect(auditService.logAction).toHaveBeenCalledWith(
+          expect.objectContaining({
+            action: "UPDATE",
+            userAgent: null,
+            changes: expect.objectContaining({ outcome: "denied", clientName: null }),
+          }),
+          { transaction: "tx" },
+        );
       });
 
       it("mints a single-use code bound to the user when approved (no state)", async () => {
@@ -834,7 +977,7 @@ describe("oidcProvider.service", () => {
 
       it("decideAuthorization rejects a missing requestId", async () => {
         await expect(oidc.decideAuthorization("", USER, true)).rejects.toThrow(
-          "expired or invalid",
+          "Authorization request not found",
         );
       });
 

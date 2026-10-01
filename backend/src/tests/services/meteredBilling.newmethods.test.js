@@ -11,7 +11,13 @@ jest.mock("../../config", () => ({
     QueryTypes: { SELECT: "SELECT" },
     Sequelize: { Op: { gte: "gte", lte: "lte", ne: "ne" }, fn: jest.fn(), col: jest.fn() },
     query: jest.fn(),
+    // P6-11: the usage-alert writes run in a managed transaction.
+    transaction: jest.fn((cb) => cb("txn")),
   },
+}));
+// P6-11: every usage-alert write commits with one audit row in its transaction.
+jest.mock("../../services/audit.service", () => ({
+  logAction: jest.fn(),
 }));
 jest.mock("../../utils/appError.util", () => ({
   AppError: class AppError extends Error {
@@ -97,6 +103,7 @@ describe("meteredBilling.service new methods", () => {
           comparison: "gte",
           notificationChannels: ["email"],
         }),
+        { transaction: "txn" },
       );
     });
     it("400s creating an alert without metricName/threshold", async () => {
@@ -362,7 +369,7 @@ describe("meteredBilling.service new methods", () => {
         notificationChannels: ["sms", "webhook"],
         isEnabled: false,
         description: "Storage watch",
-      });
+      }, { transaction: "txn" });
     });
 
     it("accepts a zero threshold", async () => {
@@ -372,6 +379,7 @@ describe("meteredBilling.service new methods", () => {
 
       expect(UsageAlert.create).toHaveBeenCalledWith(
         expect.objectContaining({ threshold: 0, isEnabled: true, description: "" }),
+        { transaction: "txn" },
       );
     });
 
@@ -441,5 +449,55 @@ describe("meteredBilling.service new methods", () => {
 
       expect(new Date(res.generatedAt).toISOString()).toBe(res.generatedAt);
     });
+  });
+});
+
+// P6-11 — a usage-alert write and its audit row commit together.
+describe("meteredBilling.service — P6-11 audit rows", () => {
+  const auditService = require("../../services/audit.service");
+  const principal = { userId: "u-1", apiKeyId: null, ipAddress: "10.0.0.1", userAgent: "jest" };
+
+  beforeEach(() => jest.clearAllMocks());
+
+  it("createUsageAlert writes one CREATE row in the alert's transaction", async () => {
+    UsageAlert.create.mockResolvedValueOnce({ id: "a1", metricName: "api_calls", threshold: 5 });
+    await svc.createUsageAlert("t-1", { metricName: "api_calls", threshold: 5 }, principal);
+    expect(auditService.logAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: "t-1",
+        userId: "u-1",
+        action: "CREATE",
+        resourceType: "UsageAlert",
+        resourceId: "a1",
+        changes: expect.objectContaining({
+          operation: "USAGE_ALERT_CREATE",
+          after: expect.objectContaining({ metricName: "api_calls", threshold: 5, comparison: null }),
+        }),
+      }),
+      { transaction: "txn" },
+    );
+  });
+
+  it("deleteUsageAlert writes one DELETE row with the alert as it was", async () => {
+    const destroy = jest.fn().mockResolvedValue(true);
+    UsageAlert.findOne.mockResolvedValueOnce({ id: "a1", metricName: "api_calls", threshold: 5, destroy });
+    await svc.deleteUsageAlert("t-1", "a1", { userId: null, apiKeyId: "key-1" });
+    expect(destroy).toHaveBeenCalledWith({ transaction: "txn" });
+    expect(auditService.logAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        systemActor: "system:api-key",
+        action: "DELETE",
+        changes: expect.objectContaining({ operation: "USAGE_ALERT_DELETE", apiKeyId: "key-1", before: expect.any(Object) }),
+      }),
+      { transaction: "txn" },
+    );
+  });
+
+  it("a failed audit write fails the create", async () => {
+    UsageAlert.create.mockResolvedValueOnce({ id: "a1" });
+    auditService.logAction.mockRejectedValueOnce(new Error("audit insert failed"));
+    await expect(svc.createUsageAlert("t-1", { metricName: "api_calls", threshold: 5 }, principal)).rejects.toThrow(
+      "audit insert failed",
+    );
   });
 });

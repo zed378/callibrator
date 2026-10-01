@@ -5,6 +5,7 @@
  */
 
 const { logger } = require("../middlewares/activityLog.middleware");
+const { auditPrincipal } = require("../utils/auditPrincipal.util");
 // The service exports its functions at the top level, so import the module
 // object — NOT `{ meteredBillingService }` (which was undefined and made every
 // endpoint throw at runtime).
@@ -92,6 +93,7 @@ exports.createUsageAlert = asyncHandler(async (req, res) => {
   const alert = await meteredBillingService.createUsageAlert(
     tenantId,
     alertData,
+    auditPrincipal(req),
   );
 
   return success(res, alert, null, "Usage alert created", 201);
@@ -104,7 +106,7 @@ exports.deleteUsageAlert = asyncHandler(async (req, res) => {
   const { alertId } = req.params;
   const { tenantId } = req.user;
 
-  await meteredBillingService.deleteUsageAlert(tenantId, alertId);
+  await meteredBillingService.deleteUsageAlert(tenantId, alertId, auditPrincipal(req));
 
   return success(res, null, "Usage alert deleted");
 });

@@ -7,6 +7,7 @@ const storageSettingsService = require("../services/storageSettings.service");
 const storage = require("../services/storage");
 const { asyncHandler } = require("../utils/controllerWrapper.util");
 const { success } = require("../utils/response.util");
+const { auditPrincipal } = require("../utils/auditPrincipal.util");
 const path = require("path");
 const { contentTypeFor, applyFileHeaders } = require("../utils/fileResponse.util");
 
@@ -21,13 +22,14 @@ exports.updateSettings = asyncHandler(async (req, res) => {
   const data = await storageSettingsService.updateSettings(
     req.user.tenantId,
     req.body,
+    auditPrincipal(req),
   );
   success(res, data, null, "Storage settings updated", 200);
 });
 
 // DELETE /api/v1/storage/settings  (revert to the platform default)
 exports.clearSettings = asyncHandler(async (req, res) => {
-  const data = await storageSettingsService.clearSettings(req.user.tenantId);
+  const data = await storageSettingsService.clearSettings(req.user.tenantId, auditPrincipal(req));
   success(res, data, null, "Storage settings reset to platform default", 200);
 });
 

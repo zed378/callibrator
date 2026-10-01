@@ -24,6 +24,7 @@ import type * as ErrorHandlers from "../../middlewares/errorHandlers.middleware"
 import type * as NotFound from "../../middlewares/notFound.middleware";
 import type * as TwoTenants from "./twoTenants";
 import type { MemoryDb } from "./memoryDb";
+import { findSecrets, secretsMessage } from "../support/secretScan";
 
 /** A principal shaped as auth.middleware builds `req.user` (fixtures/twoTenants). */
 export interface Principal {
@@ -119,7 +120,7 @@ export const authMock = (): typeof AuthMiddleware => {
     r["impersonatorId"] = state.impersonatorId;
     return run(req, res, next);
   };
-  return { ...actual, auth } as unknown as typeof AuthMiddleware;
+  return { ...actual, auth };
 };
 
 const makeRes = (resolve: (r: RouteResponse) => void): Record<string, unknown> => {
@@ -217,7 +218,10 @@ export const call = (router: RouterLike, method: string, url: string, opts: Call
   const { errorHandler } = jest.requireActual<typeof ErrorHandlers>("../../middlewares/errorHandlers.middleware");
   const { notFound } = jest.requireActual<typeof NotFound>("../../middlewares/notFound.middleware");
   const { body = {}, query = {}, headers = {}, baseUrl = "/api/v1/test", file, files } = opts;
-  return new Promise((resolve) => {
+  // S-20 / A-331 (ADR-100 Amendment 4): every response is scanned for
+  // credential material; a finding rejects the call (tests/support/secretScan.ts).
+  const route = `${method.toUpperCase()} ${baseUrl}${url}`;
+  return new Promise<RouteResponse>((resolve) => {
     const res = makeRes(resolve);
     const lower: Record<string, string> = {};
     for (const [k, v] of Object.entries(headers)) {
@@ -255,6 +259,12 @@ export const call = (router: RouterLike, method: string, url: string, opts: Call
         (notFound as unknown as (q: unknown, s: unknown) => void)(req, res);
       }
     });
+  }).then((response) => {
+    const message = secretsMessage(findSecrets(response.body, route), route);
+    if (message) {
+      throw new Error(message);
+    }
+    return response;
   });
 };
 

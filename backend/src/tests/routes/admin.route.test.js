@@ -78,19 +78,34 @@ describe("Admin Routes", () => {
     expect(routePaths).toContain("/tenants/:id/flags");
   });
 
-  it("should have all routes using GET or PATCH methods", () => {
+  it("uses only the methods it serves: GET, PATCH, PUT (P10-04 domains) and POST (P10-05/07 queue actions)", () => {
+    const methods = new Set();
     adminRoutes.stack.forEach((layer) => {
       if (layer.route) {
-        const methods = layer.route.methods;
-        const hasGet = methods.get === true;
-        const hasPatch = methods.patch === true;
-        expect(hasGet || hasPatch).toBe(true);
+        Object.keys(layer.route.methods).forEach((m) => methods.add(m));
       }
     });
+    expect([...methods].sort()).toEqual(["get", "patch", "post", "put"]);
   });
 
-  it("should have exactly 3 route endpoints", () => {
-    const routeCount = adminRoutes.stack.filter((layer) => layer.route).length;
-    expect(routeCount).toBe(3);
+  it("has exactly its 11 route endpoints: 3 tenant ones, 2 SSO-domain ones (P10-04) and 6 access-request ones (P10-05/07)", () => {
+    const routes = adminRoutes.stack
+      .filter((layer) => layer.route)
+      .flatMap((layer) => Object.keys(layer.route.methods).map((m) => `${m.toUpperCase()} ${layer.route.path}`));
+    expect(routes.sort()).toEqual(
+      [
+        "GET /tenants",
+        "PATCH /tenants/:id/status",
+        "PATCH /tenants/:id/flags",
+        "GET /tenants/:id/sso-domains",
+        "PUT /tenants/:id/sso-domains",
+        "GET /access-requests",
+        "POST /access-requests/erasure",
+        "GET /access-requests/:id",
+        "POST /access-requests/:id/approve",
+        "POST /access-requests/:id/reject",
+        "POST /access-requests/:id/resend-invitation",
+      ].sort(),
+    );
   });
 });

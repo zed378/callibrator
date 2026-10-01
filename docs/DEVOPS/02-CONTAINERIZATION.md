@@ -15,6 +15,13 @@ A single executable plus a reverse proxy is far easier to get through a hospital
 Built from the **repository root** — `docker build -f backend/Dockerfile .` — because the only committed lockfile is the root `package-lock.json` (ADR-044). The context is filtered by `backend/Dockerfile.dockerignore`, an allow-list. Abridged from `backend/Dockerfile`, which is the source of truth:
 
 ```dockerfile
+# ── pkg base binary (A-325) ──────────────────
+FROM node:26-alpine AS pkg-base
+ARG PKG_BASE_TAG=v3.6
+ARG PKG_BASE_NAME=node-v26.5.1-linux-x64
+ARG PKG_BASE_SHA256=02b77b99…c9e436
+RUN wget (5 tries, 60 s timeout) && sha256sum -c   # → /pkg-cache/<tag>/fetched-<node>-linux-x64
+
 # ── builder ──────────────────────────────────
 FROM node:26-alpine AS builder
 WORKDIR /app
@@ -27,7 +34,8 @@ COPY backend/ backend/
 WORKDIR /app/backend
 RUN npm run swagger:generate
 RUN npm run build:dist   # P9: pkg's bin is dist/index.js
-RUN npx --no-install pkg . --targets node26-linux-x64 --output /out/backend
+COPY --from=pkg-base /pkg-cache /tmp/pkg-cache
+RUN PKG_CACHE_PATH=/tmp/pkg-cache npx --no-install pkg . --targets node26-linux-x64 --output /out/backend
 
 # ── runtime ──────────────────────────────────
 FROM debian:bookworm-slim
@@ -54,11 +62,26 @@ USER app
 CMD ["./backend"]
 ```
 
+### The pkg base binary is pinned and pre-fetched (A-325)
+
+`pkg` wraps the app around a prebuilt Node base binary of about 80 MB, which pkg-fetch downloads from its GitHub release on every uncached build. When that download failed (a network error, or a stall on a loaded host), pkg fell back to compiling Node from source, which it refuses on Alpine. The image could not be built at all: it failed three times on 2026-09-30.
+
+The `pkg-base` stage now fetches the binary itself:
+- It retries five times, with backoff and a 60-second timeout.
+- The file must match the **pinned sha256**, or the build stops ("sha256 mismatch").
+- The layer depends only on the three `ARG` pins, so a source change never downloads the binary again.
+
+The builder hands the file to pkg through `PKG_CACHE_PATH`, where pkg-fetch looks before it downloads anything.
+
+**The pins are pkg-fetch's own:** its release tag, the newest node26 it knows, and the sha256 in its `expected-shas.json`. `backend/src/tests/guards/pkgBasePin.a325.guard.test.ts` fails when a pkg-fetch upgrade moves any of them. To move them, update the three `ARG` defaults to what the guard reports.
+
+**An offline or mirrored build** passes `--build-arg PKG_BASE_URL=<mirror>/node-v26.5.1-linux-x64`. The URL only changes where the file comes from; the checksum still decides whether it is used.
+
 ### Five details that will look strange
 
-**1. Debian runtime, not Alpine.** The image needs **Chromium** for certificate PDF rendering, and Alpine Chromium against a glibc-linked pkg binary is a fight not worth having.
+**1. Debian runtime, not Alpine.** Chosen when the image needed **Chromium** for certificate PDF rendering. Since ADR-095 (2026-09-29) the backend renders no PDF and the image carries no browser; the base was not changed by that decision.
 
-**2. `PUPPETEER_SKIP_DOWNLOAD=true` at build.** The packager cannot embed a browser. The runtime uses system Chromium via `PUPPETEER_EXECUTABLE_PATH`.
+**2. `PUPPETEER_SKIP_DOWNLOAD=true` at build.** puppeteer is a backend devDependency (documentation generators, the browser smoke suite); nothing in the build needs its Chromium. `PUPPETEER_EXECUTABLE_PATH` and the runtime `chromium`/`fonts-liberation` packages were removed by ADR-095. *(The Dockerfile excerpt above predates ADR-095; `backend/Dockerfile` is authoritative.)*
 
 **3. The CA bundle comes from the builder stage.** Plain HTTP to the Debian mirrors is blocked in the deployment subnet, and `bookworm-slim` ships no CA bundle, so apt over HTTPS cannot verify the mirror. The bundle is copied from `node:26-alpine` (which arrived over the registry's verified TLS) to the path apt reads by default, so **every** apt request is verified; Debian's `ca-certificates` package then regenerates it.
 
@@ -158,6 +181,14 @@ Inlined at **build** time, not read at runtime.
 - Setting them in the container environment does nothing.
 
 Anything genuinely runtime-configurable must come from the API.
+
+## The Compose Build Context Is Declared Once (A-332)
+
+`deploy/compose/docker-compose.yml` is the **only** compose file that declares a build `context` or `dockerfile`. For both images it is `context: ${BUILD_CONTEXT:-../..}`.
+
+The overlays (`dev`, `vm`, `staging`, `prod`) must not restate it. They used to: `dev` and `vm` each repeated `context: ../..`, and an overlay's value wins. So a build that pointed the base file at another tree, such as a frozen snapshot or a release checkout, was silently pointed back at the live working tree. The P9-12 baseline's first "snapshot" images were really built from the working tree this way.
+
+To build from another tree, set `BUILD_CONTEXT=/path/to/tree` once. `docker compose ... config` shows the context a build will actually use; **check it before claiming which tree an image came from.** `backend/src/tests/guards/composeBuildContext.a332.guard.test.ts` fails when an overlay declares a context or a Dockerfile.
 
 ## The `.dockerignore` Trap
 

@@ -63,7 +63,11 @@ Raw SQL **bypasses the scoping hooks entirely.**
 | never interpolate a value into the SQL string | parameterise; identifiers from a fixed allow-list only |
 | every new raw query is a review item | it is where isolation can leak |
 
-Target (P9-07): a `sql<Row>(text, bind)` helper that accepts bind parameters only; direct `db.query` banned by lint.
+**As-built (P9-07, ADR-087 Amendment 12):** `src/utils/sql.util.ts` exports `sql<Row>(runner, text, bind, { transaction })`, which accepts bind parameters only. The runner is the Sequelize instance, passed in; this deviates from the card's `sql(text, bind)`, and the reasons are recorded in the ADR.
+- **`replacements`** is refused by type and at run time, and so is a `$n` with no bound value.
+- **Direct `.query(` in TypeScript application source is a lint error** (`no-restricted-syntax`). The one exemption is `dbReady.util.ts`'s `SELECT 1` ping.
+- **`rawSqlTenantPredicate.d05` reads every `sql(...)` call** and requires a statement naming a tenant-scoped table to **bind** `tenant_id = $n`.
+- **JavaScript sites still call `query(` directly** (19 calls in 11 files on 2026-09-29). They move to the helper as their modules convert (Phase 9 Stage C).
 
 Current raw-SQL sites that touch tenant data: `search.service.js` (full-text search), `ai.service.js` (pgvector insert and retrieval), `meteredBilling.service.js` (usage aggregate and reset). Each carries `tenant_id` explicitly.
 

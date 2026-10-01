@@ -40,6 +40,8 @@ interface Vendor extends Model<
   email: string | null;
   phone: string | null;
   address: string | null;
+  /** Q-52 (migration 0106): accepted by the API since P9-22, stored since 2026-09-30. */
+  notes: string | null;
   rating: number | null;
   approvalStatus: CreationOptional<(typeof VENDOR_APPROVAL_STATUSES)[number]>;
   scorecard: number | null;
@@ -115,6 +117,12 @@ const defineModel: DefineVendor = (sequelize) => {
         allowNull: true,
       },
       address: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+      },
+      // Q-52 (ADR-109 §6, migration 0106): the API accepted `notes` and
+      // Sequelize dropped it — there was no attribute and no column.
+      notes: {
         type: DataTypes.TEXT,
         allowNull: true,
       },

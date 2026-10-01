@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthStore } from "@/stores/authStore";
 import { Shield, AlertCircle, ArrowLeft } from "lucide-react";
 import Link from "next/link";
+import { destinationAfterSignIn } from "@/app/login/hooks/useLoginForm";
 
 function AnimatedBackground() {
   return (
@@ -55,7 +56,9 @@ function SsoCallbackHandler() {
       try {
         await loginWithSSOCode(code);
         setStatus("success");
-        router.push("/dashboard");
+        // P10-04 (05 §5.1): the same routing as a password sign-in — a forced
+        // password change or MFA enrolment comes before the dashboard.
+        router.push(destinationAfterSignIn("/dashboard"));
       } catch (err) {
         setError(
           err instanceof Error

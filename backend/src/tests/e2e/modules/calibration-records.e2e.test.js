@@ -18,6 +18,8 @@ const {
   authHeader,
   extractToken,
 } = require("../setup");
+// P10-16 (ADR-099): no default operator password — set E2E_OPERATOR_PASSWORD (see setup.js).
+const { OPERATOR_PASSWORD } = require("../setup");
 
 describe("E2E Calibration Records (HTTP)", () => {
   let token;
@@ -27,7 +29,7 @@ describe("E2E Calibration Records (HTTP)", () => {
   async function login() {
     const { body } = await httpPost("/auth/login", {
       user: "sys@mail.com",
-      password: "123123",
+      password: OPERATOR_PASSWORD,
     });
     return extractToken(body);
   }

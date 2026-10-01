@@ -1,97 +1,83 @@
 /**
  * Session validator tests
+ *
+ * P9-11 (ADR-093): the module's own validate/formatErrors helpers are gone;
+ * the schemas are exercised through the shared checkInput, and the error
+ * formatting through fieldErrors (validators/input).
  */
+const { z } = require("zod");
 const {
   revokeSessionSchema,
   revokeAllSessionsSchema,
-  validate,
-  formatErrors,
 } = require("../../validators/session.validator");
+const { checkInput, fieldErrors } = require("../../validators/input");
 
 describe("Session Validators", () => {
   describe("revokeSessionSchema", () => {
     it("should validate with default reason", () => {
-      const { error, value } = validate({}, revokeSessionSchema);
+      expect(checkInput({}, revokeSessionSchema)).toEqual({ ok: true, value: { reason: "MANUAL_REVOKE" } });
+    });
 
-      expect(error).toBeUndefined();
-      expect(value.reason).toBe("MANUAL_REVOKE");
+    it("should apply the default for an absent body", () => {
+      expect(checkInput(undefined, revokeSessionSchema).value).toEqual({ reason: "MANUAL_REVOKE" });
     });
 
     it("should validate with custom reason", () => {
-      const { error } = validate(
-        { reason: "Suspicious activity detected" },
-        revokeSessionSchema,
-      );
+      const result = checkInput({ reason: "Suspicious activity detected" }, revokeSessionSchema);
 
-      expect(error).toBeUndefined();
+      expect(result).toEqual({ ok: true, value: { reason: "Suspicious activity detected" } });
+    });
+
+    it("should trim the reason", () => {
+      expect(checkInput({ reason: "  spaced  " }, revokeSessionSchema).value.reason).toBe("spaced");
+    });
+
+    it("should reject a blank reason", () => {
+      expect(checkInput({ reason: "   " }, revokeSessionSchema).errors).toEqual([
+        { field: "reason", message: "Too small: expected string to have >=1 characters" },
+      ]);
     });
 
     it("should reject reason exceeding max length", () => {
-      const { error } = validate(
-        { reason: "a".repeat(256) },
-        revokeSessionSchema,
-      );
-
-      expect(error).toBeDefined();
+      expect(checkInput({ reason: "a".repeat(256) }, revokeSessionSchema).errors).toEqual([
+        { field: "reason", message: "Too big: expected string to have <=255 characters" },
+      ]);
     });
   });
 
   describe("revokeAllSessionsSchema", () => {
     it("should validate with default reason", () => {
-      const { error, value } = validate({}, revokeAllSessionsSchema);
-
-      expect(error).toBeUndefined();
-      expect(value.reason).toBe("ADMIN_REVOKE_ALL");
+      expect(checkInput({}, revokeAllSessionsSchema)).toEqual({ ok: true, value: { reason: "ADMIN_REVOKE_ALL" } });
     });
 
     it("should validate with custom reason", () => {
-      const { error } = validate(
-        { reason: "Security breach detected" },
-        revokeAllSessionsSchema,
-      );
-
-      expect(error).toBeUndefined();
+      expect(checkInput({ reason: "Security breach detected" }, revokeAllSessionsSchema).ok).toBe(true);
     });
 
     it("should reject reason exceeding max length", () => {
-      const { error } = validate(
-        { reason: "a".repeat(256) },
-        revokeAllSessionsSchema,
-      );
-
-      expect(error).toBeDefined();
+      expect(checkInput({ reason: "a".repeat(256) }, revokeAllSessionsSchema).errors).toEqual([
+        { field: "reason", message: "Too big: expected string to have <=255 characters" },
+      ]);
     });
   });
 
-  describe("formatErrors", () => {
-    it("should format error details correctly", () => {
-      const details = [
-        { path: ["tenantId"], message: "tenantId is required" },
-        { path: ["email"], message: "Invalid email" },
-      ];
+  describe("fieldErrors", () => {
+    const schema = z.object({
+      tenantId: z.string({ error: "tenantId is required" }),
+      user: z.object({ name: z.string({ error: "Name is required" }) }),
+    });
 
-      const result = formatErrors(details);
+    it("should format error details correctly, nested paths joined with dots", () => {
+      const result = fieldErrors(schema.safeParse({ user: {} }).error);
 
       expect(result).toEqual([
         { field: "tenantId", message: "tenantId is required" },
-        { field: "email", message: "Invalid email" },
-      ]);
-    });
-
-    it("should handle nested field paths", () => {
-      const details = [{ path: ["user", "name"], message: "Name is required" }];
-
-      const result = formatErrors(details);
-
-      expect(result).toEqual([
         { field: "user.name", message: "Name is required" },
       ]);
     });
 
-    it("should return empty array for empty input", () => {
-      const result = formatErrors([]);
-
-      expect(result).toEqual([]);
+    it("should return empty array for an error without issues", () => {
+      expect(fieldErrors(new z.ZodError([]))).toEqual([]);
     });
   });
 });

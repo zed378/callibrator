@@ -1,14 +1,21 @@
 /**
  * Auth validator tests
+ *
+ * P9-11 (ADR-093): the schemas are Zod; they are exercised through the shared
+ * `checkInput` helper (the file's own `validate` / `formatErrors` are gone).
  */
+const { checkInput, validateInput, fieldErrors } = require("../../validators/input");
 const {
-  validate,
-  formatErrors,
   registerSchema,
   loginSchema,
+  verifyOtpSchema,
+  resendOtpSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
+  changePasswordSchema,
 } = require("../../validators/auth.validator");
+
+const REQUIRED_STRING = "Invalid input: expected string, received undefined";
 
 describe("Auth Validators", () => {
   describe("registerSchema", () => {
@@ -21,10 +28,10 @@ describe("Auth Validators", () => {
         password: "Password123",
       };
 
-      const { error, value } = validate(data, registerSchema);
+      const result = checkInput(data, registerSchema);
 
-      expect(error).toBeUndefined();
-      expect(value).toEqual({
+      expect(result.ok).toBe(true);
+      expect(result.value).toEqual({
         firstName: "John",
         lastName: "Doe",
         username: "johndoe",
@@ -33,15 +40,33 @@ describe("Auth Validators", () => {
       });
     });
 
+    it("trims and lowercases the username and email, and strips unknown keys", () => {
+      const result = checkInput(
+        {
+          firstName: "  John  ",
+          username: "  JohnDoe ",
+          email: "  John@Example.COM ",
+          password: "Password123",
+          role: "admin",
+        },
+        registerSchema,
+      );
+
+      expect(result).toEqual({
+        ok: true,
+        value: { firstName: "John", username: "johndoe", email: "john@example.com", password: "Password123" },
+      });
+    });
+
     it("should reject missing required fields", () => {
-      const data = {
-        firstName: "John",
-      };
+      const result = checkInput({ firstName: "John" }, registerSchema);
 
-      const { error } = validate(data, registerSchema);
-
-      expect(error).toBeDefined();
-      expect(error.details).toHaveLength(3);
+      expect(result.ok).toBe(false);
+      expect(result.errors).toEqual([
+        { field: "username", message: REQUIRED_STRING },
+        { field: "email", message: REQUIRED_STRING },
+        { field: "password", message: REQUIRED_STRING },
+      ]);
     });
 
     it("should reject invalid email", () => {
@@ -53,10 +78,10 @@ describe("Auth Validators", () => {
         password: "Password123",
       };
 
-      const { error } = validate(data, registerSchema);
+      const result = checkInput(data, registerSchema);
 
-      expect(error).toBeDefined();
-      expect(error.details[0].path).toContain("email");
+      expect(result.ok).toBe(false);
+      expect(result.errors).toEqual([{ field: "email", message: "Invalid email address" }]);
     });
 
     it("should reject weak password", () => {
@@ -68,10 +93,22 @@ describe("Auth Validators", () => {
         password: "weak",
       };
 
-      const { error } = validate(data, registerSchema);
+      const result = checkInput(data, registerSchema);
 
-      expect(error).toBeDefined();
-      expect(error.details[0].path).toContain("password");
+      expect(result.ok).toBe(false);
+      expect(result.errors).toEqual([
+        { field: "password", message: "Too small: expected string to have >=8 characters" },
+        { field: "password", message: "Password must contain uppercase, lowercase, and number" },
+      ]);
+    });
+
+    it("refuses a username with anything but letters and digits", () => {
+      const result = checkInput(
+        { firstName: "John", username: "john_doe", email: "john@example.com", password: "Password123" },
+        registerSchema,
+      );
+
+      expect(result.errors).toEqual([{ field: "username", message: "Username must only contain letters and digits" }]);
     });
 
     it("should allow null lastName", () => {
@@ -83,9 +120,16 @@ describe("Auth Validators", () => {
         password: "Password123",
       };
 
-      const { error } = validate(data, registerSchema);
+      expect(checkInput(data, registerSchema).ok).toBe(true);
+    });
 
-      expect(error).toBeUndefined();
+    it("allows an empty lastName, and refuses a one-character one", () => {
+      const base = { firstName: "John", username: "johndoe", email: "john@example.com", password: "Password123" };
+
+      expect(checkInput({ ...base, lastName: "" }, registerSchema).ok).toBe(true);
+      expect(checkInput({ ...base, lastName: "   " }, registerSchema).value.lastName).toBe("");
+      expect(checkInput({ ...base, lastName: "  Doe  " }, registerSchema).value.lastName).toBe("Doe");
+      expect(checkInput({ ...base, lastName: "D" }, registerSchema).ok).toBe(false);
     });
   });
 
@@ -96,9 +140,7 @@ describe("Auth Validators", () => {
         password: "Password123",
       };
 
-      const { error } = validate(data, loginSchema);
-
-      expect(error).toBeUndefined();
+      expect(checkInput(data, loginSchema).ok).toBe(true);
     });
 
     it("should validate correct login data with username", () => {
@@ -107,20 +149,14 @@ describe("Auth Validators", () => {
         password: "Password123",
       };
 
-      const { error } = validate(data, loginSchema);
-
-      expect(error).toBeUndefined();
+      expect(checkInput(data, loginSchema).ok).toBe(true);
     });
 
     it("should reject missing password", () => {
-      const data = {
-        user: "johndoe",
-      };
+      const result = checkInput({ user: "johndoe" }, loginSchema);
 
-      const { error } = validate(data, loginSchema);
-
-      expect(error).toBeDefined();
-      expect(error.details[0].path).toContain("password");
+      expect(result.ok).toBe(false);
+      expect(result.errors).toEqual([{ field: "password", message: REQUIRED_STRING }]);
     });
 
     it("should accept optional ip and userAgent", () => {
@@ -131,9 +167,10 @@ describe("Auth Validators", () => {
         userAgent: "Mozilla/5.0",
       };
 
-      const { error } = validate(data, loginSchema);
+      const result = checkInput(data, loginSchema);
 
-      expect(error).toBeUndefined();
+      expect(result.ok).toBe(true);
+      expect(result.value).toEqual(data);
     });
 
     it("should validate correct login data with username as key", () => {
@@ -142,9 +179,7 @@ describe("Auth Validators", () => {
         password: "Password123",
       };
 
-      const { error } = validate(data, loginSchema);
-
-      expect(error).toBeUndefined();
+      expect(checkInput(data, loginSchema).ok).toBe(true);
     });
 
     it("should validate correct login data with email as key", () => {
@@ -153,41 +188,49 @@ describe("Auth Validators", () => {
         password: "Password123",
       };
 
-      const { error } = validate(data, loginSchema);
-
-      expect(error).toBeUndefined();
+      expect(checkInput(data, loginSchema).ok).toBe(true);
     });
 
     it("should reject when all identity fields (user, username, email) are missing", () => {
-      const data = {
-        password: "Password123",
-      };
+      const result = checkInput({ password: "Password123" }, loginSchema);
 
-      const { error } = validate(data, loginSchema);
+      expect(result.ok).toBe(false);
+      expect(result.errors).toEqual([{ field: "", message: "Provide user, username or email" }]);
+    });
+  });
 
-      expect(error).toBeDefined();
+  describe("verifyOtpSchema", () => {
+    it("accepts an email and a six-digit OTP", () => {
+      expect(checkInput({ email: "john@example.com", otp: "123456" }, verifyOtpSchema)).toEqual({
+        ok: true,
+        value: { email: "john@example.com", otp: "123456" },
+      });
+    });
+
+    it("refuses an OTP with anything but digits", () => {
+      const result = checkInput({ email: "john@example.com", otp: "12345a" }, verifyOtpSchema);
+
+      expect(result.errors).toEqual([{ field: "otp", message: "OTP must contain digits only" }]);
+    });
+  });
+
+  describe("resendOtpSchema", () => {
+    it("accepts an email and refuses none", () => {
+      expect(checkInput({ email: "john@example.com" }, resendOtpSchema).ok).toBe(true);
+      expect(checkInput(undefined, resendOtpSchema).errors).toEqual([{ field: "email", message: REQUIRED_STRING }]);
     });
   });
 
   describe("forgotPasswordSchema", () => {
     it("should validate correct email", () => {
-      const data = {
-        email: "john@example.com",
-      };
-
-      const { error } = validate(data, forgotPasswordSchema);
-
-      expect(error).toBeUndefined();
+      expect(checkInput({ email: "john@example.com" }, forgotPasswordSchema).ok).toBe(true);
     });
 
     it("should reject invalid email", () => {
-      const data = {
-        email: "invalid",
-      };
+      const result = checkInput({ email: "invalid" }, forgotPasswordSchema);
 
-      const { error } = validate(data, forgotPasswordSchema);
-
-      expect(error).toBeDefined();
+      expect(result.ok).toBe(false);
+      expect(result.errors).toEqual([{ field: "email", message: "Invalid email address" }]);
     });
   });
 
@@ -199,9 +242,7 @@ describe("Auth Validators", () => {
         password: "NewPassword123",
       };
 
-      const { error } = validate(data, resetPasswordSchema);
-
-      expect(error).toBeUndefined();
+      expect(checkInput(data, resetPasswordSchema).ok).toBe(true);
     });
 
     it("should reject missing otp", () => {
@@ -210,35 +251,51 @@ describe("Auth Validators", () => {
         password: "NewPassword123",
       };
 
-      const { error } = validate(data, resetPasswordSchema);
+      const result = checkInput(data, resetPasswordSchema);
 
-      expect(error).toBeDefined();
+      expect(result.ok).toBe(false);
+      expect(result.errors).toEqual([{ field: "otp", message: REQUIRED_STRING }]);
     });
   });
 
-  describe("formatErrors", () => {
-    it("should format error details correctly", () => {
-      const details = [
-        { path: ["email"], message: "Invalid email" },
-        { path: ["password"], message: "Password too weak" },
-      ];
+  describe("changePasswordSchema", () => {
+    it("accepts a matching confirmation", () => {
+      const data = { oldPassword: "old", newPassword: "NewPassword123", confirmPassword: "NewPassword123" };
 
-      const errors = formatErrors(details);
-
-      expect(errors).toEqual([
-        { field: "email", message: "Invalid email" },
-        { field: "password", message: "Password too weak" },
-      ]);
+      expect(checkInput(data, changePasswordSchema)).toEqual({ ok: true, value: data });
     });
 
-    it("should handle nested paths", () => {
-      const details = [{ path: ["user", "email"], message: "Invalid email" }];
+    it("refuses a mismatched confirmation on confirmPassword", () => {
+      const result = checkInput(
+        { oldPassword: "old", newPassword: "NewPassword123", confirmPassword: "Other123" },
+        changePasswordSchema,
+      );
 
-      const errors = formatErrors(details);
+      expect(result.errors).toEqual([{ field: "confirmPassword", message: "Passwords do not match" }]);
+    });
 
-      expect(errors).toEqual([
-        { field: "user.email", message: "Invalid email" },
-      ]);
+    it("refuses a missing confirmation with the same message", () => {
+      const result = checkInput({ oldPassword: "old", newPassword: "NewPassword123" }, changePasswordSchema);
+
+      expect(result.errors).toEqual([{ field: "confirmPassword", message: "Passwords do not match" }]);
+    });
+  });
+
+  describe("validateInput / fieldErrors (formerly formatErrors)", () => {
+    it("throws the plain 400 object with every field's error", () => {
+      expect(() => validateInput({ email: "invalid" }, forgotPasswordSchema)).toThrow(
+        expect.objectContaining({
+          status: 400,
+          message: "Validation failed",
+          errors: [{ field: "email", message: "Invalid email address" }],
+        }),
+      );
+    });
+
+    it("maps each Zod issue to { field, message }", () => {
+      const result = registerSchema.safeParse({ firstName: "John", username: "johndoe", email: "bad", password: "Password123" });
+
+      expect(fieldErrors(result.error)).toEqual([{ field: "email", message: "Invalid email address" }]);
     });
   });
 });

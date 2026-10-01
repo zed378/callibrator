@@ -572,7 +572,7 @@ All API responses MUST follow this standardized format:
     "email": "john@example.com",
     "role": { "id": "uuid", "name": "admin" }
   },
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token": "<JWT>",
   "session": {
     "id": "session-uuid",
     "createdAt": "2024-01-01T00:00:00Z",

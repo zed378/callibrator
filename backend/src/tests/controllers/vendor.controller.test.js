@@ -134,7 +134,7 @@ describe("vendor Controller", () => {
 
       expect(vendorService.createVendor).toHaveBeenCalledWith(
         TENANT_ID,
-        { name: "Acme Corp", contact: "john@acme.com" },
+        { name: "Acme Corp", contact: "john@acme.com" }, expect.any(Object),
       );
       expect(success).toHaveBeenCalled();
     });
@@ -156,7 +156,7 @@ describe("vendor Controller", () => {
       expect(vendorService.updateVendor).toHaveBeenCalledWith(
         TENANT_ID,
         VENDOR_ID,
-        { name: "Acme Corp Updated" },
+        { name: "Acme Corp Updated" }, expect.any(Object),
       );
       expect(success).toHaveBeenCalled();
     });
@@ -190,7 +190,7 @@ describe("vendor Controller", () => {
 
       expect(vendorService.deleteVendor).toHaveBeenCalledWith(
         TENANT_ID,
-        VENDOR_ID,
+        VENDOR_ID, expect.any(Object),
       );
       expect(success).toHaveBeenCalled();
     });

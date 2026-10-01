@@ -39,6 +39,8 @@ jest.mock("../../models", () => {
     Tenants: {
       findByPk: (...args) => mockFx.current.Tenants.findByPk(...args),
       findOne: (...args) => mockFx.current.Tenants.findOne(...args),
+      // A-326 (ADR-112): updateTenant reads the status ENUM from the model.
+      getAttributes: () => ({ status: { values: ["active", "suspended", "deleted"] } }),
     },
     User: users,
     Users: users,
@@ -242,19 +244,26 @@ describe("A-63 — PATCH /tenants/edit cannot reach another tenant", () => {
     expect(fx.snapshot(fx.tenantA)).toEqual(before);
   });
 
-  it("a tenant admin cannot change their own tenant's status or maxUsers either (403), and nothing is written", async () => {
+  it("a tenant admin cannot change their own tenant's status either (403), and nothing is written", async () => {
     currentUser = fx.principal(fx.tenantA, ROLE_NAMES.HEALTCARE_ADMIN);
     const before = fx.snapshot(fx.tenantA);
 
     const status = await http("patch", "/edit", { tenantId: fx.tenantA.id, status: "suspended" });
-    const seats = await http("patch", "/edit", { tenantId: fx.tenantA.id, maxUsers: 500 });
 
     expect(status.status).toBe(403);
     expect(status.body.message).toMatch(/status/);
-    expect(seats.status).toBe(403);
-    expect(seats.body.message).toMatch(/maxUsers/);
     expect(fx.snapshot(fx.tenantA)).toEqual(before);
     expect(auditService.logAction).not.toHaveBeenCalled();
+  });
+
+  it("A-303: maxUsers is not an edit field — a tenant admin's is stripped (200), and the seat limit is unchanged", async () => {
+    currentUser = fx.principal(fx.tenantA, ROLE_NAMES.HEALTCARE_ADMIN);
+    const seatsBefore = fx.tenantA.maxUsers;
+
+    const seats = await http("patch", "/edit", { tenantId: fx.tenantA.id, maxUsers: 500 });
+
+    expect(seats.status).toBe(200);
+    expect(fx.tenantA.maxUsers).toBe(seatsBefore);
   });
 
   it("a tenant admin can update their own tenant's profile fields, resubmitting the unchanged status and maxUsers, and the change is audited in the transaction", async () => {
@@ -284,18 +293,29 @@ describe("A-63 — PATCH /tenants/edit cannot reach another tenant", () => {
     expect(options.transaction).toBeDefined();
   });
 
-  it("a super admin can change another tenant's status and maxUsers", async () => {
+  it("a super admin can edit another tenant (A-303: not maxUsers — it is stripped)", async () => {
     currentUser = fx.superAdmin;
+    const seatsBefore = fx.tenantB.maxUsers;
 
     const res = await http("patch", "/edit", {
       tenantId: fx.tenantB.id,
-      status: "suspended",
+      name: "Renamed by the platform",
       maxUsers: 50,
     });
 
     expect(res.status).toBe(200);
-    expect(fx.tenantB.status).toBe("SUSPENDED");
-    expect(fx.tenantB.maxUsers).toBe(50);
+    expect(fx.tenantB.name).toBe("Renamed by the platform");
+    expect(fx.tenantB.maxUsers).toBe(seatsBefore);
+  });
+
+  it("A-326 (ADR-112): a super admin's edit does not change status; a different status is a 409", async () => {
+    currentUser = fx.superAdmin;
+    const before = fx.tenantB.status;
+
+    const res = await http("patch", "/edit", { tenantId: fx.tenantB.id, status: "suspended" });
+
+    expect(res.status).toBe(409);
+    expect(fx.tenantB.status).toBe(before);
   });
 
   it("the route no longer carries a self bypass: an ordinary user naming themselves is refused by the gate (403)", async () => {

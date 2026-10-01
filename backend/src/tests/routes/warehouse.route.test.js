@@ -3,7 +3,7 @@
  *
  * Tests the Warehouse route registrations and middleware chain.
  */
-const warehouseRoutes = require("../../routes/api/warehouse.route.js");
+const warehouseRoutes = require("../../routes/api/warehouse.route");
 
 describe("Warehouse Routes", () => {
   it("should export an Express router", () => {

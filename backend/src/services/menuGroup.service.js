@@ -117,7 +117,10 @@ const MENU_GROUP_FIELDS = ["name", "slug", "icon", "parentId", "sortOrder", "isA
 // Maps a DB slug to its Next.js dashboard route.
 const mapSlugToPath = (slug) => {
   const customPaths = {
-    home: "/",
+    // S7 / F6 (ADR-102): "Home" is the dashboard home, not the public landing
+    // page — the menu never leaves the app. When Dashboard is also shown,
+    // getRoleMenuAssignments keeps one entry per path.
+    home: "/dashboard",
     dashboard: "/dashboard",
     "change-password": "/dashboard/change-password",
     "profile-page": "/dashboard/profile",
@@ -240,50 +243,87 @@ exports.listMenuGroups = async (roleId) => {
 // ------------------------------------------------------------------
 // GET ROLE MENU ASSIGNMENTS (personalized menu for a role)
 // ------------------------------------------------------------------
-exports.getRoleMenuAssignments = async (roleId) => {
-  const assignments = await RoleMenuPermission.findAll({ where: { roleId } });
-  const assignedIds = new Set(assignments.map((a) => a.menuGroupId));
+/**
+ * ADR-102 — the sidebar shows an entry only when the API would serve its
+ * page: the principal's EFFECTIVE permission (services/effectivePermission —
+ * the function dynamicAccess checks: the role's grants inherited ONE level
+ * down, replaced by the user's own overrides) grants `read` on the entry's
+ * slug, and every gate its page's load call is behind passes
+ * (constants/menuPageAccess). A group or sub-group is shown when at least one
+ * entry below it is. Top-level entries that point at the same page (Home and
+ * Dashboard) are shown once.
+ *
+ * This used to show a node when it OR ANY ANCESTOR was granted — a grant on
+ * `management` showed every Management page, most of which the API refused —
+ * and ignored per-user overrides (F1, F9 of docs/UI-UX/research/03).
+ *
+ * @param {string} roleId - the role whose menu is resolved
+ * @param {object} [requester] - req.user. When it is a member of `roleId`,
+ *   the menu is theirs (their overrides apply); otherwise (a super admin
+ *   previewing another role) it is the role's own, without any user override.
+ * @returns {Promise<object[]>} the menu tree
+ */
+exports.getRoleMenuAssignments = async (roleId, requester = null) => {
+  const effectivePermission = require("./effectivePermission.service");
+  const requesterRoleId = requester && (requester.roleId || requester.role?.id);
+  let principal;
+  if (requester && requesterRoleId && String(requesterRoleId) === String(roleId)) {
+    principal = { id: requester.id, role: { ...requester.role, id: roleId } };
+  } else {
+    const role = await Role.findByPk(roleId, { attributes: ["id", "name", "roleLevel", "status"] });
+    if (!role) {
+      return [];
+    }
+    principal = { role: { id: role.id, name: role.name, roleLevel: role.roleLevel } };
+  }
+  const sources = await effectivePermission.loadPermissionSources(principal);
 
   const parentGroups = await fetchActiveParentGroups();
 
-  // Walks a node at any depth. A node is visible when it is explicitly
-  // assigned, when one of its ancestors is assigned (assignment cascades down),
-  // or when at least one descendant survives the same test — so an explicitly
-  // assigned leaf still surfaces through an unassigned sub-group, while a
-  // sub-group that ends up empty and unassigned is dropped entirely.
-  const buildNode = (node, ancestorAssigned) => {
-    const isAssigned = ancestorAssigned || assignedIds.has(node.id);
-
-    const visibleChildren = (node.children || [])
-      .map((child) => buildNode(child, isAssigned))
-      .filter(Boolean);
-
-    if (!isAssigned && visibleChildren.length === 0) {
-      return null;
+  // A leaf is shown when its page is usable; a node with children when at
+  // least one of them is shown.
+  const buildNode = (node) => {
+    const children = node.children || [];
+    if (children.length === 0) {
+      if (!effectivePermission.menuEntryVisible(principal, sources, node.slug)) {
+        return null;
+      }
+      return {
+        id: node.id,
+        label: node.name,
+        icon: node.icon,
+        path: mapSlugToPath(node.slug),
+        requiredPermission: undefined,
+      };
     }
 
-    const built = {
+    const visibleChildren = children.map(buildNode).filter(Boolean);
+    if (visibleChildren.length === 0) {
+      return null;
+    }
+    return {
       id: node.id,
       label: node.name,
       icon: node.icon,
       path: mapSlugToPath(node.slug),
       requiredPermission: undefined,
+      items: visibleChildren,
     };
-
-    // Only sub-groups carry an `items` array; leaves keep the flat item shape
-    // the frontend has always received.
-    if (visibleChildren.length > 0) {
-      built.items = visibleChildren;
-    }
-
-    return built;
   };
 
   const result = [];
+  const topLevelPaths = new Set();
   for (const group of parentGroups) {
-    const built = buildNode(group, false);
+    const built = buildNode(group);
     if (!built) {
       continue;
+    }
+    if (!built.items) {
+      // A top-level link (Home, Dashboard, Warehouse, Stock): one per page.
+      if (topLevelPaths.has(built.path)) {
+        continue;
+      }
+      topLevelPaths.add(built.path);
     }
 
     result.push({
@@ -297,6 +337,27 @@ exports.getRoleMenuAssignments = async (roleId) => {
   }
 
   return result;
+};
+
+/**
+ * ADR-102 — the caller's effective permission on every active menu slug:
+ * { superAdmin, permissions: { [slug]: "read" | "write" } }. The pages decide
+ * their write actions from it (frontend usePermissions) — the same function
+ * the API gate reads, never a list of role names.
+ *
+ * @param {object} requester - req.user
+ * @returns {Promise<{superAdmin: boolean, permissions: Object<string, "read"|"write">}>}
+ */
+exports.getMyPermissions = async (requester) => {
+  const effectivePermission = require("./effectivePermission.service");
+  const principal = { id: requester.id, role: requester.role };
+  const sources = await effectivePermission.loadPermissionSources(principal);
+  const menus = await MenuGroup.findAll({ where: { isActive: true }, attributes: ["slug"] });
+  const slugs = menus.map((m) => m.slug).filter(Boolean);
+  return {
+    superAdmin: sources.superAdmin,
+    permissions: effectivePermission.effectivePermissionMap(sources, slugs),
+  };
 };
 
 // ------------------------------------------------------------------

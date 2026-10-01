@@ -1,83 +1,84 @@
 /**
  * SSO validator tests
+ *
+ * P9-11 (ADR-093): the module's own validate/formatErrors helpers are gone;
+ * the schemas are exercised through the shared checkInput (validators/input),
+ * which answers { ok: true, value } or { ok: false, errors: [{ field, message }] }.
+ * The formatErrors cases now live with fieldErrors (session.validator.test.js).
  */
 const {
   ssoLoginSchema,
+  ssoExchangeSchema,
   ssoSettingsSchema,
-  validate,
-  formatErrors,
 } = require("../../validators/sso.validator");
+const { checkInput } = require("../../validators/input");
 
 describe("SSO Validators", () => {
   describe("ssoLoginSchema", () => {
     it("should validate correct login data", () => {
-      const data = {
-        tenantCode: "acme",
-      };
+      const result = checkInput({ tenantCode: "acme" }, ssoLoginSchema);
 
-      const { error, value } = validate(data, ssoLoginSchema);
-
-      expect(error).toBeUndefined();
-      expect(value.tenantCode).toBe("acme");
+      expect(result).toEqual({ ok: true, value: { tenantCode: "acme" } });
     });
 
     it("should validate longer tenant code", () => {
-      const data = {
-        tenantCode: "my-company-corporation",
-      };
-
-      const { error } = validate(data, ssoLoginSchema);
-
-      expect(error).toBeUndefined();
+      expect(checkInput({ tenantCode: "my-company-corporation" }, ssoLoginSchema).ok).toBe(true);
     });
 
     it("should reject tenant code too short", () => {
-      const data = {
-        tenantCode: "a",
-      };
-
-      const { error } = validate(data, ssoLoginSchema);
-
-      expect(error).toBeDefined();
+      expect(checkInput({ tenantCode: "a" }, ssoLoginSchema).errors).toEqual([
+        { field: "tenantCode", message: "Too small: expected string to have >=2 characters" },
+      ]);
     });
 
     it("should reject missing tenant code", () => {
-      const data = {};
-
-      const { error } = validate(data, ssoLoginSchema);
-
-      expect(error).toBeDefined();
+      expect(checkInput({}, ssoLoginSchema).errors).toEqual([
+        { field: "tenantCode", message: "Invalid input: expected string, received undefined" },
+      ]);
     });
 
     it("should reject empty tenant code", () => {
-      const data = {
-        tenantCode: "",
-      };
-
-      const { error } = validate(data, ssoLoginSchema);
-
-      expect(error).toBeDefined();
+      expect(checkInput({ tenantCode: "" }, ssoLoginSchema).errors).toEqual([
+        { field: "tenantCode", message: "Too small: expected string to have >=2 characters" },
+      ]);
     });
 
     it("should reject tenant code exceeding max length", () => {
-      const data = {
-        tenantCode: "a".repeat(101),
-      };
-
-      const { error } = validate(data, ssoLoginSchema);
-
-      expect(error).toBeDefined();
+      expect(checkInput({ tenantCode: "a".repeat(101) }, ssoLoginSchema).errors).toEqual([
+        { field: "tenantCode", message: "Too big: expected string to have <=100 characters" },
+      ]);
     });
 
     it("should handle whitespace trimming", () => {
-      const data = {
-        tenantCode: "  acme  ",
-      };
+      const result = checkInput({ tenantCode: "  acme  " }, ssoLoginSchema);
 
-      const { error, value } = validate(data, ssoLoginSchema);
+      expect(result.ok).toBe(true);
+      expect(result.value.tenantCode).toBe("acme");
+    });
+  });
 
-      expect(error).toBeUndefined();
-      expect(value.tenantCode).toBe("acme");
+  describe("ssoExchangeSchema (A-60)", () => {
+    it("should accept a 43-character base64url code", () => {
+      const code = "Ab0_-".repeat(8) + "xyz";
+      expect(checkInput({ code }, ssoExchangeSchema)).toEqual({ ok: true, value: { code } });
+    });
+
+    it("should reject a code of the wrong length", () => {
+      expect(checkInput({ code: "A".repeat(42) }, ssoExchangeSchema).errors).toEqual([
+        { field: "code", message: "Too small: expected string to have exactly 43 characters" },
+      ]);
+    });
+
+    it("should reject a code outside the base64url alphabet", () => {
+      expect(checkInput({ code: "!".repeat(43) }, ssoExchangeSchema).errors).toEqual([
+        { field: "code", message: "Invalid SSO code" },
+      ]);
+    });
+
+    it("should reject a missing code", () => {
+      expect(checkInput({}, ssoExchangeSchema).errors).toEqual([
+        { field: "code", message: "Invalid input: expected string, received undefined" },
+      ]);
     });
   });
 
@@ -92,20 +93,24 @@ describe("SSO Validators", () => {
         sso_sp_callback_url: "https://app.example.com/auth/callback",
       };
 
-      const { error, value } = validate(data, ssoSettingsSchema);
+      const result = checkInput(data, ssoSettingsSchema);
 
-      expect(error).toBeUndefined();
-      expect(value.sso_enabled).toBe(true);
+      expect(result.ok).toBe(true);
+      expect(result.value).toEqual(data);
     });
 
     it("should validate with disabled SSO", () => {
-      const data = {
-        sso_enabled: false,
-      };
+      expect(checkInput({ sso_enabled: false }, ssoSettingsSchema).value).toEqual({ sso_enabled: false });
+    });
 
-      const { error } = validate(data, ssoSettingsSchema);
+    it("should convert a 'true' string to a boolean", () => {
+      expect(checkInput({ sso_enabled: "true" }, ssoSettingsSchema).value.sso_enabled).toBe(true);
+    });
 
-      expect(error).toBeUndefined();
+    it("should trim the free-text fields", () => {
+      expect(checkInput({ sso_enabled: true, sso_idp_entity_id: "  x  " }, ssoSettingsSchema).value.sso_idp_entity_id).toBe(
+        "x",
+      );
     });
 
     it("should validate with null optional fields", () => {
@@ -118,9 +123,7 @@ describe("SSO Validators", () => {
         sso_sp_callback_url: null,
       };
 
-      const { error } = validate(data, ssoSettingsSchema);
-
-      expect(error).toBeUndefined();
+      expect(checkInput(data, ssoSettingsSchema).ok).toBe(true);
     });
 
     it("should validate with empty string optional fields", () => {
@@ -133,73 +136,31 @@ describe("SSO Validators", () => {
         sso_sp_callback_url: "",
       };
 
-      const { error } = validate(data, ssoSettingsSchema);
-
-      expect(error).toBeUndefined();
+      expect(checkInput(data, ssoSettingsSchema).ok).toBe(true);
     });
 
     it("should reject missing sso_enabled", () => {
-      const data = {
-        sso_idp_entry_point: "https://idp.example.com/sso",
-      };
+      expect(checkInput({ sso_idp_entry_point: "https://idp.example.com/sso" }, ssoSettingsSchema).errors).toEqual([
+        { field: "sso_enabled", message: "Invalid input: expected boolean, received undefined" },
+      ]);
+    });
 
-      const { error } = validate(data, ssoSettingsSchema);
-
-      expect(error).toBeDefined();
+    it("should reject a non-boolean sso_enabled", () => {
+      expect(checkInput({ sso_enabled: "yes" }, ssoSettingsSchema).errors).toEqual([
+        { field: "sso_enabled", message: "Invalid input: expected boolean, received string" },
+      ]);
     });
 
     it("should reject invalid URI for entry point", () => {
-      const data = {
-        sso_enabled: true,
-        sso_idp_entry_point: "not-a-uri",
-      };
-
-      const { error } = validate(data, ssoSettingsSchema);
-
-      expect(error).toBeDefined();
+      expect(checkInput({ sso_enabled: true, sso_idp_entry_point: "not-a-uri" }, ssoSettingsSchema).errors).toEqual([
+        { field: "sso_idp_entry_point", message: "Invalid URL" },
+      ]);
     });
 
     it("should reject invalid URI for callback URL", () => {
-      const data = {
-        sso_enabled: true,
-        sso_sp_callback_url: "not-a-uri",
-      };
-
-      const { error } = validate(data, ssoSettingsSchema);
-
-      expect(error).toBeDefined();
-    });
-  });
-
-  describe("formatErrors", () => {
-    it("should format error details correctly", () => {
-      const details = [
-        { path: ["tenantId"], message: "tenantId is required" },
-        { path: ["email"], message: "Invalid email" },
-      ];
-
-      const result = formatErrors(details);
-
-      expect(result).toEqual([
-        { field: "tenantId", message: "tenantId is required" },
-        { field: "email", message: "Invalid email" },
+      expect(checkInput({ sso_enabled: true, sso_sp_callback_url: "not-a-uri" }, ssoSettingsSchema).errors).toEqual([
+        { field: "sso_sp_callback_url", message: "Invalid URL" },
       ]);
-    });
-
-    it("should handle nested field paths", () => {
-      const details = [{ path: ["user", "name"], message: "Name is required" }];
-
-      const result = formatErrors(details);
-
-      expect(result).toEqual([
-        { field: "user.name", message: "Name is required" },
-      ]);
-    });
-
-    it("should return empty array for empty input", () => {
-      const result = formatErrors([]);
-
-      expect(result).toEqual([]);
     });
   });
 });

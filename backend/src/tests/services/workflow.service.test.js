@@ -76,6 +76,8 @@ jest.mock("../../middlewares/dynamicAccess.middleware", () => ({
 // routes/workflows.decision.a182a183.test.js.
 const mockCertificateService = {
   lockForWorkflowDecision: jest.fn(),
+  // ADR-101: separation of duties at every approving step (certificate.separationOfDuties.adr101).
+  refuseSelfApprovalInWorkflow: jest.fn(),
   verifyWorkflowApprovalAuth: jest.fn(),
   applyWorkflowApproval: jest.fn(),
   applyWorkflowRejection: jest.fn(),

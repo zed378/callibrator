@@ -44,9 +44,9 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-semibold text-muted-foreground">Total Unique Items</p>
-                <h3 className="text-3xl font-extrabold text-foreground mt-2">
+                <p className="text-3xl font-extrabold text-foreground mt-2">
                   {reportSummary?.totalItems ?? 0}
-                </h3>
+                </p>
                 <p className="text-xs text-muted-foreground mt-1">Different stock lines cataloged</p>
               </div>
               <div className="p-3 bg-primary/10 text-primary rounded-xl">
@@ -61,9 +61,9 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-semibold text-muted-foreground">Total Cumulative Units</p>
-                <h3 className="text-3xl font-extrabold text-foreground mt-2">
+                <p className="text-3xl font-extrabold text-foreground mt-2">
                   {reportSummary?.totalUnits ?? 0}
-                </h3>
+                </p>
                 <p className="text-xs text-muted-foreground mt-1">Total count of items across all depots</p>
               </div>
               <div className="p-3 bg-success/10 text-success rounded-xl">
@@ -82,13 +82,13 @@ export const ReportsTab: React.FC<ReportsTabProps> = ({
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-semibold text-muted-foreground">Low Stock Alerts</p>
-                <h3 className={`text-3xl font-extrabold mt-2 ${
+                <p className={`text-3xl font-extrabold mt-2 ${
                   lowStockCount > 0 
                     ? "text-destructive" 
                     : "text-foreground"
                 }`}>
                   {lowStockCount}
-                </h3>
+                </p>
                 <p className="text-xs text-muted-foreground mt-1">Items below safety stock threshold</p>
               </div>
               <div className={`p-3 rounded-xl ${

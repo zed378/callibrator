@@ -1,0 +1,136 @@
+# P9-25 (ADR-103) — lint rules for backend/openapi.json.
+#
+#   npm run openapi:lint        (Spectral; fails on an ERROR, reports warnings)
+#
+# Two tiers, because the document is two halves during the migration:
+#   - CODE-FIRST operations (generated from src/routes/**/*.openapi.ts, marked
+#     `x-source: "code-first: ..."`) are held to every rule at ERROR. They are
+#     generated, so an error here is a defect in the generator or a module.
+#   - The remaining JSDoc operations get the same checks at WARN: the gap is
+#     reported, and closes route by route as P9-20/P9-21 move them.
+#
+# The spectral:oas "recommended" set is on at its own severities, except
+# where noted below with the reason.
+extends:
+  - [spectral:oas, recommended]
+
+rules:
+  # ---- spectral:oas adjustments --------------------------------------------
+  # Tags are the Scalar sidebar; a JSDoc tag missing from docs/tags.js is a
+  # cosmetic gap in the legacy half, not a contract defect.
+  operation-tag-defined: warn
+  # The legacy half carries many operations without a description; the
+  # code-first rule below requires a summary instead.
+  operation-description: off
+  # One global `servers: [{url: "/"}]` — the document describes this deployment.
+  oas3-api-servers: off
+  # `info.contact` is not published: the API is behind sign-in (ADR-103).
+  info-contact: off
+
+  # ---- code-first: ERROR -----------------------------------------------------
+  cf-operation-id:
+    description: A code-first operation has an operationId (the generated client's method name).
+    severity: error
+    given: "$.paths[*][?(@ && @['x-source'])]"
+    then:
+      field: operationId
+      function: truthy
+
+  cf-summary:
+    description: A code-first operation has a summary.
+    severity: error
+    given: "$.paths[*][?(@ && @['x-source'])]"
+    then:
+      field: summary
+      function: truthy
+
+  cf-tags:
+    description: A code-first operation names at least one tag.
+    severity: error
+    given: "$.paths[*][?(@ && @['x-source'])]"
+    then:
+      field: tags
+      function: length
+      functionOptions:
+        min: 1
+
+  cf-security-declared:
+    description: A code-first operation states its security (an empty list only for a public route).
+    severity: error
+    given: "$.paths[*][?(@ && @['x-source'])]"
+    then:
+      field: security
+      function: defined
+
+  cf-public-is-explicit:
+    description: A code-first operation with no security is marked x-public — public is a reviewed fact, never an omission.
+    severity: error
+    given: "$.paths[*][?(@ && @['x-source'] && @.security && @.security.length == 0)]"
+    then:
+      field: x-public
+      function: truthy
+
+  cf-permission-declared:
+    description: A secured code-first operation publishes its gate (x-permission).
+    severity: error
+    given: "$.paths[*][?(@ && @['x-source'] && @.security && @.security.length > 0)]"
+    then:
+      field: x-permission
+      function: truthy
+
+  cf-audited-declared:
+    description: A code-first operation states whether it is audited (x-audited).
+    severity: error
+    given: "$.paths[*][?(@ && @['x-source'])]"
+    then:
+      field: x-audited
+      function: defined
+
+  cf-rate-limit-declared:
+    description: A code-first operation states its rate limit (x-rate-limit).
+    severity: error
+    given: "$.paths[*][?(@ && @['x-source'])]"
+    then:
+      field: x-rate-limit
+      function: truthy
+
+  cf-404-on-path-parameter:
+    description: A code-first operation addressed by a path parameter documents 404 (cross-tenant is 404, never 403).
+    severity: error
+    given: "$.paths[?(@property.match(/\\{/))][?(@ && @['x-source'])].responses"
+    then:
+      field: "404"
+      function: truthy
+
+  cf-path-parameter-example:
+    description: Every path parameter of a code-first operation carries a realistic synthetic example.
+    severity: error
+    given: "$.paths[*][?(@ && @['x-source'])].parameters[?(@.in == 'path')].schema"
+    then:
+      field: example
+      function: defined
+
+  cf-error-example:
+    description: Every error response component carries an example (what a client will actually see).
+    severity: error
+    given: "$.components.responses[?(@property != 'RateLimited')].content.application/json"
+    then:
+      field: example
+      function: defined
+
+  # ---- legacy JSDoc: WARN (closes as routes move to *.openapi.ts) ----------
+  legacy-operation-id:
+    description: A JSDoc operation has no operationId (it gets one when its route moves to .openapi.ts).
+    severity: warn
+    given: "$.paths[*][?(@ && @.responses && !@['x-source'])]"
+    then:
+      field: operationId
+      function: truthy
+
+  legacy-404-on-path-parameter:
+    description: A JSDoc operation addressed by a path parameter does not document 404.
+    severity: warn
+    given: "$.paths[?(@property.match(/\\{/))][?(@ && @.responses && !@['x-source'])].responses"
+    then:
+      field: "404"
+      function: truthy

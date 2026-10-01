@@ -91,8 +91,12 @@ Overdue is derived from `nextCalibrationDate` at render, not read from a status 
 |---|---|---|
 | Valid | green | **VALID** |
 | Expired | amber | **EXPIRED** |
+| Not yet valid | amber | **NOT YET VALID** |
 | Revoked | red | **REVOKED** |
+| Withdrawn | red | **WITHDRAWN** |
 | Not found | grey | **NOT FOUND** |
+
+Six, not four: these are the verdicts the page computes (`frontend/src/app/verify/[certificateNumber]/page.tsx`); this table listed four until ADR-098.
 
 The word is the message. The colour reinforces it. An auditor reading this off a phone in poor light, possibly with a colour vision deficiency, gets the answer from the text.
 
@@ -142,6 +146,12 @@ In the application the mark is **not** loaded as a file. `components/brand/Brand
 | **Charts encoding status** | **no** |
 
 For a tenant-pinned build, branding is fetched from `GET /tenants/public` **before sign-in**, so the login page is already branded. That endpoint must expose branding only — it is read by anyone, unauthenticated.
+
+**On the public surfaces (ADR-098) the tenant brand is its logo and name only, never its colour:** the public pages are dark with one fixed accent (the brand teal), and an arbitrary tenant colour cannot be contrast-checked against near-black in advance.
+
+## The Public Palette (ADR-098)
+
+Landing, sign-in, request access, invitation, activation and verification use a separate dark-only token set (`--pub-*`, scoped by `data-surface="public"`) with the brand teal `#00DAB4` as the only accent and computed contrast ratios: [`20-LANDING-AUTH-REVAMP.md`](./20-LANDING-AUTH-REVAMP.md) §4.2. The rules above still hold there: status colour only for status, never colour alone. The accent and the public success green have the same luminance, so the accent never appears inside a verdict.
 
 ## Adding a Colour
 

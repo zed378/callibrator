@@ -386,7 +386,8 @@ export default function NotificationsPage() {
         {/* Notification list */}
         {isLoading ? (
           <NotificationListSkeleton />
-        ) : notifications.length === 0 ? (
+        ) : notifications.length === 0 && error ? null : notifications.length === 0 ? (
+          // (A failed load shows its error above, never "all caught up".)
           <div className="rounded-2xl bg-card p-12 text-center shadow-xs border border-border">
             <BellOff className="h-12 w-12 mx-auto mb-3 text-muted-foreground opacity-30" />
             <p className="text-lg font-medium text-muted-foreground">

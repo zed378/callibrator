@@ -14,6 +14,12 @@ interface DevicesTableProps {
   handleDeleteClick: (id: string) => void;
   /** A-29: open the IoT ingest provisioning dialog for a device. */
   openIotModal?: (dev: Device) => void;
+  /**
+   * The list request failed. With no rows to show, the page's error alert is
+   * the state — "No devices found" would claim an empty inventory that was
+   * never read (docs/FRONTEND/10-TESTING.md § three-state assertion).
+   */
+  loadFailed?: boolean;
 }
 
 export const DevicesTable: React.FC<DevicesTableProps> = ({
@@ -25,6 +31,7 @@ export const DevicesTable: React.FC<DevicesTableProps> = ({
   openEditModal,
   handleDeleteClick,
   openIotModal,
+  loadFailed = false,
 }) => {
   const getStatusBadge = (status: Device["status"]) => {
     const maps = {
@@ -55,11 +62,13 @@ export const DevicesTable: React.FC<DevicesTableProps> = ({
         {isDevicesLoading ? (
           <TableSkeleton cols={columns.length} rows={5} />
         ) : !devices || devices.data.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">
-            <ClipboardList className="h-12 w-12 mx-auto mb-3 opacity-20" />
-            <p className="text-lg font-medium">No devices found</p>
-            <p className="text-sm">Try adjusting your filters or search terms.</p>
-          </div>
+          loadFailed ? null : (
+            <div className="text-center py-12 text-muted-foreground">
+              <ClipboardList className="h-12 w-12 mx-auto mb-3 opacity-20" />
+              <p className="text-lg font-medium">No devices found</p>
+              <p className="text-sm">Try adjusting your filters or search terms.</p>
+            </div>
+          )
         ) : (
           <>
             <Table

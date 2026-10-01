@@ -100,7 +100,7 @@ These have no equivalent in a generic setup and are the ones worth building.
 
 | Alert | Why it matters |
 |---|---|
-| Certificate PDF rendering failing | **`PUPPETEER_EXECUTABLE_PATH` wrong — fails at first use, not startup**, in a compliance-critical path |
+| ~~Certificate PDF rendering failing~~ | removed (ADR-095): the backend renders no PDF; `GET /certificates/:id/document` failures surface as ordinary API errors |
 | Public verification endpoint failing | an auditor cannot verify a certificate |
 | A tenant's calibration overdue count spiking | their compliance problem, and possibly a support call incoming |
 | A scheduler double-running | more than one replica is running schedulers |

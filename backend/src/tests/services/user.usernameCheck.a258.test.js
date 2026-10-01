@@ -7,7 +7,7 @@
  *  - a name another tenant holds, or a soft-deleted account holds, was
  *    "available", and the create then failed on the index;
  *  - LIKE is case-sensitive in PostgreSQL: "Alice" held made "alice" available;
- *  - the raw input was a LIKE pattern (the Joi schema happens to refuse `_`
+ *  - the raw input was a LIKE pattern (the schema happens to refuse `_`
  *    and `%` today; the service did not).
  * It now runs userCreate's own check (assertIdentityFree), and a "taken"
  * answer to a tenant administrator is the A-128 oracle: budgeted and audited.

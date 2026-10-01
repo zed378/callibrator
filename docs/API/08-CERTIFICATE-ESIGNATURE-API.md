@@ -74,16 +74,22 @@ before re-authentication, so no one-time code is consumed. The certificate is ap
 workflow configured approves directly, as before. `POST /:certificateId/submit` after a workflow **rejection**
 starts a new instance in the same transaction, so a re-submitted certificate goes through the chain again.
 
-### PDF
+### Document and PDF — the backend renders no PDF (ADR-095, 2026-09-29)
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/:certificateId/pdf` | download the rendered PDF |
-| POST | `/:certificateId/pdf` | (re)generate |
+| GET | `/:certificateId/document` | the certificate **document**: every printed field, `verifyUrl` (what the QR encodes), and `integrity` — `{ scheme, algorithm: "SHA-256", hash, legacyHash, signature, signatureKeyId }`, `scheme` being `"certificate-content-v3"` for a certificate signed with a snapshot (ADR-107) and `"certificate-content-v2"` otherwise, plus `issuer` (A-303) and `contentAsOf` (`"signing"` \| `"live"`, ADR-107). `certificate:read`; another tenant's certificate is a 404 |
+| GET | `/:certificateId/pdf` | only a PDF the backend **stored before 2026-09-29**; nothing is rendered. A certificate with no stored PDF is a 404 that names `/document` |
+| ~~POST~~ | ~~`/:certificateId/pdf`~~ | **removed** (answers 404) |
 
-Rendered with puppeteer from templates in `backend/src/templates`. The QR code encodes `CERT_VERIFY_BASE_URL/<certificateNumber>`.
+The PDF is rendered by the frontend (`frontend/src/lib/certificatePdf.ts`, jsPDF) from the document. The QR
+encodes `verifyUrl` as the backend resolves it (`CERT_VERIFY_BASE_URL/<certificateNumber>` when set).
+Chromium and `PUPPETEER_EXECUTABLE_PATH` left the backend image.
 
-**In a compiled binary the bundled Chromium is unavailable.** `PUPPETEER_EXECUTABLE_PATH` must point at a system browser. The Docker runtime image installs `chromium` and `fonts-liberation` and sets it; outside Docker it must be set by hand, and the failure appears at first PDF rather than at startup — a late failure in a compliance-critical path.
+The public `GET /verify/:certificateNumber` also returns `integrity` (the v2 hash), keeps `integrityHash`
+(the v1 hash every backend-rendered PDF printed — unchanged, so an issued printout still matches), and
+publishes `document` for a **signed**, non-withdrawn certificate (the same fields its stored PDF printed; the
+server HMAC is not included). `documentUrl` is still minted for a signed certificate that has a stored PDF.
 
 ## Certificate Fields
 
@@ -97,7 +103,7 @@ Rendered with puppeteer from templates in `backend/src/templates`. The QR code e
 | `digitalSignature`, `digitalSignatureKeyId`, `signedAt` | the signature and its key |
 | `issueDate`, `validUntil` | validity window |
 | `standard`, `summary`, `conditions`, `notes` | content |
-| `filePath`, `fileSize` | the rendered PDF |
+| `filePath`, `fileSize` | a PDF the backend rendered and stored **before** ADR-095; nothing writes them now |
 | `createdBy`, `updatedBy`, `deletedBy` | audit columns |
 
 The three actor columns are separate on purpose. Collapsing them into one "who touched this" column destroys the separation-of-duties evidence, which is the entire reason there are three transitions.

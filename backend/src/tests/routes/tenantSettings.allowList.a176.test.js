@@ -266,3 +266,46 @@ describe("A-176 — PATCH /tenants/settings takes only tenant-admin keys", () =>
     expect(mockStore.writes).toHaveLength(6);
   });
 });
+
+// A-176 (SSRF, DAST 2026-09-29): `oidc_authority` and `ai_base_url` are URLs
+// the SERVER calls. They are checked when saved — a clear 400 naming the key,
+// nothing written — and again, DNS-pinned, at every call (ssrf.util).
+describe("A-176 — a server-called URL setting is checked when it is saved", () => {
+  const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
+  afterEach(() => {
+    process.env.NODE_ENV = ORIGINAL_NODE_ENV;
+  });
+
+  it.each([
+    ["oidc_authority", "http://169.254.169.254/latest", "disallowed (internal) address"],
+    ["oidc_authority", "http://localhost:8080/realms/x", "URL host is not allowed"],
+    ["ai_base_url", "http://10.0.0.5:11434/v1", "disallowed (internal) address"],
+    ["ai_base_url", "http://[::ffff:a9fe:a9fe]/v1", "disallowed (internal) address"],
+    ["ai_base_url", "gopher://ai.example/", "URL must use http or https"],
+    ["oidc_authority", "not a url", "oidc_authority is not a valid URL"],
+  ])("refuses %s = %s with a 400, writing nothing", async (key, value, message) => {
+    const res = await patch({ tenantId: TENANT, settings: { [key]: value } });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toContain(key);
+    expect(res.body.message).toContain(message);
+    expect(mockStore.writes).toEqual([]);
+    expect(mockStore.transactions).toBe(0);
+  });
+
+  it("requires https in production", async () => {
+    process.env.NODE_ENV = "production";
+    const res = await patch({ tenantId: TENANT, settings: { oidc_authority: "http://idp.example/oidc" } });
+
+    expect(res.status).toBe(400);
+    expect(res.body.message).toBe("oidc_authority must use https");
+    expect(mockStore.writes).toEqual([]);
+  });
+
+  it("an empty value clears the setting and is accepted", async () => {
+    const res = await patch({ tenantId: TENANT, settings: { oidc_authority: "", ai_base_url: "  " } });
+
+    expect(res.status).toBe(200);
+    expect(mockStore.writes.sort()).toEqual(["ai_base_url", "oidc_authority"]);
+  });
+});

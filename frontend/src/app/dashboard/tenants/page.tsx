@@ -20,6 +20,7 @@ import { useTenants } from "./hooks/useTenants";
 export default function TenantsPage() {
   const {
     canManagePlatform,
+    canEditTenant,
     tenants,
     isLoading,
     error,
@@ -116,9 +117,10 @@ export default function TenantsPage() {
                   <TenantCard
                     key={tenant.id}
                     tenant={tenant}
-                    onEdit={handleEdit}
-                    onSsoConfig={handleSsoClick}
-                    onMfaPolicy={setMfaPolicyTenant}
+                    onEdit={canEditTenant ? handleEdit : undefined}
+                    onSsoConfig={canEditTenant ? handleSsoClick : undefined}
+                    onMfaPolicy={canEditTenant ? setMfaPolicyTenant : undefined}
+                    canManageBackups={canEditTenant}
                     onDelete={canManagePlatform ? handleDeleteRequest : undefined}
                   />
                 ))}
@@ -138,11 +140,11 @@ export default function TenantsPage() {
               />
             </div>
           </>
-        ) : (
+        ) : error && !tenants ? null /* a failed load: the alert above is the state */ : (
           <Card>
             <div className="p-12 text-center">
               <Building2 className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-foreground mb-2">No tenants found</h3>
+              <h2 className="text-lg font-medium text-foreground mb-2">No tenants found</h2>
               {canManagePlatform && (
                 <>
                   <p className="text-muted-foreground mb-4">Get started by creating your first tenant workspace.</p>

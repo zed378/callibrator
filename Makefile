@@ -277,8 +277,17 @@ backup: ## Dump the database to ./backups
 # =============================================================================
 
 .PHONY: lint
-lint: ## Lint both workspaces
+lint: ## Lint both workspaces and packages/contracts
 	npm run lint
+	@# P9-22 (ADR-097): run directly, like typecheck below — turbo would skip it silently.
+	cd packages/contracts && npm run --silent lint
+
+.PHONY: openapi
+openapi: ## The API contract: committed openapi.json is current, Spectral clean, no breaking change (P9-25, ADR-103)
+	cd backend && npm run --silent openapi:check
+	cd backend && npm run --silent openapi:lint
+	cd frontend && npm run --silent api:types:check
+	cd backend && npm run --silent openapi:breaking
 
 .PHONY: ts-ratchet
 ts-ratchet: ## Fail on any new backend .js file; lower the floor on a conversion (P9-04, ADR-087)
@@ -291,13 +300,20 @@ typecheck: ## Type-check both workspaces with TypeScript 7 (P9-01a, ADR-087)
 	@# resolve the workspace at all (no packageManager field).
 	cd backend && npm run --silent typecheck
 	cd frontend && npm run --silent typecheck
+	cd packages/contracts && npm run --silent typecheck
+	@# P10-13: the TypeScript browser specs (automate/*.mts, run by Node's type stripping).
+	node node_modules/@typescript/native/bin/tsc -p automate/tsconfig.json
 
 .PHONY: test
 test: ## Unit and integration tests
 	npm test
+	@# P9-22 (ADR-097): packages/contracts at 100% — the backend's jest cannot measure it (rootDir).
+	cd packages/contracts && npm test
 
 .PHONY: test-e2e
-test-e2e: ## the live E2E specs (count: find backend/src/tests/e2e -name '*.test.js') against a RUNNING server
+test-e2e: ## the live E2E specs (count: find backend/src/tests/e2e -name '*.test.[jt]s') against a RUNNING server
+	@echo -e "$(C_DIM)Env: BASE_URL, E2E_OPERATOR_PASSWORD (+ E2E_BOOTSTRAP_PASSWORD on a fresh stack), and$(C_OFF)"
+	@echo -e "$(C_DIM)E2E_MAILPIT_URL for the P10 mailed-secret tests (invitation, reset) — skipped by name without it.$(C_OFF)"
 	@echo -e "$(C_WARN)Two rules for this suite:$(C_OFF)"
 	@echo -e "$(C_DIM)  1. Never suspend the default tenant — it suspends the super-admin living in$(C_OFF)"
 	@echo -e "$(C_DIM)     it and 403s every later request. Create a disposable tenant.$(C_OFF)"
@@ -307,15 +323,31 @@ test-e2e: ## the live E2E specs (count: find backend/src/tests/e2e -name '*.test
 	cd backend && npm run test:e2e
 
 .PHONY: test-browser
-test-browser: ## Browser smoke: sign-in, MFA, one list page, CSP (ADR-077) against a RUNNING stack
+test-browser: ## Browser suite against a RUNNING stack: the smoke (ADR-077), then axe/dialogs/zoom/motion (ADR-090)
 	@echo -e "$(C_DIM)Needs the frontend (FRONTEND_URL, default http://localhost:3001), the backend$(C_OFF)"
 	@echo -e "$(C_DIM)(BASE_URL, default http://localhost:3000) and Chrome/Chromium (CHROME_PATH).$(C_OFF)"
-	@echo -e "$(C_DIM)Four checks, not the 71-test Playwright suite the documents once described (A-20).$(C_OFF)"
+	@echo -e "$(C_DIM)Smoke: sign-in, MFA, one list page, CSP. A11y: WCAG 2.1 AA axe on key pages in both$(C_OFF)"
+	@echo -e "$(C_DIM)themes, the create-dialog focus contract, 200% zoom reflow, reduced motion.$(C_OFF)"
+	@echo -e "$(C_DIM)Not the 71-test Playwright suite the documents once described (A-20).$(C_OFF)"
+	@echo -e "$(C_DIM)P10 (P10-13): landing, identifier-first sign-in, one-time password, request access,$(C_OFF)"
+	@echo -e "$(C_DIM)invitation, forgot/reset, verify, passkeys on a WebAuthn virtual authenticator. Needs$(C_OFF)"
+	@echo -e "$(C_DIM)E2E_MAILPIT_URL, and FRONTEND_URL = the backend's WEBAUTHN_ORIGIN (http://localhost:<port>).$(C_OFF)"
 	node automate/smoke.browser.js
+	node automate/a11y.browser.js
+	node automate/p10.browser.mts
 
 .PHONY: build
 build: ## Build both workspaces
 	npm run build
+
+.PHONY: bundle-budget
+bundle-budget: ## Public pages' first-load JS against frontend/bundle-budget.json (after build; P10-13, ADR-098 Amendment 2)
+	cd frontend && node scripts/bundle-budget.mjs
+
+.PHONY: load-check
+load-check: ## Every backend module loads: dist/ under plain node, src/ under tsx (after build; ADR-087 Amendment 15)
+	cd backend && npm run load:check
+	cd backend && npm run load:check -- --src
 
 .PHONY: hooks
 hooks: ## Opt in to the pre-push hook (secret scan, lint ratchet, typecheck) and install the pinned gitleaks — P7-01, A-19
@@ -336,7 +368,7 @@ secret-scan: ## Scan the whole git history for secrets, as CI does (needs gitlea
 	gitleaks git --config .gitleaks.toml --redact .
 
 .PHONY: verify
-verify: lint ts-ratchet typecheck test build ## The full gate (by hand; CI runs the same stages — .github/workflows/ci.yml)
+verify: lint ts-ratchet openapi typecheck test build bundle-budget load-check ## The full gate (by hand; CI runs the same stages — .github/workflows/ci.yml)
 	@echo ""
 	@echo -e "$(C_OK)Gates passed.$(C_OFF)"
 	@echo -e "$(C_DIM)Not covered here: the live E2E suite (make test-e2e) and the browser suite.$(C_OFF)"

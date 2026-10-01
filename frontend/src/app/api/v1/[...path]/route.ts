@@ -3,6 +3,11 @@ import { cookies } from "next/headers";
 import { API_BASE_URL, PROXY_UPSTREAM_TIMEOUT_MS } from "@/constants";
 import { CLIENT_ADDRESS_HEADERS, forwardedClientIp } from "@/lib/clientIp";
 import { FORWARDED_ORIGIN_HEADERS, forwardedOriginHeaders } from "@/lib/forwardedOrigin";
+import {
+  AUTH_SESSION_COOKIE,
+  sessionCookieOptions,
+  writeSessionCookies,
+} from "@/lib/authCookies";
 
 /**
  * A-68/A-69 — the one backend cookie this proxy carries, in both directions.
@@ -217,20 +222,20 @@ async function handleProxy(
         browserBody = JSON.stringify(withoutTokens);
       }
 
-      if (data && (data.token || data.session?.id)) {
-        const cookieOptions = {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === "production",
-          sameSite: "lax" as const,
-          path: "/",
-          maxAge: 7 * 24 * 60 * 60,
-        };
-        if (data.token) {
-          cookieStore.set("auth_token", data.token, cookieOptions);
-        }
-        if (data.session?.id) {
-          cookieStore.set("auth_session", data.session.id, cookieOptions);
-        }
+      // F-05 (live run, 2026-09-29): the same writer as the login route, so
+      // a session opened HERE keeps its refresh token. POST /auth/mfa/login —
+      // how every MFA user (every platform operator) signs in — and
+      // /auth/impersonate send a top-level `refreshToken` (auth.controller.js
+      // login()), which this block used to strip from the body and drop: those
+      // sessions could not be renewed and ended at the first expiry.
+      if (data && typeof data.token === "string" && data.token) {
+        writeSessionCookies(cookieStore, {
+          token: data.token,
+          sessionId: typeof data.session?.id === "string" ? data.session.id : null,
+          refreshToken: typeof data.refreshToken === "string" ? data.refreshToken : null,
+        });
+      } else if (data && typeof data.session?.id === "string" && data.session.id) {
+        cookieStore.set(AUTH_SESSION_COOKIE, data.session.id, sessionCookieOptions());
       }
     } catch {
       // Fail silently on JSON parse error

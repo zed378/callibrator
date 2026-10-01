@@ -40,6 +40,7 @@ The rules a developer applies while writing code. The threat model and control d
 | Rule | Because |
 |---|---|
 | every URL a tenant supplies passes `assertSafeUrl` at registration **and** `assertResolvedHostIsPublic` immediately before the request | DNS can change after registration |
+| the request to a tenant-supplied URL connects through `ssrf.util`'s pinned agents: `ssrfSafeAxiosOptions()` for axios, `pinnedFetch` for fetch-shaped code, `ssrfSafeAgents()` for an SDK. Never plain `fetch` or axios (ADR-104) | a second DNS resolution at connect time is a rebinding window; redirects must not be followed |
 | operator-configured endpoints (e.g. `http://minio:9000`) are deliberately exempt | keep the asymmetry when refactoring |
 | outbound calls have a timeout | webhook delivery: 8 s |
 

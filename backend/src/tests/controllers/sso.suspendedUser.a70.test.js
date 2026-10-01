@@ -21,6 +21,8 @@
  * below is not an artefact of a harness that cannot write.
  */
 
+// A-288 (ADR-100): the network policy has its own suites (signInPolicy.*.a288); here it permits.
+jest.mock("../../services/signInPolicy.service", () => ({ assertSignInPermitted: jest.fn(async () => undefined) }));
 jest.mock("../../models", () => ({
   Tenants: { findOne: jest.fn() },
   // A-188: update — the exchange stamps last_login_at.

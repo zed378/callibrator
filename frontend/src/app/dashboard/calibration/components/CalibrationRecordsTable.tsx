@@ -3,6 +3,7 @@ import { Calibration } from "@/api/services/calibration.service";
 import { Card, CardContent, Table, TableSkeleton, Badge, Button, Pagination } from "@/components/ui";
 import { Activity, PenTool } from "lucide-react";
 import { PaginatedResponse } from "@/types";
+import { actorLabel } from "@/lib/actorLabel";
 
 // Table rows arrive as generic records; narrow them back to Calibration.
 const asCalibration = (row: Record<string, unknown>): Calibration =>
@@ -15,6 +16,12 @@ interface CalibrationRecordsTableProps {
   onPageChange: (page: number) => void;
   hasWriteAccess: boolean;
   openCreateCertificateModal: (cal: Calibration) => void;
+  /**
+   * The records request failed and nothing was ever read. The page's error
+   * alert is then the state — "No calibration records found" would claim an
+   * empty compliance history (docs/FRONTEND/10-TESTING.md § three-state).
+   */
+  loadFailed?: boolean;
 }
 
 export const CalibrationRecordsTable: React.FC<CalibrationRecordsTableProps> = ({
@@ -24,6 +31,7 @@ export const CalibrationRecordsTable: React.FC<CalibrationRecordsTableProps> = (
   onPageChange,
   hasWriteAccess,
   openCreateCertificateModal,
+  loadFailed = false,
 }) => {
   const calibColumns = [
     {
@@ -65,8 +73,9 @@ export const CalibrationRecordsTable: React.FC<CalibrationRecordsTableProps> = (
       header: "Performed By",
       render: (_: unknown, row: Record<string, unknown>) => {
         const cal = asCalibration(row);
-        return cal.performer ? (
-          <span className="text-xs">{cal.performer.firstName} {cal.performer.lastName}</span>
+        const actor = actorLabel(cal.performer, cal.apiKey);
+        return actor ? (
+          <span className="text-xs">{actor}</span>
         ) : (
           <span className="text-muted-foreground">-</span>
         );
@@ -107,11 +116,13 @@ export const CalibrationRecordsTable: React.FC<CalibrationRecordsTableProps> = (
         {isCalibLoading ? (
           <TableSkeleton cols={7} rows={5} />
         ) : !calibrations || calibrations.data.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">
-            <Activity className="h-12 w-12 mx-auto mb-3 opacity-20" />
-            <p className="text-lg font-medium">No calibration records found</p>
-            <p className="text-sm">Record a new calibration audit log to get started.</p>
-          </div>
+          loadFailed ? null : (
+            <div className="text-center py-12 text-muted-foreground">
+              <Activity className="h-12 w-12 mx-auto mb-3 opacity-20" />
+              <p className="text-lg font-medium">No calibration records found</p>
+              <p className="text-sm">Record a new calibration audit log to get started.</p>
+            </div>
+          )
         ) : (
           <>
             <Table

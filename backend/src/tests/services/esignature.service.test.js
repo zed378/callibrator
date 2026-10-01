@@ -46,7 +46,8 @@ describe("eSignature.service", () => {
     it("should generate key pair and return result", async () => {
       const mockCreate = jest.fn().mockResolvedValue({ id: "tk-1" });
       const mockTenantKey = { create: mockCreate };
-      const mockModels = { TenantKey: mockTenantKey };
+      // A-278 (ADR-094): the key's creation writes an audit row in its transaction.
+      const mockModels = { TenantKey: mockTenantKey, AuditLog: { create: jest.fn(async (v) => v) } };
 
       jest.doMock("../../models", () => mockModels);
 
@@ -68,7 +69,7 @@ describe("eSignature.service", () => {
       const {
         generateKeyPair: gkp2,
       } = require("../../services/eSignature.service");
-      const result = await gkp2("tenant-1");
+      const result = await gkp2("tenant-1", { userId: "user-1" });
 
       expect(result.keyId).toBeDefined();
       expect(result.publicKey).toBeDefined();

@@ -5,7 +5,30 @@ import {
   User,
   RegisterCredentials,
   BackendLoginResponse,
+  SignInLocation,
 } from "@/types";
+import type { AssertionJSON, RequestOptionsJSON } from "@/lib/passkey";
+
+/** P10-04 (doc 20 §7.2): what the identifier-first step does next. */
+export type DiscoverResult = { next: "password" } | { next: "sso"; redirectUrl: string };
+
+/** P10-06 (spec P10-05 § API): the request-access submission. */
+export interface AccessRequestInput {
+  organisationName: string;
+  facilityType: "hospital" | "clinic" | "calibration_lab" | "other";
+  city: string;
+  deviceCountBand: "lt_100" | "100_499" | "500_1999" | "gte_2000" | "unknown";
+  contactName: string;
+  contactRole?: string;
+  workEmail: string;
+  whatsapp: string;
+  needs?: string;
+  consent: true;
+  consentVersion: string;
+  locale: "id" | "en";
+  /** The honeypot; a person never fills it. */
+  website: string;
+}
 
 interface VerifyResponse {
   success: boolean;
@@ -48,6 +71,67 @@ export const authService = {
    * GET /api/v1/auth/sso/metadata[/:tenantCode] — this app's SAML Service
    * Provider metadata XML, for configuring the tenant's IdP. Returns raw XML.
    */
+  /**
+   * POST /api/v1/auth/login/discover — P10-04. Decided by the email's DOMAIN
+   * only (never the account), so the answer reveals nothing about whether an
+   * account exists. A username always gets `password`.
+   */
+  discoverLogin: async (identifier: string): Promise<DiscoverResult> => {
+    const response = await api.post<{ success: boolean; data: DiscoverResult }>(
+      "/api/v1/auth/login/discover",
+      { identifier },
+    );
+    return response.data;
+  },
+
+  /**
+   * POST /api/v1/auth/sso/start — P10-04 / A-292. The server picks the
+   * tenant's protocol (SAML or OIDC); the user never chooses it. Every refusal
+   * (unknown code, SSO off, misconfigured) is one generic answer.
+   */
+  ssoStart: async (orgCode: string): Promise<{ redirectUrl: string }> => {
+    const response = await api.post<{ success: boolean; data: { redirectUrl: string } }>(
+      "/api/v1/auth/sso/start",
+      { orgCode },
+    );
+    return response.data;
+  },
+
+  /** POST /api/v1/auth/passkey/options — P10-10. No identifier: a discoverable credential. */
+  passkeyOptions: async (): Promise<{ ceremonyId: string; options: RequestOptionsJSON }> => {
+    const response = await api.post<{ success: boolean; data: { ceremonyId: string; options: RequestOptionsJSON } }>(
+      "/api/v1/auth/passkey/options",
+      {},
+    );
+    return response.data;
+  },
+
+  /**
+   * POST /api/v1/auth/passkey/verify — through the Next route of the same path,
+   * which writes the session cookies like the login route. Answers like a
+   * successful /auth/login, never 202.
+   */
+  passkeyVerify: async (
+    ceremonyId: string,
+    credential: AssertionJSON,
+    location?: SignInLocation,
+  ): Promise<BackendLoginResponse> => {
+    return api.post<BackendLoginResponse>(
+      "/api/v1/auth/passkey/verify",
+      location ? { ceremonyId, credential, location } : { ceremonyId, credential },
+    );
+  },
+
+  /** POST /api/v1/access-requests — P10-05/06. Always the same neutral 202. */
+  requestAccess: async (input: AccessRequestInput): Promise<void> => {
+    await api.post("/api/v1/access-requests", input);
+  },
+
+  /** POST /api/v1/auth/invitation/accept — P10-15. One generic 400 for any bad token. */
+  acceptInvitation: async (token: string, password: string): Promise<void> => {
+    await api.post("/api/v1/auth/invitation/accept", { token, password });
+  },
+
   getSsoMetadata: async (tenantCode?: string): Promise<string> => {
     const path = tenantCode
       ? `/api/v1/auth/sso/metadata/${encodeURIComponent(tenantCode)}`
@@ -202,11 +286,24 @@ export const authService = {
     token: string,
     code: string,
     useRecoveryCode = false,
+    location?: SignInLocation,
   ): Promise<BackendLoginResponse> => {
+    const body = useRecoveryCode ? { token, recoveryCode: code } : { token, code };
     return api.post<BackendLoginResponse>(
       "/api/v1/auth/mfa/login",
-      useRecoveryCode ? { token, recoveryCode: code } : { token, code },
+      // A-288: only when the password step was asked for it.
+      location ? { ...body, location } : body,
     );
+  },
+
+  /**
+   * POST /api/v1/auth/first-sign-in/password — P10-16 (ADR-099). Replace a
+   * one-time password after its first sign-in. `token` is the password-change
+   * token /auth/login returned instead of a session; it opens nothing else.
+   * No session is issued: sign in with the new password afterwards.
+   */
+  completeFirstSignIn: async (token: string, newPassword: string): Promise<void> => {
+    await api.post("/api/v1/auth/first-sign-in/password", { token, newPassword });
   },
 
   // ----------------------------------------------------------------

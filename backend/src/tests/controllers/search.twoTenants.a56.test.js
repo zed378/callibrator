@@ -3,7 +3,7 @@
  * controller boundary.
  *
  * Search is raw SQL (`sequelize.query`), so the global tenant hooks do not
- * apply to it: the tenant predicate in search.service.js is the ONLY thing
+ * apply to it: the tenant predicate in search.service.ts is the ONLY thing
  * keeping tenant B's rows out of tenant A's results. These cases run the REAL
  * controller, the REAL search service and the REAL dynamicAccess gate, with
  * principals from the shared createTwoTenants() fixture.
@@ -72,14 +72,22 @@ const tableOf = (sql) => Object.keys(TABLES).find((t) => sql.includes(`"${t}"`))
 // PostgreSQL's answer to the statement: filtered by tenant only when the
 // statement says so. `failFts` makes the FTS statement throw (no
 // search_vector column), exercising the ILIKE path.
+// P9-18: the statements are bound through sql() — the tenant predicate is
+// `tenant_id = $n`, and its value is bind[n - 1].
+const boundTenant = (sql, options) => {
+  const m = /\btenant_id = \$(\d+)\b/.exec(sql);
+  return m ? options.bind[Number(m[1]) - 1] : undefined;
+};
+
 const pgLike = ({ failFts = false } = {}) =>
-  async (sql, { replacements }) => {
+  async (sql, options) => {
     if (failFts && sql.includes("search_vector")) {
       throw new Error('column "search_vector" does not exist');
     }
     let rows = TABLES[tableOf(sql)] || [];
-    if (/\btenant_id = :tenantId\b/.test(sql)) {
-      rows = rows.filter((r) => r.tenant_id === replacements.tenantId);
+    const tenant = boundTenant(sql, options);
+    if (tenant !== undefined) {
+      rows = rows.filter((r) => r.tenant_id === tenant);
     }
     // The SELECT lists never include tenant_id.
     return rows.map(({ tenant_id: _omit, ...r }) => r);
@@ -134,8 +142,8 @@ describe("search — two tenants", () => {
     expect(ids(res)).toEqual(["cert-A", "dev-A", "stk-A"]);
     // Every statement was bound to the caller's tenant.
     expect(db.query).toHaveBeenCalledTimes(3);
-    for (const [, opts] of db.query.mock.calls) {
-      expect(opts.replacements.tenantId).toBe(TENANT_A_ID);
+    for (const [sql, opts] of db.query.mock.calls) {
+      expect(boundTenant(sql, opts)).toBe(TENANT_A_ID);
     }
   });
 

@@ -32,6 +32,7 @@ jest.mock("@/api/services/ai.service", () => ({
 import AiAssistantPage from "../page";
 import { aiService } from "@/api/services/ai.service";
 import { useToastStore } from "@/stores/toastStore";
+import { grantPermissions, grantSuperAdmin, clearPermissions } from "@/tests/support/permissions";
 
 const mocked = aiService as unknown as { query: jest.Mock; ocr: jest.Mock };
 
@@ -55,6 +56,8 @@ const upload = (container: HTMLElement) => {
 };
 
 beforeEach(() => {
+  // ADR-102: write controls follow the effective permissions.
+  grantPermissions({ certificate: "write", sop: "read" });
   jest.clearAllMocks();
   useToastStore.setState({ toasts: [] });
 });
@@ -123,5 +126,32 @@ describe("A-118 — AI Assistant permission notices", () => {
 
     expect(await screen.findByText("Every 12 months.")).toBeInTheDocument();
     expect(mocked.query).toHaveBeenCalledWith("What is the interval for gauges?");
+  });
+});
+
+/**
+ * ADR-102 — OCR needs `certificate` write. A role without it (ENGINEERING
+ * MANAGER) sees the notice naming the permission and no Upload button,
+ * before any upload; so does a user whose permissions have not loaded.
+ * Fail-before: Upload certificate rendered for every role and 403'd.
+ */
+describe("ADR-102 — certificate OCR follows the effective permission", () => {
+  it("a `certificate` reader gets the notice and no Upload button", async () => {
+    grantPermissions({ certificate: "read", sop: "read" });
+    render(<AiAssistantPage />);
+    expect(await screen.findByText(/Scanning certificates needs write access/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Upload certificate/ })).not.toBeInTheDocument();
+  });
+
+  it("nothing is offered before the permissions load", async () => {
+    clearPermissions();
+    render(<AiAssistantPage />);
+    expect(screen.queryByRole("button", { name: /Upload certificate/ })).not.toBeInTheDocument();
+  });
+
+  it("the super admin scans", async () => {
+    grantSuperAdmin();
+    render(<AiAssistantPage />);
+    expect(await screen.findByRole("button", { name: /Upload certificate/ })).toBeInTheDocument();
   });
 });

@@ -43,12 +43,13 @@ export const SsoConfigTab: React.FC<SsoConfigTabProps> = ({
       {/* SSO Enabled Toggle */}
       <div className="flex items-center justify-between p-4 bg-muted/50 rounded-2xl shadow-sm">
         <div>
-          <h4 className="font-semibold text-foreground">Enable SAML Single Sign-On</h4>
+          <h3 className="font-semibold text-foreground">Enable SAML Single Sign-On</h3>
           <p className="text-xs text-muted-foreground">Allow users to log in using Enterprise credentials</p>
         </div>
         <label className="relative inline-flex items-center cursor-pointer">
           <input
             type="checkbox"
+            aria-label="Enable SAML Single Sign-On"
             checked={form.sso_enabled}
             onChange={(e) => onChange({ ...form, sso_enabled: e.target.checked })}
             className="sr-only peer"
@@ -125,7 +126,9 @@ export const SsoConfigTab: React.FC<SsoConfigTabProps> = ({
 
       {/* Submit Buttons */}
       <div className="flex justify-end gap-3 pt-4 border-t border-border">
-        <Button variant="ghost" onClick={onClose} disabled={isLoading}>
+        {/* type="button": the first submit button is the form's default, so
+            an untyped Cancel took Enter in any field — closing, not saving. */}
+        <Button type="button" variant="ghost" onClick={onClose} disabled={isLoading}>
           Cancel
         </Button>
         <Button

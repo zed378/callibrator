@@ -26,6 +26,8 @@ const {
   API_BASE,
   defaultHeaders,
 } = require("../setup");
+// P10-16 (ADR-099): no default operator password — set E2E_OPERATOR_PASSWORD (see setup.js).
+const { OPERATOR_PASSWORD } = require("../setup");
 
 async function httpPatch(path, data = {}, headers = {}) {
   const resp = await fetch(`${API_BASE}${path}`, {
@@ -49,7 +51,7 @@ describe("E2E Vendors (HTTP)", () => {
   async function login() {
     const { body } = await httpPost("/auth/login", {
       user: "sys@mail.com",
-      password: "123123",
+      password: OPERATOR_PASSWORD,
     });
     return extractToken(body);
   }
@@ -78,9 +80,10 @@ describe("E2E Vendors (HTTP)", () => {
         name: "E2E Vendor",
         type: "CalibrationLab",
         contactPerson: "Jane QA",
-        // P6-02: example.com, not e2e.test — Joi's email() checks the TLD
-        // against the IANA list and `.test` is reserved, not delegated, so the
-        // vendor validator answered 400 before the route was ever exercised.
+        // P6-02: example.com, not e2e.test — the email check once refused a
+        // TLD outside the IANA list (`.test` is reserved, not delegated), so
+        // the vendor validator answered 400 before the route was exercised.
+        // (Since P9-11 the Zod email check no longer consults that list.)
         email: "vendor@e2e.example.com",
         phone: "+1-555-0100",
         status: "Active",

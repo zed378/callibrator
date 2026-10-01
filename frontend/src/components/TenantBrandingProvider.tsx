@@ -2,32 +2,38 @@
 
 import { useEffect } from "react";
 import { useTenantBranding } from "@/hooks/useTenantBranding";
+import {
+  BRAND_ATTRIBUTE,
+  BRAND_PROPERTIES,
+  accessibleBrandPalette,
+} from "@/lib/brandColor";
 
-/** Choose black/white foreground for a hex background based on luminance. */
-function readableForeground(hex: string): string {
-  const m = /^#?([0-9a-fA-F]{6})$/.exec(hex.trim());
-  if (!m) return "#ffffff";
-  const int = parseInt(m[1], 16);
-  const r = (int >> 16) & 255;
-  const g = (int >> 8) & 255;
-  const b = int & 255;
-  // Perceived luminance (sRGB) — light backgrounds get dark text.
-  const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-  return luminance > 0.6 ? "#0f172a" : "#ffffff";
-}
-
-/** Apply / clear the per-tenant `--primary` brand color on <html>. */
-function applyBrandColor(color?: string) {
+/**
+ * Apply / clear the per-tenant brand colour on <html>.
+ *
+ * ADR-090 amendment: the tenant's colour is never written to `--primary`
+ * directly. `accessibleBrandPalette` derives one primary per theme that meets
+ * the ADR-090 contrast rule there (the brand's hue, its lightness moved only as
+ * far as needed), and globals.css picks the light or dark pair under
+ * `html[data-tenant-brand]`, so a theme switch needs no script.
+ */
+export function applyBrandColor(color?: string | null) {
   if (typeof document === "undefined") return;
   const root = document.documentElement;
-  const valid = color && /^#([0-9a-fA-F]{6})$/.test(color.trim());
-  if (valid) {
-    root.style.setProperty("--primary", color.trim());
-    root.style.setProperty("--primary-foreground", readableForeground(color));
+  const palette = accessibleBrandPalette(color);
+  // Earlier builds wrote the raw colour here; never leave it behind.
+  root.style.removeProperty("--primary");
+  root.style.removeProperty("--primary-foreground");
+  if (palette) {
+    root.style.setProperty(BRAND_PROPERTIES.lightPrimary, palette.light.primary);
+    root.style.setProperty(BRAND_PROPERTIES.lightForeground, palette.light.foreground);
+    root.style.setProperty(BRAND_PROPERTIES.darkPrimary, palette.dark.primary);
+    root.style.setProperty(BRAND_PROPERTIES.darkForeground, palette.dark.foreground);
+    root.setAttribute(BRAND_ATTRIBUTE, "");
   } else {
     // Revert to the default token values defined in globals.css.
-    root.style.removeProperty("--primary");
-    root.style.removeProperty("--primary-foreground");
+    for (const name of Object.values(BRAND_PROPERTIES)) root.style.removeProperty(name);
+    root.removeAttribute(BRAND_ATTRIBUTE);
   }
 }
 

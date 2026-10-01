@@ -33,12 +33,18 @@ beforeAll(() => {
 /**
  * A sequelize double over { table: rows[] }, understanding exactly the three
  * statement shapes rewrapTarget issues. The column is read off the statement
- * (S-20: `users` has two targets).
+ * (S-20: `users` has two targets). P9-18: the statements arrive through sql()
+ * with positional `bind` values; `r` names them for the assertions below.
  */
 const fakeDb = (tables, { interfere } = {}) => {
   const query = jest.fn(async (sql, options = {}) => {
     const s = sql.replace(/\s+/g, " ").trim();
-    const r = options.replacements || {};
+    const b = options.bind || [];
+    const r = s.startsWith("SELECT id::text AS id")
+      ? { limit: b[0], cursor: b.length > 1 ? b[1] : null }
+      : s.startsWith("UPDATE")
+        ? { next: b[0], id: b[1], tenantId: b[2], previous: b[3] }
+        : { id: b[0], tenantId: b[1] };
     const table = /(?:FROM|UPDATE) (\w+)/.exec(s)[1];
     const column = (/SET (\w+) =/.exec(s) || /(\w+) AS value/.exec(s))[1];
     const rows = tables[table];
@@ -57,10 +63,10 @@ const fakeDb = (tables, { interfere } = {}) => {
       if (hit) {
         hit[column] = r.next;
       }
-      return [[], { rowCount: hit ? 1 : 0 }];
+      return hit ? [{ id: hit.id }] : [];
     }
     if (s.startsWith(`SELECT ${column} AS value`)) {
-      expect(s).toContain("tenant_id IS NOT DISTINCT FROM CAST(:tenantId AS uuid)");
+      expect(s).toContain("tenant_id IS NOT DISTINCT FROM CAST($2 AS uuid)");
       const row = rows.find((x) => x.id === r.id && x.tenant_id === r.tenantId);
       return [{ value: row[column] }];
     }

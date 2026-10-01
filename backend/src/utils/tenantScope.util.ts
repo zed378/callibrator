@@ -54,7 +54,7 @@
 
 import { Op } from "sequelize";
 import { tenantStorage } from "../middlewares/tenantContext.middleware";
-import type { TenantId } from "../types/ids";
+import { NO_TENANT_ID, type TenantId } from "../types/ids";
 
 /** An attribute definition, as far as this module reads it. */
 interface AttributeDefinition {
@@ -114,7 +114,9 @@ export type Scope = { mode: "skip" } | { mode: "filter"; tenantId: TenantId } | 
  * a non-UUID literal makes Postgres raise a type error instead of returning
  * zero rows, which would turn a denial into a 500.
  */
-const NO_TENANT_UUID = "00000000-0000-0000-0000-000000000000";
+// P9-10 DoD (ADR-087 Amendment 11): the deny branch is a TenantId, so a scope value is always one.
+// The same string as before; branded in src/types/ids.ts, the one place a brand assertion lives.
+const NO_TENANT_UUID: TenantId = NO_TENANT_ID;
 
 /** The tenant column for a model, or null when the model is not tenant-scoped. */
 const tenantKeyOf = (model: ScopedModel | null | undefined): "tenantId" | "tenant_id" | null => {

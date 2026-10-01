@@ -8,6 +8,14 @@ jest.mock("../../models", () => ({
   },
 }));
 
+// P6-11: a flag change and its audit rows commit in one managed transaction.
+jest.mock("../../config", () => ({
+  db: { transaction: jest.fn((cb) => cb("txn")) },
+}));
+jest.mock("../../services/audit.service", () => ({
+  logAction: jest.fn(),
+}));
+
 const featureFlag = require("../../services/featureFlag.service");
 const { TenantSettings } = require("../../models");
 
@@ -74,7 +82,7 @@ describe("featureFlag.service", () => {
         key: "feature_flag_enable_mfa",
         value: "true",
         updatedBy: "user-1",
-      });
+      }, { transaction: "txn" });
       expect(result.enabled).toBe(true);
     });
 
@@ -86,7 +94,7 @@ describe("featureFlag.service", () => {
         key: "feature_flag_enable_iot",
         value: "false",
         updatedBy: "user-1",
-      });
+      }, { transaction: "txn" });
       expect(result.enabled).toBe(false);
       expect(result.created).toBe(false);
     });
@@ -102,6 +110,7 @@ describe("featureFlag.service", () => {
       const result = await featureFlag.resetTenantFlag("t1", "enable_mfa");
       expect(TenantSettings.destroy).toHaveBeenCalledWith({
         where: { tenantId: "t1", key: "feature_flag_enable_mfa" },
+        transaction: "txn",
       });
       expect(result.reset).toBe(true);
     });
@@ -124,6 +133,83 @@ describe("featureFlag.service", () => {
       expect(TenantSettings.bulkCreate).toHaveBeenCalled();
       const call = TenantSettings.bulkCreate.mock.calls[0][0];
       expect(call.some((c) => c.key === "feature_flag_enable_iot")).toBe(true);
+    });
+  });
+
+  // P6-11 (A-165 shape): a platform operator's change to one tenant is audited
+  // under PLATFORM and under that tenant, in the change's transaction.
+  describe("P6-11 — audit rows", () => {
+    const auditService = require("../../services/audit.service");
+    const { PLATFORM_TENANT_ID } = require("../../constants/platformTenant");
+    const principal = { userId: "sa-1", apiKeyId: null, ipAddress: "10.0.0.1", userAgent: "jest" };
+
+    it("setTenantFlag writes a PLATFORM row and a tenant row with the value before and after", async () => {
+      TenantSettings.findOne.mockResolvedValueOnce({ value: "false" });
+      TenantSettings.upsert.mockResolvedValue([{}, false]);
+      await featureFlag.setTenantFlag("t1", "enable_mfa", true, "sa-1", principal);
+      expect(auditService.logAction).toHaveBeenCalledTimes(2);
+      const tenants = auditService.logAction.mock.calls.map(([entry]) => entry.tenantId);
+      expect(tenants).toEqual([PLATFORM_TENANT_ID, "t1"]);
+      for (const [entry, options] of auditService.logAction.mock.calls) {
+        expect(options).toEqual({ transaction: "txn" });
+        expect(entry).toMatchObject({
+          userId: "sa-1",
+          action: "UPDATE",
+          resourceType: "Tenant",
+          resourceId: "t1",
+          changes: { operation: "FEATURE_FLAG_SET", flagKey: "enable_mfa", before: "false", after: "true" },
+        });
+      }
+    });
+
+    it("without a principal the row names the updating user; no stored value is null", async () => {
+      TenantSettings.findOne.mockResolvedValueOnce(null);
+      TenantSettings.upsert.mockResolvedValue([{}, true]);
+      await featureFlag.setTenantFlag("t1", "enable_mfa", false, "user-9");
+      expect(auditService.logAction.mock.calls[0][0]).toMatchObject({
+        userId: "user-9",
+        changes: { before: null, after: "false" },
+      });
+    });
+
+    it("resetTenantFlag audits a removed override, and writes nothing when there was none", async () => {
+      TenantSettings.findOne.mockResolvedValueOnce({ value: "true" });
+      TenantSettings.destroy.mockResolvedValueOnce(1);
+      await featureFlag.resetTenantFlag("t1", "enable_mfa", principal);
+      expect(auditService.logAction).toHaveBeenCalledTimes(2);
+      expect(auditService.logAction.mock.calls[0][0].changes).toMatchObject({
+        operation: "FEATURE_FLAG_RESET",
+        before: "true",
+        after: null,
+      });
+
+      auditService.logAction.mockClear();
+      TenantSettings.destroy.mockResolvedValueOnce(0);
+      await featureFlag.resetTenantFlag("t1", "enable_mfa", principal);
+      expect(auditService.logAction).not.toHaveBeenCalled();
+    });
+
+    it("initializeTenantFlags from the route audits the defaults it wrote, in the transaction", async () => {
+      TenantSettings.bulkCreate.mockResolvedValue([]);
+      TenantSettings.findAll.mockResolvedValue([]);
+      await featureFlag.initializeTenantFlags("t1", principal);
+      expect(TenantSettings.bulkCreate).toHaveBeenCalledWith(expect.any(Array), {
+        ignoreDuplicates: true,
+        transaction: "txn",
+      });
+      expect(auditService.logAction.mock.calls[0][0].changes).toMatchObject({
+        operation: "FEATURE_FLAG_INITIALIZE",
+        flagKeys: expect.arrayContaining(["enable_iot"]),
+      });
+    });
+
+    it("initializeTenantFlags without a principal (the demo seeder) opens no transaction and writes no row", async () => {
+      const { db } = require("../../config");
+      TenantSettings.bulkCreate.mockResolvedValue([]);
+      TenantSettings.findAll.mockResolvedValue([]);
+      await featureFlag.initializeTenantFlags("t1");
+      expect(db.transaction).not.toHaveBeenCalled();
+      expect(auditService.logAction).not.toHaveBeenCalled();
     });
   });
 });

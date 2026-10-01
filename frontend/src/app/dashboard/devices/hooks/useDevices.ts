@@ -5,10 +5,12 @@ import { useWarehouseStore } from "@/stores/warehouseStore";
 import { useAuthStore } from "@/stores/authStore";
 import {
   Device,
-  DeviceCreateInput,
+  DeviceFormState,
   BulkImportResult,
   deviceService,
 } from "@/api/services/device.service";
+import { usePermissions } from "@/hooks/usePermissions";
+import { useSearchHandoff } from "@/stores/searchHandoffStore";
 
 export function useDevices() {
   const { user } = useAuthStore();
@@ -29,7 +31,9 @@ export function useDevices() {
   } = useWarehouseStore();
 
   // Search & Filter State
-  const [searchTerm, setSearchTerm] = useState("");
+  // S6: a global-search result opens this list filtered to that device.
+  const handedTerm = useSearchHandoff("device");
+  const [searchTerm, setSearchTerm] = useState(handedTerm ?? "");
   const [statusFilter, setStatusFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -49,7 +53,7 @@ export function useDevices() {
   );
 
   // Form State
-  const [form, setForm] = useState<Omit<DeviceCreateInput, "id">>({
+  const [form, setForm] = useState<DeviceFormState>({
     name: "",
     serialNumber: "",
     manufacturer: "",
@@ -63,11 +67,11 @@ export function useDevices() {
     remarks: "",
   });
 
-  // User Permissions check
-  const hasWriteAccess =
-    user?.role?.name === "SUPERADMIN" ||
-    user?.role?.name === "HEALTHCARE ADMIN" ||
-    user?.role?.name === "WAREHOUSE STAFF";
+  // ADR-102: device writes are gated on `calibration` write (the slug of the
+  // Calibration Devices menu; calibrationDevices.route.js) — the effective
+  // permission the API checks, not a list of role names.
+  const { canWrite } = usePermissions();
+  const hasWriteAccess = canWrite("calibration");
 
   // Initial loads
   useEffect(() => {

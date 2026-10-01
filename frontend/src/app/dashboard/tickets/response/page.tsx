@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import DashboardLayout from "@/components/layouts/DashboardLayout";
-import { Button, Input, Card, CardContent, Alert, Select } from "@/components/ui";
+import { Input, Card, CardContent, Alert, Select } from "@/components/ui";
 import { Search, TicketCheck, Inbox, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { ticketService, TicketMetrics } from "@/api/services/ticket.service";
 import { useTickets } from "../hooks/useTickets";
@@ -43,7 +43,6 @@ export default function TicketResponsePage() {
   const { isSuperAdmin } = useTicketPov();
   const {
     tickets,
-    meta,
     isLoading,
     error,
     status,
@@ -169,7 +168,8 @@ export default function TicketResponsePage() {
               <TicketListRow key={t.id} ticket={t} showTenant={isSuperAdmin} />
             ))}
           </div>
-        ) : (
+        ) : error ? null : (
+          // A failed load shows its error above, never the empty state.
           <Card>
             <CardContent className="p-16 text-center">
               <TicketCheck className="mx-auto h-16 w-16 text-muted-foreground" />

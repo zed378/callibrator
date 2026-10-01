@@ -40,7 +40,9 @@ describe("Webauthn Routes", () => {
         const hasPost = methods.post === true;
         const hasPut = methods.put === true;
         const hasDelete = methods.delete === true;
-        expect(hasGet || hasPost || hasPut || hasDelete).toBe(true);
+        // ADR-108 Amendment 1: PATCH /credentials/:id renames a passkey.
+        const hasPatch = methods.patch === true;
+        expect(hasGet || hasPost || hasPut || hasDelete || hasPatch).toBe(true);
       }
     });
   });

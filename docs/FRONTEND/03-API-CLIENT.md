@@ -97,7 +97,7 @@ Generating types from `swagger.json` would close part of this gap. It is in [`..
 | Status | Handling |
 |---|---|
 | 400 | field detail mapped back to form fields |
-| 401 | one silent `POST /api/v1/auth/refresh` (the httpOnly `auth_refresh` cookie) and a retry; if refused, the refresh route has already cleared every session cookie, and the browser goes to `/login` once (F-05) |
+| 401 | one silent `POST /api/v1/auth/refresh` (the httpOnly `auth_refresh` cookie, scoped to that path) and a retry; if refused, the refresh route has already cleared every session cookie, and the browser goes to `/login` once (F-05). A **page** load with an expired access token is let through by `proxy.ts` when the path-`/` `auth_renewable` marker is present, because the browser never sends `auth_refresh` with a page request (ADR-074 Amendment 1) |
 | 403 | on a mutation, `AccessDeniedModal` and a menu refetch; on a read, the screen's `ErrorState` (a background read must not pop a modal) |
 | 404 | not-found state — **includes cross-tenant**, which is deliberate |
 | **409** | surface as a **state explanation**, never a generic error |

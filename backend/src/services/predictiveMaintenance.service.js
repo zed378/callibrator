@@ -1,6 +1,7 @@
 const { CalibrationDevice, IotReading, Notification, sequelize } = require("../models");
 const { AppError } = require("../utils/appError.util");
 const auditService = require("./audit.service");
+const { auditEntryActor, actorChanges } = require("../utils/auditPrincipal.util");
 const { logger } = require("../middlewares/activityLog.middleware");
 const { Op } = require("sequelize");
 
@@ -106,11 +107,13 @@ class PredictiveMaintenanceService {
       await auditService.logAction(
         {
           tenantId,
-          userId: actor.userId,
+          // A-282 (ADR-100): a key is system:api-key, its id in changes.
+          ...auditEntryActor(actor),
           action: "UPDATE",
           resourceType: "CalibrationDevice",
           resourceId: device.id,
           changes: {
+            ...actorChanges(actor),
             operation: "RECOMMEND_INTERVAL",
             before,
             after: {
@@ -121,8 +124,6 @@ class PredictiveMaintenanceService {
               totalReadings,
             },
           },
-          ipAddress: actor.ipAddress,
-          userAgent: actor.userAgent,
         },
         { transaction },
       );

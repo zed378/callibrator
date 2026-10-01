@@ -133,7 +133,7 @@ describe("verifySchema", () => {
     expect(result.problems).toHaveLength(triggers.length);
   });
 
-  it("checks the append-only trigger, the void CHECK, the per-tenant serial index, the retired-device trigger (ADR-084), the stock reason CHECK and the case-insensitive identity indexes", () => {
+  it("checks the append-only trigger, the void CHECK, the per-tenant serial index, the retired-device trigger (ADR-084), the stock reason CHECK and the case-insensitive identity indexes, and the audit_logs append-only triggers (Q-34, ADR-095), and the exactly-one-actor CHECKs (Q-51, migration 0105)", () => {
     expect(EXPECTED_OBJECTS.map((o) => `${o.kind}:${o.name}`)).toEqual([
       "trigger:calibration_records_append_only",
       "trigger:calibration_records_no_truncate",
@@ -141,8 +141,13 @@ describe("verifySchema", () => {
       "index:calibration_devices_tenant_id_serial_number_unique",
       "trigger:calibration_devices_retired_terminal",
       "constraint:stock_adjustments_reason_not_blank",
+      "constraint:calibration_records_actor_exactly_one",
+      "constraint:stock_adjustments_actor_exactly_one",
+      "constraint:stock_transfers_requester_exactly_one",
       "index:users_email_lower_unique",
       "index:users_username_lower_unique",
+      "trigger:audit_logs_append_only",
+      "trigger:audit_logs_no_truncate",
     ]);
   });
 });
@@ -156,7 +161,7 @@ describe("assertSchemaMatchesModels", () => {
     const result = await assertSchemaMatchesModels({ sequelize, logger: log, mode: undefined });
     expect(result.problems).toEqual([]);
     expect(log.info).toHaveBeenCalledWith(`${TAG} note: column devices.legacy is not declared by model Device`);
-    expect(log.info).toHaveBeenCalledWith(expect.stringMatching(/^\[schema-verify\] OK: 1 tables, 3 columns and 8 control objects/));
+    expect(log.info).toHaveBeenCalledWith(expect.stringMatching(/^\[schema-verify\] OK: 1 tables, 3 columns and 13 control objects/));
     expect(log.error).not.toHaveBeenCalled();
   });
 
@@ -164,7 +169,7 @@ describe("assertSchemaMatchesModels", () => {
     const log = logger();
     const sequelize = fakeSequelize([devices], [], {});
     await expect(assertSchemaMatchesModels({ sequelize, logger: log, mode: undefined })).rejects.toThrow(
-      /FAILED: 9 mismatch\(es\)[\s\S]*table devices \(model Device\) does not exist/,
+      /FAILED: 14 mismatch\(es\)[\s\S]*table devices \(model Device\) does not exist/,
     );
     expect(log.error).toHaveBeenCalledWith(expect.stringMatching(/^\[schema-verify\] MISMATCH: table devices/));
   });

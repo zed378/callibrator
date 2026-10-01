@@ -109,12 +109,15 @@ describe("eSignature.generateKeyPair stores the new form", () => {
     jest.isolateModules(() => {
       jest.doMock("../../models", () => ({
         TenantKey: { create: jest.fn(async (row) => created.push(row)) },
+        // A-278 (ADR-094): the key's creation writes an audit row in its transaction.
+        AuditLog: { create: jest.fn(async (row) => row) },
       }));
+      jest.doMock("../../config", () => ({ db: { transaction: async (cb) => cb("TX") } }));
       service = require("../../services/eSignature.service");
     });
     const kms = require("../../services/kms.service");
 
-    const result = await service.generateKeyPair(TENANT);
+    const result = await service.generateKeyPair(TENANT, { userId: "user-1" });
 
     expect(result.privateKey).toBe("[REDACTED]");
     expect(created).toHaveLength(1);

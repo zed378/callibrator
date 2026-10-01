@@ -28,11 +28,19 @@ export const featureFlagService = {
    * GET /api/v1/feature-flags?tenantId=
    */
   getTenantFlags: async (tenantId?: string): Promise<FeatureFlagMap> => {
-    const response = await api.get<BackendResponse<FeatureFlagMap>>(
-      "/api/v1/feature-flags",
-      { params: { tenantId } },
-    );
-    return response.data;
+    // The backend answers each flag as a state object — { enabled, category,
+    // description, defaultValue, tenantOverride } (featureFlag.service.ts
+    // getTenantFlags) — not a boolean. Read as a boolean map, every object was
+    // truthy: every flag showed Enabled and overridden, and a toggle could
+    // only ever send `false`. Reduce each to its `enabled`.
+    const response = await api.get<
+      BackendResponse<Record<string, boolean | { enabled?: boolean }> | null>
+    >("/api/v1/feature-flags", { params: { tenantId } });
+    const map: FeatureFlagMap = {};
+    for (const [key, value] of Object.entries(response.data ?? {})) {
+      map[key] = typeof value === "boolean" ? value : value?.enabled === true;
+    }
+    return map;
   },
 
   /**
@@ -40,10 +48,17 @@ export const featureFlagService = {
    * GET /api/v1/feature-flags/definitions
    */
   getDefinitions: async (): Promise<FeatureFlagDefinition[]> => {
-    const response = await api.get<BackendResponse<FeatureFlagDefinition[]>>(
-      "/api/v1/feature-flags/definitions",
-    );
-    return response.data;
+    // The backend sends its DEFAULT_FLAGS catalogue: an object keyed by flag
+    // key, not a list — the screen's Array.isArray check dropped it and the
+    // page always read "No feature flags defined." Turn it into rows.
+    const response = await api.get<
+      BackendResponse<
+        FeatureFlagDefinition[] | Record<string, Omit<FeatureFlagDefinition, "key">> | null
+      >
+    >("/api/v1/feature-flags/definitions");
+    const data = response.data;
+    if (Array.isArray(data)) return data;
+    return Object.entries(data ?? {}).map(([key, def]) => ({ key, ...def }));
   },
 
   /**

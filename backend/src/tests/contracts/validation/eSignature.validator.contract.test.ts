@@ -1,37 +1,31 @@
 /**
- * P9-11 contract pin — `validators/eSignature.validator.js`.
+ * P9-11 contract pin — `validators/eSignature.validator.ts` (ADR-093).
  *
- * Today's Joi 400 for `createWorkflow` through the real `validate(schema)`
- * middleware, byte for byte, in production and outside it, and what the
- * file's own `validate(data, schema)` helper hands its controllers. The
- * expectations are literals recorded on 2026-09-28; a Zod conversion must keep
- * this file passing unchanged. See ./harness.ts and
- * MEMORY/specs/P9-11-validation-error-contract.md.
+ * The validation 400 for `createWorkflow` through the real `validate(schema)`
+ * middleware, byte for byte, in production and outside it. The status, the
+ * envelope, the top-level `message` ("Validation Error") and `details`
+ * only outside production are the contract this suite pinned before P9-11;
+ * the wording inside `details` is Zod's since the move to Zod (the owner's
+ * decision, ADR-093, which lists every changed string). See ./harness.ts.
  */
-import { createWorkflow, validate as validateHelper } from "../../../validators/eSignature.validator";
-import { expectValidationContract, captureHelper } from "./harness";
+import { createWorkflow } from "../../../validators/eSignature.validator";
+import { expectValidationContract } from "./harness";
 
-describe("P9-11 contract: validators/eSignature.validator.js", () => {
+describe("P9-11 contract: validators/eSignature.validator.ts", () => {
   it("validate(createWorkflow) answers the pinned 400; details only outside production", async () => {
     await expectValidationContract(createWorkflow, {}, [
       {
         "field": "documentId",
-        "message": "\"documentId\" is required",
+        "message": "Invalid input: expected string, received undefined",
       },
       {
         "field": "signers",
-        "message": "\"signers\" is required",
+        "message": "Invalid input: expected array, received undefined",
       },
       {
         "field": "subject",
-        "message": "\"subject\" is required",
+        "message": "Invalid input: expected string, received undefined",
       },
     ]);
-  });
-  it("its own validate(data, schema) throws an Error with this message and no status", () => {
-    expect(captureHelper(() => validateHelper({}, createWorkflow))).toEqual({
-      kind: "thrownError",
-      message: "\"documentId\" is required, \"signers\" is required, \"subject\" is required",
-    });
   });
 });

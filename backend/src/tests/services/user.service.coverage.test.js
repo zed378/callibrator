@@ -68,19 +68,15 @@ jest.mock("../../constants", () => ({
   MAX_LIMIT: 100,
 }));
 
-// Real export names from src/validators/user.validator.js:
-// validate, formatErrors, createUserSchema, updateUserSchema,
-// updateRoleSchema, usernameCheckSchema.
-// The service aliases `updateRoleSchema` -> `updateUserRoleSchema`.
-// `validate(body, schema)` really returns Joi's `{ error, value }`.
-jest.mock("../../validators/user.validator", () => ({
-  validate: jest.fn(),
-  formatErrors: jest.fn((details) => details),
-  createUserSchema: "createUserSchema",
-  updateUserSchema: "updateUserSchema",
-  updateRoleSchema: "updateRoleSchema",
-  usernameCheckSchema: "usernameCheckSchema",
-}));
+// The request schemas are the real Zod ones. `validateInput`
+// (validators/input) passes the input through by default, so the service's
+// handling of every field — including ones the schema would strip — is
+// reachable; the 400 cases below run the REAL validateInput against the real
+// schema.
+jest.mock("../../validators/input", () => {
+  const actual = jest.requireActual("../../validators/input");
+  return { ...actual, validateInput: jest.fn() };
+});
 
 // ================================================================
 // IMPORTS
@@ -90,7 +86,8 @@ const { Users, Roles } = require("../../models");
 const { logger } = require("../../middlewares/activityLog.middleware");
 const { hashPassword } = require("../../utils/password.util");
 const { deleteUpload } = require("../../utils/upload.util");
-const { validate: validateInput } = require("../../validators/user.validator");
+const { validateInput } = require("../../validators/input");
+const { validateInput: realValidateInput } = jest.requireActual("../../validators/input");
 
 const {
   fetchUsers,
@@ -139,28 +136,30 @@ describe("user.service - branch & error coverage", () => {
     db.transaction.mockReset().mockResolvedValue(mockTransaction());
     hashPassword.mockReset().mockResolvedValue("hashed_pw");
     deleteUpload.mockReset().mockResolvedValue(undefined);
-    validateInput.mockReset().mockImplementation((data) => ({
-      value: { ...data },
-      error: null,
-    }));
+    validateInput.mockReset().mockImplementation((data) => ({ ...data }));
   });
 
   // ==============================================================
-  // validate() helper — the shared 400 path
+  // validateInput — the shared 400 path, against the real schemas
   // ==============================================================
   describe("validation failures", () => {
     it("should throw a 400 with formatted errors when userCreate input is invalid", async () => {
-      validateInput.mockReturnValue({
-        value: undefined,
-        error: { details: [{ path: ["email"], message: "email is required" }] },
-      });
+      validateInput.mockImplementation(realValidateInput);
 
-      const err = await catchErr(userCreate({ username: "x" }));
+      const err = await catchErr(
+        userCreate({
+          username: "newuser",
+          firstName: "Test",
+          lastName: "User",
+          password: "password123",
+          roleId: "11111111-1111-4111-8111-111111111111",
+        }),
+      );
 
       expect(err.status).toBe(400);
       expect(err.message).toBe("Validation failed");
       expect(err.errors).toEqual([
-        { path: ["email"], message: "email is required" },
+        { field: "email", message: "Invalid input: expected string, received undefined" },
       ]);
       // Validation happens before any DB work
       expect(db.transaction).not.toHaveBeenCalled();
@@ -168,27 +167,29 @@ describe("user.service - branch & error coverage", () => {
     });
 
     it("should throw a 400 when userRoleUpdate input is invalid", async () => {
-      validateInput.mockReturnValue({
-        value: undefined,
-        error: { details: [{ path: ["roleId"], message: "roleId must be a uuid" }] },
-      });
+      validateInput.mockImplementation(realValidateInput);
 
-      const err = await catchErr(userRoleUpdate({ userId: "u1" }));
+      const err = await catchErr(
+        userRoleUpdate({ userId: "11111111-1111-4111-8111-111111111111", roleId: "not-a-uuid" }),
+      );
 
       expect(err.status).toBe(400);
       expect(err.message).toBe("Validation failed");
+      expect(err.errors).toEqual([{ field: "roleId", message: "Invalid GUID" }]);
       expect(db.transaction).not.toHaveBeenCalled();
     });
 
     it("should throw a 400 when editUser input is invalid", async () => {
-      validateInput.mockReturnValue({
-        value: undefined,
-        error: { details: [{ path: ["status"], message: "invalid status" }] },
-      });
+      validateInput.mockImplementation(realValidateInput);
 
-      const err = await catchErr(editUser({ userId: "u1" }));
+      const err = await catchErr(
+        editUser({ userId: "11111111-1111-4111-8111-111111111111", status: "deleted" }),
+      );
 
       expect(err.status).toBe(400);
+      expect(err.errors).toEqual([
+        { field: "status", message: 'Invalid option: expected one of "ACTIVE"|"INACTIVE"|"SUSPENDED"' },
+      ]);
       expect(db.transaction).not.toHaveBeenCalled();
     });
   });
@@ -825,7 +826,7 @@ describe("user.service - branch & error coverage", () => {
       lastName: "Name",
       status: "ACTIVE",
       isEmailVerified: false,
-      is_active: true,
+      isActive: true, // A-295: the attribute (the mock used to carry the non-attribute `is_active`)
       update: jest.fn().mockResolvedValue({}),
       ...overrides,
     });
@@ -898,7 +899,7 @@ describe("user.service - branch & error coverage", () => {
       const user = makeUser();
       Users.findByPk.mockResolvedValue(user);
       // Only userId comes through validation
-      validateInput.mockReturnValue({ value: { userId: "u1" }, error: null });
+      validateInput.mockReturnValue({ userId: "u1" });
 
       await editUser({ userId: "u1", actorIsSuperAdmin: true });
 
@@ -956,10 +957,7 @@ describe("user.service - branch & error coverage", () => {
       db.transaction.mockResolvedValue(mockTransaction());
       const user = makeUser();
       Users.findByPk.mockResolvedValue(user);
-      validateInput.mockReturnValue({
-        value: { userId: "u1", firstName: null, lastName: null },
-        error: null,
-      });
+      validateInput.mockReturnValue({ userId: "u1", firstName: null, lastName: null });
 
       await editUser({ userId: "u1", actorIsSuperAdmin: true });
 

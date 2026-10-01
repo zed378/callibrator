@@ -26,7 +26,17 @@ spec:
       annotations:
         # Restart on configuration change — otherwise a ConfigMap edit takes
         # effect at some unpredictable future restart.
-        checksum/config: {{ .Values.configChecksum | default "" | quote }}
+        #
+        # P7-06 (ADR-106): nothing ever set configChecksum, so this was always
+        # "" and a `helm upgrade` that changed only the ConfigMap left the pod
+        # running on the OLD environment (proven on a kind cluster). A subchart
+        # cannot see the umbrella's values, so the hash covers what it CAN see:
+        # every backend.* value and global.* — which is the source of almost
+        # every ConfigMap key. NOT covered: ingress.host, certificates.*,
+        # alerts.* and the Secret (secrets.* or an external Secret). After
+        # changing only those, run
+        #   kubectl rollout restart deploy/<base>-backend
+        checksum/config: {{ .Values.configChecksum | default (toJson (omit .Values "configChecksum") | sha256sum) | quote }}
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
@@ -84,6 +94,7 @@ spec:
               port: http
             initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
             periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.timeoutSeconds | default 5 }}
           readinessProbe:
             httpGet:
               path: {{ .Values.probes.readiness.path }}
@@ -91,14 +102,24 @@ spec:
             initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
             periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
             failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
+            timeoutSeconds: {{ .Values.probes.timeoutSeconds | default 5 }}
           # The application runs migrations at boot; give it room before the
           # liveness probe starts counting.
+          #
+          # P7-06: the budget (failureThreshold x periodSeconds) must EXCEED
+          # MIGRATION_LOCK_TIMEOUT_MS (600 s, ADR-086). It was 30 x 10 s = 300 s:
+          # on a kind cluster two replicas booting on an empty database were
+          # both killed by this probe before the schema step finished, and a
+          # replica waiting on the advisory lock is killed by the kubelet
+          # before the lock's own, logged bound can refuse the boot. Raise
+          # probes.startup.failureThreshold together with the lock timeout.
           startupProbe:
             httpGet:
               path: {{ .Values.probes.readiness.path }}
               port: http
-            failureThreshold: 30
+            failureThreshold: {{ dig "startup" "failureThreshold" 72 .Values.probes }}
             periodSeconds: 10
+            timeoutSeconds: {{ .Values.probes.timeoutSeconds | default 5 }}
 
           resources:
             {{- toYaml .Values.resources | nindent 12 }}

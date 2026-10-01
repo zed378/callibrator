@@ -25,6 +25,7 @@ import {
   type UsageSnapshot,
 } from "@/api/services/meteredBilling.service";
 import { useToastStore } from "@/stores/toastStore";
+import { usePermissions } from "@/hooks/usePermissions";
 
 const PAGE_SIZE = 10;
 
@@ -32,6 +33,9 @@ const fmt = (v?: string) => (v ? new Date(v).toLocaleDateString() : "—");
 const num = (n?: number) => (typeof n === "number" ? n.toLocaleString() : "—");
 
 export default function MeteredBillingPage() {
+  // ADR-102: alerts are written on `metered-billing` write (meteredBilling.route.js).
+  const { canWrite } = usePermissions();
+  const mayWrite = canWrite("metered-billing");
   const addToast = useToastStore((s) => s.addToast);
 
   const [usage, setUsage] = useState<UsageSnapshot | null>(null);
@@ -141,6 +145,10 @@ export default function MeteredBillingPage() {
     new Set([...Object.keys(metrics), ...Object.keys(limits)]),
   );
 
+  // An Invoice row (invoice.model.ts) carries amountDue / amountPaid,
+  // currency, a capitalised status ("Paid", "Open", …) and createdAt — no
+  // `amount` and no billing period. Read as `amount` / `status === "paid"`,
+  // every invoice showed "—" and a paid one was badged as outstanding.
   const invoiceColumns = [
     {
       key: "id",
@@ -156,26 +164,33 @@ export default function MeteredBillingPage() {
       header: "Period",
       render: (value: unknown, row: Record<string, unknown>) => (
         <span className="text-sm">
-          {fmt(value as string)} – {fmt(row.periodEnd as string)}
+          {value || row.periodEnd
+            ? `${fmt(value as string)} – ${fmt(row.periodEnd as string)}`
+            : fmt(row.createdAt as string)}
         </span>
       ),
     },
     {
       key: "amount",
       header: "Amount",
-      render: (value: unknown, row: Record<string, unknown>) => (
-        <span className="font-medium">
-          {typeof value === "number" ? value.toFixed(2) : "—"}{" "}
-          {String(row.currency ?? "")}
-        </span>
-      ),
+      render: (value: unknown, row: Record<string, unknown>) => {
+        const amount = value ?? row.amountDue;
+        return (
+          <span className="font-medium">
+            {typeof amount === "number" ? amount.toFixed(2) : "—"}{" "}
+            {String(row.currency ?? "")}
+          </span>
+        );
+      },
     },
     {
       key: "status",
       header: "Status",
       render: (value: unknown) => (
         <Badge
-          variant={value === "paid" ? "success" : "warning"}
+          variant={
+            String(value ?? "").toLowerCase() === "paid" ? "success" : "warning"
+          }
           size="sm"
         >
           {String(value ?? "—")}
@@ -199,12 +214,14 @@ export default function MeteredBillingPage() {
               threshold alerts.
             </p>
           </div>
-          <Button
-            onClick={() => setIsAlertOpen(true)}
-            leftIcon={<BellPlus className="h-4 w-4" />}
-          >
-            New Alert
-          </Button>
+          {mayWrite && (
+            <Button
+              onClick={() => setIsAlertOpen(true)}
+              leftIcon={<BellPlus className="h-4 w-4" />}
+            >
+              New Alert
+            </Button>
+          )}
         </div>
 
         {error && <Alert variant="error">{error}</Alert>}
@@ -241,7 +258,7 @@ export default function MeteredBillingPage() {
               <p className="text-sm text-muted-foreground">Loading…</p>
             ) : metricNames.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                No metered usage recorded.
+                {error ? "Usage could not be loaded." : "No metered usage recorded."}
               </p>
             ) : (
               <div className="space-y-3">
@@ -303,7 +320,7 @@ export default function MeteredBillingPage() {
             <h2 className="text-lg font-semibold">Threshold alerts</h2>
             {alerts.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                No alerts configured.
+                {error ? "Alerts could not be loaded." : "No alerts configured."}
               </p>
             ) : (
               <ul className="divide-y divide-border rounded-md border border-border">
@@ -325,15 +342,17 @@ export default function MeteredBillingPage() {
                         </Badge>
                       )}
                     </div>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      isLoading={busy === a.id}
-                      onClick={() => deleteAlert(a)}
-                      aria-label={`Delete ${a.metricName} alert`}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    {mayWrite && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        isLoading={busy === a.id}
+                        onClick={() => deleteAlert(a)}
+                        aria-label={`Delete ${a.metricName} alert`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -352,7 +371,7 @@ export default function MeteredBillingPage() {
             columns={invoiceColumns}
             data={invoices as unknown as Record<string, unknown>[]}
             isLoading={isLoading}
-            emptyMessage="No invoices yet."
+            emptyMessage={error ? "Invoices could not be loaded." : "No invoices yet."}
           />
           {invoiceTotal > 0 && (
             <div className="flex items-center justify-between">

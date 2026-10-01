@@ -21,28 +21,21 @@ jest.mock("../../utils/response.util", () => ({
   sendResult: jest.fn(),
 }));
 
-jest.mock("../../validators/certificate.validator", () => {
-  const Joi = require("joi");
-  return {
-    getCertificatesQuery: Joi.object(),
-    certificateIdSchema: Joi.object(),
-    createCertificateSchema: Joi.object(),
-    updateCertificateSchema: Joi.object(),
-    approveCertificateSchema: Joi.object(),
-    signCertificateSchema: Joi.object(),
-    revokeCertificateSchema: Joi.object(),
-    validate: jest.fn((data, schema) => {
-      if (data.failValidation) {
-        throw new Error("Validation failed");
-      }
-      return data;
-    }),
-  };
-});
+// The validator module is NOT mocked: every call goes through the real Zod
+// schemas, so ids are real uuids and the re-authentication fields are sent.
+const CERT_ID = "5a0e8400-e29b-41d4-a716-446655440030";
+const DEVICE_ID = "5a0e8400-e29b-41d4-a716-446655440031";
+const REAUTH = { authMethod: "password", authPayload: "secret", meaning: "approval" };
 
 const certificateController = require("../../controllers/certificate.controller");
 const certificateService = require("../../services/certificate.service");
 const { success, error, sendResult } = require("../../utils/response.util");
+
+// A-272 (ADR-100): a thrown validateInput failure answers like validate() —
+// "Validation Error" with the field list as details (it was "[object Object]").
+const FIELD_ERRORS = expect.arrayContaining([
+  expect.objectContaining({ field: expect.any(String), message: expect.any(String) }),
+]);
 
 describe("certificateController", () => {
   let req;
@@ -94,23 +87,29 @@ describe("certificateController", () => {
       await certificateController.getAllCertificates(req, res);
 
       expect(certificateService.fetchCertificates).toHaveBeenCalledWith(
-        expect.objectContaining({ tenantId: "tenant-1" }),
+        expect.objectContaining({
+          tenantId: "tenant-1",
+          page: 1,
+          sortBy: "created_at",
+          sortOrder: "DESC",
+        }),
       );
-      expect(success).toHaveBeenCalled();
+      expect(success).toHaveBeenCalledWith(res, [{ id: "c-1" }], { total: 1 }, "Success", 200);
     });
 
     it("should call error response when validation fails", async () => {
-      req.query = { failValidation: true };
+      req.query = { sortOrder: "sideways" };
 
       await certificateController.getAllCertificates(req, res);
 
-      expect(error).toHaveBeenCalled();
+      expect(certificateService.fetchCertificates).not.toHaveBeenCalled();
+      expect(error).toHaveBeenCalledWith(res, "Validation Error", 400, FIELD_ERRORS); // A-272 (ADR-100)
     });
   });
 
   describe("getSpecificCertificate", () => {
     it("should fetch specific certificate successfully", async () => {
-      req.params = { certificateId: "c-1" };
+      req.params = { certificateId: CERT_ID };
       certificateService.fetchSpecificCertificate.mockResolvedValueOnce({
         success: true,
         status: 200,
@@ -122,7 +121,7 @@ describe("certificateController", () => {
 
       expect(certificateService.fetchSpecificCertificate).toHaveBeenCalledWith(
         "tenant-1",
-        "c-1",
+        CERT_ID,
       );
       expect(success).toHaveBeenCalled();
     });
@@ -130,7 +129,7 @@ describe("certificateController", () => {
 
   describe("createCertificate", () => {
     it("should create certificate successfully", async () => {
-      req.body = { summary: "New cert" };
+      req.body = { deviceId: DEVICE_ID, summary: "New cert" };
       certificateService.createCertificate.mockResolvedValueOnce({
         success: true,
         status: 201,
@@ -143,8 +142,9 @@ describe("certificateController", () => {
       expect(certificateService.createCertificate).toHaveBeenCalledWith(
         "tenant-1",
         "user-1",
-        { summary: "New cert" },
-        { userId: "user-1", tenantId: "tenant-1", ipAddress: "10.0.0.9", userAgent: "jest-agent" },
+        { deviceId: DEVICE_ID, type: "calibration", summary: "New cert" },
+        // A-282: auditPrincipal(req)
+        { userId: "user-1", apiKeyId: null, ipAddress: "10.0.0.9", userAgent: "jest-agent" },
       );
       expect(success).toHaveBeenCalled();
     });
@@ -152,7 +152,7 @@ describe("certificateController", () => {
 
   describe("updateCertificate", () => {
     it("should update certificate successfully", async () => {
-      req.params = { certificateId: "c-1" };
+      req.params = { certificateId: CERT_ID };
       req.body = { summary: "Updated summary" };
       certificateService.updateCertificate.mockResolvedValueOnce({
         success: true,
@@ -165,12 +165,13 @@ describe("certificateController", () => {
 
       expect(certificateService.updateCertificate).toHaveBeenCalledWith(
         "tenant-1",
-        "c-1",
+        CERT_ID,
         expect.objectContaining({
           summary: "Updated summary",
           updatedBy: "user-1",
         }),
-        { userId: "user-1", tenantId: "tenant-1", ipAddress: "10.0.0.9", userAgent: "jest-agent" },
+        // A-282: auditPrincipal(req)
+        { userId: "user-1", apiKeyId: null, ipAddress: "10.0.0.9", userAgent: "jest-agent" },
       );
       expect(success).toHaveBeenCalled();
     });
@@ -178,7 +179,7 @@ describe("certificateController", () => {
 
   describe("deleteCertificate", () => {
     it("should delete certificate successfully", async () => {
-      req.params = { certificateId: "c-1" };
+      req.params = { certificateId: CERT_ID };
       certificateService.deleteCertificate.mockResolvedValueOnce({
         success: true,
         status: 200,
@@ -190,8 +191,9 @@ describe("certificateController", () => {
 
       expect(certificateService.deleteCertificate).toHaveBeenCalledWith(
         "tenant-1",
-        "c-1",
-        { userId: "user-1", tenantId: "tenant-1", ipAddress: "10.0.0.9", userAgent: "jest-agent" },
+        CERT_ID,
+        // A-282: auditPrincipal(req)
+        { userId: "user-1", apiKeyId: null, ipAddress: "10.0.0.9", userAgent: "jest-agent" },
       );
       expect(success).toHaveBeenCalled();
     });
@@ -199,7 +201,7 @@ describe("certificateController", () => {
 
   describe("submitCertificate", () => {
     it("should submit certificate successfully", async () => {
-      req.params = { certificateId: "c-1" };
+      req.params = { certificateId: CERT_ID };
       certificateService.submitCertificateForApproval.mockResolvedValueOnce({
         success: true,
         status: 200,
@@ -211,8 +213,9 @@ describe("certificateController", () => {
 
       expect(certificateService.submitCertificateForApproval).toHaveBeenCalledWith(
         "tenant-1",
-        "c-1",
-        { userId: "user-1", tenantId: "tenant-1", ipAddress: "10.0.0.9", userAgent: "jest-agent" },
+        CERT_ID,
+        // A-282: auditPrincipal(req)
+        { userId: "user-1", apiKeyId: null, ipAddress: "10.0.0.9", userAgent: "jest-agent" },
       );
       expect(success).toHaveBeenCalled();
     });
@@ -221,8 +224,8 @@ describe("certificateController", () => {
   describe("approveCertificate", () => {
     // A-62 — the body's approvedBy is ignored; the caller is the approver.
     it("should approve certificate successfully as the caller, ignoring a body approvedBy", async () => {
-      req.params = { certificateId: "c-1" };
-      req.body = { approvedBy: "approver-1" };
+      req.params = { certificateId: CERT_ID };
+      req.body = { approvedBy: "approver-1", ...REAUTH };
       certificateService.approveCertificate.mockResolvedValueOnce({
         success: true,
         status: 200,
@@ -234,16 +237,26 @@ describe("certificateController", () => {
 
       expect(certificateService.approveCertificate).toHaveBeenCalledWith(
         "tenant-1",
-        "c-1",
+        CERT_ID,
         "user-1",
-        expect.any(Object),
+        { ...REAUTH, ipAddress: "10.0.0.9", userAgent: "jest-agent" },
       );
       expect(success).toHaveBeenCalled();
     });
 
+    it("answers 400 and approves nothing without the re-authentication fields", async () => {
+      req.params = { certificateId: CERT_ID };
+      req.body = { approvedBy: "approver-1" };
+
+      await certificateController.approveCertificate(req, res);
+
+      expect(certificateService.approveCertificate).not.toHaveBeenCalled();
+      expect(error).toHaveBeenCalledWith(res, "Validation Error", 400, FIELD_ERRORS); // A-272 (ADR-100)
+    });
+
     it("defaults approvedBy to the authenticated user when the body omits it", async () => {
-      req.params = { certificateId: "c-1" };
-      req.body = { authMethod: "password", meaning: "approval" };
+      req.params = { certificateId: CERT_ID };
+      req.body = { authMethod: "password", authPayload: "secret", meaning: "approval" };
       certificateService.approveCertificate.mockResolvedValue({
         success: true,
         status: 200,
@@ -255,7 +268,7 @@ describe("certificateController", () => {
 
       expect(certificateService.approveCertificate).toHaveBeenCalledWith(
         "tenant-1",
-        "c-1",
+        CERT_ID,
         req.user.id,
         expect.objectContaining({ authMethod: "password", meaning: "approval" }),
       );
@@ -264,8 +277,8 @@ describe("certificateController", () => {
 
   describe("signCertificate", () => {
     it("should sign certificate successfully", async () => {
-      req.params = { certificateId: "c-1" };
-      req.body = { digitalSignature: "sig", digitalSignatureKeyId: "key-1" };
+      req.params = { certificateId: CERT_ID };
+      req.body = { digitalSignature: "sig", digitalSignatureKeyId: "key-1", ...REAUTH };
       certificateService.signCertificate.mockResolvedValueOnce({
         success: true,
         status: 200,
@@ -277,7 +290,7 @@ describe("certificateController", () => {
 
       expect(certificateService.signCertificate).toHaveBeenCalledWith(
         "tenant-1",
-        "c-1",
+        CERT_ID,
         "sig",
         "key-1",
         "user-1",
@@ -289,8 +302,8 @@ describe("certificateController", () => {
 
   describe("revokeCertificate", () => {
     it("should revoke certificate successfully", async () => {
-      req.params = { certificateId: "c-1" };
-      req.body = { reason: "Device defect" };
+      req.params = { certificateId: CERT_ID };
+      req.body = { reason: "Device defect", ...REAUTH };
       certificateService.revokeCertificate.mockResolvedValueOnce({
         success: true,
         status: 200,
@@ -302,7 +315,7 @@ describe("certificateController", () => {
 
       expect(certificateService.revokeCertificate).toHaveBeenCalledWith(
         "tenant-1",
-        "c-1",
+        CERT_ID,
         "Device defect",
         "user-1",
         expect.any(Object),

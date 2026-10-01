@@ -11,6 +11,7 @@ const oidcController = require("../../controllers/oidcProvider.controller");
 const { auth, superAdminOnly } = require("../../middlewares/auth.middleware");
 const { dynamicAccess } = require("../../middlewares/dynamicAccess.middleware");
 const { MENU_SLUGS } = require("../../constants/roleConstants");
+const { validateUuid } = require("../../middlewares/validateUuid.middleware");
 
 // ==========================================================================
 // PUBLIC OIDC METADATA — registered BEFORE the auth guard.
@@ -204,5 +205,93 @@ router.post("/clients/:clientId/rotate-secret", superAdminOnly, oidcController.r
  *         description: Client not found
  */
 router.delete("/clients/:clientId", superAdminOnly, oidcController.deleteClient);
+
+// --------------------------------------------------------------------------
+// A-280 (ADR-094) — the same client operations on a tenant the operator
+// names in the path. The routes above act on the operator's HOME tenant
+// (platform clients, which only that tenant's users may approve, A-275); a
+// client a hospital's users sign in to lives in the hospital's tenant.
+// Another tenant's id that does not exist is 404.
+// --------------------------------------------------------------------------
+
+/**
+ * @swagger
+ * /api/v1/oidc/tenants/{tenantId}/clients:
+ *   get:
+ *     summary: List a tenant's OIDC clients (super admin)
+ *     tags: [OIDC]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: tenantId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: The tenant's OIDC clients
+ *       404:
+ *         description: Tenant not found
+ */
+router.get("/tenants/:tenantId/clients", superAdminOnly, validateUuid("tenantId"), oidcController.getTenantClients);
+/**
+ * @swagger
+ * /api/v1/oidc/tenants/{tenantId}/clients:
+ *   post:
+ *     summary: Register an OIDC client in a tenant (super admin)
+ *     tags: [OIDC]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: tenantId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Client registered; the secret is shown once
+ *       404:
+ *         description: Tenant not found
+ */
+router.post("/tenants/:tenantId/clients", superAdminOnly, validateUuid("tenantId"), oidcController.registerTenantClient);
+/**
+ * @swagger
+ * /api/v1/oidc/tenants/{tenantId}/clients/{clientId}/rotate-secret:
+ *   post:
+ *     summary: Rotate a tenant's OIDC client secret (super admin)
+ *     tags: [OIDC]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Client secret rotated
+ *       404:
+ *         description: Tenant or client not found
+ */
+router.post(
+  "/tenants/:tenantId/clients/:clientId/rotate-secret",
+  superAdminOnly,
+  validateUuid("tenantId"),
+  oidcController.rotateTenantClientSecret,
+);
+/**
+ * @swagger
+ * /api/v1/oidc/tenants/{tenantId}/clients/{clientId}:
+ *   delete:
+ *     summary: Delete a tenant's OIDC client (super admin)
+ *     tags: [OIDC]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Client deleted
+ *       404:
+ *         description: Tenant not found
+ */
+router.delete("/tenants/:tenantId/clients/:clientId", superAdminOnly, validateUuid("tenantId"), oidcController.deleteTenantClient);
 
 module.exports = router;

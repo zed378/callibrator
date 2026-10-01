@@ -76,7 +76,7 @@ describe("kanbanController", () => {
     req.body = { name: "B" };
     kanbanService.createProject.mockResolvedValueOnce({ id: "p1" });
     await kanban.createProject(req, res, next);
-    expect(kanbanService.createProject).toHaveBeenCalledWith(req.user, { name: "B" });
+    expect(kanbanService.createProject).toHaveBeenCalledWith(req.user, { name: "B" }, expect.objectContaining({ apiKeyId: null }));
     expect(success).toHaveBeenCalledWith(res, { id: "p1" }, null, "Project created", 201);
   });
 
@@ -96,7 +96,7 @@ describe("kanbanController", () => {
     req.body = { name: "N" };
     kanbanService.updateProject.mockResolvedValueOnce({ id: "p1" });
     await kanban.updateProject(req, res, next);
-    expect(kanbanService.updateProject).toHaveBeenCalledWith(req.user, "p1", { name: "N" });
+    expect(kanbanService.updateProject).toHaveBeenCalledWith(req.user, "p1", { name: "N" }, expect.objectContaining({ apiKeyId: null }));
     expect(success).toHaveBeenCalledWith(res, { id: "p1" }, null, "Project updated");
   });
 
@@ -104,7 +104,7 @@ describe("kanbanController", () => {
     req.params = { projectId: "p1" };
     kanbanService.deleteProject.mockResolvedValueOnce({ deleted: true });
     await kanban.deleteProject(req, res, next);
-    expect(kanbanService.deleteProject).toHaveBeenCalledWith(req.user, "p1");
+    expect(kanbanService.deleteProject).toHaveBeenCalledWith(req.user, "p1", expect.objectContaining({ apiKeyId: null }));
     expect(success).toHaveBeenCalledWith(res, { deleted: true }, null, "Project deleted");
   });
 
@@ -115,7 +115,7 @@ describe("kanbanController", () => {
     req.body = { userId: "u2" };
     kanbanService.addMember.mockResolvedValueOnce({ memberId: "m1" });
     await kanban.addMember(req, res, next);
-    expect(kanbanService.addMember).toHaveBeenCalledWith(req.user, "p1", { userId: "u2" });
+    expect(kanbanService.addMember).toHaveBeenCalledWith(req.user, "p1", { userId: "u2" }, expect.objectContaining({ apiKeyId: null }));
     expect(success).toHaveBeenCalledWith(res, { memberId: "m1" }, null, "Member added", 201);
   });
 
@@ -126,7 +126,7 @@ describe("kanbanController", () => {
     await kanban.updateMember(req, res, next);
     expect(kanbanService.updateMember).toHaveBeenCalledWith(req.user, "p1", "m1", {
       accessLevel: "editor",
-    });
+    }, expect.objectContaining({ apiKeyId: null }));
     expect(success).toHaveBeenCalledWith(res, [{ id: "m1" }], null, "Member updated");
   });
 
@@ -134,7 +134,7 @@ describe("kanbanController", () => {
     req.params = { projectId: "p1", memberId: "m1" };
     kanbanService.removeMember.mockResolvedValueOnce({ removed: true });
     await kanban.removeMember(req, res, next);
-    expect(kanbanService.removeMember).toHaveBeenCalledWith(req.user, "p1", "m1");
+    expect(kanbanService.removeMember).toHaveBeenCalledWith(req.user, "p1", "m1", expect.objectContaining({ apiKeyId: null }));
     expect(success).toHaveBeenCalledWith(res, { removed: true }, null, "Member removed");
   });
 
@@ -145,7 +145,7 @@ describe("kanbanController", () => {
     req.body = { name: "C" };
     kanbanService.createColumn.mockResolvedValueOnce({ id: "c1" });
     await kanban.createColumn(req, res, next);
-    expect(kanbanService.createColumn).toHaveBeenCalledWith(req.user, "p1", { name: "C" });
+    expect(kanbanService.createColumn).toHaveBeenCalledWith(req.user, "p1", { name: "C" }, expect.objectContaining({ apiKeyId: null }));
     expect(success).toHaveBeenCalledWith(res, { id: "c1" }, null, "Column created", 201);
   });
 
@@ -156,7 +156,7 @@ describe("kanbanController", () => {
     await kanban.updateColumn(req, res, next);
     expect(kanbanService.updateColumn).toHaveBeenCalledWith(req.user, "p1", "c1", {
       name: "C2",
-    });
+    }, expect.objectContaining({ apiKeyId: null }));
     expect(success).toHaveBeenCalledWith(res, { id: "c1" }, null, "Column updated");
   });
 
@@ -164,7 +164,7 @@ describe("kanbanController", () => {
     req.params = { projectId: "p1", columnId: "c1" };
     kanbanService.deleteColumn.mockResolvedValueOnce({ deleted: true });
     await kanban.deleteColumn(req, res, next);
-    expect(kanbanService.deleteColumn).toHaveBeenCalledWith(req.user, "p1", "c1");
+    expect(kanbanService.deleteColumn).toHaveBeenCalledWith(req.user, "p1", "c1", expect.objectContaining({ apiKeyId: null }));
     expect(success).toHaveBeenCalledWith(res, { deleted: true }, null, "Column deleted");
   });
 
@@ -173,7 +173,7 @@ describe("kanbanController", () => {
     req.body = { order: ["c1", "c2"] };
     kanbanService.reorderColumns.mockResolvedValueOnce([{ id: "c1" }]);
     await kanban.reorderColumns(req, res, next);
-    expect(kanbanService.reorderColumns).toHaveBeenCalledWith(req.user, "p1", ["c1", "c2"]);
+    expect(kanbanService.reorderColumns).toHaveBeenCalledWith(req.user, "p1", ["c1", "c2"], expect.objectContaining({ apiKeyId: null }));
     expect(success).toHaveBeenCalledWith(res, [{ id: "c1" }], null, "Columns reordered");
   });
 
@@ -192,7 +192,7 @@ describe("kanbanController", () => {
     req.body = { name: "S1" };
     kanbanService.createSprint.mockResolvedValueOnce({ id: "s1" });
     await kanban.createSprint(req, res, next);
-    expect(kanbanService.createSprint).toHaveBeenCalledWith(req.user, "p1", { name: "S1" });
+    expect(kanbanService.createSprint).toHaveBeenCalledWith(req.user, "p1", { name: "S1" }, expect.objectContaining({ apiKeyId: null }));
     expect(success).toHaveBeenCalledWith(res, { id: "s1" }, null, "Sprint created", 201);
   });
 
@@ -203,7 +203,7 @@ describe("kanbanController", () => {
     await kanban.updateSprint(req, res, next);
     expect(kanbanService.updateSprint).toHaveBeenCalledWith(req.user, "p1", "s1", {
       status: "active",
-    });
+    }, expect.objectContaining({ apiKeyId: null }));
     expect(success).toHaveBeenCalledWith(res, { id: "s1" }, null, "Sprint updated");
   });
 
@@ -211,7 +211,7 @@ describe("kanbanController", () => {
     req.params = { projectId: "p1", sprintId: "s1" };
     kanbanService.deleteSprint.mockResolvedValueOnce({ deleted: true });
     await kanban.deleteSprint(req, res, next);
-    expect(kanbanService.deleteSprint).toHaveBeenCalledWith(req.user, "p1", "s1");
+    expect(kanbanService.deleteSprint).toHaveBeenCalledWith(req.user, "p1", "s1", expect.objectContaining({ apiKeyId: null }));
     expect(success).toHaveBeenCalledWith(res, { deleted: true }, null, "Sprint deleted");
   });
 
@@ -223,7 +223,7 @@ describe("kanbanController", () => {
     expect(kanbanService.migrateCards).toHaveBeenCalledWith(req.user, "p1", {
       allNotDone: true,
       targetSprintId: "backlog",
-    });
+    }, expect.objectContaining({ apiKeyId: null }));
     expect(success).toHaveBeenCalledWith(res, { migrated: 3 }, null, "Cards migrated");
   });
 
@@ -258,7 +258,7 @@ describe("kanbanController", () => {
     expect(kanbanService.createCard).toHaveBeenCalledWith(req.user, "p1", {
       title: "T",
       columnId: "c1",
-    });
+    }, expect.objectContaining({ apiKeyId: null }));
     expect(success).toHaveBeenCalledWith(res, { id: "cd1" }, null, "Card created", 201);
   });
 
@@ -269,7 +269,7 @@ describe("kanbanController", () => {
     await kanban.updateCard(req, res, next);
     expect(kanbanService.updateCard).toHaveBeenCalledWith(req.user, "p1", "cd1", {
       title: "T2",
-    });
+    }, expect.objectContaining({ apiKeyId: null }));
     expect(success).toHaveBeenCalledWith(res, { id: "cd1" }, null, "Card updated");
   });
 
@@ -281,7 +281,7 @@ describe("kanbanController", () => {
     expect(kanbanService.moveCard).toHaveBeenCalledWith(req.user, "p1", "cd1", {
       columnId: "c2",
       position: 0,
-    });
+    }, expect.objectContaining({ apiKeyId: null }));
     expect(success).toHaveBeenCalledWith(res, { id: "cd1" }, null, "Card moved");
   });
 
@@ -289,7 +289,7 @@ describe("kanbanController", () => {
     req.params = { projectId: "p1", cardId: "cd1" };
     kanbanService.deleteCard.mockResolvedValueOnce({ deleted: true });
     await kanban.deleteCard(req, res, next);
-    expect(kanbanService.deleteCard).toHaveBeenCalledWith(req.user, "p1", "cd1");
+    expect(kanbanService.deleteCard).toHaveBeenCalledWith(req.user, "p1", "cd1", expect.objectContaining({ apiKeyId: null }));
     expect(success).toHaveBeenCalledWith(res, { deleted: true }, null, "Card deleted");
   });
 
@@ -303,7 +303,7 @@ describe("kanbanController", () => {
     expect(kanbanService.addRelation).toHaveBeenCalledWith(req.user, "p1", "cd1", {
       targetCardId: "cd2",
       type: "blocks",
-    });
+    }, expect.objectContaining({ apiKeyId: null }));
     expect(success).toHaveBeenCalledWith(res, [{ id: "r1" }], null, "Relation added", 201);
   });
 
@@ -311,7 +311,7 @@ describe("kanbanController", () => {
     req.params = { projectId: "p1", cardId: "cd1", relationId: "r1" };
     kanbanService.removeRelation.mockResolvedValueOnce([]);
     await kanban.removeRelation(req, res, next);
-    expect(kanbanService.removeRelation).toHaveBeenCalledWith(req.user, "p1", "cd1", "r1");
+    expect(kanbanService.removeRelation).toHaveBeenCalledWith(req.user, "p1", "cd1", "r1", expect.objectContaining({ apiKeyId: null }));
     expect(success).toHaveBeenCalledWith(res, [], null, "Relation removed");
   });
 
@@ -322,7 +322,7 @@ describe("kanbanController", () => {
     req.body = { name: "bug" };
     kanbanService.createLabel.mockResolvedValueOnce({ id: "l1" });
     await kanban.createLabel(req, res, next);
-    expect(kanbanService.createLabel).toHaveBeenCalledWith(req.user, "p1", { name: "bug" });
+    expect(kanbanService.createLabel).toHaveBeenCalledWith(req.user, "p1", { name: "bug" }, expect.objectContaining({ apiKeyId: null }));
     expect(success).toHaveBeenCalledWith(res, { id: "l1" }, null, "Label created", 201);
   });
 
@@ -333,7 +333,7 @@ describe("kanbanController", () => {
     await kanban.updateLabel(req, res, next);
     expect(kanbanService.updateLabel).toHaveBeenCalledWith(req.user, "p1", "l1", {
       name: "feat",
-    });
+    }, expect.objectContaining({ apiKeyId: null }));
     expect(success).toHaveBeenCalledWith(res, { id: "l1" }, null, "Label updated");
   });
 
@@ -341,7 +341,7 @@ describe("kanbanController", () => {
     req.params = { projectId: "p1", labelId: "l1" };
     kanbanService.deleteLabel.mockResolvedValueOnce({ deleted: true });
     await kanban.deleteLabel(req, res, next);
-    expect(kanbanService.deleteLabel).toHaveBeenCalledWith(req.user, "p1", "l1");
+    expect(kanbanService.deleteLabel).toHaveBeenCalledWith(req.user, "p1", "l1", expect.objectContaining({ apiKeyId: null }));
     expect(success).toHaveBeenCalledWith(res, { deleted: true }, null, "Label deleted");
   });
 

@@ -1,0 +1,63 @@
+/**
+ * P9-21 (ADR-097 / ADR-103) — the roles module's OWN answer shapes, which the
+ * roles controller writes with `res.status().json()` (not the house envelope):
+ * `{ success, data }`, `{ success, data, meta }` on the two lists, `{ success,
+ * message }` on a removal, `{ success: false, message }` on a GET not found.
+ * The bodies below are the ones roles.controller builds (see its handlers).
+ */
+import {
+  menuGroupWithChildrenResponse,
+  roleResponse,
+  rolesAnswer,
+  rolesListAnswer,
+  rolesMessageAnswer,
+  rolesNotFoundAnswer,
+} from "@callibrator/contracts/roles";
+
+const ROLE = {
+  id: "6e5d4c3b-2a19-4f8e-9d7c-6b5a4f3e2d1c",
+  name: "LAB TECHNICIAN",
+  nameToShow: null,
+  description: null,
+  isSystem: false,
+  status: "active",
+  sortOrder: null,
+  roleLevel: 5,
+  isDeleted: false,
+  createdAt: "2026-01-15T08:30:00.000Z",
+  updatedAt: "2026-01-15T08:30:00.000Z",
+  deletedAt: null,
+};
+
+describe("@callibrator/contracts/roles answers", () => {
+  it("a list: { success, data: [...], meta } with meta a top-level sibling", () => {
+    const body = { success: true, data: [ROLE], meta: { total: 1, page: 1, limit: 20, totalPages: 1 } };
+    expect(rolesListAnswer(roleResponse).parse(body)).toEqual(body);
+    expect(rolesListAnswer(roleResponse).safeParse({ success: true, data: { rows: [ROLE] } }).success).toBe(false);
+  });
+
+  it("a record, a removal and a not-found", () => {
+    expect(rolesAnswer(roleResponse).parse({ success: true, data: ROLE }).data.roleLevel).toBe(5);
+    expect(rolesMessageAnswer.parse({ success: true, message: "Role deleted successfully" }).message).toBe(
+      "Role deleted successfully",
+    );
+    expect(rolesNotFoundAnswer.parse({ success: false, message: "Role not found" }).success).toBe(false);
+    expect(rolesAnswer(roleResponse).safeParse({ success: false, data: ROLE }).success).toBe(false);
+  });
+
+  it("a menu group with its children", () => {
+    const menu = {
+      id: "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+      name: "Inventory",
+      slug: "warehouse",
+      icon: null,
+      parentId: null,
+      sortOrder: 3,
+      isActive: true,
+      createdAt: "2026-01-15T08:30:00.000Z",
+      updatedAt: "2026-01-15T08:30:00.000Z",
+      children: [{ id: "2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e", name: "Stock", slug: "stock", icon: null, sort_order: 1 }],
+    };
+    expect(menuGroupWithChildrenResponse.parse(menu).children).toHaveLength(1);
+  });
+});

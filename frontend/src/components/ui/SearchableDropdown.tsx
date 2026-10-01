@@ -131,13 +131,14 @@ export const SearchableDropdown: React.FC<SearchableDropdownProps> = ({
     }
   }, [isOpen]);
 
+  // A-302: clearing clears — it used to dispatch a click on the trigger,
+  // which toggled the list open. The list closes, and focus goes back to the
+  // trigger, because the clear button it was on is removed with the value.
   const handleClear = () => {
     onChange("");
-    if (containerRef.current) {
-      containerRef.current
-        .querySelector("button")
-        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    }
+    setIsOpen(false);
+    setSearchTerm("");
+    containerRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
   };
 
   return (

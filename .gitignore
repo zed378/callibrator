@@ -91,6 +91,11 @@ backend/uploads/*
 backend/uploads/profile/*
 !backend/uploads/profile/default.svg
 
+# P10-16 (ADR-099): the first super admin's one-time password file of a local
+# (tsx) run — storagePath(".bootstrap"). Plaintext until its first sign-in.
+backend/.bootstrap/
+.bootstrap/
+
 # Cache
 .turbo/
 .eslintcache

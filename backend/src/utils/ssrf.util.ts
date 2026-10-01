@@ -18,8 +18,12 @@
 // of CommonJS modules), so `dns.promises.lookup` is still read at call time and
 // a spy on it still reaches this code.
 
+import axios from "axios";
 import dns from "dns";
+import http from "http";
+import https from "https";
 import net from "net";
+import { env, isProduction } from "../config/env";
 import { AppError } from "./appError.util";
 
 // ---- IPv4 range checks (CIDR via 32-bit integer math) --------------------
@@ -67,6 +71,16 @@ const isBlockedIpv6 = (raw: string): boolean => {
   const embedded = /(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/.exec(ip);
   // The capture group always participates when the pattern matches.
   if (embedded && net.isIPv4(embedded[1] as string)) {return isBlockedIpv4(embedded[1] as string);}
+  // A-176: the same forms written in hex, which is how WHATWG URL normalises
+  // them (`http://[::ffff:169.254.169.254]/` has hostname `[::ffff:a9fe:a9fe]`):
+  // IPv4-mapped (::ffff:0:0/96), IPv4-compatible (::/96) and NAT64
+  // (64:ff9b::/96). Before this they fell through to "public".
+  const hexEmbedded = /^(?:::ffff:|::|64:ff9b::)([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(ip);
+  if (hexEmbedded) {
+    const hi = parseInt(hexEmbedded[1] as string, 16);
+    const lo = parseInt(hexEmbedded[2] as string, 16);
+    return isBlockedIpv4(`${String(hi >> 8)}.${String(hi & 0xff)}.${String(lo >> 8)}.${String(lo & 0xff)}`);
+  }
   const head = ip.split(":")[0] as string;
   if (head.startsWith("fc") || head.startsWith("fd")) {return true;} // fc00::/7 ULA
   if (["fe8", "fe9", "fea", "feb"].some((p) => head.startsWith(p))) {return true;} // fe80::/10
@@ -134,4 +148,193 @@ const assertResolvedHostIsPublic = async (rawUrl: string): Promise<void> => {
   }
 };
 
-export { assertSafeUrl, assertResolvedHostIsPublic, isBlockedIp };
+// ---- A-176: outbound calls to tenant-chosen URLs (OIDC, AI, S3) ----------
+//
+// The two layers above check a URL and then let the HTTP client resolve the
+// host AGAIN when it connects — a DNS-rebinding window (answer a public IP to
+// the check, 169.254.169.254 to the connect). The helpers below close it: the
+// agents' `lookup` IS the check, so the address that passed is the address
+// that is dialled. Redirects are refused (maxRedirects 0), responses are
+// capped, and a timeout always applies.
+
+/**
+ * Hosts a developer may point these calls at although they are internal (a
+ * local OIDC provider, a local model server): `SSRF_DEV_ALLOW_HOSTS`, a
+ * comma-separated list of hostnames. Ignored in production — always empty
+ * there, whatever the variable says.
+ */
+const devAllowedHosts = (): string[] => {
+  if (isProduction()) {
+    return [];
+  }
+  return (env("SSRF_DEV_ALLOW_HOSTS") ?? "")
+    .split(",")
+    .map((h) => h.trim().toLowerCase())
+    .filter((h) => h !== "");
+};
+
+const isDevAllowedHost = (host: string): boolean =>
+  devAllowedHosts().includes(host.replace(/^\[|\]$/g, "").toLowerCase());
+
+/**
+ * Validate a tenant-chosen URL the server will call: https only in
+ * production, then assertSafeUrl — unless the host is on the development
+ * allow-list (never in production). Throws AppError(400) with a message that
+ * names the setting when one is given.
+ */
+const assertOutboundUrl = (rawUrl: string, label = "URL"): URL => {
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    throw new AppError(400, `${label} is not a valid URL`);
+  }
+  if (isProduction() && url.protocol !== "https:") {
+    throw new AppError(400, `${label} must use https`);
+  }
+  if (isDevAllowedHost(url.hostname)) {
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      throw new AppError(400, `${label} must use http or https`);
+    }
+    return url;
+  }
+  try {
+    return assertSafeUrl(rawUrl);
+  } catch (err) {
+    throw new AppError(400, `${label}: ${(err as Error).message}`);
+  }
+};
+
+type LookupCallback = (
+  err: NodeJS.ErrnoException | null,
+  address: string | dns.LookupAddress[],
+  family?: number,
+) => void;
+
+/**
+ * A `dns.lookup` replacement for http(s) agents: resolves every address and
+ * refuses the connection when ANY of them is internal (unless the host is
+ * development-allowed). The connection then uses an address that passed.
+ */
+const ssrfSafeLookup = (hostname: string, options: dns.LookupOptions, callback: LookupCallback): void => {
+  dns.lookup(hostname, { ...options, all: true }, (err, addresses) => {
+    if (err) {
+      callback(err, []);
+      return;
+    }
+    const list = addresses;
+    const allowed = isDevAllowedHost(hostname);
+    if (list.length === 0 || (!allowed && list.some(({ address }) => isBlockedIp(address)))) {
+      const refused: NodeJS.ErrnoException = new Error(
+        `SSRF guard: ${hostname} resolves to a disallowed (internal) address`,
+      );
+      refused.code = "ESSRFBLOCKED";
+      callback(refused, []);
+      return;
+    }
+    if (options.all) {
+      callback(null, list);
+      return;
+    }
+    const first = list[0] as dns.LookupAddress;
+    callback(null, first.address, first.family);
+  });
+};
+
+/** http/https agents whose every connection goes through ssrfSafeLookup. */
+const ssrfSafeAgents = (): { httpAgent: http.Agent; httpsAgent: https.Agent } => ({
+  httpAgent: new http.Agent({ lookup: ssrfSafeLookup }),
+  httpsAgent: new https.Agent({
+    lookup: ssrfSafeLookup,
+    rejectUnauthorized: true,
+  }),
+});
+
+/** Default cap on a response from a tenant-chosen URL (2 MiB). */
+const OUTBOUND_MAX_BYTES = 2 * 1024 * 1024;
+
+/**
+ * axios options for a call to a tenant-chosen URL: pinned-lookup agents, no
+ * redirects, no environment proxy (a proxy would resolve the host itself and
+ * bypass the lookup), a timeout and a response-size cap.
+ */
+const ssrfSafeAxiosOptions = ({
+  timeoutMs,
+  maxBytes = OUTBOUND_MAX_BYTES,
+}: {
+  timeoutMs: number;
+  maxBytes?: number;
+}): {
+  httpAgent: http.Agent;
+  httpsAgent: https.Agent;
+  maxRedirects: 0;
+  proxy: false;
+  timeout: number;
+  maxContentLength: number;
+} => ({
+  ...ssrfSafeAgents(),
+  maxRedirects: 0,
+  proxy: false,
+  timeout: timeoutMs,
+  maxContentLength: maxBytes,
+});
+
+/** The part of a fetch `RequestInit` pinnedFetch honours. */
+interface PinnedFetchInit {
+  method?: string;
+  headers?: Record<string, string>;
+  body?: string;
+  signal?: AbortSignal;
+  /** Accepted for fetch parity; a pinned request never follows a redirect. */
+  redirect?: "manual";
+  /** Always set; there is no un-timed pinned request. */
+  timeoutMs: number;
+}
+
+/**
+ * A-307 — a fetch-shaped POST/GET through the pinned agents, for a caller
+ * written against `fetch` (the webhook sender). Node's `fetch` takes no agent,
+ * so it resolved the host again after the SSRF check: a rebinding window.
+ *
+ * Kept from fetch with `redirect: "manual"`: a 3xx is RETURNED, never
+ * followed; every status resolves (no throw on 4xx/5xx); the body is sent
+ * byte-for-byte (no JSON re-serialisation — a signature covers it) and the
+ * response body is never read (discarded unread, so no size cap applies to
+ * it); an aborted request rejects with an error named "AbortError".
+ */
+const pinnedFetch = async (url: string, init: PinnedFetchInit): Promise<{ ok: boolean; status: number }> => {
+  try {
+    const res = await axios.request<NodeJS.ReadableStream & { destroy(): void }>({
+      url,
+      method: init.method ?? "GET",
+      ...(init.body === undefined ? {} : { data: init.body }),
+      ...(init.headers === undefined ? {} : { headers: init.headers }),
+      ...(init.signal === undefined ? {} : { signal: init.signal }),
+      ...ssrfSafeAxiosOptions({ timeoutMs: init.timeoutMs }),
+      validateStatus: () => true,
+      responseType: "stream",
+      transformRequest: [(data: unknown) => data],
+    });
+    res.data.destroy();
+    return { ok: res.status >= 200 && res.status < 300, status: res.status };
+  } catch (err) {
+    if (axios.isCancel(err) || (err as { code?: string }).code === "ECONNABORTED") {
+      const aborted = new Error("The operation was aborted");
+      aborted.name = "AbortError";
+      throw aborted;
+    }
+    throw err;
+  }
+};
+
+export {
+  pinnedFetch,
+  assertSafeUrl,
+  assertResolvedHostIsPublic,
+  isBlockedIp,
+  assertOutboundUrl,
+  ssrfSafeLookup,
+  ssrfSafeAgents,
+  ssrfSafeAxiosOptions,
+  OUTBOUND_MAX_BYTES,
+};

@@ -8,8 +8,8 @@ const { auditActor } = require("../utils/auditActor.util");
 const {
   deviceIdSchema,
   updateIotConfigSchema,
-  validate,
 } = require("../validators/iot.validator");
+const { checkInput } = require("../validators/input");
 
 exports.ingestHttp = async (req, res, next) => {
   try {
@@ -67,21 +67,16 @@ exports.ingestHttp = async (req, res, next) => {
  * Validate `data`, or send the 400 and return null.
  * @param {import("express").Response} res - the response
  * @param {*} data - the input
- * @param {import("joi").Schema} schema - the schema
+ * @param {import("zod").ZodType} schema - the schema
  * @returns {object|null} the validated value
  */
 const validOr400 = (res, data, schema) => {
-  const { error: invalid, value } = validate(data, schema);
-  if (invalid) {
-    error(
-      res,
-      "Validation failed",
-      400,
-      invalid.details.map((d) => ({ field: d.path.join("."), message: d.message })),
-    );
+  const checked = checkInput(data, schema);
+  if (!checked.ok) {
+    error(res, "Validation failed", 400, checked.errors);
     return null;
   }
-  return value;
+  return checked.value;
 };
 
 /**

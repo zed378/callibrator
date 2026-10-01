@@ -1,5 +1,11 @@
+// P6-11: a storage change and its audit row commit in one managed transaction.
+jest.mock("../../config", () => ({
+  db: { transaction: jest.fn((cb) => cb("TX")) },
+}));
+jest.mock("../../services/audit.service", () => ({ logAction: jest.fn() }));
 jest.mock("../../models", () => ({
   TenantSettings: {
+    findOne: jest.fn(),
     findAll: jest.fn(),
     upsert: jest.fn(),
     findOrBuild: jest.fn(),
@@ -293,11 +299,11 @@ describe("storage config — writing a tenant override", () => {
       tenantId: "t1",
       key: "storage_config",
       value: expect.not.stringContaining("SK"),
-    });
+    }, { transaction: "TX" });
     // ...and the secret half through save(), because upsert() bypasses the
     // beforeSave hook that performs the envelope encryption.
     expect(row.value).toBe(JSON.stringify({ accessKeyId: "AK", secretAccessKey: "SK" }));
-    expect(row.save).toHaveBeenCalled();
+    expect(row.save).toHaveBeenCalledWith({ transaction: "TX" });
   });
 
   it("does not write a credentials row when none were supplied", async () => {
@@ -336,6 +342,65 @@ describe("storage config — clearing a tenant override", () => {
     await expect(config.clearTenantConfig("t1")).resolves.toEqual({ cleared: 2 });
     expect(TenantSettings.destroy).toHaveBeenCalledWith({
       where: { tenantId: "t1", key: ["storage_config", "storage_credentials"] },
+      transaction: "TX",
     });
+  });
+});
+
+// P6-11 — which settings changed, never a credential.
+describe("storage config — P6-11 audit rows", () => {
+  const auditService = require("../../services/audit.service");
+  const principal = { userId: "u1", apiKeyId: null, ipAddress: "10.0.0.1", userAgent: "jest" };
+
+  it("a save records the changed keys and the secret-free config, and only WHICH credentials were set", async () => {
+    TenantSettings.findOne.mockResolvedValueOnce({ value: JSON.stringify({ provider: "s3", bucket: "old" }) });
+    TenantSettings.findOrBuild.mockResolvedValue([{ save: jest.fn() }]);
+    await config.setTenantConfig(
+      "t1",
+      { provider: "s3", bucket: "b", accessKeyId: "AKIAEXAMPLE", secretAccessKey: "SECRETVALUE" },
+      principal,
+    );
+    expect(auditService.logAction).toHaveBeenCalledTimes(1);
+    const [entry, options] = auditService.logAction.mock.calls[0];
+    expect(options).toEqual({ transaction: "TX" });
+    expect(entry).toMatchObject({
+      tenantId: "t1",
+      userId: "u1",
+      action: "UPDATE",
+      resourceType: "TenantStorageConfig",
+      resourceId: "t1",
+      changes: {
+        operation: "STORAGE_CONFIG_SET",
+        before: { provider: "s3", bucket: "old" },
+        after: expect.objectContaining({ provider: "s3", bucket: "b" }),
+        credentialsSet: ["accessKeyId", "secretAccessKey"],
+      },
+    });
+    expect(entry.changes.changed).toContain("bucket");
+    expect(JSON.stringify(entry)).not.toMatch(/AKIAEXAMPLE|SECRETVALUE/);
+  });
+
+  it("a first save has no before; an unparseable stored config is recorded as such", async () => {
+    TenantSettings.findOne.mockResolvedValueOnce(null);
+    await config.setTenantConfig("t1", { provider: "nfs", root: "/mnt/t1" });
+    expect(auditService.logAction.mock.calls[0][0].changes).toMatchObject({ before: null, credentialsSet: [] });
+    TenantSettings.findOne.mockResolvedValueOnce({ value: "{not json" });
+    await config.setTenantConfig("t1", { provider: "nfs", root: "/mnt/t2" });
+    expect(auditService.logAction.mock.calls[1][0].changes.before).toBe("(unparseable)");
+  });
+
+  it("a clear records what was removed; clearing nothing writes no row", async () => {
+    TenantSettings.findOne.mockResolvedValueOnce({ value: JSON.stringify({ provider: "nfs", root: "/mnt/t1" }) });
+    TenantSettings.destroy.mockResolvedValueOnce(2);
+    await config.clearTenantConfig("t1", principal);
+    expect(auditService.logAction.mock.calls[0][0].changes).toMatchObject({
+      operation: "STORAGE_CONFIG_CLEAR",
+      changed: ["provider", "root"],
+      after: null,
+    });
+    auditService.logAction.mockClear();
+    TenantSettings.destroy.mockResolvedValueOnce(0);
+    await config.clearTenantConfig("t1", principal);
+    expect(auditService.logAction).not.toHaveBeenCalled();
   });
 });

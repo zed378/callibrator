@@ -1,21 +1,22 @@
 /**
- * P9-11 contract pin — `validators/admin.validator.js`.
+ * P9-11 contract pin — `validators/admin.validator.ts` (ADR-093).
  *
- * Today's Joi 400 for `updateTenantFlagsSchema` through the real `validate(schema)`
- * middleware, byte for byte, in production and outside it. The
- * expectations are literals recorded on 2026-09-28; a Zod conversion must keep
- * this file passing unchanged. See ./harness.ts and
- * MEMORY/specs/P9-11-validation-error-contract.md.
+ * The validation 400 for `updateTenantFlagsSchema` through the real `validate(schema)`
+ * middleware, byte for byte, in production and outside it. The status, the
+ * envelope, the top-level `message` ("Validation Error") and `details`
+ * only outside production are the contract this suite pinned before P9-11;
+ * the wording inside `details` is Zod's since the move to Zod (the owner's
+ * decision, ADR-093, which lists every changed string). See ./harness.ts.
  */
 import { updateTenantFlagsSchema } from "../../../validators/admin.validator";
 import { expectValidationContract } from "./harness";
 
-describe("P9-11 contract: validators/admin.validator.js", () => {
+describe("P9-11 contract: validators/admin.validator.ts", () => {
   it("validate(updateTenantFlagsSchema) answers the pinned 400; details only outside production", async () => {
     await expectValidationContract(updateTenantFlagsSchema, {}, [
       {
         "field": "flags",
-        "message": "\"flags\" is required",
+        "message": "flags is required",
       },
     ]);
   });

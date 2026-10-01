@@ -33,6 +33,17 @@ jest.mock("../../services/redis.service", () => ({
   cacheKeys: { permissions: (roleId) => `permissions:role:${roleId}` },
 }));
 
+// ADR-102: visibility is the effective permission's (effectivePermission
+// .adr102 / menuEffectiveAccess.adr102 test the rule itself on the real seed).
+// Here a leaf is visible when its slug is in `mockVisible`, so these tests
+// check the tree walk: pruning, nesting and one entry per top-level page.
+const mockVisible = new Set();
+jest.mock("../../services/effectivePermission.service", () => ({
+  loadPermissionSources: jest.fn(async () => ({ superAdmin: false, matrix: {}, overrides: {} })),
+  menuEntryVisible: jest.fn((_principal, _sources, slug) => mockVisible.has(slug)),
+  effectivePermissionMap: jest.fn(() => ({})),
+}));
+
 jest.mock("../../utils/appError.util", () => {
   class AppError extends Error {
     constructor(status, message) {
@@ -93,11 +104,14 @@ const mockRoleInstance = (extra = {}) => ({ id: "role-1", name: "Admin", sortOrd
 describe("menuGroup.service", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockVisible.clear();
+    Role.findByPk.mockResolvedValue({ id: "role-1", name: "Admin", roleLevel: 8 });
   });
 
   describe("mapSlugToPath", () => {
     it("should map known slugs to their known paths", () => {
-      expect(mapSlugToPath("home")).toBe("/");
+      // S7 (ADR-102): Home is the dashboard home, not the public landing page.
+      expect(mapSlugToPath("home")).toBe("/dashboard");
       expect(mapSlugToPath("dashboard")).toBe("/dashboard");
       expect(mapSlugToPath("change-password")).toBe("/dashboard/change-password");
       expect(mapSlugToPath("menu-groups")).toBe("/dashboard/menu-groups");
@@ -169,40 +183,69 @@ describe("menuGroup.service", () => {
 
   // ================================================================
   describe("getRoleMenuAssignments", () => {
-    it("should return all groups when parent is assigned", async () => {
-      const child = mockMenuGroupInstance({
-        id: "c-1", name: "Child 1", slug: "child-1", sortOrder: 1,
-      });
+    it("shows a group with the children whose page the role can use (ADR-102)", async () => {
+      const child = mockMenuGroupInstance({ id: "c-1", name: "Child 1", slug: "child-1", sortOrder: 1 });
+      const hidden = mockMenuGroupInstance({ id: "c-2", name: "Child 2", slug: "child-2", sortOrder: 2 });
       const parent = mockMenuGroupInstance({
         id: "p-1", name: "Parent", slug: "parent", sortOrder: 1,
-        children: [child],
+        children: [child, hidden],
       });
       MenuGroup.findAll.mockResolvedValueOnce([parent]);
-      RoleMenuPermission.findAll.mockResolvedValueOnce([{ menuGroupId: "p-1" }]);
+      mockVisible.add("child-1");
 
       const result = await getRoleMenuAssignments("role-1");
       expect(result).toHaveLength(1);
       expect(result[0].id).toBe("p-1");
-      // When parent is assigned, all children should show
-      expect(result[0].items.length).toBe(1);
-      expect(result[0].items[0].id).toBe("c-1");
+      expect(result[0].items.map((i) => i.id)).toEqual(["c-1"]);
     });
 
-    it("should return only explicitly assigned children when parent not assigned", async () => {
-      const child1 = mockMenuGroupInstance({ id: "c-1", name: "Child 1", slug: "c1", sortOrder: 1 });
-      const child2 = mockMenuGroupInstance({ id: "c-2", name: "Child 2", slug: "c2", sortOrder: 2 });
+    it("a grant on the parent alone no longer shows its children (the old cascade)", async () => {
       const parent = mockMenuGroupInstance({
         id: "p-1", name: "Parent", slug: "parent", sortOrder: 1,
-        children: [child1, child2],
+        children: [mockMenuGroupInstance({ id: "c-1", slug: "c1" })],
       });
       MenuGroup.findAll.mockResolvedValueOnce([parent]);
-      // Only child1 is assigned
-      RoleMenuPermission.findAll.mockResolvedValueOnce([{ menuGroupId: "c-1" }]);
+      mockVisible.add("parent");
+
+      expect(await getRoleMenuAssignments("role-1")).toEqual([]);
+    });
+
+    it("an unknown role has no menu", async () => {
+      Role.findByPk.mockResolvedValueOnce(null);
+      expect(await getRoleMenuAssignments("nope")).toEqual([]);
+      expect(MenuGroup.findAll).not.toHaveBeenCalled();
+    });
+
+    it("the requester's own role: the menu is resolved for the requester (their overrides)", async () => {
+      const effective = require("../../services/effectivePermission.service");
+      MenuGroup.findAll.mockResolvedValueOnce([]);
+      await getRoleMenuAssignments("role-1", { id: "u-1", roleId: "role-1", role: { id: "role-1", name: "Admin" } });
+      expect(Role.findByPk).not.toHaveBeenCalled();
+      expect(effective.loadPermissionSources).toHaveBeenCalledWith({
+        id: "u-1",
+        role: { id: "role-1", name: "Admin" },
+      });
+    });
+
+    it("another role (a super admin's preview): the role's own grants, no user", async () => {
+      const effective = require("../../services/effectivePermission.service");
+      MenuGroup.findAll.mockResolvedValueOnce([]);
+      await getRoleMenuAssignments("role-1", { id: "sa", role: { id: "role-sa", name: "SUPERADMIN" } });
+      expect(effective.loadPermissionSources).toHaveBeenCalledWith({
+        role: { id: "role-1", name: "Admin", roleLevel: 8 },
+      });
+    });
+
+    it("top-level links to the same page are shown once (Home and Dashboard)", async () => {
+      MenuGroup.findAll.mockResolvedValueOnce([
+        mockMenuGroupInstance({ id: "home", slug: "home", sortOrder: 0 }),
+        mockMenuGroupInstance({ id: "dash", slug: "dashboard", sortOrder: 1 }),
+      ]);
+      mockVisible.add("home").add("dashboard");
 
       const result = await getRoleMenuAssignments("role-1");
-      expect(result).toHaveLength(1);
-      expect(result[0].items.length).toBe(1);
-      expect(result[0].items[0].id).toBe("c-1");
+      expect(result.map((g) => g.id)).toEqual(["home"]);
+      expect(result[0].path).toBe("/dashboard");
     });
   });
 
@@ -500,7 +543,7 @@ describe("menuGroup.service", () => {
 
   describe("mapSlugToPath", () => {
     it("maps a known slug to its custom dashboard path", () => {
-      expect(mapSlugToPath("home")).toBe("/");
+      expect(mapSlugToPath("home")).toBe("/dashboard");
       expect(mapSlugToPath("calibration")).toBe("/dashboard/devices");
     });
 
@@ -661,79 +704,32 @@ describe("menuGroup.service", () => {
   });
 
   describe("getRoleMenuAssignments coverage gaps", () => {
-    it("includes all children when the parent itself is assigned", async () => {
-      RoleMenuPermission.findAll.mockResolvedValueOnce([{ menuGroupId: "g1" }]);
+    it("omits a group none of whose children is visible", async () => {
       MenuGroup.findAll.mockResolvedValueOnce([
         {
-          id: "g1",
-          name: "Group",
-          icon: "i",
-          slug: "group",
-          sortOrder: 1,
-          children: [
-            { id: "c1", name: "A", icon: "i1", slug: "a" },
-            { id: "c2", name: "B", icon: "i2", slug: "b" },
-          ],
-        },
-      ]);
-
-      const result = await getRoleMenuAssignments("role-1");
-
-      expect(result).toHaveLength(1);
-      expect(result[0].items.map((i) => i.id)).toEqual(["c1", "c2"]);
-    });
-
-    it("includes an unassigned parent when only a child is assigned", async () => {
-      RoleMenuPermission.findAll.mockResolvedValueOnce([{ menuGroupId: "c2" }]);
-      MenuGroup.findAll.mockResolvedValueOnce([
-        {
-          id: "g1",
-          name: "Group",
-          icon: "i",
-          slug: "group",
-          sortOrder: 1,
-          children: [
-            { id: "c1", name: "A", icon: "i1", slug: "a" },
-            { id: "c2", name: "B", icon: "i2", slug: "b" },
-          ],
-        },
-      ]);
-
-      const result = await getRoleMenuAssignments("role-1");
-
-      expect(result).toHaveLength(1);
-      expect(result[0].items.map((i) => i.id)).toEqual(["c2"]);
-    });
-
-    it("omits a group when neither it nor any child is assigned", async () => {
-      RoleMenuPermission.findAll.mockResolvedValueOnce([]);
-      MenuGroup.findAll.mockResolvedValueOnce([
-        {
-          id: "g1",
-          name: "Group",
-          icon: "i",
-          slug: "group",
-          sortOrder: 1,
+          id: "g1", name: "Group", icon: "i", slug: "group", sortOrder: 1,
           children: [{ id: "c1", name: "A", icon: "i1", slug: "a" }],
         },
       ]);
 
-      const result = await getRoleMenuAssignments("role-1");
-
-      expect(result).toEqual([]);
+      expect(await getRoleMenuAssignments("role-1")).toEqual([]);
     });
 
-    it("includes an assigned parent that has no children array at all", async () => {
-      RoleMenuPermission.findAll.mockResolvedValueOnce([{ menuGroupId: "g1" }]);
-      MenuGroup.findAll.mockResolvedValueOnce([
-        { id: "g1", name: "Leaf", icon: "i", slug: "leaf", sortOrder: 1 },
-      ]);
+    it("a top-level link (no children array at all) is shown when its page is visible", async () => {
+      MenuGroup.findAll.mockResolvedValueOnce([{ id: "g1", name: "Leaf", icon: "i", slug: "leaf", sortOrder: 1 }]);
+      mockVisible.add("leaf");
 
       const result = await getRoleMenuAssignments("role-1");
 
       expect(result).toHaveLength(1);
       expect(result[0].id).toBe("g1");
       expect(result[0].items).toEqual([]);
+    });
+
+    it("a top-level link whose page is not visible is omitted", async () => {
+      MenuGroup.findAll.mockResolvedValueOnce([{ id: "g1", name: "Leaf", icon: "i", slug: "leaf", sortOrder: 1 }]);
+
+      expect(await getRoleMenuAssignments("role-1")).toEqual([]);
     });
   });
 
@@ -825,9 +821,9 @@ describe("menuGroup.service", () => {
     });
 
     describe("getRoleMenuAssignments at depth 3", () => {
-      it("includes sub-groups and their items when the top group is assigned", async () => {
-        RoleMenuPermission.findAll.mockResolvedValueOnce([{ menuGroupId: "management" }]);
+      it("shows each visible leaf under its sub-group and top group", async () => {
         MenuGroup.findAll.mockResolvedValueOnce(threeLevelTree());
+        mockVisible.add("tenants").add("users").add("kanban");
 
         const result = await getRoleMenuAssignments("role-1");
 
@@ -837,57 +833,31 @@ describe("menuGroup.service", () => {
         expect(result[0].items[1].items.map((i) => i.id)).toEqual(["kanban"]);
       });
 
-      it("includes all items of an assigned sub-group when the top group is not assigned", async () => {
-        RoleMenuPermission.findAll.mockResolvedValueOnce([{ menuGroupId: "sub-work" }]);
+      it("prunes a sub-group with no visible leaf", async () => {
         MenuGroup.findAll.mockResolvedValueOnce(threeLevelTree());
+        mockVisible.add("kanban");
 
         const result = await getRoleMenuAssignments("role-1");
 
-        expect(result).toHaveLength(1);
-        // The unassigned, empty "Organization" category is pruned away
         expect(result[0].items.map((i) => i.id)).toEqual(["sub-work"]);
         expect(result[0].items[0].items.map((i) => i.id)).toEqual(["kanban"]);
       });
 
-      it("surfaces an explicitly assigned leaf through an unassigned sub-group", async () => {
-        RoleMenuPermission.findAll.mockResolvedValueOnce([{ menuGroupId: "users" }]);
+      it("shows one leaf of a sub-group without its siblings", async () => {
         MenuGroup.findAll.mockResolvedValueOnce(threeLevelTree());
+        mockVisible.add("users");
 
         const result = await getRoleMenuAssignments("role-1");
 
-        expect(result).toHaveLength(1);
         expect(result[0].items.map((i) => i.id)).toEqual(["sub-org"]);
         expect(result[0].items[0].items.map((i) => i.id)).toEqual(["users"]);
       });
 
-      it("keeps an assigned sub-group that has no visible children", async () => {
-        RoleMenuPermission.findAll.mockResolvedValueOnce([{ menuGroupId: "sub-empty" }]);
-        MenuGroup.findAll.mockResolvedValueOnce([
-          {
-            id: "management",
-            name: "Management",
-            icon: "Settings",
-            slug: "management",
-            sortOrder: 3,
-            children: [
-              { id: "sub-empty", name: "Empty", icon: "i", slug: "mgmt-empty", children: [] },
-            ],
-          },
-        ]);
-
-        const result = await getRoleMenuAssignments("role-1");
-
-        expect(result[0].items.map((i) => i.id)).toEqual(["sub-empty"]);
-        expect(result[0].items[0].items).toBeUndefined();
-      });
-
-      it("drops the whole group when nothing in the tree is assigned", async () => {
-        RoleMenuPermission.findAll.mockResolvedValueOnce([]);
+      it("drops the whole group when no leaf is visible", async () => {
         MenuGroup.findAll.mockResolvedValueOnce(threeLevelTree());
+        mockVisible.add("management").add("sub-org");
 
-        const result = await getRoleMenuAssignments("role-1");
-
-        expect(result).toEqual([]);
+        expect(await getRoleMenuAssignments("role-1")).toEqual([]);
       });
     });
   });

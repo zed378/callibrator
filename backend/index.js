@@ -6,12 +6,13 @@ const crypto = require("crypto");
 const timeout = require("connect-timeout");
 const hpp = require("hpp");
 
-const cors = require("cors");
+const { corsPolicy } = require("./src/middlewares/corsPolicy.middleware");
 const helmet = require("helmet");
 const { API_CSP_DIRECTIVES } = require("./src/utils/csp.util");
 const rateLimit = require("express-rate-limit");
+const { globalLimitBody } = require("./src/middlewares/globalRateLimit.middleware");
 
-const { swaggerDocs } = require("./src/docs/swagger");
+const { apiDocs } = require("./src/docs/apiDocs");
 const path = require("path");
 
 const { Connection, db } = require("./src/config");
@@ -152,52 +153,10 @@ app.use(hpp());
 // CORS
 // ======================================================
 
-const allowedOrigins = process.env.CORS_ORIGIN
-  ? process.env.CORS_ORIGIN.split(",").map((o) => o.trim())
-  : [];
-
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      // Allow server-to-server / Postman requests (no origin header)
-      if (!origin) {
-        return callback(null, true);
-      }
-
-      // Strict: only allow explicitly configured origins. A wildcard "*" is
-      // intentionally NOT honored here — this CORS policy runs with
-      // credentials:true, and reflecting an arbitrary origin back with
-      // credentials would let any site make authenticated cross-origin
-      // requests. Configure explicit origins instead.
-      if (allowedOrigins.includes(origin.trim())) {
-        return callback(null, true);
-      }
-
-      // Production default: reject if no origins configured
-      if (
-        process.env.NODE_ENV === "production" &&
-        allowedOrigins.length === 0
-      ) {
-        logger.warn(
-          "CORS error: origin rejected — no CORS_ORIGIN configured in production",
-          { origin },
-        );
-        return callback(new Error("Not allowed by CORS"));
-      }
-
-      // Development default: allow all
-      if (process.env.NODE_ENV !== "production") {
-        return callback(null, true);
-      }
-
-      return callback(new Error("Not allowed by CORS"));
-    },
-
-    credentials: true,
-    exposedHeaders: ["X-Request-Id"],
-    optionsSuccessStatus: 200,
-  }),
-);
+// The policy lives in src/middlewares/corsPolicy.middleware.ts (explicit
+// CORS_ORIGIN allow-list, credentials, no wildcard; a rejected origin in
+// production is a 403 — it was a 500 until the 2026-09-29 DAST, A-176 batch).
+app.use(corsPolicy());
 
 // ======================================================
 // RATE LIMITERS
@@ -216,35 +175,17 @@ const defaultLimiter = rateLimit({
     (process.env.NODE_ENV === "production" ? 5000 : 100000),
   standardHeaders: true,
   legacyHeaders: false,
-  message: {
-    status: "Error",
-    message: "Too many requests, please try again later",
-  },
+  // Q-53 (ADR-109 §6): the 429 is the house envelope, with Retry-After
+  // (set by express-rate-limit) repeated as `retryAfter`.
+  message: globalLimitBody,
 });
 
-// Strict rate limiter for authentication endpoints
-const authLimiter = rateLimit({
-  windowMs: WINDOW.FIFTEEN_MIN,
-  max: 20,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: {
-    status: "Error",
-    message: "Too many authentication attempts, please try again later",
-  },
-});
-
-// Strict rate limiter for OTP/Password reset endpoints
-const otpLimiter = rateLimit({
-  windowMs: WINDOW.HOUR,
-  max: 5,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: {
-    status: "Error",
-    message: "Too many requests, please try again later",
-  },
-});
+// The auth endpoints' own budgets are NOT here. `authLimiter` and
+// `otpLimiter` were declared in this file and never mounted (ADR-088), and as
+// per-process express-rate-limit stores they would have ignored the shared
+// Redis counters. ADR-100 replaced them with request budgets on the routes
+// themselves (middlewares/requestBudget.middleware.ts, mounted in
+// routes/api/auth.route.js and certificates.route.js).
 
 // Apply default limiter globally
 app.use(defaultLimiter);
@@ -298,7 +239,6 @@ app.use((req, res, next) => {
   }
 });
 
-
 // ======================================================
 // REQUEST ID
 // ======================================================
@@ -348,7 +288,7 @@ app.use(globalSanitizer);
 // SWAGGER
 // ======================================================
 
-swaggerDocs(app);
+apiDocs(app); // P9-25 (ADR-103): the signed-in API reference (Scalar), was swaggerDocs
 
 // ======================================================
 // ROUTES
@@ -359,6 +299,9 @@ const {
   internalHealthRoutes,
 } = require("./src/routes/internal/health.route");
 const authRoutes = require("./src/routes/api/auth.route");
+// Phase 10 (ADR-098): public sign-in additions and the access-request intake (TypeScript).
+const authPublicRoutes = require("./src/routes/api/authPublic.route");
+const accessRequestRoutes = require("./src/routes/api/accessRequests.route");
 const userRoutes = require("./src/routes/api/user.route");
 const tenantRoutes = require("./src/routes/api/tenant.route");
 const tenantBackupRoutes = require("./src/routes/api/tenantBackup.route");
@@ -427,6 +370,10 @@ app.use("/api/v1/jobs", batchJobsRoutes);
 app.use("/api/v1/qms", qmsRoutes);
 app.use("/api/v1/sop", sopRoutes);
 app.use("/api/v1/auth", authRoutes);
+// P10-04 / P10-10 / P10-15: /login/discover, /sso/start, /passkey/*, /invitation/accept.
+app.use("/api/v1/auth", authPublicRoutes);
+// P10-05: the public access-request intake (replaces self-registration).
+app.use("/api/v1/access-requests", accessRequestRoutes);
 app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/roles", rolesRoutes);
 app.use("/api/v1/tenants", tenantRoutes);
@@ -519,8 +466,8 @@ app.get("/", (req, res) => {
 // DOCUMENTATION (HTML)
 // ======================================================
 
-// A-253 — /documentation and /standards are registered by swaggerDocs() above
-// (src/docs/swagger.js): developer documentation, published under the same
+// A-253 — /documentation and /standards are registered by apiDocs() above
+// (src/docs/apiDocs.ts): developer documentation, published under the same
 // switch as the API contract, so not in production unless SWAGGER_ENABLED=true.
 // Removed outright: /tab-permissions (it sent docs/TABLE_PERMISSIONS.html,
 // which does not exist — every request was an error) and /error (a test route
@@ -623,6 +570,12 @@ async function startServer() {
     const { enterApplicationRole } = require("./src/utils/dbRole.util");
     await enterApplicationRole({ sequelize: db, logger });
 
+    // P10-16 (ADR-099): a super admin still holding the retired public default
+    // password is moved to a one-time password (written to a file inside the
+    // container, pointer logged, never the value); a one-time password file no
+    // account can use any more is deleted. Never refuses the boot.
+    await require("./src/services/bootstrapCredential.service").runBootChecks();
+
     // Redis Connection
     await initRedis();
 
@@ -698,7 +651,15 @@ async function startServer() {
   }
 }
 
-startServer();
+// P10-16 (ADR-099): `./backend rotate-bootstrap-password …` (docker exec) runs
+// the recovery CLI instead of the server — the image has no Node, so the
+// compiled binary is the only thing that can run it inside the container.
+const { cliCommandFrom, runCliCommand } = require("./src/scripts/cliDispatch");
+if (cliCommandFrom(process.argv)) {
+  runCliCommand(process.argv).then((code) => process.exit(code));
+} else {
+  startServer();
+}
 
 // ======================================================
 // GRACEFUL SHUTDOWN

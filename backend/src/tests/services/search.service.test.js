@@ -147,24 +147,25 @@ describe("search.service", () => {
 
     await search.search("t1", { q: "widget", types: ["stock"] });
 
-    // limit = 10 comes from the destructuring default.
+    // limit = 10 comes from the destructuring default. P9-18: the statements
+    // are bound through sql(); the limit is $3 in both of them.
     const [, opts] = db.query.mock.calls[0];
-    expect(opts.replacements.limit).toBe(10);
+    expect(opts.bind[2]).toBe(10);
   });
 
   it("clamps a non-numeric limit to the default and caps it at 50", async () => {
     db.query.mockResolvedValue([]);
 
     await search.search("t1", { q: "a", types: ["stock"], limit: "abc" });
-    expect(db.query.mock.calls[0][1].replacements.limit).toBe(10);
+    expect(db.query.mock.calls[0][1].bind[2]).toBe(10);
 
     db.query.mockClear();
     await search.search("t1", { q: "a", types: ["stock"], limit: 999 });
-    expect(db.query.mock.calls[0][1].replacements.limit).toBe(50);
+    expect(db.query.mock.calls[0][1].bind[2]).toBe(50);
 
     db.query.mockClear();
     await search.search("t1", { q: "a", types: ["stock"], limit: 0 });
-    expect(db.query.mock.calls[0][1].replacements.limit).toBe(10);
+    expect(db.query.mock.calls[0][1].bind[2]).toBe(10);
   });
 
   it("ignores unknown types and searches all types only when none are given", async () => {

@@ -21,6 +21,11 @@
  * identity provider's, and a local TOTP enrolment would never be asked for
  * at an SSO sign-in, so demanding one would be theatre, not a control.
  *
+ * P10-10 (Q-46) SUPERSEDES THE NEXT PARAGRAPH for a session that SIGNED IN
+ * with a passkey (`amr` "passkey", isMultiFactorMethod): that sign-in is
+ * itself multi-factor. An enrolled passkey on an account that signed in with a
+ * password still does not count, for the reason given below.
+ *
  * A PASSKEY DOES NOT COUNT (A-160's other owner question, decided):
  * WebAuthn here is a step-up check inside an existing session
  * (/webauthn/verify-login needs `auth` and opens no session); no sign-in ever
@@ -57,13 +62,24 @@ export interface MfaPolicy {
 
 const NO_POLICY: Readonly<MfaPolicy> = Object.freeze({ required: false, minRoleLevel: null });
 
-const SUPER_ADMIN_ROLE_NAMES = new Set<string | null | undefined>(["SUPER_ADMIN", "SUPERADMIN"]);
+// N-01: the one super-admin predicate (utils/role.util.ts), both spellings.
+import { isSuperAdminRoleName } from "./role.util";
 
 /** P6-07: ROLE_LEVELS.SUPER_ADMIN — the level that bypasses every gate. */
 const PLATFORM_OPERATOR_LEVEL = 10;
 
 /** A-160: the sign-in methods whose second factor is the identity provider's. */
 const FEDERATED_METHODS = new Set<string | null | undefined>(["saml", "oidc"]);
+
+/**
+ * P10-10 (Q-46, working decision; amends ADR-059/P6-07): the sign-in methods
+ * that are THEMSELVES multi-factor. A passkey signs in only with user
+ * verification required (passkeyLogin.service): possession of the
+ * authenticator's key plus the biometric or PIN that unlocks it, bound to the
+ * origin — phishing-resistant MFA. A session that signed in this way needs no
+ * TOTP enrolment, a platform operator's included.
+ */
+const MULTI_FACTOR_METHODS = new Set<string | null | undefined>(["passkey"]);
 
 /** The role fields read here. */
 interface MfaRole {
@@ -95,7 +111,7 @@ export interface TenantSettingRow {
  */
 const isPlatformOperator = (user: MfaUser | null | undefined): boolean =>
   !!user?.role &&
-  (SUPER_ADMIN_ROLE_NAMES.has(user.role.name) ||
+  (isSuperAdminRoleName(user.role.name) ||
     // `||`: a missing, null or NaN level is 0, as before.
     // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing, @typescript-eslint/no-unnecessary-type-conversion -- as-built (ADR-038 rule 3)
     Number(user.role.roleLevel || 0) >= PLATFORM_OPERATOR_LEVEL);
@@ -106,6 +122,13 @@ const isPlatformOperator = (user: MfaUser | null | undefined): boolean =>
  * @param method - the access token's `amr` claim
  */
 const isFederatedMethod = (method: string | null | undefined): boolean => FEDERATED_METHODS.has(method);
+
+/**
+ * Whether a session's sign-in was itself multi-factor (a user-verifying passkey).
+ *
+ * @param method - the access token's `amr` claim
+ */
+const isMultiFactorMethod = (method: string | null | undefined): boolean => MULTI_FACTOR_METHODS.has(method);
 
 /**
  * The policy from a tenant's `tenant_settings` rows.
@@ -140,6 +163,11 @@ const mfaEnrolmentRequired = (
   if (!user || impersonatorId || user.mfaEnabled === true) {
     return false;
   }
+  // P10-10 (Q-46): a sign-in that was itself multi-factor satisfies every
+  // MFA rule below — P6-07's for an operator and a tenant's policy alike.
+  if (isMultiFactorMethod(method)) {
+    return false;
+  }
   // P6-07: whatever the tenant's policy — or with no tenant at all.
   if (isPlatformOperator(user)) {
     return true;
@@ -167,5 +195,6 @@ export {
   parseMfaPolicy,
   isPlatformOperator,
   isFederatedMethod,
+  isMultiFactorMethod,
   mfaEnrolmentRequired,
 };

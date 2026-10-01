@@ -10,6 +10,12 @@
  * middlewares themselves — rbac and dynamicAccess have their own suites — but
  * they fail loudly if a route is added or edited without one, which is the
  * defect shape CLAUDE.md calls the most likely authorization defect here.
+ *
+ * V-08: this file is the SHAPE sweep only — its rbac stub is satisfied by the
+ * argument, not the outcome, and it passed while the real gate admitted no
+ * tenant admin (V-01). The behaviour evidence for A-02 (the REAL rbac and
+ * denyApiKey admitting a tenant admin and refusing a technician and a key) is
+ * routeGuards.a02.behaviour.v08.test.ts.
  */
 
 jest.mock("../../middlewares/auth.middleware", () => ({

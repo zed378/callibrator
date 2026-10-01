@@ -2,6 +2,15 @@
  * Tests for Risk Service
  */
 
+// A-278 (ADR-094): the write runs in a transaction with its audit row; the
+// double passes a marker through so the write's options can be asserted.
+jest.mock("../../services/audit.service", () => ({
+  logAction: jest.fn().mockResolvedValue({}),
+}));
+jest.mock("../../config", () => ({
+  db: { transaction: jest.fn(async (cb) => cb("tx")) },
+}));
+
 jest.mock("../../models", () => ({
   Risk: {
     create: jest.fn(),
@@ -60,7 +69,7 @@ describe("riskService", () => {
         ...riskData,
         tenantId,
         identifiedBy: userId,
-      });
+      }, { transaction: "tx" });
       expect(result).toEqual({ ...riskData, id: "risk-1" });
     });
   });
@@ -261,7 +270,7 @@ describe("riskService", () => {
       const result = await riskService.updateRisk(tenantId, riskId, updateData);
 
       // The update should have been called with the updateData
-      expect(mockRisk.update).toHaveBeenCalledWith(updateData);
+      expect(mockRisk.update).toHaveBeenCalledWith(updateData, { transaction: "tx" });
 
       // The result should have the updated properties
       expect(result).toHaveProperty("id", riskId);

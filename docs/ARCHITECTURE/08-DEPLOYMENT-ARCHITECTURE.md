@@ -77,11 +77,11 @@ builder: node:26-alpine   → npm ci, swagger:generate, build:dist, pkg (node26)
 runtime: debian:bookworm-slim
 ```
 
-The runtime is Debian rather than Alpine because it needs **Chromium** for certificate PDF rendering, and Alpine Chromium against a glibc-linked pkg binary is a fight not worth having.
+The runtime is Debian rather than Alpine; that was chosen when it needed **Chromium** for certificate PDF rendering. Since ADR-095 (2026-09-29) certificate PDFs are rendered by the frontend and the backend image has no browser.
 
 Three details in that Dockerfile that will look strange:
 
-1. **`PUPPETEER_SKIP_DOWNLOAD=true` at build.** The packager cannot embed a browser; the runtime uses system Chromium via `PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium`.
+1. **`PUPPETEER_SKIP_DOWNLOAD=true` at build.** No browser is downloaded; since ADR-095 there is no runtime Chromium and no `PUPPETEER_EXECUTABLE_PATH`.
 2. **apt is pointed at HTTPS, and `ca-certificates` is bootstrapped with peer verification disabled for that one step.** Plain HTTP to the Debian mirrors is blocked in the deployment subnet, and `bookworm-slim` ships no CA bundle yet. Verification is back on for everything after.
 3. **Runtime assets are copied explicitly** — `swagger.json`, `src/templates`, `docs/`. They are read from disk next to the binary via `appPath()`, not from the embedded snapshot. Omitting the copy produces an API that starts fine and then fails on the first PDF or the first email.
 

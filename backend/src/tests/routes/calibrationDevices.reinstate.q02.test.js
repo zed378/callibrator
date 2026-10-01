@@ -73,9 +73,10 @@ jest.mock("../../config", () => ({
         throw error;
       }
     },
+    // P9-07: the service runs this through sql() — bind parameters, type SELECT.
     query: jest.fn(async (sql, options) => {
-      mockState.sql.push({ sql, replacements: options.replacements, transaction: options.transaction });
-      return [[{ set_config: options.replacements.deviceId }]];
+      mockState.sql.push({ sql, bind: options.bind, type: options.type, transaction: options.transaction });
+      return [{ set_config: options.bind[1] }];
     }),
   },
 }));
@@ -186,8 +187,9 @@ describe("Q-02 (ADR-084): a retired device stays retired; reinstatement is the a
 
       // set_config names THIS device, transaction-locally, in the audited transaction.
       expect(mockState.sql).toHaveLength(1);
-      expect(mockState.sql[0].sql).toBe("SELECT set_config(:setting, :deviceId, true)");
-      expect(mockState.sql[0].replacements).toEqual({ setting: "callibrator.reinstate_device", deviceId: DEVICE_A });
+      expect(mockState.sql[0].sql).toBe("SELECT set_config($1, $2, true)");
+      expect(mockState.sql[0].bind).toEqual(["callibrator.reinstate_device", DEVICE_A]);
+      expect(mockState.sql[0].type).toBe("SELECT");
 
       expect(mockState.audit).toHaveLength(1);
       const [{ entry, transaction }] = mockState.audit;

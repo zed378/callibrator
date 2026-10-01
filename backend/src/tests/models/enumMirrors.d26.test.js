@@ -14,7 +14,7 @@
  *
  *  - a CONSTANT that lists the same values — equal, in the same order (the
  *    order is the PostgreSQL type's sort order when sync() creates it);
- *  - a VALIDATOR (Joi `.valid(...)` on the same key, in every exported schema
+ *  - a VALIDATOR (a Zod `z.enum(...)` on the same key, in every exported schema
  *    of the module that has one) — every value it admits must be a model
  *    value, or the request passes validation and fails in the database.
  *    `equal` validators must admit all of them too;
@@ -31,7 +31,7 @@ jest.mock("../../config", () => {
   return { db: new Sequelize({ dialect: "postgres", logging: false }) };
 });
 
-const Joi = require("joi");
+const { z } = require("zod");
 const models = require("../../models");
 
 const allModels = [...new Set(Object.values(models.sequelize.models))];
@@ -53,18 +53,46 @@ const validator = (name) => require(`../../validators/${name}`);
 const constant = (name) => require(`../../constants/${name}`);
 
 /**
- * Every `.valid(...)` list for `key` across a validator module's exported
- * object schemas (an array schema's item list counts). `null` and `""` are not
- * values: on a query schema they mean "no filter".
+ * The enum values a field schema restricts to, looking through the wrappers
+ * the validators use (optional, nullable, default, a pipe that folds case, a
+ * union with "" or null, an array's items). `null` and `""` are not values: on
+ * a query schema they mean "no filter". Null when the field is not an enum.
+ *
+ * @param {import("zod").ZodType} schema - a field schema
+ * @returns {string[]|null} the values
  */
-const joiAllowLists = (mod, key) =>
+const enumValues = (schema) => {
+  if (schema instanceof z.ZodEnum) {
+    return [...schema.options];
+  }
+  if (schema instanceof z.ZodOptional || schema instanceof z.ZodNullable) {
+    return enumValues(schema.unwrap());
+  }
+  if (schema instanceof z.ZodDefault) {
+    return enumValues(schema.def.innerType);
+  }
+  if (schema instanceof z.ZodPipe) {
+    return enumValues(schema.def.out) ?? enumValues(schema.def.in);
+  }
+  if (schema instanceof z.ZodArray) {
+    return enumValues(schema.element);
+  }
+  if (schema instanceof z.ZodUnion) {
+    const lists = schema.options.map(enumValues).filter(Boolean);
+    return lists.length ? lists.flat() : null;
+  }
+  return null;
+};
+
+/**
+ * Every enum list for `key` across a validator module's exported object
+ * schemas (an array schema's item list counts).
+ */
+const zodAllowLists = (mod, key) =>
   Object.values(mod)
-    .filter((schema) => Joi.isSchema(schema) && schema.type === "object")
-    .map((schema) => (schema.describe().keys || {})[key])
-    .filter(Boolean)
-    .map((desc) => (desc.type === "array" && desc.items ? desc.items[0] : desc))
-    .filter((desc) => desc.flags && desc.flags.only)
-    .map((desc) => desc.allow.filter((value) => value !== null && value !== ""));
+    .filter((schema) => schema instanceof z.ZodObject && schema.shape[key])
+    .map((schema) => enumValues(schema.shape[key]))
+    .filter(Boolean);
 
 const NO_MIRROR = "no shared list: only service code writes this column, from its own literals";
 
@@ -73,6 +101,12 @@ const NO_MIRROR = "no shared list: only service code writes this column, from it
  * mirrors ([module, key, "equal"|"subset"]), or `none` with the reason.
  */
 const MIRRORS = Object.freeze({
+  // P10-05 (ADR-098 §6): one list per ENUM in constants/accessRequest.ts, read
+  // by the model, migration 0099 and the validator.
+  "AccessRequest.deviceCountBand": { constants: [() => constant("accessRequest").DEVICE_COUNT_BANDS] },
+  "AccessRequest.facilityType": { constants: [() => constant("accessRequest").FACILITY_TYPES] },
+  "AccessRequest.locale": { constants: [() => constant("accessRequest").REQUEST_LOCALES] },
+  "AccessRequest.status": { constants: [() => constant("accessRequest").ACCESS_REQUEST_STATUSES] },
   "AssetFinance.depreciationMethod": { validators: [["finance.validator", "depreciationMethod", "equal"]] },
   "AuditLog.action": {
     constants: [
@@ -174,7 +208,7 @@ describe("D-26 — every native ENUM is held to what mirrors it", () => {
   it("a validator admits only values the column can store (and all of them where it is `equal`)", () => {
     for (const [key, entry] of Object.entries(MIRRORS)) {
       for (const [module, field, relation] of entry.validators || []) {
-        const lists = joiAllowLists(validator(module), field);
+        const lists = zodAllowLists(validator(module), field);
         // Not vacuous: the validator really constrains this key.
         expect({ key, module, field, found: lists.length > 0 }).toEqual({ key, module, field, found: true });
         for (const list of lists) {
@@ -189,8 +223,8 @@ describe("D-26 — every native ENUM is held to what mirrors it", () => {
   });
 
   it("bites: a validator admitting a value the ENUM lacks is reported", () => {
-    const drifted = { schema: Joi.object({ status: Joi.string().valid("Open", "Reopened") }) };
-    const [list] = joiAllowLists(drifted, "status");
+    const drifted = { schema: z.object({ status: z.enum(["Open", "Reopened"]).nullable().optional() }) };
+    const [list] = zodAllowLists(drifted, "status");
     const model = enums["MaintenanceWorkOrder.status"];
     expect(list.filter((value) => !model.includes(value))).toEqual(["Reopened"]);
   });

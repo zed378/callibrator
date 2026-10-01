@@ -1,7 +1,7 @@
 // src/app/dashboard/calibration-scheduler/hooks/useScheduler.ts
 import { deferEffect } from "@/lib/deferEffect";
 import { ChangeEvent, useCallback, useEffect, useState } from "react";
-import { useAuthStore } from "@/stores/authStore";
+import { usePermissions } from "@/hooks/usePermissions";
 import { useToastStore } from "@/stores/toastStore";
 import {
   calibrationSchedulerService,
@@ -10,10 +10,15 @@ import {
 } from "@/api/services/calibrationScheduler.service";
 
 export function useScheduler() {
-  const { user } = useAuthStore();
   const { addToast } = useToastStore();
 
-  const isSuperAdmin = user?.role?.name === "SUPERADMIN";
+  // A-301 (ADR-102): from the effective permissions, not the role name.
+  // "All tenants" is honoured for the platform super admin only
+  // (calibrationScheduler.controller#resolveScanScope); a run is
+  // POST /calibration-scheduler/run, gated dynamicAccess("maintenance",
+  // "create") — write on the `maintenance` menu.
+  const { superAdmin: isSuperAdmin, canWrite } = usePermissions();
+  const canRun = canWrite("maintenance");
 
   const [leadDays, setLeadDays] = useState(30);
   const [allTenants, setAllTenants] = useState(false);
@@ -78,6 +83,7 @@ export function useScheduler() {
 
   return {
     isSuperAdmin,
+    canRun,
     leadDays,
     handleLeadDaysChange,
     allTenants,

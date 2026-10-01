@@ -14,7 +14,14 @@
  *     npm test -- src/tests/services/tenantHookless.w34.live --coverage=false
  *
  * It creates two tenants with fixed ids and removes everything it wrote.
+ *
+ * A-283 (2026-09-30): it runs as `callibrator_app` (enterApplicationRole, with
+ * its boot self-check), never as the owner, and says so: isolation is proved
+ * on the role the application uses. The rows it writes carry no audit row, so
+ * the cleanup DELETEs are ones the role may make.
  */
+const { enterAppRole, APP_ROLE } = require("../fixtures/liveBoot");
+
 const live = process.env.W34_PG_LIVE_TEST === "1" ? describe : describe.skip;
 
 const A = "a34a34a3-0000-4000-8000-0000000000a1";
@@ -63,6 +70,7 @@ live("W-34 — hookless statics on live PostgreSQL", () => {
     db.options.logging = false;
     ({ Stock } = require("../../models"));
     ({ runForTenant } = require("../../utils/jobContext.util"));
+    await enterAppRole(db);
     await cleanup();
     for (const [id, sub] of [
       [A, "w34-live-a"],
@@ -88,6 +96,11 @@ live("W-34 — hookless statics on live PostgreSQL", () => {
       await cleanup();
       await db.close();
     }
+  });
+
+  it("runs as callibrator_app, not the owner", async () => {
+    const [row] = await q("SELECT current_user AS u, (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) AS s");
+    expect(row).toEqual({ u: APP_ROLE, s: false });
   });
 
   it("tenant A's sum excludes tenant B's rows without an explicit where", async () => {

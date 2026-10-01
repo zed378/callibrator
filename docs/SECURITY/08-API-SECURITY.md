@@ -103,17 +103,20 @@ That covers P7-08's third Definition-of-Done item (S-43). The fourth, "a test th
 
 ## CORS
 
-```js
+`backend/src/middlewares/corsPolicy.middleware.ts`, mounted by `index.js`. It moved out of `index.js` under ADR-104.
+
+```ts
 origin: (origin, callback) => {
   if (!origin) return callback(null, true);                    // server-to-server
   if (allowedOrigins.includes(origin.trim())) return callback(null, true);
-  if (NODE_ENV === "production" && allowedOrigins.length === 0) return callback(new Error(...));
-  if (NODE_ENV !== "production") return callback(null, true);   // dev
-  return callback(new Error("Not allowed by CORS"));
+  if (isProduction()) return callback(new AppError(403, "Origin not allowed by the CORS policy"));
+  return callback(null, true);                                  // dev
 }
 credentials: true
 exposedHeaders: ["X-Request-Id"]
 ```
+
+A rejected origin in production gets a **403** with no `Access-Control-Allow-Origin`. Until ADR-104 (DAST 2026-09-29) the rejection was a plain `Error`, which the global handler answered with a **500**. `tests/middlewares/corsPolicy.dast.test.ts` covers it.
 
 ### The wildcard is deliberately not honoured
 

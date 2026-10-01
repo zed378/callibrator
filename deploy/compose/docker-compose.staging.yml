@@ -33,13 +33,17 @@ services:
     deploy:
       resources:
         limits:
-          # Chromium (certificate PDFs) is bursty. A limit sized for the steady
-          # state will OOM-kill the container on the first certificate. A CPU
-          # limit too (S-19): one runaway render must not starve the host.
+          # ADR-095 follow-up (2026-09-30): re-sized to measured need. The backend image has no
+          # Chromium; measured on callibrator/backend:adr095f under boot + migrations, seeding,
+          # three live E2E runs (two concurrent) and six browser-smoke runs: cgroup memory.peak 306
+          # MiB, Node VmHWM 337 MiB, steady 215-265 MiB
+          # (MEMORY/records/2026-09-30-adr095-followups.md). Not production traffic: re-measure
+          # under a real tenant's exports/reports before tightening further. Staging gets 1G, 3x the
+          # measured peak; a CPU limit too (S-19).
           cpus: "2.0"
-          memory: 2G
+          memory: 1G
         reservations:
-          memory: 512M
+          memory: 384M
 
   frontend:
     image: ${FRONTEND_IMAGE:-callibrator/frontend}:${IMAGE_TAG:?IMAGE_TAG is required}

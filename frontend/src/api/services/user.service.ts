@@ -1,4 +1,18 @@
 import { api } from "../client";
+import type {
+  CreateUserInput,
+  UpdateProfileInput,
+  UpdateRoleInput,
+  UpdateUserInput,
+  UsernameCheckInput,
+} from "@callibrator/contracts/user";
+
+// P9-22 (ADR-097): the request bodies are the backend validator's own schemas
+// (@callibrator/contracts/user), not hand-written copies.
+export type UserCreateInput = CreateUserInput;
+export type UserUpdateInput = UpdateUserInput;
+/** PATCH /users/:userId/profile — `userId` goes in the path, the rest in the body. */
+export type UserProfileInput = UpdateProfileInput;
 import { User, PaginatedResponse } from "@/types";
 
 // Backend response structure for users list (actual API response)
@@ -177,15 +191,7 @@ export const userService = {
     return response.data;
   },
 
-  create: async (data: {
-    username: string;
-    firstName: string;
-    lastName: string;
-    email: string;
-    password: string;
-    roleId: string;
-    tenantId?: string;
-  }): Promise<User> => {
+  create: async (data: UserCreateInput): Promise<User> => {
     const response = await api.post<{ success: boolean; data: User }>(
       "/api/v1/users/create",
       data,
@@ -193,14 +199,7 @@ export const userService = {
     return response.data;
   },
 
-  update: async (data: {
-    userId: string;
-    username?: string;
-    firstName?: string;
-    lastName?: string;
-    email?: string;
-    status?: string;
-  }): Promise<User> => {
+  update: async (data: UserUpdateInput): Promise<User> => {
     const response = await api.patch<{ success: boolean; data: User }>(
       "/api/v1/users/edit",
       data,
@@ -214,12 +213,7 @@ export const userService = {
   updateProfile: async ({
     userId,
     ...fields
-  }: {
-    userId: string;
-    firstName?: string;
-    lastName?: string;
-    username?: string;
-  }): Promise<User> => {
+  }: UserProfileInput): Promise<User> => {
     const response = await api.patch<{ success: boolean; data: User }>(
       `/api/v1/users/${encodeURIComponent(userId)}/profile`,
       fields,
@@ -247,7 +241,8 @@ export const userService = {
   },
 
   updateRole: async (userId: string, roleId: string): Promise<void> => {
-    await api.post("/api/v1/users/role-update", { userId, roleId });
+    const body: UpdateRoleInput = { userId, roleId };
+    await api.post("/api/v1/users/role-update", body);
   },
 
   delete: async (userId: string): Promise<void> => {
@@ -260,7 +255,7 @@ export const userService = {
       status: number;
       message: string;
       data: { username: string; available: boolean };
-    }>("/api/v1/users/username-check", { username });
+    }>("/api/v1/users/username-check", { username } satisfies UsernameCheckInput);
     const available = response.data?.available ?? false;
     return { available };
   },

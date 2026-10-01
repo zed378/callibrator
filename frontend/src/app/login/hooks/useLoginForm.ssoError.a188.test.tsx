@@ -21,7 +21,20 @@ jest.mock("next/navigation", () => ({
 
 jest.mock("@/api/services/auth.service", () => ({ authService: {} }));
 
-import { useLoginForm, SSO_ERROR_MESSAGES, ssoErrorMessage } from "./useLoginForm";
+import { useLoginForm } from "./useLoginForm";
+import { en } from "@/i18n/messages/en";
+import { SSO_ERROR_KEYS, ssoErrorKey } from "@/i18n/apiErrors";
+
+// The English message per code (P10-13: built here, not exported by the hook,
+// so the dictionary stays out of the sign-in page's JavaScript). The hook runs
+// outside a MessagesProvider in this test, so it answers in English.
+const SSO_ERROR_MESSAGES: Record<string, string> = Object.fromEntries(
+  Object.entries(SSO_ERROR_KEYS).map(([code, key]) => [code, en[key]]),
+);
+const ssoErrorMessage = (code: string | null): string | null => {
+  const key = ssoErrorKey(code);
+  return key ? en[key] : null;
+};
 import { useAuthStore } from "@/stores/authStore";
 import type { User } from "@/types";
 

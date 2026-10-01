@@ -1,6 +1,7 @@
 import path from "node:path";
 import type { NextConfig } from "next";
 import { PAGE_SECURITY_HEADERS } from "./src/lib/securityHeaders";
+import { PAGE_REDIRECTS } from "./src/lib/redirects";
 
 const isProd =
   process.env.NODE_ENV === "production" || process.env.NEXT_COMPILE === "true";
@@ -11,6 +12,11 @@ const API_BASE_URL =
 const nextConfig: NextConfig = {
   // P7-08: the framework banner tells a scanner the stack for free.
   poweredByHeader: false,
+  // P9-22 (ADR-097): the shared request schemas ship as TypeScript source
+  // (packages/contracts). Compile them with the app, and bundle rather than
+  // externalise them on the server: the standalone output has no TypeScript
+  // loader, so an externalised .ts import would fail at run time.
+  transpilePackages: ["@callibrator/contracts"],
   // P7-08, ADR-071: the static page security headers. The CSP is NOT here —
   // it carries a per-request nonce, so src/proxy.ts sets it. /api/ and
   // /uploads/public/ are excluded: both relay backend responses that already
@@ -22,7 +28,18 @@ const nextConfig: NextConfig = {
         source: "/((?!api/|uploads/public/).*)",
         headers: [...PAGE_SECURITY_HEADERS],
       },
+      // P10-08 (doc 20 §10): the verification page is never indexed. The page
+      // also sets robots metadata; the header covers crawlers that read only headers.
+      {
+        source: "/verify/:path*",
+        headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }],
+      },
     ];
+  },
+  // P10-06 (/register → /request-access) and ADR-102 (/dashboard/warehouse →
+  // /dashboard/warehouses): the list and its reasons are in src/lib/redirects.
+  async redirects() {
+    return PAGE_REDIRECTS;
   },
   // Serve the backend's PUBLIC upload class (avatars, tenant logos, CMS
   // images) same-origin, so the host-relative /uploads/public URLs saved in
@@ -39,6 +56,9 @@ const nextConfig: NextConfig = {
     ];
   },
   images: {
+    // P10-03: the landing's product screenshots are served as AVIF where the
+    // browser takes it (doc 20 §13 AC-7: hero ≤ 160 KB AVIF at 1440 w).
+    formats: ["image/avif", "image/webp"],
     remotePatterns: [
       {
         protocol: "http" as const,

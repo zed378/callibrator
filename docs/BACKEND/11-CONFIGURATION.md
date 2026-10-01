@@ -66,7 +66,7 @@ The acquire timeout matching the 30-second request timeout means a request waiti
 | `FORCE_HTTPS` | | production only |
 | `CORS_ORIGIN` | | comma-separated; **no wildcard** |
 | `RATE_LIMIT_MAX` | 5000 prod / **100000 otherwise** | |
-| `PUPPETEER_EXECUTABLE_PATH` | | required for PDFs in a compiled binary |
+| ~~`PUPPETEER_EXECUTABLE_PATH`~~ | | **removed (ADR-095)** — the backend renders no PDF |
 
 ### `NODE_ENV` carries more weight than it looks
 
@@ -109,6 +109,7 @@ Redis is **not optional**: it holds rate-limit counters (with an in-memory fallb
 | `STORAGE_NFS_FSYNC` | **`true`** | an NFS client can ack a write still in its page cache |
 | `STORAGE_S3_BUCKET`, `_REGION` | | |
 | `STORAGE_S3_ENDPOINT` | | non-AWS; **operator endpoints are not SSRF-checked** |
+| `SSRF_DEV_ALLOW_HOSTS` | (empty) | comma-separated host names that tenant-chosen outbound URLs (`oidc_authority`, `ai_base_url`, a tenant S3 endpoint) may point at although internal, e.g. a local Keycloak. **Ignored in production** (ADR-104) |
 | `STORAGE_S3_FORCE_PATH_STYLE` | **`true`** | MinIO and most non-AWS require it |
 | `STORAGE_S3_PREFIX` | | shares one bucket across environments — **not an isolation boundary** |
 | `STORAGE_S3_ACCESS_KEY_ID`, `_SECRET_ACCESS_KEY` | | **leave unset** to use the IAM role |
@@ -146,7 +147,7 @@ The logo is served from the **public web origin**, not the backend's `/public` m
 | `CERT_SIGNING_SECRET` | **required**, effectively **not rotatable** |
 | `CERT_VERIFY_BASE_URL` | the QR encodes `<this>/<certificateNumber>` |
 | `PUBLIC_BASE_URL` | the public origin of links the backend hands out — the verify API URL (when `CERT_VERIFY_BASE_URL` is unset) and attachment signed URLs. Falls back to `HOST_URL`. **In production one of the two is required**: with neither, those requests fail with a 500 naming the setting rather than build a link from the request (A-189, ADR-056, `utils/publicBaseUrl.util.js`). Outside production the request's origin is used, as forwarded by the Next proxy (`X-Forwarded-Host`/`-Proto`) and read through the one-hop `trust proxy` (ADR-050) |
-| `PUPPETEER_EXECUTABLE_PATH` | fails at **first PDF**, not at startup, when wrong |
+| ~~`PUPPETEER_EXECUTABLE_PATH`~~ | removed (ADR-095): certificate PDFs are rendered by the frontend |
 
 ## Optional Subsystems
 
@@ -208,7 +209,7 @@ The seeding route is gated by `superAdminOrBootstrap`: it normally requires a su
 ALLOW_SEEDING=true   → restart → GET /api/v1/migration/seeding → ALLOW_SEEDING=false → restart
 ```
 
-A successful seed reports roles, menu groups with their permission count, and one user. The seeded super-admin is `sys` / `sys@mail.com`.
+A successful seed reports roles, menu groups with their permission count, and one user. The seeded super-admin is `sys` / `sys@mail.com`. It has **no default password** since P10-16 (ADR-099). It is created only when no super admin exists, with a one-time password whose plaintext goes only to `/app/.bootstrap/superadmin-password` inside the backend container (0600, not a volume). Read it with `docker exec <backend> cat …`. It signs in once and must then be replaced. A re-seed never touches an existing super admin's password. The recovery CLI is `./backend rotate-bootstrap-password` (`npm run bootstrap:rotate` from a checkout). Procedure: `deploy/README.md` § First Boot.
 
 **Turn it off again immediately.** While set, it is an unauthenticated endpoint that writes to the database. Verify afterwards that the endpoint returns 401.
 

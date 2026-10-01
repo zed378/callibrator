@@ -28,11 +28,11 @@ describe("roleService", () => {
   });
 
   describe("getAll", () => {
-    it("fetches roles from the REST list endpoint (data[] + pagination)", async () => {
+    it("fetches roles from the REST list endpoint (data[] + top-level meta, F-19)", async () => {
       const mockResponse = {
         success: true,
         data: [role(), role({ id: "e50b664b-451c-45a9-8c83-f65b94a8afdf", name: "WAREHOUSE STAFF", nameToShow: "Gudang" })],
-        pagination: { page: 1, limit: 20, total: 2 },
+        meta: { page: 1, limit: 20, total: 2, totalPages: 1 },
       };
 
       (api.get as jest.Mock).mockResolvedValue(mockResponse);
@@ -54,7 +54,7 @@ describe("roleService", () => {
       (api.get as jest.Mock).mockResolvedValue({
         success: true,
         data: [],
-        pagination: { page: 1, limit: 20, total: 0 },
+        meta: { page: 1, limit: 20, total: 0, totalPages: 1 },
       });
 
       const result = await roleService.getAll();
@@ -86,7 +86,7 @@ describe("roleService", () => {
   });
 
   describe("create", () => {
-    it("creates a role via POST /roles with { name, description }", async () => {
+    it("F-19: creates a role via POST /roles with every field the dialog offers", async () => {
       (api.post as jest.Mock).mockResolvedValue({
         success: true,
         data: role({ id: "new-role-uuid", name: "MANAGER", nameToShow: "Manager" }),
@@ -103,6 +103,9 @@ describe("roleService", () => {
       expect(api.post).toHaveBeenCalledWith("/api/v1/roles", {
         name: "MANAGER",
         description: "Manager role with limited access",
+        nameToShow: "Manager",
+        roleLevel: 3,
+        status: "active",
       });
       expect(result.name).toBe("MANAGER");
     });
@@ -128,6 +131,37 @@ describe("roleService", () => {
         status: "inactive",
       });
       expect(result.name).toBe("SUPER_ADMIN");
+    });
+  });
+
+  describe("F-19: a row's status is the source of isActive", () => {
+    it("derives isActive from status on list, get, create and update", async () => {
+      (api.get as jest.Mock).mockResolvedValueOnce({
+        success: true,
+        data: [{ id: "a", name: "A", status: "active" }, { id: "b", name: "B", status: "inactive" }],
+        meta: { page: 1, limit: 20, total: 2, totalPages: 1 },
+      });
+      const list = await roleService.getAll();
+      expect(list.data.map((r) => r.isActive)).toEqual([true, false]);
+
+      (api.get as jest.Mock).mockResolvedValueOnce({ success: true, data: { id: "b", name: "B", status: "inactive" } });
+      expect((await roleService.getById("b")).isActive).toBe(false);
+
+      (api.post as jest.Mock).mockResolvedValueOnce({ success: true, data: { id: "c", name: "C", status: "inactive" } });
+      expect((await roleService.create({ name: "C", isActive: false })).isActive).toBe(false);
+      expect((api.post as jest.Mock).mock.calls[0][1]).toEqual(expect.objectContaining({ status: "inactive" }));
+
+      (api.patch as jest.Mock).mockResolvedValueOnce({ success: true, data: { id: "c", name: "C", status: "active" } });
+      const updated = await roleService.update({ id: "c", nameToShow: "", roleLevel: 4 });
+      expect(updated.isActive).toBe(true);
+      expect((api.patch as jest.Mock).mock.calls[0][1]).toEqual({ nameToShow: "", roleLevel: 4 });
+    });
+
+    it("keeps a row's own isActive when it carries no status, and the list falls back without meta", async () => {
+      (api.get as jest.Mock).mockResolvedValueOnce({ success: true, data: [{ id: "a", name: "A", isActive: true }] });
+      const list = await roleService.getAll(1, 20);
+      expect(list.data[0].isActive).toBe(true);
+      expect(list.meta?.total).toBe(1);
     });
   });
 

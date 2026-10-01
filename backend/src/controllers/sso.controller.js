@@ -9,11 +9,62 @@ const { Tenants, Users, sequelize } = require("../models");
 const { tenantInclude, tenantRefusal } = require("../services/auth.service");
 const { generateAccessToken, generateOpaqueRefreshToken } = require("../utils/jwt.util");
 const { createSession } = require("../services/session.service");
-const { ssoLoginSchema, validate } = require("../validators/sso.validator");
+const { ssoLoginSchema } = require("../validators/sso.validator");
+const { checkInput } = require("../validators/input");
 const { AppError } = require("../utils/appError.util");
 const { asyncHandler } = require("../utils/controllerWrapper.util");
 const { success, login } = require("../utils/response.util");
 const { logger } = require("../middlewares/activityLog.middleware");
+// A-288 (ADR-100): the tenant's IP allowlist at the SSO sign-in.
+const signInPolicy = require("../services/signInPolicy.service");
+
+// A-292 (ADR-100): every way an SSO start can fail for the organisation code —
+// no such tenant, SSO disabled, no SAML entry point, no OIDC client — is ONE
+// answer, so the endpoint no longer tells anyone which codes are customers
+// and which of them use SSO. The real reason is logged for the operator.
+const SSO_UNAVAILABLE = "Single sign-on is not available for this organisation code";
+
+/**
+ * Refuse an SSO start with the one indistinguishable answer (404).
+ *
+ * @param {string} reason - logged, never sent
+ * @param {string} tenantCode
+ * @returns {never}
+ */
+const ssoUnavailable = (reason, tenantCode) => {
+  logger.info("SSO start refused", { reason, tenantCode });
+  throw new AppError(404, SSO_UNAVAILABLE);
+};
+
+/**
+ * ADR-100 amendment (2026-09-30) — the refusal's TIMING is not an oracle
+ * either. An unknown code is refused after one query; a known code without SSO
+ * after two. Every SSO_UNAVAILABLE refusal is therefore held until at least
+ * SSO_REFUSAL_FLOOR_MS (default 400 ms) after the start was received, which
+ * is longer than either path takes, so the two cannot be told apart by
+ * latency. Only refusals wait: a successful start is already distinguishable
+ * by its answer. Residual: a refusal whose own work exceeds the floor (an
+ * enabled tenant whose IdP discovery document is slow or down) is still slower.
+ *
+ * @template {(...args: any[]) => Promise<any>} F
+ * @param {F} work
+ * @returns {F}
+ */
+const withSsoRefusalFloor = (work) => async (...args) => {
+  const started = Date.now();
+  try {
+    return await work(...args);
+  } catch (err) {
+    if (err && err.message === SSO_UNAVAILABLE) {
+      const floor = Number(process.env.SSO_REFUSAL_FLOOR_MS ?? 400);
+      const wait = floor - (Date.now() - started);
+      if (wait > 0) {
+        await new Promise((resolve) => setTimeout(resolve, wait));
+      }
+    }
+    throw err;
+  }
+};
 
 // ---------------------------------------------------------------------------
 // A-60 — THE SSO HAND-OFF
@@ -306,36 +357,36 @@ const issueSsoTokens = async (entry) => {
 /**
  * Handle SSO Login Redirect generation
  */
-exports.ssoLogin = asyncHandler(async (req, res) => {
-  // A-68 (found in passing): validate() returns Joi's `{ value, error }`, so
-  // destructuring `tenantCode` from it always gave undefined — and Sequelize
-  // throws on `where: { code: undefined }`: every SSO start was a 500.
-  const { value, error: invalid } = validate(req.body, ssoLoginSchema);
-  if (invalid) {
+exports.ssoLogin = asyncHandler(withSsoRefusalFloor(async (req, res) => {
+  // A-68 (found in passing): the check answers `{ ok, value }` / `{ ok, errors }`,
+  // not the value itself; destructuring `tenantCode` from the answer gave
+  // undefined — and Sequelize throws on `where: { code: undefined }`.
+  const checked = checkInput(req.body, ssoLoginSchema);
+  if (!checked.ok) {
     throw new AppError(400, "Tenant code is required");
   }
-  const { tenantCode } = value;
+  const { tenantCode } = checked.value;
 
   const tenant = await Tenants.findOne({ where: { code: tenantCode } });
   if (!tenant) {
-    throw new AppError(404, "Tenant not found");
+    ssoUnavailable("no such tenant", tenantCode);
   }
 
   const settingsResult = await tenantService.getTenantSettings(tenant.id, SSO_SETTINGS);
   const ssoSettings = settingsResult.data?.settings || {};
 
   if (ssoSettings.sso_enabled !== "true" && ssoSettings.sso_enabled !== true) {
-    throw new AppError(400, "SSO is not enabled for this tenant");
+    ssoUnavailable("SSO is not enabled", tenantCode);
   }
 
   if (!ssoSettings.sso_idp_entry_point) {
-    throw new AppError(400, "SSO entry point is not configured for this tenant");
+    ssoUnavailable("SSO entry point is not configured for this tenant", tenantCode);
   }
 
   const redirectUrl = ssoService.generateAuthnRequest(tenant.code, ssoSettings);
 
   success(res, { redirectUrl }, null, "SAML redirect URL generated", 200);
-});
+}));
 
 // ---------------------------------------------------------------------------
 // A-188 — A REFUSED CALLBACK SENDS THE BROWSER BACK TO THE LOGIN PAGE
@@ -408,6 +459,10 @@ const refuseToLoginPage = (protocol, handler) => async (req, res) => {
 };
 
 exports.SSO_ERROR_CODES = SSO_ERROR_CODES;
+// A-292 (ADR-100): the one SSO-start refusal, for every route that starts SSO.
+exports.SSO_UNAVAILABLE = SSO_UNAVAILABLE;
+exports.ssoUnavailable = ssoUnavailable;
+exports.withSsoRefusalFloor = withSsoRefusalFloor;
 
 /**
  * Handle SAML ACS Callback
@@ -437,7 +492,7 @@ exports.ssoCallback = asyncHandler(refuseToLoginPage("saml", async (req, res) =>
   }
 
   const userData = await ssoService.parseAndVerifyResponse(SAMLResponse, ssoSettings);
-  const user = await ssoService.provisionUser(tenant.id, userData);
+  const user = await ssoService.provisionUser(tenant.id, userData, { ipAddress: req.ip ?? null, userAgent: req.headers?.["user-agent"] ?? null });
 
   await handoffRedirect(req, res, tenant, user, "saml");
 }));
@@ -478,30 +533,30 @@ exports.ssoMetadata = asyncHandler(async (req, res) => {
 /**
  * Handle OIDC Login Redirect generation
  */
-exports.oidcLogin = asyncHandler(async (req, res) => {
-  // A-68 (found in passing): validate() returns Joi's `{ value, error }`, so
-  // destructuring `tenantCode` from it always gave undefined — and Sequelize
-  // throws on `where: { code: undefined }`: every SSO start was a 500.
-  const { value, error: invalid } = validate(req.body, ssoLoginSchema);
-  if (invalid) {
+exports.oidcLogin = asyncHandler(withSsoRefusalFloor(async (req, res) => {
+  // A-68 (found in passing): the check answers `{ ok, value }` / `{ ok, errors }`,
+  // not the value itself; destructuring `tenantCode` from the answer gave
+  // undefined — and Sequelize throws on `where: { code: undefined }`.
+  const checked = checkInput(req.body, ssoLoginSchema);
+  if (!checked.ok) {
     throw new AppError(400, "Tenant code is required");
   }
-  const { tenantCode } = value;
+  const { tenantCode } = checked.value;
 
   const tenant = await Tenants.findOne({ where: { code: tenantCode } });
   if (!tenant) {
-    throw new AppError(404, "Tenant not found");
+    ssoUnavailable("no such tenant", tenantCode);
   }
 
   const settingsResult = await tenantService.getTenantSettings(tenant.id, SSO_SETTINGS);
   const ssoSettings = settingsResult.data?.settings || {};
 
   if (ssoSettings.sso_enabled !== "true" && ssoSettings.sso_enabled !== true) {
-    throw new AppError(400, "SSO is not enabled for this tenant");
+    ssoUnavailable("SSO is not enabled", tenantCode);
   }
 
   if (!ssoSettings.oidc_client_id) {
-    throw new AppError(400, "OIDC is not configured for this tenant");
+    ssoUnavailable("OIDC is not configured for this tenant", tenantCode);
   }
 
   // A-68: redirect_uri is fixed HERE and stored with the state, so the token
@@ -526,7 +581,7 @@ exports.oidcLogin = asyncHandler(async (req, res) => {
     maxAge: OIDC_FLOW_TTL_SECONDS * 1000,
   });
   success(res, { redirectUrl }, null, "OIDC redirect URL generated", 200);
-});
+}));
 
 /**
  * Handle OIDC Callback
@@ -565,7 +620,7 @@ exports.oidcCallback = asyncHandler(refuseToLoginPage("oidc", async (req, res) =
     nonce: flow.nonce,
     codeVerifier: flow.codeVerifier,
   });
-  const user = await ssoService.provisionUser(tenant.id, userData);
+  const user = await ssoService.provisionUser(tenant.id, userData, { ipAddress: req.ip ?? null, userAgent: req.headers?.["user-agent"] ?? null });
 
   await handoffRedirect(req, res, tenant, user, "oidc");
 }));
@@ -620,6 +675,14 @@ exports.ssoExchange = asyncHandler(async (req, res) => {
     throw new AppError(403, refusal);
   }
 
+  // A-288 (ADR-100): the tenant's IP allowlist, before the session. The
+  // geofence is not asked here: a federated sign-in's device and location
+  // context belong to the identity provider's own conditional access.
+  await signInPolicy.assertSignInPermitted(
+    { id: user.id, tenantId: user.tenantId },
+    { ip: req.ip || null, userAgent: req.headers?.["user-agent"] || null, method: "sso" },
+  );
+
   const { accessToken, refreshToken, session } = await issueSsoTokens(entry);
 
   login(
@@ -636,3 +699,69 @@ exports.OIDC_FLOW_TTL_SECONDS = OIDC_FLOW_TTL_SECONDS;
 exports.OIDC_BINDING_COOKIE = OIDC_BINDING_COOKIE;
 // Exported for tests that need a started sign-in without driving oidcLogin.
 exports.beginOidcFlow = beginOidcFlow;
+
+// ---------------------------------------------------------------------------
+// P10-04 (ADR-098 §7.2) — ONE SSO START, THE PROTOCOL DECIDED BY THE SERVER
+//
+// The sign-in page never asks the user "SAML or OIDC?": POST /auth/sso/start
+// { orgCode } and the identifier-first discovery (POST /auth/login/discover,
+// by email domain) both come here. OIDC when the tenant has an OIDC client,
+// else SAML when it has an entry point. EVERY refusal — no such tenant, SSO
+// off, neither protocol configured, the IdP's discovery document unreachable
+// or refusing — is the ONE A-292 answer (ssoUnavailable, 404), the real reason
+// logged. The per-protocol builders are the same ones /sso/login and
+// /sso/oidc/login use; only the choice between them is new.
+// ---------------------------------------------------------------------------
+
+/**
+ * Start SSO for an organisation code: the IdP redirect URL, and for OIDC the
+ * browser-binding cookie set on `res`.
+ *
+ * @param {string} tenantCode
+ * @param {object} res - the Express response (OIDC sets its binding cookie)
+ * @returns {Promise<{redirectUrl: string, protocol: "oidc"|"saml"}>}
+ * @throws {AppError} 404 SSO_UNAVAILABLE for every refusal
+ */
+const startSsoFor = withSsoRefusalFloor(async (tenantCode, res) => {
+  const tenant = await Tenants.findOne({ where: { code: tenantCode } });
+  if (!tenant) {
+    ssoUnavailable("no such tenant", tenantCode);
+  }
+  // The tenant was just found, so its settings answer carries data.
+  const ssoSettings = (await tenantService.getTenantSettings(tenant.id, SSO_SETTINGS)).data.settings;
+  if (ssoSettings.sso_enabled !== "true" && ssoSettings.sso_enabled !== true) {
+    ssoUnavailable("SSO is not enabled", tenantCode);
+  }
+
+  if (ssoSettings.oidc_client_id) {
+    const hostUrl = process.env.HOST_URL || "http://localhost:5000";
+    const redirectUri = ssoSettings.oidc_redirect_uri || `${hostUrl}/api/v1/auth/sso/oidc/callback/${tenant.code}`;
+    let provider;
+    try {
+      provider = await oidcJwks.discover(ssoSettings);
+    } catch (err) {
+      ssoUnavailable(`OIDC discovery failed: ${err.message}`, tenantCode);
+    }
+    const flow = await beginOidcFlow(tenant.code, redirectUri);
+    const redirectUrl = ssoService.generateOidcAuthRequest(tenant.code, ssoSettings, {
+      state: flow.state,
+      nonce: flow.nonce,
+      codeChallenge: flow.codeChallenge,
+      redirectUri,
+      authorizationEndpoint: provider.authorizationEndpoint,
+    });
+    res.cookie(OIDC_BINDING_COOKIE, flow.binding, {
+      ...bindingCookieOptions(),
+      maxAge: OIDC_FLOW_TTL_SECONDS * 1000,
+    });
+    return { redirectUrl, protocol: "oidc" };
+  }
+
+  if (ssoSettings.sso_idp_entry_point) {
+    return { redirectUrl: ssoService.generateAuthnRequest(tenant.code, ssoSettings), protocol: "saml" };
+  }
+
+  return ssoUnavailable("neither OIDC nor SAML is configured for this tenant", tenantCode);
+});
+
+exports.startSsoFor = startSsoFor;

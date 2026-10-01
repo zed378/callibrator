@@ -8,9 +8,20 @@ const {
   updateTenantSchema,
   deleteTenantSchema,
   tenantIdSchema,
-  validate,
-  formatErrors,
 } = require("../../validators/tenant.validator");
+// P9-11: the file's own validate()/formatErrors() are gone; validateInput is
+// the shared helper with the same contract (value, or a thrown 400 object).
+const { validateInput: validate, checkInput } = require("../../validators/input");
+
+/** @returns {unknown} what `fn` threw */
+const thrown = (fn) => {
+  try {
+    fn();
+  } catch (error) {
+    return error;
+  }
+  throw new Error("expected a throw");
+};
 
 const UUID = "8c352a92-d6cf-4b71-b0db-6e69622d1b11";
 
@@ -61,9 +72,21 @@ describe("Tenant Validators", () => {
         "inactive",
         "suspended",
       ];
+      // P9-11 NORMALISATION DIFF: the old insensitive match returned the
+      // listed value an exact match hit, so "active" stayed "active" here (this
+      // schema had no upper-casing custom()). The Zod schema folds every match
+      // to upper case, which is what the tenants table stores.
       statuses.forEach((status) => {
         const result = validate({ status }, getAllTenantsQuery);
-        expect(result.status).toBe(status);
+        expect(result.status).toBe(status.toUpperCase());
+      });
+    });
+
+    it("should report an invalid status with its field", () => {
+      expect(thrown(() => validate({ status: "NOPE" }, getAllTenantsQuery))).toEqual({
+        status: 400,
+        message: "Validation failed",
+        errors: [{ field: "status", message: "Invalid input" }],
       });
     });
 
@@ -304,27 +327,16 @@ describe("Tenant Validators", () => {
       expect(result.createdBy).toBeNull();
     });
 
-    it("should accept maxUsers", () => {
-      const result = validate(
-        { name: "Acme", code: "ACME", maxUsers: 100 },
-        createTenantSchema,
-      );
-      expect(result.maxUsers).toBe(100);
+    // Seat limit (2026-09-30): limitSeats is the single source; maxUsers is stripped.
+    it("should accept limitSeats, and null as unlimited, and strip maxUsers", () => {
+      expect(validate({ name: "Acme", code: "ACME", limitSeats: 100 }, createTenantSchema).limitSeats).toBe(100);
+      expect(validate({ name: "Acme", code: "ACME", limitSeats: null }, createTenantSchema).limitSeats).toBeNull();
+      expect(validate({ name: "Acme", code: "ACME", maxUsers: 100 }, createTenantSchema)).not.toHaveProperty("maxUsers");
     });
 
-    it("should reject maxUsers below 1", () => {
-      expect(() =>
-        validate(
-          { name: "Acme", code: "ACME", maxUsers: 0 },
-          createTenantSchema,
-        ),
-      ).toThrow();
-      expect(() =>
-        validate(
-          { name: "Acme", code: "ACME", maxUsers: -1 },
-          createTenantSchema,
-        ),
-      ).toThrow();
+    it("should reject limitSeats below 1", () => {
+      expect(() => validate({ name: "Acme", code: "ACME", limitSeats: 0 }, createTenantSchema)).toThrow();
+      expect(() => validate({ name: "Acme", code: "ACME", limitSeats: -1 }, createTenantSchema)).toThrow();
     });
 
     it("should accept null and empty string for optional text fields", () => {
@@ -480,13 +492,11 @@ describe("Tenant Validators", () => {
       expect(result.updatedBy).toBeNull();
     });
 
-    it("should accept maxUsers", () => {
-      const result = validate({ maxUsers: 100 }, updateTenantSchema);
-      expect(result.maxUsers).toBe(100);
-    });
-
-    it("should reject maxUsers below 1", () => {
-      expect(() => validate({ maxUsers: 0 }, updateTenantSchema)).toThrow();
+    // A-303: maxUsers is not an edit field (a platform plan value); as an
+    // unknown key it is stripped, whatever its value.
+    it("should strip maxUsers", () => {
+      expect(validate({ maxUsers: 100 }, updateTenantSchema)).not.toHaveProperty("maxUsers");
+      expect(validate({ maxUsers: 0 }, updateTenantSchema)).not.toHaveProperty("maxUsers");
     });
 
     it("should trim name and code", () => {
@@ -605,76 +615,109 @@ describe("Tenant Validators", () => {
     });
   });
 
-  describe("formatErrors", () => {
-    it("should format validation error details", () => {
-      const { error } = createTenantSchema.validate({}, { abortEarly: false });
-      const formatted = formatErrors(error.details);
-      expect(Array.isArray(formatted)).toBe(true);
-      expect(formatted[0]).toHaveProperty("field");
-      expect(formatted[0]).toHaveProperty("message");
+  // P9-11: formatErrors() is gone; checkInput reports the same
+  // `{ field, message }` list, one per issue, in the schema's field order.
+  describe("error reporting (checkInput)", () => {
+    it("lists every missing required field with Zod's message", () => {
+      expect(checkInput({}, createTenantSchema)).toEqual({
+        ok: false,
+        errors: [
+          { field: "name", message: "Invalid input: expected string, received undefined" },
+          { field: "code", message: "Invalid input: expected string, received undefined" },
+        ],
+      });
     });
 
-    it("should handle nested field paths", () => {
-      const formatted = formatErrors([
-        { path: ["name"], message: '"name" is not allowed to be empty' },
+    it("checks an absent body as {} (A-09)", () => {
+      expect(checkInput(undefined, tenantIdSchema)).toEqual({
+        ok: false,
+        errors: [{ field: "tenantId", message: "Invalid input: expected string, received undefined" }],
+      });
+    });
+
+    it("reports every invalid field at once, with the schemas' own messages", () => {
+      const result = checkInput(
+        {
+          name: "A",
+          code: "ACME",
+          primaryColor: "red",
+          email: "x",
+          website: "not-a-uri",
+          logo: "http://x/a.png",
+          createdBy: "bad",
+          limitSeats: 0,
+        },
+        createTenantSchema,
+      );
+      expect(result.errors).toEqual([
+        { field: "name", message: "Too small: expected string to have >=2 characters" },
+        { field: "logo", message: "logo must be an uploaded file name, not a URL or a path" },
+        { field: "primaryColor", message: "primaryColor must be a #RRGGBB colour" },
+        { field: "limitSeats", message: "Too small: expected number to be >=1" },
+        { field: "createdBy", message: "Invalid GUID" },
+        { field: "email", message: "Invalid email address" },
+        { field: "website", message: "website must be an http:// or https:// address" },
       ]);
-      expect(formatted[0].field).toBe("name");
     });
 
-    it("should handle multi-level nested field paths", () => {
-      const formatted = formatErrors([
-        { path: ["nested", "field"], message: '"nested.field" is required' },
+    it("reports a query's page and limit together", () => {
+      expect(checkInput({ page: 1.5, limit: 101 }, getAllTenantsQuery).errors).toEqual([
+        { field: "page", message: "Invalid input: expected int, received number" },
+        { field: "limit", message: "Too big: expected number to be <=100" },
       ]);
-      expect(formatted[0].field).toBe("nested.field");
     });
 
-    it("should return empty array for empty input", () => {
-      const formatted = formatErrors([]);
-      expect(formatted).toEqual([]);
-    });
-
-    it("should format multiple errors", () => {
-      const formatted = formatErrors([
-        { path: ["name"], message: '"name" is required' },
-        { path: ["code"], message: '"code" is required' },
+    it("names the create status options when an empty status is sent", () => {
+      expect(checkInput({ name: "Acme", code: "AC", status: "" }, createTenantSchema).errors).toEqual([
+        { field: "status", message: 'Invalid option: expected one of "ACTIVE"|"INACTIVE"|"SUSPENDED"' },
       ]);
-      expect(formatted.length).toBe(2);
-      expect(formatted[0].field).toBe("name");
-      expect(formatted[1].field).toBe("code");
+    });
+
+    it("accepts empty strings for the optional id, email, website and logo, and converts limitSeats", () => {
+      expect(
+        checkInput(
+          { name: "Acme", code: "AC", createdBy: "", email: "", website: "", logo: "", limitSeats: "5" },
+          createTenantSchema,
+        ),
+      ).toEqual({
+        ok: true,
+        value: {
+          name: "Acme",
+          code: "AC",
+          logo: "",
+          status: "ACTIVE",
+          limitSeats: 5,
+          createdBy: "",
+          email: "",
+          website: "",
+        },
+      });
     });
   });
 
-  describe("validate helper", () => {
+  describe("validate helper (validateInput)", () => {
     it("should return validated value on success", () => {
       const result = validate(
         { name: "Acme", code: "ACME" },
         createTenantSchema,
       );
-      expect(result).toHaveProperty("name", "Acme");
-      expect(result).toHaveProperty("code", "ACME");
+      expect(result).toEqual({ name: "Acme", code: "ACME", status: "ACTIVE" });
     });
 
     it("should throw structured error on validation failure", () => {
-      try {
-        validate({ name: "A" }, createTenantSchema);
-        expect(() => {}).toThrow();
-      } catch (error) {
-        expect(error.status).toBe(400);
-        expect(error.message).toBe("Validation failed");
-        expect(Array.isArray(error.errors)).toBe(true);
-      }
+      expect(thrown(() => validate({ name: "A" }, createTenantSchema))).toEqual({
+        status: 400,
+        message: "Validation failed",
+        errors: [
+          { field: "name", message: "Too small: expected string to have >=2 characters" },
+          { field: "code", message: "Invalid input: expected string, received undefined" },
+        ],
+      });
     });
 
     it("should include formatted errors in thrown error", () => {
-      try {
-        validate({}, createTenantSchema);
-        expect(() => {}).toThrow();
-      } catch (error) {
-        expect(Array.isArray(error.errors)).toBe(true);
-        expect(error.errors.length).toBeGreaterThan(0);
-        expect(error.errors[0]).toHaveProperty("field");
-        expect(error.errors[0]).toHaveProperty("message");
-      }
+      const error = thrown(() => validate({}, createTenantSchema));
+      expect(error.errors.map((e) => e.field)).toEqual(["name", "code"]);
     });
   });
 });

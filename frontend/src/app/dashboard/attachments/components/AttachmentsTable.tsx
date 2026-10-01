@@ -20,7 +20,8 @@ interface AttachmentsTableProps {
   downloadingId: string | null;
   setCurrentPage: (page: number) => void;
   onDownload: (attachment: Attachment) => void;
-  onDelete: (attachment: Attachment) => void;
+  /** ADR-102: absent when the caller may not delete (`equipment` write) — no Delete button then. */
+  onDelete?: (attachment: Attachment) => void;
 }
 
 const asNode = (value: unknown) => value as React.ReactNode;
@@ -118,15 +119,17 @@ export const AttachmentsTable: React.FC<AttachmentsTableProps> = ({
                       <Download className="h-4 w-4" />
                       Download
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => onDelete(att)}
-                      className="text-destructive hover:text-destructive hover:bg-muted flex items-center gap-1"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      Delete
-                    </Button>
+                    {onDelete && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onDelete(att)}
+                        className="text-destructive hover:text-destructive hover:bg-muted flex items-center gap-1"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Delete
+                      </Button>
+                    )}
                   </div>
                 ),
               }))}

@@ -52,7 +52,23 @@ interface BackendResponse<T> {
   status: number;
   message: string;
   data: T;
+  meta?: Partial<ListMeta>;
 }
+
+/** F-19: `meta` of a paged list — a top-level sibling of `data` (house envelope). */
+export interface ListMeta {
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+/** One page of rows with the backend's `meta`. */
+export interface ListPage<T> {
+  rows: T[];
+  meta: ListMeta;
+}
+
 
 // ---------- Service ----------
 
@@ -70,6 +86,34 @@ export const riskService = {
       params,
     });
     return response.data;
+  },
+
+  /**
+   * One page of risks with the backend's `meta` (F-19). The backend's default
+   * page is 10 rows, so a caller that ignores `meta` silently shows only the
+   * first 10.
+   */
+  listPage: async (params: {
+    status?: RiskStatus | string;
+    category?: RiskCategory | string;
+    page: number;
+    limit: number;
+  }): Promise<ListPage<Risk>> => {
+    const response = await api.get<BackendResponse<Risk[]>>("/api/v1/risk", {
+      params,
+    });
+    const rows = Array.isArray(response.data) ? response.data : [];
+    const total = response.meta?.total ?? rows.length;
+    const limit = response.meta?.limit ?? params.limit;
+    return {
+      rows,
+      meta: {
+        total,
+        page: response.meta?.page ?? params.page,
+        limit,
+        totalPages: response.meta?.totalPages ?? Math.max(1, Math.ceil(total / limit)),
+      },
+    };
   },
 
   /**

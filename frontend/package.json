@@ -10,11 +10,14 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "node ../node_modules/@typescript/native/bin/tsc --noEmit",
+    "api:types": "openapi-typescript ../backend/openapi.json -o src/api/generated/schema.d.ts",
+    "api:types:check": "openapi-typescript ../backend/openapi.json -o src/api/generated/schema.d.ts --check",
     "test": "jest --coverage",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage"
   },
   "dependencies": {
+    "@callibrator/contracts": "^0.1.0",
     "@gsap/react": "^2.1.2",
     "@tiptap/extension-image": "^3.31.3",
     "@tiptap/extension-placeholder": "^3.31.3",
@@ -28,9 +31,11 @@
     "lucide-react": "^1.48.0",
     "motion": "^13.4.4",
     "next": "^16.3.6",
+    "openapi-fetch": "^0.17.0",
     "qrcode": "^1.5.4",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "sanitize-html": "^2.17.7",
     "socket.io-client": "^4.8.4",
     "zustand": "^5.0.15"
   },
@@ -43,6 +48,7 @@
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "@types/sanitize-html": "^2.16.2",
     "@typescript/native": "npm:typescript@^7.0.2",
     "axe-core": "^4.13.0",
     "eslint": "^9.39.5",
@@ -52,9 +58,11 @@
     "jest-environment-jsdom": "^30.5.2",
     "jsdom": "^30.1.1",
     "next-bun-compile": "^2.0.0",
+    "openapi-typescript": "^7.13.0",
     "tailwindcss": "^4.3.3",
     "ts-jest": "^29.4.14",
-    "typescript": "npm:@typescript/typescript6@^6.0.2"
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "undici": "^7.30.0"
   },
   "overrides": {
     "postcss": "^8.5.10",

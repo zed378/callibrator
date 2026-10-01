@@ -11,6 +11,7 @@ import {
   vendorService,
 } from "@/api/services/vendor.service";
 import { PaginatedResponse } from "@/types";
+import { usePermissions } from "@/hooks/usePermissions";
 
 export interface VendorFormState {
   name: string;
@@ -19,6 +20,7 @@ export interface VendorFormState {
   email: string;
   phone: string;
   address: string;
+  notes: string;
   status: VendorStatus;
   rating: string;
 }
@@ -30,6 +32,7 @@ const emptyForm: VendorFormState = {
   email: "",
   phone: "",
   address: "",
+  notes: "",
   status: "Active",
   rating: "",
 };
@@ -63,11 +66,10 @@ export function useVendors() {
   // Form State
   const [form, setForm] = useState<VendorFormState>(emptyForm);
 
-  // User Permissions check
-  const hasWriteAccess =
-    user?.role?.name === "SUPERADMIN" ||
-    user?.role?.name === "HEALTHCARE ADMIN" ||
-    user?.role?.name === "CALIBRATOR ADMIN";
+  // ADR-102: vendor writes are gated on `vendors` write (vendor.route.js) —
+  // the effective permission the API checks.
+  const { canWrite } = usePermissions();
+  const hasWriteAccess = canWrite("vendors");
 
   const fetchVendors = useCallback(async () => {
     setIsVendorsLoading(true);
@@ -122,6 +124,7 @@ export function useVendors() {
       email: vendor.email || "",
       phone: vendor.phone || "",
       address: vendor.address || "",
+      notes: vendor.notes || "",
       status: vendor.status,
       rating: vendor.rating != null ? String(vendor.rating) : "",
     });
@@ -142,15 +145,20 @@ export function useVendors() {
         email: form.email.trim() || undefined,
         phone: form.phone.trim() || undefined,
         address: form.address.trim() || undefined,
+        // Q-52: an emptied field is sent as null on edit, so it is cleared.
+        notes: form.notes.trim() || (modalType === "edit" ? null : undefined),
         status: form.status,
-        rating: form.rating === "" ? undefined : Number(form.rating),
       };
+      // P9-22 (ADR-097): `rating` belongs to the update contract only. The
+      // create schema does not declare it, so the API stripped it from every
+      // create; the contract type now says so. (Q-37: should create take it?)
+      const rating = form.rating === "" ? undefined : Number(form.rating);
 
       if (modalType === "create") {
         await vendorService.create(payload);
         addToast({ type: "success", title: "Vendor created" });
       } else if (modalType === "edit" && selectedVendor) {
-        await vendorService.update({ ...payload, id: selectedVendor.id });
+        await vendorService.update({ ...payload, rating, id: selectedVendor.id });
         addToast({ type: "success", title: "Vendor updated" });
       }
       setIsVendorModalOpen(false);

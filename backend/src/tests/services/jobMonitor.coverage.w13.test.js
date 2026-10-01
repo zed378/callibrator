@@ -22,7 +22,8 @@ const SRC = path.join(__dirname, "../..");
 
 /** Files that schedule with cron but are not a job to monitor, with the reason. */
 const EXEMPT = {
-  "services/jobMonitor.service.js": "the watchdog: it is what checks the others",
+  // P9-18 leaves: the file is TypeScript (re-keyed, ADR-087).
+  "services/jobMonitor.service.ts": "the watchdog: it is what checks the others",
 };
 
 const sourceFiles = (dir) =>

@@ -6,6 +6,7 @@
 
 const financeService = require("../services/finance.service");
 const { asyncHandler } = require("../utils/controllerWrapper.util");
+const { auditPrincipal } = require("../utils/auditPrincipal.util");
 const { success } = require("../utils/response.util");
 
 /** GET /api/v1/finance */
@@ -35,7 +36,7 @@ exports.getAssetFinanceById = asyncHandler(async (req, res) => {
 /** POST /api/v1/finance */
 exports.createAssetFinance = asyncHandler(async (req, res) => {
   const tenantId = req.tenantId || req.user.tenantId;
-  const result = await financeService.createAssetFinance(tenantId, req.body);
+  const result = await financeService.createAssetFinance(tenantId, req.body, auditPrincipal(req));
   success(res, result.data, null, result.message, result.status);
 });
 
@@ -46,6 +47,7 @@ exports.updateAssetFinance = asyncHandler(async (req, res) => {
     tenantId,
     req.params.financeId,
     req.body,
+    auditPrincipal(req),
   );
   success(res, result.data, null, result.message, result.status);
 });
@@ -56,6 +58,7 @@ exports.deleteAssetFinance = asyncHandler(async (req, res) => {
   const result = await financeService.deleteAssetFinance(
     tenantId,
     req.params.financeId,
+    auditPrincipal(req),
   );
   success(res, result.data, null, result.message, result.status);
 });

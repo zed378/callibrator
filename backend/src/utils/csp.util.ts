@@ -13,8 +13,10 @@
  *  - the reasoning, even where it held, belonged to one page, not to every
  *    response of the origin.
  *
- * So the API default drops `'unsafe-inline'` for scripts, and Swagger gets its
- * own policy, applied only under `/docs` (docs/swagger.js). Both still allow
+ * So the API default drops `'unsafe-inline'` for scripts, and Swagger got its
+ * own policy, applied only under `/docs`. P9-25 (ADR-103) replaced Swagger UI
+ * with Scalar; the `/docs` policy is now `API_DOCS_CSP_DIRECTIVES`, tighter than
+ * the default (no third-party style or font origin). Both still allow
  * inline STYLE: the `/documentation` page (docs/DOCUMENTATION.html) carries a
  * `<style>` block and ~250 `style=` attributes, and Swagger UI needs it too.
  * Inline style is a much smaller risk than inline script (no code execution);
@@ -43,17 +45,25 @@ const API_CSP_DIRECTIVES: CspDirectives = Object.freeze({
 });
 
 /**
- * Swagger UI under /docs. Still no inline script; `connect-src 'self'` lets
- * "Try it out" call the API on the same origin, and `img-src data:` covers
- * the SVG icons Swagger UI inlines.
+ * The API reference under /docs (P9-25, ADR-103: Scalar replaced Swagger UI).
+ * Still no inline script — the page loads its bundle and its start-up script
+ * as files. `connect-src 'self'` lets the spec load and "try it" call the API
+ * on the same origin and nothing else (Scalar's proxy, telemetry and AI agent
+ * endpoints are refused by the browser even if a setting turned them on).
+ * Styles and fonts are same-origin only: Scalar injects `<style>` elements
+ * (inline style, as the default allows) and its default web fonts are off, so
+ * the page makes no third-party request at all.
  */
-const SWAGGER_CSP_DIRECTIVES: CspDirectives = Object.freeze({
+const API_DOCS_CSP_DIRECTIVES: CspDirectives = Object.freeze({
   ...API_CSP_DIRECTIVES,
+  "style-src": ["'self'", "'unsafe-inline'"],
+  "img-src": ["'self'", "data:"],
+  "font-src": ["'self'", "data:"],
   "connect-src": ["'self'"],
 });
 
 /**
- * Render directives as a header value (helmet's format), for the Swagger
+ * Render directives as a header value (helmet's format), for the API-docs
  * override and for tests.
  */
 const renderCsp = (directives: CspDirectives): string =>
@@ -62,12 +72,12 @@ const renderCsp = (directives: CspDirectives): string =>
     .join(";");
 
 /**
- * Middleware: replace the origin-wide CSP header with Swagger's own, for the
- * requests it is mounted on (`/docs`).
+ * Middleware: replace the origin-wide CSP header with the API reference's own,
+ * for the page it is mounted on (`routes/internal/apiDocs.route.ts`).
  */
-const swaggerCsp = (_req: Request, res: Response, next: NextFunction): void => {
-  res.setHeader("Content-Security-Policy", renderCsp(SWAGGER_CSP_DIRECTIVES));
+const apiDocsCsp = (_req: Request, res: Response, next: NextFunction): void => {
+  res.setHeader("Content-Security-Policy", renderCsp(API_DOCS_CSP_DIRECTIVES));
   next();
 };
 
-export { API_CSP_DIRECTIVES, SWAGGER_CSP_DIRECTIVES, renderCsp, swaggerCsp };
+export { API_CSP_DIRECTIVES, API_DOCS_CSP_DIRECTIVES, renderCsp, apiDocsCsp };

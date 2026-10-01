@@ -234,7 +234,7 @@ type. The first is correct; the second is honest and cheap. Whichever is chosen,
 
 | | |
 |---|---|
-| **Status** | **DONE** 2026-09-24 — both middlewares and `user.service.js`. The `dynamicAccess` 500 leak is **still open**, deliberately, see below |
+| **Status** | **DONE** 2026-09-24 — both middlewares and `user.service.js`. The `dynamicAccess` 500 leak, left open here on 2026-09-24, is **closed** under A-13: the `catch` hands the error to `next(error)` (`dynamicAccess.middleware.js`, checked 2026-09-30), pinned by the four `… to next(err) (A-13)` cases in `dynamicAccess.test.js` |
 | **Severity** | **high — it is the tenant-membership oracle the 404 rule exists to prevent** |
 | **Verified** | from code, 2026-09-23 |
 
@@ -302,7 +302,7 @@ a `checkTenant` route whose tenant is the caller's own.
 
 **Still open, found while fixing:** `user.service.js` repeats the oracle at three sites — `404 "User
 not found"` immediately followed by `403 "resource belongs to a different tenant"` — and
-`dynamicAccess`'s own `catch` still writes `error.message` in a 500. Both are being closed now.
+`dynamicAccess`'s own `catch` still writes `error.message` in a 500. Both are being closed now. *(2026-09-30: both are closed — the first below, the second under A-13.)*
 
 **Closed 2026-09-24 — the `user.service.js` instance.** All three sites (`userRoleUpdate`,
 `editUser`, `deleteUser`) now throw the same `404 "User not found"` for a user in another tenant as for

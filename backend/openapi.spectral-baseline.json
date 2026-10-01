@@ -1,0 +1,16 @@
+[
+  "array-items components.schemas.PaginatedResponse.properties.data",
+  "array-items paths./api/v1/e-signature/workflows/{workflowId}.get.responses.200.content.application/json.schema.properties.documents",
+  "array-items paths./api/v1/e-signature/workflows/{workflowId}.get.responses.200.content.application/json.schema.properties.signers",
+  "array-items paths./api/v1/e-signature/workflows/{workflowId}.put.requestBody.content.application/json.schema.properties.signers",
+  "array-items paths./api/v1/metered-billing/analytics.get.responses.200.content.application/json.schema.properties.trends",
+  "array-items paths./api/v1/tenant-hierarchy/tree.get.responses.200.content.application/json.schema.properties.tree.items.properties.children",
+  "oas3-schema paths./api/v1/attachments/orphans.get.responses.403",
+  "path-params paths./api/v1/oidc/authorize/request/{requestId}.get",
+  "path-params paths./api/v1/oidc/tenants/{tenantId}/clients/{clientId}.delete",
+  "path-params paths./api/v1/oidc/tenants/{tenantId}/clients/{clientId}/rotate-secret.post",
+  "path-params paths./api/v1/scim/v2/Users/{id}.get",
+  "path-params paths./api/v1/scim/v2/Users/{id}.patch",
+  "path-params paths./api/v1/scim/v2/Users/{id}.put",
+  "path-params paths./api/v1/tenant-hierarchy/{tenantId}/children"
+]

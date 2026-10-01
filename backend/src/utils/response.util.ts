@@ -41,9 +41,10 @@ interface AuthData {
 
 /** A service result envelope, as `sendResult` reads it. */
 interface ServiceResult {
-  success?: boolean;
+  success?: boolean | undefined;
   status?: unknown;
-  message?: string;
+  /** P9-20: `undefined` admitted, as tenant.controller#sendTenantResult passes a failure without one (type-only). */
+  message?: string | undefined;
   data?: unknown;
 }
 

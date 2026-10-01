@@ -11,6 +11,8 @@
  * dependency, not a routing defect.
  */
 const { httpPost, extractToken, authHeader } = require("../setup");
+// P10-16 (ADR-099): no default operator password — set E2E_OPERATOR_PASSWORD (see setup.js).
+const { OPERATOR_PASSWORD } = require("../setup");
 
 describe("E2E AI (HTTP)", () => {
   let token;
@@ -18,7 +20,7 @@ describe("E2E AI (HTTP)", () => {
   beforeAll(async () => {
     const { body } = await httpPost("/auth/login", {
       user: "sys@mail.com",
-      password: "123123",
+      password: OPERATOR_PASSWORD,
     });
     token = extractToken(body);
     expect(token).toBeTruthy();
@@ -35,8 +37,14 @@ describe("E2E AI (HTTP)", () => {
     expect(body).toHaveProperty("message");
   });
 
-  test("POST /ai/query — reachable with auth (200 answer, or 500 when AI unconfigured)", async () => {
-    const { status } = await httpPost("/ai/query", { question: "Which certificates expire soon?" }, authHeader(token));
-    expect([200, 500]).toContain(status);
+  // A-281 (2026-09-29-security-fixes-a275-a282): no provider configured is a
+  // 409 naming the settings to configure, not a 500 (P10-13 found this spec
+  // still expecting the 500).
+  test("POST /ai/query — reachable with auth (200 answer, or 409 naming the settings when AI is unconfigured)", async () => {
+    const { status, body } = await httpPost("/ai/query", { question: "Which certificates expire soon?" }, authHeader(token));
+    expect([200, 409]).toContain(status);
+    if (status === 409) {
+      expect(body.message).toEqual(expect.any(String));
+    }
   });
 });

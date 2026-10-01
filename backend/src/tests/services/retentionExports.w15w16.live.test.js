@@ -15,8 +15,15 @@
  * OPT-IN — needs a database built by db.sync() of the current models plus
  * every migration (migrator.up()):
  *
- *   W15W16_PG_LIVE_TEST=1 DB_HOST=... DB_PORT=... DB_NAME=... DB_USER=... DB_PASS=... \
+ *   W15W16_PG_LIVE_TEST=1 DB_HOST=... DB_PORT=... DB_USER=... DB_PASS=... \
  *     npm test -- src/tests/services/retentionExports.w15w16.live --coverage=false
+ *
+ * ADR-095 O-2: the suite creates its OWN database (DB_USER needs CREATEDB;
+ * DB_NAME is not used), builds it as the backend boots (db.sync() + every
+ * migration, 0091's append-only audit_logs included) and runs as
+ * `callibrator_app` through enterApplicationRole. Its audit rows cannot be
+ * deleted, so it does not clean up: the database is dropped afterwards
+ * (fixtures/disposableDatabase.ts, fixtures/liveBoot.ts).
  */
 const fs = require("fs");
 const os = require("os");
@@ -24,6 +31,9 @@ const path = require("path");
 
 const mockExportRoot = fs.mkdtempSync(path.join(os.tmpdir(), "w15-live-"));
 jest.mock("../../utils/storagePath.util", () => (...parts) => require("path").join(mockExportRoot, ...parts));
+
+const { createDisposableDatabase, LIVE_BOOT_TIMEOUT_MS } = require("../fixtures/disposableDatabase");
+const { bootSchemaAsApplicationRole } = require("../fixtures/liveBoot");
 
 const live = process.env.W15W16_PG_LIVE_TEST === "1" ? describe : describe.skip;
 
@@ -34,25 +44,19 @@ const USER_A = "15161516-0000-4000-8000-0000000000e1";
 live("W-15 / W-16 — the retention sweep on live PostgreSQL", () => {
   jest.setTimeout(120000);
   let db;
+  let scratch;
   let retention;
 
   const q = async (sql, replacements = {}) => (await db.query(sql, { replacements }))[0];
   const count = async (sql, replacements) => Number((await q(sql, replacements))[0].n);
 
-  const cleanup = async () => {
-    for (const table of ["audit_logs", "notifications", "tenant_settings"]) {
-      await q(`DELETE FROM ${table} WHERE tenant_id IN (:t)`, { t: [A, B] });
-    }
-    await q("DELETE FROM users WHERE id = :u", { u: USER_A });
-    await q("DELETE FROM tenants WHERE id IN (:t)", { t: [A, B] });
-  };
-
   beforeAll(async () => {
+    scratch = await createDisposableDatabase("w15");
     ({ db } = require("../../config"));
     db.options.logging = false;
     require("../../models");
+    await bootSchemaAsApplicationRole(db);
     retention = require("../../services/dataRetention.service");
-    await cleanup();
     for (const [id, sub] of [[A, "w16-live-a"], [B, "w16-live-b"]]) {
       await q(
         `INSERT INTO tenants (id, name, subdomain, email, created_at, updated_at)
@@ -65,15 +69,17 @@ live("W-15 / W-16 — the retention sweep on live PostgreSQL", () => {
        VALUES (:id, :t, 'w15live', 'w15live@example.test', 'x', 'W', '15', now(), now())`,
       { id: USER_A, t: A },
     );
-  });
+  }, LIVE_BOOT_TIMEOUT_MS);
 
   afterAll(async () => {
     if (db) {
-      await cleanup();
       await db.close();
     }
+    if (scratch) {
+      await scratch.drop();
+    }
     fs.rmSync(mockExportRoot, { recursive: true, force: true });
-  });
+  }, LIVE_BOOT_TIMEOUT_MS);
 
   it("W-16: a tenant with retention_policy_notifications = 'forever' purges on the default (90 days), and the sweep reports it", async () => {
     await q(

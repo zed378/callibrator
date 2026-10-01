@@ -21,6 +21,13 @@ const mockRef = { ledger: null, certificate: null };
 jest.mock("../../services/attachment.service", () => ({
   softDeleteForResource: jest.fn().mockResolvedValue([]),
 }));
+// ADR-107 (Q-50): the sign step's snapshot reads the tenant, device and users
+// through the models barrel this suite doubles; the snapshot itself is
+// certificates.signSnapshot.q50.test.ts's subject, not this suite's.
+jest.mock("../../services/certificateDocument.service", () => ({
+  ...jest.requireActual("../../services/certificateDocument.service"),
+  captureSignedSnapshot: jest.fn(async () => null),
+}));
 jest.mock("../../models", () => ({
   Certificate: {
     findOne: jest.fn(async () => mockRef.certificate),
@@ -61,11 +68,7 @@ jest.mock("../../services/workflow.service", () => ({
   // A-203: no workflow pending unless a test says so.
   findPendingInstance: jest.fn(async () => null),
 }));
-jest.mock("../../validators/certificate.validator", () => ({
-  validate: (data) => data,
-  createCertificateSchema: {},
-  updateCertificateSchema: {},
-}));
+// The create / update schemas are REAL (P9-11: Zod through validators/input).
 
 const { Sequelize, DataTypes } = jest.requireActual("sequelize");
 const RealCertificate = jest.requireActual("../../models/certificate.model")(
@@ -74,6 +77,9 @@ const RealCertificate = jest.requireActual("../../models/certificate.model")(
 );
 const certificateService = require("../../services/certificate.service");
 const { logger } = require("../../middlewares/activityLog.middleware");
+
+/** A device id the create schema accepts (a uuid). */
+const DEVICE_ID = "0d0d0d0d-0d0d-4d0d-8d0d-0d0d0d0d0d0d";
 
 const SNAPSHOT_FIELDS = ["id", "status", "approvedBy", "signedBy", "notes", "digitalSignature"];
 
@@ -108,7 +114,7 @@ const CASES = [
   {
     name: "createCertificate (issue)",
     status: null,
-    run: () => certificateService.createCertificate("tenant-1", "user-1", { deviceId: "dev-1" }, actor),
+    run: () => certificateService.createCertificate("tenant-1", "user-1", { deviceId: DEVICE_ID }, actor),
     action: "CREATE",
     resourceId: "cert-new",
   },
@@ -234,7 +240,7 @@ describe("A-41 — certificate mutations audit inside their transaction", () => 
         mockRef.ledger.write("workflow_instances", { id: "wfi-1", tenantId, resourceId, status: "PENDING" }, { transaction }),
       );
 
-      await certificateService.createCertificate("tenant-1", "user-1", { deviceId: "dev-1" }, actor);
+      await certificateService.createCertificate("tenant-1", "user-1", { deviceId: DEVICE_ID }, actor);
 
       const [, , , transaction] = workflowService.startWorkflow.mock.calls[0];
       expect(transaction).toBeTruthy();
@@ -251,7 +257,7 @@ describe("A-41 — certificate mutations audit inside their transaction", () => 
       });
 
       await expect(
-        certificateService.createCertificate("tenant-1", "user-1", { deviceId: "dev-1" }, actor),
+        certificateService.createCertificate("tenant-1", "user-1", { deviceId: DEVICE_ID }, actor),
       ).rejects.toThrow("workflow lookup failed");
 
       expect(mockRef.ledger.committed("certificates")).toEqual([]);

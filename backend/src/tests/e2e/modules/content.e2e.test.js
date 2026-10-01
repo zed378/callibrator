@@ -7,6 +7,8 @@
  * pagination `meta` is a TOP-LEVEL sibling of data.
  */
 const { httpGet, httpPost, httpPut, httpDelete, authHeader } = require("../setup");
+// P10-16 (ADR-099): no default operator password — set E2E_OPERATOR_PASSWORD (see setup.js).
+const { OPERATOR_PASSWORD } = require("../setup");
 
 // Express 5 exposes PATCH via httpPut? No — the harness only ships GET/POST/PUT/DELETE.
 // The content update route is PATCH, so we issue it through a small local helper.
@@ -25,7 +27,7 @@ async function httpPatch(path, data = {}, headers = {}) {
 
 let token;
 async function login() {
-  const { body } = await httpPost("/auth/login", { user: "sys@mail.com", password: "123123" });
+  const { body } = await httpPost("/auth/login", { user: "sys@mail.com", password: OPERATOR_PASSWORD });
   token = body.token || (body.data && body.data.token);
   return token;
 }

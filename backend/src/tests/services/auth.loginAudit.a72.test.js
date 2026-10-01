@@ -7,7 +7,7 @@
  * system, when" existed for SSO users only.
  *
  * What is real: auth.service (loginUser, loginMfa), audit.service.logAction —
- * including its closed AUDIT_ACTIONS check — and the Joi login schema.
+ * including its closed AUDIT_ACTIONS check — and the login schema.
  * What is faked: the models (AuditLog.create is the row the database would
  * get), the transaction (a stand-in that records which writes ran inside it),
  * createSession, bcrypt and the TOTP check.
@@ -19,6 +19,8 @@
 
 const mockTx = { id: "tx-1", open: false };
 
+// A-288 (ADR-100): the network policy has its own suites (signInPolicy.*.a288); here it permits.
+jest.mock("../../services/signInPolicy.service", () => ({ assertSignInPermitted: jest.fn(async () => undefined) }));
 jest.mock("../../config", () => ({
   db: {
     transaction: jest.fn(async (fn) => {

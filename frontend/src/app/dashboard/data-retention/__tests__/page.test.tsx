@@ -43,6 +43,7 @@ jest.mock("@/stores/authStore", () => ({
 import { api } from "@/api/client";
 import { useToastStore } from "@/stores/toastStore";
 import DataRetentionPage from "../page";
+import { grantPermissions, grantSuperAdmin, clearPermissions } from "@/tests/support/permissions";
 
 const mockedApi = api as jest.Mocked<typeof api>;
 
@@ -76,6 +77,8 @@ const backend = ({ onLegalHold = false } = {}) => {
 const dayInputs = () => screen.getAllByRole("spinbutton") as HTMLInputElement[];
 
 beforeEach(() => {
+  // ADR-102: write controls follow the effective permissions.
+  grantSuperAdmin();
   jest.clearAllMocks();
   useToastStore.setState({ toasts: [] });
 });
@@ -157,5 +160,32 @@ describe("DataRetentionPage — the real backend contract (A-135)", () => {
     expect(screen.getByRole("button", { name: /Purge Expired Records/ })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Anonymize/ })).not.toBeInTheDocument();
     expect(screen.queryByText(/ANONYMIZED/)).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * ADR-102 — retention windows, legal hold and privacy operations are
+ * superAdminOnly (dataRetention.route.js). A tenant role holding
+ * `data-retention` read sees the current windows and the hold state only.
+ * Fail-before: inputs, Save, Enable Hold and Purge rendered for every role.
+ */
+describe("ADR-102 — retention controls are the super admin's", () => {
+  it("a tenant reader sees the current values and no control", async () => {
+    grantPermissions({ "data-retention": "read" });
+    backend();
+    render(<DataRetentionPage />);
+    expect(await screen.findByText("current: 90")).toBeInTheDocument();
+    expect(screen.queryAllByRole("spinbutton")).toEqual([]);
+    for (const name of [/^Save$/, /Enable Hold/, /Release Hold/, /Purge Expired Records/]) {
+      expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+    }
+  });
+
+  it("nothing is writable before the permissions load", async () => {
+    clearPermissions();
+    backend();
+    render(<DataRetentionPage />);
+    expect(await screen.findByText("current: 90")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Save$/ })).not.toBeInTheDocument();
   });
 });

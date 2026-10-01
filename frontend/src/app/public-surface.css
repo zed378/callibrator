@@ -1,0 +1,349 @@
+/*
+ * P10-01 — the public surface (ADR-098 §3, docs/UI-UX/20-LANDING-AUTH-REVAMP.md §4).
+ *
+ * A separate, dark-only token set applied under [data-surface="public"] by the
+ * public layouts (landing, /login, /request-access, /forgot-password,
+ * /invitation, /activation, /verify/*). The dashboard tokens in globals.css
+ * (ADR-090) are NOT touched: nothing here redefines --background, --primary,
+ * --accent or any other shared token.
+ *
+ * Every ratio in doc 20 §4.2 is recomputed from THIS file by
+ * src/tests/publicTokens.contrast.p1001.test.ts, so the table cannot drift
+ * from the shipped CSS. Keep each --pub-* colour a plain #RRGGBB literal.
+ */
+
+@theme inline {
+  --color-pub-bg: var(--pub-bg);
+  --color-pub-surface: var(--pub-surface);
+  --color-pub-raised: var(--pub-raised);
+  --color-pub-text: var(--pub-text);
+  --color-pub-muted: var(--pub-text-muted);
+  --color-pub-subtle: var(--pub-text-subtle);
+  --color-pub-accent: var(--pub-accent);
+  --color-pub-accent-hover: var(--pub-accent-hover);
+  --color-pub-on-accent: var(--pub-on-accent);
+  --color-pub-border: var(--pub-border);
+  --color-pub-border-strong: var(--pub-border-strong);
+  --color-pub-success: var(--pub-success);
+  --color-pub-warning: var(--pub-warning);
+  --color-pub-danger: var(--pub-danger);
+  --color-pub-neutral: var(--pub-neutral);
+  --font-pub-display: var(--font-pub-display), Georgia, "Times New Roman", serif;
+  --font-pub-sans: var(--font-pub-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+[data-surface="public"] {
+  /* Surfaces */
+  --pub-bg: #0A0C0F;
+  --pub-surface: #12161B;
+  --pub-raised: #1A2027;
+  --pub-glow: #092926;
+
+  /* Foreground */
+  --pub-text: #EEF2F6;
+  --pub-text-muted: #A3AEBA;
+  --pub-text-subtle: #8A95A1;
+  --pub-accent: #00DAB4;
+  --pub-accent-hover: #3DE8C9;
+  --pub-accent-pressed: #00B899;
+  --pub-on-accent: #0A0C0F;
+  --pub-border: #2A323C;
+  --pub-border-strong: #6B7684;
+
+  /* Status — only where a status is carried */
+  --pub-success: #4ADE80;
+  --pub-warning: #FBBF24;
+  --pub-danger: #FB7185;
+  --pub-neutral: #CBD5E1;
+
+  color-scheme: dark;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--pub-bg);
+  background-image: url("/textures/grain.svg");
+  color: var(--pub-text);
+  font-family: var(--font-pub-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 1rem;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+[data-surface="public"] ::selection {
+  background: color-mix(in srgb, var(--pub-accent) 35%, transparent);
+  color: var(--pub-text);
+}
+
+/* The accent ring: 10.9:1 on the background, well over SC 1.4.11's 3:1. */
+[data-surface="public"] :focus-visible {
+  outline: 2px solid var(--pub-accent);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+/* ── Type ─────────────────────────────────────────────────────────────── */
+
+[data-surface="public"] .pub-display {
+  font-family: var(--font-pub-display), Georgia, "Times New Roman", serif;
+  font-weight: 400;
+  font-synthesis: none;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+[data-surface="public"] .pub-display-xl { font-size: clamp(2.75rem, 1.4rem + 3.75vw, 5.5rem); line-height: 1.02; }
+[data-surface="public"] .pub-display-l { font-size: clamp(2.25rem, 1.47rem + 2.22vw, 3.75rem); line-height: 1.05; }
+[data-surface="public"] .pub-display-m { font-size: clamp(2rem, 1.63rem + 0.74vw, 2.5rem); line-height: 1.1; }
+[data-surface="public"] .pub-body-l { font-size: clamp(1.125rem, 1.08rem + 0.19vw, 1.25rem); line-height: 1.6; }
+[data-surface="public"] .pub-caption { font-size: 0.875rem; line-height: 1.5; }
+[data-surface="public"] .pub-prose { max-width: 66ch; }
+[data-surface="public"] .pub-mono {
+  font-family: var(--font-jetbrains), "JetBrains Mono", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+[data-surface="public"] .pub-eyebrow {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--pub-text-muted);
+}
+
+/* ── Links ────────────────────────────────────────────────────────────── */
+
+[data-surface="public"] .pub-link {
+  color: var(--pub-accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  transition: color var(--dur-fast) var(--ease-out-expo);
+}
+[data-surface="public"] .pub-link:hover { color: var(--pub-accent-hover); }
+[data-surface="public"] .pub-link-quiet {
+  color: var(--pub-text-muted);
+  text-decoration: none;
+  transition: color var(--dur-fast) var(--ease-out-expo);
+}
+[data-surface="public"] .pub-link-quiet:hover { color: var(--pub-text); text-decoration: underline; text-underline-offset: 3px; }
+
+/* ── Buttons: 6 px radius, no pills, never white on the accent ────────── */
+
+[data-surface="public"] .pub-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding: 0.625rem 1.125rem;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  line-height: 1.2;
+  text-decoration: none;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition:
+    background-color var(--dur-fast) var(--ease-out-expo),
+    border-color var(--dur-fast) var(--ease-out-expo),
+    color var(--dur-fast) var(--ease-out-expo);
+}
+[data-surface="public"] .pub-btn:disabled,
+[data-surface="public"] .pub-btn[aria-disabled="true"] { cursor: not-allowed; opacity: 0.6; }
+[data-surface="public"] .pub-btn-primary { background: var(--pub-accent); color: var(--pub-on-accent); }
+[data-surface="public"] .pub-btn-primary:hover:not(:disabled) { background: var(--pub-accent-hover); }
+[data-surface="public"] .pub-btn-primary:active:not(:disabled) { background: var(--pub-accent-pressed); }
+[data-surface="public"] .pub-btn-secondary {
+  background: transparent;
+  color: var(--pub-text);
+  border-color: var(--pub-border-strong);
+}
+[data-surface="public"] .pub-btn-secondary:hover:not(:disabled) { background: var(--pub-raised); border-color: var(--pub-text-subtle); }
+[data-surface="public"] .pub-btn-ghost { background: transparent; color: var(--pub-text-muted); }
+[data-surface="public"] .pub-btn-ghost:hover:not(:disabled) { color: var(--pub-text); background: var(--pub-surface); }
+[data-surface="public"] .pub-btn-block { width: 100%; }
+
+/* ── Forms ────────────────────────────────────────────────────────────── */
+
+[data-surface="public"] .pub-label {
+  display: block;
+  margin-bottom: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--pub-text);
+}
+[data-surface="public"] .pub-help { margin-top: 0.375rem; font-size: 0.8125rem; color: var(--pub-text-subtle); }
+[data-surface="public"] .pub-field-error { margin-top: 0.375rem; font-size: 0.8125rem; color: var(--pub-danger); }
+[data-surface="public"] .pub-input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0.625rem 0.875rem;
+  border-radius: 6px;
+  background: var(--pub-raised);
+  color: var(--pub-text);
+  /* Control boundary: --pub-border-strong (3.55:1 on raised), never --pub-border. */
+  border: 1px solid var(--pub-border-strong);
+  font: inherit;
+  transition: border-color var(--dur-fast) var(--ease-out-expo);
+}
+[data-surface="public"] .pub-input::placeholder { color: var(--pub-text-subtle); }
+[data-surface="public"] .pub-input:hover { border-color: var(--pub-text-subtle); }
+[data-surface="public"] .pub-input:focus-visible { border-color: var(--pub-accent); outline-offset: 1px; }
+[data-surface="public"] .pub-input[aria-invalid="true"] { border-color: var(--pub-danger); }
+[data-surface="public"] select.pub-input { appearance: auto; }
+[data-surface="public"] textarea.pub-input { min-height: 7rem; resize: vertical; }
+[data-surface="public"] .pub-check {
+  width: 1.125rem;
+  height: 1.125rem;
+  accent-color: var(--pub-accent);
+  flex-shrink: 0;
+  margin-top: 0.2rem;
+}
+
+[data-surface="public"] .pub-alert {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.875rem 1rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  background: var(--pub-raised);
+  border: 1px solid var(--pub-danger);
+  color: var(--pub-text);
+}
+[data-surface="public"] .pub-notice {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.875rem 1rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  background: var(--pub-raised);
+  border: 1px solid var(--pub-border-strong);
+  color: var(--pub-text);
+}
+
+/* ── Cards ────────────────────────────────────────────────────────────── */
+
+[data-surface="public"] .pub-card {
+  background: var(--pub-surface);
+  border: 1px solid var(--pub-border);
+  border-radius: 12px;
+}
+[data-surface="public"] .pub-hairline { border-color: var(--pub-border); }
+
+/* The hero product frame: a 1 px border and one soft glow capped at --pub-glow. */
+[data-surface="public"] .pub-frame {
+  border-radius: 20px;
+  border: 1px solid var(--pub-border);
+  background: var(--pub-surface);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.4), 0 40px 120px -40px var(--pub-glow);
+  overflow: hidden;
+}
+
+/* One teal light behind the hero. Drifts ≤ 2 % once over 20 s; static under
+   reduced motion. It never loops, so WCAG 2.2.2 needs no pause control. */
+[data-surface="public"] .pub-light {
+  position: absolute;
+  inset: -20% -10% auto auto;
+  width: min(900px, 90vw);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, var(--pub-glow), transparent 70%);
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: no-preference) {
+  [data-surface="public"] .pub-light { animation: pub-drift 20s var(--ease-in-out-quart) 1 both; }
+  /* The motif's needle settles into the tolerance band once (≤ 1.2 s). */
+  [data-surface="public"] .pub-needle {
+    transform-box: view-box;
+    transform-origin: 300px 300px; /* the needle pivot in PrecisionScale's viewBox */
+    animation: pub-settle 1.2s var(--ease-out-expo) 0.2s 1 both;
+  }
+}
+@keyframes pub-drift {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(-2%, 2%, 0); }
+}
+@keyframes pub-settle {
+  0% { transform: rotate(-14deg); }
+  70% { transform: rotate(1.5deg); }
+  100% { transform: rotate(0deg); }
+}
+
+/* ── Header ───────────────────────────────────────────────────────────── */
+
+[data-surface="public"] .pub-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: color-mix(in srgb, var(--pub-bg) 88%, transparent);
+  border-bottom: 1px solid var(--pub-border);
+}
+
+/* Skip link: visible on focus only. */
+[data-surface="public"] .pub-skip {
+  position: absolute;
+  left: 1rem;
+  top: -4rem;
+  z-index: 50;
+  padding: 0.5rem 0.875rem;
+  border-radius: 6px;
+  background: var(--pub-accent);
+  color: var(--pub-on-accent);
+  font-weight: 600;
+}
+[data-surface="public"] .pub-skip:focus-visible { top: 0.75rem; }
+
+/* Native FAQ disclosure marker, keyboard and screen-reader accessible without script. */
+[data-surface="public"] details.pub-faq > summary { list-style: none; cursor: pointer; }
+[data-surface="public"] details.pub-faq > summary::-webkit-details-marker { display: none; }
+[data-surface="public"] details.pub-faq > summary .pub-faq-icon { transition: transform var(--dur-fast) var(--ease-out-expo); }
+[data-surface="public"] details.pub-faq[open] > summary .pub-faq-icon { transform: rotate(45deg); }
+
+/* Section entrance: decorative layers only. Text is never hidden (doc 20 §4.5). */
+@media (prefers-reduced-motion: no-preference) {
+  [data-surface="public"] .pub-rule-in { transform-origin: left; animation: pub-rule 900ms var(--ease-out-expo) both; }
+}
+@keyframes pub-rule {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+/* Forced colours: keep boundaries and the focus ring visible. */
+@media (forced-colors: active) {
+  [data-surface="public"] .pub-btn,
+  [data-surface="public"] .pub-input,
+  [data-surface="public"] .pub-card,
+  [data-surface="public"] .pub-alert,
+  [data-surface="public"] .pub-notice { border: 1px solid CanvasText; }
+  [data-surface="public"] :focus-visible { outline: 2px solid Highlight; }
+}
+
+/* ── Blog and news (P10-13, ADR-098 §1) ───────────────────────────────── */
+
+/* A category label: a hairline tag, never the accent fill. */
+[data-surface="public"] .pub-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--pub-border-strong);
+  border-radius: 4px;
+  padding: 0.0625rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--pub-text-muted);
+}
+
+/* The article body (ArticleBody, sanitized HTML). globals.css styles
+   `.article-prose` with the dashboard tokens, which are light-theme values on a
+   page that never sets `.dark`: dark text on the dark public background. Here
+   the same structure takes the public tokens. */
+[data-surface="public"] .article-prose { color: var(--pub-text); font-size: 1.0625rem; line-height: 1.75; }
+[data-surface="public"] .article-prose h1,
+[data-surface="public"] .article-prose h2,
+[data-surface="public"] .article-prose h3,
+[data-surface="public"] .article-prose strong { color: var(--pub-text); }
+[data-surface="public"] .article-prose a { color: var(--pub-accent); text-underline-offset: 3px; }
+[data-surface="public"] .article-prose a:hover { color: var(--pub-accent-hover); opacity: 1; }
+[data-surface="public"] .article-prose blockquote { border-left-color: var(--pub-accent); color: var(--pub-text-muted); }
+[data-surface="public"] .article-prose figcaption { color: var(--pub-text-subtle); }
+[data-surface="public"] .article-prose code,
+[data-surface="public"] .article-prose pre { background: var(--pub-raised); color: var(--pub-text); }
+[data-surface="public"] .article-prose pre code { background: none; }
+[data-surface="public"] .article-prose hr { border-top-color: var(--pub-border); }

@@ -7,6 +7,10 @@ export interface Role {
   description?: string;
   nameToShow?: string;
   isActive?: boolean;
+  /** What the backend sends ("active" | "inactive"); `isActive` is derived from it. */
+  status?: string;
+  /** A system role's level is fixed (409 on a change, ADR-105). */
+  isSystem?: boolean;
   roleLevel?: number;
   createdAt?: string;
   updatedAt?: string;
@@ -45,9 +49,17 @@ export interface User {
   passwordManagedBy?: { protocol: string; provider: string | null } | null;
 }
 
+/** A-288 (ADR-100): the device position a geofenced tenant asks for. */
+export interface SignInLocation {
+  latitude: number;
+  longitude: number;
+}
+
 export interface LoginCredentials {
   user: string;
   password: string;
+  /** Sent only after the backend answered 403 LOCATION_REQUIRED. */
+  location?: SignInLocation;
 }
 
 export interface RegisterCredentials {
@@ -105,7 +117,8 @@ export interface Tenant {
   logoBaseUrl?: string;
   primaryColor?: string;
   status: "ACTIVE" | "INACTIVE" | "SUSPENDED";
-  maxUsers: number;
+  /** The seat limit (platform-set). null or negative = unlimited. `maxUsers` never existed on the backend. */
+  limitSeats?: number | null;
   email?: string;
   phone?: string;
   address?: string;
@@ -280,7 +293,7 @@ export interface StockTransfer {
   fromWarehouseId: string;
   toWarehouseId: string;
   status: "pending" | "in_transit" | "completed" | "cancelled";
-  requestedBy: string;
+  requestedBy: string | null;
   approvedBy?: string | null;
   itemName: string;
   quantity: number;
@@ -300,6 +313,8 @@ export interface StockTransfer {
     firstName: string;
     lastName: string;
   } | null;
+  /** Q-51 (ADR-100 Am. 2): the API key that wrote the row, when no user did. */
+  apiKey?: { id: string; name: string; keyPrefix?: string | null } | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -312,14 +327,16 @@ export interface StockAdjustment {
   type: "addition" | "subtraction" | "write_off";
   quantity: number;
   reason?: string | null;
-  adjustedBy: string;
+  adjustedBy: string | null;
   warehouse?: { id: string; name: string; code: string };
   adjuster?: {
     id: string;
     username: string;
     firstName: string;
     lastName: string;
-  };
+  } | null;
+  /** Q-51 (ADR-100 Am. 2): the API key that wrote the row, when no user did. */
+  apiKey?: { id: string; name: string; keyPrefix?: string | null } | null;
   createdAt?: string;
   updatedAt?: string;
 }

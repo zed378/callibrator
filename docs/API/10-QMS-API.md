@@ -60,7 +60,17 @@ A bad enum reaching the database is always a missing validator, and it always su
 
 `sop_training_acknowledgments`: `documentId`, `userId`, `acknowledgedAt`, `status` (`PENDING`, `COMPLETED`).
 
+Publishing is refused (V-13, ADR-109 §7), each with an explanation in `message`:
+- **403** when the caller authored the SOP — a controlled procedure is released by someone other than its author (21 CFR 11.10(d), ISO 13485 §4.2.4; the rule is about the caller, as ADR-101 for a certificate). A tenant with a single administrator cannot publish at all; that is Q-54, open;
+- **409** when the SOP is not `DRAFT` or `UNDER_REVIEW` (already `PUBLISHED`, or `ARCHIVED`) — a state conflict.
+
 Publishing an SOP with `requiresTraining` creates a pending acknowledgement for every user who must read it. That table is the personnel-competence evidence ISO 17025 and ISO 13485 both require, and the thing an auditor asks for when they ask "how do you know your staff read this".
+
+An acknowledgement is refused with a **409** state explanation when it cannot apply:
+- it was already completed (A-145);
+- the SOP is **ARCHIVED** ("This SOP is archived and no longer requires acknowledgement.").
+
+An archived procedure is no longer in force. A pending acknowledgement left from before it was archived therefore does not apply, and the row stays `PENDING` as evidence that it was never completed. Until 2026-09-30 the API completed it. The rule was decided by the coordinator under the owner's delegation (F-19, ADR-105 Amendment 1).
 
 Same envelope defect as QMS — `GET /` returned `data.documents` and rendered empty. Fixed.
 

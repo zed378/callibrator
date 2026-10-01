@@ -2,6 +2,7 @@ const tenantService = require("../services/tenant.service");
 const RolesService = require("../services/roles.service");
 const { logger } = require("./activityLog.middleware");
 const { error: sendError } = require("../utils/response.util");
+const { isSuperAdmin } = require("../utils/role.util");
 
 /**
  * Menu group that governs tenant administration (the "Tenants" node lives
@@ -97,7 +98,7 @@ exports.abac = (permissions, options = {}) => {
       }
 
       // SUPER_ADMIN bypass — has all permissions
-      if (user.role.name === "SUPER_ADMIN" || user.role.name === "SUPERADMIN") {
+      if (isSuperAdmin(user)) {
         req.abacContext = {
           allowed: true,
           reason: "SUPER_ADMIN bypass",

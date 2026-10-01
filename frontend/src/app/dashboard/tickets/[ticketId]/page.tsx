@@ -23,6 +23,7 @@ import {
   userLabel,
 } from "../components/ticketBadges";
 import { useTicketPov } from "../ticketPov";
+import { safeHtml } from "@/lib/safeHtml";
 
 function TicketDetailContent() {
   const params = useParams();
@@ -182,8 +183,10 @@ function TicketDetailContent() {
                   {ticket.description ? (
                     <div
                       className="article-prose max-w-none text-sm"
-                      // Description is rich text authored in the ticket editor.
-                      dangerouslySetInnerHTML={{ __html: ticket.description }}
+                      // Rich text from the ticket editor, written by ANY tenant user
+                      // and read by the platform's responders: sanitized at render
+                      // with the shared allow-list (A-298). It was injected raw.
+                      dangerouslySetInnerHTML={{ __html: safeHtml(ticket.description) }}
                     />
                   ) : (
                     <p className="text-sm text-muted-foreground">

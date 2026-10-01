@@ -37,6 +37,8 @@ interface StockModalsContainerProps {
   opnameForm: OpnameModalProps["form"];
   setOpnameForm: OpnameModalProps["setForm"];
   handleOpnameSubmit: (e: React.FormEvent) => void;
+  /** F-19: the open dialog's refused save — shown in that dialog, not behind it. */
+  dialogError?: string | null;
 }
 
 export const StockModalsContainer: React.FC<StockModalsContainerProps> = ({
@@ -66,6 +68,7 @@ export const StockModalsContainer: React.FC<StockModalsContainerProps> = ({
   opnameForm,
   setOpnameForm,
   handleOpnameSubmit,
+  dialogError = null,
 }) => {
   return (
     <>
@@ -83,6 +86,7 @@ export const StockModalsContainer: React.FC<StockModalsContainerProps> = ({
           fetchLocations(val);
         }}
         onSubmit={handleStockSubmit}
+        error={dialogError}
       />
 
       <AdjustmentModal
@@ -92,6 +96,7 @@ export const StockModalsContainer: React.FC<StockModalsContainerProps> = ({
         form={adjustmentForm}
         setForm={setAdjustmentForm}
         onSubmit={handleAdjustmentSubmit}
+        error={dialogError}
       />
 
       <TransferModal
@@ -101,6 +106,7 @@ export const StockModalsContainer: React.FC<StockModalsContainerProps> = ({
         setForm={setTransferForm}
         warehouseOptions={warehouseOptions}
         onSubmit={handleTransferSubmit}
+        error={dialogError}
       />
 
       <OpnameModal
@@ -110,6 +116,7 @@ export const StockModalsContainer: React.FC<StockModalsContainerProps> = ({
         setForm={setOpnameForm}
         warehouseOptions={warehouseOptions}
         onSubmit={handleOpnameSubmit}
+        error={dialogError}
       />
     </>
   );

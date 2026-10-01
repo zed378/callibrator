@@ -27,11 +27,7 @@ jest.mock("../../models", () => ({
 jest.mock("../../config", () => ({
   db: { transaction: (...args) => mockRef.ledger.transaction(...args) },
 }));
-jest.mock("../../validators/calibrationRecords.validator", () => ({
-  createCalibrationRecordSchema: { validate: (v) => ({ value: v }) },
-  correctCalibrationRecordSchema: { validate: (v) => ({ value: v }) },
-  voidCalibrationRecordSchema: { validate: (v) => ({ value: v }) },
-}));
+// The create / correct / void schemas are REAL (P9-11: Zod through validators/input).
 
 const service = require("../../services/calibrationRecords.service");
 const { logger } = require("../../middlewares/activityLog.middleware");
@@ -45,6 +41,9 @@ const makeRecord = () => {
   return record;
 };
 
+/** A device id the create schema accepts (a uuid). */
+const DEVICE_ID = "0d0d0d0d-0d0d-4d0d-8d0d-0d0d0d0d0d0d";
+
 const actor = { userId: "user-1", ipAddress: "10.0.0.1", userAgent: "UA" };
 
 const CASES = [
@@ -54,7 +53,7 @@ const CASES = [
       service.createCalibrationRecord(
         "tenant-1",
         "user-1",
-        { deviceId: "dev-1", calibrationDate: "2026-09-01", result: "pass" },
+        { deviceId: DEVICE_ID, calibrationDate: "2026-09-01", result: "pass" },
         actor,
       ),
     action: "CREATE",

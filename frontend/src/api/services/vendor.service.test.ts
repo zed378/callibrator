@@ -1,3 +1,9 @@
+/**
+ * P9-25 (ADR-103): vendorService runs on the generated client (src/api/typed.ts),
+ * whose transport is `api` — so each call below is asserted exactly as the
+ * browser makes it, and the TYPES of every path, query and body are the
+ * published contract's (a call the backend does not accept does not compile).
+ */
 import { vendorService } from "./vendor.service";
 import { api } from "../client";
 
@@ -22,7 +28,7 @@ const envelope = <T,>(data: T, meta?: unknown) => ({
 
 const BASE = "/api/v1/vendors";
 
-describe("vendorService", () => {
+describe("vendorService (generated client)", () => {
   beforeEach(() => jest.clearAllMocks());
 
   describe("getAll", () => {
@@ -35,6 +41,14 @@ describe("vendorService", () => {
       });
       expect(res.data).toHaveLength(1);
       expect(res.meta).toEqual(meta);
+    });
+
+    it("does not send a filter value the contract does not accept", async () => {
+      mockedApi.get.mockResolvedValueOnce(envelope([]));
+      await vendorService.getAll(1, 20, undefined, "Archived", "Warehouse");
+      const [, config] = mockedApi.get.mock.calls[0] as [string, { params: Record<string, unknown> }];
+      expect(config.params.status).toBeUndefined();
+      expect(config.params.type).toBeUndefined();
     });
 
     it("defends against null data and missing meta (synthesizes meta)", async () => {
@@ -91,5 +105,10 @@ describe("vendorService", () => {
       expect(mockedApi.patch).toHaveBeenCalledWith(`${BASE}/v1/qualify`, input);
       expect(res).toEqual({ id: "v1" });
     });
+  });
+
+  it("a failed request rejects with the client's error, not a silent result", async () => {
+    mockedApi.get.mockRejectedValueOnce(new Error("Vendor not found"));
+    await expect(vendorService.getById("v1")).rejects.toThrow("Vendor not found");
   });
 });

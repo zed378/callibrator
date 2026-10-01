@@ -40,18 +40,36 @@ jest.mock("../../models", () => {
     User: {},
     Users: {},
     AuditLog: {
-      findAndCountAll: jest.fn(async (options) => {
+      findAll: jest.fn(async (options) => {
         // What the global beforeFind hook does to this query.
         applyTenantWhere(options, { rawAttributes: { tenantId: {} } });
-        const rows = mockRows.filter((r) => matches(r, options.where));
-        return {
-          count: rows.length,
-          rows: rows.map((r) => ({ toJSON: () => ({ ...r }) })),
-        };
+        // P8-04 (ADR-096): the default date window; these rows carry no date.
+        const { createdAt: _window, ...where } = options.where;
+        return mockRows.filter((r) => matches(r, where)).map((r) => ({ toJSON: () => ({ ...r }) }));
       }),
     },
+    sequelize: {},
   };
 });
+
+// P8-04 (ADR-096): the list's bounded count is raw SQL through utils/sql.util,
+// with the tenant BOUND as $1 (the hooks do not reach it). The double answers
+// it from the same rows, by the bound values: $1 tenant, $2 user, $3 actor
+// type, $4 action, $5 resource type.
+jest.mock("../../utils/sql.util", () => ({
+  sql: jest.fn(async (_db, _text, bind) => {
+    const [tenantId, userId, actorType, action, resourceType] = bind;
+    const n = mockRows.filter(
+      (r) =>
+        r.tenantId === tenantId &&
+        (userId === null || r.userId === userId) &&
+        (actorType === null || r.actorType === actorType) &&
+        (action === null || r.action === action) &&
+        (resourceType === null || r.resourceType === resourceType),
+    ).length;
+    return [{ n }];
+  }),
+}));
 
 jest.mock("../../services/roles.service", () => ({ getRolePermissionsMatrix: jest.fn() }));
 jest.mock("../../services/userPermission.service", () => ({
@@ -189,7 +207,7 @@ describe("A-125 — the platform audit trail", () => {
     expect(own.status).toBe(200);
     expect(ids(own)).toEqual(["a-1", "a-2"]);
     // The refused request never reached the table.
-    expect(AuditLog.findAndCountAll).toHaveBeenCalledTimes(1);
+    expect(AuditLog.findAll).toHaveBeenCalledTimes(1);
   });
 
   it("naming the PLATFORM tenant in the query is a 404 at the gate, like any foreign tenant", async () => {
@@ -198,7 +216,7 @@ describe("A-125 — the platform audit trail", () => {
     const res = await http({ tenantId: PLATFORM_TENANT_ID });
 
     expect(res.status).toBe(404);
-    expect(AuditLog.findAndCountAll).not.toHaveBeenCalled();
+    expect(AuditLog.findAll).not.toHaveBeenCalled();
   });
 
   it("even if asked for PLATFORM's rows, the tenant hooks give a hospital principal only its own", async () => {
@@ -212,6 +230,8 @@ describe("A-125 — the platform audit trail", () => {
     );
 
     expect(result.data.rows.map((r) => r.id).sort()).toEqual(["a-1", "a-2"]);
+    // P8-04: the raw count binds the tenant the hook forces, not the one asked for.
+    expect(result.data.meta.total).toBe(2);
   });
 
   it("a super admin reads the platform trail with scope=platform — and only it", async () => {
@@ -266,6 +286,6 @@ describe("A-124 — the audit API returns the actor", () => {
     const res = await http({ actorType: "robot" });
 
     expect(res.status).toBe(400);
-    expect(AuditLog.findAndCountAll).not.toHaveBeenCalled();
+    expect(AuditLog.findAll).not.toHaveBeenCalled();
   });
 });

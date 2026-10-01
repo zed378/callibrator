@@ -4,13 +4,16 @@
 # key, which pnpm does not read — the workspace was silently not configured.
 # pnpm expects `packages:` at the top level.
 #
-# `packages/*` is deliberately absent: there is no shared package, because a
-# CommonJS JavaScript backend (ADR-030) and a TypeScript frontend share no
-# code. Add the glob back when there is something to put in it.
+# npm is the package manager (ADR-044); this file is not what installs the
+# tree. It is kept only until BACKLOG G-09 decides its fate, and it must at least
+# agree with package.json's `workspaces`, so it lists the same three globs.
+# `packages/*` was absent while nothing matched it; since P9-22 (ADR-097) it
+# holds `packages/contracts`, the schemas both ends share.
 
 packages:
   - "backend"
   - "frontend"
+  - "packages/*"
 allowBuilds:
   '@parcel/watcher': set this to true or false
   '@scarf/scarf': set this to true or false

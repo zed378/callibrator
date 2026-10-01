@@ -3,13 +3,13 @@
 
 import React from "react";
 import DashboardLayout from "@/components/layouts/DashboardLayout";
-import { Warehouse } from "@/types";
 import {
   Button,
   Input,
   Card,
   CardContent,
   Alert,
+  TableSkeleton,
 } from "@/components/ui";
 import { Plus, Warehouse as WarehouseIcon } from "lucide-react";
 import { useWarehouse } from "./hooks/useWarehouse";
@@ -40,6 +40,9 @@ export default function WarehousePage() {
     locationForm,
     setLocationForm,
     hasWriteAccess,
+    warehouseDialogError,
+    locationsDialogError,
+    deleteDialogError,
     handleSearchChange,
     openCreateWarehouse,
     openEditWarehouse,
@@ -92,7 +95,11 @@ export default function WarehousePage() {
 
         {error && <Alert variant="error">{error}</Alert>}
 
-        {warehouseList.length > 0 ? (
+        {/* Three states: loading, failed (the error above), empty. Before, a
+            load in flight and a failed load both read "No Depots Configured". */}
+        {isLoading && warehouseList.length === 0 ? (
+          <TableSkeleton rows={5} cols={4} />
+        ) : warehouseList.length > 0 ? (
           <WarehouseTable
             warehouseList={warehouseList}
             isLoading={isLoading}
@@ -105,13 +112,13 @@ export default function WarehousePage() {
             openEditWarehouse={openEditWarehouse}
             confirmDeleteWarehouse={confirmDeleteWarehouse}
           />
-        ) : (
+        ) : error ? null : (
           <Card>
             <CardContent className="p-16 text-center">
               <WarehouseIcon className="mx-auto h-16 w-16 text-muted-foreground" />
-              <h3 className="text-xl font-semibold text-foreground mt-4">
+              <h2 className="text-xl font-semibold text-foreground mt-4">
                 No Depots Configured
-              </h3>
+              </h2>
 <p className="text-muted-foreground mt-2 max-w-sm mx-auto">
                  Define your facility warehouses, rooms, or vehicles to enable inventory tracking.
                </p>
@@ -137,6 +144,7 @@ export default function WarehousePage() {
           form={warehouseForm}
           setForm={setWarehouseForm}
           onSubmit={handleWarehouseSubmit}
+          error={warehouseDialogError}
         />
 
         <LocationsModal
@@ -152,6 +160,7 @@ export default function WarehousePage() {
           onEditLocationSelect={selectLocationForEdit}
           onDeleteLocationConfirm={confirmDeleteLocation}
           onCancelEditLocation={resetLocationForm}
+          error={locationsDialogError}
         />
 
         <DeleteConfirmModal
@@ -159,6 +168,7 @@ export default function WarehousePage() {
           onClose={() => setIsDeleteConfirmOpen(false)}
           onConfirm={handleDeleteConfirm}
           type={itemToDelete?.type || ""}
+          error={deleteDialogError}
         />
       </div>
     </DashboardLayout>

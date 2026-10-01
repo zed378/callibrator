@@ -1,33 +1,41 @@
 // src/app/dashboard/tenant-hierarchy/page.tsx
-"use client";
+'use client';
 
-import { deferEffect } from "@/lib/deferEffect";
-import React, { useCallback, useEffect, useState } from "react";
-import DashboardLayout from "@/components/layouts/DashboardLayout";
+import { deferEffect } from '@/lib/deferEffect';
+import React, { useCallback, useEffect, useState } from 'react';
+import DashboardLayout from '@/components/layouts/DashboardLayout';
 import {
   Alert,
   Badge,
   Button,
   Card,
   CardContent,
+  ConfirmDialog,
   Dialog,
   FormField,
   Input,
   Select,
   Table,
-} from "@/components/ui";
-import { Building2, CornerDownRight, Plus, Unlink } from "lucide-react";
+} from '@/components/ui';
+import { Building2, CornerDownRight, Plus, Unlink } from 'lucide-react';
 import {
   tenantHierarchyService,
   type CrossTenantRoleAssignment,
   type TenantTree,
-} from "@/api/services/tenantHierarchy.service";
-import { tenantService } from "@/api/services/tenant.service";
-import { useAuthStore } from "@/stores/authStore";
-import { useToastStore } from "@/stores/toastStore";
+} from '@/api/services/tenantHierarchy.service';
+import { tenantService } from '@/api/services/tenant.service';
+import { useAuthStore } from '@/stores/authStore';
+import { useToastStore } from '@/stores/toastStore';
+import { usePermissions } from "@/hooks/usePermissions";
 
-const PLANS = ["free", "professional", "business", "enterprise"];
+const PLANS = ['free', 'professional', 'business', 'enterprise'];
 
+/**
+ * F-19: every write here and GET /cross-tenant-roles are `platformOnly`
+ * (tenantHierarchy.route.js: auth, denyApiKey, superAdminOnly). Only the tree
+ * is open to every signed-in role. Requesting the super-admin-only read in the
+ * same Promise.all as the tree made the whole page fail for everyone else.
+ */
 export default function TenantHierarchyPage() {
   const addToast = useToastStore((s) => s.addToast);
   const user = useAuthStore((s) => s.user);
@@ -40,24 +48,30 @@ export default function TenantHierarchyPage() {
   const [busy, setBusy] = useState<string | null>(null);
 
   const [isAddOpen, setIsAddOpen] = useState(false);
-  const [child, setChild] = useState({ name: "", code: "", plan: "free" });
+  const [child, setChild] = useState({ name: '', code: '', plan: 'free' });
 
   const [isReparentOpen, setIsReparentOpen] = useState(false);
-  const [newParentId, setNewParentId] = useState("");
+  const [newParentId, setNewParentId] = useState('');
 
   // Plain locals, not optional chains in the dep array — the React Compiler
   // cannot preserve memoization across `[user?.id]`.
-  const tenantId = user?.tenantId ?? "";
-  const userId = user?.id ?? "";
+  const tenantId = user?.tenantId ?? '';
+  const userId = user?.id ?? '';
+  // ADR-102: the platform actions (add unit, move, detach, cross-tenant
+  // roles) are superAdminOnly on the API; the flag comes from the effective
+  // permissions, not the role name.
+  const { superAdmin: isPlatformAdmin } = usePermissions();
+
+  const [confirmDetach, setConfirmDetach] = useState(false);
 
   useEffect(() => {
+    // The tenant list only feeds "Move under…", a platform action.
+    if (!isPlatformAdmin) return;
     tenantService
       .getAll(1, 100)
-      .then((res) =>
-        setTenants((res.data ?? []).map((t) => ({ id: t.id, name: t.name }))),
-      )
+      .then((res) => setTenants((res.data ?? []).map((t) => ({ id: t.id, name: t.name }))))
       .catch(() => setTenants([]));
-  }, []);
+  }, [isPlatformAdmin]);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -65,19 +79,20 @@ export default function TenantHierarchyPage() {
     try {
       const [t, roles] = await Promise.all([
         tenantHierarchyService.getTree(),
-        // The backend returns [] unless a userId is supplied.
-        userId
+        // The backend returns [] unless a userId is supplied, and answers
+        // only the platform super admin (F-19): nobody else asks.
+        userId && isPlatformAdmin
           ? tenantHierarchyService.getCrossTenantRoles(userId)
           : Promise.resolve([]),
       ]);
       setTree(t);
       setAssignments(roles);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load hierarchy");
+      setError(err instanceof Error ? err.message : 'Failed to load hierarchy');
     } finally {
       setIsLoading(false);
     }
-  }, [userId]);
+  }, [userId, isPlatformAdmin]);
 
   useEffect(() => deferEffect(load), [load]);
 
@@ -85,13 +100,13 @@ export default function TenantHierarchyPage() {
     setBusy(key);
     try {
       await fn();
-      addToast({ type: "success", title });
+      addToast({ type: 'success', title });
       await load();
       return true;
     } catch (err) {
       addToast({
-        type: "error",
-        title: "Action failed",
+        type: 'error',
+        title: 'Action failed',
         description: err instanceof Error ? err.message : undefined,
       });
       return false;
@@ -102,118 +117,124 @@ export default function TenantHierarchyPage() {
 
   const addChild = async () => {
     if (!child.name.trim() || child.name.trim().length < 2) {
-      addToast({ type: "error", title: "Name must be at least 2 characters" });
+      addToast({ type: 'error', title: 'Name must be at least 2 characters' });
       return;
     }
     if (!tenantId) {
-      addToast({ type: "error", title: "No tenant context" });
+      addToast({ type: 'error', title: 'No tenant context' });
       return;
     }
     const ok = await run(
-      "add",
+      'add',
       () =>
         tenantHierarchyService.addChild(tenantId, {
           name: child.name.trim(),
           code: child.code.trim() || undefined,
           plan: child.plan,
         }),
-      "Child tenant created",
+      'Child tenant created'
     );
     if (ok) {
       setIsAddOpen(false);
-      setChild({ name: "", code: "", plan: "free" });
+      setChild({ name: '', code: '', plan: 'free' });
     }
   };
 
   const reparent = async () => {
     if (!newParentId) {
-      addToast({ type: "error", title: "Pick a new parent" });
+      addToast({ type: 'error', title: 'Pick a new parent' });
       return;
     }
     const ok = await run(
-      "reparent",
+      'reparent',
       () => tenantHierarchyService.updateParent(tenantId, newParentId),
-      "Parent updated",
+      'Parent updated'
     );
     if (ok) {
       setIsReparentOpen(false);
-      setNewParentId("");
+      setNewParentId('');
     }
   };
 
-  const detach = () =>
-    run(
-      "detach",
+  const detach = async () => {
+    setConfirmDetach(false);
+    await run(
+      'detach',
       () => tenantHierarchyService.removeParent(tenantId),
-      "Detached — this tenant is now a root",
+      'Detached — this tenant is now a root'
     );
+  };
 
   const childColumns = [
     {
-      key: "name",
-      header: "Business unit",
+      key: 'name',
+      header: 'Business unit',
       render: (value: unknown, row: Record<string, unknown>) => (
         <div className="flex items-center gap-2">
           <CornerDownRight className="h-4 w-4 text-muted-foreground" />
           <div>
-            <div className="font-medium">{String(value ?? "")}</div>
-            <div className="font-mono text-xs text-muted-foreground">
-              {String(row.code ?? "")}
-            </div>
+            <div className="font-medium">{String(value ?? '')}</div>
+            <div className="font-mono text-xs text-muted-foreground">{String(row.code ?? '')}</div>
           </div>
         </div>
       ),
     },
     {
-      key: "status",
-      header: "Status",
+      key: 'status',
+      header: 'Status',
       render: (value: unknown) => (
-        <Badge
-          variant={
-            String(value).toUpperCase() === "ACTIVE" ? "success" : "warning"
-          }
-          size="sm"
-        >
-          {String(value ?? "—")}
+        <Badge variant={String(value).toUpperCase() === 'ACTIVE' ? 'success' : 'warning'} size="sm">
+          {String(value ?? '—')}
         </Badge>
       ),
     },
     {
-      key: "depth",
-      header: "Depth",
+      key: 'depth',
+      header: 'Depth',
       render: (value: unknown) => (
-        <span className="text-sm text-muted-foreground">
-          level {String(value ?? "—")}
-        </span>
+        <span className="text-sm text-muted-foreground">level {String(value ?? '—')}</span>
       ),
     },
   ];
 
+  // GET /tenant-hierarchy/cross-tenant-roles answers rows of
+  // { tenantId, tenantName, tenantCode, role: { id, name, level } }
+  // (tenantHierarchy.service getUserRolesAcrossTenants) — not the
+  // roleName / targetTenantId the service type names, which left both cells
+  // "—". The row's own fields are read first; the typed ones stay a fallback.
   const roleColumns = [
     {
-      key: "roleName",
-      header: "Role",
+      key: 'role',
+      header: 'Role',
       render: (value: unknown, row: Record<string, unknown>) => (
         <span className="font-medium">
-          {String(value ?? row.roleId ?? "—")}
+          {String(
+            (value as { name?: string } | null | undefined)?.name ??
+              row.roleName ??
+              row.roleId ??
+              '—'
+          )}
         </span>
       ),
     },
     {
-      key: "targetTenantId",
-      header: "In tenant",
-      render: (value: unknown) => (
-        <span className="text-sm">
-          {tenants.find((t) => t.id === value)?.name ?? String(value ?? "—")}
-        </span>
-      ),
+      key: 'tenantName',
+      header: 'In tenant',
+      render: (value: unknown, row: Record<string, unknown>) => {
+        const id = row.targetTenantId ?? row.tenantId;
+        return (
+          <span className="text-sm">
+            {String(value ?? tenants.find((t) => t.id === id)?.name ?? id ?? '—')}
+          </span>
+        );
+      },
     },
     {
-      key: "expiresAt",
-      header: "Expires",
+      key: 'expiresAt',
+      header: 'Expires',
       render: (value: unknown) => (
         <span className="text-sm text-muted-foreground">
-          {value ? new Date(value as string).toLocaleDateString() : "never"}
+          {value ? new Date(value as string).toLocaleDateString() : 'never'}
         </span>
       ),
     },
@@ -226,20 +247,16 @@ export default function TenantHierarchyPage() {
       <div className="space-y-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">
-              Tenant Hierarchy
-            </h1>
+            <h1 className="text-2xl font-bold tracking-tight">Tenant Hierarchy</h1>
             <p className="text-sm text-muted-foreground">
-              Your organisation&apos;s position in the tenant tree and its
-              direct business units.
+              Your organisation&apos;s position in the tenant tree and its direct business units.
             </p>
           </div>
-          <Button
-            onClick={() => setIsAddOpen(true)}
-            leftIcon={<Plus className="h-4 w-4" />}
-          >
-            Add Business Unit
-          </Button>
+          {isPlatformAdmin && (
+            <Button onClick={() => setIsAddOpen(true)} leftIcon={<Plus className="h-4 w-4" />}>
+              Add Business Unit
+            </Button>
+          )}
         </div>
 
         {error && <Alert variant="error">{error}</Alert>}
@@ -254,82 +271,102 @@ export default function TenantHierarchyPage() {
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h2 className="text-lg font-semibold">
-                      {tree?.tenant?.name ?? "This tenant"}
-                    </h2>
+                    <h2 className="text-lg font-semibold">{tree?.tenant?.name ?? 'This tenant'}</h2>
                     {tree?.isRoot ? (
                       <Badge variant="primary" size="sm">
                         root
                       </Badge>
                     ) : (
                       <Badge variant="secondary" size="sm">
-                        depth {tree?.depth ?? "—"}
+                        depth {tree?.depth ?? '—'}
                       </Badge>
                     )}
                   </div>
                   {tree?.tenant?.code && (
-                    <p className="font-mono text-xs text-muted-foreground">
-                      {tree.tenant.code}
-                    </p>
+                    <p className="font-mono text-xs text-muted-foreground">{tree.tenant.code}</p>
                   )}
                   {tree?.path && (
-                    <p className="mt-1 font-mono text-xs text-muted-foreground">
-                      {tree.path}
-                    </p>
+                    <p className="mt-1 font-mono text-xs text-muted-foreground">{tree.path}</p>
                   )}
                 </div>
               </div>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setIsReparentOpen(true)}
-                >
-                  Move under…
-                </Button>
-                {!tree?.isRoot && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    isLoading={busy === "detach"}
-                    onClick={detach}
-                    leftIcon={<Unlink className="h-4 w-4" />}
-                  >
-                    Detach
+              {isPlatformAdmin && (
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setIsReparentOpen(true)}>
+                    Move under…
                   </Button>
-                )}
-              </div>
+                  {!tree?.isRoot && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      isLoading={busy === 'detach'}
+                      onClick={() => setConfirmDetach(true)}
+                      leftIcon={<Unlink className="h-4 w-4" />}
+                    >
+                      Detach
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
 
         {/* Children */}
         <div className="space-y-3">
-          <h2 className="text-lg font-semibold">
-            Business units ({children.length})
-          </h2>
+          <h2 className="text-lg font-semibold">Business units ({children.length})</h2>
           <Table
             columns={childColumns}
             data={children as unknown as Record<string, unknown>[]}
             isLoading={isLoading}
-            emptyMessage="No business units under this tenant."
+            emptyMessage={
+              error ? 'Business units could not be loaded.' : 'No business units under this tenant.'
+            }
           />
         </div>
 
-        {/* Cross-tenant roles */}
-        <div className="space-y-3">
-          <h2 className="text-lg font-semibold">Your cross-tenant roles</h2>
-          <Table
-            columns={roleColumns}
-            data={assignments as unknown as Record<string, unknown>[]}
-            isLoading={isLoading}
-            emptyMessage="You hold no roles in other tenants."
-          />
+        {/* Cross-tenant roles — read by the platform super admin only (F-19). */}
+        {isPlatformAdmin && (
+          <div className="space-y-3">
+            <h2 className="text-lg font-semibold">Your cross-tenant roles</h2>
+            <Table
+              columns={roleColumns}
+              data={assignments as unknown as Record<string, unknown>[]}
+              isLoading={isLoading}
+              emptyMessage={
+                error
+                  ? 'Cross-tenant roles could not be loaded.'
+                  : 'You hold no roles in other tenants.'
+              }
+            />
+            <Alert variant="info">
+              Cross-tenant roles are read-only here — the API has no endpoint to assign or revoke
+              them.
+            </Alert>
+          </div>
+        )}
+
+        {!isPlatformAdmin && (
           <Alert variant="info">
-            Cross-tenant roles are read-only here — the API has no endpoint to
-            assign or revoke them.
+            Only the platform administrator can add business units, move or detach a tenant, or
+            review cross-tenant roles.
           </Alert>
-        </div>
+        )}
+
+        <ConfirmDialog
+          isOpen={confirmDetach}
+          title="Detach this tenant?"
+          description={
+            <>
+              <span className="font-medium">{tree?.tenant?.name ?? 'This tenant'}</span> stops
+              rolling up to its parent organisation and becomes a root. The parent loses its view of
+              this tenant&apos;s data until it is moved back under it.
+            </>
+          }
+          confirmLabel="Detach"
+          onConfirm={() => void detach()}
+          onCancel={() => setConfirmDetach(false)}
+        />
 
         {/* Add child */}
         <Dialog
@@ -340,8 +377,7 @@ export default function TenantHierarchyPage() {
         >
           <div className="p-6 space-y-4">
             <Alert variant="info">
-              Creates a new child tenant beneath this one. It gets its own
-              users, devices and data.
+              Creates a new child tenant beneath this one. It gets its own users, devices and data.
             </Alert>
             <FormField label="Name" required helperText="At least 2 characters.">
               <Input
@@ -350,10 +386,7 @@ export default function TenantHierarchyPage() {
                 placeholder="e.g. North Wing Clinic"
               />
             </FormField>
-            <FormField
-              label="Code"
-              helperText="Optional — generated if left blank."
-            >
+            <FormField label="Code" helperText="Optional — generated if left blank.">
               <Input
                 value={child.code}
                 onChange={(e) => setChild({ ...child, code: e.target.value })}
@@ -372,7 +405,7 @@ export default function TenantHierarchyPage() {
               <Button variant="outline" onClick={() => setIsAddOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={addChild} isLoading={busy === "add"}>
+              <Button onClick={addChild} isLoading={busy === 'add'}>
                 Create
               </Button>
             </div>
@@ -388,8 +421,8 @@ export default function TenantHierarchyPage() {
         >
           <div className="p-6 space-y-4">
             <Alert variant="warning">
-              Moving a tenant changes which organisation it rolls up to, and
-              can change who can see its data.
+              Moving a tenant changes which organisation it rolls up to, and can change who can see
+              its data.
             </Alert>
             <FormField label="New parent" required>
               <Select
@@ -405,7 +438,7 @@ export default function TenantHierarchyPage() {
               <Button variant="outline" onClick={() => setIsReparentOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={reparent} isLoading={busy === "reparent"}>
+              <Button onClick={reparent} isLoading={busy === 'reparent'}>
                 Move
               </Button>
             </div>

@@ -17,9 +17,10 @@
  *      0090 alone, adds both columns NULL, keeps the row; verification passes.
  *   3. RE-RUN — nothing pending, nothing changes. DOWN — both columns go and
  *      verification fails loudly; UP again restores them.
- *   4. The service on the real schema: a rotation stores the previous secret
- *      as an envelope, sets its expiry, and writes a named-actor audit row in
- *      the same transaction; a url change clears the previous secret.
+ *   4. The service on the real schema, AS callibrator_app (A-283; 1–3 are
+ *      owner DDL): a rotation stores the previous secret as an envelope, sets
+ *      its expiry, and writes a named-actor audit row in the same
+ *      transaction; a url change clears the previous secret.
  *
  * OPT-IN — an EMPTY scratch database the connecting role owns (it is rebuilt
  * with db.sync({ force: true })), whose name contains "scratch" or ends "_p6":
@@ -36,6 +37,7 @@ const HOOK = "a6130000-0000-4000-8000-0000000000f1";
 const NAME = "0090-webhook-secret-rotation-overlap.js";
 const COLUMNS = ["previous_secret", "previous_secret_expires_at"];
 const logger = { info: () => {}, warn: () => {}, error: () => {} };
+const { enterAppRole, APP_ROLE } = require("../fixtures/liveBoot");
 
 live("P6-13 — migration 0090 and webhook rotation on live PostgreSQL", () => {
   let db;
@@ -144,6 +146,11 @@ live("P6-13 — migration 0090 and webhook rotation on live PostgreSQL", () => {
     await m0090.up({ context: qi });
     expect(await columnsOf()).toEqual(EXPECTED);
 
+    // `down({ to: NAME })` reverts every migration from the newest back to
+    // 0090 inclusive — 0090 is no longer the last one — and `up` re-applies
+    // exactly those (A-283, 2026-09-30: this said [NAME] while 0090 was last).
+    const fromNameOn = (await migrator.executed()).map((m) => m.name).filter((n) => n >= NAME);
+    expect(fromNameOn[0]).toBe(NAME);
     await migrator.down({ to: NAME });
     expect(await columnsOf()).toEqual([]);
     const afterDown = await verifySchema(db);
@@ -151,10 +158,20 @@ live("P6-13 — migration 0090 and webhook rotation on live PostgreSQL", () => {
     // down() twice is a no-op too.
     await m0090.down({ context: qi });
 
-    expect((await migrator.up()).map((m) => m.name)).toEqual([NAME]);
+    expect((await migrator.up()).map((m) => m.name)).toEqual(fromNameOn);
     expect(await columnsOf()).toEqual(EXPECTED);
     expect((await verifySchema(db)).problems).toEqual([]);
   }, 120000);
+
+  // A-283: the migration tests above need the owner (DDL). The service tests
+  // below are the application's path, so they run as callibrator_app — as the
+  // owner they would pass whether the role may UPDATE webhooks or INSERT an
+  // audit row or not (CLAUDE.md § Evidence).
+  it("from here on, every query runs as callibrator_app, not the owner", async () => {
+    await enterAppRole(db);
+    const [[who]] = await db.query("SELECT current_user AS u, (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) AS s");
+    expect(who).toEqual({ u: APP_ROLE, s: false });
+  });
 
   it("a rotation on the real schema: previous secret kept as an envelope, expiry set, named-actor audit row in the same transaction", async () => {
     const actor = { userId, ipAddress: "127.0.0.1", userAgent: "p613-live" };

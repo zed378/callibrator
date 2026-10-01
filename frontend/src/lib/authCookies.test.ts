@@ -38,6 +38,8 @@ describe("authCookies", () => {
       "auth_token",
       "auth_session",
       "auth_refresh",
+      // F-05 live run: the page-visible "renewable" marker (path /).
+      "auth_renewable",
       "auth_logged_in",
     ]);
   });
@@ -47,7 +49,7 @@ describe("authCookies", () => {
     clearSessionCookies(j);
     expect(j.delete).toHaveBeenCalledWith({ name: "auth_refresh", path: "/api/v1/auth/refresh" });
     expect(j.delete.mock.calls.map((c) => c[0])).toEqual(
-      expect.arrayContaining(["auth_token", "auth_session", "auth_logged_in", "x_tenant_id", "impersonating"]),
+      expect.arrayContaining(["auth_token", "auth_session", "auth_logged_in", "auth_renewable", "x_tenant_id", "impersonating"]),
     );
   });
 });

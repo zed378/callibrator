@@ -14,6 +14,8 @@ import { render, screen } from "@testing-library/react";
 
 jest.mock("next/navigation", () => ({
   useParams: () => ({ certificateNumber: "CERT-011" }),
+  // A-293: the QR code\'s verification token (`t`); none here.
+  useSearchParams: () => new URLSearchParams(),
 }));
 jest.mock("next/link", () => {
   return function Link({ children, href }: { children: React.ReactNode; href: string }) {
@@ -26,7 +28,8 @@ jest.mock("@/components/motion/AuroraBackground", () => {
   };
 });
 
-import CertificateVerifyPage from "../page";
+// P10-08: the client content moved out of the (now server) page.
+import CertificateVerifyPage from "../VerifyContent";
 
 const DOCUMENT_PATH =
   "/api/v1/certificates/verify/CERT-011/document?token=1790000000.abcdef";

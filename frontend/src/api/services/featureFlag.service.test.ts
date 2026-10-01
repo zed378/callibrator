@@ -36,6 +36,18 @@ describe("featureFlagService", () => {
       expect(res).toEqual({ audit: true });
     });
 
+    it("reduces the backend's per-flag state objects to their `enabled`", async () => {
+      // featureFlag.service.ts getTenantFlags — the real answer.
+      mockedApi.get.mockResolvedValueOnce(
+        envelope({
+          enable_mfa: { enabled: false, category: "platform", description: "MFA", defaultValue: false, tenantOverride: false },
+          enable_iot: { enabled: true, category: "calibration", description: "IoT", defaultValue: true, tenantOverride: true },
+        }),
+      );
+
+      await expect(featureFlagService.getTenantFlags("t1")).resolves.toEqual({ enable_mfa: false, enable_iot: true });
+    });
+
     it("passes undefined tenantId through untouched", async () => {
       mockedApi.get.mockResolvedValueOnce(envelope({}));
       await featureFlagService.getTenantFlags();
@@ -46,6 +58,16 @@ describe("featureFlagService", () => {
   });
 
   describe("getDefinitions", () => {
+    it("turns the backend's DEFAULT_FLAGS object into definition rows", async () => {
+      mockedApi.get.mockResolvedValueOnce(
+        envelope({ enable_mfa: { category: "platform", defaultValue: false, description: "Require MFA" } }),
+      );
+
+      await expect(featureFlagService.getDefinitions()).resolves.toEqual([
+        { key: "enable_mfa", category: "platform", defaultValue: false, description: "Require MFA" },
+      ]);
+    });
+
     it("GETs the definitions catalog and returns data", async () => {
       mockedApi.get.mockResolvedValueOnce(
         envelope([{ key: "audit", category: "core", defaultValue: true }]),

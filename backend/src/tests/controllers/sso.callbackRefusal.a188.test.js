@@ -18,6 +18,8 @@
  * audit writer.
  */
 
+// A-288 (ADR-100): the network policy has its own suites (signInPolicy.*.a288); here it permits.
+jest.mock("../../services/signInPolicy.service", () => ({ assertSignInPermitted: jest.fn(async () => undefined) }));
 jest.mock("../../models", () => ({
   Tenants: { findOne: jest.fn() },
   Users: { findOne: jest.fn(), findByPk: jest.fn(), create: jest.fn(), update: jest.fn() },

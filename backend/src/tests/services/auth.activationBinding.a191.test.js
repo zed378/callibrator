@@ -16,28 +16,17 @@ const { createLedger } = require("../fixtures/auditLedger");
 
 const mockRef = { ledger: null };
 
-// registerUser opens an UNMANAGED transaction (no callback) — a stand-in with
-// the shape it uses; every managed one goes through the ledger.
-jest.mock("../../config", () => {
-  const unmanaged = () => ({
-    LOCK: { UPDATE: "UPDATE" },
-    finished: undefined,
-    commit() {
-      this.finished = "commit";
-    },
-    rollback() {
-      this.finished = "rollback";
-    },
-  });
-  return {
-    db: {
-      transaction: (...args) =>
-        typeof args[0] === "function"
-          ? mockRef.ledger.transaction(...args)
-          : Promise.resolve(unmanaged()),
-    },
-  };
-});
+// registerUser opens an UNMANAGED transaction (no callback). Since P6-11 its
+// audit row is written in it, so it is a ledger transaction too, given the
+// LOCK constants registerUser reads; every managed one goes through the ledger.
+jest.mock("../../config", () => ({
+  db: {
+    transaction: (...args) =>
+      typeof args[0] === "function"
+        ? mockRef.ledger.transaction(...args)
+        : mockRef.ledger.transaction().then((tx) => Object.assign(tx, { LOCK: { UPDATE: "UPDATE" } })),
+  },
+}));
 
 jest.mock("../../models", () => ({
   Users: { findOne: jest.fn(), findByPk: jest.fn(), create: jest.fn() },
@@ -150,6 +139,10 @@ describe("A-191: the activation token names the address it was mailed to", () =>
   });
 });
 
+/** The audit rows activation wrote (registration writes its own, P6-11). */
+const activationAuditRows = () =>
+  mockRef.ledger.auditRows().filter((r) => r.changes.operation !== "USER_SELF_REGISTER");
+
 describe("A-191: activation verifies only the address the link was sent to", () => {
   it("the registration link verifies the account while the address is unchanged — audited in the same transaction", async () => {
     const token = await tokenFromRegistration();
@@ -158,7 +151,7 @@ describe("A-191: activation verifies only the address the link was sent to", () 
     expect(await activate(token)).toEqual({ status: 200, message: "Account activated successfully" });
 
     expect(verifiedWrites()).toHaveLength(1);
-    const rows = mockRef.ledger.auditRows();
+    const rows = activationAuditRows();
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       tenantId: TENANT_ID,
@@ -179,7 +172,7 @@ describe("A-191: activation verifies only the address the link was sent to", () 
       message: "This activation link was sent to an address this account no longer uses",
     });
     expect(verifiedWrites()).toEqual([]);
-    expect(mockRef.ledger.auditRows()).toEqual([]);
+    expect(activationAuditRows()).toEqual([]);
   });
 
   it("the rectification's own link (bound to the new address) verifies it", async () => {
@@ -212,10 +205,65 @@ describe("A-191: activation verifies only the address the link was sent to", () 
 
     expect((await activate(token)).status).toBe(200);
     expect(verifiedWrites()).toHaveLength(1);
-    expect(mockRef.ledger.auditRows()).toEqual([]);
+    expect(activationAuditRows()).toEqual([]);
     expect(logger.error).toHaveBeenCalledWith(
       "Credential change not audited: the user has no tenant",
       { userId: USER_ID, operation: "EMAIL_VERIFIED" },
     );
+  });
+});
+
+// P6-11 (2026-09-30) — a self-registration commits with its audit row.
+describe("P6-11 — registration is audited in its transaction", () => {
+  it("writes one CREATE row naming the new account, under PLATFORM when it has no tenant, without its email or username", async () => {
+    await tokenFromRegistration();
+    const rows = mockRef.ledger.auditRows();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      tenantId: "00000000-0000-4000-8000-000000000001",
+      userId: USER_ID,
+      actorType: "user",
+      action: "CREATE",
+      resourceType: "User",
+      resourceId: USER_ID,
+      changes: { operation: "USER_SELF_REGISTER", isEmailVerified: false },
+    });
+    expect(JSON.stringify(rows[0].changes)).not.toMatch(/ada|lovelace/i);
+  });
+
+  it("a taken identity writes no row (the same answer, nothing written)", async () => {
+    Users.findOne.mockResolvedValue({ id: "someone-else" });
+    await authService.registerUser(
+      { firstName: "Ada", lastName: "Lovelace", username: "adalovelace", email: REGISTERED, password: "Str0ngPassw0rd" },
+      "https://app.hospital.test",
+      { ipAddress: "10.0.0.1", userAgent: "jest" },
+    );
+    expect(mockRef.ledger.auditRows()).toEqual([]);
+  });
+
+  it("records the request's address and the account's tenant when it has one", async () => {
+    Users.findOne.mockResolvedValue(null);
+    Users.create.mockResolvedValue({ id: USER_ID, tenantId: TENANT_ID });
+    await authService.registerUser(
+      { firstName: "Ada", lastName: "Lovelace", username: "adalovelace2", email: "ada2@hospital.example.com", password: "Str0ngPassw0rd" },
+      "https://app.hospital.test",
+      { ipAddress: "10.0.0.1", userAgent: "jest" },
+    );
+    expect(mockRef.ledger.auditRows()[0]).toMatchObject({ tenantId: TENANT_ID, ipAddress: "10.0.0.1", userAgent: "jest" });
+  });
+
+  it("a failed audit insert rolls the registration back and mails nothing", async () => {
+    Users.findOne.mockResolvedValue(null);
+    Users.create.mockResolvedValue({ id: USER_ID });
+    const auditService = require("../../services/audit.service");
+    const spy = jest.spyOn(auditService, "logAction").mockRejectedValueOnce(new Error("audit insert failed"));
+    await expect(
+      authService.registerUser(
+        { firstName: "Ada", lastName: "Lovelace", username: "adalovelace3", email: "ada3@hospital.example.com", password: "Str0ngPassw0rd" },
+        "https://app.hospital.test",
+      ),
+    ).rejects.toThrow("audit insert failed");
+    expect(queueActivationEmail).not.toHaveBeenCalled();
+    spy.mockRestore();
   });
 });

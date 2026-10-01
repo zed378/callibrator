@@ -44,6 +44,8 @@ That is recorded as PR-4 in [`../docs/PLAN/18-RISK-REGISTER.md`](../docs/PLAN/18
 | [`DOCS-GAP-2026-09.md`](./DOCS-GAP-2026-09.md) | 📄 **17 documentation tasks**, benchmarked against a reference repository. Broken links, under-served categories, stale documents |
 | [`RUNBOOK-POSTGRES-18-UPGRADE.md`](./RUNBOOK-POSTGRES-18-UPGRADE.md) | 🚧 Moving the deployment from 17.11 to 18 (ADR-041). **The repository targets 18; the VM does not** |
 | [`PHASE-9-TYPESCRIPT-MIGRATION.md`](./PHASE-9-TYPESCRIPT-MIGRATION.md) | 🔴 Backend JavaScript → strict TypeScript (ADR-038). Not started; blocked on audit wave 0 |
+| [`PHASE-10-LANDING-AUTH-REVAMP.md`](./PHASE-10-LANDING-AUTH-REVAMP.md) | 🟡 Landing, sign-in, request access, forgot/reset, passkey sign-in and verification revamp (ADR-098; spec `docs/UI-UX/20-LANDING-AUTH-REVAMP.md`). **Runs now, in parallel with finishing Phase 9**: frontend-focused, its backend pieces written in TypeScript. P10-00 (remove the fabricated proof from the live landing) goes first |
+| [`PHASE-11-DASHBOARD-REVAMP.md`](./PHASE-11-DASHBOARD-REVAMP.md) | ⏸ Admin dashboard revamp — **on hold until the owner instructs**. Placeholder cards only; research in `docs/UI-UX/research/01–03` |
 | **Upstream PHP Feature Adoption** | ⏳ Priority task after Phase 9 to adopt and merge upstream features from the original PHP fork |
 | [`PHASE-999-GO-MIGRATION-AND-DUAL-BACKEND.md`](./PHASE-999-GO-MIGRATION-AND-DUAL-BACKEND.md) | ⏳ Dual-backend Go engine porting backlog (ADR-089). 25 planned tasks; MUST NOT start before Phase 9 & Upstream PHP adoption |
 | [`BACKLOG.md`](./BACKLOG.md) | Open questions, specification gaps, deliberate deferrals, unverified claims |

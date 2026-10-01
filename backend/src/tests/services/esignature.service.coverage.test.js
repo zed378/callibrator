@@ -132,9 +132,24 @@ describe("eSignature.service (facade guard/error branches)", () => {
     // carried `keyId` only, and DELETE /key-pairs/:keyPairId takes the row id.
     it("returns the stored row's id beside the keyId, never the private key", async () => {
       const TenantKey = { create: jest.fn(async (attrs) => ({ id: "tk-row-1", ...attrs })) };
-      const svc = loadService({ models: { TenantKey } });
+      const AuditLog = { create: jest.fn(async (v) => v) };
+      const svc = loadService({ models: { TenantKey, AuditLog } });
 
-      const result = await svc.generateKeyPair("tenant-1");
+      const result = await svc.generateKeyPair("tenant-1", { userId: "user-1", ipAddress: "10.0.0.1", userAgent: "UA" });
+
+      // A-278 (ADR-094): one CREATE row naming the key, never its material.
+      expect(AuditLog.create).toHaveBeenCalledTimes(1);
+      const row = AuditLog.create.mock.calls[0][0];
+      expect(row).toMatchObject({
+        tenantId: "tenant-1",
+        userId: "user-1",
+        action: "CREATE",
+        resourceType: "TenantKey",
+        resourceId: "tk-row-1",
+        changes: { operation: "ESIGNATURE_KEY_CREATE", keyId: result.keyId, keyType: "esignature" },
+      });
+      expect(AuditLog.create.mock.calls[0][1]).toEqual({ transaction: "TX" });
+      expect(JSON.stringify(row)).not.toContain("PRIVATE KEY");
 
       expect(result.id).toBe("tk-row-1");
       expect(result.keyId).toBe(TenantKey.create.mock.calls[0][0].keyId);

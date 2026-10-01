@@ -22,6 +22,7 @@ import {
 import { tenantService } from "@/api/services/tenant.service";
 import { useAuthStore } from "@/stores/authStore";
 import { useToastStore } from "@/stores/toastStore";
+import { usePermissions } from "@/hooks/usePermissions";
 
 interface FlagRow {
   key: string;
@@ -33,6 +34,9 @@ interface FlagRow {
 }
 
 export default function FeatureFlagsPage() {
+  // ADR-102: every write here is superAdminOnly on the API (featureFlags.route.js); a tenant
+  // role holding the menu's read sees the page without its controls.
+  const { superAdmin } = usePermissions();
   const addToast = useToastStore((s) => s.addToast);
   const user = useAuthStore((s) => s.user);
 
@@ -255,14 +259,16 @@ export default function FeatureFlagsPage() {
               fall back to the plan default.
             </p>
           </div>
-          <Button
-            variant="outline"
-            onClick={initialize}
-            isLoading={isInitializing}
-            leftIcon={<Sparkles className="h-4 w-4" />}
-          >
-            Initialize Defaults
-          </Button>
+          {superAdmin && (
+            <Button
+              variant="outline"
+              onClick={initialize}
+              isLoading={isInitializing}
+              leftIcon={<Sparkles className="h-4 w-4" />}
+            >
+              Initialize Defaults
+            </Button>
+          )}
         </div>
 
         {error && <Alert variant="error">{error}</Alert>}
@@ -286,10 +292,12 @@ export default function FeatureFlagsPage() {
         </Card>
 
         <Table
-          columns={columns}
+          columns={columns.filter((col) => superAdmin || col.key !== "actions")}
           data={rows as unknown as Record<string, unknown>[]}
           isLoading={isLoading}
-          emptyMessage="No feature flags defined."
+          emptyMessage={
+            error ? "Feature flags could not be loaded." : "No feature flags defined."
+          }
         />
       </div>
     </DashboardLayout>

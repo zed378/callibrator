@@ -7,7 +7,9 @@ interface SsoSpTabProps {
   currentAcsUrl: string;
   defaultSpEntityId: string;
   copiedField: string | null;
-  handleCopy: (text: string, fieldName: string) => void;
+  /** Set when the last clipboard write was refused. */
+  copyError?: string | null;
+  handleCopy: (text: string, fieldName: string) => void | Promise<void>;
 }
 
 export const SsoSpTab: React.FC<SsoSpTabProps> = ({
@@ -15,6 +17,7 @@ export const SsoSpTab: React.FC<SsoSpTabProps> = ({
   currentAcsUrl,
   defaultSpEntityId,
   copiedField,
+  copyError = null,
   handleCopy,
 }) => {
   return (
@@ -23,6 +26,12 @@ export const SsoSpTab: React.FC<SsoSpTabProps> = ({
         <span className="font-semibold text-foreground block mb-1">Service Provider Integration Parameters</span>
         Copy these parameters and paste them in your Identity Provider (e.g. Okta, Azure AD, OneLogin) configuration panel.
       </div>
+
+      {copyError && (
+        <div role="alert" className="p-3 rounded-xl bg-destructive/10 text-destructive text-xs">
+          {copyError}
+        </div>
+      )}
 
       {/* SP Entity ID */}
       <div className="space-y-2">

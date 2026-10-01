@@ -36,9 +36,9 @@ export const RolesDeleteConfirm: React.FC<RolesDeleteConfirmProps> = ({
             <XCircle className="w-6 h-6 text-destructive" />
           </div>
           <div className="mt-4 text-center">
-            <h3 id={titleId} className="text-lg font-medium text-foreground">
+            <h2 id={titleId} className="text-lg font-medium text-foreground">
               Delete Role
-            </h3>
+            </h2>
             <p className="mt-2 text-sm text-muted-foreground">
               Are you sure you want to delete this role? This action cannot be
               undone.

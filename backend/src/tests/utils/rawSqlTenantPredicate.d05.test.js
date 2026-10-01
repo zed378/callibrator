@@ -21,6 +21,12 @@
  *
  * It is a textual check: it proves the predicate is PRESENT, not that it is
  * correct. It is a tripwire, not a proof.
+ *
+ * P9-07 (ADR-087 Amendment 12): it also reads every call of the bind-only helper,
+ * `sql<Row>(runner, text, bind)` (utils/sql.util), taking the statement from its
+ * SECOND argument. For those the rule is stricter: a statement naming a
+ * tenant-scoped table must BIND its tenant predicate (`tenant_id = $n`), because
+ * the helper exists so that values are never interpolated.
  */
 const fs = require("fs");
 const path = require("path");
@@ -40,6 +46,14 @@ const CROSS_TENANT = {
   // with its own tenant id / AAD and discarded) — never a value it returns.
   "utils/kmsVerify.util.js#${table}":
     "boot-time KMS key check over every tenant's envelopes (ADR-078); reads key ids and counts only",
+  // P9-18: the operator's key rotation (npm run keys:rotate, S-08/P6-10). It
+  // pages every row of each envelope table across ALL tenants on purpose; each
+  // UPDATE and re-read binds the row's id AND its tenant (`tenant_id IS NOT
+  // DISTINCT FROM CAST($n AS uuid)`: a user's tenant can be NULL), and the
+  // value is re-encrypted under that tenant as AAD. Reviewed with the move to
+  // sql() (MEMORY/records/2026-09-30-p9-stage-c-leaf-services.md).
+  "services/keyRotation.service.ts#${table}":
+    "operator key rotation across every tenant's envelopes (S-08); each write binds the row's id and tenant",
 };
 
 const tenantScopedTables = () => {
@@ -93,22 +107,58 @@ const sqlAt = (source, index) => {
 
 const TABLE_REF = /\b(?:FROM|UPDATE|INTO|JOIN)\s+"?([a-z_][a-z0-9_]*)"?/gi;
 
+/** P9-07: `sql(` / `sql<Row>(`, then the runner argument; the statement is the next argument. */
+const HELPER_CALL = /\bsql(?:<[^()]*?>)?\(\s*[\w$.]+\s*,/g;
+
+/** Every raw statement in one source text: direct `.query(` calls and helper `sql(` calls. */
+const statementsIn = (source, file) => {
+  const found = [];
+  const re = /\b(?:sequelize|db|connection|bootstrapDb)\.query\(/g;
+  let match;
+  while ((match = re.exec(source))) {
+    found.push({ file, kind: "query", sql: sqlAt(source, match.index + match[0].length) });
+  }
+  // The helper module DEFINES sql() (its doc comment shows a call shape); it calls nothing.
+  const helper = new RegExp(HELPER_CALL.source, "g");
+  while (file !== "utils/sql.util.ts" && (match = helper.exec(source))) {
+    found.push({ file, kind: "helper", sql: sqlAt(source, match.index + match[0].length) });
+  }
+  return found;
+};
+
 const statements = () => {
   const found = [];
   for (const file of sourceFiles()) {
-    const source = fs.readFileSync(file, "utf8");
-    const re = /\b(?:sequelize|db|connection|bootstrapDb)\.query\(/g;
-    let match;
-    while ((match = re.exec(source))) {
-      found.push({
-        // POSIX separators, so the CROSS_TENANT keys and the assertions
-        // below mean the same thing on Windows as on Linux.
-        file: path.relative(SRC, file).split(path.sep).join("/"),
-        sql: sqlAt(source, match.index + match[0].length),
-      });
-    }
+    // POSIX separators, so the CROSS_TENANT keys and the assertions
+    // below mean the same thing on Windows as on Linux.
+    found.push(...statementsIn(fs.readFileSync(file, "utf8"), path.relative(SRC, file).split(path.sep).join("/")));
   }
   return found;
+};
+
+/** A tenant predicate BOUND as a parameter (the helper's rule). */
+const BOUND_TENANT = /(?:tenant_id|"tenantId")\s*=\s*\$\d+/;
+
+/** Offending statements (shared by the real scan and the bite checks). */
+const offendersOf = (list, scoped) => {
+  const offenders = [];
+  for (const { file, kind, sql } of list) {
+    const tables = [...sql.matchAll(TABLE_REF)].map((m) => m[1].toLowerCase());
+    const dynamic = /(?:FROM|UPDATE|INTO|JOIN)\s+\$\{/i.test(sql);
+    const touched = tables.filter((t) => scoped.has(t));
+    if (!dynamic && touched.length === 0) {
+      continue;
+    }
+    const ok = kind === "helper" ? BOUND_TENANT.test(sql) : /tenant_id|"tenantId"/.test(sql);
+    if (ok) {
+      continue;
+    }
+    const unexplained = (dynamic ? ["${table}"] : touched).filter((t) => !CROSS_TENANT[`${file}#${t}`]);
+    if (unexplained.length) {
+      offenders.push(`${file}: ${unexplained.join(", ")}`);
+    }
+  }
+  return offenders;
 };
 
 describe("D-05 — raw SQL naming a tenant-scoped table carries a tenant predicate", () => {
@@ -126,24 +176,30 @@ describe("D-05 — raw SQL naming a tenant-scoped table carries a tenant predica
     expect(all.filter((s) => s.sql === null)).toEqual([]);
   });
 
-  it("every statement that names a tenant-scoped table, or interpolates one, mentions tenant_id", () => {
-    const offenders = [];
-    for (const { file, sql } of all) {
-      const tables = [...sql.matchAll(TABLE_REF)].map((m) => m[1].toLowerCase());
-      const dynamic = /(?:FROM|UPDATE|INTO|JOIN)\s+\$\{/i.test(sql);
-      const touched = tables.filter((t) => scoped.has(t));
-      if (!dynamic && touched.length === 0) {
-        continue;
-      }
-      if (/tenant_id|"tenantId"/.test(sql)) {
-        continue;
-      }
-      const unexplained = (dynamic ? ["${table}"] : touched).filter((t) => !CROSS_TENANT[`${file}#${t}`]);
-      if (unexplained.length) {
-        offenders.push(`${file}: ${unexplained.join(", ")}`);
-      }
-    }
-    expect(offenders).toEqual([]);
+  it("every statement that names a tenant-scoped table, or interpolates one, mentions tenant_id (a helper call: BINDS it)", () => {
+    expect(offendersOf(all, scoped)).toEqual([]);
+  });
+
+  it("P9-07: the scan reads the helper calls (sql(...)) in the converted utils", () => {
+    const helper = all.filter((s) => s.kind === "helper");
+    expect(helper.length).toBeGreaterThanOrEqual(7);
+    expect(helper.map((s) => s.file)).toEqual(
+      expect.arrayContaining(["utils/authorizationWiring.util.ts", "utils/dbRole.util.ts", "utils/schemaVerify.util.ts"]),
+    );
+    expect(helper.filter((s) => s.sql === null)).toEqual([]);
+  });
+
+  it("P9-07: the helper rule bites — a tenant-scoped statement must BIND its tenant predicate", () => {
+    const source = [
+      "await sql<Row>(sequelize, `SELECT * FROM usage_alerts WHERE tenant_id = $1`, [tenantId]);",
+      "await sql(models.sequelize, `SELECT * FROM usage_alerts WHERE tenant_id = '${tenantId}'`);",
+      "await sql(sequelize, `UPDATE kanban_projects SET card_seq = card_seq + 1 WHERE id = $1 RETURNING card_seq`, [id]);",
+      "await sql(sequelize, `SELECT name FROM roles`);",
+    ].join("\n");
+    const found = statementsIn(source, "synthetic.ts");
+    expect(found.map((s) => s.kind)).toEqual(["helper", "helper", "helper", "helper"]);
+    // interpolated (not bound) and missing predicates are flagged; the bound one and the global table are not
+    expect(offendersOf(found, scoped)).toEqual(["synthetic.ts: usage_alerts", "synthetic.ts: kanban_projects"]);
   });
 
   it("the tripwire fires on the D-05 shape (the pre-fix card_seq statement)", () => {

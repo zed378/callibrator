@@ -8,8 +8,9 @@ describe("reporting.service", () => {
         { key: "value", label: "Value" },
       ];
       const result = toCsv(headers, []);
-      // Empty rows still produces header + newline
-      expect(result).toBe("Name,Value\n");
+      // Empty rows still produces header + a record separator.
+      // A-319: every field quoted (RFC 4180), records end in CRLF (utils/csv.util).
+      expect(result).toBe('"Name","Value"\r\n');
     });
 
     it("should convert headers and rows to CSV", () => {
@@ -22,21 +23,21 @@ describe("reporting.service", () => {
         { name: "Bob", value: 200 },
       ];
       const result = toCsv(headers, rows);
-      expect(result).toBe("Name,Value\nAlice,100\nBob,200");
+      expect(result).toBe('"Name","Value"\r\n"Alice","100"\r\n"Bob","200"');
     });
 
     it("should escape values containing commas", () => {
       const headers = [{ key: "text", label: "Text" }];
       const rows = [{ text: "hello, world" }];
       const result = toCsv(headers, rows);
-      expect(result).toBe('Text\n"hello, world"');
+      expect(result).toBe('"Text"\r\n"hello, world"');
     });
 
     it("should escape values containing double quotes", () => {
       const headers = [{ key: "text", label: "Text" }];
       const rows = [{ text: 'say "hi"' }];
       const result = toCsv(headers, rows);
-      expect(result).toBe('Text\n"say ""hi"""');
+      expect(result).toBe('"Text"\r\n"say ""hi"""');
     });
 
     it("should handle null and undefined values", () => {
@@ -46,7 +47,7 @@ describe("reporting.service", () => {
       ];
       const rows = [{ name: "Test", value: null }];
       const result = toCsv(headers, rows);
-      expect(result).toBe("Name,Value\nTest,");
+      expect(result).toBe('"Name","Value"\r\n"Test",""');
     });
 
     it("should handle rows with missing keys", () => {
@@ -56,25 +57,25 @@ describe("reporting.service", () => {
       ];
       const rows = [{ name: "Test" }];
       const result = toCsv(headers, rows);
-      expect(result).toBe("Name,Value\nTest,");
+      expect(result).toBe('"Name","Value"\r\n"Test",""');
     });
 
     it("should handle newlines in values", () => {
       const headers = [{ key: "text", label: "Text" }];
       const rows = [{ text: "line1\nline2" }];
       const result = toCsv(headers, rows);
-      expect(result).toBe('Text\n"line1\nline2"');
+      expect(result).toBe('"Text"\r\n"line1\nline2"');
     });
 
     it("should handle empty headers array", () => {
       const result = toCsv([], [{ foo: "bar" }]);
-      expect(result).toBe("\n");
+      expect(result).toBe("\r\n");
     });
 
     it("should handle empty rows array with single header", () => {
       const headers = [{ key: "name", label: "Name" }];
       const result = toCsv(headers, []);
-      expect(result).toBe("Name\n");
+      expect(result).toBe('"Name"\r\n');
     });
 
     it("should handle multiple columns with data", () => {
@@ -89,7 +90,7 @@ describe("reporting.service", () => {
       ];
       const result = toCsv(headers, rows);
       expect(result).toBe(
-        "ID,Name,Email\n1,Alice,alice@example.com\n2,Bob,bob@example.com",
+        '"ID","Name","Email"\r\n"1","Alice","alice@example.com"\r\n"2","Bob","bob@example.com"',
       );
     });
 
@@ -97,7 +98,7 @@ describe("reporting.service", () => {
       const headers = [{ key: "text", label: "Text" }];
       const rows = [{ text: "normal text" }];
       const result = toCsv(headers, rows);
-      expect(result).toBe("Text\nnormal text");
+      expect(result).toBe('"Text"\r\n"normal text"');
     });
 
     it("should handle empty string values", () => {
@@ -107,7 +108,7 @@ describe("reporting.service", () => {
       ];
       const rows = [{ name: "", value: "" }];
       const result = toCsv(headers, rows);
-      expect(result).toBe("Name,Value\n,");
+      expect(result).toBe('"Name","Value"\r\n"",""');
     });
   });
 });

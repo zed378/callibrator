@@ -44,6 +44,9 @@ import {
   TicketPlus,
   TicketCheck,
   Sparkles,
+  Inbox,
+  Package,
+  HardDrive,
 } from "lucide-react";
 import { BackendMenuGroup, BackendMenuItem } from "@/stores/menuStore";
 
@@ -109,6 +112,11 @@ export const iconMap: Record<string, React.ReactNode> = {
   TicketCheck: React.createElement(TicketCheck, { className: "w-5 h-5" }),
   // A-118: the AI Assistant entry (seeded menu group `ai-assistant`).
   Sparkles: React.createElement(Sparkles, { className: "w-5 h-5" }),
+  // ADR-102: the seeded `stock` group and `storage` item (seedMenuGroups.util).
+  Package: React.createElement(Package, { className: "w-5 h-5" }),
+  HardDrive: React.createElement(HardDrive, { className: "w-5 h-5" }),
+  // P10-07: the super admin's `access-requests` entry (seedMenuGroups.util, migration 0101).
+  Inbox: React.createElement(Inbox, { className: "w-5 h-5" }),
 };
 
 export const smallIconMap: Record<string, React.ReactNode> = {
@@ -123,6 +131,8 @@ export const smallIconMap: Record<string, React.ReactNode> = {
   Database: React.createElement(Database, { className: "w-4 h-4" }),
   Monitor: React.createElement(Monitor, { className: "w-4 h-4" }),
   Warehouse: React.createElement(Warehouse, { className: "w-4 h-4" }),
+  Package: React.createElement(Package, { className: "w-4 h-4" }),
+  HardDrive: React.createElement(HardDrive, { className: "w-4 h-4" }),
   Bell: React.createElement(Bell, { className: "w-4 h-4" }),
   Truck: React.createElement(Truck, { className: "w-4 h-4" }),
   CreditCard: React.createElement(CreditCard, { className: "w-4 h-4" }),
@@ -154,6 +164,7 @@ export const smallIconMap: Record<string, React.ReactNode> = {
   TicketPlus: React.createElement(TicketPlus, { className: "w-4 h-4" }),
   TicketCheck: React.createElement(TicketCheck, { className: "w-4 h-4" }),
   Sparkles: React.createElement(Sparkles, { className: "w-4 h-4" }),
+  Inbox: React.createElement(Inbox, { className: "w-4 h-4" }),
 };
 
 // Converts a backend menu item (leaf or sub-group category) recursively so any

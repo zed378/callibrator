@@ -18,7 +18,12 @@ import type { TenantId } from "./ids";
 export interface AuthenticatedPrincipal {
   readonly id?: string | null;
   readonly tenantId?: TenantId | null;
-  readonly role?: { readonly name?: string | null } | null;
+  readonly role?: {
+    readonly name?: string | null;
+    /** P9-19: read by rbac.middleware (`role_level || roleLevel || 0`): the raw column or the model attribute. */
+    readonly roleLevel?: number | null;
+    readonly role_level?: number | null;
+  } | null;
   /** An API-key principal (auth.middleware.js), read by utils/controllerWrapper.util. */
   readonly isApiKey?: boolean;
 }
@@ -32,7 +37,12 @@ declare global {
       user?: AuthenticatedPrincipal;
       /** Set by auth.middleware.js (honouring the super admin's override); absent before it runs. */
       tenantId?: TenantId | null;
-      /** Set when a gate authorized an API-key principal (dynamicAccess, allowApiKey); read by controllerWrapper. */
+      /**
+       * Set by auth.middleware.js from the token's `impersonatorId` claim (a string, else null):
+       * the super admin behind an impersonation session (A-82/A-146). Absent before it runs.
+       */
+      impersonatorId?: string | null;
+      /** Set when a gate authorized an API-key principal (dynamicAccess, the SCIM gate — V-05); read by controllerWrapper. */
       apiKeyAuthorized?: boolean;
       /** Set by utils/upload.util: the target folder and the allow-lists multer's fileFilter reads. */
       uploadFolder?: string;
@@ -40,6 +50,12 @@ declare global {
       allowedExtensions?: string[] | undefined;
       /** Set by utils/upload.util's storage: the generated file name. */
       uploadFilename?: string;
+      /**
+       * Set by middlewares/validation.middleware `validate()`: the parsed, stripped
+       * value from the declared source (P9-11). Read it through the middleware's
+       * typed `validated(req, schema)`, never by a cast.
+       */
+      validated?: unknown;
     }
   }
 }

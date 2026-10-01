@@ -1,10 +1,15 @@
 // src/api/services/maintenance.service.ts
 import { api } from "../client";
 import { PaginatedResponse } from "@/types";
+import type {
+  CreateWorkOrderInput,
+  UpdateWorkOrderInput,
+  WorkOrderPriority,
+  WorkOrderStatus,
+  WorkOrderType,
+} from "@callibrator/contracts/maintenance";
 
-export type WorkOrderType = "Preventative" | "Breakdown" | "Repair";
-export type WorkOrderStatus = "Open" | "InProgress" | "Completed" | "Cancelled";
-export type WorkOrderPriority = "Low" | "Medium" | "High" | "Critical";
+export type { WorkOrderPriority, WorkOrderStatus, WorkOrderType };
 
 export interface WorkOrderDevice {
   id: string;
@@ -44,21 +49,15 @@ export interface WorkOrder {
   updatedAt: string;
 }
 
-export interface WorkOrderCreateInput {
-  deviceId: string;
-  title: string;
-  type: WorkOrderType;
-  description?: string;
-  priority?: WorkOrderPriority;
-  status?: WorkOrderStatus;
-  vendorId?: string;
-  assigneeId?: string;
-}
+// P9-22 (ADR-097): the request bodies are the backend validator's own schemas
+// (@callibrator/contracts/maintenance). The hand-written update type extended
+// the create type, so it offered `deviceId`, which the update schema does not
+// declare (the API strips it: a work order cannot move to another device).
+export type WorkOrderCreateInput = CreateWorkOrderInput;
 
-export interface WorkOrderUpdateInput extends Partial<WorkOrderCreateInput> {
+export type WorkOrderUpdateInput = UpdateWorkOrderInput & {
   id: string;
-  resolutionNotes?: string;
-}
+};
 
 export interface WorkOrderListParams {
   page?: number;

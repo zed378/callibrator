@@ -13,6 +13,10 @@
  *     `transaction`, except the ones listed below with a reason. A new call
  *     without one fails here and has to argue its way onto the list.
  *
+ * Its companion, auditCoverage.p611.test.ts (2026-09-30), pins the other half:
+ * every mutating service entry point reaches a `logAction` at all, or is
+ * listed with its reason.
+ *
  * This reads source text on purpose: the question is "which call sites exist",
  * and the behaviour of each covered mutation is proved by its own suite
  * (the *.audit.a41, user.audit.a77, webhook.secret.a51 tests and the rest).
@@ -61,10 +65,11 @@ const callsIn = (source) => {
 const NO_TRANSACTION = {
   // The audit row is the ONLY database write (the file is already on disk);
   // a null row deletes the file and refuses the upload.
-  "services/contentMedia.service.js": "the audit row is the only write; no row, no upload",
+  // P9 (ADR-087): contentMedia.service is TypeScript now; the call site moved with it.
+  "services/contentMedia.service.ts": "the audit row is the only write; no row, no upload",
   // The expired-export sweep deletes FILES, not rows; the audit row is the
   // only database write, so there is no mutation transaction to join.
-  "services/gdpr.service.js": "the export sweep's audit row is its only database write",
+  "services/gdpr.service.ts": "the export sweep's audit row is its only database write",
 };
 
 describe("P6-11 — audit rows inside the transaction", () => {

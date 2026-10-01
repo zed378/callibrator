@@ -13,6 +13,8 @@
  * createSession and the audit writer, so every write is observable.
  */
 
+// A-288 (ADR-100): the network policy has its own suites (signInPolicy.*.a288); here it permits.
+jest.mock("../../services/signInPolicy.service", () => ({ assertSignInPermitted: jest.fn(async () => undefined) }));
 jest.mock("../../models", () => ({
   Tenants: { findOne: jest.fn() },
   // A-188: update — the exchange stamps last_login_at.
@@ -171,5 +173,45 @@ describe("A-83: ssoExchange re-checks status at redemption", () => {
     Users.findByPk.mockResolvedValue(userRow());
     expect((await exchange(code)).status).toBe(401);
     expect(createSession).not.toHaveBeenCalled();
+  });
+});
+
+describe("A-288 (ADR-100): the tenant's network policy at the SSO exchange", () => {
+  const signInPolicy = require("../../services/signInPolicy.service");
+
+  it("asks the policy for this account and address (method sso), before the session", async () => {
+    const code = await codeFromCallback();
+    Users.findByPk.mockResolvedValue(userRow());
+    expect((await exchange(code)).status).toBe(200);
+    expect(signInPolicy.assertSignInPermitted).toHaveBeenCalledWith(
+      { id: USER_ID, tenantId: TENANT.id },
+      { ip: "203.0.113.7", userAgent: "jest", method: "sso" },
+    );
+  });
+
+  it("a refusal is the policy's 403 with its code, and no session or LOGIN row is written", async () => {
+    const code = await codeFromCallback();
+    Users.findByPk.mockResolvedValue(userRow());
+    const { AppError } = require("../../utils/appError.util");
+    const refusal = new AppError(403, "Sign-in is not permitted from this network or location.");
+    refusal.publicCode = "NETWORK_POLICY";
+    signInPolicy.assertSignInPermitted.mockRejectedValueOnce(refusal);
+
+    const ex = await exchange(code);
+
+    expect(ex.status).toBe(403);
+    expect(ex.body).toMatchObject({ success: false, code: "NETWORK_POLICY" });
+    expect(createSession).not.toHaveBeenCalled();
+    expect(auditService.logAction).not.toHaveBeenCalled();
+  });
+
+  it("a request with no address or user agent passes nulls", async () => {
+    const code = await codeFromCallback();
+    Users.findByPk.mockResolvedValue(userRow());
+    await call(ssoController.ssoExchange, { body: { code }, ip: undefined, headers: {} });
+    expect(signInPolicy.assertSignInPermitted).toHaveBeenLastCalledWith(
+      expect.anything(),
+      { ip: null, userAgent: null, method: "sso" },
+    );
   });
 });

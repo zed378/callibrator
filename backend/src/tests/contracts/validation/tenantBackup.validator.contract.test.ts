@@ -1,30 +1,22 @@
 /**
- * P9-11 contract pin — `validators/tenantBackup.validator.js`.
+ * P9-11 contract pin — `validators/tenantBackup.validator.ts` (ADR-093).
  *
- * Today's Joi 400 for `createBackupSchema` through the real `validate(schema)`
- * middleware, byte for byte, in production and outside it, and what the
- * file's own `validate(data, schema)` helper hands its controllers. The
- * expectations are literals recorded on 2026-09-28; a Zod conversion must keep
- * this file passing unchanged. See ./harness.ts and
- * MEMORY/specs/P9-11-validation-error-contract.md.
+ * The validation 400 for `createBackupSchema` through the real `validate(schema)`
+ * middleware, byte for byte, in production and outside it. The status, the
+ * envelope, the top-level `message` ("Validation Error") and `details`
+ * only outside production are the contract this suite pinned before P9-11;
+ * the wording inside `details` is Zod's since the move to Zod (the owner's
+ * decision, ADR-093, which lists every changed string). See ./harness.ts.
  */
-import { createBackupSchema, validate as validateHelper } from "../../../validators/tenantBackup.validator";
-import { expectValidationContract, captureHelper, joiResultDetails } from "./harness";
+import { createBackupSchema } from "../../../validators/tenantBackup.validator";
+import { expectValidationContract } from "./harness";
 
-describe("P9-11 contract: validators/tenantBackup.validator.js", () => {
+describe("P9-11 contract: validators/tenantBackup.validator.ts", () => {
   it("validate(createBackupSchema) answers the pinned 400; details only outside production", async () => {
     await expectValidationContract(createBackupSchema, {}, [
       {
         "field": "name",
-        "message": "\"name\" is required",
-      },
-    ]);
-  });
-  it("its own validate(data, schema) returns Joi's result; the controller maps these details", () => {
-    expect(joiResultDetails(captureHelper(() => validateHelper({}, createBackupSchema)))).toEqual([
-      {
-        "field": "name",
-        "message": "\"name\" is required",
+        "message": "Invalid input: expected string, received undefined",
       },
     ]);
   });

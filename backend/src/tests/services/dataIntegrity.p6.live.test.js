@@ -28,6 +28,8 @@ const live = process.env.DATA_PG_LIVE_TEST === "1" ? describe : describe.skip;
 const TENANT_A = "a6a6a6a6-0000-4000-8000-00000000000a";
 const TENANT_B = "b6b6b6b6-0000-4000-8000-00000000000b";
 const APP_ROLE = process.env.DB_APP_ROLE || "callibrator_app"; // what migration 0057 grants
+/** The newest migration this suite applies by hand (below); every later one comes from the manifest. */
+const LAST_HAND_PICKED = "0091-audit-logs-append-only.js";
 
 /** A separately loaded module graph: its own Sequelize instance and pool. */
 const startProcess = () => {
@@ -47,6 +49,8 @@ const startProcess = () => {
       m0059: require("../../migrations/0059-stock-adjustment-reason-and-item"),
       m0063: require("../../migrations/0063-user-identity-case-insensitive"),
       m0089: require("../../migrations/0089-calibration-device-retired-terminal"),
+      m0091: require("../../migrations/0091-audit-logs-append-only"),
+      migrator: require("../../config/migrator").migrator,
       stockService: require("../../services/stock.service"),
     };
   });
@@ -165,8 +169,26 @@ live("Phase 6 data integrity — live PostgreSQL (P6-03, P6-05, P6-06)", () => {
     await g.m0063.up({ context: qi });
     // ...and 0089's retired-device trigger (ADR-084, Q-02).
     await g.m0089.up({ context: qi });
-    // db.sync({ force: true }) of 71 models can exceed jest's 10 s default.
-  }, 120000);
+    // ...and 0091's audit_logs append-only control (ADR-095): since O-1,
+    // enterApplicationRole refuses a role that could delete an audit row.
+    await g.m0091.up({ context: qi });
+    // Every migration AFTER the hand-picked ones, from the migrator's own
+    // manifest, so a new migration is applied here as the boot applies it
+    // instead of failing verifySchema until someone adds it to a list (0105,
+    // Q-51, was the one that bit). The state up to LAST_HAND_PICKED is this
+    // suite's own (db.sync() + the migrations above, some of them over
+    // deliberately legacy rows), so those are recorded as executed, not re-run.
+    const manifest = (await g.migrator.pending()).map((m) => m.name);
+    const handled = manifest.slice(0, manifest.indexOf(LAST_HAND_PICKED) + 1);
+    if (handled.length === 0) {
+      throw new Error(`${LAST_HAND_PICKED} is not in the migrator manifest; update LAST_HAND_PICKED`);
+    }
+    await g.db.query("INSERT INTO schema_migrations (name) SELECT unnest(ARRAY[:names]::text[])", {
+      replacements: { names: handled },
+    });
+    ids.laterMigrations = (await g.migrator.up()).map((m) => m.name);
+    // db.sync({ force: true }) of 71 models can exceed jest's 10 s default, and 120 s on a loaded host.
+  }, 600000);
 
   afterAll(async () => {
     if (g) {
@@ -338,7 +360,7 @@ live("Phase 6 data integrity — live PostgreSQL (P6-03, P6-05, P6-06)", () => {
     beforeAll(async () => {
       p = startProcess();
       await p.dbRole.enterApplicationRole({ sequelize: p.db, logger, env: { DB_APP_ROLE: APP_ROLE } });
-    });
+    }, 120000);
     afterAll(async () => {
       await p.db.close();
     });
@@ -452,6 +474,35 @@ live("Phase 6 data integrity — live PostgreSQL (P6-03, P6-05, P6-06)", () => {
         await q.db.close();
       }
     });
+
+    // ADR-095 O-1: the same self-check now covers audit_logs as 0091 leaves it.
+    it.each([
+      ["DELETE", `GRANT DELETE ON audit_logs TO ${APP_ROLE}`, `REVOKE DELETE ON audit_logs FROM ${APP_ROLE}`, /can DELETE from audit_logs/],
+      ["TRUNCATE", `GRANT TRUNCATE ON audit_logs TO ${APP_ROLE}`, `REVOKE TRUNCATE ON audit_logs FROM ${APP_ROLE}`, /can TRUNCATE audit_logs/],
+      [
+        "UPDATE of action",
+        `GRANT UPDATE (action) ON audit_logs TO ${APP_ROLE}`,
+        `REVOKE UPDATE (action) ON audit_logs FROM ${APP_ROLE}`,
+        /may UPDATE audit_logs columns \[action, changes, ip_address, user_agent\]/,
+      ],
+      [
+        "no masking grant",
+        `REVOKE UPDATE (user_agent) ON audit_logs FROM ${APP_ROLE}`,
+        `GRANT UPDATE (user_agent) ON audit_logs TO ${APP_ROLE}`,
+        /may UPDATE audit_logs columns \[changes, ip_address\]/,
+      ],
+    ])("enterApplicationRole REFUSES a role with %s on audit_logs", async (_what, damage, repair, message) => {
+      await g.db.query(damage);
+      const q = startProcess();
+      try {
+        await expect(
+          q.dbRole.enterApplicationRole({ sequelize: q.db, logger, env: { DB_APP_ROLE: APP_ROLE } }),
+        ).rejects.toThrow(message);
+      } finally {
+        await g.db.query(repair);
+        await q.db.close();
+      }
+    }, 120000);
   });
 
   // ------------------------------------------------------------------
@@ -614,6 +665,9 @@ live("Phase 6 data integrity — live PostgreSQL (P6-03, P6-05, P6-06)", () => {
     });
 
     it("a synced and migrated database matches the models", async () => {
+      // The migrations after the hand-picked ones came from the manifest, and none is left pending.
+      expect(ids.laterMigrations.every((name) => name > LAST_HAND_PICKED)).toBe(true);
+      expect(await g.migrator.pending()).toEqual([]);
       const result = await g.schemaVerify.verifySchema(g.db);
       expect(result.problems).toEqual([]);
       expect(result.tables).toBeGreaterThan(60);

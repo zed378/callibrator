@@ -6,12 +6,13 @@
  *
  * S-23 — Swagger is not published in production unless SWAGGER_ENABLED=true.
  *
- * Real express + real helmet + the real swagger-ui-express page, over HTTP.
+ * Real express + real helmet, over HTTP. P9-25 (ADR-103): Scalar replaced
+ * Swagger UI; the /docs page's own checks are in tests/routes/apiDocs.p925.test.ts.
  */
 const http = require("http");
 const express = require("express");
 const helmet = require("helmet");
-const { API_CSP_DIRECTIVES, SWAGGER_CSP_DIRECTIVES, renderCsp, swaggerCsp } = require("../../utils/csp.util");
+const { API_CSP_DIRECTIVES, API_DOCS_CSP_DIRECTIVES, renderCsp, apiDocsCsp } = require("../../utils/csp.util");
 
 const directive = (header, name) =>
   header
@@ -58,33 +59,15 @@ describe("P7-08 CSP split", () => {
     expect(csp).not.toMatch(/script-src[^;]*unsafe-inline/);
   });
 
-  it("/docs carries Swagger's own policy, still without inline script; other paths keep the default", async () => {
-    delete process.env.SWAGGER_ENABLED;
-    process.env.NODE_ENV = "test";
-    const { swaggerDocs } = require("../../docs/swagger");
-    const app = await serve((a) => {
-      expect(swaggerDocs(a)).toBe(true);
-      a.get("/other", (req, res) => res.send("x"));
-    });
-
-    const page = await app.get("/docs/");
-    const other = await app.get("/other");
-    const spec = await app.get("/docs.json");
-    await app.close();
-
-    expect(page.status).toBe(200);
-    expect(page.csp).toBe(renderCsp(SWAGGER_CSP_DIRECTIVES));
-    expect(directive(page.csp, "connect-src")).toBe("connect-src 'self'");
-    expect(directive(page.csp, "script-src")).toBe("script-src 'self'");
-    expect(directive(other.csp, "connect-src")).toBeUndefined();
-    expect(spec.status).toBe(200);
-
-    // What makes the strict script-src safe for Swagger: no inline <script>.
-    const scripts = page.body.match(/<script\b[^>]*>/g);
-    expect(scripts.length).toBeGreaterThan(0);
-    for (const tag of scripts) {
-      expect(tag).toMatch(/\ssrc=/);
-    }
+  it("the API reference's policy (P9-25, ADR-103): still no inline script; same-origin connect, style and font only", () => {
+    const header = renderCsp(API_DOCS_CSP_DIRECTIVES);
+    expect(directive(header, "script-src")).toBe("script-src 'self'");
+    expect(directive(header, "connect-src")).toBe("connect-src 'self'");
+    expect(directive(header, "style-src")).toBe("style-src 'self' 'unsafe-inline'");
+    expect(directive(header, "font-src")).toBe("font-src 'self' data:");
+    expect(directive(header, "img-src")).toBe("img-src 'self' data:");
+    expect(header).not.toMatch(/https:/);
+    // The page itself, over HTTP and behind its gate: tests/routes/apiDocs.p925.test.ts.
   });
 
   it("renderCsp renders a value-less directive bare", () => {
@@ -93,13 +76,13 @@ describe("P7-08 CSP split", () => {
     );
     const res = { setHeader: jest.fn() };
     const next = jest.fn();
-    swaggerCsp({}, res, next);
-    expect(res.setHeader).toHaveBeenCalledWith("Content-Security-Policy", renderCsp(SWAGGER_CSP_DIRECTIVES));
+    apiDocsCsp({}, res, next);
+    expect(res.setHeader).toHaveBeenCalledWith("Content-Security-Policy", renderCsp(API_DOCS_CSP_DIRECTIVES));
     expect(next).toHaveBeenCalled();
   });
 
   describe("S-23 — Swagger is not published in production by default", () => {
-    const { swaggerEnabled } = require("../../docs/swagger");
+    const { apiDocsEnabled: swaggerEnabled } = require("../../docs/apiDocs");
 
     it.each([
       ["production", undefined, false],
@@ -120,7 +103,7 @@ describe("P7-08 CSP split", () => {
     it("in production /docs and /docs.json answer 404", async () => {
       process.env.NODE_ENV = "production";
       delete process.env.SWAGGER_ENABLED;
-      const { swaggerDocs } = require("../../docs/swagger");
+      const { apiDocs: swaggerDocs } = require("../../docs/apiDocs");
       const app = await serve((a) => expect(swaggerDocs(a)).toBe(false));
       expect((await app.get("/docs/")).status).toBe(404);
       expect((await app.get("/docs.json")).status).toBe(404);

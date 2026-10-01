@@ -6,9 +6,9 @@ Charts: [`../../deploy/helm/callibrator/`](../../deploy/helm/callibrator/). An u
 
 ## Honest Status
 
-**The manifests render. They are not known to be accepted by a cluster**, because no cluster has been reachable to validate against.
+**The charts install, upgrade and serve on ONE local kind cluster. They are not known to deploy on a production cluster.** (P7-06, 2026-09-30, [ADR-106](../../MEMORY/DECISIONS.md); record: [`MEMORY/records/2026-09-30-p7-06-helm-kind-cluster.md`](../../MEMORY/records/2026-09-30-p7-06-helm-kind-cluster.md).)
 
-That distinction should not be smoothed over in a status report. `helm template` and `helm lint` pass, and since 2026-09-24 every render is also **validated against the Kubernetes 1.33 JSON schemas with kubeconform** (in CI, `deploy-config`) — a schema check, still not an admission check. `kubectl apply --dry-run=server` has not been run.
+That distinction should not be smoothed over in a status report. What ran: `kubectl apply --dry-run=server` clean for all 14 objects (the Ingress through the ingress-nginx admission webhook); `helm install`, four upgrades, three guard refusals on `helm upgrade` and a rollback, on kind v0.33.0 / Kubernetes 1.37.0, a **single node**, kindnet (which enforces NetworkPolicy), local-path volumes, ingress-nginx v1.15.1 and throwaway PostgreSQL 18.6 + pgvector, Redis, RabbitMQ and clamd in the cluster. Seven chart defects were found that way and fixed (ADR-106). What did **not** run: a managed CNI (Calico/Cilium), a real StorageClass, more than one node, cert-manager, an external secrets operator, the prod and staging values files against a cluster (they render and pass kubeconform), and an image built from the current working tree (the cluster ran HEAD `ce74932`). Every render is also **validated against the Kubernetes 1.33 JSON schemas with kubeconform** in CI (`deploy-config`); CI does not apply to a cluster.
 
 Compose is the primary deployment path (ADR-032). These charts exist as the **escape route from the single-host risk** (PR-12), written while it was still cheap.
 
@@ -117,9 +117,11 @@ All three are hard, and all three come **before** replica count goes above one.
 | 2 | Exactly one replica running schedulers | every scheduled job runs once per replica |
 | 3 | Socket.IO **Redis adapter** | a notification reaches only the replica holding that connection |
 
-Plus one more: **the backend runs migrations at boot.** Two replicas starting together will both attempt them. Either an init container runs migrations once, or migrations are advisory-locked.
+Plus one more: **the backend runs migrations at boot**, under a PostgreSQL advisory lock (ADR-086). On the kind cluster (ADR-106) two replicas booting together on an empty database produced one "Applied 63 migration(s)" and one "waiting … lock acquired after waiting", and `schema_migrations` held 63 distinct rows. **The startup probe budget must exceed `MIGRATION_LOCK_TIMEOUT_MS`** (600 s): at 30 × 10 s the kubelet killed both replicas mid-boot on a slow node. It is now `probes.startup.failureThreshold` (default 72 × 10 s).
 
-The chart guards prerequisite 2. Prerequisites 1, 3 and the migration race are configuration and code, and are **not** guarded — they will fail quietly.
+Prerequisite 3 is code: the backend installs the Redis adapter whenever Redis is reachable (A-54). On the kind cluster a notification emitted by replica A reached a client connected to replica B, and a client connected through the ingress over WebSocket only (ADR-106).
+
+The chart guards prerequisite 2. Prerequisite 1 is configuration and is **not** guarded — it fails quietly.
 
 ## Probes
 
@@ -134,7 +136,11 @@ readinessProbe:
 
 Using `/health` as a **liveness** probe would restart a healthy process during a datastore blip, turning a brief outage into a crash loop. Liveness gets `/live`; readiness gets `/health`.
 
-A pod returning 503 on readiness is correctly kept out of rotation, which is exactly what you want when the database is unreachable.
+A pod returning 503 on readiness is correctly kept out of rotation, which is exactly what you want when the database is unreachable. **Shown on the kind cluster (ADR-106):** with Redis scaled to zero the backend endpoint went `ready=false` within 15 s and the ingress answered 503; after 75 s it still had 0 restarts, and it returned to rotation when Redis came back.
+
+Every probe has an explicit `timeoutSeconds` (`probes.timeoutSeconds`, default 5; the kubelet default is 1). The frontend has a `startupProbe` on `/` (`probes.startupFailureThreshold` × 5 s): `/` is server-rendered and, on a busy node, Next was killed by liveness before it had finished starting.
+
+`/health` is published on the ingress (`pathType: Exact`, to the backend), as the compose nginx publishes it; `/live` and `/ready` are not. Before ADR-106 `/health` fell through to the frontend's 404 page.
 
 ## Secrets
 
@@ -190,7 +196,17 @@ Running a database from an application chart couples the two lifecycles: a `helm
 
 ## Resources
 
-Set requests and limits. The backend renders PDFs with Chromium, which is memory-hungry and bursty — a limit sized for the steady state will OOM-kill the pod on the first certificate.
+Set requests and limits. **Backend, re-sized 2026-09-30 (ADR-095 Amendment 1):** limit **1Gi** (default and staging) and **1536Mi** (prod), request **384Mi** / **512Mi**. The old 4 Gi (2 Gi staging) was sized for Chromium, which left the image with ADR-095. Measured on the image built from the tree, under boot + migrations, seeding, three live E2E runs and six browser-smoke runs: cgroup `memory.peak` **306 MiB**, Node `VmHWM` **337 MiB**, steady **215–265 MiB**. That is E2E load, not a production tenant's exports and reports: watch the memory alert (05-MONITORING) and re-measure before tightening. The charts **render** with these values (`helm template`, all three values files); they are **not known to deploy**. Record: [`2026-09-30-adr095-followups.md`](../../MEMORY/records/2026-09-30-adr095-followups.md).
+
+## Public Origin and First-Boot Seeding (ADR-106)
+
+The ConfigMap derives four public-origin settings from `ingress.host`: `HOST_URL`, and since ADR-106 `FRONTEND_URL`, `OIDC_ISSUER` and `PUBLIC_BASE_URL`. Unset, each fell back to a development address; on the kind cluster `/oidc/.well-known/openid-configuration` advertised issuer `http://localhost:5000`.
+
+`backend.env.ALLOW_SEEDING` renders `ALLOW_SEEDING`, the momentary first-boot toggle ([`deploy/README.md`](../../deploy/README.md) § first boot). Set `"true"` for one upgrade, call `GET https://<host>/api/v1/migration/seeding`, then upgrade with `""` and confirm the endpoint answers 401. NOTES.txt warns while it is set. Before ADR-106 the chart could not set it, so a Helm install on an empty database could not be seeded.
+
+A `helm upgrade` that changes the backend's configuration now rolls the backend: `checksum/config` hashes every `backend.*` and `global.*` value. It does NOT cover `ingress.host`, `certificates.*`, `alerts.*` or the Secret; after changing only those, run `kubectl rollout restart deploy/<base>-backend`.
+
+**Known defect, not a chart one:** with `FORCE_HTTPS: "true"` (the shipped default) sign-in through the frontend fails. The Next auth handlers (`app/api/v1/auth/login`, `refresh`, `sso-session`) call `BACKEND_INTERNAL_URL` over plain HTTP without `X-Forwarded-Proto`, the backend answers 301 to `https://<service>:3000`, and the fetch fails (`500 Backend connection error`). The `[...path]` proxy does send the header. The compose prod overlay has the same shape. The kind run signed in with `FORCE_HTTPS: "false"`; tracked as **A-310** (`TASKS/AUDIT-2026-09-REMEDIATION.md`).
 
 ## Values Per Environment
 
@@ -223,11 +239,4 @@ make helm-template ENV=prod
 helm template r deploy/helm/callibrator … | kubeconform -strict -kubernetes-version 1.33.0 -   # as CI does
 ```
 
-All three run (2026-09-24: default, staging and prod renders valid — 14, 11 and 12 resources; the seven guards refuse). What has **not** run:
-
-```bash
-kubectl apply --dry-run=server -f -    # needs a cluster
-helm install --dry-run                 # needs a cluster
-```
-
-Until one does, the charts are known to render and not known to deploy. Validating them against a real cluster is in [`../../TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md).
+All three run (2026-09-30 after ADR-106: default under both release names, staging and prod renders valid — 14, 14, 11 and 12 resources; the seven guards refuse). `kubectl apply --dry-run=server` and a real `helm install` ran on a kind cluster (see Honest Status). The procedure, the throwaway datastores and every probe used are in the P7-06 record. A production cluster remains the open validation.

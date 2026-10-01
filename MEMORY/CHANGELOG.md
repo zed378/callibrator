@@ -8,6 +8,331 @@ Format loosely follows Keep a Changelog. Dates are absolute.
 
 ## Unreleased
 
+### 2026-10-01 — Shared contracts: every request schema but two ([record](./records/2026-09-29-p9-22-contracts.md), ADR-097 Am. 2)
+- Changed (internal): the request schemas of 40 of the 42 validator modules now live in `@callibrator/contracts`. The API accepts and refuses exactly what it did before. The network-security and tenant-flag schemas stay in the backend: one uses a server-only IP parser, the other the server's secret-setting policy.
+- Fixed (docs): the API reference now documents `nameToShow` and `roleLevel` on `PATCH /roles/{id}`, which the API has accepted since F-19.
+
+### 2026-10-01 — Shared contracts: nine more domains, one response envelope ([record](./records/2026-09-29-p9-22-contracts.md), ADR-097 Am. 1)
+- Changed (internal): the request schemas for warehouses, stock, maintenance, calibration records, users, roles, certificates, QMS and tenants now live in `@callibrator/contracts`, alongside vendors and devices. The API accepts and refuses exactly what it did before.
+- Changed (internal): the response envelope has one definition, shared by the backend's types, the published API document (`openapi.json` unchanged byte for byte) and the frontend. Page sizes, QMS status lists and the tenant-logo name rule are defined there too.
+
+### 2026-09-30 — The tenancy services are TypeScript; three tenant-edit defects found ([record](./records/2026-09-30-p9-13-tenancy.md), P9-13)
+- Internal: the network-security, tenant-hierarchy, custom-domain, data-retention, tenant-lifecycle, tenant and tenant-logo services are now TypeScript. Nothing a user sees changes. Each was checked against its JavaScript version on the same inputs, and the three that decide who sees which tenant were also checked on a live PostgreSQL 18 database with two tenants.
+- Found, not yet fixed:
+  - A tenant edit that sends a status fails with a server error: the form's `ACTIVE` does not match the database's `active` (A-326).
+  - Clearing a tenant's email is a server error, not a validation message (A-327).
+  - The tenant creator field is never stored (A-328).
+  - A top-level tenant's hierarchy view shows no sub-organizations (A-329).
+
+### 2026-09-30 — ADR-095 follow-ups: certificate PDFs print Vietnamese, Polish, Greek and Cyrillic names; the backend refuses to boot if audit rows can be deleted; smaller memory limits ([record](./records/2026-09-30-adr095-followups.md), ADR-095 Am. 1)
+- Fixed: a certificate PDF printed "Đặng", "Łukasz" and any non-Latin-1 name with `?`. The PDF now embeds Noto Sans (self-hosted, OFL, fetched only when a PDF is made). Latin Extended (incl. Vietnamese), Greek and Cyrillic print as written. Arabic, Hebrew, CJK and Thai still print `?`.
+- Changed (**compliance**): the backend refuses to boot unless its database role cannot delete or truncate `audit_logs` and may update only the three masking columns.
+- Changed (**operations**): backend memory limits cut to measured need. Helm default/staging and compose staging/vm: 1Gi (was 4Gi, staging 2Gi). Production: 1536Mi (was 4Gi). The measured peak was 337 MiB.
+- Internal: live test suites that write audit rows now create and drop their own database instead of deleting audit rows. The browser smoke reads the PDF's embedded-font text, follows the verification token, and passed 7/7 live.
+
+### 2026-09-30 — Public pages load less JavaScript; blog and news on the new public design ([record](./records/2026-09-30-P10-perf-blog.md), P10-13, ADR-098 Amendment 2)
+- Changed: the landing, sign-in, verification, request-access, reset, invitation, blog and news pages no longer load the dashboard's providers (theme, tenant branding, session check, toasts), axios, or either full dictionary. First-load JavaScript (brotli): `/` 150.6 → 123.4 KB, `/verify/*` 155.4 → 117.9 KB (under its 120 KB budget), `/login` 161.2 → 150.2 KB, blog and news 237 → 119 KB.
+- Changed: blog and news (index and article pages) use the public header, footer and dark design, in Indonesian by default with English on the language toggle. Titles say "Device Calibrator". Post bodies are still sanitized when shown (A-298).
+- Changed: the dashboard's fonts are no longer preloaded on every page; on a first dashboard visit the text may briefly show in the fallback font.
+- Added (guard): CI and `make verify` fail when a public page's first-load JavaScript exceeds `frontend/bundle-budget.json` (`frontend/scripts/bundle-budget.mjs`).
+
+### 2026-09-30 — Migrations 0091–0106 verified on PostgreSQL 18; an upgrade blocker found ([record](./records/2026-09-30-live-pg18-migrations-a283.md))
+- **Known issue (deploy blocker):** a database created before migration 0105 cannot start the current backend. At boot, the schema sync creates the new `api_key_id` indexes before 0105 has added that column, and the boot stops. Workaround until the Q-51 fix lands: run `npm run migrate` from a host checkout before starting the new image.
+- Verified: with that workaround, migrations 0091–0106 apply on both a fresh database and one upgraded from `ce74932`. Every object was checked with psql and as the application role, and every migration from 0091 to 0105 goes down and back up cleanly.
+- Tests: more live PostgreSQL suites now run as the application role (A-283). Three stale live suites were repaired.
+
+### 2026-09-30 — CI has been running on GitHub all along; only the secret scan keeps it red ([record](./records/2026-09-30-p7-01-ci-gitleaks.md), P7-01)
+- Found: GitHub Actions has run `ci` 10 times since 2026-09-24 and never been green. On `ce74932`, 7 of 8 jobs pass (backend tests at 100%, PostgreSQL 18 boot, frontend build, lint, typecheck, audit, deploy config, actionlint). Only `secret scan (gitleaks)` fails.
+- Fixed: the gitleaks job failed on 3 false positives. They were a test file name and two sample-response JWT headers. The text was reworded at source, the 3 findings were fingerprinted with reasons, and two exact-literal allowlists were added: the `sk_test_` placeholder fallback and the temporary-password alphabet. No directory is allowlisted.
+- Security: no real secret is in the repository history, so no credential needs rotating. The VM password could not be checked by value from this machine; the record has the one-line check for the owner.
+
+### 2026-09-30 — Super-admin session revocation works; path ids cannot be overridden; the global 429 is the envelope ([record](./records/2026-09-30-correctness-batch.md), A-323, A-324, A-273, A-274, V-05…V-17, Q-52, Q-53, ADR-109 §6–7)
+- Fixed: the platform super admin can revoke all of a user's sessions and revoke or delete another user's session. `revoke-all` answered 403 to everyone before (the role name was compared in the wrong spelling). The super admin is now recognised by one rule everywhere.
+- Changed: on the data-retention, feature-flag and tenant-suspend routes, an id in the body (or query) that differs from the one in the path is a **400**. It used to override the path.
+- Changed: when the author of an SOP tries to publish it, the answer is **403** with the reason (was 409). An already published or archived SOP is still 409.
+- Changed: the global rate limit's 429 body is `{ success: false, status: 429, message, data: null, retryAfter }`, with `Retry-After` (was `{ status: "Error", message }`).
+- Fixed: a vendor's notes are stored and returned (they were accepted and dropped). The vendor form has a **Notes** field and the list shows the note under the vendor's name. Notes are limited to 2,000 characters (a longer value is a 400). **Run migration 0106 on upgrade.**
+- Added: revoking or deleting a user's sessions is recorded in the audit trail (who, whose sessions, how many), in the same transaction as the change.
+- Fixed: a token revoked for brute force stays revoked on later failures (the limiter used to drop the flag on the 4th).
+- Changed: `SIGNATURE_ALGORITHM` is removed. E-signatures are always RS256, and a deployment that sets another value refuses to start the e-signature service.
+- Removed: the unused `allowApiKey` middleware, and the unused `includeDeleted` scope on 12 models (ApiKey keeps its scope).
+
+### 2026-09-30 — Every board, ticket, CMS, feature-flag, warehouse and usage-alert change is now in the audit trail ([record](./records/2026-09-30-p6-11-audit-coverage.md), P6-11, ADR-109 §2)
+- Added: kanban (projects, members, columns, cards, labels, sprints, relations), support tickets and comments, CMS posts and categories, per-tenant feature flags, warehouses and storage locations, and usage alerts each write an audit row in the same transaction as the change. If the change rolls back, so does its row. An API key is recorded as `system:api-key`.
+- Changed: a feature-flag change by the platform operator appears in the platform's trail and in the affected tenant's trail (as tenant status changes already did).
+- Fixed: deleting a warehouse soft-deletes it inside its transaction (it used to save outside it).
+- Not audited, on purpose (owner to confirm): reading, hiding and deleting your own notifications; the RAG index rebuild; usage counters.
+- Added (guard): a new service write with no audit row fails the build, unless it is listed with a reason.
+- Added: GDPR consent grants and withdrawals, privacy-preference changes, data-subject and processing-restriction requests, SCIM group changes, new SOP documents, storage-setting changes, self-registration, SSO just-in-time accounts and a tenant's first (auto-created) subscription are now in the audit trail. Rows record what happened, never the personal data, free-text reasons or credentials.
+- Changed: saving storage settings writes the configuration, the encrypted credentials and the audit row in one transaction.
+- Verified: on PostgreSQL 18, as the application role, the row commits with its change and a forced rollback leaves neither.
+
+### 2026-10-01 — No response carries a password hash or other credential (A-331) ([record](./records/2026-09-29-security-followups.md) § Amendment 4, ADR-100 Amendment 4)
+- Security (high): `POST /roles/assign` returned the target user's password hash, MFA secrets, recovery codes, OTP and WebAuthn data. It now returns only the user's id, username, email, name, tenant, role, status and active flag.
+- Security: users, API keys, sessions, webhooks, tenant signing keys, access requests and IoT devices no longer include their secret fields when converted to JSON, so a response that returns a whole record cannot leak them.
+- Added: every route test now checks responses for credential fields and password hashes, and fails if it finds one.
+
+### 2026-09-30 — Upgrade boot fixed: models no longer index a column a later migration adds ([record](./records/2026-09-29-security-followups.md) § Amendment 3, ADR-100 Amendment 3)
+- Fixed (deploy blocker): upgrading an existing database failed at boot with `column "api_key_id" does not exist`. Boot builds model indexes before running migrations, and three models indexed the column that migration 0105 adds. The indexes are now created only by 0105. Fresh installs were not affected.
+- Added: a unit-gate guard, `modelIndexColumns.am3`, that stops this class of defect from coming back. Also a live test, `upgradeBoot.am3.live`, that boots the current code against a database built by the previous release (ce74932). It passed there: 15 migrations applied, and schema-verify was OK.
+
+### 2026-09-30 — Lists show which API key wrote a row ([record](./records/2026-09-29-security-followups.md) § Amendment 2, ADR-100 Amendment 2)
+- Fixed: calibration records, stock adjustments and stock transfers written by an API key now show "API key: <name>" in the list, the calibration detail and the CSV exports, where they used to show "-". The key's secret hash is never sent. A revoked key still names its rows.
+
+### 2026-09-30 — API keys can record stock and calibration work; IPv6 allowlists; geofence saves send your location ([record](./records/2026-09-29-security-followups.md) § Amendment 1, ADR-100 Amendment 1)
+- Fixed: an API key can now record a stock adjustment, a transfer request, a stock item's opening quantity and a calibration record. The row names the key, not a user. Run migration **0105** on upgrade. Its down refuses while any key-written row exists.
+- Changed: an API key can no longer approve, complete or cancel a transfer, perform an opname, void a calibration record or decide a workflow step (403). Those decisions need a person.
+- Added: the IP allowlist accepts IPv6 addresses and ranges. An IPv4-mapped entry is stored as its IPv4 form.
+- Changed: the Network Security page asks for your location when you save a geofence, so the server can check that the new geofence still includes you. Its write controls appear only to users with `network-security: write`.
+- Security: every refused SSO start takes at least 400 ms (`SSO_REFUSAL_FLOOR_MS`), so response time does not reveal whether an organisation code exists.
+- Verified: migrations 0096, 0098 and 0105 were run on a disposable PostgreSQL 18, both fresh and upgraded, and checked with psql as the application role. Do not run 0096's down on a database whose certificates have been printed: it regenerates every QR token.
+
+### 2026-09-30 — What "complete" means for the Phases 0–10 stop, and the boards made true again ([record](./records/2026-09-30-board-hygiene-decisions.md), ADR-109)
+- Decided (**working decisions, awaiting the owner's confirmation**): key rotation is rehearsed on a restored copy of the VM database after the closing deploy; all 15 unaudited mutating services get in-transaction audit rows; Phase 7 counts the kind cluster, and "wakes somebody" waits for an owner-supplied alert destination and log sink; Phase 8 is complete for this stop when every card is recorded as done, not triggered or blocked (P8-04 re-measure still owed); Phase 9 exits when all non-test source is TypeScript — the existing `.js` tests move to P9-26, and no new `.js` file is allowed.
+- Decided (working): an API key performing a write is named in a new `api_key_id` column (exactly one actor per row, Q-51); vendor `notes` will be stored (Q-52); the global rate-limit 429 will use the standard error envelope (Q-53); an SOP's author publishing it gets 403 (V-13). New open question Q-54: single-administrator tenants and separation of duties.
+- Changed (docs): stale task cards reconciled with their evidence; `TASKS/PROGRESS.md` Live Health restated from dated records — **the backend unit gate is red on today's shared tree** (other lanes' unfinished work; last green 2026-09-28), frontend 93.3% statements, E2E green twice on 2026-09-28, CI on GitHub unverified. Interim Phase 6 and Phase 7 summaries written.
+
+### 2026-09-30 — The public pages are rebuilt: dark, Indonesian first, and every claim true ([index record](./records/2026-09-30-P10-frontend-as-built.md), ADR-098 Amendment 1)
+- Removed: every fabricated testimonial, stock face, invented hospital, unsourced number, certification badge, price and "free trial" from the landing, sign-in and blog (P10-00).
+- Changed: the landing is a fast server-rendered page in Indonesian (English one click away), showing the real product, what it supports and what it is not; WhatsApp and email buttons appear only when configured.
+- Changed: sign-in asks for your email or username first and sends hospital SSO users straight to their identity provider; there is a *Forgot password?* link, a passkey button where the browser supports it, and every error is a plain sentence in your language.
+- Added: `/request-access` (replaces `/register`, which now redirects), `/forgot-password`, `/invitation`. The verification page is restyled and not indexed by search engines.
+- Fixed (**A-310**): sign-in, refresh and sign-out failed with a 500 when the backend ran with `FORCE_HTTPS=true` (Helm, compose prod/staging); the VM was not affected ([record](./records/2026-09-30-a310-forwarded-proto.md)).
+- Open: the privacy notice must exist before `/request-access` is public; mobile Lighthouse Performance is 75–91 (target 90–95) on the test host.
+
+### 2026-09-30 — Signed certificates are fixed at signing (v3); the seat limit is `limitSeats` (ADR-107) ([record](./records/2026-09-30-a303-tenant-profile.md))
+- Changed (**compliance**): signing a certificate now records its issuer (name, address, contact), instrument and people as they stand at that moment; the certificate is printed from that record and its integrity hash is **`certificate-content-v3`**, which covers it. A later rename or move no longer changes an issued certificate. Certificates signed earlier keep their v2 hash and verify as before. Run migration **0103**.
+- Fixed: the seat limit entered when creating a tenant was ignored (every tenant got 5); it is `limitSeats` now, and `POST /tenants/user-count` reports `limitSeats` and `remainingSlots` (null = unlimited) instead of `remainingSlots: NaN`. The tenant card shows the seat limit.
+
+### 2026-09-30 — The API contract is generated from the validators and published behind sign-in ([record](./records/2026-09-29-P9-25-api-contract-foundation.md), ADR-103, P9-25)
+- Changed: `/docs` is **Scalar**, not Swagger UI, and requires sign-in (tenant admin or super admin; an API key is refused) on every path, `/docs.json` included. A browser reaches it at `<frontend>/api/v1/docs` through the session proxy. `SWAGGER_ENABLED` keeps its meaning (off in production by default); no setting publishes the contract anonymously.
+- Changed: the contract is `backend/openapi.json` (OpenAPI 3.1), generated by `npm run openapi:generate` and committed; `swagger.json` and `swagger:generate` are gone. The build and the image check it is current.
+- Added: CI job `api-contract` and `make openapi` (in `verify`) — stale contract, new Spectral error, breaking change against `main` (oasdiff), stale frontend types; a guard fails a route with no document and an `x-permission` that differs from the route's gate.
+- Added: frontend generated types and a typed client (`openapi-fetch` over the existing axios client); the vendor service uses it.
+- Fixed: a `@swagger` block with broken YAML silently vanished from the contract (`PATCH /tenants/edit`); four JSDoc references named schemas that did not exist.
+- Status: foundation only — vendor is the one module moved; the rest move with P9-20/P9-21.
+
+### 2026-09-30 — Role fields saved; confirmations on allowlist, OIDC rotate and detach; paged risk and supplier lists; user photos uploaded ([record](./records/2026-09-30-f19-fixes.md), ADR-105, F-19)
+- Fixed: a role's Display Name, Level and Active are now saved on create and edit.
+  - A level is 1–8 and never above the caller's own.
+  - A system role's level is fixed: changing it is refused with a 409 that explains why.
+  - The roles list showed every role Inactive, and an edit re-activated an inactive role. Both fixed.
+- Changed: `GET /roles` and `GET /roles/menus` answer a top-level `meta` instead of `pagination`.
+- Added: confirmations before changing the IP allowlist, rotating an OIDC client secret (the old secret stops working at once), and detaching a tenant from its parent.
+- Fixed: the risk register and supplier scorecards showed only the first 10 rows. They now page.
+- Fixed: the tenant hierarchy page failed for every role but the super admin. It now shows the tree, and the platform-only actions are hidden from other roles.
+- Fixed:
+  - a failed backup list no longer says "No backups found";
+  - calibration lists no longer share one loading and error flag;
+  - a photo picked in the user dialogs is now uploaded.
+- Fixed: kanban card details are a proper dialog (focus trap, Escape), and the board follows label, project and card-link changes live.
+- Fixed: SSO copy failures are reported; custom-domain Verify says whether the domain verified; SOP offers acknowledgement only where the backend accepts it; stock and warehouse errors show inside the open dialog; the opname date shows today.
+- Fixed: acknowledging an archived SOP is refused with a 409 that explains why (ADR-105 Amendment 1).
+- Fixed: custom-domain verification now tells the tenant to publish a TXT record, the record it actually checks (it said CNAME).
+
+### 2026-09-29 — Certificates completable from the UI with separation of duties; menus and buttons match what the API allows ([record](./records/2026-09-29-ui-correctness-fixes.md), ADR-101, ADR-102)
+- Fixed: a certificate could not be completed from the UI — the table offered Approve on a draft (refused) and nothing after submission. It now offers Submit, then Approve, then E-Sign, and shows the server's explanation when a step is refused.
+- Changed (**compliance**): the user who drafted or submitted a certificate can no longer approve it, directly or in an approval workflow; another user with approval rights must. Migration 0095 adds `certificates.submitted_by`.
+- Fixed: the sidebar showed pages that answered "forbidden" and ignored per-user permission changes; pages showed write buttons by role name. Both now follow the same permission the API checks. Some admin roles lose menu entries that only ever failed.
+- Added: Stock and Object Storage menu entries (migration 0097; flush the Redis `permissions:*` keys after it). Home now goes to the dashboard; `/dashboard/warehouse` redirects to `/dashboard/warehouses`.
+- Fixed: backup Restore (type the backup's name) and Delete, and e-signature key-pair and workflow Delete, now ask first; a failed e-signature list shows the failure, not "none yet".
+- Fixed: a global-search result opens its list filtered to that record; kanban cards can be moved between columns from the keyboard.
+- Fixed (2026-09-30): 17 more screens stop offering write actions to roles the API refuses (quality, risk, workflows, asset finance, supplier scorecards, background jobs, predictive maintenance, usage alerts, blog, file delete, e-signature management, certificate OCR, feature flags, tenant lifecycle, data retention, OIDC clients, tenant hierarchy); the SCIM menu entry is shown only to the super admin, whom its API serves.
+- Changed: the vendor create form no longer offers a rating (Q-37); edit keeps it.
+
+### 2026-09-30 — Request access replaces self-registration; passwordless passkey sign-in; identifier-first SSO ([record](./records/2026-09-30-p10-backend-access-requests-passkey.md), ADR-108)
+- Added: `POST /api/v1/access-requests`, a public request for access. It always answers 202 and emails nobody but the platform inbox (`ACCESS_REQUEST_NOTIFY_EMAIL`). `ACCESS_REQUEST_IP_PEPPER` is **required in production**: the server refuses to start without it.
+- Added: the super admin's queue at `/dashboard/access-requests` (API `/api/v1/admin/access-requests`). Approving creates the tenant and its first administrator, and emails a single-use invitation valid for seven days. The administrator sets a password at `/invitation` (`POST /api/v1/auth/invitation/accept`).
+- Added: passwordless passkey sign-in (`POST /api/v1/auth/passkey/options`, `/verify`). A user-verifying passkey counts as MFA, super admins included (Q-46, awaiting the owner). The login button ships with the login-page work.
+- Added: `POST /api/v1/auth/login/discover` (identifier-first, by email domain) and `POST /api/v1/auth/sso/start` (the organisation code; the server picks SAML or OIDC). A tenant's SSO email domains are set by the super admin at `/api/v1/admin/tenants/:id/sso-domains`.
+- Changed: **`POST /auth/register` is off in production** unless `SELF_REGISTRATION_ENABLED=true`, and then answers 404 like an absent route. Where it is enabled, a taken email or username gets the same 202 as a new address.
+- Migrations **0099** (`access_requests`), **0100** (a unique passkey credential id; it refuses to run if two accounts share one) and **0101** (the Access Requests menu, SUPERADMIN only).
+- Rejected, spam and expired access requests are deleted 12 months after their decision by the nightly retention job (Q-42).
+- Added: **several passkeys per account** (a phone, a laptop, a security key; up to 10). You name them, rename them and remove them one at a time on the Passkeys page. Removing one needs your password, so the last one can never lock you out. Migration **0104** moves each existing passkey into the new `webauthn_credentials` table ([ADR-108 Amendment 1](./DECISIONS.md)).
+
+### 2026-09-29 — Certificate verification token; sign-in network policy enforced; request budgets on public auth ([record](./records/2026-09-29-security-followups.md), ADR-100)
+- Security: a certificate's QR now carries a random verification token. Looking up a bare certificate number (a typed number, or a QR printed before this change) shows only whether it is valid, revoked or expired, the issuer, the dates and the hashes. It no longer shows the device serial, the signer or the document. Run migration **0096** on upgrade.
+- Security: a tenant's IP allowlist is enforced at every sign-in and token refresh. The geofence is enforced at password, MFA and passkey sign-in, using the device's reported location. A refusal is a 403 with `code: NETWORK_POLICY` or `LOCATION_REQUIRED`. A platform operator is never refused by a tenant's policy.
+- Changed: tenant administrators can set their own tenant's allowlist and geofence (migration **0098**). A change that would lock out the person making it is refused with 409 `SELF_LOCKOUT`.
+- Security: login, register, send-otp, reset-password, the SSO starts and the MFA sign-in have per-address request budgets that count successes too. Send-otp is also limited per mailed-to address. A 429 carries `Retry-After`. Per-IP failure counting is now on by default in production (`AUTH_RATE_LIMIT_BY_IP=false` turns it off).
+- Security: the SSO start answers every unavailable organisation code with the same 404. Activation links are built from `FRONTEND_URL`/`HOST_URL`, never from the request's `Origin`.
+- Fixed: a validation error raised inside a controller now returns the same 400 body as the request validator, with the field list, instead of `"[object Object]"`.
+- Fixed: audited writes made with an API key are recorded as `system:api-key`, not as a user. `GET /dashboard/metrics` now requires `home: read`. Offboarding and Stripe plan changes are audited under PLATFORM and the tenant.
+
+### 2026-09-30 — The Helm charts install on a kind cluster; seven chart defects fixed ([record](./records/2026-09-30-p7-06-helm-kind-cluster.md), ADR-106, P7-06)
+- Fixed: a `helm upgrade` that changed only backend configuration did not restart the backend (the config checksum was always empty).
+- Fixed: the chart rendered no `FRONTEND_URL`, `OIDC_ISSUER` or `PUBLIC_BASE_URL`; the OIDC discovery document advertised `http://localhost:5000`. All three now derive from `ingress.host`.
+- Added: `backend.env.ALLOW_SEEDING`, the first-boot seeding toggle, which a Helm install could not set; NOTES warns while it is on.
+- Added: `/health` on the ingress (exact path, to the backend), as the compose nginx publishes it.
+- Changed: explicit 5 s probe timeouts; a frontend startup probe; the backend startup budget is 12 min (above the 10 min migration-lock timeout). Chart 0.2.0.
+- Found (A-310, open): browser sign-in fails when `FORCE_HTTPS=true` — the Next auth handlers do not send `X-Forwarded-Proto` to the backend. Affects the Helm defaults and the compose prod overlay.
+- Status: proven on one local kind cluster only; **not** on a production cluster.
+
+### 2026-09-30 — Tenant address and contact are stored and printed on certificates (A-303) ([record](./records/2026-09-30-a303-tenant-profile.md))
+- Fixed: a tenant's description, phone, address, city, province, postcode, country and website were accepted and silently discarded. They are stored now (migration **0102**, run it on upgrade).
+- Added: certificates print the issuing laboratory's address and contact under its name (ISO/IEC 17025 7.8.2). The integrity hashes are unchanged.
+- Changed: a website must be an `http://` or `https://` address, and a phone number digits with the usual separators (400 otherwise). The tenant edit form no longer shows Max Users; the edit API ignores `maxUsers` (it never stored it).
+
+### 2026-09-30 — Stored-XSS hardening; API-key scopes that work; real menu-group selection ([record](./records/2026-09-30-xss-apikey-menugroups.md), A-298–A-302)
+- Security: blog and news bodies no longer accept `data:` links or images. Every body is sanitized again when it is served and when it is rendered, so content saved before the fix is safe without a migration.
+- Security: a ticket's description is sanitized when it is shown. It was rendered raw, including to the platform's responders.
+- Fixed: the Create API Key dialog offers the real resources (menu slugs, read or write). Before, nearly every scope it offered was refused.
+- Fixed: on Menu Groups, "Select All" works, and bulk Assign and Revoke act on the groups you select, not on every assigned group. A bulk revoke asks first.
+- Changed: the calibration scheduler's Run button appears only to users who may run it. Menu-group create, edit and delete follow the effective super-admin permission, not a role name.
+- Fixed: clearing a searchable dropdown no longer opens it.
+
+### 2026-09-30 — A session survives its access token; accessible tenant brand colours; accessibility checks in the browser suite ([record](./records/2026-09-29-feauto-a11y-f05-brand.md), ADR-074 Am. 1, ADR-090 Am. 1)
+- Fixed: after the access token expired (15 minutes by default), opening or reloading any dashboard page signed the user out. The page now stays open and the session renews silently.
+- Fixed: users who sign in with MFA, which includes every platform operator, and impersonated sessions could not renew at all, and were signed out at the first expiry.
+- Fixed: when a session cannot be renewed, sign-out now removes the refresh cookie too.
+- Changed: a tenant's brand colour is shown in a shade that stays readable (WCAG AA) in each theme. The tenant form shows the shade each theme will use. A colour that is already readable is used exactly as chosen.
+- Changed: with "reduce motion" set in the operating system, entrance animations and transitions no longer run anywhere. Spinners still turn.
+- Added: `make test-browser` also runs an accessibility pass (`automate/a11y.browser.js`): axe on key pages in both themes, the focus behaviour of create dialogs, 200% zoom, reduced motion, and a tenant brand colour.
+
+### 2026-09-29 — One request schema for the backend and the frontend: `packages/contracts` ([record](./records/2026-09-29-p9-22-contracts.md), ADR-097)
+- Added: the `@callibrator/contracts` workspace. The vendor and calibration-device request schemas, and the shared field schemas, live there; the backend validates with them, and the frontend types its requests from them, so a contract change breaks the frontend's compile.
+- Changed: the vendor form no longer sends `rating` when **creating** a vendor. The API has always discarded it there (Q-37), so nothing stored changes. Editing still sets the rating.
+- Build: both Docker images copy `packages/contracts`, and the backend binary carries a compiled copy (`build-dist`).
+
+### 2026-09-30 — Database migrations are TypeScript; their recorded names are unchanged ([record](./records/2026-09-30-p9-23-migrations.md), P9-23, ADR-087)
+- Changed (**internal, no operator action**): all 63 migrations 0001–0090 are now `.ts`. Each keeps its `schema_migrations` name, which still ends in `.js`. An existing database finds nothing pending, and a fresh one builds an identical schema: proven on PostgreSQL 18 with `pg_dump --schema-only` and the grants.
+- Added: `manifestNames.p923.test.ts` fails if any historical migration name is changed, reordered or unregistered, or if a migration exists as both `.js` and `.ts`.
+
+### 2026-09-30 — Frontend coverage past 70%; screens fixed that showed wrong values or looked empty on failure ([record](./records/2026-09-30-frontend-coverage-70.md), ADR-067 Am. 1, F-19)
+- Fixed (**data loss**): saving the tenant SSO settings after they failed to load disabled SSO and blanked its IdP fields. Save now waits for a successful load.
+- Fixed: these screens showed wrong or blank values because they read fields the API never sends:
+  - GDPR consents;
+  - tenant lifecycle (offboarded tenants could not be restored, and a refused action closed the dialog);
+  - OIDC endpoints;
+  - custom-domain DNS records and status colours;
+  - feature flags (every flag showed Enabled);
+  - cross-tenant roles;
+  - SOP documents (the list was always empty);
+  - metered-billing invoices;
+  - batch-job failure reasons;
+  - user first and last name on edit.
+- Fixed: about 30 screens showed "nothing here" when the list failed to load. They now show the error.
+- Fixed: kanban card actions, sprint changes and moves failed silently, and several dialogs had accessibility defects.
+- Changed (**gate**): the frontend coverage gate is 90 / 81 / 86 / 91 (was 41 / 35 / 34 / 41); measured 90.91 / 81.62 / 86.94 / 91.61.
+
+### 2026-09-29 — A tenant cannot point the server at its own network (A-176); a refused CORS origin is 403 ([record](./records/2026-09-29-a176-ssrf.md), ADR-104)
+- Fixed (**security**): the OIDC authority and the AI base URL are tenant settings that the **server** fetches. Before this fix, a tenant admin could aim them at `169.254.169.254` or at internal services, and redirects were followed. Every such call now checks the URL and pins the DNS answer at connect time. It follows no redirect, times out, and caps the response at 2 MiB. The IdP's published JWKS and token endpoints get the same checks, and so does a tenant S3 endpoint.
+- Changed (**security, may need operator action**): `PATCH /tenants/settings` refuses an internal `oidc_authority` or `ai_base_url` with a 400 that names the key. In production it also refuses one that is not https. An IdP or AI endpoint on a private network no longer works in production. For development, name its host in the new `SSRF_DEV_ALLOW_HOSTS`, which production ignores.
+- Fixed (**security**, A-306): the SSRF check read `http://[::ffff:169.254.169.254]/`, which URL parsing rewrites to hex, as a public address. This affected webhooks and S3 endpoints too.
+- Fixed: in production, a CORS preflight from a disallowed origin returned **500**. It is now **403**, still with no `Access-Control-Allow-Origin`.
+- Changed: every AI vendor call has a 60 s timeout. Before, it had none.
+- Fixed (**security**, A-307, 2026-09-30, ADR-104 Amendment 1): webhook delivery connects to the address it checked. A DNS answer that changes between the check and the connection (rebinding) no longer sends the signed POST inside the network. Deliveries, signatures, retries and timeouts are otherwise unchanged. The request now identifies itself as `axios/<version>`, not `node`.
+
+### 2026-09-29 — DAST: a live security probe of a local production-mode stack ([record](./records/2026-09-29-dast-live-probe.md))
+- Verified (**security**, no code change): the probe found no new vulnerability. Clean: JWT tampering, login and password-check budgets, the forgot-password oracle, two-tenant isolation (404s), mass assignment, the authorization matrix and API-key scopes, input handling, open redirect, and production headers.
+- It reconfirmed the SSRF surface on A-176 (fixed above), a 500 on a refused CORS preflight (fixed above), and a masked 400 on a tenant admin's SUPER_ADMIN create. ADR-100's `isValidationFailure` had already fixed that 400 in the working tree, and it is now pinned by a test.
+
+### 2026-09-29 — The first super admin has a one-time password, visible only inside the container ([record](./records/2026-09-29-superadmin-bootstrap-otp.md), ADR-099)
+- Changed (**security, operator action required**): the seeded super admin `sys@mail.com` no longer has the public password `123123`. The seed creates it only when no super admin exists, with a random one-time password written **only** to `/app/.bootstrap/superadmin-password` inside the backend container. Read it with `docker exec <backend> cat /app/.bootstrap/superadmin-password` (`deploy/README.md` § First Boot).
+- Changed (**security**): a deployment whose super admin still has `123123` is moved to a one-time password at the first boot of this version. Read the file after deploying.
+- Fixed (**security**): re-running `GET /migration/seeding` reset the super admin's password to `123123`. The seed no longer touches an existing password.
+- Added: the first sign-in with a one-time password returns a short-lived password-change token instead of a session. The sign-in page asks for a new password at once, then signs in normally (MFA enrolment follows). New public endpoint `POST /api/v1/auth/first-sign-in/password`. Migration `0094` (`users.password_one_time`).
+- Added: `./backend rotate-bootstrap-password --user … --requested-by … --ticket …` (container) / `npm run bootstrap:rotate` (checkout) issues a new one-time password, audited.
+- Changed (**security**, 2026-09-30, ADR-099 Amendment 1): a password an administrator sets for another user (create or reset) is now one-time as well. Its first sign-in asks for a new password and opens no session; using it again fails. The reset's temporary password is still shown once to the administrator.
+- Changed: the demo-data seeder refuses to run when `NODE_ENV=production`, whatever `SEED_DEMO` says (the demo users share a known password).
+- Changed (**tests**): the live E2E suite and the browser automation need `E2E_OPERATOR_PASSWORD`, plus `E2E_BOOTSTRAP_PASSWORD` on a fresh stack. There is no default.
+
+### 2026-09-29 — Multipart bodies sanitized like JSON (A-296) ([record](./records/2026-09-29-multipart-sanitizer.md))
+- Fixed (**security**): fields of a `multipart/form-data` request (every upload route: tenant create/edit/logo, user avatar, attachments, CMS media, bulk import, AI OCR) were stored unescaped, because the global sanitizer ran before multer parsed them. They now get exactly the escaping a JSON body gets.
+- Removed: the never-mounted `errorLog` access logger (it would only have duplicated the 4xx/5xx lines `accessLog` already writes).
+
+### 2026-09-29 — Phase 10 planned: public pages revamp; Phase 11 on hold ([record](./records/2026-09-29-P10-00-phase-10-11-planning.md), ADR-098)
+- Planned (documents only, nothing built): the landing, sign-in, request-access, forgot/reset and certificate-verification pages are to be rebuilt dark and bilingual (Indonesian first), with every fabricated testimonial, customer, number and certification badge removed first (P10-00).
+- Recorded (**security**): the activation link built from request headers (A-289), register enumeration (A-290), uncounted OTP/registration successes (A-291), SSO tenant-code disclosure (A-292), certificate-number enumeration (A-293).
+
+### 2026-09-29 — Emails carry the product's own logo, colours and copy ([record](./records/2026-09-29-email-templates-branding.md))
+- Changed: the activation, password-reset OTP, account and notification emails use the Device Calibrator logo once, in the header, and the brand palette (navy `#001250`, teal `#00DAB4`).
+- Fixed: the emails still carried another product's boilerplate text ("students", "$1000++ jobs", a fictional street address). They now say, in Indonesian and English, only what the system does: activation link valid 24 hours, OTP valid 5 minutes.
+
+### 2026-09-29 — Security fixes A-275 to A-282 ([record](./records/2026-09-29-security-fixes-a275-a282.md), ADR-094)
+- Fixed (**security**): an OIDC authorization request could be approved by a user of any tenant. Only a user of the client's own tenant may now read or decide it, and another tenant's request answers 404, like one that does not exist.
+- Fixed (**security**): a Stripe payment re-activated a tenant the platform operator had suspended, or had offboarded. A payment now lifts only a dunning suspension, and every billing status decision is audited.
+- Fixed: a ticket assignee, kanban member, card assignee or risk assignee from another tenant was accepted. It is now refused with 404.
+- Fixed: SCIM user writes, API-key create and revoke, e-signature key create and delete, vendor, risk, scorecard and asset-finance writes, and the tenant suspend/resume/grace-period/cancel transitions now write their audit row inside the transaction.
+- Changed: cancelling an offboarding that does not exist is **409** (was 400). Suspending or resuming an offboarded tenant is 409.
+- Added: `/network-security/tenants/:tenantId/{ip-allowlist,geofence}` and `/oidc/tenants/:tenantId/clients…` let the platform operator act on a named tenant.
+- Changed: `POST /ai/query` and `/ai/ocr` answer **409** when no AI provider is configured (was 500), and **502** when the provider fails.
+
+### 2026-09-29 — The audit trail is append-only in the database; certificate PDFs are rendered by the frontend ([record](./records/2026-09-29-adr095-audit-append-only-pdf-frontend.md), ADR-095)
+- Added: migration `0091`. `audit_logs` refuses DELETE, TRUNCATE and every UPDATE except GDPR masking, for every database role, and the application role lost UPDATE/DELETE/TRUNCATE on it. The boot schema check requires the two triggers.
+- Changed (**breaking API**): the backend renders no certificate PDF. `POST /certificates/:id/pdf` is removed. `GET /certificates/:id/pdf` serves only a PDF stored before this change. The new `GET /certificates/:id/document` returns the printed fields, the verification URL and the integrity hashes. The public verification endpoint adds `integrity` (the v2 hash) and, for a signed certificate, `document`.
+- Changed: the dashboard and the public verification page render the certificate PDF in the browser (jsPDF), with the verification QR and the `certificate-content-v2` hash, which binds every printed certificate field. The v1 hash on earlier PDFs still verifies.
+- Removed: Chromium, its fonts and `PUPPETEER_EXECUTABLE_PATH` from the backend image and the deploy manifests; `puppeteer` is a devDependency.
+- Fixed: a system role could be soft-deleted through `Role#softDelete` (Q-35). The key-rotation rehearsal covers users' TOTP seeds (Q-36).
+
+### 2026-09-29 — P9-11: request validation is Zod, and Joi is removed ([record](./records/2026-09-29-p9-11-validators-zod.md), ADR-093)
+- Changed: every request validator moved from Joi to Zod, and the `joi` package is gone. A validation 400 keeps its status, envelope and top-level message, and `details` still appears only outside production. The **wording inside `details` changed** (ADR-093 lists every string).
+- Changed: metered billing's validation 400 has the common envelope. In production it now says "Validation Error" instead of the generic error.
+- Changed: ids in braces or without hyphens are refused. Emails are no longer checked against the IANA top-level-domain list.
+- Found: a validation failure thrown in a controller loses its field list on the wire (A-272). Three controllers let a body `tenantId` win over the path (A-273).
+
+### 2026-09-29 — The code conventions describe the code as it is ([record](./records/2026-09-29-code-conventions-update.md))
+- Changed (docs): the backend, TypeScript, testing, tooling, review-checklist and frontend standards, and the Commands/Code Style parts of `CLAUDE.md` and `AGENTS.md`, now state the as-built rules — mixed JavaScript/TypeScript run through tsx, Zod validation through `validate()`, raw SQL through `sql()` with a bound tenant predicate, configuration through `config/env.ts`, two-tenant tests on the real hooks, the page CSP and the accessibility rules — and correct statements that said there was no route guard, no CI, no hook and no committed lockfile.
+- Found: most live PostgreSQL suites do not run as the application role (A-283); the backend lint gate covers `src/` only (A-284).
+
+### 2026-09-30 — Editing a tenant works again; a head organisation sees its sub-organisations ([record](./records/2026-09-30-a326-a329-tenant-edit-hierarchy.md), A-326 … A-329, ADR-112)
+- Fixed: saving a tenant's details no longer fails with a server error. The status is changed only by suspending or resuming the tenant, and the edit says so when asked to change it (A-326).
+- Fixed: clearing a tenant's email is refused with a clear message instead of a server error (A-327).
+- Fixed: a head organisation's tree and its list of descendants now show its sub-organisations, and one branch's descendants no longer include a look-alike branch (A-329).
+- Changed: creating a tenant no longer passes a creator field the database never stored; the creator is recorded in the audit log, as before (A-328).
+
+### 2026-09-30 — P9-12: the sign-in and user code was run end to end in a built image ([record](./records/2026-09-30-p9-12-image-baseline.md))
+- Checked: the live test suite against an image of the converted code; no failure traces to the sign-in, user, key, single sign-on or provisioning code.
+- Fixed (tests): two end-to-end tests now replace a one-time password the way sign-in has required since P10-16.
+- Found: building the backend image depends on downloading a Node binary during the build (A-325).
+
+### 2026-09-30 — P9-16: workflow, quality management, risk, supplier scorecard and vendor code is TypeScript ([record](./records/2026-09-30-p9-16-quality-services.md))
+- Changed: those five services are TypeScript, with no change to what they do.
+- Found (not fixed): vendor search is case-sensitive (A-330).
+
+### 2026-09-30 — P9-15, P9-17: warehouse, stock, billing, finance and payments code is TypeScript ([record](./records/2026-09-30-p9-15-17-warehouse-commercial-services.md))
+- Changed: the warehouse, stock, billing, finance, Stripe webhook and metered-billing services are TypeScript, with no change to what they do.
+- Found (not fixed): A-319 … A-322.
+
+### 2026-09-30 — A backend module that cannot load now fails the gate ([record](./records/2026-09-30-p9-load-gate.md), ADR-087 Amendment 15)
+- Added: `npm run load:check` requires every backend module the way production loads it (the built tree under node, the source under tsx), in `make verify` and a new CI job; a lint rule forbids the export shape that crashed the boot.
+
+### 2026-09-30 — Ticket descriptions are cleaned when saved ([record](./records/2026-09-30-a318-ticket-description-sanitize.md), A-318)
+- Fixed: a ticket description keeps its formatting but loses scripts, event handlers and unsafe links when it is stored, not only when the page shows it.
+
+### 2026-09-30 — API keys can be scoped to calibration, certificates, maintenance, notifications and reports ([record](./records/2026-09-30-a311-api-key-scopes.md), A-311)
+- Fixed: the API-key scope list is one shared list that covers every resource a route checks; five were missing, so no key could reach those routes. A guard test now fails if a route checks a resource no key can be given.
+
+### 2026-09-30 — API keys can edit users; the edit response reports the active flag ([record](./records/2026-09-30-a282-user-routes-a295.md), A-282, A-295)
+- Fixed: user changes made with an API key are recorded as the key (`system:api-key`), so they no longer fail on the database (A-282).
+- Fixed: editing a user answers with its `is_active` flag again (A-295; the stored flag was never changed).
+
+### 2026-09-30 — P9-12: sign-in, users, API keys, single sign-on, SCIM and OpenID Connect are TypeScript ([record](./records/2026-09-30-p9-12-batches-2-3.md), ADR-087 Amendment 14)
+- Changed: the authentication, user administration, API key, SAML/OIDC single sign-on, SCIM provisioning and OpenID Connect provider services are TypeScript, with no change to what they do.
+- Found (not fixed): editing a user writes an empty active flag on every edit (A-295).
+
+### 2026-09-29 — Roles and menus: system roles are protected, and the fields a request sends are stored ([record](./records/2026-09-29-a285-a294-role-menu-attributes.md), A-285 … A-287, A-294)
+- Fixed: deleting a system role deactivates it instead of destroying it, and a system role can no longer be given status "deleted" (A-285).
+- Fixed: a role created through the API keeps the privilege level it was created with (it was always level 1, A-294). The system flag (A-286) and a menu's order and active flag (A-287) are stored.
+
+### 2026-09-29 — P9-19 round 1: ten middlewares are TypeScript ([record](./records/2026-09-29-p9-19-middlewares-round1.md), ADR-087)
+- Changed: the 404 handler, uuid validation, the request-timeout answer, the XSS sanitizer, the access log, the folder bootstrap, the global error handler, the metrics token gate, role-based access (`rbac`) and the Part 11 platform-authoring guard are TypeScript. What they do is unchanged, shown by 11,906 identity checks and a live check.
+- Added: a test pinning that `rbac()` admits anyone at or above the lowest listed role's level.
+
+### 2026-09-29 — P9-12 batch 1: token signing, sessions, passkeys, user permissions and roles are TypeScript ([record](./records/2026-09-29-p9-12-batch1-identity-leaves.md), ADR-087 Amendment 13)
+- Changed: JWT signing and verification, refresh-token sessions and their liveness check, passkeys, per-user permission overrides, and roles and menus are TypeScript, with no change to what they do.
+- Found (not fixed): deleting a system role destroys it instead of deactivating it (A-285); two role/menu fields a request can send are silently ignored (A-286, A-287).
+
+### 2026-09-29 — P9-07: raw SQL goes through a bind-only helper ([record](./records/2026-09-29-p9-07-sql-helper.md), ADR-087 Amendment 12)
+- Added: `sql()`, the one way converted code runs raw SQL. It takes bound values only and refuses the placeholder mistake that once read all metered usage as zero. A raw statement on tenant data must bind its tenant predicate (enforced by lint and by the D-05 test); verified against live PostgreSQL 18 as the application role.
+
+### 2026-09-29 — P9-10 done: every model and the models barrel are TypeScript ([record](./records/2026-09-29-p9-10-done-barrel.md), ADR-087 Amendment 11)
+- Changed: sessions, users, tenants, roles, the audit log, API keys, tenant keys and settings, the tenant hierarchy, menus and permissions, and the models barrel are TypeScript — all 71 models — with no change to what any code sees; verified against live PostgreSQL 18 as the application role and by the full end-to-end baseline against the rebuilt image.
+- Found (for decision): the audit log is append-only only by the application, not in the database; a system role can be soft-deleted through the model method.
+
+### 2026-09-29 — P9-10: content, ticket, GDPR and platform models are TypeScript ([record](./records/2026-09-29-p9-10-models-batches-7-8.md), ADR-087 Amendment 10)
+- Changed: the blog/news CMS, support tickets, GDPR consent and data-subject requests, custom domains, SCIM groups, webhooks and their deliveries, and tenant backups are TypeScript models, with no change to what they define or do; verified against live PostgreSQL 18 as the application role. 59 of 71 models are converted.
+
 ### 2026-09-29 — P9-10: calibration, certificate and signature models are TypeScript ([record](./records/2026-09-29-p9-10-models-batches-5-6.md), ADR-087 Amendment 9)
 - Changed: the calibration device, calibration record, certificate, IoT reading, attachment and document-chunk models and the four electronic-signature models are TypeScript, with no change to what they define or do; verified against live PostgreSQL 18 as the application role, including the append-only calibration records and the retired-device rule. 46 of 71 models are converted.
 

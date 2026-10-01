@@ -32,6 +32,13 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
 
+// The real Zod schema checks every body; checkInput is wrapped only so one test
+// can force a failure the schema itself never produces (no error entries).
+jest.mock("../../validators/input", () => {
+  const actual = jest.requireActual("../../validators/input");
+  return { ...actual, checkInput: jest.fn(actual.checkInput) };
+});
+
 const tenantHierarchyController = require("../../controllers/tenantHierarchy.controller");
 const tenantHierarchyService = require("../../services/tenantHierarchy.service");
 const { success, error } = require("../../utils/response.util");
@@ -185,9 +192,9 @@ describe("tenantHierarchy Controller", () => {
   });
 
   describe("addChildTenant", () => {
-    // Validation moved into the controller: the route used to pass the Joi
-    // schema's own `.validate` as express middleware, which threw on every
-    // request. These cases pin the validated behaviour.
+    // Validation lives in the controller (checkInput over the real Zod schema):
+    // the route once passed a schema's own `.validate` as express middleware,
+    // which threw on every request. These cases pin the validated behaviour.
     it("should add a child tenant under a parent, applying schema defaults", async () => {
       req.params = { parentId: TENANT_ID };
       req.body = { name: "New Branch" };
@@ -197,7 +204,7 @@ describe("tenantHierarchy Controller", () => {
 
       await tenantHierarchyController.addChildTenant(req, res, next);
 
-      // Joi applies plan="free" by default.
+      // The schema applies plan="free" by default.
       expect(tenantHierarchyService.createSubOrganization).toHaveBeenCalledWith(
         TENANT_ID,
         { name: "New Branch", plan: "free" },
@@ -238,7 +245,7 @@ describe("tenantHierarchy Controller", () => {
 
       expect(tenantHierarchyService.createSubOrganization).not.toHaveBeenCalled();
       expect(next).toHaveBeenCalledWith(
-        expect.objectContaining({ status: 400 }),
+        expect.objectContaining({ status: 400, message: "Invalid input: expected string, received undefined" }),
       );
     });
 
@@ -250,18 +257,19 @@ describe("tenantHierarchy Controller", () => {
 
       expect(tenantHierarchyService.createSubOrganization).not.toHaveBeenCalled();
       expect(next).toHaveBeenCalledWith(
-        expect.objectContaining({ status: 400 }),
+        expect.objectContaining({
+          status: 400,
+          message: 'Invalid option: expected one of "free"|"professional"|"business"|"enterprise"',
+        }),
       );
     });
 
     it("should use a generic message when the error carries no formattable details", async () => {
-      // formatErrors() returns "" for empty details, so the controller falls back
-      // to "Validation failed". Joi always populates details for a real error, so
-      // this defensive arm is only reachable by stubbing validate().
-      const validator = require("../../validators/tenantHierarchy.validator");
-      const spy = jest
-        .spyOn(validator.addChild, "validate")
-        .mockReturnValue({ error: { details: [] }, value: undefined });
+      // formatErrors() returns "" for an empty list, so the controller falls
+      // back to "Validation failed". Zod always reports an issue for a real
+      // failure, so this defensive arm is only reachable by forcing checkInput.
+      const { checkInput } = require("../../validators/input");
+      checkInput.mockReturnValueOnce({ ok: false, errors: [] });
 
       req.params = { parentId: TENANT_ID };
       req.body = { name: "New Branch" };
@@ -272,8 +280,6 @@ describe("tenantHierarchy Controller", () => {
       expect(next).toHaveBeenCalledWith(
         expect.objectContaining({ status: 400, message: "Validation failed" }),
       );
-
-      spy.mockRestore();
     });
   });
 

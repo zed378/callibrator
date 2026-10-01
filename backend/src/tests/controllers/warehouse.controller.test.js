@@ -91,12 +91,13 @@ describe("warehouseController", () => {
       await warehouseController.getAllWarehouses(req, res, next);
 
       expect(warehouseService.fetchWarehouses).not.toHaveBeenCalled();
-      // asyncHandler maps the thrown { status, message } onto response.util.error
+      // A-272 (ADR-100): asyncHandler answers a thrown validateInput failure
+      // like validate() — "Validation Error", the field list as details.
       expect(error).toHaveBeenCalledWith(
         res,
-        "Validation failed",
+        "Validation Error",
         400,
-        expect.anything(),
+        expect.arrayContaining([expect.objectContaining({ field: expect.any(String) })]),
       );
       expect(next).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -152,7 +153,7 @@ describe("warehouseController", () => {
         name: "New WH",
         code: "CODE-1",
         status: "active",
-      });
+      }, expect.objectContaining({ apiKeyId: null }));
       expect(success).toHaveBeenCalledWith(
         res,
         { id: "wh-1", name: "New WH" },
@@ -180,8 +181,7 @@ describe("warehouseController", () => {
       expect(warehouseService.updateWarehouse).toHaveBeenCalledWith(
         "tenant-1",
         "8c352a92-d6cf-4b71-b0db-6e69622d1b11",
-        { name: "Updated WH", status: "inactive" },
-      );
+        { name: "Updated WH", status: "inactive" }, expect.objectContaining({ apiKeyId: null }));
       expect(success).toHaveBeenCalledWith(
         res,
         { id: "wh-1", name: "Updated WH" },
@@ -208,6 +208,7 @@ describe("warehouseController", () => {
       expect(warehouseService.deleteWarehouse).toHaveBeenCalledWith(
         "tenant-1",
         "8c352a92-d6cf-4b71-b0db-6e69622d1b11",
+        expect.objectContaining({ apiKeyId: null }),
       );
       expect(success).toHaveBeenCalledWith(
         res,
@@ -268,7 +269,7 @@ describe("warehouseController", () => {
         name: "Loc New",
         code: "L1",
         isActive: true,
-      });
+      }, expect.objectContaining({ apiKeyId: null }));
       expect(success).toHaveBeenCalledWith(
         res,
         { id: "loc-1", name: "Loc New" },
@@ -296,8 +297,7 @@ describe("warehouseController", () => {
       expect(warehouseService.updateLocation).toHaveBeenCalledWith(
         "tenant-1",
         "8c352a92-d6cf-4b71-b0db-6e69622d1b12",
-        { name: "Loc Updated", isActive: false },
-      );
+        { name: "Loc Updated", isActive: false }, expect.objectContaining({ apiKeyId: null }));
       expect(success).toHaveBeenCalledWith(
         res,
         { id: "loc-1", name: "Loc Updated" },
@@ -324,6 +324,7 @@ describe("warehouseController", () => {
       expect(warehouseService.deleteLocation).toHaveBeenCalledWith(
         "tenant-1",
         "8c352a92-d6cf-4b71-b0db-6e69622d1b12",
+        expect.objectContaining({ apiKeyId: null }),
       );
       expect(success).toHaveBeenCalledWith(
         res,

@@ -47,6 +47,11 @@ jest.mock("../../config", () => {
 
 const models = require("../../models");
 const { TARGETS } = require("../../migrations/0037-association-foreign-keys");
+// Q-51 (migration 0105): these user columns became nullable — an API key's row
+// names the key in api_key_id instead, and a CHECK holds exactly one set.
+const Q51_USER_COLUMNS = new Set(
+  require("../../migrations/0105-api-key-actor-columns").TARGETS.map((t) => `${t.table}.${t.userColumn}`),
+);
 const q16 = require("../../migrations/0030-tenant-foreign-keys-restrict");
 
 const sequelize = models.sequelize;
@@ -64,6 +69,8 @@ const UNCHANGED = Object.freeze({
   "certificates.created_by": "users NO ACTION",
   "certificates.updated_by": "users NO ACTION",
   "certificates.deleted_by": "users NO ACTION",
+  // ADR-101 (migration 0095): who submitted it for approval; RESTRICT, as approved_by/signed_by.
+  "certificates.submitted_by": "users RESTRICT",
   "invoices.subscription_id": "subscriptions CASCADE",
   "kanban_card_relations.project_id": "kanban_projects CASCADE",
   "maintenance_work_orders.device_id": "calibration_devices CASCADE",
@@ -85,6 +92,13 @@ const UNCHANGED = Object.freeze({
   "workflow_instances.workflow_id": "workflows CASCADE",
   "workflow_steps.workflow_id": "workflows CASCADE",
   "workflow_steps.role_id": "roles RESTRICT",
+  // P10-05 (migration 0099, ADR-098 §6): the platform's access-request queue.
+  // SET NULL — the invited administrator or the deciding super admin may be
+  // deleted; the request is history, not a regulated record.
+  "access_requests.admin_user_id": "users SET NULL",
+  "access_requests.decided_by": "users SET NULL",
+  // ADR-108 Amendment 1 (migration 0104): a passkey goes with its user.
+  "webauthn_credentials.user_id": "users CASCADE",
 
   // Added by concurrent work (2026-09-24), each with its own migration; they
   // are that work's decisions, recorded here so this list stays complete.
@@ -99,6 +113,21 @@ const UNCHANGED = Object.freeze({
   "calibration_records.voided_by": "users RESTRICT",
   // P6-09 (migration 0059): which item an adjustment moved outlives nothing.
   "stock_adjustments.stock_id": "stocks RESTRICT",
+  // Q-51 (migration 0105): the API key that acted (the row's user column is
+  // then NULL; a CHECK holds exactly one of the two set). Target api_keys.
+  // ON DELETE RESTRICT, as the user column beside it (F-6: who performed a
+  // record outlives the actor's row) — and SET NULL would leave a row naming
+  // no actor, which the CHECK refuses. Keys are revoked by soft delete, so
+  // RESTRICT blocks no normal operation. Tenant: a key belongs to one tenant
+  // (api_keys.tenant_id); the row's tenant_id is stamped from the request's
+  // tenant context, which for a key principal IS the key's tenant
+  // (auth.middleware#tryApiKeyAuth), and the id is taken from that principal
+  // (auditPrincipal), never the body — so row and key share a tenant. This is
+  // enforced by the application, not by a composite FK, exactly as for the
+  // user columns.
+  "calibration_records.api_key_id": "api_keys RESTRICT",
+  "stock_adjustments.api_key_id": "api_keys RESTRICT",
+  "stock_transfers.api_key_id": "api_keys RESTRICT",
 });
 
 /** { field: "<column DDL>" } exactly as createTable renders it. */
@@ -193,8 +222,9 @@ describe("A-148 / A-149 — each 0037 decision is what sync() builds", () => {
       );
     });
 
-    it(target.notNull ? "is NOT NULL" : "stays nullable", () => {
-      expect(/NOT NULL/.test(columnDdl(model)[column])).toBe(target.notNull);
+    const notNull = target.notNull && !Q51_USER_COLUMNS.has(`${table}.${column}`);
+    it(notNull ? "is NOT NULL" : "is nullable (0037, or Q-51 / 0105)", () => {
+      expect(/NOT NULL/.test(columnDdl(model)[column])).toBe(notNull);
     });
 
     it("every association on the column states that onDelete", () => {

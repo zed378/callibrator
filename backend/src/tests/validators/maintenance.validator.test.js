@@ -1,296 +1,192 @@
 /**
  * Maintenance validator tests
+ *
+ * P9-11 (ADR-093): the module's own validate/formatErrors helpers are gone;
+ * the schemas are exercised through the shared checkInput (validators/input),
+ * which answers { ok: true, value } or { ok: false, errors: [{ field, message }] }.
+ * The formatErrors cases now live with fieldErrors (session.validator.test.js).
  */
-const {
-  createWorkOrder,
-  updateWorkOrder,
-  validate,
-  formatErrors,
-} = require("../../validators/maintenance.validator");
+const { createWorkOrder, updateWorkOrder } = require("../../validators/maintenance.validator");
+const { checkInput } = require("../../validators/input");
+
+const DEVICE = "123e4567-e89b-12d3-a456-426614174000";
+const BASE = { deviceId: DEVICE, title: "Annual Calibration", type: "Preventative" };
 
 describe("Maintenance Validators", () => {
   describe("createWorkOrder", () => {
     it("should validate correct work order", () => {
-      const data = {
-        deviceId: "123e4567-e89b-12d3-a456-426614174000",
-        title: "Annual Calibration",
-        type: "Preventative",
-      };
+      const result = checkInput(BASE, createWorkOrder);
 
-      const { error, value } = validate(data, createWorkOrder);
-
-      expect(error).toBeUndefined();
-      expect(value.title).toBe("Annual Calibration");
-      expect(value.type).toBe("Preventative");
+      expect(result.ok).toBe(true);
+      expect(result.value.title).toBe("Annual Calibration");
+      expect(result.value.type).toBe("Preventative");
     });
 
     it("should validate with default priority", () => {
-      const data = {
-        deviceId: "123e4567-e89b-12d3-a456-426614174000",
-        title: "Annual Calibration",
-        type: "Preventative",
-      };
-
-      const { error, value } = validate(data, createWorkOrder);
-
-      expect(error).toBeUndefined();
-      expect(value.priority).toBe("Medium");
+      expect(checkInput(BASE, createWorkOrder).value.priority).toBe("Medium");
     });
 
     it("should validate with default status", () => {
-      const data = {
-        deviceId: "123e4567-e89b-12d3-a456-426614174000",
-        title: "Annual Calibration",
-        type: "Preventative",
-      };
-
-      const { error, value } = validate(data, createWorkOrder);
-
-      expect(error).toBeUndefined();
-      expect(value.status).toBe("Open");
+      expect(checkInput(BASE, createWorkOrder).value.status).toBe("Open");
     });
 
     it("should validate with all priority levels", () => {
-      const priorities = ["Low", "Medium", "High", "Critical"];
-
-      for (const priority of priorities) {
-        const data = {
-          deviceId: "123e4567-e89b-12d3-a456-426614174000",
-          title: "Test",
-          type: "Preventative",
-          priority,
-        };
-
-        const { error } = validate(data, createWorkOrder);
-        expect(error).toBeUndefined();
+      for (const priority of ["Low", "Medium", "High", "Critical"]) {
+        expect(checkInput({ ...BASE, title: "Test", priority }, createWorkOrder).value.priority).toBe(priority);
       }
     });
 
     it("should validate with all types", () => {
-      const types = ["Preventative", "Breakdown", "Repair"];
-
-      for (const type of types) {
-        const data = {
-          deviceId: "123e4567-e89b-12d3-a456-426614174000",
-          title: "Test",
-          type,
-        };
-
-        const { error } = validate(data, createWorkOrder);
-        expect(error).toBeUndefined();
+      for (const type of ["Preventative", "Breakdown", "Repair"]) {
+        expect(checkInput({ ...BASE, title: "Test", type }, createWorkOrder).value.type).toBe(type);
       }
     });
 
     it("should validate with all statuses", () => {
-      const statuses = ["Open", "InProgress", "Completed", "Cancelled"];
-
-      for (const status of statuses) {
-        const data = {
-          deviceId: "123e4567-e89b-12d3-a456-426614174000",
-          title: "Test",
-          type: "Preventative",
-          status,
-        };
-
-        const { error } = validate(data, createWorkOrder);
-        expect(error).toBeUndefined();
+      for (const status of ["Open", "InProgress", "Completed", "Cancelled"]) {
+        expect(checkInput({ ...BASE, title: "Test", status }, createWorkOrder).value.status).toBe(status);
       }
     });
 
     it("should validate with optional fields", () => {
-      const data = {
-        deviceId: "123e4567-e89b-12d3-a456-426614174000",
-        title: "Annual Calibration",
-        type: "Preventative",
-        vendorId: "123e4567-e89b-12d3-a456-426614174001",
-        assigneeId: "123e4567-e89b-12d3-a456-426614174002",
-        description: "Full calibration check",
-        scheduledDate: "2026-08-01",
-        estimatedCost: 500,
-      };
+      const result = checkInput(
+        {
+          ...BASE,
+          vendorId: "123e4567-e89b-12d3-a456-426614174001",
+          assigneeId: "123e4567-e89b-12d3-a456-426614174002",
+          description: "Full calibration check",
+          scheduledDate: "2026-08-01",
+          estimatedCost: 500,
+        },
+        createWorkOrder,
+      );
 
-      const { error } = validate(data, createWorkOrder);
-
-      expect(error).toBeUndefined();
+      expect(result.ok).toBe(true);
+      expect(result.value.scheduledDate).toEqual(new Date("2026-08-01T00:00:00.000Z"));
+      expect(result.value.estimatedCost).toBe(500);
     });
 
-    it("should validate with null vendor and assignee", () => {
-      const data = {
-        deviceId: "123e4567-e89b-12d3-a456-426614174000",
-        title: "Annual Calibration",
-        type: "Preventative",
-        vendorId: null,
-        assigneeId: null,
-      };
+    it("should validate with null vendor and assignee (and other nullable fields)", () => {
+      const result = checkInput(
+        { ...BASE, vendorId: null, assigneeId: null, scheduledDate: null, estimatedCost: null, description: null },
+        createWorkOrder,
+      );
 
-      const { error } = validate(data, createWorkOrder);
+      expect(result.ok).toBe(true);
+    });
 
-      expect(error).toBeUndefined();
+    it("should trim title and description, and convert a numeric-string cost", () => {
+      const result = checkInput({ ...BASE, title: "  t  ", description: "  d  ", estimatedCost: "12.5" }, createWorkOrder);
+
+      expect(result.value).toMatchObject({ title: "t", description: "d", estimatedCost: 12.5 });
+    });
+
+    it("should strip unknown keys (tenantId is never read from a body)", () => {
+      expect(checkInput({ ...BASE, tenantId: DEVICE }, createWorkOrder).value).not.toHaveProperty("tenantId");
     });
 
     it("should reject missing device ID", () => {
-      const data = {
-        title: "Annual Calibration",
-        type: "Preventative",
-      };
-
-      const { error } = validate(data, createWorkOrder);
-
-      expect(error).toBeDefined();
+      expect(checkInput({ title: "Annual Calibration", type: "Preventative" }, createWorkOrder).errors).toEqual([
+        { field: "deviceId", message: "Invalid input: expected string, received undefined" },
+      ]);
     });
 
     it("should reject missing title", () => {
-      const data = {
-        deviceId: "123e4567-e89b-12d3-a456-426614174000",
-        type: "Preventative",
-      };
+      expect(checkInput({ deviceId: DEVICE, type: "Preventative" }, createWorkOrder).errors).toEqual([
+        { field: "title", message: "Invalid input: expected string, received undefined" },
+      ]);
+    });
 
-      const { error } = validate(data, createWorkOrder);
-
-      expect(error).toBeDefined();
+    it("should reject a blank title", () => {
+      expect(checkInput({ ...BASE, title: "   " }, createWorkOrder).errors).toEqual([
+        { field: "title", message: "Too small: expected string to have >=1 characters" },
+      ]);
     });
 
     it("should reject missing type", () => {
-      const data = {
-        deviceId: "123e4567-e89b-12d3-a456-426614174000",
-        title: "Annual Calibration",
-      };
-
-      const { error } = validate(data, createWorkOrder);
-
-      expect(error).toBeDefined();
+      expect(checkInput({ deviceId: DEVICE, title: "Annual Calibration" }, createWorkOrder).errors).toEqual([
+        { field: "type", message: 'Invalid option: expected one of "Preventative"|"Breakdown"|"Repair"' },
+      ]);
     });
 
     it("should reject invalid type", () => {
-      const data = {
-        deviceId: "123e4567-e89b-12d3-a456-426614174000",
-        title: "Annual Calibration",
-        type: "Inspection",
-      };
+      expect(checkInput({ ...BASE, type: "Inspection" }, createWorkOrder).errors).toEqual([
+        { field: "type", message: 'Invalid option: expected one of "Preventative"|"Breakdown"|"Repair"' },
+      ]);
+    });
 
-      const { error } = validate(data, createWorkOrder);
-
-      expect(error).toBeDefined();
+    it("should reject a non-ISO scheduledDate", () => {
+      expect(checkInput({ ...BASE, scheduledDate: "08/01/2026" }, createWorkOrder).errors).toEqual([
+        { field: "scheduledDate", message: "Invalid input" },
+      ]);
     });
 
     it("should reject negative estimated cost", () => {
-      const data = {
-        deviceId: "123e4567-e89b-12d3-a456-426614174000",
-        title: "Annual Calibration",
-        type: "Preventative",
-        estimatedCost: -100,
-      };
-
-      const { error } = validate(data, createWorkOrder);
-
-      expect(error).toBeDefined();
+      expect(checkInput({ ...BASE, estimatedCost: -100 }, createWorkOrder).errors).toEqual([
+        { field: "estimatedCost", message: "Too small: expected number to be >=0" },
+      ]);
     });
   });
 
   describe("updateWorkOrder", () => {
     it("should validate with partial update", () => {
-      const data = {
-        status: "Completed",
-      };
-
-      const { error } = validate(data, updateWorkOrder);
-
-      expect(error).toBeUndefined();
+      expect(checkInput({ status: "Completed" }, updateWorkOrder)).toEqual({ ok: true, value: { status: "Completed" } });
     });
 
     it("should validate with all fields", () => {
-      const data = {
-        title: "Updated Title",
-        vendorId: "123e4567-e89b-12d3-a456-426614174001",
-        assigneeId: "123e4567-e89b-12d3-a456-426614174002",
-        type: "Breakdown",
-        priority: "High",
-        status: "InProgress",
-        description: "Updated description",
-        scheduledDate: "2026-08-01",
-        completedDate: "2026-08-15",
-        estimatedCost: 500,
-        actualCost: 450,
-        resolutionNotes: "Fixed the issue",
-      };
+      const result = checkInput(
+        {
+          title: "Updated Title",
+          vendorId: "123e4567-e89b-12d3-a456-426614174001",
+          assigneeId: "123e4567-e89b-12d3-a456-426614174002",
+          type: "Breakdown",
+          priority: "High",
+          status: "InProgress",
+          description: "Updated description",
+          scheduledDate: "2026-08-01",
+          completedDate: "2026-08-15",
+          estimatedCost: 500,
+          actualCost: 450,
+          resolutionNotes: "Fixed the issue",
+        },
+        updateWorkOrder,
+      );
 
-      const { error } = validate(data, updateWorkOrder);
-
-      expect(error).toBeUndefined();
+      expect(result.ok).toBe(true);
+      expect(result.value.completedDate).toEqual(new Date("2026-08-15T00:00:00.000Z"));
     });
 
     it("should validate with null values", () => {
-      const data = {
-        vendorId: null,
-        assigneeId: null,
-        scheduledDate: null,
-      };
+      const result = checkInput(
+        { vendorId: null, assigneeId: null, scheduledDate: null, completedDate: null, actualCost: null, resolutionNotes: "" },
+        updateWorkOrder,
+      );
 
-      const { error } = validate(data, updateWorkOrder);
-
-      expect(error).toBeUndefined();
+      expect(result.ok).toBe(true);
     });
 
     it("should reject invalid status update", () => {
-      const data = {
-        status: "Pending",
-      };
-
-      const { error } = validate(data, updateWorkOrder);
-
-      expect(error).toBeDefined();
+      expect(checkInput({ status: "Pending" }, updateWorkOrder).errors).toEqual([
+        { field: "status", message: 'Invalid option: expected one of "Open"|"InProgress"|"Completed"|"Cancelled"' },
+      ]);
     });
 
     it("should reject invalid type update", () => {
-      const data = {
-        type: "Inspection",
-      };
-
-      const { error } = validate(data, updateWorkOrder);
-
-      expect(error).toBeDefined();
+      expect(checkInput({ type: "Inspection" }, updateWorkOrder).errors).toEqual([
+        { field: "type", message: 'Invalid option: expected one of "Preventative"|"Breakdown"|"Repair"' },
+      ]);
     });
 
     it("should reject negative actual cost", () => {
-      const data = {
-        actualCost: -100,
-      };
-
-      const { error } = validate(data, updateWorkOrder);
-
-      expect(error).toBeDefined();
-    });
-  });
-
-  describe("formatErrors", () => {
-    it("should format error details correctly", () => {
-      const details = [
-        { path: ["tenantId"], message: "tenantId is required" },
-        { path: ["email"], message: "Invalid email" },
-      ];
-
-      const result = formatErrors(details);
-
-      expect(result).toEqual([
-        { field: "tenantId", message: "tenantId is required" },
-        { field: "email", message: "Invalid email" },
+      expect(checkInput({ actualCost: -100 }, updateWorkOrder).errors).toEqual([
+        { field: "actualCost", message: "Too small: expected number to be >=0" },
       ]);
     });
 
-    it("should handle nested field paths", () => {
-      const details = [{ path: ["user", "name"], message: "Name is required" }];
-
-      const result = formatErrors(details);
-
-      expect(result).toEqual([
-        { field: "user.name", message: "Name is required" },
+    it("should reject an empty title", () => {
+      expect(checkInput({ title: "" }, updateWorkOrder).errors).toEqual([
+        { field: "title", message: "Too small: expected string to have >=1 characters" },
       ]);
-    });
-
-    it("should return empty array for empty input", () => {
-      const result = formatErrors([]);
-
-      expect(result).toEqual([]);
     });
   });
 });

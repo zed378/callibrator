@@ -12,13 +12,21 @@
  *  - a running job's heartbeat moves `updated_at`, and the abandoned-job sweep
  *    fails a PROCESSING row whose heartbeat stopped, but not a live one.
  *
- * OPT-IN — needs a database whose schema is db.sync() of the current models:
+ * OPT-IN — needs a PostgreSQL server where DB_USER may CREATE DATABASE:
  *
- *   BATCHJOB_PG_LIVE_TEST=1 DB_HOST=... DB_PORT=... DB_NAME=... DB_USER=... DB_PASS=... \
+ *   BATCHJOB_PG_LIVE_TEST=1 DB_HOST=... DB_PORT=... DB_USER=... DB_PASS=... \
  *     npm test -- src/tests/services/batchJob.w07.live --coverage=false
  *
- * It creates two tenants with fixed ids and removes everything it wrote.
+ * ADR-095 follow-up (O-2): the suite builds its OWN database the way the
+ * backend boots (db.sync() + every migration, 0091's append-only audit_logs
+ * included), then runs as the application role through enterApplicationRole —
+ * the boot's own switch and self-check. Its audit rows cannot be deleted, by
+ * design, so it does not try: the whole database is dropped afterwards
+ * (fixtures/disposableDatabase.ts). DB_NAME is not used.
  */
+const { createDisposableDatabase, LIVE_BOOT_TIMEOUT_MS } = require("../fixtures/disposableDatabase");
+const { bootSchemaAsApplicationRole } = require("../fixtures/liveBoot");
+
 const live = process.env.BATCHJOB_PG_LIVE_TEST === "1" ? describe : describe.skip;
 
 const TENANT = "b7b7b7b7-0000-4000-8000-0000000000b7";
@@ -30,13 +38,7 @@ live("batch jobs — the row is the claim, live PostgreSQL (W-07, W-12)", () => 
   let svc;
   const handler = jest.fn();
 
-  const cleanup = async () => {
-    // W-04 (ADR-069): every state change now writes an audit row, and
-    // audit_logs.tenant_id is RESTRICT (0030), so they go before the tenants.
-    await db.query("DELETE FROM audit_logs WHERE tenant_id IN (:t, :o)", { replacements: { t: TENANT, o: OTHER } });
-    await db.query("DELETE FROM batch_jobs WHERE tenant_id IN (:t, :o)", { replacements: { t: TENANT, o: OTHER } });
-    await db.query("DELETE FROM tenants WHERE id IN (:t, :o)", { replacements: { t: TENANT, o: OTHER } });
-  };
+  let scratch;
 
   const newJob = async (status = "PENDING") => {
     const id = require("crypto").randomUUID();
@@ -54,12 +56,13 @@ live("batch jobs — the row is the claim, live PostgreSQL (W-07, W-12)", () => 
   beforeAll(async () => {
     process.env.BATCH_JOB_HEARTBEAT_MS = "100";
     process.env.BATCH_JOB_STALE_MINUTES = "10";
+    scratch = await createDisposableDatabase("w07");
     ({ db } = require("../../config"));
     db.options.logging = false;
     require("../../models");
+    await bootSchemaAsApplicationRole(db);
     svc = require("../../services/batchJob.service");
     svc.registerHandler("w07-live", handler);
-    await cleanup();
     for (const [id, sub] of [[TENANT, "w07-live-a"], [OTHER, "w07-live-b"]]) {
       await db.query(
         `INSERT INTO tenants (id, name, subdomain, email, created_at, updated_at)
@@ -67,13 +70,21 @@ live("batch jobs — the row is the claim, live PostgreSQL (W-07, W-12)", () => 
         { replacements: { id, sub, email: `${sub}@example.test` } },
       );
     }
-  });
+    // db.sync() of every model plus every migration can exceed the suite's 60 s.
+  }, LIVE_BOOT_TIMEOUT_MS);
 
   afterAll(async () => {
     if (db) {
-      await cleanup();
       await db.close();
     }
+    if (scratch) {
+      await scratch.drop();
+    }
+  }, LIVE_BOOT_TIMEOUT_MS);
+
+  it("runs as the application role, on a database where audit rows cannot be deleted", async () => {
+    const [[row]] = await db.query("SELECT current_user AS u, has_table_privilege('audit_logs', 'DELETE') AS d");
+    expect(row).toEqual({ u: "callibrator_app", d: false });
   });
 
   beforeEach(() => handler.mockReset());

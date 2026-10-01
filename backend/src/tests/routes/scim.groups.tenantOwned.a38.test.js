@@ -57,6 +57,10 @@ jest.mock("../../middlewares/auth.middleware", () => {
   };
 });
 
+// P6-11: every group write commits with an audit row. The rows themselves are
+// asserted at the end of this file; these fake models have no AuditLog table.
+jest.mock("../../services/audit.service", () => ({ logAction: jest.fn().mockResolvedValue({}) }));
+
 jest.mock("../../models", () => {
   const { Op: SeqOp, UniqueConstraintError } = require("sequelize");
 
@@ -636,6 +640,14 @@ describe("scim.service groups — inputs the route's validator never lets throug
 
   beforeEach(seed);
 
+  it("P6-11: deleteGroup called without an actor names no user, so the real insert fails closed", async () => {
+    const auditService = require("../../services/audit.service");
+    const created = await scim.createGroup(TENANT_A, { displayName: "Temp" });
+    auditService.logAction.mockClear();
+    await scim.deleteGroup(TENANT_A, created.id);
+    expect(auditService.logAction.mock.calls[0][0]).toMatchObject({ userId: null, resourceType: "ScimGroup" });
+  });
+
   it("getGroups defaults to the first page of 100 with no filter", async () => {
     await scim.createGroup(TENANT_A, { displayName: "Admins", roleId: ROLE_ADMIN });
 
@@ -668,5 +680,57 @@ describe("scim.service groups — inputs the route's validator never lets throug
 
     expect(userRole(USER_A1)).toBe(ROLE_TECH);
     expect(userRole(USER_A2)).toBe(ROLE_TECH);
+  });
+});
+
+// P6-11 (2026-09-30) — each SCIM group write commits with one audit row in its
+// transaction, naming the identity provider's key as system:scim.
+describe("P6-11 — SCIM group writes are audited", () => {
+  const auditService = require("../../services/audit.service");
+
+  it("create, replace, patch and delete each write one row, as system:scim with the key's id", async () => {
+    auditService.logAction.mockClear();
+    const created = await call(TENANT_A, "POST", "/Groups", { displayName: "Auditors" });
+    expect(created.status).toBe(201);
+    const id = created.body.data.id;
+    expect((await call(TENANT_A, "PUT", `/Groups/${id}`, { displayName: "Auditors II" })).status).toBe(200);
+    expect(
+      (
+        await call(TENANT_A, "PATCH", `/Groups/${id}`, {
+          schemas: ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
+          Operations: [{ op: "replace", path: "displayName", value: "Auditors III" }],
+        })
+      ).status,
+    ).toBe(200);
+    expect((await call(TENANT_A, "DELETE", `/Groups/${id}`)).status).toBe(204);
+
+    const rows = auditService.logAction.mock.calls.map(([entry, options]) => ({ entry, options }));
+    expect(rows.map(({ entry }) => entry.changes.operation)).toEqual([
+      "SCIM_GROUP_CREATE",
+      "SCIM_GROUP_REPLACE",
+      "SCIM_GROUP_PATCH",
+      "SCIM_GROUP_DELETE",
+    ]);
+    for (const { entry, options } of rows) {
+      expect(options.transaction).toBeDefined();
+      expect(entry).toMatchObject({
+        tenantId: TENANT_A,
+        systemActor: "system:scim",
+        resourceType: "ScimGroup",
+        resourceId: id,
+        changes: expect.objectContaining({ apiKeyId: "api-key-1" }),
+      });
+    }
+    expect(rows[1].entry.changes).toMatchObject({ before: { displayName: "Auditors" }, after: { displayName: "Auditors II" } });
+    expect(rows[2].entry.changes.operations).toEqual([{ op: "replace", attribute: "displayName" }]);
+    expect(rows[3].entry).toMatchObject({ action: "DELETE", changes: { before: { displayName: "Auditors III" }, after: null } });
+  });
+
+  it("a failed audit write refuses the create and leaves no group", async () => {
+    const before = mockState.groups.length;
+    auditService.logAction.mockRejectedValueOnce(new Error("audit insert failed"));
+    const res = await call(TENANT_A, "POST", "/Groups", { displayName: "Doomed" });
+    expect(res.status).toBeGreaterThanOrEqual(500);
+    expect(mockState.groups.length).toBe(before);
   });
 });

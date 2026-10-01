@@ -49,13 +49,18 @@ services:
     deploy:
       resources:
         limits:
-          # Chromium (certificate PDFs) is memory-hungry and bursty — and
-          # CPU-hungry: without a CPU limit one runaway render can starve the
-          # host (S-19).
+          # ADR-095 follow-up (2026-09-30): re-sized to measured need. The backend image has no
+          # Chromium; measured on callibrator/backend:adr095f under boot + migrations, seeding,
+          # three live E2E runs (two concurrent) and six browser-smoke runs: cgroup memory.peak 306
+          # MiB, Node VmHWM 337 MiB, steady 215-265 MiB
+          # (MEMORY/records/2026-09-30-adr095-followups.md). Not production traffic: re-measure
+          # under a real tenant's exports/reports before tightening further. Production gets 1.5G,
+          # ~4.5x the measured peak, for larger tenants' exports; a CPU limit still bounds a runaway
+          # request (S-19).
           cpus: "2.0"
-          memory: 4G
+          memory: 1536M
         reservations:
-          memory: 1G
+          memory: 512M
 
   frontend:
     image: ${FRONTEND_IMAGE:-callibrator/frontend}:${IMAGE_TAG:?IMAGE_TAG is required in production}

@@ -1,6 +1,10 @@
 import React from "react";
-import Link from "next/link";
-import { ArrowRight, Home, LayoutDashboard, Gauge } from "lucide-react";
+// P10-13 (ADR-098 Amendment 2): plain <a>, not next/link. This boundary sits in
+// the root layout, so its client references load with EVERY page; next/link
+// here put a second copy of the Link runtime into pages that also use it (the
+// bundler does not share it across the two chunk groups). A 404 page gains
+// nothing from client-side navigation or prefetch.
+import { ArrowRight, Home, LayoutDashboard, Gauge } from "@/components/icons/static";
 import AuroraBackground from "@/components/motion/AuroraBackground";
 
 export const metadata = {
@@ -115,21 +119,22 @@ export default function NotFound() {
 
         {/* actions */}
         <div className="animate-fade-in-up delay-300 mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-          <Link
+          {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- deliberate: next/link in this root boundary loads on every page (see the note at the top) */}
+          <a
             href="/"
             className="group inline-flex items-center justify-center gap-2 rounded-xl bg-linear-to-r from-primary to-accent px-6 py-3 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/25 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-primary/40"
           >
             <Home className="h-4 w-4" />
             Back to home
             <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-          </Link>
-          <Link
+          </a>
+          <a
             href="/dashboard"
             className="inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-card/60 px-5 py-3 text-sm font-medium text-foreground backdrop-blur-sm transition-colors hover:bg-muted"
           >
             <LayoutDashboard className="h-4 w-4" />
             Open dashboard
-          </Link>
+          </a>
         </div>
 
         {/* footnote */}

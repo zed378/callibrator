@@ -24,7 +24,8 @@ const {
   addChild: addChildValidator,
 } = require("../../validators/tenantHierarchy.validator");
 const { validateUuid } = require("../../middlewares/validateUuid.middleware");
-const { ROLE_NAMES } = require("../../constants");
+// V-15 / N-01: the one super-admin predicate — both spellings, as every other gate.
+const { isSuperAdmin } = require("../../utils/role.util");
 
 // ---------------------------------------------------------------------------
 // A-01. The Tenant model has no `tenantId` attribute, so the global tenant
@@ -38,7 +39,7 @@ const { ROLE_NAMES } = require("../../constants");
 // Re-parenting is a platform operation: SUPERADMIN, and never an API key.
 const ownTenantOnly = (param) =>
   function ownTenantGuard(req, res, next) {
-    if (req.user?.role?.name === ROLE_NAMES.SUPER_ADMIN) {
+    if (isSuperAdmin(req.user)) {
       return next();
     }
     if (req.params[param] !== req.user?.tenantId) {
@@ -349,10 +350,9 @@ router.get(
  *       401:
  *         description: Unauthorized
  */
-// `addChildValidator` is a Joi schema, so `.validate` is Joi's own
-// (value, options) method — passing it as middleware called it with
-// (req, res, next), which threw and 500'd every request. The body is now
-// validated inside addChildTenant against that same schema.
+// The body is validated inside addChildTenant against the `addChild` schema
+// (a schema's own method, once passed here as middleware, was called with
+// (req, res, next) and 500'd every request).
 // A-187: a malformed id is 400 here, not a database error (500) in the service.
 router.post("/:parentId/children", ...platformOnly, validateUuid("parentId"), addChildTenant);
 

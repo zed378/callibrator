@@ -53,24 +53,7 @@ jest.mock("../../constants", () => ({
   MAX_LIMIT: 100,
 }));
 
-// Mock validators - validate() returns sanitized data, formatErrors returns array
-jest.mock("../../validators/tenant.validator", () => ({
-  createTenantSchema: {
-    validate: jest.fn((body) => ({
-      value: { ...body, status: body.status?.toUpperCase() || "ACTIVE" },
-    })),
-  },
-  updateTenantSchema: {
-    validate: jest.fn((body) => ({
-      value: { ...body, status: body.status?.toUpperCase() || "ACTIVE" },
-    })),
-  },
-  validate: jest.fn((body, schema) => {
-    const { value } = schema.validate(body);
-    return value;
-  }),
-  formatErrors: jest.fn((details) => details),
-}));
+// The request schemas are REAL (P9-11: Zod through validators/input).
 
 jest.mock("../../config", () => {
   const mockTx = {

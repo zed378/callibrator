@@ -3,7 +3,7 @@
  *
  * Tests the Roles route registrations and middleware chain.
  */
-const rolesRoutes = require("../../routes/api/roles.route.js");
+const rolesRoutes = require("../../routes/api/roles.route");
 
 describe("Roles Routes", () => {
   it("should export an Express router", () => {

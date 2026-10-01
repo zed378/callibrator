@@ -12,8 +12,8 @@ import { useAuthStore } from "@/stores/authStore";
 import { useToastStore } from "@/stores/toastStore";
 import { useUserStore } from "@/stores/userStore";
 import { CredentialResetActions } from "./CredentialResetActions";
+import { usePermissions } from "@/hooks/usePermissions";
 
-const SUPER_ADMIN_ROLES = ["SUPER_ADMIN", "SUPERADMIN"];
 
 interface UserRowProps {
   user: User;
@@ -52,12 +52,14 @@ export const UserRow: React.FC<UserRowProps> = ({
   // A-162: an administrator's credential resets. Never on one's own row —
   // the backend refuses that (400) and points to the MFA / change-password
   // pages. Whether the caller may reset THIS user is the backend's decision.
-  const canResetCredentials = !!currentUser && currentUser.id !== user.id;
+  // ADR-102: credential resets, edit and delete are gated on `users` write
+  // (user.route.js update/delete); impersonation is the super admin's.
+  const { superAdmin, canWrite } = usePermissions();
+  const mayWriteUsers = canWrite("users");
+  const canResetCredentials = mayWriteUsers && !!currentUser && currentUser.id !== user.id;
 
   // Super-admins can impersonate any other user (the backend re-checks this).
-  const canImpersonate =
-    SUPER_ADMIN_ROLES.includes(currentUser?.role?.name ?? "") &&
-    currentUser?.id !== user.id;
+  const canImpersonate = superAdmin && currentUser?.id !== user.id;
 
   const handleImpersonate = async () => {
     const tenantId = user.tenantId ?? currentUser?.tenantId;
@@ -154,6 +156,7 @@ export const UserRow: React.FC<UserRowProps> = ({
           {canResetCredentials && (
             <CredentialResetActions user={user} onReset={() => void refetchUsers()} />
           )}
+          {mayWriteUsers && (
           <Button
             variant="ghost"
             size="sm"
@@ -162,7 +165,8 @@ export const UserRow: React.FC<UserRowProps> = ({
           >
             <Edit2 className="h-4 w-4" aria-hidden="true" />
           </Button>
-          {showDeleteConfirm === user.id ? (
+          )}
+          {!mayWriteUsers ? null : showDeleteConfirm === user.id ? (
             <div className="flex items-center gap-2">
               <Button
                 variant="danger"

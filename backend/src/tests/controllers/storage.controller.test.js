@@ -55,7 +55,11 @@ describe("storage.controller — settings", () => {
     req.body = { provider: "s3", bucket: "b" };
     settingsService.updateSettings.mockResolvedValue({ provider: "s3" });
     await controller.updateSettings(req, res, next);
-    expect(settingsService.updateSettings).toHaveBeenCalledWith(TENANT, req.body);
+    expect(settingsService.updateSettings).toHaveBeenCalledWith(
+      TENANT,
+      req.body,
+      expect.objectContaining({ apiKeyId: null }),
+    );
     expect(success).toHaveBeenCalledWith(
       res,
       { provider: "s3" },
@@ -68,7 +72,10 @@ describe("storage.controller — settings", () => {
   it("clearSettings reverts to default", async () => {
     settingsService.clearSettings.mockResolvedValue({ provider: "default" });
     await controller.clearSettings(req, res, next);
-    expect(settingsService.clearSettings).toHaveBeenCalledWith(TENANT);
+    expect(settingsService.clearSettings).toHaveBeenCalledWith(
+      TENANT,
+      expect.objectContaining({ apiKeyId: null }),
+    );
   });
 
   it("testConnection reports health", async () => {

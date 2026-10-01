@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect } from "react";
-import { AlertTriangle, RefreshCw } from "lucide-react";
+import { AlertTriangle, RefreshCw } from "@/components/icons/static";
 
 export interface RouteErrorProps {
   error: Error & { digest?: string };

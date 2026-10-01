@@ -38,7 +38,7 @@ jest.mock("../../middlewares/dynamicAccess.middleware", () => ({
 jest.mock("../../controllers/certificatePdf.controller", () => ({
   verifyCertificate: jest.fn(),
   verifyDocument: jest.fn(),
-  generatePdf: jest.fn(),
+  getDocument: jest.fn(),
   downloadPdf: jest.fn(),
   getQrCode: jest.fn(),
 }));

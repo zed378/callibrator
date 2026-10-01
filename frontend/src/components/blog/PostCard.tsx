@@ -1,27 +1,29 @@
+/**
+ * A post in a list (blog index, related posts). P10-13: on the public surface's
+ * tokens (ADR-098 §1: blog and news keep their 19 Part II layout and take the
+ * public header, footer and tokens). Server component.
+ */
 import React from "react";
 import Link from "next/link";
 import { formatDate, type Post } from "@/lib/content.api";
+import type { Locale } from "@/i18n/config";
+import type { Translate } from "@/i18n";
 
-export default function PostCard({ post }: { post: Post }) {
+export default function PostCard({ post, locale, t }: { post: Post; locale: Locale; t: Translate }) {
   const base = post.type === "BLOG" ? "blog" : "news";
   return (
     <Link
       href={`/${base}/${post.slug}`}
-      data-reveal
-      className="group flex flex-col overflow-hidden rounded-2xl border border-border bg-card transition-colors hover:border-primary/40"
+      className="group pub-card flex flex-col overflow-hidden transition-colors hover:border-pub-border-strong"
     >
-      <div className="relative aspect-video w-full overflow-hidden bg-muted">
+      <div className="relative aspect-video w-full overflow-hidden bg-pub-raised">
         {post.coverImageUrl ? (
           // Host-relative /uploads/public URL (rewritten to the API); plain img avoids next/image config.
           // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={post.coverImageUrl}
-            alt={post.title}
-            className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
-          />
+          <img src={post.coverImageUrl} alt={post.title} loading="lazy" className="h-full w-full object-cover" />
         ) : (
-          <div className="flex h-full w-full items-center justify-center bg-linear-to-br from-primary/10 to-accent/10 text-sm font-semibold text-muted-foreground">
-            HDC
+          <div className="flex h-full w-full items-center justify-center text-sm text-pub-subtle">
+            {t("pub.productName")}
           </div>
         )}
       </div>
@@ -29,27 +31,21 @@ export default function PostCard({ post }: { post: Post }) {
         {(post.categories ?? []).length > 0 && (
           <div className="mb-3 flex flex-wrap gap-2">
             {(post.categories ?? []).slice(0, 2).map((c) => (
-              <span
-                key={c.id}
-                className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary"
-              >
+              <span key={c.id} className="pub-chip">
                 {c.name}
               </span>
             ))}
           </div>
         )}
-        <h3 className="text-lg font-bold leading-snug tracking-tight text-foreground transition-colors group-hover:text-primary">
+        <h3 className="text-lg font-semibold leading-snug text-pub-text group-hover:underline group-hover:underline-offset-4">
           {post.title}
         </h3>
-        {post.excerpt && (
-          <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-muted-foreground">
-            {post.excerpt}
-          </p>
-        )}
-        <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
-          {post.publishedAt && <time dateTime={post.publishedAt}>{formatDate(post.publishedAt)}</time>}
-          {post.readingMinutes ? <span>· {post.readingMinutes} min read</span> : null}
-        </div>
+        {post.excerpt && <p className="mt-2 line-clamp-2 text-[0.9375rem] text-pub-muted">{post.excerpt}</p>}
+        <p className="mt-auto flex flex-wrap items-center gap-x-2 pt-4 text-sm text-pub-subtle">
+          {post.publishedAt && <time dateTime={post.publishedAt}>{formatDate(post.publishedAt, locale)}</time>}
+          {post.publishedAt && post.readingMinutes ? <span aria-hidden="true">·</span> : null}
+          {post.readingMinutes ? <span>{t("content.readingTime", { minutes: post.readingMinutes })}</span> : null}
+        </p>
       </div>
     </Link>
   );

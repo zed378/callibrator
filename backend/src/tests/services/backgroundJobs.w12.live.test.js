@@ -21,11 +21,19 @@
  * OPT-IN — needs a database built by db.sync() of the current models plus
  * every migration (migrator.up()):
  *
- *   BACKGROUND_JOBS_PG_LIVE_TEST=1 DB_HOST=... DB_PORT=... DB_NAME=... DB_USER=... DB_PASS=... \
+ *   BACKGROUND_JOBS_PG_LIVE_TEST=1 DB_HOST=... DB_PORT=... DB_USER=... DB_PASS=... \
  *     npm test -- src/tests/services/backgroundJobs.w12.live --coverage=false
  *
- * It creates two tenants with fixed ids and removes everything it wrote.
+ * ADR-095 O-2: the suite creates its OWN database (DB_USER needs CREATEDB;
+ * DB_NAME is not used), builds it as the backend boots (db.sync() + every
+ * migration, 0091's append-only audit_logs included) and runs as
+ * `callibrator_app` through enterApplicationRole. Its audit rows cannot be
+ * deleted, so it does not clean up: the database is dropped afterwards
+ * (fixtures/disposableDatabase.ts, fixtures/liveBoot.ts).
  */
+const { createDisposableDatabase, LIVE_BOOT_TIMEOUT_MS } = require("../fixtures/disposableDatabase");
+const { bootSchemaAsApplicationRole } = require("../fixtures/liveBoot");
+
 const live = process.env.BACKGROUND_JOBS_PG_LIVE_TEST === "1" ? describe : describe.skip;
 
 const A = "a12a12a1-0000-4000-8000-0000000000a1";
@@ -37,6 +45,7 @@ const DEVICE_A = "a12a12a1-0000-4000-8000-0000000000d1";
 live("background jobs — tenant context, audit and bounds on live PostgreSQL (W-12, W-04, W-17)", () => {
   jest.setTimeout(60000);
   let db;
+  let scratch;
   let models;
   let runForTenant;
 
@@ -44,31 +53,13 @@ live("background jobs — tenant context, audit and bounds on live PostgreSQL (W
   const count = async (table, tenantId) =>
     Number((await q(`SELECT count(*)::int AS n FROM ${table} WHERE tenant_id = :t`, { t: tenantId }))[0].n);
 
-  const cleanup = async () => {
-    const t = [A, B];
-    for (const table of [
-      "audit_logs",
-      "iot_readings",
-      "notifications",
-      "sessions",
-      "batch_jobs",
-      "tenant_backups",
-      "tenant_settings",
-      "calibration_devices",
-    ]) {
-      await q(`DELETE FROM ${table} WHERE tenant_id IN (:t)`, { t });
-    }
-    await q("DELETE FROM sessions WHERE user_id IN (:u)", { u: [USER_A, USER_B] });
-    await q("DELETE FROM users WHERE id IN (:u)", { u: [USER_A, USER_B] });
-    await q("DELETE FROM tenants WHERE id IN (:t)", { t });
-  };
-
   beforeAll(async () => {
+    scratch = await createDisposableDatabase("w12");
     ({ db } = require("../../config"));
     db.options.logging = false;
     models = require("../../models");
+    await bootSchemaAsApplicationRole(db);
     ({ runForTenant } = require("../../utils/jobContext.util"));
-    await cleanup();
     for (const [id, sub] of [
       [A, "w12-live-a"],
       [B, "w12-live-b"],
@@ -94,14 +85,16 @@ live("background jobs — tenant context, audit and bounds on live PostgreSQL (W
        VALUES (:d, :t, 'Fridge probe', 'active', true, '{"temperature": {"max": 50}}', now(), now())`,
       { d: DEVICE_A, t: A },
     );
-  });
+  }, LIVE_BOOT_TIMEOUT_MS);
 
   afterAll(async () => {
     if (db) {
-      await cleanup();
       await db.close();
     }
-  });
+    if (scratch) {
+      await scratch.drop();
+    }
+  }, LIVE_BOOT_TIMEOUT_MS);
 
   describe("retention purge (W-12, W-17, W-04)", () => {
     const seedOld = async (tenantId, n) => {

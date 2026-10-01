@@ -8,7 +8,11 @@
 // path must call disconnectSocket() or the next user in the tab inherits a
 // socket authenticated as — and joined to the rooms of — the previous one.
 
-import { io, Socket } from "socket.io-client";
+// P10-03: the client library is imported when a connection is first opened,
+// not at module load. authStore imports this module for disconnectSocket(), so
+// a static import put socket.io-client (~17 KB gzip) on EVERY page, the public
+// landing and sign-in included. Only the type is imported statically.
+import type { Socket } from "socket.io-client";
 import { API_BASE_URL } from "@/constants";
 import { socketTokenService } from "@/api/services/socketToken.service";
 
@@ -91,6 +95,9 @@ export const getSocket = async (): Promise<Socket | null> => {
 
       // Signed out while the token was in flight: do not open a connection
       // for a session that no longer exists.
+      if (startedIn !== generation) return null;
+
+      const { io } = await import("socket.io-client");
       if (startedIn !== generation) return null;
 
       const created = io(API_BASE_URL, {

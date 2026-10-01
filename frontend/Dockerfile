@@ -36,6 +36,9 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY frontend/package.json frontend/package.json
 COPY backend/package.json backend/package.json
+# P9-22 (ADR-097): the shared request schemas, a workspace the frontend depends
+# on. `npm ci` links it, so its manifest must be here before the install.
+COPY packages/contracts/package.json packages/contracts/package.json
 
 # Install exactly the committed tree, frontend workspace only, hoisted to
 # /app/node_modules — the layout every local build and test run sees.
@@ -49,6 +52,9 @@ COPY backend/package.json backend/package.json
 RUN npm ci --workspace frontend --no-audit --no-fund
 
 COPY frontend/ frontend/
+# The contracts SOURCE: its package.json exports TypeScript, which `next build`
+# compiles and type-checks along with the frontend (transpilePackages).
+COPY packages/contracts/ packages/contracts/
 
 WORKDIR /app/frontend
 
@@ -62,7 +68,13 @@ WORKDIR /app/frontend
 ARG NEXT_PUBLIC_API_BASE_URL
 ARG NEXT_PUBLIC_SITE_URL
 ARG NEXT_PUBLIC_TENANT_ID
+# P10-03 (ADR-098 §8.8, Q-41): the public contact channels. Empty hides the
+# channel on the landing (never a placeholder).
+ARG NEXT_PUBLIC_CONTACT_WHATSAPP
+ARG NEXT_PUBLIC_CONTACT_EMAIL
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL \
+    NEXT_PUBLIC_CONTACT_WHATSAPP=$NEXT_PUBLIC_CONTACT_WHATSAPP \
+    NEXT_PUBLIC_CONTACT_EMAIL=$NEXT_PUBLIC_CONTACT_EMAIL \
     NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL \
     NEXT_PUBLIC_TENANT_ID=$NEXT_PUBLIC_TENANT_ID \
     NEXT_TELEMETRY_DISABLED=1

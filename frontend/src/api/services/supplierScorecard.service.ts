@@ -1,4 +1,5 @@
 import { api } from "../client";
+import type { ListMeta, ListPage } from "./risk.service";
 
 // ---------- Types ----------
 
@@ -42,6 +43,7 @@ interface BackendResponse<T> {
   status: number;
   message: string;
   data: T;
+  meta?: Partial<ListMeta>;
 }
 
 // ---------- Service ----------
@@ -59,6 +61,35 @@ export const supplierScorecardService = {
       { params },
     );
     return response.data;
+  },
+
+  /**
+   * One page of scorecards with the backend's `meta` (F-19). The backend's
+   * default page is 10 rows, so a caller that ignores `meta` silently shows
+   * only the first 10.
+   */
+  listPage: async (params: {
+    vendorId?: string;
+    status?: string;
+    page: number;
+    limit: number;
+  }): Promise<ListPage<SupplierScorecard>> => {
+    const response = await api.get<BackendResponse<SupplierScorecard[]>>(
+      "/api/v1/supplier-scorecard",
+      { params },
+    );
+    const rows = Array.isArray(response.data) ? response.data : [];
+    const total = response.meta?.total ?? rows.length;
+    const limit = response.meta?.limit ?? params.limit;
+    return {
+      rows,
+      meta: {
+        total,
+        page: response.meta?.page ?? params.page,
+        limit,
+        totalPages: response.meta?.totalPages ?? Math.max(1, Math.ceil(total / limit)),
+      },
+    };
   },
 
   /**

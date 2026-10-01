@@ -15,12 +15,19 @@
  * OPT-IN — needs a database built by db.sync() of the current models plus
  * every migration (migrator.up()):
  *
- *   CALIBRATION_BATCH_PG_LIVE_TEST=1 DB_HOST=... DB_PORT=... DB_NAME=... DB_USER=... DB_PASS=... \
+ *   CALIBRATION_BATCH_PG_LIVE_TEST=1 DB_HOST=... DB_PORT=... DB_USER=... DB_PASS=... \
  *     npm test -- src/tests/services/calibrationScheduler.batch.w17.live --coverage=false
  *
- * It creates two tenants and six devices with fixed ids and removes
- * everything it wrote.
+ * ADR-095 O-2: the suite creates its OWN database (DB_USER needs CREATEDB;
+ * DB_NAME is not used), builds it as the backend boots (db.sync() + every
+ * migration, 0091's append-only audit_logs included) and runs as
+ * `callibrator_app` through enterApplicationRole. Its audit rows cannot be
+ * deleted, so it does not clean up: the database is dropped afterwards
+ * (fixtures/disposableDatabase.ts, fixtures/liveBoot.ts).
  */
+const { createDisposableDatabase, LIVE_BOOT_TIMEOUT_MS } = require("../fixtures/disposableDatabase");
+const { bootSchemaAsApplicationRole } = require("../fixtures/liveBoot");
+
 const live = process.env.CALIBRATION_BATCH_PG_LIVE_TEST === "1" ? describe : describe.skip;
 
 const A = "a17a17a1-0000-4000-8000-0000000000a1";
@@ -32,27 +39,21 @@ const B_DEVICE = dev(9);
 live("calibration scan — batched transactions on live PostgreSQL (W-17)", () => {
   jest.setTimeout(60000);
   let db;
+  let scratch;
   let models;
   let scheduler;
   let webhookService;
 
   const q = async (sql, replacements = {}) => (await db.query(sql, { replacements }))[0];
 
-  const cleanup = async () => {
-    const t = [A, B];
-    for (const table of ["audit_logs", "notifications", "maintenance_work_orders", "calibration_devices"]) {
-      await q(`DELETE FROM ${table} WHERE tenant_id IN (:t)`, { t });
-    }
-    await q("DELETE FROM tenants WHERE id IN (:t)", { t });
-  };
-
   beforeAll(async () => {
+    scratch = await createDisposableDatabase("w17");
     ({ db } = require("../../config"));
     db.options.logging = false;
     models = require("../../models");
+    await bootSchemaAsApplicationRole(db);
     scheduler = require("../../services/calibrationScheduler.service");
     webhookService = require("../../services/webhook.service");
-    await cleanup();
     for (const [id, sub] of [
       [A, "w17-batch-a"],
       [B, "w17-batch-b"],
@@ -70,14 +71,16 @@ live("calibration scan — batched transactions on live PostgreSQL (W-17)", () =
         { d, t, name: `Pump ${i}`, sn: `SN-${i}` },
       );
     }
-  });
+  }, LIVE_BOOT_TIMEOUT_MS);
 
   afterAll(async () => {
     if (db) {
-      await cleanup();
       await db.close();
     }
-  });
+    if (scratch) {
+      await scratch.drop();
+    }
+  }, LIVE_BOOT_TIMEOUT_MS);
 
   it("chunks of 2: three work-order transactions and three notification transactions for five devices; a device conflicted AFTER the read is skipped without aborting its chunk", async () => {
     const emitted = [];

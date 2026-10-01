@@ -13,6 +13,8 @@
  * cleaned up at the end.
  */
 const { httpGet, httpPost, httpDelete, extractToken, authHeader } = require("../setup");
+// P10-16 (ADR-099): no default operator password — set E2E_OPERATOR_PASSWORD (see setup.js).
+const { OPERATOR_PASSWORD } = require("../setup");
 
 async function patch(path, data, token) {
   const { BASE_URL = "http://localhost:5000" } = process.env;
@@ -37,7 +39,7 @@ describe("E2E Finance (HTTP)", () => {
   beforeAll(async () => {
     const { body } = await httpPost("/auth/login", {
       user: "sys@mail.com",
-      password: "123123",
+      password: OPERATOR_PASSWORD,
     });
     token = extractToken(body);
     expect(token).toBeTruthy();

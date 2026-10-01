@@ -1,6 +1,8 @@
 import { AsyncLocalStorage } from "async_hooks";
 import type { NextFunction, Request, Response } from "express";
 import type { TenantId } from "../types/ids";
+// N-01: the one super-admin predicate (both spellings).
+import { isSuperAdminRoleName } from "../utils/role.util";
 
 /**
  * What every tenant-scoped query reads (utils/tenantScope.util.js#resolveScope).
@@ -49,7 +51,7 @@ export const tenantContextMiddleware = (req: Request, _res: Response, next: Next
   // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as-built semantics (ADR-038 rule 3)
   const tenantId = req.tenantId || null;
   const roleName = req.user?.role?.name;
-  const isSuperAdmin = roleName === "SUPER_ADMIN" || roleName === "SUPERADMIN";
+  const isSuperAdmin = isSuperAdminRoleName(roleName);
   // Reserved for background/system work that must span tenants.
   const isSystemTask = false;
 

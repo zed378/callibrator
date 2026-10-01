@@ -39,6 +39,8 @@ async function waitForDbReady(
   try {
     await sequelize.authenticate();
 
+    // A connectivity probe that reads no data: it stays a direct call, as built (P9-07).
+    // eslint-disable-next-line no-restricted-syntax -- a connectivity probe, not data access; its test asserts this exact call
     await sequelize.query("SELECT 1");
 
     const msg = `✅ Database connection established (attempt ${String(attempt + 1)})`;

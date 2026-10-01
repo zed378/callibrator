@@ -85,15 +85,22 @@ export const networkSecurityService = {
     return response.data.geofence ?? null;
   },
 
-  /** PUT /api/v1/network-security/geofence — super admin only. */
+  /**
+   * PUT /api/v1/network-security/geofence — `network-security: write` (a tenant
+   * administrator since Q-38, ADR-100). `currentLocation` is this device's
+   * position: the server refuses (409 SELF_LOCKOUT) a geofence that does not
+   * contain it, unless the caller is a platform operator.
+   */
   setGeofence: async (
     latitude: number,
     longitude: number,
     radiusKm?: number,
+    currentLocation?: { latitude: number; longitude: number },
   ): Promise<{ tenantId: string; geofence: Geofence }> => {
-    const body: Record<string, number> = { latitude, longitude };
+    const body: Record<string, number | { latitude: number; longitude: number }> = { latitude, longitude };
     // Omit rather than send undefined: the server applies its 50km default.
     if (radiusKm !== undefined) body.radiusKm = radiusKm;
+    if (currentLocation !== undefined) body.currentLocation = currentLocation;
     const response = await api.put<
       BackendResponse<{ tenantId: string; geofence: Geofence }>
     >("/api/v1/network-security/geofence", body);

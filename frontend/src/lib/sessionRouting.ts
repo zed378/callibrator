@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { AUTH_REFRESH_COOKIE, AUTH_TOKEN_COOKIE } from "@/lib/authCookies";
+import { AUTH_RENEWABLE_COOKIE, AUTH_TOKEN_COOKIE } from "@/lib/authCookies";
 
 // Helpers for src/proxy.ts, kept out of it so the proxy file exports only
 // what Next reads (proxy, config).
@@ -24,8 +24,8 @@ export const jwtExpiry = (token: string): number | null => {
 
 /**
  * Whether the request carries a session worth sending to a protected page:
- * an access token that has not visibly expired, or — when it has — a refresh
- * token the API client can renew it with (F-05).
+ * an access token that has not visibly expired, or — when it has — a session
+ * the API client can renew (F-05: the `auth_renewable` marker).
  */
 export const hasUsableSession = (
   request: NextRequest,
@@ -35,6 +35,8 @@ export const hasUsableSession = (
   if (!token) return false;
   const exp = jwtExpiry(token);
   if (exp === null || exp > nowSeconds) return true;
-  return Boolean(request.cookies.get(AUTH_REFRESH_COOKIE)?.value);
+  // Not the refresh token: it is scoped to the refresh route and never
+  // arrives with a page request (F-05 live run). Its path-`/` marker does.
+  return Boolean(request.cookies.get(AUTH_RENEWABLE_COOKIE)?.value);
 };
 

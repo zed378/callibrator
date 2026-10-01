@@ -1,15 +1,22 @@
 const { describe, it, expect, beforeEach } = require("@jest/globals");
 
+// A-278 (ADR-094): the write runs in a transaction with its audit row; the
+// double passes a marker through so the write's options can be asserted.
+jest.mock("../../services/audit.service", () => ({
+  logAction: jest.fn().mockResolvedValue({}),
+}));
+
 jest.mock("sequelize", () => ({
   Op: {
     or: Symbol("or"),
     like: Symbol("like"),
+    iLike: Symbol("iLike"), // A-330: the search matches with ILIKE
     iLike: Symbol("iLike"),
   },
 }));
 
 jest.mock("../../config", () => ({
-  db: { transaction: jest.fn() },
+  db: { transaction: jest.fn(async (cb) => cb("tx")) },
 }));
 
 jest.mock("../../models", () => ({
@@ -95,7 +102,7 @@ describe("vendor.service", () => {
       Vendors.findAndCountAll.mockResolvedValueOnce({ rows: [], count: 0 });
       await fetchVendors({ tenantId: "t-1", find: "Acme" });
 
-      // Op.like is { [Op.like]: '%Acme%' }
+      // A-330: { [Op.iLike]: '%Acme%' }
       const callArgs = Vendors.findAndCountAll.mock.calls[0][0];
       expect(callArgs.where.name).toBeDefined();
       expect(typeof callArgs.where.name).toBe("object");
@@ -182,7 +189,7 @@ describe("vendor.service", () => {
         expect.objectContaining({
           tenantId: "t-1",
           name: "New Vendor",
-        }),
+        }), { transaction: "tx" },
       );
     });
 
@@ -211,7 +218,7 @@ describe("vendor.service", () => {
       expect(vendor.update).toHaveBeenCalledWith({
         name: "Updated Name",
         status: "inactive",
-      });
+      }, { transaction: "tx" });
     });
 
     it("should throw 404 when vendor not found", async () => {

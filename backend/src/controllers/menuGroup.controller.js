@@ -6,13 +6,14 @@ const { auditActor } = require("../utils/auditActor.util");
 const menuGroupService = require("../services/menuGroup.service");
 const menuGroupValidator = require("../validators/menuGroup.validator");
 const schemas = menuGroupValidator;
+const { checkInput } = require("../validators/input");
 
 const validate = (data, schema) => {
-  const { error, value } = menuGroupValidator.validate(data, schema);
-  if (error) {
-    throw new AppError(400, "Validation failed: " + error.details.map((d) => d.message).join(", "));
+  const checked = checkInput(data, schema);
+  if (!checked.ok) {
+    throw new AppError(400, "Validation failed: " + checked.errors.map((d) => d.message).join(", "));
   }
-  return value;
+  return checked.value;
 };
 
 // ==========================================
@@ -33,7 +34,9 @@ exports.filterMenuGroups = asyncHandlerWithMapping(async (req, res) => {
 // ==========================================
 exports.getRoleMenuAssignments = asyncHandlerWithMapping(async (req, res) => {
   const { roleId } = validate(req.body, schemas.getAssignmentsSchema);
-  const data = await menuGroupService.getRoleMenuAssignments(roleId);
+  // ADR-102: the requester decides whose effective permission the menu shows
+  // (their own, overrides included, when roleId is their role).
+  const data = await menuGroupService.getRoleMenuAssignments(roleId, req.user);
   return success(
     res,
     data,
@@ -41,6 +44,14 @@ exports.getRoleMenuAssignments = asyncHandlerWithMapping(async (req, res) => {
     "Role menu assignments fetched successfully",
     200,
   );
+}, {});
+
+// ==========================================
+// MY EFFECTIVE PERMISSIONS (ADR-102)
+// ==========================================
+exports.getMyPermissions = asyncHandlerWithMapping(async (req, res) => {
+  const data = await menuGroupService.getMyPermissions(req.user);
+  return success(res, data, null, "Effective permissions fetched successfully", 200);
 }, {});
 
 // ==========================================

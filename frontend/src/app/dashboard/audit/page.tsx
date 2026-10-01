@@ -112,6 +112,13 @@ export default function AuditLogPage() {
                 onChange={handleEndDateChange}
               />
             </div>
+            {/* P8-04 (ADR-096): with no dates the backend reads the last 90 days. */}
+            {meta.window?.defaulted && meta.window.from && (
+              <p className="mt-3 text-xs text-muted-foreground" data-testid="audit-default-window">
+                Showing the last 90 days (since {new Date(meta.window.from).toLocaleDateString()}). Set a Start
+                Date to see older entries.
+              </p>
+            )}
           </CardContent>
         </Card>
 

@@ -1,6 +1,6 @@
 # Phase 2 — Warehouse and Inventory
 
-**Status: ✅ DONE**, with one integrity gap that remains open.
+**Status: ✅ DONE.** The one integrity gap this retrospective named (P6-09) is **closed** since 2026-09-25; see below.
 
 Written retrospectively from the code. Module `HDC-WH` (8).
 
@@ -139,7 +139,7 @@ The API is not internally consistent on verbs. Check the table before assuming.
 |---|---|
 | Hierarchical locations (floor → section → bin → slot) | a single level, with hierarchy in `code` |
 
-**What remains open — P6-09:**
+**What remained open — P6-09** *(closed 2026-09-25, ADR-062, migration `0059`: `PATCH /stocks/:id` refuses a quantity change with a 400 naming the adjustment endpoint; the text below is the gap as it was):*
 
 **`PATCH /api/v1/stocks/:stockId` can change `quantity` directly**, bypassing all three explanation paths. Every quantity change is supposed to route through an adjustment, a transfer or an opname, each of which captures a reason and an actor.
 

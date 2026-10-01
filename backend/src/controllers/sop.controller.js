@@ -1,8 +1,9 @@
 const sopService = require("../services/sop.service");
+const { auditPrincipal } = require("../utils/auditPrincipal.util");
 const { asyncHandlerWithMapping } = require("../utils/controllerWrapper.util");
 
 exports.createDocument = asyncHandlerWithMapping(async (req, res) => {
-  const result = await sopService.createDocument(req.user.tenantId, req.user.id, req.body || {});
+  const result = await sopService.createDocument(req.user.tenantId, req.user.id, req.body || {}, auditPrincipal(req));
   return {
     success: true,
     status: 201,

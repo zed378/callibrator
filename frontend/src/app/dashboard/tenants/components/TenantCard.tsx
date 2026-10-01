@@ -8,8 +8,11 @@ import { useRouter } from "next/navigation";
 
 interface TenantCardProps {
   tenant: Tenant;
-  onEdit: (tenant: Tenant) => void;
-  onSsoConfig: (tenant: Tenant) => void;
+  /** ADR-102: omitted without `management` write — no Edit, SSO or backup control then. */
+  onEdit?: (tenant: Tenant) => void;
+  onSsoConfig?: (tenant: Tenant) => void;
+  /** ADR-102: whether the backups page is offered (tenant-administrator level). */
+  canManageBackups?: boolean;
   /** A-160: open the tenant's "MFA required" policy. */
   onMfaPolicy?: (tenant: Tenant) => void;
   /** Omitted for anyone but a super admin: deleting a tenant is a platform operation (A-76). */
@@ -35,6 +38,7 @@ export const TenantCard: React.FC<TenantCardProps> = ({
   onSsoConfig,
   onMfaPolicy,
   onDelete,
+  canManageBackups = false,
 }) => {
   const router = useRouter();
 
@@ -71,10 +75,12 @@ export const TenantCard: React.FC<TenantCardProps> = ({
       </div>
       <div className="px-6 py-3 border-t border-border flex items-center justify-between">
         <span className="text-sm text-muted-foreground font-medium">
-          Max Users
+          Seat limit
         </span>
         <span className="text-sm font-bold text-foreground">
-          {tenant.maxUsers}
+          {tenant.limitSeats === null || tenant.limitSeats === undefined || tenant.limitSeats < 0
+            ? "Unlimited"
+            : tenant.limitSeats}
         </span>
       </div>
       <div className="p-4 flex items-center justify-between bg-muted/50">
@@ -82,24 +88,28 @@ export const TenantCard: React.FC<TenantCardProps> = ({
           Created {new Date(tenant.createdAt).toLocaleDateString()}
         </span>
         <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => router.push(`/dashboard/tenants/${tenant.id}/backup`)}
-            title="Manage Backups"
-            aria-label={`Manage backups for ${tenant.name}`}
-          >
-            <HardDrive className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onSsoConfig(tenant)}
-            title="Configure SAML SSO"
-            aria-label={`Configure SAML SSO for ${tenant.name}`}
-          >
-            <Shield className="h-4 w-4 text-primary" />
-          </Button>
+          {canManageBackups && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => router.push(`/dashboard/tenants/${tenant.id}/backup`)}
+              title="Manage Backups"
+              aria-label={`Manage backups for ${tenant.name}`}
+            >
+              <HardDrive className="h-4 w-4" />
+            </Button>
+          )}
+          {onSsoConfig && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onSsoConfig(tenant)}
+              title="Configure SAML SSO"
+              aria-label={`Configure SAML SSO for ${tenant.name}`}
+            >
+              <Shield className="h-4 w-4 text-primary" />
+            </Button>
+          )}
           {onMfaPolicy && (
             <Button
               variant="ghost"
@@ -111,14 +121,16 @@ export const TenantCard: React.FC<TenantCardProps> = ({
               <ShieldCheck className="h-4 w-4" />
             </Button>
           )}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onEdit(tenant)}
-            aria-label={`Edit ${tenant.name}`}
-          >
-            <Edit2 className="h-4 w-4" aria-hidden="true" />
-          </Button>
+          {onEdit && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onEdit(tenant)}
+              aria-label={`Edit ${tenant.name}`}
+            >
+              <Edit2 className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          )}
           {onDelete && (
             <Button
               variant="ghost"

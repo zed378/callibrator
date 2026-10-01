@@ -10,6 +10,7 @@ import {
   Button,
   Card,
   CardContent,
+  ConfirmDialog,
   Dialog,
   FormField,
   Input,
@@ -22,10 +23,14 @@ import {
   type OidcDiscovery,
 } from "@/api/services/oidc.service";
 import { useToastStore } from "@/stores/toastStore";
+import { usePermissions } from "@/hooks/usePermissions";
 
 const SCOPES = ["openid", "profile", "email", "offline_access"];
 
 export default function OidcPage() {
+  // ADR-102: every write here is superAdminOnly on the API (oidc.route.js); a tenant
+  // role holding the menu's read sees the page without its controls.
+  const { superAdmin } = usePermissions();
   const addToast = useToastStore((s) => s.addToast);
 
   const [clients, setClients] = useState<OidcClient[]>([]);
@@ -49,6 +54,9 @@ export default function OidcPage() {
     clientSecret: string;
   } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<OidcClient | null>(null);
+  // F-19: rotating replaces the secret at once (oidcProvider.service
+  // rotateSecret keeps no overlap), so it is confirmed first.
+  const [confirmRotate, setConfirmRotate] = useState<OidcClient | null>(null);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -137,6 +145,7 @@ export default function OidcPage() {
   };
 
   const rotate = async (client: OidcClient) => {
+    setConfirmRotate(null);
     setBusy(client.clientId);
     try {
       const res = await oidcService.rotateSecret(client.clientId);
@@ -233,7 +242,7 @@ export default function OidcPage() {
               size="sm"
               variant="ghost"
               isLoading={busy === client.clientId}
-              onClick={() => rotate(client)}
+              onClick={() => setConfirmRotate(client)}
               leftIcon={<RefreshCw className="h-4 w-4" />}
             >
               Rotate
@@ -263,12 +272,14 @@ export default function OidcPage() {
               their identity provider.
             </p>
           </div>
-          <Button
-            onClick={() => setIsCreateOpen(true)}
-            leftIcon={<Plus className="h-4 w-4" />}
-          >
-            Register Client
-          </Button>
+          {superAdmin && (
+            <Button
+              onClick={() => setIsCreateOpen(true)}
+              leftIcon={<Plus className="h-4 w-4" />}
+            >
+              Register Client
+            </Button>
+          )}
         </div>
 
         {error && <Alert variant="error">{error}</Alert>}
@@ -310,7 +321,7 @@ export default function OidcPage() {
         )}
 
         <Table
-          columns={columns}
+          columns={columns.filter((col) => superAdmin || col.key !== "actions")}
           data={clients as unknown as Record<string, unknown>[]}
           isLoading={isLoading}
           emptyMessage="No OIDC clients registered yet."
@@ -430,6 +441,22 @@ export default function OidcPage() {
         </Dialog>
 
         {/* Delete confirm */}
+        <ConfirmDialog
+          isOpen={confirmRotate !== null}
+          title="Rotate client secret?"
+          description={
+            <>
+              A new secret is issued for{" "}
+              <span className="font-medium">{confirmRotate?.name}</span>. The
+              current secret stops working immediately: the application fails
+              to sign users in until it is configured with the new one, which
+              is shown only once.
+            </>
+          }
+          confirmLabel="Rotate secret"
+          onConfirm={() => confirmRotate && void rotate(confirmRotate)}
+          onCancel={() => setConfirmRotate(null)}
+        />
         <Dialog
           isOpen={confirmDelete !== null}
           onClose={() => setConfirmDelete(null)}

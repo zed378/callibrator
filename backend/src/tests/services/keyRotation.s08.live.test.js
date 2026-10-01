@@ -1,10 +1,13 @@
 /**
  * S-08 / P6-10 — the key-rotation REHEARSAL, against a real PostgreSQL.
  *
- * Seeds the three places secrets live, in the forms a database written before
+ * Seeds the four places secrets live, in the forms a database written before
  * P6-10 holds them — v1 KMS envelopes in tenant_settings and webhooks, legacy
- * AES-CBC signing keys in tenant_keys — then runs, as separate "processes"
- * each booted with its own environment:
+ * AES-CBC signing keys in tenant_keys — and, since S-20 (migration 0086,
+ * ADR-080), users' TOTP seeds: a v2 envelope bound to the user
+ * (`users.mfa:<id>`) in mfa_secret and mfa_pending_secret, and one pre-0086
+ * plaintext seed the rotation must CONVERT (Q-36, ADR-095). Then it runs, as
+ * separate "processes" each booted with its own environment:
  *
  *   1. migration 0058 (legacy signing keys -> KMS envelopes), old KMS key A;
  *   2. the rotation A -> B: dry run, then the re-wrap (keys:rotate), with A
@@ -33,6 +36,12 @@ const live = process.env.DATA_PG_LIVE_TEST === "1" ? describe : describe.skip;
 const KEY_A = "a7".repeat(32);
 const KEY_B = "b8".repeat(32);
 const ENCRYPT = "legacy-encrypt-key";
+// S-20: tenant 0's user has an enrolled seed and a pending one, both sealed;
+// tenant 1's user has a pre-0086 PLAINTEXT seed (keys:rotate converts it).
+const SEEDS = Object.freeze([
+  Object.freeze({ secret: "JBSWY3DPEHPK3PXP", pending: "GEZDGNBVGY3TQOJQ" }),
+  Object.freeze({ secret: "KRSXG5CTMVRXEZLU", pending: null }),
+]);
 const TENANTS = ["a8a8a8a8-0000-4000-8000-00000000000a", "b8b8b8b8-0000-4000-8000-00000000000b"];
 const idOf = (hex) => keyIdOf(Buffer.from(hex, "hex"));
 
@@ -53,6 +62,7 @@ const boot = (env) => {
         kms: require("../../services/kms.service"),
         wrap: require("../../services/signingKeyWrap.service"),
         rotation: require("../../services/keyRotation.service"),
+        mfa: require("../../services/mfa.service"),
         m0058: require("../../migrations/0058-tenant-keys-kms-envelope"),
         models: require("../../models"),
       };
@@ -81,6 +91,17 @@ live("S-08 — KMS key rotation rehearsal (live PostgreSQL)", () => {
     }
     for (const r of await read(p, "SELECT tenant_id, key_id, private_key FROM tenant_keys ORDER BY key_id")) {
       out[`key:${r.key_id}`] = p.wrap.unwrapPrivateKey(r.tenant_id, r.private_key);
+    }
+    // S-20: read as login reads them (openSecret: an envelope is decrypted
+    // under the user's AAD; a pre-0086 plaintext seed reads as it is).
+    for (const r of await read(
+      p,
+      "SELECT id::text AS id, username, mfa_secret, mfa_pending_secret FROM users ORDER BY username",
+    )) {
+      out[`mfa:${r.username}`] = p.mfa.openSecret(r.id, r.mfa_secret);
+      if (r.mfa_pending_secret !== null) {
+        out[`mfa-pending:${r.username}`] = p.mfa.openSecret(r.id, r.mfa_pending_secret);
+      }
     }
     return out;
   };
@@ -144,6 +165,30 @@ live("S-08 — KMS key rotation rehearsal (live PostgreSQL)", () => {
           },
         },
       );
+      const userId = crypto.randomUUID();
+      const seed = SEEDS[i];
+      await owner.db.query(
+        `INSERT INTO users (id, tenant_id, username, email, password, first_name, last_name, avatar_url,
+                            status, must_change_password, is_deleted, mfa_secret, mfa_pending_secret,
+                            created_at, updated_at)
+         VALUES (:id, :t, :username, :email, 'x', 'Rot', 'User', 'default.svg', 'ACTIVE', false, false,
+                 :secret, :pending, now(), now())`,
+        {
+          replacements: {
+            id: userId,
+            t: tenantId,
+            username: `rot-user-${i}`,
+            email: `rot-user-${i}@live.test`,
+            // tenant 0: sealed under A (S-20); tenant 1: the pre-0086 plaintext form.
+            secret: i === 0 ? owner.mfa.sealSecret(userId, seed.secret) : seed.secret,
+            pending: seed.pending === null ? null : owner.mfa.sealSecret(userId, seed.pending),
+          },
+        },
+      );
+      secrets[`mfa:rot-user-${i}`] = seed.secret;
+      if (seed.pending !== null) {
+        secrets[`mfa-pending:rot-user-${i}`] = seed.pending;
+      }
     }
     expect(await readAll(owner)).toEqual(secrets);
   });
@@ -171,16 +216,19 @@ live("S-08 — KMS key rotation rehearsal (live PostgreSQL)", () => {
       const before = await read(rotating, "SELECT value FROM tenant_settings ORDER BY id");
       const dry = await rotating.rotation.rewrapAll({ sequelize: rotating.db, dryRun: true });
       expect(dry.failed).toBe(0);
-      expect(dry.reports.map((r) => [r.table, r.rewrapped])).toEqual([
-        ["tenant_settings", 2], // the two secrets; the plain setting is not an envelope
-        ["webhooks", 2],
-        ["tenant_keys", 2],
+      expect(dry.reports.map((r) => [r.table, r.column, r.rewrapped, r.converted])).toEqual([
+        ["tenant_settings", "value", 2, 0], // the two secrets; the plain setting is not an envelope
+        ["webhooks", "secret", 2, 0],
+        ["tenant_keys", "private_key", 2, 0], // 0058 already converted them (test 1)
+        ["users", "mfa_secret", 1, 1], // S-20: one sealed seed re-wrapped, one plaintext seed converted
+        ["users", "mfa_pending_secret", 1, 0],
       ]);
       expect(await read(rotating, "SELECT value FROM tenant_settings ORDER BY id")).toEqual(before);
 
       const run = await rotating.rotation.rewrapAll({ sequelize: rotating.db, batchSize: 1 });
       expect(run.failed).toBe(0);
-      expect(run.reports.reduce((n, r) => n + r.rewrapped, 0)).toBe(6);
+      expect(run.reports.reduce((n, r) => n + r.rewrapped, 0)).toBe(8);
+      expect(run.reports.reduce((n, r) => n + r.converted, 0)).toBe(1);
 
       const again = await rotating.rotation.rewrapAll({ sequelize: rotating.db });
       expect(again.reports.reduce((n, r) => n + r.rewrapped + r.converted, 0)).toBe(0);
@@ -195,7 +243,10 @@ live("S-08 — KMS key rotation rehearsal (live PostgreSQL)", () => {
         ...(await read(onlyB, "SELECT value AS v FROM tenant_settings WHERE key LIKE 'stripe%'")),
         ...(await read(onlyB, "SELECT secret AS v FROM webhooks")),
         ...(await read(onlyB, "SELECT private_key AS v FROM tenant_keys")),
+        ...(await read(onlyB, "SELECT mfa_secret AS v FROM users")),
+        ...(await read(onlyB, "SELECT mfa_pending_secret AS v FROM users WHERE mfa_pending_secret IS NOT NULL")),
       ];
+      expect(values).toHaveLength(9); // 2 settings, 2 webhooks, 2 signing keys, 2 seeds, 1 pending seed
       expect(values.every((r) => r.v.startsWith(`v2:${idOf(KEY_B)}:`))).toBe(true);
     } finally {
       await onlyB.db.close();

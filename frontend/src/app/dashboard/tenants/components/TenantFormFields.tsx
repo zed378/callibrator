@@ -1,6 +1,38 @@
 import React from "react";
 import { Input, Textarea } from "@/components/ui";
 import { Building2, Shield } from "lucide-react";
+import { accessibleBrandPalette, type ThemedBrand } from "@/lib/brandColor";
+
+/**
+ * ADR-090 amendment: what the brand colour will actually render as. A colour
+ * too light for the light theme (or too dark for the dark one) is shown with
+ * the shade that replaces it, so the administrator is never surprised.
+ */
+export const BrandColorPreview: React.FC<{ value: string }> = ({ value }) => {
+  const palette = accessibleBrandPalette(value);
+  if (!palette) return null;
+  const swatch = (theme: string, t: ThemedBrand) => (
+    <li key={theme} className="flex items-center gap-2">
+      <span
+        aria-hidden="true"
+        className="inline-flex h-6 min-w-12 items-center justify-center rounded px-1.5 text-xs font-semibold"
+        style={{ backgroundColor: t.primary, color: t.foreground }}
+      >
+        Aa
+      </span>
+      <span className="text-xs text-muted-foreground">
+        {theme} theme: <span className="font-mono">{t.primary}</span>
+        {t.adjusted ? " (adjusted for contrast)" : " (as chosen)"}
+      </span>
+    </li>
+  );
+  return (
+    <ul aria-label="Brand color as rendered" className="mt-2 space-y-1" data-testid="brand-color-preview">
+      {swatch("Light", palette.light)}
+      {swatch("Dark", palette.dark)}
+    </ul>
+  );
+};
 
 interface TenantFormFieldsProps {
   form: {
@@ -8,7 +40,7 @@ interface TenantFormFieldsProps {
     code: string;
     description: string;
     primaryColor: string;
-    maxUsers: string;
+    limitSeats: string;
     email: string;
     phone: string;
     address: string;
@@ -24,7 +56,7 @@ interface TenantFormFieldsProps {
       code: string;
       description: string;
       primaryColor: string;
-      maxUsers: string;
+      limitSeats: string;
       email: string;
       phone: string;
       address: string;
@@ -73,7 +105,10 @@ export const TenantFormFields: React.FC<TenantFormFieldsProps> = ({
         rows={3}
       />
       <div>
-        <label className="block text-sm font-medium text-foreground mb-1.5">
+        <label
+          htmlFor="tenant-brand-color"
+          className="block text-sm font-medium text-foreground mb-1.5"
+        >
           Brand Color
         </label>
         <div className="flex items-center gap-3">
@@ -86,23 +121,28 @@ export const TenantFormFields: React.FC<TenantFormFieldsProps> = ({
           />
           <div className="flex-1">
             <Input
+              id="tenant-brand-color"
               value={form.primaryColor}
               onChange={(e) => update("primaryColor", e.target.value)}
               placeholder="#4f46e5"
+              aria-describedby="tenant-brand-color-help"
             />
           </div>
         </div>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Drives the primary theme color for users of this tenant.
+        <p id="tenant-brand-color-help" className="mt-1 text-xs text-muted-foreground">
+          Drives the primary theme color for users of this tenant. Each theme
+          uses the closest shade of it that stays readable (WCAG AA).
         </p>
+        <BrandColorPreview value={form.primaryColor} />
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Input
-          label="Max Users"
+          label="Seat limit"
           type="number"
-          value={form.maxUsers}
-          onChange={(e) => update("maxUsers", e.target.value)}
-          placeholder="100"
+          min={1}
+          value={form.limitSeats}
+          onChange={(e) => update("limitSeats", e.target.value)}
+          placeholder="Plan default"
           leftIcon={<Shield className="h-4 w-4" />}
         />
         <Input

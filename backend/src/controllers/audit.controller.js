@@ -4,6 +4,8 @@ const { success } = require("../utils/response.util");
 const { AppError } = require("../utils/appError.util");
 const { PLATFORM_TENANT_ID } = require("../constants/platformTenant");
 const { ACTOR_TYPE_VALUES } = require("../constants/systemActors");
+// N-01: the one super-admin predicate.
+const { isSuperAdmin: isSuperAdminPrincipal } = require("../utils/role.util");
 
 /** The one value `scope` takes: the PLATFORM tenant's trail (A-125). */
 const PLATFORM_SCOPE = "platform";
@@ -12,10 +14,7 @@ const PLATFORM_SCOPE = "platform";
  * @param {import("express").Request} req
  * @returns {boolean} whether the authenticated principal is a super admin
  */
-const isSuperAdmin = (req) => {
-  const roleName = req.user && req.user.role && req.user.role.name;
-  return roleName === "SUPER_ADMIN" || roleName === "SUPERADMIN";
-};
+const isSuperAdmin = (req) => isSuperAdminPrincipal(req.user);
 
 /**
  * The tenant whose trail is read.

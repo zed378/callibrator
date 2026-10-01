@@ -48,16 +48,28 @@ probes:
     initialDelaySeconds: 10
     periodSeconds: 10
     failureThreshold: 3
+  # P7-06: explicit, for all three probes. /health checks PostgreSQL, Redis and
+  # RabbitMQ; the kubelet default of 1s is short for that on a busy node.
+  timeoutSeconds: 5
+  # P7-06: 72 x 10 s = 12 min, longer than MIGRATION_LOCK_TIMEOUT_MS (600 s,
+  # ADR-086) — a replica waiting on the schema lock must not be killed by the
+  # kubelet first. Raise both together for a long migration.
+  startup:
+    failureThreshold: 72
 
 resources:
   requests:
     cpu: 250m
-    memory: 512Mi
+    memory: 384Mi
   limits:
     cpu: "2"
-    # Chromium (certificate PDFs) is memory-hungry and bursty. A limit sized
-    # for the steady state OOM-kills the pod on the first certificate.
-    memory: 4Gi
+    # ADR-095 follow-up (2026-09-30): re-sized to measured need. The backend image has no Chromium;
+    # measured on callibrator/backend:adr095f under boot + migrations, seeding, three live E2E runs
+    # (two concurrent) and six browser-smoke runs: cgroup memory.peak 306 MiB, Node VmHWM 337 MiB,
+    # steady 215-265 MiB (MEMORY/records/2026-09-30-adr095-followups.md). Not production traffic:
+    # re-measure under a real tenant's exports/reports before tightening further. 1Gi is 3x the
+    # measured peak; the request is the measured steady state plus margin.
+    memory: 1Gi
 
 persistence:
   # /app/uploads (attachments, quarantine) — local disk even with an s3

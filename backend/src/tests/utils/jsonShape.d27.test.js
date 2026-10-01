@@ -42,8 +42,10 @@ const jsonAttributes = () => {
 };
 
 describe("D-27 — every JSON column is declared", () => {
-  it("finds the fourteen JSON/JSONB columns the audit counted", () => {
-    expect(jsonAttributes()).toHaveLength(14);
+  // Fourteen at the D-27 audit; ADR-107 added Certificate.signedSnapshot; ADR-108
+  // Amendment 1 added WebauthnCredential.transports.
+  it("finds the sixteen JSON/JSONB columns (the audit's fourteen, ADR-107's signedSnapshot, ADR-108's transports)", () => {
+    expect(jsonAttributes()).toHaveLength(16);
   });
 
   it("each JSON attribute validates against its OWN declared shape", () => {
@@ -70,6 +72,25 @@ const GOOD = {
   "CalibrationDevice.uncertaintyBudget": [{ components: [{ name: "ref", u: 0.1 }] }],
   "CalibrationDevice.readingTolerance": [{ temperature: { min: 2, max: 8 } }], // iot.validator
   "CalibrationRecord.results": [{ points: [{ nominal: 10, measured: 10.01 }] }, ""], // create schema allows ""
+  // ADR-107: the signing snapshot, with a device and without one.
+  "Certificate.signedSnapshot": [
+    {
+      version: 1,
+      issuer: { name: "Lab", email: "lab@x.id", phone: null, address: "Jl. A 1", city: "Jakarta", state: null, zipCode: null, country: "Indonesia", website: null },
+      device: { name: "Pump", serialNumber: "SN-1", manufacturer: null, model: null },
+      calibratedBy: "Ani",
+      approvedBy: null,
+      signedBy: "Citra",
+    },
+    {
+      version: 1,
+      issuer: { name: null, email: null, phone: null, address: null, city: null, state: null, zipCode: null, country: null, website: null },
+      device: null,
+      calibratedBy: null,
+      approvedBy: null,
+      signedBy: null,
+    },
+  ],
   "DsarRequest.details": [{ reason: "restriction" }, {}], // gdpr.service#createDsar default {}
   "IotReading.metrics": [{ temperature: 22, humidity: 45 }],
   "SignatureRecord.polygon": [{ points: [[0, 0], [1, 1]] }, [[0, 0], [1, 1]]],
@@ -79,6 +100,8 @@ const GOOD = {
   "UsageAlert.notificationChannels": [["email"], ["email", "webhook"]],
   "Webhook.events": [["certificate.signed", "device.overdue"], ["*"]],
   "WebhookDelivery.payload": [{ event: "certificate.signed", data: { id: "c-1" } }, {}],
+  // ADR-108 Amendment 1: a passkey's reported transports, or none.
+  "WebauthnCredential.transports": [["internal"], ["usb", "nfc", "hybrid"], null],
 };
 
 const BAD = {
@@ -87,6 +110,28 @@ const BAD = {
   "CalibrationDevice.uncertaintyBudget": [[1, 2], "u=0.1"],
   "CalibrationDevice.readingTolerance": [{ temperature: { mx: 8 } }, { temperature: { min: 9, max: 1 } }, []],
   "CalibrationRecord.results": [[1, 2], "ok", 3],
+  // ADR-107: every key is hashed, so a missing, extra or mistyped key is refused.
+  "Certificate.signedSnapshot": [
+    {},
+    { version: 2, issuer: {}, device: null, calibratedBy: null, approvedBy: null, signedBy: null },
+    {
+      version: 1,
+      issuer: { name: "Lab", email: null, phone: null, address: null, city: null, state: null, zipCode: null, country: null, website: null, extra: "x" },
+      device: null,
+      calibratedBy: null,
+      approvedBy: null,
+      signedBy: null,
+    },
+    {
+      version: 1,
+      issuer: { name: 5, email: null, phone: null, address: null, city: null, state: null, zipCode: null, country: null, website: null },
+      device: null,
+      calibratedBy: null,
+      approvedBy: null,
+      signedBy: null,
+    },
+    "snapshot",
+  ],
   "DsarRequest.details": ["reason", []],
   "IotReading.metrics": [22, [22], "22"],
   "SignatureRecord.polygon": ["M0 0 L1 1", 3],
@@ -96,6 +141,7 @@ const BAD = {
   "UsageAlert.notificationChannels": [["sms"], "email"],
   "Webhook.events": [["Certificate Signed"], "certificate.signed", [""]],
   "WebhookDelivery.payload": ["{}", []],
+  "WebauthnCredential.transports": [["bluetooth"], "usb", [1], ["usb", "usb", "usb", "usb", "usb", "usb", "usb", "usb"]],
 };
 
 const buildWith = (key, value) => {

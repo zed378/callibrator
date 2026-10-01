@@ -138,11 +138,11 @@ All three read functions **swallow errors**: `getTenantTree` answers `{ isRoot: 
 | Route | Gate | From → to | Audit row | Service |
 |---|---|---|---|---|
 | `GET /status` | `dynamicAccess("tenant-lifecycle", "read", { checkTenant: true })` — another tenant's id is **404** (A-155) | read | — | `getTenantLifecycleStatus` |
-| `POST /suspend` `{ reason }` | `superAdminOnly` | any → `suspended` (a no-op when already suspended) | **none** | `suspendTenant` |
-| `POST /resume` | `superAdminOnly` | any → `active` (no-op when active); clears the suspension fields and `grace_period_expires_at` | **none** | `resumeTenant` |
-| `POST /grace-period` | `superAdminOnly` | `suspended` only, else **409** (W-21, ADR-079); sets the deadline to now + `TENANT_GRACE_PERIOD_DAYS` (7) | **none** | `enterGracePeriod` |
+| `POST /suspend` `{ reason }` | `superAdminOnly` | `active` → `suspended`; a no-op when already suspended by the operator; **replaces** a dunning suspension (ADR-094); `deleted` → **409** (A-279) | **two** — PLATFORM and the tenant, in the transaction (A-278, ADR-094) | `suspendTenant` |
+| `POST /resume` | `superAdminOnly` | `suspended` → `active` (no-op when active); clears the suspension fields and `grace_period_expires_at`; `deleted` → **409** (A-279) | **two**, as above | `resumeTenant` |
+| `POST /grace-period` | `superAdminOnly` | `suspended` only, else **409** (W-21, ADR-079); sets the deadline to now + `TENANT_GRACE_PERIOD_DAYS` (7) | **two**, as above | `enterGracePeriod` |
 | `POST /offboard` | `superAdminOnly` | any → `deleted`; retention to now + `TENANT_OFFBOARD_RETENTION_DAYS` (30); a no-op when already `deleted` | **one**, in the same transaction (W-01/W-04) | `offboardTenant` |
-| `POST /offboard/cancel` | `superAdminOnly` | `deleted` → `active`, else **400**; clears offboard and grace fields | **none** | `cancelOffboarding` |
+| `POST /offboard/cancel` | `superAdminOnly` | `deleted` → `active`, else **409** naming the state (A-279); clears offboard and grace fields and sets `lifecycle_status` back to `ACTIVE` | **two**, as above | `cancelOffboarding` |
 | `GET /export` | `superAdminOnly` | read — allow-listed user and setting attributes, credentials redacted (A-179) | — | `exportTenantData` |
 
 Responses pass through `tenantLifecycle.controller.js#tenantBody`, which strips credentials mirrored into `settings` (A-263).
@@ -155,13 +155,13 @@ Responses pass through `tenantLifecycle.controller.js#tenantBody`, which strips 
 
 *Each item is read from the code; none has a test that pins it, and none is recorded on the board as of 2026-09-28.*
 
-- **Four of the six transitions write no audit row.** `suspendTenant`, `resumeTenant`, `enterGracePeriod` and `cancelOffboarding` write `tenants`, and the first two `tenant_settings`, with a winston log line and no `audit_logs` row. Only `offboardTenant` is audited. `CLAUDE.md` makes an audit row inside the transaction a non-negotiable for every mutation.
-- **`suspend` and `resume` accept an offboarded tenant.** Neither checks for `deleted`. `resume` sets it `active` but leaves `offboarded_at` and `offboard_retention_expires_at` in place — which `cancelOffboarding` exists to clear.
+- ~~**Four of the six transitions write no audit row.**~~ **Fixed 2026-09-29 (A-278, ADR-094):** `suspendTenant`, `resumeTenant`, `enterGracePeriod` and `cancelOffboarding` write one row under PLATFORM and one under the tenant, inside the transaction. `offboardTenant` still writes one (the tenant's).
+- ~~**`suspend` and `resume` accept an offboarded tenant.**~~ **Fixed 2026-09-29 (A-279, ADR-094):** both answer 409 for a `deleted` tenant and name `offboard/cancel` as the way back.
 - **`force` is unreachable over HTTP.** The controller reads `validated.force`, but `tenantIdSchema` declares only `tenantId` and the validator strips unknown keys (`tenantLifecycle.validator.js`), so it is always `false`.
-- **`cancelOffboarding` answers a state conflict with 400**, where `CLAUDE.md` § Status Codes calls for 409.
+- ~~**`cancelOffboarding` answers a state conflict with 400.**~~ **Fixed 2026-09-29 (A-279, ADR-094):** 409 with a state explanation.
 - **Two other paths write `tenants.status` with no transition rule at all:**
   - `PATCH /api/v1/admin/tenants/:id/status` (`admin.service.js#updateTenantStatus`, SUPERADMIN) sets any of the three values from any other. It **is** audited — twice, under PLATFORM and under the tenant (A-165) — but it writes none of the lifecycle timestamps;
-  - the inbound Stripe webhook (`POST /api/v1/billing/webhook`, `stripeWebhook.service.js#setTenantStatus`) sets `active` on `invoice.paid` and on a subscription update to Active, and `suspended` on a repeated payment failure — unconditionally, with no audit row. As written, a paid invoice would re-activate a tenant a super admin suspended or offboarded.
+  - the inbound Stripe webhook (`POST /api/v1/billing/webhook`, `stripeWebhook.service.js`). **Since 2026-09-29 (A-276, ADR-094)** dunning suspends only an `active` tenant and marks the suspension as its own (`suspension_reason = "billing:dunning"`, no `suspended_by`; `constants/tenantSuspension.ts`); a payment lifts only that suspension. An operator's suspension and an offboarding are kept, and the payment is recorded against them. Every decision is audited under PLATFORM and the tenant as `system:billing-webhook`. Until then it set `active` and `suspended` unconditionally, with no audit row.
 
 **The default-tenant trap** (`CLAUDE.md` § The Traps) applies to `suspend` unchanged: the seeded super admin lives in the default tenant, and suspending it refuses the super admin too. The PLATFORM tenant cannot be suspended through these routes — `Tenant.findByPk` hides it, so it is 404.
 

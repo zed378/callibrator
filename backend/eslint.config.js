@@ -12,6 +12,33 @@ const SHARED_TYPES_ONLY_IN_TYPES_DIR = [
   { selector: "TSInterfaceDeclaration[id.name=/Envelope$|^ApiResponse/]", message: SHARED_TYPE_MESSAGE },
 ];
 
+// P9-07 — raw SQL goes through utils/sql.util (bind parameters only; ADR-039). A direct
+// `sequelize.query(...)` / `db.query(...)` / `x.sequelize.query(...)` in a TypeScript source
+// file is an error outside that helper. JavaScript call sites move to the helper as their
+// modules convert (Stage C). A raw pg client (`connection.query`) is a different API.
+const RAW_QUERY_MESSAGE = "Run raw SQL through utils/sql.util#sql (bind parameters only; P9-07, ADR-039).";
+// ADR-087 Amendment 15: a module that uses `export =` exports NOTHING else — not even a type.
+// tsx/esbuild compiles `export interface X` beside `export =` into a reference to an
+// undefined `<file>_module`, which throws when the module LOADS, while typecheck and jest
+// (Babel) both pass: webauthn.service crashed the boot this way on 2026-09-30. Put the
+// types in src/types/ or a sibling .d.ts. scripts/load-check.ts is the runtime net.
+const EXPORT_EQUALS_ALONE = [
+  {
+    selector: "Program:has(TSExportAssignment) > ExportNamedDeclaration",
+    message:
+      "A module with `export =` must export nothing else (tsx emits an undefined `<file>_module` and the module throws at load — ADR-087 Amendment 15). Move the type to src/types/ or a .d.ts.",
+  },
+  {
+    selector: "Program:has(TSExportAssignment) > ExportDefaultDeclaration",
+    message: "A module with `export =` must export nothing else (ADR-087 Amendment 15).",
+  },
+];
+
+const RAW_QUERY_OUTSIDE_THE_HELPER = [
+  { selector: "CallExpression[callee.type='MemberExpression'][callee.property.name='query'][callee.object.name=/^(sequelize|db|database)$/]", message: RAW_QUERY_MESSAGE },
+  { selector: "CallExpression[callee.type='MemberExpression'][callee.property.name='query'][callee.object.property.name='sequelize']", message: RAW_QUERY_MESSAGE },
+];
+
 module.exports = [
   // P9-02 — GLOBAL ignores. In flat config, `ignores` is global only in an
   // object that has no other key; beside `rules` it scoped that one object, so
@@ -157,6 +184,21 @@ module.exports = [
         "error",
         { selector: "TSEnumDeclaration", message: "Use an `as const` object and a union (docs/ENGINEERING/04)." },
         ...SHARED_TYPES_ONLY_IN_TYPES_DIR,
+        ...RAW_QUERY_OUTSIDE_THE_HELPER,
+        ...EXPORT_EQUALS_ALONE,
+      ],
+    },
+  },
+  {
+    // P9-07: the helper itself, the tests (live probes and fakes query directly), and
+    // migrations (DDL through the QueryInterface, outside any tenant; the helper is SELECT-only).
+    files: ["src/utils/sql.util.ts", "src/tests/**/*.ts", "src/migrations/**/*.ts"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        { selector: "TSEnumDeclaration", message: "Use an `as const` object and a union (docs/ENGINEERING/04)." },
+        ...SHARED_TYPES_ONLY_IN_TYPES_DIR,
+        ...EXPORT_EQUALS_ALONE,
       ],
     },
   },
@@ -168,6 +210,7 @@ module.exports = [
       "no-restricted-syntax": [
         "error",
         { selector: "TSEnumDeclaration", message: "Use an `as const` object and a union (docs/ENGINEERING/04)." },
+        ...EXPORT_EQUALS_ALONE,
       ],
     },
   },
@@ -182,27 +225,6 @@ module.exports = [
       ],
     },
   },
-  {
-    // P9-10 (ADR-087 Amendment 7): until the barrel converts in the same merge
-    // as the last model batch, no production .ts file imports the JavaScript
-    // models barrel — a type taken from it is inferred loosely under allowJs
-    // and the typecheck accepts it silently. Types come from src/types/models.ts.
-    // Tests are exempt: they type the barrel locally (fixtures/memoryDb.ts).
-    files: ["src/**/*.ts"],
-    ignores: ["src/tests/**", "src/**/__tests__/**"],
-    rules: {
-      "no-restricted-imports": [
-        "error",
-        {
-          patterns: [
-            {
-              regex: "^(?:\\.\\./)+models(?:/index)?$|^\\.(?:/index)?$",
-              message:
-                "The models barrel is JavaScript until P9-10's last batch: take model types from src/types/models.ts (ADR-087 Amendment 7).",
-            },
-          ],
-        },
-      ],
-    },
-  },
+  // P9-10 (ADR-087 Amendment 11): the rule that barred production .ts files from importing the
+  // JavaScript models barrel (Amendment 7) is retired — the barrel is TypeScript and typed.
 ];

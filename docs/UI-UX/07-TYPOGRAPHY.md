@@ -10,7 +10,9 @@ A typeface where `0` and `O`, `1` and `l` and `I`, or `5` and `S` are hard to te
 
 That single requirement outranks every aesthetic consideration in this document.
 
-## Two Families
+## Two Families (Three on Public Surfaces)
+
+**Public surfaces (ADR-098):** a serif **display** face, Instrument Serif (OFL), for `h1`, section headlines at 32 px and above, and the verification verdict word; body and UI in Plus Jakarta Sans (OFL). Instrument Serif is never used below 32 px, never bold, never for UI text. Every value a person transcribes stays in the mono face below, on public pages too. Details: `20-LANDING-AUTH-REVAMP.md` §4.3. The dashboard is unchanged.
 
 | Role | Family | Used for |
 |---|---|---|

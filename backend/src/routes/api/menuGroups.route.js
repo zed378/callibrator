@@ -10,8 +10,9 @@ const router = express.Router();
 const menuGroupController = require("../../controllers/menuGroup.controller");
 const { auth } = require("../../middlewares/auth.middleware");
 const { rbac } = require("../../middlewares/rbac.middleware");
-const { ROLE_NAMES } = require("../../constants/roleConstants");
 const { forbidden } = require("../../utils/response.util");
+// N-01: the one super-admin predicate (both spellings).
+const { isSuperAdmin } = require("../../utils/role.util");
 
 /**
  * AZ-01 (G-06) / P6-04 — the three user-facing menu reads take a `roleId`
@@ -28,7 +29,7 @@ const { forbidden } = require("../../utils/response.util");
  */
 function ownRoleOnly(req, res, next) {
   const user = req.user || {};
-  if (user.role?.name === ROLE_NAMES.SUPER_ADMIN) {
+  if (isSuperAdmin(user)) {
     return next();
   }
   const asked = req.query?.roleId || req.body?.roleId;
@@ -121,6 +122,27 @@ router.post(
   ownRoleOnly,
   menuGroupController.getRoleMenuAssignments,
 );
+
+/**
+ * @swagger
+ * /api/v1/menu-groups/my-permissions:
+ *   get:
+ *     tags: [MenuGroups]
+ *     security:
+ *       - bearerAuth: []
+ *     summary: The caller's effective menu permissions (ADR-102)
+ *     description: >
+ *       `{ superAdmin, permissions: { [slug]: "read" | "write" } }` — the
+ *       permission the API's dynamicAccess gate checks (role grants inherited
+ *       one level down, replaced by the caller's per-user overrides). Pages
+ *       decide their write actions from it.
+ *     responses:
+ *       '200':
+ *         description: Effective permissions
+ *       '401':
+ *         description: Unauthorized
+ */
+router.get("/my-permissions", auth, menuGroupController.getMyPermissions);
 
 /**
  * @swagger

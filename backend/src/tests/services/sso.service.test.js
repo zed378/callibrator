@@ -21,6 +21,9 @@ jest.mock("../../models", () => ({
   },
 }));
 
+// P6-11: a JIT-provisioned account commits with its audit row.
+jest.mock("../../services/audit.service", () => ({ logAction: jest.fn() }));
+
 jest.mock("../../utils/password.util", () => ({
   hashPassword: jest.fn().mockResolvedValue("hashed-password"),
 }));
@@ -482,5 +485,56 @@ describe("sso.service", () => {
 
       spy.mockRestore();
     });
+  });
+});
+
+// P6-11 (2026-09-30) — just-in-time provisioning is audited in its transaction.
+describe("sso.service — P6-11 provisionUser audit row", () => {
+  const auditService = require("../../services/audit.service");
+  const { Users } = require("../../models");
+
+  beforeEach(() => jest.clearAllMocks());
+
+  it("writes one CREATE row naming the provisioned account, with the request's address and never the email", async () => {
+    Users.findOne.mockResolvedValueOnce(null);
+    Users.create.mockResolvedValueOnce({ id: "user-new" });
+    Users.findByPk.mockResolvedValueOnce({ id: "user-new", isActive: true, status: "ACTIVE" });
+    await ssoService.provisionUser(
+      "tenant-1",
+      { email: "new@hospital.com", firstName: "N", lastName: "U" },
+      { ipAddress: "10.0.0.1", userAgent: "jest" },
+    );
+    expect(auditService.logAction).toHaveBeenCalledTimes(1);
+    const [entry, options] = auditService.logAction.mock.calls[0];
+    expect(options.transaction).toBeDefined();
+    expect(entry).toMatchObject({
+      tenantId: "tenant-1",
+      userId: "user-new",
+      action: "CREATE",
+      resourceType: "User",
+      resourceId: "user-new",
+      ipAddress: "10.0.0.1",
+      userAgent: "jest",
+      changes: { operation: "SSO_JIT_PROVISION", isEmailVerified: true },
+    });
+    expect(JSON.stringify(entry)).not.toContain("new@hospital.com");
+  });
+
+  it("an existing account is signed in with no provisioning row", async () => {
+    Users.findOne.mockResolvedValueOnce({ id: "user-1", isActive: true, status: "ACTIVE" });
+    await ssoService.provisionUser("tenant-1", { email: "old@hospital.com" });
+    expect(auditService.logAction).not.toHaveBeenCalled();
+  });
+
+  it("a failed audit write rolls the account back and refuses the sign-in", async () => {
+    const rollback = jest.fn();
+    Users.sequelize.transaction.mockImplementationOnce(() => ({ commit: jest.fn(), rollback }));
+    Users.findOne.mockResolvedValueOnce(null);
+    Users.create.mockResolvedValueOnce({ id: "user-new" });
+    auditService.logAction.mockRejectedValueOnce(new Error("audit insert failed"));
+    await expect(ssoService.provisionUser("tenant-1", { email: "x@hospital.com" })).rejects.toThrow(
+      "Failed to provision user context",
+    );
+    expect(rollback).toHaveBeenCalled();
   });
 });

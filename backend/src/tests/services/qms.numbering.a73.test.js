@@ -79,13 +79,15 @@ const fakePg = () => {
       }
     },
     /** The counter upsert. Asserts the statement has the shape these semantics assume. */
-    async query(text, { replacements, transaction }) {
+    // P9-07: the claim runs through sql() — bind [$1 tenant, $2 kind, $3 pattern], type SELECT.
+    async query(text, { bind, type, transaction }) {
       sql.push(text);
       expect(text).toMatch(/INSERT INTO qms_counters/);
       expect(text).toMatch(/ON CONFLICT \(tenant_id, kind\)/);
-      expect(text).toMatch(/WHERE tenant_id = :tenantId/);
+      expect(text).toMatch(/WHERE tenant_id = \$1/);
+      expect(type).toBe("SELECT");
       expect(transaction).toBeDefined();
-      const { tenantId, kind, pattern } = replacements;
+      const [tenantId, kind, pattern] = bind;
       const key = `${tenantId}:${kind}`;
       await acquire(key, transaction);
       // Seed: the highest number already issued in the tenant (committed).
@@ -104,7 +106,7 @@ const fakePg = () => {
       const current = transaction.counters.has(key) ? transaction.counters.get(key) : counters.get(key);
       const seq = current === undefined ? seed : Math.max(current + 1, seed);
       transaction.counters.set(key, seq);
-      return [[{ seq }]];
+      return [{ seq }];
     },
     model(table) {
       return {

@@ -11,6 +11,9 @@ import { api } from "../client";
  *   POST /login-options
  *   POST /verify-login
  *   POST /disable
+ *   GET    /credentials         (ADR-108 Am. 1: the caller's passkeys)
+ *   PATCH  /credentials/:id     rename one
+ *   DELETE /credentials/:id     remove one (re-authenticated)
  *
  * The backend speaks base64url for every binary field, while the browser's
  * credentials API speaks ArrayBuffer — this module owns that translation so
@@ -51,9 +54,27 @@ export interface WebauthnResult {
 
 export interface WebauthnStatus {
   enabled: boolean;
+  /** How many passkeys the account holds (ADR-108 Amendment 1). */
+  count?: number;
   /** Authenticator signature counter — rises on each successful assertion. */
   signCount: number;
   lastUpdatedAt: string | null;
+}
+
+/** One of the caller's passkeys (never its credential id or key). */
+export interface Passkey {
+  id: string;
+  name: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+  transports: string[] | null;
+}
+
+/** The A-213 re-authentication a removal needs. */
+export interface Reauth {
+  currentPassword: string;
+  code?: string;
+  recoveryCode?: string;
 }
 
 // Backend response envelope
@@ -142,10 +163,11 @@ export const webauthnService = {
   /** POST /api/v1/webauthn/verify-registration */
   verifyRegistration: async (
     credential: PublicKeyCredential,
+    name?: string,
   ): Promise<WebauthnResult> => {
     const response = await api.post<BackendResponse<WebauthnResult>>(
       "/api/v1/webauthn/verify-registration",
-      serializeCredential(credential),
+      { ...serializeCredential(credential), ...(name && name.trim() ? { name: name.trim() } : {}) },
     );
     return response.data;
   },
@@ -186,6 +208,34 @@ export const webauthnService = {
     return response.data;
   },
 
+  /** GET /api/v1/webauthn/credentials — the caller's passkeys, oldest first. */
+  listPasskeys: async (): Promise<Passkey[]> => {
+    const response = await api.get<BackendResponse<Passkey[]>>("/api/v1/webauthn/credentials");
+    return response.data ?? [];
+  },
+
+  /** PATCH /api/v1/webauthn/credentials/:id — rename one. */
+  renamePasskey: async (id: string, name: string): Promise<Passkey> => {
+    const response = await api.patch<BackendResponse<Passkey>>(
+      `/api/v1/webauthn/credentials/${encodeURIComponent(id)}`,
+      { name },
+    );
+    return response.data;
+  },
+
+  /**
+   * DELETE /api/v1/webauthn/credentials/:id — remove one. Needs the current
+   * password (and a code with MFA): that proof is also what stops the last
+   * passkey leaving the account with no way in.
+   */
+  revokePasskey: async (id: string, reauth: Reauth): Promise<{ success: boolean; remaining: number }> => {
+    const response = await api.delete<BackendResponse<{ success: boolean; remaining: number }>>(
+      `/api/v1/webauthn/credentials/${encodeURIComponent(id)}`,
+      { data: reauth },
+    );
+    return response.data;
+  },
+
   /** True when this browser can do WebAuthn at all. */
   isSupported: (): boolean =>
     typeof window !== "undefined" &&
@@ -194,7 +244,7 @@ export const webauthnService = {
   /**
    * Full enrolment ceremony: fetch options, prompt the authenticator, verify.
    */
-  register: async (): Promise<WebauthnResult> => {
+  register: async (name?: string): Promise<WebauthnResult> => {
     const options = await webauthnService.getRegistrationOptions();
 
     const credential = (await navigator.credentials.create({
@@ -214,7 +264,7 @@ export const webauthnService = {
     })) as PublicKeyCredential | null;
 
     if (!credential) throw new Error("Registration was cancelled");
-    return webauthnService.verifyRegistration(credential);
+    return webauthnService.verifyRegistration(credential, name);
   },
 
   /**

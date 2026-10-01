@@ -21,6 +21,14 @@ const config = {
   },
   testMatch: ['<rootDir>/src/**/*.test.ts', '<rootDir>/src/**/*.test.tsx'],
   modulePathIgnorePatterns: ['<rootDir>/.next/', '<rootDir>/dist/'],
+  // 2026-09-29 (ADR-067 Amendment 1): full-page suites render the real hook,
+  // store and service chain, and each `findBy*` may wait up to 5 s
+  // (jest.setup.ts). Under coverage, with ~260 suites in parallel, a test with
+  // two or three awaited steps overran Jest's 5 s default in the full run
+  // while passing alone (api-keys, billing, esignature, menu-groups pages).
+  // The per-test ceiling only bounds how long a FAILING test takes to report;
+  // it changes no assertion.
+  testTimeout: 30000,
   transform: {
     '^.+\\.(t|j)sx?$': [
       'ts-jest',
@@ -30,6 +38,14 @@ const config = {
       },
     ],
   },
+  // A-298: sanitize-html (lib/safeHtml) parses with htmlparser2, whose
+  // current line and its dom* / entities dependencies ship ES modules only.
+  // Jest here runs CommonJS, so those six are transformed (ts-jest, allowJs);
+  // every other node_module is left alone, as before. Next bundles them
+  // natively, so this is test-only.
+  transformIgnorePatterns: [
+    '[/\\\\]node_modules[/\\\\](?!(htmlparser2|domhandler|domutils|dom-serializer|entities|domelementtype)[/\\\\])',
+  ],
   collectCoverageFrom: [
     'src/**/*.{ts,tsx}',
     '!src/**/*.d.ts',
@@ -47,15 +63,20 @@ const config = {
   // on any regression. Measured 2026-09-24 after F-03/F-04 work: statements
   // 42.13%, branches 36.61%, functions 35.80%, lines 42.45%.
   //
-  // Ratchet to the 70% target — docs/FRONTEND/10-TESTING.md § Coverage gate.
+  // Ratchet — docs/FRONTEND/10-TESTING.md § Coverage gate.
   // Raise these numbers in the same change that raises the coverage; never
   // lower them, and never reach them by excluding product code.
+  //
+  // 2026-09-30 (ADR-067 Amendment 1): measured 90.91% statements, 81.62%
+  // branches, 86.94% functions, 91.61% lines (264 suites, 2,758 tests) after
+  // the coverage batch; the gate is each figure rounded down. The 70% target
+  // is passed on all four measures.
   coverageThreshold: {
     global: {
-      statements: 41,
-      branches: 35,
-      functions: 34,
-      lines: 41,
+      statements: 90,
+      branches: 81,
+      functions: 86,
+      lines: 91,
     },
   },
 };

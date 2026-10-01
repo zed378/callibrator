@@ -48,9 +48,20 @@ export interface DomainStatusResult {
   checkedAt?: string;
 }
 
+/**
+ * POST /domains/:id/verify's `data` (customDomains.service verifyDomain):
+ * `{ verified, status, record, dnsRecord }` after a DNS lookup, or
+ * `{ verified: false, reason }` when custom domains are switched off. A 200
+ * does not mean verified — `verified` does.
+ */
 export interface VerifyResult {
   verified?: boolean;
   status?: string;
+  /** Why nothing was checked (custom domains disabled). */
+  reason?: string;
+  /** The token that matched, or null. */
+  record?: string | null;
+  dnsRecord?: { type?: string; name?: string; value?: string };
   message?: string;
 }
 
@@ -117,10 +128,16 @@ export const customDomainService = {
 
   /** GET /domains/:domainId/dns — the records to add at your DNS provider. */
   getDnsRecords: async (domainId: string): Promise<DnsRecord[]> => {
-    const response = await api.get<BackendResponse<DnsRecord[]>>(
-      `${BASE}/domains/${domainId}/dns`,
-    );
-    return response.data ?? [];
+    // The backend answers an object — { verification: TXT, cname: CNAME,
+    // instructions } (customDomains.service getDnsVerificationInstructions) —
+    // not a list; the screen's `.map` over it threw. Read the two records out
+    // of it; a list is still accepted.
+    const response = await api.get<
+      BackendResponse<DnsRecord[] | { verification?: DnsRecord; cname?: DnsRecord } | null>
+    >(`${BASE}/domains/${domainId}/dns`);
+    const data = response.data;
+    if (Array.isArray(data)) return data;
+    return [data?.verification, data?.cname].filter((r): r is DnsRecord => Boolean(r));
   },
 
   /** DELETE /domains/:domainId */

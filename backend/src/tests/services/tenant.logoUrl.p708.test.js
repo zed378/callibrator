@@ -41,11 +41,8 @@ jest.mock("../../models", () => ({
 
 const { Tenants } = require("../../models");
 const tenantService = require("../../services/tenant.service");
-const {
-  validate,
-  createTenantSchema,
-  updateTenantSchema,
-} = require("../../validators/tenant.validator");
+const { validateInput: validate } = require("../../validators/input");
+const { createTenantSchema, updateTenantSchema } = require("../../validators/tenant.validator");
 
 const brandingFor = async (logo) => {
   Tenants.findOne.mockResolvedValue({
@@ -117,9 +114,11 @@ describe("P7-08 — the validator accepts only a stored file name for logo", () 
       } catch (err) {
         caught = err;
       }
-      expect(caught).toBeDefined();
-      expect(caught.status ?? caught.statusCode).toBe(400);
-      expect(JSON.stringify(caught.errors ?? caught.message)).toMatch(/uploaded file name/);
+      expect(caught).toEqual({
+        status: 400,
+        message: "Validation failed",
+        errors: [{ field: "logo", message: "logo must be an uploaded file name, not a URL or a path" }],
+      });
     }
   });
 });

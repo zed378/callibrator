@@ -3,7 +3,7 @@
 import React, { Suspense } from "react";
 import { useParams, useRouter } from "next/navigation";
 import DashboardLayout from "@/components/layouts/DashboardLayout";
-import { Button, Alert, Card, CardContent } from "@/components/ui";
+import { Button, Alert, Card, CardContent, ConfirmDialog } from "@/components/ui";
 import { Plus, Loader2, FileArchive } from "lucide-react";
 import { Pagination } from "@/components/ui/Table";
 import { useTenantBackups } from "./hooks/useTenantBackups";
@@ -23,6 +23,8 @@ function TenantBackupContent() {
     isLoading,
     isCreating,
     error,
+    listFailed,
+    fetchBackups,
     success,
     currentPage,
     setCurrentPage,
@@ -38,10 +40,14 @@ function TenantBackupContent() {
     restoreOutcome,
     setRestoreOutcome,
     handleCreateBackup,
-    handleDeleteBackup,
     handleDownloadBackup,
-    handleRestoreBackup,
+    pendingAction,
+    requestRestoreBackup,
+    requestDeleteBackup,
+    cancelPendingAction,
+    confirmPendingAction,
   } = useTenantBackups(tenantId, tenantName);
+  const tenantLabel = tenantName || tenantId;
 
   return (
     <DashboardLayout>
@@ -133,14 +139,30 @@ function TenantBackupContent() {
               <p className="text-muted-foreground mt-4">Loading backups...</p>
             </div>
           </Card>
+        ) : listFailed ? (
+          // F-19: a failed read is not "no backups" — the error above says why.
+          <Card>
+            <div className="p-8 text-center">
+              <p className="text-muted-foreground">
+                Backups could not be loaded.
+              </p>
+              <Button
+                variant="outline"
+                className="mt-4"
+                onClick={() => void fetchBackups()}
+              >
+                Try again
+              </Button>
+            </div>
+          </Card>
         ) : backups.length > 0 ? (
           <>
             <BackupList
               backups={backups}
               actionLoading={actionLoading}
               handleDownloadBackup={handleDownloadBackup}
-              handleRestoreBackup={handleRestoreBackup}
-              handleDeleteBackup={handleDeleteBackup}
+              handleRestoreBackup={requestRestoreBackup}
+              handleDeleteBackup={requestDeleteBackup}
             />
 
             <div className="mt-6">
@@ -177,6 +199,36 @@ function TenantBackupContent() {
           </Card>
         )}
       </div>
+
+      {/* Destructive backup actions ask first. A restore overwrites the tenant's
+          data and cannot be undone, so the backup's name must be typed. */}
+      <ConfirmDialog
+        isOpen={pendingAction?.kind === "restore"}
+        title={`Restore backup "${pendingAction?.backup.name ?? ""}"?`}
+        description={
+          <>
+            This replaces the current data of tenant {tenantLabel} with the
+            contents of this backup, created{" "}
+            {pendingAction ? new Date(pendingAction.backup.createdAt).toLocaleString() : ""}.
+            Changes made since then are lost. This cannot be undone — create a
+            fresh backup first if you may need today&apos;s data.
+          </>
+        }
+        confirmLabel="Restore backup"
+        confirmPhrase={pendingAction?.kind === "restore" ? pendingAction.backup.name : undefined}
+        isLoading={actionLoading !== null}
+        onConfirm={() => void confirmPendingAction()}
+        onCancel={cancelPendingAction}
+      />
+      <ConfirmDialog
+        isOpen={pendingAction?.kind === "delete"}
+        title={`Delete backup "${pendingAction?.backup.name ?? ""}"?`}
+        description="The archive is removed permanently and can no longer be downloaded or restored."
+        confirmLabel="Delete backup"
+        isLoading={actionLoading !== null}
+        onConfirm={() => void confirmPendingAction()}
+        onCancel={cancelPendingAction}
+      />
 
       <BackupCreateModal
         isOpen={showCreateModal}

@@ -41,18 +41,18 @@ type AnyStore = UseBoundStore<StoreApi<Record<string, unknown>>>;
 const page = { data: [{ id: "x" }], meta: { page: 2, limit: 5, totalPages: 1, total: 1 } };
 const signing = { authMethod: "password", authPayload: { password: "p" }, meaning: "approve" };
 
+// F-19: the three LIST reads keep their own read state (calibrationStore
+// `lists`), so they are held by calibrationStore.lists.f19.test.ts, not here.
 describeStoreContract(
   "calibrationStore",
   useCalibrationStore as unknown as AnyStore,
   calibrationService,
   { calibrations: null, certificates: null, certificateStats: null, currentCalibration: null, currentCertificate: null, isLoading: false, error: null },
   [
-    { action: "fetchCalibrations", args: [2, 5, "d1", true, "2026-01-01", "2026-02-01"], method: "getAll", resolved: page, stateKey: "calibrations", rethrows: false, fallback: "Failed to fetch calibration records" },
     { action: "fetchCalibrationById", args: ["c1"], method: "getById", resolved: { id: "c1" }, stateKey: "currentCalibration", rethrows: false, fallback: "Failed to fetch calibration record" },
     { action: "createCalibration", args: [{ deviceId: "d1" }], method: "create", resolved: { id: "c2" }, rethrows: true, fallback: "Failed to create calibration record" },
     { action: "correctCalibration", args: [{ id: "c1" }], method: "correct", resolved: { id: "c3" }, stateKey: "currentCalibration", rethrows: true, fallback: "Failed to correct calibration record" },
     { action: "voidCalibration", args: ["c1", "entered in error"], method: "void", rethrows: true, fallback: "Failed to void calibration record" },
-    { action: "fetchCertificates", args: [1, 10, "d1", "draft", "calibration", "CERT-1", "a", "b"], method: "getAllCertificates", resolved: page, stateKey: "certificates", rethrows: false, fallback: "Failed to fetch certificates" },
     { action: "fetchCertificateById", args: ["k1"], method: "getCertificateById", resolved: { id: "k1" }, stateKey: "currentCertificate", rethrows: false, fallback: "Failed to fetch certificate" },
     { action: "createCertificate", args: [{ deviceId: "d1" }], method: "createCertificate", resolved: { id: "k2" }, rethrows: true, fallback: "Failed to create certificate" },
     { action: "updateCertificate", args: [{ id: "k1" }], method: "updateCertificate", resolved: { id: "k1" }, stateKey: "currentCertificate", rethrows: true, fallback: "Failed to update certificate" },
@@ -60,7 +60,6 @@ describeStoreContract(
     { action: "approveCertificate", args: ["k1", signing], method: "approveCertificate", resolved: { id: "k1", status: "approved" }, stateKey: "currentCertificate", rethrows: true, fallback: "Failed to approve certificate" },
     { action: "signCertificate", args: ["k1", signing], method: "signCertificate", resolved: { id: "k1", status: "signed" }, stateKey: "currentCertificate", rethrows: true, fallback: "Failed to sign certificate" },
     { action: "revokeCertificate", args: ["k1", signing], method: "revokeCertificate", resolved: { id: "k1", status: "revoked" }, stateKey: "currentCertificate", rethrows: true, fallback: "Failed to revoke certificate" },
-    { action: "fetchCertificateStats", args: [], method: "getCertificateStats", resolved: { totalCertificates: 3 }, stateKey: "certificateStats", rethrows: false, fallback: "Failed to fetch certificate statistics" },
   ],
 );
 

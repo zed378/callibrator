@@ -5,7 +5,7 @@
  *
  * Everything between the principal and the models is REAL: the router, the
  * real `dynamicAccess` over the permission matrix the seed builds from
- * ROLE_MENU_ASSIGNMENTS, `validateUuid`, the real Joi validators, the
+ * ROLE_MENU_ASSIGNMENTS, `validateUuid`, the real validators, the
  * controller, the service and audit.service. Doubled: `auth` (to set the
  * principal), the model layer (an in-memory store that applies the tenant
  * predicate the service passes), and the transaction — the auditLedger

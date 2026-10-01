@@ -460,6 +460,8 @@ const EARLIER_TESTS: Readonly<Record<string, EarlierTest>> = {
 // Routes whose parameter is not a record a tenant principal can address.
 // ---------------------------------------------------------------------------
 
+const ACCESS_REQUEST_QUEUE =
+  "the platform's access-request queue (P10-05): super admin only (rbac on the admin router); the table has no tenant and no tenant principal reaches it";
 const PLATFORM_TENANTS =
   "the platform operator's view of a tenant: only the super admin reaches it (ADR-051/ADR-052), so no tenant principal can name another tenant here";
 const PLATFORM_ROLE =
@@ -470,6 +472,17 @@ const PLATFORM_PERMISSIONS = "per-user permission overrides, managed by the supe
 const NOT_TENANT_ADDRESSED: Readonly<Record<string, AllowEntry>> = {
   "api/admin.route PATCH /tenants/:id/status": { kind: "platform", reason: PLATFORM_TENANTS },
   "api/admin.route PATCH /tenants/:id/flags": { kind: "platform", reason: PLATFORM_TENANTS },
+  // P10-04 (ADR-098 §7.2): a tenant's SSO email-domain claim is platform-controlled
+  // (a tenant must not claim a domain for itself) — super admin only, as the flags above.
+  "api/admin.route GET /tenants/:id/sso-domains": { kind: "platform", reason: PLATFORM_TENANTS },
+  "api/admin.route PUT /tenants/:id/sso-domains": { kind: "platform", reason: PLATFORM_TENANTS },
+  // P10-05 / P10-07 (ADR-098 §6): the platform's access-request queue. The
+  // table has no tenant; no tenant principal reaches it (the admin router's
+  // rbac) — accessRequest.route.p1005.test.ts proves the 403 for tenant admins.
+  "api/admin.route GET /access-requests/:id": { kind: "platform", reason: ACCESS_REQUEST_QUEUE },
+  "api/admin.route POST /access-requests/:id/approve": { kind: "platform", reason: ACCESS_REQUEST_QUEUE },
+  "api/admin.route POST /access-requests/:id/reject": { kind: "platform", reason: ACCESS_REQUEST_QUEUE },
+  "api/admin.route POST /access-requests/:id/resend-invitation": { kind: "platform", reason: ACCESS_REQUEST_QUEUE },
   "api/dataRetention.route PUT /:tenantId/policy": { kind: "platform", reason: PLATFORM_TENANTS },
   "api/dataRetention.route POST /:tenantId/legal-hold": { kind: "platform", reason: PLATFORM_TENANTS },
   "api/dataRetention.route DELETE /:tenantId/legal-hold": { kind: "platform", reason: PLATFORM_TENANTS },
@@ -494,6 +507,27 @@ const NOT_TENANT_ADDRESSED: Readonly<Record<string, AllowEntry>> = {
   "api/oidc.route DELETE /clients/:clientId": {
     kind: "platform",
     reason: "OIDC clients are registered and deleted by the super admin alone",
+  },
+  // A-280 (ADR-094): the operator names the tenant in the path.
+  "api/networkSecurity.route GET /tenants/:tenantId/ip-allowlist": { kind: "platform", reason: PLATFORM_TENANTS },
+  "api/networkSecurity.route PUT /tenants/:tenantId/ip-allowlist": { kind: "platform", reason: PLATFORM_TENANTS },
+  "api/networkSecurity.route GET /tenants/:tenantId/geofence": { kind: "platform", reason: PLATFORM_TENANTS },
+  "api/networkSecurity.route PUT /tenants/:tenantId/geofence": { kind: "platform", reason: PLATFORM_TENANTS },
+  "api/oidc.route GET /tenants/:tenantId/clients": {
+    kind: "platform",
+    reason: "a tenant's OIDC clients, listed by the super admin alone (A-280)",
+  },
+  "api/oidc.route POST /tenants/:tenantId/clients": {
+    kind: "platform",
+    reason: "OIDC clients are registered in a named tenant by the super admin alone (A-280)",
+  },
+  "api/oidc.route POST /tenants/:tenantId/clients/:clientId/rotate-secret": {
+    kind: "platform",
+    reason: "OIDC clients are rotated in a named tenant by the super admin alone (A-280)",
+  },
+  "api/oidc.route DELETE /tenants/:tenantId/clients/:clientId": {
+    kind: "platform",
+    reason: "OIDC clients are deleted in a named tenant by the super admin alone (A-280)",
   },
   "api/roles.route GET /:id": { kind: "platform", reason: PLATFORM_ROLE },
   "api/roles.route PATCH /:id": { kind: "platform", reason: PLATFORM_ROLE },
@@ -544,10 +578,6 @@ const NOT_TENANT_ADDRESSED: Readonly<Record<string, AllowEntry>> = {
   "api/attachments.route GET /:id/signed": {
     kind: "capability",
     reason: "a signed download link: the HMAC token over the id and expiry is the authorisation (attachment.service#verifySignedToken)",
-  },
-  "api/oidc.route GET /authorize/request/:requestId": {
-    kind: "capability",
-    reason: "a Redis-staged OIDC authorization request under 24 random bytes, read by the consent screen; not a database record",
   },
 
   "api/content.route GET /posts/:id": {

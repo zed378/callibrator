@@ -2,8 +2,39 @@
 const { AppError } = require("../utils/appError.util");
 const { asyncHandlerWithMapping } = require("../utils/controllerWrapper.util");
 const { success, badRequest, error } = require("../utils/response.util");
-const { Sessions, Users, Roles, Tenants } = require("../models");
+const { Sessions, Users, Roles, Tenants, sequelize } = require("../models");
 const { Op } = require("sequelize");
+const { isSuperAdmin } = require("../utils/role.util");
+const auditService = require("../services/audit.service");
+const { auditPrincipal, auditEntryActor, actorChanges } = require("../utils/auditPrincipal.util");
+const { PLATFORM_TENANT_ID } = require("../constants/platformTenant");
+
+/**
+ * A-324 — ending a session is audited, in the same transaction as the change.
+ * The row names the actor (auditPrincipal: a user, or an API key as
+ * system:api-key), the TARGET user and how many sessions ended — never the
+ * token, its hash or any other session secret. It is written in the tenant
+ * the session belongs to (the platform tenant for a tenantless user).
+ *
+ * @param {import("express").Request} req
+ * @param {object} entry - { tenantId, action, resourceId, changes }
+ * @param {object} transaction
+ * @returns {Promise<void>}
+ */
+const auditSessionEnd = async (req, { tenantId, action, resourceId, changes }, transaction) => {
+  const principal = auditPrincipal(req);
+  await auditService.logAction(
+    {
+      tenantId: tenantId || PLATFORM_TENANT_ID,
+      ...auditEntryActor(principal),
+      action,
+      resourceType: "session",
+      resourceId,
+      changes: { ...changes, ...actorChanges(principal) },
+    },
+    { transaction },
+  );
+};
 
 // ==========================================
 // GET ALL SESSIONS (Admin/Super Admin)
@@ -196,7 +227,8 @@ exports.revokeSession = asyncHandlerWithMapping(async (req, res) => {
   const { id } = req.params;
   const { reason = "MANUAL_REVOKE" } = req.body;
   const currentUserId = req.user.id;
-  const isAdmin = req.user.role?.name === "SUPER_ADMIN";
+  // N-01: the seeded name is "SUPERADMIN"; one predicate recognises both spellings.
+  const isAdmin = isSuperAdmin(req.user);
 
   const session = await Sessions.findByPk(id, {
     // A-90: LEFT JOIN — the session of a deleted user must still be
@@ -223,11 +255,27 @@ exports.revokeSession = asyncHandlerWithMapping(async (req, res) => {
     throw new AppError(400, "Session is already revoked");
   }
 
-  await session.update({
-    is_revoked: true,
-    revoked_at: new Date(),
-    revoked_reason: reason,
-    is_active: false,
+  // A-324: the revocation and its audit row commit together or not at all.
+  await sequelize.transaction(async (transaction) => {
+    await session.update(
+      {
+        is_revoked: true,
+        revoked_at: new Date(),
+        revoked_reason: reason,
+        is_active: false,
+      },
+      { transaction },
+    );
+    await auditSessionEnd(
+      req,
+      {
+        tenantId: session.tenant_id,
+        action: "UPDATE",
+        resourceId: session.id,
+        changes: { event: "SESSION_REVOKED", targetUserId: session.user_id, sessionCount: 1, reason },
+      },
+      transaction,
+    );
   });
 
   // Invalidate the token hash in cache if using Redis
@@ -244,27 +292,46 @@ exports.revokeAllUserSessions = asyncHandlerWithMapping(async (req, res) => {
   const { userId } = req.params;
   const { reason = "ADMIN_REVOKE_ALL" } = req.body;
   const currentUserId = req.user.id;
-  const isAdmin = req.user.role?.name === "SUPER_ADMIN";
+  // N-01: the seeded name is "SUPERADMIN"; one predicate recognises both spellings.
+  const isAdmin = isSuperAdmin(req.user);
 
   // Only admins can revoke all sessions for a user
   if (!isAdmin) {
     throw new AppError(403, "Only admins can revoke all sessions for a user");
   }
 
-  const result = await Sessions.update(
-    {
-      is_revoked: true,
-      revoked_at: new Date(),
-      revoked_reason: reason,
-      is_active: false,
-    },
-    {
-      where: {
-        user_id: userId,
-        is_revoked: false,
+  // A-324: the audit row is written in the target user's tenant. Unscoped:
+  // a soft-deleted user's sessions must still be revocable and attributable.
+  const target = await Users.unscoped().findByPk(userId, { attributes: ["id", "tenantId"] });
+
+  const result = await sequelize.transaction(async (transaction) => {
+    const updated = await Sessions.update(
+      {
+        is_revoked: true,
+        revoked_at: new Date(),
+        revoked_reason: reason,
+        is_active: false,
       },
-    },
-  );
+      {
+        where: {
+          user_id: userId,
+          is_revoked: false,
+        },
+        transaction,
+      },
+    );
+    await auditSessionEnd(
+      req,
+      {
+        tenantId: target ? target.tenantId : null,
+        action: "UPDATE",
+        resourceId: userId,
+        changes: { event: "SESSIONS_REVOKED_ALL", targetUserId: userId, sessionCount: updated[0], reason },
+      },
+      transaction,
+    );
+    return updated;
+  });
 
   success(
     res,
@@ -281,7 +348,8 @@ exports.revokeAllUserSessions = asyncHandlerWithMapping(async (req, res) => {
 exports.deleteSession = asyncHandlerWithMapping(async (req, res) => {
   const { id } = req.params;
   const currentUserId = req.user.id;
-  const isAdmin = req.user.role?.name === "SUPER_ADMIN";
+  // N-01: the seeded name is "SUPERADMIN"; one predicate recognises both spellings.
+  const isAdmin = isSuperAdmin(req.user);
 
   const session = await Sessions.findByPk(id);
 
@@ -299,7 +367,20 @@ exports.deleteSession = asyncHandlerWithMapping(async (req, res) => {
     throw new AppError(400, "Can only delete revoked or expired sessions");
   }
 
-  await session.destroy();
+  // A-324: the deletion and its audit row commit together or not at all.
+  await sequelize.transaction(async (transaction) => {
+    await session.destroy({ transaction });
+    await auditSessionEnd(
+      req,
+      {
+        tenantId: session.tenant_id,
+        action: "DELETE",
+        resourceId: session.id,
+        changes: { event: "SESSION_DELETED", targetUserId: session.user_id, sessionCount: 1 },
+      },
+      transaction,
+    );
+  });
 
   success(res, null, null, "Session deleted successfully", 200);
 }, {});

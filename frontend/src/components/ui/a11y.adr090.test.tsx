@@ -213,11 +213,12 @@ describe("Icon-only controls carry a name (ADR-090 sweep)", () => {
     const setShow = jest.fn();
     const { container } = render(
       <PasswordLoginForm
-        username=""
-        setUsername={() => {}}
+        username="ada"
         password=""
         setPassword={() => {}}
         onSubmit={(e) => e.preventDefault()}
+        // P10-04: the password step now follows an identifier step.
+        onChangeAccount={() => {}}
         isLoading={false}
         showPassword={false}
         setShowPassword={setShow}
@@ -269,7 +270,7 @@ describe("Icon-only controls carry a name (ADR-090 sweep)", () => {
       name: "Alpha Clinic",
       code: "ALPHA",
       status: "active",
-      maxUsers: 10,
+      limitSeats: 10,
       createdAt: "2026-01-01",
       updatedAt: "2026-01-01",
     } as unknown as Tenant;
@@ -280,6 +281,7 @@ describe("Icon-only controls carry a name (ADR-090 sweep)", () => {
         onSsoConfig={() => {}}
         onMfaPolicy={() => {}}
         onDelete={() => {}}
+        canManageBackups /* ADR-102: backups are offered only to a management writer */
       />,
     );
     const actions = within(container);

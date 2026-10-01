@@ -14,6 +14,7 @@ import {
 import { Device, deviceService } from "@/api/services/device.service";
 import { Vendor, vendorService } from "@/api/services/vendor.service";
 import { PaginatedResponse } from "@/types";
+import { usePermissions } from "@/hooks/usePermissions";
 
 export interface WorkOrderFormState {
   deviceId: string;
@@ -72,11 +73,10 @@ export function useMaintenance() {
   // Form State
   const [form, setForm] = useState<WorkOrderFormState>(emptyForm);
 
-  // User Permissions check
-  const hasWriteAccess =
-    user?.role?.name === "SUPERADMIN" ||
-    user?.role?.name === "HEALTHCARE ADMIN" ||
-    user?.role?.name === "CALIBRATOR ADMIN";
+  // ADR-102: work-order writes are gated on `maintenance` write
+  // (maintenance.route.js) — the effective permission the API checks.
+  const { canWrite } = usePermissions();
+  const hasWriteAccess = canWrite("maintenance");
 
   const fetchWorkOrders = useCallback(async () => {
     setIsWorkOrdersLoading(true);

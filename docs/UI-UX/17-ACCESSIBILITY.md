@@ -94,6 +94,8 @@ With motion off, the landing page resolves to a complete static layout — not o
 
 At 200%, dashboard tables reflow to cards — the same treatment as the mobile breakpoint, which is why building the card layout serves both.
 
+> **As built (2026-09-29, ADR-090 Amendment 1):** at 200% (683 CSS px wide) the page itself does not scroll sideways on the checked pages (`automate/a11y.browser.js`), but **dashboard tables do not become cards**: they scroll horizontally inside their own container. WCAG 1.4.10 exempts content whose two-dimensional layout carries meaning, and a data table is the standard example, so this is conformant. The card layout above is the target, not the current behaviour.
+
 ## Typography for Readability
 
 | Rule | |
@@ -137,6 +139,8 @@ That mix is deliberate, not an unfinished translation.
 | Zoom | 200%, every screen |
 | Colour | contrast checks in **both** themes |
 | Reduced motion | every animated surface |
+
+> **As built (2026-09-29, ADR-090 Amendment 1):** `make test-browser` runs `automate/a11y.browser.js` after the smoke. It checks axe (WCAG 2.1 AA + best-practice) on 6 public and 20 dashboard pages in both themes, the focus contract of 6 create dialogs, 200% reflow and reduced motion on 6 pages, and a tenant brand colour. Manual still: the keyboard walk of every screen and the screen-reader paths (BACKLOG M-16).
 
 Automated tools catch roughly a third of WCAG failures. **Keyboard-only navigation of the calibration form and the verification page is the manual test that must not be skipped** — those are the two screens where a failure has a consequence beyond inconvenience.
 

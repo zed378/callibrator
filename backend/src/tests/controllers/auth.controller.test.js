@@ -86,6 +86,17 @@ describe("authController", () => {
   });
 
   describe("register", () => {
+    it("P6-11: passes a null address and user agent when the request has neither", async () => {
+      authService.registerUser.mockResolvedValue({ success: true, status: 201, message: "ok", data: {} });
+      const bare = { ...req, ip: undefined, headers: {}, body: { username: "u" } };
+      await authController.register(bare, res);
+      expect(authService.registerUser).toHaveBeenLastCalledWith(
+        { username: "u" },
+        expect.any(String),
+        { ipAddress: null, userAgent: null },
+      );
+    });
+
     it("should register a new user successfully", async () => {
       const mockUserData = {
         username: "testuser",
@@ -103,13 +114,26 @@ describe("authController", () => {
         data: { email: "test@example.com" },
       });
 
-      req.headers.origin = "http://localhost:3000";
-
-      await authController.register(req, res);
+      // A-289 (ADR-100): a forged Origin (and Host) is ignored; the link is
+      // built on the configured front-end origin.
+      req.headers.origin = "https://attacker.example";
+      req.headers.host = "attacker.example";
+      const saved = process.env.FRONTEND_URL;
+      process.env.FRONTEND_URL = "https://app.example/";
+      try {
+        await authController.register(req, res);
+      } finally {
+        if (saved === undefined) {
+          delete process.env.FRONTEND_URL;
+        } else {
+          process.env.FRONTEND_URL = saved;
+        }
+      }
 
       expect(authService.registerUser).toHaveBeenCalledWith(
         mockUserData,
-        "http://localhost:3000",
+        "https://app.example",
+        expect.objectContaining({ ipAddress: expect.anything() }),
       );
       expect(success).toHaveBeenCalled();
     });

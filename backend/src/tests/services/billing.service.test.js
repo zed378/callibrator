@@ -4,8 +4,11 @@
  * Covers: getSubscription, updateSubscription, fetchInvoices
  */
 
+// P6-11: the lazily created subscription commits with its audit row.
+jest.mock("../../services/audit.service", () => ({ logAction: jest.fn() }));
 jest.mock("../../config", () => ({
   db: {
+    transaction: jest.fn(async (cb) => cb("TX")),
     getDialect: jest.fn(),
     query: jest.fn(),
     QueryTypes: { SELECT: "SELECT" },
@@ -156,6 +159,7 @@ describe("billing.service", () => {
           status: "Active",
           billingCycle: "Monthly",
         }),
+        { transaction: "TX" },
       );
     });
 
@@ -443,5 +447,43 @@ describe("billing.service", () => {
         message: "Failed to fetch invoices",
       });
     });
+  });
+});
+
+// P6-11 — a first read that creates the basic subscription is a write, audited.
+describe("billing.service — P6-11 getSubscription audit row", () => {
+  const auditService = require("../../services/audit.service");
+  const { Subscription } = require("../../models");
+
+  beforeEach(() => jest.clearAllMocks());
+
+  it("the lazy create writes one CREATE row in its transaction, naming the reader", async () => {
+    Subscription.findOne.mockResolvedValueOnce(null);
+    Subscription.create.mockResolvedValueOnce({ id: "sub-new", toJSON: () => ({ id: "sub-new" }) });
+    await billingService.getSubscription("t-1", { userId: "u-1", apiKeyId: null, ipAddress: "10.0.0.1" });
+    expect(auditService.logAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: "t-1",
+        userId: "u-1",
+        action: "CREATE",
+        resourceType: "Subscription",
+        resourceId: "sub-new",
+        changes: expect.objectContaining({ operation: "SUBSCRIPTION_DEFAULT_CREATE" }),
+      }),
+      { transaction: "TX" },
+    );
+  });
+
+  it("reading an existing subscription writes nothing", async () => {
+    Subscription.findOne.mockResolvedValueOnce({ id: "sub-1", toJSON: () => ({ id: "sub-1" }) });
+    await billingService.getSubscription("t-1");
+    expect(auditService.logAction).not.toHaveBeenCalled();
+  });
+
+  it("a failed audit write fails the read that would have created it", async () => {
+    Subscription.findOne.mockResolvedValueOnce(null);
+    Subscription.create.mockResolvedValueOnce({ id: "sub-new" });
+    auditService.logAction.mockRejectedValueOnce(new Error("audit insert failed"));
+    await expect(billingService.getSubscription("t-1")).rejects.toMatchObject({ message: "audit insert failed" });
   });
 });

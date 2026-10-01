@@ -1,6 +1,9 @@
 import { create } from "zustand";
 import type { MenuGroup } from "@/types";
-import { menuGroupRoleService } from "@/api/services/menuGroupRole.service";
+import {
+  menuGroupRoleService,
+  type EffectivePermissions,
+} from "@/api/services/menuGroupRole.service";
 
 export interface BackendMenuItem {
   label: string;
@@ -20,6 +23,13 @@ export interface BackendMenuGroup {
 
 interface MenuState {
   menuGroups: MenuGroup[];
+  /**
+   * ADR-102 — the caller's effective permissions (GET /menu-groups/my-permissions),
+   * loaded with the menu and cleared with it. Pages decide their write actions
+   * from these through `usePermissions` — never from role names. Null until
+   * loaded, or when the request failed (then no write action is offered).
+   */
+  effectivePermissions: EffectivePermissions | null;
   isMenuLoaded: boolean;
   isMenuLoading: boolean;
   menuError: string | null;
@@ -42,6 +52,7 @@ export const MENU_ROLE_MISSING =
 
 export const useMenuStore = create<MenuState>()((set, get) => ({
   menuGroups: [],
+  effectivePermissions: null,
   isMenuLoaded: false,
   isMenuLoading: false,
   menuError: null,
@@ -74,12 +85,18 @@ export const useMenuStore = create<MenuState>()((set, get) => ({
       // GET /menu-groups/menu-groups, which returns EVERY active group with an
       // `isAssigned` flag that nothing in the sidebar read, so every role was
       // shown the whole navigation.
-      const menuGroups = (await menuGroupRoleService.getPersonalizedMenu(
-        roleId,
-      )) as MenuGroup[];
+      const [menuGroups, effectivePermissions] = await Promise.all([
+        menuGroupRoleService.getPersonalizedMenu(roleId) as Promise<MenuGroup[]>,
+        // ADR-102: a failure here must not cost the user the menu — it costs
+        // the write actions only (null = none offered).
+        Promise.resolve()
+          .then(() => menuGroupRoleService.getMyPermissions())
+          .catch((): EffectivePermissions | null => null),
+      ]);
 
       set({
         menuGroups,
+        effectivePermissions,
         isMenuLoaded: true,
         isMenuLoading: false,
         menuError: null,
@@ -99,6 +116,7 @@ export const useMenuStore = create<MenuState>()((set, get) => ({
   clearMenu: () => {
     set({
       menuGroups: [],
+      effectivePermissions: null,
       isMenuLoaded: false,
       isMenuLoading: false,
       menuError: null,

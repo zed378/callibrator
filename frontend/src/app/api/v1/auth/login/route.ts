@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { API_BASE_URL } from "@/constants";
-import { clientIpHeader } from "@/lib/clientIp";
+import { backendForwardHeaders } from "@/lib/backendHeaders";
 import { writeSessionCookies } from "@/lib/authCookies";
 
 export async function POST(req: NextRequest) {
@@ -16,7 +16,8 @@ export async function POST(req: NextRequest) {
         "Content-Type": "application/json",
         "User-Agent": req.headers.get("user-agent") || "",
         // A-16: the one address nginx forwarded, never the header as received.
-        ...clientIpHeader(req.headers),
+        // A-310: client address AND the original scheme (FORCE_HTTPS would 301 otherwise).
+        ...backendForwardHeaders(req),
       },
       body: JSON.stringify(body),
     });
@@ -32,7 +33,17 @@ export async function POST(req: NextRequest) {
     // — the client must complete the second factor via /auth/mfa/login, which
     // returns the real session. Pass the 202 + body (temp token) straight
     // through so the client can drive the code step.
-    if (res.status === 202 || responseData?.data?.mfaRequired) {
+    //
+    // P10-16 (ADR-099): a one-time password's first sign-in is the same — no
+    // session, only a short-lived "password-change" purpose token the client
+    // posts back to /auth/first-sign-in/password. The backend refuses that
+    // token everywhere else; writing it as a session cookie would only make
+    // every later request fail.
+    if (
+      res.status === 202 ||
+      responseData?.data?.mfaRequired ||
+      responseData?.data?.passwordChangeRequired
+    ) {
       return NextResponse.json(responseData, { status: 202 });
     }
 

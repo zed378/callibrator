@@ -5,7 +5,7 @@
  * `validate` is wrapped (not replaced) so each middleware it builds carries the
  * schema it was built from; the chain can then be checked for the schema by
  * identity. This also catches the `schema.validate`-passed-to-Express trap
- * (CLAUDE.md): that would put a Joi method in the chain, not a tagged
+ * (CLAUDE.md): that would put a schema's own method in the chain, not a tagged
  * middleware, and the assertion below would fail.
  */
 jest.mock("../../middlewares/validation.middleware", () => {
@@ -51,7 +51,7 @@ describe("A-51 — webhook routes validate their bodies", () => {
     expect(schemaOf(chain("/:id", "patch"))).toBe(updateWebhookSchema);
   });
 
-  it("no handler in any webhook chain is a bare Joi `validate` method", () => {
+  it("no handler in any webhook chain is a bare schema `validate` method", () => {
     for (const layer of webhooks.stack.filter((l) => l.route)) {
       for (const s of layer.route.stack) {
         expect(s.handle).not.toBe(createWebhookSchema.validate);

@@ -20,7 +20,7 @@ const {
 const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 const { AppError } = require("../../utils/appError.util");
 const { normalizeKey } = require("./keys");
-const { assertSafeUrl } = require("../../utils/ssrf.util");
+const { assertSafeUrl, ssrfSafeAgents } = require("../../utils/ssrf.util");
 
 /** S3 reports "missing" through several different shapes depending on the op. */
 const isNotFound = (err) =>
@@ -72,6 +72,10 @@ class S3Driver {
       // rejects by design.
       if (!config.endpointTrusted) {
         assertSafeUrl(config.endpoint);
+        // A-176: assertSafeUrl checks the URL's text only. A hostname that
+        // RESOLVES internally (or rebinds after the check) is refused at
+        // connect time by the pinned lookup of these agents.
+        clientConfig.requestHandler = ssrfSafeAgents();
       }
       clientConfig.endpoint = config.endpoint;
       clientConfig.forcePathStyle = config.forcePathStyle !== false;

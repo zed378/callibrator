@@ -16,6 +16,8 @@ import { PaginatedResponse } from "@/types";
 interface VendorsTableProps {
   vendors: PaginatedResponse<Vendor> | null;
   isVendorsLoading: boolean;
+  /** The list failed to load: the page shows why, so this is not "No vendors found". */
+  loadFailed?: boolean;
   pageSize: number;
   setCurrentPage: (page: number) => void;
   hasWriteAccess: boolean;
@@ -36,6 +38,7 @@ const asNode = (value: unknown) => value as React.ReactNode;
 export const VendorsTable: React.FC<VendorsTableProps> = ({
   vendors,
   isVendorsLoading,
+  loadFailed = false,
   pageSize,
   setCurrentPage,
   hasWriteAccess,
@@ -80,6 +83,10 @@ export const VendorsTable: React.FC<VendorsTableProps> = ({
       <CardContent className="p-0">
         {isVendorsLoading ? (
           <TableSkeleton cols={columns.length} rows={5} />
+        ) : loadFailed && (!vendors || vendors.data.length === 0) ? (
+          <p className="text-center py-12 text-muted-foreground">
+            The vendor list could not be loaded.
+          </p>
         ) : !vendors || vendors.data.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">
             <Building2 className="h-12 w-12 mx-auto mb-3 opacity-20" />
@@ -95,8 +102,16 @@ export const VendorsTable: React.FC<VendorsTableProps> = ({
               data={vendors.data.map((vendor: Vendor) => ({
                 id: vendor.id,
                 name: (
-                  <div className="font-semibold text-foreground">
-                    {vendor.name}
+                  <div>
+                    <div className="font-semibold text-foreground">
+                      {vendor.name}
+                    </div>
+                    {/* Q-52: the vendor's notes, one line; the full text on hover and in Edit. */}
+                    {vendor.notes && (
+                      <div className="text-xs text-muted-foreground truncate max-w-xs" title={vendor.notes}>
+                        {vendor.notes}
+                      </div>
+                    )}
                   </div>
                 ),
                 type: getTypeBadge(vendor.type),

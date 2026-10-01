@@ -1,5 +1,7 @@
 # FRONTEND.md — Frontend Plan: Immersive Revamp (Landing · Login · Register) + Blog & News
 
+> **Part I (landing, login, register) is SUPERSEDED by [`20-LANDING-AUTH-REVAMP.md`](./20-LANDING-AUTH-REVAMP.md) — ADR-098, 2026-09-29.** Do not build the WebGL hero, Lenis, GSAP scroll-storytelling, testimonials, pricing or badge chips described below; the owner chose a dark, restrained page with no unverified proof. Part II (blog and news) remains in force, under the new public header and footer.
+
 > **Scope of this document:** a detailed, execution-ready plan to revamp the **Landing page**, **Login**,
 > and **Register** into an _immersive web_ experience — **behaviors, per-component animations,
 > micro-animations, asset URLs (incl. 3D), and copy**. This is the **plan**; no code has been changed yet.
@@ -474,6 +476,12 @@ existing `prefers-reduced-motion` discipline._
   - **`/news`** — a compact, reverse-chronological feed + `/news/[slug]` detail pages. Short dated updates.
 - **Consistent with the landing chrome** — both wrap content in `<LandingLayout>` so they inherit
   `Navigation`, `Footer`, the animated background, and the `ScrollReveal` system for free.
+  > **Superseded 2026-09-30 (ADR-098 §1 and Amendment 2):** blog and news render in
+  > `components/public/ContentShell.tsx` — the Phase 10 public header, footer and dark `--pub-*`
+  > tokens, strings from the ID/EN dictionaries. `LandingLayout`, `Navigation`, `Footer`, the
+  > animated background and `ScrollReveal` are deleted (no animation library on public pages). The
+  > page structure below (card grid, featured post, category links, month-grouped news) is kept;
+  > the tenant-brand tokens are not used on the public surface.
 - **SEO-first** — unlike today's all-`"use client"` pages (which cannot export metadata), the new page
   files are **Server Components** with `generateMetadata` + `generateStaticParams`, a `sitemap.ts`, and
   JSON-LD. This is the single most important structural decision here.

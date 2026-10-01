@@ -7,7 +7,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 const calibrationService = {
   getAll: jest.fn(), getAllCertificates: jest.fn(), getCertificateStats: jest.fn(),
   create: jest.fn(), createCertificate: jest.fn(), approveCertificate: jest.fn(),
-  signCertificate: jest.fn(), revokeCertificate: jest.fn(),
+  signCertificate: jest.fn(), revokeCertificate: jest.fn(), submitCertificate: jest.fn(),
 };
 const deviceService = { getAll: jest.fn() };
 jest.mock("@/api/services/calibration.service", () => ({ calibrationService }));
@@ -16,6 +16,7 @@ jest.mock("@/api/services/device.service", () => ({ deviceService }));
 import { useCalibration } from "../useCalibration";
 import { useAuthStore } from "@/stores/authStore";
 import { useCalibrationStore } from "@/stores/calibrationStore";
+import { useMenuStore } from "@/stores/menuStore";
 import type { Calibration, Certificate } from "@/api/services/calibration.service";
 import type { User } from "@/types";
 
@@ -33,6 +34,11 @@ beforeEach(() => {
   useAuthStore.setState({
     user: { id: "u1", username: "ada", email: "a@x", role: { name: "HEALTHCARE ADMIN" } } as unknown as User,
   });
+  // ADR-102: the write gates come from the effective permissions (the seeded
+  // HEALTHCARE ADMIN holds `equipment` write, inherited by both slugs).
+  useMenuStore.setState({
+    effectivePermissions: { superAdmin: false, permissions: { calibration: "write", certificate: "write" } },
+  });
 });
 
 const setup = async () => {
@@ -44,7 +50,8 @@ const setup = async () => {
 describe("useCalibration", () => {
   it("loads devices, stats, records and certificates; the filters reach the requests", async () => {
     const { result } = await setup();
-    expect(result.current.hasWriteAccess).toBe(true);
+    expect(result.current.canWriteRecords).toBe(true);
+    expect(result.current.canWriteCertificates).toBe(true);
     act(() => {
       result.current.setSelectedDeviceFilter("d1");
       result.current.setComplianceFilter(false);
@@ -154,5 +161,53 @@ describe("useCalibration", () => {
       reason: "Wrong device", authMethod: "password", authPayload: "pw", meaning: "Revoked",
     });
     expect(result.current.revokeForm.authPayload).toBe("");
+  });
+
+  it("ADR-102: write gates follow the effective permissions, not the role name", async () => {
+    // WAREHOUSE STAFF holds `equipment` READ: the old role list showed it the
+    // write buttons, and every one of them 403'd.
+    useAuthStore.setState({ user: { id: "u2", role: { name: "WAREHOUSE STAFF" } } as unknown as User });
+    useMenuStore.setState({
+      effectivePermissions: { superAdmin: false, permissions: { calibration: "read", certificate: "read" } },
+    });
+    const ws = await setup();
+    expect(ws.result.current.canWriteRecords).toBe(false);
+    expect(ws.result.current.canWriteCertificates).toBe(false);
+    ws.unmount();
+
+    // CALIBRATOR ADMIN holds `equipment` WRITE: the old role list hid every button.
+    useAuthStore.setState({ user: { id: "u3", role: { name: "CALIBRATOR ADMIN" } } as unknown as User });
+    useMenuStore.setState({
+      effectivePermissions: { superAdmin: false, permissions: { calibration: "write", certificate: "write" } },
+    });
+    const ca = await setup();
+    expect(ca.result.current.canWriteRecords).toBe(true);
+    expect(ca.result.current.canWriteCertificates).toBe(true);
+  });
+
+  it("submits a draft for approval and reloads the list; a 409 shows the backend's state explanation", async () => {
+    const { result } = await setup();
+    const draft = { id: "k2", status: "draft" } as unknown as Certificate;
+    calibrationService.submitCertificate.mockResolvedValueOnce({ ...draft, status: "pending_approval" });
+    const loads = calibrationService.getAllCertificates.mock.calls.length;
+
+    await act(async () => result.current.handleSubmitCertificate(draft));
+
+    expect(calibrationService.submitCertificate).toHaveBeenCalledWith("k2");
+    await waitFor(() => expect(calibrationService.getAllCertificates.mock.calls.length).toBeGreaterThan(loads));
+    expect(result.current.calibError).toBeNull();
+
+    const explanation =
+      'This certificate is "pending_approval" and cannot be submitted: it has already been submitted and is waiting for approval.';
+    calibrationService.submitCertificate.mockRejectedValueOnce(new Error(explanation));
+    await act(async () => result.current.handleSubmitCertificate(draft));
+    expect(result.current.calibError).toBe(explanation);
+  });
+
+  it("opening the approval dialog clears an earlier error (the dialog shows this approval's refusal only)", async () => {
+    const { result } = await setup();
+    act(() => useCalibrationStore.setState({ error: "an earlier failure" }));
+    act(() => result.current.openApproveModal(cert));
+    expect(result.current.calibError).toBeNull();
   });
 });

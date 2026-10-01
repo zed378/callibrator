@@ -8,7 +8,7 @@
 const express = require("express");
 const router = express.Router();
 const workflowController = require("../../controllers/workflow.controller");
-const { auth } = require("../../middlewares/auth.middleware");
+const { auth, denyApiKey } = require("../../middlewares/auth.middleware");
 const { dynamicAccess } = require("../../middlewares/dynamicAccess.middleware");
 const { validate } = require("../../middlewares/validation.middleware");
 const { validateUuid } = require("../../middlewares/validateUuid.middleware");
@@ -149,6 +149,10 @@ router.get(
 router.post(
   "/instances/:instanceId/action",
   auth,
+  // Q-51 (ADR-100): an approval decision is a person's. A key would put its
+  // id in the target's `approved_by` (a users FK), and a stock transfer's
+  // approver stays user-only; keys are refused here, 403, before any work.
+  denyApiKey,
   dynamicAccess(["certificate", "warehouse", "maintenance"], "write"),
   validateUuid("instanceId"),
   denyPlatformAuthoring,

@@ -21,3 +21,12 @@ a984e7bebb1569abf1ee9dc3303cb56f97a256ed:docs/BACKEND/10-MODULE-REFERENCE.md:str
 244b63b8201a2a5ef547925aa2e10cb2090f1edc:.gitleaksignore:stripe-access-token:12
 244b63b8201a2a5ef547925aa2e10cb2090f1edc:.gitleaksignore:stripe-access-token:14
 af9fd5cdfd038d2d35f20e072591108beb95ac2a:docs/DEVOPS/01-CI-CD.md:stripe-access-token:66
+# 2026-09-30 (P7-01): the three findings that failed EVERY GitHub `ci` run from
+# 8a11905 to ce74932 (reproduced locally with gitleaks 8.30.1 and this config).
+# Read by hand; none is a credential. The lines were reworded at source in the
+# working tree so later commits do not reintroduce them.
+# a test FILE NAME (keyRotation.s08.live...) after "names its key. Tests:"
+8a11905c65b44c4092627e65ed7d15d4ecacc774:TASKS/PHASE-6-CORRECTNESS-AND-COMPLIANCE.md:generic-api-key:256
+35ebd76823beb0c41e5d88a67b260faab61cce4f:TASKS/PHASE-6-CORRECTNESS-AND-COMPLIANCE.md:generic-api-key:256
+# a sample login response: the standard HS256 JWT header followed by "...", no payload or signature
+c905e7418364e80e16add6fc4dd96980f991761b:docs/API/14-BACKEND-INTEROPERABILITY-CONTRACT.md:generic-api-key:102

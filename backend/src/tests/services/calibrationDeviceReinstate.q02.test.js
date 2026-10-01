@@ -120,7 +120,12 @@ describe("Q-02 (ADR-084): retired is terminal", () => {
       const result = await retirement.reinstate(TENANT, DEVICE, { reason: "Retired in error at stock take", status: "ACTIVE" });
 
       expect(result.status).toBe(200);
-      expect(db.query).toHaveBeenCalledWith("SELECT set_config(:setting, :deviceId, true)", expect.any(Object));
+      // P9-07: through sql() — bind parameters, type SELECT, in the transaction.
+      expect(db.query).toHaveBeenCalledWith("SELECT set_config($1, $2, true)", {
+        type: "SELECT",
+        bind: ["callibrator.reinstate_device", DEVICE],
+        transaction: { id: "tx" },
+      });
       expect(mockDevice.current.update).toHaveBeenCalledWith({ status: "active" }, { transaction: { id: "tx" } });
       expect(auditService.logAction.mock.calls[0][0]).toMatchObject({ userId: null, ipAddress: null, userAgent: null });
     });

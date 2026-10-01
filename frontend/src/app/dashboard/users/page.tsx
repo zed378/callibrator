@@ -18,12 +18,21 @@ import { UserTable } from "./components/UserTable";
 import { CreateModal } from "./components/CreateModal";
 import { EditModal } from "./components/EditModal";
 import { useUsers } from "./hooks/useUsers";
+import { usePermissions } from "@/hooks/usePermissions";
 
 export default function UsersPage() {
+  // ADR-102: creating users is gated on `users` write (user.route.js).
+  const { canWrite } = usePermissions();
+  const mayWriteUsers = canWrite("users");
   const {
     users,
     isLoading,
     error,
+    setCreatePhotoFile,
+    setEditPhotoFile,
+    setEditPhotoRemoved,
+    photoNotice,
+    setPhotoNotice,
     searchTerm,
     setSearchTerm,
     currentPage,
@@ -35,7 +44,6 @@ export default function UsersPage() {
     showCreateModal,
     setShowCreateModal,
     showEditModal,
-    setShowEditModal,
     editingUser,
     formError,
     isSubmitting,
@@ -67,6 +75,7 @@ export default function UsersPage() {
   const handlePictureChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      setCreatePhotoFile(file);
       const reader = new FileReader();
       reader.onloadend = () => {
         setCreatePicture(reader.result as string);
@@ -75,12 +84,33 @@ export default function UsersPage() {
     }
   };
 
-  const handleClearCreatePicture = () => {
-    setCreatePicture("");
+  // The edit dialog's own picker: it used to share handlePictureChange, so a
+  // photo chosen while editing landed in the CREATE dialog's preview.
+  const handleEditPictureChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setEditPhotoFile(file);
+      setEditPhotoRemoved(false);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setEditPicture(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const handleClearEditPicture = () => {
     setEditPicture("");
+    setEditPhotoFile(null);
+    setEditPhotoRemoved(true);
+  };
+
+  /** The Create dialog's "Remove photo": the preview AND the file to send go. */
+  const setCreatePictureAndFile: React.Dispatch<React.SetStateAction<string>> = (
+    value,
+  ) => {
+    setCreatePicture(value);
+    if (value === "") setCreatePhotoFile(null);
   };
 
   const handleEditUser = (user: User) => {
@@ -100,13 +130,15 @@ export default function UsersPage() {
               Manage system users and their permissions
             </p>
           </div>
-          <Button
-            variant="primary"
-            leftIcon={<Plus className="h-4 w-4" />}
-            onClick={() => setShowCreateModal(true)}
-          >
-            Add User
-          </Button>
+          {mayWriteUsers && (
+            <Button
+              variant="primary"
+              leftIcon={<Plus className="h-4 w-4" />}
+              onClick={() => setShowCreateModal(true)}
+            >
+              Add User
+            </Button>
+          )}
         </div>
 
         <StatsCards total={users?.meta?.total || 0} data={usersList} />
@@ -117,6 +149,11 @@ export default function UsersPage() {
           placeholder="Search users..."
         />
 
+        {photoNotice && (
+          <Alert variant="warning" onClose={() => setPhotoNotice("")}>
+            {photoNotice}
+          </Alert>
+        )}
         {error && (
           <Alert variant="error" title={error}>
             {error}
@@ -152,7 +189,7 @@ export default function UsersPage() {
             }}
             getStatusColor={getStatusColor}
           />
-        ) : (
+        ) : error && !users ? null /* a failed load: the alert above is the state */ : (
           <Card>
             <CardContent className="p-8 text-center">
               <UserIcon className="mx-auto h-12 w-12 text-muted-foreground" />
@@ -179,7 +216,7 @@ export default function UsersPage() {
         tenantOptions={tenantOptions}
         onSubmit={handleCreate}
         picture={createPicture}
-        setPicture={setCreatePicture}
+        setPicture={setCreatePictureAndFile}
         onPictureChange={handlePictureChange}
       />
 
@@ -197,7 +234,7 @@ export default function UsersPage() {
         onSubmit={handleUpdate}
         picture={editPicture}
         setPicture={setEditPicture}
-        onPictureChange={handlePictureChange}
+        onPictureChange={handleEditPictureChange}
         onClearPicture={handleClearEditPicture}
       />
     </DashboardLayout>

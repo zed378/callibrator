@@ -37,8 +37,33 @@ interface ThrownError {
   message?: string;
   stack?: string;
   retryAfterSeconds?: unknown;
+  errors?: unknown;
+  publicCode?: unknown;
   [key: string]: unknown;
 }
+
+/**
+ * A-272 (ADR-100) — `validators/input#validateInput` throws a plain
+ * `{ status: 400, message: "Validation failed", errors: [{ field, message }] }`.
+ * It used to reach the wire as "Validation failed" with the STACK argument
+ * `String(error)` — "[object Object]" — as `details`, and its field list
+ * dropped. It is now answered exactly as the `validate()` middleware answers:
+ * 400, "Validation Error", and `details: [{ field, message }]` outside
+ * production (response.util#error), so a client reads one shape whichever
+ * layer rejected the input.
+ */
+const isValidationFailure = (error: ThrownError | null | undefined): error is ThrownError & { errors: unknown[] } =>
+  !!error && error.status === 400 && error.message === "Validation failed" && Array.isArray(error.errors);
+
+/**
+ * ADR-100 — a machine-readable reason a client may act on (e.g. the sign-in
+ * page's `LOCATION_REQUIRED`, services/signInPolicy.service.ts). Sent as a
+ * top-level `code` in every environment; only an UPPER_SNAKE token is sent.
+ */
+const publicCodeOf = (error: ThrownError | null | undefined): string | null =>
+  error && typeof error.publicCode === "string" && /^[A-Z][A-Z0-9_]{0,63}$/.test(error.publicCode)
+    ? error.publicCode
+    : null;
 
 /** A controller function, as the wrappers call it. */
 type Controller = (req: Request, res: Response, next: NextFunction) => unknown;
@@ -70,6 +95,9 @@ const sendCaughtError = (
   detailsArg: [unknown?],
   exposable?: boolean,
 ): Response => {
+  if (isValidationFailure(error)) {
+    return sendError(res, "Validation Error", 400, error.errors);
+  }
   const isProduction = isProductionEnv();
   // A-260: a 429 that knows when the pause ends says so (RFC 9110 §10.2.3).
   if (status === 429 && error && Number.isFinite(error.retryAfterSeconds)) {
@@ -87,6 +115,10 @@ const sendCaughtError = (
     const requestId = (req && req.requestId) || "unknown";
     return sendError(res, message, status, null, { requestId });
   }
+  const code = publicCodeOf(error);
+  if (code) {
+    return sendError(res, message, status, detailsArg[0] ?? null, { code });
+  }
   return sendError(res, message, status, ...detailsArg);
 };
 
@@ -97,11 +129,15 @@ const sendCaughtError = (
 // authenticated principal, so a key scoped to `warehouse:read` could reach any
 // such handler. There is no Express hook that runs after the middleware chain
 // but before the controller, so the check lives here: every controller but two
-// is wrapped, and a key that arrives without a gate having authorized it is
-// refused.
+// is wrapped — health.controller.js (public probes, no API-key path) and
+// predictiveMaintenance.controller.js (every route carries dynamicAccess, so a
+// key is authorized by scope) — and a key that arrives without a gate having
+// authorized it is refused. V-05: the unwrapped list is enumerated by
+// tests/guards/apiKeyAuthorizedWriters.v05.guard.test.ts, not by this prose.
 //
-// A route that is deliberately open to service accounts opts in with
-// `allowApiKey` from auth.middleware.
+// Exactly two gates authorize a key (they set `req.apiKeyAuthorized`):
+// dynamicAccess's scope check and the SCIM gate (scim.route.js). The same
+// guard fails on a third writer.
 const apiKeyBlocked = (req: Request | undefined, res: Response): boolean => {
   // eslint-disable-next-line @typescript-eslint/prefer-optional-chain -- as built
   if (!req || !req.user || !req.user.isApiKey || req.apiKeyAuthorized) {

@@ -25,11 +25,12 @@ export default function CalibrationPage() {
     certificateStats,
     isCalibLoading,
     calibError,
+    recordsList,
+    certificatesList,
+    statsList,
     activeTab,
     setActiveTab,
-    calibPage,
     setCalibPage,
-    certPage,
     setCertPage,
     pageSize,
     selectedDeviceFilter,
@@ -64,7 +65,10 @@ export default function CalibrationPage() {
     setRevokeForm,
     approveForm,
     setApproveForm,
-    hasWriteAccess,
+    canWriteRecords,
+    canWriteCertificates,
+    handleSubmitCertificate,
+    user,
     handleRecordSubmit,
     openCreateCertificateModal,
     handleCertSubmit,
@@ -90,7 +94,7 @@ export default function CalibrationPage() {
               digital certificates.
             </p>
           </div>
-          {hasWriteAccess && (
+          {canWriteRecords && (
             <Button
               onClick={() => setIsRecordModalOpen(true)}
               className="flex items-center gap-2"
@@ -102,6 +106,10 @@ export default function CalibrationPage() {
         </div>
 
         {calibError && <Alert variant="error">{calibError}</Alert>}
+        {/* F-19: each list reports its own failed read. */}
+        {statsList.error && (
+          <Alert variant="error">{statsList.error}</Alert>
+        )}
 
         <CalibrationStats stats={certificateStats} />
 
@@ -134,13 +142,17 @@ export default function CalibrationPage() {
               setCalibPage={setCalibPage}
             />
 
+            {recordsList.error && (
+              <Alert variant="error">{recordsList.error}</Alert>
+            )}
             <CalibrationRecordsTable
               calibrations={calibrations}
-              isCalibLoading={isCalibLoading}
+              isCalibLoading={recordsList.isLoading}
               pageSize={pageSize}
               onPageChange={setCalibPage}
-              hasWriteAccess={hasWriteAccess}
+              hasWriteAccess={canWriteCertificates}
               openCreateCertificateModal={openCreateCertificateModal}
+              loadFailed={!!recordsList.error && !calibrations}
             />
           </div>
         ) : (
@@ -153,12 +165,17 @@ export default function CalibrationPage() {
               setCertPage={setCertPage}
             />
 
+            {certificatesList.error && (
+              <Alert variant="error">{certificatesList.error}</Alert>
+            )}
             <CertificatesTable
               certificates={certificates}
-              isCalibLoading={isCalibLoading}
+              isCalibLoading={certificatesList.isLoading}
               pageSize={pageSize}
               onPageChange={setCertPage}
-              hasWriteAccess={hasWriteAccess}
+              hasWriteAccess={canWriteCertificates}
+              currentUserId={user?.id}
+              onSubmitCertificate={handleSubmitCertificate}
               openApproveModal={openApproveModal}
               openSignModal={openSignModal}
               openRevokeModal={openRevokeModal}
@@ -191,6 +208,7 @@ export default function CalibrationPage() {
           onClose={() => setIsApproveModalOpen(false)}
           onSubmit={handleApproveSubmit}
           selectedCertToApprove={selectedCertToApprove}
+          error={calibError}
           form={approveForm}
           setForm={setApproveForm}
           isLoading={isCalibLoading}

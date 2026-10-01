@@ -26,3 +26,40 @@ export type TenantId = Brand<string, "TenantId">;
  * (ADR-087 Amendment 7): the Kanban models declare their user keys with it.
  */
 export type UserId = Brand<string, "UserId">;
+
+/** A UUID (any version), case-insensitive — the shape of `users.id`. */
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The validating constructor of `UserId` (ADR-102: services/effectivePermission
+ * is the first converted module that turns a principal's raw id into one).
+ *
+ * @throws {TypeError} when `value` is not a UUID
+ */
+export const toUserId = (value: string): UserId => {
+  if (!UUID_SHAPE.test(value)) {
+    throw new TypeError("A user id must be a UUID");
+  }
+  return value as UserId;
+};
+
+/**
+ * The validating constructor of `TenantId` (P10-05: services/accessRequest is
+ * the first converted module that turns a raw id — the tenant an approval has
+ * just created — into one).
+ *
+ * @throws {TypeError} when `value` is not a UUID
+ */
+export const toTenantId = (value: string): TenantId => {
+  if (!UUID_SHAPE.test(value)) {
+    throw new TypeError("A tenant id must be a UUID");
+  }
+  return value as TenantId;
+};
+
+/**
+ * The deny-branch sentinel of utils/tenantScope (P9-10 DoD, ADR-087 Amendment 11): a well-formed
+ * UUID that no tenant row carries, so a deny predicate matches NOTHING. A constant, never input,
+ * branded here because this file is the one place a brand assertion is allowed.
+ */
+export const NO_TENANT_ID = "00000000-0000-0000-0000-000000000000" as TenantId;

@@ -1,0 +1,13 @@
+{
+  // The CommonJS build the backend's release tree needs (P9-22, ADR-097).
+  // backend/scripts/build-dist.ts runs it with --outDir
+  // backend/dist/node_modules/@callibrator/contracts, because plain Node and
+  // pkg cannot load the .ts source every other consumer reads. Nothing else
+  // emits this package: there is no packages/contracts/dist to go stale.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": false,
+    "sourceMap": false
+  }
+}

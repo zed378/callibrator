@@ -193,6 +193,23 @@ export const MENU_SLUGS = {
   VENDORS: "vendors",
   BILLING: "billing",
   AUDIT: "audit",
+  // ADR-102: /dashboard/stock (top level, next to Warehouse; its API is gated
+  // by `warehouse`) and /dashboard/storage (Management › Content; its API is
+  // rbac TENANT_ADMIN) had no menu entry. Migration 0097 for seeded databases.
+  STOCK: "stock",
+  STORAGE: "storage",
+  // ADR-102: pages the old sidebar showed by cascading a `management` grant
+  // two levels down and whose API serves them through a gate OTHER than their
+  // own grant (constants/menuPageAccess). The sidebar now reads the effective
+  // permission (one level), so these are granted by slug to the roles that
+  // could use them — migration 0097 for seeded databases.
+  TENANTS: "tenants",
+  API_KEYS: "api-keys",
+  WEBHOOKS: "webhooks",
+  ATTACHMENTS: "attachments",
+  // P10-07 (ADR-098 §6): the super admin's access-request queue
+  // (/dashboard/access-requests). SUPERADMIN only; migration 0101.
+  ACCESS_REQUESTS: "access-requests",
 } as const;
 
 /** A seeded menu-group slug. */
@@ -290,6 +307,10 @@ export const ROLE_MENU_ASSIGNMENTS: RoleMenuAssignment[] = [
       // The platform operator answers the cross-tenant support desk but never
       // raises tickets, so it gets response only (no raise menu).
       [MENU_SLUGS.TICKETS_RESPONSE]: PERMISSION_TYPES.WRITE,
+      [MENU_SLUGS.STOCK]: PERMISSION_TYPES.WRITE, // ADR-102 (migration 0097)
+      [MENU_SLUGS.STORAGE]: PERMISSION_TYPES.WRITE, // ADR-102 (migration 0097)
+      // P10-07: approving a request creates a tenant (A-76) — the platform's alone.
+      [MENU_SLUGS.ACCESS_REQUESTS]: PERMISSION_TYPES.WRITE, // migration 0101
     },
     permissionType: "write",
   },
@@ -313,7 +334,7 @@ export const ROLE_MENU_ASSIGNMENTS: RoleMenuAssignment[] = [
       [MENU_SLUGS.DATA_RETENTION]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.OIDC]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.WEBAUTHN]: PERMISSION_TYPES.READ,
-      [MENU_SLUGS.NETWORK_SECURITY]: PERMISSION_TYPES.READ,
+      [MENU_SLUGS.NETWORK_SECURITY]: PERMISSION_TYPES.WRITE, // Q-38 (ADR-100, migration 0098): its own allowlist and geofence
       [MENU_SLUGS.SCIM]: PERMISSION_TYPES.READ,
       // Quality/compliance work is core to this role; billing and
       // platform-governance screens stay read-only.
@@ -345,6 +366,13 @@ export const ROLE_MENU_ASSIGNMENTS: RoleMenuAssignment[] = [
       [MENU_SLUGS.VENDORS]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.BILLING]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.AUDIT]: PERMISSION_TYPES.READ,
+      [MENU_SLUGS.STOCK]: PERMISSION_TYPES.WRITE, // ADR-102 (migration 0097)
+      [MENU_SLUGS.STORAGE]: PERMISSION_TYPES.WRITE, // ADR-102 (migration 0097)
+      [MENU_SLUGS.TENANTS]: PERMISSION_TYPES.WRITE, // ADR-102 (migration 0097)
+      [MENU_SLUGS.KANBAN]: PERMISSION_TYPES.WRITE, // ADR-102 (migration 0097)
+      [MENU_SLUGS.API_KEYS]: PERMISSION_TYPES.WRITE, // ADR-102 (migration 0097)
+      [MENU_SLUGS.WEBHOOKS]: PERMISSION_TYPES.WRITE, // ADR-102 (migration 0097)
+      [MENU_SLUGS.ATTACHMENTS]: PERMISSION_TYPES.WRITE, // ADR-102 (migration 0097)
     },
     permissionType: "write",
   },
@@ -384,6 +412,13 @@ export const ROLE_MENU_ASSIGNMENTS: RoleMenuAssignment[] = [
       [MENU_SLUGS.VENDORS]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.BILLING]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.AUDIT]: PERMISSION_TYPES.READ,
+      [MENU_SLUGS.STOCK]: PERMISSION_TYPES.READ, // ADR-102 (migration 0097)
+      [MENU_SLUGS.STORAGE]: PERMISSION_TYPES.WRITE, // ADR-102 (migration 0097)
+      [MENU_SLUGS.TENANTS]: PERMISSION_TYPES.WRITE, // ADR-102 (migration 0097)
+      [MENU_SLUGS.TENANT_HIERARCHY]: PERMISSION_TYPES.WRITE, // ADR-102 (migration 0097)
+      [MENU_SLUGS.API_KEYS]: PERMISSION_TYPES.WRITE, // ADR-102 (migration 0097)
+      [MENU_SLUGS.WEBHOOKS]: PERMISSION_TYPES.WRITE, // ADR-102 (migration 0097)
+      [MENU_SLUGS.ATTACHMENTS]: PERMISSION_TYPES.WRITE, // ADR-102 (migration 0097)
     },
     permissionType: "write",
   },
@@ -413,6 +448,10 @@ export const ROLE_MENU_ASSIGNMENTS: RoleMenuAssignment[] = [
       // Q-20: reads the vendor list its supplier scorecards and work orders
       // name; managing vendors stays with the admin roles.
       [MENU_SLUGS.VENDORS]: PERMISSION_TYPES.READ,
+      [MENU_SLUGS.STOCK]: PERMISSION_TYPES.READ, // ADR-102 (migration 0097)
+      [MENU_SLUGS.TENANTS]: PERMISSION_TYPES.READ, // ADR-102 (migration 0097)
+      [MENU_SLUGS.TENANT_HIERARCHY]: PERMISSION_TYPES.READ, // ADR-102 (migration 0097)
+      [MENU_SLUGS.ATTACHMENTS]: PERMISSION_TYPES.READ, // ADR-102 (migration 0097)
     },
     permissionType: "read",
   },
@@ -430,6 +469,7 @@ export const ROLE_MENU_ASSIGNMENTS: RoleMenuAssignment[] = [
       [MENU_SLUGS.KANBAN]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.TICKETS_RAISE]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.TICKETS_RESPONSE]: PERMISSION_TYPES.WRITE,
+      [MENU_SLUGS.STOCK]: PERMISSION_TYPES.READ, // ADR-102 (migration 0097)
     },
     permissionType: "read",
   },
@@ -445,6 +485,7 @@ export const ROLE_MENU_ASSIGNMENTS: RoleMenuAssignment[] = [
       [MENU_SLUGS.EQUIPMENT]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.KANBAN]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.TICKETS_RAISE]: PERMISSION_TYPES.WRITE,
+      [MENU_SLUGS.STOCK]: PERMISSION_TYPES.READ, // ADR-102 (migration 0097)
     },
     permissionType: "read",
   },
@@ -459,6 +500,7 @@ export const ROLE_MENU_ASSIGNMENTS: RoleMenuAssignment[] = [
       [MENU_SLUGS.WAREHOUSE]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.EQUIPMENT]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.TICKETS_RAISE]: PERMISSION_TYPES.WRITE,
+      [MENU_SLUGS.STOCK]: PERMISSION_TYPES.READ, // ADR-102 (migration 0097)
     },
     permissionType: "read",
   },
@@ -472,6 +514,7 @@ export const ROLE_MENU_ASSIGNMENTS: RoleMenuAssignment[] = [
       [MENU_SLUGS.WAREHOUSE]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.EQUIPMENT]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.TICKETS_RAISE]: PERMISSION_TYPES.WRITE,
+      [MENU_SLUGS.STOCK]: PERMISSION_TYPES.READ, // ADR-102 (migration 0097)
     },
     permissionType: "read",
   },
@@ -485,6 +528,7 @@ export const ROLE_MENU_ASSIGNMENTS: RoleMenuAssignment[] = [
       [MENU_SLUGS.WAREHOUSE]: PERMISSION_TYPES.WRITE,
       [MENU_SLUGS.EQUIPMENT]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.TICKETS_RAISE]: PERMISSION_TYPES.WRITE,
+      [MENU_SLUGS.STOCK]: PERMISSION_TYPES.WRITE, // ADR-102 (migration 0097)
     },
     permissionType: "write",
   },
@@ -499,6 +543,7 @@ export const ROLE_MENU_ASSIGNMENTS: RoleMenuAssignment[] = [
       [MENU_SLUGS.WAREHOUSE]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.EQUIPMENT]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.TICKETS_RAISE]: PERMISSION_TYPES.WRITE,
+      [MENU_SLUGS.STOCK]: PERMISSION_TYPES.READ, // ADR-102 (migration 0097)
     },
     permissionType: "read",
   },
@@ -514,6 +559,7 @@ export const ROLE_MENU_ASSIGNMENTS: RoleMenuAssignment[] = [
       [MENU_SLUGS.WAREHOUSE]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.EQUIPMENT]: PERMISSION_TYPES.READ,
       [MENU_SLUGS.TICKETS_RAISE]: PERMISSION_TYPES.WRITE,
+      [MENU_SLUGS.STOCK]: PERMISSION_TYPES.READ, // ADR-102 (migration 0097)
     },
     permissionType: "read",
   },

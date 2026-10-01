@@ -24,6 +24,7 @@ export const SsoSettingsPanel: React.FC<SsoSettingsPanelProps> = ({
     isLoading,
     error,
     copiedField,
+    copyError,
     activeTab,
     setActiveTab,
     xmlContent,
@@ -131,6 +132,7 @@ export const SsoSettingsPanel: React.FC<SsoSettingsPanelProps> = ({
               currentAcsUrl={currentAcsUrl}
               defaultSpEntityId={defaultSpEntityId}
               copiedField={copiedField}
+              copyError={copyError}
               handleCopy={handleCopy}
             />
           )}

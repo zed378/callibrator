@@ -13,6 +13,8 @@ import { render, screen } from "@testing-library/react";
 
 jest.mock("next/navigation", () => ({
   useParams: () => ({ certificateNumber: "CERT-009" }),
+  // A-293: the QR code\'s verification token (`t`); none here.
+  useSearchParams: () => new URLSearchParams(),
 }));
 jest.mock("next/link", () => {
   return function Link({ children, href }: { children: React.ReactNode; href: string }) {
@@ -25,7 +27,8 @@ jest.mock("@/components/motion/AuroraBackground", () => {
   };
 });
 
-import CertificateVerifyPage from "../page";
+// P10-08: the client content moved out of the (now server) page.
+import CertificateVerifyPage from "../VerifyContent";
 
 const verifyData = (overrides: Record<string, unknown>) => ({
   found: true,
@@ -61,19 +64,19 @@ describe("certificate verification page — withdrawn certificates (A-130)", () 
     serve(verifyData({}));
     render(<CertificateVerifyPage />);
 
-    expect(await screen.findByText("Certificate revoked")).toBeInTheDocument();
-    expect(screen.queryByText("Certificate not found")).not.toBeInTheDocument();
+    expect(await screen.findByText("REVOKED")).toBeInTheDocument();
+    expect(screen.queryByText("NOT FOUND")).not.toBeInTheDocument();
   });
 
   it("a deleted certificate that was not revoked reads as withdrawn — never as not found or valid", async () => {
     serve(verifyData({ status: "approved", revoked: false }));
     render(<CertificateVerifyPage />);
 
-    expect(await screen.findByText("Certificate withdrawn")).toBeInTheDocument();
+    expect(await screen.findByText("WITHDRAWN")).toBeInTheDocument();
     expect(
       screen.getByText("This certificate was withdrawn by the issuer and is no longer valid."),
     ).toBeInTheDocument();
-    expect(screen.queryByText("Certificate not found")).not.toBeInTheDocument();
-    expect(screen.queryByText("Certificate is valid")).not.toBeInTheDocument();
+    expect(screen.queryByText("NOT FOUND")).not.toBeInTheDocument();
+    expect(screen.queryByText("VALID")).not.toBeInTheDocument();
   });
 });

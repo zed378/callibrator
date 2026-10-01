@@ -3,7 +3,8 @@ const predictiveMaintenanceService = require("../services/predictiveMaintenance.
 const { success } = require("../utils/response.util");
 const { CalibrationDevice } = require("../models");
 const { tenantStorage } = require("../middlewares/tenantContext.middleware");
-const { auditActor } = require("../utils/auditActor.util");
+// A-282 (ADR-100): an API key (calibration:write) is audited as system:api-key.
+const { auditPrincipal } = require("../utils/auditPrincipal.util");
 
 exports.analyzeDevice = async (req, res, next) => {
   try {
@@ -11,7 +12,7 @@ exports.analyzeDevice = async (req, res, next) => {
     const { tenantId } = tenantStorage.getStore();
 
     // A-190: the recommendation is audited under the caller.
-    const result = await predictiveMaintenanceService.analyzeDevice(tenantId, deviceId, auditActor(req));
+    const result = await predictiveMaintenanceService.analyzeDevice(tenantId, deviceId, auditPrincipal(req));
     // success(res, data, meta, message, statusCode) SENDS the response — it is
     // not a body builder. Passing the message as `res` made `res.status`
     // undefined and threw on every call.

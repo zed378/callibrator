@@ -25,6 +25,13 @@ const mockRef = { ledger: null, stale: null, current: null, reads: [] };
 jest.mock("../../services/attachment.service", () => ({
   softDeleteForResource: jest.fn().mockResolvedValue([]),
 }));
+// ADR-107 (Q-50): the sign step's snapshot reads the tenant, device and users
+// through the models barrel this suite doubles; the snapshot itself is
+// certificates.signSnapshot.q50.test.ts's subject, not this suite's.
+jest.mock("../../services/certificateDocument.service", () => ({
+  ...jest.requireActual("../../services/certificateDocument.service"),
+  captureSignedSnapshot: jest.fn(async () => null),
+}));
 jest.mock("../../models", () => ({
   Certificate: {
     findOne: jest.fn(async (options) => {

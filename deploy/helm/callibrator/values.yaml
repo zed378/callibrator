@@ -95,21 +95,28 @@ backend:
   resources:
     requests:
       cpu: 250m
-      memory: 512Mi
+      memory: 384Mi
     limits:
       cpu: "2"
-      # Chromium (certificate PDFs) is memory-hungry and bursty. A limit sized
-      # for the steady state will OOM-kill the pod on the first certificate.
-      memory: 4Gi
+      # ADR-095 follow-up (2026-09-30): re-sized to measured need. The backend image has no
+      # Chromium; measured on callibrator/backend:adr095f under boot + migrations, seeding, three
+      # live E2E runs (two concurrent) and six browser-smoke runs: cgroup memory.peak 306 MiB, Node
+      # VmHWM 337 MiB, steady 215-265 MiB (MEMORY/records/2026-09-30-adr095-followups.md). Not
+      # production traffic: re-measure under a real tenant's exports/reports before tightening
+      # further. 1Gi is 3x the measured peak; the request is the measured steady state plus margin.
+      memory: 1Gi
 
   env:
     NODE_ENV: production
     APP_STORAGE_PATH: /app
-    PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
     FORCE_HTTPS: "true"
     # Must be empty outside development.
     BATCH_JOBS_INLINE: ""
     SEED_DEMO: ""
+    # First-boot seeding toggle (P7-06). "true" opens GET /api/v1/migration/
+    # seeding WITHOUT authentication, for the one upgrade that seeds an empty
+    # database; set it back to "" straight after — NOTES.txt warns while set.
+    ALLOW_SEEDING: ""
     VIRUS_SCAN_PROVIDER: clamav
     VIRUS_SCAN_FAIL_OPEN: "false"
 
@@ -182,9 +189,10 @@ backend:
 # NETWORK POLICY (S-18)
 # ============================================================================
 # Default-deny for this release's pods, then exactly the flows the application
-# uses. RENDERS ONLY — like the rest of this chart it has not been applied to a
-# cluster (P7-06). A NetworkPolicy that is wrong fails CLOSED (the pod cannot
-# reach its database), so the first install must check every flow below.
+# uses. Enforced and probed on a kind cluster (kindnet, P7-06, 2026-09-30):
+# 16 of 16 allow/deny flows as intended — see MEMORY/records/. A
+# NetworkPolicy that is wrong fails CLOSED (the pod cannot reach its database),
+# so the first install on a real CNI must still check every flow below.
 # Requires a CNI that enforces NetworkPolicy (Calico, Cilium, …); on one that
 # does not, these objects are accepted and do nothing.
 networkPolicy:

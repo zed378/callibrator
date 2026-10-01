@@ -9,7 +9,7 @@ Next.js 16 App Router. `frontend/src/app/`.
 ```
 src/app/
 ├── page.tsx                        landing
-├── login/  register/               auth
+├── login/  request-access/  forgot-password/  invitation/   auth (ADR-098; /register → 308 /request-access)
 ├── blog/  blog/[slug]/             CMS-backed
 ├── news/  news/[slug]/
 ├── verify/[certificateNumber]/     PUBLIC certificate verification
@@ -32,7 +32,7 @@ src/app/
 | Group | Auth | Notes |
 |---|---|---|
 | Landing, blog, news | none | marketing and content |
-| `/login`, `/register` | none | branded pre-auth for pinned builds |
+| `/login`, `/request-access`, `/forgot-password`, `/invitation` | none | branded pre-auth for pinned builds; `/register` is a permanent (308) redirect to `/request-access` (ADR-098 §6, P10-06) |
 | **`/verify/[certificateNumber]`** | **none** | functionally load-bearing |
 | `/dashboard/*` | required | everything else |
 

@@ -5,6 +5,7 @@
 jest.mock("../../services/ai.service", () => ({
   processCertificateOcr: jest.fn(),
   queryDocuments: jest.fn(),
+  getAiConfig: jest.fn(),
 }));
 
 jest.mock("../../utils/appError.util", () => ({
@@ -35,6 +36,8 @@ describe("ai Controller", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    // A-281: a provider is configured unless a test says otherwise.
+    aiService.getAiConfig.mockResolvedValue({ apiKey: "sk-test" });
     success.mockImplementation((res, data, meta, message, status) => {
       res.status(status || 200).json({ success: true, data, message });
     });
@@ -83,7 +86,8 @@ describe("ai Controller", () => {
       expect(sendError).toHaveBeenCalledWith(res, "File is required for OCR", 400);
     });
 
-    it("should return 500 when OCR fails", async () => {
+    // A-281 (ADR-094): the provider was asked and failed — an upstream failure.
+    it("should return 502 when the provider returns no OCR result", async () => {
       const mockBuffer = Buffer.from("test image");
       req.file = { buffer: mockBuffer, mimetype: "image/png" };
 
@@ -91,7 +95,17 @@ describe("ai Controller", () => {
 
       await aiController.processOcr(req, res, next);
 
-      expect(sendError).toHaveBeenCalledWith(res, "OCR extraction failed or AI not configured", 500);
+      expect(sendError).toHaveBeenCalledWith(res, "The AI provider did not return an OCR result. Try again later.", 502);
+    });
+
+    it("should return 409 explaining the configuration when no AI provider is configured", async () => {
+      req.file = { buffer: Buffer.from("x"), mimetype: "image/png" };
+      aiService.getAiConfig.mockResolvedValue({ apiKey: undefined });
+
+      await aiController.processOcr(req, res, next);
+
+      expect(aiService.processCertificateOcr).not.toHaveBeenCalled();
+      expect(sendError).toHaveBeenCalledWith(res, aiController.AI_NOT_CONFIGURED, 409);
     });
   });
 
@@ -129,14 +143,26 @@ describe("ai Controller", () => {
       expect(sendError).toHaveBeenCalledWith(res, "Question is required", 400);
     });
 
-    it("should return 500 when RAG query fails", async () => {
+    // A-281 (ADR-094)
+    it("should return 502 when the provider returns no answer", async () => {
       req.body = { question: "Some question" };
 
       aiService.queryDocuments.mockResolvedValue(null);
 
       await aiController.queryRAG(req, res, next);
 
-      expect(sendError).toHaveBeenCalledWith(res, "RAG query failed or AI not configured", 500);
+      expect(sendError).toHaveBeenCalledWith(res, "The AI provider did not return an answer. Try again later.", 502);
+    });
+
+    it("should return 409 explaining the configuration when no AI provider is configured (was 500)", async () => {
+      req.body = { question: "Some question" };
+      aiService.getAiConfig.mockResolvedValue({ apiKey: "" });
+
+      await aiController.queryRAG(req, res, next);
+
+      expect(aiService.queryDocuments).not.toHaveBeenCalled();
+      expect(sendError).toHaveBeenCalledWith(res, aiController.AI_NOT_CONFIGURED, 409);
+      expect(aiController.AI_NOT_CONFIGURED).toContain("No AI provider is configured");
     });
   });
 });

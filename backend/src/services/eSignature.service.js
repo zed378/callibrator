@@ -19,12 +19,42 @@ const { db } = require("../config");
 const auditService = require("./audit.service");
 const { USER_STATUS } = require("../constants/appConstants");
 
+/**
+ * V-17 — refuse a SIGNATURE_ALGORITHM setting the service does not honour.
+ * Unset, or "RS256" (the only algorithm used), is accepted.
+ *
+ * @param {string|undefined} value - process.env.SIGNATURE_ALGORITHM
+ * @returns {void}
+ * @throws {Error} for any other value
+ */
+function assertSignatureAlgorithmSetting(value) {
+  if (value === undefined || value === "" || value === "RS256") {
+    return;
+  }
+  throw new Error(
+    `SIGNATURE_ALGORITHM=${value} is not supported: e-signatures are always RS256 ` +
+      "(RSA PKCS#1 v1.5 with SHA-256), and the setting no longer changes the algorithm (V-17). " +
+      "Remove SIGNATURE_ALGORITHM from the environment.",
+  );
+}
+
 // ==========================================
 // CONFIGURATION
 // ==========================================
 
 const ESIGN_ENABLED = process.env.ESIGN_ENABLED !== "false";
-const SIGNATURE_ALGORITHM = process.env.SIGNATURE_ALGORITHM || "RS256";
+// V-17 (2026-09-30) — the algorithm recorded on a Part 11 signature is the
+// algorithm that produced it. SIGNATURE_ALGORITHM used to be read from the
+// environment, stored on every record and bound into the canonical payload,
+// while signing and verification were hardcoded RSA-SHA256: setting it to
+// RS512 relabelled records without changing a byte of the cryptography. The
+// setting is removed; the label and the digest are one constant pair here.
+// A deployment that still sets a DIFFERENT value is refused at load, loudly,
+// rather than silently ignored — its operator believes it signs with that.
+const SIGNATURE_ALGORITHM = "RS256";
+/** The digest RS256 means: RSASSA-PKCS1-v1_5 (node's default for an RSA key) with SHA-256. */
+const SIGNATURE_DIGEST = "sha256";
+assertSignatureAlgorithmSetting(process.env.SIGNATURE_ALGORITHM);
 const SIGNATURE_KEY_SIZE = parseInt(process.env.SIGNATURE_KEY_SIZE) || 2048;
 // A-65 — signing ALWAYS re-authenticates the signer (21 CFR 11.200(a)).
 // REQUIRE_REAUTHENTICATION used to switch that off, and even when on it
@@ -219,7 +249,35 @@ function explainSignedWorkflowDeletion(status, count) {
  * @param {string} tenantId - Tenant ID
  * @returns {Promise<{publicKey: string, privateKey: string, keyId: string}>}
  */
-exports.generateKeyPair = async (tenantId) => {
+/**
+ * A-278 (ADR-094) — a tenant's signing key is created and deleted with one
+ * audit row in the same transaction. A Part 11 signature is only as good as
+ * the record of which key existed when; neither change was recorded. The row
+ * names the key (its id and keyId), never key material.
+ *
+ * @param {object} transaction
+ * @param {{userId?: (string|null), ipAddress?: (string|null), userAgent?: (string|null)}} actor
+ * @param {string} tenantId
+ * @param {"CREATE"|"DELETE"} action
+ * @param {object} key - the TenantKey row
+ * @param {string} operation
+ */
+const auditKeyPair = (transaction, actor, tenantId, action, key, operation) =>
+  auditService.logAction(
+    {
+      tenantId,
+      userId: actor.userId || null,
+      action,
+      resourceType: "TenantKey",
+      resourceId: key.id,
+      changes: { operation, keyId: key.keyId, keyType: key.keyType, algorithm: key.algorithm },
+      ipAddress: actor.ipAddress || null,
+      userAgent: actor.userAgent || null,
+    },
+    { transaction },
+  );
+
+exports.generateKeyPair = async (tenantId, actor = {}) => {
   if (!ESIGN_ENABLED) {
     throw new AppError(400, "E-signature is disabled");
   }
@@ -241,14 +299,21 @@ exports.generateKeyPair = async (tenantId) => {
 
     // Store key pair in database (private key encrypted)
     const { TenantKey } = require("../models");
-    const created = await TenantKey.create({
-      tenantId,
-      keyId,
-      keyType: "esignature",
-      algorithm: SIGNATURE_ALGORITHM,
-      publicKey,
-      privateKey: wrapPrivateKey(tenantId, privateKey),
-      createdAt: new Date(),
+    const created = await db.transaction(async (transaction) => {
+      const row = await TenantKey.create(
+        {
+          tenantId,
+          keyId,
+          keyType: "esignature",
+          algorithm: SIGNATURE_ALGORITHM,
+          publicKey,
+          privateKey: wrapPrivateKey(tenantId, privateKey),
+          createdAt: new Date(),
+        },
+        { transaction },
+      );
+      await auditKeyPair(transaction, actor, tenantId, "CREATE", row, "ESIGNATURE_KEY_CREATE");
+      return row;
     });
 
     logger.info("E-signature key pair generated", {
@@ -370,7 +435,7 @@ exports.getKeyPairs = async (tenantId) => {
  * @param {string} keyPairId
  * @param {string} tenantId
  */
-exports.deleteKeyPair = async (keyPairId, tenantId) => {
+exports.deleteKeyPair = async (keyPairId, tenantId, actor = {}) => {
   try {
     const { TenantKey } = require("../models");
     const key = await TenantKey.findOne({
@@ -379,7 +444,10 @@ exports.deleteKeyPair = async (keyPairId, tenantId) => {
     if (!key) {
       throw new AppError(404, "Key pair not found");
     }
-    await key.destroy(); // paranoid soft delete
+    await db.transaction(async (transaction) => {
+      await key.destroy({ transaction }); // paranoid soft delete
+      await auditKeyPair(transaction, actor, tenantId, "DELETE", key, "ESIGNATURE_KEY_DELETE");
+    });
     logger.info("E-signature key pair deleted", { tenantId, keyPairId });
     return { success: true };
   } catch (err) {
@@ -839,7 +907,7 @@ exports.signDocument = async (stepId, userId, signatureData) => {
 
       const payloadBuffer = Buffer.from(canonicalPayload, "utf8");
       const signatureValue = crypto
-        .sign("sha256", payloadBuffer, privateKeyPem)
+        .sign(SIGNATURE_DIGEST, payloadBuffer, privateKeyPem)
         .toString("base64");
       // Kept for the NOT NULL column and for human comparison: the digest of
       // the bytes that were actually signed, not a hash of a timestamp.
@@ -1260,8 +1328,10 @@ exports.verifySignature = async (signatureId) => {
       reason: signature.signatureReason,
     });
 
+    // V-17: every v2 record was signed with SIGNATURE_DIGEST — the label on
+    // the record has only ever been RS256 or a relabel of it.
     const valid = crypto.verify(
-      "sha256",
+      SIGNATURE_DIGEST,
       Buffer.from(canonicalPayload, "utf8"),
       key.publicKey,
       Buffer.from(signature.signatureValue, "base64"),
@@ -1887,6 +1957,8 @@ exports.cancelWorkflow = async (workflowId, userId, tenantId, actor = {}, reason
 /**
  * Get service status
  */
+exports.assertSignatureAlgorithmSetting = assertSignatureAlgorithmSetting;
+
 exports.getStatus = () => {
   return {
     enabled: ESIGN_ENABLED,

@@ -77,7 +77,8 @@ describe("roles Controller", () => {
         data: expect.objectContaining({
           rows: expect.any(Array),
         }),
-        pagination: expect.objectContaining({
+        // F-19: the house envelope, a top-level meta.
+        meta: expect.objectContaining({
           page: 1,
           limit: 10,
           total: 2,
@@ -164,7 +165,7 @@ describe("roles Controller", () => {
         name: "MANAGER",
         description: "Manager role",
       },
-      ACTOR,
+      { ...ACTOR, roleLevel: null },
       );
       expect(rolesService.getRoleById).toHaveBeenCalledWith("role-new");
       expect(res.status).toHaveBeenCalledWith(201);
@@ -191,7 +192,7 @@ describe("roles Controller", () => {
         description: "Updated",
         status: "active",
       },
-      ACTOR,
+      { ...ACTOR, roleLevel: null },
       );
       expect(res.status).toHaveBeenCalledWith(200);
     });
@@ -337,7 +338,8 @@ describe("roles Controller", () => {
         data: expect.objectContaining({
           rows: expect.any(Array),
         }),
-        pagination: expect.objectContaining({
+        // F-19: the house envelope, a top-level meta.
+        meta: expect.objectContaining({
           page: 1,
           limit: 10,
           total: 2,

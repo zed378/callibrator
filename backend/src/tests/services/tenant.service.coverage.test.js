@@ -10,8 +10,10 @@
  * Mocked collaborators mirror their real modules:
  *  - services/redis.service exports { get, set, del, delPattern, cacheKeys, ... }
  *    where cacheKeys.tenant / tenantByCode / tenantSettings are (id) => string.
- *  - validators/tenant.validator exports `validate(body, schema)` which returns
- *    the validated VALUE directly (it throws a 400 itself on failure).
+ *  - validators/input exports `validateInput(body, schema)` which returns the
+ *    parsed VALUE directly (it throws a 400 itself on failure). It passes the
+ *    body through here, so the service's own defaults and fallbacks are
+ *    reachable; the schemas themselves are the real Zod ones.
  *  - src/models/index.js exports the plural aliases Tenants (models.Tenant),
  *    Users (models.User) and TenantSettings.
  */
@@ -41,12 +43,10 @@ jest.mock("../../constants", () => ({
   MAX_LIMIT: 100,
 }));
 
-jest.mock("../../validators/tenant.validator", () => ({
-  createTenantSchema: "createTenantSchema",
-  updateTenantSchema: "updateTenantSchema",
-  // Real signature: validate(body, schema) -> validated value (throws on error)
-  validate: jest.fn((body) => ({ ...body })),
-  formatErrors: jest.fn((details) => details),
+jest.mock("../../validators/input", () => ({
+  ...jest.requireActual("../../validators/input"),
+  // Real signature: validateInput(body, schema) -> validated value (throws on error)
+  validateInput: jest.fn((body) => ({ ...body })),
 }));
 
 // The audit insert (A-41) — its own suite covers logAction; here only the
@@ -69,6 +69,8 @@ jest.mock("../../models", () => ({
     findByPk: jest.fn(),
     create: jest.fn(),
     count: jest.fn(),
+    // A-326 (ADR-112): updateTenant reads the status ENUM from the model.
+    getAttributes: jest.fn(() => ({ status: { values: ["active", "suspended", "deleted"] } })),
   },
   Users: {
     findAll: jest.fn(),
@@ -85,7 +87,7 @@ const { Tenants, Users, TenantSettings } = require("../../models");
 const { get, set, del, delPattern } = require("../../services/redis.service");
 const { logger } = require("../../middlewares/activityLog.middleware");
 const { deleteUpload } = require("../../utils/upload.util");
-const { validate: validateInput } = require("../../validators/tenant.validator");
+const { validateInput } = require("../../validators/input");
 const { AppError } = require("../../utils/appError.util");
 const auditService = require("../../services/audit.service");
 
@@ -248,7 +250,10 @@ describe("tenant.service - branch & error coverage", () => {
       expect(set).not.toHaveBeenCalled();
     });
 
-    it("should build a lowercased LIKE search over name, code and description", async () => {
+    // A-320: this pinned a lower-cased term under Op.like, which PostgreSQL
+    // matches case-sensitively, so "AcMe" never found "Acme Hospital". The
+    // search is ILIKE on the term as typed.
+    it("should build a case-insensitive ILIKE search over name, code and description", async () => {
       const { Op } = require("sequelize");
       Tenants.findAll.mockResolvedValue([]);
       Tenants.count.mockResolvedValue(0);
@@ -257,10 +262,11 @@ describe("tenant.service - branch & error coverage", () => {
 
       const where = Tenants.findAll.mock.calls[0][0].where;
       expect(where[Op.or]).toEqual([
-        { name: { [Op.like]: "%acme%" } },
-        { code: { [Op.like]: "%acme%" } },
-        { description: { [Op.like]: "%acme%" } },
+        { name: { [Op.iLike]: "%AcMe%" } },
+        { code: { [Op.iLike]: "%AcMe%" } },
+        { description: { [Op.iLike]: "%AcMe%" } },
       ]);
+      expect(Tenants.count.mock.calls[0][0].where[Op.or]).toEqual(where[Op.or]);
     });
 
     it("should default page to 1 and limit to DEFAULT_LIMIT when both are omitted", async () => {
@@ -439,7 +445,6 @@ describe("tenant.service - branch & error coverage", () => {
         description: null,
         logo: "default.svg",
         primaryColor: null,
-        maxUsers: 10,
         email: "new@example.com",
         phone: null,
         address: null,
@@ -448,7 +453,7 @@ describe("tenant.service - branch & error coverage", () => {
         zipCode: null,
         country: null,
         website: null,
-        createdBy: "creator-1",
+        // A-328: no createdBy (not a Tenant attribute); the audit row names the creator.
       });
     });
 
@@ -464,8 +469,9 @@ describe("tenant.service - branch & error coverage", () => {
           logo: "l.png",
           primaryColor: "#123456",
           maxUsers: 99,
+          limitSeats: 40,
           email: "a@b.com",
-          phone: "123",
+          phone: "+62 21 555 0100",
           address: "addr",
           city: "city",
           state: "state",
@@ -481,11 +487,13 @@ describe("tenant.service - branch & error coverage", () => {
           description: "desc",
           logo: "l.png",
           primaryColor: "#123456",
-          maxUsers: 99,
+          limitSeats: 40,
           website: "https://x.com",
           subdomain: "custom-subdomain",
         }),
       );
+      // Seat limit: maxUsers is not a seat count (stripped); limitSeats is.
+      expect(Tenants.create.mock.calls[0][0]).not.toHaveProperty("maxUsers");
     });
 
     it("should handle subdomain generation fallback when input and code strip to empty", async () => {
@@ -708,10 +716,10 @@ describe("tenant.service - branch & error coverage", () => {
       const tenant = makeTenant();
       Tenants.findByPk.mockResolvedValue(tenant);
 
-      await updateAsSuperAdmin("t-1", { maxUsers: 42 });
+      await updateAsSuperAdmin("t-1", { city: "Bandung" });
 
       expect(Tenants.findOne).not.toHaveBeenCalled();
-      expect(tenant.update.mock.calls[0][0].maxUsers).toBe(42);
+      expect(tenant.update.mock.calls[0][0].city).toBe("Bandung");
     });
 
     it("should delete the previous logo file when a new logo is supplied", async () => {
@@ -779,7 +787,6 @@ describe("tenant.service - branch & error coverage", () => {
         description: "old desc",
         primaryColor: "#000000",
         status: "active",
-        maxUsers: 5,
         email: "old@x.com",
         phone: "1",
         address: "a",
@@ -799,8 +806,7 @@ describe("tenant.service - branch & error coverage", () => {
         description: "old desc",
         logo: null,
         primaryColor: "#000000",
-        status: "active",
-        maxUsers: 5,
+        // A-326 (ADR-112): an edit writes no status.
         email: "old@x.com",
         phone: "1",
         address: "a",
@@ -816,31 +822,32 @@ describe("tenant.service - branch & error coverage", () => {
       const tenant = makeTenant();
       Tenants.findByPk.mockResolvedValue(tenant);
 
+      // A-303: maxUsers is stripped (not an edit field); phone must be a phone number.
       await updateAsSuperAdmin("t-1", {
         maxUsers: 77,
         email: "new@x.com",
-        phone: "555",
+        phone: "+62 21 555 0100",
         address: "1 New St",
         city: "Jakarta",
         state: "DKI",
         zipCode: "12345",
         country: "ID",
         website: "https://new.example.com",
-        status: "inactive",
       });
 
+      expect(tenant.update.mock.calls[0][0]).not.toHaveProperty("maxUsers");
+      // A-326 (ADR-112): an edit writes no status.
+      expect(tenant.update.mock.calls[0][0]).not.toHaveProperty("status");
       expect(tenant.update.mock.calls[0][0]).toEqual(
         expect.objectContaining({
-          maxUsers: 77,
           email: "new@x.com",
-          phone: "555",
+          phone: "+62 21 555 0100",
           address: "1 New St",
           city: "Jakarta",
           state: "DKI",
           zipCode: "12345",
           country: "ID",
           website: "https://new.example.com",
-          status: "inactive",
         }),
       );
     });
@@ -858,11 +865,36 @@ describe("tenant.service - branch & error coverage", () => {
       const tenant = makeTenant({ description: "old", email: "old@x.com" });
       Tenants.findByPk.mockResolvedValue(tenant);
 
-      await updateAsSuperAdmin("t-1", { description: null, email: null });
+      await updateAsSuperAdmin("t-1", { description: null });
 
       const payload = tenant.update.mock.calls[0][0];
       expect(payload.description).toBeNull();
-      expect(payload.email).toBeNull();
+      expect(payload.email).toBe("old@x.com");
+    });
+
+    it("A-327: clearing the email (null or empty) is a 400 and writes nothing", async () => {
+      for (const email of [null, ""]) {
+        const tenant = makeTenant({ email: "old@x.com" });
+        Tenants.findByPk.mockResolvedValue(tenant);
+        await expect(updateAsSuperAdmin("t-1", { email })).rejects.toMatchObject({ status: 400 });
+        expect(tenant.update).not.toHaveBeenCalled();
+      }
+    });
+
+    it("A-326: a resubmitted status in any case is no change; a different one is 409; an unknown one is 400", async () => {
+      const same = makeTenant({ status: "active" });
+      Tenants.findByPk.mockResolvedValue(same);
+      await updateAsSuperAdmin("t-1", { status: "ACTIVE" });
+      expect(same.update.mock.calls[0][0]).not.toHaveProperty("status");
+
+      const moved = makeTenant({ status: "active" });
+      Tenants.findByPk.mockResolvedValue(moved);
+      await expect(updateAsSuperAdmin("t-1", { status: "SUSPENDED" })).rejects.toMatchObject({ status: 409 });
+      expect(moved.update).not.toHaveBeenCalled();
+
+      const unknown = makeTenant({ status: "active" });
+      Tenants.findByPk.mockResolvedValue(unknown);
+      await expect(updateAsSuperAdmin("t-1", { status: "INACTIVE" })).rejects.toMatchObject({ status: 400 });
     });
 
     it("should move the by-code cache entry when the code changes", async () => {
@@ -979,8 +1011,8 @@ describe("tenant.service - branch & error coverage", () => {
 
     it.each([
       [{ status: "SUSPENDED" }, "status"],
-      [{ maxUsers: 500 }, "maxUsers"],
-      [{ status: "INACTIVE", maxUsers: 1 }, "status or maxUsers"],
+      // A-303: maxUsers is stripped by the schema, so only the status is named.
+      [{ status: "INACTIVE", maxUsers: 1 }, "status"],
     ])("refuses a non-super-admin changing %j on their own tenant (403)", async (input, named) => {
       const tenant = makeTenant({ id: "t-1", status: "ACTIVE", maxUsers: 10 });
       Tenants.findByPk.mockResolvedValue(tenant);
@@ -992,6 +1024,16 @@ describe("tenant.service - branch & error coverage", () => {
       expect(err.message).toBe(`Only a platform administrator can change a tenant's ${named}`);
       expect(tenant.update).not.toHaveBeenCalled();
       expect(auditService.logAction).not.toHaveBeenCalled();
+    });
+
+    it("A-303: a non-super-admin's maxUsers is stripped, not refused — nothing about it is written", async () => {
+      const tenant = makeTenant({ id: "t-1", status: "ACTIVE", maxUsers: 10 });
+      Tenants.findByPk.mockResolvedValue(tenant);
+
+      await tenantService.updateTenant("t-1", { maxUsers: 500 }, "u-1", OWN);
+
+      expect(tenant.update).toHaveBeenCalledTimes(1);
+      expect(tenant.update.mock.calls[0][0]).not.toHaveProperty("maxUsers");
     });
 
     it("lets a non-super-admin resubmit the current status (any case) and maxUsers, or a blank status", async () => {
@@ -1467,8 +1509,8 @@ describe("tenant.service - branch & error coverage", () => {
   // getTenantUserCount
   // ==============================================================
   describe("getTenantUserCount", () => {
-    it("should report the remaining slots", async () => {
-      Tenants.findByPk.mockResolvedValue(makeTenant({ maxUsers: 50 }));
+    it("should report the remaining slots from limitSeats", async () => {
+      Tenants.findByPk.mockResolvedValue(makeTenant({ limitSeats: 50 }));
       Users.count.mockResolvedValue(20);
 
       const result = await tenantService.getTenantUserCount("t-1");
@@ -1476,13 +1518,23 @@ describe("tenant.service - branch & error coverage", () => {
       expect(result.data).toEqual({
         tenantId: "t-1",
         userCount: 20,
-        maxUsers: 50,
+        limitSeats: 50,
         remainingSlots: 30,
+        unlimited: false,
       });
     });
 
+    it.each([[null], [undefined], [-1]])("reports an unlimited tenant (limitSeats %p) with null limit and remaining", async (limitSeats) => {
+      Tenants.findByPk.mockResolvedValue(makeTenant({ limitSeats }));
+      Users.count.mockResolvedValue(3);
+
+      const result = await tenantService.getTenantUserCount("t-1");
+
+      expect(result.data).toEqual({ tenantId: "t-1", userCount: 3, limitSeats: null, remainingSlots: null, unlimited: true });
+    });
+
     it("should floor the remaining slots at 0 when the tenant is over quota", async () => {
-      Tenants.findByPk.mockResolvedValue(makeTenant({ maxUsers: 5 }));
+      Tenants.findByPk.mockResolvedValue(makeTenant({ limitSeats: 5 }));
       Users.count.mockResolvedValue(9);
 
       const result = await tenantService.getTenantUserCount("t-1");

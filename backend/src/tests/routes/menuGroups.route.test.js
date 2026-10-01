@@ -206,10 +206,11 @@ describe("Menu Groups Routes", () => {
     });
   });
 
-  it("should have exactly 14 route endpoints", () => {
+  // 15 since ADR-102 added GET /my-permissions.
+  it("should have exactly 15 route endpoints", () => {
     const routeCount = menuGroupsRoutes.stack.filter(
       (layer) => layer.route,
     ).length;
-    expect(routeCount).toBe(14);
+    expect(routeCount).toBe(15);
   });
 });

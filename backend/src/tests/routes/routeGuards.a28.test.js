@@ -13,8 +13,9 @@
  * and each refusal asserts that the service was never reached — the row is
  * unchanged, not merely "an error came back".
  *
- * The SOP publish cases run the REAL sop.service, so the 409 is produced by
- * the separation-of-duties rule itself and travels out as a 409, not a 500.
+ * The SOP publish cases run the REAL sop.service, so the 403 is produced by
+ * the separation-of-duties rule itself and travels out as a 403, not a 500
+ * (V-13, ADR-109 §7: it was a 409 until 2026-09-30).
  */
 
 // ---- principal injection -------------------------------------------------
@@ -380,15 +381,16 @@ describe("A-28 — SOP authoring and release (separation of duties)", () => {
     expect(mockSopDocument.findOne).not.toHaveBeenCalled();
   });
 
-  // The publisher IS the author: refused as a 409 state explanation, not a 500.
-  it("refuses publication by the SOP's own author with a 409 that explains the state", async () => {
+  // The publisher IS the author: refused as a 403 that names the rule, not a
+  // 500 (V-13, ADR-109 §7 — a permission failure inside the tenant).
+  it("refuses publication by the SOP's own author with a 403 that explains the rule", async () => {
     asRole(ROLE_NAMES.HEALTCARE_ADMIN, ID);
     const doc = draftDoc({ authorId: ID });
     mockSopDocument.findOne.mockResolvedValue(doc);
 
     const res = await http("patch", "/api/v1/sop/" + ID + "/publish");
 
-    expect(res.status).toBe(409);
+    expect(res.status).toBe(403);
     expect(res.body.message).toContain("SOP-0007 was authored by you");
     expect(doc.status).toBe("DRAFT");
     expect(doc.save).not.toHaveBeenCalled();
@@ -481,6 +483,6 @@ describe("A-28 — risk register", () => {
     const res = await http("delete", "/api/v1/risks/" + ID);
 
     expect(res.status).toBe(200);
-    expect(riskService.deleteRisk).toHaveBeenCalledWith(TENANT, ID);
+    expect(riskService.deleteRisk).toHaveBeenCalledWith(TENANT, ID, expect.objectContaining({ apiKeyId: null }));
   });
 });

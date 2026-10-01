@@ -13,6 +13,11 @@
 !package-lock.json
 !frontend/package.json
 !backend
+# P9-22 (ADR-097): the shared request schemas. build-dist compiles them into
+# dist/node_modules/@callibrator/contracts for the binary.
+!packages/contracts
+packages/contracts/node_modules
+packages/contracts/**/*.test.*
 
 # ...and keep out of backend/ what must never reach the builder (S-13, S-25).
 # Developer uploads matter most: pkg.assets once embedded uploads/** into the

@@ -1,66 +1,45 @@
 /**
- * P9-11 contract pin — `validators/meteredBilling.validator.js`.
+ * P9-11 contract pin — `validators/meteredBilling.validator.ts` (ADR-093).
  *
- * Today's Joi 400 for `createUsageAlert` through the real `validate(schema)`
- * middleware, byte for byte, in production and outside it, and what the
- * file's own `validate(data, schema)` helper hands its controllers. The
- * expectations are literals recorded on 2026-09-28; a Zod conversion must keep
- * this file passing unchanged. See ./harness.ts and
- * MEMORY/specs/P9-11-validation-error-contract.md.
+ * The validation 400 for `createUsageAlert` through the real `validate(schema)`
+ * middleware, byte for byte, in production and outside it. The status, the
+ * envelope, the top-level `message` ("Validation Error") and `details`
+ * only outside production are the contract this suite pinned before P9-11;
+ * the wording inside `details` is Zod's since the move to Zod (the owner's
+ * decision, ADR-093, which lists every changed string). See ./harness.ts.
  */
-import { createUsageAlert, validate as validateHelper, validateBody } from "../../../validators/meteredBilling.validator";
-import { expectValidationContract, captureHelper, JSON_CONTENT_TYPE, send, withNodeEnv } from "./harness";
+import { validate } from "../../../middlewares/validation.middleware";
+import { createUsageAlert, getBillingHistory } from "../../../validators/meteredBilling.validator";
+import { expectValidationContract, expectedValidationBody, JSON_CONTENT_TYPE, send, withNodeEnv } from "./harness";
 
-describe("P9-11 contract: validators/meteredBilling.validator.js", () => {
+describe("P9-11 contract: validators/meteredBilling.validator.ts", () => {
   it("validate(createUsageAlert) answers the pinned 400; details only outside production", async () => {
     await expectValidationContract(createUsageAlert, {}, [
       {
         "field": "metricName",
-        "message": "\"metricName\" is required",
+        "message": "Invalid input: expected string, received undefined",
       },
       {
         "field": "threshold",
-        "message": "\"threshold\" is required",
+        "message": "Invalid input: expected number, received undefined",
       },
     ]);
   });
-  it("its own validate(data, schema) throws an Error with this message and no status", () => {
-    expect(captureHelper(() => validateHelper({}, createUsageAlert))).toEqual({
-      kind: "thrownError",
-      message: "\"metricName\" is required, \"threshold\" is required",
-    });
-  });
-
-  // A SECOND live validation middleware: meteredBilling.route mounts
-  // validateBody/validateQuery, not validate(schema). It forwards an Error to
-  // the central errorHandler, so its 400 has a different envelope — no `data`,
-  // a `requestId`, the messages joined into ONE string — and in production
-  // the message is the GENERIC one, because an Error is not "exposable"
-  // (fileValidation.util#isExposableError). Pinned as it is; P9-11 decides.
-  it("validateBody(createUsageAlert) answers through the errorHandler: this 400 outside production", async () => {
-    const wire = await withNodeEnv("test", () => send({ handlers: [validateBody(createUsageAlert)], body: {} }));
-    expect(wire.status).toBe(400);
-    expect(wire.contentType).toBe(JSON_CONTENT_TYPE);
-    const body = JSON.parse(wire.text) as Record<string, unknown>;
-    expect(Object.keys(body)).toEqual(["success", "status", "message", "stack", "name", "requestId"]);
-    expect({ ...body, stack: typeof body["stack"] }).toEqual({
-      success: false,
-      status: 400,
-      message: "\"metricName\" is required, \"threshold\" is required",
-      stack: "string",
-      name: "Error",
-      requestId: "unknown",
-    });
-  });
-
-  it("validateBody(createUsageAlert) in production: the generic message, byte for byte", async () => {
-    const wire = await withNodeEnv("production", () =>
-      send({ handlers: [validateBody(createUsageAlert)], body: {} }),
-    );
-    expect(wire.status).toBe(400);
-    expect(wire.contentType).toBe(JSON_CONTENT_TYPE);
-    expect(wire.text).toBe(
-      '{"success":false,"status":400,"message":"An unexpected error occurred. Please try again later.","requestId":"unknown"}',
-    );
+  // Surface B folded (ADR-093): metered billing's own validateBody /
+  // validateQuery answered through the errorHandler — no `data`, a
+  // `requestId`, and in production the generic 500-style message. The route
+  // now mounts validate(schema, { from: "query" }), so a query failure has the
+  // common envelope and says "Validation Error" in production too.
+  it("validate(getBillingHistory, { from: \"query\" }) answers the common 400 for a bad query", async () => {
+    for (const mode of ["test", "production"] as const) {
+      const wire = await withNodeEnv(mode, () =>
+        send({ handlers: [validate(getBillingHistory, { from: "query" })], body: undefined, query: "?page=0" }),
+      );
+      expect({ mode, status: wire.status }).toEqual({ mode, status: 400 });
+      expect(wire.contentType).toBe(JSON_CONTENT_TYPE);
+      expect(wire.text).toBe(
+        expectedValidationBody(mode, [{ field: "page", message: "Too small: expected number to be >=1" }]),
+      );
+    }
   });
 });

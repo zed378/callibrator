@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import { Dialog, Input, Select, Button, Badge, Alert } from "@/components/ui";
 import { Copy, Plus } from "lucide-react";
 import type { ApiKeyFormState } from "../hooks/useApiKeys";
+import { ACTION_OPTIONS, RESOURCE_OPTIONS } from "../scopeOptions";
 
 interface CreateApiKeyModalProps {
   isOpen: boolean;
@@ -17,23 +18,6 @@ interface CreateApiKeyModalProps {
   onCopyKey: () => void;
 }
 
-const RESOURCE_OPTIONS = [
-  { value: "*", label: "All resources (*)" },
-  { value: "CalibrationDevices", label: "Calibration Devices" },
-  { value: "CalibrationRecords", label: "Calibration Records" },
-  { value: "Certificates", label: "Certificates" },
-  { value: "Stocks", label: "Stocks" },
-  { value: "Warehouses", label: "Warehouses" },
-  { value: "Vendors", label: "Vendors" },
-  { value: "Maintenance", label: "Maintenance" },
-];
-
-const ACTION_OPTIONS = [
-  { value: "read", label: "Read" },
-  { value: "write", label: "Write" },
-  { value: "*", label: "All actions (*)" },
-];
-
 export const CreateApiKeyModal: React.FC<CreateApiKeyModalProps> = ({
   isOpen,
   onClose,
@@ -46,14 +30,12 @@ export const CreateApiKeyModal: React.FC<CreateApiKeyModalProps> = ({
   createdKey,
   onCopyKey,
 }) => {
-  const [resource, setResource] = useState("CalibrationDevices");
+  // A-299: every option is a scope the backend accepts (scopeOptions).
+  const [resource, setResource] = useState("equipment");
   const [action, setAction] = useState("read");
 
   const handleAddScope = () => {
-    // "*:*" collapses to the global wildcard "*".
-    const scope =
-      resource === "*" && action === "*" ? "*" : `${resource}:${action}`;
-    addScope(scope);
+    addScope(`${resource}:${action}`);
   };
 
   // ── Key reveal state (after successful creation) ──────────────────────────
@@ -123,11 +105,13 @@ export const CreateApiKeyModal: React.FC<CreateApiKeyModalProps> = ({
               value={resource}
               onChange={(value) => setResource(value)}
               options={RESOURCE_OPTIONS}
+              aria-label="Scope resource"
             />
             <Select
               value={action}
               onChange={(value) => setAction(value)}
               options={ACTION_OPTIONS}
+              aria-label="Scope action"
             />
             <Button
               type="button"
@@ -148,6 +132,7 @@ export const CreateApiKeyModal: React.FC<CreateApiKeyModalProps> = ({
                   variant="primary"
                   size="sm"
                   removable
+                  removeLabel={`Remove scope ${scope}`}
                   onRemove={() => removeScope(scope)}
                 >
                   {scope}
@@ -157,7 +142,7 @@ export const CreateApiKeyModal: React.FC<CreateApiKeyModalProps> = ({
           ) : (
             <p className="text-xs text-muted-foreground mt-2">
               No scopes added yet. Add at least one scope, e.g.
-              &quot;CalibrationDevices:read&quot;.
+              &quot;equipment:read&quot;.
             </p>
           )}
         </div>

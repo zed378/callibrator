@@ -11,6 +11,9 @@ jest.mock("../../services/webauthn.service", () => ({
   disable: jest.fn(),
 }));
 
+// A-288 (ADR-100): the passkey sign-in's network policy is signInPolicy.controllers.a288.
+jest.mock("../../services/signInPolicy.service", () => ({ assertSignInPermitted: jest.fn(async () => undefined) }));
+
 jest.mock("../../utils/response.util", () => ({
   success: jest.fn(),
   error: jest.fn(),
@@ -93,10 +96,14 @@ describe("webauthn Controller", () => {
 
   describe("verifyRegistration", () => {
     it("should verify registration", async () => {
+      // ADR-108 Amendment 1: `name` is the passkey's label, split off the attestation.
       req.body = {
         rawId: "abc",
         response: { clientDataJSON: "{}" },
+        name: "YubiKey",
       };
+      req.ip = "203.0.113.5";
+      req.headers = { "user-agent": "ua" };
       webauthnService.verifyRegistration.mockResolvedValue({ success: true });
 
       await webauthnController.verifyRegistration(req, res, next);
@@ -104,9 +111,20 @@ describe("webauthn Controller", () => {
       expect(webauthnService.verifyRegistration).toHaveBeenCalledWith(
         TENANT_ID,
         USER_ID,
-        req.body,
+        { rawId: "abc", response: { clientDataJSON: "{}" } },
+        { name: "YubiKey", ipAddress: "203.0.113.5", userAgent: "ua" },
       );
       expect(success).toHaveBeenCalled();
+    });
+
+    it("a missing body and a non-string name reach the service as an empty attestation and no name", async () => {
+      req.body = undefined;
+      webauthnService.verifyRegistration.mockResolvedValue({ success: true });
+      await webauthnController.verifyRegistration(req, res, next);
+      expect(webauthnService.verifyRegistration.mock.calls.at(-1)[2]).toEqual({});
+      req.body = { name: 42, rawId: "abc" };
+      await webauthnController.verifyRegistration(req, res, next);
+      expect(webauthnService.verifyRegistration.mock.calls.at(-1)[3]).toMatchObject({ name: null });
     });
 
     it("should handle missing tenantId from user", async () => {
@@ -120,6 +138,7 @@ describe("webauthn Controller", () => {
         undefined,
         "user-2",
         req.body,
+        { name: null, ipAddress: null, userAgent: null },
       );
     });
   });

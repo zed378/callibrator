@@ -1,14 +1,16 @@
 const calibrationScheduler = require("../services/calibrationScheduler.service");
 const { asyncHandler } = require("../utils/controllerWrapper.util");
 const { success } = require("../utils/response.util");
-const { ROLE_NAMES } = require("../constants/roleConstants");
-const { auditActor } = require("../utils/auditActor.util");
+// N-01: the one super-admin predicate (both spellings).
+const { isSuperAdmin: isSuperAdminPrincipal } = require("../utils/role.util");
+// A-282 (ADR-100): a manual run by an API key is audited as system:api-key.
+const { auditPrincipal } = require("../utils/auditPrincipal.util");
 
 // Determines which tenant(s) the scan targets. Super admins may target all
 // tenants (allTenants=true) or a specific tenant (body.tenantId); everyone else
 // is scoped to their own tenant.
 const resolveScanScope = (req) => {
-  const isSuperAdmin = req.user?.role?.name === ROLE_NAMES.SUPER_ADMIN;
+  const isSuperAdmin = isSuperAdminPrincipal(req.user);
   const wantsAll =
     req.query.allTenants === "true" || req.body?.allTenants === true;
 
@@ -37,7 +39,7 @@ exports.runScan = asyncHandler(async (req, res) => {
     tenantId,
     leadDays,
     // W-30: a manual run's work orders are the user's, audited as theirs.
-    actor: auditActor(req),
+    actor: auditPrincipal(req),
   });
   success(res, summary, null, "Calibration scan completed", 200);
 });

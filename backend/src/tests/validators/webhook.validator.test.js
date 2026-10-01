@@ -68,7 +68,8 @@ describe("webhook.validator — createWebhookSchema", () => {
     ["missing events", { url: "https://x.example.com" }, "events"],
     ["empty events", { url: "https://x.example.com", events: [] }, "events"],
     ["events not an array", { url: "https://x.example.com", events: "device.overdue" }, "events"],
-    ["duplicate events", { url: "https://x.example.com", events: ["*", "*"] }, "events.1"],
+    // P9-11: The old validator reported the repeated item ("events.1"); the Zod refine reports the list.
+    ["duplicate events", { url: "https://x.example.com", events: ["*", "*"] }, "events"],
     ["malformed event name", { url: "https://x.example.com", events: ["Device Overdue"] }, "events.0"],
     ["isActive not boolean", { ...valid, isActive: "yes please" }, "isActive"],
     ["over-long description", { ...valid, description: "d".repeat(256) }, "description"],
@@ -77,6 +78,38 @@ describe("webhook.validator — createWebhookSchema", () => {
     expect(passed).toBe(false);
     expect(res.status).toHaveBeenCalledWith(400);
     expect(fieldsOf(res)).toContain(field);
+  });
+
+  it("names the repetition, and treats names equal after trimming as repeats", () => {
+    const { res } = run(createWebhookSchema, { url: "https://x.example.com", events: ["a", " a "] });
+    expect(res.json.mock.calls[0][0].details).toEqual([
+      { field: "events", message: "events must not repeat a name" },
+    ]);
+  });
+
+  it("gives the schemas' own messages for a bad url and a bad event name", () => {
+    const { res } = run(createWebhookSchema, { url: "ftp://x.example.com", events: ["Device Overdue"] });
+    expect(res.json.mock.calls[0][0].details).toEqual([
+      { field: "url", message: "url must be an http or https URL" },
+      { field: "events.0", message: "Invalid event name" },
+    ]);
+  });
+
+  it("trims the url and event names, and converts a boolean string", () => {
+    const { passed, req } = run(createWebhookSchema, {
+      url: "  https://x.example.com/hook  ",
+      events: [" device.overdue "],
+      isActive: "false",
+    });
+    expect(passed).toBe(true);
+    expect(req.body).toEqual({ url: "https://x.example.com/hook", events: ["device.overdue"], isActive: false });
+  });
+
+  it("rejects more than 50 events", () => {
+    const events = Array.from({ length: 51 }, (_v, i) => `e${String.fromCharCode(97 + (i % 26))}.n${i}`);
+    const { passed, res } = run(createWebhookSchema, { url: "https://x.example.com", events });
+    expect(passed).toBe(false);
+    expect(fieldsOf(res)).toEqual(["events"]);
   });
 
   it("rejects a bodyless request as a 400, not a 500", () => {
@@ -102,6 +135,13 @@ describe("webhook.validator — updateWebhookSchema", () => {
     const { passed, res } = run(updateWebhookSchema, {});
     expect(passed).toBe(false);
     expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json.mock.calls[0][0].details).toEqual([
+      { field: "", message: "Provide at least one field to update" },
+    ]);
+  });
+
+  it("rejects a patch whose only keys are stripped unknowns", () => {
+    expect(run(updateWebhookSchema, { tenantId: "x" }).passed).toBe(false);
   });
 
   it("rejects a patch that is only a secret", () => {
@@ -120,6 +160,12 @@ describe("P6-13 — rotateWebhookSecretSchema", () => {
     expect(passed).toBe(true);
     expect(req.body).toEqual({ overlapHours: ROTATION_OVERLAP_DEFAULT_HOURS });
     expect(ROTATION_OVERLAP_DEFAULT_HOURS).toBe(24);
+  });
+
+  it("converts a numeric-string overlap", () => {
+    const { passed, req } = run(rotateWebhookSecretSchema, { overlapHours: "12" });
+    expect(passed).toBe(true);
+    expect(req.body).toEqual({ overlapHours: 12 });
   });
 
   it("accepts 0 (end the old secret now) up to a week", () => {

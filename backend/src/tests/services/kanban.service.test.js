@@ -57,6 +57,11 @@ jest.mock("../../services/notification.service", () => ({
   emitNotification: jest.fn(),
 }));
 
+// P6-11: every board write commits with one audit row in its transaction.
+jest.mock("../../services/audit.service", () => ({
+  logAction: jest.fn(),
+}));
+
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: { info: jest.fn(), error: jest.fn(), warn: jest.fn() },
 }));
@@ -164,6 +169,12 @@ beforeEach(() => {
   }
   // Default project for resolveAccess lookups.
   KanbanProject.findOne.mockResolvedValue(baseProject());
+  // A-277 (ADR-094): every named user is found in the project's tenant unless
+  // a test says otherwise — count answers the number of ids asked for.
+  models.User.count.mockImplementation(async ({ where }) => {
+    const [ids] = Reflect.ownKeys(where.id).map((k) => where.id[k]);
+    return ids.length;
+  });
 });
 
 // ================================================================
@@ -255,27 +266,29 @@ describe("resolveAccess / assertAccess", () => {
 describe("listProjects", () => {
   it("lists all projects for a super admin", async () => {
     KanbanProject.findAll.mockResolvedValueOnce([baseProject()]);
-    KanbanCard.count.mockResolvedValueOnce(3);
+    // P8-04 (ADR-096): one count grouped by project, not one count per board.
+    KanbanCard.count.mockResolvedValueOnce([{ projectId: PID, count: "3" }]);
     const res = await svc.listProjects(superAdmin);
     expect(res).toHaveLength(1);
     expect(res[0].cardCount).toBe(3);
     expect(res[0].myAccess).toBe("owner");
   });
 
-  it("lists member projects (with role id) and swallows resolveAccess errors", async () => {
+  it("lists member projects (with role id); a membership row with no level gives no access", async () => {
     const user = { id: "u", tenantId: TID, role: { id: "r1", name: "USER" } };
     KanbanProjectMember.findAll.mockResolvedValueOnce([{ projectId: PID }]);
     KanbanProject.findAll.mockResolvedValueOnce([baseProject()]);
-    // resolveAccess inside the loop fails -> caught -> myAccess null
-    KanbanProject.findOne.mockResolvedValueOnce(null);
+    KanbanCard.count.mockResolvedValueOnce([]);
     const res = await svc.listProjects(user);
     expect(res[0].myAccess).toBeNull();
+    expect(KanbanProject.findOne).not.toHaveBeenCalled();
   });
 
   it("lists member projects when the user has no role id", async () => {
     const user = { id: "u", tenantId: TID };
     KanbanProjectMember.findAll.mockResolvedValueOnce([]);
     KanbanProject.findAll.mockResolvedValueOnce([baseProject()]);
+    KanbanCard.count.mockResolvedValueOnce([]);
     const res = await svc.listProjects(user);
     expect(res[0].myAccess).toBe(null); // no membership -> null
   });
@@ -393,7 +406,7 @@ describe("updateProject", () => {
     });
     expect(KanbanProject.update).toHaveBeenCalledWith(
       expect.objectContaining({ code: "XY", archivedAt: expect.any(Date) }),
-      { where: { id: PID } },
+      { where: { id: PID }, transaction: "txn" },
     );
     expect(emitToBoard).toHaveBeenCalledWith(
       PID,
@@ -407,14 +420,14 @@ describe("updateProject", () => {
     await svc.updateProject(superAdmin, PID, { code: null, archived: false });
     expect(KanbanProject.update).toHaveBeenCalledWith(
       expect.objectContaining({ code: null, archivedAt: null }),
-      { where: { id: PID } },
+      { where: { id: PID }, transaction: "txn" },
     );
   });
 
   it("patches only the provided field (code/archived omitted)", async () => {
     stubGetProject();
     await svc.updateProject(superAdmin, PID, { name: "N" });
-    expect(KanbanProject.update).toHaveBeenCalledWith({ name: "N" }, { where: { id: PID } });
+    expect(KanbanProject.update).toHaveBeenCalledWith({ name: "N" }, { where: { id: PID }, transaction: "txn" });
   });
 });
 
@@ -492,6 +505,7 @@ describe("members", () => {
     await svc.addMember(superAdmin, PID, { roleId: "r2", accessLevel: "editor" });
     expect(KanbanProjectMember.create).toHaveBeenCalledWith(
       expect.objectContaining({ userId: null, roleId: "r2", accessLevel: "editor" }),
+      { transaction: "txn" },
     );
   });
 
@@ -508,7 +522,7 @@ describe("members", () => {
     const member = { update: jest.fn().mockResolvedValue() };
     KanbanProjectMember.findOne.mockResolvedValueOnce(member);
     await svc.updateMember(superAdmin, PID, "m1", { accessLevel: "editor" });
-    expect(member.update).toHaveBeenCalledWith({ accessLevel: "editor" });
+    expect(member.update).toHaveBeenCalledWith({ accessLevel: "editor" }, { transaction: "txn" });
   });
 
   it("removeMember 404s when missing", async () => {
@@ -595,6 +609,7 @@ describe("columns", () => {
     });
     expect(column.update).toHaveBeenCalledWith(
       expect.objectContaining({ name: "N", wipLimit: 3, position: 1 }),
+      { transaction: "txn" },
     );
   });
 
@@ -602,7 +617,7 @@ describe("columns", () => {
     const column = { id: "c1", isDone: false, update: jest.fn().mockResolvedValue() };
     KanbanColumn.findOne.mockResolvedValueOnce(column);
     await svc.updateColumn(superAdmin, PID, "c1", { wipLimit: 7 });
-    expect(column.update).toHaveBeenCalledWith({ wipLimit: 7 });
+    expect(column.update).toHaveBeenCalledWith({ wipLimit: 7 }, { transaction: "txn" });
   });
 
   it("updateColumn ignores a position write on the Done column", async () => {
@@ -967,6 +982,7 @@ describe("labels", () => {
     await svc.createLabel(superAdmin, PID, { name: "bug" });
     expect(KanbanLabel.create).toHaveBeenCalledWith(
       expect.objectContaining({ color: null }),
+      { transaction: "txn" },
     );
   });
 
@@ -982,21 +998,21 @@ describe("labels", () => {
     const label = { id: "l1", name: "x", color: "#0f0", update: jest.fn().mockResolvedValue() };
     KanbanLabel.findOne.mockResolvedValueOnce(label);
     await svc.updateLabel(superAdmin, PID, "l1", { name: "feat", color: "#0f0" });
-    expect(label.update).toHaveBeenCalledWith({ name: "feat", color: "#0f0" });
+    expect(label.update).toHaveBeenCalledWith({ name: "feat", color: "#0f0" }, { transaction: "txn" });
   });
 
   it("updateLabel patches name only", async () => {
     const label = { id: "l1", name: "x", color: null, update: jest.fn().mockResolvedValue() };
     KanbanLabel.findOne.mockResolvedValueOnce(label);
     await svc.updateLabel(superAdmin, PID, "l1", { name: "only" });
-    expect(label.update).toHaveBeenCalledWith({ name: "only" });
+    expect(label.update).toHaveBeenCalledWith({ name: "only" }, { transaction: "txn" });
   });
 
   it("updateLabel patches color only", async () => {
     const label = { id: "l1", name: "x", color: null, update: jest.fn().mockResolvedValue() };
     KanbanLabel.findOne.mockResolvedValueOnce(label);
     await svc.updateLabel(superAdmin, PID, "l1", { color: "#123" });
-    expect(label.update).toHaveBeenCalledWith({ color: "#123" });
+    expect(label.update).toHaveBeenCalledWith({ color: "#123" }, { transaction: "txn" });
   });
 
   it("deleteLabel 404s when missing", async () => {
@@ -1019,7 +1035,11 @@ describe("labels", () => {
 describe("sprints", () => {
   it("listSprints attaches per-sprint and backlog counts", async () => {
     KanbanSprint.findAll.mockResolvedValueOnce([{ id: "sp1", name: "S1" }]);
-    KanbanCard.count.mockResolvedValueOnce(4).mockResolvedValueOnce(2);
+    // P8-04 (ADR-096): one count grouped by sprint; the NULL group is the backlog.
+    KanbanCard.count.mockResolvedValueOnce([
+      { sprintId: "sp1", count: "4" },
+      { sprintId: null, count: "2" },
+    ]);
     const res = await svc.listSprints(superAdmin, PID);
     expect(res.sprints[0].cardCount).toBe(4);
     expect(res.backlogCount).toBe(2);
@@ -1038,6 +1058,7 @@ describe("sprints", () => {
     });
     expect(KanbanSprint.create).toHaveBeenCalledWith(
       expect.objectContaining({ status: "active", position: 2 }),
+      { transaction: "txn" },
     );
   });
 
@@ -1047,6 +1068,7 @@ describe("sprints", () => {
     await svc.createSprint(superAdmin, PID, { name: "S1" });
     expect(KanbanSprint.create).toHaveBeenCalledWith(
       expect.objectContaining({ status: "planned", position: 5, goal: null }),
+      { transaction: "txn" },
     );
   });
 
@@ -1062,7 +1084,7 @@ describe("sprints", () => {
     const sprint = { id: "sp1", update: jest.fn().mockResolvedValue() };
     KanbanSprint.findOne.mockResolvedValueOnce(sprint);
     await svc.updateSprint(superAdmin, PID, "sp1", { name: "N", status: "completed" });
-    expect(sprint.update).toHaveBeenCalledWith({ name: "N", status: "completed" });
+    expect(sprint.update).toHaveBeenCalledWith({ name: "N", status: "completed" }, { transaction: "txn" });
   });
 
   it("deleteSprint 404s when missing", async () => {
@@ -1418,5 +1440,71 @@ describe("helpers", () => {
     const out = svc._serializeCard({ id: "x", projectId: PID });
     expect(out.assignees).toEqual([]);
     expect(out.labels).toEqual([]);
+  });
+});
+
+// ================================================================
+// P6-11 — every board write commits with one audit row in its transaction
+// ================================================================
+describe("P6-11 — audit rows", () => {
+  const auditService = require("../../services/audit.service");
+  const principal = { userId: "sa", apiKeyId: null, ipAddress: "10.0.0.1", userAgent: "jest" };
+
+  it("updateCard records the card before and after, and never its description", async () => {
+    KanbanCard.findOne.mockResolvedValueOnce(
+      makeCard({ labels: undefined, assignees: [{ id: "a1" }], description: "private notes" }),
+    );
+    KanbanCard.findByPk.mockResolvedValueOnce(makeCard());
+    await svc.updateCard(superAdmin, PID, "cd1", { title: "New", description: "more notes" }, principal);
+    expect(auditService.logAction).toHaveBeenCalledTimes(1);
+    const [entry, options] = auditService.logAction.mock.calls[0];
+    expect(options).toEqual({ transaction: "txn" });
+    expect(entry).toMatchObject({
+      tenantId: TID,
+      userId: "sa",
+      ipAddress: "10.0.0.1",
+      action: "UPDATE",
+      resourceType: "KanbanCard",
+      resourceId: "cd1",
+      changes: {
+        operation: "KANBAN_CARD_UPDATE",
+        projectId: PID,
+        cardKey: "MGT-1",
+        before: { title: "Card", assigneeIds: ["a1"], labelIds: [] },
+        descriptionChanged: true,
+      },
+    });
+    expect(JSON.stringify(entry.changes)).not.toMatch(/notes/);
+  });
+
+  it("updateCard records the labels a card had", async () => {
+    KanbanCard.findOne.mockResolvedValueOnce(makeCard({ labels: [{ id: "l9" }] }));
+    KanbanCard.findByPk.mockResolvedValueOnce(makeCard());
+    await svc.updateCard(superAdmin, PID, "cd1", { labelIds: [] }, principal);
+    expect(auditService.logAction.mock.calls[0][0].changes).toMatchObject({
+      before: { labelIds: ["l9"] },
+      after: { labelIds: [] },
+    });
+  });
+
+  it("without a principal an API-key user is recorded as system:api-key, not as a user", async () => {
+    const key = { id: "key-1", tenantId: TID, role: { name: "SUPER_ADMIN" }, isApiKey: true };
+    KanbanLabel.create.mockResolvedValueOnce({ id: "l1", name: "bug", color: null });
+    await svc.createLabel(key, PID, { name: "bug" });
+    const [entry] = auditService.logAction.mock.calls[0];
+    expect(entry).toMatchObject({ systemActor: "system:api-key", resourceType: "KanbanLabel", resourceId: "l1" });
+    expect(entry.userId).toBeUndefined();
+    expect(entry.changes).toMatchObject({ apiKeyId: "key-1", after: { name: "bug", color: null } });
+  });
+
+  it("without a principal a user is named by the user the service was given", async () => {
+    await svc.createSprint(superAdmin, PID, { name: "S" });
+    expect(auditService.logAction.mock.calls[0][0]).toMatchObject({ userId: "sa", resourceType: "KanbanSprint" });
+  });
+
+  it("a failed audit write fails the write (it cannot commit unattributed), and nothing is broadcast", async () => {
+    auditService.logAction.mockRejectedValueOnce(new Error("audit insert failed"));
+    await expectReject(svc.createColumn(superAdmin, PID, { name: "Review" }, principal), "audit insert failed");
+    expect(emitToBoard).not.toHaveBeenCalled();
   });
 });

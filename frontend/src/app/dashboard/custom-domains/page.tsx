@@ -22,20 +22,31 @@ import {
   type DomainType,
 } from "@/api/services/customDomain.service";
 import { useToastStore } from "@/stores/toastStore";
+import { usePermissions } from "@/hooks/usePermissions";
 
 const TYPES: DomainType[] = ["subdomain", "custom", "vanity"];
 
 // Mirrors the backend's Joi hostname check closely enough to fail fast.
 const HOSTNAME_RE = /^(?=.{1,253}$)([a-z0-9](-?[a-z0-9])*)(\.[a-z0-9](-?[a-z0-9])*)+$/i;
 
-const statusVariant = (s?: string): "default" | "success" | "warning" => {
+// The backend's statuses are pending_verification | active |
+// verification_failed | deleting | deleted (customDomain.model.ts). Matching
+// on "verif" coloured a PENDING and a FAILED domain as success, and the live
+// one (`active`) as neutral.
+const statusVariant = (s?: string): "default" | "success" | "warning" | "danger" => {
   const v = (s || "").toLowerCase();
-  if (v.includes("verif") && !v.includes("un")) return "success";
+  if (v === "active") return "success";
+  if (v.includes("fail")) return "danger";
   if (v.includes("pend")) return "warning";
   return "default";
 };
 
 export default function CustomDomainsPage() {
+  // ADR-102: add, verify, make default and remove are gated on
+  // `custom-domains` write (customDomains.route.js domainWrite); the DNS
+  // records are a read and stay. HEALTHCARE ADMIN holds it read.
+  const { canWrite } = usePermissions();
+  const mayWrite = canWrite("custom-domains");
   const addToast = useToastStore((s) => s.addToast);
 
   const [domains, setDomains] = useState<CustomDomain[]>([]);
@@ -113,6 +124,43 @@ export default function CustomDomainsPage() {
     }
   };
 
+  // F-19: the check is synchronous — the backend answers `{ verified }`
+  // with a 200 either way (customDomains.service verifyDomain), so the toast
+  // reports that answer, not "started".
+  const verify = async (domain: CustomDomain) => {
+    const key = `verify-${domain.id}`;
+    setBusy(key);
+    try {
+      const result = await customDomainService.verify(domain.id);
+      if (result?.verified) {
+        addToast({
+          type: "success",
+          title: "Domain verified",
+          description: `${domain.domain} is now active.`,
+        });
+      } else {
+        const recordName = result?.dnsRecord?.name ?? `_domain_verify.${domain.domain}`;
+        addToast({
+          type: "warning",
+          title: "Domain not verified",
+          description:
+            result?.reason ??
+            `The TXT record ${recordName} was not found with the expected value. ` +
+              "Check it under DNS, then verify again once DNS has propagated (this can take up to 48 hours).",
+        });
+      }
+      await load();
+    } catch (err) {
+      addToast({
+        type: "error",
+        title: "Action failed",
+        description: err instanceof Error ? err.message : undefined,
+      });
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const openDns = async (domain: CustomDomain) => {
     setDnsFor(domain);
     setDnsRecords([]);
@@ -146,7 +194,8 @@ export default function CustomDomainsPage() {
           <div>
             <div className="font-medium">{String(value ?? "")}</div>
             <div className="text-xs text-muted-foreground">
-              {String(row.type ?? "")}
+              {/* The row's attribute is `domainType`; `type` is the create input. */}
+              {String(row.domainType ?? row.type ?? "")}
               {row.sslEnabled === false ? " · SSL off" : " · SSL on"}
             </div>
           </div>
@@ -177,22 +226,18 @@ export default function CustomDomainsPage() {
             <Button size="sm" variant="ghost" onClick={() => openDns(d)}>
               DNS
             </Button>
+            {mayWrite && (
             <Button
               size="sm"
               variant="ghost"
               isLoading={busy === `verify-${d.id}`}
-              onClick={() =>
-                run(
-                  `verify-${d.id}`,
-                  () => customDomainService.verify(d.id),
-                  "Verification started",
-                )
-              }
+              onClick={() => verify(d)}
               leftIcon={<BadgeCheck className="h-4 w-4" />}
             >
               Verify
             </Button>
-            {!d.isDefault && (
+            )}
+            {mayWrite && !d.isDefault && (
               <Button
                 size="sm"
                 variant="ghost"
@@ -209,6 +254,7 @@ export default function CustomDomainsPage() {
                 Make default
               </Button>
             )}
+            {mayWrite && (
             <Button
               size="sm"
               variant="ghost"
@@ -217,6 +263,7 @@ export default function CustomDomainsPage() {
             >
               <Trash2 className="h-4 w-4" />
             </Button>
+            )}
           </div>
         );
       },
@@ -234,12 +281,14 @@ export default function CustomDomainsPage() {
               verify.
             </p>
           </div>
-          <Button
-            onClick={() => setIsAddOpen(true)}
-            leftIcon={<Plus className="h-4 w-4" />}
-          >
-            Add Domain
-          </Button>
+          {mayWrite && (
+            <Button
+              onClick={() => setIsAddOpen(true)}
+              leftIcon={<Plus className="h-4 w-4" />}
+            >
+              Add Domain
+            </Button>
+          )}
         </div>
 
         {error && <Alert variant="error">{error}</Alert>}

@@ -112,8 +112,9 @@ export default function CreateProjectModal({
 
         <div className="grid grid-cols-3 gap-4">
           <div className="col-span-2">
-            <label htmlFor="create-project-1" className="text-sm font-medium text-foreground">Name</label>
+            <label htmlFor="create-project-name" className="text-sm font-medium text-foreground">Name</label>
             <Input
+              id="create-project-name"
               value={form.name}
               onChange={(e) =>
                 setForm((f) => ({ ...f, name: e.target.value }))
@@ -157,8 +158,8 @@ export default function CreateProjectModal({
         </div>
 
         <div className="flex items-center gap-3">
-          <label className="text-sm font-medium text-foreground">Color</label>
-          <input id="create-project-1"
+          <label htmlFor="create-project-color" className="text-sm font-medium text-foreground">Color</label>
+          <input id="create-project-color"
             type="color"
             value={form.color}
             onChange={(e) =>

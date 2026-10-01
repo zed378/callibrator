@@ -321,20 +321,26 @@ export default function ScimPage() {
         {tab === "users" && (
           <Card className="bg-card/50 backdrop-blur-sm border-border">
             <CardContent className="pt-6">
-              <FormField
-                label="Find by email"
-                helperText="Exact match only — the server filters on a full email address."
-              >
-                <div className="flex gap-2">
-                  <Input
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") applySearch();
-                    }}
-                    placeholder="user@example.com"
-                    className="flex-1"
-                  />
+              {/* FormField labels its single child: the Input itself, not a
+                  wrapper <div> (a label on a div names nothing, and the
+                  helper text described the div instead of the field). */}
+              <div className="flex gap-2 items-start">
+                <div className="flex-1">
+                  <FormField
+                    label="Find by email"
+                    helperText="Exact match only — the server filters on a full email address."
+                  >
+                    <Input
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") applySearch();
+                      }}
+                      placeholder="user@example.com"
+                    />
+                  </FormField>
+                </div>
+                <div className="flex gap-2 pt-7">
                   <Button
                     variant="outline"
                     onClick={applySearch}
@@ -355,7 +361,7 @@ export default function ScimPage() {
                     </Button>
                   )}
                 </div>
-              </FormField>
+              </div>
             </CardContent>
           </Card>
         )}

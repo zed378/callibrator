@@ -97,7 +97,8 @@ export default function KanbanProjectsPage() {
               </button>
             ))}
           </div>
-        ) : (
+        ) : error ? null : (
+          // A failed load shows its error above, never "No boards yet".
           <Card>
             <CardContent className="p-16 text-center">
               <KanbanSquare className="mx-auto h-16 w-16 text-muted-foreground" />

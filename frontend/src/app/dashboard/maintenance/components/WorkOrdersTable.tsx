@@ -24,6 +24,12 @@ interface WorkOrdersTableProps {
   hasWriteAccess: boolean;
   openEditModal: (workOrder: WorkOrder) => void;
   handleDeleteClick: (id: string) => void;
+  /**
+   * The list request failed and nothing was ever read. The page's error alert
+   * is then the state — "No work orders found" would claim an empty backlog
+   * (docs/FRONTEND/10-TESTING.md § three-state assertion).
+   */
+  loadFailed?: boolean;
 }
 
 const asNode = (value: unknown) => value as React.ReactNode;
@@ -44,6 +50,7 @@ export const WorkOrdersTable: React.FC<WorkOrdersTableProps> = ({
   hasWriteAccess,
   openEditModal,
   handleDeleteClick,
+  loadFailed = false,
 }) => {
   const getPriorityBadge = (priority: WorkOrder["priority"]) => {
     const maps: Record<
@@ -98,13 +105,15 @@ export const WorkOrdersTable: React.FC<WorkOrdersTableProps> = ({
         {isWorkOrdersLoading ? (
           <TableSkeleton cols={columns.length} rows={5} />
         ) : !workOrders || workOrders.data.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">
-            <Wrench className="h-12 w-12 mx-auto mb-3 opacity-20" />
-            <p className="text-lg font-medium">No work orders found</p>
-            <p className="text-sm">
-              Try adjusting your filters or search terms.
-            </p>
-          </div>
+          loadFailed ? null : (
+            <div className="text-center py-12 text-muted-foreground">
+              <Wrench className="h-12 w-12 mx-auto mb-3 opacity-20" />
+              <p className="text-lg font-medium">No work orders found</p>
+              <p className="text-sm">
+                Try adjusting your filters or search terms.
+              </p>
+            </div>
+          )
         ) : (
           <>
             <Table

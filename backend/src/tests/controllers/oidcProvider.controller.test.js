@@ -15,12 +15,11 @@ jest.mock("../../services/oidcProvider.service", () => ({
   exchangeAuthorizationCode: jest.fn(),
   refreshAccessToken: jest.fn(),
   getUserInfo: jest.fn(),
+  assertTenantExists: jest.fn(),
 }));
 
-jest.mock("../../validators/oidc.validator", () => ({
-  validate: jest.fn((data, schema) => { return { ...data }; }),
-  oidcClientSchema: {},
-}));
+// The validator module is NOT mocked: registerClient's body goes through the
+// real Zod schema, defaults and all.
 
 jest.mock("../../utils/response.util", () => ({
   success: jest.fn(),
@@ -29,7 +28,6 @@ jest.mock("../../utils/response.util", () => ({
 
 const oidcProviderService = require("../../services/oidcProvider.service");
 const oidcProviderController = require("../../controllers/oidcProvider.controller");
-const { validate, oidcClientSchema } = require("../../validators/oidc.validator");
 const { success } = require("../../utils/response.util");
 
 const VALID_TENANT_ID = "550e8400-e29b-41d4-a716-446655440002";
@@ -42,7 +40,6 @@ describe("oidcProvider Controller", () => {
     success.mockImplementation((res, data, meta, message, status) => {
       res.status(status || 200).json({ success: true, data, message });
     });
-    validate.mockImplementation((data, schema) => { return { ...data }; });
     req = {
       body: {},
       params: {},
@@ -142,7 +139,7 @@ describe("oidcProvider Controller", () => {
       await oidcProviderController.decision(req, res, next);
 
       expect(oidcProviderService.decideAuthorization).toHaveBeenCalledWith(
-        "req-1", req.user, true,
+        "req-1", req.user, true, expect.objectContaining({ userId: "user-1", ipAddress: "127.0.0.1" }),
       );
     });
 
@@ -153,7 +150,7 @@ describe("oidcProvider Controller", () => {
       await oidcProviderController.decision(req, res, next);
 
       expect(oidcProviderService.decideAuthorization).toHaveBeenCalledWith(
-        "req-1", req.user, true,
+        "req-1", req.user, true, expect.objectContaining({ userId: "user-1", ipAddress: "127.0.0.1" }),
       );
     });
 
@@ -164,7 +161,18 @@ describe("oidcProvider Controller", () => {
       await oidcProviderController.decision(req, res, next);
 
       expect(oidcProviderService.decideAuthorization).toHaveBeenCalledWith(
-        "req-1", req.user, false,
+        "req-1", req.user, false, expect.objectContaining({ userId: "user-1", ipAddress: "127.0.0.1" }),
+      );
+    });
+
+    it("denies with no request when the POST carries no body", async () => {
+      req.body = undefined;
+      oidcProviderService.decideAuthorization.mockResolvedValue({ redirectTo: "x" });
+
+      await oidcProviderController.decision(req, res, next);
+
+      expect(oidcProviderService.decideAuthorization).toHaveBeenCalledWith(
+        undefined, req.user, false, expect.objectContaining({ userId: "user-1", ipAddress: "127.0.0.1" }),
       );
     });
   });
@@ -331,38 +339,41 @@ describe("oidcProvider Controller", () => {
 
       await oidcProviderController.registerClient(req, res, next);
 
-      expect(validate).toHaveBeenCalledWith(req.body, oidcClientSchema);
-      expect(oidcProviderService.registerClient).toHaveBeenCalledWith(VALID_TENANT_ID, { name: "Test App", redirectUris: ["https://app.example.com/callback"] });
+      expect(oidcProviderService.registerClient).toHaveBeenCalledWith(VALID_TENANT_ID, {
+        name: "Test App",
+        redirectUris: ["https://app.example.com/callback"],
+        scopes: ["openid", "profile", "email"],
+        grantTypes: ["authorization_code"],
+      }, expect.objectContaining({ userId: "user-1", ipAddress: "127.0.0.1" }));
       expect(success).toHaveBeenCalled();
     });
 
     it("should use default scopes and grantTypes", async () => {
       req.body = { name: "Minimal App", redirectUris: ["https://minimal.app/callback"] };
-      validate.mockImplementation((data) => {
-        return {
-          ...data,
-          scopes: ["openid", "profile", "email"],
-          grantTypes: ["authorization_code"],
-        };
-      });
       oidcProviderService.registerClient.mockResolvedValue({ clientId: "c1" });
 
       await oidcProviderController.registerClient(req, res, next);
 
-      expect(oidcProviderService.registerClient).toHaveBeenCalled();
+      expect(oidcProviderService.registerClient).toHaveBeenCalledWith(VALID_TENANT_ID, {
+        name: "Minimal App",
+        redirectUris: ["https://minimal.app/callback"],
+        scopes: ["openid", "profile", "email"],
+        grantTypes: ["authorization_code"],
+      }, expect.objectContaining({ userId: "user-1", ipAddress: "127.0.0.1" }));
       expect(success).toHaveBeenCalled();
     });
 
     it("should return 400 on validation failure", async () => {
-      validate.mockImplementation((data, schema) => {
-        throw { status: 400, message: "Validation failed", errors: { name: "Required" } };
-      });
       req.body = { redirectUris: ["https://app.example.com/callback"] };
 
       await oidcProviderController.registerClient(req, res, next);
 
-      expect(next).toHaveBeenCalled();
-      expect(next.mock.calls[0][0].status).toBe(400);
+      expect(oidcProviderService.registerClient).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalledWith({
+        status: 400,
+        message: "Validation failed",
+        errors: [{ field: "name", message: "Invalid input: expected string, received undefined" }],
+      });
     });
   });
 
@@ -394,7 +405,7 @@ describe("oidcProvider Controller", () => {
 
       await oidcProviderController.rotateSecret(req, res, next);
 
-      expect(oidcProviderService.rotateSecret).toHaveBeenCalledWith(VALID_TENANT_ID, "client-123");
+      expect(oidcProviderService.rotateSecret).toHaveBeenCalledWith(VALID_TENANT_ID, "client-123", expect.objectContaining({ userId: "user-1", ipAddress: "127.0.0.1" }));
       expect(success).toHaveBeenCalled();
     });
   });
@@ -406,7 +417,7 @@ describe("oidcProvider Controller", () => {
 
       await oidcProviderController.deleteClient(req, res, next);
 
-      expect(oidcProviderService.deleteClient).toHaveBeenCalledWith(VALID_TENANT_ID, "client-123");
+      expect(oidcProviderService.deleteClient).toHaveBeenCalledWith(VALID_TENANT_ID, "client-123", expect.objectContaining({ userId: "user-1", ipAddress: "127.0.0.1" }));
       expect(success).toHaveBeenCalled();
     });
 
@@ -417,6 +428,58 @@ describe("oidcProvider Controller", () => {
       await oidcProviderController.deleteClient(req, res, next);
 
       expect(success).toHaveBeenCalled();
+    });
+  });
+
+  // A-280 (ADR-094): the operator names the client's tenant in the path; the
+  // tenant must exist before anything is read or written.
+  describe("A-280 — the tenant named in the path", () => {
+    const TARGET = "550e8400-e29b-41d4-a716-4466554400bb";
+
+    it("getTenantClients lists the named tenant's clients", async () => {
+      req.params = { tenantId: TARGET };
+      oidcProviderService.getClients.mockResolvedValue([]);
+      await oidcProviderController.getTenantClients(req, res, next);
+      expect(oidcProviderService.assertTenantExists).toHaveBeenCalledWith(TARGET);
+      expect(oidcProviderService.getClients).toHaveBeenCalledWith(TARGET);
+    });
+
+    it("registerTenantClient registers in the named tenant, as the operator", async () => {
+      req.params = { tenantId: TARGET };
+      req.body = { name: "PACS", redirectUris: ["https://pacs.example/cb"] };
+      oidcProviderService.registerClient.mockResolvedValue({ clientId: "c1" });
+      await oidcProviderController.registerTenantClient(req, res, next);
+      expect(oidcProviderService.registerClient).toHaveBeenCalledWith(
+        TARGET,
+        expect.objectContaining({ name: "PACS" }),
+        expect.objectContaining({ userId: "user-1", ipAddress: "127.0.0.1" }),
+      );
+    });
+
+    it("registerTenantClient validates before looking the tenant up", async () => {
+      req.params = { tenantId: TARGET };
+      req.body = {};
+      await oidcProviderController.registerTenantClient(req, res, next);
+      expect(oidcProviderService.assertTenantExists).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalledWith(expect.objectContaining({ status: 400 }));
+    });
+
+    it("rotateTenantClientSecret and deleteTenantClient act in the named tenant", async () => {
+      req.params = { tenantId: TARGET, clientId: "c1" };
+      oidcProviderService.rotateSecret.mockResolvedValue({});
+      oidcProviderService.deleteClient.mockResolvedValue({ deleted: true });
+      await oidcProviderController.rotateTenantClientSecret(req, res, next);
+      await oidcProviderController.deleteTenantClient(req, res, next);
+      expect(oidcProviderService.rotateSecret).toHaveBeenCalledWith(TARGET, "c1", expect.objectContaining({ userId: "user-1", ipAddress: "127.0.0.1" }));
+      expect(oidcProviderService.deleteClient).toHaveBeenCalledWith(TARGET, "c1", expect.objectContaining({ userId: "user-1", ipAddress: "127.0.0.1" }));
+    });
+
+    it("a tenant that does not exist stops the request with its 404", async () => {
+      req.params = { tenantId: TARGET, clientId: "c1" };
+      oidcProviderService.assertTenantExists.mockRejectedValue({ status: 404, message: "Tenant not found" });
+      await oidcProviderController.deleteTenantClient(req, res, next);
+      expect(oidcProviderService.deleteClient).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalledWith(expect.objectContaining({ status: 404 }));
     });
   });
 });

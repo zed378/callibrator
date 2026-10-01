@@ -111,7 +111,7 @@ const ADMIN = "99999999-9999-4999-8999-999999999999";
 const DAY = 24 * 60 * 60 * 1000;
 
 const SERVICE_SOURCE = fs.readFileSync(
-  path.join(__dirname, "../../services/tenantLifecycle.service.js"),
+  path.join(__dirname, "../../services/tenantLifecycle.service.ts"),
   "utf8",
 );
 
@@ -215,9 +215,9 @@ describe("W-01 — tenant lifecycle against the real Tenant model", () => {
     it.each([
       ["suspendTenant", (id) => tenantLifecycle.suspendTenant(id, "non-payment", ADMIN), {}],
       ["resumeTenant", (id) => tenantLifecycle.resumeTenant(id, ADMIN), { status: "suspended" }],
-      ["enterGracePeriod", (id) => tenantLifecycle.enterGracePeriod(id), { status: "suspended" }],
+      ["enterGracePeriod", (id) => tenantLifecycle.enterGracePeriod(id, { userId: ADMIN }), { status: "suspended" }],
       ["offboardTenant", (id) => tenantLifecycle.offboardTenant(id), { status: "suspended" }],
-      ["cancelOffboarding", (id) => tenantLifecycle.cancelOffboarding(id), { status: "deleted" }],
+      ["cancelOffboarding", (id) => tenantLifecycle.cancelOffboarding(id, { userId: ADMIN }), { status: "deleted" }],
     ])("%s", async (_name, run, initial) => {
       const baseline = baselineKeys();
       const tenant = persistedTenant(T1, initial);
@@ -232,7 +232,7 @@ describe("W-01 — tenant lifecycle against the real Tenant model", () => {
     it("enterGracePeriod writes grace_period_expires_at", async () => {
       persistedTenant(T1, { status: "suspended" });
 
-      await tenantLifecycle.enterGracePeriod(T1);
+      await tenantLifecycle.enterGracePeriod(T1, { userId: ADMIN });
 
       const [update] = committedUpdates();
       expect(update.sql).toMatch(/"grace_period_expires_at"=\$\d+/);
@@ -302,7 +302,7 @@ describe("W-01 — tenant lifecycle against the real Tenant model", () => {
   describe("offboarding a tenant whose grace period expired", () => {
     const expired = () => new Date(Date.now() - DAY);
 
-    it("offboards it, and one audit row records it, in the same transaction", async () => {
+    it("offboards it, and two audit rows (A-305: PLATFORM and the tenant) record it, in the same transaction", async () => {
       const tenant = persistedTenant(T1, { status: "suspended", gracePeriodExpiresAt: expired() });
       mockRef.graceRows = [tenant];
 
@@ -320,7 +320,14 @@ describe("W-01 — tenant lifecycle against the real Tenant model", () => {
         expect.objectContaining({ tenantId: T1, key: "lifecycle_status", value: "OFFBOARDED" }),
       ]);
 
-      expect(mockRef.ledger.auditRows()).toEqual([
+      // A-305 (ADR-100): the A-165 rule — the platform's trail (which
+      // outlives the offboarded tenant) and the tenant's, one transaction.
+      const { PLATFORM_TENANT_ID } = require("../../constants/platformTenant");
+      expect(mockRef.ledger.auditRows().map((r) => r.tenantId)).toEqual([PLATFORM_TENANT_ID, T1]);
+      expect(mockRef.ledger.auditRows()[0]).toEqual(
+        expect.objectContaining({ ...mockRef.ledger.auditRows()[1], tenantId: PLATFORM_TENANT_ID }),
+      );
+      expect(mockRef.ledger.auditRows().slice(1)).toEqual([
         expect.objectContaining({
           tenantId: T1,
           userId: null,
@@ -378,11 +385,13 @@ describe("W-01 — tenant lifecycle against the real Tenant model", () => {
         expect(store.isSystemTask).toBe(false);
         expect([T1, T2]).toContain(store.tenantId);
       }
+      const { PLATFORM_TENANT_ID } = require("../../constants/platformTenant");
       const audits = mockRef.ledger.auditRows();
-      expect(audits.map((r) => r.tenantId).sort()).toEqual([T1, T2].sort());
-      // The context during each tenant's audit write is that tenant.
+      // A-305: each offboarding writes a PLATFORM row and a tenant row.
+      expect(audits.map((r) => r.tenantId)).toEqual([PLATFORM_TENANT_ID, T1, PLATFORM_TENANT_ID, T2]);
+      // The context during each tenant's audit writes is that tenant.
       const auditContexts = scopedCalls.filter((c) => c.call === "AuditLog.create");
-      expect(auditContexts.map((c) => c.store.tenantId)).toEqual([T1, T2]);
+      expect(auditContexts.map((c) => c.store.tenantId)).toEqual([T1, T1, T2, T2]);
     });
 
     it("one tenant failing does not stop the next", async () => {
@@ -397,7 +406,8 @@ describe("W-01 — tenant lifecycle against the real Tenant model", () => {
         { tenantId: T1, action: "failed", error: "boom" },
         { tenantId: T2, action: "offboarded" },
       ]);
-      expect(mockRef.ledger.auditRows().map((r) => r.tenantId)).toEqual([T2]);
+      const { PLATFORM_TENANT_ID } = require("../../constants/platformTenant");
+      expect(mockRef.ledger.auditRows().map((r) => r.tenantId)).toEqual([PLATFORM_TENANT_ID, T2]);
     });
 
     it("an operator's offboarding names the operator, not the system", async () => {
@@ -409,15 +419,17 @@ describe("W-01 — tenant lifecycle against the real Tenant model", () => {
         userAgent: "ops-console",
       });
 
-      expect(mockRef.ledger.auditRows()).toEqual([
+      const { PLATFORM_TENANT_ID } = require("../../constants/platformTenant");
+      const operatorRow = (tenantId) =>
         expect.objectContaining({
-          tenantId: T1,
+          tenantId,
           userId: ADMIN,
           action: "DELETE",
           ipAddress: "10.0.0.7",
           userAgent: "ops-console",
-        }),
-      ]);
+        });
+      // A-305: PLATFORM and the tenant.
+      expect(mockRef.ledger.auditRows()).toEqual([operatorRow(PLATFORM_TENANT_ID), operatorRow(T1)]);
       expect(mockRef.ledger.auditRows()[0].changes.actor).toBeUndefined();
     });
 
@@ -436,5 +448,168 @@ describe("W-01 — tenant lifecycle against the real Tenant model", () => {
   it("the Tenant under test is the real model on a PostgreSQL-dialect Sequelize", () => {
     expect(mockRef.Tenant.sequelize.getDialect()).toBe("postgres");
     expect(mockRef.Tenant.getTableName()).toBe("tenants");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A-278 / A-279 (ADR-094) — the four operator transitions that wrote no audit
+// row now write two (PLATFORM and the tenant, the A-165 rule) inside the
+// transaction of the change; a failed row leaves the tenant as it was. An
+// offboarded tenant cannot be suspended or resumed (409), and a cancellation
+// of something that is not offboarded is 409, not 400.
+// ---------------------------------------------------------------------------
+describe("A-278 / A-279 — operator lifecycle transitions are audited, and conflicts are 409", () => {
+  const { PLATFORM_TENANT_ID } = require("../../constants/platformTenant");
+  const OPERATOR = { userId: ADMIN, ipAddress: "10.0.0.5", userAgent: "ops-console" };
+
+  beforeEach(() => {
+    mockRef.ledger = createLedger({ cls: false });
+    mockRef.tenants = new Map();
+    mockRef.sql = [];
+    mockRef.contexts = [];
+    jest.spyOn(logger, "info").mockImplementation(() => logger);
+    jest.spyOn(logger, "warn").mockImplementation(() => logger);
+    jest.spyOn(logger, "error").mockImplementation(() => logger);
+  });
+
+  afterEach(() => jest.restoreAllMocks());
+
+  it.each([
+    ["suspendTenant", "TENANT_SUSPEND", {}, (id) => tenantLifecycle.suspendTenant(id, "contract ended", ADMIN, OPERATOR)],
+    ["resumeTenant", "TENANT_RESUME", { status: "suspended" }, (id) => tenantLifecycle.resumeTenant(id, ADMIN, OPERATOR)],
+    ["enterGracePeriod", "TENANT_GRACE_PERIOD", { status: "suspended" }, (id) => tenantLifecycle.enterGracePeriod(id, OPERATOR)],
+    ["cancelOffboarding", "TENANT_CANCEL_OFFBOARDING", { status: "deleted" }, (id) => tenantLifecycle.cancelOffboarding(id, OPERATOR)],
+  ])("%s writes one row under PLATFORM and one under the tenant, committed with the change", async (_n, operation, initial, run) => {
+    const before = persistedTenant(T1, initial).status;
+
+    await run(T1);
+
+    expect(committedUpdates()).toHaveLength(1);
+    const rows = mockRef.ledger.auditRows();
+    expect(rows.map((r) => r.tenantId)).toEqual([PLATFORM_TENANT_ID, T1]);
+    for (const row of rows) {
+      expect(row).toMatchObject({
+        userId: ADMIN,
+        action: "UPDATE",
+        resourceType: "Tenant",
+        resourceId: T1,
+        ipAddress: "10.0.0.5",
+        userAgent: "ops-console",
+        changes: expect.objectContaining({ operation, before: expect.objectContaining({ status: before }) }),
+      });
+    }
+  });
+
+  it("A-305: offboardTenant by the operator writes one row under PLATFORM and one under the tenant, committed with it", async () => {
+    persistedTenant(T1, { status: "suspended" });
+
+    await tenantLifecycle.offboardTenant(T1, false, OPERATOR);
+
+    expect(committedUpdates()).toHaveLength(1);
+    const rows = mockRef.ledger.auditRows();
+    expect(rows.map((r) => r.tenantId)).toEqual([PLATFORM_TENANT_ID, T1]);
+    for (const row of rows) {
+      expect(row).toMatchObject({
+        userId: ADMIN,
+        actorType: "user",
+        action: "DELETE",
+        resourceType: "Tenant",
+        resourceId: T1,
+        ipAddress: "10.0.0.5",
+        userAgent: "ops-console",
+        changes: expect.objectContaining({ operation: "TENANT_OFFBOARD", before: expect.objectContaining({ status: "suspended" }) }),
+      });
+      expect(row.changes).not.toHaveProperty("actor");
+    }
+  });
+
+  it("A-305: a failed second row rolls the offboarding and the first row back", async () => {
+    persistedTenant(T1, { status: "suspended" });
+    const auditService = require("../../services/audit.service");
+    const realLogAction = auditService.logAction;
+    jest
+      .spyOn(auditService, "logAction")
+      .mockImplementationOnce((...args) => realLogAction(...args))
+      .mockRejectedValueOnce(new Error("audit insert failed"));
+
+    await expect(tenantLifecycle.offboardTenant(T1, false, OPERATOR)).rejects.toThrow("audit insert failed");
+
+    expect(committedUpdates()).toEqual([]);
+    expect(mockRef.ledger.committed("tenant_settings")).toEqual([]);
+    expect(mockRef.ledger.auditRows()).toEqual([]);
+  });
+
+  it("a row that cannot be written rolls the change back (no actor: the insert fails closed)", async () => {
+    persistedTenant(T1, { status: "suspended" });
+
+    await expect(tenantLifecycle.enterGracePeriod(T1, {})).rejects.toThrow();
+
+    expect(committedUpdates()).toEqual([]);
+    expect(mockRef.ledger.auditRows()).toEqual([]);
+  });
+
+  it("cancelOffboarding returns the lifecycle setting to ACTIVE with the tenant", async () => {
+    persistedTenant(T1, { status: "deleted", offboardedAt: new Date() });
+
+    await tenantLifecycle.cancelOffboarding(T1, OPERATOR);
+
+    expect(mockRef.ledger.committed("tenant_settings")).toEqual([
+      expect.objectContaining({ tenantId: T1, key: "lifecycle_status", value: "ACTIVE" }),
+    ]);
+  });
+
+  it.each([
+    ["suspendTenant", (id) => tenantLifecycle.suspendTenant(id, "x", ADMIN, OPERATOR), "suspended"],
+    ["resumeTenant", (id) => tenantLifecycle.resumeTenant(id, ADMIN, OPERATOR), "resumed"],
+  ])("%s of an offboarded tenant is 409, and nothing is written", async (_n, run, verb) => {
+    persistedTenant(T1, { status: "deleted", offboardedAt: new Date() });
+
+    const err = await run(T1).catch((e) => e);
+
+    expect(err.status).toBe(409);
+    expect(err.message).toContain(`This tenant is offboarded: it cannot be ${verb}`);
+    expect(committedUpdates()).toEqual([]);
+    expect(mockRef.ledger.auditRows()).toEqual([]);
+  });
+
+  it("cancelOffboarding of a tenant that is not offboarded is 409, naming its state", async () => {
+    persistedTenant(T1, { status: "suspended" });
+
+    const err = await tenantLifecycle.cancelOffboarding(T1, OPERATOR).catch((e) => e);
+
+    expect(err.status).toBe(409);
+    expect(err.message).toContain('This tenant is "suspended", not offboarded');
+    expect(committedUpdates()).toEqual([]);
+  });
+
+  it("an operator suspension already in place is a no-op, with no row", async () => {
+    persistedTenant(T1, { status: "suspended", suspendedBy: ADMIN, suspensionReason: "contract ended" });
+
+    await tenantLifecycle.suspendTenant(T1, "again", ADMIN, OPERATOR);
+
+    expect(committedUpdates()).toEqual([]);
+    expect(mockRef.ledger.auditRows()).toEqual([]);
+  });
+
+  it("A-276: the operator's suspension REPLACES a dunning one, so a payment cannot lift it", async () => {
+    persistedTenant(T1, {
+      status: "suspended",
+      suspendedBy: null,
+      suspensionReason: tenantLifecycle.DUNNING_SUSPENSION_REASON,
+    });
+
+    const tenant = await tenantLifecycle.suspendTenant(T1, "fraud review", ADMIN, OPERATOR);
+
+    expect(tenant.suspendedBy).toBe(ADMIN);
+    expect(tenant.suspensionReason).toBe("fraud review");
+    expect(tenantLifecycle.isDunningSuspension(tenant)).toBe(false);
+    expect(mockRef.ledger.auditRows()).toHaveLength(2);
+  });
+
+  it("the default actor of suspend and resume is the operator id they are given", async () => {
+    persistedTenant(T1);
+    await tenantLifecycle.suspendTenant(T1, "x", ADMIN);
+    await tenantLifecycle.resumeTenant(T1, ADMIN);
+    expect(mockRef.ledger.auditRows().map((r) => r.userId)).toEqual([ADMIN, ADMIN, ADMIN, ADMIN]);
   });
 });

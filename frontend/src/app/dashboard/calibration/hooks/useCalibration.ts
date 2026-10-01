@@ -4,6 +4,8 @@ import { useCalibrationStore } from "@/stores/calibrationStore";
 import { useDeviceStore } from "@/stores/deviceStore";
 import { useAuthStore } from "@/stores/authStore";
 import { Calibration, Certificate } from "@/api/services/calibration.service";
+import { usePermissions } from "@/hooks/usePermissions";
+import { useSearchHandoff } from "@/stores/searchHandoffStore";
 
 /** The "record calibration" form (RecordCalibrationModal). */
 export interface RecordCalibrationForm {
@@ -40,10 +42,12 @@ export function useCalibration() {
     certificateStats,
     isLoading: isCalibLoading,
     error: calibError,
+    lists,
     fetchCalibrations,
     createCalibration,
     fetchCertificates,
     createCertificate,
+    submitCertificate,
     approveCertificate,
     signCertificate,
     revokeCertificate,
@@ -54,8 +58,11 @@ export function useCalibration() {
   const { devices, fetchDevices } = useDeviceStore();
 
   // Navigation tabs
+  // S6: a certificate chosen in the global search opens the certificates tab
+  // filtered to its number. Taken once, at mount.
+  const handedCertificate = useSearchHandoff("certificate");
   const [activeTab, setActiveTab] = useState<"records" | "certificates">(
-    "records",
+    handedCertificate ? "certificates" : "records",
   );
 
   // Pagination states
@@ -70,7 +77,7 @@ export function useCalibration() {
   );
 
   const [certStatusFilter, setCertStatusFilter] = useState<string[]>([]);
-  const [certNumFilter, setCertNumFilter] = useState("");
+  const [certNumFilter, setCertNumFilter] = useState(handedCertificate ?? "");
 
   // Modals state
   const [isRecordModalOpen, setIsRecordModalOpen] = useState(false);
@@ -138,10 +145,13 @@ export function useCalibration() {
     meaning: "Reviewed and approved",
   });
 
-  const hasWriteAccess =
-    user?.role?.name === "SUPERADMIN" ||
-    user?.role?.name === "HEALTHCARE ADMIN" ||
-    user?.role?.name === "WAREHOUSE STAFF";
+  // ADR-102: from the effective permission the API checks, never role names.
+  // Recording a calibration is gated on `calibration` write
+  // (calibrationRecords.route.js); every certificate write — create, submit,
+  // approve, sign, revoke — on `certificate` write (certificates.route.js).
+  const { canWrite } = usePermissions();
+  const canWriteRecords = canWrite("calibration");
+  const canWriteCertificates = canWrite("certificate");
 
   // Initial Loads
   useEffect(() => {
@@ -240,9 +250,36 @@ export function useCalibration() {
     }
   };
 
+  const refetchCertificates = () => {
+    fetchCertificates(
+      certPage,
+      pageSize,
+      undefined,
+      certStatusFilter.length > 0 ? certStatusFilter : undefined,
+      undefined,
+      certNumFilter || undefined,
+    );
+    fetchCertificateStats();
+  };
+
+  // draft → pending_approval. Not a signature, so no modal; a refusal (409,
+  // e.g. it was submitted meanwhile) is shown as the backend explains it.
+  const handleSubmitCertificate = async (cert: Certificate) => {
+    setError(null);
+    try {
+      await submitCertificate(cert.id);
+      refetchCertificates();
+    } catch (err) {
+      // Handled by store (the explanation is shown in the page alert)
+    }
+  };
+
   // Approving is a signed act: it opens a modal to collect credentials rather
   // than firing straight from the row.
   const openApproveModal = (cert: Certificate) => {
+    // The dialog shows the store's error (a refusal of THIS approval) — clear
+    // any earlier one first.
+    setError(null);
     setSelectedCertToApprove(cert);
     setApproveForm({
       authMethod: "password",
@@ -388,6 +425,10 @@ export function useCalibration() {
     certificateStats,
     isCalibLoading,
     calibError,
+    // F-19: each list's own read state (calibrationStore.lists).
+    recordsList: lists.calibrations,
+    certificatesList: lists.certificates,
+    statsList: lists.certificateStats,
     activeTab,
     setActiveTab,
     calibPage,
@@ -431,7 +472,9 @@ export function useCalibration() {
     setRevokeForm,
     approveForm,
     setApproveForm,
-    hasWriteAccess,
+    canWriteRecords,
+    canWriteCertificates,
+    handleSubmitCertificate,
     handleRecordSubmit,
     openCreateCertificateModal,
     handleCertSubmit,

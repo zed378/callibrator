@@ -35,6 +35,10 @@ probes:
     path: /
     initialDelaySeconds: 5
     periodSeconds: 10
+  # P7-06: `/` is server-rendered — the kubelet default of 1s killed Next on a
+  # busy node. The startup probe allows startupFailureThreshold x 5s to start.
+  timeoutSeconds: 5
+  startupFailureThreshold: 36
 
 resources:
   requests:

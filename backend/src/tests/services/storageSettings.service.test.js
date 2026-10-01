@@ -136,7 +136,7 @@ describe("storageSettings — updateSettings", () => {
       accessKeyId: "AK",
       secretAccessKey: "SK",
     });
-    expect(storageConfig.setTenantConfig).toHaveBeenCalledWith(TENANT, s3Input);
+    expect(storageConfig.setTenantConfig).toHaveBeenCalledWith(TENANT, s3Input, null);
     // Order matters: the stale cached driver must be dropped after the save.
     expect(storage.invalidate).toHaveBeenCalledWith(TENANT);
   });
@@ -196,7 +196,7 @@ describe("storageSettings — clearSettings", () => {
   it("clears the override and drops the cached driver", async () => {
     storageConfig.getTenantConfig.mockResolvedValue(null);
     const result = await service.clearSettings(TENANT);
-    expect(storageConfig.clearTenantConfig).toHaveBeenCalledWith(TENANT);
+    expect(storageConfig.clearTenantConfig).toHaveBeenCalledWith(TENANT, null);
     expect(storage.invalidate).toHaveBeenCalledWith(TENANT);
     expect(result).toEqual({ provider: "default", usingPlatformDefault: true });
   });

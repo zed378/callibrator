@@ -271,6 +271,7 @@ afterAll(async () => {
 });
 
 const ORIGINAL_FRONTEND_URL = process.env.FRONTEND_URL;
+const ORIGINAL_SSRF_DEV_ALLOW_HOSTS = process.env.SSRF_DEV_ALLOW_HOSTS;
 
 beforeEach(() => {
   jar = new Map();
@@ -282,6 +283,9 @@ beforeEach(() => {
   idp.publicClient = false;
   oidcJwks.clearCache();
   process.env.FRONTEND_URL = FRONTEND;
+  // A-176: the in-process IdP is on loopback, which the SSRF guard refuses
+  // unless development-allowed (never honoured in production).
+  process.env.SSRF_DEV_ALLOW_HOSTS = "127.0.0.1";
 
   jest
     .spyOn(models.Tenants, "findOne")
@@ -301,6 +305,11 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  if (ORIGINAL_SSRF_DEV_ALLOW_HOSTS === undefined) {
+    delete process.env.SSRF_DEV_ALLOW_HOSTS;
+  } else {
+    process.env.SSRF_DEV_ALLOW_HOSTS = ORIGINAL_SSRF_DEV_ALLOW_HOSTS;
+  }
   if (ORIGINAL_FRONTEND_URL === undefined) {
     delete process.env.FRONTEND_URL;
   } else {
@@ -344,6 +353,7 @@ describe("A-68/A-69: an OIDC sign-in against a real in-process IdP", () => {
     expect(ssoService.provisionUser).toHaveBeenCalledWith(
       TENANT.id,
       expect.objectContaining({ email: USER.email }),
+      expect.objectContaining({ ipAddress: expect.any(String) }),
     );
   });
 
@@ -461,6 +471,7 @@ describe("A-188: discovery, Entra ID's shape and public clients, against the rea
     expect(ssoService.provisionUser).toHaveBeenCalledWith(
       TENANT.id,
       expect.objectContaining({ email: USER.email }),
+      expect.objectContaining({ ipAddress: expect.any(String) }),
     );
   });
 

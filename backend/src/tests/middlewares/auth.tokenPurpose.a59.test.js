@@ -36,6 +36,8 @@
  * browser follows the flows. That needs a running server.
  */
 
+// A-288 (ADR-100): the network policy has its own suites (signInPolicy.*.a288); here it permits.
+jest.mock("../../services/signInPolicy.service", () => ({ assertSignInPermitted: jest.fn(async () => undefined) }));
 jest.mock("../../services/redis.service", () => {
   const mockStore = new Map();
   return {
@@ -354,6 +356,9 @@ const registerAndCaptureActivationToken = async () => {
   });
   jest.spyOn(Users, "findOne").mockResolvedValue(null);
   jest.spyOn(Users, "create").mockResolvedValue({ id: USER_ID });
+  // P6-11: registration writes its audit row in this (fake) transaction; the
+  // row is proved by auth.activationBinding.a191, not here.
+  jest.spyOn(require("../../services/audit.service"), "logAction").mockResolvedValueOnce({});
 
   await authService.registerUser(
     {

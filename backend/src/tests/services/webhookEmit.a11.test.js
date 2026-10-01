@@ -60,7 +60,7 @@ jest.mock("../../config", () => ({
       await tx.commit();
       return result;
     }),
-    query: jest.fn(async () => [[{ seq: 7 }]]), // qms claimNumber
+    query: jest.fn(async () => [{ seq: 7 }]), // qms claimNumber (P9-07: sql(), type SELECT: the rows)
   },
 }));
 
@@ -75,6 +75,13 @@ jest.mock("../../services/webhook.service", () => ({
   }),
 }));
 
+// ADR-107 (Q-50): the sign step's snapshot reads the tenant, device and users
+// through the models barrel this suite doubles; the snapshot itself is
+// certificates.signSnapshot.q50.test.ts's subject, not this suite's.
+jest.mock("../../services/certificateDocument.service", () => ({
+  ...jest.requireActual("../../services/certificateDocument.service"),
+  captureSignedSnapshot: jest.fn(async () => null),
+}));
 jest.mock("../../models", () => ({
   Certificate: { findOne: jest.fn() },
   ESignatureRecord: { create: jest.fn().mockResolvedValue({}) },

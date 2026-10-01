@@ -32,6 +32,7 @@ jest.mock("@/api/services/role.service", () => ({
 }));
 
 import WorkflowsPage from "../page";
+import { grantPermissions, grantSuperAdmin, clearPermissions } from "@/tests/support/permissions";
 
 const instance = (id: string, resourceType: string) => ({
   id,
@@ -53,6 +54,8 @@ const dialogButton = (name: RegExp) => {
 };
 
 beforeEach(() => {
+  // ADR-102: write controls follow the effective permissions.
+  grantPermissions({ workflows: "write", certificate: "write" });
   jest.clearAllMocks();
   mockActionOnInstance.mockResolvedValue({ status: "APPROVED" });
 });
@@ -111,5 +114,43 @@ describe("A-182 — the workflow approval dialog re-authenticates a Certificate 
 
     await waitFor(() => expect(mockActionOnInstance).toHaveBeenCalled());
     expect(mockActionOnInstance).toHaveBeenCalledWith("s1", { action: "APPROVED", comments: undefined });
+  });
+});
+
+/**
+ * ADR-102 — New Workflow / Enable / Delete need `workflows` write; Approve /
+ * Reject need `certificate`, `warehouse` or `maintenance` write
+ * (workflows.route.js). Fail-before: every role got every control.
+ */
+describe("ADR-102 — workflow controls follow the effective permission", () => {
+  const definition = { id: "wf-1", name: "Cert approval", resourceType: "Certificate", isActive: true, steps: [] };
+
+  it("a reader gets no New Workflow, no Enable/Delete and no Approve/Reject", async () => {
+    grantPermissions({ workflows: "read", certificate: "read" });
+    const { workflowService } = jest.requireMock("@/api/services/workflow.service");
+    workflowService.getAll.mockResolvedValueOnce([definition]);
+    mockPending.mockResolvedValue([instance("c1", "Certificate")]);
+    render(<WorkflowsPage />);
+    expect(await screen.findByText("Cert approval")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /New Workflow/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Disable" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete Cert approval" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /My Approvals \(1\)/ }));
+    expect(screen.queryByRole("button", { name: /^Approve$/ })).not.toBeInTheDocument();
+  });
+
+  it("nothing is writable before the permissions load", async () => {
+    clearPermissions();
+    mockPending.mockResolvedValue([]);
+    render(<WorkflowsPage />);
+    await screen.findByRole("button", { name: /My Approvals/ });
+    expect(screen.queryByRole("button", { name: /New Workflow/ })).not.toBeInTheDocument();
+  });
+
+  it("the super admin gets them", async () => {
+    grantSuperAdmin();
+    mockPending.mockResolvedValue([]);
+    render(<WorkflowsPage />);
+    expect(await screen.findByRole("button", { name: /New Workflow/ })).toBeInTheDocument();
   });
 });

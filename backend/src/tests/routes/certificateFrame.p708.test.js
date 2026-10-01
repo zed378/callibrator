@@ -36,7 +36,7 @@ const helmet = require("helmet");
 jest.mock("../../services/certificatePdf.service", () => ({
   verifyByCertificateNumber: jest.fn(),
   getVerifiedDocument: jest.fn(),
-  getOrCreatePdf: jest.fn(),
+  getStoredPdf: jest.fn(),
 }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
@@ -103,7 +103,7 @@ beforeEach(() => {
     success: true,
     data: { absPath: PDF_PATH, fileName: `${NUMBER}.pdf` },
   });
-  certificatePdfService.getOrCreatePdf.mockResolvedValue({
+  certificatePdfService.getStoredPdf.mockResolvedValue({
     success: true,
     data: { absPath: PDF_PATH, fileName: `${NUMBER}.pdf` },
   });

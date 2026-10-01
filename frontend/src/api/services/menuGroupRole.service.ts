@@ -60,6 +60,17 @@ export interface MenuGroupUpdateInput extends Partial<MenuGroupCreateInput> {
   id: string;
 }
 
+/**
+ * ADR-102 — the caller's EFFECTIVE menu permissions, as the API gate computes
+ * them (role grants inherited one level down, replaced by per-user overrides).
+ * `permissions` holds only the slugs the caller has; `superAdmin` passes every
+ * menu gate.
+ */
+export interface EffectivePermissions {
+  superAdmin: boolean;
+  permissions: Record<string, "read" | "write">;
+}
+
 class MenuGroupRoleService {
   /**
    * Get all menu groups (admin view, SUPERADMIN only).
@@ -127,6 +138,20 @@ class MenuGroupRoleService {
       "/api/v1/menu-groups/roles",
     );
     return response?.data || [];
+  }
+
+  /**
+   * ADR-102 — the caller's effective permissions.
+   * Backend route: GET /api/v1/menu-groups/my-permissions
+   */
+  async getMyPermissions(): Promise<EffectivePermissions> {
+    const response = await api.get<BackendListResponse<EffectivePermissions>>(
+      "/api/v1/menu-groups/my-permissions",
+    );
+    return {
+      superAdmin: response?.data?.superAdmin === true,
+      permissions: response?.data?.permissions ?? {},
+    };
   }
 
   /**

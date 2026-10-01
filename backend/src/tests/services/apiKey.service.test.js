@@ -9,10 +9,18 @@ jest.mock("../../models", () => ({
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));
+// A-278 (ADR-094): create and revoke run in a transaction with their audit row.
+jest.mock("../../config", () => ({
+  db: { transaction: jest.fn(async (cb) => cb("tx")) },
+}));
+jest.mock("../../services/audit.service", () => ({
+  logAction: jest.fn().mockResolvedValue({}),
+}));
 
 const crypto = require("crypto");
 const apiKeyService = require("../../services/apiKey.service");
 const { ApiKey } = require("../../models");
+const auditService = require("../../services/audit.service");
 const { DEFAULT_LIMIT, MAX_LIMIT } = require("../../constants");
 
 describe("apiKey.service", () => {
@@ -191,6 +199,7 @@ describe("apiKey.service", () => {
       await apiKeyService.createApiKey("t1", { name: "n", scopes: ["warehouse:read"] });
       expect(ApiKey.create).toHaveBeenCalledWith(
         expect.objectContaining({ expiresAt: null, createdBy: null }),
+        { transaction: "tx" },
       );
     });
 
@@ -200,7 +209,46 @@ describe("apiKey.service", () => {
       await apiKeyService.createApiKey("t1", { name: "n", scopes: ["warehouse:read"], expiresAt, createdBy: "u1" });
       expect(ApiKey.create).toHaveBeenCalledWith(
         expect.objectContaining({ expiresAt, createdBy: "u1" }),
+        { transaction: "tx" },
       );
+    });
+
+    // A-278 (ADR-094)
+    it("records the key's creation in its tenant, in the transaction, never the key or its hash", async () => {
+      ApiKey.create.mockImplementation(async (v) => ({ ...v, id: "k1" }));
+      const res = await apiKeyService.createApiKey(
+        "t1",
+        { name: "n", scopes: ["warehouse:read"], createdBy: "u1" },
+        { userId: "u1", ipAddress: "10.0.0.1", userAgent: "UA" },
+      );
+      expect(auditService.logAction).toHaveBeenCalledWith(
+        {
+          tenantId: "t1",
+          userId: "u1",
+          action: "CREATE",
+          resourceType: "ApiKey",
+          resourceId: "k1",
+          changes: {
+            name: "n",
+            keyPrefix: res.keyPrefix,
+            operation: "API_KEY_CREATE",
+            scopes: ["warehouse:read"],
+            expiresAt: null,
+          },
+          ipAddress: "10.0.0.1",
+          userAgent: "UA",
+        },
+        { transaction: "tx" },
+      );
+      const logged = JSON.stringify(auditService.logAction.mock.calls);
+      expect(logged).not.toContain(res.key);
+      expect(logged).not.toContain(ApiKey.create.mock.calls[0][0].keyHash);
+    });
+
+    it("without an actor, records the creator as the actor", async () => {
+      ApiKey.create.mockImplementation(async (v) => ({ ...v, id: "k1" }));
+      await apiKeyService.createApiKey("t1", { name: "n", scopes: ["warehouse:read"], createdBy: "u1" });
+      expect(auditService.logAction.mock.calls[0][0]).toMatchObject({ userId: "u1", ipAddress: null, userAgent: null });
     });
   });
 
@@ -303,9 +351,36 @@ describe("apiKey.service", () => {
 
       const res = await apiKeyService.revokeApiKey("t1", "k1");
 
-      expect(update).toHaveBeenCalledWith({ isActive: false });
+      expect(update).toHaveBeenCalledWith({ isActive: false }, { transaction: "tx" });
       expect(softDelete).toHaveBeenCalled();
       expect(res).toEqual({ id: "k1" });
+    });
+
+    // A-278 (ADR-094)
+    it("records the revocation in the key's tenant, in the transaction", async () => {
+      const update = jest.fn().mockResolvedValue();
+      const softDelete = jest.fn().mockResolvedValue();
+      ApiKey.findOne.mockResolvedValue({ id: "k1", name: "n", keyPrefix: "cbk_1234", update, softDelete });
+
+      await apiKeyService.revokeApiKey("t1", "k1", { userId: "u1" });
+
+      expect(auditService.logAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: "t1",
+          userId: "u1",
+          action: "DELETE",
+          resourceType: "ApiKey",
+          resourceId: "k1",
+          changes: { name: "n", keyPrefix: "cbk_1234", operation: "API_KEY_REVOKE" },
+        }),
+        { transaction: "tx" },
+      );
+    });
+
+    it("without an actor, records no user (the insert then fails closed)", async () => {
+      ApiKey.findOne.mockResolvedValue({ id: "k1", update: jest.fn(), softDelete: jest.fn() });
+      await apiKeyService.revokeApiKey("t1", "k1");
+      expect(auditService.logAction.mock.calls[0][0]).toMatchObject({ userId: null });
     });
 
     it("throws 404 for an unknown key", async () => {

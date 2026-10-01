@@ -12,9 +12,19 @@
  * OPT-IN — a broker and a database built by db.sync() + migrator.up():
  *
  *   W14_MQTT_LIVE_TEST=1 MQTT_LIVE_HOST=127.0.0.1 MQTT_LIVE_PORT=1883 \
- *   DB_HOST=... DB_PORT=... DB_NAME=... DB_USER=... DB_PASS=... \
+ *   DB_HOST=... DB_PORT=... DB_USER=... DB_PASS=... \
  *     npm test -- src/tests/services/iot.sharedSubscription.w14.live --coverage=false
+ *
+ * ADR-095 O-2: the suite creates its OWN database (DB_USER needs CREATEDB;
+ * DB_NAME is not used), builds it as the backend boots (db.sync() + every
+ * migration, 0091's append-only audit_logs included) and runs as
+ * `callibrator_app` through enterApplicationRole. Its audit rows cannot be
+ * deleted, so it does not clean up: the database is dropped afterwards
+ * (fixtures/disposableDatabase.ts, fixtures/liveBoot.ts).
  */
+const { createDisposableDatabase, LIVE_BOOT_TIMEOUT_MS } = require("../fixtures/disposableDatabase");
+const { bootSchemaAsApplicationRole } = require("../fixtures/liveBoot");
+
 const live = process.env.W14_MQTT_LIVE_TEST === "1" ? describe : describe.skip;
 
 const T = "14141414-0000-4000-8000-0000000000a1";
@@ -23,6 +33,7 @@ const DEVICE = "14141414-0000-4000-8000-0000000000d1";
 live("W-14 — MQTT ingest with two replicas (live broker + PostgreSQL)", () => {
   jest.setTimeout(60000);
   let db;
+  let scratch;
   let replicas;
   let publisher;
 
@@ -43,20 +54,14 @@ live("W-14 — MQTT ingest with two replicas (live broker + PostgreSQL)", () => 
       publisher.publish(`device/${DEVICE}/${T}`, JSON.stringify(payload), { qos: 1 }, (err) => (err ? reject(err) : resolve())),
     );
 
-  const cleanup = async () => {
-    for (const table of ["audit_logs", "notifications", "iot_readings", "calibration_devices"]) {
-      await q(`DELETE FROM ${table} WHERE tenant_id = :t`, { t: T });
-    }
-    await q("DELETE FROM tenants WHERE id = :t", { t: T });
-  };
-
   beforeAll(async () => {
     process.env.MQTT_HOST = process.env.MQTT_LIVE_HOST || "127.0.0.1";
     process.env.MQTT_PORT = process.env.MQTT_LIVE_PORT || "1883";
+    scratch = await createDisposableDatabase("w14");
     ({ db } = require("../../config"));
     db.options.logging = false;
     require("../../models");
-    await cleanup();
+    await bootSchemaAsApplicationRole(db);
     await q(
       `INSERT INTO tenants (id, name, subdomain, email, created_at, updated_at)
        VALUES (:t, 'w14-live', 'w14-live', 'w14@example.test', now(), now())`,
@@ -76,16 +81,18 @@ live("W-14 — MQTT ingest with two replicas (live broker + PostgreSQL)", () => 
     const mqtt = require("mqtt");
     publisher = mqtt.connect(`mqtt://${process.env.MQTT_HOST}:${process.env.MQTT_PORT}`, { clientId: `w14-publisher-${Date.now()}` });
     await new Promise((resolve) => publisher.once("connect", resolve));
-  });
+  }, LIVE_BOOT_TIMEOUT_MS);
 
   afterAll(async () => {
     publisher?.end(true);
     replicas?.forEach((r) => r.disconnect());
     if (db) {
-      await cleanup();
       await db.close();
     }
-  });
+    if (scratch) {
+      await scratch.drop();
+    }
+  }, LIVE_BOOT_TIMEOUT_MS);
 
   it("one publish produces exactly one reading row with two replicas running", async () => {
     await publish({ temperature: 4 });

@@ -73,18 +73,34 @@ spec:
           #
           # A frontend that is healthy while the API is down is CORRECT: it
           # renders error states, which is the right behaviour.
+          #
+          # P7-06 (ADR-106): a startupProbe and an explicit timeout. `/` is a
+          # server-rendered page, and on a busy node the kubelet's default 1s
+          # timeout expired and Next was killed (twice, on a kind cluster)
+          # before it had finished starting: liveness began at 15s with no
+          # startup allowance. Liveness now starts counting only once the
+          # startup probe has passed.
+          startupProbe:
+            httpGet:
+              path: {{ .Values.probes.liveness.path }}
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: {{ .Values.probes.timeoutSeconds | default 5 }}
+            failureThreshold: {{ .Values.probes.startupFailureThreshold | default 36 }}
           livenessProbe:
             httpGet:
               path: {{ .Values.probes.liveness.path }}
               port: http
             initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
             periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.timeoutSeconds | default 5 }}
           readinessProbe:
             httpGet:
               path: {{ .Values.probes.readiness.path }}
               port: http
             initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
             periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.timeoutSeconds | default 5 }}
 
           resources:
             {{- toYaml .Values.resources | nindent 12 }}

@@ -68,7 +68,7 @@ describe("apiKey Controller", () => {
         scopes: ["device.read", "calibration.write"],
         expiresAt: "2027-01-01T00:00:00Z",
         createdBy: VALID_USER_ID,
-      });
+      }, expect.objectContaining({ userId: VALID_USER_ID }));
       expect(res.status).toHaveBeenCalledWith(201);
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -96,7 +96,7 @@ describe("apiKey Controller", () => {
         scopes: undefined,
         expiresAt: undefined,
         createdBy: VALID_USER_ID,
-      });
+      }, expect.objectContaining({ userId: VALID_USER_ID }));
     });
   });
 
@@ -186,7 +186,7 @@ describe("apiKey Controller", () => {
 
       await apiKeyController.revoke(req, res, next);
 
-      expect(apiKeyService.revokeApiKey).toHaveBeenCalledWith(VALID_TENANT_ID, VALID_KEY_ID);
+      expect(apiKeyService.revokeApiKey).toHaveBeenCalledWith(VALID_TENANT_ID, VALID_KEY_ID, expect.objectContaining({ userId: VALID_USER_ID }));
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({

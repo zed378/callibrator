@@ -83,7 +83,10 @@ export default function ReportsPage() {
           <LoadingState />
         ) : (
           <>
-            {activeTab === "overview" && <OverviewSection summary={summary} />}
+            {/* A failed load is the error above — never a section's "no data"
+                state (which, for overdue devices, reads as "all compliant"). The
+                compliance filter stays, so the range can be corrected. */}
+            {activeTab === "overview" && !error && <OverviewSection summary={summary} />}
             {activeTab === "compliance" && (
               <ComplianceSection
                 compliance={compliance}
@@ -94,19 +97,20 @@ export default function ReportsPage() {
                 onApply={handleApplyComplianceRange}
                 onExport={handleExportCompliance}
                 isExporting={isExporting}
+                failed={!!error}
               />
             )}
-            {activeTab === "workload" && (
+            {activeTab === "workload" && !error && (
               <WorkloadSection workload={workload} />
             )}
-            {activeTab === "overdue" && (
+            {activeTab === "overdue" && !error && (
               <OverdueSection
                 overdue={overdue}
                 onExport={handleExportOverdue}
                 isExporting={isExporting}
               />
             )}
-            {activeTab === "inventory" && (
+            {activeTab === "inventory" && !error && (
               <InventorySection
                 inventory={inventory}
                 onExport={handleExportInventory}

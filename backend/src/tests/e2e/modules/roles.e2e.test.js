@@ -18,6 +18,8 @@ const {
   API_BASE,
   defaultHeaders,
 } = require("../setup");
+// P10-16 (ADR-099): no default operator password — set E2E_OPERATOR_PASSWORD (see setup.js).
+const { OPERATOR_PASSWORD } = require("../setup");
 
 // Harness has no PATCH helper; add a local one mirroring its shape.
 async function httpPatch(path, data = {}, headers = {}) {
@@ -37,7 +39,7 @@ async function login() {
   if (token) {return token;}
   const { body } = await httpPost("/auth/login", {
     user: "sys@mail.com",
-    password: "123123",
+    password: OPERATOR_PASSWORD,
   });
   token = extractToken(body);
   return token;

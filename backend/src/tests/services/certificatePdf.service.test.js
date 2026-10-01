@@ -1,8 +1,12 @@
 /**
- * Tests for certificatePdf.service.js
+ * Tests for certificatePdf.service.js — public verification and the PDFs the
+ * backend STORED before M-11 (ADR-095). The backend renders no PDF any more:
+ * the document data and the integrity hashes are certificateDocument.service
+ * (certificateDocument.service.m11.test.ts).
  *
- * Covers: generateCertificatePdf, getOrCreatePdf, verifyByCertificateNumber,
- * computeIntegrityHash, computeSignature
+ * Covers: getStoredPdf, verifyByCertificateNumber (incl. the published
+ * `document` and `integrity`), getVerifiedDocument, and the re-exported
+ * computeIntegrityHash / computeSignature / SIGNATURE_KEY_ID.
  */
 
 jest.mock("../../config", () => ({
@@ -20,36 +24,11 @@ jest.mock("../../models", () => ({
   User: {},
 }));
 
-jest.mock("qrcode", () => ({
-  toDataURL: jest.fn().mockResolvedValue("data:image/png;base64,qrdata"),
-}));
-
 jest.mock("fs", () => ({
-  readFileSync: jest.fn().mockReturnValue("{{tenantName}}"),
-  mkdirSync: jest.fn(),
-  writeFileSync: jest.fn(),
   existsSync: jest.fn().mockReturnValue(false),
-  unlinkSync: jest.fn(),
 }));
 
 jest.mock("../../utils/storagePath.util", () => (...parts) => `C:/uploads/${parts.join("/")}`);
-
-jest.mock("../../middlewares/activityLog.middleware", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
-}));
-
-jest.mock("puppeteer", () => {
-  const mockBrowser = {
-    newPage: jest.fn().mockResolvedValue({
-      setContent: jest.fn().mockResolvedValue(undefined),
-      pdf: jest.fn().mockResolvedValue(Buffer.from("mockpdf")),
-    }),
-    close: jest.fn().mockResolvedValue(undefined),
-  };
-  return {
-    launch: jest.fn().mockResolvedValue(mockBrowser),
-  };
-});
 
 jest.mock("crypto", () => {
   const actual = jest.requireActual("crypto");
@@ -66,20 +45,31 @@ jest.mock("crypto", () => {
   };
 });
 
-const path = require("path");
-const { Certificate } = require("../../models");
-const qrCode = require("qrcode");
+const { Certificate, CalibrationDevice, Tenant, User } = require("../../models");
 const fs = require("fs");
+const service = require("../../services/certificatePdf.service");
+const certificateDocument = require("../../services/certificateDocument.service");
+
 const {
-  generateCertificatePdf,
-  getOrCreatePdf,
+  getStoredPdf,
   verifyByCertificateNumber,
+  getVerifiedDocument,
+  mintDocumentUrl,
   computeIntegrityHash,
   computeSignature,
-} = require("../../services/certificatePdf.service");
+} = service;
 
-const puppeteer = require("puppeteer");
-const { logger } = require("../../middlewares/activityLog.middleware");
+// A-293 (ADR-100): the full verdict needs the certificate's own verification
+// token. These suites describe the FULL verdict, so every row carries TOKEN and
+// every call presents it (verifyFull). The minimal verdict is pinned by
+// routes/certificateVerify.a293.test.ts over the real model.
+const TOKEN = "Zq3v8Xr1TtY0bN4kLmP2sW9aE6hJcF5u";
+const verifyFull = (certificateNumber, options = {}) =>
+  verifyByCertificateNumber(certificateNumber, { ...options, token: TOKEN });
+
+/** The token a minted capability carries. */
+const tokenFor = (certificateNumber) =>
+  new URL(`https://h${mintDocumentUrl(certificateNumber)}`).searchParams.get("token");
 
 describe("certificatePdf.service", () => {
   const ORIGINAL_ENV = { ...process.env };
@@ -91,9 +81,7 @@ describe("certificatePdf.service", () => {
     Certificate.findOne.mockReset();
     fs.existsSync.mockReset();
     fs.existsSync.mockReturnValue(false);
-    fs.unlinkSync.mockReset();
     delete process.env.CERT_VERIFY_BASE_URL;
-    delete process.env.PUPPETEER_EXECUTABLE_PATH;
   });
 
   afterAll(() => {
@@ -101,366 +89,233 @@ describe("certificatePdf.service", () => {
   });
 
   // ================================================================
-  describe("computeIntegrityHash", () => {
-    it("should return a hex hash string", () => {
-      const cert = {
-        certificateNumber: "CERT-001",
-        tenantId: "t-1",
-        deviceId: "d-1",
-        calibrationRecordId: "cr-1",
-        type: "calibration",
-        status: "signed",
-        standard: "ISO 17025",
-        issueDate: new Date("2025-01-01"),
-        validUntil: new Date("2026-01-01"),
-        signedBy: "u-1",
-        signedAt: new Date("2025-06-01"),
-      };
-
-      const hash = computeIntegrityHash(cert);
-
-      expect(typeof hash).toBe("string");
-      expect(hash).toHaveLength(16);
+  describe("renders nothing (M-11, ADR-095)", () => {
+    it("exports no renderer, and re-exports the integrity functions from certificateDocument.service", () => {
+      expect(service.generateCertificatePdf).toBeUndefined();
+      expect(service.getOrCreatePdf).toBeUndefined();
+      expect(computeIntegrityHash).toBe(certificateDocument.computeIntegrityHash);
+      expect(computeSignature).toBe(certificateDocument.computeSignature);
+      expect(service.SIGNATURE_KEY_ID).toBe(certificateDocument.SIGNATURE_KEY_ID);
     });
   });
 
   // ================================================================
-  describe("computeSignature", () => {
-    it("should return an hmac signature", () => {
-      const sig = computeSignature("mock-hash-abc123");
-
-      expect(typeof sig).toBe("string");
-      expect(sig).toHaveLength(21);
-    });
-  });
-
-  // ================================================================
-  describe("generateCertificatePdf", () => {
-    it("should generate a PDF for a valid certificate", async () => {
-      const mockCert = {
-        id: "c-1",
-        certificateNumber: "CERT-001",
-        tenantId: "t-1",
-        status: "approved",
-        type: "calibration",
-        standard: "ISO 17025",
-        issueDate: new Date("2025-01-01"),
-        validUntil: new Date("2026-01-01"),
-        summary: "Passed",
-        conditions: "None",
-        notes: "",
-        tenant: { name: "Test Corp", primaryColor: "#4f46e5" },
-        device: { name: "Micrometer", serialNumber: "SN123", manufacturer: "Mitutoyo", model: "293" },
-        calibratedByUser: { firstName: "John", lastName: "Doe", email: "john@test.com" },
-        approvedByUser: { firstName: "Jane", lastName: "Smith", email: "jane@test.com" },
-        signedByUser: { firstName: "Bob", lastName: "Admin", email: "bob@test.com" },
-        update: jest.fn().mockResolvedValue({}),
-      };
-      Certificate.findOne.mockResolvedValueOnce(mockCert);
-
-      const result = await generateCertificatePdf("t-1", "c-1");
-
-      expect(result.success).toBe(true);
-      // ADR-042 step 4: a storage locator, not a URL under the old static mount.
-      expect(result.data.filePath).toMatch(/^certificates\//);
-      expect(result.data.integrityHash).toBe("mock-hash-abc123");
-      expect(result.data.signature).toBe("mock-signature-xyz789");
-      expect(qrCode.toDataURL).toHaveBeenCalled();
-      expect(fs.writeFileSync).toHaveBeenCalled();
-      expect(mockCert.update).toHaveBeenCalledWith(
-        expect.objectContaining({ filePath: expect.any(String), fileSize: expect.any(Number) }),
-      );
-    });
-
-    it("should return 404 when certificate not found", async () => {
-      Certificate.findOne.mockResolvedValueOnce(null);
-
-      const result = await generateCertificatePdf("t-1", "nonexistent");
-
-      expect(result.success).toBe(false);
-      expect(result.status).toBe(404);
-      expect(result.message).toBe("Certificate not found");
-    });
-
-    it("should render a sparse certificate using every placeholder fallback", async () => {
-      // Every optional field absent: exercises the `||`/`?.` defaults in renderHtml,
-      // buildCanonicalPayload and userName.
-      const mockCert = {
-        id: "c-1",
-        certificateNumber: null,
-        update: jest.fn().mockResolvedValue({}),
-        // no status/type/standard/dates/summary/conditions/notes/tenant/device
-        tenant: null,
-        device: null,
-        calibratedByUser: { email: "nameless@test.com" }, // no first/last name
-        approvedByUser: null,
-        signedByUser: null,
-      };
-      // tenantId omitted -> loadCertificate must query by id alone.
-      Certificate.findOne.mockResolvedValueOnce(mockCert);
-
-      const result = await generateCertificatePdf(null, "c-1");
-
-      expect(result.success).toBe(true);
-      expect(Certificate.findOne).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { id: "c-1" } }),
-      );
-      // A null certificate number used to become "null.pdf". The file name is
-      // now random and owes nothing to the number.
-      expect(fs.writeFileSync).toHaveBeenCalledWith(
-        expect.stringContaining(path.join("C:/uploads/uploads/certificates", "")),
-        expect.any(Buffer),
-      );
-      expect(fs.writeFileSync.mock.calls[0][0]).not.toContain("null.pdf");
-    });
-
-    it("should fall back to the neutral status colour for an unrecognised status", async () => {
-      Certificate.findOne.mockResolvedValueOnce({
-        id: "c-1",
-        certificateNumber: "CERT-ODD",
-        status: "some_unknown_status",
-        update: jest.fn().mockResolvedValue({}),
-      });
-
-      const result = await generateCertificatePdf("t-1", "c-1");
-
-      expect(result.success).toBe(true);
-    });
-
-    it("should scope the lookup by tenant when a tenantId is given", async () => {
-      Certificate.findOne.mockResolvedValueOnce(null);
-
-      await generateCertificatePdf("t-1", "c-1");
-
-      expect(Certificate.findOne).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { id: "c-1", tenantId: "t-1" } }),
-      );
-    });
-
-    it("should render a signed certificate with no watermark and a signer", async () => {
-      const mockCert = {
-        id: "c-1",
-        certificateNumber: "CERT-SIGNED",
-        status: "signed",
-        type: "calibration",
-        tenant: { name: "Acme", primaryColor: "#000" },
-        device: { name: "D" },
-        signedByUser: { firstName: "Bob", lastName: "Admin" },
-        signedAt: new Date("2025-06-01"),
-        update: jest.fn().mockResolvedValue({}),
-      };
-      Certificate.findOne.mockResolvedValueOnce(mockCert);
-
-      const result = await generateCertificatePdf("t-1", "c-1");
-
-      expect(result.success).toBe(true);
-      expect(fs.writeFileSync.mock.calls[0][0]).not.toContain("CERT-SIGNED");
-    });
-
-    it("should render a revoked certificate", async () => {
-      const mockCert = {
-        id: "c-1",
-        certificateNumber: "CERT-REVOKED",
-        status: "revoked",
-        tenant: { name: "Acme" },
-        update: jest.fn().mockResolvedValue({}),
-      };
-      Certificate.findOne.mockResolvedValueOnce(mockCert);
-
-      const result = await generateCertificatePdf("t-1", "c-1");
-
-      expect(result.success).toBe(true);
-    });
-
-    it("should not let the certificate number influence the file name at all", async () => {
-      const mockCert = {
-        id: "c-1",
-        certificateNumber: "../../etc/passwd",
-        status: "draft",
-        update: jest.fn().mockResolvedValue({}),
-      };
-      Certificate.findOne.mockResolvedValueOnce(mockCert);
-
-      const result = await generateCertificatePdf("t-1", "c-1");
-
-      // Sanitising the number was never enough: the sanitised form was still a
-      // counter. The name is now random, so traversal is not even expressible.
-      expect(result.data.filePath).not.toContain("passwd");
-      expect(result.data.filePath).not.toContain("..");
-      expect(fs.writeFileSync.mock.calls[0][0]).not.toContain("/etc/passwd");
-    });
-
-    it("should build the verify URL from CERT_VERIFY_BASE_URL when set", async () => {
-      process.env.CERT_VERIFY_BASE_URL = "https://verify.example.com/";
-      Certificate.findOne.mockResolvedValueOnce({
-        id: "c-1",
-        certificateNumber: "CERT-001",
-        status: "draft",
-        update: jest.fn().mockResolvedValue({}),
-      });
-
-      const result = await generateCertificatePdf("t-1", "c-1");
-
-      expect(result.data.verifyUrl).toBe("https://verify.example.com/CERT-001");
-      expect(qrCode.toDataURL).toHaveBeenCalledWith(
-        "https://verify.example.com/CERT-001",
-        expect.any(Object),
-      );
-    });
-
-    it("should build the verify URL from the caller baseUrl when no env override exists", async () => {
-      Certificate.findOne.mockResolvedValueOnce({
-        id: "c-1",
-        certificateNumber: "CERT-001",
-        status: "draft",
-        update: jest.fn().mockResolvedValue({}),
-      });
-
-      const result = await generateCertificatePdf("t-1", "c-1", { baseUrl: "https://app.test/" });
-
-      expect(result.data.verifyUrl).toBe("https://app.test/api/v1/certificates/verify/CERT-001");
-    });
-
-    it("should pass executablePath to puppeteer when PUPPETEER_EXECUTABLE_PATH is set", async () => {
-      process.env.PUPPETEER_EXECUTABLE_PATH = "/usr/bin/chromium";
-      Certificate.findOne.mockResolvedValueOnce({
-        id: "c-1",
-        certificateNumber: "CERT-001",
-        status: "draft",
-        update: jest.fn().mockResolvedValue({}),
-      });
-
-      await generateCertificatePdf("t-1", "c-1");
-
-      expect(puppeteer.launch).toHaveBeenCalledWith(
-        expect.objectContaining({ executablePath: "/usr/bin/chromium" }),
-      );
-    });
-
-    it("should omit executablePath when PUPPETEER_EXECUTABLE_PATH is unset", async () => {
-      Certificate.findOne.mockResolvedValueOnce({
-        id: "c-1",
-        certificateNumber: "CERT-001",
-        status: "draft",
-        update: jest.fn().mockResolvedValue({}),
-      });
-
-      await generateCertificatePdf("t-1", "c-1");
-
-      expect(puppeteer.launch.mock.calls[0][0]).not.toHaveProperty("executablePath");
-    });
-
-    it("should always close the browser when page.pdf rejects, and propagate the error", async () => {
-      const close = jest.fn().mockResolvedValue(undefined);
-      puppeteer.launch.mockResolvedValueOnce({
-        newPage: jest.fn().mockResolvedValue({
-          setContent: jest.fn().mockResolvedValue(undefined),
-          pdf: jest.fn().mockRejectedValue(new Error("render crashed")),
-        }),
-        close,
-      });
-      const update = jest.fn();
-      Certificate.findOne.mockResolvedValueOnce({
-        id: "c-1",
-        certificateNumber: "CERT-001",
-        status: "draft",
-        update,
-      });
-
-      await expect(generateCertificatePdf("t-1", "c-1")).rejects.toThrow("render crashed");
-
-      expect(close).toHaveBeenCalled();
-      expect(fs.writeFileSync).not.toHaveBeenCalled();
-      expect(update).not.toHaveBeenCalled();
-    });
-  });
-
-  // ================================================================
-  describe("getOrCreatePdf", () => {
-    it("should return cached PDF if it exists", async () => {
+  describe("getStoredPdf — a PDF the backend stored before M-11", () => {
+    it("returns the stored file under its readable download name, looked up in the caller's tenant", async () => {
       fs.existsSync.mockReturnValueOnce(true);
-      const mockCert = {
+      Certificate.findOne.mockResolvedValueOnce({
         id: "c-1",
         certificateNumber: "CERT-001",
-        filePath: "/uploads/certificates/CERT-001.pdf",
+        filePath: "certificates/1758600000000-4242-aaaa.pdf",
         fileSize: 102400,
-      };
-      Certificate.findOne.mockResolvedValueOnce(mockCert);
+      });
 
-      const result = await getOrCreatePdf("t-1", "c-1");
+      const result = await getStoredPdf("t-1", "c-1");
 
-      expect(result.success).toBe(true);
-      expect(result.data.absPath).toContain("CERT-001.pdf");
-      expect(result.data.fileSize).toBe(102400);
+      expect(Certificate.findOne).toHaveBeenCalledWith({
+        where: { id: "c-1", tenantId: "t-1" },
+        attributes: ["id", "certificateNumber", "filePath", "fileSize"],
+      });
+      expect(result).toEqual({
+        success: true,
+        status: 200,
+        data: {
+          absPath: "C:/uploads/uploads/certificates/1758600000000-4242-aaaa.pdf",
+          fileName: "CERT-001.pdf",
+          fileSize: 102400,
+        },
+      });
     });
 
-    it("should generate PDF if not cached", async () => {
-      const mockCert = {
-        id: "c-1",
-        certificateNumber: "CERT-002",
-        tenantId: "t-1",
-        status: "approved",
-        type: "calibration",
-        standard: "ISO 17025",
-        issueDate: new Date("2025-01-01"),
-        validUntil: new Date("2026-01-01"),
-        summary: "Passed",
-        conditions: "None",
-        notes: "",
-        tenant: { name: "Test Corp", primaryColor: "#4f46e5" },
-        device: { name: "Caliper", serialNumber: "SN456", manufacturer: "Mitutoyo", model: "500" },
-        calibratedByUser: { firstName: "John", lastName: "Doe" },
-        approvedByUser: { firstName: "Jane", lastName: "Smith" },
-        signedByUser: null,
-        update: jest.fn().mockResolvedValue({}),
-      };
-      // getOrCreatePdf calls loadCertificate first, then generateCertificatePdf calls it again
-      Certificate.findOne.mockResolvedValue(mockCert);
-
-      const result = await getOrCreatePdf("t-1", "c-1");
-
-      expect(result).toBeDefined();
-      expect(result.success).toBe(true);
-    });
-
-    it("should return 404 when certificate not found", async () => {
+    it("is a 404 when the certificate is not found (missing, deleted or another tenant's)", async () => {
       Certificate.findOne.mockResolvedValueOnce(null);
 
-      const result = await getOrCreatePdf("t-1", "nonexistent");
-
-      expect(result.success).toBe(false);
-      expect(result.status).toBe(404);
+      expect(await getStoredPdf("t-1", "nope")).toEqual({
+        success: false,
+        status: 404,
+        message: "Certificate not found",
+      });
     });
 
-    it("should regenerate when the recorded filePath no longer exists on disk", async () => {
-      const mockCert = {
+    it("renders nothing for a certificate with no stored PDF: a 404 naming the document route", async () => {
+      Certificate.findOne.mockResolvedValueOnce({ id: "c-1", certificateNumber: "CERT-002", filePath: null });
+
+      const result = await getStoredPdf("t-1", "c-1");
+
+      expect(result.status).toBe(404);
+      expect(result.message).toMatch(/GET \/certificates\/:id\/document/);
+      expect(fs.existsSync).not.toHaveBeenCalled();
+    });
+
+    it("is the same 404 when the recorded file is gone from disk", async () => {
+      Certificate.findOne.mockResolvedValueOnce({
         id: "c-1",
         certificateNumber: "CERT-003",
-        status: "draft",
-        filePath: "/uploads/certificates/CERT-003.pdf",
-        fileSize: 10,
-        update: jest.fn().mockResolvedValue({}),
-      };
-      Certificate.findOne.mockResolvedValue(mockCert);
-      fs.existsSync.mockReturnValue(false); // stale DB row, file gone
+        filePath: "certificates/x.pdf",
+      });
+      fs.existsSync.mockReturnValueOnce(false);
 
-      const result = await getOrCreatePdf("t-1", "c-1");
+      const result = await getStoredPdf("t-1", "c-1");
 
-      expect(result.success).toBe(true);
-      expect(result.data.fileName).toBe("CERT-003.pdf");
-      expect(fs.writeFileSync).toHaveBeenCalled();
+      expect(result.status).toBe(404);
+      expect(result.message).toMatch(/no stored PDF/);
     });
 
-    it("should propagate the 404 when generation cannot find the certificate", async () => {
-      // Found on the first load, gone by the time generateCertificatePdf re-loads it.
-      Certificate.findOne
-        .mockResolvedValueOnce({ id: "c-1", certificateNumber: "CERT-004", status: "draft" })
-        .mockResolvedValueOnce(null);
+    it("confines the lookup to the certificates directory whatever the stored value says", async () => {
+      fs.existsSync.mockReturnValueOnce(true);
+      Certificate.findOne.mockResolvedValueOnce({
+        id: "c-1",
+        certificateNumber: "CERT/../004",
+        filePath: "../../../etc/passwd",
+      });
 
-      const result = await getOrCreatePdf("t-1", "c-1");
+      const result = await getStoredPdf("t-1", "c-1");
 
-      expect(result).toEqual({ success: false, status: 404, message: "Certificate not found" });
-      expect(fs.writeFileSync).not.toHaveBeenCalled();
+      expect(result.data.absPath).toBe("C:/uploads/uploads/certificates/passwd");
+      expect(result.data.fileName).toBe("CERT_.._004.pdf");
+    });
+  });
+
+  // ================================================================
+  describe("verifyByCertificateNumber — what is published (M-11)", () => {
+    const signedCert = (over = {}) => ({
+      id: "c-1",
+      certificateNumber: "CERT-100",
+      verificationToken: TOKEN,
+      tenantId: "t-1",
+      deviceId: "d-1",
+      type: "calibration",
+      status: "signed",
+      standard: "ISO 17025",
+      issueDate: new Date("2026-01-01"),
+      validUntil: new Date("2099-01-01"),
+      summary: "Within tolerance",
+      tenant: { name: "RS Harapan" },
+      device: { name: "Infusion pump", serialNumber: "SN-9", manufacturer: "B", model: "M" },
+      calibratedByUser: { firstName: "Ani", lastName: "Putri" },
+      approvedByUser: { firstName: "Budi", lastName: "S" },
+      signedByUser: { firstName: "Citra", lastName: "D" },
+      signedAt: new Date("2026-01-02"),
+      filePath: null,
+      ...over,
+    });
+
+    it("reads with every include required:false and paranoid off", async () => {
+      Certificate.findOne.mockResolvedValueOnce(signedCert());
+
+      await verifyFull("CERT-100");
+
+      const options = Certificate.findOne.mock.calls[0][0];
+      expect(options).toMatchObject({ where: { certificateNumber: "CERT-100" }, paranoid: false });
+      expect(options.include.map((i) => [i.model, i.as, i.required])).toEqual([
+        [CalibrationDevice, "device", false],
+        [Tenant, "tenant", false],
+        [User, "calibratedByUser", false],
+        [User, "approvedByUser", false],
+        [User, "signedByUser", false],
+      ]);
+      // Names only: a staff member's email is never read for a public answer.
+      expect(options.include[2].attributes).toEqual(["id", "firstName", "lastName"]);
+    });
+
+    it("publishes a signed certificate's DOCUMENT (without the server HMAC) and the v2 integrity", async () => {
+      Certificate.findOne.mockResolvedValueOnce(signedCert());
+
+      const { data } = await verifyFull("CERT-100", { baseUrl: "https://x.test" });
+
+      expect(data.document).toMatchObject({
+        certificateNumber: "CERT-100",
+        status: "signed",
+        issuedBy: "RS Harapan",
+        device: { name: "Infusion pump", serialNumber: "SN-9", manufacturer: "B", model: "M" },
+        summary: "Within tolerance",
+        calibratedBy: "Ani Putri",
+        approvedBy: "Budi S",
+        signedBy: "Citra D",
+        verifyUrl: `https://x.test/api/v1/certificates/verify/CERT-100?token=${TOKEN}`,
+      });
+      expect(data.document.integrity).toEqual({
+        scheme: "certificate-content-v2",
+        algorithm: "SHA-256",
+        hash: "mock-hash-abc123",
+        legacyHash: "mock-hash-abc123",
+      });
+      expect(data.integrity).toEqual(data.document.integrity);
+      expect(data.integrityHash).toBe(data.document.integrity.legacyHash);
+      expect(data.signedBy).toBe("Citra D");
+      // No stored file: no stored-document capability.
+      expect(data.documentUrl).toBeNull();
+    });
+
+    it.each(["draft", "pending_approval", "approved", "revoked"])(
+      "publishes no document for a %s certificate",
+      async (status) => {
+        Certificate.findOne.mockResolvedValueOnce(signedCert({ status }));
+
+        const { data } = await verifyFull("CERT-100");
+
+        expect(data.document).toBeNull();
+        expect(data.integrity.hash).toBe("mock-hash-abc123");
+      },
+    );
+
+    it("publishes no document for a withdrawn (soft-deleted) signed certificate", async () => {
+      Certificate.findOne.mockResolvedValueOnce(signedCert({ deletedAt: new Date("2026-09-01") }));
+
+      const { data } = await verifyFull("CERT-100");
+
+      expect(data.withdrawn).toBe(true);
+      expect(data.document).toBeNull();
+    });
+
+    it("still publishes an expired, properly issued certificate's document", async () => {
+      Certificate.findOne.mockResolvedValueOnce(signedCert({ validUntil: new Date("2020-01-01") }));
+
+      const { data } = await verifyFull("CERT-100");
+
+      expect(data.expired).toBe(true);
+      expect(data.document).not.toBeNull();
+    });
+  });
+
+  // ================================================================
+  describe("getVerifiedDocument — the stored PDF behind the verification capability", () => {
+    it("refuses a malformed or expired token before touching the database", async () => {
+      const result = await getVerifiedDocument("CERT-200", "garbage");
+
+      expect(result).toEqual({ success: false, status: 403, message: "Invalid or expired document link" });
+      expect(Certificate.findOne).not.toHaveBeenCalled();
+    });
+
+    it("is a 404 for a certificate that is not signed, has no stored file, or does not exist", async () => {
+      const token = tokenFor("CERT-200");
+      Certificate.findOne.mockResolvedValueOnce({
+        id: "c",
+        certificateNumber: "CERT-200",
+        status: "revoked",
+        filePath: "certificates/a.pdf",
+      });
+      expect((await getVerifiedDocument("CERT-200", token)).status).toBe(404);
+      Certificate.findOne.mockResolvedValueOnce({ id: "c", certificateNumber: "CERT-200", status: "signed", filePath: null });
+      expect((await getVerifiedDocument("CERT-200", token)).status).toBe(404);
+      Certificate.findOne.mockResolvedValueOnce(null);
+      expect((await getVerifiedDocument("CERT-200", token)).status).toBe(404);
+    });
+
+    it("is a 410 when the stored file is gone, and serves it when present", async () => {
+      const token = tokenFor("CERT-200");
+      const row = { id: "c", certificateNumber: "CERT-200", status: "signed", filePath: "certificates/a.pdf" };
+      Certificate.findOne.mockResolvedValueOnce(row);
+      fs.existsSync.mockReturnValueOnce(false);
+      expect((await getVerifiedDocument("CERT-200", token)).status).toBe(410);
+
+      Certificate.findOne.mockResolvedValueOnce(row);
+      fs.existsSync.mockReturnValueOnce(true);
+      expect(await getVerifiedDocument("CERT-200", token)).toEqual({
+        success: true,
+        status: 200,
+        data: { absPath: "C:/uploads/uploads/certificates/a.pdf", fileName: "CERT-200.pdf" },
+      });
     });
   });
 
@@ -470,6 +325,7 @@ describe("certificatePdf.service", () => {
       const mockCert = {
         id: "c-1",
         certificateNumber: "CERT-001",
+        verificationToken: TOKEN,
         type: "calibration",
         standard: "ISO 17025",
         status: "signed",
@@ -484,13 +340,14 @@ describe("certificatePdf.service", () => {
       };
       Certificate.findOne.mockResolvedValueOnce(mockCert);
 
-      const result = await verifyByCertificateNumber("CERT-001");
+      const result = await verifyFull("CERT-001");
 
       expect(result.success).toBe(true);
       expect(result.data.found).toBe(true);
       expect(result.data.valid).toBe(true);
       expect(result.data.status).toBe("signed");
       expect(result.data.integrityHash).toBe("mock-hash-abc123");
+      expect(result.data.signedBy).toBe("Bob Admin");
       // ADR-042 step 4: a capability for this certificate's document, not a path.
       expect(result.data.documentUrl).toMatch(
         /^\/api\/v1\/certificates\/verify\/CERT-001\/document\?token=\d+\./,
@@ -506,6 +363,7 @@ describe("certificatePdf.service", () => {
       const deletedRow = (status) => ({
         id: "c-9",
         certificateNumber: "CERT-009",
+        verificationToken: TOKEN,
         type: "calibration",
         status,
         issueDate: new Date("2025-01-01"),
@@ -521,7 +379,7 @@ describe("certificatePdf.service", () => {
       it("a deleted revoked certificate still says revoked, withdrawn, and not valid", async () => {
         Certificate.findOne.mockImplementationOnce(paranoidAware(deletedRow("revoked")));
 
-        const result = await verifyByCertificateNumber("CERT-009");
+        const result = await verifyFull("CERT-009");
 
         expect(Certificate.findOne.mock.calls[0][0]).toMatchObject({
           where: { certificateNumber: "CERT-009" },
@@ -540,7 +398,7 @@ describe("certificatePdf.service", () => {
       it("a withdrawn signed certificate is never valid and publishes no document", async () => {
         Certificate.findOne.mockImplementationOnce(paranoidAware(deletedRow("signed")));
 
-        const result = await verifyByCertificateNumber("CERT-009");
+        const result = await verifyFull("CERT-009");
 
         expect(result.data).toMatchObject({ found: true, valid: false, withdrawn: true, documentUrl: null });
       });
@@ -550,7 +408,7 @@ describe("certificatePdf.service", () => {
           paranoidAware({ ...deletedRow("signed"), deletedAt: null }),
         );
 
-        const result = await verifyByCertificateNumber("CERT-009");
+        const result = await verifyFull("CERT-009");
 
         expect(result.data).toMatchObject({ valid: true, withdrawn: false });
       });
@@ -559,7 +417,7 @@ describe("certificatePdf.service", () => {
     it("should return not found for unknown certificate number", async () => {
       Certificate.findOne.mockResolvedValueOnce(null);
 
-      const result = await verifyByCertificateNumber("UNKNOWN");
+      const result = await verifyFull("UNKNOWN");
 
       expect(result.success).toBe(true);
       expect(result.data.found).toBe(false);
@@ -571,6 +429,7 @@ describe("certificatePdf.service", () => {
       const mockCert = {
         id: "c-1",
         certificateNumber: "CERT-001",
+        verificationToken: TOKEN,
         status: "revoked",
         type: "calibration",
         standard: "ISO 17025",
@@ -582,7 +441,7 @@ describe("certificatePdf.service", () => {
       };
       Certificate.findOne.mockResolvedValueOnce(mockCert);
 
-      const result = await verifyByCertificateNumber("CERT-001");
+      const result = await verifyFull("CERT-001");
 
       expect(result.data.valid).toBe(false);
       expect(result.data.revoked).toBe(true);
@@ -592,6 +451,7 @@ describe("certificatePdf.service", () => {
       const mockCert = {
         id: "c-1",
         certificateNumber: "CERT-001",
+        verificationToken: TOKEN,
         status: "signed",
         type: "calibration",
         standard: "ISO 17025",
@@ -603,7 +463,7 @@ describe("certificatePdf.service", () => {
       };
       Certificate.findOne.mockResolvedValueOnce(mockCert);
 
-      const result = await verifyByCertificateNumber("CERT-001");
+      const result = await verifyFull("CERT-001");
 
       expect(result.data.valid).toBe(false);
       expect(result.data.expired).toBe(true);
@@ -613,12 +473,13 @@ describe("certificatePdf.service", () => {
       Certificate.findOne.mockResolvedValueOnce({
         id: "c-1",
         certificateNumber: "CERT-005",
+        verificationToken: TOKEN,
         status: "draft",
         type: "calibration",
         // no standard, no tenant, no device, no validUntil, no signer
       });
 
-      const result = await verifyByCertificateNumber("CERT-005");
+      const result = await verifyFull("CERT-005");
 
       expect(result.data).toMatchObject({
         found: true,
@@ -635,12 +496,13 @@ describe("certificatePdf.service", () => {
     it("should treat a draft certificate as not valid even when unexpired", async () => {
       Certificate.findOne.mockResolvedValueOnce({
         certificateNumber: "CERT-006",
+        verificationToken: TOKEN,
         status: "draft",
         validUntil: new Date("2099-01-01"),
         tenant: { name: "Acme" },
       });
 
-      const result = await verifyByCertificateNumber("CERT-006");
+      const result = await verifyFull("CERT-006");
 
       expect(result.data.valid).toBe(false);
       expect(result.data.issuedTo).toBe("Acme");
@@ -649,154 +511,13 @@ describe("certificatePdf.service", () => {
     it("should honour the caller baseUrl in the returned verifyUrl", async () => {
       Certificate.findOne.mockResolvedValueOnce({
         certificateNumber: "CERT-007",
+        verificationToken: TOKEN,
         status: "signed",
       });
 
-      const result = await verifyByCertificateNumber("CERT-007", { baseUrl: "https://x.test" });
+      const result = await verifyFull("CERT-007", { baseUrl: "https://x.test" });
 
-      expect(result.data.verifyUrl).toBe("https://x.test/api/v1/certificates/verify/CERT-007");
-    });
-  });
-
-  // ================================================================
-  // ADR-042 step 1 — S-01: the file name is not the certificate number
-  // ================================================================
-  describe("PDF file naming (ADR-042 step 1 / S-01)", () => {
-    const CERT_DIR = "C:/uploads/uploads/certificates";
-    const UUID_RE = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
-    const RANDOM_NAME = new RegExp(`^\\d+-\\d+-${UUID_RE}\\.pdf$`);
-
-    const certFixture = (over = {}) => ({
-      id: "c-1",
-      certificateNumber: "CERT-20260923-ACME-0001",
-      tenantId: "t-1",
-      status: "signed",
-      tenant: { name: "Acme" },
-      update: jest.fn().mockResolvedValue({}),
-      ...over,
-    });
-
-    it("writes the PDF under a random, unguessable name, not the certificate number", async () => {
-      const mockCert = certFixture();
-      Certificate.findOne.mockResolvedValueOnce(mockCert);
-
-      const result = await generateCertificatePdf("t-1", "c-1");
-
-      const written = fs.writeFileSync.mock.calls[0][0];
-      const fileName = path.basename(written);
-      expect(fileName).toMatch(RANDOM_NAME);
-      expect(fileName).not.toContain("CERT-20260923-ACME-0001");
-      expect(fileName).not.toContain("CERT");
-      expect(result.data.filePath).toBe(`certificates/${fileName}`);
-      expect(mockCert.update).toHaveBeenCalledWith({
-        filePath: result.data.filePath,
-        fileSize: expect.any(Number),
-      });
-    });
-
-    it("gives two certificates issued in sequence unrelated file names", async () => {
-      // The certificate numbers differ by one. The file names must not.
-      const first = certFixture({ certificateNumber: "CERT-20260923-ACME-0001" });
-      const second = certFixture({ id: "c-2", certificateNumber: "CERT-20260923-ACME-0002" });
-
-      Certificate.findOne.mockResolvedValueOnce(first);
-      const r1 = await generateCertificatePdf("t-1", "c-1");
-      Certificate.findOne.mockResolvedValueOnce(second);
-      const r2 = await generateCertificatePdf("t-1", "c-2");
-
-      const n1 = path.basename(r1.data.filePath);
-      const n2 = path.basename(r2.data.filePath);
-
-      expect(n1).toMatch(RANDOM_NAME);
-      expect(n2).toMatch(RANDOM_NAME);
-      expect(n1).not.toBe(n2);
-      // Not derivable: neither name carries the number, its sanitised form, or
-      // the per-tenant prefix a walker would enumerate from.
-      for (const n of [n1, n2]) {
-        expect(n).not.toContain("CERT-20260923-ACME-0001");
-        expect(n).not.toContain("CERT-20260923-ACME-0002");
-        expect(n).not.toContain("CERT_20260923_ACME_0001");
-        expect(n).not.toContain("ACME");
-      }
-      // The unguessable segment really differs between the two — not just the
-      // timestamp prefix, which two certificates issued in the same millisecond
-      // would share.
-      const uuidOf = (n) => n.match(new RegExp(UUID_RE))[0];
-      expect(uuidOf(n1)).not.toBe(uuidOf(n2));
-    });
-
-    it("unlinks the superseded file when a certificate is regenerated", async () => {
-      const mockCert = certFixture({ filePath: "/uploads/certificates/old-random-name.pdf" });
-      Certificate.findOne.mockResolvedValueOnce(mockCert);
-
-      const result = await generateCertificatePdf("t-1", "c-1");
-
-      expect(fs.unlinkSync).toHaveBeenCalledWith(
-        path.join(CERT_DIR, "old-random-name.pdf"),
-      );
-      // The new name differs, so the old URL 404s instead of serving a
-      // superseded document from the unauthenticated mount forever.
-      expect(result.data.filePath).not.toContain("old-random-name");
-      // Unlinked only after the row points at the new file.
-      expect(mockCert.update.mock.invocationCallOrder[0]).toBeLessThan(
-        fs.unlinkSync.mock.invocationCallOrder[0],
-      );
-    });
-
-    it("does not unlink anything when the certificate had no previous file", async () => {
-      Certificate.findOne.mockResolvedValueOnce(certFixture({ filePath: null }));
-
-      await generateCertificatePdf("t-1", "c-1");
-
-      expect(fs.unlinkSync).not.toHaveBeenCalled();
-    });
-
-    it("still succeeds when the superseded file is already gone", async () => {
-      fs.unlinkSync.mockImplementationOnce(() => {
-        const err = new Error("ENOENT: no such file or directory");
-        err.code = "ENOENT";
-        throw err;
-      });
-      Certificate.findOne.mockResolvedValueOnce(
-        certFixture({ filePath: "/uploads/certificates/already-gone.pdf" }),
-      );
-
-      const result = await generateCertificatePdf("t-1", "c-1");
-
-      expect(result.success).toBe(true);
-      expect(logger.warn).toHaveBeenCalledWith(
-        "Superseded certificate PDF could not be removed",
-        expect.objectContaining({ certificateId: "c-1" }),
-      );
-    });
-
-    it("confines the unlink to the certificates directory", async () => {
-      Certificate.findOne.mockResolvedValueOnce(
-        certFixture({ filePath: "/uploads/certificates/../../../etc/passwd" }),
-      );
-
-      await generateCertificatePdf("t-1", "c-1");
-
-      expect(fs.unlinkSync).toHaveBeenCalledWith(path.join(CERT_DIR, "passwd"));
-    });
-
-    it("keeps the download name readable while the file on disk stays random", async () => {
-      // res.download(absPath, fileName): the disk path is the random one, the
-      // saved-as name is still the certificate number.
-      fs.existsSync.mockReturnValueOnce(true);
-      Certificate.findOne.mockResolvedValueOnce({
-        id: "c-1",
-        certificateNumber: "CERT-20260923-ACME-0001",
-        filePath:
-          "/uploads/certificates/1758600000000-4242-11111111-2222-3333-4444-555555555555.pdf",
-        fileSize: 4096,
-      });
-
-      const result = await getOrCreatePdf("t-1", "c-1");
-
-      expect(result.data.fileName).toBe("CERT-20260923-ACME-0001.pdf");
-      expect(result.data.absPath).toContain("1758600000000-4242-");
-      expect(result.data.absPath).not.toContain("CERT-20260923");
+      expect(result.data.verifyUrl).toBe(`https://x.test/api/v1/certificates/verify/CERT-007?token=${TOKEN}`);
     });
   });
 
@@ -808,6 +529,7 @@ describe("certificatePdf.service", () => {
     const withFile = (over) => ({
       id: "c-1",
       certificateNumber: "CERT-20260923-ACME-0001",
+      verificationToken: TOKEN,
       type: "calibration",
       tenant: { name: "Acme" },
       filePath:
@@ -818,7 +540,7 @@ describe("certificatePdf.service", () => {
     it("does not publish the document of a draft certificate", async () => {
       Certificate.findOne.mockResolvedValueOnce(withFile({ status: "draft" }));
 
-      const result = await verifyByCertificateNumber("CERT-20260923-ACME-0001");
+      const result = await verifyFull("CERT-20260923-ACME-0001");
 
       expect(result.data.found).toBe(true);
       expect(result.data.valid).toBe(false);
@@ -829,7 +551,7 @@ describe("certificatePdf.service", () => {
     it("does not publish the document of a certificate awaiting approval", async () => {
       Certificate.findOne.mockResolvedValueOnce(withFile({ status: "pending_approval" }));
 
-      const result = await verifyByCertificateNumber("CERT-20260923-ACME-0001");
+      const result = await verifyFull("CERT-20260923-ACME-0001");
 
       expect(result.data.documentUrl).toBeNull();
     });
@@ -838,7 +560,7 @@ describe("certificatePdf.service", () => {
       const cert = withFile({ status: "signed", validUntil: new Date("2099-01-01") });
       Certificate.findOne.mockResolvedValueOnce(cert);
 
-      const result = await verifyByCertificateNumber("CERT-20260923-ACME-0001");
+      const result = await verifyFull("CERT-20260923-ACME-0001");
 
       expect(result.data.valid).toBe(true);
       // API-origin-relative: the verify page renders `${API_BASE_URL}${documentUrl}`.
@@ -854,7 +576,7 @@ describe("certificatePdf.service", () => {
       // gate in certificatePdf.service.js.
       Certificate.findOne.mockResolvedValueOnce(withFile({ status: "revoked" }));
 
-      const result = await verifyByCertificateNumber("CERT-20260923-ACME-0001");
+      const result = await verifyFull("CERT-20260923-ACME-0001");
 
       expect(result.data.revoked).toBe(true);
       expect(result.data.status).toBe("revoked");
@@ -866,7 +588,7 @@ describe("certificatePdf.service", () => {
       const cert = withFile({ status: "signed", validUntil: new Date("2020-01-01") });
       Certificate.findOne.mockResolvedValueOnce(cert);
 
-      const result = await verifyByCertificateNumber("CERT-20260923-ACME-0001");
+      const result = await verifyFull("CERT-20260923-ACME-0001");
 
       expect(result.data.expired).toBe(true);
       expect(result.data.valid).toBe(false);
@@ -876,16 +598,16 @@ describe("certificatePdf.service", () => {
     it("returns null rather than undefined when an issued certificate has no file yet", async () => {
       Certificate.findOne.mockResolvedValueOnce(withFile({ status: "signed", filePath: null }));
 
-      const result = await verifyByCertificateNumber("CERT-20260923-ACME-0001");
+      const result = await verifyFull("CERT-20260923-ACME-0001");
 
       expect(result.data.documentUrl).toBeNull();
     });
 
     it("adds no new distinguisher between a nonexistent and an unissued certificate", async () => {
       Certificate.findOne.mockResolvedValueOnce(null);
-      const missing = await verifyByCertificateNumber("CERT-20260923-ACME-9999");
+      const missing = await verifyFull("CERT-20260923-ACME-9999");
       Certificate.findOne.mockResolvedValueOnce(withFile({ status: "draft" }));
-      const unissued = await verifyByCertificateNumber("CERT-20260923-ACME-0001");
+      const unissued = await verifyFull("CERT-20260923-ACME-0001");
 
       // Both withhold the document, so the gate introduces no oracle of its own.
       // (The pre-existing disclosure of tenant/device/date fields for a found
@@ -894,6 +616,55 @@ describe("certificatePdf.service", () => {
       expect(unissued.data.documentUrl).toBeNull();
       expect(missing.data.found).toBe(false);
       expect(unissued.data.found).toBe(true);
+    });
+  });
+
+  // ================================================================
+  // A-293 (ADR-100) — without the certificate's own token, the minimal verdict.
+  // ================================================================
+  describe("verifyByCertificateNumber — the minimal verdict (A-293)", () => {
+    const sparse = {
+      certificateNumber: "CERT-008",
+      status: "signed",
+      type: "calibration",
+      verificationToken: TOKEN,
+      device: { name: "Pump", serialNumber: "SN-8" },
+      signedByUser: { firstName: "Dewi", lastName: "S" },
+    };
+
+    it("a sparse certificate with no issuer: issuedTo null, and nothing identifying", async () => {
+      Certificate.findOne.mockResolvedValueOnce(sparse);
+
+      const { data } = await verifyByCertificateNumber("CERT-008");
+
+      expect(data).toEqual({
+        found: true,
+        valid: true,
+        status: "signed",
+        revoked: false,
+        expired: false,
+        withdrawn: false,
+        certificateNumber: "CERT-008",
+        type: "calibration",
+        issuedTo: null,
+        issueDate: undefined,
+        validUntil: undefined,
+        integrity: {
+          scheme: "certificate-content-v2",
+          algorithm: "SHA-256",
+          hash: "mock-hash-abc123",
+          legacyHash: "mock-hash-abc123",
+        },
+        disclosure: "minimal",
+      });
+    });
+
+    it("a row with no token never matches, even a presented one", async () => {
+      Certificate.findOne.mockResolvedValueOnce({ ...sparse, verificationToken: null });
+
+      const { data } = await verifyByCertificateNumber("CERT-008", { token: TOKEN });
+
+      expect(data.disclosure).toBe("minimal");
     });
   });
 });

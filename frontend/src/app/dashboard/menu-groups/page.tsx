@@ -1,7 +1,9 @@
 // src/app/dashboard/menu-groups/page.tsx
 "use client";
 
+import { useState } from "react";
 import { Loader2 } from "lucide-react";
+import { ConfirmDialog } from "@/components/ui";
 import DashboardLayout from "@/components/layouts/DashboardLayout";
 import { useMenuGroups } from "./hooks/useMenuGroups";
 import { useMenuGroupCrud } from "./hooks/useMenuGroupCrud";
@@ -22,6 +24,10 @@ export default function MenuGroupsPage() {
     menuGroups,
     selectedRoleId,
     setSelectedRoleId,
+    selectedGroupIds,
+    allSelected,
+    toggleSelected,
+    toggleSelectAll,
     loading,
     actionLoading,
     assignNotes,
@@ -57,7 +63,15 @@ export default function MenuGroupsPage() {
     confirmDelete,
   } = useMenuGroupCrud({ showToast, onMutated: refresh });
 
-  const handleSelectAllAssigned = () => {};
+  // A-300: a bulk revoke takes pages away from every user of the role, so it
+  // is confirmed, naming how many groups and which role.
+  const [confirmBulkRevoke, setConfirmBulkRevoke] = useState(false);
+  const selectedRole = roles.find((r) => r.id === selectedRoleId);
+  const roleLabel = selectedRole?.nameToShow || selectedRole?.name || "this role";
+  const confirmRevoke = async () => {
+    await handleBulkRevoke();
+    setConfirmBulkRevoke(false);
+  };
 
   if (loading) {
     return (
@@ -95,12 +109,25 @@ export default function MenuGroupsPage() {
               onToggleGroup={toggleAssign}
               onAssignGroup={handleAssign}
               onRevokeGroup={handleRevoke}
-              onToggleAll={handleSelectAllAssigned}
+              selectedIds={selectedGroupIds}
+              allSelected={allSelected}
+              onToggleSelect={toggleSelected}
+              onToggleAll={toggleSelectAll}
               onBulkAssign={handleBulkAssign}
-              onBulkRevoke={handleBulkRevoke}
+              onBulkRevoke={() => setConfirmBulkRevoke(true)}
               onToggleItem={toggleItemAssign}
               onEditGroup={isSuperAdmin ? openEditModal : undefined}
               onDeleteGroup={isSuperAdmin ? handleDeleteClick : undefined}
+            />
+            <ConfirmDialog
+              isOpen={confirmBulkRevoke}
+              title="Revoke selected menu groups"
+              description={`Revoke ${selectedGroupIds.length} selected menu group(s) from ${roleLabel}? Users with this role lose access to those pages. You can assign them again later.`}
+              confirmLabel="Revoke"
+              variant="danger"
+              isLoading={actionLoading}
+              onConfirm={confirmRevoke}
+              onCancel={() => setConfirmBulkRevoke(false)}
             />
             <AssignNotesField
               value={assignNotes}

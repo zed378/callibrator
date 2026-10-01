@@ -33,7 +33,7 @@ exports.getKeyPairs = asyncHandler(async (req, res) => {
 exports.createKeyPair = asyncHandler(async (req, res) => {
   const { tenantId } = req.user;
 
-  const result = await eSignatureService.generateKeyPair(tenantId);
+  const result = await eSignatureService.generateKeyPair(tenantId, auditActor(req));
 
   // success(res, data, meta, message, statusCode) — passing 201 third put it
   // in `meta` and left the response at HTTP 200.
@@ -47,9 +47,10 @@ exports.deleteKeyPair = asyncHandler(async (req, res) => {
   const { keyPairId } = req.params;
   const { tenantId } = req.user;
 
-  await eSignatureService.deleteKeyPair(keyPairId, tenantId);
+  await eSignatureService.deleteKeyPair(keyPairId, tenantId, auditActor(req));
 
-  return success(res, null, "Key pair deleted");
+  // success(res, data, meta, message): the message was passed as `meta`.
+  return success(res, null, null, "Key pair deleted");
 });
 
 /**

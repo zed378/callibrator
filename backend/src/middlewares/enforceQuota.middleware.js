@@ -6,10 +6,10 @@
 const quotaService = require("../services/quota.service");
 const { AppError } = require("../utils/appError.util");
 
-const isSuperAdmin = (req) => {
-  const name = req.user?.role?.name;
-  return name === "SUPER_ADMIN" || name === "SUPERADMIN";
-};
+// N-01: the one super-admin predicate (utils/role.util.ts).
+const { isSuperAdmin: isSuperAdminPrincipal } = require("../utils/role.util");
+
+const isSuperAdmin = (req) => isSuperAdminPrincipal(req.user);
 
 /**
  * Block user creation once the tenant's seat limit is reached.
