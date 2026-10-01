@@ -6,14 +6,16 @@
  * lockout/MFA branches, and the OTP queue's failure handling.
  *
  * Mocking notes (this repo has a history of mocks that hide bugs):
- *  - The auth VALIDATOR is NOT stubbed wholesale: `validate` wraps the real Joi
- *    implementation, so schemas genuinely run. Only two provably-unreachable
- *    defensive guards override it, and each says so inline.
+ *  - The auth VALIDATOR is NOT stubbed: the real Zod schemas run through the
+ *    real `checkInput` (validators/input), which is only spy-wrapped. Only
+ *    provably-unreachable defensive guards override it, and each says so inline.
  *  - `cacheKeys` is the REAL object from redis.service. Do not fabricate keys on
  *    it — auth.service.js:567 already calls a `cacheKeys.userSessions` that does
  *    not exist, and a fabricated mock is what has been hiding that.
  */
 
+// A-288 (ADR-100): the network policy has its own suites (signInPolicy.*.a288); here it permits.
+jest.mock("../../services/signInPolicy.service", () => ({ assertSignInPermitted: jest.fn(async () => undefined) }));
 jest.mock("../../config", () => ({
   db: { transaction: jest.fn() },
 }));
@@ -66,11 +68,11 @@ jest.mock("../../services/session.service", () => ({
   revokeAllSessions: jest.fn(),
 }));
 
-// Real Joi schemas + real formatErrors; only `validate` is spy-wrapped so the
-// two dead defensive guards below can be reached.
-jest.mock("../../validators/auth.validator", () => {
-  const actual = jest.requireActual("../../validators/auth.validator");
-  return { ...actual, validate: jest.fn(actual.validate) };
+// Real Zod schemas + the real checkInput; checkInput is only spy-wrapped so
+// the dead defensive guard below can be reached.
+jest.mock("../../validators/input", () => {
+  const actual = jest.requireActual("../../validators/input");
+  return { ...actual, checkInput: jest.fn(actual.checkInput) };
 });
 
 // Real cacheKeys (see header note); only the IO functions are stubbed.
@@ -103,7 +105,7 @@ const {
   queueOtpEmail,
 } = require("../../services/emailQueue.service");
 const { createSession } = require("../../services/session.service");
-const { validate: validateInput } = require("../../validators/auth.validator");
+const { checkInput } = require("../../validators/input");
 const {
   acquireLock,
   releaseLock,
@@ -186,12 +188,14 @@ describe("auth.service (coverage)", () => {
 
       expect(err.status).toBe(400);
       expect(err.message).toBe("Validation failed");
-      // details come from the real formatErrors(error.details)
-      expect(err.details).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ field: "firstName" }),
-        ]),
-      );
+      // details are the real checkInput field errors
+      expect(err.details).toEqual([
+        { field: "firstName", message: "Too small: expected string to have >=2 characters" },
+        { field: "username", message: "Too small: expected string to have >=3 characters" },
+        { field: "email", message: "Invalid email address" },
+        { field: "password", message: "Too small: expected string to have >=8 characters" },
+        { field: "password", message: "Password must contain uppercase, lowercase, and number" },
+      ]);
       expect(acquireLock).not.toHaveBeenCalled();
       expect(db.transaction).not.toHaveBeenCalled();
     });
@@ -256,50 +260,80 @@ describe("auth.service (coverage)", () => {
 
       expect(result).toEqual({
         success: true,
-        status: 201,
-        message: "Registration successful",
+        status: 202,
+        message: "If the address can be registered, an activation link has been sent",
       });
     });
   });
 
   // ================================================================
-  describe("registerUser — duplicates", () => {
-    it("rejects a duplicate email and rolls the transaction back", async () => {
+  describe("registerUser — duplicates (P10-12, A-290: no account oracle)", () => {
+    const NEUTRAL = {
+      success: true,
+      status: 202,
+      message: "If the address can be registered, an activation link has been sent",
+    };
+
+    it("answers a taken email exactly like a new registration, rolls back, hashes, writes and mails nothing", async () => {
       const transaction = makeTransaction();
       db.transaction.mockResolvedValue(transaction);
       Users.findOne.mockResolvedValue({ id: "existing", email: "ada@example.com" });
 
-      const err = await registerUser(VALID_REGISTRATION).catch((e) => e);
+      const result = await registerUser(VALID_REGISTRATION);
 
-      expect(err.status).toBe(409);
-      expect(err.message).toBe("Email already registered");
+      expect(result).toEqual(NEUTRAL);
       expect(transaction.rollback).toHaveBeenCalledTimes(1);
+      expect(transaction.commit).not.toHaveBeenCalled();
+      // The same bcrypt cost as a new registration, so timing does not tell them apart.
+      expect(hashPassword).toHaveBeenCalledWith("Str0ngPassw0rd");
       expect(Users.create).not.toHaveBeenCalled();
+      expect(queueActivationEmail).not.toHaveBeenCalled();
+      expect(generatePurposeToken).not.toHaveBeenCalled();
+      // A taken email needs no username lookup.
+      expect(Users.findOne).toHaveBeenCalledTimes(1);
       expect(Users.findOne).toHaveBeenNthCalledWith(1, {
         where: { email: "ada@example.com" },
         transaction,
         lock: "UPDATE",
       });
+      expect(logger.info).toHaveBeenCalledWith("Registration not created: the identity is taken", { field: "email" });
     });
 
-    it("rejects a duplicate username and rolls the transaction back", async () => {
+    it("answers a taken username exactly like a new registration, rolls back, writes and mails nothing", async () => {
       const transaction = makeTransaction();
       db.transaction.mockResolvedValue(transaction);
       Users.findOne
         .mockResolvedValueOnce(null) // email is free
         .mockResolvedValueOnce({ id: "existing", username: "adalovelace" });
 
-      const err = await registerUser(VALID_REGISTRATION).catch((e) => e);
+      const result = await registerUser(VALID_REGISTRATION);
 
-      expect(err.status).toBe(409);
-      expect(err.message).toBe("Username already used");
+      expect(result).toEqual(NEUTRAL);
       expect(transaction.rollback).toHaveBeenCalledTimes(1);
+      expect(hashPassword).toHaveBeenCalledWith("Str0ngPassw0rd");
       expect(Users.create).not.toHaveBeenCalled();
+      expect(queueActivationEmail).not.toHaveBeenCalled();
       expect(Users.findOne).toHaveBeenNthCalledWith(2, {
         where: { username: "adalovelace" },
         transaction,
         lock: "UPDATE",
       });
+      expect(logger.info).toHaveBeenCalledWith("Registration not created: the identity is taken", { field: "username" });
+    });
+
+    it("gives the new, taken-email and taken-username cases a deep-equal answer", async () => {
+      const answers = [];
+      for (const found of [[null, null], [{ id: "e" }], [null, { id: "u" }]]) {
+        db.transaction.mockResolvedValue(makeTransaction());
+        Users.findOne.mockReset();
+        for (const row of found) {
+          Users.findOne.mockResolvedValueOnce(row);
+        }
+        Users.create.mockResolvedValue({ id: "user-1" });
+        answers.push(await registerUser(VALID_REGISTRATION, "https://app.test"));
+      }
+      expect(answers[1]).toEqual(answers[0]);
+      expect(answers[2]).toEqual(answers[0]);
     });
   });
 
@@ -315,8 +349,8 @@ describe("auth.service (coverage)", () => {
 
       expect(result).toEqual({
         success: true,
-        status: 201,
-        message: "Registration successful",
+        status: 202,
+        message: "If the address can be registered, an activation link has been sent",
       });
       expect(Users.create).toHaveBeenCalledWith(
         {
@@ -363,7 +397,7 @@ describe("auth.service (coverage)", () => {
 
       const result = await registerUser(VALID_REGISTRATION);
 
-      expect(result.status).toBe(201);
+      expect(result.status).toBe(202);
       expect(transaction.commit).toHaveBeenCalled();
     });
 
@@ -382,7 +416,7 @@ describe("auth.service (coverage)", () => {
 
       const result = await registerUser(VALID_REGISTRATION, "https://app.test");
 
-      expect(result.status).toBe(201);
+      expect(result.status).toBe(202);
       expect(transaction.commit).toHaveBeenCalled();
       expect(logger.warn).toHaveBeenCalledWith("queueActivationEmail failed", {
         err: "rabbitmq unreachable",
@@ -469,9 +503,9 @@ describe("auth.service (coverage)", () => {
     it("throws 401 when the resolved identifier is not a string", async () => {
       // Defensive guard: the real loginSchema requires one of user/username/email
       // and types them all as strings, so this state is unreachable through it.
-      // `validate` is overridden for this single call to exercise the guard.
-      validateInput.mockReturnValueOnce({
-        error: null,
+      // `checkInput` is overridden for this single call to exercise the guard.
+      checkInput.mockReturnValueOnce({
+        ok: true,
         value: { password: "Str0ngPassw0rd" },
       });
 

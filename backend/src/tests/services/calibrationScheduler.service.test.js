@@ -169,6 +169,9 @@ describe("calibrationScheduler.service", () => {
       {
         tenantId: "t1",
         systemActor: "system:calibration-scan",
+        // A-282 (ADR-100): auditEntryActor names no request address for a job.
+        ipAddress: null,
+        userAgent: null,
         action: "CREATE",
         resourceType: "Notification",
         resourceId: "n1",
@@ -204,6 +207,22 @@ describe("calibrationScheduler.service", () => {
       ipAddress: "10.0.0.1",
       userAgent: "ua",
     });
+  });
+
+  it("A-282: a manual run by an API key is system:api-key, the key in changes — never the key as a user or the job", async () => {
+    CalibrationDevice.findAll.mockResolvedValue([
+      { id: "d1", tenantId: "t1", name: "Dev", nextCalibrationDate: new Date("2020-01-01") },
+    ]);
+    MaintenanceWorkOrder.findAll.mockResolvedValue([]);
+    const actor = { userId: null, apiKeyId: "k1", ipAddress: null, userAgent: null };
+
+    await scheduler.runCalibrationScan({ tenantId: "t1", actor });
+
+    const [entry] = auditService.logAction.mock.calls[0];
+    expect(entry).toMatchObject({ systemActor: "system:api-key" });
+    expect(entry).not.toHaveProperty("userId");
+    expect(entry.changes.apiKeyId).toBe("k1");
+    expect(maintenanceService.createAutoScheduledWorkOrders.mock.calls[0][2]).toBe(actor);
   });
 
   it("W-04: a failed audit insert means no notification is counted", async () => {

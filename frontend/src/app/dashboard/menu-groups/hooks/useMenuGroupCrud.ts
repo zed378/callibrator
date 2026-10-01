@@ -1,7 +1,7 @@
 // src/app/dashboard/menu-groups/hooks/useMenuGroupCrud.ts
 import { deferEffect } from "@/lib/deferEffect";
 import { useState, useEffect, useCallback } from "react";
-import { useAuthStore } from "@/stores/authStore";
+import { usePermissions } from "@/hooks/usePermissions";
 import { menuGroupRoleService } from "@/api/services/menuGroupRole.service";
 import type { MenuGroup } from "@/types";
 
@@ -44,8 +44,10 @@ export function useMenuGroupCrud({
   showToast,
   onMutated,
 }: UseMenuGroupCrudOptions) {
-  const { user } = useAuthStore();
-  const isSuperAdmin = user?.role?.name === "SUPERADMIN";
+  // A-301 (ADR-102): create / edit / delete are `rbac(["SUPERADMIN"])` on the
+  // API (menuGroups.route.js). Read the platform super-admin flag from the
+  // effective permissions (GET /menu-groups/my-permissions), not the role name.
+  const { superAdmin: isSuperAdmin } = usePermissions();
 
   const [adminMenuGroups, setAdminMenuGroups] = useState<AdminMenuGroup[]>([]);
   const [crudModalOpen, setCrudModalOpen] = useState(false);

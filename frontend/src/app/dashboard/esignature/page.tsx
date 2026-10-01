@@ -9,6 +9,7 @@ import {
   Button,
   Card,
   CardContent,
+  ConfirmDialog,
   Dialog,
   FormField,
   Input,
@@ -30,6 +31,7 @@ import {
   ESignatureFields,
   type ESignatureFormFields,
 } from "@/app/dashboard/calibration/components/ESignatureFields";
+import { usePermissions } from "@/hooks/usePermissions";
 
 type Tab = "sign" | "keys" | "workflows" | "verify";
 
@@ -116,6 +118,12 @@ function TabButton({
 }
 
 export default function ESignaturePage() {
+  // ADR-102: managing key pairs and workflows is gated on `qms` write, signing
+  // on `esignature` write (eSignature.route.js). ENGINEERING MANAGER holds
+  // `qms` read: it sees the lists without Generate, New, Cancel or Delete.
+  const { canWrite } = usePermissions();
+  const mayManage = canWrite("qms");
+  const maySign = canWrite("esignature");
   const addToast = useToastStore((s) => s.addToast);
   const currentUserId = useAuthStore((s) => s.user?.id);
   // A-91 — "To sign" is the view every signer can open (the `esignature`
@@ -134,6 +142,15 @@ export default function ESignaturePage() {
 
   // Key pairs
   const [keys, setKeys] = useState<KeyPair[]>([]);
+  // A load that failed is shown as a failure, never as "No key pairs yet"
+  // (audit 01 §4.6): the error replaces the table until a retry succeeds.
+  const [keysError, setKeysError] = useState<string | null>(null);
+  const [wfError, setWfError] = useState<string | null>(null);
+  const [myError, setMyError] = useState<string | null>(null);
+  // Deleting a key pair or a workflow asks first (audit 01 §4.6, severity 4).
+  const [pendingDelete, setPendingDelete] = useState<
+    { kind: "key" | "workflow"; id: string; label: string } | null
+  >(null);
   const [keysLoading, setKeysLoading] = useState(false);
   const [keysLoaded, setKeysLoaded] = useState(false);
 
@@ -163,9 +180,11 @@ export default function ESignaturePage() {
 
   const loadMine = useCallback(async () => {
     setMyLoading(true);
+    setMyError(null);
     try {
       setMyWorkflows(await eSignatureService.getMyWorkflows());
     } catch (err) {
+      setMyError(errorText(err) ?? "The request failed.");
       addToast({
         type: "error",
         title: "Could not load your signature requests",
@@ -178,6 +197,7 @@ export default function ESignaturePage() {
 
   const loadKeys = useCallback(async () => {
     setKeysLoading(true);
+    setKeysError(null);
     try {
       setKeys(await eSignatureService.getKeyPairs());
       setKeysLoaded(true);
@@ -186,6 +206,7 @@ export default function ESignaturePage() {
         setManageDenied(true);
         return;
       }
+      setKeysError(errorText(err) ?? "The request failed.");
       addToast({
         type: "error",
         title: "Could not load key pairs",
@@ -198,6 +219,7 @@ export default function ESignaturePage() {
 
   const loadWorkflows = useCallback(async () => {
     setWfLoading(true);
+    setWfError(null);
     try {
       setWorkflows(await eSignatureService.getWorkflows());
       setWfLoaded(true);
@@ -206,6 +228,7 @@ export default function ESignaturePage() {
         setManageDenied(true);
         return;
       }
+      setWfError(errorText(err) ?? "The request failed.");
       addToast({
         type: "error",
         title: "Could not load workflows",
@@ -492,7 +515,10 @@ export default function ESignaturePage() {
           variant="ghost"
           className="text-destructive"
           isLoading={busy === `del-key-${r.id}`}
-          onClick={() => deleteKey(String(r.id))}
+          onClick={() =>
+            setPendingDelete({ kind: "key", id: String(r.id), label: String(r.keyId ?? r.id) })
+          }
+          aria-label={`Delete key pair ${String(r.keyId ?? r.id)}`}
           leftIcon={<Trash2 className="h-4 w-4" />}
         >
           Delete
@@ -538,7 +564,7 @@ export default function ESignaturePage() {
           <Button size="sm" variant="ghost" onClick={() => openDetail(String(r.id), "manage")}>
             View
           </Button>
-          {isOpen(r.status as string | undefined) && (
+          {mayManage && isOpen(r.status as string | undefined) && (
             <Button
               size="sm"
               variant="ghost"
@@ -549,15 +575,20 @@ export default function ESignaturePage() {
               Cancel
             </Button>
           )}
+          {mayManage && (
           <Button
             size="sm"
             variant="ghost"
             className="text-destructive"
             isLoading={busy === `del-wf-${r.id}`}
-            onClick={() => deleteWorkflow(String(r.id))}
+            onClick={() =>
+              setPendingDelete({ kind: "workflow", id: String(r.id), label: String(r.subject ?? r.id) })
+            }
+            aria-label={`Delete workflow ${String(r.subject ?? r.id)}`}
           >
             Delete
           </Button>
+          )}
         </div>
       ),
     },
@@ -597,6 +628,27 @@ export default function ESignaturePage() {
       ),
     },
   ];
+
+  /** A failed load: the failure, and a retry — never an empty list. */
+  const loadFailed = (what: string, message: string, retry: () => void) => (
+    <Alert variant="error" title={`Could not load ${what}`}>
+      <p>{message}</p>
+      <Button size="sm" variant="outline" className="mt-2" onClick={retry}>
+        Try again
+      </Button>
+    </Alert>
+  );
+
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+    const { kind, id } = pendingDelete;
+    setPendingDelete(null);
+    if (kind === "key") {
+      await deleteKey(id);
+    } else {
+      await deleteWorkflow(id);
+    }
+  };
 
   const manageDeniedNotice = (
     <Alert variant="info">
@@ -650,12 +702,16 @@ export default function ESignaturePage() {
                 Refresh
               </Button>
             </div>
-            <Table
-              columns={signColumns}
-              data={myWorkflows as unknown as Record<string, unknown>[]}
-              isLoading={myLoading}
-              emptyMessage="No signature workflows name you as a signer."
-            />
+            {myError ? (
+              loadFailed("your signature requests", myError, () => void loadMine())
+            ) : (
+              <Table
+                columns={signColumns}
+                data={myWorkflows as unknown as Record<string, unknown>[]}
+                isLoading={myLoading}
+                emptyMessage="No signature workflows name you as a signer."
+              />
+            )}
           </div>
         )}
 
@@ -671,20 +727,26 @@ export default function ESignaturePage() {
               >
                 Refresh
               </Button>
-              <Button
-                onClick={generateKey}
-                isLoading={busy === "gen-key"}
-                leftIcon={<KeyRound className="h-4 w-4" />}
-              >
-                Generate Key Pair
-              </Button>
+              {mayManage && (
+                <Button
+                  onClick={generateKey}
+                  isLoading={busy === "gen-key"}
+                  leftIcon={<KeyRound className="h-4 w-4" />}
+                >
+                  Generate Key Pair
+                </Button>
+              )}
             </div>
-            <Table
-              columns={keyColumns}
-              data={keys as unknown as Record<string, unknown>[]}
-              isLoading={keysLoading}
-              emptyMessage="No key pairs yet. Generate one to start signing."
-            />
+            {keysError ? (
+              loadFailed("key pairs", keysError, () => void loadKeys())
+            ) : (
+              <Table
+                columns={keyColumns.filter((col) => mayManage || col.key !== "actions")}
+                data={keys as unknown as Record<string, unknown>[]}
+                isLoading={keysLoading}
+                emptyMessage="No key pairs yet. Generate one to start signing."
+              />
+            )}
           </div>
         )}
 
@@ -700,19 +762,25 @@ export default function ESignaturePage() {
               >
                 Refresh
               </Button>
-              <Button
-                onClick={() => void openCreate()}
-                leftIcon={<Plus className="h-4 w-4" />}
-              >
-                New Workflow
-              </Button>
+              {mayManage && (
+                <Button
+                  onClick={() => void openCreate()}
+                  leftIcon={<Plus className="h-4 w-4" />}
+                >
+                  New Workflow
+                </Button>
+              )}
             </div>
-            <Table
-              columns={wfColumns}
-              data={workflows as unknown as Record<string, unknown>[]}
-              isLoading={wfLoading}
-              emptyMessage="No signature workflows yet."
-            />
+            {wfError ? (
+              loadFailed("workflows", wfError, () => void loadWorkflows())
+            ) : (
+              <Table
+                columns={wfColumns}
+                data={workflows as unknown as Record<string, unknown>[]}
+                isLoading={wfLoading}
+                emptyMessage="No signature workflows yet."
+              />
+            )}
           </div>
         )}
 
@@ -891,7 +959,7 @@ export default function ESignaturePage() {
                   // answers anyone else with 403 (A-65).
                   const isMine =
                     !!currentUserId && step.signerId === currentUserId;
-                  const canSign = step.status === "pending" && isMine;
+                  const canSign = maySign && step.status === "pending" && isMine;
                   return (
                     <div
                       key={step.id}
@@ -963,6 +1031,24 @@ export default function ESignaturePage() {
           )}
         </Dialog>
       </div>
+      <ConfirmDialog
+        isOpen={pendingDelete?.kind === "key"}
+        title={`Delete key pair ${pendingDelete?.label ?? ""}?`}
+        description="Signatures made with this key are verified against its public key. Deleting the key pair cannot be undone, and no new signature can be made with it."
+        confirmLabel="Delete key pair"
+        isLoading={busy?.startsWith("del-key-") ?? false}
+        onConfirm={() => void confirmDelete()}
+        onCancel={() => setPendingDelete(null)}
+      />
+      <ConfirmDialog
+        isOpen={pendingDelete?.kind === "workflow"}
+        title={`Delete workflow "${pendingDelete?.label ?? ""}"?`}
+        description="The workflow is deleted permanently. A workflow that already has a signature cannot be deleted — cancel it instead, which keeps its signatures."
+        confirmLabel="Delete workflow"
+        isLoading={busy?.startsWith("del-wf-") ?? false}
+        onConfirm={() => void confirmDelete()}
+        onCancel={() => setPendingDelete(null)}
+      />
     </DashboardLayout>
   );
 }

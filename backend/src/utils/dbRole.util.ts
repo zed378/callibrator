@@ -16,6 +16,9 @@
  *
  * Then it CHECKS, as the switched session, that the switch took and that the
  * role really cannot delete calibration records — and refuses the boot if not.
+ * Since ADR-095 (O-1) it also checks audit_logs as migration 0091 left it: no
+ * DELETE or TRUNCATE, INSERT kept, and UPDATE on exactly the three maskable
+ * columns — so a database where 0091's REVOKE is missing refuses the boot.
  * A role that silently kept the owner's rights is the absent control with a
  * green tick that CLAUDE.md warns about.
  *
@@ -33,6 +36,7 @@
  */
 
 import { environment } from "../config/env";
+import { sql } from "./sql.util";
 
 const ROLE_PATTERN = /^[a-z_][a-z0-9_]{0,62}$/;
 const HOOK_NAME = "p6-03-application-role";
@@ -55,7 +59,20 @@ export interface AppRoleCheck {
   canDelete: boolean;
   canUpdateAll: boolean;
   canInsert: boolean;
+  /** audit_logs (migration 0091, ADR-095): no DELETE, no TRUNCATE, INSERT kept. */
+  auditCanDelete: boolean;
+  auditCanTruncate: boolean;
+  auditCanInsert: boolean;
+  /** The audit_logs columns the role may UPDATE, sorted — exactly AUDIT_MASKABLE_COLUMNS. */
+  auditUpdatableColumns: readonly string[];
 }
+
+/**
+ * The only audit_logs columns the application role may UPDATE: the three GDPR
+ * masking rewrites (A-135, `dataRetention.service#maskAuditTrail`). Migration
+ * 0091 grants exactly these, and its trigger admits only a mask into them.
+ */
+const AUDIT_MASKABLE_COLUMNS: readonly string[] = ["changes", "ip_address", "user_agent"];
 
 /** The Sequelize members used here. */
 export interface AppRoleSequelize {
@@ -112,7 +129,9 @@ const switchConnection = (role: string): ((connection: PoolConnection) => Promis
  *
  * @returns the role now in force, or null when off
  * @throws {Error} when the switched session still has DELETE or table-wide
- *   UPDATE on calibration_records, is a superuser, or is not the role
+ *   UPDATE on calibration_records, can DELETE or TRUNCATE audit_logs or UPDATE
+ *   any audit_logs column but the three maskable ones (ADR-095 O-1), cannot
+ *   INSERT into either, is a superuser, or is not the role
  */
 const enterApplicationRole = async ({ sequelize, logger, env = environment() }: EnterApplicationRoleOptions): Promise<string | null> => {
   const role = resolveAppRole(env);
@@ -127,15 +146,26 @@ const enterApplicationRole = async ({ sequelize, logger, env = environment() }: 
 
   sequelize.addHook("afterPoolAcquire", HOOK_NAME, switchConnection(role));
 
-  const [check] = await sequelize.query(
-    `SELECT current_user AS "currentUser",
+  // P9-07: through the bind-only helper — the same query() call ({ type: "SELECT" }). The
+  // pg_roles row for current_user always exists, so the first row is asserted present.
+  const check = (
+    await sql<AppRoleCheck>(
+      sequelize,
+      `SELECT current_user AS "currentUser",
             r.rolsuper AS "superuser",
             has_table_privilege('calibration_records', 'DELETE') AS "canDelete",
             has_table_privilege('calibration_records', 'UPDATE') AS "canUpdateAll",
-            has_table_privilege('calibration_records', 'INSERT') AS "canInsert"
+            has_table_privilege('calibration_records', 'INSERT') AS "canInsert",
+            has_table_privilege('audit_logs', 'DELETE') AS "auditCanDelete",
+            has_table_privilege('audit_logs', 'TRUNCATE') AS "auditCanTruncate",
+            has_table_privilege('audit_logs', 'INSERT') AS "auditCanInsert",
+            ARRAY(SELECT a.attname::text FROM pg_attribute a
+                   WHERE a.attrelid = 'audit_logs'::regclass AND a.attnum > 0 AND NOT a.attisdropped
+                     AND has_column_privilege('audit_logs', a.attnum, 'UPDATE')
+                   ORDER BY a.attname) AS "auditUpdatableColumns"
        FROM pg_roles r WHERE r.rolname = current_user`,
-    { type: "SELECT" },
-  );
+    )
+  )[0] as AppRoleCheck;
   const wrong: string[] = [];
   if (check.currentUser !== role) {
     wrong.push(`current_user is "${check.currentUser}", not "${role}"`);
@@ -152,17 +182,34 @@ const enterApplicationRole = async ({ sequelize, logger, env = environment() }: 
   if (!check.canInsert) {
     wrong.push("the role cannot INSERT into calibration_records — the application would not work");
   }
+  if (check.auditCanDelete) {
+    wrong.push("the role can DELETE from audit_logs");
+  }
+  if (check.auditCanTruncate) {
+    wrong.push("the role can TRUNCATE audit_logs");
+  }
+  if (!check.auditCanInsert) {
+    wrong.push("the role cannot INSERT into audit_logs — no action could be audited");
+  }
+  const updatable = [...check.auditUpdatableColumns].sort().join(", ");
+  if (updatable !== AUDIT_MASKABLE_COLUMNS.join(", ")) {
+    wrong.push(
+      `the role may UPDATE audit_logs columns [${updatable}], not exactly the maskable ` +
+        `[${AUDIT_MASKABLE_COLUMNS.join(", ")}]`,
+    );
+  }
   if (wrong.length) {
     throw new Error(
       `DB_APP_ROLE=${role} does not give the append-only guarantee (P6-03): ${wrong.join("; ")}. ` +
-        "Migration 0057 grants the role; check it ran against this database.",
+        "Migrations 0057 (calibration_records) and 0091 (audit_logs) grant the role; check they ran against this database.",
     );
   }
   logger.info(
     `Database queries now run as the application role "${role}" ` +
-      "(no UPDATE/DELETE on calibration_records beyond its lifecycle columns)",
+      "(no UPDATE/DELETE on calibration_records beyond its lifecycle columns; " +
+      "audit_logs append-only but for masking)",
   );
   return role;
 };
 
-export { resolveAppRole, enterApplicationRole, switchConnection, SWITCHED, HOOK_NAME };
+export { resolveAppRole, enterApplicationRole, switchConnection, SWITCHED, HOOK_NAME, AUDIT_MASKABLE_COLUMNS };

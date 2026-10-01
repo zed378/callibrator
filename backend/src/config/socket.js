@@ -47,8 +47,8 @@ const sessionService = require("../services/session.service");
 const { tenantStorage } = require("../middlewares/tenantContext.middleware");
 const { logger } = require("../middlewares/activityLog.middleware");
 
-const isSuperAdminRole = (name) =>
-  name === "SUPER_ADMIN" || name === "SUPERADMIN";
+// N-01 / V-15: the one super-admin predicate (utils/role.util.ts).
+const { isSuperAdminRoleName: isSuperAdminRole } = require("../utils/role.util");
 
 /**
  * The single message any rejected handshake receives. Reporting *why* would

@@ -1,11 +1,13 @@
 import React from "react";
-import { Dialog, Button } from "@/components/ui";
+import { Alert, Dialog, Button } from "@/components/ui";
 
 interface DeleteConfirmModalProps {
   isOpen: boolean;
   onClose: () => void;
   onConfirm: () => void;
   type: string;
+  /** F-19: a refused delete, shown in this dialog (a page alert sits behind it). */
+  error?: string | null;
 }
 
 export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
@@ -13,6 +15,7 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
   onClose,
   onConfirm,
   type,
+  error = null,
 }) => {
   return (
     <Dialog
@@ -22,6 +25,11 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
       size="sm"
     >
       <div className="space-y-4">
+        {error && (
+          <div role="alert">
+            <Alert variant="error">{error}</Alert>
+          </div>
+        )}
         <p className="text-muted-foreground">
           Are you sure you want to permanently delete this {type}? All nested relationships and records will be affected. This action is irreversible.
         </p>

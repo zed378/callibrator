@@ -38,14 +38,20 @@ export function GroupCheckbox({
   groupState,
   onToggle,
   disabled,
+  label,
 }: {
   groupState: "all" | "none" | "some";
   onToggle: () => void;
   disabled: boolean;
+  /** The accessible name — an icon-only toggle has no text of its own. */
+  label: string;
 }) {
   return (
     <button
       type="button"
+      role="checkbox"
+      aria-checked={groupState === "all" ? true : groupState === "some" ? "mixed" : false}
+      aria-label={label}
       onClick={onToggle}
       disabled={disabled}
       className="flex items-center justify-center w-5 h-5 rounded border-2 border-border/60 hover:border-primary disabled:opacity-50"
@@ -66,15 +72,21 @@ export function ItemCheckbox({
   partiallyAssigned,
   onToggle,
   disabled,
+  label,
 }: {
   fullyAssigned: boolean;
   partiallyAssigned: boolean;
   onToggle: () => void;
   disabled: boolean;
+  /** The accessible name — an icon-only toggle has no text of its own. */
+  label: string;
 }) {
   return (
     <button
       type="button"
+      role="checkbox"
+      aria-checked={fullyAssigned ? true : partiallyAssigned ? "mixed" : false}
+      aria-label={label}
       onClick={onToggle}
       disabled={disabled}
       className="flex items-center justify-center w-5 h-5 rounded border-2 border-border/60 hover:border-primary disabled:opacity-50"

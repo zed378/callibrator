@@ -255,13 +255,89 @@ ALLOW_SEEDING=true  →  restart  →  GET /api/v1/migration/seeding
 
 A successful seed reports the roles, the menu groups with their permission counts, and one super-admin user (`sys` / `sys@mail.com`).
 
+### The first super admin's one-time password (P10-16, ADR-099)
+
+There is **no default password** any more (it was the public `123123`). When the seed creates `sys@mail.com`, which it does only if no super admin exists, it draws a random 24-character password. It stores only the hash and writes the plaintext to a file **inside the backend container**, nowhere else. It is not in `docker logs`, not in the seed response, not in the audit log and not in any environment variable.
+
+```bash
+# 1. The seed response and the backend log name the FILE, never the value:
+#    "bootstrapPasswordFile": "/app/.bootstrap/superadmin-password"
+docker logs <backend-container> 2>&1 | grep "One-time password for sys@mail.com written to"
+
+# 2. Read it — inside the container (the file is 0600, owned by the app user, not a volume):
+docker exec <backend-container> cat /app/.bootstrap/superadmin-password
+
+# 3. Sign in at /login as sys@mail.com with it, within 72 hours. It works ONCE:
+#    the sign-in asks for a new password at once (no session exists until then),
+#    and the file is deleted. Then sign in with the new password and enrol MFA (P6-07).
+```
+
+- **Nothing in the backend container is a bind mount at `/app/.bootstrap`.** Keep it that way: mounting it would put the plaintext on the host.
+- **Re-seeding never resets the password.** Neither does a restart. The file is written only when a password is issued.
+- **Lost, expired (72 h unused), or abandoned** after the first sign-in (the change step lives 10 minutes)? Issue a new one. It is audited, revokes every session, and prints only the file path:
+  ```bash
+  docker exec <backend-container> ./backend rotate-bootstrap-password \
+    --user sys@mail.com --requested-by "<your name>" --ticket <change/incident ref>
+  docker exec <backend-container> cat /app/.bootstrap/superadmin-password
+  ```
+- **Existing deployments:** a super admin still on the old public default is moved to a one-time password **at the first boot of this version**. The backend log shows the same pointer line; read the file as in step 2.
+- **More than one backend replica** (Helm): the file is in the pod that ran the seed or the CLI, which the pointer's `host` names. `kubectl exec` into that pod.
+- **Live E2E:** `export E2E_OPERATOR_PASSWORD=<your choice>` and, on a fresh stack, `export E2E_BOOTSTRAP_PASSWORD="$(docker compose exec -T backend cat /app/.bootstrap/superadmin-password)"`. The harness spends the one-time password and sets yours (`backend/src/tests/e2e/setup.js`).
+
 **Turn it off again immediately.** While set it is an unauthenticated endpoint that writes to the database — verifying the 401 afterwards is part of the procedure, not an optional check.
+
+### Closing deploy: the one-time password, verified live (BACKLOG U-08)
+
+P10-16 is tested in-process only. Run this once on the closing deploy and paste each command's output into the P10-16 record. `DC` is the compose invocation of the stack (on the VM, `docker compose -f deploy/compose/docker-compose.vm.yml`). `BASE` is the public URL.
+
+```bash
+B=$($DC ps -q backend)
+
+# 1. The image carries the directory, owner-only, and nothing is mounted on it.
+docker exec "$B" stat -c '%a %U:%G' /app/.bootstrap          # expect: 700 app:app
+docker inspect "$B" --format '{{json .Mounts}}' | grep -c bootstrap   # expect: 0
+
+# 2. The binary dispatches the recovery CLI, and does not start a second server.
+docker exec "$B" ./backend rotate-bootstrap-password; echo "exit $?"
+#    expect: "Rotation refused: --user, --requested-by and --ticket are all required", exit 1
+
+# 3. Get a one-time password:
+#    - fresh database: ALLOW_SEEDING=true → restart → curl -s "$BASE/api/v1/migration/seeding" | jq '.data.users'
+#      (expect bootstrapPasswordFile: "/app/.bootstrap/superadmin-password", no password) → ALLOW_SEEDING off → restart;
+#    - existing database still on 123123: the first boot of this version rotated it — see step 4;
+#    - otherwise (test account or a drill):
+docker exec "$B" ./backend rotate-bootstrap-password --user sys@mail.com --requested-by "<name>" --ticket <ref>
+
+# 4. The pointer is logged; the file is 0600 app; the value is in NO log, env or volume.
+docker logs "$B" 2>&1 | grep "One-time password for sys@mail.com written to"
+docker exec "$B" stat -c '%a %U' /app/.bootstrap/superadmin-password     # expect: 600 app
+P=$(docker exec "$B" cat /app/.bootstrap/superadmin-password)            # not echoed
+docker logs "$B" 2>&1 | grep -cF -- "$P"                                  # expect: 0
+docker exec "$B" env | grep -cF -- "$P"                                   # expect: 0
+grep -rlF -- "$P" deploy/compose/volumes/log 2>/dev/null | wc -l          # expect: 0
+
+# 5. In a BROWSER at $BASE/login, sign in as sys@mail.com with it. Expect the "Choose your password"
+#    step (no dashboard), then — after saving — the MFA enrolment page. Then:
+docker exec "$B" ls -A /app/.bootstrap                                    # expect: empty (consumed)
+curl -s -o /dev/null -w '%{http_code}\n' -X POST "$BASE/api/v1/auth/login" \
+  -H 'content-type: application/json' -d "{\"user\":\"sys@mail.com\",\"password\":\"$P\"}"   # expect: 401
+unset P
+
+# 6. Admin reset (Amendment 1): in the dashboard, reset a TEST user's password (shown once),
+#    sign in as that user in a private window → expect the same "Choose your password" step;
+#    signing in again with the temporary password → "Invalid credentials".
+
+# 7. Demo seeding is refused on this production stack:
+curl -s -o /dev/null -w '%{http_code}\n' "$BASE/api/v1/migration/seed-demo" -H "authorization: Bearer <super-admin token>"
+#    expect: 403 (with SEED_DEMO unset the route refuses first; with SEED_DEMO=true the service refuses, P10-16)
+```
 
 ## After Any Deployment
 
 - [ ] `/health` returns 200 with `{"status":"ok"}` — a verdict over PostgreSQL, Redis and RabbitMQ that names no dependency; for the per-dependency breakdown, `GET /api/v1/health` with a super-admin token
 - [ ] a user can log in **in a browser** — a 200 from `curl` against the backend proves nothing about the cookie
 - [ ] `ALLOW_SEEDING` is unset and `/migration/seeding` returns **401**
+- [ ] no one-time password is waiting unread: `docker exec <backend-container> ls /app/.bootstrap` is empty, or its password has been used (P10-16)
 - [ ] `WEBAUTHN_RP_ID` and `WEBAUTHN_ORIGIN` match the public domain — unset, the server issues passkey challenges for `rp.id: "localhost"`, which every browser on the real domain rejects. The reference deployment ran that way until 2026-09-21, masked by a separate bug that made passkeys fail even earlier (A-24)
 - [ ] a tenant-scoped list returns that tenant's rows **and no others**
 - [ ] **a certificate issued before the deploy still verifies at its public URL**

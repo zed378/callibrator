@@ -11,7 +11,10 @@ Distinct from [`08-API-SECURITY.md`](./08-API-SECURITY.md), which defends the ed
 | Vector | Control |
 |---|---|
 | Credential stuffing | sign-in throttle (A-185): 5 failures per identifier **and address** / 15 min, then 429 for that pair; 100 per identifier from any address / hour, then 429 everywhere. Never an account lock |
-| Password spraying | per-address limit when `AUTH_RATE_LIMIT_BY_IP` is on (A-16); the identifier ceiling otherwise |
+| Password spraying | per-address failure limit (on by default in production since ADR-100; `AUTH_RATE_LIMIT_BY_IP`), the identifier ceiling, and the `authSignIn` request budget |
+| Mail cannon (register, send-otp) | request budgets counting successes, per address and per mailed-to address (ADR-100, A-291) |
+| Tenant-code / SSO probing | one indistinguishable SSO-start refusal (A-292) and the `ssoStart` budget (ADR-100) |
+| Certificate enumeration | minimal verdict by number, full only with the QR's token, per-address budgets (A-293, ADR-100) |
 | OTP flooding | 3 / 15 min with lockout; 5 / hour at Express |
 | Reset-token brute force | 5 / 5 min |
 | Account enumeration | uniform responses on login (401 for unknown, wrong, suspended and locked alike; the same 429 for an unknown identifier — A-185) and `/send-otp` |

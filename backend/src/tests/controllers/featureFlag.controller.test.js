@@ -19,17 +19,15 @@ jest.mock("../../utils/response.util", () => ({
   error: jest.fn(),
 }));
 
-jest.mock("../../validators/featureFlag.validator", () => ({
-  validate: jest.fn((data, schema) => { return { ...data }; }),
-  flagKeySchema: {},
-  flagValueSchema: {},
-  tenantFlagQuerySchema: {},
-}));
-
 const featureFlagService = require("../../services/featureFlag.service");
 const featureFlagController = require("../../controllers/featureFlag.controller");
-const { success } = require("../../utils/response.util");
-const { validate } = require("../../validators/featureFlag.validator");
+const { success, error } = require("../../utils/response.util");
+
+// A-272 (ADR-100): a thrown validateInput failure answers like validate() —
+// "Validation Error" with the field list as details (it was "[object Object]").
+const FIELD_ERRORS = expect.arrayContaining([
+  expect.objectContaining({ field: expect.any(String), message: expect.any(String) }),
+]);
 
 describe("featureFlag Controller", () => {
   let req, res, next;
@@ -68,9 +66,17 @@ describe("featureFlag Controller", () => {
 
       await featureFlagController.getTenantFlags(req, res, next);
 
-      expect(validate).toHaveBeenCalledWith(req.query, {});
       expect(featureFlagService.getTenantFlags).toHaveBeenCalledWith(VALID_TENANT_ID);
       expect(success).toHaveBeenCalled();
+    });
+
+    it("answers 400 through the real schema when tenantId is not a uuid", async () => {
+      req.query.tenantId = "not-a-uuid";
+
+      await featureFlagController.getTenantFlags(req, res, next);
+
+      expect(featureFlagService.getTenantFlags).not.toHaveBeenCalled();
+      expect(error).toHaveBeenCalledWith(res, "Validation Error", 400, FIELD_ERRORS); // A-272 (ADR-100)
     });
   });
 
@@ -128,6 +134,7 @@ describe("featureFlag Controller", () => {
         "enable_iot",
         true,
         VALID_USER_ID,
+        expect.objectContaining({ apiKeyId: null }),
       );
       expect(success).toHaveBeenCalled();
     });
@@ -148,6 +155,7 @@ describe("featureFlag Controller", () => {
       expect(featureFlagService.resetTenantFlag).toHaveBeenCalledWith(
         VALID_TENANT_ID,
         "enable_iot",
+        expect.objectContaining({ apiKeyId: null }),
       );
       expect(success).toHaveBeenCalled();
     });
@@ -163,7 +171,7 @@ describe("featureFlag Controller", () => {
 
       await featureFlagController.initializeTenantFlags(req, res, next);
 
-      expect(featureFlagService.initializeTenantFlags).toHaveBeenCalledWith(VALID_TENANT_ID);
+      expect(featureFlagService.initializeTenantFlags).toHaveBeenCalledWith(VALID_TENANT_ID, expect.objectContaining({ apiKeyId: null }));
       expect(success).toHaveBeenCalled();
     });
   });

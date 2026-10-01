@@ -2,6 +2,9 @@ const cron = require("node-cron");
 const { scheduleSetting } = require("../utils/schedulerSwitch.util"); // W-02: one switch for every singleton scheduler
 const { logger } = require("./activityLog.middleware");
 const { runRetentionSweep } = require("../services/dataRetention.service");
+// P10-05 (Q-42): the platform's access requests — expired after 90 days
+// pending, deleted 12 months after their decision — in the same nightly run.
+const { runAccessRequestRetention } = require("../services/accessRequest.service");
 const {
   runMonitored,
   registerJob,
@@ -86,6 +89,9 @@ function failureOf(summary) {
   if (summary.exportErrors > 0) {
     reasons.push(`${summary.exportErrors} expired GDPR export(s) could not be deleted`);
   }
+  if (summary.accessRequestError) {
+    reasons.push(`the access-request retention step failed: ${summary.accessRequestError}`);
+  }
   return reasons.length ? reasons.join("; ") : null;
 }
 
@@ -94,6 +100,16 @@ const runSweep = async () => {
   logger.info("Running data retention sweep...");
   try {
     const summary = await runRetentionSweep();
+    // P10-05 (Q-42): its own step, after the tenants. A failure here is a
+    // failed run (personal data kept past its period), not a lost sweep.
+    try {
+      const accessRequests = await runAccessRequestRetention();
+      summary.accessRequestsExpired = accessRequests.expired;
+      summary.accessRequestsPurged = accessRequests.purged;
+    } catch (error) {
+      logger.error(`Access-request retention failed: ${error.message}`);
+      summary.accessRequestError = error.message;
+    }
     logger.info(
       `Retention sweep complete: tenants=${summary.tenants}, ` +
         `purged=${summary.purged}, skipped=${summary.skipped}, ` +

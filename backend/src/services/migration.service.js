@@ -54,6 +54,9 @@ const {
   PostCategory,
 } = require("../models");
 const { hashPassword } = require("../utils/password.util");
+const bootstrapCredential = require("./bootstrapCredential.service");
+const { isProduction } = require("../config/env");
+const { AppError } = require("../utils/appError.util");
 const featureFlagService = require("./featureFlag.service");
 const { seedMenuGroups } = require("../utils/seedMenuGroups.util");
 const {
@@ -198,13 +201,18 @@ const APPLICATION_ROLES = [
 ];
 
 /**
- * Default system user to seed after roles
+ * Default system user to seed after roles.
+ *
+ * P10-16 (ADR-099): no password here. The system super admin is created ONLY
+ * when no super admin exists, with a one-time password drawn at that moment
+ * (services/bootstrapCredential.service.ts); its plaintext is written to a
+ * 0600 file inside the container and nowhere else. An existing account's
+ * credential is never touched by the seed.
  */
 const DEFAULT_SYSTEM_USERS = [
   {
     email: "sys@mail.com",
     username: "sys",
-    password: "123123",
     firstName: "Super",
     lastName: "System",
     status: "ACTIVE",
@@ -556,46 +564,24 @@ async function seedUsers() {
   const result = {
     usersCreated: 0,
     usersSkipped: 0,
+    // P10-16 (ADR-099): where the one-time password was written — a path
+    // inside the container, never the value. Null when none was issued.
+    bootstrapPasswordFile: null,
     errors: [],
   };
 
   try {
     for (const userData of DEFAULT_SYSTEM_USERS) {
-      const hashedPassword = await hashPassword(userData.password);
-      const fields = {
-        email: userData.email,
-        username: userData.username,
-        password: hashedPassword,
-        firstName: userData.firstName,
-        lastName: userData.lastName,
-        status: userData.status,
-        roleId: userData.roleId,
-        tenantId: userData.tenantId,
-        // A-32: DEFAULT_SYSTEM_USERS is a module constant whose only entry sets
-        // isEmailVerified explicitly; the unreachable `: true` fallback is gone.
-        isEmailVerified: userData.isEmailVerified,
-      };
-
-      // Upsert instead of hard-delete + recreate: existing system users may
-      // be referenced by other tables (e.g. certificates.created_by), so
-      // deleting them violates foreign key constraints. Update in place,
-      // restoring a soft-deleted row if needed.
-      const existing = await Users.findOne({
-        where: { email: userData.email },
-        paranoid: false,
-      });
-
-      if (existing) {
-        if (existing.deletedAt) {
-          await existing.restore();
-        }
-        await existing.update(fields);
-        result.usersSkipped++;
-        logger.info(`Updated existing system user: ${userData.email}`);
-      } else {
-        await Users.create(fields);
+      // Upsert, not hard-delete + recreate: the system user may be referenced
+      // by other tables (e.g. certificates.created_by). A soft-deleted row is
+      // restored. P10-16: the credential is NEVER re-seeded — this used to
+      // reset the operator's password to a public default on every call.
+      const outcome = await bootstrapCredential.ensureSystemSuperAdmin(userData);
+      if (outcome.created) {
         result.usersCreated++;
-        logger.info(`Created user: ${userData.email}`);
+        result.bootstrapPasswordFile = outcome.bootstrapPasswordFile;
+      } else {
+        result.usersSkipped++;
       }
     }
 
@@ -1660,11 +1646,31 @@ async function seedDemoEngagement(tenantId, actorId, counts) {
 }
 
 /**
+ * P10-16 (ADR-099 Amendment 1) — the demo users share one KNOWN password
+ * (Demo123!), so the demo seeder is development-only: it refuses to run when
+ * NODE_ENV=production, whatever SEED_DEMO says. Before this, "SEED_DEMO must
+ * never be true in production" was a rule only `make preflight` checked; the
+ * route, the controller and scripts/seedDemo.js all reach seedDemoData.
+ *
+ * @throws {AppError} 403 in production
+ */
+function assertDemoSeedingPermitted() {
+  if (isProduction()) {
+    throw new AppError(
+      403,
+      "Demo data seeding is refused in production: the demo users share a known password (P10-16)",
+    );
+  }
+}
+
+/**
  * Seed a realistic slice of every business module. Idempotent and FK-safe.
  * @returns {Promise<Object>} { created: {per-module counts}, errors: [] }
  */
 /* istanbul ignore next -- demo fixtures only (SEED_DEMO=true, GET /migration/seed-demo, scripts/seedDemo.js): never runs in production; see A-32 */
 async function seedDemoData() {
+  // P10-16: refused in production — before anything is written.
+  assertDemoSeedingPermitted();
   logger.info("=== Starting demo-data seeding ===");
 
   const counts = {
@@ -2076,6 +2082,7 @@ module.exports = {
 
   // Demo data seeding
   seedDemoData,
+  assertDemoSeedingPermitted,
   unseedDemoData,
 
   // Unseeding

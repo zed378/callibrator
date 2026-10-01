@@ -2,20 +2,15 @@
  * QMS (Non-Conformance / CAPA) value sets — the ONE definition the models'
  * ENUM columns and the request validators both read (A-74).
  *
- * The validators used to restate these lists by hand. A list that drifts from
- * the column's ENUM lets an out-of-set value reach PostgreSQL, which answers
- * with an enum error the API reports as a 500 instead of a 400. The database
- * ENUMs were created by migration 0006 with exactly these values; changing a
- * list here without a migration that alters the type is a defect.
+ * P9-22 (ADR-097): NC_STATUSES, NC_SEVERITIES and CAPA_STATUSES (and their
+ * types) are canonical in `@callibrator/contracts/qmsValues`, because the qms
+ * request schemas are a contract the frontend reads. This module re-exports
+ * the same frozen arrays, so every model, service and test is unchanged.
+ * The ENUMs were created by migration 0006 with exactly these values; changing
+ * a list there without a migration that alters the type is a defect.
  */
-
-export const NC_STATUSES = Object.freeze(["OPEN", "UNDER_INVESTIGATION", "CAPA_REQUIRED", "CLOSED"] as const);
-export const NC_SEVERITIES = Object.freeze(["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const);
-export const CAPA_STATUSES = Object.freeze(["DRAFT", "OPEN", "IN_PROGRESS", "VERIFICATION", "CLOSED"] as const);
-
-export type NcStatus = (typeof NC_STATUSES)[number];
-export type NcSeverity = (typeof NC_SEVERITIES)[number];
-export type CapaStatus = (typeof CAPA_STATUSES)[number];
+export { NC_STATUSES, NC_SEVERITIES, CAPA_STATUSES } from "@callibrator/contracts/qmsValues";
+export type { NcStatus, NcSeverity, CapaStatus } from "@callibrator/contracts/qmsValues";
 
 /**
  * Per-tenant record numbering (A-73). `kind` is the qms_counters row key;

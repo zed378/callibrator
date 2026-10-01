@@ -50,9 +50,10 @@ jest.mock("../../config", () => ({
     transaction: (...args) => mockRef.ledger.transaction(...args),
     // A-73: the counter claim is a write in the create's transaction — routed
     // through the ledger so a claim outside the transaction would show.
+    // P9-07: the claim runs through sql() — bind [$1 tenant, $2 kind, $3 pattern], type SELECT.
     query: jest.fn(async (sql, options) => {
-      mockRef.ledger.write("qms_counters", { kind: options.replacements.kind }, options);
-      return [[{ seq: 1 }]];
+      mockRef.ledger.write("qms_counters", { kind: options.bind[1] }, options);
+      return [{ seq: 1 }];
     }),
   },
 }));

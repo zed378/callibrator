@@ -1,5 +1,10 @@
 import { api } from "../client";
 import { PaginatedResponse } from "@/types";
+import type {
+  CorrectCalibrationRecordInput,
+  CreateCalibrationRecordInput,
+  VoidCalibrationRecordInput,
+} from "@callibrator/contracts/calibrationRecords";
 
 export interface Calibration {
   id: string;
@@ -29,28 +34,23 @@ export interface Calibration {
     firstName: string;
     lastName: string;
     email?: string;
-  };
+  } | null;
+  /** Q-51 (ADR-100 Am. 2): the API key that wrote the row, when no user did. */
+  apiKey?: { id: string; name: string; keyPrefix?: string | null } | null;
 }
 
-export interface CalibrationCreateInput {
-  deviceId: string;
-  calibrationDate: string;
-  dueDate?: string;
-  standard?: string;
-  results?: Record<string, unknown>;
-  isCompliant?: boolean | null;
-  notes?: string;
-}
+// P9-22 (ADR-097): the request bodies are the backend validator's own schemas
+// (@callibrator/contracts/calibrationRecords), not a hand-written copy.
+export type CalibrationCreateInput = CreateCalibrationRecordInput;
 
 /**
  * P6-03 — a calibration record is append-only. A correction writes a NEW
  * record that supersedes `id`; fields omitted are carried over from it.
  * `reason` is required (the backend refuses a blank one).
  */
-export interface CalibrationCorrectionInput extends Partial<CalibrationCreateInput> {
+export type CalibrationCorrectionInput = CorrectCalibrationRecordInput & {
   id: string;
-  reason: string;
-}
+};
 
 export interface Certificate {
   id: string;
@@ -63,6 +63,10 @@ export interface Certificate {
   calibratedBy?: string;
   approvedBy?: string;
   signedBy?: string;
+  /** Who drafted it. ADR-101: its author may not approve it. */
+  createdBy?: string | null;
+  /** Who submitted it for approval (ADR-101): may not approve it either. */
+  submittedBy?: string | null;
   digitalSignature?: string;
   digitalSignatureKeyId?: string;
   signedAt?: string;
@@ -101,6 +105,86 @@ export interface Certificate {
     lastName: string;
     email: string;
   };
+}
+
+/**
+ * M-11 (ADR-095) — what a certificate PDF prints. The backend renders no PDF;
+ * GET /certificates/:id/document (authenticated) and the public verification
+ * endpoint's `document` (signed certificates only) serve this, and
+ * `lib/certificatePdf` renders it in the browser.
+ */
+export interface CertificateIntegrity {
+  /**
+   * The scheme `hash` follows: "certificate-content-v3" for a certificate
+   * signed with a snapshot of what it prints (ADR-107), "certificate-content-v2"
+   * for one signed before it, or not signed yet.
+   */
+  scheme: string;
+  algorithm: "SHA-256";
+  /** SHA-256 over every printed column of the certificate row. */
+  hash: string;
+  /** The pre-M-11 hash printed on PDFs the backend rendered. */
+  legacyHash: string;
+  /** Authenticated document only: the server HMAC over `hash`, and its key id. */
+  signature?: string;
+  signatureKeyId?: string;
+}
+
+/**
+ * A-303: the issuing laboratory as the certificate prints it (ISO/IEC 17025
+ * 7.8.2). The live tenant row — NOT covered by the integrity hash.
+ */
+export interface CertificateIssuer {
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  zipCode: string | null;
+  country: string | null;
+  website: string | null;
+}
+
+export interface CertificateDocument {
+  certificateNumber: string;
+  type: string;
+  status: string;
+  issuedBy: string | null;
+  /** A-303: absent from a backend older than the issuer block; null when the tenant was not loaded. */
+  issuer?: CertificateIssuer | null;
+  device: {
+    name: string | null;
+    serialNumber: string | null;
+    manufacturer: string | null;
+    model: string | null;
+  } | null;
+  standard: string | null;
+  issueDate: string | null;
+  validUntil: string | null;
+  summary: string | null;
+  conditions: string | null;
+  notes: string | null;
+  calibratedBy: string | null;
+  approvedBy: string | null;
+  signedBy: string | null;
+  signedAt: string | null;
+  /** What the QR code carries: the public verification page for this certificate. */
+  verifyUrl: string;
+  integrity: CertificateIntegrity;
+  /**
+   * ADR-107: "signing" — the issuer, instrument and people are as recorded at
+   * signing (v3); "live" — the current rows (a draft, or a certificate signed
+   * before ADR-107). Absent from a backend older than ADR-107.
+   */
+  contentAsOf?: "signing" | "live";
+}
+
+interface BackendCertificateDocumentResponse {
+  success: boolean;
+  status: number;
+  message: string;
+  data: CertificateDocument;
 }
 
 export interface CertificateCreateInput {
@@ -309,7 +393,8 @@ export const calibrationService = {
 
   // A void is final: the record is kept, hidden, with the reason.
   void: async (id: string, reason: string): Promise<void> => {
-    await api.post(`/api/v1/calibration-records/${id}/void`, { reason });
+    const body: VoidCalibrationRecordInput = { reason };
+    await api.post(`/api/v1/calibration-records/${id}/void`, body);
   },
 
   // ==========================================
@@ -342,6 +427,17 @@ export const calibrationService = {
     return response.data;
   },
 
+  /**
+   * GET /certificates/:id/document — the data its PDF prints (M-11, ADR-095).
+   * The PDF itself is rendered in the browser (lib/certificatePdf).
+   */
+  getCertificateDocument: async (id: string): Promise<CertificateDocument> => {
+    const response = await api.get<BackendCertificateDocumentResponse>(
+      `/api/v1/certificates/${id}/document`,
+    );
+    return response.data;
+  },
+
   createCertificate: async (data: CertificateCreateInput): Promise<Certificate> => {
     const response = await api.post<BackendCertificateResponse>(
       "/api/v1/certificates",
@@ -361,6 +457,19 @@ export const calibrationService = {
 
   deleteCertificate: async (id: string): Promise<void> => {
     await api.delete(`/api/v1/certificates/${id}`);
+  },
+
+  /**
+   * POST /certificates/:id/submit — draft → pending_approval. The next step,
+   * approval, must come from another user (ADR-101). A certificate that is not
+   * a draft answers 409 with the state explanation, which is shown as is.
+   */
+  submitCertificate: async (id: string): Promise<Certificate> => {
+    const response = await api.post<BackendCertificateResponse>(
+      `/api/v1/certificates/${id}/submit`,
+      {},
+    );
+    return response.data;
   },
 
   /**

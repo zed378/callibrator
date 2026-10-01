@@ -18,7 +18,8 @@ const mustache = require("mustache");
 
 const TEMPLATE_DIR = path.join(__dirname, "..", "..", "templates");
 const LIVE_TEMPLATES = ["template.html", "otp.html"];
-const ALL_TEMPLATES = [...LIVE_TEMPLATES, "account.html", "certificate.html"];
+// certificate.html is gone: the backend renders no certificate PDF (M-11, ADR-095).
+const ALL_TEMPLATES = [...LIVE_TEMPLATES, "account.html"];
 
 const CTX = {
   appUrl: "https://calibrator.example.com",
@@ -38,6 +39,31 @@ describe("email templates", () => {
   it.each(ALL_TEMPLATES)("%s names no third party", (name) => {
     const raw = fs.readFileSync(path.join(TEMPLATE_DIR, name), "utf8");
     expect(raw).not.toMatch(/fullfind/i);
+  });
+
+  // The boilerplate these templates came from carried another product's copy
+  // ("students", "$1000++ jobs", a fictional street address) and a blue
+  // (#669ae9) that is in neither the logo nor the app's tokens.
+  it.each(ALL_TEMPLATES)("%s carries no boilerplate copy", (name) => {
+    const raw = fs.readFileSync(path.join(TEMPLATE_DIR, name), "utf8");
+    expect(raw).not.toMatch(/antahberantah|student|\$1000|quests|submission/i);
+  });
+
+  // Brand palette from frontend/public/brand/mark.svg: navy #001250, teal #00DAB4.
+  it.each(ALL_TEMPLATES)("%s uses the brand palette and nothing off-brand", (name) => {
+    const raw = fs.readFileSync(path.join(TEMPLATE_DIR, name), "utf8").toLowerCase();
+    expect(raw).toContain("#001250");
+    expect(raw).toContain("#00dab4");
+    expect(raw).not.toMatch(/#669ae9|#4f46e5/);
+  });
+
+  // The logo is a 480x200 wordmark: once, in the header, at a legible size —
+  // not a hidden 600px spacer and a 35px footer icon as before.
+  it.each(ALL_TEMPLATES)("%s shows the logo once, with alt text", (name) => {
+    const out = mustache.render(fs.readFileSync(path.join(TEMPLATE_DIR, name), "utf8"), CTX);
+    const imgs = [...out.matchAll(/<img\b[^>]*>/g)].map((m) => m[0]);
+    expect(imgs).toHaveLength(1);
+    expect(imgs[0]).toContain(`alt="${CTX.appName}"`);
   });
 
   describe.each(LIVE_TEMPLATES)("%s", (name) => {

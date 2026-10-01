@@ -103,6 +103,21 @@ spec:
                   number: {{ .Values.backend.service.port }}
 
           # ----------------------------------------------------------------
+          # The readiness verdict — {"status":"ok"} or 503 — as the compose
+          # nginx publishes it (deploy/compose/nginx/default.conf). Before
+          # P7-06 this path fell through to the frontend, which answered its
+          # 404 page (found on a kind cluster). Exact: /live and /ready stay
+          # unpublished, as in nginx.
+          # ----------------------------------------------------------------
+          - path: /health
+            pathType: Exact
+            backend:
+              service:
+                name: {{ include "callibrator.fullname" . }}-backend
+                port:
+                  number: {{ .Values.backend.service.port }}
+
+          # ----------------------------------------------------------------
           # Everything else, including the PUBLIC certificate verification
           # page at /verify/<certificateNumber>, which must work without a
           # session, on an unknown device.

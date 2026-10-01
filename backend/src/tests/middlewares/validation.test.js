@@ -1,26 +1,34 @@
 /**
  * Tests for validation middleware
+ *
+ * P9-11 (ADR-093): the middleware (validation.middleware.ts) takes Zod
+ * schemas. Every case below was an old-library schema; each is rewritten as the Zod
+ * schema that states the same rule, and the old messages the cases relied on
+ * are now asserted as Zod's. The source option and the typed `validated()`
+ * reader are covered by validation.p911.test.ts.
  */
 
 // Mirrors the REAL response.util signature: error(res, message, statusCode,
-// details). The previous mock declared (res, details, message, status), which
-// matched a bug in the middleware's call site — so the tests passed while
-// every real validation failure returned a 500 ("Invalid status code:
-// 'Validation Error'"). Keeping the mock honest is what surfaces that.
+// details, extra). The previous mock declared (res, details, message, status),
+// which matched a bug in the middleware's call site — so the tests passed
+// while every real validation failure returned a 500 ("Invalid status code:
+// 'Validation Error'"). Keeping the mock honest is what surfaces that. The
+// real error() adds `details` only outside production; tests run outside it.
 jest.mock("../../utils/response.util", () => {
   return {
     error: jest
       .fn()
-      .mockImplementation((res, message, statusCode = 400, details = null) => {
-        const body = { success: false, status: statusCode, message, data: null };
+      .mockImplementation((res, message, statusCode = 400, details = null, extra = null) => {
+        const body = { success: false, status: statusCode, message, data: null, ...(extra || {}) };
         if (details) {body.details = details;}
         return res.status(statusCode).json(body);
       }),
   };
 });
 
+const { z } = require("zod");
 const { validate } = require("../../middlewares/validation.middleware");
-const Joi = require("joi");
+const { error } = require("../../utils/response.util");
 
 describe("validation middleware", () => {
   let req;
@@ -44,9 +52,9 @@ describe("validation middleware", () => {
 
   describe("validate", () => {
     it("should pass valid data to next()", () => {
-      const schema = Joi.object({
-        name: Joi.string().required(),
-        age: Joi.number().integer().min(0),
+      const schema = z.object({
+        name: z.string(),
+        age: z.number().int().min(0).optional(),
       });
 
       req.body = { name: "John", age: 25 };
@@ -59,9 +67,21 @@ describe("validation middleware", () => {
       expect(req.body.age).toBe(25);
     });
 
+    it("should set req.validated to the parsed value as well as req.body", () => {
+      const schema = z.object({ name: z.string().trim() });
+
+      req.body = { name: "  John  ", extra: 1 };
+
+      validate(schema)(req, res, next);
+
+      expect(next).toHaveBeenCalledWith();
+      expect(req.validated).toEqual({ name: "John" });
+      expect(req.body).toEqual({ name: "John" });
+    });
+
     it("should strip unknown keys from body", () => {
-      const schema = Joi.object({
-        name: Joi.string().required(),
+      const schema = z.object({
+        name: z.string(),
       });
 
       req.body = { name: "John", unknownField: "should be stripped" };
@@ -75,9 +95,9 @@ describe("validation middleware", () => {
     });
 
     it("should return validation errors when required field is missing", () => {
-      const schema = Joi.object({
-        name: Joi.string().required(),
-        email: Joi.string().email().required(),
+      const schema = z.object({
+        name: z.string(),
+        email: z.email(),
       });
 
       req.body = { name: "John" };
@@ -86,15 +106,34 @@ describe("validation middleware", () => {
       middleware(req, res, next);
 
       expect(next).not.toHaveBeenCalled();
-      expect(res.json).toHaveBeenCalled();
+      expect(res.json).toHaveBeenCalledWith({
+        success: false,
+        status: 400,
+        message: "Validation Error",
+        data: null,
+        details: [{ field: "email", message: "Invalid input: expected string, received undefined" }],
+      });
+    });
+
+    it("should answer through response.util#error with (res, message, status, details)", () => {
+      const schema = z.object({ name: z.string() });
+
+      req.body = {};
+
+      validate(schema)(req, res, next);
+
+      expect(error).toHaveBeenCalledTimes(1);
+      expect(error).toHaveBeenCalledWith(res, "Validation Error", 400, [
+        { field: "name", message: "Invalid input: expected string, received undefined" },
+      ]);
     });
 
     it("should return formatted validation errors with field paths", () => {
-      const schema = Joi.object({
-        user: Joi.object({
-          name: Joi.string().required(),
-          email: Joi.string().email().required(),
-        }).required(),
+      const schema = z.object({
+        user: z.object({
+          name: z.string(),
+          email: z.email(),
+        }),
       });
 
       req.body = { user: { email: "invalid" } };
@@ -104,13 +143,15 @@ describe("validation middleware", () => {
 
       expect(res.json).toHaveBeenCalled();
       const jsonCall = res.json.mock.calls[0][0];
-      expect(jsonCall).toHaveProperty("details");
-      expect(Array.isArray(jsonCall.details)).toBe(true);
+      expect(jsonCall.details).toEqual([
+        { field: "user.name", message: "Invalid input: expected string, received undefined" },
+        { field: "user.email", message: "Invalid email address" },
+      ]);
     });
 
     it("should return 400 status for validation errors", () => {
-      const schema = Joi.object({
-        name: Joi.string().required(),
+      const schema = z.object({
+        name: z.string(),
       });
 
       req.body = {};
@@ -121,13 +162,13 @@ describe("validation middleware", () => {
       expect(res.status).toHaveBeenCalledWith(400);
     });
 
-    // A-09. Express 5 leaves req.body undefined when no body was sent, and Joi
-    // treats `undefined` as VALID against a non-required object schema — so
-    // this gate used to call next() with req.body === undefined and the
+    // A-09. Express 5 leaves req.body undefined when no body was sent. Under
+    // the old library, `undefined` was VALID against a non-required object schema — so
+    // this gate once called next() with req.body === undefined and the
     // controller's first `req.body.x` threw a TypeError, reported as a 500.
     it("should return 400, not pass through, when the body is absent entirely (A-09)", () => {
-      const schema = Joi.object({
-        name: Joi.string().required(),
+      const schema = z.object({
+        name: z.string(),
       });
 
       req.body = undefined;
@@ -142,8 +183,8 @@ describe("validation middleware", () => {
     });
 
     it("should call next() with a real object body when the body is absent and every field is optional (A-09)", () => {
-      const schema = Joi.object({
-        note: Joi.string().optional(),
+      const schema = z.object({
+        note: z.string().optional(),
       });
 
       req.body = undefined;
@@ -161,8 +202,8 @@ describe("validation middleware", () => {
     });
 
     it("should handle empty body", () => {
-      const schema = Joi.object({
-        name: Joi.string().optional(),
+      const schema = z.object({
+        name: z.string().optional(),
       });
 
       req.body = {};
@@ -174,8 +215,8 @@ describe("validation middleware", () => {
     });
 
     it("should validate array fields", () => {
-      const schema = Joi.object({
-        tags: Joi.array().items(Joi.string()).min(1),
+      const schema = z.object({
+        tags: z.array(z.string()).min(1).optional(),
       });
 
       req.body = { tags: ["tag1", "tag2"] };
@@ -186,9 +227,9 @@ describe("validation middleware", () => {
       expect(next).toHaveBeenCalled();
     });
 
-    it("should reject invalid array items", () => {
-      const schema = Joi.object({
-        tags: Joi.array().items(Joi.string()).min(1),
+    it("should reject invalid array items, naming each item", () => {
+      const schema = z.object({
+        tags: z.array(z.string()).min(1).optional(),
       });
 
       req.body = { tags: [123, 456] };
@@ -197,12 +238,16 @@ describe("validation middleware", () => {
       middleware(req, res, next);
 
       expect(next).not.toHaveBeenCalled();
+      expect(res.json.mock.calls[0][0].details).toEqual([
+        { field: "tags.0", message: "Invalid input: expected string, received number" },
+        { field: "tags.1", message: "Invalid input: expected string, received number" },
+      ]);
     });
 
     it("should handle optional fields with defaults", () => {
-      const schema = Joi.object({
-        name: Joi.string().required(),
-        role: Joi.string().optional().default("user"),
+      const schema = z.object({
+        name: z.string(),
+        role: z.string().default("user"),
       });
 
       req.body = { name: "John" };
@@ -215,12 +260,12 @@ describe("validation middleware", () => {
     });
 
     it("should validate nested objects", () => {
-      const schema = Joi.object({
-        user: Joi.object({
-          profile: Joi.object({
-            age: Joi.number().min(0).required(),
-          }).required(),
-        }).required(),
+      const schema = z.object({
+        user: z.object({
+          profile: z.object({
+            age: z.number().min(0),
+          }),
+        }),
       });
 
       req.body = { user: { profile: { age: 25 } } };
@@ -232,12 +277,12 @@ describe("validation middleware", () => {
     });
 
     it("should reject nested objects with invalid data", () => {
-      const schema = Joi.object({
-        user: Joi.object({
-          profile: Joi.object({
-            age: Joi.number().min(0).required(),
-          }).required(),
-        }).required(),
+      const schema = z.object({
+        user: z.object({
+          profile: z.object({
+            age: z.number().min(0),
+          }),
+        }),
       });
 
       req.body = { user: { profile: { age: -1 } } };
@@ -246,13 +291,16 @@ describe("validation middleware", () => {
       middleware(req, res, next);
 
       expect(next).not.toHaveBeenCalled();
+      expect(res.json.mock.calls[0][0].details).toEqual([
+        { field: "user.profile.age", message: "Too small: expected number to be >=0" },
+      ]);
     });
 
     it("should handle multiple validation errors", () => {
-      const schema = Joi.object({
-        name: Joi.string().required(),
-        email: Joi.string().email().required(),
-        age: Joi.number().required(),
+      const schema = z.object({
+        name: z.string(),
+        email: z.email(),
+        age: z.number(),
       });
 
       req.body = { name: 123, email: "invalid", age: "not-a-number" };
@@ -262,14 +310,16 @@ describe("validation middleware", () => {
 
       expect(next).not.toHaveBeenCalled();
       const jsonCall = res.json.mock.calls[0][0];
-      expect(jsonCall.details.length).toBeGreaterThan(1);
+      expect(jsonCall.details).toEqual([
+        { field: "name", message: "Invalid input: expected string, received number" },
+        { field: "email", message: "Invalid email address" },
+        { field: "age", message: "Invalid input: expected number, received string" },
+      ]);
     });
 
     it("should use custom error messages", () => {
-      const schema = Joi.object({
-        name: Joi.string().required().messages({
-          "string.empty": "Name cannot be empty",
-        }),
+      const schema = z.object({
+        name: z.string().min(1, { error: "Name cannot be empty" }),
       });
 
       req.body = { name: "" };
@@ -280,13 +330,13 @@ describe("validation middleware", () => {
       expect(next).not.toHaveBeenCalled();
       const jsonCall = res.json.mock.calls[0][0];
       const nameError = jsonCall.details.find((e) => e.field === "name");
-      expect(nameError).toBeDefined();
+      expect(nameError).toEqual({ field: "name", message: "Name cannot be empty" });
     });
 
     it("should allow null for optional fields", () => {
-      const schema = Joi.object({
-        name: Joi.string().required(),
-        middleName: Joi.string().allow(null).optional(),
+      const schema = z.object({
+        name: z.string(),
+        middleName: z.string().nullable().optional(),
       });
 
       req.body = { name: "John", middleName: null };
@@ -295,11 +345,12 @@ describe("validation middleware", () => {
       middleware(req, res, next);
 
       expect(next).toHaveBeenCalled();
+      expect(req.body.middleName).toBeNull();
     });
 
     it("should validate boolean fields", () => {
-      const schema = Joi.object({
-        active: Joi.boolean().required(),
+      const schema = z.object({
+        active: z.boolean(),
       });
 
       req.body = { active: true };
@@ -311,8 +362,8 @@ describe("validation middleware", () => {
     });
 
     it("should reject non-boolean for boolean fields", () => {
-      const schema = Joi.object({
-        active: Joi.boolean().required(),
+      const schema = z.object({
+        active: z.boolean(),
       });
 
       req.body = { active: "yes" };
@@ -324,12 +375,12 @@ describe("validation middleware", () => {
     });
 
     it("should handle abac schema with location", () => {
-      const schema = Joi.object({
-        location: Joi.object({
-          lat: Joi.number().required(),
-          lng: Joi.number().required(),
-        }).required(),
-        permissions: Joi.array().items(Joi.string()).required(),
+      const schema = z.object({
+        location: z.object({
+          lat: z.number(),
+          lng: z.number(),
+        }),
+        permissions: z.array(z.string()),
       });
 
       req.body = {
@@ -344,9 +395,9 @@ describe("validation middleware", () => {
     });
 
     it("should sanitize input by stripping extra fields", () => {
-      const schema = Joi.object({
-        username: Joi.string().alphanum().min(3).max(30).required(),
-        email: Joi.string().email().required(),
+      const schema = z.object({
+        username: z.string().regex(/^[a-zA-Z0-9]+$/).min(3).max(30),
+        email: z.email(),
       });
 
       req.body = {
@@ -360,18 +411,13 @@ describe("validation middleware", () => {
       middleware(req, res, next);
 
       expect(next).toHaveBeenCalled();
-      expect(req.body).toHaveProperty("username", "johndoe");
-      expect(req.body).toHaveProperty("email", "john@example.com");
-      expect(req.body).not.toHaveProperty("password");
-      expect(req.body).not.toHaveProperty("createdAt");
+      expect(req.body).toEqual({ username: "johndoe", email: "john@example.com" });
     });
 
     it("should handle login schema with user field", () => {
-      const schema = Joi.object({
-        user: Joi.alternatives()
-          .try(Joi.string().email(), Joi.string().alphanum())
-          .required(),
-        password: Joi.string().required(),
+      const schema = z.object({
+        user: z.union([z.email(), z.string().regex(/^[a-zA-Z0-9]+$/)]),
+        password: z.string(),
       });
 
       req.body = { user: "johndoe", password: "Password1" };
@@ -383,29 +429,27 @@ describe("validation middleware", () => {
     });
 
     it("should handle register schema with all fields", () => {
-      const schema = Joi.object({
-        firstName: Joi.string().trim().min(2).max(100).required(),
-        lastName: Joi.string().trim().allow(null, "").optional(),
-        username: Joi.string().trim().alphanum().min(3).max(30).required(),
-        email: Joi.string()
+      const schema = z.object({
+        firstName: z.string().trim().min(2).max(100),
+        lastName: z.string().trim().nullable().optional(),
+        username: z.string().trim().regex(/^[a-zA-Z0-9]+$/).min(3).max(30),
+        email: z
+          .string()
           .trim()
-          .lowercase()
-          .email()
-          .min(6)
-          .max(255)
-          .required(),
-        password: Joi.string()
+          .toLowerCase()
+          .pipe(z.email().min(6).max(255)),
+        password: z
+          .string()
           .min(8)
           .max(100)
-          .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+/)
-          .required(),
+          .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+/),
       });
 
       req.body = {
         firstName: "John",
         lastName: "Doe",
         username: "johndoe",
-        email: "john@example.com",
+        email: " John@Example.com ",
         password: "Password1",
       };
 
@@ -413,22 +457,23 @@ describe("validation middleware", () => {
       middleware(req, res, next);
 
       expect(next).toHaveBeenCalled();
+      expect(req.body.email).toBe("john@example.com");
     });
 
     it("should handle change password schema with confirm password validation", () => {
-      const schema = Joi.object({
-        oldPassword: Joi.string().required(),
-        newPassword: Joi.string()
-          .min(8)
-          .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+/)
-          .required(),
-        confirmPassword: Joi.any()
-          .valid(Joi.ref("newPassword"))
-          .required()
-          .messages({
-            "any.only": "Passwords do not match",
-          }),
-      });
+      const schema = z
+        .object({
+          oldPassword: z.string(),
+          newPassword: z
+            .string()
+            .min(8)
+            .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+/),
+          confirmPassword: z.string(),
+        })
+        .refine((body) => body.confirmPassword === body.newPassword, {
+          error: "Passwords do not match",
+          path: ["confirmPassword"],
+        });
 
       req.body = {
         oldPassword: "OldPass123",
@@ -443,11 +488,16 @@ describe("validation middleware", () => {
     });
 
     it("should reject mismatched confirm password", () => {
-      const schema = Joi.object({
-        oldPassword: Joi.string().required(),
-        newPassword: Joi.string().min(8).required(),
-        confirmPassword: Joi.any().valid(Joi.ref("newPassword")).required(),
-      });
+      const schema = z
+        .object({
+          oldPassword: z.string(),
+          newPassword: z.string().min(8),
+          confirmPassword: z.string(),
+        })
+        .refine((body) => body.confirmPassword === body.newPassword, {
+          error: "Passwords do not match",
+          path: ["confirmPassword"],
+        });
 
       req.body = {
         oldPassword: "OldPass123",
@@ -459,6 +509,22 @@ describe("validation middleware", () => {
       middleware(req, res, next);
 
       expect(next).not.toHaveBeenCalled();
+      expect(res.json.mock.calls[0][0].details).toEqual([
+        { field: "confirmPassword", message: "Passwords do not match" },
+      ]);
+    });
+
+    it("should check the query without replacing the body when the source is the query", () => {
+      const schema = z.object({ page: z.string() });
+
+      req.body = { untouched: true };
+      req.query = { page: "2", extra: "x" };
+
+      validate(schema, { from: "query" })(req, res, next);
+
+      expect(next).toHaveBeenCalled();
+      expect(req.validated).toEqual({ page: "2" });
+      expect(req.body).toEqual({ untouched: true });
     });
   });
 });

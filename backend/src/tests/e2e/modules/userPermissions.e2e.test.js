@@ -17,6 +17,8 @@ const {
   extractToken,
   waitForServer,
 } = require("../setup");
+// P10-16 (ADR-099): no default operator password — set E2E_OPERATOR_PASSWORD (see setup.js).
+const { OPERATOR_PASSWORD } = require("../setup");
 
 let token = null;
 let userId = null;
@@ -25,7 +27,7 @@ async function login() {
   if (token) {return token;}
   const { body } = await httpPost("/auth/login", {
     user: "sys@mail.com",
-    password: "123123",
+    password: OPERATOR_PASSWORD,
   });
   token = extractToken(body);
   userId = body && (body.user?.id || body.data?.user?.id || body.data?.id);

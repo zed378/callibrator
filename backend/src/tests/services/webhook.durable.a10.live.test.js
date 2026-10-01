@@ -17,13 +17,20 @@
  * A "replica" / "restarted process" is a separately loaded copy of the module
  * graph: its own Sequelize instance and connection pool.
  *
- * OPT-IN — needs a database whose schema includes webhook_deliveries with
- * migration 0043 applied (db.sync() of the current models is enough):
+ * OPT-IN — needs a PostgreSQL server where DB_USER may CREATE DATABASE:
  *
- *   WEBHOOK_PG_LIVE_TEST=1 DB_HOST=... DB_PORT=... DB_NAME=... DB_USER=... DB_PASS=... \
+ *   WEBHOOK_PG_LIVE_TEST=1 DB_HOST=... DB_PORT=... DB_USER=... DB_PASS=... \
+ *     [LIVE_DB_TEMPLATE=<a booted database>] \
  *     npm test -- src/tests/services/webhook.durable.a10.live --coverage=false
  *
- * It creates two tenants with fixed ids and removes everything it wrote.
+ * A-283 (2026-09-30): the suite creates its OWN database (ADR-095 O-2),
+ * builds it the way the backend boots (db.sync() + every migration), and every
+ * process — the first, the "restarted" one and the second replica — runs as
+ * `callibrator_app` (enterApplicationRole), never as the owner. The claim is
+ * `UPDATE … FOR UPDATE SKIP LOCKED`: as the owner it passed whether the
+ * application role held UPDATE on webhook_deliveries or not. Creating a
+ * webhook writes an append-only audit row (0091) naming its creator (A-124),
+ * so the database is dropped, never cleaned.
  */
 
 jest.mock("../../utils/ssrf.util", () => ({
@@ -31,33 +38,65 @@ jest.mock("../../utils/ssrf.util", () => ({
   assertSafeUrl: jest.fn(),
   assertResolvedHostIsPublic: jest.fn().mockResolvedValue(undefined),
   isBlockedIp: jest.fn(),
+  // A-307's sender: its pinned lookup refuses loopback too. Plain fetch with
+  // the same contract — a 3xx returned, not followed; every status resolves.
+  pinnedFetch: async (url, { method, headers, body, signal }) => {
+    const res = await fetch(url, { method, headers, body, signal, redirect: "manual" });
+    await res.body?.cancel();
+    return { ok: res.ok, status: res.status };
+  },
 }));
 
 const { startReceiver } = require("../fixtures/webhookReceiver");
+const { createDisposableDatabase, LIVE_BOOT_TIMEOUT_MS } = require("../fixtures/disposableDatabase");
+const { bootSchema, enterAppRole, APP_ROLE } = require("../fixtures/liveBoot");
 
 const live = process.env.WEBHOOK_PG_LIVE_TEST === "1" ? describe : describe.skip;
 
 const TENANT_A = "a1a1a1a1-0000-4000-8000-00000000000a";
 const TENANT_B = "b2b2b2b2-0000-4000-8000-00000000000b";
+/** The webhook creator in each tenant: an audit row names its actor (A-124). */
+const CREATOR = {
+  [TENANT_A]: "a1a1a1a1-0000-4000-8000-0000000000e1",
+  [TENANT_B]: "b2b2b2b2-0000-4000-8000-0000000000e2",
+};
 
-/** A separately loaded module graph: a new process, as far as the DB can tell. */
-const startProcess = () => {
+/**
+ * A separately loaded module graph: a new process, as far as the DB can tell.
+ * `boot` only for the first one: db.sync() + the migrations are owner
+ * DDL; every process then runs as the application role, as index.js does.
+ */
+const startProcess = async ({ boot = false } = {}) => {
   let graph;
   jest.isolateModules(() => {
     const { db } = require("../../config");
     db.options.logging = false;
     graph = {
       db,
+      migrator: require("../../config/migrator").migrator,
       models: require("../../models"),
       webhookService: require("../../services/webhook.service"),
     };
   });
+  if (boot) {
+    await bootSchema(graph.db, graph.migrator);
+  }
+  await enterAppRole(graph.db);
   return graph;
 };
+
+/** createWebhook with the tenant's creator as the audited actor. */
+const createHook = (p, tenantId, events = ["*"]) =>
+  p.webhookService.createWebhook(tenantId, {
+    url: "https://placeholder.invalid/",
+    events,
+    createdBy: CREATOR[tenantId],
+  });
 
 const settle = () => new Promise((r) => setTimeout(r, 300));
 
 live("webhook delivery — live PostgreSQL (A-10, A-11)", () => {
+  jest.setTimeout(60000);
   let p1;
   const receivers = [];
 
@@ -80,16 +119,25 @@ live("webhook delivery — live PostgreSQL (A-10, A-11)", () => {
     return rows;
   };
 
+  let scratch;
+
   beforeAll(async () => {
-    p1 = startProcess();
+    scratch = await createDisposableDatabase("a10");
+    p1 = await startProcess({ boot: true });
     await p1.db.query(
       `INSERT INTO tenants (id, name, subdomain, email, created_at, updated_at) VALUES
          (:a, 'Live A', 'live-a10-a', 'a10a@live.test', now(), now()),
-         (:b, 'Live B', 'live-a10-b', 'a10b@live.test', now(), now())
-       ON CONFLICT (id) DO NOTHING`,
+         (:b, 'Live B', 'live-a10-b', 'a10b@live.test', now(), now())`,
       { replacements: { a: TENANT_A, b: TENANT_B } },
     );
-  });
+    for (const [tenantId, userId] of Object.entries(CREATOR)) {
+      await p1.db.query(
+        `INSERT INTO users (id, tenant_id, username, email, password, first_name, last_name, created_at, updated_at)
+         VALUES (:userId, :tenantId, :name, :email, 'x', 'A10', 'Creator', now(), now())`,
+        { replacements: { userId, tenantId, name: `a10-${userId.slice(-2)}`, email: `a10-${userId.slice(-2)}@live.test` } },
+      );
+    }
+  }, LIVE_BOOT_TIMEOUT_MS);
 
   afterEach(async () => {
     await p1.db.query("DELETE FROM webhook_deliveries WHERE tenant_id IN (:t)", { replacements: { t: [TENANT_A, TENANT_B] } });
@@ -100,12 +148,24 @@ live("webhook delivery — live PostgreSQL (A-10, A-11)", () => {
   });
 
   afterAll(async () => {
-    await p1.db.query("DELETE FROM tenants WHERE id IN (:t)", { replacements: { t: [TENANT_A, TENANT_B] } });
-    await p1.db.close();
+    if (p1) {
+      await p1.db.close();
+    }
+    if (scratch) {
+      await scratch.drop();
+    }
+  });
+
+  it("runs as callibrator_app, which may claim (UPDATE) deliveries but not delete an audit row", async () => {
+    const [[row]] = await p1.db.query(
+      `SELECT current_user AS u, has_table_privilege('webhook_deliveries', 'UPDATE') AS claim,
+              has_table_privilege('audit_logs', 'DELETE') AS erase`,
+    );
+    expect(row).toEqual({ u: APP_ROLE, claim: true, erase: false });
   });
 
   it("a retry scheduled before a restart is delivered by the next process, same delivery id, signature verified", async () => {
-    const hook = await p1.webhookService.createWebhook(TENANT_A, { url: "https://placeholder.invalid/", events: ["*"] });
+    const hook = await createHook(p1, TENANT_A);
     const rx = await receiver(hook.secret, 500);
     await p1.db.query("UPDATE webhooks SET url = :url WHERE id = :id", { replacements: { url: rx.url, id: hook.id } });
 
@@ -123,7 +183,7 @@ live("webhook delivery — live PostgreSQL (A-10, A-11)", () => {
     // "Restart": the first process is gone; a new one boots. Its dispatcher
     // finds the row once it is due.
     await p1.db.close();
-    const p2 = startProcess();
+    const p2 = await startProcess();
     p1 = p2; // the cleanup hooks use the live process
     rx.respondWith(200);
     const early = await p2.webhookService.dispatchDue();
@@ -143,7 +203,7 @@ live("webhook delivery — live PostgreSQL (A-10, A-11)", () => {
   });
 
   it("two replicas dispatching concurrently send each of 30 due deliveries exactly once (SKIP LOCKED)", async () => {
-    const hook = await p1.webhookService.createWebhook(TENANT_A, { url: "https://placeholder.invalid/", events: ["*"] });
+    const hook = await createHook(p1, TENANT_A);
     const rx = await receiver(hook.secret, 200);
     await p1.db.query("UPDATE webhooks SET url = :url WHERE id = :id", { replacements: { url: rx.url, id: hook.id } });
     // Rows written straight to the table, due now — as a restart finds them.
@@ -153,7 +213,7 @@ live("webhook delivery — live PostgreSQL (A-10, A-11)", () => {
          FROM generate_series(1, 30)`,
       { replacements: { tenant: TENANT_A, hook: hook.id } },
     );
-    const p2 = startProcess();
+    const p2 = await startProcess();
     try {
       const [a, b] = await Promise.all([
         p1.webhookService.dispatchDue({ limit: 30 }),
@@ -170,7 +230,7 @@ live("webhook delivery — live PostgreSQL (A-10, A-11)", () => {
   });
 
   it("a claimed (leased) row is invisible to every claimer until the lease expires", async () => {
-    const hook = await p1.webhookService.createWebhook(TENANT_A, { url: "https://placeholder.invalid/", events: ["*"] });
+    const hook = await createHook(p1, TENANT_A);
     await p1.db.query(
       `INSERT INTO webhook_deliveries (id, tenant_id, webhook_id, event, payload, status, attempts, next_attempt_at, created_at, updated_at)
        VALUES (gen_random_uuid(), :tenant, :hook, 'device.overdue', '{}'::jsonb, 'pending', 0, now() - interval '1 second', now(), now())`,
@@ -190,8 +250,8 @@ live("webhook delivery — live PostgreSQL (A-10, A-11)", () => {
   });
 
   it("two tenants: an event reaches only its own tenant's webhook, and a claim by id is bound to the tenant", async () => {
-    const hookA = await p1.webhookService.createWebhook(TENANT_A, { url: "https://placeholder.invalid/", events: ["*"] });
-    const hookB = await p1.webhookService.createWebhook(TENANT_B, { url: "https://placeholder.invalid/", events: ["*"] });
+    const hookA = await createHook(p1, TENANT_A);
+    const hookB = await createHook(p1, TENANT_B);
     const rxA = await receiver(hookA.secret, 500);
     const rxB = await receiver(hookB.secret, 200);
     await p1.db.query("UPDATE webhooks SET url = :url WHERE id = :id", { replacements: { url: rxA.url, id: hookA.id } });
@@ -223,7 +283,7 @@ live("webhook delivery — live PostgreSQL (A-10, A-11)", () => {
   });
 
   it("emitAfterCommit: a rolled-back transaction emits nothing; a committed one emits exactly once", async () => {
-    const hook = await p1.webhookService.createWebhook(TENANT_A, { url: "https://placeholder.invalid/", events: ["capa.created"] });
+    const hook = await createHook(p1, TENANT_A, ["capa.created"]);
     const rx = await receiver(hook.secret, 200);
     await p1.db.query("UPDATE webhooks SET url = :url WHERE id = :id", { replacements: { url: rx.url, id: hook.id } });
 

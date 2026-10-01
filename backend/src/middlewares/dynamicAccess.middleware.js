@@ -3,6 +3,8 @@ const RolesService = require("../services/roles.service");
 const { scopeAllows } = require("../services/apiKey.service");
 const { logger } = require("./activityLog.middleware");
 const { error: sendError } = require("../utils/response.util");
+// N-01: the one super-admin predicate (both spellings).
+const { isSuperAdmin } = require("../utils/role.util");
 
 /**
  * AZ-04. The single status used for EVERY tenant-isolation refusal in this
@@ -153,7 +155,7 @@ exports.dynamicAccess = (menuGroup, permissionType, options = {}) => {
       }
 
       // SUPER_ADMIN bypass - has access to everything (no tenant check)
-      if (user.role.name === "SUPER_ADMIN" || user.role.name === "SUPERADMIN") {
+      if (isSuperAdmin(user)) {
         req.dynamicAccessContext = {
           allowed: true,
           reason: "SUPER_ADMIN bypass",
@@ -408,30 +410,19 @@ function checkApiKeyScope(menuName, permTypes, scopes, requireAll) {
  *   2. Otherwise the role permission matrix (role_menu_permissions) applies.
  */
 async function checkMenuPermission(menuName, permTypes, user, requireAll) {
-  // 1. Get cached permissions matrix
-  const matrix = await RolesService.getRolePermissionsMatrix(user.role.id);
-
-  // 2. See if the menu exists in the user's role permissions
-  let rolePermsForMenu = matrix[menuName] || [];
-
-  // 3. Apply per-user override if one exists for this menu
-  try {
-    // Lazy require to avoid circular dependency at module load time.
-    const userPermissionService = require("../services/userPermission.service");
-    const overrides = await userPermissionService.getUserOverrideMatrix(
-      user.id,
-    );
-    if (Object.prototype.hasOwnProperty.call(overrides, menuName)) {
-      const override = overrides[menuName];
-      rolePermsForMenu = override === "none" ? [] : [override];
-    }
-  } catch (err) {
+  // ADR-102 — the role matrix (1) and the per-user override (2, `none`
+  // denies) are read through services/effectivePermission, the ONE function
+  // the sidebar and the page write buttons read too. Lazy require to avoid a
+  // circular dependency at module load time (as the override lookup was).
+  const effectivePermission = require("../services/effectivePermission.service");
+  const sources = await effectivePermission.loadPermissionSources(user, (err) => {
     // Overrides are additive hardening — never let a lookup failure block
     // the request path; fall back to plain role permissions.
     if (typeof logger !== "undefined") {
       logger.error(`UserPermission override lookup failed: ${err.message}`);
     }
-  }
+  });
+  const rolePermsForMenu = effectivePermission.permissionsForMenu(sources, menuName);
 
   const typeResults = [];
   for (const permType of permTypes) {
@@ -485,7 +476,7 @@ exports.principalHasMenuPermission = async (principal, menuName, permissionType)
   if (!principal || !principal.role) {
     return false;
   }
-  if (principal.role.name === "SUPER_ADMIN" || principal.role.name === "SUPERADMIN") {
+  if (isSuperAdmin(principal)) {
     return true;
   }
   const result = principal.isApiKey

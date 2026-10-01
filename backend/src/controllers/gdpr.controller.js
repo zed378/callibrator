@@ -5,6 +5,7 @@
  */
 
 const gdprService = require("../services/gdpr.service");
+const { auditPrincipal } = require("../utils/auditPrincipal.util");
 const { success } = require("../utils/response.util");
 const { asyncHandler } = require("../utils/controllerWrapper.util");
 const { auditActor } = require("../utils/auditActor.util");
@@ -38,9 +39,13 @@ exports.exportUserData = asyncHandler(async (req, res) => {
 exports.requestErasure = asyncHandler(async (req, res) => {
   const { tenantId, userId } = actor(req);
   const { reason } = req.body;
-  const request = await gdprService.createDsar(tenantId, userId, "erasure", {
-    reason: reason || null,
-  });
+  const request = await gdprService.createDsar(
+    tenantId,
+    userId,
+    "erasure",
+    { reason: reason || null },
+    auditPrincipal(req),
+  );
   return success(res, request, null, "Erasure request submitted", 201);
 });
 
@@ -78,6 +83,7 @@ exports.updateConsent = asyncHandler(async (req, res) => {
     categories,
     consent,
     req.ip,
+    auditPrincipal(req),
   );
   return success(res, result, "Consent preferences updated");
 });
@@ -128,6 +134,6 @@ exports.rectifyData = asyncHandler(async (req, res) => {
 exports.restrictProcessing = asyncHandler(async (req, res) => {
   const { tenantId, userId } = actor(req);
   const { reason } = req.body;
-  const result = await gdprService.restrictProcessing(tenantId, userId, reason);
+  const result = await gdprService.restrictProcessing(tenantId, userId, reason, auditPrincipal(req));
   return success(res, result, "Processing restricted");
 });

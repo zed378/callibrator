@@ -7,6 +7,7 @@
 // time. (Future optimization: add `use cache` + cacheTag('posts') here and
 // revalidateTag on publish.)
 
+import { configuredForwardedProto } from "./backendHeaders";
 import { cacheLife, cacheTag } from "next/cache";
 import { API_BASE_URL } from "@/constants";
 import type { Post, Category } from "@/api/services/content.service";
@@ -16,7 +17,8 @@ export type { Post, Category };
 async function fetchJson<T>(path: string): Promise<T | null> {
   try {
     const res = await fetch(`${API_BASE_URL}/api/v1${path}`, {
-      headers: { Accept: "application/json" },
+      // A-310: no incoming request here (cached content); the configured site scheme.
+      headers: { Accept: "application/json", ...configuredForwardedProto() },
     });
     if (!res.ok) return null;
     const json = await res.json();
@@ -57,9 +59,13 @@ export async function getPublicCategories(): Promise<Category[]> {
 
 // Deterministic date formatting (fixed input + locale) — safe under
 // cacheComponents (unlike a bare `new Date()`).
-export function formatDate(iso?: string | null): string {
+/**
+ * A post's date, in the page's language (P10-13: blog and news follow the
+ * public `locale` cookie; English stays the default for other callers).
+ */
+export function formatDate(iso?: string | null, locale: "id" | "en" = "en"): string {
   if (!iso) return "";
-  return new Date(iso).toLocaleDateString("en-US", {
+  return new Date(iso).toLocaleDateString(locale === "id" ? "id-ID" : "en-US", {
     year: "numeric",
     month: "long",
     day: "numeric",

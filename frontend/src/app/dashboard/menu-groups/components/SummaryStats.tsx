@@ -26,7 +26,7 @@ const iconConfig = (color: string) => {
 
 interface SummaryStatsProps {
   menuGroups: ExtendedMenuGroup[];
-  roles: { id?: string; nameToShow?: string; name?: string }[];
+  roles: { id?: string; nameToShow?: string | null; name?: string }[];
   selectedRoleId: string;
 }
 

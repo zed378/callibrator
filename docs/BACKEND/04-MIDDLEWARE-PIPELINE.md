@@ -21,7 +21,7 @@ compression
   → accessLog · activityLog
   → static                    /.well-known · /uploads (nosniff+inline) · /public
   → globalSanitizer
-  → swagger
+  → apiDocs                   /docs · /docs.json · /api/v1/docs — Scalar + openapi.json, gated auth → denyApiKey → rbac(TENANT_ADMIN) (P9-25, ADR-103; was swagger, public)
   ── per route ──
   → auth → tenantContext → dynamicAccess/rbac/abac → validate → handler
   → notFound → errorHandler
@@ -118,7 +118,7 @@ img-src     'self' data: https:
 object-src  'none'          frame-ancestors 'none'
 ```
 
-`'unsafe-inline'` is there because bundled swagger-ui injects inline assets. `crossOriginResourcePolicy: cross-origin` so the separate-origin frontend can load `/uploads` images.
+*(Stale — P7-08 removed `'unsafe-inline'` for scripts from the API default; `utils/csp.util.ts` is the source.)* The API reference under `/docs` has its own, tighter policy since P9-25 (`API_DOCS_CSP_DIRECTIVES`: same-origin script, style, font and connect only; ADR-103). `crossOriginResourcePolicy: cross-origin` so the separate-origin frontend can load `/uploads` images.
 
 **That relaxation does not transfer** to the Next.js origin serving user-authored `posts.contentHtml`, which should be stricter.
 

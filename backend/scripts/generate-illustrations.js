@@ -469,7 +469,7 @@ graph LR
     Auth --> TenantCtx[Tenant Context<br/>Identification]
     TenantCtx --> TenantScope[Tenant Scope<br/>Query Binding]
     TenantScope --> DynamicAccess[Dynamic Access<br/>Permission Matrix]
-    DynamicAccess --> InputValidation[Input Validation<br/>Joi Schema]
+    DynamicAccess --> InputValidation[Input Validation<br/>Zod Schema]
     InputValidation --> Controller[Controller Handler]
     Controller --> ActivityLog[Activity Log]
     ActivityLog --> AuditLog[Audit Log]
@@ -753,7 +753,7 @@ graph TB
 
     subgraph L2["Layer 2: Input"]
         Sanitizer["XSS Sanitizer"]
-        Validator["Joi Schema Validation"]
+        Validator["Zod Schema Validation"]
         UUID["UUID Parameter Validation"]
     end
 
@@ -847,7 +847,7 @@ graph TB
         Templates["templates/<br/>Email HTML"]
         Tests["tests/<br/>Jest Tests"]
         Utils["utils/<br/>Helpers"]
-        Validators["validators/<br/>Joi Schemas"]
+        Validators["validators/<br/>Zod Schemas"]
         DocsAPI["docs/<br/>Swagger Config"]
     end
 
@@ -1357,7 +1357,7 @@ graph TB
     subgraph API["Kanban API (/api/v1/kanban)"]
         Routes["kanban.route.js"]
         Ctrl["kanban.controller.js"]
-        Valid["kanban.validator.js (Joi)"]
+        Valid["kanban.validator.ts (Zod)"]
     end
 
     subgraph Svc["kanban.service.js"]

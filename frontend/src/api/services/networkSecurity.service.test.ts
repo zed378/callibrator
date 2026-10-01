@@ -87,6 +87,16 @@ describe("networkSecurityService", () => {
         radiusKm: 25,
       });
     });
+
+    it("Q-38 (ADR-100): sends this device's currentLocation when given", async () => {
+      mockedApi.put.mockResolvedValueOnce(envelope({ tenantId: "t1", geofence: {} }));
+      await networkSecurityService.setGeofence(-6.2, 106.8, undefined, { latitude: -6.25, longitude: 106.85 });
+      expect(mockedApi.put).toHaveBeenCalledWith(`${BASE}/geofence`, {
+        latitude: -6.2,
+        longitude: 106.8,
+        currentLocation: { latitude: -6.25, longitude: 106.85 },
+      });
+    });
   });
 
   describe("evaluateLogin", () => {

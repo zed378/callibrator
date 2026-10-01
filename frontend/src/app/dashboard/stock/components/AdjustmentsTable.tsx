@@ -1,6 +1,7 @@
 import React from "react";
 import { StockAdjustment } from "@/types";
 import { Table, Badge } from "@/components/ui";
+import { actorLabel } from "@/lib/actorLabel";
 
 interface AdjustmentsTableProps {
   data: StockAdjustment[];
@@ -40,7 +41,7 @@ export const AdjustmentsTable: React.FC<AdjustmentsTableProps> = ({ data }) => {
       header: "Performed By",
       render: (_: unknown, row: Record<string, unknown>) => {
         const a = row as unknown as StockAdjustment;
-        return <span className="text-xs text-muted-foreground">{a.adjuster ? `${a.adjuster.firstName} ${a.adjuster.lastName}` : "-"}</span>;
+        return <span className="text-xs text-muted-foreground">{actorLabel(a.adjuster, a.apiKey) ?? "-"}</span>;
       },
     },
     {

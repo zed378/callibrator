@@ -169,6 +169,7 @@ describe("gdpr.service new methods", () => {
       const res = await gdpr.restrictProcessing("t1", "u1", "no marketing");
       expect(DsarRequest.create).toHaveBeenCalledWith(
         expect.objectContaining({ tenantId: "t1", userId: "u1", type: "restriction" }),
+        { transaction: mockTx },
       );
       expect(res).toMatchObject({ restricted: true, requestId: "dsar-1" });
     });
@@ -183,7 +184,89 @@ describe("gdpr.service new methods", () => {
           type: "restriction",
           details: { reason: null },
         }),
+        { transaction: mockTx },
       );
+    });
+  });
+
+  // P6-11 — the evidence of how a data-subject request was handled is itself
+  // an audit row, in the same transaction, without the personal data.
+  describe("P6-11 — audit rows", () => {
+    const auditService = require("../../services/audit.service");
+    const principal = { userId: "u1", apiKeyId: null, ipAddress: "10.0.0.1", userAgent: "jest" };
+    const entries = () => auditService.logAction.mock.calls.map(([entry, options]) => ({ entry, options }));
+
+    it("updateConsent writes one row per purpose, granted or withdrawn, in its transaction", async () => {
+      await gdpr.updateConsent("t1", "u1", ["analytics", "marketing"], true, "10.0.0.1", principal);
+      await gdpr.updateConsent("t1", "u1", ["analytics"], false, "10.0.0.1", principal);
+      const rows = entries();
+      expect(rows).toHaveLength(3);
+      for (const { options } of rows) {
+        expect(options).toEqual({ transaction: mockTx });
+      }
+      expect(rows.map(({ entry }) => entry.changes.operation)).toEqual([
+        "GDPR_CONSENT_GRANT",
+        "GDPR_CONSENT_GRANT",
+        "GDPR_CONSENT_WITHDRAW",
+      ]);
+      expect(rows[0].entry).toMatchObject({
+        tenantId: "t1",
+        userId: "u1",
+        ipAddress: "10.0.0.1",
+        action: "CREATE",
+        resourceType: "ConsentRecord",
+        resourceId: "c-1",
+        changes: { purpose: "analytics", version: "1.0", subjectId: "u1" },
+      });
+      expect(rows[2].entry.changes).toMatchObject({ purpose: "analytics", withdrawn: 1 });
+    });
+
+    it("without a principal the subject is the actor", async () => {
+      await gdpr.recordConsent("t1", "u1", "analytics");
+      expect(entries()[0].entry).toMatchObject({ userId: "u1" });
+    });
+
+    it("a restriction's row records the request type, never the free-text reason", async () => {
+      await gdpr.restrictProcessing("t1", "u1", "my health condition", principal);
+      const [{ entry }] = entries();
+      expect(entry).toMatchObject({
+        resourceType: "DsarRequest",
+        resourceId: "dsar-1",
+        changes: { operation: "GDPR_DSAR_CREATE", type: "restriction", hasDetails: true },
+      });
+      expect(JSON.stringify(entry)).not.toContain("health");
+    });
+
+    it("an erasure request with no details records hasDetails: false", async () => {
+      await gdpr.createDsar("t1", "u1", "erasure", { reason: null });
+      expect(entries()[0].entry.changes).toMatchObject({ type: "erasure", hasDetails: false });
+      await gdpr.createDsar("t1", "u1", "export", undefined);
+      expect(entries()[1].entry.changes).toMatchObject({ type: "export", hasDetails: false });
+      await gdpr.createDsar("t1", "u1", "export", null);
+      expect(entries()[2].entry.changes).toMatchObject({ hasDetails: false });
+      await gdpr.createDsar("t1", "u1", "export", { reason: undefined });
+      expect(entries()[3].entry.changes).toMatchObject({ hasDetails: false });
+    });
+
+    it("privacy preferences record which keys were set, never their values", async () => {
+      await gdpr.updatePrivacyPreferences("t1", "u1", { marketingEmails: false, profiling: true }, principal);
+      const [{ entry, options }] = entries();
+      expect(options).toEqual({ transaction: mockTx });
+      expect(entry).toMatchObject({
+        resourceType: "User",
+        resourceId: "u1",
+        changes: { operation: "GDPR_PRIVACY_PREFERENCES", keys: ["marketingEmails", "profiling"] },
+      });
+      expect(JSON.stringify(entry.changes)).not.toMatch(/true|false/);
+      await gdpr.updatePrivacyPreferences("t1", "u1", null);
+      expect(entries()[1].entry.changes.keys).toEqual([]);
+    });
+
+    it("a failed audit write fails the request (it cannot be granted unrecorded)", async () => {
+      auditService.logAction.mockRejectedValueOnce(new Error("audit insert failed"));
+      await expect(gdpr.recordConsent("t1", "u1", "analytics", "1.0", "", principal)).rejects.toMatchObject({
+        status: 500,
+      });
     });
   });
 });

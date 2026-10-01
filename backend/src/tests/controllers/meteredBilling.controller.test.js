@@ -244,6 +244,7 @@ describe("meteredBillingController", () => {
       expect(meteredBillingService.createUsageAlert).toHaveBeenCalledWith(
         "tenant-123",
         req.body,
+        expect.objectContaining({ apiKeyId: null }),
       );
       expect(success).toHaveBeenCalled();
     });
@@ -260,6 +261,7 @@ describe("meteredBillingController", () => {
       expect(meteredBillingService.deleteUsageAlert).toHaveBeenCalledWith(
         "tenant-123",
         "alert-123",
+        expect.objectContaining({ apiKeyId: null }),
       );
       expect(success).toHaveBeenCalled();
     });

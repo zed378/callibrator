@@ -67,6 +67,7 @@ jest.mock("../../controllers/menuGroup.controller", () =>
   mockSpyController([
     "filterMenuGroups",
     "getRoleMenuAssignments",
+    "getMyPermissions",
     "getAvailableRoles",
     "createMenuGroup",
     "updateMenuGroup",

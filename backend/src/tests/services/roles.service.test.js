@@ -62,8 +62,9 @@ describe("RolesService", () => {
       const result = await RolesService.createRole({ name: " Admin ", description: " Desc ", is_system: true, roleLevel: 6 });
       expect(mockRole.create).toHaveBeenCalledWith({
         name: "Admin",
+        nameToShow: null,
         description: "Desc",
-        is_system: true,
+        isSystem: true,
         roleLevel: 6,
         status: "active",
       }, { transaction: "TX" });
@@ -75,8 +76,9 @@ describe("RolesService", () => {
       await RolesService.createRole({ name: " Viewer " });
       expect(mockRole.create).toHaveBeenCalledWith({
         name: "Viewer",
+        nameToShow: null,
         description: undefined,
-        is_system: false,
+        isSystem: false,
         // ADR-043: a role with no level fails every privileged gate silently,
         // so an unspecified level is persisted as the model default, not left out.
         roleLevel: 1,
@@ -178,13 +180,13 @@ describe("RolesService", () => {
     });
 
     it("should throw 403 if trying to delete system role", async () => {
-      mockRole.findByPk.mockResolvedValue({ is_system: true });
+      mockRole.findByPk.mockResolvedValue({ isSystem: true });
       await expect(RolesService.updateRole("system", { status: "deleted" })).rejects.toThrow("System roles cannot be deleted");
     });
 
     it("should update role fields", async () => {
       const mockUpdate = jest.fn();
-      mockRole.findByPk.mockResolvedValue({ is_system: false, update: mockUpdate });
+      mockRole.findByPk.mockResolvedValue({ isSystem: false, update: mockUpdate });
       await RolesService.updateRole("role1", { name: " NewName ", description: " NewDesc ", status: "inactive" });
       expect(mockUpdate).toHaveBeenCalledWith({
         name: "NewName",
@@ -195,14 +197,14 @@ describe("RolesService", () => {
 
     it("should update nothing when no fields are supplied", async () => {
       const mockUpdate = jest.fn();
-      mockRole.findByPk.mockResolvedValue({ is_system: false, update: mockUpdate });
+      mockRole.findByPk.mockResolvedValue({ isSystem: false, update: mockUpdate });
       await RolesService.updateRole("role1", {});
       expect(mockUpdate).toHaveBeenCalledWith({}, { transaction: "TX" });
     });
 
     it("should allow a system role to be updated to a non-deleted status", async () => {
       const mockUpdate = jest.fn();
-      mockRole.findByPk.mockResolvedValue({ is_system: true, update: mockUpdate });
+      mockRole.findByPk.mockResolvedValue({ isSystem: true, update: mockUpdate });
       await RolesService.updateRole("sys1", { status: "inactive" });
       expect(mockUpdate).toHaveBeenCalledWith({ status: "inactive" }, { transaction: "TX" });
     });
@@ -216,7 +218,7 @@ describe("RolesService", () => {
 
     it("should deactivate system role instead of deleting", async () => {
       const mockUpdate = jest.fn();
-      mockRole.findByPk.mockResolvedValue({ is_system: true, update: mockUpdate, id: "sys1" });
+      mockRole.findByPk.mockResolvedValue({ isSystem: true, update: mockUpdate, id: "sys1" });
       const result = await RolesService.deleteRole("sys1");
       expect(mockUpdate).toHaveBeenCalledWith({ status: "inactive" }, { transaction: "TX" });
       expect(mockRoleMenuPermission.destroy).toHaveBeenCalledWith({ where: { roleId: "sys1" }, transaction: "TX" });
@@ -225,7 +227,7 @@ describe("RolesService", () => {
 
     it("should destroy regular role", async () => {
       const mockDestroy = jest.fn();
-      mockRole.findByPk.mockResolvedValue({ is_system: false, destroy: mockDestroy, id: "reg1" });
+      mockRole.findByPk.mockResolvedValue({ isSystem: false, destroy: mockDestroy, id: "reg1" });
       const result = await RolesService.deleteRole("reg1");
       expect(mockDestroy).toHaveBeenCalled();
       expect(result.message).toBe("Role deleted successfully");
@@ -591,7 +593,7 @@ describe("RolesService", () => {
     };
 
     it("deleting a regular role: the next matrix read goes to the database and grants nothing", async () => {
-      const role = { id: "reg1", is_system: false, status: "active", destroy: jest.fn() };
+      const role = { id: "reg1", isSystem: false, status: "active", destroy: jest.fn() };
       await prime("reg1", role);
 
       await RolesService.deleteRole("reg1");
@@ -605,7 +607,7 @@ describe("RolesService", () => {
     });
 
     it("deactivating a system role via deleteRole: the next matrix read goes to the database", async () => {
-      const role = { id: "sys1", is_system: true, status: "active" };
+      const role = { id: "sys1", isSystem: true, status: "active" };
       role.update = jest.fn(async (u) => Object.assign(role, u));
       await prime("sys1", role);
 
@@ -618,7 +620,7 @@ describe("RolesService", () => {
     });
 
     it("updateRole to inactive: the next matrix read goes to the database and grants nothing", async () => {
-      const role = { id: "r1", is_system: false, status: "active" };
+      const role = { id: "r1", isSystem: false, status: "active" };
       role.update = jest.fn(async (u) => Object.assign(role, u));
       await prime("r1", role);
 
@@ -631,7 +633,7 @@ describe("RolesService", () => {
     });
 
     it("updateRole back to active: the grant returns on the next read", async () => {
-      const role = { id: "r2", is_system: false, status: "inactive" };
+      const role = { id: "r2", isSystem: false, status: "inactive" };
       role.update = jest.fn(async (u) => Object.assign(role, u));
       mockRole.findByPk.mockResolvedValue(role);
       await expect(RolesService.getRolePermissionsMatrix("r2")).resolves.toEqual({});
@@ -641,7 +643,7 @@ describe("RolesService", () => {
     });
 
     it("renaming a role leaves the cached matrix alone", async () => {
-      const role = { id: "r3", is_system: false, status: "active" };
+      const role = { id: "r3", isSystem: false, status: "active" };
       role.update = jest.fn(async (u) => Object.assign(role, u));
       await prime("r3", role);
 
@@ -787,8 +789,8 @@ describe("RolesService", () => {
           slug: "dash-board",
           icon: undefined,
           parentId: undefined, // the attribute (A-148); the API field stays parent_id
-          sort_order: 0,
-          is_active: true,
+          sortOrder: 0,
+          isActive: true,
         }, { transaction: "TX" });
       });
 
@@ -810,7 +812,7 @@ describe("RolesService", () => {
         await RolesService.createMenu({ name: "Dash", slug: "custom-slug", is_active: false });
         expect(mockMenuGroup.create).toHaveBeenCalledWith(expect.objectContaining({
           slug: "custom-slug",
-          is_active: false,
+          isActive: false,
         }), { transaction: "TX" });
       });
     });
@@ -827,7 +829,7 @@ describe("RolesService", () => {
         await RolesService.updateMenu("m1", { name: " NewName ", is_active: false });
         expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({
           name: "NewName",
-          is_active: false,
+          isActive: false,
         }), { transaction: "TX" });
         expect(require("../../services/redis.service").delPattern).toHaveBeenCalledWith("permissions:role:*");
       });
@@ -850,8 +852,8 @@ describe("RolesService", () => {
           slug: "custom-slug",
           icon: "chart",
           parentId: "p1", // the attribute (A-148)
-          sort_order: 5,
-          is_active: true,
+          sortOrder: 5,
+          isActive: true,
         }, { transaction: "TX" });
       });
 

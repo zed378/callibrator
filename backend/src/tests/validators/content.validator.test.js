@@ -1,6 +1,10 @@
 /**
  * Content validator tests
+ *
+ * P9-11 (ADR-093): the schemas are Zod, exercised through the shared
+ * `checkInput` helper.
  */
+const { checkInput } = require("../../validators/input");
 const {
   createPost,
   updatePost,
@@ -8,236 +12,199 @@ const {
   updateCategory,
 } = require("../../validators/content.validator");
 
+const NOTHING_TO_UPDATE = [{ field: "", message: "Provide at least one field to update" }];
+const TYPE_OPTION = 'Invalid option: expected one of "BLOG"|"NEWS"';
+
 describe("Content Validators", () => {
   describe("createPost", () => {
     it("should validate correct blog post data", () => {
-      const { error, value } = createPost.validate({
-        type: "BLOG",
-        title: "My First Blog Post",
-      });
+      const result = checkInput({ type: "BLOG", title: "My First Blog Post" }, createPost);
 
-      expect(error).toBeUndefined();
-      expect(value.type).toBe("BLOG");
-      expect(value.title).toBe("My First Blog Post");
+      expect(result.ok).toBe(true);
+      expect(result.value.type).toBe("BLOG");
+      expect(result.value.title).toBe("My First Blog Post");
     });
 
     it("should validate correct news post data", () => {
-      const { error } = createPost.validate({
-        type: "NEWS",
-        title: "Breaking News",
-      });
-
-      expect(error).toBeUndefined();
+      expect(checkInput({ type: "NEWS", title: "Breaking News" }, createPost).ok).toBe(true);
     });
 
     it("should reject missing type", () => {
-      const { error } = createPost.validate({
-        title: "My Post",
-      });
+      const result = checkInput({ title: "My Post" }, createPost);
 
-      expect(error).toBeDefined();
-      expect(error.details[0].path).toContain("type");
+      expect(result.ok).toBe(false);
+      expect(result.errors).toEqual([{ field: "type", message: TYPE_OPTION }]);
     });
 
     it("should reject missing title", () => {
-      const { error } = createPost.validate({
-        type: "BLOG",
-      });
+      const result = checkInput({ type: "BLOG" }, createPost);
 
-      expect(error).toBeDefined();
-      expect(error.details[0].path).toContain("title");
+      expect(result.ok).toBe(false);
+      expect(result.errors).toEqual([
+        { field: "title", message: "Invalid input: expected string, received undefined" },
+      ]);
     });
 
     it("should reject invalid type value", () => {
-      const { error } = createPost.validate({
-        type: "ARTICLE",
-        title: "My Post",
-      });
+      const result = checkInput({ type: "ARTICLE", title: "My Post" }, createPost);
 
-      expect(error).toBeDefined();
+      expect(result.ok).toBe(false);
+      expect(result.errors).toEqual([{ field: "type", message: TYPE_OPTION }]);
     });
 
     it("should reject title that is too short", () => {
-      const { error } = createPost.validate({
-        type: "BLOG",
-        title: "A",
-      });
+      const result = checkInput({ type: "BLOG", title: "A" }, createPost);
 
-      expect(error).toBeDefined();
+      expect(result.ok).toBe(false);
+      expect(result.errors).toEqual([
+        { field: "title", message: "Too small: expected string to have >=2 characters" },
+      ]);
     });
 
     it("should allow optional fields", () => {
-      const { error } = createPost.validate({
+      const result = checkInput(
+        {
+          type: "BLOG",
+          title: "My Post",
+          slug: "my-first-post",
+          excerpt: "An excerpt",
+          coverImageUrl: "https://example.com/image.jpg",
+          contentHtml: "<p>Content here</p>",
+          status: "DRAFT",
+          featured: true,
+          categoryIds: ["123e4567-e89b-12d3-a456-426614174000"],
+        },
+        createPost,
+      );
+
+      expect(result.ok).toBe(true);
+    });
+
+    it("converts featured from text and publishedAt to a Date", () => {
+      const result = checkInput(
+        { type: "BLOG", title: "My Post", featured: "true", publishedAt: "2026-01-01" },
+        createPost,
+      );
+
+      expect(result.value).toEqual({
         type: "BLOG",
         title: "My Post",
-        slug: "my-first-post",
-        excerpt: "An excerpt",
-        coverImageUrl: "https://example.com/image.jpg",
-        contentHtml: "<p>Content here</p>",
-        status: "DRAFT",
         featured: true,
-        categoryIds: ["123e4567-e89b-12d3-a456-426614174000"],
+        publishedAt: new Date("2026-01-01"),
       });
-
-      expect(error).toBeUndefined();
     });
 
     it("should allow null optional fields", () => {
-      const { error } = createPost.validate({
-        type: "BLOG",
-        title: "My Post",
-        slug: null,
-        excerpt: null,
-        publishedAt: null,
-      });
+      const result = checkInput(
+        { type: "BLOG", title: "My Post", slug: null, excerpt: null, publishedAt: null },
+        createPost,
+      );
 
-      expect(error).toBeUndefined();
+      expect(result.ok).toBe(true);
     });
 
     it("should reject invalid UUID in categoryIds", () => {
-      const { error } = createPost.validate({
-        type: "BLOG",
-        title: "My Post",
-        categoryIds: ["not-a-uuid"],
-      });
+      const result = checkInput({ type: "BLOG", title: "My Post", categoryIds: ["not-a-uuid"] }, createPost);
 
-      expect(error).toBeDefined();
+      expect(result.ok).toBe(false);
+      expect(result.errors).toEqual([{ field: "categoryIds.0", message: "Invalid GUID" }]);
     });
 
     it("should allow empty string for optional string fields", () => {
-      const { error } = createPost.validate({
-        type: "BLOG",
-        title: "My Post",
-        slug: "",
-        excerpt: "",
-        coverImageUrl: "",
-        contentHtml: "",
-      });
+      const result = checkInput(
+        { type: "BLOG", title: "My Post", slug: "", excerpt: "", coverImageUrl: "", contentHtml: "" },
+        createPost,
+      );
 
-      expect(error).toBeUndefined();
+      expect(result.ok).toBe(true);
     });
   });
 
   describe("updatePost", () => {
     it("should validate partial update data", () => {
-      const { error } = updatePost.validate({
-        title: "Updated Title",
-      });
-
-      expect(error).toBeUndefined();
+      expect(checkInput({ title: "Updated Title" }, updatePost).ok).toBe(true);
     });
 
     it("should validate a single field update", () => {
-      const { error } = updatePost.validate({
-        featured: false,
-      });
-
-      expect(error).toBeUndefined();
+      expect(checkInput({ featured: false }, updatePost)).toEqual({ ok: true, value: { featured: false } });
     });
 
     it("should reject empty object", () => {
-      const { error } = updatePost.validate({});
+      const result = checkInput({}, updatePost);
 
-      expect(error).toBeDefined();
+      expect(result.ok).toBe(false);
+      expect(result.errors).toEqual(NOTHING_TO_UPDATE);
     });
 
     it("should allow all optional fields", () => {
-      const { error } = updatePost.validate({
-        title: "Updated",
-        slug: "updated-slug",
-        excerpt: "Updated excerpt",
-        status: "PUBLISHED",
-        featured: true,
-      });
+      const result = checkInput(
+        { title: "Updated", slug: "updated-slug", excerpt: "Updated excerpt", status: "PUBLISHED", featured: true },
+        updatePost,
+      );
 
-      expect(error).toBeUndefined();
+      expect(result.ok).toBe(true);
     });
   });
 
   describe("createCategory", () => {
     it("should validate correct category data", () => {
-      const { error } = createCategory.validate({
-        name: "Technology",
-      });
-
-      expect(error).toBeUndefined();
+      expect(checkInput({ name: "Technology" }, createCategory).ok).toBe(true);
     });
 
     it("should validate category with all fields", () => {
-      const { error } = createCategory.validate({
-        name: "Technology",
-        slug: "technology",
-        description: "Tech related posts",
-      });
+      const result = checkInput(
+        { name: "Technology", slug: "technology", description: "Tech related posts" },
+        createCategory,
+      );
 
-      expect(error).toBeUndefined();
+      expect(result.ok).toBe(true);
     });
 
     it("should reject missing name", () => {
-      const { error } = createCategory.validate({
-        slug: "technology",
-      });
+      const result = checkInput({ slug: "technology" }, createCategory);
 
-      expect(error).toBeDefined();
-      expect(error.details[0].path).toContain("name");
+      expect(result.ok).toBe(false);
+      expect(result.errors).toEqual([
+        { field: "name", message: "Invalid input: expected string, received undefined" },
+      ]);
     });
 
     it("should reject empty name", () => {
-      const { error } = createCategory.validate({
-        name: "",
-      });
+      const result = checkInput({ name: "" }, createCategory);
 
-      expect(error).toBeDefined();
+      expect(result.ok).toBe(false);
+      expect(result.errors).toEqual([
+        { field: "name", message: "Too small: expected string to have >=1 characters" },
+      ]);
     });
 
     it("should allow null description", () => {
-      const { error } = createCategory.validate({
-        name: "Technology",
-        description: null,
-      });
-
-      expect(error).toBeUndefined();
+      expect(checkInput({ name: "Technology", description: null }, createCategory).ok).toBe(true);
     });
 
     it("should allow empty string for slug", () => {
-      const { error } = createCategory.validate({
-        name: "Technology",
-        slug: "",
-      });
-
-      expect(error).toBeUndefined();
+      expect(checkInput({ name: "Technology", slug: "" }, createCategory).ok).toBe(true);
     });
   });
 
   describe("updateCategory", () => {
     it("should validate partial update data", () => {
-      const { error } = updateCategory.validate({
-        name: "Updated Category",
-      });
-
-      expect(error).toBeUndefined();
+      expect(checkInput({ name: "Updated Category" }, updateCategory).ok).toBe(true);
     });
 
     it("should validate a single field update", () => {
-      const { error } = updateCategory.validate({
-        slug: "updated-slug",
-      });
-
-      expect(error).toBeUndefined();
+      expect(checkInput({ slug: "updated-slug" }, updateCategory).ok).toBe(true);
     });
 
     it("should reject empty object", () => {
-      const { error } = updateCategory.validate({});
+      const result = checkInput({}, updateCategory);
 
-      expect(error).toBeDefined();
+      expect(result.ok).toBe(false);
+      expect(result.errors).toEqual(NOTHING_TO_UPDATE);
     });
 
     it("should allow null description in update", () => {
-      const { error } = updateCategory.validate({
-        description: null,
-      });
-
-      expect(error).toBeUndefined();
+      expect(checkInput({ description: null }, updateCategory).ok).toBe(true);
     });
   });
 });

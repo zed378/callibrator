@@ -191,6 +191,7 @@ export default function DevicesPage() {
           openEditModal={openEditModal}
           handleDeleteClick={handleDeleteClick}
           openIotModal={setIotDevice}
+          loadFailed={!!devicesError && !devices}
         />
 
         {iotDevice && (

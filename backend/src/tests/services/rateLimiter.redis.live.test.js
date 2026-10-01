@@ -117,6 +117,25 @@ liveDescribe("rateLimiter.redis.service — live Redis (A-30)", () => {
     await a.limiter.resetAuthFailures({ userId, endpoint: "login" });
   });
 
+  // V-14: the script used to rewrite the entry as { count, firstAttempt,
+  // expiresAt }, so the 4th failure wiped the `revoked` flag the 3rd set.
+  it("V-14: keeps a token's revoked flag through maxAttempts + 2 failures (the real script)", async () => {
+    const tokenHash = `live-${crypto.randomUUID()}`;
+    const a = await startReplica();
+    const { maxAttempts } = a.limiter.getAuthConfig("mfaLogin");
+
+    const results = [];
+    for (let i = 0; i < maxAttempts + 2; i += 1) {
+      results.push(await a.limiter.recordAuthFailure({ tokenHash, endpoint: "mfaLogin" }));
+    }
+
+    const stored = JSON.parse(await inspector().get(`ratelimit:auth:mfaLogin:token:${tokenHash}`));
+    expect(stored.count).toBe(maxAttempts + 2);
+    expect(stored.revoked).toBe(true);
+    // Every failure after the revoking (3rd) one reports the revoked token.
+    expect(results.slice(3).map((r) => r.revokedToken)).toEqual(results.slice(3).map(() => tokenHash));
+  });
+
   it("gives the counter a TTL in the same operation that creates it", async () => {
     const userId = `live-${crypto.randomUUID()}`;
     const a = await startReplica();

@@ -3,7 +3,7 @@
  *
  * Tests the Stock route registrations and middleware chain.
  */
-const stockRoutes = require("../../routes/api/stock.route.js");
+const stockRoutes = require("../../routes/api/stock.route");
 
 describe("Stock Routes", () => {
   it("should export an Express router", () => {

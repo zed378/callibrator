@@ -25,6 +25,7 @@ const { promoteFromQuarantine } = require("../utils/upload.util");
 const { DEFAULT_LIMIT, MAX_LIMIT } = require("../constants");
 const virusScan = require("./virusScan.service");
 const auditService = require("./audit.service");
+const { auditEntryActor, actorChanges } = require("../utils/auditPrincipal.util");
 const { logger } = require("../middlewares/activityLog.middleware");
 
 const ATTACH_FOLDER = "uploads/attachments";
@@ -245,11 +246,13 @@ exports.softDeleteForResource = async (tenantId, modelName, resourceId, { transa
     await auditService.logAction(
       {
         tenantId,
-        userId: actor.userId || null,
+        // A-282 (ADR-100): a key is system:api-key, its id in changes.
+        ...auditEntryActor(actor),
         action: "DELETE",
         resourceType: "Attachment",
         resourceId: row.id,
         changes: {
+          ...actorChanges(actor),
           operation: "cascade-soft-delete",
           before: { isDeleted: false },
           after: { isDeleted: true },
@@ -262,8 +265,6 @@ exports.softDeleteForResource = async (tenantId, modelName, resourceId, { transa
             ...(via ? { via } : {}),
           },
         },
-        ipAddress: actor.ipAddress || null,
-        userAgent: actor.userAgent || null,
       },
       { transaction },
     );
@@ -371,11 +372,13 @@ exports.restoreForResource = async (tenantId, modelName, resourceId, { transacti
     await auditService.logAction(
       {
         tenantId,
-        userId: actor.userId || null,
+        // A-282 (ADR-100): a key is system:api-key, its id in changes.
+        ...auditEntryActor(actor),
         action: "UPDATE",
         resourceType: "Attachment",
         resourceId: row.id,
         changes: {
+          ...actorChanges(actor),
           operation: "cascade-restore",
           before: { isDeleted: true },
           after: { isDeleted: false },
@@ -384,8 +387,6 @@ exports.restoreForResource = async (tenantId, modelName, resourceId, { transacti
           resource: { type: row.resourceType, id: row.resourceId },
           cascade: { type: modelName, id: resourceId },
         },
-        ipAddress: actor.ipAddress || null,
-        userAgent: actor.userAgent || null,
       },
       { transaction },
     );
@@ -552,11 +553,19 @@ exports.createAttachment = async (tenantId, file, meta = {}) => {
       await auditService.logAction(
         {
           tenantId,
-          userId: meta.uploadedBy || null,
+          // A-282 (ADR-100): an upload by an API key is system:api-key, its
+          // id in changes (meta.uploadedBy is then null: it references users).
+          ...auditEntryActor({
+            userId: meta.uploadedBy,
+            apiKeyId: meta.apiKeyId,
+            ipAddress: meta.ipAddress,
+            userAgent: meta.userAgent,
+          }),
           action: "CREATE",
           resourceType: "Attachment",
           resourceId: created.id,
           changes: {
+            ...actorChanges({ apiKeyId: meta.apiKeyId }),
             originalName: file.originalname,
             mimeType: file.mimetype,
             size: file.size,
@@ -566,8 +575,6 @@ exports.createAttachment = async (tenantId, file, meta = {}) => {
               id: created.resourceId,
             },
           },
-          ipAddress: meta.ipAddress || null,
-          userAgent: meta.userAgent || null,
         },
         { transaction },
       );
@@ -710,11 +717,13 @@ exports.deleteAttachment = async (tenantId, id, actor = {}) => {
     await auditService.logAction(
       {
         tenantId,
-        userId: actor.userId || null,
+        // A-282 (ADR-100): a key is system:api-key, its id in changes.
+        ...auditEntryActor(actor),
         action: "DELETE",
         resourceType: "Attachment",
         resourceId: attachment.id,
         changes: {
+          ...actorChanges(actor),
           before: { isDeleted: false },
           after: { isDeleted: true },
           originalName: attachment.originalName,
@@ -724,8 +733,6 @@ exports.deleteAttachment = async (tenantId, id, actor = {}) => {
             id: attachment.resourceId,
           },
         },
-        ipAddress: actor.ipAddress || null,
-        userAgent: actor.userAgent || null,
       },
       { transaction },
     );

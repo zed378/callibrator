@@ -19,6 +19,28 @@ const {
   mfaLoginPreCheck,
   mfaManagePreCheck,
 } = require("../../services/rateLimiter.redis.service");
+// ADR-100 (A-291, A-292): REQUEST budgets — every request counted, successes
+// included, per client address (and per mailed-to address for an OTP). They
+// sit in front of the failure throttles above, which are unchanged.
+const { requestBudget, hashedKey } = require("../../middlewares/requestBudget.middleware");
+
+// P10-12 (ADR-098 §8.3): self-registration exists only where it is enabled.
+const { selfRegistrationGate } = require("../../middlewares/selfRegistration.middleware");
+
+const loginBudget = requestBudget("authSignIn");
+const registerBudget = requestBudget("authRegister");
+const otpBudget = requestBudget("authOtp");
+// The address a code is mailed to, whoever asks — counted whether or not an
+// account has it, so the 429 is not an oracle.
+const otpRecipientBudget = requestBudget("authOtpRecipient", {
+  perAddress: false,
+  keyOf: (req) => {
+    const email = req.body?.email;
+    return typeof email === "string" && email.trim() !== "" ? hashedKey(email) : null;
+  },
+});
+const ssoStartBudget = requestBudget("ssoStart");
+const mfaSignInBudget = requestBudget("mfaSignIn");
 
 const {
   register,
@@ -39,6 +61,8 @@ const {
   loginMfa,
   impersonateUser,
 } = require("../../controllers/auth.controller");
+// P10-16 (ADR-099): the one endpoint a one-time password's first sign-in leads to.
+const { changeFirstSignInPassword } = require("../../controllers/firstSignIn.controller");
 
 /* ------------------------------------------------------------------ */
 /* REGISTER */
@@ -57,14 +81,17 @@ const {
  *           schema:
  *             $ref: '#/components/schemas/RegisterRequest'
  *     responses:
- *       '201':
- *         description: Registration successful
+ *       '202':
+ *         description: >-
+ *           P10-12 — the one answer for a new address, a taken email and a taken
+ *           username alike ("If the address can be registered, an activation link
+ *           has been sent"); a taken case writes and mails nothing
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/SuccessResponse'
- *       '409':
- *         description: Conflict (email or username already exists)
+ *       '404':
+ *         description: Self-registration is disabled (the default in production, SELF_REGISTRATION_ENABLED) — the route behaves as absent
  *         content:
  *           application/json:
  *             schema:
@@ -78,6 +105,10 @@ const {
  */
 router.post(
   "/register",
+  // P10-12: off in production unless SELF_REGISTRATION_ENABLED=true — then the
+  // route behaves as absent (404), before the budget or anything else runs.
+  selfRegistrationGate,
+  registerBudget,
   authPreCheck("register"),
   register,
 );
@@ -184,6 +215,7 @@ router.get("/activation", activation);
  */
 router.post(
   "/login",
+  loginBudget,
   authPreCheck("login"),
   login,
 );
@@ -226,6 +258,8 @@ router.post(
  */
 router.post(
   "/send-otp",
+  otpBudget,
+  otpRecipientBudget,
   authPreCheck("forgotPassword"),
   sendOTP,
 );
@@ -268,6 +302,7 @@ router.post(
  */
 router.post(
   "/reset-password",
+  otpBudget,
   authPreCheck("resetPassword"),
   resetPassword,
 );
@@ -565,7 +600,7 @@ const ssoController = require("../../controllers/sso.controller");
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.post("/sso/login", ssoController.ssoLogin);
+router.post("/sso/login", ssoStartBudget, ssoController.ssoLogin);
 
 /**
  * @swagger
@@ -645,7 +680,7 @@ router.post("/sso/callback/:tenantCode", ssoController.ssoCallback);
  *       '200':
  *         description: OIDC flow initiated
  */
-router.post("/sso/oidc/login", ssoController.oidcLogin);
+router.post("/sso/oidc/login", ssoStartBudget, ssoController.oidcLogin);
 
 /**
  * @swagger
@@ -1031,6 +1066,45 @@ router.post("/impersonate/exit", auth, logout);
  */
 // A-81: rate-limited. mfaLoginPreCheck refuses a locked user, token or address
 // and the handler records the outcome (withAuthOutcome).
-router.post("/mfa/login", mfaLoginPreCheck(), loginMfa);
+router.post("/mfa/login", mfaSignInBudget, mfaLoginPreCheck(), loginMfa);
+
+/**
+ * @swagger
+ * /api/v1/auth/first-sign-in/password:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Replace a one-time password after its first sign-in
+ *     description: >
+ *       P10-16 (ADR-099). Public endpoint - no session. A one-time password (the
+ *       bootstrap super admin's, or one the recovery CLI issued) signs in once:
+ *       /auth/login answers `data.passwordChangeRequired` and a `password-change`
+ *       token instead of a session. This is the only endpoint that accepts that
+ *       token; every other route refuses it. On success, sign in again with the
+ *       new password.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [token, newPassword]
+ *             properties:
+ *               token:
+ *                 type: string
+ *                 description: The password-change token returned by /auth/login.
+ *               newPassword:
+ *                 type: string
+ *                 description: 8-100 characters with an upper-case letter, a lower-case letter and a digit; not the one-time password.
+ *     responses:
+ *       200:
+ *         description: Password changed; `data.signInRequired` is true
+ *       400:
+ *         description: Validation failed, or the new password is the one-time password
+ *       401:
+ *         description: Invalid or expired password-change token (also a reused one)
+ */
+// No lockout pre-check: nothing here is guessable — the token is signed, lives
+// ten minutes and dies with the change it allows. The global API limiter applies.
+router.post("/first-sign-in/password", changeFirstSignInPassword);
 
 module.exports = router;

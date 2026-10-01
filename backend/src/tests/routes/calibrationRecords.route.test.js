@@ -4,6 +4,7 @@
  * Tests the Calibration Records route registrations and middleware chain.
  */
 const calibrationRecordsRoutes = require("../../routes/api/calibrationRecords.route");
+const { denyApiKey } = require("../../middlewares/auth.middleware");
 
 describe("Calibration Records Routes", () => {
   it("should export an Express router", () => {
@@ -71,10 +72,13 @@ describe("Calibration Records Routes", () => {
         (layer) => layer.route && layer.route.path === path && layer.route.methods.post,
       );
       expect(routes).toHaveLength(1);
-      // auth, validateUuid, dynamicAccess("calibration", "write"), denyPlatformAuthoring, controller
+      // auth, [denyApiKey on void — Q-51], validateUuid, dynamicAccess("calibration", "write"),
+      // denyPlatformAuthoring, controller
       const names = routes[0].route.stack.map((l) => l.name);
-      expect(names).toHaveLength(5);
-      expect(names[3]).toBe("denyPlatformAuthoring");
+      const voids = path.endsWith("/void");
+      expect(names).toHaveLength(voids ? 6 : 5);
+      expect(names[voids ? 4 : 3]).toBe("denyPlatformAuthoring");
+      expect(routes[0].route.stack.some((l) => l.handle === denyApiKey)).toBe(voids);
     },
   );
 });

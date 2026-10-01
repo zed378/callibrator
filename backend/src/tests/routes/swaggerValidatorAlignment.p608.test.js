@@ -1,5 +1,5 @@
 /**
- * P6-08 — the published contract (swagger JSDoc) agrees with the enforced Joi
+ * P6-08 — the published contract (swagger JSDoc) agrees with the enforced
  * validators (AC-29).
  *
  * WHY
@@ -20,7 +20,7 @@
  * route is resolved to its mounted path(s) by reading `index.js`'s `require` and
  * `app.use` lines, and the swagger spec is generated in memory from the same
  * route files, with the same library, as `npm run swagger:generate`. For each
- * validated route the documented JSON request body is compared with the Joi
+ * validated route the documented JSON request body is compared with the request
  * schema's `describe()`: the property names, and which are required.
  *
  * The GDPR endpoints must agree exactly. The rest of the tree is the sweep the
@@ -30,7 +30,11 @@
 
 const fs = require("fs");
 const path = require("path");
-const swaggerJsdoc = require("swagger-jsdoc");
+const { z } = require("zod");
+// P9-25 (ADR-103): the published document is code-first (*.openapi.ts, zod-openapi)
+// merged with the remaining JSDoc. It is built here by the SAME function
+// `npm run openapi:generate` uses, so a code-first route is compared too.
+const { buildDocument, serialise } = require("../../../scripts/openapi/build");
 
 const validationMiddleware = require("../../middlewares/validation.middleware");
 const { components } = require("../../docs/components");
@@ -68,7 +72,8 @@ const mountsFrom = (index) => {
   const mounts = new Map();
   const vars = new Map();
   for (const m of index.matchAll(/const\s+(\{[^}]*\}|[A-Za-z_$][\w$]*)\s*=\s*require\(["']\.\/src\/routes\/([^"']+?)(?:\.js)?["']\)/g)) {
-    const rel = `${m[2]}.js`;
+    // Keyed without the extension: a route module may be .js or .ts (ADR-087).
+    const rel = m[2];
     mounts.set(rel, new Map());
     if (m[1].startsWith("{")) {
       for (const name of m[1].replace(/[{}\s]/g, "").split(",").filter(Boolean)) {
@@ -113,24 +118,50 @@ const resolveRef = (schema) => {
 };
 
 /**
- * Compare one documented request body with one Joi schema.
+ * The keys of a request schema and which are required, read from the Zod
+ * schema (P9-11: what the old library's `describe()` gave). A union of objects (storage's
+ * per-provider bodies) accepts the union of their keys and requires a key
+ * every branch requires. A key typed `never` is named only so its 400 can say
+ * why (P6-13: a caller-supplied webhook `secret`); it is refused, not
+ * accepted, so the contract does not document it.
+ *
+ * @param {import("zod").ZodType} schema - a request schema
+ * @returns {{keys: string[], required: string[]}|null} null when not a keyed object body
+ */
+const describeBody = (schema) => {
+  if (schema instanceof z.ZodUnion) {
+    const parts = schema.options.map(describeBody);
+    if (parts.some((p) => p === null)) {
+      return null;
+    }
+    const keys = [...new Set(parts.flatMap((p) => p.keys))];
+    const required = keys.filter((k) => parts.every((p) => p.required.includes(k)));
+    return { keys, required };
+  }
+  if (!(schema instanceof z.ZodObject)) {
+    return null;
+  }
+  const refused = (field) => field instanceof z.ZodOptional && field.unwrap() instanceof z.ZodNever;
+  const keys = Object.keys(schema.shape).filter((k) => !refused(schema.shape[k]));
+  // Required: the field refuses an absent value (a default or `.optional()` accepts it).
+  const required = keys.filter((k) => !schema.shape[k].safeParse(undefined).success);
+  return { keys, required };
+};
+
+/**
+ * Compare one documented request body with one request schema.
  *
  * @param {object|undefined} operation - the swagger operation, if any
- * @param {object} schema - a Joi schema
+ * @param {import("zod").ZodType} schema - a request schema
  * @returns {string[]} divergences
  */
 const compare = (operation, schema) => {
-  const described = schema.describe();
-  if (described.type !== "object" || !described.keys) {
+  const described = describeBody(schema);
+  if (!described) {
     return []; // not a keyed object body — nothing comparable by name
   }
-  // A `forbidden()` key is named only so its 400 can say why (P6-13: a
-  // caller-supplied webhook `secret`). It is refused, not accepted, so the
-  // contract does not document it.
-  const keys = Object.keys(described.keys).filter(
-    (k) => described.keys[k].flags?.presence !== "forbidden",
-  );
-  const required = keys.filter((k) => described.keys[k].flags?.presence === "required").sort();
+  const keys = described.keys;
+  const required = [...described.required].sort();
 
   if (!operation) {
     return ["no swagger operation documents this route"];
@@ -156,17 +187,25 @@ const compare = (operation, schema) => {
   return out;
 };
 
+/** `schema` without the keys that are the route's `:params` (an object schema only). */
+const withoutPathParams = (schema, routePath) => {
+  const params = [...routePath.matchAll(/:([A-Za-z0-9_]+)/g)].map((m) => m[1]);
+  if (!(schema instanceof z.ZodObject) || params.length === 0) {
+    return schema;
+  }
+  const present = params.filter((p) => p in schema.shape);
+  return present.length ? schema.omit(Object.fromEntries(present.map((p) => [p, true]))) : schema;
+};
+
 let divergences;
 let generatedSpec;
 let compared;
 const gdprCompared = [];
 
 beforeAll(() => {
-  const files = listJs(ROUTES_DIR);
-  const spec = swaggerJsdoc({
-    definition: { openapi: "3.0.0", info: { title: "p608", version: "1" } },
-    apis: files,
-  });
+  // Route modules only: a *.openapi.ts contract module or a .d.ts exports no router.
+  const files = listJs(ROUTES_DIR).filter((f) => !/\.(openapi|d)\.ts$/.test(f));
+  const spec = buildDocument({ version: require("../../../package.json").version });
   generatedSpec = spec;
   const mounts = mountsFrom(fs.readFileSync(INDEX_FILE, "utf8"));
 
@@ -180,7 +219,7 @@ beforeAll(() => {
       if (!router || !Array.isArray(router.stack)) {
         continue;
       }
-      const prefixes = mounts.get(rel)?.get(exportName) || [];
+      const prefixes = mounts.get(rel.replace(/\.(js|ts)$/, ""))?.get(exportName) || [];
       for (const layer of router.stack) {
         if (!layer.route) {
           continue;
@@ -195,7 +234,10 @@ beforeAll(() => {
           const operations = prefixes
             .map((prefix) => spec.paths?.[toOpenApiPath(prefix + layer.route.path)]?.[method])
             .filter(Boolean);
-          const found = compare(operations[0], schemas[schemas.length - 1]);
+          // A validator that reads `from: ["params", "body"]` (P9-11) sees the
+          // path parameters too; they are documented as parameters, not body
+          // fields, so they are left out of the body comparison.
+          const found = compare(operations[0], withoutPathParams(schemas[schemas.length - 1], layer.route.path));
           compared++;
           if (prefixes.some((p) => p === "/api/v1/gdpr")) {
             gdprCompared.push(`${method.toUpperCase()} ${layer.route.path}`);
@@ -222,7 +264,7 @@ if (process.env.P608_DUMP) {
   afterAll(() => fs.writeFileSync(process.env.P608_DUMP, JSON.stringify(divergences, null, 2)));
 }
 
-describe("P6-08 — swagger request bodies agree with the Joi validators", () => {
+describe("P6-08 — swagger request bodies agree with the request validators", () => {
   it("found validated routes to compare (a sweep that compares nothing is not a pass)", () => {
     expect(compared).toBeGreaterThan(50);
     expect(gdprCompared.sort()).toEqual(["POST /erasure", "POST /restrict", "PUT /consent", "PUT /rectify"]);
@@ -235,11 +277,12 @@ describe("P6-08 — swagger request bodies agree with the Joi validators", () =>
     expect(gdpr).toEqual({});
   });
 
-  it("the committed swagger.json (what /docs serves outside a build) carries the corrected GDPR contract", () => {
-    // `npm run build` and the Docker image regenerate swagger.json
-    // (package.json "build", Dockerfile `RUN npm run swagger:generate`); the
-    // committed copy is what `npm run dev` serves. Stale here is stale docs.
-    const committed = JSON.parse(fs.readFileSync(path.join(SRC, "..", "swagger.json"), "utf8"));
+  it("the committed openapi.json (what /docs serves) carries the corrected GDPR contract, and is current", () => {
+    // P9-25 (ADR-103): openapi.json replaced swagger.json. It is committed and
+    // served as is; `npm run openapi:check` (build, CI) fails when it is stale.
+    const raw = fs.readFileSync(path.join(SRC, "..", "openapi.json"), "utf8");
+    expect(raw.split(String.fromCharCode(13)).join("")).toBe(serialise(generatedSpec)); // CRLF-agnostic
+    const committed = JSON.parse(raw);
     const gdprPaths = Object.keys(generatedSpec.paths).filter((p) => p.startsWith("/api/v1/gdpr"));
     expect(gdprPaths.length).toBe(8);
     for (const p of gdprPaths) {
@@ -253,8 +296,7 @@ describe("P6-08 — swagger request bodies agree with the Joi validators", () =>
   });
 
   it("compare() in both directions", () => {
-    const Joi = require("joi");
-    const schema = Joi.object({ a: Joi.string().required(), b: Joi.number() });
+    const schema = z.object({ a: z.string(), b: z.number().optional(), s: z.never().optional() });
     const op = (properties, required) => ({
       requestBody: { content: { "application/json": { schema: { type: "object", properties, required } } } },
     });
@@ -268,8 +310,14 @@ describe("P6-08 — swagger request bodies agree with the Joi validators", () =>
     ]);
     expect(compare(undefined, schema)).toEqual(["no swagger operation documents this route"]);
     expect(compare({}, schema)).toEqual(["no documented JSON body; the validator requires a"]);
-    expect(compare({}, Joi.object({ x: Joi.string() }))).toEqual([]);
-    expect(compare(undefined, Joi.string())).toEqual([]);
+    expect(compare({}, z.object({ x: z.string().optional() }))).toEqual([]);
+    expect(compare(undefined, z.string())).toEqual([]);
+    const union = z.discriminatedUnion("k", [
+      z.object({ k: z.literal("a"), a: z.string(), both: z.string() }),
+      z.object({ k: z.literal("b"), b: z.string().optional(), both: z.string() }),
+    ]);
+    expect(compare(op({ k: {}, a: {}, b: {}, both: {} }, ["both", "k"]), union)).toEqual([]);
+    expect(compare(undefined, z.union([z.object({ a: z.string() }), z.string()]))).toEqual([]);
     expect(
       compare({ requestBody: { content: { "application/json": { schema: { $ref: "#/components/schemas/LoginRequest" } } } } }, schema)[0],
     ).toMatch(/documented but stripped/);

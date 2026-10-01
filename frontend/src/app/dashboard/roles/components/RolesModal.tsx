@@ -20,7 +20,12 @@ interface RolesModalProps {
   isSubmitting: boolean;
   onSubmit: (e: React.FormEvent) => void;
   onChange: (form: RoleForm) => void;
+  /** A system role's level is fixed by the API (ADR-105); the field is read-only. */
+  levelLocked?: boolean;
 }
+
+/** The highest level a role created or edited here may hold (ADR-043: the tenant-admin tier). */
+const MAX_ROLE_LEVEL = 8;
 
 export const RolesModal: React.FC<RolesModalProps> = ({
   type,
@@ -31,6 +36,7 @@ export const RolesModal: React.FC<RolesModalProps> = ({
   isSubmitting,
   onSubmit,
   onChange,
+  levelLocked = false,
 }) => {
   // F-12: a modal dialog — named by its title, focus moved in and
   // trapped, Escape closes, focus returns to the opener (useModalA11y).
@@ -106,8 +112,10 @@ export const RolesModal: React.FC<RolesModalProps> = ({
                   <input id="role-modal-1"
                     type="number"
                     min="1"
-                    max="10"
+                    max={levelLocked ? undefined : MAX_ROLE_LEVEL}
                     value={form.roleLevel}
+                    readOnly={levelLocked}
+                    aria-describedby="role-modal-1-hint"
                     onChange={(e) =>
                       setField(
                         "roleLevel",
@@ -116,8 +124,10 @@ export const RolesModal: React.FC<RolesModalProps> = ({
                     }
                     className="w-full px-3 py-2 border border-border rounded-lg bg-card text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-ring focus:border-transparent"
                   />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    1 = Lowest, 10 = Highest
+                  <p id="role-modal-1-hint" className="text-xs text-muted-foreground mt-1">
+                    {levelLocked
+                      ? "A system role's level is fixed."
+                      : `1 = lowest, ${MAX_ROLE_LEVEL} = tenant admin (the highest a role may be given)`}
                   </p>
                 </div>
                 <div className="flex items-end">

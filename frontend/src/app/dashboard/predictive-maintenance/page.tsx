@@ -20,8 +20,13 @@ import {
 } from "@/api/services/predictiveMaintenance.service";
 import { deviceService, type Device } from "@/api/services/device.service";
 import { useToastStore } from "@/stores/toastStore";
+import { usePermissions } from "@/hooks/usePermissions";
 
 export default function PredictiveMaintenancePage() {
+  // ADR-102: analysing and approving are gated on `calibration` write
+  // (predictiveMaintenance.route.js).
+  const { canWrite } = usePermissions();
+  const mayWrite = canWrite("calibration");
   const addToast = useToastStore((s) => s.addToast);
 
   const [recommendations, setRecommendations] = useState<
@@ -211,6 +216,7 @@ export default function PredictiveMaintenancePage() {
 
         {error && <Alert variant="error">{error}</Alert>}
 
+        {mayWrite && (
         <Card className="bg-card/50 backdrop-blur-sm border-border">
           <CardContent className="pt-6">
             <div className="flex flex-col sm:flex-row gap-4 sm:items-end">
@@ -244,14 +250,19 @@ export default function PredictiveMaintenancePage() {
             </p>
           </CardContent>
         </Card>
+        )}
 
         <div>
           <h2 className="text-lg font-semibold mb-3">Pending Recommendations</h2>
           <Table
-            columns={columns}
+            columns={columns.filter((col) => mayWrite || col.key !== "actions")}
             data={recommendations as unknown as Record<string, unknown>[]}
             isLoading={isLoading}
-            emptyMessage="No pending recommendations. Run an analysis to generate one."
+            emptyMessage={
+              error
+                ? "Recommendations could not be loaded."
+                : "No pending recommendations. Run an analysis to generate one."
+            }
           />
         </div>
       </div>

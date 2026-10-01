@@ -116,15 +116,19 @@
 
 // P9-09 (ADR-087 Amendment 6): converted from authorizationWiring.util.js with
 // no behaviour change. Everything the .js destructured at load is captured at
-// load; `fs` and `path` are the module objects themselves. The route scan still
-// walks `.js` files only and the seed is still read from
-// `seedMenuGroups.util.js`: both are exactly as built, and both must learn
-// `.ts` before the routes (P9-21) or the seed (after P9-10) convert — recorded
-// on those cards.
+// load; `fs` and `path` are the module objects themselves. The seed is still
+// read from `seedMenuGroups.util.js`, exactly as built; it must learn `.ts`
+// before the seed converts.
+//
+// P9-21: the route scan learned `.ts` when the first routes converted. It walks
+// every route SOURCE (`.js` or `.ts`; not a `.d.ts`, not a `*.openapi.ts`
+// contract), and it reads the call as TypeScript 7 emits it into `dist/`
+// (`(0, x.dynamicAccess)(...)`) as well as as written. Before this, a converted
+// route's gates were invisible to this boot check in both places.
 import fs from "fs";
 import path from "path";
-import { QueryTypes as SequelizeQueryTypes } from "sequelize";
 import { logger as activityLogger } from "../middlewares/activityLog.middleware";
+import { sql } from "./sql.util";
 import {
   MENU_SLUGS as CONSTANT_MENU_SLUGS,
   ROLE_NAMES as CONSTANT_ROLE_NAMES,
@@ -133,7 +137,6 @@ import {
   ROLE_MENU_ASSIGNMENTS as CONSTANT_ROLE_MENU_ASSIGNMENTS,
 } from "../constants";
 
-const QueryTypes = SequelizeQueryTypes;
 const logger = activityLogger;
 // Widened views of the constants: this module looks names up by arbitrary key.
 const MENU_SLUGS: Readonly<Record<string, string | undefined>> = CONSTANT_MENU_SLUGS;
@@ -384,7 +387,9 @@ function resolveNames(expression: string, source: string, depth: number): string
 function parseGates(source: string, file: string): RouteGate[] {
   const clean = stripComments(source);
   const gates: RouteGate[] = [];
-  const call = /\bdynamicAccess\s*\(/g;
+  // As written (`dynamicAccess(`), or as TypeScript emits an imported call into
+  // dist/ (`(0, dynamicAccess_middleware_1.dynamicAccess)(`, P9-21).
+  const call = /(?:\bdynamicAccess|\.dynamicAccess\))\s*\(/g;
   let match;
 
   while ((match = call.exec(clean)) !== null) {
@@ -420,7 +425,18 @@ function parseGates(source: string, file: string): RouteGate[] {
 }
 
 /**
- * List every .js file under a directory, recursively.
+ * Whether a file under src/routes is a route SOURCE: `.js`, or `.ts` that is
+ * neither a declaration (`.d.ts`) nor a route module's contract (`*.openapi.ts`,
+ * P9-25), which holds no gate.
+ *
+ * @param {string} name - a file name
+ * @returns {boolean} whether its gates are scanned
+ */
+const isRouteSource = (name: string): boolean =>
+  name.endsWith(".js") || (name.endsWith(".ts") && !name.endsWith(".d.ts") && !name.endsWith(".openapi.ts"));
+
+/**
+ * List every route source file under a directory, recursively.
  *
  * @param {string} dir - directory to walk
  * @returns {string[]} absolute file paths
@@ -431,7 +447,7 @@ function listJsFiles(dir: string): string[] {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
       out.push(...listJsFiles(full));
-    } else if (entry.name.endsWith(".js")) {
+    } else if (isRouteSource(entry.name)) {
       out.push(full);
     }
   }
@@ -625,10 +641,11 @@ async function checkSeededRoles(sequelize: RolesQuery | null | undefined): Promi
 
   let rows: { name: string; role_level: unknown }[];
   try {
-    rows = (await sequelize.query(
+    // P9-07: through the bind-only helper — the same query() call ({ type: "SELECT" }).
+    rows = await sql<{ name: string; role_level: unknown }>(
+      sequelize,
       "SELECT name, role_level FROM roles WHERE is_deleted = false AND deleted_at IS NULL",
-      { type: QueryTypes.SELECT },
-    )) as { name: string; role_level: unknown }[];
+    );
   } catch (err: unknown) {
     return {
       errors: [],

@@ -38,6 +38,8 @@ jest.mock("../../services/supplierScorecard.service", () => ({ createScorecard: 
 jest.mock("../../services/tenantHierarchy.service", () => ({ createSubOrganization: jest.fn(), updateTenantParent: jest.fn() }));
 jest.mock("../../services/userPermission.service", () => ({ setUserPermission: jest.fn() }));
 jest.mock("../../services/vendor.service", () => ({ qualifyVendor: jest.fn() }));
+// A-288 (ADR-100): the passkey sign-in's network policy is signInPolicy.controllers.a288.
+jest.mock("../../services/signInPolicy.service", () => ({ assertSignInPermitted: jest.fn(async () => undefined) }));
 jest.mock("../../services/webauthn.service", () => ({ verifyRegistration: jest.fn(), verifyLogin: jest.fn() }));
 jest.mock("../../services/webhook.service", () => ({ updateWebhook: jest.fn() }));
 jest.mock("../../services/eSignature.service", () => ({ updateWorkflow: jest.fn() }));
@@ -191,7 +193,7 @@ describe("A-09 — handlers that own their own 400", () => {
     expectNoTypeError(result);
   });
 
-  it("tenantHierarchy.addChildTenant answers 400 — Joi no longer waves an absent body through", async () => {
+  it("tenantHierarchy.addChildTenant answers 400 — an absent body is no longer waved through", async () => {
     const result = await callBodyless(tenantHierarchyController.addChildTenant, {
       params: { parentId: TENANT_ID },
     });
@@ -290,7 +292,7 @@ describe("A-09 — handlers that hand an absent body to a service", () => {
       scopes: undefined,
       expiresAt: undefined,
       createdBy: USER_ID,
-    });
+    }, expect.objectContaining({ userId: USER_ID }));
     expect(result.status).toBe(400);
     expectNoTypeError(result);
   });
@@ -304,9 +306,10 @@ describe("A-09 — handlers that hand an absent body to a service", () => {
       resourceType: undefined,
       resourceId: undefined,
       uploadedBy: USER_ID,
+      apiKeyId: null, // A-282 (ADR-100): auditPrincipal(req)
       // A-117: the request's address and agent, for the CREATE audit row.
       ipAddress: "127.0.0.1",
-      userAgent: undefined,
+      userAgent: null,
     });
     expectNoTypeError(result);
   });

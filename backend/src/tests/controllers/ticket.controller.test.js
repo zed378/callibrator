@@ -114,7 +114,7 @@ describe("ticketController", () => {
     req.body = { subject: "S" };
     ticketService.createTicket.mockResolvedValueOnce({ id: "t1" });
     await ticket.createTicket(req, res, next);
-    expect(ticketService.createTicket).toHaveBeenCalledWith(req.user, { subject: "S" });
+    expect(ticketService.createTicket).toHaveBeenCalledWith(req.user, { subject: "S" }, expect.objectContaining({ apiKeyId: null }));
     expect(success).toHaveBeenCalledWith(res, { id: "t1" }, null, "Ticket created", 201);
   });
 
@@ -125,7 +125,7 @@ describe("ticketController", () => {
     await ticket.updateTicket(req, res, next);
     expect(ticketService.updateTicket).toHaveBeenCalledWith(req.user, "t1", {
       subject: "S2",
-    });
+    }, expect.objectContaining({ apiKeyId: null }));
     expect(success).toHaveBeenCalledWith(res, { id: "t1" }, null, "Ticket updated");
   });
 
@@ -134,7 +134,7 @@ describe("ticketController", () => {
     req.body = { assignedTo: "agent" };
     ticketService.assignTicket.mockResolvedValueOnce({ id: "t1" });
     await ticket.assignTicket(req, res, next);
-    expect(ticketService.assignTicket).toHaveBeenCalledWith(req.user, "t1", "agent");
+    expect(ticketService.assignTicket).toHaveBeenCalledWith(req.user, "t1", "agent", expect.objectContaining({ apiKeyId: null }));
     expect(success).toHaveBeenCalledWith(res, { id: "t1" }, null, "Ticket assigned");
   });
 
@@ -142,7 +142,7 @@ describe("ticketController", () => {
     req.params = { ticketId: "t1" };
     ticketService.deleteTicket.mockResolvedValueOnce({ deleted: true });
     await ticket.deleteTicket(req, res, next);
-    expect(ticketService.deleteTicket).toHaveBeenCalledWith(req.user, "t1");
+    expect(ticketService.deleteTicket).toHaveBeenCalledWith(req.user, "t1", expect.objectContaining({ apiKeyId: null }));
     expect(success).toHaveBeenCalledWith(res, { deleted: true }, null, "Ticket deleted");
   });
 
@@ -151,7 +151,7 @@ describe("ticketController", () => {
     req.body = { body: "hi" };
     ticketService.addComment.mockResolvedValueOnce({ id: "cm1" });
     await ticket.addComment(req, res, next);
-    expect(ticketService.addComment).toHaveBeenCalledWith(req.user, "t1", { body: "hi" });
+    expect(ticketService.addComment).toHaveBeenCalledWith(req.user, "t1", { body: "hi" }, expect.objectContaining({ apiKeyId: null }));
     expect(success).toHaveBeenCalledWith(res, { id: "cm1" }, null, "Comment added", 201);
   });
 

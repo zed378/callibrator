@@ -381,10 +381,12 @@ describe("D-12 — the phantom brand on converted models equals the runtime defa
 
   it("every converted model is branded iff its defaultScope has a where", () => {
     const { branded, converted } = brandedSets(convertedModelFiles());
-    // A scanner that finds no converted model cannot pass (batch 1: nine Kanban models; batch 2: six inventory).
-    expect(converted.length).toBeGreaterThanOrEqual(15);
-    // Batch 2 brings the first two default-scoped models: the brand is exercised, not vacuous.
-    expect(branded).toEqual(expect.arrayContaining(["Stock", "Warehouse"]));
+    // P9-10 is complete: all 71 models are .ts, so the branded set must be the WHOLE runtime set
+    // (the reviewed DEFAULT_SCOPED list above), and a scanner finding fewer files cannot pass.
+    // P10-05 adds a 72nd, born TypeScript: AccessRequest (no defaultScope, so unbranded);
+    // ADR-108 Amendment 1 a 73rd: WebauthnCredential (no defaultScope).
+    expect(converted.length).toBe(73);
+    expect(branded).toEqual([...DEFAULT_SCOPED]);
     const runtimeScoped = scopedModels.map((m) => m.name).filter((n) => converted.includes(n)).sort();
     expect(branded).toEqual(runtimeScoped);
   });

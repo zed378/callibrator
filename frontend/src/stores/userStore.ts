@@ -19,10 +19,12 @@ interface UserState {
     password: string;
     roleId: string;
     tenantId?: string;
-  }) => Promise<void>;
+  }) => Promise<User>;
   updateUser: (data: {
     userId: string;
     username?: string;
+    firstName?: string;
+    lastName?: string;
     email?: string;
     status?: string;
   }) => Promise<void>;
@@ -65,7 +67,7 @@ export const useUserStore = create<UserState>()((set) => ({
   createUser: async (data) => {
     set({ isLoading: true, error: null });
     try {
-      await userService.create(data);
+      const created = await userService.create(data);
       // Re-fetch users after successful creation
       const state = useUserStore.getState();
       const users = await userService.getAll(
@@ -73,6 +75,8 @@ export const useUserStore = create<UserState>()((set) => ({
         state.users?.meta?.limit || 50,
       );
       set({ users, isLoading: false, error: null });
+      // F-19: the caller needs the new id to upload the photo it picked.
+      return created;
     } catch (error: unknown) {
       const message =
         error instanceof Error ? error.message : "Failed to create user";

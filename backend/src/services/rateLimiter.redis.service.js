@@ -69,6 +69,36 @@ function clientAddress(req) {
   return req.ip || req.socket?.remoteAddress;
 }
 
+/**
+ * ADR-100 (A-291) — whether FAILURES are also counted per client address.
+ * AUTH_RATE_LIMIT_BY_IP decides when set ("true" / anything else); unset, it
+ * is ON in production and off elsewhere. Since A-16 every proxy in front of
+ * the backend sends the edge-resolved client address as the one
+ * X-Forwarded-For hop, so in production req.ip is the client; the reference
+ * VM has run with it on since A-67. Outside production every test browser
+ * shares 127.0.0.1, so the default stays off there.
+ *
+ * @returns {boolean}
+ */
+function countsFailuresByIp() {
+  const flag = process.env.AUTH_RATE_LIMIT_BY_IP;
+  if (flag !== undefined && flag !== "") {
+    return flag === "true";
+  }
+  return process.env.NODE_ENV === "production";
+}
+
+/**
+ * ADR-100 — every 429 carries a Retry-After header (RFC 9110 §10.2.3) next to
+ * the body's `retryAfter`, so a client and a proxy can both honour it.
+ *
+ * @param {import("express").Response} res
+ * @param {number} seconds
+ */
+function setRetryAfter(res, seconds) {
+  res.set("Retry-After", String(Math.max(1, Math.ceil(seconds))));
+}
+
 // ============================================================
 // KEY DESIGN, AND WHAT HAPPENS WHEN REDIS IS DOWN
 // ============================================================
@@ -221,6 +251,14 @@ function memoryDel(key) {
  * KEYS[1] = key, ARGV[1] = ttl in ms, ARGV[2] = now in ms.
  * Returns the PREVIOUS raw value ("" when the key was absent) so the caller
  * can see flags such as `revoked` exactly as the read-then-write did.
+ *
+ * V-14 — the contract on the entry's keys: `count`, `firstAttempt` and
+ * `expiresAt` are (re)computed; EVERY OTHER key of the previous entry
+ * (`revoked`, `blocked`, `blockUntil`, …) is PRESERVED. Until 2026-09-30 the
+ * script (and the memory path below) wrote only the three computed keys, so
+ * the 4th failure on a token wiped the `revoked` flag the 3rd had set, and
+ * the `!entry?.revoked` guard then stopped it being written again. The memory
+ * fallback in storeIncrEntry follows the same contract.
  */
 const INCR_ENTRY_SCRIPT = `
 local raw = redis.call('GET', KEYS[1])
@@ -228,11 +266,13 @@ local ttl = tonumber(ARGV[1])
 local now = tonumber(ARGV[2])
 local count = 1
 local firstAttempt = now
+local entry = {}
 if raw then
   local ok, previous = pcall(cjson.decode, raw)
   if ok and type(previous) == 'table' then
     count = (previous.count or 0) + 1
     firstAttempt = previous.firstAttempt or now
+    entry = previous
   else
     -- Something that is not one of our entries is sitting on this key. Treat
     -- it as absent and take it over: raising here would make this key fail
@@ -240,9 +280,10 @@ if raw then
     raw = false
   end
 end
-redis.call('SET', KEYS[1],
-  cjson.encode({ count = count, firstAttempt = firstAttempt, expiresAt = now + ttl }),
-  'PX', ttl)
+entry.count = count
+entry.firstAttempt = firstAttempt
+entry.expiresAt = now + ttl
+redis.call('SET', KEYS[1], cjson.encode(entry), 'PX', ttl)
 return raw or ''
 `;
 
@@ -310,7 +351,8 @@ async function storeIncrEntry(key, ttlMs, now = Date.now()) {
   }
   const previous = memoryGet(key);
   const count = (previous?.count || 0) + 1;
-  memorySet(key, { count, firstAttempt: previous?.firstAttempt || now }, ttlMs);
+  // V-14: every other key of the previous entry is preserved (see the script).
+  memorySet(key, { ...previous, count, firstAttempt: previous?.firstAttempt || now }, ttlMs);
   return { previous, count };
 }
 
@@ -485,7 +527,8 @@ async function recordAuthFailure({
     // Hard block after 2x maxAttempts
     if (count >= config.maxAttempts * 2) {
       const blockUntil = now + 24 * 60 * 60 * 1000; // 24h
-      await storeSet(tokenKey, { count, blocked: true, blockUntil, firstAttempt }, ttlMs);
+      // V-14: the block keeps the revocation (count >= 3 has revoked it).
+      await storeSet(tokenKey, { count, revoked: count >= 3, blocked: true, blockUntil, firstAttempt }, ttlMs);
       results.allowed = false;
       results.lockoutUntil = new Date(blockUntil);
       results.lockoutReason = "Token blocked due to excessive failed attempts";
@@ -616,6 +659,7 @@ function endpointRateLimiter(endpointKey, options = {}) {
 
         if (count > effectiveMaxRequests) {
           const ttl = await storeTtl(key, effectiveWindowMs);
+          setRetryAfter(res, ttl / 1000);
           return res.status(429).json({
             success: false,
             status: 429,
@@ -813,6 +857,7 @@ function authPreCheck(endpoint) {
 
       const lockout = await checkAuthLockout({ userId, tokenHash, ip, endpoint });
       if (lockout.locked) {
+        setRetryAfter(res, (lockout.lockoutUntil - Date.now()) / 1000);
         return res.status(429).json({
           success: false,
           status: 429,
@@ -873,6 +918,7 @@ function mfaLoginPreCheck() {
       const context = { userId, tokenHash, ip, alsoByIp: true, endpoint };
       const lockout = await checkAuthLockout(context);
       if (lockout.locked) {
+        setRetryAfter(res, (lockout.lockoutUntil - Date.now()) / 1000);
         return res.status(429).json({
           success: false,
           status: 429,
@@ -918,12 +964,13 @@ function mfaManagePreCheck() {
       const context = {
         userId: req.user?.id || null,
         tokenHash: null,
-        ip: process.env.AUTH_RATE_LIMIT_BY_IP === "true" ? clientAddress(req) : null,
+        ip: countsFailuresByIp() ? clientAddress(req) : null,
         alsoByIp: true,
         endpoint,
       };
       const lockout = await checkAuthLockout(context);
       if (lockout.locked) {
+        setRetryAfter(res, (lockout.lockoutUntil - Date.now()) / 1000);
         return res.status(429).json({
           success: false,
           status: 429,
@@ -972,7 +1019,7 @@ async function noteAuthFailure(req, endpoint) {
     // every browser, and a per-IP count would let anyone lock login for
     // everyone. Count by IP only where AUTH_RATE_LIMIT_BY_IP says so.
     const context = { ...req.rateLimitContext };
-    if (process.env.AUTH_RATE_LIMIT_BY_IP !== "true") {
+    if (!countsFailuresByIp()) {
       context.ip = null;
     }
     // A-126: what an ACCOUNT_LOCKED row records — never a counting key.
@@ -1242,6 +1289,12 @@ module.exports = {
   // Config access
   getAuthConfig,
   getApiConfig,
+
+  // ADR-100: the request budgets (middlewares/requestBudget.middleware.ts)
+  // count through the same store and its outage policy.
+  storeIncr,
+  storeTtl,
+  countsFailuresByIp,
 
   // Admin functions
   clearMemoryStore,

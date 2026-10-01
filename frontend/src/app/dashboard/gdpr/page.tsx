@@ -208,19 +208,22 @@ export default function GdprPage() {
   };
 
   const consentColumns = [
+    // The backend's ConsentRecord row names the category `purpose` and the
+    // decision `status` ("granted" | "withdrawn") — there is no `category`
+    // or `consent` attribute (consentRecord.model.ts).
     {
-      key: "category",
+      key: "purpose",
       header: "Category",
       render: (value: unknown) => (
         <span className="font-medium capitalize">{String(value ?? "—")}</span>
       ),
     },
     {
-      key: "consent",
+      key: "status",
       header: "Decision",
       render: (value: unknown) => (
-        <Badge variant={value ? "success" : "default"} size="sm">
-          {value ? "Granted" : "Withdrawn"}
+        <Badge variant={value === "granted" ? "success" : "default"} size="sm">
+          {value === "granted" ? "Granted" : "Withdrawn"}
         </Badge>
       ),
     },
@@ -361,7 +364,11 @@ export default function GdprPage() {
             columns={consentColumns}
             data={consents as unknown as Record<string, unknown>[]}
             isLoading={isLoading}
-            emptyMessage="No consent decisions recorded."
+            emptyMessage={
+              error
+                ? "Consent history could not be loaded."
+                : "No consent decisions recorded."
+            }
           />
         </div>
 

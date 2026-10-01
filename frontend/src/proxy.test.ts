@@ -53,9 +53,25 @@ describe("proxy (F-08: the only route guard)", () => {
     );
   });
 
-  it("F-05: an expired token WITH a refresh cookie still reaches the dashboard (the client renews it)", () => {
-    const res = proxy(request("/dashboard", { auth_token: expired, auth_refresh: "r" }));
+  it("F-05: an expired token with the renewable marker still reaches the dashboard (the client renews it)", () => {
+    const res = proxy(request("/dashboard", { auth_token: expired, auth_renewable: "1" }));
     expect(res.headers.get("location")).toBeNull();
+  });
+
+  it("F-05 live run: the refresh cookie alone does not count — a browser never sends it with a page request", () => {
+    // auth_refresh is scoped to /api/v1/auth/refresh. The earlier version of
+    // this test put it on a /dashboard request, which no browser does; the live
+    // run with JWT_ACCESS_EXPIRED=60s sent every page load after a minute to
+    // /login. The guard now reads the path-/ `auth_renewable` marker.
+    const res = proxy(request("/dashboard", { auth_token: expired, auth_refresh: "r" }));
+    expect(res.headers.get("location")).toContain("/login");
+  });
+
+  it("F-05: clearing a dead session also clears the renewable marker and the path-scoped refresh cookie", () => {
+    const res = proxy(request("/dashboard", { auth_token: expired }));
+    const setCookies = res.headers.getSetCookie();
+    expect(clearedCookies(res)).toEqual(expect.arrayContaining(["auth_renewable", "auth_refresh"]));
+    expect(setCookies.find((c) => c.startsWith("auth_refresh="))).toContain("Path=/api/v1/auth/refresh");
   });
 
   it("/login with a live token → /dashboard", () => {

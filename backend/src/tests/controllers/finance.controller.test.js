@@ -129,7 +129,7 @@ describe("financeController", () => {
 
       await financeController.createAssetFinance(req, res, next);
 
-      expect(financeService.createAssetFinance).toHaveBeenCalledWith(VALID_TENANT_ID, req.body);
+      expect(financeService.createAssetFinance).toHaveBeenCalledWith(VALID_TENANT_ID, req.body, expect.any(Object));
       expect(success).toHaveBeenCalled();
     });
   });
@@ -147,7 +147,7 @@ describe("financeController", () => {
 
       await financeController.updateAssetFinance(req, res, next);
 
-      expect(financeService.updateAssetFinance).toHaveBeenCalledWith(VALID_TENANT_ID, VALID_FINANCE_ID, req.body);
+      expect(financeService.updateAssetFinance).toHaveBeenCalledWith(VALID_TENANT_ID, VALID_FINANCE_ID, req.body, expect.any(Object));
       expect(success).toHaveBeenCalled();
     });
   });
@@ -164,7 +164,7 @@ describe("financeController", () => {
 
       await financeController.deleteAssetFinance(req, res, next);
 
-      expect(financeService.deleteAssetFinance).toHaveBeenCalledWith(VALID_TENANT_ID, VALID_FINANCE_ID);
+      expect(financeService.deleteAssetFinance).toHaveBeenCalledWith(VALID_TENANT_ID, VALID_FINANCE_ID, expect.any(Object));
       expect(success).toHaveBeenCalled();
     });
   });
@@ -287,7 +287,7 @@ describe("financeController", () => {
         success: true, status: 201, message: "ok", data: { id: "fin-new" },
       });
       await financeController.createAssetFinance(req, res, next);
-      expect(financeService.createAssetFinance).toHaveBeenCalledWith("fallback-tenant", req.body);
+      expect(financeService.createAssetFinance).toHaveBeenCalledWith("fallback-tenant", req.body, expect.any(Object));
     });
 
     it("falls back for updateAssetFinance", async () => {
@@ -297,7 +297,7 @@ describe("financeController", () => {
         success: true, status: 200, message: "ok", data: {},
       });
       await financeController.updateAssetFinance(req, res, next);
-      expect(financeService.updateAssetFinance).toHaveBeenCalledWith("fallback-tenant", VALID_FINANCE_ID, req.body);
+      expect(financeService.updateAssetFinance).toHaveBeenCalledWith("fallback-tenant", VALID_FINANCE_ID, req.body, expect.any(Object));
     });
 
     it("falls back for deleteAssetFinance", async () => {
@@ -306,7 +306,7 @@ describe("financeController", () => {
         success: true, status: 200, message: "ok", data: null,
       });
       await financeController.deleteAssetFinance(req, res, next);
-      expect(financeService.deleteAssetFinance).toHaveBeenCalledWith("fallback-tenant", VALID_FINANCE_ID);
+      expect(financeService.deleteAssetFinance).toHaveBeenCalledWith("fallback-tenant", VALID_FINANCE_ID, expect.any(Object));
     });
 
     it("falls back for getDepreciationReport", async () => {

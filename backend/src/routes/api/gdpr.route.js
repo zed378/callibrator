@@ -26,9 +26,10 @@ const {
   restrictProcessing: restrictValidator,
 } = require("../../validators/gdpr.validator");
 const { validateUuid } = require("../../middlewares/validateUuid.middleware");
-// These are Joi SCHEMAS. They were passed as `schema.validate`, i.e. Joi's own
-// (value, options) method, which express called as (req, res, next) — it threw
-// and 500'd every write route. `validate(schema)` is the router-facing factory.
+// These are SCHEMAS. A schema's own method was once passed to the router
+// (`schema.validate`), which express called as (req, res, next) — it threw and
+// 500'd every write route. `validate(schema)` is the only router-facing factory
+// (P9-11 guard: tests/guards/schemaAsMiddleware.p911).
 const { validate } = require("../../middlewares/validation.middleware");
 
 /**

@@ -16,7 +16,15 @@
  *
  * Run on PostgreSQL 16 in development (no pgvector needed); the deployment
  * target is 18.
+ *
+ * A-283 (2026-09-30): D-18 / D-20 are migration DDL and run as the owner. The
+ * D-19 purge is the application's path and an isolation property (tenant B's
+ * readings survive), so it runs in a second process as `callibrator_app`,
+ * with the grants 0057 and 0091 give it — as the owner it would pass whether
+ * the role may DELETE a reading or INSERT the purge's audit row or not.
  */
+
+const { enterAppRole, grantAppRoleOnSyncedSchema, APP_ROLE } = require("../fixtures/liveBoot");
 
 const live = process.env.DATA_PG_LIVE_TEST === "1" ? describe : describe.skip;
 
@@ -283,6 +291,21 @@ live("dbB data layer — live PostgreSQL (D-18, D-19, D-20, D-21)", () => {
   });
 
   describe("D-19 — the iot_readings retention purge", () => {
+    /** A second process, as callibrator_app: the purge is the application's path. */
+    let app;
+
+    beforeAll(async () => {
+      await grantAppRoleOnSyncedSchema(g.db);
+      app = startProcess();
+      await enterAppRole(app.db);
+      const [[row]] = await app.db.query("SELECT current_user AS u");
+      expect(row.u).toBe(APP_ROLE);
+    });
+
+    afterAll(async () => {
+      if (app) {await app.db.close();}
+    });
+
     it("purges only the opted-in tenant's readings older than its period; the other tenant is untouched", async () => {
       const reading = (t, d, daysAgo) =>
         g.db.query(
@@ -299,7 +322,7 @@ live("dbB data layer — live PostgreSQL (D-18, D-19, D-20, D-21)", () => {
         { replacements: { t: TENANT_A } },
       );
 
-      const result = await g.retention.purgeExpiredRecords(TENANT_A);
+      const result = await app.retention.purgeExpiredRecords(TENANT_A);
 
       expect(result.purged).toEqual({ iot_readings: 1 });
       const [rows] = await g.db.query(

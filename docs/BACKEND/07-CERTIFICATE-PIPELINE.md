@@ -112,17 +112,35 @@ await sequelize.transaction(async (t) => {
 
 **Losing `ENCRYPT_KEY` makes every stored private key undecryptable.** It must be backed up separately from the database.
 
-## PDF Rendering
+## PDF Rendering — in the frontend (ADR-095, 2026-09-29)
 
-puppeteer, from HTML templates in `backend/src/templates`.
+**The backend renders no PDF.** Until 2026-09-29 it rendered one with puppeteer and a system Chromium, and in
+the shipped pkg binary that never worked (ADR-078 D-1: the ES-module puppeteer cannot load from pkg's
+snapshot). By owner decision the backend now serves the certificate **document** —
+`GET /certificates/:certificateId/document` (every printed field, `verifyUrl`, and `integrity`) — and the
+frontend renders the A4 PDF in the browser with jsPDF (`frontend/src/lib/certificatePdf.ts`), with the QR code
+and the integrity hash printed on it. Chromium, `fonts-liberation`, `PUPPETEER_EXECUTABLE_PATH` and
+`templates/certificate.html` left the backend.
 
-Two operational facts that produce late failures:
+**Integrity is over DATA, never over PDF bytes** — nothing ever hashed the file. Three schemes
+(`services/certificateDocument.service.ts`):
 
-**1. The bundled Chromium is unavailable in a compiled binary.** `PUPPETEER_EXECUTABLE_PATH` must point at a system browser. The Docker runtime image installs `chromium` and `fonts-liberation` and sets it; outside Docker it must be set by hand.
+- `certificate-canonical-json-v1` — `integrityHash`, printed on every PDF the backend rendered. Unchanged byte
+  for byte, so an issued printout still matches its verification page.
+- `certificate-content-v2` — printed on every frontend-rendered PDF. Binds every column of the certificate
+  row the PDF prints (v1's fields plus summary, conditions, notes, the calibrated/approved/signed-by ids and
+  the e-signature value and key id). Names of people, of the device and of the tenant are printed live and
+  **not** hashed. Since ADR-107 this is the scheme of a certificate **without** a signing snapshot: a draft,
+  pending or approved one, or one signed before ADR-107 (nothing was back-filled).
+- `certificate-content-v3` (ADR-107, Q-50) — a certificate signed from ADR-107 on. The sign step stores what it
+  prints — the issuer's name, address and contact, the instrument, the three people — in
+  `certificates.signed_snapshot` (migration 0103), and the certificate is printed **from that snapshot** from
+  then on (`contentAsOf: "signing"`). v3 binds v2's fields plus the snapshot, in a fixed key order
+  (PostgreSQL re-orders JSONB keys). A rename or move after signing changes nothing on it; an edit of the
+  snapshot changes the recomputed hash.
 
-**The failure happens at first PDF, not at startup** — a late failure in a compliance-critical path. The API must surface it as a clear error rather than a silent missing download.
-
-**2. Templates are read from disk next to the binary** via `appPath()`, not from the embedded snapshot. The Dockerfile copies `src/templates` explicitly. Omitting that copy produces an API that starts fine and fails on the first certificate.
+PDFs stored before the change stay where they were (`uploads/certificates/<random>.pdf`) and stay served:
+`GET /:certificateId/pdf` (gated) and the verification capability `documentUrl`. Nothing writes a new one.
 
 ## The QR Code
 
@@ -133,6 +151,8 @@ It exists to be scanned **off paper**, by someone holding a phone who has never 
 ## Public Verification
 
 `GET /api/v1/certificates/verify/:certificateNumber` — **no authentication**.
+
+**Amended 2026-09-29 (ADR-100, A-293).** Certificate numbers are sequential, so the number alone is not a secret. Every certificate carries a random `verification_token` (192 bits, unique, migration 0096), and the QR encodes `CERT_VERIFY_BASE_URL/<number>?t=<token>` (the API form `?token=`). A lookup **with the right token** returns the full public verdict (device, serial, signer, document); a lookup by the **bare number** — a typed number, or a QR printed before the token existed — returns only the minimal verdict (found / valid / status / revoked / expired / withdrawn, issuing tenant, issue and valid-until dates, the integrity hashes). A wrong token answers exactly like no token. Both are rate limited per address (`certificateVerify`, `certificateVerifyToken`). The pipeline below describes the verdict itself.
 
 ```
 resolve certificateNumber
@@ -174,6 +194,6 @@ Each decision writes a `workflow_actions` row (`APPROVED` / `REJECTED`, with com
 | verification: valid, expired, revoked, tampered, unknown |
 | **unknown and tampered return identical shapes** |
 | verification requires no authentication |
-| PDF rendering fails **loudly** when Chromium is absent |
+| the document route answers 404 for another tenant's certificate (`certificates.lifecycle.twoTenant.test.ts`) |
 
-The last one is worth writing deliberately: it is the failure that otherwise reaches a customer as a missing download.
+The v1 hash is pinned against the original function (`certificateDocument.service.m11.test.ts`): changing it would make every issued printout fail verification.

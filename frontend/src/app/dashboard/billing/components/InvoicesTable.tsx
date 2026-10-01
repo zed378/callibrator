@@ -115,7 +115,7 @@ export const InvoicesTable: React.FC<InvoicesTableProps> = ({
           <div className="p-4">
             <TableSkeleton cols={columns.length} rows={5} />
           </div>
-        ) : invoices.length === 0 ? (
+        ) : error ? null : invoices.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">
             <FileText className="h-12 w-12 mx-auto mb-3 opacity-20" />
             <p className="text-lg font-medium">No invoices found</p>

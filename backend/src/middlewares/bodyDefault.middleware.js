@@ -9,7 +9,7 @@
 // DELETE/GET whose body is genuinely optional, on a request that should have
 // succeeded outright.
 //
-// It is not only a crash: Joi treats `undefined` as valid against a
+// It is not only a crash: the old validator treated `undefined` as valid against a
 // non-required object schema, so the validators did not catch it either
 // (`schema.validate(undefined)` → `{ value: undefined }`, no error). Those
 // helpers are guarded too; this middleware is the request-level guarantee that

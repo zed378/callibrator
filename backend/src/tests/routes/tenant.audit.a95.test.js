@@ -229,8 +229,9 @@ describe("A-95 — POST /tenants/create is audited inside its transaction", () =
     expect(entry.changes).toMatchObject({ after: { name: "New Hospital", code: "NEW-H" } });
     expect(options).toEqual({ transaction: fx.lastTx });
     expect(mockEvents).toEqual(["create", "audit", "commit"]);
-    // The body cannot name the creator.
-    expect(Tenants.create.mock.calls[0][0].createdBy).toBe(fx.superAdmin.id);
+    // The body cannot name the creator: the audit row names the caller (above),
+    // and A-328 writes no createdBy (not a Tenant attribute) to the row at all.
+    expect(Tenants.create.mock.calls[0][0]).not.toHaveProperty("createdBy");
   });
 
   it("a failed audit insert rolls the create back (500) and removes the uploaded logo", async () => {

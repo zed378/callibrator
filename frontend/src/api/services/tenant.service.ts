@@ -29,8 +29,11 @@ export interface PublicTenantBranding {
 export interface TenantUserCount {
   tenantId: string;
   userCount: number;
-  maxUsers: number;
-  remainingSlots: number;
+  /** The seat limit; null = unlimited. */
+  limitSeats: number | null;
+  /** limitSeats − userCount, floored at 0; null = unlimited. */
+  remainingSlots: number | null;
+  unlimited: boolean;
 }
 
 export const tenantService = {
@@ -107,7 +110,7 @@ export const tenantService = {
     code: string;
     description?: string;
     primaryColor?: string;
-    maxUsers?: number;
+    limitSeats?: number;
     file?: File;
     email?: string;
     phone?: string;
@@ -119,14 +122,14 @@ export const tenantService = {
     website?: string;
   }): Promise<Tenant> => {
     // Swagger spec: multipart/form-data for file upload in single API call
-    // Req body: name *, code *, description, file ($binary), maxUsers, email, phone, address, city, state, zipCode, country, website
+    // Req body: name *, code *, description, file ($binary), limitSeats, email, phone, address, city, state, zipCode, country, website
     const formData = new FormData();
     formData.append("name", data.name);
     formData.append("code", data.code);
     if (data.description) formData.append("description", data.description);
     if (data.primaryColor) formData.append("primaryColor", data.primaryColor);
     if (data.file) formData.append("file", data.file);
-    if (data.maxUsers) formData.append("maxUsers", String(data.maxUsers));
+    if (data.limitSeats) formData.append("limitSeats", String(data.limitSeats));
     if (data.email) formData.append("email", data.email);
     if (data.phone) formData.append("phone", data.phone);
     if (data.address) formData.append("address", data.address);
@@ -152,7 +155,6 @@ export const tenantService = {
     description?: string;
     primaryColor?: string;
     status?: "ACTIVE" | "INACTIVE" | "SUSPENDED";
-    maxUsers?: number;
     file?: File;
     email?: string;
     phone?: string;
@@ -164,24 +166,21 @@ export const tenantService = {
     website?: string;
   }): Promise<Tenant> => {
     // Swagger spec: multipart/form-data for file upload
-    // Req body: tenantId *, name, code, description, file ($binary), status, maxUsers, email, phone, address, city, state, zipCode, country, website
+    // Req body: tenantId *, name, code, description, file ($binary), status, email, phone, address, city, state, zipCode, country, website
+    // A-303: no maxUsers (a plan value the platform sets; the backend strips it).
+    // A profile field is sent whenever it is given, "" included, so it can be cleared.
     const formData = new FormData();
     formData.append("tenantId", data.tenantId);
     if (data.name) formData.append("name", data.name);
     if (data.code) formData.append("code", data.code);
-    if (data.description) formData.append("description", data.description);
     if (data.primaryColor) formData.append("primaryColor", data.primaryColor);
     if (data.file) formData.append("file", data.file);
     if (data.status) formData.append("status", data.status);
-    if (data.maxUsers) formData.append("maxUsers", String(data.maxUsers));
     if (data.email) formData.append("email", data.email);
-    if (data.phone) formData.append("phone", data.phone);
-    if (data.address) formData.append("address", data.address);
-    if (data.city) formData.append("city", data.city);
-    if (data.state) formData.append("state", data.state);
-    if (data.zipCode) formData.append("zipCode", data.zipCode);
-    if (data.country) formData.append("country", data.country);
-    if (data.website) formData.append("website", data.website);
+    for (const field of ["description", "phone", "address", "city", "state", "zipCode", "country", "website"] as const) {
+      const value = data[field];
+      if (value !== undefined) formData.append(field, value);
+    }
 
     const response = await api.patch<{ success: boolean; data: Tenant }>(
       "/api/v1/tenants/edit",
@@ -212,7 +211,7 @@ export const tenantService = {
   /**
    * POST /api/v1/tenants/user-count
    *
-   * The backend returns { tenantId, userCount, maxUsers, remainingSlots } under
+   * The backend returns { tenantId, userCount, limitSeats, remainingSlots, unlimited } under
    * `data`. This previously read a top-level `count`, which does not exist at
    * any level, so it always resolved to undefined.
    */

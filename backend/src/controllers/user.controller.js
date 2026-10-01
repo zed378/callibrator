@@ -1,7 +1,11 @@
 const userService = require("../services/user.service");
 const { asyncHandler } = require("../utils/controllerWrapper.util");
 const { success } = require("../utils/response.util");
-const { auditActor } = require("../utils/auditActor.util");
+// A-282 (ADR-100): the audit actor. For an API key, req.user.id is the KEY's id,
+// which audit_logs.user_id (a foreign key to users) cannot hold: the key is
+// recorded as system:api-key, with its id in changes.apiKeyId.
+const { auditPrincipal } = require("../utils/auditPrincipal.util");
+const { isSuperAdmin } = require("../utils/role.util");
 const {
   createUserSchema,
   updateUserSchema,
@@ -11,18 +15,17 @@ const {
   usernameCheckSchema: checkUsernameSchema,
   userParamSchema,
   getAllUsersQuery,
-  validate: validateUser,
-  formatErrors,
 } = require("../validators/user.validator");
+const { checkInput } = require("../validators/input");
 
 /**
  * Handle validation error and send error response
  */
 const handleValidation = (result, res, status = 400) => {
-  if (result.error) {
+  if (!result.ok) {
     const err = new Error("Validation failed");
     err.status = status;
-    err.errors = formatErrors(result.error.details);
+    err.errors = result.errors;
     err.name = "ValidationError";
     throw err;
   }
@@ -36,28 +39,31 @@ const handleValidation = (result, res, status = 400) => {
  */
 const getActor = (req) => {
   // A-77: the IP and user agent go into the audit row the service writes
-  // inside its transaction.
-  const { ipAddress, userAgent } = auditActor(req);
+  // inside its transaction. A-282: so does the API key that acted, if one did.
+  const { ipAddress, userAgent, apiKeyId } = auditPrincipal(req);
   return {
     actorTenantId: req.user?.tenantId || null,
-    actorIsSuperAdmin:
-      req.user?.role?.name === "SUPER_ADMIN" ||
-      req.user?.role?.name === "SUPERADMIN",
+    actorIsSuperAdmin: isSuperAdmin(req.user),
     ipAddress,
     userAgent,
+    apiKeyId,
   };
 };
 
+/** A-282: the acting USER's id — null for an API key, whose id is no user. */
+const actingUserId = (req) => auditPrincipal(req).userId;
+
 exports.getAllUsers = asyncHandler(async (req, res) => {
-  const { error, value } = validateUser(req.query, getAllUsersQuery);
-  if (error) {
+  const checked = checkInput(req.query, getAllUsersQuery);
+  if (!checked.ok) {
     return res.status(400).json({
       success: false,
       status: 400,
       message: "Validation failed",
-      errors: formatErrors(error.details),
+      errors: checked.errors,
     });
   }
+  const { value } = checked;
 
   const role = req.user.role;
   const { actorIsSuperAdmin, actorTenantId } = getActor(req);
@@ -99,14 +105,14 @@ exports.getSpecificUser = asyncHandler(async (req, res) => {
 
 exports.checkUsernameAvailability = asyncHandler(async (req, res) => {
   const validated = handleValidation(
-    validateUser(req.body, checkUsernameSchema),
+    checkInput(req.body, checkUsernameSchema),
     res,
   );
   // A-258: the probe answers what userCreate would, so it carries the same
   // actor — its "taken" answers are counted and audited as A-128 conflicts.
   const result = await userService.checkUsernameAvailability({
     ...validated,
-    actorId: req.user.id,
+    actorId: actingUserId(req),
     ...getActor(req),
   });
 
@@ -121,12 +127,12 @@ exports.checkUsernameAvailability = asyncHandler(async (req, res) => {
 
 exports.updateUserRole = asyncHandler(async (req, res) => {
   const validated = handleValidation(
-    validateUser(req.body, updateUserRoleSchema),
+    checkInput(req.body, updateUserRoleSchema),
     res,
   );
   const result = await userService.userRoleUpdate({
     ...validated,
-    updatedBy: req.user.id,
+    updatedBy: actingUserId(req),
     ...getActor(req),
   });
 
@@ -135,12 +141,12 @@ exports.updateUserRole = asyncHandler(async (req, res) => {
 
 exports.createUser = asyncHandler(async (req, res) => {
   const validated = handleValidation(
-    validateUser(req.body, createUserSchema),
+    checkInput(req.body, createUserSchema),
     res,
   );
   const result = await userService.userCreate({
     ...validated,
-    createdBy: req.user.id || null,
+    createdBy: actingUserId(req),
     ...getActor(req),
   });
 
@@ -155,12 +161,12 @@ exports.createUser = asyncHandler(async (req, res) => {
 
 exports.editUser = asyncHandler(async (req, res) => {
   const validated = handleValidation(
-    validateUser(req.body, updateUserSchema),
+    checkInput(req.body, updateUserSchema),
     res,
   );
   const result = await userService.editUser({
     ...validated,
-    updatedBy: req.user.id || null,
+    updatedBy: actingUserId(req),
     ...getActor(req),
   });
 
@@ -182,12 +188,12 @@ exports.editUser = asyncHandler(async (req, res) => {
  */
 exports.updateProfile = asyncHandler(async (req, res) => {
   const validated = handleValidation(
-    validateUser({ ...req.body, userId: req.params.userId }, updateProfileSchema),
+    checkInput({ ...req.body, userId: req.params.userId }, updateProfileSchema),
     res,
   );
   const result = await userService.editUser({
     ...validated,
-    updatedBy: req.user.id,
+    updatedBy: actingUserId(req),
     ...getActor(req),
   });
 
@@ -201,19 +207,20 @@ exports.updateProfile = asyncHandler(async (req, res) => {
 });
 
 exports.deleteUser = asyncHandler(async (req, res) => {
-  const { error, value } = validateUser(req.query, userParamSchema);
-  if (error) {
+  const checked = checkInput(req.query, userParamSchema);
+  if (!checked.ok) {
     return res.status(400).json({
       success: false,
       status: 400,
       message:
         "Validation failed - userId is required and must be a valid UUID",
-      errors: formatErrors(error.details),
+      errors: checked.errors,
     });
   }
+  const { value } = checked;
 
   const { userId } = value;
-  const deletedBy = req.user.id || null;
+  const deletedBy = actingUserId(req);
 
   const result = await userService.deleteUser({
     userId,
@@ -251,7 +258,7 @@ const discardUploadedAvatar = async (req) => {
 exports.uploadUserAvatar = asyncHandler(async (req, res) => {
   // The PATH names the user (the gate checked it); a body userId never wins.
   const { userId } = { ...req.body, ...req.params };
-  const updatedBy = req.user?.id;
+  const updatedBy = actingUserId(req);
 
   if (!req.file) {
     return res.status(400).json({
@@ -289,7 +296,7 @@ exports.uploadUserAvatar = asyncHandler(async (req, res) => {
 
 exports.removeUserAvatar = asyncHandler(async (req, res) => {
   const { userId } = { ...req.body, ...req.params };
-  const updatedBy = req.user?.id;
+  const updatedBy = actingUserId(req);
 
   const result = await userService.removeUserAvatar(userId, updatedBy, getActor(req));
 

@@ -40,20 +40,22 @@ jest.mock("fs", () => ({
 
 jest.mock("../../utils/storagePath.util", () => jest.fn(() => "/tmp/log/access"));
 
-const { accessLog, errorLog } = require("../../middlewares/accessLog.middleware");
+const accessLogModule = require("../../middlewares/accessLog.middleware");
+const { accessLog } = accessLogModule;
 
 describe("accessLog middleware", () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it("should export accessLog and errorLog middleware functions", () => {
+  // A-296: the never-mounted errorLog was removed; accessLog is the only export.
+  it("should export the accessLog middleware function, and only it", () => {
     expect(typeof accessLog).toBe("function");
-    expect(typeof errorLog).toBe("function");
+    expect(Object.keys(accessLogModule)).toEqual(["accessLog"]);
   });
 
-  it("should create two morgan instances with a custom format", () => {
-    expect(mockMorganInstances.length).toBe(2);
+  it("should create one morgan instance with a custom format", () => {
+    expect(mockMorganInstances.length).toBe(1);
     expect(mockMorganInstances[0]._format).toContain(":request-id");
     expect(mockMorganInstances[0]._format).toContain(":user-id");
     expect(mockMorganInstances[0]._format).toContain(":real-ip");
@@ -61,7 +63,6 @@ describe("accessLog middleware", () => {
 
   describe("skip predicates", () => {
     const accessSkip = () => mockMorganInstances[0]._options.skip;
-    const errorSkip = () => mockMorganInstances[1]._options.skip;
 
     const skipPaths = [
       "/health",
@@ -85,18 +86,6 @@ describe("accessLog middleware", () => {
 
     it("should not skip access logging for non-excluded paths", () => {
       expect(accessSkip()({ originalUrl: "/api/v1/users" })).toBe(false);
-    });
-
-    it("should skip error logging when status code is below 400", () => {
-      const req = { originalUrl: "/api/v1/users" };
-      const res = { statusCode: 200 };
-      expect(errorSkip()(req, res)).toBe(true);
-    });
-
-    it("should not skip error logging when status code is >= 400", () => {
-      const req = { originalUrl: "/api/v1/users" };
-      const res = { statusCode: 500 };
-      expect(errorSkip()(req, res)).toBe(false);
     });
   });
 

@@ -47,6 +47,7 @@ describe("attachment Controller", () => {
         tenantId: VALID_TENANT_ID,
       },
       protocol: "https",
+      headers: { "user-agent": "jest-agent" },
       get: jest.fn().mockReturnValue("localhost:3000"),
     };
     res = {
@@ -81,9 +82,10 @@ describe("attachment Controller", () => {
           resourceType: "device",
           resourceId: "device-123",
           uploadedBy: VALID_USER_ID,
-          // A-117: for the CREATE audit row (req.get is a stub here).
-          ipAddress: req.ip,
-          userAgent: req.get("user-agent"),
+          apiKeyId: null, // A-282 (ADR-100): auditPrincipal(req)
+          // A-117: for the CREATE audit row (no req.ip in this stub).
+          ipAddress: null,
+          userAgent: "jest-agent",
         },
       );
       expect(res.status).toHaveBeenCalledWith(201);
@@ -108,11 +110,29 @@ describe("attachment Controller", () => {
           resourceType: undefined,
           resourceId: undefined,
           uploadedBy: VALID_USER_ID,
-          // A-117: for the CREATE audit row (req.get is a stub here).
-          ipAddress: req.ip,
-          userAgent: req.get("user-agent"),
+          apiKeyId: null, // A-282 (ADR-100): auditPrincipal(req)
+          // A-117: for the CREATE audit row (no req.ip in this stub).
+          ipAddress: null,
+          userAgent: "jest-agent",
         },
       );
+    });
+  });
+
+  describe("A-282 (ADR-100) — an upload by an API key", () => {
+    it("uploads as no user (uploaded_by references users) and names the key", async () => {
+      req.file = { originalname: "cal.pdf", buffer: Buffer.from("x") };
+      req.body = { resourceType: "device", resourceId: "device-123" };
+      req.user = { id: "key-1", tenantId: VALID_TENANT_ID, isApiKey: true };
+      req.apiKeyAuthorized = true; // as dynamicAccess sets it for an allowed scope
+      attachmentService.createAttachment.mockResolvedValue({ id: VALID_ATTACHMENT_ID });
+
+      await attachmentController.upload(req, res, next);
+
+      expect(attachmentService.createAttachment.mock.calls[0][2]).toMatchObject({
+        uploadedBy: null,
+        apiKeyId: "key-1",
+      });
     });
   });
 
@@ -319,7 +339,8 @@ describe("attachment Controller", () => {
       expect(attachmentService.deleteAttachment).toHaveBeenCalledWith(
         VALID_TENANT_ID,
         VALID_ATTACHMENT_ID,
-        { userId: VALID_USER_ID, ipAddress: req.ip, userAgent: "localhost:3000" },
+        // A-282 (ADR-100): auditPrincipal(req).
+        { userId: VALID_USER_ID, apiKeyId: null, ipAddress: null, userAgent: "jest-agent" },
       );
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith(

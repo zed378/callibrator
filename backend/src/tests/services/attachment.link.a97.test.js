@@ -173,3 +173,18 @@ describe("A-97 — a linked resourceId must be a live record of the caller's ten
     ).rejects.toMatchObject({ status: 404 });
   });
 });
+
+describe("A-282 (ADR-100) — an upload by an API key", () => {
+  it("stores no uploader and audits the key as system:api-key, the key in changes", async () => {
+    await attachmentService.createAttachment(TENANT, FILE, { uploadedBy: null, apiKeyId: "key-1" });
+
+    expect(models.Attachment.create.mock.calls[0][0]).toMatchObject({ uploadedBy: null });
+    expect(models.AuditLog.create).toHaveBeenCalledTimes(1);
+    expect(models.AuditLog.create.mock.calls[0][0]).toMatchObject({
+      userId: null,
+      actorType: "system",
+      actorName: "system:api-key",
+      changes: expect.objectContaining({ apiKeyId: "key-1" }),
+    });
+  });
+});

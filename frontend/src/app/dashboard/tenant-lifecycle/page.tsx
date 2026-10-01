@@ -29,6 +29,7 @@ import {
 } from "@/api/services/tenantLifecycle.service";
 import { tenantService } from "@/api/services/tenant.service";
 import { useToastStore } from "@/stores/toastStore";
+import { usePermissions } from "@/hooks/usePermissions";
 
 const statusVariant = (
   status: string,
@@ -49,6 +50,9 @@ const fmt = (value?: string | null) =>
   value ? new Date(value).toLocaleString() : "—";
 
 export default function TenantLifecyclePage() {
+  // ADR-102: every write here is superAdminOnly on the API (tenantLifecycle.route.js); a tenant
+  // role holding the menu's read sees the page without its controls.
+  const { superAdmin } = usePermissions();
   const addToast = useToastStore((s) => s.addToast);
 
   const [tenants, setTenants] = useState<{ id: string; name: string }[]>([]);
@@ -96,18 +100,20 @@ export default function TenantLifecyclePage() {
     key: string,
     fn: () => Promise<unknown>,
     successTitle: string,
-  ) => {
+  ): Promise<boolean> => {
     setBusy(key);
     try {
       await fn();
       addToast({ type: "success", title: successTitle });
       await load();
+      return true;
     } catch (err) {
       addToast({
         type: "error",
         title: "Action failed",
         description: err instanceof Error ? err.message : undefined,
       });
+      return false;
     } finally {
       setBusy(null);
     }
@@ -118,22 +124,25 @@ export default function TenantLifecyclePage() {
       addToast({ type: "error", title: "A suspension reason is required" });
       return;
     }
-    await run(
+    const ok = await run(
       "suspend",
       () => tenantLifecycleService.suspend(tenantId, suspendReason.trim()),
       "Tenant suspended",
     );
-    setIsSuspendOpen(false);
-    setSuspendReason("");
+    // A refused suspension keeps the dialog and the typed reason.
+    if (ok) {
+      setIsSuspendOpen(false);
+      setSuspendReason("");
+    }
   };
 
   const confirmOffboard = async () => {
-    await run(
+    const ok = await run(
       "offboard",
       () => tenantLifecycleService.offboard(tenantId),
       "Tenant offboarded — deletion scheduled after the retention period",
     );
-    setIsOffboardOpen(false);
+    if (ok) setIsOffboardOpen(false);
   };
 
   const exportData = async () => {
@@ -162,7 +171,12 @@ export default function TenantLifecyclePage() {
     }
   };
 
-  const current = (status?.status ?? "").toUpperCase();
+  // The backend's `status` is the Tenant row's ENUM (active | suspended |
+  // deleted); an offboarded tenant is "deleted" there (tenantLifecycle.service
+  // offboardTenant). Read as-is, "DELETED" never matched "OFFBOARDED", so an
+  // offboarded tenant could not be un-offboarded from this screen.
+  const rawStatus = (status?.status ?? "").toUpperCase();
+  const current = rawStatus === "DELETED" ? "OFFBOARDED" : rawStatus;
   const isSuspended = current === "SUSPENDED";
   const isOffboarded = current === "OFFBOARDED";
 
@@ -219,14 +233,16 @@ export default function TenantLifecyclePage() {
                     )}
                   </div>
                 </div>
-                <Button
-                  variant="outline"
-                  onClick={exportData}
-                  isLoading={busy === "export"}
-                  leftIcon={<Download className="h-4 w-4" />}
-                >
-                  Export Data
-                </Button>
+                {superAdmin && (
+                  <Button
+                    variant="outline"
+                    onClick={exportData}
+                    isLoading={busy === "export"}
+                    leftIcon={<Download className="h-4 w-4" />}
+                  >
+                    Export Data
+                  </Button>
+                )}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
@@ -258,6 +274,7 @@ export default function TenantLifecyclePage() {
                 </div>
               </div>
 
+              {superAdmin && (
               <div className="flex flex-wrap gap-2 pt-2 border-t border-border">
                 <Button
                   variant="outline"
@@ -321,6 +338,7 @@ export default function TenantLifecyclePage() {
                   Cancel Offboarding
                 </Button>
               </div>
+              )}
             </CardContent>
           </Card>
         )}

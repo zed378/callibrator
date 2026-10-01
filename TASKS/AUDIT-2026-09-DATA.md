@@ -54,8 +54,9 @@ describes the hooks and the raw-SQL rule more confidently than the code supports
 | D-27 | 14 `JSON`/`JSONB` columns with no declared shape | low | from code | **DONE** 2026-09-25 (ADR-070) — all 14 columns declare a validated shape; `audit_logs.changes` redacted at write, tested on fixtures |
 | D-28 | `"UsageMetrics"` is the only camelCase, non-`underscored` table in the schema | low | from code | **DONE** 2026-09-25 — decision (ADR-064): kept, documented in `11-BILLING-TABLES.md` |
 | D-29 | migration `0019` reviewed line by line — **correct**; two residual risks named | info | from code | **DONE** 2026-09-28 (ADR-083) — index recognised by column as well as name; the `context.queryInterface \|\| context` contract tested and frozen to 16 migrations (`0019-signature-crypto-fields.d29`) |
+| D-30 | query performance under volume: the audit list's exact count over all history, kanban N+1s (122 statements for 40 boards), lists ordered with no per-tenant index, the dashboard's 20-way fan-out | medium | PostgreSQL 18, measured | **DONE** 2026-09-29 (ADR-096, migration `0093`) — bounded audit count + 90-day default window, grouped kanban counts, six per-tenant order indexes, dashboard fan-out bounded at 4; `queryShape.p804` (15), `queryCount.p804.live` (4, PG 18), `0093-list-order-indexes` (8). Open: `listOrphans` 3–4 s (D-22), exact device/record counts, the dashboard bound's effect on p95 |
 
-**Counts:** 1 critical · 8 high · 15 medium · 4 low · 1 informational.
+**Counts:** 1 critical · 8 high · 16 medium · 4 low · 1 informational.
 
 ---
 
@@ -1302,6 +1303,38 @@ and the migration both have to be written.
 - [ ] `EXPLAIN` before/after recorded for the three largest
 - [ ] a check that a model declaring `tenantId` and no `tenant_id` index fails review
 
+**Addendum 2026-09-30: the check reads migration-created indexes (reconciled with ADR-100 Amendment 3).**
+
+**The conflict.** ADR-100 Amendment 3 forbids a model index on a column a migration adds: `db.sync()` runs before the migrator, so on an upgraded database the index names a column that does not exist yet, and the boot dies. The AM-3 guard enforces it. The Q-51 `api_key_id` foreign keys (`calibration_records`, `stock_adjustments`, `stock_transfers`) therefore get their indexes from migration 0105 only. D-20's check (`tests/migrations/0067-foreign-key-and-tenant-indexes.test.js`) accepted a migration's index only through a hand-kept `OTHER_MIGRATIONS` list. Without an entry, it failed on those three columns; the lead added one as a stopgap.
+
+**The fix, without re-adding a model index:**
+
+- **Shared reader.** The AM-3 guard's closed-world migration reader moved, unchanged, to `backend/src/tests/fixtures/migrationScan.ts`. `tests/guards/modelIndexColumns.am3.guard.test.ts` imports it, and its 8 tests, bites included, pass 8/8. Its ALLOW list and reasons are untouched.
+- **What the reader now collects:**
+  - every `addIndex(table, fields)` reachable from a migration's `up`;
+  - every SQL `CREATE [UNIQUE] INDEX … ON table (keys)` that runs in `up`, including a top-level constant that `up` references and a `.map` callback building one (0099's `FK_COLUMNS`);
+  - every `removeIndex` / `DROP INDEX` in `up`.
+
+  An expression key (`lower(x)`) reads as no column. A `WHERE` index is marked partial. `.map`, `.join`, `.replace`, `String(…)` and `.filter` are evaluated. `.filter` evaluates to the whole array, an over-approximation; it is safe at its two sites, 0024 (a table that is absent) and 0067 (an index already served).
+- **D-20's check** accepts an FK or tenant column led by:
+  - the model's own index;
+  - 0067's list;
+  - an index a migration creates. A partial index does not count, and neither does one that a **later** migration drops.
+
+  The hand list is gone.
+- **Closed world.** An index site the reader cannot evaluate fails the check unless it is on a reviewed list. There are two entries, both drops of a legacy global unique index whose name is read from the database:
+  - 0026, `calibration_devices.serial_number`;
+  - 0070, `custom_domains.domain`.
+
+  A stale entry, or a new unreadable site, fails.
+
+**Evidence.**
+
+- **Bites.** A fixture model with a foreign key and a tenant column indexed by neither its model nor a migration fails: both columns are reported. The same model passes once a migration creates the indexes. A partial index, an index built only in `down`, and an index a later migration drops each still fail.
+- **Not vacuous.** The reader finds 0105's three `api_key_id` indexes, which the models do NOT declare, plus 0029, 0095 and 0099's `.map`-built FK indexes.
+- **Results.** The 0067 test and am3 pass 342/342. Every migration suite passes: 51 suites, 855 tests, 5 skipped live suites.
+- **Record:** [the P9-16 record](../MEMORY/records/2026-09-30-p9-16-quality-services.md).
+
 ---
 
 ### D-21 — DECIMAL comes back from `pg` as a string
@@ -1646,6 +1679,27 @@ application has started against it will. Confirm before the first run:
 \d+ signature_records
 SELECT name FROM schema_migrations ORDER BY name;   -- 0019 should be absent
 ```
+
+### D-30 — Query performance under volume: an unbounded audit count, two kanban N+1s, lists with no per-tenant order index
+
+| | |
+|---|---|
+| **Status** | **DONE** 2026-09-29 (ADR-096, migration `0093`) — the P8-04 query-shaped fixes. Tests: `queryShape.p804` (15), `queryCount.p804.live` (4 of 4 on PostgreSQL 18), `0093-list-order-indexes` (8); each guard failed on the tree before the fix |
+| **Severity** | medium |
+| **Verified** | on PostgreSQL 18 (`pgvector/pgvector:pg18`) at volume: the P8-07 seed (2 × 500,000 audit rows, 2 × 50,000 records, 4.32M readings) plus 20,000 certificates / attachments / notifications, 10,000 work orders and stocks, 80 kanban boards |
+
+46 list and detail calls were driven through the real services in a tenant context. Every statement they issued was re-run under `EXPLAIN (ANALYZE, BUFFERS)`. Four defects:
+
+1. **`audit.service#fetchAuditLogs` counted the tenant's whole history on every page** — a Parallel Seq Scan of 500,000 rows (329 ms, 24,513 buffers). Under 5 concurrent users it hit the 30 s request timeout (408). Now: a 90-day default window when no date or resource is given (`meta.window`), and a count bounded at 10,000 (`meta.totalIsCapped`), bound to the tenant the hook would force. 7 ms, 2,033 buffers. The frontend audit page states both.
+2. **`kanban.service#listProjects` ran a count and `resolveAccess` per board** — 122 statements for 40 boards. Now one grouped count, with levels from the membership read it already made: 3 statements.
+3. **`kanban.service#listSprints` ran a count per sprint** — now one count grouped by sprint, the NULL group being the backlog: 14 → 4 statements.
+4. **Six lists sorted with no per-tenant index** (records, certificates, devices, work orders, attachments, stocks) — Seq Scan + sort, or a global index that discards other tenants' rows. `0093` adds `(tenant_id, <order column>)` for each, CONCURRENTLY. Certificates 57 → 5.5 ms, work orders 47 → 4 ms, devices at page 200 43 → 4.5 ms.
+
+The dashboard's 20 aggregates now run at most 4 at a time (ADR-086 §3's finding). Its figures are unchanged.
+
+**Open:** `attachment.listOrphans` (D-22's report) takes 3–4 s at 20,000 attachments; the device and record list counts are still exact; whether the dashboard bound moves p95 needs a quiet host. See ADR-096.
+
+---
 
 ---
 

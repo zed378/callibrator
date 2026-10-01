@@ -224,6 +224,15 @@ Two layers, both in `backend/src/utils/ssrf.util.js`, both wired into the webhoo
 
 Layer 2 exists because layer 1 cannot be sufficient: a hostname that resolved publicly at registration can be repointed at `10.0.0.5` an hour later, and DNS rebinding makes that an attack rather than an accident. Running it per-attempt rather than per-delivery is the right call and should survive any refactor.
 
+**Layer 3: the connection itself (ADR-104 Amendment 1, A-307, 2026-09-30).** Layer 2 resolves the host, and Node's `fetch` then resolved it **again** to connect. A rebinding DNS server can answer public to the check and `127.0.0.1` / `169.254.169.254` to the connect. Delivery now goes through `ssrf.util#pinnedFetch`, which is fetch-shaped: it takes the same init, returns `{ ok, status }`, and rejects an aborted request with an `AbortError`. Its agents connect with `ssrfSafeLookup`, so the address dialled is one that passed the check. Its request behaves as follows:
+- the body is sent byte for byte, so the signature still verifies;
+- a 3xx is returned and never followed;
+- no status throws;
+- the response body is discarded unread;
+- there is a timeout.
+
+Pinned by `tests/services/webhook.rebinding.a307.test.ts`, over real sockets.
+
 Blocked ranges (`BLOCKED_IPV4`, `isBlockedIpv6`): `0.0.0.0/8`, `10/8`, `100.64/10`, `127/8`, **`169.254/16`** (cloud metadata), `172.16/12`, `192.0.0/24`, `192.0.2/24`, `192.168/16`, `198.18/15`, `198.51.100/24`, `203.0.113/24`, `224/4`, `240/4`; and `::1`, `::`, `fc00::/7`, `fe80::/10`, `ff00::/8`, plus IPv4-mapped forms. Anything that is not a valid IP is blocked defensively.
 
 A DNS failure is also a 400 — so a receiver whose DNS is down produces `lastError: "URL host could not be resolved"` rather than a timeout.

@@ -10,7 +10,7 @@
  * What is real: auth.service#loginUser, rateLimiter.redis.service (on its
  * in-process store — no Redis is ready in a unit run), audit.service
  * (logAction and recordAccountLock, with its closed ACTION and actor checks),
- * the Joi login schema, and the audit_logs schema — action ENUM, NOT NULL
+ * the login schema, and the audit_logs schema — action ENUM, NOT NULL
  * columns and migration 0033's actor CHECK — through the auditLedger fixture,
  * which also stands in for the database transaction. What is faked: the user
  * rows and bcrypt.

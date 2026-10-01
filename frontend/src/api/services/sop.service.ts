@@ -23,8 +23,8 @@ const BASE = "/api/v1/sop";
 
 // ---------- Types ----------
 
-/** Backend persists uppercase. */
-export type SopStatus = "DRAFT" | "PUBLISHED";
+/** Backend persists uppercase — the full ENUM of models/sopDocument.model.ts. */
+export type SopStatus = "DRAFT" | "UNDER_REVIEW" | "PUBLISHED" | "ARCHIVED";
 export type TrainingStatus = "PENDING" | "COMPLETED";
 
 export interface SopAuthor {
@@ -105,16 +105,25 @@ interface RawSopList {
 export const sopService = {
   /** GET /sop — rows arrive under data.documents, not data.rows. */
   listDocuments: async (params: SopListParams = {}): Promise<SopPage> => {
-    const response = await api.get<BackendResponse<RawSopList>>(BASE, {
-      params,
-    });
-    const raw = response.data;
+    // sop.controller getDocuments answers the house envelope — the documents
+    // in `data`, pagination in a top-level `meta` (c131729). Reading only the
+    // older flat `data.documents` shape, every list came back empty. Both are
+    // read; the envelope wins.
+    const response = await api.get<
+      BackendResponse<RawSopList | SopDocument[] | null> & {
+        meta?: Partial<Omit<RawSopList, "documents">>;
+      }
+    >(BASE, { params });
+    const data = response.data;
+    const raw: Partial<RawSopList> = Array.isArray(data)
+      ? { documents: data, ...response.meta }
+      : (data ?? {});
     return {
-      rows: raw?.documents ?? [],
-      total: raw?.total ?? 0,
-      page: raw?.page ?? params.page ?? 1,
-      limit: raw?.limit ?? params.limit ?? 10,
-      totalPages: raw?.totalPages ?? 1,
+      rows: raw.documents ?? [],
+      total: raw.total ?? 0,
+      page: raw.page ?? params.page ?? 1,
+      limit: raw.limit ?? params.limit ?? 10,
+      totalPages: raw.totalPages ?? 1,
     };
   },
 

@@ -16,7 +16,7 @@
  * the outcome object in `data`, no `meta`).
  */
 import React from "react";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within, cleanup } from "@testing-library/react";
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: jest.fn(), replace: jest.fn(), prefetch: jest.fn() }),
@@ -84,9 +84,13 @@ beforeEach(() => {
   mockedApi.get.mockResolvedValue(listEnvelope);
 });
 
+// Restore asks first and needs the backup's name typed (confirmation, 2026-09-29).
 const restoreFirstBackup = async () => {
   render(<TenantBackupPage />);
-  fireEvent.click(await screen.findByRole("button", { name: /Restore/ }));
+  fireEvent.click(await screen.findByRole("button", { name: "Restore backup nightly" }));
+  const dialog = await screen.findByRole("dialog", { name: /Restore backup "nightly"/ });
+  fireEvent.change(within(dialog).getByLabelText(/to confirm/), { target: { value: "nightly" } });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Restore backup" }));
 };
 
 describe("A-156: backup screen shows the restore's notRestored list", () => {
@@ -139,10 +143,12 @@ describe("A-156: backup screen shows the restore's notRestored list", () => {
     mockedApi.post.mockRejectedValueOnce(new Error("Backup b1 cannot be restored"));
 
     render(<TenantBackupPage />);
-    const button = await screen.findByRole("button", { name: /Restore/ });
+    await screen.findByRole("button", { name: "Restore backup nightly" });
     expect(screen.queryByText(/Restore result|were not restored/)).toBeNull();
 
-    fireEvent.click(button);
+    // restoreFirstBackup renders again; unmount this one first.
+    cleanup();
+    await restoreFirstBackup();
     await waitFor(() =>
       expect(screen.getByText("Backup b1 cannot be restored")).toBeInTheDocument(),
     );

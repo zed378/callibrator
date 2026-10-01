@@ -1,6 +1,7 @@
 // src/app/dashboard/warehouse/components/WarehouseModal.tsx
 import React from "react";
 import {
+  Alert,
   Dialog,
   FormField,
   Input,
@@ -31,6 +32,8 @@ interface WarehouseModalProps {
     }>
   >;
   onSubmit: (e: React.FormEvent) => void;
+  /** F-19: a refused save, shown inside the dialog (a page alert sits behind it). */
+  error?: string | null;
 }
 
 export const WarehouseModal: React.FC<WarehouseModalProps> = ({
@@ -41,6 +44,7 @@ export const WarehouseModal: React.FC<WarehouseModalProps> = ({
   form,
   setForm,
   onSubmit,
+  error = null,
 }) => {
   return (
     <Dialog
@@ -56,6 +60,11 @@ export const WarehouseModal: React.FC<WarehouseModalProps> = ({
       size="lg"
     >
       <form onSubmit={onSubmit} className="space-y-4">
+        {error && (
+          <div role="alert">
+            <Alert variant="error">{error}</Alert>
+          </div>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <FormField label="Warehouse Name" required>
             <Input

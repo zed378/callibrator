@@ -26,6 +26,7 @@ import {
 import { tenantService } from "@/api/services/tenant.service";
 import { useAuthStore } from "@/stores/authStore";
 import { useToastStore } from "@/stores/toastStore";
+import { usePermissions } from "@/hooks/usePermissions";
 
 /**
  * The purgeable entities, keyed exactly as the backend accepts them (A-135).
@@ -46,6 +47,9 @@ const POLICY_KEYS: { key: RetentionPolicyKey; label: string; help: string }[] = 
 ];
 
 export default function DataRetentionPage() {
+  // ADR-102: every write here is superAdminOnly on the API (dataRetention.route.js); a tenant
+  // role holding the menu's read sees the page without its controls.
+  const { superAdmin } = usePermissions();
   const addToast = useToastStore((s) => s.addToast);
   const user = useAuthStore((s) => s.user);
 
@@ -224,7 +228,7 @@ export default function DataRetentionPage() {
                       blocked.
                     </p>
                   </div>
-                  {held ? (
+                  {!superAdmin ? null : held ? (
                     <Button
                       variant="outline"
                       isLoading={busy === "unhold"}
@@ -268,6 +272,7 @@ export default function DataRetentionPage() {
                     key={pk.key}
                     className="flex flex-col sm:flex-row sm:items-end gap-3 pb-4 border-b border-border last:border-0"
                   >
+                    {superAdmin ? (
                     <div className="flex-1">
                       <FormField label={pk.label} helperText={pk.help}>
                         <Input
@@ -283,24 +288,33 @@ export default function DataRetentionPage() {
                         />
                       </FormField>
                     </div>
+                    ) : (
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">{pk.label}</p>
+                        <p className="text-xs text-muted-foreground">{pk.help}</p>
+                      </div>
+                    )}
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-muted-foreground">
                         current: {policy?.[pk.key] ?? "—"}
                       </span>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        isLoading={busy === pk.key}
-                        onClick={() => savePolicy(pk.key)}
-                      >
-                        Save
-                      </Button>
+                      {superAdmin && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          isLoading={busy === pk.key}
+                          onClick={() => savePolicy(pk.key)}
+                        >
+                          Save
+                        </Button>
+                      )}
                     </div>
                   </div>
                 ))}
               </CardContent>
             </Card>
 
+            {superAdmin && (
             <Card className="border-border">
               <CardContent className="pt-6 space-y-4">
                 <div>
@@ -341,6 +355,7 @@ export default function DataRetentionPage() {
                 </p>
               </CardContent>
             </Card>
+            )}
           </>
         )}
 

@@ -66,6 +66,7 @@ describe("billing Controller", () => {
 
       expect(billingService.getSubscription).toHaveBeenCalledWith(
         "550e8400-e29b-41d4-a716-446655440001",
+        expect.objectContaining({ apiKeyId: null }),
       );
       expect(success).toHaveBeenCalled();
     });
@@ -86,7 +87,7 @@ describe("billing Controller", () => {
       expect(billingService.updateSubscription).toHaveBeenCalledWith(
         "550e8400-e29b-41d4-a716-446655440001",
         { planId: "professional", billingCycle: "Monthly" },
-        expect.objectContaining({ userId: null, tenantId: "550e8400-e29b-41d4-a716-446655440001" }),
+        expect.objectContaining({ userId: null, apiKeyId: null }), // A-282 (ADR-100): auditPrincipal(req)
       );
       expect(success).toHaveBeenCalled();
     });

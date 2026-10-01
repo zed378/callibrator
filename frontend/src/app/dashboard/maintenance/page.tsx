@@ -142,6 +142,7 @@ export default function MaintenancePage() {
           hasWriteAccess={hasWriteAccess}
           openEditModal={openEditModal}
           handleDeleteClick={handleDeleteClick}
+          loadFailed={!!workOrdersError && !workOrders}
         />
 
         <WorkOrderModal

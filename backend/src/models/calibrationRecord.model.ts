@@ -36,7 +36,10 @@ interface CalibrationRecord extends Model<
   id: CreationOptional<string>;
   tenantId: TenantId;
   deviceId: string;
-  performedBy: UserId;
+  /** Null when an API key recorded it (Q-51): then `apiKeyId` names it. Exactly one is set (CHECK, migration 0105). */
+  performedBy: UserId | null;
+  /** The API key that recorded it (Q-51); null for a user. Content: immutable after insert (0057 trigger). */
+  apiKeyId: string | null;
   calibrationDate: CreationOptional<Date>;
   dueDate: Date | null;
   standard: string | null;
@@ -63,6 +66,7 @@ interface CalibrationRecord extends Model<
   tenant?: NonAttribute<ModelInstance<"Tenant">>;
   device?: NonAttribute<ModelInstance<"CalibrationDevice">>;
   performer?: NonAttribute<ModelInstance<"User">>;
+  apiKey?: NonAttribute<ModelInstance<"ApiKey">>;
 }
 
 interface CalibrationRecordStatics {
@@ -101,12 +105,22 @@ const defineModel: DefineCalibrationRecord = (db, DataTypes) => {
         references: { model: "calibration_devices", key: "id" },
         onDelete: "RESTRICT",
       },
+      // Q-51: nullable — a record an API key wrote names the key in
+      // api_key_id instead. CHECK calibration_records_actor_exactly_one
+      // (migration 0105): exactly one of performed_by / api_key_id is set.
       performedBy: {
         type: DataTypes.UUID,
-        allowNull: false,
+        allowNull: true,
         references: { model: "users", key: "id" },
         // RESTRICT (F-6, ADR-051 Q-16): hard-deleting the performer must not
         // delete the calibration record, nor erase who performed it.
+        onDelete: "RESTRICT",
+      },
+      // Q-51: RESTRICT for the same reason — and SET NULL would break the CHECK.
+      apiKeyId: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: { model: "api_keys", key: "id" },
         onDelete: "RESTRICT",
       },
       calibrationDate: {
@@ -210,6 +224,10 @@ const defineModel: DefineCalibrationRecord = (db, DataTypes) => {
         { fields: ["tenant_id"] },
         { fields: ["device_id"] },
         { fields: ["performed_by"] },
+        // No index on api_key_id here: migration 0105 creates <table>_api_key_id.
+        // db.sync() runs BEFORE the migrator at boot, and a model index on a
+        // column a later migration adds fails CREATE INDEX on an existing
+        // database (ADR-100 Amendment 3; guard tests/guards/modelIndexColumns.am3.guard.test.ts).
         { fields: ["calibration_date"] },
         { fields: ["is_compliant"] },
         { fields: ["is_deleted"] },
@@ -218,12 +236,9 @@ const defineModel: DefineCalibrationRecord = (db, DataTypes) => {
         // @ts-expect-error -- the key is the COLUMN is_deleted, not the attribute isDeleted: a caller's where on is_deleted REPLACES this default only with the column key (P9-10 spec, probe 3)
         where: { is_deleted: false },
       },
-      scopes: {
-        includeDeleted: {
-          // @ts-expect-error -- where: null clears the defaultScope's predicate when the scopes are combined; {} would keep it (P9-10 spec, probe 2)
-          where: null,
-        },
-      },
+      // A-274 (2026-09-30): the unused `includeDeleted` scope was removed — no
+      // caller used it, and `.scope(["defaultScope", "includeDeleted"])` would have
+      // silently dropped the soft-delete predicate. Use `.unscoped()` deliberately.
       modelName: "CalibrationRecord",
       sequelize: db,
     },
@@ -255,6 +270,12 @@ const defineModel: DefineCalibrationRecord = (db, DataTypes) => {
     CalibrationRecord.belongsTo(models.User, {
       foreignKey: "performedBy",
       as: "performer",
+      onDelete: "RESTRICT",
+    });
+    // CalibrationRecord -> ApiKey (Q-51). ApiKey has a defaultScope: include it with required: false.
+    CalibrationRecord.belongsTo(models.ApiKey, {
+      foreignKey: "apiKeyId",
+      as: "apiKey",
       onDelete: "RESTRICT",
     });
   };

@@ -89,7 +89,7 @@ module.exports = {
             description: "Username or email",
             example: "sys",
           },
-          password: { type: "string", example: "123123" },
+          password: { type: "string", example: "Your-Password-1" },
         },
       },
       SendOtpRequest: {
@@ -365,196 +365,20 @@ module.exports = {
       },
 
       // ---------------------------------------------------------------
-      // Warehouse Schemas
+      // Warehouse Schemas: code-first since P9-21 (warehouse.openapi.ts,
+      // @callibrator/contracts/warehouse). `Warehouse` and `StorageLocation`
+      // are defined there; the JSDoc copies (and the unused *CreateRequest
+      // shapes) were removed, because the builder refuses a component defined
+      // twice, differently.
       // ---------------------------------------------------------------
-      Warehouse: {
-        type: "object",
-        properties: {
-          id: { type: "string", format: "uuid" },
-          tenantId: { type: "string", format: "uuid" },
-          name: { type: "string" },
-          code: { type: "string" },
-          address: { type: "string" },
-          description: { type: "string" },
-          status: { type: "string", enum: ["active", "inactive"] },
-          isDeleted: { type: "boolean" },
-          locations: {
-            type: "array",
-            items: { $ref: "#/components/schemas/StorageLocation" },
-          },
-          createdAt: { type: "string", format: "date-time" },
-          updatedAt: { type: "string", format: "date-time" },
-        },
-      },
-      WarehouseCreateRequest: {
-        type: "object",
-        required: ["name", "code"],
-        properties: {
-          name: { type: "string" },
-          code: { type: "string" },
-          address: { type: "string" },
-          description: { type: "string" },
-          status: {
-            type: "string",
-            enum: ["active", "inactive"],
-            default: "active",
-          },
-        },
-      },
-      StorageLocation: {
-        type: "object",
-        properties: {
-          id: { type: "string", format: "uuid" },
-          tenantId: { type: "string", format: "uuid" },
-          warehouseId: { type: "string", format: "uuid" },
-          name: { type: "string" },
-          code: { type: "string" },
-          description: { type: "string" },
-          isActive: { type: "boolean" },
-          createdAt: { type: "string", format: "date-time" },
-          updatedAt: { type: "string", format: "date-time" },
-        },
-      },
-      StorageLocationCreateRequest: {
-        type: "object",
-        required: ["warehouseId", "name", "code"],
-        properties: {
-          warehouseId: { type: "string", format: "uuid" },
-          name: { type: "string" },
-          code: { type: "string" },
-          description: { type: "string" },
-          isActive: { type: "boolean", default: true },
-        },
-      },
 
       // ---------------------------------------------------------------
-      // Stock Schemas
+      // Stock Schemas: code-first since P9-21 (stock.openapi.ts,
+      // @callibrator/contracts/stock). The JSDoc copies of Stock,
+      // StockAdjustment, StockTransfer, StockOpname and their *CreateRequest
+      // shapes were removed: the builder refuses a component defined twice,
+      // and the request shapes are the validators' own schemas now.
       // ---------------------------------------------------------------
-      Stock: {
-        type: "object",
-        properties: {
-          id: { type: "string", format: "uuid" },
-          tenantId: { type: "string", format: "uuid" },
-          warehouseId: { type: "string", format: "uuid" },
-          locationId: { type: "string", format: "uuid", nullable: true },
-          itemName: { type: "string" },
-          sku: { type: "string" },
-          serialNumber: { type: "string" },
-          quantity: { type: "integer" },
-          minQuantity: { type: "integer" },
-          description: { type: "string" },
-          isDeleted: { type: "boolean" },
-          warehouse: { $ref: "#/components/schemas/Warehouse" },
-          location: { $ref: "#/components/schemas/StorageLocation" },
-          createdAt: { type: "string", format: "date-time" },
-          updatedAt: { type: "string", format: "date-time" },
-        },
-      },
-      StockCreateRequest: {
-        type: "object",
-        required: ["warehouseId", "itemName"],
-        properties: {
-          warehouseId: { type: "string", format: "uuid" },
-          locationId: { type: "string", format: "uuid" },
-          itemName: { type: "string" },
-          sku: { type: "string" },
-          serialNumber: { type: "string" },
-          quantity: { type: "integer", default: 0 },
-          minQuantity: { type: "integer", default: 0 },
-          description: { type: "string" },
-        },
-      },
-      StockAdjustment: {
-        type: "object",
-        properties: {
-          id: { type: "string", format: "uuid" },
-          tenantId: { type: "string", format: "uuid" },
-          warehouseId: { type: "string", format: "uuid" },
-          locationId: { type: "string", format: "uuid", nullable: true },
-          type: {
-            type: "string",
-            enum: ["addition", "subtraction", "write_off"],
-          },
-          quantity: { type: "integer" },
-          reason: { type: "string" },
-          adjustedBy: { type: "string", format: "uuid" },
-          createdAt: { type: "string", format: "date-time" },
-          updatedAt: { type: "string", format: "date-time" },
-        },
-      },
-      StockAdjustmentCreateRequest: {
-        type: "object",
-        required: ["warehouseId", "type", "quantity"],
-        properties: {
-          warehouseId: { type: "string", format: "uuid" },
-          locationId: { type: "string", format: "uuid" },
-          type: {
-            type: "string",
-            enum: ["addition", "subtraction", "write_off"],
-          },
-          quantity: { type: "integer" },
-          reason: { type: "string" },
-        },
-      },
-      StockTransfer: {
-        type: "object",
-        properties: {
-          id: { type: "string", format: "uuid" },
-          tenantId: { type: "string", format: "uuid" },
-          fromWarehouseId: { type: "string", format: "uuid" },
-          toWarehouseId: { type: "string", format: "uuid" },
-          status: {
-            type: "string",
-            enum: ["pending", "in_transit", "completed", "cancelled"],
-          },
-          requestedBy: { type: "string", format: "uuid" },
-          approvedBy: { type: "string", format: "uuid", nullable: true },
-          itemName: { type: "string" },
-          quantity: { type: "integer" },
-          transferDate: { type: "string", format: "date-time" },
-          notes: { type: "string" },
-          createdAt: { type: "string", format: "date-time" },
-          updatedAt: { type: "string", format: "date-time" },
-        },
-      },
-      StockTransferCreateRequest: {
-        type: "object",
-        required: ["fromWarehouseId", "toWarehouseId", "itemName", "quantity"],
-        properties: {
-          fromWarehouseId: { type: "string", format: "uuid" },
-          toWarehouseId: { type: "string", format: "uuid" },
-          itemName: { type: "string" },
-          quantity: { type: "integer" },
-          notes: { type: "string" },
-        },
-      },
-      StockOpname: {
-        type: "object",
-        properties: {
-          id: { type: "string", format: "uuid" },
-          tenantId: { type: "string", format: "uuid" },
-          warehouseId: { type: "string", format: "uuid" },
-          status: {
-            type: "string",
-            enum: ["draft", "in_progress", "completed"],
-          },
-          scheduledAt: { type: "string", format: "date-time" },
-          completedAt: { type: "string", format: "date-time" },
-          performedBy: { type: "string", format: "uuid" },
-          notes: { type: "string" },
-          createdAt: { type: "string", format: "date-time" },
-          updatedAt: { type: "string", format: "date-time" },
-        },
-      },
-      StockOpnameCreateRequest: {
-        type: "object",
-        required: ["warehouseId", "scheduledAt"],
-        properties: {
-          warehouseId: { type: "string", format: "uuid" },
-          scheduledAt: { type: "string", format: "date-time" },
-          notes: { type: "string" },
-        },
-      },
 
       // ---------------------------------------------------------------
       // Calibration Device Schemas
@@ -611,7 +435,11 @@ module.exports = {
           id: { type: "string", format: "uuid" },
           tenantId: { type: "string", format: "uuid" },
           deviceId: { type: "string", format: "uuid" },
-          performedBy: { type: "string", format: "uuid" },
+          // Q-51 (ADR-100): null when an API key acted; then apiKeyId names the key.
+          performedBy: { type: "string", format: "uuid", nullable: true },
+          apiKeyId: { type: "string", format: "uuid", nullable: true },
+          // Q-51 (ADR-100 Am. 2): the key, on list reads — id, name and display prefix only, never the hash.
+          apiKey: { type: "object", nullable: true, properties: { id: { type: "string", format: "uuid" }, name: { type: "string" }, keyPrefix: { type: "string" } } },
           performedAt: { type: "string", format: "date-time" },
           dueAt: { type: "string", format: "date-time" },
           method: { type: "string" },

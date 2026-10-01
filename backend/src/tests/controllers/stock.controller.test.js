@@ -32,7 +32,8 @@ const stockService = require("../../services/stock.service");
 const { success, error } = require("../../utils/response.util");
 
 // P6-09: auditActor(req) for a request with no ip / user agent.
-const ACTOR = { ipAddress: null, tenantId: "tenant-1", userAgent: null, userId: "user-1" };
+// A-282 (ADR-100): auditPrincipal(req) — the key id, never a user, for an API key.
+const ACTOR = { ipAddress: null, apiKeyId: null, userAgent: null, userId: "user-1" };
 
 describe("stockController", () => {
   let req;
@@ -96,12 +97,13 @@ describe("stockController", () => {
       await stockController.getAllStocks(req, res, next);
 
       expect(stockService.fetchStocks).not.toHaveBeenCalled();
-      // asyncHandler maps the thrown { status, message } onto response.util.error
+      // A-272 (ADR-100): asyncHandler answers a thrown validateInput failure
+      // like validate() — "Validation Error", the field list as details.
       expect(error).toHaveBeenCalledWith(
         res,
-        "Validation failed",
+        "Validation Error",
         400,
-        expect.anything(),
+        expect.arrayContaining([expect.objectContaining({ field: expect.any(String) })]),
       );
       expect(next).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -197,9 +199,11 @@ describe("stockController", () => {
 
       await stockController.deleteStock(req, res);
 
+      // A-321: the soft-delete writes an audit row, so the principal goes too.
       expect(stockService.deleteStock).toHaveBeenCalledWith(
         "tenant-1",
         "8c352a92-d6cf-4b71-b0db-6e69622d1b11",
+        ACTOR,
       );
       expect(success).toHaveBeenCalled();
     });
@@ -369,6 +373,7 @@ describe("stockController", () => {
           scheduledAt: expect.any(Date),
         },
         "user-1",
+        ACTOR, // P6-11: the opname audits in its transaction, so the principal goes too
       );
       expect(success).toHaveBeenCalled();
     });
@@ -393,6 +398,7 @@ describe("stockController", () => {
         "8c352a92-d6cf-4b71-b0db-6e69622d1b11",
         { status: "completed" },
         "user-1",
+        ACTOR, // P6-11
       );
       expect(success).toHaveBeenCalled();
     });

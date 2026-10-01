@@ -2,7 +2,7 @@
  * E2E Tests: Stock / Inventory Module (HTTP)
  *
  * Verifies /api/v1/stocks against the running API server using a real Bearer
- * token from POST /auth/login (sys@mail.com / 123123). A parent warehouse is
+ * token from POST /auth/login (sys@mail.com / E2E_OPERATOR_PASSWORD, see setup.js). A parent warehouse is
  * created first (stock FKs a warehouseId) and cleaned up at the end.
  *
  * Covered routes (from stock.route.js):
@@ -30,6 +30,8 @@ const {
   API_BASE,
   defaultHeaders,
 } = require("../setup");
+// P10-16 (ADR-099): no default operator password — set E2E_OPERATOR_PASSWORD (see setup.js).
+const { OPERATOR_PASSWORD } = require("../setup");
 
 async function httpPatch(path, data = {}, headers = {}) {
   const resp = await fetch(`${API_BASE}${path}`, {
@@ -45,7 +47,7 @@ async function httpPatch(path, data = {}, headers = {}) {
   return { status: resp.status, body };
 }
 
-const ADMIN = { user: "sys@mail.com", password: "123123" };
+const ADMIN = { user: "sys@mail.com", password: OPERATOR_PASSWORD };
 
 describe("E2E Stock Module (HTTP)", () => {
   let token;

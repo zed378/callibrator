@@ -179,6 +179,17 @@ export function useUsers() {
     setIsSubmitting(false);
   };
 
+  // F-19: a photo picked in either dialog was only ever previewed — nothing
+  // called uploadAvatar, so it was lost on save. The files are kept here and
+  // sent (POST /users/:userId/avatar) once the user itself is saved.
+  const [createPhotoFile, setCreatePhotoFile] = useState<File | null>(null);
+  const [editPhotoFile, setEditPhotoFile] = useState<File | null>(null);
+  const [editPhotoRemoved, setEditPhotoRemoved] = useState(false);
+  const [photoNotice, setPhotoNotice] = useState("");
+
+  const photoFailure = (err: unknown) =>
+    err instanceof Error ? err.message : "the upload failed";
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError("");
@@ -193,10 +204,23 @@ export function useUsers() {
       return;
     }
     try {
-      await createUser({
+      const created = await createUser({
         ...createForm,
         tenantId: createForm.tenantId || undefined,
       });
+      // The user exists now, so the dialog closes whatever the photo does —
+      // resubmitting would create a second user. A refused photo is said on
+      // the page instead.
+      if (createPhotoFile && created?.id) {
+        try {
+          await userService.uploadAvatar(created.id, createPhotoFile);
+        } catch (err: unknown) {
+          setPhotoNotice(
+            `The user was created, but the photo was not saved: ${photoFailure(err)}. Add it from the user's Edit dialog.`,
+          );
+        }
+      }
+      setCreatePhotoFile(null);
       setShowCreateModal(false);
       setCreateForm({ ...initialCreateForm });
       setPasswordRules({
@@ -217,6 +241,8 @@ export function useUsers() {
   };
 
   const handleEdit = (user: User) => {
+    setEditPhotoFile(null);
+    setEditPhotoRemoved(false);
     setEditingUser(user);
     setEditForm({
       username: user.username || "",
@@ -244,9 +270,29 @@ export function useUsers() {
       await updateUser({
         userId: editingUser.id,
         username: editForm.username || undefined,
+        // The edit form offers the names; dropping them here made every name
+        // change a silent no-op (PATCH /users/edit accepts both).
+        firstName: editForm.firstName || undefined,
+        lastName: editForm.lastName || undefined,
         email: editForm.email || undefined,
         status: editForm.status || undefined,
       });
+      // Saving again is harmless, so a refused photo keeps the dialog open
+      // with the reason.
+      try {
+        if (editPhotoFile) {
+          await userService.uploadAvatar(editingUser.id, editPhotoFile);
+        } else if (editPhotoRemoved && editingUser.picture) {
+          await userService.deleteAvatar(editingUser.id);
+        }
+      } catch (err: unknown) {
+        setFormError(
+          `The details were saved, but the photo was not: ${photoFailure(err)}`,
+        );
+        return;
+      }
+      setEditPhotoFile(null);
+      setEditPhotoRemoved(false);
       setShowEditModal(false);
       setEditingUser(null);
       await refetchUsers();
@@ -311,6 +357,11 @@ export function useUsers() {
     users,
     isLoading,
     error,
+    setCreatePhotoFile,
+    setEditPhotoFile,
+    setEditPhotoRemoved,
+    photoNotice,
+    setPhotoNotice,
     searchTerm,
     setSearchTerm,
     currentPage,

@@ -87,7 +87,7 @@ jest.mock("../../controllers/certificate.controller", () => ({
 jest.mock("../../controllers/certificatePdf.controller", () => ({
   verifyCertificate: mockReached("verifyCertificate"),
   verifyDocument: mockReached("verifyDocument"),
-  generatePdf: mockReached("generatePdf"),
+  getDocument: mockReached("getDocument"),
   downloadPdf: mockReached("downloadPdf"),
   getQrCode: mockReached("getQrCode"),
 }));
@@ -400,10 +400,15 @@ const GUARDED = [
 // moved out of this list must move into GUARDED, and a new one must land in
 // one of the two.
 const NOT_GUARDED = {
+  "accessRequests.route.ts POST /":
+    "P10-05 (ADR-098 §6): the PUBLIC access-request intake (matched on its `submit` handler); no principal, no tenant, authors no Part 11 record",
+  "admin.route.js POST /access-requests/:id/approve":
+    "P10-05/P10-07: the super admin approving an access request creates a tenant and its first administrator — a platform operation (A-76), inside no tenant, audited under PLATFORM; not a record a tenant attests",
   "ai.route.js POST /ocr": "matched on its `certificate` gate; extracts text from a file, authors nothing",
   "apiKeys.route.js DELETE /:id": "API-key revocation — an administrative act, not a Part 11 record",
   "attachments.route.js POST /:id/signed-url": "issues a download URL, authors nothing",
-  "certificates.route.js POST /:certificateId/pdf": "renders an existing certificate, authors nothing",
+  "auth.route.js POST /first-sign-in/password":
+    "P10-16 (ADR-099): public — replaces a one-time password after its first sign-in; the password-change token is the capability, it authors no record content",
   "eSignature.route.js DELETE /workflows/:workflowId": "workflow management, audited (F-8); authors no signature",
   "eSignature.route.js POST /workflows": "workflow setup, audited (F-8); the signature itself is POST /sign",
   "eSignature.route.js POST /workflows/:workflowId/cancel":
@@ -420,6 +425,8 @@ const NOT_GUARDED = {
   "session.route.js POST /mine/:id/revoke": "the caller ends one of their own sessions (Q-08, ADR-084), not a record",
   "session.route.js POST /user/:userId/revoke-all": "session revocation, not a record",
   "workflows.route.js DELETE /:id": "workflow definition management, not a record",
+  "webauthn.route.js DELETE /credentials/:id":
+    "ADR-108 Am. 1: the caller removes one of their OWN passkeys (matched on its `revoke` handler); re-authenticated and audited, not a Part 11 record",
   "workflows.route.js POST /": "workflow definition management, not a record",
   "workflows.route.js PUT /:id": "workflow definition management, not a record",
 };

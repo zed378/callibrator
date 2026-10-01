@@ -15,6 +15,8 @@ jest.mock("../../config", () => ({
   db: {
     getDialect: jest.fn(),
     query: jest.fn(),
+    // A-322: a quota suspension runs in a managed transaction.
+    transaction: jest.fn((cb) => cb("txn")),
     QueryTypes: { SELECT: "SELECT" },
     Sequelize: {
       fn: jest.fn(),
@@ -53,7 +55,13 @@ jest.mock("../../models", () => ({
   Tenant: {
     findByPk: jest.fn(),
   },
+  TenantSettings: {
+    upsert: jest.fn(),
+  },
 }));
+
+// A-322: a quota suspension writes two audit rows (PLATFORM and the tenant).
+jest.mock("../../services/audit.service", () => ({ logAction: jest.fn() }));
 
 const meteredBillingService = require("../../services/meteredBilling.service");
 const {
@@ -69,7 +77,8 @@ const {
   getStatus,
 } = meteredBillingService;
 
-const { UsageMetric, PlanQuota, Tenant } = require("../../models");
+const { UsageMetric, PlanQuota, Tenant, TenantSettings } = require("../../models");
+const auditService = require("../../services/audit.service");
 const { db } = require("../../config");
 
 describe("meteredBillingService", () => {
@@ -575,10 +584,14 @@ describe("meteredBillingService", () => {
     const exceedingUsage = () =>
       db.query.mockResolvedValue([{ period: "2024-03-01", total: "500" }]);
 
+    // A-322: free vs paid is the tenant's plan (it read a `subscriptionId` the
+    // Tenant model does not have). The suspension is marked as the system's,
+    // saved in a transaction with the lifecycle setting and two audit rows;
+    // tests/services/meteredBilling.overage.a322.test.ts runs it on the real models.
     it("should suspend a free-tier tenant that blows its quota", async () => {
       PlanQuota.findAll.mockResolvedValue([{ metric: "api_calls", limit: 100 }]);
       exceedingUsage();
-      const tenant = { subscriptionId: null, update: jest.fn().mockResolvedValue(true) };
+      const tenant = { id: "tenant-1", plan: "free", status: "active", save: jest.fn().mockResolvedValue(true) };
       Tenant.findByPk.mockResolvedValue(tenant);
 
       const result = await enforceQuotas("tenant-1");
@@ -589,7 +602,13 @@ describe("meteredBillingService", () => {
           { metric: "api_calls", usage: 500, limit: 100, overage: 400 },
         ],
       });
-      expect(tenant.update).toHaveBeenCalledWith({ status: "suspended" });
+      expect(tenant).toMatchObject({ status: "suspended", suspensionReason: "billing:quota", suspendedBy: null });
+      expect(tenant.save).toHaveBeenCalledWith({ transaction: "txn" });
+      expect(TenantSettings.upsert).toHaveBeenCalledWith(
+        { tenantId: "tenant-1", key: "lifecycle_status", value: "SUSPENDED" },
+        { transaction: "txn" },
+      );
+      expect(auditService.logAction).toHaveBeenCalledTimes(2);
       expect(logger.warn).toHaveBeenCalledWith("Quota exceeded", {
         tenantId: "tenant-1",
         metric: "api_calls",
@@ -601,7 +620,7 @@ describe("meteredBillingService", () => {
     it("should allow — not suspend — an overage on a paid tenant", async () => {
       PlanQuota.findAll.mockResolvedValue([{ metric: "api_calls", limit: 100 }]);
       exceedingUsage();
-      const tenant = { subscriptionId: "sub_123", update: jest.fn() };
+      const tenant = { id: "tenant-1", plan: "business", status: "active", save: jest.fn() };
       Tenant.findByPk.mockResolvedValue(tenant);
 
       const result = await enforceQuotas("tenant-1");
@@ -612,7 +631,8 @@ describe("meteredBillingService", () => {
         { metric: "api_calls", usage: 500, limit: 100, overage: 400 },
       ]);
       // A paid tenant is never suspended.
-      expect(tenant.update).not.toHaveBeenCalled();
+      expect(tenant.save).not.toHaveBeenCalled();
+      expect(tenant.status).toBe("active");
       // BUG (meteredBilling.service.js:300): enforceQuotas passes `check.overage`
       // to handleOverage, but checkQuota (line 258-264) never returns an `overage`
       // key — so handleOverage always receives `undefined` and this log line
@@ -764,10 +784,11 @@ describe("meteredBillingService", () => {
 
       await resetUsage("tenant-1", "api_calls");
 
-      // `bind`, not `replacements` — see the getUsage regression note.
+      // `bind`, not `replacements` — see the getUsage regression note. P9-07:
+      // the statement runs through sql(), which always passes `type: "SELECT"`.
       expect(db.query).toHaveBeenCalledWith(
         expect.stringContaining('DELETE FROM "UsageMetrics"'),
-        { bind: ["tenant-1", "api_calls"] },
+        { type: "SELECT", bind: ["tenant-1", "api_calls"] },
       );
       expect(UsageMetric.destroy).not.toHaveBeenCalled();
       expect(getStatus().storeSize).toBe(0);

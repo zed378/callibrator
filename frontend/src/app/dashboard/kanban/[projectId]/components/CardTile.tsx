@@ -1,15 +1,15 @@
-"use client";
+'use client';
 
-import React from "react";
-import { KanbanCard } from "@/api/services/kanban.service";
-import { Avatar } from "@/components/ui";
-import { Link2, MessageSquare } from "lucide-react";
+import React from 'react';
+import { KanbanCard, KanbanColumn } from '@/api/services/kanban.service';
+import { Avatar } from '@/components/ui';
+import { Link2, MessageSquare } from 'lucide-react';
 
 const PRIORITY_STYLES: Record<string, string> = {
-  low: "bg-muted text-muted-foreground",
-  medium: "bg-info/10 text-info",
-  high: "bg-warning/10 text-warning",
-  urgent: "bg-destructive/10 text-destructive",
+  low: 'bg-muted text-muted-foreground',
+  medium: 'bg-info/10 text-info',
+  high: 'bg-warning/10 text-warning',
+  urgent: 'bg-destructive/10 text-destructive',
 };
 
 interface Props {
@@ -20,6 +20,10 @@ interface Props {
   onDragStart: () => void;
   onDragEnd: () => void;
   onDropBefore: () => void;
+  /** The board's columns — the keyboard move's choices (WCAG 2.1.1). */
+  columns?: KanbanColumn[];
+  /** Move this card to another column, without dragging. */
+  onMoveTo?: (columnId: string) => void;
 }
 
 export default function CardTile({
@@ -30,7 +34,10 @@ export default function CardTile({
   onDragStart,
   onDragEnd,
   onDropBefore,
+  columns = [],
+  onMoveTo,
 }: Props) {
+  const otherColumns = columns.filter((col) => col.id !== card.columnId);
   return (
     <div
       draggable={canEdit}
@@ -47,7 +54,7 @@ export default function CardTile({
       }}
       onClick={onOpen}
       className={`rounded-xl border border-border bg-card p-3 shadow-sm hover:shadow-md transition-all cursor-pointer ${
-        isDragging ? "opacity-40" : ""
+        isDragging ? 'opacity-40' : ''
       }`}
     >
       {card.labels.length > 0 && (
@@ -56,7 +63,7 @@ export default function CardTile({
             <span
               key={l.id}
               className="h-2 w-8 rounded-full"
-              style={{ backgroundColor: l.color || "#94a3b8" }}
+              style={{ backgroundColor: l.color || '#94a3b8' }}
               title={l.name}
             />
           ))}
@@ -64,22 +71,28 @@ export default function CardTile({
       )}
 
       <div className="flex items-start justify-between gap-2">
-        <p className="text-sm font-medium text-foreground line-clamp-3">
+        {/* The card opens from the keyboard too: its title is a button. */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpen();
+          }}
+          className="text-left text-sm font-medium text-foreground line-clamp-3 rounded focus:outline-none focus:ring-2 focus:ring-ring"
+        >
           {card.title}
-        </p>
+        </button>
       </div>
 
       <div className="flex items-center justify-between mt-3">
         <div className="flex items-center gap-2">
           {card.cardKey && (
-            <span className="text-[11px] font-semibold text-muted-foreground">
-              {card.cardKey}
-            </span>
+            <span className="text-[11px] font-semibold text-muted-foreground">{card.cardKey}</span>
           )}
           {card.priority && (
             <span
               className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${
-                PRIORITY_STYLES[card.priority] || ""
+                PRIORITY_STYLES[card.priority] || ''
               }`}
             >
               {card.priority}
@@ -91,20 +104,36 @@ export default function CardTile({
               {card.relations.length}
             </span>
           )}
-          {card.description && (
-            <MessageSquare className="h-3 w-3 text-muted-foreground" />
-          )}
+          {card.description && <MessageSquare className="h-3 w-3 text-muted-foreground" />}
         </div>
         <div className="flex -space-x-2">
           {card.assignees.slice(0, 3).map((a) => {
-            const label =
-              [a.firstName, a.lastName].filter(Boolean).join(" ") || a.email;
-            return (
-              <Avatar key={a.id} alt={label} fallback={label} size="sm" />
-            );
+            const label = [a.firstName, a.lastName].filter(Boolean).join(' ') || a.email;
+            return <Avatar key={a.id} alt={label} fallback={label} size="sm" />;
           })}
         </div>
       </div>
+
+      {canEdit && onMoveTo && otherColumns.length > 0 && (
+        // WCAG 2.1.1: the keyboard (and switch-access) way to move a card
+        // between columns — drag and drop has no keyboard equivalent.
+        <select
+          aria-label={`Move "${card.title}" to column`}
+          value=""
+          onClick={(e) => e.stopPropagation()}
+          onChange={(e) => {
+            if (e.target.value) onMoveTo(e.target.value);
+          }}
+          className="mt-2 w-full rounded-lg border border-border bg-background px-2 py-1 text-xs text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+        >
+          <option value="">Move to…</option>
+          {otherColumns.map((col) => (
+            <option key={col.id} value={col.id}>
+              {col.name}
+            </option>
+          ))}
+        </select>
+      )}
     </div>
   );
 }

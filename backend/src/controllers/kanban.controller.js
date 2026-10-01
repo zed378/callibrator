@@ -1,4 +1,5 @@
 const kanbanService = require("../services/kanban.service");
+const { auditPrincipal } = require("../utils/auditPrincipal.util");
 const { asyncHandler } = require("../utils/controllerWrapper.util");
 const { success } = require("../utils/response.util");
 
@@ -10,7 +11,7 @@ exports.listProjects = asyncHandler(async (req, res) => {
 });
 
 exports.createProject = asyncHandler(async (req, res) => {
-  const project = await kanbanService.createProject(req.user, req.body);
+  const project = await kanbanService.createProject(req.user, req.body, auditPrincipal(req));
   success(res, project, null, "Project created", 201);
 });
 
@@ -28,6 +29,7 @@ exports.updateProject = asyncHandler(async (req, res) => {
     req.user,
     req.params.projectId,
     req.body,
+    auditPrincipal(req),
   );
   success(res, project, null, "Project updated");
 });
@@ -36,6 +38,7 @@ exports.deleteProject = asyncHandler(async (req, res) => {
   const result = await kanbanService.deleteProject(
     req.user,
     req.params.projectId,
+    auditPrincipal(req),
   );
   success(res, result, null, "Project deleted");
 });
@@ -47,6 +50,7 @@ exports.addMember = asyncHandler(async (req, res) => {
     req.user,
     req.params.projectId,
     req.body,
+    auditPrincipal(req),
   );
   success(res, result, null, "Member added", 201);
 });
@@ -57,6 +61,7 @@ exports.updateMember = asyncHandler(async (req, res) => {
     req.params.projectId,
     req.params.memberId,
     req.body,
+    auditPrincipal(req),
   );
   success(res, members, null, "Member updated");
 });
@@ -66,6 +71,7 @@ exports.removeMember = asyncHandler(async (req, res) => {
     req.user,
     req.params.projectId,
     req.params.memberId,
+    auditPrincipal(req),
   );
   success(res, result, null, "Member removed");
 });
@@ -77,6 +83,7 @@ exports.createColumn = asyncHandler(async (req, res) => {
     req.user,
     req.params.projectId,
     req.body,
+    auditPrincipal(req),
   );
   success(res, column, null, "Column created", 201);
 });
@@ -87,6 +94,7 @@ exports.updateColumn = asyncHandler(async (req, res) => {
     req.params.projectId,
     req.params.columnId,
     req.body,
+    auditPrincipal(req),
   );
   success(res, column, null, "Column updated");
 });
@@ -96,6 +104,7 @@ exports.deleteColumn = asyncHandler(async (req, res) => {
     req.user,
     req.params.projectId,
     req.params.columnId,
+    auditPrincipal(req),
   );
   success(res, result, null, "Column deleted");
 });
@@ -105,6 +114,7 @@ exports.reorderColumns = asyncHandler(async (req, res) => {
     req.user,
     req.params.projectId,
     req.body.order,
+    auditPrincipal(req),
   );
   success(res, columns, null, "Columns reordered");
 });
@@ -121,6 +131,7 @@ exports.createSprint = asyncHandler(async (req, res) => {
     req.user,
     req.params.projectId,
     req.body,
+    auditPrincipal(req),
   );
   success(res, sprint, null, "Sprint created", 201);
 });
@@ -131,6 +142,7 @@ exports.updateSprint = asyncHandler(async (req, res) => {
     req.params.projectId,
     req.params.sprintId,
     req.body,
+    auditPrincipal(req),
   );
   success(res, sprint, null, "Sprint updated");
 });
@@ -140,6 +152,7 @@ exports.deleteSprint = asyncHandler(async (req, res) => {
     req.user,
     req.params.projectId,
     req.params.sprintId,
+    auditPrincipal(req),
   );
   success(res, result, null, "Sprint deleted");
 });
@@ -149,6 +162,7 @@ exports.migrateCards = asyncHandler(async (req, res) => {
     req.user,
     req.params.projectId,
     req.body,
+    auditPrincipal(req),
   );
   success(res, result, null, "Cards migrated");
 });
@@ -180,6 +194,7 @@ exports.createCard = asyncHandler(async (req, res) => {
     req.user,
     req.params.projectId,
     req.body,
+    auditPrincipal(req),
   );
   success(res, card, null, "Card created", 201);
 });
@@ -190,6 +205,7 @@ exports.updateCard = asyncHandler(async (req, res) => {
     req.params.projectId,
     req.params.cardId,
     req.body,
+    auditPrincipal(req),
   );
   success(res, card, null, "Card updated");
 });
@@ -200,6 +216,7 @@ exports.moveCard = asyncHandler(async (req, res) => {
     req.params.projectId,
     req.params.cardId,
     req.body,
+    auditPrincipal(req),
   );
   success(res, card, null, "Card moved");
 });
@@ -209,6 +226,7 @@ exports.deleteCard = asyncHandler(async (req, res) => {
     req.user,
     req.params.projectId,
     req.params.cardId,
+    auditPrincipal(req),
   );
   success(res, result, null, "Card deleted");
 });
@@ -221,6 +239,7 @@ exports.addRelation = asyncHandler(async (req, res) => {
     req.params.projectId,
     req.params.cardId,
     req.body,
+    auditPrincipal(req),
   );
   success(res, relations, null, "Relation added", 201);
 });
@@ -231,6 +250,7 @@ exports.removeRelation = asyncHandler(async (req, res) => {
     req.params.projectId,
     req.params.cardId,
     req.params.relationId,
+    auditPrincipal(req),
   );
   success(res, relations, null, "Relation removed");
 });
@@ -242,6 +262,7 @@ exports.createLabel = asyncHandler(async (req, res) => {
     req.user,
     req.params.projectId,
     req.body,
+    auditPrincipal(req),
   );
   success(res, label, null, "Label created", 201);
 });
@@ -252,6 +273,7 @@ exports.updateLabel = asyncHandler(async (req, res) => {
     req.params.projectId,
     req.params.labelId,
     req.body,
+    auditPrincipal(req),
   );
   success(res, label, null, "Label updated");
 });
@@ -261,6 +283,7 @@ exports.deleteLabel = asyncHandler(async (req, res) => {
     req.user,
     req.params.projectId,
     req.params.labelId,
+    auditPrincipal(req),
   );
   success(res, result, null, "Label deleted");
 });

@@ -50,7 +50,7 @@ const getSettings = async (tenantId) => {
  * proves the credentials/endpoint actually work — otherwise a typo would
  * silently route every future upload into a black hole.
  */
-const updateSettings = async (tenantId, input) => {
+const updateSettings = async (tenantId, input, actor = null) => {
   if (!tenantId) {throw new AppError(400, "A tenant is required");}
 
   // Validate shape first (cheap, no I/O), then probe connectivity with a
@@ -69,7 +69,7 @@ const updateSettings = async (tenantId, input) => {
     );
   }
 
-  await storageConfig.setTenantConfig(tenantId, input);
+  await storageConfig.setTenantConfig(tenantId, input, actor);
   // A cached driver for this tenant now points at the OLD config; drop it so
   // the next request rebuilds from the new settings — on every replica (A-40).
   await storage.invalidate(tenantId);
@@ -82,9 +82,9 @@ const updateSettings = async (tenantId, input) => {
 };
 
 /** Revert a tenant to the platform default. */
-const clearSettings = async (tenantId) => {
+const clearSettings = async (tenantId, actor = null) => {
   if (!tenantId) {throw new AppError(400, "A tenant is required");}
-  await storageConfig.clearTenantConfig(tenantId);
+  await storageConfig.clearTenantConfig(tenantId, actor);
   await storage.invalidate(tenantId);
   logger.info("Tenant storage settings cleared", { tenantId });
   return getSettings(tenantId);

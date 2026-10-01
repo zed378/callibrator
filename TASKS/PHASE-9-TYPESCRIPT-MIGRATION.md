@@ -75,7 +75,7 @@ them are tests). The 2026-09-21 column is what this file said before the remedia
 | `scripts/` | 4 | (unlisted) | D |
 | `docs/` (swagger JSDoc source) | 3 | (unlisted) | D |
 | `backend/index.js` | 1 | 1 | D — **it is not `src/index.js`**; 90 `require()` calls, and it is the only file that mounts the routers, `db.sync()` and the migrator |
-| `migrations/` | **19** | 18 | E — **names frozen**, see P9-23 |
+| `migrations/` | **19** | 18 | E — **names frozen**, see P9-23 (**63** at conversion, 2026-09-30; all `.ts`) |
 | tests, `src/tests/` | 306 unit + 53 e2e + 4 helpers | 340 | with their module |
 | tests, `backend/__tests__/` | 3 | (unlisted) | with their module |
 
@@ -597,7 +597,7 @@ context, filed under the wrong directory.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE 2026-09-29** (ADR-087 Amendment 12) |
 | **Depends on** | P9-06 |
 | **Spec refs** | ADR-038 (raw SQL row) · ADR-029 raw-SQL rule · `docs/ENGINEERING/07-DATABASE-ACCESS-STANDARDS.md` |
 | **Spec required** | no |
@@ -605,13 +605,15 @@ context, filed under the wrong directory.
 
 **Why:** `$1` placeholders passed as `replacements` read every tenant's usage as zero in production (fixed 2026-09-21, ADR-039). An options bag typed as "anything" is what let it through.
 
+> **As-built 2026-09-29.** The helper is `src/utils/sql.util.ts`. Its signature is `sql<Row>(runner, text, bind, { transaction })`: the Sequelize instance is **passed in**, not imported. This deviates from `sql(text, bind)`; ADR-087 Amendment 12 records why and what was considered.
+
 **Definition of Done**
-- [ ] `sql<Row>(text, bind)` accepts positional `bind` only and returns `Row[]`; `replacements` cannot be passed
-- [ ] every existing `db.query` call site migrated to it as its module converts; a lint rule bans `db.query` outside the helper
-- [ ] each raw query that touches tenant data carries `tenant_id = $n` explicitly; a test asserts the bound value
+- [x] `sql<Row>(runner, text, bind)` accepts positional `bind` only and returns `Row[]`. `replacements` cannot be passed, neither by type nor at run time (a `TypeError`), and a `$n` with no bound value is refused before the database is reached.
+- [x] A lint rule bans a direct `.query(` in TypeScript source outside the helper; bite-tested, and the one exemption, the `dbReady` ping, carries its reason. The call sites in converted modules are migrated (`authorizationWiring`, `dbRole`, `schemaVerify`). JavaScript sites (19 calls in 11 files) migrate as their modules convert, under the Stage C DoD line.
+- [x] A raw query that touches tenant data must **bind** `tenant_id = $n`, and `rawSqlTenantPredicate.d05` enforces this for every helper call. `sql.p907.test.ts` asserts the bound value. It was proved live on PG 18.6 as `callibrator_app` (`p9/live-p907.js`, 10/10).
 
 **Abuse cases**
-- `sql<any>()`
+- `sql<any>()`: a lint error (`no-explicit-any`, bite-tested). A primitive `Row` is a compile error.
 
 ---
 
@@ -717,7 +719,7 @@ context, filed under the wrong directory.
 
 | | |
 |---|---|
-| **Status** | **STARTED 2026-09-29** — **46 of 71 models are `.ts`**: batch 1 **Kanban** (9: `kanbanCard`, `kanbanCardAssignee`, `kanbanCardLabel`, `kanbanCardRelation`, `kanbanColumn`, `kanbanLabel`, `kanbanProject`, `kanbanProjectMember`, `kanbanSprint`), batch 2 **inventory** (6: `warehouse`, `storageLocation`, `stock`, `stockTransfer`, `stockAdjustment`, `stockOpname`) — ADR-087 Amendment 7, record `MEMORY/records/2026-09-29-p9-10-models-kanban-inventory.md`; batch 3 **workflow, QMS, suppliers** (11: `workflow`, `workflowStep`, `workflowInstance`, `workflowAction`, `capa`, `nonConformance`, `sopDocument`, `sopTrainingAcknowledgment`, `vendor`, `risk`, `supplierScorecard`), batch 4 **billing, usage, notifications, operations** (10: `invoice`, `subscription`, `planQuota`, `usageMetric`, `usageAlert`, `notification`, `notificationState`, `batchJob`, `maintenanceWorkOrder`, `assetFinance`) — ADR-087 Amendment 8 (the class variant; D-21/D-27 typing), record `MEMORY/records/2026-09-29-p9-10-models-batches-3-4.md`; batch 5 **calibration and certificates** (6: `calibrationDevice`, `calibrationRecord`, `certificate`, `iotReading`, `attachment`, `documentChunk`), batch 6 **signatures** (4: `eSignatureRecord`, `signatureRecord`, `signatureWorkflow`, `signatureWorkflowStep`) — ADR-087 Amendment 9, record `MEMORY/records/2026-09-29-p9-10-models-batches-5-6.md`. **Left (25), in the owner's order:** content/tickets/GDPR (`post`, `category`, `postCategory`, `ticket`, `ticketComment`, `ticketCounter`, `consentRecord`, `dsarRequest`); platform (`customDomain`, `tenantBackup`, `scimGroup`, `webhook`, `webhookDelivery`); LAST, with the barrel in the same merge, the tenant-isolation-critical batch (`session`, `user`, `tenant`, `role`, `auditLog`, `apiKey`, `tenantKey`, `tenantSettings`, `tenantHierarchy`, `userMenuPermission`, `roleMenuPermission`, `menuGroup`). **The spec pattern is amended** (TS2502 between models that name each other): module-level instance interface + statics interface + explicitly typed factory + `initModel<M, S>(class extends Model {}, …)`. The barrel stays `.js` until the last batch · **spec written** (`MEMORY/specs/P9-10-model-typing-pattern.md`, helper 3) · **Depends on** P9-09, P9-03a, and `jsonShape.util` + `validators/iot.validator` as `.ts` (ordering gap, P9-09) · **Size** XL |
+| **Status** | **DONE 2026-09-29** — **71 of 71 models are `.ts`, and the barrel `models/index.ts`**, in nine domain batches (ADR-087 Amendments 7–11): Kanban (9), inventory (6), workflow/QMS/suppliers (11), billing/usage/notifications/operations (10), calibration/certificates (6), signatures (4), content/tickets/GDPR (8), platform (5), and the tenant-isolation-critical batch (12: `session`, `user`, `tenant`, `role`, `auditLog`, `apiKey`, `tenantKey`, `tenantSettings`, `tenantHierarchy`, `userMenuPermission`, `roleMenuPermission`, `menuGroup`) **in the same merge as the barrel**. Every model and the barrel definition- and behaviour-identical to the JavaScript originals (full-barrel harness: definitions, getters, validators, methods, hooks, barrel keys/order/global hooks). Closing boundary: 701 suites / 13,076 tests / 100%; live PG 18.6 as `callibrator_app` 54/54 + isolation live suites; the converted image boots and the P9-00 E2E baseline passes twice (53 specs, per-spec identical). Records: `MEMORY/records/2026-09-29-p9-10-models-*.md` (four) and `2026-09-29-p9-10-done-barrel.md`. **The spec pattern is amended** (TS2502): module-level row interface + statics interface + explicitly typed factory + `initModel<M, S, Auto>(class extends Model {}, …)` · **spec written** (`MEMORY/specs/P9-10-model-typing-pattern.md`, helper 3) · **Depends on** P9-09, P9-03a, and `jsonShape.util` + `validators/iot.validator` as `.ts` · **Size** XL |
 | **Spec refs** | `docs/DATABASE/*` · ADR-038 (models row) · `docs/BACKEND/05-TENANT-SCOPING.md` |
 | **Spec required** | **yes** — the association typing pattern, before 72 models copy a wrong one |
 | **Spec** | **Written 2026-09-28** — [`MEMORY/specs/P9-10-model-typing-pattern.md`](../MEMORY/specs/P9-10-model-typing-pattern.md): class inside the factory + `export =`; timestamps left to Sequelize via one `initModel()` helper (declaring them in `init` drops `allowNull: false`, probed); defaultScope `where` keeps the COLUMN key `is_deleted` and `includeDeleted` keeps `where: null` (both load-bearing, probed); phantom `DefaultScoped` brand + D-12 rule extended to `.ts`; `jsonShape.util` + `iot.validator` must be `.ts` before the first JSON-column model. Coverage per ADR-092 item 4. Record: `MEMORY/records/2026-09-28-p9-10-p9-11-specs.md` |
@@ -738,12 +740,12 @@ context, filed under the wrong directory.
 > brand each fail it); a brand in a comment does not count.
 
 **Definition of Done**
-- [ ] 72 models as `Model<InferAttributes<M>, InferCreationAttributes<M>>` with `declare` fields; associations typed — **46 of 71 done** (Kanban, inventory, workflow/QMS/suppliers, billing/usage/notifications/operations, calibration/certificates, signatures); fields live on a module-level interface, not `declare` (Amendments 7–9)
-- [ ] `models/index.js` converted **in the same merge** as the last model batch; no `.ts` consumer imports a `.js` barrel at any point that reaches `main`
-- [ ] **`sessions` keeps its snake_case attributes and the type says so** — `tenantId` on `Session` becomes a compile error, which is the bug that broke the nightly retention purge
-- [ ] `tenantScope.util` typed; the deny branch returns `TenantId` (`NO_TENANT_UUID`), not `string`
-- [ ] `defaultScope` models flagged in a type so an include on them without `required: false` is caught by a lint rule — the most repeated defect shape in this codebase — **the brand exists (`DefaultScoped`, `src/types/models.ts`) and D-12 holds it to the runtime set; the rule itself stays the D-12 source test (spec item 6)**
-- [ ] converted in domain batches of ≤ 12 models per PR — batches 1 (9), 2 (6), 3 (11), 4 (10), 5 (6), 6 (4) so far
+- [x] 72 models as `Model<InferAttributes<M>, InferCreationAttributes<M>>` with `declare` fields; associations typed — **71 of 71 done** (the card's "72" counted the barrel) (all nine domains); fields live on a module-level interface, not `declare` (Amendments 7–11)
+- [x] `models/index.js` converted **in the same merge** as the last model batch; no `.ts` consumer imports a `.js` barrel at any point that reaches `main` — `models/index.ts` (Amendment 11); the interim lint rule (Amendment 7) held it and is retired
+- [x] **`sessions` keeps its snake_case attributes and the type says so** — `tenantId` on `Session` becomes a compile error, which is the bug that broke the nightly retention purge — pinned in `modelTypes.p910.test.ts` (where, update, instance: TS2551)
+- [x] `tenantScope.util` typed; the deny branch returns `TenantId` (`NO_TENANT_UUID`), not `string` — `NO_TENANT_UUID: TenantId = NO_TENANT_ID` (branded in `src/types/ids.ts`, the same string)
+- [x] `defaultScope` models flagged in a type so an include on them without `required: false` is caught by a lint rule — the most repeated defect shape in this codebase — **the brand exists (`DefaultScoped`, `src/types/models.ts`) and D-12 holds it to the runtime set; the rule itself stays the D-12 source test (spec item 6)**; D-12 now asserts all 71 files and the whole 13-model runtime set
+- [x] converted in domain batches of ≤ 12 models per PR — batches 1 (9), 2 (6), 3 (11), 4 (10), 5 (6), 6 (4), 7 (8), 8 (5), 9 (12 + the barrel)
 
 **Abuse cases**
 - `declare foo: any` on a column "to be typed later"
@@ -754,10 +756,10 @@ context, filed under the wrong directory.
 
 | | |
 |---|---|
-| **Status** | TODO — `validators/iot.validator` is already `.ts` (**still Joi**, converted ahead for the P9-09 ordering gap, ADR-087 Amendment 6; its Joi → Zod move stays here) · **spec written** (`MEMORY/specs/P9-11-validation-error-contract.md`), 41 `.ts` contract suites pin today's Joi 400s (`src/tests/contracts/validation`, helper 3) · **Depends on** P9-10 · **Size** L |
-| **Spec refs** | `docs/BACKEND/03-VALIDATION.md` · `docs/API/00-API-STANDARDS.md` § Validation |
+| **Status** | **DONE 2026-09-29** (ADR-093; record [`MEMORY/records/2026-09-29-p9-11-validators-zod.md`](../MEMORY/records/2026-09-29-p9-11-validators-zod.md)) — every validator is Zod `.ts` (39 modules + `fields.ts` + `input.ts`), `validation.middleware` is `.ts`, **`joi` is uninstalled**. The owner lifted the byte-compatible `details` requirement (ADR-093): status, envelope, top-level `message` and details-only-outside-production stay; the wording inside `details` is Zod's, every changed string listed in ADR-093 · **Depends on** P9-10 · **Size** L |
+| **Spec refs** | `docs/BACKEND/03-VALIDATION.md` (amended by ADR-093) · `docs/API/00-API-STANDARDS.md` § Validation |
 | **Spec required** | **yes** — the error shape Zod must reproduce |
-| **Spec** | **Written 2026-09-28** — [`MEMORY/specs/P9-11-validation-error-contract.md`](../MEMORY/specs/P9-11-validation-error-contract.md): five validation-400 surfaces, not one; `validate(schema)` answers `"Validation Error"` (docs say "Validation failed") and validates `req.body` only. **Oracle:** `backend/src/tests/contracts/validation/` (41 suites, 82 tests, byte-level over real HTTP) must pass unchanged. Record: `MEMORY/records/2026-09-28-p9-10-p9-11-specs.md` |
+| **Spec** | **Written 2026-09-28** — [`MEMORY/specs/P9-11-validation-error-contract.md`](../MEMORY/specs/P9-11-validation-error-contract.md): five validation-400 surfaces, not one. Open questions 1 (answered by the owner: wording may change), 2 (surface B folded into `validate()`) and 4 (03-VALIDATION amended) are settled by ADR-093; 3 is A-272. Record of the spec: `MEMORY/records/2026-09-28-p9-10-p9-11-specs.md` |
 
 **Why:** a Joi schema's type does not reach the handler, so `req.body` stays unchecked at compile time. A Zod schema is the runtime check **and** the type.
 
@@ -765,15 +767,21 @@ context, filed under the wrong directory.
 > byte-compatible** (the spec's recommended option); folding metered billing's own
 > `validateBody`/`validateQuery` (surface B) into `validate()` is **deferred to this card's
 > conversion itself**, not done before it.
+>
+> **Owner decision, 2026-09-29 (supersedes the first half above; ADR-093):** replace Joi with Zod in
+> every validator in one change and remove `joi`; the wording inside `details` may change; keep the
+> status, envelope, top-level message and the production rule. Surface B is folded (done).
 
 **Definition of Done**
-- [ ] 37 validators → Zod; `validate(schema)` merges `{ ...req.params, ...req.body }` (the trap that 400ed every request on several routes) and writes a typed `req.validated`
-- [ ] **the 400 response is byte-compatible**: same status, same envelope, same message format — asserted by a contract test per validator, since the frontend parses it
-- [ ] `joi` removed from `package.json` only after the last validator moves
-- [ ] the `schema.validate`-passed-to-Express trap becomes unrepresentable: `validate()` is the only exported way to use a schema as middleware
+- [x] every validator → Zod (37 in the card's count; 40 files as built: 38 converted, `audit` and `webauthn` deleted — they exported only the dropped helper — and `calibrationDeviceReinstate.validator` new); `validate(schema, { from })` merges declared sources with **the path winning**, and writes a typed `req.validated` (`validated(req, schema)`)
+- [x] **the 400 response keeps its status, envelope and message format** — asserted by a contract test per validator (`src/tests/contracts/validation`, 39 suites, 45 tests); the `details` wording changed by the owner's decision, listed string by string in ADR-093
+- [x] `joi` removed from `package.json` after the last validator moved (`npm uninstall joi --workspace backend`; nothing else imported it; `npm audit` 0)
+- [x] the `schema.validate`-passed-to-Express trap is unrepresentable: `validate()` is the only exported way to use a schema as middleware; `schema.parse` as a handler is TS2769 in `.ts` routes and refused in `.js` routes by `tests/guards/schemaAsMiddleware.p911.test.ts` (with a bite test)
 
 **Abuse cases**
-- `z.any()` or `.passthrough()` to make a legacy payload validate
+- `z.any()` or `.passthrough()` to make a legacy payload validate — none added; the roles menu bodies stay `z.looseObject({})` because they were always an open object (declaring them is its own change)
+
+**Left open, as audit items:** A-272 (surface D drops the field list on the wire), A-273 (three body-wins params merges), A-274 (unused `includeDeleted` scopes).
 
 ---
 
@@ -796,6 +804,51 @@ One card per domain. Each follows the same Definition of Done, stated once here:
 | **P9-16** | Quality | qms, capa, sop, risk, vendor, supplierScorecard, workflow | L | P9-14 |
 | **P9-17** | Commercial | billing, meteredBilling, stripeWebhook, finance, quota | M | P9-13 |
 | **P9-18** | Platform | notification, email, emailQueue, webhook, search, ai, storage/*, attachment, batchJob, rabbitmq, redis, rateLimiter.redis, gdpr, audit, content, kanban, ticket, dashboard, report, kms, **health** | XL | P9-12 |
+
+> **P9-13 CONVERTED (2026-09-30, P9-13 helper; record `MEMORY/records/2026-09-30-p9-13-tenancy.md`; the ADR-087 amendment is with the lead).**
+> - **Every module on the card is `.ts`:**
+>   - this round: networkSecurity, tenantHierarchy, customDomains, dataRetention, tenantLifecycle, tenant and tenantUpload;
+>   - earlier: featureFlag, admin and tenantBackup, from the leaf helper.
+> - **Evidence:** each is surface-identical and at 100%, with 570,332 identity checks against the working-copy JavaScript.
+> - **tenantHierarchy, tenantLifecycle and tenant** passed the four gates:
+>   - (a) 29 planted defects, all caught;
+>   - (b) identity;
+>   - (c) 127 isolation and referencing suites, 2,458 tests;
+>   - (d) a live PostgreSQL 18 two-tenant probe as callibrator_app, 41/41, plus 3 live repository suites, 14/14.
+> - **Findings:** A-326 (medium, measured), A-327, A-328 and A-329, recorded and not fixed.
+> - **DONE awaits** the full gate on a quiet tree and the P9-00 image baseline.
+
+> **P9-20 / P9-21 lane assignment (2026-09-30, the Phase 9 lead, on the coordinator's instruction that no module sits unowned).** For each module: the controller and route go to `.ts`, the `@swagger` JSDoc moves into `routes/api/<m>.openapi.ts` in the same change (P9-25, ADR-103 item 12), and gates are converted as-is. The P9-21 permission-gate/`public()` helper is not built. The evidence is working-copy identity, a mounted-route-table identity (method, path, middleware names in order), a sampled controller harness, an atomic swap, and `load:check` in both modes. The four gates apply to the isolation-critical modules.
+>
+> | Lane | Modules |
+> |---|---|
+> | P9-22 helper (`ae031334c6dbf7c15`) | warehouse, stock, roles, maintenance, qms (+ response schemas in `@callibrator/contracts`) |
+> | P9-13 helper (`a7df5efb63840929a`) | tenancy: tenant, tenantLifecycle, tenantHierarchy, tenantBackup, customDomains, featureFlag(s), networkSecurity, dataRetention, admin · identity: auth, user, userPermission(s), session, ownSessions, webauthn, oidcProvider (oidc), sso, scim, apiKey(s) |
+> | Leaf helper (`a202e99c71160573c`) | platform: notification(s), webhook(s), search, ai, storage, attachment(s), batchJob(s), gdpr, audit, content, kanban, ticket(s), dashboard, reporting (reports), health, migration, menuGroup(s), iot, predictiveMaintenance (after its service) |
+> | Services helper (`acdeaeffc1ddaed5d`) | the P9-14 services first (calibrationDevices, calibrationRecords, calibrationScheduler, certificate, certificatePdf, eSignature, maintenance, predictiveMaintenance), then the controllers and routes for calibrationDevices (+ reinstate), calibrationRecords, calibrationScheduler, certificate(s), certificatePdf, eSignature, billing, meteredBilling, finance, quota, risk, sop, supplierScorecard, vendor, workflow(s) |
+
+> **P9-12 CONVERTED (2026-09-30, ADR-087 Amendments 13–14).**
+> - **Every module on the card is `.ts`:** jwt.util and the session, webauthn, userPermission, roles, user, auth, apiKey, sso, scim and oidcProvider services, plus oidcJwks.
+> - **Evidence:** each is surface-identical to its JavaScript and at 100%.
+> - **Compiler-exposed defects:** A-285/286/287 (fixed, with A-294) and A-295 (open).
+> - **DONE awaits** the full gate on a quiet tree and the P9-00 image baseline.
+>
+> **P9-12 (earlier note) (2026-09-29, ADR-087 Amendment 13).**
+> - **Batch 1 done:** `utils/jwt.util`, and the `session`, `webauthn`, `userPermission` and `roles` services, surface-identical and each at 100%.
+> - **Next:** `user` and `auth` (batch 2), then `apiKey`, `sso`, `scim` and `oidcProvider` (batch 3, released after A-275/A-278/A-280).
+> - **The module pattern every Stage C card follows** (Amendment 13 §2): `export =` of the original object, internal calls through it, load-time destructures kept, and still-JavaScript dependencies through a sibling `.d.ts` guarded by `declarationDrift.p912`.
+> - **Compiler-exposed defects:** A-285, A-286, A-287 (recorded, not fixed).
+
+> **Stage C leaf services, ahead of their cards (2026-09-29/30, leaf-services helper; record `MEMORY/records/2026-09-30-p9-stage-c-leaf-services.md`).**
+> Converted where every import was already `.ts`, a package, or a `.js` with a sibling `.d.ts`, and no other agent owned the file. Each: `export =` of the original object (key order kept), `.js` deleted, identity against the working-copy `.js` (compiled with TypeScript 7), own suites unchanged and green, each file at 100%, lint 0.
+> - **P9-12 area (released by the lead):** `ownSessions`.
+> - **P9-13 (part):** `featureFlag`, `admin`, `tenantBackup` (under the four isolation gates, including a live two-tenant restore probe on PostgreSQL 18, 24/24).
+> - **P9-14 (part):** `iotDevice`, `iot`.
+> - **P9-16 (part):** `sop`.
+> - **P9-17 (part):** `quota`.
+> - **P9-18 (part):** `storage/signing`, `storage/keys`, `storage/config.service`, `quarantineSweep`, `email`, `reporting` (the card's "report"), `content` (then A-297 as its own change), `contentMedia`, `alert`, `notificationChannels`, `webhookDeliveryPurge`, `jobMonitor`, and in the P9-18 round `kms`, `signingKeyWrap`, `keyRotation` (four gates; its SQL moved to `sql()` first as its own change), `scheduledBackup`, `clamAv`, `virusScan`, `health`, `search` (its SQL moved to `sql()`/bind first, as its own change with a fail-before test), `storage/local.driver` (four gates), `rabbitmq` (released by the lead), `batchJob`, `notification` (with `config/socket.d.ts`; the interim `notification.service.d.ts` retired).
+> - **Not converted, with the reason:** `s3.driver`, `storage/index` (A-176 SSRF agent editing); `redis`, `audit`, `mfa`, `rateLimiter.redis`, `emailQueue` (P9-12 lead's `.d.ts` dependencies — ask first); every file another agent had modified.
+> - **Next:** `predictiveMaintenance` and `tenantUpload` once their other agent is done.
 
 > **NEEDS EDIT (2026-09-23) — the services layer moved under this table.**
 >
@@ -823,15 +876,42 @@ One card per domain. Each follows the same Definition of Done, stated once here:
 
 | | |
 |---|---|
-| **Status** | TODO — **NEEDS EDIT (2026-09-23)** · **Depends on** Stage C, P9-05a · **Size** M |
+| **Status** | **IN PROGRESS (2026-09-29)** — 10 of the 25 in scope are `.ts` (record `MEMORY/records/2026-09-29-p9-19-middlewares-round1.md`) · **Depends on** Stage C, P9-05a · **Size** M |
 
-> **What changed:** the directory still holds 21 files, but not the same 21.
+> **Round 1 (2026-09-29, P9-19 helper):** the directory now holds 28 middlewares: 3 were already
+> `.ts` (`activityLog`, `tenantContext` under P9-05a; `validation` under P9-11), which leaves
+> **25 in this card**, not 19. Newer files — `requestTimeout`, `enforceQuota`, `validateUuid`,
+> `metricsAuth` and nine schedulers — joined after the count below was written.
+>
+> - **Converted, each `.js` deleted after `cmp` against a snapshot of the working copy:** `notFound`,
+>   `validateUuid`, `requestTimeout`, `globalSanitizer`, `accessLog`, `createFolder`,
+>   `errorHandlers`. The security-critical three went through the four `tenantContext` gates:
+>   `metricsAuth`, `rbac` and `denyPlatformAuthoring`.
+> - **Blocked, each by a JavaScript import it cannot yet take:**
+>   - `auth` needs `services/auth`, `tenant` and `apiKey`.
+>   - `dynamicAccess` needs `services/apiKey`; the UI-correctness agent is also editing it.
+>   - `abac` needs `services/tenant`.
+>   - `enforceQuota` needs `services/quota`.
+>   - All nine schedulers need `services/jobMonitor`: `attachmentFileSweep`, `backup`,
+>     `calibration`, `quarantineSweep`, `retention`, `sessionCleanup`, `tenantLifecycle`,
+>     `webhookDelivery` and `webhookDeliveryPurge`. Most also need their own service.
+> - **Held back:**
+>   - `bodyDefault` carries another agent's uncommitted change.
+>   - `auditLog` waits for A-41, as the card below says.
+>
+> **What changed (2026-09-23):** the directory still holds 21 files, but not the same 21.
 > `sessionSecurity.middleware.js` was **deleted** and `bodyDefault.middleware.js` **added**; and
 > P9-05a takes `tenantContext` and `activityLog` out of this card into Stage A, because everything
 > in Stages B and C imports them. **19 files remain here.**
 
 **Definition of Done**
-- [ ] **19** files typed against the P9-05 `Request` augmentation (21 in the directory, minus the two moved to P9-05a)
+- [ ] **25** files typed against the P9-05 `Request` augmentation. The count was 19; round 1 above explains why it is now 25. **10 of 25 done** (round 1). The augmentation gained `impersonatorId` and `role.roleLevel` / `role_level` for `denyPlatformAuthoring` and `rbac`, added by the P9-12 lead on request
+- [x] Security-critical middlewares converted under the four `tenantContext` gates, evidence in the round-1 record:
+  - (a) the watching suites bite on the `.ts`;
+  - (b) identity checks over request shapes and roles;
+  - (c) the authz and isolation suites;
+  - (d) a live stack.
+  - The gates found that no test pinned rbac's "lowest listed level" rule. `tests/middlewares/rbac.lowestBar.p919.test.ts` now does, and it bites on a planted `Math.max`
 - [x] `sessionSecurity.middleware.js` is not in scope: **deleted 2026-09-23** under AUDIT task A-12 as dead code (imported by nothing; its SQL targeted a nonexistent `"Sessions"` table). Nothing to convert
 - [ ] `bodyDefault.middleware.js` (**new 2026-09-23**, A-09) converted with it. It exists because Express 5 leaves `req.body` **undefined** where Express 4 gave `{}`. Under `@types/express` 5 that is `unknown`, so the middleware's guarantee — *every downstream handler sees an object* — is the thing the type system should be told, not a runtime fact the types contradict. Typing it as `Request["body"]` narrowing is the point of the file
 - [ ] `dynamicAccess` resource names typed as the menu-slug union, so `dynamicAccess("AuditLogs", …)` — a slug that does not exist — is a compile error (see AUDIT A-07, still open and still **unverified**: its first checkbox is the verification, and this card cannot type the union until someone has enumerated it)
@@ -884,54 +964,65 @@ One card per domain. Each follows the same Definition of Done, stated once here:
 
 | | |
 |---|---|
-| **Status** | TODO · **Depends on** P9-11 · **Size** L |
-| **Spec refs** | ADR-038 (shared contracts row) · `docs/FRONTEND/03-API-CLIENT.md` |
-| **Spec required** | **yes** |
+| **Status** | **IN PROGRESS** — the workspace and its build are done, and the **first slice** (`fields`, `vendor`, `calibrationDevices`) moved on 2026-09-29 (**ADR-097**, record [`2026-09-29-p9-22-contracts.md`](../MEMORY/records/2026-09-29-p9-22-contracts.md)). Proven so far: both images build from the root, the backend binary boots (schema OK), `dist` resolves the compiled package, `next build` bundles value imports, and the vendors + calibration-devices E2E pass (16/16). **The full E2E set against this change has not had a clean run** (degraded Docker host; see the record) · **Depends on** P9-11 (DONE) · **Size** L |
+| **Spec refs** | ADR-038 (shared contracts row) · ADR-087 decision 7 · ADR-044 / ADR-046 · `docs/FRONTEND/03-API-CLIENT.md` |
+| **Spec required** | **yes** — the design is **ADR-097** (below, in short) |
+| **Open** | **Q-48**: `packages/contracts` (ADR-038/087, as built) vs ADR-089's planned `shared/contracts`. Not settled here; consumers import by package name, so a move changes no import |
 
-**Why:** the frontend's API types are hand-written, and an earlier audit found services calling endpoints that did not exist while their tests mocked the fabrication. A shared Zod schema makes a contract break a compile error in `frontend/`.
+**Why:** the frontend's API types are hand-written, and an earlier audit found services calling endpoints that did not exist while their tests mocked the fabrication. A shared Zod schema makes a contract break a compile error in `frontend/`. (It did, on the first compile: the vendor create call sent a `rating` the API has always stripped. That is Q-37.)
+
+**The design (ADR-097)**
+
+| | |
+|---|---|
+| Layout | `packages/contracts/src/<domain>.ts`: request schemas plus `z.input` (client) and `z.output` (handler) types. `src/fields.ts` holds the shared field schemas, and `src/index.ts` is a barrel of **named** re-exports. A module imports only `zod` and its siblings, with no Node, DOM or environment (lint + `types: []`) |
+| Resolution | the package **ships TypeScript source** (`exports` → `./src/*.ts`). Both typechecks, backend jest, tsx and Next all read it, so there is no package `dist/` to go stale |
+| Release build | `backend/scripts/build-dist.ts` step 4 compiles it (TypeScript 7, CJS) into `backend/dist/node_modules/@callibrator/contracts`. `node dist/index.js` and pkg find that before the workspace symlink |
+| Backend | the validators **re-export the same schema objects under the same names**, as named re-exports (never `export *`, whose interop branches break the 100% gate) |
+| Frontend | the service request types are `z.input` of the contract. Response types are still hand-written. `transpilePackages` in `next.config.ts` |
+| One Zod | the package declares `zod ^4.6.5`, the backend's range. `test/package.test.ts` asserts that the package, backend and frontend resolve one `zod` file |
+| Workspaces | root `workspaces` already had `packages/*`, and npm is authoritative (ADR-044). `pnpm-workspace.yaml` now lists it too, so the two agree; deleting it is still G-09 |
+| Images | both Dockerfiles copy the package manifest before `npm ci` and its source before the build, and both allow-lists re-include `packages/contracts` |
+| Gates | the package's own `lint` / `typecheck` / `test` (100%, from the repository-root `rootDir`, because backend jest cannot instrument outside `backend/`), wired into `make lint`, `make typecheck`, `make test` and CI's backend-lint job |
 
 **Definition of Done**
-- [ ] a `packages/contracts` workspace (the `packages/*` glob finally matches something) exporting request and response schemas
-- [ ] backend validators import from it; frontend `api/services/*` infer types from it
-- [ ] hand-written duplicates in `frontend/src/types` deleted as each service moves
+- [x] a `packages/contracts` workspace (the `packages/*` glob finally matches something) exporting request ~~and response~~ schemas — **request schemas for the first slice; response schemas are the next step** (below)
+- [ ] backend validators import from it; frontend `api/services/*` infer types from it — **40 of 42 validator modules** (all but `networkSecurity` and `admin`, which stay backend-only on purpose: ADR-097 Am. 2) plus `fields`, and the envelope and three constant sets are canonical here (ADR-097 Am. 1). **Frontend (the coordinator ruled 2026-10-01, ADR-097 Am. 1 → ADR-103 item 11):** a service's canonical request types are the generated OpenAPI `paths` types once its route is code-first. `z.input` is the interim form (8 services), and no new service is converted to it
+- [ ] hand-written duplicates in `frontend/src/types` deleted as each service moves — the slice's duplicates lived in the service files (`VendorCreateInput`, `VendorUpdateInput`, `VendorQualifyInput`, `DeviceCreateInput`, `DeviceUpdateInput`, the status/type unions) and are replaced; `frontend/src/types/index.ts` held none of them
+
+**Plan for the remaining domains** (one PR per domain or small group, in this order: the frontend services that already exist first, then the rest)
+1. For each domain, move `validators/<domain>.validator.ts`'s schemas to `packages/contracts/src/<domain>.ts` with named re-exports in the backend (the same objects under the same names). Add the domain's validator test to the package's `jest.config.js` `testMatch`, then run the contract suite, `enumMirrors.d26` and `swaggerValidatorAlignment.p608`.
+2. ~~Replace the matching frontend service's request interfaces with `z.input` types~~ — **superseded 2026-10-01 (ADR-097 Am. 1):** the frontend moves to ADR-103's generated `paths` types when the route goes code-first (P9-25 with P9-20/P9-21), and those are generated from these same schemas. Record each drift found as an Open Question, never as a silent backend change.
+3. Order: `warehouse`, `stock`, `maintenance`, `calibrationRecords`, `certificate`, `qms`, `tenant`, `user`, `roles`, `menuGroup`, `content`, `ticket`, `kanban`, `notification`, `webhook`, `workflow`, then the platform and identity domains (`auth`, `sso`, `scim`, `oidc`, `session`, `billing`, `meteredBilling`, `storage`, `customDomains`, `networkSecurity`, `featureFlag`, `dataRetention`, `gdpr`, `tenantHierarchy`, `tenantLifecycle`, `tenantBackup`, `eSignature`, `iot`, `finance`, `admin`, `calibrationDeviceReinstate`).
+4. **Response schemas** after the request side. **The envelope is done** (`envelope.ts`, the single definition, shared with P9-25's OpenAPI document). They start with the envelope (`{ success, status, message, data, meta }`, CLAUDE.md), which ADR-087 decision 7 placed in `backend/src/types/` as `ApiResponse<T>`. A cross-workspace envelope belongs here instead, which needs an ADR-087 amendment first. Each service's `Backend*Response` interface then becomes `z.infer` of a response schema, which would pin shapes such as the device list's `data.rows` fallback.
 
 ### P9-23 — Migrations: convert the files, freeze the names
 
 | | |
 |---|---|
-| **Status** | TODO — **NEEDS EDIT (2026-09-23)** · **Depends on** P9-21 · **Size** S |
-| **Spec refs** | `docs/DATABASE/13-MIGRATIONS.md` |
+| **Status** | **DONE 2026-09-30** (ADR-087 amendment, `MEMORY/records/2026-09-30-p9-23-migrations.md`) · **Depends on** P9-21 (did not wait: the migrations import only leaves, and four keep typed lazy/top-level `require`s of JavaScript services) · **Size** S |
+| **Spec refs** | `docs/DATABASE/13-MIGRATIONS.md` · `backend/src/migrations/README.md` |
 
-> **What changed:** **nineteen** migrations, not eighteen.
-> `0019-add-signature-crypto-fields.js` was added on 2026-09-23 under A-47 / ADR-040, and its
-> manifest entry in `src/config/migrator.js` already carries the frozen `.js` suffix. The frozen
-> list below is the current one and must be copied into the test verbatim.
+> **What changed (2026-09-30):** the frozen set is **63** migrations, not 19 — 0001…0090 as they
+> stood when conversion began (the manifest had grown since 2026-09-23). The list lives, typed by
+> hand, in `backend/src/tests/migrations/manifestNames.p923.test.ts`; it equals the first 63
+> `schema_migrations` rows of a PostgreSQL 18 database migrated by the JavaScript migrations. The
+> 19-name list this card used to carry is its first 19 entries. Migrations 0091+ were written
+> TypeScript-first by other lanes, with `.js` names, and are outside the frozen list but inside
+> its rules.
 
-**Why:** `schema_migrations` records names **with the `.js` suffix** (`0001-underscore-class-models.js`, verified on the reference deployment), and `src/config/migrator.js` registers them from a static manifest — one `require()` per file, because Umzug's glob resolver finds nothing inside a `pkg`-compiled binary. Change a name string and Umzug treats all **19** as new — and runs them again against production.
+**Why:** `schema_migrations` records names **with the `.js` suffix** (`0001-underscore-class-models.js`, verified on the reference deployment), and `src/config/migrator.js` registers them from a static manifest — one `require()` per file, because Umzug's glob resolver finds nothing inside a `pkg`-compiled binary. Change a name string and Umzug treats the migration as new — and runs it again against production.
 
-**The frozen names**, read from `src/config/migrator.js` on 2026-09-23. Every one ends `.js`:
-
-```
-0001-underscore-class-models.js        0011-add-esignature-records.js
-0002-add-stripe-invoice-id.js          0012-enable-rls-policies.js
-0003-add-search-vectors.js             0013-add-tenant-parent-id.js
-0004-add-mfa-fields.js                 0014-add-user-webauthn-fields.js
-0005-add-batch-jobs.js                 0015-drop-rls-policies.js
-0006-add-capas.js                      0016-add-attachment-storage-key.js
-0007-add-sop-documents.js              0017-add-signature-workflows.js
-0008-extend-vendors-qualification.js   0018-add-document-chunks.js
-0009-add-uncertainty-budgets.js        0019-add-signature-crypto-fields.js
-0010-add-iot-fields.js
-```
+**How it was done:** the manifest was not touched (two comments only). Its names end `.js` and its `require`s are extensionless, so tsx and jest resolve the `.ts` source and `dist/` the compiled `.js`. Each file was converted with type-only changes, plus a short list of runtime-neutral ones (`module.exports` → `export =` with the same object; in-function `require("sequelize")` → top-level import; `process.env.X` → `env("X")`), and proved identical — see the record.
 
 **Definition of Done**
-- [ ] migration files may become `.ts`, but **every manifest name string stays exactly as recorded**, `.js` suffix included — including `0019`
-- [ ] a test asserts the manifest names equal a frozen list of the **19** historical names, in order
-- [ ] the test is written **before** any file in `src/migrations/` is renamed, and is seen to fail when a name is altered. A frozen-list test added afterwards freezes whatever is there, including a mistake
-- [ ] the `context` passed to Umzug stays the **QueryInterface itself**, not `{ queryInterface }`. Wrapping it is what made 0008, 0013 and 0014 record as applied with their columns absent, and a conversion is exactly the kind of change that would "tidy" it back
-- [ ] new migrations are TypeScript from the start; their recorded name is fixed when first applied and never changes
-- [ ] dialect guards inside applied migrations are left alone (ADR-039)
-- [ ] P6-05's column verification runs against the result — the migration log is not evidence
+- [x] migration files may become `.ts`, but **every manifest name string stays exactly as recorded**, `.js` suffix included — including `0019` (all 63 are `.ts`; `migrator.js` names unchanged)
+- [x] a test asserts the manifest names equal a frozen list of the historical names, in order — **63**, not 19 (`manifestNames.p923.test.ts`, 5 tests, via Umzug's own `migrations()`)
+- [x] the test is written **before** any file in `src/migrations/` is renamed, and is seen to fail when a name is altered (dropping `.js` from 0019's name: 2 of 5 failed; the file was restored byte-identical)
+- [x] the `context` passed to Umzug stays the **QueryInterface itself**, not `{ queryInterface }` (asserted by the same test and by `0019-signature-crypto-fields.d29.test.ts`; the 16 frozen `context.queryInterface || context` fallbacks kept literally)
+- [x] new migrations are TypeScript from the start; their recorded name is fixed when first applied and never changes (0091–0102 are `.ts` with `.js` names; README and `migrator.js` say so)
+- [x] dialect guards inside applied migrations are left alone (ADR-039)
+- [x] P6-05's column verification runs against the result — fresh and upgraded PostgreSQL 18 databases booted through `runSchemaSetup` + `assertSchemaMatchesModels`: OK, 73 tables / 905 columns / 10 control objects; `pg_dump --schema-only` and grants identical to a database built by the `.js` migrations
 
 **Abuse cases**
 - "Tidying" the manifest names to drop `.js`
@@ -942,15 +1033,74 @@ One card per domain. Each follows the same Definition of Done, stated once here:
 | | |
 |---|---|
 | **Status** | TODO · **Depends on** everything above · **Size** S |
+| **Scope amended 2026-09-30** | **ADR-109 §5** (working decision under the owner's delegation, awaiting the owner's confirmation), amending ADR-087's exit. **Phase 9 exits when every non-test backend source module is TypeScript and the build/source config has `allowJs: false`.** The existing `.js` **test** files (696 under `src/tests/` and `__tests__/` on 2026-09-30, 684 of them `*.test.js`; a moving count) are **not** part of this exit — they move to **P9-26**. The ratchet **stays** and still refuses any **new** `.js` file, tests included |
 
 **Definition of Done**
-- [ ] ratchet at zero; `allowJs: false`; the ratchet script and baseline removed
+- [ ] ~~ratchet at zero; `allowJs: false`; the ratchet script and baseline removed~~ *(superseded by ADR-109 §5)*
+- [ ] **no non-test `.js` file** under `backend/` in the ratchet's counted set (`index.js`, `src/**` outside `src/tests/`, `scripts/**`); the ratchet list holds test files only
+- [ ] `allowJs: false` for **source**: `tsconfig.build.json` already has it (ADR-087 item 3); the base `tsconfig.json` keeps `allowJs` **only** so `typecheck` can resolve `.js` tests importing `.ts` source — the reason is written beside the flag, and a guard fails if a non-test `.js` file appears
+- [ ] the ratchet script and baseline **kept** (they are what makes P9-26 shrink-only), not removed
 - [ ] unused dependencies removed: `joi`, `aedes`, `aedes-server-factory`, `nodemon`, the Bun build path (A-18)
 - [ ] the target-vs-current banner removed from every backend document, each checked against the code as it is removed
 - [ ] `CLAUDE.md`, `AGENTS.md`, `docs/ENGINEERING/00-CODING-CONTEXT.md` state TypeScript as **fact**
 - [ ] the four places that still describe the backend as untypeable are corrected — **they cite ADR-030, which ADR-038 superseded**: the root `tsconfig.json` comment, the `Makefile: typecheck` target comment, `00-TASK-CONVENTIONS.md` § Build, and `docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md`'s target banner. Three of the four are corrected earlier, under P9-01 and P9-01a; this is the sweep that confirms none was missed
 - [ ] `CLAUDE.md`'s counts are re-derived rather than copied: it says **53 route modules** and **342 test files**; the tree on 2026-09-23 has **55** route files and **366** test files
 - [ ] ADR-038 gets a completion note; `MEMORY/records/P9-24.md` written
+
+### P9-26 — The existing `.js` test files, converted opportunistically
+
+| | |
+|---|---|
+| **Status** | TODO — created 2026-09-30 by **ADR-109 §5** (working decision, awaiting the owner's confirmation) · **Depends on** nothing (a test may convert whenever its module has) · **Size** XL, spread thin · **Not** a Phase 9 exit item |
+
+**Why:** P9-24 as first written counted the 693–696 existing `.js` test files, which made the phase
+exit weeks of conversion that changes no production behaviour. The source is what runs; a `.js`
+test that exercises a `.ts` module still proves the module. The tests move out of the exit, not out
+of the plan.
+
+**Rules**
+- The ratchet stays on: **no new `.js` file, tests included** (ADR-087 Amendment 1). A new test is `.ts`.
+- A `.js` test is converted when someone **already edits it** for another reason, or when its module's conversion needs it; never as a drive-by that also changes assertions. A conversion of a test changes no assertion (the P9 identity rule applied to tests: same case names, same count, same pass/fail).
+- Each conversion lowers the ratchet floor in the same change.
+
+**Definition of Done**
+- [ ] the ratchet list is empty — every test is `.ts`
+- [ ] then, and only then, the base `tsconfig.json` drops `allowJs`, and the ratchet script and baseline are removed
+- [ ] `MEMORY/records/P9-26.md` names the final counts from a run
+
+### P9-25 — API contract, code-first: one schema, the published contract, behind sign-in
+
+| | |
+|---|---|
+| **Status** | **WIP** — foundation DONE 2026-09-30 (ADR-103); per-route migration rides with P9-20/P9-21 · **Depends on** P9-11 (Zod validators), P9-22 (contracts) · **Size** L |
+| **Spec refs** | `MEMORY/specs/P9-25-owner-brief-api-contract.md` (binding) · `MEMORY/specs/P9-25-api-contract-code-first.md` · `docs/API/00-API-STANDARDS.md` · `docs/BACKEND/03-VALIDATION.md` · ADR-103 |
+| **Spec required** | **yes** (written) |
+
+**Why:** every request shape was written twice — a Zod validator that runs, and uncompiled `@swagger` YAML that does not. P6-08 kept finding the two apart. The contract was published unauthenticated wherever mounted, a broken YAML block silently removed its route from it, and nothing failed when a route had no document at all.
+
+**Definition of Done — foundation (done)**
+- [x] ADR (decision, alternatives, bad implications), spec, this card; `docs/API/00`, `docs/BACKEND/03/04/06/09/10`, `docs/ENGINEERING/10` amended citing ADR-103
+- [x] `zod-openapi` builder: per-route `*.openapi.ts` (`defineRouteDocs`), envelope + standard errors, `x-permission` / `x-audited` / `x-rate-limit` / tenant-404 / 409 notes, merged with the remaining JSDoc (3.0 → 3.1), double documentation and broken YAML refused
+- [x] pilot `vendor` end to end: JSDoc deleted, `vendor.openapi.ts`, P6-08 green with **no** vendor `KNOWN_DRIFT` entry
+- [x] Scalar at `/docs` and `/api/v1/docs` (+ `/docs.json`), self-hosted, own CSP, `auth → denyApiKey → rbac([TENANT_ADMIN])`; `SWAGGER_ENABLED` semantics recorded; Dockerfile ships `openapi.json` + the bundle; pkg assets updated
+- [x] committed `backend/openapi.json`; `openapi:check` in build, image, `make openapi` (in `verify`) and CI; Spectral ruleset + shrink-only baseline; oasdiff script + checksum-pinned CI step; route-without-doc guard with a shrink-only list
+- [x] frontend: `openapi-typescript` + `openapi-fetch`, `src/api/typed.ts` over `api.*`, `vendor.service` migrated, `api:types:check` in CI and `make`
+
+**Definition of Done — the card (open)**
+- [ ] every route module moved to `*.openapi.ts` as P9-20/P9-21 convert it; JSDoc, `docs/components.js`, `docs/tags.js` and `swagger-jsdoc` removed with the last one
+- [ ] `openapiRoutes.undocumented.json`, P6-08's `KNOWN_DRIFT` and `openapi.spectral-baseline.json` are empty
+- [ ] frontend `api/services/*` on `typedApi`, module by module, each with tests
+- [ ] oasdiff has run in CI against a `main` that has an `openapi.json` (P7-01)
+- [ ] a live check of `/api/v1/docs` through the frontend proxy as a signed-in tenant admin, in a browser
+
+**Abuse cases**
+- A route moved to `.openapi.ts` whose `body` is a hand-written copy instead of the validator's own schema object — the contract is generated, but from a second source
+- `x-permission` "fixed" by editing the guard's expectation instead of the declaration or the chain
+- A new undocumented route, a new Spectral error or a P6-08 divergence made green by adding it to the shrink-only list
+- `openapi.json` edited by hand, or regenerated without committing the frontend types
+- `openapi:breaking` reported as passing when it printed SKIPPED (no oasdiff, no base)
+- The docs gate loosened (public, or any authenticated role) "so the page loads in the browser" — the browser path is `/api/v1/docs` through the proxy
+- Scalar loaded from a CDN, or the CSP widened to let it call out
 
 ---
 

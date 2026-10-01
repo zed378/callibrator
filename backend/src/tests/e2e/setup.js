@@ -8,6 +8,32 @@
 const { BASE_URL = "http://localhost:5000" } = process.env;
 const API_BASE = `${BASE_URL}/api/v1`;
 
+// ============================================================
+// P10-16 (ADR-099) — THE OPERATOR'S CREDENTIALS
+//
+// The seeded super admin no longer has a public default password: it is
+// created with a ONE-TIME password that exists only in a 0600 file inside the
+// backend container. The specs sign in with E2E_OPERATOR_PASSWORD, which YOU
+// choose; the first time, the harness completes the bootstrap itself from
+// E2E_BOOTSTRAP_PASSWORD (read it once, inside the container):
+//
+//   export E2E_OPERATOR_PASSWORD='<a password you choose, upper+lower+digit, 8+>'
+//   export E2E_BOOTSTRAP_PASSWORD="$(docker compose exec -T backend cat /app/.bootstrap/superadmin-password)"
+//
+// The one-time password is consumed by that first sign-in (the file is
+// deleted); afterwards only E2E_OPERATOR_PASSWORD is needed. A lost one:
+//   docker compose exec backend ./backend rotate-bootstrap-password //     --user sys@mail.com --requested-by "<you>" --ticket <ref>
+// ============================================================
+const OPERATOR = process.env.E2E_OPERATOR || "sys@mail.com";
+const OPERATOR_PASSWORD = process.env.E2E_OPERATOR_PASSWORD || "";
+if (!OPERATOR_PASSWORD) {
+  throw new Error(
+    "E2E: set E2E_OPERATOR_PASSWORD (the operator's password; on a fresh stack also " +
+      "E2E_BOOTSTRAP_PASSWORD from /app/.bootstrap/superadmin-password inside the backend container) — " +
+      "there is no default operator password since P10-16 (ADR-099)",
+  );
+}
+
 const defaultHeaders = {
   "Content-Type": "application/json",
   "User-Agent": "Callibrator-E2E-Test/1.0 (Node24 Native Fetch)",
@@ -81,7 +107,7 @@ async function httpGet(path, headers = {}) {
 //
 // The secret, the last TOTP step used and the last session are kept in a
 // state file (E2E_MFA_STATE_FILE, default in the OS temp directory, one per
-// identifier), because a TOTP code is accepted ONCE per 30-second step
+// stack and identifier — BASE_URL is part of the name since P10-13), because a TOTP code is accepted ONCE per 30-second step
 // (A-115): a spec that signs in inside the same step as the one before reuses
 // the cached session — checked live with /auth/verify first, since some specs
 // sign sessions out — instead of waiting for the next step.
@@ -132,7 +158,14 @@ function mfaStateFile(identifier) {
   if (process.env.E2E_MFA_STATE_FILE) {
     return process.env.E2E_MFA_STATE_FILE;
   }
-  const id = nodeCrypto.createHash("sha256").update(String(identifier).toLowerCase()).digest("hex");
+  // P10-13: keyed by the STACK (BASE_URL) as well as the identifier. Every
+  // stack on a machine has its own sys@mail.com with its own TOTP secret; a
+  // file keyed by the identifier alone was shared by all of them, so a run
+  // against one stack read another stack's secret and failed its MFA.
+  const id = nodeCrypto
+    .createHash("sha256")
+    .update(`${BASE_URL}\n${String(identifier).toLowerCase()}`)
+    .digest("hex");
   return nodePath.join(nodeOs.tmpdir(), `callibrator-e2e-mfa-${id.slice(0, 16)}.json`);
 }
 
@@ -234,6 +267,35 @@ async function reusableSession(credentials) {
 }
 
 /**
+ * P10-16 — the operator's first sign-in on a fresh stack: spend the one-time
+ * password, set E2E_OPERATOR_PASSWORD with the password-change token, and
+ * sign in again. Only when the operator's own password is refused and a
+ * bootstrap password was supplied; otherwise the refusal is returned as is.
+ */
+async function completeBootstrap(credentials, refused) {
+  const identifier = credentials.user || credentials.email || credentials.username;
+  const bootstrap = process.env.E2E_BOOTSTRAP_PASSWORD;
+  if (refused.status !== 401 || !bootstrap || identifier !== OPERATOR || credentials.password !== OPERATOR_PASSWORD) {
+    return refused;
+  }
+  const first = await rawPost("/auth/login", { ...credentials, password: bootstrap });
+  if (!first.body?.data?.passwordChangeRequired || !first.body?.token) {
+    throw new Error(
+      `E2E: E2E_BOOTSTRAP_PASSWORD did not sign in as ${identifier} (${first.status}) — it is spent after one use; ` +
+        "issue a new one with `./backend rotate-bootstrap-password` inside the backend container",
+    );
+  }
+  const changed = await rawPost("/auth/first-sign-in/password", {
+    token: first.body.token,
+    newPassword: OPERATOR_PASSWORD,
+  });
+  if (changed.status !== 200) {
+    throw new Error(`E2E: setting E2E_OPERATOR_PASSWORD failed (${changed.status}: ${changed.body?.message})`);
+  }
+  return rawPost("/auth/login", credentials);
+}
+
+/**
  * Make a POST request.
  */
 async function httpPost(path, data = {}, headers = {}) {
@@ -243,7 +305,7 @@ async function httpPost(path, data = {}, headers = {}) {
     if (reused) {
       return { ...reused, elapsed: Date.now() - startTime };
     }
-    const first = await rawPost(path, data, headers);
+    const first = await completeBootstrap(data, await rawPost(path, data, headers));
     const done =
       first.status === 200 && (first.body?.data?.mfaRequired || first.body?.data?.mfaEnrolmentRequired)
         ? await completeMfaSignIn(data, first)
@@ -379,6 +441,8 @@ function authHeader(token) {
 module.exports = {
   BASE_URL,
   API_BASE,
+  OPERATOR,
+  OPERATOR_PASSWORD,
   httpGet,
   httpPost,
   httpPut,

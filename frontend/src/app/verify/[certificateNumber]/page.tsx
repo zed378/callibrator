@@ -1,312 +1,59 @@
-"use client";
-
-import React, { Suspense, useEffect, useState } from "react";
-import Link from "next/link";
-import { useParams } from "next/navigation";
-import {
-  ShieldCheck,
-  ShieldX,
-  ShieldAlert,
-  Loader2,
-  FileText,
-  ExternalLink,
-  ArrowLeft,
-} from "lucide-react";
-import AuroraBackground from "@/components/motion/AuroraBackground";
-import { toSameOriginApiPath } from "@/lib/uploadUrl";
-
-// ------------------------------------------------------------------
-// Public certificate-validation page.
+// src/app/verify/[certificateNumber]/page.tsx
 //
-// A calibration certificate's QR encodes <CERT_VERIFY_BASE_URL>/<number>, which
-// lands here. We call the PUBLIC backend endpoint
-// GET /api/v1/certificates/verify/:number (no auth) and render the authenticity
-// verdict, every field an assessor needs, and the signed PDF itself.
-// ------------------------------------------------------------------
+// P10-08 (ADR-098, doc 20 §10): the public verification page on the public
+// surface. A server shell (language, metadata, not indexed) around the client
+// content that asks the backend for the verdict (VerifyContent.tsx). No
+// animation library, no decorative motion: zero motion (14, unchanged).
+import React, { Suspense } from "react";
+import type { Metadata } from "next";
+import { getServerI18n } from "@/i18n/server";
+import { PublicSurface } from "@/components/public/PublicSurface";
+import { BrandLockup } from "@/components/public/BrandLockup";
+import { LanguageForm } from "@/components/public/LanguageForm";
+import { MessagesProvider } from "@/i18n/MessagesProvider";
+import { pickMessages } from "@/i18n";
+import { VerifyContent } from "./VerifyContent";
 
-interface VerifyData {
-  found: boolean;
-  valid: boolean;
-  status?: string;
-  revoked?: boolean;
-  expired?: boolean;
-  /**
-   * A-130 (F-11): the issuer deleted the certificate. The backend still
-   * reports it (never as valid, and without its document) rather than
-   * answering "not found", which would read as a forgery.
-   */
-  withdrawn?: boolean;
-  certificateNumber?: string;
-  type?: string;
-  standard?: string | null;
-  issuedTo?: string | null;
-  device?: { name: string; serialNumber: string } | null;
-  issueDate?: string | null;
-  validUntil?: string | null;
-  signedBy?: string | null;
-  signedAt?: string | null;
-  integrityHash?: string;
-  verifyUrl?: string;
-  documentUrl?: string | null;
-  message?: string;
+export async function generateMetadata(): Promise<Metadata> {
+  const { t } = await getServerI18n();
+  // Never indexed: certificate numbers in a search index are an enumeration
+  // surface (docs/FRONTEND/01-ROUTING.md). next.config.ts also sends
+  // `X-Robots-Tag: noindex, nofollow` on /verify/*.
+  return { title: t("verify.meta.title"), robots: { index: false, follow: false } };
 }
 
-const fmtDate = (d?: string | null) =>
-  d
-    ? new Date(d).toLocaleDateString(undefined, {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      })
-    : "—";
-
-/** The verdict banner: colour + icon + copy driven by the verification result. */
-function Verdict({ data }: { data: VerifyData }) {
-  let tone: "valid" | "invalid" | "warn";
-  let title: string;
-  let sub: string;
-  const Icon =
-    data.valid && data.found
-      ? ShieldCheck
-      : data.revoked || data.withdrawn || !data.found
-        ? ShieldX
-        : ShieldAlert;
-
-  if (!data.found) {
-    tone = "invalid";
-    title = "Certificate not found";
-    sub = "No certificate matches this number. It may be mistyped or invalid.";
-  } else if (data.valid) {
-    tone = "valid";
-    title = "Certificate is valid";
-    sub = "This certificate is authentic, signed, and currently in force.";
-  } else if (data.revoked) {
-    tone = "invalid";
-    title = "Certificate revoked";
-    sub = "This certificate was revoked by the issuer and is no longer valid.";
-  } else if (data.withdrawn) {
-    tone = "invalid";
-    title = "Certificate withdrawn";
-    sub = "This certificate was withdrawn by the issuer and is no longer valid.";
-  } else if (data.expired) {
-    tone = "warn";
-    title = "Certificate expired";
-    sub = "This certificate is authentic but has passed its validity date.";
-  } else {
-    tone = "warn";
-    title = "Not yet valid";
-    sub = `This certificate is not signed (status: ${data.status ?? "unknown"}).`;
-  }
-
-  const tones: Record<string, string> = {
-    valid: "bg-success/10 text-success ring-success/30",
-    invalid: "bg-destructive/10 text-destructive ring-destructive/30",
-    warn: "bg-warning/10 text-warning ring-warning/30",
-  };
-
+export default async function CertificateVerifyPage() {
+  const { locale, messages, t } = await getServerI18n();
   return (
-    <div
-      className={`flex items-start gap-4 rounded-2xl p-5 ring-1 ${tones[tone]}`}
-    >
-      <Icon className="h-9 w-9 shrink-0" />
-      <div>
-        <h2 className="font-display text-xl font-bold tracking-tight">
-          {title}
-        </h2>
-        <p className="mt-1 text-sm text-muted-foreground">{sub}</p>
-      </div>
-    </div>
-  );
-}
-
-function Row({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="flex flex-col gap-0.5 border-b border-border py-3 sm:flex-row sm:items-center sm:justify-between">
-      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {label}
-      </span>
-      <span className="text-sm text-foreground sm:text-right">{value}</span>
-    </div>
-  );
-}
-
-function CertificateVerifyContent() {
-  const params = useParams();
-  const certificateNumber = decodeURIComponent(
-    String(params.certificateNumber ?? ""),
-  );
-
-  const [data, setData] = useState<VerifyData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        // Same-origin proxy forwards to the public backend endpoint (no auth).
-        const res = await fetch(
-          `/api/v1/certificates/verify/${encodeURIComponent(certificateNumber)}`,
-        );
-        const json = await res.json();
-        if (!active) return;
-        if (!res.ok || !json?.data) {
-          setError(json?.message || "Unable to verify this certificate.");
-        } else {
-          setData(json.data as VerifyData);
-        }
-      } catch {
-        if (active) setError("Network error while verifying the certificate.");
-      } finally {
-        if (active) setLoading(false);
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [certificateNumber]);
-
-  // F-11: the document link is a same-origin `/api/v1/...` path, served by
-  // the Next proxy — never prefixed with the backend origin, which the
-  // auditor's browser cannot reach on the documented deployment.
-  const pdfUrl = toSameOriginApiPath(data?.documentUrl);
-
-  return (
-    <main className="relative min-h-screen">
-      <AuroraBackground />
-
-      <div className="relative z-10 mx-auto flex max-w-3xl flex-col px-4 py-10 sm:px-6 sm:py-14">
-        <Link
-          href="/"
-          className="group mb-8 inline-flex w-fit items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4 transition-transform group-hover:-translate-x-1" />
-          Home
-        </Link>
-
-        <div className="mb-6">
-          <p className="inline-flex items-center gap-3 font-display text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-            <span className="h-px w-8 bg-linear-to-r from-primary to-accent" />
-            Certificate verification
-          </p>
-          <h1 className="mt-3 font-display text-3xl font-bold tracking-tight text-foreground">
-            {certificateNumber || "Certificate"}
-          </h1>
+    <PublicSurface>
+      <header className="border-b border-pub-border">
+        <div className="mx-auto flex min-h-16 max-w-3xl flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-3 sm:px-6">
+          {/* P10-13: a plain link — next/link here is ~3 KB of first-load JS for one
+              link to a different document (AC-7, the 120 KB budget). */}
+          {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- deliberate, see above */}
+          <a href="/" aria-label={t("pub.home")} className="rounded-md">
+            <BrandLockup />
+          </a>
+          <LanguageForm locale={locale} t={t} />
         </div>
-
-        {loading ? (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" /> Verifying…
-          </div>
-        ) : error ? (
-          <div className="rounded-2xl bg-destructive/10 p-5 text-sm text-destructive ring-1 ring-destructive/30">
-            {error}
-          </div>
-        ) : data ? (
-          <div className="space-y-6">
-            <Verdict data={data} />
-
-            {data.found && (
-              <>
-                <div className="rounded-2xl border border-border bg-card/70 p-5 backdrop-blur-sm">
-                  <h3 className="mb-1 font-display text-sm font-semibold text-foreground">
-                    Details
-                  </h3>
-                  <Row
-                    label="Certificate no."
-                    value={
-                      <span className="font-mono">{data.certificateNumber}</span>
-                    }
-                  />
-                  <Row
-                    label="Status"
-                    value={<span className="capitalize">{data.status}</span>}
-                  />
-                  <Row
-                    label="Type"
-                    value={<span className="capitalize">{data.type}</span>}
-                  />
-                  <Row label="Standard" value={data.standard || "—"} />
-                  <Row label="Issued to" value={data.issuedTo || "—"} />
-                  <Row
-                    label="Device"
-                    value={
-                      data.device
-                        ? `${data.device.name} · SN ${data.device.serialNumber}`
-                        : "—"
-                    }
-                  />
-                  <Row label="Issue date" value={fmtDate(data.issueDate)} />
-                  <Row label="Valid until" value={fmtDate(data.validUntil)} />
-                  <Row label="Signed by" value={data.signedBy || "—"} />
-                  <Row label="Signed at" value={fmtDate(data.signedAt)} />
-                  <div className="flex flex-col gap-0.5 py-3">
-                    <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Integrity hash (SHA-256)
-                    </span>
-                    <span className="mt-1 break-all font-mono text-xs text-muted-foreground">
-                      {data.integrityHash}
-                    </span>
-                  </div>
-                </div>
-
-                {/* The certificate document itself */}
-                {pdfUrl && (
-                  <div className="rounded-2xl border border-border bg-card/70 p-5 backdrop-blur-sm">
-                    <div className="mb-3 flex items-center justify-between">
-                      <h3 className="inline-flex items-center gap-2 font-display text-sm font-semibold text-foreground">
-                        <FileText className="h-4 w-4" /> Certificate document
-                      </h3>
-                      <a
-                        href={pdfUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
-                      >
-                        Open PDF <ExternalLink className="h-3.5 w-3.5" />
-                      </a>
-                    </div>
-                    <iframe
-                      src={pdfUrl}
-                      title={`Certificate ${data.certificateNumber}`}
-                      className="h-[70vh] w-full rounded-lg border border-border bg-muted"
-                    />
-                  </div>
-                )}
-              </>
-            )}
-
-            <p className="text-center text-xs text-muted-foreground">
-              Verified against the issuer&apos;s records in real time. Cross-check
-              the certificate number matches the printed document.
-            </p>
-          </div>
-        ) : null}
-      </div>
-    </main>
-  );
-}
-
-/**
- * `useParams()` reads the route params, which Next 16 treats as uncached data.
- * Without a Suspense boundary it blocks the whole route from prerendering and
- * the production build fails outright ("Uncached data was accessed outside of
- * <Suspense>"), so the content is isolated behind one.
- */
-export default function CertificateVerifyPage() {
-  return (
-    <Suspense
-      fallback={
-        <main className="relative flex min-h-screen items-center justify-center px-4">
-          <AuroraBackground />
-          <div className="flex items-center gap-3 text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin" />
-            <span className="text-sm">Loading certificate…</span>
-          </div>
-        </main>
-      }
-    >
-      <CertificateVerifyContent />
-    </Suspense>
+      </header>
+      <main className="flex-1">
+        <MessagesProvider locale={locale} messages={pickMessages(messages, ["verify."])}>
+          {/* useParams / useSearchParams need a boundary under Cache Components. */}
+          <Suspense
+            fallback={
+              <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-12">
+                <h1 className="pub-eyebrow">{t("verify.eyebrow")}</h1>
+                <p role="status" className="mt-6 text-pub-muted">
+                  {t("verify.loading")}
+                </p>
+              </div>
+            }
+          >
+            <VerifyContent />
+          </Suspense>
+        </MessagesProvider>
+      </main>
+    </PublicSurface>
   );
 }

@@ -1,5 +1,5 @@
 import React from "react";
-import { Dialog, Button } from "@/components/ui";
+import { Dialog, Button, Alert } from "@/components/ui";
 import { CheckCircle2 } from "lucide-react";
 import { Certificate } from "@/api/services/calibration.service";
 import { ESignatureFields, ESignatureFormFields } from "./ESignatureFields";
@@ -13,6 +13,12 @@ interface ApproveCertModalProps {
   onClose: () => void;
   onSubmit: (e: React.FormEvent) => void;
   selectedCertToApprove: Certificate | null;
+  /**
+   * The refusal to show inside the dialog — a 409 state explanation ("… has
+   * not been submitted yet …", "… is in its approval workflow …") or the
+   * separation-of-duties 403 — so it is not hidden behind the dialog.
+   */
+  error?: string | null;
   form: ESignatureFormFields;
   setForm: React.Dispatch<React.SetStateAction<ESignatureFormFields>>;
   isLoading: boolean;
@@ -23,6 +29,7 @@ export const ApproveCertModal: React.FC<ApproveCertModalProps> = ({
   onClose,
   onSubmit,
   selectedCertToApprove,
+  error,
   form,
   setForm,
   isLoading,
@@ -42,6 +49,12 @@ export const ApproveCertModal: React.FC<ApproveCertModalProps> = ({
             </p>
           </div>
         </div>
+
+        {error && (
+          <div role="alert">
+            <Alert variant="error">{error}</Alert>
+          </div>
+        )}
 
         <ESignatureFields
           form={form}

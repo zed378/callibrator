@@ -15,6 +15,9 @@ interface Props {
   onCardDragEnd: () => void;
   onDropInColumn: (columnId: string, beforeCardId?: string) => void;
   onQuickAdd: (columnId: string, title: string) => void;
+  /** Every column of the board, for the cards' keyboard move (WCAG 2.1.1). */
+  columns?: KanbanColumn[];
+  onMoveCard?: (cardId: string, columnId: string) => void;
 }
 
 export default function BoardColumn({
@@ -27,6 +30,8 @@ export default function BoardColumn({
   onCardDragEnd,
   onDropInColumn,
   onQuickAdd,
+  columns,
+  onMoveCard,
 }: Props) {
   const [adding, setAdding] = useState(false);
   const [title, setTitle] = useState("");
@@ -92,6 +97,8 @@ export default function BoardColumn({
             onDragStart={() => onCardDragStart(card.id)}
             onDragEnd={onCardDragEnd}
             onDropBefore={() => onDropInColumn(column.id, card.id)}
+            columns={columns}
+            onMoveTo={onMoveCard ? (columnId) => onMoveCard(card.id, columnId) : undefined}
           />
         ))}
 

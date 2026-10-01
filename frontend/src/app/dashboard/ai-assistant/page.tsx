@@ -15,6 +15,7 @@ import {
 import { FileSearch, Send, Sparkles, Upload } from "lucide-react";
 import { aiService, type CertificateOcrResult } from "@/api/services/ai.service";
 import { useToastStore } from "@/stores/toastStore";
+import { usePermissions } from "@/hooks/usePermissions";
 
 /**
  * A-118 — the two halves of this page are gated on different permissions:
@@ -31,6 +32,11 @@ const OCR_DENIED_NOTICE =
   "Scanning certificates needs write access to Calibration & Certificates. Ask your administrator if you need it.";
 
 export default function AiAssistantPage() {
+  // ADR-102: OCR is gated on `certificate` write; a role without it is told
+  // so up front instead of after a refused upload (ENGINEERING MANAGER holds
+  // `certificate` read). The 403 notice below stays for a revoked grant.
+  const { canWrite } = usePermissions();
+  const mayScan = canWrite("certificate");
   const addToast = useToastStore((s) => s.addToast);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -173,7 +179,7 @@ export default function AiAssistantPage() {
               }
             />
             <CardContent className="space-y-4">
-              {ocrDenied ? (
+              {ocrDenied || !mayScan ? (
                 <Alert variant="info">{OCR_DENIED_NOTICE}</Alert>
               ) : (
                 <>

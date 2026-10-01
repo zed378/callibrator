@@ -15,6 +15,12 @@ code was changed by this review**. Ids are `V-nn` and follow the card shape of
 
 ## Verdict
 
+> **Status, 2026-09-30 (board reconciliation, `MEMORY/records/2026-09-30-board-hygiene-decisions.md`).**
+> The three blockers are closed: **V-01**, **V-02** (A-311) and **V-03** (S-21). **V-04**, **V-06** and
+> **V-07** are DONE; **V-09** is PARTIAL. Checked against the code on 2026-09-30 and **still open**:
+> V-05, V-08, V-12, V-13 (decided 2026-09-30 → **403**, working decision, ADR-109 — not yet implemented),
+> V-14, V-15, V-17. V-10, V-11 and V-16 were not re-checked. Each card's Status line says which.
+
 **I would not merge this as it stands.** The substance is better than the average change in this
 repository: the crypto in `eSignature.service.js` is real and its determinism argument holds, the
 amqplib and ioredis lifecycle fixes are correct and their tests were rewritten to stop inventing
@@ -64,7 +70,7 @@ Everything else below is a card, not a blocker.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24 (ADR-043) — `auth.service.ts#getAuthUserWithTenant` selects `roleLevel` (checked 2026-09-30); the seam test drives the real loader into an unmocked `rbac`: `rbac.authLoaderSeam.test.js`; record `MEMORY/records/2026-09-24-phase0-foundation-repairs.md` |
 | **Severity** | **blocker** |
 | **Evidence** | `backend/src/services/auth.service.js:451` — `attributes: ["id", "name", "description"]`. `backend/src/middlewares/rbac.middleware.js:39` — `req.user.role?.role_level \|\| req.user.role?.roleLevel \|\| 0`. `backend/src/routes/api/apiKeys.route.js:17`, `backend/src/routes/api/webhooks.route.js:15`, `backend/src/routes/api/storage.route.js:13` — `rbac([ROLE_NAMES.TENANT_ADMIN])`. `backend/src/constants/roleConstants.js:100` — `TENANT_ADMIN: 8`. `backend/src/models/role.model.js:36` — `roleLevel` exists on the model; it is simply not selected. |
 | **Spec refs** | `docs/SECURITY/05-MULTI-TENANCY-SECURITY.md` · `CLAUDE.md` § The Traps ("a new role without a `ROLE_LEVELS` entry fails every privileged gate, silently") |
@@ -103,7 +109,7 @@ Alternatively drop `rbac` here and use `dynamicAccess` against the seeded `api-k
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-30 under **A-311** — `API_KEY_SCOPE_RESOURCES` (`packages/contracts/src/apiKeyScopes.ts`) is the one list, and `apiKey.service.ts` reads it; guard `apiKeyScopeCoverage.a311.guard.test.ts` (every `dynamicAccess` resource is issuable, every scope is a seeded slug; 1/4 failing before the fix, 4/4 after); record `MEMORY/records/2026-09-30-a311-api-key-scopes.md` |
 | **Severity** | **blocker** |
 | **Evidence** | `backend/src/services/apiKey.service.js:39` — `ALLOWED_RESOURCES = new Set(Object.values(MENU_SLUGS)...)`; `:50` throws 400 `Unknown scope resource`. Route gates in use: `grep -o 'dynamicAccess([^,]*' backend/src/routes/api/*.js` → `"calibration"`, `"certificate"`, `"users"`, `"content"`, `"workflow"`, `"Billing"`, `"Maintenance"`, `"Management"`, `"Vendors"`, `["AuditLogs"…]`. Seeded slugs: `backend/src/utils/seedMenuGroups.util.js` → 56 slugs including `calibration`, `certificate`, `users`, `vendors`, `billing`, `maintenance`, `audit`, `attachments`, `api-keys`, `webhooks`. `MENU_SLUGS` (`roleConstants.js:121-155`) has 31 and contains none of those. |
 | **Spec refs** | `docs/API/13-INTEGRATION-API.md` · A-03 / A-07 |
@@ -146,7 +152,7 @@ Whichever way, reject a scope only against the same list `scopeAllows` will late
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-24 under **S-21** (`AUDIT-2026-09-INFRA.md`) — liveness is the dependency-free `/live`, readiness `/health`; `deploy/helm/callibrator/values.yaml` (§ probes) and `templates/NOTES.txt` say what `/health` checks; the body `{status:"ok"}` is asserted in `health.route.test.js`. Redis and RabbitMQ stay **required** for readiness, as the `health.service.js` comments state — that availability cost is the accepted decision, not an open defect |
 | **Severity** | high |
 | **Evidence** | `backend/src/services/health.service.js:115` (`Redis — required`), `:157` (`RabbitMQ — required`), `:257` — `dependency.required && dependency.status !== HEALTHY`. `backend/src/controllers/health.controller.js` `health`/`readiness` → `healthService.isReady()`. `deploy/helm/callibrator/values.yaml:62` — `readinessProbe.path: /health`; `:53` still says "/health calls db.authenticate()". `deploy/helm/callibrator/templates/NOTES.txt:16` — "/health returns 503 when the database is unreachable". |
 | **Spec refs** | `docs/DEVOPS/09-KUBERNETES.md` · A-15 |
@@ -183,7 +189,7 @@ amend the Helm comments and `NOTES.txt` in the same commit and record the choice
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** — `validators/eSignature.validator.ts` requires `reason` (1–255, the column's length); the controller forwards it; `esignature.signing.test.js` asserts the stored `signatureReason` and that tampering with it fails verification (checked 2026-09-30) |
 | **Severity** | high (compliance claim not supported) |
 | **Evidence** | `backend/src/services/eSignature.service.js:514` — `const reason = signatureData.reason \|\| null;` and `:552` `signatureReason: reason`. `backend/src/validators/eSignature.validator.js:52-59` — `exports.signDocument` has **no** `reason` key and `.options({ stripUnknown: true })`. `backend/src/controllers/eSignature.controller.js:126-145` — destructures `stepId, polygon, biometricData, authenticationMethod, ipAddress, userAgent` and passes no `reason`. `backend/src/migrations/0019-add-signature-crypto-fields.js` adds `signature_reason` "the meaning of the signature (21 CFR 11.50(a)(3))". |
 | **Spec refs** | ADR-040 · `docs/SECURITY/00-SECURITY-REQUIREMENTS.md` |
@@ -218,7 +224,7 @@ the field load-bearing rather than decorative.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-30 — `allowApiKey` removed (no call site; an unconditional opt-in authorizes a key without checking anything about it). Exactly two gates set `apiKeyAuthorized` (dynamicAccess scope, the SCIM gate), and the unwrapped controllers are `health` and `predictiveMaintenance` (iot is wrapped now), named in `controllerWrapper.util.ts` and enumerated by `guards/apiKeyAuthorizedWriters.v05.guard.test.ts` (writers, no `allowApiKey`, every exported middleware has a call site, unwrapped list) — [record](../MEMORY/records/2026-09-30-correctness-batch.md) |
 | **Severity** | medium |
 | **Evidence** | `backend/src/middlewares/auth.middleware.js:230` — `exports.allowApiKey`. `grep -rn "allowApiKey" backend/src --include=*.js` outside comments: zero call sites. `backend/src/routes/api/scim.route.js:42` sets `req.apiKeyAuthorized = true` inline instead. `backend/src/utils/controllerWrapper.util.js:23` — "every controller but two is wrapped"; the controllers without `asyncHandler` are **three**: `health.controller.js`, `iot.controller.js`, `predictiveMaintenance.controller.js`. |
 | **Spec refs** | A-03 |
@@ -248,7 +254,7 @@ itself.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** — the backend lint gate is at **0 errors** (ratchet baseline 0, ADR-092), and `CLAUDE.md` § What Is Currently Failing states the lint state. `make verify` has still never run end to end on one machine — that is **F-03**, not this card |
 | **Severity** | medium |
 | **Evidence** | `Makefile:255` — `verify: lint typecheck test build`. `backend/package.json:48` — `"lint": "eslint src/ --ext .js"`. Observed: `npx eslint src/ --ext .js` → **1,297 errors, 340 warnings**, non-zero exit. Commit `c005b8c` states "ESLint now runs to completion and reports 1,319 errors and 346 warnings". `CLAUDE.md` § Two Things Currently Failing was not amended; `TASKS/AUDIT-2026-09-REMEDIATION.md` marks A-34 "partly DONE". |
 | **Spec refs** | `CLAUDE.md` § Workflow, § Two Things Currently Failing |
@@ -278,7 +284,7 @@ worse than a red one.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** (the cause) — `esignature.service.coverage.test.js` sets `jest.setTimeout(60000)` for its real RSA generation; counts are now quoted from the named command (`npm run test:coverage -- --ci`, e.g. 683 suites / 12,890 tests on 2026-09-28, `MEMORY/records/2026-09-28-p9-helper-lint-baseline-coverage.md`). No record names **two consecutive** full runs on a loaded machine, so that DoD box stays unticked |
 | **Severity** | medium |
 | **Evidence** | `cd backend && npx jest --coverage=false` → `Test Suites: 1 failed, 1 skipped, 307 passed, 308 of 309 total; Tests: 1 failed, 6 skipped, 6121 passed, 6128 total`. Failure: `src/tests/services/esignature.service.coverage.test.js:97` — *"Exceeded timeout of 10000 ms"* on `generateKeyPair › rethrows a persistence error that already carries a status`. Re-running that file plus `esignature.signing.test.js` alone: 2 suites, 43 tests, all pass in 11.3 s. Commit `c131729` claims "308 suites, 6,122 tests, 100%". |
 | **Spec refs** | `CLAUDE.md` § Evidence · A-32 |
@@ -307,7 +313,7 @@ command actually named in the evidence line, or name the command that produces t
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-30 — `routes/routeGuards.a02.behaviour.v08.test.ts`: REAL rbac + denyApiKey, a principal with `getAuthUserWithTenant`'s projection (source-pinned); webhooks / storage settings / api keys each admit HEALTHCARE ADMIN and refuse a TECHNICIAN and an API key with 403, controller never reached. The a02 file is kept as the shape sweep and says so — [record](../MEMORY/records/2026-09-30-correctness-batch.md) |
 | **Severity** | medium |
 | **Evidence** | `backend/src/tests/routes/routeGuards.a02.test.js:20-34` mocks `rbac` and `dynamicAccess` to `(req,res,next)=>next()` carrying `__roles` / `__gate` tags, then asserts `roleGate(handlers).__roles` equals `[ROLE_NAMES.TENANT_ADMIN]`. |
 | **Spec refs** | `CLAUDE.md` § Evidence ("a mock proves the client, not the contract") |
@@ -339,7 +345,7 @@ genuinely useful — but stop it being the sole evidence.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **PARTIAL** 2026-09-30 — the live suite `rateLimiter.redis.live.test.js` exists against a real Redis (A-30), but it is still opt-in behind `REDIS_LIVE_TEST=1` and **no gate runs it** (not `make verify`, not CI); the DoD's "named command in a documented gate" is open |
 | **Severity** | medium |
 | **Evidence** | `backend/src/services/rateLimiter.redis.service.js` — `INCR_ENTRY_SCRIPT`, executed via `client.eval(...)`. `backend/src/tests/services/rateLimiter.redis.live.test.js:41` — `const liveDescribe = process.env.REDIS_LIVE_TEST === "1" ? describe : describe.skip;`. `rateLimiter.redis.path.test.js` mocks `eval`. Commit message: "Verified against a real Redis, and against a dead one to prove the tests can fail." |
 | **Spec refs** | A-30 · `CLAUDE.md` § Evidence |
@@ -436,7 +442,7 @@ so the next reader does not take them for live surface. Delete `lastError`.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-30 — the comment is corrected (the slug is seeded, and since ADR-102 it is `MENU_SLUGS.ATTACHMENTS`; the reason is that only three roles hold it, no technician), and the recommendation names the seeding step. `routes/attachments.gateRationale.v12.test.ts` asserts the facts the comment rests on. The A-07 promotion is not done here — [record](../MEMORY/records/2026-09-30-correctness-batch.md) |
 | **Severity** | low |
 | **Evidence** | `backend/src/routes/api/attachments.route.js:40-42` — "There is **NO** `attachments` slug in MENU_SLUGS (roleConstants.js). Naming one here would produce an A-07 instance". `backend/src/utils/seedMenuGroups.util.js:36` and `:431` — slug `attachments`, id `a0000000-…-210`, `parentSlug: "mgmt-content"`. |
 | **Spec refs** | A-07 · A-28 |
@@ -466,7 +472,7 @@ worth promoting A-07 out of "unverified".
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-30 (ADR-109 §7, working decision) — author-is-publisher is **403** with the explanation; PUBLISHED/ARCHIVED stays 409. Fail-before: `services/sop.service.test.js` "refuses with 403 when the publisher is the author", `routes/routeGuards.a28.test.js` (real service through the route); `sop.e2e` and the frontend SOP page test updated; `docs/API/10-QMS-API.md` lists both codes; the single-admin tenant is **Q-54** (open) — [record](../MEMORY/records/2026-09-30-correctness-batch.md) |
 | **Severity** | low |
 | **Evidence** | `backend/src/services/sop.service.js` — `if (String(doc.authorId) === String(publisherId)) throw new AppError(409, "SOP … was authored by you …")`. `CLAUDE.md` § Status Codes That Carry Meaning: 403 = "permission failure **inside the caller's own tenant**"; 409 = "invalid state transition". |
 | **Spec refs** | `CLAUDE.md` § Status Codes · A-28 |
@@ -495,7 +501,7 @@ arguably a support incident; it is not recorded as a decision anywhere.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-30 — the Lua script and the memory fallback PRESERVE every other key of the previous entry (contract stated next to the script), and the hard block keeps `revoked`. Fail-before: `services/rateLimiter.revokedFlag.v14.test.ts` (maxAttempts + 2, memory path; 2 of 2 failed before) and the live case "V-14: …" in `rateLimiter.redis.live.test.js` against a real Redis 7 (failed on the old script, passed on the new) — [record](../MEMORY/records/2026-09-30-correctness-batch.md) |
 | **Severity** | low (pre-existing shape, preserved by the rewrite) |
 | **Evidence** | `backend/src/services/rateLimiter.redis.service.js` — `INCR_ENTRY_SCRIPT` writes `{ count, firstAttempt, expiresAt }`, discarding any other key. `recordAuthFailure`: `if (count >= 3 && !entry?.revoked) { await storeSet(tokenKey, { count, revoked: true, firstAttempt }, ttlMs); }`. |
 | **Spec refs** | A-30 |
@@ -521,7 +527,7 @@ consecutive failures and then reads the entry would catch it; the current tests 
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-30 (folded into N-01 = A-323) — one exported predicate, `utils/role.util.ts`, used by auth, rbac, dynamicAccess, socket, this guard and every other site; `guards/superAdminPredicate.n01.guard.test.ts` asserts both spellings resolve identically and fails on a new string comparison — [record](../MEMORY/records/2026-09-30-correctness-batch.md) |
 | **Severity** | low |
 | **Evidence** | `backend/src/routes/api/tenantHierarchy.route.js` — `if (req.user?.role?.name === ROLE_NAMES.SUPER_ADMIN) return next();` where `ROLE_NAMES.SUPER_ADMIN === "SUPERADMIN"`. Every other gate in the codebase accepts both spellings: `auth.middleware.js:133-136`, `dynamicAccess.middleware.js:52`, `rbac.middleware.js:47`, `config/socket.js` `isSuperAdminRole`. |
 | **Spec refs** | A-01 |
@@ -571,7 +577,7 @@ socket client must use `auth`, not `query`.
 
 | | |
 |---|---|
-| **Status** | TODO |
+| **Status** | **DONE** 2026-09-30 — `SIGNATURE_ALGORITHM` is removed (decided over honouring it: see the record); signing and verification share one constant pair (RS256 / sha256), and any other value set refuses the service at load. `lastError` was already gone. `services/eSignature.algorithmLabel.v17.test.ts` — [record](../MEMORY/records/2026-09-30-correctness-batch.md) |
 | **Severity** | low |
 | **Evidence** | `backend/src/services/eSignature.service.js:24` — `SIGNATURE_ALGORITHM = process.env.SIGNATURE_ALGORITHM \|\| "RS256"` is stored on every record and bound into the canonical payload, but signing is `crypto.sign("sha256", …)` and verification is `crypto.verify("sha256", …)` — both hardcoded. Setting `SIGNATURE_ALGORITHM=RS512` relabels records without changing a byte of the algorithm. `:25` — `SIGNATURE_KEY_SIZE` is read by `generateKeyPair` only. `backend/src/utils/jwt.util.js:252` — `const lastError = null` never read. |
 | **Spec refs** | ADR-040 |

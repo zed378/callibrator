@@ -33,6 +33,7 @@
  */
 
 import { env } from "../config/env";
+import { sql } from "./sql.util";
 
 /** The physical objects that carry a control. */
 export type ExpectedObjectKind = "trigger" | "index" | "constraint";
@@ -149,6 +150,25 @@ const EXPECTED_OBJECTS: readonly ExpectedObject[] = Object.freeze([
     name: "stock_adjustments_reason_not_blank",
     why: "P6-09: every stock adjustment names a reason (migration 0059)",
   }),
+  // Q-51 (migration 0105): a row names exactly one actor, a user or an API key.
+  Object.freeze({
+    kind: "constraint",
+    table: "calibration_records",
+    name: "calibration_records_actor_exactly_one",
+    why: "Q-51: a calibration record names exactly one of performed_by / api_key_id (migration 0105)",
+  }),
+  Object.freeze({
+    kind: "constraint",
+    table: "stock_adjustments",
+    name: "stock_adjustments_actor_exactly_one",
+    why: "Q-51: a stock adjustment names exactly one of adjusted_by / api_key_id (migration 0105)",
+  }),
+  Object.freeze({
+    kind: "constraint",
+    table: "stock_transfers",
+    name: "stock_transfers_requester_exactly_one",
+    why: "Q-51: a stock transfer names exactly one requester, requested_by or api_key_id (migration 0105)",
+  }),
   // 0063 skips (by design) when `users` is absent; a skip that happened must
   // not pass silently, because sign-in assumes one account per identifier.
   Object.freeze({
@@ -162,6 +182,18 @@ const EXPECTED_OBJECTS: readonly ExpectedObject[] = Object.freeze([
     table: "users",
     name: "users_username_lower_unique",
     why: "D-06 / ADR-063: one account per username, whatever its case (migration 0063)",
+  }),
+  Object.freeze({
+    kind: "trigger",
+    table: "audit_logs",
+    name: "audit_logs_append_only",
+    why: "Q-34 / ADR-095: audit rows are never deleted, only masked (migration 0091)",
+  }),
+  Object.freeze({
+    kind: "trigger",
+    table: "audit_logs",
+    name: "audit_logs_no_truncate",
+    why: "Q-34 / ADR-095: the audit trail cannot be truncated (migration 0091)",
   }),
 ]);
 
@@ -186,34 +218,23 @@ const isVirtual = (attribute: SchemaModelAttribute): boolean => attribute.type?.
  * @param {object} sequelize - the Sequelize instance whose models to check
  * @returns {Promise<{problems: string[], notes: string[], tables: number, columns: number, objects: number}>}
  */
+// P9-07: every catalog read goes through the bind-only helper — the same query() calls ({ type: "SELECT" }).
 const verifySchema = async (sequelize: SchemaSequelize): Promise<SchemaVerifyResult> => {
-  const columnRows = (await sequelize.query(
-    `SELECT table_name, column_name, is_nullable, column_default, is_identity, is_generated
+  const columnRows = await sql<ColumnRow>(sequelize, `SELECT table_name, column_name, is_nullable, column_default, is_identity, is_generated
        FROM information_schema.columns
-      WHERE table_schema = current_schema()`,
-    { type: "SELECT" },
-  )) as ColumnRow[];
-  const triggerRows = (await sequelize.query(
-    `SELECT c.relname AS table_name, t.tgname AS name
+      WHERE table_schema = current_schema()`);
+  const triggerRows = await sql<NamedObjectRow>(sequelize, `SELECT c.relname AS table_name, t.tgname AS name
        FROM pg_trigger t
        JOIN pg_class c ON c.oid = t.tgrelid
        JOIN pg_namespace n ON n.oid = c.relnamespace
-      WHERE n.nspname = current_schema() AND NOT t.tgisinternal`,
-    { type: "SELECT" },
-  )) as NamedObjectRow[];
-  const indexRows = (await sequelize.query(
-    `SELECT tablename AS table_name, indexname AS name
-       FROM pg_indexes WHERE schemaname = current_schema()`,
-    { type: "SELECT" },
-  )) as NamedObjectRow[];
-  const constraintRows = (await sequelize.query(
-    `SELECT c.relname AS table_name, k.conname AS name
+      WHERE n.nspname = current_schema() AND NOT t.tgisinternal`);
+  const indexRows = await sql<NamedObjectRow>(sequelize, `SELECT tablename AS table_name, indexname AS name
+       FROM pg_indexes WHERE schemaname = current_schema()`);
+  const constraintRows = await sql<NamedObjectRow>(sequelize, `SELECT c.relname AS table_name, k.conname AS name
        FROM pg_constraint k
        JOIN pg_class c ON c.oid = k.conrelid
        JOIN pg_namespace n ON n.oid = c.relnamespace
-      WHERE n.nspname = current_schema()`,
-    { type: "SELECT" },
-  )) as NamedObjectRow[];
+      WHERE n.nspname = current_schema()`);
 
   /** table -> column -> row */
   const actual = new Map<string, Map<string, ColumnRow>>();
@@ -282,12 +303,9 @@ const verifySchema = async (sequelize: SchemaSequelize): Promise<SchemaVerifyRes
   // A-242 / ADR-029: no table uses row level security. RLS left ENABLED with
   // no policy denies every row to any role that is not a superuser — the
   // application role included — while the owner-superuser never notices.
-  const rlsRows = (await sequelize.query(
-    `SELECT c.relname AS table_name
+  const rlsRows = await sql<TableRow>(sequelize, `SELECT c.relname AS table_name
        FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-      WHERE n.nspname = current_schema() AND c.relkind = 'r' AND c.relrowsecurity`,
-    { type: "SELECT" },
-  )) as TableRow[];
+      WHERE n.nspname = current_schema() AND c.relkind = 'r' AND c.relrowsecurity`);
   for (const row of rlsRows) {
     problems.push(
       `row level security is enabled on ${row.table_name} — ADR-029 removed RLS, and with no policy it ` +

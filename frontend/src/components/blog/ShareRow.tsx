@@ -1,9 +1,18 @@
 "use client";
-
+/**
+ * Copy the article's link, or open the native share sheet. P10-13: the labels
+ * come from the server page (the request's language); no dictionary ships.
+ */
 import React, { useState } from "react";
-import { Check, Link2, Share2 } from "lucide-react";
+import { Check, Link2, Share2 } from "@/components/icons/static";
 
-export default function ShareRow({ title }: { title: string }) {
+export interface ShareRowLabels {
+  copy: string;
+  copied: string;
+  share: string;
+}
+
+export default function ShareRow({ title, labels }: { title: string; labels: ShareRowLabels }) {
   const [copied, setCopied] = useState(false);
 
   const copy = async () => {
@@ -28,23 +37,21 @@ export default function ShareRow({ title }: { title: string }) {
     }
   };
 
-  const btn = "inline-flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground";
-
   return (
-    <div className="flex items-center gap-2">
-      <button type="button" onClick={copy} className={btn}>
+    <div className="flex flex-wrap items-center gap-2">
+      <button type="button" onClick={copy} className="pub-btn pub-btn-secondary">
         {copied ? (
           <>
-            <Check className="h-4 w-4 text-success" /> Copied
+            <Check className="h-4 w-4 text-pub-success" aria-hidden="true" /> {labels.copied}
           </>
         ) : (
           <>
-            <Link2 className="h-4 w-4" /> Copy link
+            <Link2 className="h-4 w-4" aria-hidden="true" /> {labels.copy}
           </>
         )}
       </button>
-      <button type="button" onClick={share} className={btn}>
-        <Share2 className="h-4 w-4" /> Share
+      <button type="button" onClick={share} className="pub-btn pub-btn-secondary">
+        <Share2 className="h-4 w-4" aria-hidden="true" /> {labels.share}
       </button>
     </div>
   );

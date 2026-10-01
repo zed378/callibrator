@@ -1,5 +1,5 @@
 // src/app/dashboard/kanban/[projectId]/hooks/useBoard.ts
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { getSocket, joinBoardRoom } from "@/lib/socket";
 import { useKanbanStore } from "@/stores/kanbanStore";
 import {
@@ -7,11 +7,25 @@ import {
   KanbanCard,
   KanbanColumn,
   KanbanSprint,
+  CardRelation,
   CreateCardInput,
   UpdateCardInput,
   RelationType,
   AccessLevel,
 } from "@/api/services/kanban.service";
+
+/**
+ * `kanban:card:relations` as backend/src/services/kanban.service.js emits it
+ * (addRelation / removeRelation): the SOURCE card's id and its relations after
+ * the change. The target card's mirror row changed too, but gets no event of
+ * its own.
+ */
+export interface CardRelationsEvent {
+  cardId: string;
+  relations: CardRelation[];
+}
+
+export type CardRelationsListener = (event: CardRelationsEvent) => void;
 
 export function useBoard(projectId: string) {
   const {
@@ -26,10 +40,28 @@ export function useBoard(projectId: string) {
     setColumns,
     upsertSprint,
     removeSprint,
+    setBoard,
     setError,
   } = useKanbanStore();
 
+  // Who wants `kanban:card:relations` (the open CardModal). The relations of a
+  // card live in the modal's own state, not in the board, so the event is
+  // fanned out to subscribers instead of patched into the store.
+  const relationListeners = useRef(new Set<CardRelationsListener>());
+  const subscribeCardRelations = useCallback(
+    (listener: CardRelationsListener) => {
+      const listeners = relationListeners.current;
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    [],
+  );
+
   const [draggingCardId, setDraggingCardId] = useState<string | null>(null);
+  // WCAG 2.1.1 / 4.1.3: what a keyboard move did, for the page's live region.
+  const [announcement, setAnnouncement] = useState("");
 
   const canEdit =
     board?.myAccess === "editor" || board?.myAccess === "owner";
@@ -74,6 +106,19 @@ export function useBoard(projectId: string) {
       const onSprintDeleted = (p: { sprintId: string }) =>
         removeSprint(p.sprintId);
       const onMigrated = () => reload();
+      // F-19: labels, project metadata and card relations. Every label event
+      // reloads: a renamed or deleted label is also embedded in the cards
+      // that carry it (the join rows cascade on delete). A project update
+      // (rename, members) reloads rather than applying the payload, because
+      // the payload's myAccess is the ACTOR's, not this viewer's.
+      const onLabels = () => reload();
+      const onProjectUpdated = () => reload();
+      const onProjectDeleted = () => {
+        setBoard(null);
+        setError("This board was deleted.");
+      };
+      const onCardRelations = (p: CardRelationsEvent) =>
+        relationListeners.current.forEach((listener) => listener(p));
 
       socket.on("kanban:card:created", onCardCreated);
       socket.on("kanban:card:updated", onCardUpdated);
@@ -87,6 +132,12 @@ export function useBoard(projectId: string) {
       socket.on("kanban:sprint:updated", onSprintUpdated);
       socket.on("kanban:sprint:deleted", onSprintDeleted);
       socket.on("kanban:cards:migrated", onMigrated);
+      socket.on("kanban:label:created", onLabels);
+      socket.on("kanban:label:updated", onLabels);
+      socket.on("kanban:label:deleted", onLabels);
+      socket.on("kanban:project:updated", onProjectUpdated);
+      socket.on("kanban:project:deleted", onProjectDeleted);
+      socket.on("kanban:card:relations", onCardRelations);
 
       cleanup = () => {
         leaveRoom();
@@ -102,6 +153,12 @@ export function useBoard(projectId: string) {
         socket.off("kanban:sprint:updated", onSprintUpdated);
         socket.off("kanban:sprint:deleted", onSprintDeleted);
         socket.off("kanban:cards:migrated", onMigrated);
+        socket.off("kanban:label:created", onLabels);
+        socket.off("kanban:label:updated", onLabels);
+        socket.off("kanban:label:deleted", onLabels);
+        socket.off("kanban:project:updated", onProjectUpdated);
+        socket.off("kanban:project:deleted", onProjectDeleted);
+        socket.off("kanban:card:relations", onCardRelations);
       };
     })();
 
@@ -116,6 +173,7 @@ export function useBoard(projectId: string) {
     removeCard,
     upsertSprint,
     removeSprint,
+    setBoard,
     setError,
   ]);
 
@@ -139,11 +197,12 @@ export function useBoard(projectId: string) {
     removeCard(cardId);
   };
 
+  /** Move a card; resolves true when the server accepted it. */
   const moveCard = async (
     cardId: string,
     columnId: string,
     position: number,
-  ) => {
+  ): Promise<boolean> => {
     // Optimistic local move so the UI feels instant.
     if (board) {
       const card = board.cards.find((c) => c.id === cardId);
@@ -155,10 +214,31 @@ export function useBoard(projectId: string) {
         position,
       });
       upsertCard(updated);
+      return true;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to move card");
-      reload();
+      const message = err instanceof Error ? err.message : "Failed to move card";
+      // Reload first: fetchBoard clears the error as it starts, so an error
+      // set before the reload was wiped before anyone could read it.
+      await reload();
+      setError(message);
+      return false;
     }
+  };
+
+  /**
+   * WCAG 2.1.1 — the keyboard path to what drag and drop does: move a card to
+   * the end of another column, then announce the result (the page renders
+   * `announcement` in a polite live region; a failure shows the error alert).
+   */
+  const moveCardToColumn = async (cardId: string, columnId: string) => {
+    if (!board) return;
+    const card = board.cards.find((c) => c.id === cardId);
+    const column = board.columns.find((c) => c.id === columnId);
+    if (!card || !column || card.columnId === columnId) return;
+    const position = board.cards.filter((c) => c.columnId === columnId && c.id !== cardId).length;
+    setAnnouncement("");
+    const moved = await moveCard(cardId, columnId, position);
+    if (moved) setAnnouncement(`Moved "${card.title}" to ${column.name}.`);
   };
 
   // ---- Drag & drop (native HTML5) ----
@@ -284,6 +364,8 @@ export function useBoard(projectId: string) {
     updateCard,
     deleteCard,
     moveCard,
+    moveCardToColumn,
+    announcement,
     // dnd
     draggingCardId,
     onCardDragStart,
@@ -305,6 +387,7 @@ export function useBoard(projectId: string) {
     // relations
     addRelation,
     removeRelation,
+    subscribeCardRelations,
     // members
     addMember,
     updateMember,

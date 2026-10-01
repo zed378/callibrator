@@ -12,7 +12,7 @@ Derived from the working tree on **2026-09-27**. Several route files were being 
 
 **API-key authorization is deny-by-default (A-03).** A key that authenticates is *not* thereby allowed anywhere. It reaches a controller only if a gate in the chain read its scopes and allowed it — which sets `req.apiKeyAuthorized`. A key that arrives at a wrapped controller without that flag gets **403** `This API key is not authorized for this endpoint` (`backend/src/utils/controllerWrapper.util.js:67–73`, `apiKeyBlocked`).
 
-**Of 407 routes, 179 can be reached by some API key; only 139 by a key you can issue today.** The other 40 gate on `calibration`, `certificate`, `maintenance` or `reports`, and `apiKey.service.js#assertScopes` refuses those resources at creation (§ Scopes, V-02). Calibration devices, calibration records, certificates, maintenance and reports are therefore **not integrable by a new API key**. That is the largest gap in this surface and it is open.
+**Of 407 routes, 179 can be reached by some API key** (the 2026-09-27 count). ~~Only 139 by a key you can issue today~~ — **corrected 2026-09-30: V-02 is closed by A-311.** The scope allow-list is now `API_KEY_SCOPE_RESOURCES` (`packages/contracts/src/apiKeyScopes.ts`), which `apiKey.service.ts` reads and which includes `calibration`, `certificate`, `maintenance`, `notifications` and `reports`; the guard `apiKeyScopeCoverage.a311.guard.test.ts` fails if a gated resource is not issuable ([`MEMORY/records/2026-09-30-a311-api-key-scopes.md`](../../MEMORY/records/2026-09-30-a311-api-key-scopes.md)). Calibration devices, records, certificates, maintenance and reports **are** integrable by a new key with the matching scope. The 179/139 split below is the 2026-09-27 state and has not been re-derived.
 
 **Keys minted before 2026-09-23 were never re-validated.** A key holding `*` still authorizes every `dynamicAccess` route and SCIM (§ Residual Risk).
 
@@ -95,7 +95,7 @@ const ALLOWED_RESOURCES = new Set(Object.values(MENU_SLUGS).map(...));   // apiK
 | `reports` | **no** | reports |
 | every other gated slug | yes | — |
 
-This is **V-02** in [`../../TASKS/REVIEW-2026-09-23-REMEDIATION.md`](../../TASKS/REVIEW-2026-09-23-REMEDIATION.md), still open in code: the allow-list is built from `MENU_SLUGS`, not from the slugs the gates use. Since V-02 was written `MENU_SLUGS` gained `users`, `vendors`, `billing` and `audit` (Q-20, ADR-056), which closed those four; the four above remain.
+> **Superseded 2026-09-30 (A-311).** The table above is the 2026-09-27 state. **V-02** in [`../../TASKS/REVIEW-2026-09-23-REMEDIATION.md`](../../TASKS/REVIEW-2026-09-23-REMEDIATION.md) is **closed**: the allow-list is no longer built from `MENU_SLUGS` but from `API_KEY_SCOPE_RESOURCES`, and all four slugs above are issuable ([`MEMORY/records/2026-09-30-a311-api-key-scopes.md`](../../MEMORY/records/2026-09-30-a311-api-key-scopes.md)). The history: since V-02 was written `MENU_SLUGS` had gained `users`, `vendors`, `billing` and `audit` (Q-20, ADR-056), which closed those four first.
 
 `scim` **is** issuable. `scim:write` is what an IdP needs (A-250).
 
@@ -105,7 +105,7 @@ The `DOC-01` card asked this document to list `Management`, `Maintenance`, `Fina
 
 What A-07 left open, and is still open:
 
-- **V-02**, above — four seeded, gated slugs that no new key can carry.
+- ~~**V-02**, above — four seeded, gated slugs that no new key can carry.~~ Closed 2026-09-30 by A-311.
 - **`calibration-scheduler`** is a seeded menu that gates nothing server-side; `calibrationScheduler.route.js` gates on `maintenance`.
 - **P9-19** — typing the `dynamicAccess` argument as the slug union — not done.
 
@@ -193,7 +193,7 @@ The committed equivalents are `src/tests/routes/routePermissionGuard.p604.test.j
 
 | Unwrapped | Route | Can a key reach it? |
 |---|---|---|
-| `predictiveMaintenance.controller.js` — all three handlers | `dynamicAccess("calibration", …)` | only with a `calibration` scope, which cannot be issued (V-02) |
+| `predictiveMaintenance.controller.js` — all three handlers | `dynamicAccess("calibration", …)` | only with a `calibration` scope — issuable since A-311 (2026-09-30), so a key **can** reach it with that scope |
 | `health.controller.js` — whole file | `routes/internal/health.route.js`: public probes, and `/api/v1/health` behind `auth, denyApiKey, superAdminOnly` | no |
 | `iot.controller.js#ingestHttp` (`:14`) — the rest of the file is wrapped | `POST /iot/ingest`, public, device token | not by API key |
 | `billing.controller.js#handleStripeWebhook` (`:40`) | `POST /billing/webhook`, public, Stripe signature | not by API key |

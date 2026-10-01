@@ -23,12 +23,29 @@ import {
   type SopStatus,
 } from "@/api/services/sop.service";
 import { useToastStore } from "@/stores/toastStore";
+import { usePermissions } from "@/hooks/usePermissions";
 
 const PAGE_SIZE = 10;
 
 const fmt = (v?: string | null) => (v ? new Date(v).toLocaleDateString() : "—");
 
+// sop.service.js PUBLISHABLE_STATES: a DRAFT or UNDER_REVIEW document can be
+// released; PUBLISHED and ARCHIVED cannot.
+const PUBLISHABLE: readonly SopStatus[] = ["DRAFT", "UNDER_REVIEW"];
+
+// F-19: an acknowledgement row exists only once a document that requires
+// training is published (sop.service.js publishDocument → assignTraining);
+// anything else answers 404 "Training acknowledgment not found". So "I have
+// read this" is offered only on a PUBLISHED document that requires training —
+// never on a draft or one still UNDER_REVIEW.
+const canAcknowledge = (doc: SopDocument) =>
+  doc.status === "PUBLISHED" && doc.requiresTraining === true;
+
 export default function SopPage() {
+  // ADR-102: creating and publishing are gated on `sop` write (sop.route.js);
+  // acknowledging training and opening a document stay for every reader.
+  const { canWrite } = usePermissions();
+  const mayWrite = canWrite("sop");
   const addToast = useToastStore((s) => s.addToast);
 
   const [docs, setDocs] = useState<SopDocument[]>([]);
@@ -193,7 +210,7 @@ export default function SopPage() {
                 <ExternalLink className="h-4 w-4" />
               </Button>
             )}
-            {doc.status === "DRAFT" ? (
+            {mayWrite && PUBLISHABLE.includes(doc.status) && (
               <Button
                 size="sm"
                 variant="outline"
@@ -202,7 +219,8 @@ export default function SopPage() {
               >
                 Publish
               </Button>
-            ) : (
+            )}
+            {canAcknowledge(doc) && (
               <Button
                 size="sm"
                 variant="ghost"
@@ -232,33 +250,41 @@ export default function SopPage() {
               training assigns it to everyone in the tenant.
             </p>
           </div>
-          <Button
-            onClick={() => setIsCreateOpen(true)}
-            leftIcon={<Plus className="h-4 w-4" />}
-          >
-            New Document
-          </Button>
+          {mayWrite && (
+            <Button
+              onClick={() => setIsCreateOpen(true)}
+              leftIcon={<Plus className="h-4 w-4" />}
+            >
+              New Document
+            </Button>
+          )}
         </div>
 
         {error && <Alert variant="error">{error}</Alert>}
 
         <Card className="bg-card/50 backdrop-blur-sm border-border">
           <CardContent className="pt-6">
-            <FormField label="Filter by status">
-              <div className="flex gap-2">
-                <Select
-                  value={statusFilter}
-                  onChange={(v) => {
-                    setStatusFilter(v);
-                    setPage(1);
-                  }}
-                  placeholder="All statuses"
-                  options={(["DRAFT", "PUBLISHED"] as SopStatus[]).map((s) => ({
-                    value: s,
-                    label: s,
-                  }))}
-                />
-                {statusFilter && (
+            {/* FormField labels its single child — the Select, not a
+                wrapper <div> (a label on a div left the filter unnamed). */}
+            <div className="flex gap-2 items-start">
+              <div className="flex-1">
+                <FormField label="Filter by status">
+                  <Select
+                    value={statusFilter}
+                    onChange={(v) => {
+                      setStatusFilter(v);
+                      setPage(1);
+                    }}
+                    placeholder="All statuses"
+                    options={(["DRAFT", "PUBLISHED"] as SopStatus[]).map((s) => ({
+                      value: s,
+                      label: s,
+                    }))}
+                  />
+                </FormField>
+              </div>
+              {statusFilter && (
+                <div className="pt-7">
                   <Button
                     variant="ghost"
                     onClick={() => {
@@ -268,9 +294,9 @@ export default function SopPage() {
                   >
                     Clear
                   </Button>
-                )}
-              </div>
-            </FormField>
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
 
@@ -278,7 +304,7 @@ export default function SopPage() {
           columns={columns}
           data={docs as unknown as Record<string, unknown>[]}
           isLoading={isLoading}
-          emptyMessage="No SOP documents yet."
+          emptyMessage={error ? "SOP documents could not be loaded." : "No SOP documents yet."}
         />
 
         {total > 0 && (

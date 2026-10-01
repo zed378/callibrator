@@ -1,18 +1,15 @@
 /**
- * The model map (P9-10, MEMORY/specs/P9-10-model-typing-pattern.md item 7).
+ * The model map (P9-10, MEMORY/specs/P9-10-model-typing-pattern.md item 7; ADR-087
+ * Amendments 7–11).
  *
- * What `require("../models")` holds under each model name, as a type. It
- * lives HERE, not in the barrel, until the barrel converts in the same merge
- * as the last model batch: a type imported from the `.js` barrel is inferred
- * loosely under `allowJs`, and the typecheck would accept it silently.
- *
- * A CONVERTED model's entry is its factory's return type — the class itself,
- * with every declared attribute. An UNCONVERTED model's entry is
- * `ModelStatic<Model>`: honest (it is a Sequelize model), untyped in its
- * attributes, and replaced by the real entry in the batch that converts it.
- * Only models a converted file refers to are listed; each batch adds its own.
+ * Every one of the 71 models, as `require("../models")` holds it: each entry is
+ * its factory's return type — the class, with every declared attribute. The
+ * barrel (`models/index.ts`) is checked against this map, so the two cannot drift.
+ * Model files take their association types from here (`ModelInstance<"X">`), not
+ * from the barrel, which would be a cycle.
  */
-import type { Model, ModelStatic } from "sequelize";
+import type defineAccessRequest from "../models/accessRequest.model";
+import type defineWebauthnCredential from "../models/webauthnCredential.model";
 import type defineKanbanCard from "../models/kanbanCard.model";
 import type defineKanbanCardAssignee from "../models/kanbanCardAssignee.model";
 import type defineKanbanCardLabel from "../models/kanbanCardLabel.model";
@@ -59,9 +56,32 @@ import type defineESignatureRecord from "../models/eSignatureRecord.model";
 import type defineSignatureRecord from "../models/signatureRecord.model";
 import type defineSignatureWorkflow from "../models/signatureWorkflow.model";
 import type defineSignatureWorkflowStep from "../models/signatureWorkflowStep.model";
-
-/** A model not yet converted: a Sequelize model whose attributes are not typed yet. */
-type Unconverted = ModelStatic<Model>;
+import type defineCategory from "../models/category.model";
+import type defineConsentRecord from "../models/consentRecord.model";
+import type defineDsarRequest from "../models/dsarRequest.model";
+import type definePost from "../models/post.model";
+import type definePostCategory from "../models/postCategory.model";
+import type defineTicket from "../models/ticket.model";
+import type defineTicketComment from "../models/ticketComment.model";
+import type defineTicketCounter from "../models/ticketCounter.model";
+import type defineCustomDomain from "../models/customDomain.model";
+import type defineScimGroup from "../models/scimGroup.model";
+import type defineTenantBackup from "../models/tenantBackup.model";
+import type defineWebhook from "../models/webhook.model";
+import type defineWebhookDelivery from "../models/webhookDelivery.model";
+import type modelsBarrel from "../models";
+import type defineApiKey from "../models/apiKey.model";
+import type defineAuditLog from "../models/auditLog.model";
+import type defineMenuGroup from "../models/menuGroup.model";
+import type defineRole from "../models/role.model";
+import type defineRoleMenuPermission from "../models/roleMenuPermission.model";
+import type defineSession from "../models/session.model";
+import type defineTenant from "../models/tenant.model";
+import type defineTenantHierarchy from "../models/tenantHierarchy.model";
+import type defineTenantKey from "../models/tenantKey.model";
+import type defineTenantSettings from "../models/tenantSettings.model";
+import type defineUser from "../models/user.model";
+import type defineUserMenuPermission from "../models/userMenuPermission.model";
 
 export interface Models {
   // Batch 1 — Kanban (ADR-087 Amendment 7)
@@ -116,10 +136,38 @@ export interface Models {
   SignatureRecord: ReturnType<typeof defineSignatureRecord>;
   SignatureWorkflow: ReturnType<typeof defineSignatureWorkflow>;
   SignatureWorkflowStep: ReturnType<typeof defineSignatureWorkflowStep>;
-  // Referred to by a converted model, not converted yet
-  Role: Unconverted;
-  Tenant: Unconverted;
-  User: Unconverted;
+  // Batch 7 — content, tickets, GDPR (ADR-087 Amendment 10)
+  Category: ReturnType<typeof defineCategory>;
+  ConsentRecord: ReturnType<typeof defineConsentRecord>;
+  DsarRequest: ReturnType<typeof defineDsarRequest>;
+  Post: ReturnType<typeof definePost>;
+  PostCategory: ReturnType<typeof definePostCategory>;
+  Ticket: ReturnType<typeof defineTicket>;
+  TicketComment: ReturnType<typeof defineTicketComment>;
+  TicketCounter: ReturnType<typeof defineTicketCounter>;
+  // Batch 8 — platform (ADR-087 Amendment 10)
+  CustomDomain: ReturnType<typeof defineCustomDomain>;
+  ScimGroup: ReturnType<typeof defineScimGroup>;
+  TenantBackup: ReturnType<typeof defineTenantBackup>;
+  Webhook: ReturnType<typeof defineWebhook>;
+  WebhookDelivery: ReturnType<typeof defineWebhookDelivery>;
+  // Batch 9 — tenant-isolation-critical (ADR-087 Amendment 11)
+  ApiKey: ReturnType<typeof defineApiKey>;
+  AuditLog: ReturnType<typeof defineAuditLog>;
+  MenuGroup: ReturnType<typeof defineMenuGroup>;
+  Role: ReturnType<typeof defineRole>;
+  RoleMenuPermission: ReturnType<typeof defineRoleMenuPermission>;
+  Session: ReturnType<typeof defineSession>;
+  Tenant: ReturnType<typeof defineTenant>;
+  TenantHierarchy: ReturnType<typeof defineTenantHierarchy>;
+  TenantKey: ReturnType<typeof defineTenantKey>;
+  TenantSettings: ReturnType<typeof defineTenantSettings>;
+  User: ReturnType<typeof defineUser>;
+  UserMenuPermission: ReturnType<typeof defineUserMenuPermission>;
+  // P10-05 (ADR-098 §6) — born TypeScript: the access-request queue
+  AccessRequest: ReturnType<typeof defineAccessRequest>;
+  // ADR-108 Amendment 1 — born TypeScript: a user's passkeys
+  WebauthnCredential: ReturnType<typeof defineWebauthnCredential>;
 }
 
 /** An instance of the model registered under `K`. */
@@ -137,3 +185,6 @@ declare const defaultScopedBrand: unique symbol;
 export interface DefaultScoped {
   readonly [defaultScopedBrand]: true;
 }
+
+/** What `require("../models")` returns: the shared Sequelize instance with every model and alias. */
+export type ModelsBarrel = typeof modelsBarrel;

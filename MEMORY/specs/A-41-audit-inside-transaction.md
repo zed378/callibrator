@@ -241,3 +241,36 @@ The 25 mutations above were the first set. Later cards (A-77, A-133, W-04, ADR-0
 **The middleware's remaining role: none.** `auditLog.middleware.js#recordAudit` and `#withAudit` have **no caller** in `routes/` or `index.js` since A-77 moved user create/update/delete into `user.service.js`. Nothing compliance-bearing depends on them. They are kept only because P9-19 (Phase 9) names the file; deleting them is that card's call.
 
 **Not covered — mutating services that write no audit row in their own file** (2026-09-28): `ai`, `apiKey`, `content`, `featureFlag`, `finance`, `kanban`, `meteredBilling`, `notification`, `oidcProvider`, `risk`, `supplierScorecard`, `ticket`, `vendor`, `warehouse`, `webauthn` (plus infrastructure services whose writes are not user mutations: `kms`, `session`, `rateLimiter.redis`, `migration`, `storageMigration`, `stripeWebhook`, `signingKeyWrap`, `clamAv`, `certificatePdf`, `mfa`, `sso` — several of these are audited by their caller). CLAUDE.md says **every** mutation; whether each of the first group must be, or is out of the compliance scope, is recorded as open in P6-11, not decided here. `apiKey` (credential minting) is the most consequential gap.
+
+## Addendum 2026-09-30 — the fifteen, covered (P6-11, ADR-109 §2)
+
+The owner's working decision (ADR-109 §2) put all fifteen services above in scope. As of 2026-09-30
+([record](../records/2026-09-30-p6-11-audit-coverage.md)):
+
+- **Audited here, inside the mutation's transaction:** `kanban` (all 23 writes), `ticket` (create,
+  update, assign, delete, comment), `content` (post/category create, update, delete),
+  `featureFlag` (set, reset, initialize — a PLATFORM row and a tenant row, as A-165), `warehouse`
+  (warehouse and storage-location create, update, delete; `deleteWarehouse` now soft-deletes inside
+  the transaction), `meteredBilling` (usage-alert create, delete).
+- **Already audited by other lanes:** `vendor`, `risk`, `supplierScorecard`, `finance`, `apiKey`
+  (A-278), `oidcProvider`, `webauthn` (through `auth.service#auditCredentialChange`).
+- **Allow-listed with a reason, not audited** (owner to confirm): `notification` (a derived message
+  or the user's own inbox state), `ai.ingestDocument` (a derived index, CLI-only),
+  `meteredBilling.trackUsage` (metering counters), `enforceQuotas`/`resetUsage` (no production
+  caller), `apiKey.verifyApiKey` and `webauthn.verifyLogin` (steps of an audited login).
+
+**Pinned by `src/tests/guards/auditCoverage.p611.test.ts`:** every exported service entry point that
+writes must reach `logAction` (or a named cross-file audit helper), or stand on its `ALLOWED` list with
+a reason. A new unaudited mutation fails the build, and so does a stale entry. The list also names 19
+**KNOWN GAP** entry points outside the fifteen (GDPR consent and DSAR, SCIM groups,
+`sop.createDocument`, stock, storage config, `auth.registerUser`, `billing.getSubscription`,
+`sso.provisionUser`, `workflow.startWorkflow`). They are not decided here.
+
+**Phase 2, same day (ADR-109 §2 Amendment).** The known gaps are closed. GDPR consent, restriction,
+preferences and DSAR, SCIM groups, `sop.createDocument`, storage configuration,
+`auth.registerUser`, `sso.provisionUser` and `billing.getSubscription` (a read that creates) now write
+their row in the transaction. None of those rows carries personal data, preference values, free-text
+reasons or credentials. `workflow.startWorkflow` is audited by its callers, which record
+`workflowInstanceId`, and that is pinned. Stock-take (`createOpname`, `updateOpnameStatus`) was audited
+by the services helper the same day. No known gap remains. [Record](../records/2026-09-30-p6-11-audit-coverage.md) § Phase 2.
+

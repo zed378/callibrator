@@ -2,7 +2,7 @@
  * E2E Tests: Warehouse + Storage Location Module (HTTP)
  *
  * Verifies /api/v1/warehouses against the running API server with a real
- * Bearer token obtained once via POST /auth/login (sys@mail.com / 123123).
+ * Bearer token obtained once via POST /auth/login (sys@mail.com / E2E_OPERATOR_PASSWORD, see setup.js).
  *
  * Covered routes (from warehouse.route.js):
  *   GET    /warehouses
@@ -27,6 +27,8 @@ const {
   API_BASE,
   defaultHeaders,
 } = require("../setup");
+// P10-16 (ADR-099): no default operator password — set E2E_OPERATOR_PASSWORD (see setup.js).
+const { OPERATOR_PASSWORD } = require("../setup");
 
 // setup.js has no PATCH helper; these modules use PATCH for updates.
 async function httpPatch(path, data = {}, headers = {}) {
@@ -43,7 +45,7 @@ async function httpPatch(path, data = {}, headers = {}) {
   return { status: resp.status, body };
 }
 
-const ADMIN = { user: "sys@mail.com", password: "123123" };
+const ADMIN = { user: "sys@mail.com", password: OPERATOR_PASSWORD };
 
 describe("E2E Warehouse Module (HTTP)", () => {
   let token;

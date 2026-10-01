@@ -18,6 +18,7 @@ import {
 import { Download, Play, RefreshCw } from "lucide-react";
 import { batchJobService, type BatchJob } from "@/api/services/batchJob.service";
 import { useToastStore } from "@/stores/toastStore";
+import { usePermissions } from "@/hooks/usePermissions";
 
 const PAGE_SIZE = 10;
 const POLL_MS = 5000;
@@ -42,6 +43,9 @@ const statusVariant = (
 const fmt = (v?: string) => (v ? new Date(v).toLocaleString() : "—");
 
 export default function BatchJobsPage() {
+  // ADR-102: queuing a job is gated on `batch-jobs` write (batchJobs.route.js).
+  const { canWrite } = usePermissions();
+  const mayWrite = canWrite("batch-jobs");
   const addToast = useToastStore((s) => s.addToast);
 
   const [jobs, setJobs] = useState<BatchJob[]>([]);
@@ -193,13 +197,16 @@ export default function BatchJobsPage() {
             </Button>
           );
         }
-        if (job.errorMessage) {
+        // A BatchJob row names its failure `errorDetails`
+        // (batchJob.model.ts); `errorMessage` is kept as a fallback. Read
+        // only as errorMessage, a failed job never showed why.
+        const errorText =
+          (typeof r.errorDetails === "string" ? r.errorDetails : null) ??
+          job.errorMessage;
+        if (errorText) {
           return (
-            <span
-              className="text-xs text-destructive"
-              title={job.errorMessage}
-            >
-              {job.errorMessage.slice(0, 40)}
+            <span className="text-xs text-destructive" title={errorText}>
+              {errorText.slice(0, 40)}
             </span>
           );
         }
@@ -231,12 +238,14 @@ export default function BatchJobsPage() {
             >
               Refresh
             </Button>
-            <Button
-              onClick={() => setIsTestOpen(true)}
-              leftIcon={<Play className="h-4 w-4" />}
-            >
-              Queue Test Job
-            </Button>
+            {mayWrite && (
+              <Button
+                onClick={() => setIsTestOpen(true)}
+                leftIcon={<Play className="h-4 w-4" />}
+              >
+                Queue Test Job
+              </Button>
+            )}
           </div>
         </div>
 
@@ -256,7 +265,7 @@ export default function BatchJobsPage() {
           columns={columns}
           data={jobs as unknown as Record<string, unknown>[]}
           isLoading={isLoading}
-          emptyMessage="No background jobs have run."
+          emptyMessage={error ? "Background jobs could not be loaded." : "No background jobs have run."}
         />
 
         {total > 0 && (

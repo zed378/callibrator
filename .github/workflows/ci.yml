@@ -104,6 +104,63 @@ jobs:
       - name: backend TypeScript ratchet
         working-directory: backend
         run: npm run ratchet
+      # P9-22 (ADR-097): packages/contracts — the schemas the backend validates
+      # with and the frontend types from. Its own lint (the backend's TypeScript
+      # rules) and its own TypeScript 7 check under the backend's flags.
+      - name: contracts lint
+        working-directory: packages/contracts
+        run: npm run lint
+      - name: contracts typecheck
+        working-directory: packages/contracts
+        run: npm run typecheck
+      # 100% on the package, from the backend validator suites that exercise
+      # it plus its own (one zod, barrel identity). The backend's jest cannot
+      # measure files outside backend/ (jest.config.js in the package says why).
+      - name: contracts test (100% coverage)
+        working-directory: packages/contracts
+        run: npm test
+
+  # --------------------------------------------------------------------------
+  # P9-25 (ADR-103): the API contract. backend/openapi.json is generated from the
+  # Zod schemas (*.openapi.ts) and the remaining route JSDoc, and committed. This
+  # job fails when the committed file is stale, when Spectral finds a new error
+  # (backend/.spectral.yaml; legacy errors are a shrink-only baseline), and when
+  # the change breaks the contract published on main (oasdiff).
+  api-contract:
+    name: API contract (openapi.json current · Spectral · oasdiff)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # oasdiff compares against origin/main's openapi.json
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: openapi.json is what the source generates
+        working-directory: backend
+        run: npm run openapi:check
+      - name: Spectral (no new error)
+        working-directory: backend
+        run: npm run openapi:lint
+      - name: frontend's generated API types are current
+        working-directory: frontend
+        run: npm run api:types:check
+      - name: oasdiff 1.32.1 (checksum-verified)
+        run: |
+          set -euo pipefail
+          curl -sSfL -o oasdiff.tgz https://github.com/oasdiff/oasdiff/releases/download/v1.32.1/oasdiff_1.32.1_linux_amd64.tar.gz
+          echo "7c8939fc49b75ee11fec66a5b83b37a2fca6aee109fed85013b1ba2ac2a1ee7f  oasdiff.tgz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/oasdiff"
+          tar xzf oasdiff.tgz -C "$RUNNER_TEMP/oasdiff" oasdiff
+          echo "$RUNNER_TEMP/oasdiff" >> "$GITHUB_PATH"
+      - name: no breaking change against main
+        working-directory: backend
+        env:
+          OPENAPI_BASE_REF: origin/main
+        run: npm run openapi:breaking
 
   # --------------------------------------------------------------------------
   backend-test:
@@ -134,6 +191,37 @@ jobs:
       - name: npm run test:coverage
         working-directory: backend
         run: npm run test:coverage -- --ci --forceExit
+
+  # --------------------------------------------------------------------------
+  # Every backend module LOADS, as production loads it (P9, ADR-087 Amendment 15).
+  # jest mocks dependencies and typecheck reads types, so a module that throws at
+  # its top level passes both and still stops the backend booting (2026-09-30:
+  # `jsonShape is not defined`; `<file>_module is not defined` from tsx on an
+  # `export interface` beside `export =`). dist/ under plain node is the tree the
+  # image's pkg binary runs; src/ under tsx is what `npm start` and the boot job run.
+  backend-load:
+    name: backend module load (dist via node · src via tsx)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      # The template supplies the non-secret settings; scripts/load-check.ts sets
+      # the database, Redis and secrets to placeholders itself.
+      - run: cp backend/.env.example backend/.env
+      - name: build dist
+        working-directory: backend
+        run: npm run build:dist
+      - name: every module loads from dist under plain node
+        working-directory: backend
+        run: npm run load:check
+      - name: every module loads from src under tsx
+        working-directory: backend
+        run: npm run load:check -- --src
 
   # --------------------------------------------------------------------------
   frontend:
@@ -169,6 +257,11 @@ jobs:
           NEXT_PUBLIC_API_VERSION: v1
           NEXT_TELEMETRY_DISABLED: "1"
         run: npx next build
+      - name: public pages' first-load JavaScript budget (AC-7)
+        # P10-13 (ADR-098 Amendment 2): reads the build just made; deterministic,
+        # unlike Lighthouse. Ceilings in frontend/bundle-budget.json.
+        working-directory: frontend
+        run: node scripts/bundle-budget.mjs
 
   # --------------------------------------------------------------------------
   dependency-audit:

@@ -32,7 +32,8 @@ describe("reporting.service (coverage)", () => {
   // ================================================================
   describe("toCsv", () => {
     it("renders a header-only CSV when rows are omitted", () => {
-      expect(reporting.toCsv([{ key: "a", label: "A" }])).toBe("A\n");
+      // A-319: every field quoted, records end in CRLF (utils/csv.util).
+      expect(reporting.toCsv([{ key: "a", label: "A" }])).toBe('"A"\r\n');
     });
 
     it("renders empty cells for null/undefined values", () => {
@@ -40,17 +41,17 @@ describe("reporting.service (coverage)", () => {
         [{ key: "a", label: "A" }, { key: "b", label: "B" }],
         [{ a: null, b: undefined }],
       );
-      expect(csv).toBe("A,B\n,");
+      expect(csv).toBe('"A","B"\r\n"",""');
     });
 
     it("quotes values containing newlines", () => {
       const csv = reporting.toCsv([{ key: "a", label: "A" }], [{ a: "x\ny" }]);
-      expect(csv).toBe('A\n"x\ny"');
+      expect(csv).toBe('"A"\r\n"x\ny"');
     });
 
     it("quotes a label that itself contains a comma", () => {
       const csv = reporting.toCsv([{ key: "a", label: "Name, Full" }], []);
-      expect(csv).toBe('"Name, Full"\n');
+      expect(csv).toBe('"Name, Full"\r\n');
     });
   });
 

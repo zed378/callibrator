@@ -2,12 +2,16 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import {
   AUTH_LOGGED_IN_COOKIE,
+  AUTH_REFRESH_COOKIE,
+  AUTH_REFRESH_PATH,
+  AUTH_RENEWABLE_COOKIE,
   AUTH_SESSION_COOKIE,
   AUTH_TOKEN_COOKIE,
 } from "@/lib/authCookies";
 import { hasUsableSession } from "@/lib/sessionRouting";
 import {
   NONCE_HEADER,
+  PATHNAME_HEADER,
   buildContentSecurityPolicy,
   generateNonce,
 } from "@/lib/securityHeaders";
@@ -31,11 +35,14 @@ const clearSession = (response: NextResponse): NextResponse => {
     AUTH_TOKEN_COOKIE,
     AUTH_SESSION_COOKIE,
     AUTH_LOGGED_IN_COOKIE,
+    AUTH_RENEWABLE_COOKIE,
     "x_tenant_id",
     "impersonating",
   ]) {
     response.cookies.delete(name);
   }
+  // The refresh token lives on its own path; a delete without it misses it.
+  response.cookies.delete({ name: AUTH_REFRESH_COOKIE, path: AUTH_REFRESH_PATH });
   return response;
 };
 
@@ -51,6 +58,10 @@ const pass = (request: NextRequest, nonce: string, csp: string): NextResponse =>
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set(NONCE_HEADER, nonce);
   requestHeaders.set(CSP_HEADER, csp);
+  // P10-02: the root layout sets <html lang> from the public locale cookie on
+  // public pages and keeps "en" on the English-only dashboard; it cannot read
+  // the path itself. Overwritten here, so a client cannot supply its own.
+  requestHeaders.set(PATHNAME_HEADER, request.nextUrl.pathname);
   const response = NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set(CSP_HEADER, csp);
   return response;
@@ -62,7 +73,8 @@ export function proxy(request: NextRequest) {
   const usable = hasUsableSession(request);
 
   const isDashboardRoute = pathname.startsWith("/dashboard");
-  const isAuthRoute = pathname === "/login" || pathname === "/register";
+  const isAuthRoute =
+    pathname === "/login" || pathname === "/register" || pathname === "/request-access" || pathname === "/forgot-password";
 
   if (isDashboardRoute && !usable) {
     const loginUrl = new URL("/login", request.url);

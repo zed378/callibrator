@@ -108,7 +108,8 @@ export default function PermissionsPage() {
                       )}
                     </button>
                   ))}
-                  {roles.length === 0 && (
+                  {/* After a failed load the alert above is the state, not "No roles found". */}
+                  {roles.length === 0 && !error && (
                     <p className="text-sm text-muted-foreground py-4 text-center">
                       No roles found
                     </p>
@@ -169,6 +170,8 @@ export default function PermissionsPage() {
                               <button
                                 key={option.label}
                                 type="button"
+                                // The current grant was shown by colour alone.
+                                aria-pressed={isActive}
                                 disabled={isSaving || isRoleLoading}
                                 onClick={() =>
                                   !isActive && setPermission(menu.id, option.value)
@@ -192,7 +195,7 @@ export default function PermissionsPage() {
                       </div>
                     );
                   })}
-                  {menus.length === 0 && (
+                  {menus.length === 0 && !error && (
                     <p className="text-sm text-muted-foreground py-8 text-center">
                       No menu groups found
                     </p>

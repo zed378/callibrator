@@ -73,6 +73,7 @@ describe("gdprController", () => {
         "user-123",
         "erasure",
         { reason: "User requested account deletion" },
+        expect.objectContaining({ apiKeyId: null, userId: "user-123" }),
       );
       expect(success).toHaveBeenCalled();
     });
@@ -99,6 +100,7 @@ describe("gdprController", () => {
         ["analytics", "marketing"],
         true,
         "203.0.114.9",
+        expect.objectContaining({ apiKeyId: null, userId: "user-123" }),
       );
       expect(success).toHaveBeenCalled();
     });
@@ -172,6 +174,7 @@ describe("gdprController", () => {
         "tenant-123",
         "user-123",
         "User requested restriction",
+        expect.objectContaining({ apiKeyId: null, userId: "user-123" }),
       );
       expect(success).toHaveBeenCalled();
     });
@@ -219,6 +222,7 @@ describe("gdprController", () => {
         "user-123",
         "erasure",
         { reason: null },
+        expect.objectContaining({ apiKeyId: null, userId: "user-123" }),
       );
     });
   });

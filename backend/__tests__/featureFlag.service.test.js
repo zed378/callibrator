@@ -9,6 +9,14 @@ jest.mock("../src/models", () => ({
   },
 }));
 
+// P6-11: a flag change and its audit rows commit in one managed transaction.
+jest.mock("../src/config", () => ({
+  db: { transaction: jest.fn((cb) => cb("txn")) },
+}));
+jest.mock("../src/services/audit.service", () => ({
+  logAction: jest.fn(),
+}));
+
 // Mock the sequelize import at module level
 jest.mock("sequelize", () => {
   const actual = jest.requireActual("sequelize");
@@ -178,6 +186,7 @@ describe("featureFlag.service", () => {
           value: "true",
           updatedBy: "admin-1",
         }),
+        { transaction: "txn" },
       );
       expect(result.flagKey).toBe("enable_mfa");
       expect(result.enabled).toBe(true);
@@ -201,6 +210,7 @@ describe("featureFlag.service", () => {
           value: "false",
           updatedBy: "admin-1",
         }),
+        { transaction: "txn" },
       );
       expect(result.flagKey).toBe("enable_iot");
       expect(result.enabled).toBe(false);

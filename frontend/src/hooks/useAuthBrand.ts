@@ -4,7 +4,7 @@ import { HAS_CONFIGURED_TENANT } from "@/constants";
 const DEFAULT_BRAND_NAME = "Device Calibrator";
 
 /**
- * Brand identity for the auth pages (login/register). Returns the
+ * Brand identity for the auth pages (sign-in, request access). Returns the
  * deploy-configured tenant's name + logo when available — fetched pre-auth by
  * `useTenantBranding` into the branding store — otherwise the default product
  * branding. `logoUrl` is null when there's no tenant logo (callers fall back to

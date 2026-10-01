@@ -228,12 +228,9 @@ const defineModel: DefineCalibrationDevice = (db, DataTypes) => {
         where: { is_deleted: false },
         attributes: { exclude: ["iotTokenHash"] }, // A-29
       },
-      scopes: {
-        includeDeleted: {
-          // @ts-expect-error -- where: null clears the defaultScope's predicate when the scopes are combined; {} would keep it (P9-10 spec, probe 2)
-          where: null,
-        },
-      },
+      // A-274 (2026-09-30): the unused `includeDeleted` scope was removed — no
+      // caller used it, and `.scope(["defaultScope", "includeDeleted"])` would have
+      // silently dropped the soft-delete predicate. Use `.unscoped()` deliberately.
       modelName: "CalibrationDevice",
       sequelize: db,
     },

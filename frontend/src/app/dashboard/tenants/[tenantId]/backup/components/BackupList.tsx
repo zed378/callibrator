@@ -17,7 +17,9 @@ interface BackupListProps {
   backups: TenantBackup[];
   actionLoading: string | null;
   handleDownloadBackup: (id: string) => void;
+  /** Asks for confirmation first (the page's ConfirmDialog); never restores on one click. */
   handleRestoreBackup: (id: string) => void;
+  /** Asks for confirmation first. */
   handleDeleteBackup: (id: string) => void;
 }
 
@@ -148,6 +150,7 @@ export const BackupList: React.FC<BackupListProps> = ({
                       leftIcon={<RotateCcw className="h-4 w-4" />}
                       onClick={() => handleRestoreBackup(backup.id)}
                       disabled={actionLoading !== null}
+                      aria-label={`Restore backup ${backup.name}`}
                     >
                       Restore
                     </Button>
@@ -164,6 +167,7 @@ export const BackupList: React.FC<BackupListProps> = ({
                     )
                   }
                   onClick={() => handleDeleteBackup(backup.id)}
+                  aria-label={`Delete backup ${backup.name}`}
                   disabled={
                     actionLoading !== null &&
                     actionLoading !== backup.id

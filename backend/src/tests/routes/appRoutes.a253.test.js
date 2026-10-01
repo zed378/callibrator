@@ -6,7 +6,7 @@
  *  - GET /tab-permissions, which sent a file that does not exist.
  *
  * Now /error and /tab-permissions are gone, and the two developer pages are
- * registered by swaggerDocs() under the API contract's own switch (S-23): off
+ * registered by apiDocs() (docs/apiDocs.ts, P9-25 / ADR-103; was swaggerDocs) under the API contract's own switch (S-23): off
  * in production unless SWAGGER_ENABLED=true.
  *
  * Real express and the real swagger module, over HTTP (as csp.p708 does).
@@ -18,9 +18,12 @@ const http = require("http");
 const path = require("path");
 const express = require("express");
 
+// P9-25: each serve() loads the gated docs router (and the models) in isolation — slow on a busy machine.
+jest.setTimeout(60000);
+
 const INDEX_SOURCE = fs.readFileSync(path.join(__dirname, "..", "..", "..", "index.js"), "utf8");
 
-const ENV_KEYS = ["NODE_ENV", "SWAGGER_ENABLED"];
+const ENV_KEYS = ["NODE_ENV", "SWAGGER_ENABLED", "KMS_MASTER_KEY"];
 const saved = {};
 beforeAll(() => {
   for (const k of ENV_KEYS) {saved[k] = process.env[k];}
@@ -33,14 +36,18 @@ afterEach(() => {
 });
 
 /** An app with swaggerDocs() and a 404 fallback, as index.js mounts them. */
-const serve = async (env) => {
+const serve = async (given) => {
+  // P9-25 (ADR-103): docs/apiDocs.ts loads the gated router, whose auth chain
+  // loads the models; in production kms.service refuses to load without a
+  // master key. A synthetic test key, never a real one.
+  const env = given.NODE_ENV === "production" ? { KMS_MASTER_KEY: "ab".repeat(32), ...given } : given;
   for (const k of ENV_KEYS) {
     if (env[k] === undefined) {delete process.env[k];}
     else {process.env[k] = env[k];}
   }
   let swaggerDocs;
   jest.isolateModules(() => {
-    ({ swaggerDocs } = require("../../docs/swagger"));
+    ({ apiDocs: swaggerDocs } = require("../../docs/apiDocs"));
   });
   const app = express();
   const published = swaggerDocs(app);
@@ -91,8 +98,8 @@ describe("A-253: developer pages are not served in production", () => {
     for (const route of ["/documentation", "/standards", "/tab-permissions", "/error"]) {
       expect(INDEX_SOURCE).not.toMatch(new RegExp(`app\\.(get|use|all)\\(\\s*["'\`]${route}["'\`]`));
     }
-    // swaggerDocs is still mounted before the 404 handler.
-    expect(INDEX_SOURCE.indexOf("swaggerDocs(app)")).toBeGreaterThan(-1);
-    expect(INDEX_SOURCE.indexOf("swaggerDocs(app)")).toBeLessThan(INDEX_SOURCE.indexOf("app.use(notFound)"));
+    // apiDocs (was swaggerDocs) is still mounted before the 404 handler.
+    expect(INDEX_SOURCE.indexOf("apiDocs(app)")).toBeGreaterThan(-1);
+    expect(INDEX_SOURCE.indexOf("apiDocs(app)")).toBeLessThan(INDEX_SOURCE.indexOf("app.use(notFound)"));
   });
 });

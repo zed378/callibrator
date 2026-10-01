@@ -3,13 +3,15 @@ import { useState, useEffect } from "react";
 import { useTenantStore } from "@/stores/tenantStore";
 import { useAuthStore } from "@/stores/authStore";
 import { Tenant } from "@/types";
+import { usePermissions } from "@/hooks/usePermissions";
 
 export const initialCreateForm = {
   name: "",
   code: "",
   description: "",
   primaryColor: "#4f46e5",
-  maxUsers: "100",
+  // Seat limit: `limitSeats` (platform-set); empty = the plan default.
+  limitSeats: "",
   email: "",
   phone: "",
   address: "",
@@ -26,7 +28,6 @@ export const initialEditForm = {
   description: "",
   primaryColor: "#4f46e5",
   status: "",
-  maxUsers: "100",
   email: "",
   phone: "",
   address: "",
@@ -54,9 +55,20 @@ export function useTenants() {
   // (read, edit, SSO, backups), so the list is scoped to it and the create and
   // delete controls are not offered.
   const user = useAuthStore((state) => state.user);
-  const canManagePlatform =
+  // Which LIST to read is decided from the signed-in principal (the platform
+  // list is superAdminOnly; a tenant user reads its own tenant) — it must be
+  // known before the permissions load, so it is not a write control.
+  const isPlatformPrincipal =
     user?.role?.name === "SUPERADMIN" || user?.role?.name === "SUPER_ADMIN";
-  const ownTenantId = canManagePlatform ? null : (user?.tenantId ?? null);
+  const ownTenantId = isPlatformPrincipal ? null : (user?.tenantId ?? null);
+  // ADR-102: the WRITE controls come from the effective permissions —
+  // create/delete are superAdminOnly (tenant.route.js); edit, SSO and MFA
+  // settings need `management` write (dynamicAccess("management", "update"));
+  // backups need rbac TENANT_ADMIN, which on the seeded roles is exactly the
+  // `management` writers (level 8). Nothing is writable before they load.
+  const { superAdmin, canWrite } = usePermissions();
+  const canManagePlatform = superAdmin;
+  const canEditTenant = canWrite("management");
 
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -108,7 +120,7 @@ export function useTenants() {
         code: createForm.code,
         description: createForm.description || undefined,
         primaryColor: createForm.primaryColor || undefined,
-        maxUsers: parseInt(createForm.maxUsers, 10) || undefined,
+        limitSeats: parseInt(createForm.limitSeats, 10) || undefined,
         file: createLogoFile || undefined,
         email: createForm.email || undefined,
         phone: createForm.phone || undefined,
@@ -141,7 +153,6 @@ export function useTenants() {
       description: tenant.description || "",
       primaryColor: tenant.primaryColor || "#4f46e5",
       status: tenant.status,
-      maxUsers: tenant.maxUsers?.toString() || "100",
       email: tenant.email || "",
       phone: tenant.phone || "",
       address: tenant.address || "",
@@ -177,19 +188,20 @@ export function useTenants() {
         tenantId: editingTenant.id,
         name: editForm.name,
         code: editForm.code,
-        description: editForm.description || undefined,
         primaryColor: editForm.primaryColor || undefined,
         status: editForm.status as "ACTIVE" | "INACTIVE" | "SUSPENDED",
-        maxUsers: parseInt(editForm.maxUsers, 10) || undefined,
         file: editLogoFile || undefined,
         email: editForm.email || undefined,
-        phone: editForm.phone || undefined,
-        address: editForm.address || undefined,
-        city: editForm.city || undefined,
-        state: editForm.state || undefined,
-        zipCode: editForm.zipCode || undefined,
-        country: editForm.country || undefined,
-        website: editForm.website || undefined,
+        // A-303: the profile is stored now, so an emptied field is SENT (as
+        // "") and clears the stored value; omitting it would keep the old one.
+        description: editForm.description,
+        phone: editForm.phone,
+        address: editForm.address,
+        city: editForm.city,
+        state: editForm.state,
+        zipCode: editForm.zipCode,
+        country: editForm.country,
+        website: editForm.website,
       });
       setShowEditModal(false);
       setEditingTenant(null);
@@ -213,6 +225,7 @@ export function useTenants() {
 
   return {
     canManagePlatform,
+    canEditTenant,
     tenants,
     isLoading,
     error,

@@ -19,6 +19,13 @@
  * A module present as both x.js and x.ts is refused: which one a `require`
  * resolves to would depend on the resolver, and the two can disagree (jest
  * tries .js first, tsx .ts).
+ *
+ *   4. P9-22 (ADR-097): the workspace package `@callibrator/contracts` is
+ *      compiled to CommonJS into dist/node_modules/@callibrator/contracts.
+ *      Its package.json exports its TypeScript source, which typecheck, jest,
+ *      tsx and Next read directly; plain Node and pkg cannot load .ts, and a
+ *      `require` from dist/src/** finds dist/node_modules before the workspace
+ *      symlink. It is rebuilt on every run, so it can never be stale.
  */
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
@@ -28,6 +35,8 @@ const BACKEND = path.resolve(__dirname, "..");
 const SRC = path.join(BACKEND, "src");
 const DIST = path.join(BACKEND, "dist");
 const SKIPPED_DIRS = new Set([path.join(SRC, "tests")]);
+const CONTRACTS = path.resolve(BACKEND, "..", "packages", "contracts");
+const CONTRACTS_OUT = path.join(DIST, "node_modules", "@callibrator", "contracts");
 
 interface Walked {
   readonly copied: string[];
@@ -78,6 +87,50 @@ function fail(message: string): never {
   process.exit(1);
 }
 
+/**
+ * Step 4 — compile `@callibrator/contracts` into dist/node_modules (P9-22).
+ *
+ * @returns how many of its modules were compiled
+ */
+function buildContracts(): number {
+  fs.rmSync(CONTRACTS_OUT, { recursive: true, force: true });
+  const sources = fs
+    .readdirSync(path.join(CONTRACTS, "src"))
+    .filter((name) => isTypeScript(name) && !name.endsWith(".d.ts") && !name.endsWith(".test.ts"));
+  const tsc = spawnSync(
+    process.execPath,
+    [tscEntry(), "-p", path.join(CONTRACTS, "tsconfig.build.json"), "--outDir", CONTRACTS_OUT],
+    { cwd: CONTRACTS, stdio: "inherit" },
+  );
+  if (tsc.status !== 0) {
+    fail(`tsc -p packages/contracts/tsconfig.build.json exited ${String(tsc.status)}`);
+  }
+  const missing = sources.filter((name) => !fs.existsSync(path.join(CONTRACTS_OUT, name.replace(/\.ts$/, ".js"))));
+  if (missing.length > 0) {
+    fail(`tsc emitted nothing for packages/contracts/src/: ${missing.join(", ")}`);
+  }
+  const manifest: unknown = JSON.parse(fs.readFileSync(path.join(CONTRACTS, "package.json"), "utf8"));
+  const field = (key: "name" | "version"): string => {
+    const value = typeof manifest === "object" && manifest !== null && key in manifest ? manifest[key as keyof typeof manifest] : undefined;
+    if (typeof value !== "string") {
+      fail(`packages/contracts/package.json declares no ${key}`);
+    }
+    return value;
+  };
+  // The compiled twin of the workspace manifest: the same name and version,
+  // with every entry point pointing at the emitted JavaScript.
+  const compiled = {
+    name: field("name"),
+    version: field("version"),
+    private: true,
+    type: "commonjs",
+    main: "./index.js",
+    exports: { ".": "./index.js", "./*": "./*.js", "./package.json": "./package.json" },
+  };
+  fs.writeFileSync(path.join(CONTRACTS_OUT, "package.json"), `${JSON.stringify(compiled, null, 2)}\n`);
+  return sources.length;
+}
+
 function main(): void {
   fs.rmSync(path.join(DIST, "index.js"), { force: true });
   fs.rmSync(path.join(DIST, "src"), { recursive: true, force: true });
@@ -124,6 +177,11 @@ function main(): void {
   process.stdout.write(
     `build-dist: ${String(walked.copied.length + 1)} JavaScript files copied, ` +
       `${String(walked.typescript.length)} TypeScript files compiled -> dist/\n`,
+  );
+
+  const contracts = buildContracts();
+  process.stdout.write(
+    `build-dist: @callibrator/contracts, ${String(contracts)} TypeScript files compiled -> dist/node_modules/@callibrator/contracts/\n`,
   );
 }
 

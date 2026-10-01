@@ -42,6 +42,7 @@ jest.mock("@/api/services/qms.service", () => {
 import QmsPage from "../page";
 import { qmsService } from "@/api/services/qms.service";
 import { useToastStore } from "@/stores/toastStore";
+import { grantPermissions, grantSuperAdmin, clearPermissions } from "@/tests/support/permissions";
 
 const mocked = qmsService as unknown as {
   createNonConformance: jest.Mock;
@@ -81,6 +82,8 @@ const openCapa = async () => {
 };
 
 beforeEach(() => {
+  // ADR-102: write controls follow the effective permissions.
+  grantPermissions({ qms: "write" });
   jest.clearAllMocks();
   useToastStore.setState({ toasts: [] });
 });
@@ -172,5 +175,48 @@ describe("A-89 — New CAPA", () => {
         dueDate: undefined,
       }),
     );
+  });
+});
+
+/**
+ * ADR-102 — NC/CAPA writes are gated on `qms` write (qms.route.js). A reader
+ * (ENGINEERING MANAGER holds `qms` read) gets no Raise NC, no row actions;
+ * before the permissions load nothing is writable; the super admin writes.
+ * Fail-before: Raise NC and the row status/root-cause/CAPA controls rendered
+ * for every role.
+ */
+describe("ADR-102 — QMS write controls follow the effective permission", () => {
+  const withNc = () =>
+    mocked.listNonConformances.mockResolvedValueOnce({
+      rows: [{ id: "nc9", ncNumber: "NC-9", title: "Drift", status: "OPEN", severity: "LOW" }],
+      total: 1,
+      page: 1,
+      limit: 10,
+      totalPages: 1,
+    });
+
+  it("a `qms` reader sees the NC but no write control", async () => {
+    grantPermissions({ qms: "read" });
+    withNc();
+    render(<QmsPage />);
+    expect(await screen.findByText("NC-9")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /raise nc/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Root cause" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "+ CAPA" })).not.toBeInTheDocument();
+  });
+
+  it("nothing is writable before the permissions load", async () => {
+    clearPermissions();
+    render(<QmsPage />);
+    await waitFor(() => expect(mocked.listNonConformances).toHaveBeenCalled());
+    expect(screen.queryByRole("button", { name: /raise nc/i })).not.toBeInTheDocument();
+  });
+
+  it("the super admin gets the write controls", async () => {
+    grantSuperAdmin();
+    withNc();
+    render(<QmsPage />);
+    expect(await screen.findByRole("button", { name: "Root cause" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /raise nc/i })).toBeInTheDocument();
   });
 });

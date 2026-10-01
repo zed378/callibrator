@@ -14,6 +14,8 @@ interface ComplianceSectionProps {
   onApply: () => void;
   onExport: () => void;
   isExporting: boolean;
+  /** The report failed to load: show no "no data" message (the page shows the error). */
+  failed?: boolean;
 }
 
 export const ComplianceSection: React.FC<ComplianceSectionProps> = ({
@@ -25,6 +27,7 @@ export const ComplianceSection: React.FC<ComplianceSectionProps> = ({
   onApply,
   onExport,
   isExporting,
+  failed = false,
 }) => {
   const summary = compliance?.summary;
 
@@ -66,7 +69,7 @@ export const ComplianceSection: React.FC<ComplianceSectionProps> = ({
         </CardContent>
       </Card>
 
-      {!summary ? (
+      {failed ? null : !summary ? (
         <Card>
           <CardContent className="p-16 text-center">
             <p className="text-sm text-muted-foreground">

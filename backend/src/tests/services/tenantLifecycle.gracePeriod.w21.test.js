@@ -14,7 +14,8 @@ jest.mock("../../models", () => ({
   Subscription: {},
   Invoice: {},
 }));
-jest.mock("../../config", () => ({ db: { transaction: jest.fn() } }));
+// A-278 (ADR-094): the deadline is saved in a transaction with its audit rows.
+jest.mock("../../config", () => ({ db: { transaction: jest.fn(async (cb) => cb("tx")) } }));
 jest.mock("../../services/audit.service", () => ({ logAction: jest.fn() }));
 
 const tenantLifecycle = require("../../services/tenantLifecycle.service");

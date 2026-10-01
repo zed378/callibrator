@@ -3,7 +3,8 @@
  */
 const calibrationDevicesService = require("../services/calibrationDevices.service");
 const { asyncHandler } = require("../utils/controllerWrapper.util");
-const { auditActor } = require("../utils/auditActor.util");
+// A-282 (ADR-100): an API key (calibration scopes) is audited as system:api-key.
+const { auditPrincipal } = require("../utils/auditPrincipal.util");
 const { logger } = require("../middlewares/activityLog.middleware");
 const { success, error } = require("../utils/response.util");
 const {
@@ -11,23 +12,8 @@ const {
   calibrationDeviceIdSchema,
   createCalibrationDeviceSchema,
   updateCalibrationDeviceSchema,
-  validate: validatorValidate,
 } = require("../validators/calibrationDevices.validator");
-
-const validate = (data, schema) => {
-  const { error, value } = validatorValidate(data, schema);
-  if (error) {
-    throw {
-      status: 400,
-      message: "Validation failed",
-      errors: error.details.map((d) => ({
-        field: d.path.join("."),
-        message: d.message,
-      })),
-    };
-  }
-  return value;
-};
+const { validateInput: validate } = require("../validators/input");
 
 /**
  * Send a service result down the path its status belongs on. The service
@@ -85,7 +71,7 @@ exports.createCalibrationDevice = asyncHandler(async (req, res) => {
   const result = await calibrationDevicesService.createCalibrationDevice(
     tenantId,
     validated,
-    auditActor(req),
+    auditPrincipal(req),
   );
 
   send(res, result);
@@ -102,7 +88,7 @@ exports.updateCalibrationDevice = asyncHandler(async (req, res) => {
     tenantId,
     calibrationDeviceId,
     validated,
-    auditActor(req),
+    auditPrincipal(req),
   );
 
   send(res, result);
@@ -117,7 +103,7 @@ exports.deleteCalibrationDevice = asyncHandler(async (req, res) => {
   const result = await calibrationDevicesService.deleteCalibrationDevice(
     tenantId,
     calibrationDeviceId,
-    auditActor(req),
+    auditPrincipal(req),
   );
 
   send(res, result);
@@ -135,7 +121,7 @@ exports.restoreCalibrationDevice = asyncHandler(async (req, res) => {
   const result = await calibrationDevicesService.restoreCalibrationDevice(
     tenantId,
     calibrationDeviceId,
-    auditActor(req),
+    auditPrincipal(req),
   );
 
   send(res, result);
@@ -156,7 +142,7 @@ exports.bulkImportCalibrationDevices = asyncHandler(async (req, res) => {
     const result = await calibrationDevicesService.bulkImportCalibrationDevices(
       tenantId,
       req.file.path,
-      auditActor(req),
+      auditPrincipal(req),
     );
 
     send(res, result);

@@ -1,6 +1,6 @@
 # Phase 3 — Calibration, Devices and Certificates
 
-**Status: ✅ DONE**, with the project's most consequential open gap.
+**Status: ✅ DONE.** The project's most consequential gap, which this retrospective named (P6-03), is **closed** since 2026-09-25; see below.
 
 Written retrospectively. This is the domain core — if a change threatens anything here, it needs an ADR before it needs a branch.
 
@@ -155,7 +155,7 @@ Fixed by ADR-040: RSA-SHA256 with the tenant's private key over a deterministic 
 | Approval was **unreachable** — no submit transition, and an invalid state threw a 500 | a conflict is a **409**; a 500 hides a design gap |
 | The certificate list returned **zero rows** | an optional include without `required: false` is an INNER JOIN — and it was **only visible with data** |
 
-**⚠ The open gap — PR-2, P6-03. The most consequential in the project.**
+**The gap as it was — PR-2, P6-03. The most consequential in the project.** *Closed 2026-09-25 (ADR-062, migration `0057`; confirmed in ADR-084): a trigger refuses DELETE, TRUNCATE and any content change for every role, `callibrator_app` holds no UPDATE/DELETE, and a correction is a new record (`POST /:id/corrections`). Pinned by `dataIntegrity.p6.live.test.js`. `audit_logs` gained the same database-level protection on 2026-09-29 (ADR-095 §1, migration `0091`). The paragraphs below describe the state before.*
 
 BR-7 says calibration records are **append-only**. The model is `paranoid`, and the API exposes `PUT` and `DELETE`.
 

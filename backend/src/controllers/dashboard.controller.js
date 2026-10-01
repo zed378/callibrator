@@ -9,10 +9,11 @@
 const dashboardService = require("../services/dashboard.service");
 const { asyncHandler } = require("../utils/controllerWrapper.util");
 const { success } = require("../utils/response.util");
-const { ROLE_NAMES } = require("../constants/roleConstants");
+// N-01: the one super-admin predicate (both spellings).
+const { isSuperAdmin: isSuperAdminPrincipal } = require("../utils/role.util");
 
 exports.getDashboardMetrics = asyncHandler(async (req, res) => {
-  const isSuperAdmin = req.user?.role?.name === ROLE_NAMES.SUPER_ADMIN;
+  const isSuperAdmin = isSuperAdminPrincipal(req.user);
 
   // SUPERADMIN may optionally inspect a single tenant via ?tenantId=...;
   // otherwise they get the global view. Non-superadmins are ALWAYS pinned

@@ -183,6 +183,93 @@ const API_ENDPOINTS = {
     windowMs: WINDOW.MINUTE,
     description: "Default endpoint",
   },
+  // ---------------------------------------------------------------------
+  // ADR-100 (A-291) — REQUEST budgets for the public authentication and verification
+  // endpoints. Unlike AUTH_ENDPOINTS these count EVERY request, successes
+  // included (middlewares/requestBudget.middleware.ts), so a caller cannot
+  // send unlimited registrations, OTP mails or SSO starts by succeeding.
+  // Per client address (req.ip, A-16) unless the entry says otherwise. The
+  // figures are PRODUCTION figures: a hospital signs in from behind one NAT
+  // address, so the per-address sign-in budget is generous; the per-account
+  // defences stay AUTH_ENDPOINTS' failure throttles (A-185, A-81).
+  // ---------------------------------------------------------------------
+  authSignIn: {
+    maxRequests: 300,
+    windowMs: WINDOW.FIFTEEN_MIN,
+    description: "Sign-in",
+  },
+  authRegister: {
+    maxRequests: 10,
+    windowMs: WINDOW.HOUR,
+    description: "Registration",
+  },
+  authOtp: {
+    maxRequests: 20,
+    windowMs: WINDOW.HOUR,
+    description: "Password reset",
+  },
+  // Keyed by the (hashed) address a code is mailed to, whoever asks: the
+  // bound on mail sent to one mailbox. Counted whether or not an account
+  // exists, so a 429 here says nothing about the address.
+  authOtpRecipient: {
+    maxRequests: 3,
+    windowMs: WINDOW.FIFTEEN_MIN,
+    description: "Password reset for this address",
+  },
+  ssoStart: {
+    maxRequests: 60,
+    windowMs: WINDOW.FIFTEEN_MIN,
+    description: "Single sign-on",
+  },
+  mfaSignIn: {
+    maxRequests: 60,
+    windowMs: WINDOW.FIFTEEN_MIN,
+    description: "Second-factor sign-in",
+  },
+  // Public certificate verification: a lookup by the bare certificate number
+  // (the minimal verdict) and by the QR's verification token (the full one).
+  certificateVerify: {
+    maxRequests: 60,
+    windowMs: WINDOW.FIFTEEN_MIN,
+    description: "Certificate verification",
+  },
+  certificateVerifyToken: {
+    maxRequests: 300,
+    windowMs: WINDOW.FIFTEEN_MIN,
+    description: "Certificate verification",
+  },
+  // ---------------------------------------------------------------------
+  // Phase 10 (ADR-098) — the public ways in, per client address.
+  // ---------------------------------------------------------------------
+  // P10-05: the access-request intake. A person sends one; five an hour from
+  // one address leaves room for a hospital's shared NAT and stops a flood (the
+  // service also caps stored requests per work email, 3 per 24 h).
+  accessRequest: {
+    maxRequests: 5,
+    windowMs: WINDOW.HOUR,
+    description: "Access request",
+  },
+  // P10-04: identifier-first discovery. Answered by email DOMAIN only, so it
+  // is no account oracle; the budget stops a crawl of which domains use SSO.
+  loginDiscover: {
+    maxRequests: 120,
+    windowMs: WINDOW.FIFTEEN_MIN,
+    description: "Sign-in discovery",
+  },
+  // P10-10: the passwordless passkey ceremony (options + verify), per address:
+  // no identifier is known before verification.
+  passkeyLogin: {
+    maxRequests: 60,
+    windowMs: WINDOW.FIFTEEN_MIN,
+    description: "Passkey sign-in",
+  },
+  // P10-15: accepting an invitation. The token is 256 random bits; this stops
+  // a client hammering the endpoint, not guessing.
+  invitationAccept: {
+    maxRequests: 20,
+    windowMs: WINDOW.FIFTEEN_MIN,
+    description: "Invitation",
+  },
 } satisfies Record<string, ApiLimit>;
 
 /**

@@ -11,7 +11,7 @@ Every agent, regardless of role, is bound by these. They are not role-specific b
 | | |
 |---|---|
 | **Tenant isolation** | deny-by-default, enforced by global hooks. Cross-tenant returns **404**, never 403. |
-| **Every route has a permission gate** | nothing in the build enforces this |
+| **Every route has a permission gate** | enforced by `routePermissionGuard.p604` in the unit suite (ADR-058) — a gate or a reviewed exemption; it bites only when the suite runs |
 | **Every mutation writes an audit row** | inside the transaction of the action |
 | **Every new `:id` route has a two-tenant test** | asserting **404** |
 | **Name the test** | an assertion that a test passed is not evidence |
@@ -24,16 +24,19 @@ Every agent, regardless of role, is bound by these. They are not role-specific b
 
 ## Backend Engineer
 
-**Owns:** `backend/` — 53 route modules, 76 services, 72 models.
+**Owns:** `backend/` — 53 route modules, 71 models (counts as of 2026-09-29; re-count before quoting).
 
 **Knows before touching anything:**
 
 - The target architecture is **Dual-Backend (ADR-089)**: existing TypeScript backend (`backend/src/`) + future Go backend engine (`backend-go/` in Phase 999). TypeScript backend is retained and supported. Go implementation is strictly assigned to Phase 999 (after Phase 9 & Upstream PHP adoption).
-- The existing backend is **JavaScript, CommonJS, migrating to strict TypeScript** (ADR-038). New files are TypeScript under `docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md`; do not half-convert a `.js` file you are editing — conversion happens module by module in `TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`, and never changes behaviour.
+- The existing backend is **mixed JavaScript and TypeScript, CommonJS, migrating to strict TypeScript** (ADR-038, ADR-087): `constants/`, `models/`, `validators/`, most `utils/` and `config/env.ts` are `.ts`; controllers, services and routes are still `.js`. New files — **tests included** — are TypeScript under `docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md` (`npm run ratchet` refuses a new `.js`); do not half-convert a `.js` file you are editing — conversion happens module by module, leaf-first, in `TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`, and never changes behaviour.
+- Backend source runs through **tsx**; plain `node` on it fails with `MODULE_NOT_FOUND`. Type-check with `npm run typecheck` (TypeScript 7), never `npx tsc`.
+- Raw SQL in `.ts` goes through **`sql()`** (`utils/sql.util.ts`) with the tenant predicate **bound**; configuration through `config/env.ts`, never `process.env`.
 - The models barrel exports **`sequelize`**, not `db`.
 - An optional include needs **`required: false`** — the most repeated defect shape here.
-- `validate(schema)`, never `schema.validate`.
-- Path parameters must reach the validator: `{ ...req.params, ...req.body }`.
+- `validate(schema)` (Zod, P9-11) is the only way a schema reaches a router — never `schema.parse` or the old `schema.validate`.
+- Path parameters must reach the validator: declare them, `validate(schema, { from: ["params", "body"] })` — the path wins; a `.ts` handler reads `validated(req, schema)`.
+- A new `:id` route gets a two-tenant test on `twoTenantSuite` + `memoryDb` with an `@two-tenant` marker (`twoTenantRoutes.guard`).
 - Transactions open in the **service**, never a controller.
 - `sessions` uses **snake_case attributes**.
 
@@ -53,6 +56,9 @@ Every agent, regardless of role, is bound by these. They are not role-specific b
 - Every list has **three** states — loading, empty, **failed**. `EmptyState` and `ErrorState` are separate components.
 - Authorization is **not** a frontend concern. The sidebar renders from the server-resolved menu tree; an unauthorised surface is **absent**, not hidden.
 - **`NEXT_PUBLIC_*` is inlined at build time.** A different API URL is a different image.
+- **`/api/` belongs to Next** (ADR-046, ADR-059): the proxy route holds the session cookie, strips the access token from responses, and the browser never sees a token. Services call relative `/api/v1/…` paths.
+- **Every page renders per request under a nonce CSP** (ADR-071): no inline `<script>`, no `<style>` element without the nonce, no third-party image origin.
+- **Accessibility is a gate** (ADR-090): theme colour tokens only, one `<main>` and one `<h1>` per page, icon-only controls named after their object. `npm run typecheck` (TypeScript 7) and `next build` (TypeScript 6 API) must both pass.
 - A store is for state that **outlives a page**. Filters belong in the **URL**.
 - React 19's compiler flags `setState` in effects and makes most manual memoisation unnecessary. Do not disable the rules.
 
@@ -192,7 +198,7 @@ Found an open question? `TASKS/BACKLOG.md`, so it has a consequence rather than 
 ### Before a PR
 
 ```bash
-make verify        # lint · typecheck · test · build
+make verify        # lint · ts-ratchet · typecheck · test · build · load-check (CI runs the same stages)
 make test-e2e      # against a running server
 ```
 

@@ -112,7 +112,7 @@ smaller one.
 
 | | |
 |---|---|
-| **Status** | ⏳ TODO. The **trigger fired in part** (2026-09-28, P8-07 baseline, ADR-086 §3): concurrent dashboard traffic took the device-list p95 from 320 to 726 ms. **Decided: query-shaped fixes come first** (bounded or estimated counts, a default audit date window); a replica only if p95 still fails after them |
+| **Status** | ⏳ TODO. The **trigger fired in part** (2026-09-28, P8-07 baseline, ADR-086 §3): concurrent dashboard traffic took the device-list p95 from 320 to 726 ms. **Decided: query-shaped fixes come first** (bounded or estimated counts, a default audit date window); a replica only if p95 still fails after them. **Query-shaped fixes DONE 2026-09-29 (ADR-096, D-30):** the audit list counts at most 10,000 rows and reads 90 days by default, the dashboard holds at most 4 connections, the kanban N+1s are gone, and migration `0093` adds six per-tenant order indexes. The p95 re-measure on a dedicated host is still open — this host was too noisy to show one |
 | **Trigger** | **measured** impact of reporting queries on operational p95 |
 | **Spec refs** | `docs/PLAN/14-ANALYTICS-AND-REPORTING.md` (PR-10) |
 
@@ -216,5 +216,20 @@ Partial answers already exist: per-tenant object storage moves that data where t
 ## Phase Exit
 
 There is no exit. **Phase 8 is a set of standing triggers**, not a sprint.
+
+**"Complete for this stop" (2026-09-30; working decision under the owner's delegation, awaiting the
+owner's confirmation; ADR-109 §4).** For the "Phases 0–10 complete, then stop" milestone, Phase 8
+counts as complete when every card is in one of three recorded states, and none is left unexplained:
+
+| State | Cards | What must be written on the card |
+|---|---|---|
+| **DONE** | P8-03 | its record |
+| **Not triggered** | P8-05, P8-06 | the measurement that says the trigger has not fired (ADR-086 §3) |
+| **Blocked, blocker named** | P8-01 (an S3/NFS target and an ambient credential chain), P8-08 (a customer residency requirement) | the blocker, and who can remove it |
+| **Still owed before the stop** | **P8-04 re-measure** — the query-shape fixes (D-30, ADR-096) are in; the p95 must be **measured again**, and a replica is built only if it still fails | the re-measured p95, dated |
+| **Partial, not covered by this decision** | P8-02 (fan-out after a reconnect; a live notification through the proxy), P8-07 (MQTT ingest under load) | their open live checks stay listed; whether they block the stop is **the owner's call** |
+
+This defines a stopping point, not an exit: the triggers stay standing after it. A card that is
+"not triggered" today is not "done" — it is waiting.
 
 The board's job here is to make sure that when a trigger fires, the response is already known — and that P8-01 through P8-03 are not discovered as prerequisites on the day someone scales a deployment to two replicas.

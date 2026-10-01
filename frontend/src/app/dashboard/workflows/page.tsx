@@ -29,6 +29,7 @@ import {
   type ESignatureFormFields,
 } from "@/app/dashboard/calibration/components/ESignatureFields";
 import { useToastStore } from "@/stores/toastStore";
+import { usePermissions } from "@/hooks/usePermissions";
 
 type Tab = "definitions" | "pending";
 
@@ -56,6 +57,12 @@ const RESOURCE_TYPES: WorkflowResourceType[] = [
 ];
 
 export default function WorkflowsPage() {
+  // ADR-102: defining, enabling and deleting workflows is gated on
+  // `workflows` write; deciding an instance on `certificate`, `warehouse` or
+  // `maintenance` write (workflows.route.js). A reader sees neither.
+  const { canWrite } = usePermissions();
+  const mayDefine = canWrite("workflows");
+  const mayDecide = canWrite("certificate") || canWrite("warehouse") || canWrite("maintenance");
   const addToast = useToastStore((s) => s.addToast);
 
   const [tab, setTab] = useState<Tab>("definitions");
@@ -383,7 +390,7 @@ export default function WorkflowsPage() {
               work orders — and the tasks waiting on you.
             </p>
           </div>
-          {tab === "definitions" && (
+          {tab === "definitions" && mayDefine && (
             <Button
               onClick={() => setIsCreateOpen(true)}
               leftIcon={<Plus className="h-4 w-4" />}
@@ -425,7 +432,9 @@ export default function WorkflowsPage() {
         )}
 
         <Table
-          columns={tab === "definitions" ? defColumns : pendingColumns}
+          columns={(tab === "definitions" ? defColumns : pendingColumns).filter(
+            (col) => col.key !== "actions" || (tab === "definitions" ? mayDefine : mayDecide),
+          )}
           data={
             (tab === "definitions" ? workflows : pending) as unknown as Record<
               string,

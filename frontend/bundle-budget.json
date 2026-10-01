@@ -1,0 +1,47 @@
+{
+  "$comment": "P10-13 (ADR-098 Amendment 2, doc 20 §13 AC-7). First-load JavaScript per public route, compressed per file; checked by scripts/bundle-budget.mjs after `next build`. brotliKB is the AC-7 figure where doc 20 sets one ('/' ≤ 180, '/verify/*' ≤ 120); every other number is a regression ceiling set a few KB over the 2026-09-30 build. Raising a ceiling is a reviewed change with a record, never a way to make CI green.",
+  "routes": {
+    "/": {
+      "brotliKB": 180,
+      "gzipKB": 150,
+      "note": "AC-7: 180 KB"
+    },
+    "/verify/[certificateNumber]": {
+      "brotliKB": 120,
+      "gzipKB": 141,
+      "note": "AC-7: 120 KB (brotli; the framework alone is 127 KB gzip)"
+    },
+    "/login": {
+      "brotliKB": 155,
+      "gzipKB": 179
+    },
+    "/request-access": {
+      "brotliKB": 148,
+      "gzipKB": 171
+    },
+    "/forgot-password": {
+      "brotliKB": 148,
+      "gzipKB": 171
+    },
+    "/invitation": {
+      "brotliKB": 148,
+      "gzipKB": 171
+    },
+    "/blog": {
+      "brotliKB": 124,
+      "gzipKB": 144
+    },
+    "/blog/[slug]": {
+      "brotliKB": 124,
+      "gzipKB": 144
+    },
+    "/news": {
+      "brotliKB": 124,
+      "gzipKB": 144
+    },
+    "/news/[slug]": {
+      "brotliKB": 124,
+      "gzipKB": 144
+    }
+  }
+}

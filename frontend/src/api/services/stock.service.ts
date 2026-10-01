@@ -1,5 +1,23 @@
 import { api } from "../client";
 import { Stock, StockTransfer, StockAdjustment, StockOpname, PaginatedResponse } from "@/types";
+import type {
+  CreateAdjustmentInput,
+  CreateOpnameInput,
+  CreateStockInput,
+  CreateTransferInput,
+  UpdateOpnameStatusInput,
+  UpdateStockInput,
+  UpdateTransferStatusInput,
+} from "@callibrator/contracts/stock";
+
+// P9-22 (ADR-097): the request bodies are the backend validator's own schemas
+// (@callibrator/contracts/stock). The hand-written `Omit<Stock, …>` shapes they
+// replace let a caller send any Stock field (tenantId, ids); the schema strips
+// everything it does not declare.
+export type StockCreateInput = CreateStockInput;
+export type StockUpdateInput = UpdateStockInput;
+export type StockTransferStatus = UpdateTransferStatusInput["status"];
+export type StockOpnameStatus = UpdateOpnameStatusInput["status"];
 
 // Backend response structures
 interface BackendStocksResponse {
@@ -75,7 +93,7 @@ export const stockService = {
   },
 
   create: async (
-    data: Omit<Stock, "id" | "createdAt" | "updatedAt">
+    data: StockCreateInput
   ): Promise<Stock> => {
     const response = await api.post<{ success: boolean; data: Stock }>(
       "/api/v1/stocks",
@@ -86,7 +104,7 @@ export const stockService = {
 
   update: async (
     stockId: string,
-    data: Partial<Omit<Stock, "id" | "warehouseId" | "locationId" | "createdAt" | "updatedAt">>
+    data: StockUpdateInput
   ): Promise<Stock> => {
     const response = await api.patch<{ success: boolean; data: Stock }>(
       `/api/v1/stocks/${stockId}`,
@@ -102,13 +120,7 @@ export const stockService = {
   // ==========================================
   // ADJUSTMENTS
   // ==========================================
-  createAdjustment: async (data: {
-    stockId: string;
-    type: "addition" | "subtraction" | "write_off";
-    quantity: number;
-    // P6-09: required by the backend, and never blank.
-    reason: string;
-  }): Promise<StockAdjustment> => {
+  createAdjustment: async (data: CreateAdjustmentInput): Promise<StockAdjustment> => {
     const response = await api.post<{ success: boolean; data: StockAdjustment }>(
       "/api/v1/stocks/adjustment",
       data
@@ -136,13 +148,7 @@ export const stockService = {
   // ==========================================
   // TRANSFERS
   // ==========================================
-  createTransfer: async (data: {
-    fromWarehouseId: string;
-    toWarehouseId: string;
-    itemName: string;
-    quantity: number;
-    notes?: string;
-  }): Promise<StockTransfer> => {
+  createTransfer: async (data: CreateTransferInput): Promise<StockTransfer> => {
     const response = await api.post<{ success: boolean; data: StockTransfer }>(
       "/api/v1/stocks/transfer",
       data
@@ -152,7 +158,7 @@ export const stockService = {
 
   updateTransferStatus: async (
     transferId: string,
-    status: "pending" | "in_transit" | "completed" | "cancelled"
+    status: StockTransferStatus
   ): Promise<StockTransfer> => {
     const response = await api.patch<{ success: boolean; data: StockTransfer }>(
       `/api/v1/stocks/transfer/${transferId}`,
@@ -182,11 +188,7 @@ export const stockService = {
   // ==========================================
   // OPNAME
   // ==========================================
-  createOpname: async (data: {
-    warehouseId: string;
-    scheduledAt: string;
-    notes?: string;
-  }): Promise<StockOpname> => {
+  createOpname: async (data: CreateOpnameInput): Promise<StockOpname> => {
     const response = await api.post<{ success: boolean; data: StockOpname }>(
       "/api/v1/stocks/opname",
       data
@@ -196,7 +198,7 @@ export const stockService = {
 
   updateOpnameStatus: async (
     opnameId: string,
-    status: "draft" | "in_progress" | "completed"
+    status: StockOpnameStatus
   ): Promise<StockOpname> => {
     const response = await api.patch<{ success: boolean; data: StockOpname }>(
       `/api/v1/stocks/opname/${opnameId}`,

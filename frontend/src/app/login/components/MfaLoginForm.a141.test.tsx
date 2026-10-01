@@ -49,7 +49,7 @@ describe("A-141: MfaLoginForm recovery code", () => {
 
     fireEvent.click(screen.getByText(/Use a recovery code/i));
     const input = screen.getByLabelText("Recovery code");
-    const submit = screen.getByRole("button", { name: /Verify & Sign In/i });
+    const submit = screen.getByRole("button", { name: /Verify and sign in/i });
 
     fireEvent.change(input, { target: { value: "abcd-efgh" } });
     expect(submit).toBeDisabled();
@@ -68,7 +68,7 @@ describe("A-141: MfaLoginForm recovery code", () => {
     fireEvent.click(screen.getByText(/Use a recovery code/i));
     fireEvent.click(screen.getByText(/Use a code from my authenticator app/i));
 
-    const input = screen.getByLabelText("Authentication code");
+    const input = screen.getByLabelText("Verification code");
     fireEvent.change(input, { target: { value: "12a3456789" } });
     expect((input as HTMLInputElement).value).toBe("123456");
   });

@@ -1,0 +1,33 @@
+{
+  // @callibrator/contracts (P9-22, ADR-097). The source is what every consumer
+  // reads — the backend and frontend typechecks, jest, tsx and Next — so it is
+  // held to the backend's flags (ADR-038, docs/ENGINEERING/04), which are the
+  // stricter of the two ends. It is also checked again under each consumer's
+  // own settings, because each compiles it as part of its program.
+  "compilerOptions": {
+    "target": "ES2025",
+    "lib": ["ES2025"],
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "rootDir": "src",
+    "noEmit": true,
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "isolatedModules": true,
+    "forceConsistentCasingInFileNames": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+
+    // Neither Node nor the DOM: both ends load this code.
+    "types": []
+  },
+  "include": ["src/**/*.ts"]
+}

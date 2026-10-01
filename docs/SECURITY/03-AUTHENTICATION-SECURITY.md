@@ -172,6 +172,28 @@ may not work without a second factor. Enforcement is **server-side**, in `auth.m
 sign in with the password → the MFA page → scan the secret → confirm a code → store the ten recovery
 codes. Nothing else works until that is done, and nothing is locked.
 
+**The seeded super admin's first password is one-time** (P10-16, ADR-099). The seed creates
+`sys@mail.com` only when no super admin exists. It generates a password (24 characters from
+`crypto.randomInt` over 61 unambiguous characters, every class present, ≈142 bits), stores only its bcrypt
+hash (`users.password_one_time`, must-change, 72 h expiry), and writes the plaintext to a 0600 file inside
+the container (`/app/.bootstrap/superadmin-password`). The plaintext is never in a log, a response, the
+audit log or the environment. The first correct sign-in consumes it: one conditional UPDATE sets
+the expiry to *now* in the same transaction as its audit row, so of two concurrent sign-ins only one wins,
+and every later use is the wrong-password 401. That sign-in answers a `password-change` purpose token (10 min)
+instead of a session. `auth` refuses it on every route. Only `POST /auth/first-sign-in/password`
+accepts it. The new password must pass the password rule and differ from the one-time one; the change
+clears the flags, revokes every session and is audited in one transaction. Then comes the enrolment path
+above. Lost or expired: `./backend rotate-bootstrap-password --user … --requested-by … --ticket …` (audited,
+`system:bootstrap`). A super admin still on the retired public default is moved to a one-time password
+at boot.
+
+**Every administrator-set password is one-time as well** (ADR-099 Amendment 1, Q-49): a user created
+with an administrator-chosen password, and an administrator's password reset (the temporary password is
+shown once to the administrator, never emailed). Both follow the same first-sign-in path: a password-change
+token, no session, and a second use is the wrong-password 401. For a new account where mail works, the
+invitation link (P10-15) is preferred. The demo seeder (known password `Demo123!`) is refused when
+`NODE_ENV=production`.
+
 **Break-glass** (the only operator lost both the authenticator and every recovery code), in order:
 1. the operator's own recovery codes ("use a recovery code" at sign-in);
 2. another super admin: `POST /users/:userId/mfa/reset`;
@@ -302,6 +324,17 @@ the JWKS location and the issuer the ID token is checked against are read from
 `/organizations`) is refused: through JIT provisioning it would admit any directory's users into the
 hospital. An IdP that answers the discovery URL with 404 gets the endpoints this client always
 derived. A **public client** (no `oidc_client_secret`) sends no `client_secret` — PKCE is its proof.
+
+**Every call to the IdP is SSRF-guarded (ADR-104, A-176).** `oidc_authority` is tenant-chosen, and so
+are the `jwks_uri` and `token_endpoint` its discovery document publishes. The discovery GET, the JWKS
+GET and the token POST each check the URL first:
+- https only in production;
+- no loopback, private, link-local/metadata or ULA host, including IPv4-mapped IPv6.
+
+They then connect through agents whose DNS lookup refuses an internal answer, pinning the checked
+address. They follow no redirect, and the response is capped at 2 MiB. `PATCH /tenants/settings`
+refuses a bad `oidc_authority` with a 400 when it is saved. For a local IdP in development, name its
+host in `SSRF_DEV_ALLOW_HOSTS`, which production ignores.
 
 A refused callback (state, IdP answer, suspended account, SSO not enabled) redirects the browser to
 `/login?error=<code>` — `sso_state`, `sso_unavailable`, `sso_account_refused`, `sso_failed`,

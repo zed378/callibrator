@@ -51,15 +51,18 @@ export default function ApiKeysPage() {
           </Button>
         </div>
 
-        {apiKeysError && <Alert variant="error">{apiKeysError}</Alert>}
-
-        <ApiKeysTable
-          apiKeys={apiKeys}
-          isApiKeysLoading={isApiKeysLoading}
-          pageSize={pageSize}
-          setCurrentPage={setCurrentPage}
-          handleRevokeClick={handleRevokeClick}
-        />
+        {/* A failed load is the error, never the "No API keys yet" empty state. */}
+        {apiKeysError ? (
+          <Alert variant="error">{apiKeysError}</Alert>
+        ) : (
+          <ApiKeysTable
+            apiKeys={apiKeys}
+            isApiKeysLoading={isApiKeysLoading}
+            pageSize={pageSize}
+            setCurrentPage={setCurrentPage}
+            handleRevokeClick={handleRevokeClick}
+          />
+        )}
 
         <CreateApiKeyModal
           isOpen={isCreateModalOpen}

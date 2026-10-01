@@ -8,15 +8,15 @@
  *
  *   1. walks the REAL Express router stack — every module index.js mounts,
  *      loaded in a child process (`node <this file> --dump-routes <out>`) with
- *      `validate()` and `dynamicAccess()` tagged so each route carries its Joi
- *      schema and its permission gate;
+ *      `validate()` and `dynamicAccess()` tagged so each route carries its
+ *      request schema and its permission gate;
  *   2. signs in the principals the way a user does: the platform operator
  *      (enrolling TOTP through /auth/mfa/setup + /auth/mfa/verify with the
  *      real otplib when it has none), a tenant admin and a technician in the
  *      default tenant, and a tenant admin and a technician in a second tenant
  *      (created through the API by the operator when missing);
  *   3. sends every route a well-formed request as the appropriate principal —
- *      GETs first, then writes (bodies from the route's Joi schema, then
+ *      GETs first, then writes (bodies from the route's request schema, then
  *      completed from the 400's own validation details), destructive and
  *      session-ending routes last — and records the status, the envelope
  *      (`success`, `status`, `message`, `data`; rows IN `data` and pagination
@@ -56,10 +56,57 @@ const REPO_ROOT = path.resolve(BACKEND_ROOT, "..");
 // 1. ROUTE DISCOVERY (child process)
 // ============================================================
 
-/** Joi describe() of a schema, JSON-safe. */
+/**
+ * One JSON Schema node restated in the describe() shape bodyFromSchema reads
+ * (type, keys, flags.presence, flags.only + allow, rules, items, matches).
+ * P9-11 (ADR-093): the validators are Zod; their JSON Schema is read instead
+ * of the former library's describe().
+ */
+const fromJsonSchema = (node, required = false) => {
+  if (!node || typeof node !== "object") {return { type: "any" };}
+  const flags = required ? { presence: "required" } : {};
+  const variants = node.anyOf || node.oneOf;
+  if (Array.isArray(variants)) {
+    const first = variants.find((v) => v && v.type !== "null") || variants[0];
+    return { ...fromJsonSchema(first, required) };
+  }
+  if (Array.isArray(node.enum)) {return { type: typeof node.enum[0] === "number" ? "number" : "string", flags: { ...flags, only: true }, allow: node.enum };}
+  if (node.const !== undefined) {return { type: typeof node.const, flags: { ...flags, only: true }, allow: [node.const] };}
+  const rules = [];
+  const add = (name, args) => rules.push(args === undefined ? { name } : { name, args });
+  switch (node.type) {
+    case "object": {
+      const need = new Set(node.required || []);
+      const keys = Object.fromEntries(Object.entries(node.properties || {}).map(([k, v]) => [k, fromJsonSchema(v, need.has(k))]));
+      return { type: "object", flags, keys };
+    }
+    case "array":
+      if (node.minItems) {add("min", { limit: node.minItems });}
+      return { type: "array", flags, rules, items: node.items ? [fromJsonSchema(node.items)] : [] };
+    case "integer":
+    case "number":
+      if (node.minimum !== undefined) {add("min", { limit: node.minimum });}
+      if (node.exclusiveMinimum !== undefined) {add("greater", { limit: node.exclusiveMinimum });}
+      return { type: "number", flags, rules };
+    case "boolean":
+      return { type: "boolean", flags };
+    case "string": {
+      const format = { uuid: "guid", email: "email", uri: "uri", "date-time": "isoDate", date: "isoDate", hostname: "hostname", ipv4: "ip", ipv6: "ip" }[node.format];
+      if (format) {add(format);}
+      if (node.minLength) {add("min", { limit: node.minLength });}
+      if (node.maxLength) {add("max", { limit: node.maxLength });}
+      return { type: "string", flags, rules };
+    }
+    default:
+      return { type: "any", flags };
+  }
+};
+
+/** A schema's shape in the describe() form, JSON-safe; null when it has none. */
 const describeSchema = (schema) => {
   try {
-    return JSON.parse(JSON.stringify(schema.describe()));
+    const { z } = require("zod");
+    return JSON.parse(JSON.stringify(fromJsonSchema(z.toJSONSchema(schema, { io: "input", unrepresentable: "any" }))));
   } catch {
     return null;
   }
@@ -178,7 +225,10 @@ function dumpRoutes(outFile) {
 /** Run the dumper in a child process (it loads the app's modules). */
 function loadRoutes() {
   const out = path.join(os.tmpdir(), `callibrator-live-routes-${process.pid}.json`);
-  const child = spawnSync(process.execPath, [__filename, "--dump-routes", out], {
+  // `--import tsx`, as `npm start` runs the server: the route modules now
+  // require converted `.ts` middleware (validation.middleware.ts), which plain
+  // `node` cannot resolve — the dump failed with "Cannot find module".
+  const child = spawnSync(process.execPath, ["--import", "tsx", __filename, "--dump-routes", out], {
     cwd: BACKEND_ROOT,
     // Without JEST_WORKER_ID: the child is the CLI, not a Jest worker (see the
     // guard at the bottom of this file).
@@ -201,7 +251,8 @@ function loadRoutes() {
 const BASE_URL = (process.env.LIVE_CONTRACT_BASE_URL || process.env.BASE_URL || "http://127.0.0.1:5000").replace(/\/$/, "");
 const OPERATOR = {
   user: process.env.LIVE_CONTRACT_OPERATOR || "sys@mail.com",
-  password: process.env.LIVE_CONTRACT_OPERATOR_PASSWORD || "123123",
+  // P10-16 (ADR-099): no default operator password any more.
+  password: process.env.LIVE_CONTRACT_OPERATOR_PASSWORD || process.env.E2E_OPERATOR_PASSWORD || "",
 };
 const DEMO_PASSWORD = "Demo123!";
 const PRINCIPAL_PASSWORD = "LiveContract#2026";
@@ -417,7 +468,7 @@ function valueFor(key, ids) {
   return `LC ${k} ${rand()}`;
 }
 
-/** A body from a Joi describe(): required keys, well-typed. */
+/** A body from a schema description: required keys, well-typed. */
 function bodyFromSchema(desc, ids, key = "") {
   if (!desc) {return undefined;}
   const flags = desc.flags || {};
@@ -491,7 +542,48 @@ const delPath = (obj, dotted) => {
   if (cur && parts.length) {delete cur[parts[parts.length - 1]];}
 };
 
-/** The Joi validation complaints in a 400, as [{field, message}]. */
+/**
+ * P9-11 (ADR-093): the validators speak Zod since 2026-09-29. The completion
+ * heuristics below were written against the older wording, so a Zod message
+ * is first restated in it: "Invalid input: expected string, received
+ * undefined" is a missing field, "Too small: expected string to have >=3
+ * characters" a length, and so on. A message it does not recognise passes
+ * through unchanged.
+ */
+function restate(message) {
+  const text = String(message);
+  let m;
+  if (/received undefined$/.test(text)) {return "is required";}
+  if ((m = text.match(/^Invalid option: expected one of (.*)$/))) {
+    return `must be one of [${m[1].split("|").map((v) => v.replace(/^"|"$/g, "")).join(", ")}]`;
+  }
+  if ((m = text.match(/^Invalid input: expected (\w+)/))) {
+    const type = m[1];
+    if (type === "number" || type === "int") {return "must be a number";}
+    if (type === "boolean") {return "must be a boolean";}
+    if (type === "array") {return "must be an array";}
+    if (type === "record" || type === "object") {return "must be of type object";}
+    if (type === "date") {return "must be a valid date";}
+    if (type === "never") {return "is not allowed";}
+    return "must be a string";
+  }
+  if ((m = text.match(/^Too small: expected string to have >=(\d+)/))) {return `length must be at least ${m[1]}`;}
+  if ((m = text.match(/^Too big: expected string to have <=(\d+)/))) {return `length must be less than or equal to ${m[1]}`;}
+  if ((m = text.match(/^Too small: expected array to have >=(\d+)/))) {return `must contain at least ${m[1]} items`;}
+  if ((m = text.match(/^Too small: expected number to be >=(-?[\d.]+)/))) {return `must be greater than or equal to ${m[1]}`;}
+  if ((m = text.match(/^Too small: expected number to be >(-?[\d.]+)/))) {return `must be greater than ${m[1]}`;}
+  if ((m = text.match(/^Too big: expected number to be <=(-?[\d.]+)/))) {return `must be less than or equal to ${m[1]}`;}
+  if (/^Invalid (UUID|GUID)/.test(text)) {return "must be a valid GUID";}
+  if (/^Invalid email/.test(text)) {return "must be a valid email";}
+  if (/^Invalid URL/.test(text)) {return "must be a valid uri";}
+  if (/^Invalid IP/.test(text)) {return "must be a valid ip address";}
+  if (/hostname/i.test(text)) {return "must be a valid hostname";}
+  if (/^Invalid string: must match pattern/.test(text)) {return "fails to match the required pattern";}
+  if (/^Provide at least one of (.*)$/.test(text)) {return `must contain at least one of [${text.replace(/^Provide at least one of /, "")}]`;}
+  return text;
+}
+
+/** The validation complaints in a 400, as [{field, message}]. */
 function complaintsOf(body) {
   const out = [];
   const pools = [body?.details, body?.errors, body?.data?.errors, body?.data];
@@ -499,7 +591,7 @@ function complaintsOf(body) {
     if (Array.isArray(pool)) {
       for (const d of pool) {
         if (d && typeof d === "object" && (d.message || d.msg)) {
-          out.push({ field: d.field || d.path || (String(d.message).match(/^"([^"]+)"/) || [])[1], message: String(d.message || d.msg) });
+          out.push({ field: d.field || d.path || (String(d.message).match(/^"([^"]+)"/) || [])[1], message: restate(d.message || d.msg) });
         }
       }
     }
@@ -513,7 +605,7 @@ function complaintsOf(body) {
   return out.filter((c) => c.field);
 }
 
-/** Adjust a body to one Joi complaint. Returns false when nothing was learned. */
+/** Adjust a body to one validation complaint. Returns false when nothing was learned. */
 function applyComplaint(body, { field, message }, ids) {
   const key = String(field).split(".").pop();
   const msg = message.toLowerCase();

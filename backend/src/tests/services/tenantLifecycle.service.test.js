@@ -250,12 +250,16 @@ describe("tenantLifecycle.service", () => {
       await expect(tenantLifecycle.cancelOffboarding("t1")).rejects.toThrow("Tenant not found");
     });
 
-    it("throws 400 if tenant is not currently offboarded", async () => {
+    // A-279 (ADR-094): a state conflict is a 409 that explains the state.
+    it("throws 409 naming the state if tenant is not currently offboarded", async () => {
       Tenant.findByPk.mockResolvedValue({
         id: "t1",
         status: "active",
       });
-      await expect(tenantLifecycle.cancelOffboarding("t1")).rejects.toThrow("Tenant is not offboarded");
+      await expect(tenantLifecycle.cancelOffboarding("t1")).rejects.toMatchObject({
+        status: 409,
+        message: expect.stringContaining('This tenant is "active", not offboarded'),
+      });
     });
   });
 

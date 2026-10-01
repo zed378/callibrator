@@ -2,6 +2,8 @@
  * Tests for sso.controller.js
  */
 
+// A-288 (ADR-100): the network policy has its own suites (signInPolicy.*.a288); here it permits.
+jest.mock("../../services/signInPolicy.service", () => ({ assertSignInPermitted: jest.fn(async () => undefined) }));
 jest.mock("../../services/sso.service", () => ({
   generateAuthnRequest: jest.fn(),
   parseAndVerifyResponse: jest.fn(),
@@ -236,16 +238,16 @@ describe("sso.controller", () => {
       expect(success).toHaveBeenCalledWith(res, { redirectUrl: "https://idp.com/redirect" }, null, "SAML redirect URL generated", 200);
     });
 
-    it("should call error response with 404 if tenant is not found", async () => {
+    it("A-292: an unknown tenant code gets the one SSO refusal (404)", async () => {
       req.body = { tenantCode: "nonexistent" };
       Tenants.findOne.mockResolvedValueOnce(null);
 
       await ssoController.ssoLogin(req, res, next);
 
-      expect(error).toHaveBeenCalledWith(res, "Tenant not found", 404, expect.any(String));
+      expect(error).toHaveBeenCalledWith(res, "Single sign-on is not available for this organisation code", 404, expect.any(String));
     });
 
-    it("should call error response with 400 if SSO is not enabled", async () => {
+    it("A-292: SSO disabled gets the same refusal (404)", async () => {
       req.body = { tenantCode: "acme" };
       Tenants.findOne.mockResolvedValueOnce({ id: "tenant-1", code: "acme" });
       tenantService.getTenantSettings.mockResolvedValueOnce({
@@ -254,10 +256,10 @@ describe("sso.controller", () => {
 
       await ssoController.ssoLogin(req, res, next);
 
-      expect(error).toHaveBeenCalledWith(res, "SSO is not enabled for this tenant", 400, expect.any(String));
+      expect(error).toHaveBeenCalledWith(res, "Single sign-on is not available for this organisation code", 404, expect.any(String));
     });
 
-    it("should call error response with 400 if SSO entry point is not configured", async () => {
+    it("A-292: no SAML entry point gets the same refusal (404)", async () => {
       req.body = { tenantCode: "acme" };
       Tenants.findOne.mockResolvedValueOnce({ id: "tenant-1", code: "acme" });
       tenantService.getTenantSettings.mockResolvedValueOnce({
@@ -266,7 +268,7 @@ describe("sso.controller", () => {
 
       await ssoController.ssoLogin(req, res, next);
 
-      expect(error).toHaveBeenCalledWith(res, "SSO entry point is not configured for this tenant", 400, expect.any(String));
+      expect(error).toHaveBeenCalledWith(res, "Single sign-on is not available for this organisation code", 404, expect.any(String));
     });
 
     it("should generate redirect URL when sso_enabled is boolean true", async () => {
@@ -431,16 +433,16 @@ describe("sso.controller", () => {
       expect(success).toHaveBeenCalledWith(res, { redirectUrl: "https://oidc.com/auth" }, null, "OIDC redirect URL generated", 200);
     });
 
-    it("should call error with 404 if tenant is not found", async () => {
+    it("A-292: an unknown tenant code gets the one SSO refusal (404, OIDC)", async () => {
       req.body = { tenantCode: "nonexistent" };
       Tenants.findOne.mockResolvedValueOnce(null);
 
       await ssoController.oidcLogin(req, res, next);
 
-      expect(error).toHaveBeenCalledWith(res, "Tenant not found", 404, expect.any(String));
+      expect(error).toHaveBeenCalledWith(res, "Single sign-on is not available for this organisation code", 404, expect.any(String));
     });
 
-    it("should call error with 400 if SSO is not enabled", async () => {
+    it("A-292: SSO disabled gets the same refusal (404, OIDC)", async () => {
       req.body = { tenantCode: "acme" };
       Tenants.findOne.mockResolvedValueOnce({ id: "tenant-1", code: "acme" });
       tenantService.getTenantSettings.mockResolvedValueOnce({
@@ -449,10 +451,10 @@ describe("sso.controller", () => {
 
       await ssoController.oidcLogin(req, res, next);
 
-      expect(error).toHaveBeenCalledWith(res, "SSO is not enabled for this tenant", 400, expect.any(String));
+      expect(error).toHaveBeenCalledWith(res, "Single sign-on is not available for this organisation code", 404, expect.any(String));
     });
 
-    it("should call error with 400 if OIDC client ID is not configured", async () => {
+    it("A-292: no OIDC client gets the same refusal (404)", async () => {
       req.body = { tenantCode: "acme" };
       Tenants.findOne.mockResolvedValueOnce({ id: "tenant-1", code: "acme" });
       tenantService.getTenantSettings.mockResolvedValueOnce({
@@ -461,7 +463,7 @@ describe("sso.controller", () => {
 
       await ssoController.oidcLogin(req, res, next);
 
-      expect(error).toHaveBeenCalledWith(res, "OIDC is not configured for this tenant", 400, expect.any(String));
+      expect(error).toHaveBeenCalledWith(res, "Single sign-on is not available for this organisation code", 404, expect.any(String));
     });
   });
 
@@ -562,7 +564,7 @@ describe("sso.controller", () => {
       ["ssoCallback", () => ssoController.ssoCallback, { SAMLResponse: "b64", RelayState: "acme" }, {}],
       ["oidcLogin", () => ssoController.oidcLogin, { tenantCode: "acme" }, {}],
       ["oidcCallback", () => ssoController.oidcCallback, { code: "auth-code" }, {}],
-    ])("%s returns 400 when getTenantSettings resolves with no data", async (name, getHandler, body) => {
+    ])("%s refuses when getTenantSettings resolves with no data", async (name, getHandler, body) => {
       req.body = body;
       if (name === "oidcCallback") {
         await startedOidc(req);
@@ -576,12 +578,8 @@ describe("sso.controller", () => {
         expectLoginRefusal(res, "sso_unavailable");
         return;
       }
-      expect(error).toHaveBeenCalledWith(
-        res,
-        "SSO is not enabled for this tenant",
-        400,
-        expect.any(String),
-      );
+      // A-292 (ADR-100): the one indistinguishable SSO-start refusal.
+      expect(error).toHaveBeenCalledWith(res, "Single sign-on is not available for this organisation code", 404, expect.any(String));
     });
 
     it("ssoMetadata still emits metadata when the tenant has no settings", async () => {
@@ -826,7 +824,7 @@ describe("sso.controller", () => {
   // generated and stored nowhere, and there was no nonce and no PKCE.
   // -------------------------------------------------------------------------
   describe("A-68: OIDC state, nonce and PKCE", () => {
-    // Found in passing: validate() returns Joi's { value, error }, and both
+    // Found in passing: the check returns { value, error }-style results, and both
     // start handlers destructured `tenantCode` from it — always undefined, so
     // Sequelize threw on `where: { code: undefined }` and every start was a 500.
     it.each([

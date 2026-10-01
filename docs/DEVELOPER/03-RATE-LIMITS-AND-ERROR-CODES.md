@@ -19,7 +19,19 @@ Implementation: `backend/index.js:206–254` (the global limiter) · `backend/sr
 
 **Both are only as good as `req.ip`.** On the reference deployment `req.ip` has been seen to be the real client (§ Is `req.ip` The Client). An integration that shares one egress address with other traffic shares every per-address budget with it.
 
-**Two limiters documented elsewhere do not run.** `authLimiter` (20 per 15 min) and `otpLimiter` (5 per hour) are defined at `index.js:230` and `:242` and never mounted — the only `app.use` of a limiter is `defaultLimiter` at `:254`. `../API/00-API-STANDARDS.md`, `../SECURITY/08-API-SECURITY.md` and `../ARCHITECTURE/06-CACHING-ARCHITECTURE.md` list both as active, and describe login as a limiter that "can lock accounts", which A-185 removed. Trust this section over those tables until they are corrected.
+**`authLimiter` and `otpLimiter` are gone (ADR-100, 2026-09-29).** They were defined in `index.js`, never mounted, and per-process. The public endpoints now have **request budgets** (`middlewares/requestBudget.middleware.ts`, `API_ENDPOINTS` in `constants/rateLimitConstants.ts`), which count **every** request — successes included — per client address in the shared store, and answer 429 `{ success: false, status: 429, message, data: null, retryAfter }` with a `Retry-After` header:
+
+| Budget | Routes | Production limit |
+|---|---|---|
+| `authSignIn` | `POST /auth/login` | 300 / 15 min per address (a hospital signs in from behind one NAT) |
+| `mfaSignIn` | `POST /auth/mfa/login` | 60 / 15 min per address |
+| `authRegister` | `POST /auth/register` | 10 / hour per address |
+| `authOtp` | `POST /auth/send-otp`, `/reset-password` | 20 / hour per address |
+| `authOtpRecipient` | `POST /auth/send-otp` | 3 / 15 min per **mailed-to address** (hashed), whoever asks, account or not |
+| `ssoStart` | `POST /auth/sso/login`, `/sso/oidc/login` (one shared budget) | 60 / 15 min per address |
+| `certificateVerify` / `certificateVerifyToken` | `GET /certificates/verify/:n` (and `/document`) | 60 minimal answers / 300 requests per 15 min per address (A-293) |
+
+Outside production each is multiplied by `RATE_LIMIT_NON_PRODUCTION_FACTOR` (default 100). The budgets sit in front of the failure throttles below, which are unchanged. `../API/00-API-STANDARDS.md`, `../SECURITY/08-API-SECURITY.md` and `../ARCHITECTURE/06-CACHING-ARCHITECTURE.md` still list the two old limiters; trust this section over those tables until they are corrected.
 
 ---
 
@@ -85,11 +97,11 @@ What is counted depends on what the request carries (`recordAuthFailure`, `:393`
 
 - **per user** — only when a verified access token names one;
 - **per token** — revoked after 3 failures, blocked 24 h at twice the budget;
-- **per address** — **only when `AUTH_RATE_LIMIT_BY_IP=true`** (`noteAuthFailure`, `:968`), and then it pauses the address for 5 min at **three times** the budget.
+- **per address** — when `rateLimiter.redis.service#countsFailuresByIp()` says so (`noteAuthFailure`), and then it pauses the address for 5 min at **three times** the budget.
 
-The switch is off in code by default. With it off, `register`, `send-otp` and `reset-password` — which carry no user and no token — **count nothing at all**; only the global limiter applies. It is set to `true` on the reference VM (`MEMORY/records/2026-09-24-dependency-upgrade.md`).
+**Since ADR-100 the per-address count is ON by default in production** (`AUTH_RATE_LIMIT_BY_IP` unset → on when `NODE_ENV=production`, off elsewhere; `"false"` turns it off, `"true"` on). Before, it was off unless set, and `register`, `send-otp` and `reset-password` counted nothing at all; they now also have the request budgets above. It was already `true` on the reference VM (`MEMORY/records/2026-09-24-dependency-upgrade.md`).
 
-`authPreCheck`'s 429 body carries `lockoutUntil` (ISO) and `retryAfter` (seconds), no `Retry-After` header. The `passwordCheck` 429 **does** send `Retry-After` (`controllerWrapper.util.js:39–42`).
+`authPreCheck`'s 429 body carries `lockoutUntil` (ISO) and `retryAfter` (seconds), and since ADR-100 a `Retry-After` header too. The `passwordCheck` 429 **does** send `Retry-After` (`controllerWrapper.util.js:39–42`).
 
 Two further budgets are keyed by the *actor*, not the target: `userIdentityConflict` (a tenant administrator's create or edit that hits an existing username or email, 10 / hour) and `scimIdentityConflict` (the same for a SCIM key, keyed by the key id, 10 / hour).
 

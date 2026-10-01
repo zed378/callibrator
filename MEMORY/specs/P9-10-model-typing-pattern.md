@@ -5,6 +5,8 @@
 - **As built:** the row type is a module-level `interface X extends Model<InferAttributes<X>, InferCreationAttributes<X>> { … }`; the statics are `interface XStatics { … }`; the factory is `const defineModel: DefineX = …`, **explicitly typed**; and `initModel<X, XStatics>(class extends Model {}, attrs, { …opts, modelName, sequelize })` returns the typed class.
 - **Unchanged:** timestamps stay out of `init`; `export =` stays; the `is_deleted` defaultScope key and `where: null` keep their reasoned directives; and the `DefaultScoped` brand now sits among the statics.
 - Items 1, 2 and 6 below describe the ORIGINAL proposal; `src/models/initModel.ts` holds the pattern as built.
+
+**Implemented:** 2026-09-29, **P9-10 DONE** (ADR-087 Amendments 7–11): all 71 models and the barrel. Amendment 8 adds the class variant, D-21 and D-27 typing, and initModel's `Auto` timestamps; Amendment 11 covers the barrel, `config/index.d.ts` and the branded deny sentinel.
 **Task:** P9-10 (`TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`)
 **Author:** Phase 9 helper 3 (Claude)
 **Spec refs:** ADR-038 (models row, rule 3) · ADR-064 items 5, 6, 10 (D-21, D-12, D-25/D-27) · ADR-087 and Amendment 1 (`export =`, `src/types/`, the build) · `docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md` § Models · `docs/BACKEND/05-TENANT-SCOPING.md` · CLAUDE.md § The Traps

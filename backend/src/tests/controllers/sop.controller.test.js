@@ -51,7 +51,12 @@ describe("sop Controller", () => {
       sopService.createDocument.mockResolvedValue({ id: VALID_DOC_ID });
       req.body = { title: "SOP-001" };
       await sopController.createDocument(req, res, next);
-      expect(sopService.createDocument).toHaveBeenCalledWith(VALID_TENANT_ID, VALID_USER_ID, req.body);
+      expect(sopService.createDocument).toHaveBeenCalledWith(
+        VALID_TENANT_ID,
+        VALID_USER_ID,
+        req.body,
+        expect.objectContaining({ apiKeyId: null }),
+      );
       expect(sendError).not.toHaveBeenCalled();
     });
   });

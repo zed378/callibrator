@@ -53,7 +53,8 @@ const RealCertificate = jest.requireActual("../../models/certificate.model")(
   DataTypes,
 );
 const certificateService = require("../../services/certificate.service");
-const { validate, updateCertificateSchema } = require("../../validators/certificate.validator");
+const { validateInput: validate } = require("../../validators/input");
+const { updateCertificateSchema } = require("../../validators/certificate.validator");
 const { logger } = require("../../middlewares/activityLog.middleware");
 
 const makeCertificate = (fields) => {
@@ -175,8 +176,17 @@ describe("A-64 — PUT /certificates/:id cannot change status", () => {
   });
 
   it("a status outside the enum is still a 400 from the validator", () => {
-    expect(() => validate({ status: "published" }, updateCertificateSchema)).toThrow(
-      expect.objectContaining({ status: 400 }),
-    );
+    let caught;
+    try {
+      validate({ status: "published" }, updateCertificateSchema);
+    } catch (err) {
+      caught = err;
+    }
+    // enum-or-"" is a union, so Zod names no option in the message.
+    expect(caught).toEqual({
+      status: 400,
+      message: "Validation failed",
+      errors: [{ field: "status", message: "Invalid input" }],
+    });
   });
 });

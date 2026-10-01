@@ -1,10 +1,11 @@
 const riskService = require("../services/risk.service");
 const { success } = require("../utils/response.util");
+const { auditPrincipal } = require("../utils/auditPrincipal.util");
 const { asyncHandlerWithMapping } = require("../utils/controllerWrapper.util");
 
 exports.createRisk = asyncHandlerWithMapping(
   async (req, res) => {
-    const data = await riskService.createRisk(req.user.tenantId, req.body || {}, req.user.id);
+    const data = await riskService.createRisk(req.user.tenantId, req.body || {}, req.user.id, auditPrincipal(req));
     success(res, data, null, "Risk created successfully", 201);
   },
   {},
@@ -38,7 +39,7 @@ exports.getRiskById = asyncHandlerWithMapping(
 
 exports.updateRisk = asyncHandlerWithMapping(
   async (req, res) => {
-    const data = await riskService.updateRisk(req.user.tenantId, req.params.id, req.body || {});
+    const data = await riskService.updateRisk(req.user.tenantId, req.params.id, req.body || {}, auditPrincipal(req));
     success(res, data, null, "Risk updated successfully", 200);
   },
   {
@@ -48,7 +49,7 @@ exports.updateRisk = asyncHandlerWithMapping(
 
 exports.deleteRisk = asyncHandlerWithMapping(
   async (req, res) => {
-    await riskService.deleteRisk(req.user.tenantId, req.params.id);
+    await riskService.deleteRisk(req.user.tenantId, req.params.id, auditPrincipal(req));
     success(res, null, null, "Risk deleted successfully", 200);
   },
   {

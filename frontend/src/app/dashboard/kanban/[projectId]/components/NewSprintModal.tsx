@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Dialog, Button, Input, Textarea } from "@/components/ui";
+import { Dialog, Button, Input, Textarea, Alert } from "@/components/ui";
 
 interface Props {
   isOpen: boolean;
@@ -13,16 +13,21 @@ export default function NewSprintModal({ isOpen, onClose, onCreate }: Props) {
   const [name, setName] = useState("");
   const [goal, setGoal] = useState("");
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
     setBusy(true);
+    setErr(null);
     try {
       await onCreate(name.trim(), goal.trim());
       setName("");
       setGoal("");
       onClose();
+    } catch (e) {
+      // Shown, not dropped: the submit used to reject unhandled.
+      setErr(e instanceof Error ? e.message : "Failed to create the sprint");
     } finally {
       setBusy(false);
     }
@@ -31,6 +36,7 @@ export default function NewSprintModal({ isOpen, onClose, onCreate }: Props) {
   return (
     <Dialog isOpen={isOpen} onClose={onClose} title="New sprint" size="md">
       <form onSubmit={submit} className="space-y-3">
+        {err && <Alert variant="error">{err}</Alert>}
         <Input
           label="Name"
           value={name}

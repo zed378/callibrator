@@ -61,6 +61,10 @@ function getMenuGroupId(slug) {
     "tickets-response": "a0000000-0000-0000-0000-000000000232",
     "esignature": "a0000000-0000-0000-0000-000000000233",
     "ai-assistant": "a0000000-0000-0000-0000-000000000234",
+    // ADR-102 (migration 0097): the stock module and bring-your-own storage.
+    stock: "a0000000-0000-0000-0000-000000000235",
+    storage: "a0000000-0000-0000-0000-000000000236",
+    "access-requests": "a0000000-0000-0000-0000-000000000237", // P10-07, migration 0101
     "predictive-maintenance": "a0000000-0000-0000-0000-000000000306",
     // Management sub-group categories (level 2 of the 3-level sidebar)
     "mgmt-organization": "a0000000-0000-0000-0000-000000000250",
@@ -126,6 +130,15 @@ async function seedMenuGroups() {
       slug: "warehouse",
       icon: "Warehouse",
       sortOrder: 6,
+      is_active: true,
+    },
+    // ADR-102: the stock module (inventory, transfers, adjustments, opname).
+    // Its API is gated by `warehouse` (constants/menuPageAccess).
+    {
+      name: "Stock",
+      slug: "stock",
+      icon: "Package",
+      sortOrder: 7,
       is_active: true,
     },
 
@@ -261,6 +274,15 @@ async function seedMenuGroups() {
       slug: "menu-groups",
       icon: "LayoutGrid",
       sortOrder: 5,
+      is_active: true,
+      parentSlug: "mgmt-organization",
+    },
+    // P10-07 (ADR-098 §6): the super admin's access-request queue.
+    {
+      name: "Access Requests",
+      slug: "access-requests",
+      icon: "Inbox",
+      sortOrder: 6,
       is_active: true,
       parentSlug: "mgmt-organization",
     },
@@ -458,6 +480,16 @@ async function seedMenuGroups() {
       slug: "attachments",
       icon: "FileText",
       sortOrder: 1,
+      is_active: true,
+      parentSlug: "mgmt-content",
+    },
+    // ADR-102: bring-your-own object storage for the tenant's files. Its API
+    // is rbac TENANT_ADMIN (constants/menuPageAccess).
+    {
+      name: "Object Storage",
+      slug: "storage",
+      icon: "HardDrive",
+      sortOrder: 2,
       is_active: true,
       parentSlug: "mgmt-content",
     },
@@ -762,6 +794,7 @@ async function seedRoleMenuPermissions() {
         "kanban",
         "tickets-response",
         "esignature",
+        "access-requests", // P10-07 (migration 0101)
       ],
     },
     {

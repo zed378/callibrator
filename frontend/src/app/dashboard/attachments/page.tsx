@@ -9,6 +9,7 @@ import { useAttachments } from "./hooks/useAttachments";
 import AttachmentsTable from "./components/AttachmentsTable";
 import UploadAttachmentModal from "./components/UploadAttachmentModal";
 import DeleteAttachmentModal from "./components/DeleteAttachmentModal";
+import { usePermissions } from "@/hooks/usePermissions";
 
 const FILTER_OPTIONS = [
   { value: "", label: "All files" },
@@ -20,6 +21,11 @@ const FILTER_OPTIONS = [
 ];
 
 export default function AttachmentsPage() {
+  // ADR-102: deleting a file is gated on `equipment` write
+  // (attachments.route.js DELETE /:id); uploading and downloading on
+  // `equipment` read, which every role that reaches this page holds.
+  const { canWrite } = usePermissions();
+  const mayDelete = canWrite("equipment");
   const {
     attachments,
     isLoading,
@@ -79,15 +85,18 @@ export default function AttachmentsPage() {
           </div>
         </div>
 
-        <AttachmentsTable
-          attachments={attachments}
-          isLoading={isLoading}
-          pageSize={pageSize}
-          downloadingId={downloadingId}
-          setCurrentPage={setCurrentPage}
-          onDownload={handleDownload}
-          onDelete={handleDeleteClick}
-        />
+        {/* A failed load is the error above, never the "No files yet" empty state. */}
+        {!error && (
+          <AttachmentsTable
+            attachments={attachments}
+            isLoading={isLoading}
+            pageSize={pageSize}
+            downloadingId={downloadingId}
+            setCurrentPage={setCurrentPage}
+            onDownload={handleDownload}
+            onDelete={mayDelete ? handleDeleteClick : undefined}
+          />
+        )}
 
         <UploadAttachmentModal
           isOpen={isUploadModalOpen}

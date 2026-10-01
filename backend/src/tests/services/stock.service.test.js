@@ -9,6 +9,7 @@
 jest.mock("sequelize", () => ({
   Op: {
     like: Symbol("like"),
+    iLike: Symbol("iLike"), // A-320: the search matches with ILIKE
     ne: Symbol("ne"),
     or: Symbol("or"),
   },
@@ -48,6 +49,8 @@ jest.mock("../../models", () => ({
     findOne: jest.fn(),
   },
   User: {},
+  // Q-51 (ADR-100 Am. 2): the key actor is included through ApiKey.scope("includeDeleted").
+  ApiKey: { scope: jest.fn(() => "ApiKey(includeDeleted)") },
 }));
 
 // P6-09: every quantity change audits inside its transaction.
@@ -80,41 +83,14 @@ jest.mock("../../utils/appError.util", () => {
   return { AppError };
 });
 
-jest.mock("../../validators/stock.validator", () => {
-  return {
-    validate: jest.fn((data, schema) => {
-      if (data.failValidation) {
-        return {
-          error: {
-            details: [{ path: ["itemName"], message: "Validation error" }],
-          },
-          value: null,
-        };
-      }
-      return { error: null, value: data };
-    }),
-    formatErrors: jest.fn((details) => {
-      return details.map((item) => ({
-        field: item.path.join("."),
-        message: item.message,
-      }));
-    }),
-    createStockSchema: "createStockSchema",
-    updateStockSchema: "updateStockSchema",
-    createTransferSchema: "createTransferSchema",
-    updateTransferStatusSchema: "updateTransferStatusSchema",
-    createAdjustmentSchema: "createAdjustmentSchema",
-    createOpnameSchema: "createOpnameSchema",
-    updateOpnameStatusSchema: "updateOpnameStatusSchema",
-  };
-});
+// The validator is REAL (P9-11: Zod schemas through validators/input), so the
+// inputs below are ones the API would accept and the 400 case is a real refusal.
 
 // ================================================================
 // IMPORTS (after mocks)
 // ================================================================
 const { db } = require("../../config");
 const { Stock, StockTransfer, StockAdjustment, StockOpname, Warehouse, StorageLocation } = require("../../models");
-const { validate: validateInput } = require("../../validators/stock.validator");
 const auditService = require("../../services/audit.service");
 
 const {
@@ -146,6 +122,12 @@ const expectRejectsWithMessage = async (promise, message) => {
   }
 };
 
+// Ids the schemas accept (warehouseId, locationId and stockId are uuids).
+const WH_1 = "11111111-1111-4111-8111-111111111111";
+const WH_2 = "22222222-2222-4222-8222-222222222222";
+const LOC_1 = "33333333-3333-4333-8333-333333333333";
+const ST_1 = "44444444-4444-4444-8444-444444444444";
+
 const mockTransaction = () => ({
   commit: jest.fn().mockResolvedValue(),
   rollback: jest.fn().mockResolvedValue(),
@@ -154,30 +136,19 @@ const mockTransaction = () => ({
 describe("stock.service", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    validateInput.mockImplementation((data, schema) => {
-      if (data.failValidation) {
-        return {
-          error: {
-            details: [{ path: ["itemName"], message: "Validation error" }],
-          },
-          value: null,
-        };
-      }
-      return { error: null, value: data };
-    });
   });
 
   describe("fetchStocks", () => {
     it("should fetch stocks successfully with all query params", async () => {
       Stock.findAndCountAll.mockResolvedValueOnce({
-        rows: [{ id: "st-1", itemName: "Item 1" }],
+        rows: [{ id: ST_1, itemName: "Item 1" }],
         count: 1,
       });
 
       const result = await fetchStocks({
         tenantId: "tenant-1",
-        warehouseId: "wh-1",
-        locationId: "loc-1",
+        warehouseId: WH_1,
+        locationId: LOC_1,
         find: "search",
         page: 2,
         limit: 10,
@@ -189,8 +160,8 @@ describe("stock.service", () => {
         expect.objectContaining({
           where: expect.objectContaining({
             tenantId: "tenant-1",
-            warehouseId: "wh-1",
-            locationId: "loc-1",
+            warehouseId: WH_1,
+            locationId: LOC_1,
           }),
         }),
       );
@@ -210,21 +181,29 @@ describe("stock.service", () => {
 
   describe("fetchSpecificStock", () => {
     it("should fetch specific stock successfully by ID", async () => {
-      Stock.findOne.mockResolvedValueOnce({ id: "st-1", itemName: "Item 1" });
-      const result = await fetchSpecificStock("tenant-1", "st-1");
+      Stock.findOne.mockResolvedValueOnce({ id: ST_1, itemName: "Item 1" });
+      const result = await fetchSpecificStock("tenant-1", ST_1);
       expect(result.success).toBe(true);
       expect(result.data.itemName).toBe("Item 1");
     });
 
     it("should throw 404 if stock not found", async () => {
       Stock.findOne.mockResolvedValueOnce(null);
-      await expectRejectsWithMessage(fetchSpecificStock("tenant-1", "st-1"), "Stock item not found");
+      await expectRejectsWithMessage(fetchSpecificStock("tenant-1", ST_1), "Stock item not found");
     });
   });
 
   describe("createStock", () => {
     it("should throw 400 if validation fails", async () => {
-      await expectRejectsWithMessage(createStock("tenant-1", { failValidation: true }), "Validation failed");
+      await expect(createStock("tenant-1", { warehouseId: WH_1, itemName: "I", quantity: -1 })).rejects.toEqual({
+        status: 400,
+        message: "Validation failed",
+        errors: [
+          { field: "itemName", message: "Too small: expected string to have >=2 characters" },
+          { field: "quantity", message: "Too small: expected number to be >=0" },
+        ],
+      });
+      expect(db.transaction).not.toHaveBeenCalled();
     });
 
     it("should throw 404 if warehouse not found", async () => {
@@ -233,7 +212,7 @@ describe("stock.service", () => {
       Warehouse.findOne.mockResolvedValueOnce(null);
 
       await expectRejectsWithMessage(
-        createStock("tenant-1", { warehouseId: "wh-1", itemName: "Item" }),
+        createStock("tenant-1", { warehouseId: WH_1, itemName: "Item" }),
         "Warehouse not found",
       );
       expect(tx.rollback).toHaveBeenCalled();
@@ -242,11 +221,11 @@ describe("stock.service", () => {
     it("should throw 404 if storage location not found in warehouse", async () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
-      Warehouse.findOne.mockResolvedValueOnce({ id: "wh-1" });
+      Warehouse.findOne.mockResolvedValueOnce({ id: WH_1 });
       StorageLocation.findOne.mockResolvedValueOnce(null);
 
       await expectRejectsWithMessage(
-        createStock("tenant-1", { warehouseId: "wh-1", locationId: "loc-1", itemName: "Item" }),
+        createStock("tenant-1", { warehouseId: WH_1, locationId: LOC_1, itemName: "Item" }),
         "Storage location not found in this warehouse",
       );
       expect(tx.rollback).toHaveBeenCalled();
@@ -255,14 +234,14 @@ describe("stock.service", () => {
     it("should throw 409 if duplicate stock SKU/serial number already exists", async () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
-      Warehouse.findOne.mockResolvedValueOnce({ id: "wh-1" });
-      StorageLocation.findOne.mockResolvedValueOnce({ id: "loc-1" });
+      Warehouse.findOne.mockResolvedValueOnce({ id: WH_1 });
+      StorageLocation.findOne.mockResolvedValueOnce({ id: LOC_1 });
       Stock.findOne.mockResolvedValueOnce({ id: "st-existing" });
 
       await expectRejectsWithMessage(
         createStock("tenant-1", {
-          warehouseId: "wh-1",
-          locationId: "loc-1",
+          warehouseId: WH_1,
+          locationId: LOC_1,
           itemName: "Item",
           sku: "SKU-1",
           serialNumber: "SN-1",
@@ -275,8 +254,8 @@ describe("stock.service", () => {
     it("should create stock successfully", async () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
-      Warehouse.findOne.mockResolvedValueOnce({ id: "wh-1" });
-      StorageLocation.findOne.mockResolvedValueOnce({ id: "loc-1" });
+      Warehouse.findOne.mockResolvedValueOnce({ id: WH_1 });
+      StorageLocation.findOne.mockResolvedValueOnce({ id: LOC_1 });
       Stock.findOne.mockResolvedValueOnce(null); // duplicate check
       Stock.create.mockResolvedValueOnce({
         id: "st-new",
@@ -284,8 +263,8 @@ describe("stock.service", () => {
       });
 
       const result = await createStock("tenant-1", {
-        warehouseId: "wh-1",
-        locationId: "loc-1",
+        warehouseId: WH_1,
+        locationId: LOC_1,
         itemName: "Item 1",
         sku: "SKU-1",
         serialNumber: "SN-1",
@@ -302,11 +281,11 @@ describe("stock.service", () => {
     it("P6-09: stock on hand at creation is recorded as an opening-balance adjustment, audited", async () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
-      Warehouse.findOne.mockResolvedValueOnce({ id: "wh-1" });
+      Warehouse.findOne.mockResolvedValueOnce({ id: WH_1 });
       Stock.create.mockResolvedValueOnce({
         id: "st-new",
         itemName: "Item 1",
-        warehouseId: "wh-1",
+        warehouseId: WH_1,
         locationId: null,
         quantity: 12,
       });
@@ -314,14 +293,14 @@ describe("stock.service", () => {
 
       await createStock(
         "tenant-1",
-        { warehouseId: "wh-1", itemName: "Item 1", quantity: 12 },
+        { warehouseId: WH_1, itemName: "Item 1", quantity: 12 },
         { userId: "usr-1", ipAddress: "10.0.0.1" },
       );
 
       expect(StockAdjustment.create).toHaveBeenCalledWith(
         {
           tenantId: "tenant-1",
-          warehouseId: "wh-1",
+          warehouseId: WH_1,
           locationId: null,
           stockId: "st-new",
           type: "addition",
@@ -330,6 +309,7 @@ describe("stock.service", () => {
           quantityAfter: 12,
           reason: "Opening balance recorded when the stock item was created",
           adjustedBy: "usr-1",
+          apiKeyId: null, // Q-51: a user, not a key
         },
         { transaction: tx },
       );
@@ -343,10 +323,10 @@ describe("stock.service", () => {
     it("P6-09: an item created with no quantity writes no adjustment", async () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
-      Warehouse.findOne.mockResolvedValueOnce({ id: "wh-1" });
+      Warehouse.findOne.mockResolvedValueOnce({ id: WH_1 });
       Stock.create.mockResolvedValueOnce({ id: "st-new", itemName: "Item 1", quantity: 0 });
 
-      await createStock("tenant-1", { warehouseId: "wh-1", itemName: "Item 1" }, { userId: "usr-1" });
+      await createStock("tenant-1", { warehouseId: WH_1, itemName: "Item 1" }, { userId: "usr-1" });
 
       expect(StockAdjustment.create).not.toHaveBeenCalled();
       expect(auditService.logAction).toHaveBeenCalledTimes(1);
@@ -355,14 +335,14 @@ describe("stock.service", () => {
     it("should create stock without location and optional fields successfully", async () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
-      Warehouse.findOne.mockResolvedValueOnce({ id: "wh-1" });
+      Warehouse.findOne.mockResolvedValueOnce({ id: WH_1 });
       Stock.create.mockResolvedValueOnce({
         id: "st-new-no-loc",
         itemName: "Item 1",
       });
 
       const result = await createStock("tenant-1", {
-        warehouseId: "wh-1",
+        warehouseId: WH_1,
         itemName: "Item 1",
       });
 
@@ -374,12 +354,12 @@ describe("stock.service", () => {
     it("should check duplicate stock with only SKU successfully", async () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
-      Warehouse.findOne.mockResolvedValueOnce({ id: "wh-1" });
+      Warehouse.findOne.mockResolvedValueOnce({ id: WH_1 });
       Stock.findOne.mockResolvedValueOnce({ id: "st-existing" });
 
       await expectRejectsWithMessage(
         createStock("tenant-1", {
-          warehouseId: "wh-1",
+          warehouseId: WH_1,
           itemName: "Item",
           sku: "SKU-1",
         }),
@@ -390,12 +370,12 @@ describe("stock.service", () => {
     it("should check duplicate stock with only serialNumber successfully", async () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
-      Warehouse.findOne.mockResolvedValueOnce({ id: "wh-1" });
+      Warehouse.findOne.mockResolvedValueOnce({ id: WH_1 });
       Stock.findOne.mockResolvedValueOnce({ id: "st-existing" });
 
       await expectRejectsWithMessage(
         createStock("tenant-1", {
-          warehouseId: "wh-1",
+          warehouseId: WH_1,
           itemName: "Item",
           serialNumber: "SN-1",
         }),
@@ -406,11 +386,11 @@ describe("stock.service", () => {
     it("should rollback transaction and throw error on database failure during stock creation", async () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
-      Warehouse.findOne.mockResolvedValueOnce({ id: "wh-1" });
+      Warehouse.findOne.mockResolvedValueOnce({ id: WH_1 });
       Stock.create.mockRejectedValueOnce(new Error("Db creation error"));
 
       await expectRejectsWithMessage(
-        createStock("tenant-1", { warehouseId: "wh-1", itemName: "Item 1" }),
+        createStock("tenant-1", { warehouseId: WH_1, itemName: "Item 1" }),
         "Db creation error",
       );
       expect(tx.rollback).toHaveBeenCalled();
@@ -423,7 +403,7 @@ describe("stock.service", () => {
       Warehouse.findOne.mockRejectedValueOnce(new Error("Db query error"));
 
       await expectRejectsWithMessage(
-        createStock("tenant-1", { warehouseId: "wh-1", itemName: "Item 1" }),
+        createStock("tenant-1", { warehouseId: WH_1, itemName: "Item 1" }),
         "Db query error",
       );
       expect(tx.rollback).toHaveBeenCalled();
@@ -437,7 +417,7 @@ describe("stock.service", () => {
       Stock.findOne.mockResolvedValueOnce(null);
 
       await expectRejectsWithMessage(
-        updateStock("tenant-1", "st-1", { itemName: "Updated" }),
+        updateStock("tenant-1", ST_1, { itemName: "Updated" }),
         "Stock item not found",
       );
       expect(tx.rollback).toHaveBeenCalled();
@@ -447,7 +427,7 @@ describe("stock.service", () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
       const mockStock = {
-        id: "st-1",
+        id: ST_1,
         itemName: "Old Name",
         sku: "Old SKU",
         serialNumber: "Old SN",
@@ -460,7 +440,7 @@ describe("stock.service", () => {
 
       const result = await updateStock(
         "tenant-1",
-        "st-1",
+        ST_1,
         {
           itemName: "New Name",
           sku: "New SKU",
@@ -484,7 +464,7 @@ describe("stock.service", () => {
         expect.objectContaining({
           action: "UPDATE",
           resourceType: "Stock",
-          resourceId: "st-1",
+          resourceId: ST_1,
           userId: "user-1",
           changes: {
             before: { itemName: "Old Name", sku: "Old SKU", serialNumber: "Old SN", minQuantity: 1, description: "Old" },
@@ -500,10 +480,10 @@ describe("stock.service", () => {
     it("P6-09: REFUSES a quantity change (400), writes nothing, and names the adjustment endpoint", async () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
-      const mockStock = { id: "st-1", itemName: "Item", quantity: 5, update: jest.fn() };
+      const mockStock = { id: ST_1, itemName: "Item", quantity: 5, update: jest.fn() };
       Stock.findOne.mockResolvedValueOnce(mockStock);
 
-      const err = await updateStock("tenant-1", "st-1", { quantity: 50 }).catch((e) => e);
+      const err = await updateStock("tenant-1", ST_1, { quantity: 50 }).catch((e) => e);
 
       expect(err.status).toBe(400);
       expect(err.message).toMatch(/cannot be edited directly \(it is 5; 50 was sent\)/);
@@ -517,8 +497,8 @@ describe("stock.service", () => {
     it("P6-09: REFUSES a quantity of 0 on a stocked item — zero is a change too", async () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
-      Stock.findOne.mockResolvedValueOnce({ id: "st-1", quantity: 5, update: jest.fn() });
-      await expect(updateStock("tenant-1", "st-1", { quantity: 0 })).rejects.toMatchObject({ status: 400 });
+      Stock.findOne.mockResolvedValueOnce({ id: ST_1, quantity: 5, update: jest.fn() });
+      await expect(updateStock("tenant-1", ST_1, { quantity: 0 })).rejects.toMatchObject({ status: 400 });
     });
 
     it("should rollback transaction and throw error on database failure during stock update", async () => {
@@ -526,13 +506,13 @@ describe("stock.service", () => {
       tx.rollback.mockRejectedValueOnce(new Error("Rollback failed"));
       db.transaction.mockResolvedValueOnce(tx);
       const mockStock = {
-        id: "st-1",
+        id: ST_1,
         update: jest.fn().mockRejectedValueOnce(new Error("Db update error")),
       };
       Stock.findOne.mockResolvedValueOnce(mockStock);
 
       await expectRejectsWithMessage(
-        updateStock("tenant-1", "st-1", { itemName: "New Name" }),
+        updateStock("tenant-1", ST_1, { itemName: "New Name" }),
         "Db update error",
       );
       expect(tx.rollback).toHaveBeenCalled();
@@ -545,22 +525,33 @@ describe("stock.service", () => {
       db.transaction.mockResolvedValueOnce(tx);
       Stock.findOne.mockResolvedValueOnce(null);
 
-      await expectRejectsWithMessage(deleteStock("tenant-1", "st-1"), "Stock item not found");
+      await expectRejectsWithMessage(deleteStock("tenant-1", ST_1), "Stock item not found");
       expect(tx.rollback).toHaveBeenCalled();
     });
 
+    // A-321: the soft-delete is saved IN the transaction (softDelete() took no
+    // options, so it committed on its own) and writes its audit row there.
     it("should delete stock successfully", async () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
       const mockStock = {
-        id: "st-1",
-        softDelete: jest.fn().mockResolvedValue(),
+        id: ST_1,
+        itemName: "Item",
+        warehouseId: WH_1,
+        quantity: 3,
+        isDeleted: false,
+        save: jest.fn().mockResolvedValue(),
       };
       Stock.findOne.mockResolvedValueOnce(mockStock);
 
-      const result = await deleteStock("tenant-1", "st-1");
+      const result = await deleteStock("tenant-1", ST_1, { userId: "user-1" });
       expect(result.success).toBe(true);
-      expect(mockStock.softDelete).toHaveBeenCalled();
+      expect(mockStock.isDeleted).toBe(true);
+      expect(mockStock.save).toHaveBeenCalledWith({ hooks: false, transaction: tx });
+      expect(auditService.logAction).toHaveBeenCalledWith(
+        expect.objectContaining({ tenantId: "tenant-1", userId: "user-1", action: "DELETE", resourceType: "Stock", resourceId: ST_1 }),
+        { transaction: tx },
+      );
       expect(tx.commit).toHaveBeenCalled();
     });
 
@@ -569,13 +560,13 @@ describe("stock.service", () => {
       tx.rollback.mockRejectedValueOnce(new Error("Rollback failed"));
       db.transaction.mockResolvedValueOnce(tx);
       const mockStock = {
-        id: "st-1",
-        softDelete: jest.fn().mockRejectedValueOnce(new Error("Db delete error")),
+        id: ST_1,
+        save: jest.fn().mockRejectedValueOnce(new Error("Db delete error")),
       };
       Stock.findOne.mockResolvedValueOnce(mockStock);
 
       await expectRejectsWithMessage(
-        deleteStock("tenant-1", "st-1"),
+        deleteStock("tenant-1", ST_1),
         "Db delete error",
       );
       expect(tx.rollback).toHaveBeenCalled();
@@ -588,7 +579,7 @@ describe("stock.service", () => {
       Stock.findOne.mockRejectedValueOnce(new Error("Db query error"));
 
       await expectRejectsWithMessage(
-        deleteStock("tenant-1", "st-1"),
+        deleteStock("tenant-1", ST_1),
         "Db query error",
       );
       expect(tx.rollback).not.toHaveBeenCalled();
@@ -602,7 +593,7 @@ describe("stock.service", () => {
       Stock.findOne.mockResolvedValueOnce(null);
 
       await expectRejectsWithMessage(
-        createAdjustment("tenant-1", { stockId: "st-1", type: "addition", quantity: 5 }, "usr-1"),
+        createAdjustment("tenant-1", { stockId: ST_1, type: "addition", quantity: 5, reason: "Recount" }, "usr-1"),
         "Stock item not found",
       );
       expect(tx.rollback).toHaveBeenCalled();
@@ -612,9 +603,9 @@ describe("stock.service", () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
       const mockStock = {
-        id: "st-1",
-        warehouseId: "wh-1",
-        locationId: "loc-1",
+        id: ST_1,
+        warehouseId: WH_1,
+        locationId: LOC_1,
         quantity: 10,
         update: jest.fn().mockResolvedValue(),
       };
@@ -623,7 +614,7 @@ describe("stock.service", () => {
 
       const result = await createAdjustment(
         "tenant-1",
-        { stockId: "st-1", type: "addition", quantity: 5, reason: "Excess" },
+        { stockId: ST_1, type: "addition", quantity: 5, reason: "Excess" },
         "usr-1",
       );
 
@@ -633,15 +624,16 @@ describe("stock.service", () => {
       expect(StockAdjustment.create).toHaveBeenCalledWith(
         {
           tenantId: "tenant-1",
-          warehouseId: "wh-1",
-          locationId: "loc-1",
-          stockId: "st-1",
+          warehouseId: WH_1,
+          locationId: LOC_1,
+          stockId: ST_1,
           type: "addition",
           quantity: 5,
           quantityBefore: 10,
           quantityAfter: 15,
           reason: "Excess",
           adjustedBy: "usr-1",
+          apiKeyId: null, // Q-51: a user, not a key
         },
         { transaction: tx },
       );
@@ -653,7 +645,7 @@ describe("stock.service", () => {
           userId: "usr-1",
           changes: {
             before: { quantity: 10 },
-            after: { stockId: "st-1", type: "addition", quantity: 15, reason: "Excess" },
+            after: { stockId: ST_1, type: "addition", quantity: 15, reason: "Excess" },
           },
         }),
         { transaction: tx },
@@ -664,12 +656,12 @@ describe("stock.service", () => {
     it("P6-09: a failing audit insert rolls the adjustment back", async () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
-      Stock.findOne.mockResolvedValueOnce({ id: "st-1", warehouseId: "wh-1", quantity: 10, update: jest.fn() });
+      Stock.findOne.mockResolvedValueOnce({ id: ST_1, warehouseId: WH_1, quantity: 10, update: jest.fn() });
       StockAdjustment.create.mockResolvedValueOnce({ id: "adj-1" });
       auditService.logAction.mockRejectedValueOnce(new Error("audit insert failed"));
 
       await expectRejectsWithMessage(
-        createAdjustment("tenant-1", { stockId: "st-1", type: "addition", quantity: 5, reason: "Excess" }, "usr-1"),
+        createAdjustment("tenant-1", { stockId: ST_1, type: "addition", quantity: 5, reason: "Excess" }, "usr-1"),
         "audit insert failed",
       );
       expect(tx.rollback).toHaveBeenCalled();
@@ -680,13 +672,13 @@ describe("stock.service", () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
       const mockStock = {
-        id: "st-1",
+        id: ST_1,
         quantity: 4,
       };
       Stock.findOne.mockResolvedValueOnce(mockStock);
 
       await expectRejectsWithMessage(
-        createAdjustment("tenant-1", { stockId: "st-1", type: "subtraction", quantity: 5 }, "usr-1"),
+        createAdjustment("tenant-1", { stockId: ST_1, type: "subtraction", quantity: 5, reason: "Recount" }, "usr-1"),
         "Insufficient stock quantity for adjustment",
       );
       expect(tx.rollback).toHaveBeenCalled();
@@ -696,8 +688,8 @@ describe("stock.service", () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
       const mockStock = {
-        id: "st-1",
-        warehouseId: "wh-1",
+        id: ST_1,
+        warehouseId: WH_1,
         locationId: null,
         quantity: 10,
         update: jest.fn().mockResolvedValue(),
@@ -707,7 +699,7 @@ describe("stock.service", () => {
 
       const result = await createAdjustment(
         "tenant-1",
-        { stockId: "st-1", type: "subtraction", quantity: 5 },
+        { stockId: ST_1, type: "subtraction", quantity: 5, reason: "Recount" },
         "usr-1",
       );
 
@@ -720,8 +712,8 @@ describe("stock.service", () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
       const mockStock = {
-        id: "st-1",
-        warehouseId: "wh-1",
+        id: ST_1,
+        warehouseId: WH_1,
         locationId: null,
         quantity: 10,
         update: jest.fn().mockResolvedValue(),
@@ -731,7 +723,7 @@ describe("stock.service", () => {
 
       const result = await createAdjustment(
         "tenant-1",
-        { stockId: "st-1", type: "write_off", quantity: 5 },
+        { stockId: ST_1, type: "write_off", quantity: 5, reason: "Recount" },
         "usr-1",
       );
 
@@ -747,7 +739,7 @@ describe("stock.service", () => {
       Stock.findOne.mockRejectedValueOnce(new Error("Db error"));
 
       await expectRejectsWithMessage(
-        createAdjustment("tenant-1", { stockId: "st-1", type: "addition", quantity: 5 }, "usr-1"),
+        createAdjustment("tenant-1", { stockId: ST_1, type: "addition", quantity: 5, reason: "Recount" }, "usr-1"),
         "Db error",
       );
       expect(tx.rollback).toHaveBeenCalled();
@@ -757,7 +749,7 @@ describe("stock.service", () => {
   describe("fetchAdjustments", () => {
     it("should fetch adjustment history", async () => {
       StockAdjustment.findAndCountAll.mockResolvedValueOnce({ rows: [], count: 0 });
-      const result = await fetchAdjustments({ tenantId: "tenant-1", warehouseId: "wh-1", type: "addition" });
+      const result = await fetchAdjustments({ tenantId: "tenant-1", warehouseId: WH_1, type: "addition" });
       expect(result.success).toBe(true);
     });
 
@@ -773,7 +765,7 @@ describe("stock.service", () => {
       db.transaction.mockResolvedValueOnce(tx);
 
       await expectRejectsWithMessage(
-        createTransfer("tenant-1", { fromWarehouseId: "wh-1", toWarehouseId: "wh-1", itemName: "Item", quantity: 5 }, "usr-1"),
+        createTransfer("tenant-1", { fromWarehouseId: WH_1, toWarehouseId: WH_1, itemName: "Item", quantity: 5 }, "usr-1"),
         "Source and destination warehouses must be different",
       );
     });
@@ -784,7 +776,7 @@ describe("stock.service", () => {
       Warehouse.findOne.mockResolvedValueOnce(null); // fromWarehouse check
 
       await expectRejectsWithMessage(
-        createTransfer("tenant-1", { fromWarehouseId: "wh-1", toWarehouseId: "wh-2", itemName: "Item", quantity: 5 }, "usr-1"),
+        createTransfer("tenant-1", { fromWarehouseId: WH_1, toWarehouseId: WH_2, itemName: "Item", quantity: 5 }, "usr-1"),
         "Source warehouse not found",
       );
     });
@@ -792,11 +784,11 @@ describe("stock.service", () => {
     it("should throw 404 if destination warehouse not found", async () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
-      Warehouse.findOne.mockResolvedValueOnce({ id: "wh-1" }); // fromWarehouse
+      Warehouse.findOne.mockResolvedValueOnce({ id: WH_1 }); // fromWarehouse
       Warehouse.findOne.mockResolvedValueOnce(null); // toWarehouse
 
       await expectRejectsWithMessage(
-        createTransfer("tenant-1", { fromWarehouseId: "wh-1", toWarehouseId: "wh-2", itemName: "Item", quantity: 5 }, "usr-1"),
+        createTransfer("tenant-1", { fromWarehouseId: WH_1, toWarehouseId: WH_2, itemName: "Item", quantity: 5 }, "usr-1"),
         "Destination warehouse not found",
       );
     });
@@ -804,12 +796,12 @@ describe("stock.service", () => {
     it("should throw 400 if stock is missing or insufficient in source warehouse", async () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
-      Warehouse.findOne.mockResolvedValueOnce({ id: "wh-1" });
-      Warehouse.findOne.mockResolvedValueOnce({ id: "wh-2" });
+      Warehouse.findOne.mockResolvedValueOnce({ id: WH_1 });
+      Warehouse.findOne.mockResolvedValueOnce({ id: WH_2 });
       Stock.findOne.mockResolvedValueOnce(null); // Stock check
 
       await expectRejectsWithMessage(
-        createTransfer("tenant-1", { fromWarehouseId: "wh-1", toWarehouseId: "wh-2", itemName: "Item", quantity: 5 }, "usr-1"),
+        createTransfer("tenant-1", { fromWarehouseId: WH_1, toWarehouseId: WH_2, itemName: "Item", quantity: 5 }, "usr-1"),
         "Insufficient stock in source warehouse",
       );
     });
@@ -817,14 +809,14 @@ describe("stock.service", () => {
     it("should create transfer request successfully", async () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
-      Warehouse.findOne.mockResolvedValueOnce({ id: "wh-1" });
-      Warehouse.findOne.mockResolvedValueOnce({ id: "wh-2" });
-      Stock.findOne.mockResolvedValueOnce({ id: "st-1", quantity: 10 });
+      Warehouse.findOne.mockResolvedValueOnce({ id: WH_1 });
+      Warehouse.findOne.mockResolvedValueOnce({ id: WH_2 });
+      Stock.findOne.mockResolvedValueOnce({ id: ST_1, quantity: 10 });
       StockTransfer.create.mockResolvedValueOnce({ id: "tf-1" });
 
       const result = await createTransfer(
         "tenant-1",
-        { fromWarehouseId: "wh-1", toWarehouseId: "wh-2", itemName: "Item 1", quantity: 5, notes: "Transfer" },
+        { fromWarehouseId: WH_1, toWarehouseId: WH_2, itemName: "Item 1", quantity: 5, notes: "Transfer" },
         "usr-1",
       );
 
@@ -840,7 +832,7 @@ describe("stock.service", () => {
       Warehouse.findOne.mockRejectedValueOnce(new Error("Db error"));
 
       await expectRejectsWithMessage(
-        createTransfer("tenant-1", { fromWarehouseId: "wh-1", toWarehouseId: "wh-2", itemName: "Item", quantity: 5 }, "usr-1"),
+        createTransfer("tenant-1", { fromWarehouseId: WH_1, toWarehouseId: WH_2, itemName: "Item", quantity: 5 }, "usr-1"),
         "Db error",
       );
       expect(tx.rollback).toHaveBeenCalled();
@@ -851,12 +843,12 @@ describe("stock.service", () => {
   // transaction, and a transfer awaiting its workflow is not moved by hand.
   describe("A-202 — a transfer and its approval workflow", () => {
     const workflowService = require("../../services/workflow.service");
-    const input = { fromWarehouseId: "wh-1", toWarehouseId: "wh-2", itemName: "Item 1", quantity: 5 };
+    const input = { fromWarehouseId: WH_1, toWarehouseId: WH_2, itemName: "Item 1", quantity: 5 };
     const arrangeCreate = () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
-      Warehouse.findOne.mockResolvedValueOnce({ id: "wh-1" }).mockResolvedValueOnce({ id: "wh-2" });
-      Stock.findOne.mockResolvedValueOnce({ id: "st-1", quantity: 10 });
+      Warehouse.findOne.mockResolvedValueOnce({ id: WH_1 }).mockResolvedValueOnce({ id: WH_2 });
+      Stock.findOne.mockResolvedValueOnce({ id: ST_1, quantity: 10 });
       StockTransfer.create.mockResolvedValueOnce({ id: "tf-1", status: "pending", ...input });
       return tx;
     };
@@ -998,8 +990,8 @@ describe("stock.service", () => {
       db.transaction.mockResolvedValueOnce(tx);
       StockTransfer.findOne.mockResolvedValueOnce({
         id: "tf-1",
-        fromWarehouseId: "wh-1",
-        toWarehouseId: "wh-2",
+        fromWarehouseId: WH_1,
+        toWarehouseId: WH_2,
         itemName: "Item 1",
         quantity: 5,
         status: "pending",
@@ -1017,8 +1009,8 @@ describe("stock.service", () => {
       db.transaction.mockResolvedValueOnce(tx);
       const mockTransfer = {
         id: "tf-1",
-        fromWarehouseId: "wh-1",
-        toWarehouseId: "wh-2",
+        fromWarehouseId: WH_1,
+        toWarehouseId: WH_2,
         itemName: "Item 1",
         quantity: 5,
         status: "pending",
@@ -1076,8 +1068,8 @@ describe("stock.service", () => {
       db.transaction.mockResolvedValueOnce(tx);
       const mockTransfer = {
         id: "tf-1",
-        fromWarehouseId: "wh-1",
-        toWarehouseId: "wh-2",
+        fromWarehouseId: WH_1,
+        toWarehouseId: WH_2,
         itemName: "Item 1",
         quantity: 5,
         status: "pending",
@@ -1135,8 +1127,8 @@ describe("stock.service", () => {
       StockTransfer.findAndCountAll.mockResolvedValueOnce({ rows: [], count: 0 });
       const result = await fetchTransfers({
         tenantId: "tenant-1",
-        fromWarehouseId: "wh-1",
-        toWarehouseId: "wh-2",
+        fromWarehouseId: WH_1,
+        toWarehouseId: WH_2,
         status: "completed",
       });
       expect(result.success).toBe(true);
@@ -1155,7 +1147,7 @@ describe("stock.service", () => {
       Warehouse.findOne.mockResolvedValueOnce(null);
 
       await expectRejectsWithMessage(
-        createOpname("tenant-1", { warehouseId: "wh-1", scheduledAt: new Date() }, "usr-1"),
+        createOpname("tenant-1", { warehouseId: WH_1, scheduledAt: new Date() }, "usr-1"),
         "Warehouse not found",
       );
       expect(tx.rollback).toHaveBeenCalled();
@@ -1164,12 +1156,12 @@ describe("stock.service", () => {
     it("should schedule opname successfully", async () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
-      Warehouse.findOne.mockResolvedValueOnce({ id: "wh-1" });
+      Warehouse.findOne.mockResolvedValueOnce({ id: WH_1 });
       StockOpname.create.mockResolvedValueOnce({ id: "op-1", status: "draft" });
 
       const result = await createOpname(
         "tenant-1",
-        { warehouseId: "wh-1", scheduledAt: new Date(), notes: "Notes" },
+        { warehouseId: WH_1, scheduledAt: new Date(), notes: "Notes" },
         "usr-1",
       );
       expect(result.success).toBe(true);
@@ -1184,7 +1176,7 @@ describe("stock.service", () => {
       Warehouse.findOne.mockRejectedValueOnce(new Error("Db error"));
 
       await expectRejectsWithMessage(
-        createOpname("tenant-1", { warehouseId: "wh-1", scheduledAt: new Date() }, "usr-1"),
+        createOpname("tenant-1", { warehouseId: WH_1, scheduledAt: new Date() }, "usr-1"),
         "Db error",
       );
       expect(tx.rollback).toHaveBeenCalled();
@@ -1249,7 +1241,7 @@ describe("stock.service", () => {
   describe("fetchOpnames", () => {
     it("should fetch opname history", async () => {
       StockOpname.findAndCountAll.mockResolvedValueOnce({ rows: [], count: 0 });
-      const result = await fetchOpnames({ tenantId: "tenant-1", warehouseId: "wh-1", status: "completed" });
+      const result = await fetchOpnames({ tenantId: "tenant-1", warehouseId: WH_1, status: "completed" });
       expect(result.success).toBe(true);
     });
 
@@ -1263,22 +1255,22 @@ describe("stock.service", () => {
     it("should aggregate stock items, units, low stock count, and warehouse distribution successfully", async () => {
       const mockStocks = [
         {
-          id: "st-1",
+          id: ST_1,
           quantity: 10,
           minQuantity: 5,
-          warehouse: { id: "wh-1", name: "Warehouse 1", code: "WH1" },
+          warehouse: { id: WH_1, name: "Warehouse 1", code: "WH1" },
         },
         {
           id: "st-2",
           quantity: 3,
           minQuantity: 5, // low stock
-          warehouse: { id: "wh-1", name: "Warehouse 1", code: "WH1" },
+          warehouse: { id: WH_1, name: "Warehouse 1", code: "WH1" },
         },
         {
           id: "st-3",
           quantity: 15,
           minQuantity: 10,
-          warehouse: { id: "wh-2", name: "Warehouse 2", code: "WH2" },
+          warehouse: { id: WH_2, name: "Warehouse 2", code: "WH2" },
         },
         {
           id: "st-4",
@@ -1299,7 +1291,7 @@ describe("stock.service", () => {
       expect(result.data.lowStockCount).toBe(1); // st-2 quantity (3) < minQuantity (5)
       expect(result.data.warehouseDistribution).toHaveLength(2);
 
-      const wh1 = result.data.warehouseDistribution.find(w => w.id === "wh-1");
+      const wh1 = result.data.warehouseDistribution.find(w => w.id === WH_1);
       expect(wh1.itemCount).toBe(2);
       expect(wh1.unitCount).toBe(13); // 10 + 3
     });
@@ -1340,7 +1332,8 @@ describe("stock.service", () => {
       const result = await exportInventoryCsv("tenant-1");
 
       expect(result.success).toBe(true);
-      expect(result.data).toContain("Item Name,SKU,Serial Number,Warehouse,Storage Location,Quantity,Min Quantity,Description");
+      // A-319: every field quoted, records end in CRLF (utils/csv.util).
+      expect(result.data).toContain('"Item Name","SKU","Serial Number","Warehouse","Storage Location","Quantity","Min Quantity","Description"\r\n');
       expect(result.data).toContain('"Item A, with comma"');
       expect(result.data).toContain('"SKU""quotes"""');
       expect(result.data).toContain('"Line\nBreak"');
@@ -1361,7 +1354,7 @@ describe("stock.service", () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
       const stock = {
-        id: "st-1",
+        id: ST_1,
         itemName: "Existing Item",
         sku: "SKU-1",
         serialNumber: "SN-1",
@@ -1374,7 +1367,7 @@ describe("stock.service", () => {
 
       // P6-09: the quantity is echoed unchanged (an edit form does this) —
       // accepted and not written.
-      await updateStock("tenant-1", "st-1", { quantity: 5 });
+      await updateStock("tenant-1", ST_1, { quantity: 5 });
 
       expect(stock.update).toHaveBeenCalledWith(
         {
@@ -1391,14 +1384,14 @@ describe("stock.service", () => {
     it("createTransfer defaults notes to null when omitted", async () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
-      Warehouse.findOne.mockResolvedValueOnce({ id: "wh-1" });
-      Warehouse.findOne.mockResolvedValueOnce({ id: "wh-2" });
-      Stock.findOne.mockResolvedValueOnce({ id: "st-1", quantity: 10 });
+      Warehouse.findOne.mockResolvedValueOnce({ id: WH_1 });
+      Warehouse.findOne.mockResolvedValueOnce({ id: WH_2 });
+      Stock.findOne.mockResolvedValueOnce({ id: ST_1, quantity: 10 });
       StockTransfer.create.mockResolvedValueOnce({ id: "tf-1" });
 
       await createTransfer(
         "tenant-1",
-        { fromWarehouseId: "wh-1", toWarehouseId: "wh-2", itemName: "Item 1", quantity: 5 },
+        { fromWarehouseId: WH_1, toWarehouseId: WH_2, itemName: "Item 1", quantity: 5 },
         "usr-1",
       );
 
@@ -1411,16 +1404,16 @@ describe("stock.service", () => {
     it("createOpname defaults notes to null when omitted", async () => {
       const tx = mockTransaction();
       db.transaction.mockResolvedValueOnce(tx);
-      Warehouse.findOne.mockResolvedValueOnce({ id: "wh-1" });
+      Warehouse.findOne.mockResolvedValueOnce({ id: WH_1 });
       StockOpname.create.mockResolvedValueOnce({ id: "op-1" });
       const scheduledAt = new Date();
 
-      await createOpname("tenant-1", { warehouseId: "wh-1", scheduledAt }, "usr-1");
+      await createOpname("tenant-1", { warehouseId: WH_1, scheduledAt }, "usr-1");
 
       expect(StockOpname.create).toHaveBeenCalledWith(
         {
           tenantId: "tenant-1",
-          warehouseId: "wh-1",
+          warehouseId: WH_1,
           status: "draft",
           scheduledAt,
           performedBy: "usr-1",
@@ -1476,11 +1469,11 @@ describe("stock.service", () => {
     it("createStock does not roll back when commit fails", async () => {
       const tx = failingCommitTransaction();
       db.transaction.mockResolvedValueOnce(tx);
-      Warehouse.findOne.mockResolvedValueOnce({ id: "wh-1" });
-      Stock.create.mockResolvedValueOnce({ id: "st-1" });
+      Warehouse.findOne.mockResolvedValueOnce({ id: WH_1 });
+      Stock.create.mockResolvedValueOnce({ id: ST_1 });
 
       await expectRejectsWithMessage(
-        createStock("tenant-1", { warehouseId: "wh-1", itemName: "Item" }),
+        createStock("tenant-1", { warehouseId: WH_1, itemName: "Item" }),
         "Commit failed",
       );
       expect(tx.rollback).not.toHaveBeenCalled();
@@ -1489,10 +1482,10 @@ describe("stock.service", () => {
     it("updateStock does not roll back when commit fails", async () => {
       const tx = failingCommitTransaction();
       db.transaction.mockResolvedValueOnce(tx);
-      Stock.findOne.mockResolvedValueOnce({ id: "st-1", update: jest.fn().mockResolvedValue() });
+      Stock.findOne.mockResolvedValueOnce({ id: ST_1, update: jest.fn().mockResolvedValue() });
 
       await expectRejectsWithMessage(
-        updateStock("tenant-1", "st-1", { itemName: "New" }),
+        updateStock("tenant-1", ST_1, { itemName: "New" }),
         "Commit failed",
       );
       expect(tx.rollback).not.toHaveBeenCalled();
@@ -1502,15 +1495,15 @@ describe("stock.service", () => {
       const tx = failingCommitTransaction();
       db.transaction.mockResolvedValueOnce(tx);
       Stock.findOne.mockResolvedValueOnce({
-        id: "st-1",
+        id: ST_1,
         quantity: 10,
-        warehouseId: "wh-1",
+        warehouseId: WH_1,
         update: jest.fn().mockResolvedValue(),
       });
       StockAdjustment.create.mockResolvedValueOnce({ id: "adj-1" });
 
       await expectRejectsWithMessage(
-        createAdjustment("tenant-1", { stockId: "st-1", type: "addition", quantity: 2 }, "usr-1"),
+        createAdjustment("tenant-1", { stockId: ST_1, type: "addition", quantity: 2, reason: "Recount" }, "usr-1"),
         "Commit failed",
       );
       expect(tx.rollback).not.toHaveBeenCalled();
@@ -1519,15 +1512,15 @@ describe("stock.service", () => {
     it("createTransfer does not roll back when commit fails", async () => {
       const tx = failingCommitTransaction();
       db.transaction.mockResolvedValueOnce(tx);
-      Warehouse.findOne.mockResolvedValueOnce({ id: "wh-1" });
-      Warehouse.findOne.mockResolvedValueOnce({ id: "wh-2" });
-      Stock.findOne.mockResolvedValueOnce({ id: "st-1", quantity: 10 });
+      Warehouse.findOne.mockResolvedValueOnce({ id: WH_1 });
+      Warehouse.findOne.mockResolvedValueOnce({ id: WH_2 });
+      Stock.findOne.mockResolvedValueOnce({ id: ST_1, quantity: 10 });
       StockTransfer.create.mockResolvedValueOnce({ id: "tf-1" });
 
       await expectRejectsWithMessage(
         createTransfer(
           "tenant-1",
-          { fromWarehouseId: "wh-1", toWarehouseId: "wh-2", itemName: "Item", quantity: 5 },
+          { fromWarehouseId: WH_1, toWarehouseId: WH_2, itemName: "Item", quantity: 5 },
           "usr-1",
         ),
         "Commit failed",
@@ -1554,11 +1547,11 @@ describe("stock.service", () => {
     it("createOpname does not roll back when commit fails", async () => {
       const tx = failingCommitTransaction();
       db.transaction.mockResolvedValueOnce(tx);
-      Warehouse.findOne.mockResolvedValueOnce({ id: "wh-1" });
+      Warehouse.findOne.mockResolvedValueOnce({ id: WH_1 });
       StockOpname.create.mockResolvedValueOnce({ id: "op-1" });
 
       await expectRejectsWithMessage(
-        createOpname("tenant-1", { warehouseId: "wh-1", scheduledAt: new Date() }, "usr-1"),
+        createOpname("tenant-1", { warehouseId: WH_1, scheduledAt: new Date() }, "usr-1"),
         "Commit failed",
       );
       expect(tx.rollback).not.toHaveBeenCalled();

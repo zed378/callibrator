@@ -29,6 +29,8 @@ jest.mock("../../models", () => ({
   CalibrationDevice: {
     findOne: jest.fn(),
   },
+  // Q-51 (ADR-100 Am. 2): the key actor is included through ApiKey.scope("includeDeleted").
+  ApiKey: { scope: jest.fn(() => "ApiKey(includeDeleted)") },
 }));
 
 jest.mock("../../middlewares/activityLog.middleware", () => ({
@@ -48,20 +50,11 @@ jest.mock("../../utils/appError.util", () => {
   return { AppError };
 });
 
-jest.mock("../../validators/calibrationRecords.validator", () => ({
-  createCalibrationRecordSchema: {
-    validate: jest.fn(),
-  },
-  correctCalibrationRecordSchema: {
-    validate: jest.fn(),
-  },
-  voidCalibrationRecordSchema: {
-    validate: jest.fn(),
-  },
-}));
+// The create / correct / void schemas are REAL (P9-11: Zod through
+// validators/input): each body below is one the API accepts, and the 400
+// cases are the schema's own refusals.
 
 const { CalibrationRecord, CalibrationDevice } = require("../../models");
-const validator = require("../../validators/calibrationRecords.validator");
 const {
   fetchCalibrationRecords,
   fetchSpecificCalibrationRecord,
@@ -71,6 +64,11 @@ const {
 } = require("../../services/calibrationRecords.service");
 const { db } = require("../../config");
 const auditService = require("../../services/audit.service");
+
+// Ids the request schemas accept (they are uuids since P9-11 validates for real).
+const DEVICE_1 = "00000001-0000-4000-8000-000000000001";
+const DEVICE_2 = "00000002-0000-4000-8000-000000000002";
+const DEVICE_OTHER = "00000003-0000-4000-8000-000000000003";
 
 describe("calibrationRecords.service", () => {
   beforeEach(() => {
@@ -89,10 +87,13 @@ describe("calibrationRecords.service", () => {
       expect(result.data.rows).toEqual([orphan]);
       expect(result.data.meta.total).toBe(1);
       const { include } = CalibrationRecord.findAndCountAll.mock.calls[0][0];
-      expect(include.map((i) => [i.association, i.required])).toEqual([
+      expect(include.map((i) => [i.association ?? i.as, i.required])).toEqual([
         ["device", false],
         ["performer", false],
+        ["apiKey", false],
       ]);
+      // Q-51: the key's id, name and prefix only — never keyHash.
+      expect(include[2]).toMatchObject({ model: "ApiKey(includeDeleted)", attributes: ["id", "name", "keyPrefix"] });
     });
 
     it("A-90: the detail of a record whose device and performer are null is found, not a 404", async () => {
@@ -128,7 +129,7 @@ describe("calibrationRecords.service", () => {
 
       const result = await fetchCalibrationRecords({
         tenantId: "tenant-1",
-        deviceId: "device-1",
+        deviceId: DEVICE_1,
         isCompliant: true,
         from: "2026-01-01",
         to: "2026-06-30",
@@ -141,7 +142,7 @@ describe("calibrationRecords.service", () => {
         expect.objectContaining({
           where: expect.objectContaining({
             tenantId: "tenant-1",
-            deviceId: "device-1",
+            deviceId: DEVICE_1,
             isCompliant: true,
             calibrationDate: expect.any(Object),
           }),
@@ -234,28 +235,21 @@ describe("calibrationRecords.service", () => {
 
   describe("createCalibrationRecord", () => {
     it("should throw 400 when validation fails", async () => {
-      validator.createCalibrationRecordSchema.validate.mockReturnValueOnce({
-        error: { details: [{ path: ["deviceId"], message: "deviceId required" }] },
-      });
-
       await expect(
         createCalibrationRecord("tenant-1", "user-1", {}),
-      ).rejects.toEqual(
-        expect.objectContaining({
-          status: 400,
-        }),
-      );
+      ).rejects.toEqual({
+        status: 400,
+        message: "Validation failed",
+        errors: [{ field: "deviceId", message: "Invalid input: expected string, received undefined" }],
+      });
+      expect(CalibrationDevice.findOne).not.toHaveBeenCalled();
     });
 
     it("should return 404 if device not found or belongs to another tenant", async () => {
-      validator.createCalibrationRecordSchema.validate.mockReturnValueOnce({
-        error: null,
-        value: { deviceId: "device-1" },
-      });
       CalibrationDevice.findOne.mockResolvedValueOnce(null);
 
       const result = await createCalibrationRecord("tenant-1", "user-1", {
-        deviceId: "device-1",
+        deviceId: DEVICE_1,
       });
 
       expect(result.success).toBe(false);
@@ -264,16 +258,12 @@ describe("calibrationRecords.service", () => {
     });
 
     it("should create record successfully without updating device nextCalibrationDate if details missing", async () => {
-      validator.createCalibrationRecordSchema.validate.mockReturnValueOnce({
-        error: null,
-        value: { deviceId: "device-1" },
-      });
-      const mockDevice = { id: "device-1", tenantId: "tenant-1" };
+      const mockDevice = { id: DEVICE_1, tenantId: "tenant-1" };
       CalibrationDevice.findOne.mockResolvedValueOnce(mockDevice);
       CalibrationRecord.create.mockResolvedValueOnce({ id: "record-1" });
 
       const result = await createCalibrationRecord("tenant-1", "user-1", {
-        deviceId: "device-1",
+        deviceId: DEVICE_1,
       });
 
       expect(result.success).toBe(true);
@@ -282,15 +272,11 @@ describe("calibrationRecords.service", () => {
 
     it("should create record and update nextCalibrationDate if validation info exists", async () => {
       const inputVal = {
-        deviceId: "device-1",
+        deviceId: DEVICE_1,
         calibrationDate: "2026-06-01",
       };
-      validator.createCalibrationRecordSchema.validate.mockReturnValueOnce({
-        error: null,
-        value: inputVal,
-      });
       const mockDevice = {
-        id: "device-1",
+        id: DEVICE_1,
         tenantId: "tenant-1",
         calibrationIntervalDays: 180,
         update: jest.fn().mockResolvedValueOnce(true),
@@ -310,14 +296,10 @@ describe("calibrationRecords.service", () => {
     });
 
     it("should handle error during creation", async () => {
-      validator.createCalibrationRecordSchema.validate.mockReturnValueOnce({
-        error: null,
-        value: { deviceId: "device-1" },
-      });
       CalibrationDevice.findOne.mockRejectedValueOnce(new Error("Db error"));
 
       await expect(
-        createCalibrationRecord("tenant-1", "user-1", { deviceId: "device-1" }),
+        createCalibrationRecord("tenant-1", "user-1", { deviceId: DEVICE_1 }),
       ).rejects.toThrow("Db error");
     });
   });
@@ -332,7 +314,7 @@ describe("calibrationRecords.service", () => {
     const original = (overrides = {}) => ({
       id: "record-1",
       tenantId: "tenant-1",
-      deviceId: "device-1",
+      deviceId: DEVICE_1,
       performedBy: "performer-1",
       calibrationDate: "2026-01-01",
       dueDate: null,
@@ -361,32 +343,38 @@ describe("calibrationRecords.service", () => {
     });
 
     describe("correctCalibrationRecord", () => {
-      const valid = (value) =>
-        validator.correctCalibrationRecordSchema.validate.mockReturnValueOnce({ error: null, value });
 
       it("400 when validation fails (a missing or blank reason is refused by the schema)", async () => {
-        validator.correctCalibrationRecordSchema.validate.mockReturnValueOnce({
-          error: { details: [{ path: ["reason"], message: '"reason" is required' }] },
-        });
         await expect(
           correctCalibrationRecord("tenant-1", "user-1", "record-1", { notes: "x" }),
-        ).rejects.toEqual(expect.objectContaining({ status: 400 }));
+        ).rejects.toEqual({
+          status: 400,
+          message: "Validation failed",
+          errors: [{ field: "reason", message: "Invalid input: expected string, received undefined" }],
+        });
+        await expect(
+          correctCalibrationRecord("tenant-1", "user-1", "record-1", { notes: "x", reason: "   " }),
+        ).rejects.toEqual({
+          status: 400,
+          message: "Validation failed",
+          errors: [{ field: "reason", message: "Too small: expected string to have >=3 characters" }],
+        });
         expect(CalibrationRecord.create).not.toHaveBeenCalled();
       });
 
       it("404 when the corrected device is not in the tenant", async () => {
-        valid({ deviceId: "device-other", reason: "wrong device" });
+        const body = { deviceId: DEVICE_OTHER, reason: "wrong device" };
         CalibrationDevice.findOne.mockResolvedValueOnce(null);
-        const result = await correctCalibrationRecord("tenant-1", "user-1", "record-1", {});
+        const result = await correctCalibrationRecord("tenant-1", "user-1", "record-1", body);
         expect(result.status).toBe(404);
-        expect(CalibrationDevice.findOne).toHaveBeenCalledWith({ where: { id: "device-other", tenantId: "tenant-1" } });
+        expect(CalibrationDevice.findOne).toHaveBeenCalledWith({ where: { id: DEVICE_OTHER, tenantId: "tenant-1" } });
         expect(db.transaction).not.toHaveBeenCalled();
       });
 
       it("404 when the record is not in the caller's tenant — never 403", async () => {
-        valid({ notes: "x", reason: "typo" });
+        const body = { notes: "x", reason: "typo" };
         lockedFindOne.mockResolvedValueOnce(null);
-        const result = await correctCalibrationRecord("tenant-1", "user-1", "record-1", {});
+        const result = await correctCalibrationRecord("tenant-1", "user-1", "record-1", body);
         expect(result).toEqual({ success: false, status: 404, message: "Calibration record not found", data: null });
         expect(lockedFindOne).toHaveBeenCalledWith({
           where: { id: "record-1", tenantId: "tenant-1" },
@@ -397,32 +385,32 @@ describe("calibrationRecords.service", () => {
       });
 
       it("409 when the record was voided, quoting the void reason", async () => {
-        valid({ notes: "x", reason: "typo" });
+        const body = { notes: "x", reason: "typo" };
         lockedFindOne.mockResolvedValueOnce(original({ isDeleted: true, voidReason: "entered twice" }));
-        const result = await correctCalibrationRecord("tenant-1", "user-1", "record-1", {});
+        const result = await correctCalibrationRecord("tenant-1", "user-1", "record-1", body);
         expect(result.status).toBe(409);
         expect(result.message).toMatch(/voided \("entered twice"\) and cannot be corrected: a void is final/);
       });
 
       it("409 for a voided record with no recorded reason", async () => {
-        valid({ notes: "x", reason: "typo" });
+        const body = { notes: "x", reason: "typo" };
         lockedFindOne.mockResolvedValueOnce(original({ isDeleted: true, voidReason: null }));
-        const result = await correctCalibrationRecord("tenant-1", "user-1", "record-1", {});
+        const result = await correctCalibrationRecord("tenant-1", "user-1", "record-1", body);
         expect(result.message).toMatch(/^This calibration record was voided and cannot be corrected/);
       });
 
       it("409 when the record was already corrected, naming the correction", async () => {
-        valid({ notes: "x", reason: "typo" });
+        const body = { notes: "x", reason: "typo" };
         lockedFindOne.mockResolvedValueOnce(original({ supersededById: "record-2" }));
-        const result = await correctCalibrationRecord("tenant-1", "user-1", "record-1", {});
+        const result = await correctCalibrationRecord("tenant-1", "user-1", "record-1", body);
         expect(result.status).toBe(409);
         expect(result.message).toMatch(/already corrected by record record-2\. Correct the latest correction/);
         expect(CalibrationRecord.create).not.toHaveBeenCalled();
       });
 
       it("writes a NEW superseding record, marks the original once, and audits both in the transaction", async () => {
-        valid({ isCompliant: false, deviceId: "device-2", reason: "reference drifted" });
-        CalibrationDevice.findOne.mockResolvedValueOnce({ id: "device-2" });
+        const body = { isCompliant: false, deviceId: DEVICE_2, reason: "reference drifted" };
+        CalibrationDevice.findOne.mockResolvedValueOnce({ id: DEVICE_2 });
         const rec = original();
         lockedFindOne.mockResolvedValueOnce(rec);
         CalibrationRecord.create.mockResolvedValueOnce({ id: "record-2" });
@@ -431,14 +419,14 @@ describe("calibrationRecords.service", () => {
           "tenant-1",
           "user-9",
           "record-1",
-          {},
+          body,
           { ipAddress: "10.0.0.1", userAgent: "jest" },
         );
 
         expect(result).toEqual(expect.objectContaining({ success: true, status: 201, data: { id: "record-2" } }));
         expect(CalibrationRecord.create).toHaveBeenCalledWith(
           {
-            deviceId: "device-2",
+            deviceId: DEVICE_2,
             calibrationDate: "2026-01-01",
             dueDate: null,
             standard: "ISO 17025",
@@ -450,6 +438,7 @@ describe("calibrationRecords.service", () => {
             notes: "first",
             tenantId: "tenant-1",
             performedBy: "performer-1",
+            apiKeyId: null, // Q-51: the original's actor, a user
             supersedesId: "record-1",
             correctionReason: "reference drifted",
           },
@@ -475,7 +464,8 @@ describe("calibrationRecords.service", () => {
               after: expect.objectContaining({
                 supersededById: "record-2",
                 correctionReason: "reference drifted",
-                changed: ["isCompliant", "deviceId"],
+                // P9-11: the validated value follows the schema's key order
+                changed: ["deviceId", "isCompliant"],
               }),
             },
           }),
@@ -484,52 +474,50 @@ describe("calibrationRecords.service", () => {
       });
 
       it("rethrows a database error", async () => {
-        valid({ notes: "x", reason: "typo" });
+        const body = { notes: "x", reason: "typo" };
         lockedFindOne.mockRejectedValueOnce(new Error("Db error"));
-        await expect(correctCalibrationRecord("tenant-1", "user-1", "record-1", {})).rejects.toThrow("Db error");
+        await expect(correctCalibrationRecord("tenant-1", "user-1", "record-1", body)).rejects.toThrow("Db error");
       });
     });
 
     describe("voidCalibrationRecord", () => {
-      const valid = (value) =>
-        validator.voidCalibrationRecordSchema.validate.mockReturnValueOnce({ error: null, value });
 
       it("400 when the reason is missing", async () => {
-        validator.voidCalibrationRecordSchema.validate.mockReturnValueOnce({
-          error: { details: [{ path: ["reason"], message: '"reason" is required' }] },
+        await expect(voidCalibrationRecord("tenant-1", "user-1", "record-1", {})).rejects.toEqual({
+          status: 400,
+          message: "Validation failed",
+          errors: [{ field: "reason", message: "Invalid input: expected string, received undefined" }],
         });
-        await expect(voidCalibrationRecord("tenant-1", "user-1", "record-1", {})).rejects.toEqual(
-          expect.objectContaining({ status: 400 }),
-        );
+        expect(lockedFindOne).not.toHaveBeenCalled();
       });
 
       it("404 when the record is not in the caller's tenant", async () => {
-        valid({ reason: "entered twice" });
+        const body = { reason: "entered twice" };
         lockedFindOne.mockResolvedValueOnce(null);
-        const result = await voidCalibrationRecord("tenant-1", "user-1", "record-1", {});
+        const result = await voidCalibrationRecord("tenant-1", "user-1", "record-1", body);
         expect(result.status).toBe(404);
       });
 
       it("409 when already voided — a void is final", async () => {
-        valid({ reason: "entered twice" });
+        const body = { reason: "entered twice" };
         lockedFindOne.mockResolvedValueOnce(original({ isDeleted: true, voidReason: "dup" }));
-        const result = await voidCalibrationRecord("tenant-1", "user-1", "record-1", {});
+        const result = await voidCalibrationRecord("tenant-1", "user-1", "record-1", body);
         expect(result.status).toBe(409);
         expect(result.message).toMatch(/cannot be voided again: a void is final/);
       });
 
       it("409 when the record was corrected — void the latest correction", async () => {
-        valid({ reason: "entered twice" });
+        const body = { reason: "entered twice" };
         lockedFindOne.mockResolvedValueOnce(original({ supersededById: "record-2" }));
-        const result = await voidCalibrationRecord("tenant-1", "user-1", "record-1", {});
+        const result = await voidCalibrationRecord("tenant-1", "user-1", "record-1", body);
         expect(result.message).toMatch(/Void the latest correction instead/);
       });
 
       it("sets the void columns once and audits a DELETE in the transaction", async () => {
-        valid({ reason: "entered twice" });
+        const body = { reason: "entered twice" };
         const rec = original();
         lockedFindOne.mockResolvedValueOnce(rec);
-        const result = await voidCalibrationRecord("tenant-1", "user-1", "record-1", {}, { ipAddress: "1.2.3.4" });
+        const result = await voidCalibrationRecord("tenant-1", "user-1", "record-1", body, { ipAddress: "1.2.3.4" });
         expect(result).toEqual(expect.objectContaining({ success: true, status: 200, data: null }));
         const voided = { isDeleted: true, voidReason: "entered twice", voidedBy: "user-1" };
         expect(rec.update).toHaveBeenCalledWith(voided, { transaction: TX });
@@ -545,9 +533,9 @@ describe("calibrationRecords.service", () => {
       });
 
       it("rethrows a database error", async () => {
-        valid({ reason: "entered twice" });
+        const body = { reason: "entered twice" };
         lockedFindOne.mockRejectedValueOnce(new Error("Db error"));
-        await expect(voidCalibrationRecord("tenant-1", "user-1", "record-1", {})).rejects.toThrow("Db error");
+        await expect(voidCalibrationRecord("tenant-1", "user-1", "record-1", body)).rejects.toThrow("Db error");
       });
     });
   });

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   KanbanBoard,
   KanbanCard,
@@ -16,12 +16,15 @@ import {
   MultiSelect,
   Badge,
   ConfirmDialog,
+  Alert,
 } from "@/components/ui";
 import {
   attachmentService,
   Attachment,
 } from "@/api/services/attachment.service";
 import { userService } from "@/api/services/user.service";
+import { useModalA11y } from "@/components/ui/useModalA11y";
+import type { CardRelationsListener } from "../hooks/useBoard";
 import { X, Trash2, Plus, Link2, ImagePlus, Loader2 } from "lucide-react";
 
 const RELATION_LABELS: Record<RelationType, string> = {
@@ -42,6 +45,12 @@ interface Props {
   onClose: () => void;
   onSaved: (card: KanbanCard) => void;
   onDeleted: (cardId: string) => void;
+  /**
+   * Live `kanban:card:relations` events for the board (useBoard's
+   * subscribeCardRelations). Optional: without it the links refresh only on
+   * this user's own changes.
+   */
+  subscribeRelations?: (listener: CardRelationsListener) => () => void;
 }
 
 export default function CardModal({
@@ -53,6 +62,7 @@ export default function CardModal({
   onClose,
   onSaved,
   onDeleted,
+  subscribeRelations,
 }: Props) {
   const [card, setCard] = useState<KanbanCard | null>(null);
   const [title, setTitle] = useState("");
@@ -69,6 +79,20 @@ export default function CardModal({
   const [relType, setRelType] = useState<RelationType>("relates_to");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // A refused or failed action is shown, never dropped (it used to reject
+  // unhandled: the edit looked saved, the card stayed "Loading…").
+  const [error, setError] = useState<string | null>(null);
+  const failed = (e: unknown, fallback: string) =>
+    setError(e instanceof Error ? e.message : fallback);
+
+  // F-19: a real modal dialog — named by the card's title, focus moved in and
+  // trapped, Escape closes, focus returns to the opener (useModalA11y). While
+  // the delete confirmation is open, Escape belongs to it: it closes the
+  // confirmation, not the card.
+  const titleId = useId();
+  const panelRef = useModalA11y<HTMLDivElement>(isOpen, () => {
+    if (!confirmDelete) onClose();
+  });
 
   // Card is "loading" until the fetched card matches the requested id.
   const loading = !!cardId && (!card || card.id !== cardId);
@@ -104,8 +128,16 @@ export default function CardModal({
     if (!isOpen || !cardId) return;
     let active = true;
     (async () => {
-      const c = await kanbanService.getCard(projectId, cardId);
+      let c: KanbanCard;
+      try {
+        c = await kanbanService.getCard(projectId, cardId);
+      } catch (e) {
+        if (active)
+          setError(e instanceof Error ? e.message : "Failed to load the card");
+        return;
+      }
       if (!active) return;
+      setError(null);
       setCard(c);
       setTitle(c.title);
       setDescription(c.description || "");
@@ -115,6 +147,40 @@ export default function CardModal({
       active = false;
     };
   }, [isOpen, cardId, projectId, loadAttachments]);
+
+  // F-19: links changed by anyone on the board. The event names the SOURCE
+  // card; the card at the other end of the link changed too (its mirror row),
+  // so an open card that the event's card links to — or linked to before the
+  // change — reloads its own links.
+  useEffect(() => {
+    if (!isOpen || !cardId || !subscribeRelations) return;
+    let active = true;
+    const unsubscribe = subscribeRelations(({ cardId: changed, relations }) => {
+      if (changed === cardId) {
+        setCard((prev) => (prev && prev.id === cardId ? { ...prev, relations } : prev));
+        return;
+      }
+      const linkedNow = relations.some((r) => r.card?.id === cardId);
+      const linkedBefore = (card?.relations || []).some((r) => r.card?.id === changed);
+      if (!linkedNow && !linkedBefore) return;
+      kanbanService
+        .getCard(projectId, cardId)
+        .then((fresh) => {
+          if (!active) return;
+          setCard((prev) =>
+            prev && prev.id === fresh.id ? { ...prev, relations: fresh.relations } : prev,
+          );
+        })
+        .catch((e: unknown) => {
+          if (active)
+            setError(e instanceof Error ? e.message : "Failed to refresh the card's links");
+        });
+    });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [isOpen, cardId, projectId, subscribeRelations, card?.relations]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -137,10 +203,13 @@ export default function CardModal({
   const patch = async (data: Parameters<typeof kanbanService.updateCard>[2]) => {
     if (!card) return;
     setSaving(true);
+    setError(null);
     try {
       const updated = await kanbanService.updateCard(projectId, card.id, data);
       setCard((prev) => (prev ? { ...prev, ...updated } : updated));
       onSaved(updated);
+    } catch (e) {
+      failed(e, "Failed to save the card");
     } finally {
       setSaving(false);
     }
@@ -162,6 +231,9 @@ export default function CardModal({
       onDeleted(card.id);
       setConfirmDelete(false);
       onClose();
+    } catch (e) {
+      setConfirmDelete(false);
+      failed(e, "Failed to delete the card");
     } finally {
       setDeleting(false);
     }
@@ -178,6 +250,8 @@ export default function CardModal({
         resourceId: card.id,
       });
       await loadAttachments(card.id);
+    } catch (e) {
+      failed(e, "Failed to upload the file");
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = "";
@@ -185,28 +259,41 @@ export default function CardModal({
   };
 
   const removeAttachment = async (id: string) => {
-    await attachmentService.remove(id);
+    try {
+      await attachmentService.remove(id);
+    } catch (e) {
+      failed(e, "Failed to remove the attachment");
+      return;
+    }
     if (card) loadAttachments(card.id);
   };
 
   const addRelation = async () => {
     if (!card || !relTarget) return;
-    const relations = await kanbanService.addRelation(projectId, card.id, {
-      targetCardId: relTarget,
-      type: relType,
-    });
-    setCard({ ...card, relations });
-    setRelTarget("");
+    try {
+      const relations = await kanbanService.addRelation(projectId, card.id, {
+        targetCardId: relTarget,
+        type: relType,
+      });
+      setCard({ ...card, relations });
+      setRelTarget("");
+    } catch (e) {
+      failed(e, "Failed to link the card");
+    }
   };
 
   const removeRelation = async (relationId: string) => {
     if (!card) return;
-    const relations = await kanbanService.removeRelation(
-      projectId,
-      card.id,
-      relationId,
-    );
-    setCard({ ...card, relations });
+    try {
+      const relations = await kanbanService.removeRelation(
+        projectId,
+        card.id,
+        relationId,
+      );
+      setCard({ ...card, relations });
+    } catch (e) {
+      failed(e, "Failed to remove the link");
+    }
   };
 
   const assigneeIds = card?.assignees.map((a) => a.id) || [];
@@ -214,7 +301,17 @@ export default function CardModal({
   const otherCards = board.cards.filter((c) => c.id !== card?.id);
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-start justify-center z-50 p-4 overflow-y-auto animate-fade-in">
+    // The dialog element is the overlay, not the card panel, so the delete
+    // confirmation (a dialog of its own, rendered last) is inside the focus
+    // trap rather than locked out of it.
+    <div
+      ref={panelRef}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+      tabIndex={-1}
+      className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-start justify-center z-50 p-4 overflow-y-auto animate-fade-in focus:outline-none"
+    >
       <div className="w-full max-w-3xl my-8 bg-card rounded-2xl shadow-2xl animate-scale-in">
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-border">
@@ -225,6 +322,11 @@ export default function CardModal({
               </Badge>
             )}
             <span className="text-sm text-muted-foreground">Card details</span>
+            <h2 id={titleId} className="sr-only">
+              {card && card.id === cardId
+                ? `${card.cardKey ? `${card.cardKey} ` : ""}${card.title}`
+                : "Card details"}
+            </h2>
           </div>
           <div className="flex items-center gap-2">
             {saving && (
@@ -249,10 +351,18 @@ export default function CardModal({
           </div>
         </div>
 
-        {loading || !card ? (
-          <div className="p-10 text-center text-sm text-muted-foreground">
-            Loading…
+        {error && (
+          <div className="px-5 pt-4">
+            <Alert variant="error">{error}</Alert>
           </div>
+        )}
+
+        {loading || !card ? (
+          !error && (
+            <div className="p-10 text-center text-sm text-muted-foreground">
+              Loading…
+            </div>
+          )
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-0">
             {/* Main */}
@@ -306,6 +416,7 @@ export default function CardModal({
                     ref={fileRef}
                     type="file"
                     accept="image/*"
+                    aria-label="Upload an image to this card"
                     className="hidden"
                     onChange={handleUpload}
                   />

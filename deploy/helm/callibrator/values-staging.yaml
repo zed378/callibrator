@@ -27,7 +27,6 @@ backend:
   env:
     NODE_ENV: production
     APP_STORAGE_PATH: /app
-    PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
     FORCE_HTTPS: "true"
     BATCH_JOBS_INLINE: ""
     SEED_DEMO: ""
@@ -66,10 +65,12 @@ backend:
   resources:
     requests:
       cpu: 250m
-      memory: 512Mi
+      memory: 384Mi
     limits:
       cpu: "2"
-      memory: 2Gi
+      # ADR-095 follow-up (2026-09-30): was 2Gi, sized for Chromium. Measured peak
+      # 337 MiB (Node VmHWM; see values.yaml); 1Gi is 3x.
+      memory: 1Gi
 
 frontend:
   image:

@@ -4,6 +4,12 @@
  * Covers: listPosts, getPostById, createPost, updatePost, deletePost,
  * checkSlug, listPublishedPosts, getPublishedPostBySlug,
  * listCategories, createCategory, updateCategory, deleteCategory
+ *
+ * A-297: the lists answer rows in `data` and pagination in a top-level `meta`
+ * (not `data.rows` / `data.meta`), and every failure is an AppError carrying
+ * the status and message these assertions name (it used to be a plain
+ * `{ status, message }` object, hence `toMatchObject` rather than `toEqual`).
+ * content.envelope.a297.test.ts pins the instance class and the wire.
  */
 
 jest.mock("../../config", () => ({
@@ -45,6 +51,11 @@ jest.mock("../../models", () => ({
     softDelete: jest.fn(),
     unscoped: jest.fn(function () { return this; }),
   },
+}));
+
+// P6-11: every CMS write commits with one audit row in its transaction.
+jest.mock("../../services/audit.service", () => ({
+  logAction: jest.fn(),
 }));
 
 jest.mock("../../utils/appError.util", () => {
@@ -99,7 +110,9 @@ const mockCategory = (id = "c-1", name = "Tech", slug = "tech") => ({
 beforeEach(() => {
   jest.clearAllMocks();
   // Provide a fresh transaction object for each test (avoids rollback/commit undefined).
-  db.transaction.mockResolvedValue({ commit: jest.fn(), rollback: jest.fn() });
+  // P6-11: the delete and category writes use the managed form (a callback).
+  const tx = { commit: jest.fn(), rollback: jest.fn() };
+  db.transaction.mockImplementation((cb) => (typeof cb === "function" ? cb(tx) : Promise.resolve(tx)));
 });
 
 // =========================
@@ -116,8 +129,8 @@ describe("listPosts", () => {
     const result = await contentService.listPosts({ page: 1, limit: 10 });
 
     expect(result.success).toBe(true);
-    expect(result.data.rows.length).toBe(2);
-    expect(result.data.meta.total).toBe(3);
+    expect(result.data.length).toBe(2);
+    expect(result.meta.total).toBe(3);
     expect(Post.findAndCountAll).toHaveBeenCalled();
   });
 
@@ -321,7 +334,7 @@ describe("listPublishedPosts", () => {
     const result = await contentService.listPublishedPosts({ page: 1, limit: 10 });
 
     expect(result.success).toBe(true);
-    expect(result.data.rows.length).toBe(2);
+    expect(result.data.length).toBe(2);
     expect(Post.findAndCountAll).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ status: "PUBLISHED" }) }),
     );
@@ -376,6 +389,7 @@ describe("createCategory", () => {
     expect(result.data.name).toBe("New Cat");
     expect(Category.create).toHaveBeenCalledWith(
       expect.objectContaining({ name: "New Cat", slug: "new-cat" }),
+      { transaction: expect.anything() },
     );
   });
 });
@@ -441,7 +455,7 @@ describe("deleteCategory", () => {
     cat.softDelete = jest.fn().mockRejectedValue(new Error(""));
     Category.findByPk.mockResolvedValue(cat);
 
-    await expect(contentService.deleteCategory("c-1")).rejects.toEqual({
+    await expect(contentService.deleteCategory("c-1")).rejects.toMatchObject({
       status: 500,
       message: "Failed to delete category",
     });
@@ -461,7 +475,7 @@ describe("listPosts — pagination and filters", () => {
     expect(Post.findAndCountAll).toHaveBeenCalledWith(
       expect.objectContaining({ limit: 10, offset: 0 }),
     );
-    expect(result.data.meta).toEqual({ total: 0, page: 1, limit: 10, totalPages: 1 });
+    expect(result.meta).toEqual({ total: 0, page: 1, limit: 10, totalPages: 1 });
   });
 
   it("should clamp limit to MAX_LIMIT and compute offset from page", async () => {
@@ -473,7 +487,7 @@ describe("listPosts — pagination and filters", () => {
     expect(Post.findAndCountAll).toHaveBeenCalledWith(
       expect.objectContaining({ limit: 100, offset: 200 }),
     );
-    expect(result.data.meta).toEqual({ total: 250, page: 3, limit: 100, totalPages: 3 });
+    expect(result.meta).toEqual({ total: 250, page: 3, limit: 100, totalPages: 3 });
   });
 
   it("should treat page 0 as page 1", async () => {
@@ -484,7 +498,7 @@ describe("listPosts — pagination and filters", () => {
     expect(Post.findAndCountAll).toHaveBeenCalledWith(
       expect.objectContaining({ offset: 0 }),
     );
-    expect(result.data.meta.page).toBe(1);
+    expect(result.meta.page).toBe(1);
   });
 
   it("should fall back to DEFAULT_LIMIT when limit is not a usable number", async () => {
@@ -514,7 +528,7 @@ describe("listPosts — pagination and filters", () => {
 
     const result = await contentService.listPosts({});
 
-    expect(result.data.rows).toEqual([{ id: "plain" }]);
+    expect(result.data).toEqual([{ id: "plain" }]);
   });
 
   it("should preserve an error's own status and message", async () => {
@@ -522,7 +536,7 @@ describe("listPosts — pagination and filters", () => {
       Object.assign(new Error("bad request"), { status: 422 }),
     );
 
-    await expect(contentService.listPosts({})).rejects.toEqual({
+    await expect(contentService.listPosts({})).rejects.toMatchObject({
       status: 422,
       message: "bad request",
     });
@@ -531,7 +545,7 @@ describe("listPosts — pagination and filters", () => {
   it("should default the message when the error carries none", async () => {
     Post.findAndCountAll.mockRejectedValue(new Error(""));
 
-    await expect(contentService.listPosts({})).rejects.toEqual({
+    await expect(contentService.listPosts({})).rejects.toMatchObject({
       status: 500,
       message: "Failed to fetch posts",
     });
@@ -542,7 +556,7 @@ describe("getPostById — error normalisation", () => {
   it("should default the message when the lookup rejects without one", async () => {
     Post.findByPk.mockRejectedValue(new Error(""));
 
-    await expect(contentService.getPostById("p-1")).rejects.toEqual({
+    await expect(contentService.getPostById("p-1")).rejects.toMatchObject({
       status: 500,
       message: "Failed to retrieve post",
     });
@@ -677,7 +691,7 @@ describe("createPost — branches", () => {
     Post.unscoped.mockReturnValue({ findOne: jest.fn().mockResolvedValue(null) });
     Post.create.mockRejectedValue(new Error("insert failed"));
 
-    await expect(contentService.createPost({ title: "T" }, "u-1")).rejects.toEqual({
+    await expect(contentService.createPost({ title: "T" }, "u-1")).rejects.toMatchObject({
       status: 500,
       message: "insert failed",
     });
@@ -691,7 +705,7 @@ describe("createPost — branches", () => {
     Post.unscoped.mockReturnValue({ findOne: jest.fn().mockResolvedValue(null) });
     Post.create.mockRejectedValue(new Error(""));
 
-    await expect(contentService.createPost({ title: "T" }, "u-1")).rejects.toEqual({
+    await expect(contentService.createPost({ title: "T" }, "u-1")).rejects.toMatchObject({
       status: 500,
       message: "Failed to create post",
     });
@@ -834,7 +848,7 @@ describe("updatePost — branches", () => {
     p.update = jest.fn().mockRejectedValue(new Error("update failed"));
     Post.findByPk.mockResolvedValue(p);
 
-    await expect(contentService.updatePost("p-1", { title: "x" })).rejects.toEqual({
+    await expect(contentService.updatePost("p-1", { title: "x" })).rejects.toMatchObject({
       status: 500,
       message: "update failed",
     });
@@ -849,7 +863,7 @@ describe("updatePost — branches", () => {
     p.update = jest.fn().mockRejectedValue(new Error(""));
     Post.findByPk.mockResolvedValue(p);
 
-    await expect(contentService.updatePost("p-1", { title: "x" })).rejects.toEqual({
+    await expect(contentService.updatePost("p-1", { title: "x" })).rejects.toMatchObject({
       status: 500,
       message: "Failed to update post",
     });
@@ -863,7 +877,7 @@ describe("deletePost — error normalisation", () => {
     p.softDelete = jest.fn().mockRejectedValue(new Error(""));
     Post.findByPk.mockResolvedValue(p);
 
-    await expect(contentService.deletePost("p-1")).rejects.toEqual({
+    await expect(contentService.deletePost("p-1")).rejects.toMatchObject({
       status: 500,
       message: "Failed to delete post",
     });
@@ -956,13 +970,13 @@ describe("listPublishedPosts — branches", () => {
     expect(Post.findAndCountAll).toHaveBeenCalledWith(
       expect.objectContaining({ limit: 10, offset: 0 }),
     );
-    expect(result.data.meta.page).toBe(1);
+    expect(result.meta.page).toBe(1);
   });
 
   it("should throw 500 when the query fails", async () => {
     Post.findAndCountAll.mockRejectedValue(new Error("DB down"));
 
-    await expect(contentService.listPublishedPosts({})).rejects.toEqual({
+    await expect(contentService.listPublishedPosts({})).rejects.toMatchObject({
       status: 500,
       message: "DB down",
     });
@@ -971,7 +985,7 @@ describe("listPublishedPosts — branches", () => {
   it("should default the message when the query rejects without one", async () => {
     Post.findAndCountAll.mockRejectedValue(new Error(""));
 
-    await expect(contentService.listPublishedPosts({})).rejects.toEqual({
+    await expect(contentService.listPublishedPosts({})).rejects.toMatchObject({
       status: 500,
       message: "Failed to fetch posts",
     });
@@ -982,7 +996,7 @@ describe("getPublishedPostBySlug — error normalisation", () => {
   it("should throw 500 with the underlying message", async () => {
     Post.findOne.mockRejectedValue(new Error("DB down"));
 
-    await expect(contentService.getPublishedPostBySlug("s")).rejects.toEqual({
+    await expect(contentService.getPublishedPostBySlug("s")).rejects.toMatchObject({
       status: 500,
       message: "DB down",
     });
@@ -991,7 +1005,7 @@ describe("getPublishedPostBySlug — error normalisation", () => {
   it("should default the message when the lookup rejects without one", async () => {
     Post.findOne.mockRejectedValue(new Error(""));
 
-    await expect(contentService.getPublishedPostBySlug("s")).rejects.toEqual({
+    await expect(contentService.getPublishedPostBySlug("s")).rejects.toMatchObject({
       status: 500,
       message: "Failed to fetch post",
     });
@@ -1006,7 +1020,7 @@ describe("listCategories — errors", () => {
   it("should throw 500 with the underlying message", async () => {
     Category.findAll.mockRejectedValue(new Error("DB down"));
 
-    await expect(contentService.listCategories()).rejects.toEqual({
+    await expect(contentService.listCategories()).rejects.toMatchObject({
       status: 500,
       message: "DB down",
     });
@@ -1015,7 +1029,7 @@ describe("listCategories — errors", () => {
   it("should default the message when the query rejects without one", async () => {
     Category.findAll.mockRejectedValue(new Error(""));
 
-    await expect(contentService.listCategories()).rejects.toEqual({
+    await expect(contentService.listCategories()).rejects.toMatchObject({
       status: 500,
       message: "Failed to fetch categories",
     });
@@ -1038,7 +1052,7 @@ describe("createCategory — branches", () => {
       name: "Tech",
       description: "All things tech",
       slug: "custom-slug",
-    });
+    }, { transaction: expect.anything() });
   });
 
   it("should null out a missing description", async () => {
@@ -1049,6 +1063,7 @@ describe("createCategory — branches", () => {
 
     expect(Category.create).toHaveBeenCalledWith(
       expect.objectContaining({ description: null }),
+      { transaction: expect.anything() },
     );
   });
 
@@ -1056,7 +1071,7 @@ describe("createCategory — branches", () => {
     Category.unscoped.mockReturnValue({ findOne: jest.fn().mockResolvedValue(null) });
     Category.create.mockRejectedValue(new Error("duplicate"));
 
-    await expect(contentService.createCategory({ name: "Tech" })).rejects.toEqual({
+    await expect(contentService.createCategory({ name: "Tech" })).rejects.toMatchObject({
       status: 500,
       message: "duplicate",
     });
@@ -1066,7 +1081,7 @@ describe("createCategory — branches", () => {
     Category.unscoped.mockReturnValue({ findOne: jest.fn().mockResolvedValue(null) });
     Category.create.mockRejectedValue(new Error(""));
 
-    await expect(contentService.createCategory({ name: "Tech" })).rejects.toEqual({
+    await expect(contentService.createCategory({ name: "Tech" })).rejects.toMatchObject({
       status: 500,
       message: "Failed to create category",
     });
@@ -1089,7 +1104,7 @@ describe("updateCategory — branches", () => {
 
     await contentService.updateCategory("c-1", { description: "New desc" });
 
-    expect(cat.update).toHaveBeenCalledWith({ description: "New desc" });
+    expect(cat.update).toHaveBeenCalledWith({ description: "New desc" }, { transaction: expect.anything() });
   });
 
   it("should send an empty patch when nothing is supplied", async () => {
@@ -1098,7 +1113,7 @@ describe("updateCategory — branches", () => {
 
     await contentService.updateCategory("c-1", {});
 
-    expect(cat.update).toHaveBeenCalledWith({});
+    expect(cat.update).toHaveBeenCalledWith({}, { transaction: expect.anything() });
   });
 
   it("should allow clearing the description to null", async () => {
@@ -1107,7 +1122,7 @@ describe("updateCategory — branches", () => {
 
     await contentService.updateCategory("c-1", { description: null });
 
-    expect(cat.update).toHaveBeenCalledWith({ description: null });
+    expect(cat.update).toHaveBeenCalledWith({ description: null }, { transaction: expect.anything() });
   });
 
   it("should re-slug and exclude its own row when a slug is supplied", async () => {
@@ -1118,7 +1133,7 @@ describe("updateCategory — branches", () => {
 
     await contentService.updateCategory("c-1", { slug: "Fresh Slug" });
 
-    expect(cat.update).toHaveBeenCalledWith({ slug: "fresh-slug" });
+    expect(cat.update).toHaveBeenCalledWith({ slug: "fresh-slug" }, { transaction: expect.anything() });
     expect(findOne).toHaveBeenCalledWith({
       where: { slug: "fresh-slug", id: { [Op.ne]: "c-1" } },
       paranoid: false,
@@ -1130,7 +1145,7 @@ describe("updateCategory — branches", () => {
     cat.update = jest.fn().mockRejectedValue(new Error("locked"));
     Category.findByPk.mockResolvedValue(cat);
 
-    await expect(contentService.updateCategory("c-1", { name: "x" })).rejects.toEqual({
+    await expect(contentService.updateCategory("c-1", { name: "x" })).rejects.toMatchObject({
       status: 500,
       message: "locked",
     });
@@ -1141,7 +1156,7 @@ describe("updateCategory — branches", () => {
     cat.update = jest.fn().mockRejectedValue(new Error(""));
     Category.findByPk.mockResolvedValue(cat);
 
-    await expect(contentService.updateCategory("c-1", { name: "x" })).rejects.toEqual({
+    await expect(contentService.updateCategory("c-1", { name: "x" })).rejects.toMatchObject({
       status: 500,
       message: "Failed to update category",
     });

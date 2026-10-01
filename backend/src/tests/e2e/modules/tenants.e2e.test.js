@@ -19,13 +19,15 @@
  * exercised here.
  */
 const { httpGet, httpPost, authHeader } = require("../setup");
+// P10-16 (ADR-099): no default operator password — set E2E_OPERATOR_PASSWORD (see setup.js).
+const { OPERATOR_PASSWORD } = require("../setup");
 
 describe("E2E Tenants (HTTP)", () => {
   let token;
   let tenantId;
 
   beforeAll(async () => {
-    const { body } = await httpPost("/auth/login", { user: "sys@mail.com", password: "123123" });
+    const { body } = await httpPost("/auth/login", { user: "sys@mail.com", password: OPERATOR_PASSWORD });
     token = body.token || (body.data && body.data.token);
     const list = await httpGet("/tenants/all", authHeader(token));
     if (Array.isArray(list.body?.data) && list.body.data.length) {

@@ -1,6 +1,7 @@
 // src/app/dashboard/stock/components/OpnameModal.tsx
 import React from "react";
 import {
+  Alert,
   Dialog,
   FormField,
   Select,
@@ -31,6 +32,8 @@ interface OpnameModalProps {
   >;
   warehouseOptions: Option[];
   onSubmit: (e: React.FormEvent) => void;
+  /** F-19: a refused save, shown inside the dialog (a page alert sits behind it). */
+  error?: string | null;
 }
 
 export const OpnameModal: React.FC<OpnameModalProps> = ({
@@ -40,6 +43,7 @@ export const OpnameModal: React.FC<OpnameModalProps> = ({
   setForm,
   warehouseOptions,
   onSubmit,
+  error = null,
 }) => {
   return (
     <Dialog
@@ -49,6 +53,11 @@ export const OpnameModal: React.FC<OpnameModalProps> = ({
       size="md"
     >
       <form onSubmit={onSubmit} className="space-y-4">
+        {error && (
+          <div role="alert">
+            <Alert variant="error">{error}</Alert>
+          </div>
+        )}
         <FormField label="Depot to Audit" required>
           <Select
             value={form.warehouseId}

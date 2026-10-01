@@ -16,7 +16,17 @@
  *
  * Run on PostgreSQL 16.13 in development (no pgvector needed); the deployment
  * target is 18.
+ *
+ * A-283 (2026-09-30): the schema, the migrations, the constraints and the
+ * plans are the owner's (DDL, or role-independent). The erasure (D-11) and the
+ * certificate issue (D-40) are the application's path, so they run in a
+ * second process as `callibrator_app`, with the grants 0057 and 0091 give it
+ * — as the owner they passed whether the role may UPDATE a user, INSERT a
+ * certificate or an audit row, or not.
  */
+
+const { enterAppRole, grantAppRoleOnSyncedSchema, APP_ROLE } = require("../fixtures/liveBoot");
+const { LIVE_BOOT_TIMEOUT_MS } = require("../fixtures/disposableDatabase");
 
 const live = process.env.DATA_PG_LIVE_TEST === "1" ? describe : describe.skip;
 
@@ -58,6 +68,8 @@ const errorOf = async (db, sql, replacements = {}) => {
 
 live("batch-6 data identity and retention — real PostgreSQL", () => {
   let g;
+  /** A second process, as callibrator_app: the application's path (D-11, D-40). */
+  let app;
   const ids = {};
 
   const user = async (tenantId, tag, email = `${tag}@live.test`) => {
@@ -115,13 +127,27 @@ live("batch-6 data identity and retention — real PostgreSQL", () => {
       { replacements: { t: TENANT_A, d: ids.deviceA, u: ids.technician } },
     );
     ids.record = record.id;
+
+    await grantAppRoleOnSyncedSchema(g.db);
+    app = startProcess();
+    await enterAppRole(app.db);
     // db.sync({ force: true }) of 71 models can exceed jest's 10 s default.
-  }, 120000);
+  }, LIVE_BOOT_TIMEOUT_MS);
 
   afterAll(async () => {
+    if (app) {
+      await app.db.close();
+    }
     if (g) {
       await g.db.close();
     }
+  });
+
+  it("the application process runs as callibrator_app, not the owner", async () => {
+    const [[row]] = await app.db.query(
+      "SELECT current_user AS u, (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) AS s",
+    );
+    expect(row).toEqual({ u: APP_ROLE, s: false });
   });
 
   // ------------------------------------------------------------------
@@ -153,8 +179,8 @@ live("batch-6 data identity and retention — real PostgreSQL", () => {
   // ------------------------------------------------------------------
   describe("D-11 — an erasure pseudonymises the account and keeps the attributable record", () => {
     it("after eraseUserData, User.unscoped().findByPk(id) holds no identity or credential, and the calibration record still points at it", async () => {
-      const result = await g.tenantStorage.run({ tenantId: TENANT_A }, () =>
-        g.gdpr.eraseUserData(TENANT_A, ids.technician, { requestedBy: ids.dpo }),
+      const result = await app.tenantStorage.run({ tenantId: TENANT_A }, () =>
+        app.gdpr.eraseUserData(TENANT_A, ids.technician, { requestedBy: ids.dpo }),
       );
       expect(result).toMatchObject({ erased: true, method: "anonymized" });
 
@@ -200,8 +226,8 @@ live("batch-6 data identity and retention — real PostgreSQL", () => {
 
     it("hardDelete is refused with a 400 and the row is untouched", async () => {
       await expect(
-        g.tenantStorage.run({ tenantId: TENANT_A }, () =>
-          g.gdpr.eraseUserData(TENANT_A, ids.dpo, { requestedBy: ids.dpo, hardDelete: true, anonymize: false }),
+        app.tenantStorage.run({ tenantId: TENANT_A }, () =>
+          app.gdpr.eraseUserData(TENANT_A, ids.dpo, { requestedBy: ids.dpo, hardDelete: true, anonymize: false }),
         ),
       ).rejects.toMatchObject({ status: 400 });
       const row = await g.models.User.unscoped().findByPk(ids.dpo, { paranoid: false });
@@ -292,8 +318,8 @@ live("batch-6 data identity and retention — real PostgreSQL", () => {
   describe("D-40 — two code-less tenants issue certificates on the same day", () => {
     it("both succeed with distinct, tenant-specific numbers", async () => {
       const issue = (tenantId, userId, deviceId) =>
-        g.tenantStorage.run({ tenantId }, () =>
-          g.certificates.createCertificate(tenantId, userId, { deviceId }),
+        app.tenantStorage.run({ tenantId }, () =>
+          app.certificates.createCertificate(tenantId, userId, { deviceId }),
         );
 
       const a = await issue(TENANT_A, ids.dpo, ids.deviceA);

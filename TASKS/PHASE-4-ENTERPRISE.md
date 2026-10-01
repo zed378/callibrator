@@ -171,7 +171,7 @@ Same shape as the tenant-suspension trap: an administrative action that removes 
 
 | | → |
 |---|---|
-| IP allowlist can lock out the caller, with no recovery | backlog |
+| IP allowlist can lock out the caller, with no recovery | ~~backlog~~ **closed 2026-09-29** (Q-38, ADR-100 §3): `409 SELF_LOCKOUT` refuses a change that excludes the caller; BACKLOG M-07 |
 | `local` storage blocks horizontal scaling | P8-01 |
 | No alerting on scheduled-job outcomes | **P7-02** |
 

@@ -1,7 +1,8 @@
 const workflowService = require("../services/workflow.service");
 const { success } = require("../utils/response.util");
 const { asyncHandler } = require("../utils/controllerWrapper.util");
-const { auditActor } = require("../utils/auditActor.util");
+// A-282 (ADR-100): an API key (workflows:write) is audited as system:api-key.
+const { auditPrincipal } = require("../utils/auditPrincipal.util");
 
 // NOTE: this controller previously imported `successResponse`, which
 // response.util.js does not export — every handler threw
@@ -28,7 +29,7 @@ exports.getWorkflowById = asyncHandler(async (req, res) => {
 
 exports.createWorkflow = asyncHandler(async (req, res) => {
   // A-204 — definition changes are audited; the actor is the caller.
-  const workflow = await workflowService.createWorkflow(req.tenantId, req.body, auditActor(req));
+  const workflow = await workflowService.createWorkflow(req.tenantId, req.body, auditPrincipal(req));
   success(res, workflow, null, "Workflow created successfully", 201);
 });
 
@@ -37,13 +38,13 @@ exports.updateWorkflow = asyncHandler(async (req, res) => {
     req.tenantId,
     req.params.id,
     req.body,
-    auditActor(req),
+    auditPrincipal(req),
   );
   success(res, workflow, null, "Workflow updated successfully");
 });
 
 exports.deleteWorkflow = asyncHandler(async (req, res) => {
-  await workflowService.deleteWorkflow(req.tenantId, req.params.id, auditActor(req));
+  await workflowService.deleteWorkflow(req.tenantId, req.params.id, auditPrincipal(req));
   success(res, null, null, "Workflow deleted successfully");
 });
 

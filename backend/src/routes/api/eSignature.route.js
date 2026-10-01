@@ -34,10 +34,10 @@ const {
   verifySignature: verifySignatureValidator,
 } = require("../../validators/eSignature.validator");
 const { validateUuid } = require("../../middlewares/validateUuid.middleware");
-// These are Joi SCHEMAS. They were previously passed as `schema.validate`,
-// i.e. Joi's own (value, options) method, which express called as
-// (req, res, next) — it threw and 500'd every write route. `validate(schema)`
-// is the router-facing factory.
+// These are SCHEMAS. A schema's own method was once passed to the router
+// (`schema.validate`), which express called as (req, res, next) — it threw and
+// 500'd every write route. `validate(schema)` is the only router-facing factory
+// (P9-11 guard: tests/guards/schemaAsMiddleware.p911).
 const { validate } = require("../../middlewares/validation.middleware");
 const { dynamicAccess } = require("../../middlewares/dynamicAccess.middleware");
 const { denyPlatformAuthoring } = require("../../middlewares/denyPlatformAuthoring.middleware"); // A-127, ADR-051 Q-17

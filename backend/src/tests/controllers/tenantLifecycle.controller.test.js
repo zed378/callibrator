@@ -17,28 +17,17 @@ jest.mock("../../utils/response.util", () => ({
   error: jest.fn(),
 }));
 
-jest.mock("../../validators/tenantLifecycle.validator", () => {
-  const validate = jest.fn((data, schema) => {
-    if (data && data.tenantId && data.tenantId.length === 36) {
-      if (schema === suspendTenantSchema) {
-        if (data.reason) {
-          return { tenantId: data.tenantId, reason: data.reason };
-        }
-        throw { status: 400, message: "Validation failed" };
-      }
-      return { tenantId: data.tenantId };
-    }
-    throw { status: 400, message: "Validation failed" };
-  });
-  const suspendTenantSchema = {};
-  const tenantIdSchema = {};
-  return { validate, tenantIdSchema, suspendTenantSchema };
-});
+// The validator module is NOT mocked: the real Zod schemas check every call.
 
 const tenantLifecycleController = require("../../controllers/tenantLifecycle.controller");
 const tenantLifecycleService = require("../../services/tenantLifecycle.service");
-const { validate, suspendTenantSchema } = require("../../validators/tenantLifecycle.validator");
 const { success, error } = require("../../utils/response.util");
+
+// A-272 (ADR-100): a thrown validateInput failure answers like validate() —
+// "Validation Error" with the field list as details (it was "[object Object]").
+const FIELD_ERRORS = expect.arrayContaining([
+  expect.objectContaining({ field: expect.any(String), message: expect.any(String) }),
+]);
 
 const TENANT_ID = "550e8400-e29b-41d4-a716-446655440000";
 
@@ -47,18 +36,6 @@ describe("tenantLifecycle Controller", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    validate.mockImplementation((data, schema) => {
-      if (data && data.tenantId && data.tenantId.length === 36) {
-        if (schema === suspendTenantSchema) {
-          if (data.reason) {
-            return { tenantId: data.tenantId, reason: data.reason };
-          }
-          throw { status: 400, message: "Validation failed" };
-        }
-        return { tenantId: data.tenantId };
-      }
-      throw { status: 400, message: "Validation failed" };
-    });
     success.mockImplementation((res, data, meta, message, status) => {
       res.status(status || 200).json({ success: true, data, message });
     });
@@ -93,6 +70,7 @@ describe("tenantLifecycle Controller", () => {
         TENANT_ID,
         "Payment overdue",
         "user-1",
+        expect.objectContaining({ userId: "user-1" }),
       );
       expect(success).toHaveBeenCalled();
     });
@@ -102,7 +80,17 @@ describe("tenantLifecycle Controller", () => {
 
       await tenantLifecycleController.suspendTenant(req, res, next);
 
+      expect(tenantLifecycleService.suspendTenant).not.toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(400);
+    });
+
+    it("should return 400 when the reason is missing", async () => {
+      req.params = { tenantId: TENANT_ID };
+
+      await tenantLifecycleController.suspendTenant(req, res, next);
+
+      expect(tenantLifecycleService.suspendTenant).not.toHaveBeenCalled();
+      expect(error).toHaveBeenCalledWith(res, "Validation Error", 400, FIELD_ERRORS); // A-272 (ADR-100)
     });
   });
 
@@ -116,6 +104,7 @@ describe("tenantLifecycle Controller", () => {
       expect(tenantLifecycleService.resumeTenant).toHaveBeenCalledWith(
         TENANT_ID,
         "user-1",
+        expect.objectContaining({ userId: "user-1" }),
       );
       expect(success).toHaveBeenCalled();
     });
@@ -136,7 +125,7 @@ describe("tenantLifecycle Controller", () => {
 
       await tenantLifecycleController.enterGracePeriod(req, res, next);
 
-      expect(tenantLifecycleService.enterGracePeriod).toHaveBeenCalledWith(TENANT_ID);
+      expect(tenantLifecycleService.enterGracePeriod).toHaveBeenCalledWith(TENANT_ID, expect.objectContaining({ userId: "user-1" }));
       expect(success).toHaveBeenCalled();
     });
   });
@@ -181,7 +170,7 @@ describe("tenantLifecycle Controller", () => {
 
       await tenantLifecycleController.cancelOffboarding(req, res, next);
 
-      expect(tenantLifecycleService.cancelOffboarding).toHaveBeenCalledWith(TENANT_ID);
+      expect(tenantLifecycleService.cancelOffboarding).toHaveBeenCalledWith(TENANT_ID, expect.objectContaining({ userId: "user-1" }));
       expect(success).toHaveBeenCalled();
     });
   });

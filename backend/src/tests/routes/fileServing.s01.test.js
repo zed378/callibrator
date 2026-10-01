@@ -33,6 +33,8 @@ jest.mock("../../middlewares/activityLog.middleware", () => ({
 
 // The database double. Rows live in these arrays; lookups honour the WHERE.
 const mockDb = { attachments: [], certificates: [] };
+/** A-293: the certificate's verification token, as its QR code carries it. */
+const VERIFY_TOKEN = "Zq3v8Xr1TtY0bN4kLmP2sW9aE6hJcF5u";
 const mockMatch = (row, where = {}) =>
   Object.entries(where).every(([k, v]) => row[k] === v);
 
@@ -187,6 +189,9 @@ beforeEach(() => {
       filePath: `certificates/${CERT_FILE}`,
       validUntil: new Date("2099-01-01"),
       tenant: { name: "Acme" },
+      // A-293 (ADR-100): the full verdict — the only one with a documentUrl —
+      // needs the certificate's verification token (its QR code carries it).
+      verificationToken: VERIFY_TOKEN,
     },
   ];
   write("uploads/attachments/a-photo.png", PNG);
@@ -333,7 +338,7 @@ describe("S-01 — attachments are reached only through the gated route", () => 
 
 describe("S-01 — the public verification page reaches the PDF through a capability", () => {
   const verify = async (number = CERT_NO) =>
-    JSON.parse((await get(`/api/v1/certificates/verify/${number}`)).body.toString()).data;
+    JSON.parse((await get(`/api/v1/certificates/verify/${number}?token=${VERIFY_TOKEN}`)).body.toString()).data;
 
   it("ADR-042 step 4: a signed certificate's documentUrl is a working, framable, inline PDF", async () => {
     const data = await verify();

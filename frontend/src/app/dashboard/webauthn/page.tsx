@@ -18,9 +18,10 @@ import {
   Dialog,
   Input,
 } from "@/components/ui";
-import { Fingerprint, KeyRound, ShieldCheck, Trash2 } from "lucide-react";
+import { Fingerprint, KeyRound, Pencil, ShieldCheck, Trash2 } from "lucide-react";
 import {
   webauthnService,
+  type Passkey,
   type WebauthnStatus,
 } from "@/api/services/webauthn.service";
 import { useAuthStore } from "@/stores/authStore";
@@ -52,18 +53,29 @@ const subscribeToNothing = () => () => {};
 const getSupportSnapshot = () => webauthnService.isSupported();
 const getServerSupportSnapshot = () => false;
 
+/**
+ * Passkeys — ADR-108 Amendment 1: an account may hold several (a phone, a
+ * laptop, a security key), each named and removable on its own. Removing one
+ * re-authenticates (A-213); that proof is also the lock-out guard for the last.
+ */
 export default function WebauthnPage() {
   const addToast = useToastStore((s) => s.addToast);
   const user = useAuthStore((s) => s.user);
 
   const [status, setStatus] = useState<WebauthnStatus | null>(null);
+  const [passkeys, setPasskeys] = useState<Passkey[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [isDisableOpen, setIsDisableOpen] = useState(false);
-  // A-213: removing the passkey re-authenticates.
-  const [disablePassword, setDisablePassword] = useState("");
-  const [disableCode, setDisableCode] = useState("");
+  const [newName, setNewName] = useState("");
+  const [renaming, setRenaming] = useState<Passkey | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [isRemoveOpen, setIsRemoveOpen] = useState(false);
+  // The passkey the remove dialog is for; null = every passkey.
+  const [removing, setRemoving] = useState<Passkey | null>(null);
+  // A-213: removing a passkey re-authenticates.
+  const [removePassword, setRemovePassword] = useState("");
+  const [removeCode, setRemoveCode] = useState("");
   const needsCode = user?.mfaEnabled === true;
 
   const isSupported = useSyncExternalStore(
@@ -76,7 +88,9 @@ export default function WebauthnPage() {
     setIsLoading(true);
     setError(null);
     try {
-      setStatus(await webauthnService.getStatus());
+      const current = await webauthnService.getStatus();
+      setStatus(current);
+      setPasskeys(current.enabled ? await webauthnService.listPasskeys() : []);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to load passkey status",
@@ -91,7 +105,8 @@ export default function WebauthnPage() {
   const register = async () => {
     setBusy("register");
     try {
-      await webauthnService.register();
+      await webauthnService.register(newName);
+      setNewName("");
       addToast({ type: "success", title: "Passkey registered" });
       await load();
     } catch (err) {
@@ -122,21 +137,35 @@ export default function WebauthnPage() {
     }
   };
 
-  const closeDisable = () => {
-    setIsDisableOpen(false);
-    setDisablePassword("");
-    setDisableCode("");
+  const openRemove = (passkey: Passkey | null) => {
+    setRemoving(passkey);
+    setIsRemoveOpen(true);
   };
 
-  const disable = async () => {
-    setBusy("disable");
+  const closeRemove = () => {
+    setIsRemoveOpen(false);
+    setRemoving(null);
+    setRemovePassword("");
+    setRemoveCode("");
+  };
+
+  const remove = async () => {
+    setBusy("remove");
+    const reauth = {
+      currentPassword: removePassword,
+      ...(needsCode ? { code: removeCode.trim() } : {}),
+    };
     try {
-      await webauthnService.disable({
-        currentPassword: disablePassword,
-        ...(needsCode ? { code: disableCode.trim() } : {}),
+      if (removing) {
+        await webauthnService.revokePasskey(removing.id, reauth);
+      } else {
+        await webauthnService.disable(reauth);
+      }
+      addToast({
+        type: "success",
+        title: removing ? `Passkey "${removing.name}" removed` : "Passkeys removed",
       });
-      addToast({ type: "success", title: "Passkey removed" });
-      closeDisable();
+      closeRemove();
       await load();
     } catch (err) {
       addToast({
@@ -149,7 +178,29 @@ export default function WebauthnPage() {
     }
   };
 
+  const saveRename = async () => {
+    if (!renaming) return;
+    setBusy("rename");
+    try {
+      await webauthnService.renamePasskey(renaming.id, renameValue.trim());
+      addToast({ type: "success", title: "Passkey renamed" });
+      setRenaming(null);
+      await load();
+    } catch (err) {
+      addToast({
+        type: "error",
+        title: "Could not rename the passkey",
+        description: explain(err),
+      });
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const enabled = status?.enabled === true;
+  const count = passkeys.length;
+  // Removing this one leaves the account with none: the password is then the way in.
+  const removesLast = removing === null || count <= 1;
 
   return (
     <DashboardLayout>
@@ -173,52 +224,50 @@ export default function WebauthnPage() {
 
         <Card className="border-border">
           <CardContent className="pt-6">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex items-start gap-4">
-                <div className="rounded-full bg-primary/10 p-3">
-                  <Fingerprint className="h-6 w-6 text-primary" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-lg font-semibold">
-                      {user?.email ?? "Your account"}
-                    </h2>
-                    {isLoading ? (
-                      <span className="text-sm text-muted-foreground">
-                        Loading…
-                      </span>
-                    ) : (
-                      <Badge variant={enabled ? "success" : "default"} size="sm">
-                        {enabled ? "Passkey enrolled" : "No passkey"}
-                      </Badge>
-                    )}
-                  </div>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {enabled
-                      ? "A passkey is registered to this account on one of your devices."
-                      : "Register this device to sign in without a password."}
-                  </p>
-                  {enabled && (
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      Used {status?.signCount ?? 0}{" "}
-                      {status?.signCount === 1 ? "time" : "times"}
-                      {status?.lastUpdatedAt
-                        ? ` · last change ${new Date(status.lastUpdatedAt).toLocaleString()}`
-                        : ""}
-                    </p>
+            <div className="flex items-start gap-4">
+              <div className="rounded-full bg-primary/10 p-3">
+                <Fingerprint className="h-6 w-6 text-primary" aria-hidden="true" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg font-semibold">
+                    {user?.email ?? "Your account"}
+                  </h2>
+                  {isLoading ? (
+                    <span className="text-sm text-muted-foreground">
+                      Loading…
+                    </span>
+                  ) : (
+                    <Badge variant={enabled ? "success" : "default"} size="sm">
+                      {enabled ? `${count} ${count === 1 ? "passkey" : "passkeys"}` : "No passkey"}
+                    </Badge>
                   )}
                 </div>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {enabled
+                    ? "Each device or security key you added is listed below; remove any you no longer use."
+                    : "Register this device to sign in without a password."}
+                </p>
               </div>
             </div>
 
-            <div className="mt-6 flex flex-wrap gap-2 border-t border-border pt-4">
+            <div className="mt-6 flex flex-wrap items-end gap-2 border-t border-border pt-4">
+              <div className="w-56">
+                <Input
+                  label="Name for a new passkey"
+                  placeholder="e.g. Work laptop"
+                  maxLength={64}
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                />
+              </div>
               <Button
                 onClick={register}
                 disabled={!isSupported}
                 isLoading={busy === "register"}
                 leftIcon={<KeyRound className="h-4 w-4" />}
               >
-                {enabled ? "Replace Passkey" : "Register This Device"}
+                {enabled ? "Add Another Passkey" : "Register This Device"}
               </Button>
               <Button
                 variant="outline"
@@ -231,15 +280,62 @@ export default function WebauthnPage() {
               </Button>
               <Button
                 variant="outline"
-                onClick={() => setIsDisableOpen(true)}
+                onClick={() => openRemove(null)}
                 disabled={!enabled}
                 leftIcon={<Trash2 className="h-4 w-4" />}
               >
-                Remove Passkey
+                Remove All Passkeys
               </Button>
             </div>
           </CardContent>
         </Card>
+
+        {enabled && count > 0 && (
+          <Card className="border-border">
+            <CardContent className="pt-6">
+              <h2 className="text-sm font-semibold mb-3">Your passkeys</h2>
+              <ul className="divide-y divide-border">
+                {passkeys.map((p) => (
+                  <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 py-3">
+                    <div>
+                      <p className="font-medium">{p.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Added {new Date(p.createdAt).toLocaleDateString()}
+                        {" · "}
+                        {p.lastUsedAt
+                          ? `last used ${new Date(p.lastUsedAt).toLocaleString()}`
+                          : "not used to sign in yet"}
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-label={`Rename passkey ${p.name}`}
+                        leftIcon={<Pencil className="h-4 w-4" />}
+                        onClick={() => {
+                          setRenaming(p);
+                          setRenameValue(p.name);
+                        }}
+                      >
+                        Rename
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-label={`Remove passkey ${p.name}`}
+                        leftIcon={<Trash2 className="h-4 w-4" />}
+                        onClick={() => openRemove(p)}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        )}
 
         <Card className="bg-card/50 backdrop-blur-sm border-border">
           <CardContent className="pt-6">
@@ -250,11 +346,11 @@ export default function WebauthnPage() {
                 stores a public key.
               </li>
               <li>
-                One passkey is held per account: registering again replaces the
-                existing one.
+                Add a passkey on each device you use (up to 10), and a hardware
+                key as a spare.
               </li>
               <li>
-                Losing the device means losing this passkey — keep your password
+                Losing a device means losing its passkey — keep your password
                 and MFA working as a fallback.
               </li>
             </ul>
@@ -262,43 +358,72 @@ export default function WebauthnPage() {
         </Card>
 
         <Dialog
-          isOpen={isDisableOpen}
-          onClose={closeDisable}
-          title="Remove Passkey"
+          isOpen={isRemoveOpen}
+          onClose={closeRemove}
+          title={removing ? `Remove "${removing.name}"` : "Remove All Passkeys"}
           size="md"
         >
           <div className="p-6 space-y-4">
             <Alert variant="warning">
-              You will need your password to sign in after this. You can
-              register a new passkey at any time.
+              {removesLast
+                ? "After this you will sign in with your password. Confirm it below; you can register a new passkey at any time."
+                : "This device or key will no longer sign you in. Your other passkeys keep working."}
             </Alert>
             <Input
               label="Current password"
               type="password"
               autoComplete="current-password"
-              value={disablePassword}
-              onChange={(e) => setDisablePassword(e.target.value)}
+              value={removePassword}
+              onChange={(e) => setRemovePassword(e.target.value)}
             />
             {needsCode && (
               <Input
                 label="Authenticator code"
                 inputMode="numeric"
                 autoComplete="one-time-code"
-                value={disableCode}
-                onChange={(e) => setDisableCode(e.target.value)}
+                value={removeCode}
+                onChange={(e) => setRemoveCode(e.target.value)}
               />
             )}
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={closeDisable}>
+              <Button variant="outline" onClick={closeRemove}>
                 Cancel
               </Button>
               <Button
                 variant="danger"
-                onClick={disable}
-                isLoading={busy === "disable"}
-                disabled={!disablePassword || (needsCode && !disableCode.trim())}
+                onClick={remove}
+                isLoading={busy === "remove"}
+                disabled={!removePassword || (needsCode && !removeCode.trim())}
               >
-                Remove Passkey
+                {removing ? "Remove Passkey" : "Remove All"}
+              </Button>
+            </div>
+          </div>
+        </Dialog>
+
+        <Dialog
+          isOpen={renaming !== null}
+          onClose={() => setRenaming(null)}
+          title="Rename Passkey"
+          size="sm"
+        >
+          <div className="p-6 space-y-4">
+            <Input
+              label="Passkey name"
+              maxLength={64}
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setRenaming(null)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={saveRename}
+                isLoading={busy === "rename"}
+                disabled={!renameValue.trim()}
+              >
+                Save
               </Button>
             </div>
           </div>

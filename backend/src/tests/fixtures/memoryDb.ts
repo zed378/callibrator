@@ -263,14 +263,31 @@ const compare = (a: unknown, b: unknown): number => {
   return sa > sb ? 1 : 0;
 };
 
-const likeToRegex = (pattern: unknown, flags: string): RegExp =>
-  new RegExp(
-    `^${text(pattern)
-      .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-      .replace(/%/g, ".*")
-      .replace(/_/g, ".")}$`,
-    flags,
-  );
+const REGEX_SPECIAL = /[.*+?^${}()|[\]\\]/g;
+
+// PostgreSQL's LIKE: `%` any run, `_` one character, and a backslash (the
+// default ESCAPE) makes the next character literal, so `\_` is an underscore,
+// not a wildcard. The escape was ignored here until A-329, so an escaped
+// pattern (tenantHierarchy#subtreePattern, user.service's search) matched MORE
+// rows in memory than on PostgreSQL.
+const likeToRegex = (pattern: unknown, flags: string): RegExp => {
+  const source = text(pattern);
+  let out = "";
+  for (let i = 0; i < source.length; i += 1) {
+    const ch = source.charAt(i);
+    if (ch === "\\" && i + 1 < source.length) {
+      i += 1;
+      out += source.charAt(i).replace(REGEX_SPECIAL, "\\$&");
+    } else if (ch === "%") {
+      out += ".*";
+    } else if (ch === "_") {
+      out += ".";
+    } else {
+      out += ch.replace(REGEX_SPECIAL, "\\$&");
+    }
+  }
+  return new RegExp(`^${out}$`, flags);
+};
 
 const clone = <T>(v: T): T => {
   if (v instanceof Date) {
@@ -754,13 +771,40 @@ export class MemoryDb {
     return hits.length;
   }
 
+  /**
+   * `Model.count({ group: ["attr", …] })` — one row per distinct key, shaped as
+   * PostgreSQL returns it (`{ attr: value, count }`), NULL keys a group of their
+   * own (P8-04, ADR-096: kanban's per-board and per-sprint counts). Any other
+   * grouped aggregate, or a group that is not a list of attribute names, is
+   * still refused.
+   */
+  private groupedCount(model: ModelLike, options: QueryOptionsLike, fn: string): Row[] {
+    const group = asArray(options.group);
+    if (fn !== "count" || !group.every((g) => typeof g === "string")) {
+      return unsupported("a grouped aggregate");
+    }
+    const keys = group.map((g) => this.attributeOf(model, g));
+    const rows = this.selectRows(model, { ...options, order: undefined, limit: undefined, offset: 0 });
+    const groups = new Map<string, Row>();
+    for (const row of rows) {
+      const id = keys.map((k) => text(row[k] ?? null)).join("\u0000");
+      const found = groups.get(id);
+      if (found) {
+        found["count"] = Number(found["count"]) + 1;
+      } else {
+        groups.set(id, { ...Object.fromEntries(keys.map((k) => [k, row[k] ?? null])), count: 1 });
+      }
+    }
+    return [...groups.values()];
+  }
+
   private aggregate(table: unknown, options: QueryOptionsLike, aggregateFunction: string, Model?: ModelLike): unknown {
     const model = Model ?? this.modelOf(table);
-    if (options.group) {
-      unsupported("a grouped aggregate");
+    const fn = aggregateFunction.toLowerCase();
+    if (options.group !== undefined && options.group !== null) {
+      return this.groupedCount(model, options, fn);
     }
     const rows = this.selectRows(model, { ...options, order: undefined, limit: undefined, offset: 0 });
-    const fn = aggregateFunction.toLowerCase();
     if (fn === "count") {
       if (options.distinct && options.col) {
         const attr = this.attributeOf(model, options.col);

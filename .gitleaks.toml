@@ -30,6 +30,15 @@ regexes = [
   '''change[-_]?me''',
   # Obvious dummies used across the test suites.
   '''(?i)(test|dummy|fake|example|placeholder)[-_]?(secret|token|key|password)''',
+  # 2026-09-30 (P7-01): the Stripe fallback literal `sk_test_` + `placeholder`,
+  # quoted in stripeWebhook.service and in four documents. Exactly that word
+  # and a word boundary after it: a real key (sk_test_ + 24+ alphanumerics)
+  # does not match. Before this, each file that quoted it needed a fingerprint
+  # per commit, and every rename (.js -> .ts under Phase 9) made a new one.
+  '''\bsk_test_placeholder\b''',
+  # 2026-09-30 (P7-01): the character set temporary passwords are drawn from
+  # (user.service), not a credential. Anchored on the constant's own name.
+  '''TEMPORARY_PASSWORD_ALPHABET\s*=''',
 ]
 paths = [
   # Environment TEMPLATES: every value is a placeholder (S-25). A real .env is

@@ -18,9 +18,11 @@ const {
   waitForServer,
   BASE_URL,
 } = require("../setup");
+// P10-16 (ADR-099): no default operator password — set E2E_OPERATOR_PASSWORD (see setup.js).
+const { OPERATOR_PASSWORD } = require("../setup");
 
 // P6-02: a controlled procedure is released by someone OTHER than its author
-// (sop.service#publishDocument answers 409 to the author — 21 CFR 11 / ISO
+// (sop.service#publishDocument answers 403 to the author — V-13, ADR-109 — 21 CFR 11 / ISO
 // 13485 two-person release). The spec used to publish as the super admin who
 // authored it, which the product now refuses. A second administrator of the
 // same tenant releases it: created here, made to replace the temporary
@@ -50,11 +52,12 @@ async function createReleaser(adminToken, tenantId) {
   const userId = created.body.data.id;
   const first = await httpPost("/auth/login", { user: email, password: temporary });
   const chosen = `Chosen-${stamp}-Bb2!`;
-  const changed = await httpPost(
-    "/auth/just-update-password",
-    { currentPassword: temporary, newPassword: chosen },
-    authHeader(extractToken(first.body)),
-  );
+  // P10-16 (ADR-099): an administrator-set password is ONE-TIME — its first
+  // sign-in answers a password-change token, spent at /auth/first-sign-in/password.
+  const changed = await httpPost("/auth/first-sign-in/password", {
+    token: extractToken(first.body),
+    newPassword: chosen,
+  });
   if (changed.status !== 200) {
     throw new Error(`E2E: the SOP releaser could not set a password (${changed.status})`);
   }
@@ -85,7 +88,7 @@ describe("E2E SOP (HTTP)", () => {
     await waitForServer();
     const { body } = await httpPost("/auth/login", {
       user: "sys@mail.com",
-      password: "123123",
+      password: OPERATOR_PASSWORD,
     });
     token = extractToken(body);
     expect(token).toBeTruthy();
@@ -121,10 +124,10 @@ describe("E2E SOP (HTTP)", () => {
     docId = body.data.id;
   });
 
-  test("PATCH /sop/:id/publish — 409 for the document's own author", async () => {
+  test("PATCH /sop/:id/publish — 403 for the document's own author (V-13)", async () => {
     expect(docId).toBeTruthy();
     const { status, body } = await rawPatch(`/sop/${docId}/publish`, token);
-    expect(status).toBe(409);
+    expect(status).toBe(403);
     expect(body.message).toMatch(/someone other than its author/);
   });
 

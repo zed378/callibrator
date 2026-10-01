@@ -13,6 +13,7 @@ import {
   Dialog,
   FormField,
   Input,
+  Pagination,
   Select,
   Table,
   Textarea,
@@ -24,6 +25,7 @@ import {
   type RiskCreateInput,
 } from "@/api/services/risk.service";
 import { useToastStore } from "@/stores/toastStore";
+import { usePermissions } from "@/hooks/usePermissions";
 
 const STATUS_OPTIONS = [
   { value: "OPEN", label: "Open" },
@@ -74,6 +76,9 @@ const statusVariant = (status: string): "default" | "warning" | "success" | "inf
 };
 
 export default function RiskPage() {
+  // ADR-102: risk writes are gated on `risk` write (risk.route.js).
+  const { canWrite } = usePermissions();
+  const mayWrite = canWrite("risk");
   const addToast = useToastStore((s) => s.addToast);
 
   const [risks, setRisks] = useState<Risk[]>([]);
@@ -84,6 +89,12 @@ export default function RiskPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
+  // F-19: the backend pages at 10 by default; without a pager the 11th risk
+  // was silently never shown. `meta` comes from the envelope.
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -95,17 +106,21 @@ export default function RiskPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const data = await riskService.list({
+      const { rows, meta } = await riskService.listPage({
         status: statusFilter || undefined,
         category: categoryFilter || undefined,
+        page,
+        limit: pageSize,
       });
-      setRisks(Array.isArray(data) ? data : []);
+      setRisks(rows);
+      setTotal(meta.total);
+      setTotalPages(meta.totalPages);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load risks");
     } finally {
       setIsLoading(false);
     }
-  }, [statusFilter, categoryFilter]);
+  }, [statusFilter, categoryFilter, page, pageSize]);
 
   useEffect(() => deferEffect(load), [load]);
 
@@ -270,9 +285,11 @@ export default function RiskPage() {
               likelihood.
             </p>
           </div>
-          <Button onClick={openCreate} leftIcon={<Plus className="h-4 w-4" />}>
-            Add Risk
-          </Button>
+          {mayWrite && (
+            <Button onClick={openCreate} leftIcon={<Plus className="h-4 w-4" />}>
+              Add Risk
+            </Button>
+          )}
         </div>
 
         {error && <Alert variant="error">{error}</Alert>}
@@ -281,19 +298,26 @@ export default function RiskPage() {
           <CardContent className="pt-6">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <Input
-                placeholder="Search risks..."
+                placeholder="Search this page..."
+                aria-label="Search the risks on this page"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 leftIcon={<Search className="h-4 w-4" />}
               />
               <Select
                 value={statusFilter}
-                onChange={setStatusFilter}
+                onChange={(v) => {
+                  setStatusFilter(v);
+                  setPage(1);
+                }}
                 options={[{ value: "", label: "All Statuses" }, ...STATUS_OPTIONS]}
               />
               <Select
                 value={categoryFilter}
-                onChange={setCategoryFilter}
+                onChange={(v) => {
+                  setCategoryFilter(v);
+                  setPage(1);
+                }}
                 options={[
                   { value: "", label: "All Categories" },
                   ...CATEGORY_OPTIONS,
@@ -304,11 +328,25 @@ export default function RiskPage() {
         </Card>
 
         <Table
-          columns={columns}
+          columns={columns.filter((col) => mayWrite || col.key !== "actions")}
           data={visible as unknown as Record<string, unknown>[]}
           isLoading={isLoading}
-          emptyMessage="No risks recorded yet."
+          emptyMessage={error ? "Risks could not be loaded." : "No risks recorded yet."}
         />
+
+        {!error && total > 0 && (
+          <Pagination
+            currentPage={page}
+            totalPages={totalPages}
+            totalItems={total}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            onPageSizeChange={(size) => {
+              setPageSize(size);
+              setPage(1);
+            }}
+          />
+        )}
 
         <Dialog
           isOpen={isFormOpen}

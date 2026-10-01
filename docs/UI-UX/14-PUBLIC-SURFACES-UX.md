@@ -2,7 +2,7 @@
 
 Everything reachable without a session: the landing page, blog, news, auth screens, and the certificate verification page.
 
-Design detail for the landing and content surfaces is in [`19-IMMERSIVE-REVAMP-PLAN.md`](./19-IMMERSIVE-REVAMP-PLAN.md). This document covers what governs all of them.
+Design detail for the landing, sign-in, request access and verification pages is in [`20-LANDING-AUTH-REVAMP.md`](./20-LANDING-AUTH-REVAMP.md) (ADR-098, Phase 10); for blog and news, [`19-IMMERSIVE-REVAMP-PLAN.md`](./19-IMMERSIVE-REVAMP-PLAN.md) Part II. This document covers what governs all of them.
 
 ---
 
@@ -51,13 +51,14 @@ Audience: evaluators and procurement, not users. They are deciding whether this 
 
 | Section | Job |
 |---|---|
-| Hero | what this is, in one sentence a hospital director understands |
-| Trust | the standards — ISO 17025, 21 CFR Part 11, ISO 13485, KARS, SNARS |
-| How it works | device → calibration → certificate → verification |
-| Features | the operational surface, without listing 33 modules |
-| Compliance | the evidence story |
-| Pricing | plans |
-| CTA | |
+| Hero | what this is, in one sentence a hospital director understands; the real product UI |
+| Problem | the hospital's situation in its own words, no statistics |
+| Features and workflow | device → schedule → calibration → certificate → e-signature → QR verification |
+| Compliance and security | the evidence story, as text: the platform **supports** ISO/IEC 17025 and 21 CFR Part 11 records and hospital accreditation readiness; never a badge, never "certified", never HIPAA, SOC 2 or SNARS |
+| Certificate verification | a working lookup (after the enumeration fix, A-293) |
+| How we work, FAQ, contact | WhatsApp / email from configuration, request access; **no pricing** |
+
+*Amended by ADR-098 (2026-09-29): the "Trust: the standards" row named certifications the product does not hold and a superseded standard, and the "Pricing" row is gone by the owner's decision. No proof that cannot be verified appears on any public page.*
 
 **Do not enumerate all 33 modules.** A feature list that long reads as unfocused. Show the calibration spine and let the rest be discovered.
 
@@ -67,7 +68,7 @@ The most persuasive thing available is the verification page itself — a live, 
 
 `/login`, `/register`.
 
-Deliberately plain. WebGL-free, fast to interactive — someone signing in at 6am is not an audience for a scene.
+A cinematic split-screen (ADR-098): a dark visual panel on wide screens, the form on the right, one `<h1>` in the form. Still WebGL-free and fast to interactive — someone signing in at 6am is not an audience for a scene — so motion is limited to focus, hover and step transitions. `/register` is replaced by `/request-access`.
 
 ### Tenant-pinned branding
 
@@ -124,7 +125,7 @@ The landing page may be heavy. The verification page may not.
 
 Landing, blog and news carry full metadata, Open Graph and structured data.
 
-**The verification page must not be indexed.** Certificate numbers in a search index are an enumeration surface, and the page has no value to a search engine — it is a lookup tool, not content.
+**The verification page must not be indexed.** Certificate numbers in a search index are an enumeration surface, and the page has no value to a search engine — it is a lookup tool, not content. *As of 2026-09-29 it was not excluded (`robots.ts` does not cover `/verify` and the page sets no `robots` metadata); P10-08 adds both (ADR-098).*
 
 ## Accessibility
 

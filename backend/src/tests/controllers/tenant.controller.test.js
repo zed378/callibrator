@@ -459,6 +459,7 @@ describe("tenant Controller", () => {
 
       expect(tenantService.updateTenant.mock.calls[0][3]).toEqual({
         userId: VALID_USER_ID,
+        apiKeyId: null, // A-282 (ADR-100): auditPrincipal(req)
         tenantId: "t-home",
         ipAddress: "10.0.0.9",
         userAgent: "jest-agent",

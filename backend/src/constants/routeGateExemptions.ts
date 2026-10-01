@@ -2,7 +2,7 @@
  * Route authorization exemptions — P6-04.
  *
  * Every route registered under `src/routes` (and every route `index.js` or
- * `docs/swagger.js` registers directly on the app) must carry a PERMISSION GATE
+ * `docs/apiDocs.ts` registers directly on the app) must carry a PERMISSION GATE
  * in its middleware chain: `dynamicAccess(...)`, `rbac(...)`, `checkRoleLevel(...)`,
  * `abac(...)` or `superAdminOnly`. `auth` is authentication, not authorization,
  * and `denyApiKey` only narrows who may call — neither is a gate.
@@ -31,7 +31,7 @@
  *   pending  — known gap owned by another open card (`card`).
  *   accepted — deliberately left at `auth` by a recorded decision (`decision`).
  *
- * Keys: route file relative to `src/routes` (or `index.js` / `docs/swagger.js`),
+ * Keys: route file relative to `src/routes` (or `index.js` / `docs/apiDocs.ts`),
  * then "METHOD /path" exactly as the router registers it.
  */
 
@@ -104,6 +104,10 @@ const ROUTE_GATE_EXEMPTIONS: Record<string, Record<string, RouteGateExemption>> 
     "POST /register": { kind: PUBLIC, reason: LOGIN_SURFACE },
     "POST /login": { kind: PUBLIC, reason: LOGIN_SURFACE },
     "POST /mfa/login": { kind: PUBLIC, reason: `${LOGIN_SURFACE}; requires the MFA challenge token from /login` },
+    "POST /first-sign-in/password": {
+      kind: PUBLIC,
+      reason: `${LOGIN_SURFACE}; P10-16 (ADR-099): the password-change token from a one-time password's first /login is the capability`,
+    },
     "POST /send-otp": { kind: PUBLIC, reason: `${LOGIN_SURFACE}; password-reset OTP, answer does not disclose whether the account exists` },
     "POST /reset-password": { kind: PUBLIC, reason: `${LOGIN_SURFACE}; the OTP is the capability` },
     "POST /refresh": { kind: PUBLIC, reason: "the refresh token is the credential (rotated, bound to its session)" },
@@ -130,7 +134,7 @@ const ROUTE_GATE_EXEMPTIONS: Record<string, Record<string, RouteGateExemption>> 
     "POST /mfa/disable": { kind: SELF, reason: OWN_MFA },
     "POST /impersonate": {
       kind: SERVICE,
-      check: "services/auth.service.js#impersonateUser",
+      check: "services/auth.service.ts#impersonateUser",
       reason: "auth.service#impersonateUser refuses any caller whose role is not SUPERADMIN (403) before it resolves the target",
     },
     "POST /impersonate/exit": { kind: SELF, reason: "ends the caller's own impersonation session (logout of that session)" },
@@ -145,7 +149,7 @@ const ROUTE_GATE_EXEMPTIONS: Record<string, Record<string, RouteGateExemption>> 
     "POST /webhook": { kind: PUBLIC, reason: "Stripe is the caller; Stripe signature verified over the raw body" },
   },
   "api/certificates.route.js": {
-    "GET /verify/:certificateNumber": { kind: PUBLIC, reason: "QR code on a printed certificate, scanned by anyone; the certificate number is the capability" },
+    "GET /verify/:certificateNumber": { kind: PUBLIC, reason: "QR code on a printed certificate, scanned by anyone; the number alone yields the minimal verdict, the certificate's verification token (carried by the QR) the full one (A-293)" },
     "GET /verify/:certificateNumber/document": { kind: PUBLIC, reason: "the signed-PDF link from the public verification page; a signed, expiring token is the capability (as for /storage/object)" },
   },
   "api/content.route.js": {
@@ -190,6 +194,37 @@ const ROUTE_GATE_EXEMPTIONS: Record<string, Record<string, RouteGateExemption>> 
       reason: "realtime self-test to the caller; the tenant-wide form (scope: \"tenant\") needs notifications write via tenantBroadcastGate (A-251)",
     },
   },
+  // Phase 10 (ADR-098) — the public ways in. Each is behind an ADR-100 request
+  // budget per client address; the defence of each is named.
+  "api/accessRequests.route.ts": {
+    "POST /": {
+      kind: PUBLIC,
+      reason:
+        "P10-05 (ADR-098 §6): the access-request intake — one neutral 202 for new, duplicate, capped and honeypot submissions; per-address budget and per-email cap; stores a request, grants nothing",
+    },
+  },
+  "api/authPublic.route.ts": {
+    "POST /login/discover": {
+      kind: PUBLIC,
+      reason: "P10-04: identifier-first discovery answered by email DOMAIN only — no account is looked up",
+    },
+    "POST /sso/start": {
+      kind: PUBLIC,
+      reason: "P10-04: SSO start by organisation code; one A-292 refusal for every reason (the ssoStart budget)",
+    },
+    "POST /passkey/options": {
+      kind: PUBLIC,
+      reason: "P10-10: starts a passkey ceremony; no identifier in, no allowCredentials out (no account oracle)",
+    },
+    "POST /passkey/verify": {
+      kind: PUBLIC,
+      reason: `${LOGIN_SURFACE}; P10-10: the user-verifying passkey assertion is the credential`,
+    },
+    "POST /invitation/accept": {
+      kind: PUBLIC,
+      reason: "P10-15: the single-use, time-limited invitation token is the capability; one 400 for any bad link",
+    },
+  },
   "api/webauthn.route.js": {
     "GET /status": { kind: SELF, reason: OWN_WEBAUTHN },
     "POST /registration-options": { kind: SELF, reason: OWN_WEBAUTHN },
@@ -197,6 +232,10 @@ const ROUTE_GATE_EXEMPTIONS: Record<string, Record<string, RouteGateExemption>> 
     "POST /login-options": { kind: SELF, reason: OWN_WEBAUTHN },
     "POST /verify-login": { kind: SELF, reason: OWN_WEBAUTHN },
     "POST /disable": { kind: SELF, reason: OWN_WEBAUTHN },
+    // ADR-108 Amendment 1: the caller's own passkeys; another user's id is 404 (webauthn.service#ownPasskey).
+    "GET /credentials": { kind: SELF, reason: OWN_WEBAUTHN },
+    "PATCH /credentials/:id": { kind: SELF, reason: OWN_WEBAUTHN },
+    "DELETE /credentials/:id": { kind: SELF, reason: OWN_WEBAUTHN },
   },
   "api/sop.route.js": {
     "POST /:id/acknowledge": {
@@ -215,6 +254,7 @@ const ROUTE_GATE_EXEMPTIONS: Record<string, Record<string, RouteGateExemption>> 
     "POST /filter": { kind: INLINE, gate: "ownRoleOnly", reason: "the caller's own role's menu only, or SUPERADMIN (AZ-01 G-06)" },
     "POST /get-assignments": { kind: INLINE, gate: "ownRoleOnly", reason: "the caller's own role's menu only, or SUPERADMIN (AZ-01 G-06)" },
     "GET /menu-groups": { kind: INLINE, gate: "ownRoleOnly", reason: "the sidebar: the caller's own role's menu only, or SUPERADMIN (AZ-01 G-06)" },
+    "GET /my-permissions": { kind: SELF, reason: "ADR-102: the caller's own effective menu permissions (menuGroup.service#getMyPermissions reads req.user only)" },
   },
   "api/scim.route.js": {
     "GET /Users": SCIM,
@@ -270,14 +310,8 @@ const ROUTE_GATE_EXEMPTIONS: Record<string, Record<string, RouteGateExemption>> 
     "POST /:ticketId/assign": { kind: SERVICE, check: "services/ticket.service.js#isResponder", reason: "responders only — ticket.service#assignTicket" },
     "POST /:ticketId/comments": TICKETS,
   },
-  "api/dashboard.route.js": {
-    "GET /metrics": {
-      kind: ACCEPTED,
-      decision: "ADR-058 (P6-04) — dashboard metrics",
-      reason:
-        "tenant-wide aggregate counts for the landing page every role opens after sign-in; FACILITY MAINTENANCE and WAREHOUSE STAFF hold no `dashboard` grant, so gating it breaks their landing page. Open question: grant `dashboard` read to every role, or scope metrics per role",
-    },
-  },
+  // A-304 (ADR-100): api/dashboard.route.js GET /metrics is gated on `home`
+  // read (every role holds it) and is no longer exempt.
   "internal/health.route.js": {
     "GET /live": { kind: PUBLIC, reason: "liveness probe; dependency-free, discloses nothing (A-06/A-15)" },
     "GET /ready": { kind: PUBLIC, reason: "readiness probe; aggregate verdict only (A-06/A-15)" },
@@ -293,9 +327,11 @@ const ROUTE_GATE_EXEMPTIONS: Record<string, Record<string, RouteGateExemption>> 
   "index.js": {
     "GET /": { kind: PUBLIC, reason: "root liveness banner: a fixed string" },
   },
-  "docs/swagger.js": {
-    "GET /docs.json": { kind: PUBLIC, reason: "the published OpenAPI contract" },
-    "USE /docs": { kind: PUBLIC, reason: "Swagger UI over the published contract" },
+  // P9-25 (ADR-103): docs/swagger.js became docs/apiDocs.ts. The contract and its
+  // reference UI (/docs, /docs.json, /api/v1/docs) are no longer app-level public
+  // routes: they are routers under routes/internal/apiDocs.route.ts, walked and
+  // gated (auth + denyApiKey + rbac TENANT_ADMIN) like every other route.
+  "docs/apiDocs.ts": {
     // A-253: moved here from index.js; not registered in production unless SWAGGER_ENABLED=true.
     "GET /documentation": { kind: PUBLIC, reason: "developer HTML documentation; registered only where the API contract is published (off in production, A-253)" },
     "GET /standards": { kind: PUBLIC, reason: "developer coding-standards page; registered only where the API contract is published (off in production, A-253)" },

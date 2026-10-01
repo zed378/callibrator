@@ -31,6 +31,7 @@ const {
   getBillingHistory: billingHistoryValidator,
 } = meteredValidator;
 const { validateUuid } = require("../../middlewares/validateUuid.middleware");
+const { validate } = require("../../middlewares/validation.middleware");
 
 // ADR-043. This was `rbac(["TENANT_ADMIN", "BILLING_ADMIN"])`, which denied
 // everyone but the SUPERADMIN: "BILLING_ADMIN" is a role name that exists in no
@@ -118,7 +119,7 @@ router.get("/usage", ...billingRead, getUsageMetrics);
 router.get(
   "/history",
   ...billingRead,
-  meteredValidator.validateQuery(billingHistoryValidator),
+  validate(billingHistoryValidator, { from: "query" }),
   getBillingHistory,
 );
 
@@ -170,7 +171,7 @@ router.get(
 router.post(
   "/estimate",
   ...billingRead,
-  meteredValidator.validateBody(estimateCostValidator),
+  validate(estimateCostValidator),
   estimateCost,
 );
 
@@ -278,7 +279,7 @@ router.get("/alerts", ...billingRead, getUsageAlerts);
 router.post(
   "/alerts",
   ...billingWrite,
-  meteredValidator.validateBody(createAlertValidator),
+  validate(createAlertValidator),
   createUsageAlert,
 );
 
@@ -353,7 +354,7 @@ router.delete(
 router.get(
   "/analytics",
   ...billingRead,
-  meteredValidator.validateQuery(getAnalyticsValidator),
+  validate(getAnalyticsValidator, { from: "query" }),
   getAnalytics,
 );
 

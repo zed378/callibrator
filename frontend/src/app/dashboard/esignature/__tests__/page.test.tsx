@@ -43,6 +43,7 @@ jest.mock("@/stores/authStore", () => ({
 import { api } from "@/api/client";
 import { useToastStore } from "@/stores/toastStore";
 import ESignaturePage from "../page";
+import { grantPermissions, grantSuperAdmin, clearPermissions } from "@/tests/support/permissions";
 
 const mockedApi = api as jest.Mocked<typeof api>;
 
@@ -117,10 +118,20 @@ const openWorkflow = async () => {
 };
 
 beforeEach(() => {
+  // ADR-102: write controls follow the effective permissions.
+  grantPermissions({ qms: "write", esignature: "write" });
   jest.clearAllMocks();
   mockAuthState.user = { id: ME };
   useToastStore.setState({ toasts: [] });
 });
+
+
+/** Deleting asks first (audit 01 §4.6): open the confirmation and confirm it. */
+const deleteAndConfirm = async (kind: "workflow" | "key pair") => {
+  fireEvent.click(screen.getByRole("button", { name: new RegExp(`^Delete ${kind} `) }));
+  const dialog = await screen.findByRole("dialog", { name: new RegExp(`^Delete ${kind}`) });
+  fireEvent.click(within(dialog).getByRole("button", { name: `Delete ${kind}` }));
+};
 
 describe("ESignaturePage — signing re-authenticates (A-65)", () => {
   it("signing asks for the password and the meaning, and posts them with the step — no ip or user agent", async () => {
@@ -508,7 +519,7 @@ describe("ESignaturePage — workflow management (A-129, A-130)", () => {
     mockedApi.delete.mockRejectedValueOnce(conflict(explanation));
     await openWorkflowsTab();
 
-    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    await deleteAndConfirm("workflow");
 
     await waitFor(() =>
       expect(useToastStore.getState().toasts).toEqual([
@@ -527,7 +538,7 @@ describe("ESignaturePage — workflow management (A-129, A-130)", () => {
     mockedApi.delete.mockRejectedValueOnce(new Error("Service unavailable"));
     await openWorkflowsTab();
 
-    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    await deleteAndConfirm("workflow");
 
     await waitFor(() =>
       expect(useToastStore.getState().toasts).toEqual([
@@ -620,3 +631,5 @@ describe("ESignaturePage — workflow management (A-129, A-130)", () => {
     expect(screen.queryByRole("button", { name: "Cancel workflow" })).not.toBeInTheDocument();
   });
 });
+
+// ADR-102 cases for this page: page.permissions.adr102.test.tsx

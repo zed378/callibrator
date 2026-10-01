@@ -90,7 +90,7 @@ live("A-215 / A-259 — live PostgreSQL", () => {
     }
     g = startProcess();
     await g.db.sync({ force: true });
-  }, 60000);
+  }, 300000); // a full sync + migrate exceeds 60 s on a loaded host (A-283 run, 2026-09-30)
 
   afterAll(async () => {
     if (g) {
@@ -132,7 +132,7 @@ live("A-215 / A-259 — live PostgreSQL", () => {
     expect(Math.abs(expiry - (before + 72 * HOUR))).toBeLessThan(60 * 1000);
     expect(await expiryOf(ids.own)).toBeNull();
     expect((await g.schemaVerify.verifySchema(g.db)).problems).toEqual([]);
-  }, 60000);
+  }, 300000); // a full sync + migrate exceeds 60 s on a loaded host (A-283 run, 2026-09-30)
 
   it("RE-RUN: a second migrator.up() applies nothing; a direct up changes nothing", async () => {
     const first = await expiryOf(ids.flagged);
@@ -157,7 +157,7 @@ live("A-215 / A-259 — live PostgreSQL", () => {
     expect(await expiryOf(ids.flagged)).not.toBeNull();
     expect(await expiryOf(ids.own)).toBeNull();
     expect((await g.schemaVerify.verifySchema(g.db)).problems).toEqual([]);
-  }, 60000);
+  }, 300000); // a full sync + migrate exceeds 60 s on a loaded host (A-283 run, 2026-09-30)
 
   it("the model reads and writes the column (Sequelize attribute ↔ column)", async () => {
     const at = new Date(Date.now() + HOUR);

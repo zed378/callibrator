@@ -116,6 +116,7 @@ export default function VendorsPage() {
         <VendorsTable
           vendors={vendors}
           isVendorsLoading={isVendorsLoading}
+          loadFailed={!!vendorsError}
           pageSize={pageSize}
           setCurrentPage={setCurrentPage}
           hasWriteAccess={hasWriteAccess}

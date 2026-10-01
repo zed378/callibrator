@@ -13,6 +13,10 @@
 !package-lock.json
 !backend/package.json
 !frontend
+# P9-22 (ADR-097): the shared request schemas (manifest + src only).
+!packages/contracts
+packages/contracts/node_modules
+packages/contracts/**/*.test.*
 
 # ...and keep out of frontend/ what the build does not need or must not see.
 # Local env files matter most: a developer's .env.local would otherwise be read

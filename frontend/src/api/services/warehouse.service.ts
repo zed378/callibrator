@@ -1,5 +1,20 @@
 import { api } from "../client";
 import { Warehouse, StorageLocation, PaginatedResponse } from "@/types";
+import type {
+  CreateLocationInput,
+  CreateWarehouseInput,
+  UpdateLocationInput,
+  UpdateWarehouseInput,
+} from "@callibrator/contracts/warehouse";
+
+// P9-22 (ADR-097): request bodies are the backend validator's own schemas
+// (@callibrator/contracts/warehouse). The hand-written `Omit<Warehouse, …>`
+// shapes they replace offered `tenantId` (never read from a body) and a
+// "suspended" status the API refuses.
+export type WarehouseCreateInput = CreateWarehouseInput;
+export type WarehouseUpdateInput = UpdateWarehouseInput;
+export type LocationCreateInput = CreateLocationInput;
+export type LocationUpdateInput = UpdateLocationInput;
 
 // Backend response structure for warehouses
 interface BackendWarehousesResponse {
@@ -44,7 +59,7 @@ export const warehouseService = {
   },
 
   create: async (
-    data: Omit<Warehouse, "id" | "locations" | "createdAt" | "updatedAt">
+    data: WarehouseCreateInput
   ): Promise<Warehouse> => {
     const response = await api.post<{ success: boolean; data: Warehouse }>(
       "/api/v1/warehouses",
@@ -55,7 +70,7 @@ export const warehouseService = {
 
   update: async (
     warehouseId: string,
-    data: Partial<Omit<Warehouse, "id" | "locations" | "createdAt" | "updatedAt">>
+    data: WarehouseUpdateInput
   ): Promise<Warehouse> => {
     const response = await api.patch<{ success: boolean; data: Warehouse }>(
       `/api/v1/warehouses/${warehouseId}`,
@@ -80,7 +95,7 @@ export const warehouseService = {
   },
 
   createLocation: async (
-    data: Omit<StorageLocation, "id" | "createdAt" | "updatedAt">
+    data: LocationCreateInput
   ): Promise<StorageLocation> => {
     const response = await api.post<{ success: boolean; data: StorageLocation }>(
       "/api/v1/warehouses/locations",
@@ -91,7 +106,7 @@ export const warehouseService = {
 
   updateLocation: async (
     locationId: string,
-    data: Partial<Omit<StorageLocation, "id" | "warehouseId" | "createdAt" | "updatedAt">>
+    data: LocationUpdateInput
   ): Promise<StorageLocation> => {
     const response = await api.patch<{ success: boolean; data: StorageLocation }>(
       `/api/v1/warehouses/locations/${locationId}`,

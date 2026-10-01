@@ -817,6 +817,7 @@ describe("rateLimiter.redis.service - coverage boost", () => {
     const makeRes = () => ({
       status: jest.fn().mockReturnThis(),
       json: jest.fn(),
+      set: jest.fn(), // ADR-100: a 429 carries Retry-After
     });
 
     it("should attach rateLimitContext and call next when not locked", async () => {
@@ -901,6 +902,8 @@ describe("rateLimiter.redis.service - coverage boost", () => {
 
       expect(next).not.toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(429);
+      // ADR-100: Retry-After on every 429, next to the body's retryAfter.
+      expect(res.set).toHaveBeenCalledWith("Retry-After", expect.stringMatching(/^\d+$/));
       const payload = res.json.mock.calls[0][0];
       expect(payload.success).toBe(false);
       expect(payload.status).toBe(429);

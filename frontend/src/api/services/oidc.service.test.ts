@@ -36,6 +36,14 @@ describe("oidcService", () => {
       expect(res.issuer).toBe("http://localhost:5000");
     });
 
+    it("reads the discovery document and JWKS the backend sends unenveloped", async () => {
+      // oidcProvider.controller: res.json(discover()) / res.json(jwks()).
+      mockedApi.get.mockResolvedValueOnce({ issuer: "https://idp.example", jwks_uri: "https://idp.example/jwks" });
+      await expect(oidcService.getDiscovery()).resolves.toMatchObject({ issuer: "https://idp.example" });
+      mockedApi.get.mockResolvedValueOnce({ keys: [{ kid: "k1" }] });
+      await expect(oidcService.getJwks()).resolves.toEqual({ keys: [{ kid: "k1" }] });
+    });
+
     it("fetches the JWKS", async () => {
       mockedApi.get.mockResolvedValueOnce(envelope({ keys: [{ kid: "k1" }] }));
       const res = await oidcService.getJwks();

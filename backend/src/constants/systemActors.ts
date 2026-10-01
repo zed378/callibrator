@@ -104,6 +104,47 @@ const SYSTEM_ACTORS = Object.freeze({
    * attachments soft-deleted longer than the retention window.
    */
   ATTACHMENT_FILE_SWEEP: "system:attachment-file-sweep",
+  /**
+   * A-282 (ADR-094) — a tenant API key (a service account) acting through a
+   * route its scopes open. A key is not a user: `audit_logs.user_id`
+   * references `users`, so a key's id there fails the foreign key. The key's
+   * id is named in `changes.apiKeyId` (the A-37 rule, generalised).
+   */
+  API_KEY: "system:api-key",
+  /**
+   * A-276 (ADR-094) — services/stripeWebhook.service.js: a tenant's status
+   * changed by a signed Stripe event (dunning suspends; payment lifts only a
+   * dunning suspension). The Stripe event id is named in `changes.stripeEventId`.
+   */
+  BILLING_WEBHOOK: "system:billing-webhook",
+  /**
+   * P10-16 (ADR-099) — services/bootstrapCredential.service.ts: the creation
+   * of the first super admin with a one-time password (the seed), the boot
+   * step that retires the old public default, and the recovery CLI
+   * (scripts/rotateBootstrapPassword.ts; the person is named in
+   * `changes.requestedBy`, as BREAK_GLASS does).
+   */
+  BOOTSTRAP: "system:bootstrap",
+  /**
+   * P10-05 (ADR-098 §6) — services/accessRequest.service.ts#submitAccessRequest:
+   * a request received through the public intake. The requester is not a
+   * principal (no account), and their name and address are never written to
+   * `changes` (BR-P10-6): audit_logs is append-only (0091) and the retention
+   * sweep could not remove them.
+   */
+  ACCESS_REQUEST_INTAKE: "system:access-request-intake",
+  /**
+   * P10-05 (Q-42) — services/accessRequest.service.ts#runAccessRequestRetention,
+   * run by the retention sweep: a pending request expired after 90 days, and
+   * rejected, spam or expired requests deleted 12 months after their decision.
+   */
+  ACCESS_REQUEST_RETENTION: "system:access-request-retention",
+  /**
+   * A-322 — services/meteredBilling.service.ts#enforceQuotas: a free-plan
+   * tenant suspended for exceeding a quota (suspension_reason
+   * "billing:quota"). The metric and the overage are named in `changes`.
+   */
+  USAGE_QUOTA: "system:usage-quota",
 } as const);
 
 /** One system actor's name (`actor_name` of a `system` row). */

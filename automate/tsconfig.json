@@ -1,0 +1,24 @@
+{
+  // P10-13: the browser specs written in TypeScript (automate/*.mts) are run
+  // by Node itself (type stripping, Node >= 23.6; the repo pins 26), so they
+  // use erasable syntax only. This file type-checks them:
+  //   node node_modules/@typescript/native/bin/tsc -p automate/tsconfig.json
+  // (make typecheck-browser). The .js siblings are not checked here.
+  "compilerOptions": {
+    "target": "ES2024",
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitReturns": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "types": ["node"]
+  },
+  "include": ["*.mts"]
+}

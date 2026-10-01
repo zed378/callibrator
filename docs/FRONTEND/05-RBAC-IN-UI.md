@@ -123,5 +123,8 @@ The second is the one worth asserting explicitly. `toBeVisible()` passing is not
 |---|---|
 | What is permitted | the backend, on every route |
 | What is navigable | the server-resolved menu tree |
+| Which write actions a page offers | the server-resolved effective permissions — `GET /menu-groups/my-permissions`, read through `usePermissions().canWrite(<slug the write API is gated on>)` (ADR-102). Never a list of role names |
 | What is rendered | the frontend, from that tree |
 | What is enforced | **never** the frontend |
+
+> **Amended 2026-09-29 (ADR-102).** The menu tree is now built from the same effective permission the API gate checks (`backend/src/services/effectivePermission.service.ts`: the role's grants inherited one level, replaced by per-user overrides) plus each page's own API gate (`backend/src/constants/menuPageAccess.ts`) — it used to cascade a grant to every descendant and ignore overrides. Pages decide write actions from `usePermissions` (`frontend/src/hooks/usePermissions.ts`); until the permissions load, nothing is writable.

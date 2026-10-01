@@ -51,6 +51,13 @@ jest.mock("sequelize", () => {
   };
 });
 
+// ADR-107 (Q-50): the sign step's snapshot reads the tenant, device and users
+// through the models barrel this suite doubles; the snapshot itself is
+// certificates.signSnapshot.q50.test.ts's subject, not this suite's.
+jest.mock("../../services/certificateDocument.service", () => ({
+  ...jest.requireActual("../../services/certificateDocument.service"),
+  captureSignedSnapshot: jest.fn(async () => null),
+}));
 jest.mock("../../models", () => ({
   Certificate: {
     findAndCountAll: jest.fn(),
@@ -104,16 +111,12 @@ jest.mock("../../utils/appError.util", () => {
   return { AppError };
 });
 
-jest.mock("../../validators/certificate.validator", () => ({
-  validate: jest.fn(),
-  createCertificateSchema: "createCertificateSchema",
-  updateCertificateSchema: "updateCertificateSchema",
-}));
+// The create / update schemas are REAL (P9-11: Zod through validators/input),
+// so each input below is one the API accepts.
 
 const { Certificate, CalibrationDevice, Tenant, ESignatureRecord, User } = require("../../models");
 const authService = require("../../services/auth.service");
 const mfaService = require("../../services/mfa.service");
-const validator = require("../../validators/certificate.validator");
 const {
   fetchCertificates,
   fetchSpecificCertificate,
@@ -126,6 +129,9 @@ const {
   revokeCertificate,
   getCertificateStats,
 } = require("../../services/certificate.service");
+
+// Ids the request schemas accept (they are uuids since P9-11 validates for real).
+const DEV_1 = "00000001-0000-4000-8000-000000000001";
 
 describe("certificate.service", () => {
   beforeEach(() => {
@@ -153,7 +159,7 @@ describe("certificate.service", () => {
 
       const result = await fetchCertificates({
         tenantId: "tenant-1",
-        deviceId: "dev-1",
+        deviceId: DEV_1,
         status: ["draft"],
         type: ["calibration"],
         certificateNumber: "123",
@@ -170,7 +176,7 @@ describe("certificate.service", () => {
         expect.objectContaining({
           where: expect.objectContaining({
             tenantId: "tenant-1",
-            deviceId: "dev-1",
+            deviceId: DEV_1,
             status: expect.any(Object),
             type: expect.any(Object),
             certificateNumber: expect.any(Object),
@@ -271,19 +277,31 @@ describe("certificate.service", () => {
   });
 
   describe("createCertificate", () => {
+    it("P9-11: a body the schema refuses is a 400 with the field errors, before any lookup", async () => {
+      await expect(
+        createCertificate("tenant-1", "user-1", { deviceId: "dev-1", type: "repair" }),
+      ).rejects.toEqual({
+        status: 400,
+        message: "Validation failed",
+        errors: [
+          { field: "deviceId", message: "Invalid GUID" },
+          { field: "type", message: 'Invalid option: expected one of "calibration"|"maintenance"|"verification"' },
+        ],
+      });
+      expect(CalibrationDevice.findOne).not.toHaveBeenCalled();
+    });
+
     it("should return 404 if device is not found or belongs to another tenant", async () => {
-      validator.validate.mockReturnValueOnce({ deviceId: "dev-1" });
       CalibrationDevice.findOne.mockResolvedValueOnce(null);
 
-      const result = await createCertificate("tenant-1", "user-1", { deviceId: "dev-1" });
+      const result = await createCertificate("tenant-1", "user-1", { deviceId: DEV_1 });
 
       expect(result.success).toBe(false);
       expect(result.status).toBe(404);
     });
 
     it("should create certificate successfully", async () => {
-      validator.validate.mockReturnValueOnce({ deviceId: "dev-1", type: "calibration" });
-      CalibrationDevice.findOne.mockResolvedValueOnce({ id: "dev-1" });
+      CalibrationDevice.findOne.mockResolvedValueOnce({ id: DEV_1 });
       Tenant.findByPk.mockResolvedValueOnce({ code: "TEN" });
       Certificate.generateCertificateNumber.mockResolvedValueOnce("TEN-CERT-001");
       Certificate.create.mockResolvedValueOnce({
@@ -291,7 +309,7 @@ describe("certificate.service", () => {
         certificateNumber: "TEN-CERT-001",
       });
 
-      const result = await createCertificate("tenant-1", "user-1", { deviceId: "dev-1" });
+      const result = await createCertificate("tenant-1", "user-1", { deviceId: DEV_1 });
 
       expect(result.success).toBe(true);
       expect(result.status).toBe(201);
@@ -302,13 +320,12 @@ describe("certificate.service", () => {
       ["the tenant cannot be loaded", null],
       ["the tenant has no code", {}],
     ])("D-40: falls back to a per-tenant 'T<tenant id>' certificate-number prefix when %s", async (_case, tenant) => {
-      validator.validate.mockReturnValueOnce({ deviceId: "dev-1" });
-      CalibrationDevice.findOne.mockResolvedValueOnce({ id: "dev-1" });
+      CalibrationDevice.findOne.mockResolvedValueOnce({ id: DEV_1 });
       Tenant.findByPk.mockResolvedValueOnce(tenant);
       Certificate.generateCertificateNumber.mockResolvedValueOnce("T-CERT-001");
       Certificate.create.mockResolvedValueOnce({ id: "cert-1" });
 
-      const result = await createCertificate("0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d", "user-1", { deviceId: "dev-1" });
+      const result = await createCertificate("0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d", "user-1", { deviceId: DEV_1 });
 
       // Not the shared "T" every code-less tenant used to collide on.
       expect(Certificate.generateCertificateNumber).toHaveBeenCalledWith(
@@ -319,18 +336,28 @@ describe("certificate.service", () => {
     });
 
     it("should handle error during creation", async () => {
-      validator.validate.mockReturnValueOnce({ deviceId: "dev-1" });
       CalibrationDevice.findOne.mockRejectedValueOnce(new Error("Db error"));
 
       await expect(
-        createCertificate("tenant-1", "user-1", { deviceId: "dev-1" }),
+        createCertificate("tenant-1", "user-1", { deviceId: DEV_1 }),
       ).rejects.toThrow("Db error");
     });
   });
 
   describe("updateCertificate", () => {
+    it("P9-11: a status outside the enum is a 400 with the field error, before any lookup", async () => {
+      await expect(updateCertificate("tenant-1", "cert-1", { status: "published" })).rejects.toEqual({
+        status: 400,
+        message: "Validation failed",
+        errors: [
+          // enum-or-"" is a union, so Zod names no option here
+          { field: "status", message: "Invalid input" },
+        ],
+      });
+      expect(Certificate.findOne).not.toHaveBeenCalled();
+    });
+
     it("should return 404 if certificate is not found", async () => {
-      validator.validate.mockReturnValueOnce({ summary: "New summary" });
       Certificate.findOne.mockResolvedValueOnce(null);
 
       const result = await updateCertificate("tenant-1", "cert-1", { summary: "New summary" });
@@ -342,7 +369,6 @@ describe("certificate.service", () => {
     // A-85: editing a signed or revoked certificate is a state conflict — 409
     // with the state and the way forward, never a 400.
     it("A-85: a PUT on a signed certificate is 409 with a state explanation, and writes nothing", async () => {
-      validator.validate.mockReturnValueOnce({ summary: "New summary" });
       const signed = { id: "cert-1", status: "signed", update: jest.fn() };
       Certificate.findOne.mockResolvedValueOnce(signed);
 
@@ -356,7 +382,6 @@ describe("certificate.service", () => {
     });
 
     it("should update certificate successfully", async () => {
-      validator.validate.mockReturnValueOnce({ summary: "New summary" });
       const mockCert = {
         id: "cert-1",
         status: "draft",
@@ -381,7 +406,6 @@ describe("certificate.service", () => {
     });
 
     it("should null out updatedBy when the caller does not supply it", async () => {
-      validator.validate.mockReturnValueOnce({ summary: "New summary" });
       const mockCert = {
         id: "cert-1",
         status: "draft",
@@ -398,7 +422,6 @@ describe("certificate.service", () => {
     });
 
     it("A-85: a PUT on a revoked certificate is 409 with a state explanation, and writes nothing", async () => {
-      validator.validate.mockReturnValueOnce({ summary: "New summary" });
       const revoked = { id: "cert-1", status: "revoked", update: jest.fn() };
       Certificate.findOne.mockResolvedValueOnce(revoked);
 
@@ -414,7 +437,6 @@ describe("certificate.service", () => {
     });
 
     it("should handle error during update", async () => {
-      validator.validate.mockReturnValueOnce({ summary: "New summary" });
       Certificate.findOne.mockRejectedValueOnce(new Error("Db error"));
 
       await expect(
@@ -896,7 +918,7 @@ describe("certificate.service", () => {
     const approvableCert = () => ({
       id: "cert-1",
       certificateNumber: "C1",
-      deviceId: "dev-1",
+      deviceId: DEV_1,
       calibrationRecordId: "rec-1",
       status: "pending_approval",
       digitalSignature: null,

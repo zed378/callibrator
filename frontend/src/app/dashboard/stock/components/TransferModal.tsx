@@ -1,6 +1,7 @@
 // src/app/dashboard/stock/components/TransferModal.tsx
 import React from "react";
 import {
+  Alert,
   Dialog,
   FormField,
   Input,
@@ -35,6 +36,8 @@ interface TransferModalProps {
   >;
   warehouseOptions: Option[];
   onSubmit: (e: React.FormEvent) => void;
+  /** F-19: a refused save, shown inside the dialog (a page alert sits behind it). */
+  error?: string | null;
 }
 
 export const TransferModal: React.FC<TransferModalProps> = ({
@@ -44,6 +47,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({
   setForm,
   warehouseOptions,
   onSubmit,
+  error = null,
 }) => {
   return (
     <Dialog
@@ -53,6 +57,11 @@ export const TransferModal: React.FC<TransferModalProps> = ({
       size="md"
     >
       <form onSubmit={onSubmit} className="space-y-4">
+        {error && (
+          <div role="alert">
+            <Alert variant="error">{error}</Alert>
+          </div>
+        )}
         <FormField label="Item Name / Description" required>
           <Input
             type="text"

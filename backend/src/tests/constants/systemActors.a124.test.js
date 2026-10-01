@@ -64,6 +64,12 @@ describe("A-124 — system actors", () => {
       "system:webhook-delivery-purge", // ADR-070: finished deliveries past retention
       "system:scim", // A-37 (ADR-075): an IdP's SCIM API key
       "system:attachment-file-sweep", // D-22 (ADR-083): deleted attachments' files past retention
+      "system:api-key", // A-282 (ADR-094): a tenant API key (service account)
+      "system:billing-webhook", // A-276 (ADR-094): a signed Stripe event changing a tenant's status
+      "system:bootstrap", // P10-16 (ADR-099): first super admin, default retirement, recovery CLI
+      "system:access-request-intake", // P10-05 (ADR-098 §6): a request received through the public intake
+      "system:access-request-retention", // P10-05 (Q-42): pending requests expired, decided ones deleted after 12 months
+      "system:usage-quota", // A-322: a free-plan tenant suspended by quota enforcement
     ]);
     for (const name of SYSTEM_ACTOR_NAMES) {
       expect(name).toMatch(/^system:[a-z][a-z-]*$/);

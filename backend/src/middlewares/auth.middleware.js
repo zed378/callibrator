@@ -36,16 +36,10 @@ const SIDLESS_ACCESS_TOKENS_ACCEPTED = false;
 exports.SIDLESS_ACCESS_TOKENS_ACCEPTED = SIDLESS_ACCESS_TOKENS_ACCEPTED;
 
 /**
- * Whether a loaded principal is the platform super admin. The role name has
- * been spelled three ways over time; all three are the super admin.
- *
- * @param {{role?: {name?: string}|null}} user
- * @returns {boolean}
+ * Whether a loaded principal is the platform super admin — N-01: the one
+ * predicate in utils/role.util.ts, which recognises both spellings.
  */
-const isSuperAdminPrincipal = (user) =>
-  user.role?.name === ROLE_NAMES.SUPER_ADMIN ||
-  user.role?.name === "SUPER_ADMIN" ||
-  user.role?.name === "SUPERADMIN";
+const { isSuperAdmin: isSuperAdminPrincipal } = require("../utils/role.util");
 
 /**
  * A-101 — why this principal's tenant may not act, or null when it may. The
@@ -490,15 +484,14 @@ exports.denyApiKey = (req, res, next) => {
 // principal" and got everything the handler offered. Authorization for API
 // keys is therefore deny-by-default: a gate that has actually authorized the
 // key sets `req.apiKeyAuthorized`, and a key that reaches a controller without
-// it is refused (see utils/controllerWrapper.util.js).
+// it is refused (see utils/controllerWrapper.util.ts).
 //
-// This middleware is the explicit opt-in, for the few endpoints that are meant
-// for service accounts and authorize them some other way (SCIM, which requires
-// an API key and checks the target separately).
-exports.allowApiKey = (req, res, next) => {
-  req.apiKeyAuthorized = true;
-  next();
-};
+// V-05: exactly TWO places set it — dynamicAccess's scope check and the SCIM
+// gate (scim.route.js#requireApiKeyOrAdmin, which authorizes a key by its
+// `scim` scope). The unconditional `allowApiKey` opt-in that used to live here
+// had no call site and was removed: a gate that authorizes a key must check
+// something about it. tests/guards/apiKeyAuthorizedWriters.v05.guard.test.ts
+// enumerates the writers and fails on a third.
 
 /**
  * Super admin only middleware
@@ -507,7 +500,8 @@ exports.superAdminOnly = (req, res, next) => {
   if (
     !req.user ||
     !req.user.role ||
-    req.user.role.name !== ROLE_NAMES.SUPER_ADMIN
+    // V-15 / N-01: both spellings, as every other gate.
+    !isSuperAdminPrincipal(req.user)
   ) {
     return forbidden(res, "Super admin access required");
   }

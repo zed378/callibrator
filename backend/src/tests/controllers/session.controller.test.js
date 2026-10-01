@@ -16,6 +16,8 @@ const mockSessions = {
 
 const mockUsers = {
   attributes: ["id", "username", "email", "firstName", "lastName"],
+  // A-324: revoke-all reads the target user's tenant for its audit row.
+  unscoped: () => ({ findByPk: jest.fn().mockResolvedValue({ id: "u", tenantId: "t" }) }),
 };
 
 const mockRoles = {
@@ -31,7 +33,12 @@ jest.mock("../../models", () => ({
   Users: mockUsers,
   Roles: mockRoles,
   Tenants: mockTenants,
+  // A-324: the session change and its audit row share a transaction.
+  sequelize: { transaction: (cb) => cb("TX") },
 }));
+
+// A-324: the audit row itself is proved by session.audit.a324.test.ts.
+jest.mock("../../services/audit.service", () => ({ logAction: jest.fn().mockResolvedValue({}) }));
 
 jest.mock("../../utils/response.util", () => ({
   success: jest.fn(),
@@ -388,6 +395,7 @@ describe("Session Controller", () => {
           revoked_reason: "SECURITY_BREACH",
           is_active: false,
         }),
+        { transaction: "TX" },
       );
       expect(success).toHaveBeenCalled();
     });
@@ -397,7 +405,7 @@ describe("Session Controller", () => {
       req.body = { reason: "ADMIN_REVOKE" };
       req.user = {
         id: "different-user-id",
-        role: { name: "SUPER_ADMIN" },
+        role: { name: "SUPERADMIN" }, // N-01: the seeded name (ROLE_NAMES.SUPER_ADMIN)
       };
       mockSessions.findByPk.mockResolvedValue({
         ...mockSessionInstance,
@@ -471,6 +479,7 @@ describe("Session Controller", () => {
         expect.objectContaining({
           revoked_reason: "MANUAL_REVOKE",
         }),
+        { transaction: "TX" },
       );
     });
   });
@@ -481,7 +490,7 @@ describe("Session Controller", () => {
       req.body = { reason: "PASSWORD_RESET" };
       req.user = {
         id: VALID_USER_ID,
-        role: { name: "SUPER_ADMIN" },
+        role: { name: "SUPERADMIN" }, // N-01: the seeded name (ROLE_NAMES.SUPER_ADMIN)
       };
       mockSessions.update.mockResolvedValue([5]); // affected rows
 
@@ -519,7 +528,7 @@ describe("Session Controller", () => {
       req.body = {};
       req.user = {
         id: VALID_USER_ID,
-        role: { name: "SUPER_ADMIN" },
+        role: { name: "SUPERADMIN" }, // N-01: the seeded name (ROLE_NAMES.SUPER_ADMIN)
       };
       mockSessions.update.mockResolvedValue([3]);
 
@@ -561,7 +570,7 @@ describe("Session Controller", () => {
       req.params = { id: VALID_SESSION_ID };
       req.user = {
         id: "admin-id",
-        role: { name: "SUPER_ADMIN" },
+        role: { name: "SUPERADMIN" }, // N-01: the seeded name (ROLE_NAMES.SUPER_ADMIN)
       };
       mockSessions.findByPk.mockResolvedValue({
         ...mockSessionInstance,

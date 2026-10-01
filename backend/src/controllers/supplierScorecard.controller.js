@@ -1,10 +1,11 @@
 const scorecardService = require("../services/supplierScorecard.service");
 const { success } = require("../utils/response.util");
+const { auditPrincipal } = require("../utils/auditPrincipal.util");
 const { asyncHandlerWithMapping } = require("../utils/controllerWrapper.util");
 
 exports.createScorecard = asyncHandlerWithMapping(
   async (req, res) => {
-    const data = await scorecardService.createScorecard(req.user.tenantId, req.body || {}, req.user.id);
+    const data = await scorecardService.createScorecard(req.user.tenantId, req.body || {}, req.user.id, auditPrincipal(req));
     success(res, data, null, "Scorecard created successfully", 201);
   },
   {
@@ -39,7 +40,7 @@ exports.getScorecardById = asyncHandlerWithMapping(
 
 exports.updateScorecard = asyncHandlerWithMapping(
   async (req, res) => {
-    const data = await scorecardService.updateScorecard(req.user.tenantId, req.params.id, req.body || {});
+    const data = await scorecardService.updateScorecard(req.user.tenantId, req.params.id, req.body || {}, auditPrincipal(req));
     success(res, data, null, "Scorecard updated successfully", 200);
   },
   {
@@ -49,7 +50,7 @@ exports.updateScorecard = asyncHandlerWithMapping(
 
 exports.deleteScorecard = asyncHandlerWithMapping(
   async (req, res) => {
-    await scorecardService.deleteScorecard(req.user.tenantId, req.params.id);
+    await scorecardService.deleteScorecard(req.user.tenantId, req.params.id, auditPrincipal(req));
     success(res, null, null, "Scorecard deleted successfully", 200);
   },
   {

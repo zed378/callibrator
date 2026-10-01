@@ -172,26 +172,42 @@ const OPEN = "OPEN — grows with the tenant, not paged yet (ADR-083 follow-up)"
 
 /** Each entry: [the most calls allowed under this key, why it is bounded]. */
 const REVIEWED = Object.freeze({
+  // ADR-108 Amendment 1: one user's passkeys — at most MAX_PASSKEYS_PER_USER (10).
+  "webauthn.service.ts::getRegistrationOptions::WebauthnCredential": [1, PARENT],
+  "webauthn.service.ts::getLoginOptions::WebauthnCredential": [1, PARENT],
+  "webauthn.service.ts::getStatus::WebauthnCredential": [1, PARENT],
+  "webauthn.service.ts::listPasskeys::WebauthnCredential": [1, PARENT],
+  // P10-05 (ADR-098 §6): the access-request queue. The retention sweep's two
+  // reads are batched (RETENTION_BATCH); these read one address's requests.
+  "accessRequest.service.ts::duplicateCounts::AccessRequest": [1, IDS], // the addresses on the page being shown
+  "accessRequest.service.ts::getAccessRequest::AccessRequest": [1, PARENT], // the other requests of one address
+  "accessRequest.service.ts::eraseAccessRequestsByEmail::AccessRequest": [1, PARENT], // one address's requests
+  // P10-04: the super admin's SSO email-domain claims — one settings key.
+  "loginDiscovery.service.ts::claimantOf::TenantSettings": [1, CLOSED],
+  "loginDiscovery.service.ts::setSsoEmailDomains::TenantSettings": [1, CLOSED],
   "ai.service.js::getAiConfig::TenantSettings": [1, KEYS],
   "attachment.service.js::restoreForResource::Attachment.unscoped()": [1, IDS],
   "attachment.service.js::restoreForResource::AuditLog": [2, PARENT],
   "attachment.service.js::softDeleteForResource::Attachment": [1, PARENT],
-  "auth.service.js::getAuthUserWithTenant::TenantSettings": [1, KEYS],
-  "auth.service.js::passwordManagedBy::TenantSettings": [1, KEYS],
-  "calibrationDevices.service.js::bulkImportCalibrationDevices::CalibrationDevice.unscoped()": [1, OPEN],
-  "calibrationScheduler.service.js::getDueDevices::CalibrationDevice": [1, OPEN],
-  "calibrationScheduler.service.js::openWorkOrdersOf::MaintenanceWorkOrder": [1, IDS],
-  "certificate.service.js::getCertificateStats::Certificate": [1, GROUPED],
-  "content.service.js::listCategories::Category": [1, CLOSED],
-  "customDomains.service.js::domainNotificationRecipients::User": [1, CLOSED],
-  "customDomains.service.js::getTenantDomains::CustomDomain": [1, CLOSED],
+  "auth.service.ts::getAuthUserWithTenant::TenantSettings": [1, KEYS],
+  "auth.service.ts::passwordManagedBy::TenantSettings": [1, KEYS],
+  // P10-16 (ADR-099): the live super admins not already one-time, once per boot — a handful of
+  // platform operators, never a tenant's users.
+  "bootstrapCredential.service.ts::retireKnownDefaultPassword::Users": [1, CLOSED],
+  "calibrationDevices.service.ts::bulkImportCalibrationDevices::CalibrationDevice.unscoped()": [1, OPEN],
+  "calibrationScheduler.service.ts::getDueDevices::CalibrationDevice": [1, OPEN],
+  "calibrationScheduler.service.ts::openWorkOrdersOf::MaintenanceWorkOrder": [1, IDS],
+  "certificate.service.ts::getCertificateStats::Certificate": [1, GROUPED],
+  "content.service.ts::listCategories::Category": [1, CLOSED], // P9-18 leaves: the file is TypeScript (re-keyed, ADR-087)
+  "customDomains.service.ts::domainNotificationRecipients::User": [1, CLOSED], // P9-13: the file is TypeScript (re-keyed, ADR-087)
+  "customDomains.service.ts::getTenantDomains::CustomDomain": [1, CLOSED], // P9-13: the file is TypeScript (re-keyed, ADR-087)
   "dashboard.service.js::countByStatus::Model": [1, GROUPED],
   "dashboard.service.js::getDashboardMetrics::CalibrationDevice": [1, GROUPED],
   "dashboard.service.js::getDashboardMetrics::Tenant": [1, OPEN],
   "dashboard.service.js::getDashboardMetrics::User": [1, GROUPED],
   "dashboard.service.js::monthlyTrend::Model": [1, GROUPED],
-  "dataRetention.service.js::maskPII::User": [1, IDS],
-  "dataRetention.service.js::readRetentionPolicy::TenantSettings": [1, KEYS],
+  "dataRetention.service.ts::maskPII::User": [1, IDS], // P9-13: the file is TypeScript (re-keyed, ADR-087)
+  "dataRetention.service.ts::readRetentionPolicy::TenantSettings": [1, KEYS], // P9-13: the file is TypeScript (re-keyed, ADR-087)
   "eSignature.service.js::completeWorkflow::SignatureWorkflowStep": [1, PARENT],
   "eSignature.service.js::getEligibleSigners::Role": [1, IDS],
   "eSignature.service.js::getEligibleSigners::User": [1, OPEN],
@@ -200,9 +216,9 @@ const REVIEWED = Object.freeze({
   "eSignature.service.js::getSignerWorkflows::SignatureWorkflowStep": [1, OPEN],
   "eSignature.service.js::getWorkflows::SignatureWorkflow": [1, OPEN],
   "eSignature.service.js::signDocument::SignatureWorkflowStep": [1, PARENT],
-  "featureFlag.service.js::getTenantFlags::TenantSettings": [1, KEYS],
-  "finance.service.js::getDepreciationReport::AssetFinance": [1, OPEN],
-  "gdpr.service.js::getConsentHistory::ConsentRecord": [1, PARENT],
+  "featureFlag.service.ts::getTenantFlags::TenantSettings": [1, KEYS], // P9-18 leaves: the file is TypeScript (re-keyed, ADR-087)
+  "finance.service.ts::getDepreciationReport::AssetFinance": [1, OPEN], // P9-17: the file is TypeScript (re-keyed, ADR-087)
+  "gdpr.service.ts::getConsentHistory::ConsentRecord": [1, PARENT],
   "kanban.service.js::getMetrics::KanbanCard": [1, PARENT],
   "kanban.service.js::getMetrics::KanbanColumn": [1, PARENT],
   "kanban.service.js::getMetrics::KanbanLabel": [1, PARENT],
@@ -226,11 +242,11 @@ const REVIEWED = Object.freeze({
   "menuGroup.service.js::deleteMenuGroup::MenuGroup": [1, PARENT],
   "menuGroup.service.js::fetchActiveParentGroups::MenuGroup": [1, CLOSED],
   "menuGroup.service.js::getAvailableRoles::Role": [1, CLOSED],
-  "menuGroup.service.js::getRoleMenuAssignments::RoleMenuPermission": [1, CLOSED],
+  "menuGroup.service.js::getMyPermissions::MenuGroup": [1, CLOSED], // ADR-102: the active menu slugs (the seeded tree)
   "menuGroup.service.js::listMenuGroups::RoleMenuPermission": [1, CLOSED],
-  "meteredBilling.service.js::enforceQuotas::PlanQuota": [1, CLOSED],
-  "meteredBilling.service.js::getPlatformAnalytics::UsageMetric": [1, GROUPED],
-  "meteredBilling.service.js::getUsageAlerts::UsageAlert": [1, CLOSED],
+  "meteredBilling.service.ts::enforceQuotas::PlanQuota": [1, CLOSED], // P9-17: the file is TypeScript (re-keyed, ADR-087)
+  "meteredBilling.service.ts::getPlatformAnalytics::UsageMetric": [1, GROUPED], // P9-17: the file is TypeScript (re-keyed, ADR-087)
+  "meteredBilling.service.ts::getUsageAlerts::UsageAlert": [1, CLOSED], // P9-17: the file is TypeScript (re-keyed, ADR-087)
   "migration.service.js::seedApplicationRoles::Roles": [1, SCRIPT],
   "migration.service.js::seedDefaultRoles::Roles": [1, SCRIPT],
   "migration.service.js::unseedDemoData::CalibrationDevice": [1, SCRIPT],
@@ -240,49 +256,49 @@ const REVIEWED = Object.freeze({
   "migration.service.js::unseedDemoData::Vendor": [1, SCRIPT],
   "migration.service.js::unseedDemoData::Warehouse": [1, SCRIPT],
   "migration.service.js::unseedDemoData::Workflow": [1, SCRIPT],
-  "notification.service.js::deleteAllNotifications::Notification": [1, OPEN],
-  "notification.service.js::deleteManyNotifications::Notification": [1, IDS],
-  "notification.service.js::markAllAsRead::Notification": [1, OPEN],
-  "notification.service.js::setStateForMany::NotificationState": [1, IDS],
-  "oidcProvider.service.js::getClients::TenantSettings": [1, KEYS],
-  "reporting.service.js::getCompliance::CalibrationRecord": [1, OPEN],
-  "reporting.service.js::getInventory::Stock": [1, OPEN],
-  "reporting.service.js::getOverdueDevices::CalibrationDevice": [1, OPEN],
-  "reporting.service.js::groupCount::Model": [1, GROUPED],
-  "roles.service.js::getRoleMenus::RoleMenuPermission": [1, CLOSED],
-  "roles.service.js::getRolePermissionsMatrix::RoleMenuPermission": [1, CLOSED],
-  "scim.service.js::groupMembers::Users": [1, OPEN],
-  "session.service.js::registerLivenessInvalidation::model.unscoped()": [1, IDS],
-  "stock.service.js::exportInventoryCsv::Stock": [1, OPEN],
-  "stock.service.js::getInventoryReport::Stock": [1, OPEN],
-  "storage/config.service.js::getTenantConfig::TenantSettings": [1, KEYS],
+  "notification.service.ts::deleteAllNotifications::Notification": [1, OPEN],
+  "notification.service.ts::deleteManyNotifications::Notification": [1, IDS],
+  "notification.service.ts::markAllAsRead::Notification": [1, OPEN],
+  "notification.service.ts::setStateForMany::NotificationState": [1, IDS],
+  "oidcProvider.service.ts::getClients::TenantSettings": [1, KEYS],
+  "reporting.service.ts::getCompliance::CalibrationRecord": [1, OPEN], // P9-18 leaves: the file is TypeScript (re-keyed, ADR-087)
+  "reporting.service.ts::getInventory::Stock": [1, OPEN], // P9-18 leaves: the file is TypeScript (re-keyed, ADR-087)
+  "reporting.service.ts::getOverdueDevices::CalibrationDevice": [1, OPEN], // P9-18 leaves: the file is TypeScript (re-keyed, ADR-087)
+  "reporting.service.ts::groupCount::Model": [1, GROUPED], // P9-18 leaves: the file is TypeScript (re-keyed, ADR-087)
+  "roles.service.ts::getRoleMenus::RoleMenuPermission": [1, CLOSED],
+  "roles.service.ts::getRolePermissionsMatrix::RoleMenuPermission": [1, CLOSED],
+  "scim.service.ts::groupMembers::Users": [1, OPEN],
+  "session.service.ts::registerLivenessInvalidation::model.unscoped()": [1, IDS], // P9-12: the file is TypeScript (re-keyed, ADR-087 Am. 13)
+  "stock.service.ts::exportInventoryCsv::Stock": [1, OPEN], // P9-15: the file is TypeScript (re-keyed, ADR-087)
+  "stock.service.ts::getInventoryReport::Stock": [1, OPEN], // P9-15: the file is TypeScript (re-keyed, ADR-087)
+  "storage/config.service.ts::getTenantConfig::TenantSettings": [1, KEYS], // P9-18 leaves: the file is TypeScript (re-keyed, ADR-087)
   "storageMigration.service.js::migrateAll::Attachment": [1, SCRIPT],
-  "tenant.service.js::fetchTenants::Users": [1, GROUPED],
-  "tenant.service.js::getTenantSettings::TenantSettings": [1, KEYS],
-  "tenant.service.js::updateTenantSettings::TenantSettings": [1, KEYS],
-  "tenantBackup.service.js::cleanupExpiredBackups::TenantBackup": [1, OPEN],
-  "tenantBackup.service.js::exportTenantData::Users": [1, OPEN],
-  "tenantBackup.service.js::getBackupStats::TenantBackup": [1, GROUPED],
-  "tenantHierarchy.service.js::getDescendantTenants::TenantHierarchy": [1, PARENT],
-  "tenantHierarchy.service.js::getTenantTree::TenantHierarchy": [1, PARENT],
-  "tenantHierarchy.service.js::getUserRolesAcrossTenants::User": [1, IDS],
-  "tenantHierarchy.service.js::moveTenant::TenantHierarchy": [1, PARENT],
-  "tenantLifecycle.service.js::exportTenantData::Invoice": [1, OPEN],
-  "tenantLifecycle.service.js::exportTenantData::Subscription": [1, PARENT],
-  "tenantLifecycle.service.js::exportTenantData::TenantSettings": [1, KEYS],
-  "tenantLifecycle.service.js::exportTenantData::User": [1, OPEN],
+  "tenant.service.ts::fetchTenants::Users": [1, GROUPED], // P9-13: the file is TypeScript (re-keyed, ADR-087)
+  "tenant.service.ts::getTenantSettings::TenantSettings": [1, KEYS], // P9-13: the file is TypeScript (re-keyed, ADR-087)
+  "tenant.service.ts::updateTenantSettings::TenantSettings": [1, KEYS], // P9-13: the file is TypeScript (re-keyed, ADR-087)
+  "tenantBackup.service.ts::cleanupExpiredBackups::TenantBackup": [1, OPEN], // P9-13: the file is TypeScript (re-keyed, ADR-087)
+  "tenantBackup.service.ts::exportTenantData::Users": [1, OPEN], // P9-13: the file is TypeScript (re-keyed, ADR-087)
+  "tenantBackup.service.ts::getBackupStats::TenantBackup": [1, GROUPED], // P9-13: the file is TypeScript (re-keyed, ADR-087)
+  "tenantHierarchy.service.ts::getDescendantTenants::TenantHierarchy": [1, PARENT], // P9-13: the file is TypeScript (re-keyed, ADR-087)
+  "tenantHierarchy.service.ts::getTenantTree::TenantHierarchy": [1, PARENT], // P9-13: the file is TypeScript (re-keyed, ADR-087)
+  "tenantHierarchy.service.ts::getUserRolesAcrossTenants::User": [1, IDS], // P9-13: the file is TypeScript (re-keyed, ADR-087)
+  "tenantHierarchy.service.ts::moveTenant::TenantHierarchy": [1, PARENT], // P9-13: the file is TypeScript (re-keyed, ADR-087)
+  "tenantLifecycle.service.ts::exportTenantData::Invoice": [1, OPEN], // P9-13: the file is TypeScript (re-keyed, ADR-087)
+  "tenantLifecycle.service.ts::exportTenantData::Subscription": [1, PARENT], // P9-13: the file is TypeScript (re-keyed, ADR-087)
+  "tenantLifecycle.service.ts::exportTenantData::TenantSettings": [1, KEYS], // P9-13: the file is TypeScript (re-keyed, ADR-087)
+  "tenantLifecycle.service.ts::exportTenantData::User": [1, OPEN], // P9-13: the file is TypeScript (re-keyed, ADR-087)
   "ticket.service.js::getMetrics::Ticket": [1, OPEN],
-  "user.service.js::fetchUsers::Users": [1, GROUPED],
-  "userPermission.service.js::getUserOverrideMatrix::UserMenuPermission": [1, CLOSED],
-  "userPermission.service.js::getUserPermissions::MenuGroup": [1, CLOSED],
-  "userPermission.service.js::getUserPermissions::RoleMenuPermission": [1, CLOSED],
-  "userPermission.service.js::getUserPermissions::UserMenuPermission": [1, CLOSED],
-  "warehouse.service.js::fetchLocations::StorageLocation": [1, PARENT],
+  "user.service.ts::fetchUsers::Users": [1, GROUPED],
+  "userPermission.service.ts::getUserOverrideMatrix::UserMenuPermission": [1, CLOSED],
+  "userPermission.service.ts::getUserPermissions::MenuGroup": [1, CLOSED],
+  "userPermission.service.ts::getUserPermissions::RoleMenuPermission": [1, CLOSED],
+  "userPermission.service.ts::getUserPermissions::UserMenuPermission": [1, CLOSED],
+  "warehouse.service.ts::fetchLocations::StorageLocation": [1, PARENT], // P9-15: the file is TypeScript (re-keyed, ADR-087)
   "webhook.service.js::emitEvent::Webhook": [1, CLOSED],
-  "webhookDeliveryPurge.service.js::purgeFinishedDeliveries::Tenant": [1, OPEN],
-  "workflow.service.js::getPendingTasks::WorkflowInstance": [1, OPEN],
-  "workflow.service.js::getWorkflows::Workflow": [1, CLOSED],
-  "workflow.service.js::updateWorkflow::WorkflowStep": [1, PARENT],
+  "webhookDeliveryPurge.service.ts::purgeFinishedDeliveries::Tenant": [1, OPEN], // P9-18 leaves: the file is TypeScript (re-keyed, ADR-087)
+  "workflow.service.ts::getPendingTasks::WorkflowInstance": [1, OPEN], // P9-16: the file is TypeScript (re-keyed, ADR-087)
+  "workflow.service.ts::getWorkflows::Workflow": [1, CLOSED], // P9-16: the file is TypeScript (re-keyed, ADR-087)
+  "workflow.service.ts::updateWorkflow::WorkflowStep": [1, PARENT], // P9-16: the file is TypeScript (re-keyed, ADR-087)
 });
 
 // ------------------------------------------------------------------
@@ -355,9 +371,9 @@ describe("D-24 (ADR-083) — every unbounded findAll in src/services is reviewed
 
   it("the reads D-24 paged are keyset pages: each is a findAll the scanner sees, and none is unbounded", () => {
     const paged = [
-      ["gdpr.service.js", "pagesOf", "Model"], // the DSAR export (ADR-070)
-      ["sop.service.js", "assignTraining", "User"], // the SOP fan-out (ADR-070)
-      ["dataRetention.service.js", "maskAuditTrail", "AuditLog"], // ADR-083
+      ["gdpr.service.ts", "pagesOf", "Model"], // the DSAR export (ADR-070)
+      ["sop.service.ts", "assignTraining", "User"], // the SOP fan-out (ADR-070); P9-18 leaves: the file is TypeScript (re-keyed, ADR-087)
+      ["dataRetention.service.ts", "maskAuditTrail", "AuditLog"], // ADR-083; P9-13: the file is TypeScript (re-keyed, ADR-087)
       ["attachmentFileSweep.service.js", "sweepBatch", "Attachment.unscoped()"], // ADR-083
       ["kanban.service.js", "deleteProject", "KanbanCard"], // ADR-083
     ];

@@ -1,5 +1,7 @@
 const { Op } = require("sequelize");
-const { AuditLog, User } = require("../models");
+const { AuditLog, User, sequelize } = require("../models");
+const { sql } = require("../utils/sql.util");
+const { resolveScope, NO_TENANT_UUID } = require("../utils/tenantScope.util");
 const { AppError } = require("../utils/appError.util");
 const { DEFAULT_LIMIT, MAX_LIMIT } = require("../constants");
 const { AUDIT_ACTIONS } = require("../constants/auditActions");
@@ -277,12 +279,71 @@ exports.recordAccountLock = async ({
 };
 
 /**
+ * P8-04 (ADR-096): a list request with no date filter reads this many days back.
+ * The trail is never purged (ADR-051 Q-12), so "everything" grows without bound.
+ */
+const AUDIT_DEFAULT_WINDOW_DAYS = 90;
+/** P8-04 (ADR-096): the list counts at most this many rows; past it, `meta.totalIsCapped`. */
+const AUDIT_COUNT_CAP = 10000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * P8-04 (ADR-096) — the list's count, bounded. `findAndCountAll` counted every
+ * row the tenant ever wrote on every page request: a parallel sequential scan
+ * of 500,000 rows, 39 of 72 active queries under the P8-07 load. This counts
+ * at most `$9` rows through the (tenant_id, created_at) index.
+ *
+ * Raw SQL, so the tenant predicate is bound explicitly (`tenant_id = $1`); every
+ * filter is a bound value or NULL, so the statement text never varies.
+ */
+const AUDIT_COUNT_SQL = `SELECT count(*)::int AS n FROM (
+  SELECT 1 FROM audit_logs
+   WHERE tenant_id = $1
+     AND ($2::uuid IS NULL OR user_id = $2::uuid)
+     AND ($3::enum_audit_logs_actor_type IS NULL OR actor_type = $3::enum_audit_logs_actor_type)
+     AND ($4::enum_audit_logs_action IS NULL OR action = $4::enum_audit_logs_action)
+     AND ($5::varchar IS NULL OR resource_type = $5::varchar)
+     AND ($6::varchar IS NULL OR resource_id = $6::varchar)
+     AND ($7::timestamptz IS NULL OR created_at >= $7::timestamptz)
+     AND ($8::timestamptz IS NULL OR created_at <= $8::timestamptz)
+   LIMIT $9) capped`;
+
+/**
+ * The tenant the raw count binds: the one the global hook FORCES on the rows
+ * query (tenantScope.util#applyTenantWhere) — the context's tenant for a tenant
+ * principal, NO_TENANT_UUID for a context with none — and the caller's
+ * `tenantId` only where the hook would not filter (super admin, system task, no
+ * context). Raw SQL bypasses the hooks, so the count must not trust a
+ * `tenantId` the rows query would have overridden.
+ *
+ * @param {string|null} tenantId - the tenant the controller chose
+ * @returns {string|null}
+ */
+const countTenantId = (tenantId) => {
+  const scope = resolveScope({});
+  if (scope.mode === "filter") {return scope.tenantId;}
+  if (scope.mode === "deny") {return NO_TENANT_UUID;}
+  return tenantId;
+};
+
+exports.AUDIT_DEFAULT_WINDOW_DAYS = AUDIT_DEFAULT_WINDOW_DAYS;
+exports.AUDIT_COUNT_CAP = AUDIT_COUNT_CAP;
+
+/**
  * One tenant's audit trail, newest first. Each row carries `actorType` and
  * `actorName` (A-124) beside `userId` / `user`.
  *
  * `tenantId` is chosen by the controller: the reader's home tenant, or — for a
  * super admin asking for `scope=platform` only — PLATFORM_TENANT_ID (A-125).
  * For anyone else the global tenant hooks force their own tenant regardless.
+ *
+ * P8-04 (ADR-096), an API change:
+ *  - with no `startDate`, no `endDate` and no `resourceId`, the list reads the
+ *    last AUDIT_DEFAULT_WINDOW_DAYS days, and `meta.window` says so
+ *    (`{ from, to: null, defaulted: true }`). A caller that wants older rows
+ *    passes a `startDate`. A single resource's history is not windowed.
+ *  - `meta.total` counts at most AUDIT_COUNT_CAP rows; `meta.totalIsCapped` is
+ *    true when more match (the total is then a lower bound).
  */
 exports.fetchAuditLogs = async ({
   tenantId,
@@ -306,29 +367,53 @@ exports.fetchAuditLogs = async ({
     if (resourceType) {whereClause.resourceType = resourceType;}
     if (resourceId) {whereClause.resourceId = resourceId;}
 
-    if (startDate || endDate) {
+    // P8-04: no date and no single resource → the default window.
+    const windowDefaulted = !startDate && !endDate && !resourceId;
+    let from = null;
+    if (startDate) {
+      from = new Date(startDate);
+    } else if (windowDefaulted) {
+      from = new Date(Date.now() - AUDIT_DEFAULT_WINDOW_DAYS * DAY_MS);
+    }
+    const to = endDate ? new Date(endDate) : null;
+    if (from || to) {
       whereClause.createdAt = {};
-      if (startDate) {whereClause.createdAt[Op.gte] = new Date(startDate);}
-      if (endDate) {whereClause.createdAt[Op.lte] = new Date(endDate);}
+      if (from) {whereClause.createdAt[Op.gte] = from;}
+      if (to) {whereClause.createdAt[Op.lte] = to;}
     }
 
     const safeLimit = Math.min(Number(limit) || DEFAULT_LIMIT, MAX_LIMIT);
     const offset = (Number(page) - 1) * safeLimit;
 
-    const { count, rows } = await AuditLog.findAndCountAll({
-      where: whereClause,
-      limit: safeLimit,
-      offset,
-      order: [["createdAt", "DESC"]],
-      // required:false — userId is nullable (SET NULL on user delete) and User
-      // carries a scope that would otherwise INNER JOIN and hide those logs.
-      include: [
-        { model: User, as: "user", attributes: ["id", "username", "firstName", "lastName", "email"], required: false },
-        // F-8: the super admin who acted through an impersonation token. Most
-        // rows have none; required:false for the same reason as `user`.
-        { model: User, as: "impersonator", attributes: ["id", "username", "firstName", "lastName", "email"], required: false },
-      ],
-    });
+    const [rows, [counted]] = await Promise.all([
+      AuditLog.findAll({
+        where: whereClause,
+        limit: safeLimit,
+        offset,
+        order: [["createdAt", "DESC"]],
+        // required:false — userId is nullable (SET NULL on user delete) and User
+        // carries a scope that would otherwise INNER JOIN and hide those logs.
+        include: [
+          { model: User, as: "user", attributes: ["id", "username", "firstName", "lastName", "email"], required: false },
+          // F-8: the super admin who acted through an impersonation token. Most
+          // rows have none; required:false for the same reason as `user`.
+          { model: User, as: "impersonator", attributes: ["id", "username", "firstName", "lastName", "email"], required: false },
+        ],
+      }),
+      sql(sequelize, AUDIT_COUNT_SQL, [
+        countTenantId(tenantId),
+        userId || null,
+        actorType || null,
+        action || null,
+        resourceType || null,
+        resourceId || null,
+        from,
+        to,
+        AUDIT_COUNT_CAP + 1,
+      ]),
+    ]);
+    const totalIsCapped = counted.n > AUDIT_COUNT_CAP;
+    const count = totalIsCapped ? AUDIT_COUNT_CAP : counted.n;
 
     return {
       success: true,
@@ -339,9 +424,15 @@ exports.fetchAuditLogs = async ({
         count,
         meta: {
           total: count,
+          totalIsCapped,
           page: Number(page),
           limit: safeLimit,
           totalPages: Math.ceil(count / safeLimit),
+          window: {
+            from: from ? from.toISOString() : null,
+            to: to ? to.toISOString() : null,
+            defaulted: windowDefaulted,
+          },
         },
       },
     };

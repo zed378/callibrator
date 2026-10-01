@@ -6,6 +6,7 @@ const { AppError } = require("../utils/appError.util");
 const { DEFAULT_LIMIT, MAX_LIMIT } = require("../constants");
 const webhookService = require("./webhook.service");
 const auditService = require("./audit.service");
+const { auditEntryActor, actorChanges } = require("../utils/auditPrincipal.util");
 const { WEBHOOK_EVENTS } = require("../constants/webhookEvents");
 
 // ------------------------------------------------------------------
@@ -164,14 +165,13 @@ const auditWorkOrder = (transaction, tenantId, actor, { action, resourceId, chan
   auditService.logAction(
     {
       tenantId,
-      userId: actor.userId,
-      systemActor: actor.systemActor,
+      // A-282 (ADR-100): a user, a key (system:api-key, its id in changes) or
+      // the scan's system actor.
+      ...auditEntryActor(actor),
       action,
       resourceType: "MaintenanceWorkOrder",
       resourceId,
-      changes,
-      ipAddress: actor.ipAddress,
-      userAgent: actor.userAgent,
+      changes: { ...changes, ...actorChanges(actor) },
     },
     { transaction },
   );
@@ -210,7 +210,7 @@ const assertReferencesInTenant = async (tenantId, fields, transaction) => {
  *
  * @param {string} tenantId
  * @param {object} data - validated body
- * @param {object} actor - auditActor(req)
+ * @param {object} actor - auditPrincipal(req)
  */
 exports.createWorkOrder = async (tenantId, data, actor = {}) => {
   try {
@@ -270,7 +270,7 @@ exports.createWorkOrder = async (tenantId, data, actor = {}) => {
  *
  * @param {string} tenantId
  * @param {Array<{deviceId: string, title: string, description: string, priority: string}>} items
- * @param {object} actor - `{ systemActor }` or auditActor(req)
+ * @param {object} actor - `{ systemActor }` or auditPrincipal(req)
  * @returns {Promise<{created: object[], conflicted: string[], missing: string[]}>}
  *   `missing`: devices that are not this tenant's (A-220), nothing written for them
  */

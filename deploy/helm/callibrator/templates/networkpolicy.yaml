@@ -2,7 +2,7 @@
 {{- $base := include "callibrator.baseName" . -}}
 {{- $np := .Values.networkPolicy -}}
 # S-18 — default-deny for this release's pods, then the flows the application
-# uses. RENDERS ONLY: not yet applied to a cluster (P7-06). Values and the
+# uses. Probed on a kind cluster (P7-06): 16 of 16 flows as intended. Values and the
 # reasoning are in values.yaml under networkPolicy.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

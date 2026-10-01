@@ -11,12 +11,10 @@ const {
   noteAuthSuccess,
 } = require("../services/rateLimiter.redis.service");
 const { logger } = require("../middlewares/activityLog.middleware");
-const {
-  registerSchema,
-  loginSchema,
-  resetPasswordSchema,
-  validate,
-} = require("../validators/auth.validator");
+// A-289 (ADR-100): emailed links are built on the configured origin only.
+const { emailLinkOrigin } = require("../utils/publicLinkOrigin.util");
+// P9-11: the body is checked by auth.service (register, login, reset); this
+// controller's own calls discarded the result, so they are gone.
 
 // ------------------------------------------------------------------
 // A-67 — RATE-LIMIT OUTCOME
@@ -76,7 +74,8 @@ const requestContext = (req) => ({
   userAgent: req.headers?.["user-agent"] || null,
 });
 
-const REGISTER_ERRORS = { registered: 409, used: 409 };
+// P10-12: registerUser no longer throws the two 409s ("already registered/used").
+const REGISTER_ERRORS = {};
 const LOGIN_ERRORS = {
   credentials: 401,
   verify: 403,
@@ -88,19 +87,17 @@ const RESET_PASSWORD_ERRORS = {};
 
 exports.register = asyncHandlerWithMapping(
   withAuthOutcome("register", REGISTER_ERRORS, async (req, res) => {
-    validate(req.body, registerSchema);
+    // A-289 (ADR-100): never the request's Origin or Host — a forged Origin put
+    // the attacker's domain in a genuine activation email. FRONTEND_URL, else
+    // HOST_URL; in production an unset origin refuses (500) BEFORE the
+    // account is created or anything is mailed.
+    const origin = emailLinkOrigin();
 
-    const origin = req.headers.origin || req.headers.host || "";
+    // P10-12 (A-290): one answer for a new address, a taken email and a taken
+    // username — registerUser returns the same object for all three.
+    const result = await authService.registerUser(req.body, origin, { ipAddress: req.ip ?? null, userAgent: req.headers?.["user-agent"] ?? null });
 
-    await authService.registerUser(req.body, origin);
-
-    success(
-      res,
-      null,
-      null,
-      "Registration successful. Please check your email for activation.",
-      201,
-    );
+    success(res, null, null, result.message, result.status);
   }),
   REGISTER_ERRORS,
 );
@@ -123,8 +120,6 @@ exports.activation = asyncHandlerWithMapping(
 
 exports.login = asyncHandlerWithMapping(
   withAuthOutcome("login", LOGIN_ERRORS, async (req, res) => {
-    validate(req.body, loginSchema);
-
     const result = await authService.loginUser({
       ...req.body,
       ip: req.ip,
@@ -147,8 +142,6 @@ exports.sendOTP = asyncHandlerWithMapping(
 
 exports.resetPassword = asyncHandlerWithMapping(
   withAuthOutcome("resetPassword", RESET_PASSWORD_ERRORS, async (req, res) => {
-    validate(req.body, resetPasswordSchema);
-
     await authService.processResetPassword(req.body);
 
     success(res, null, null, "Password reset successful", 200);
@@ -340,7 +333,8 @@ exports.loginMfa = asyncHandlerWithMapping(
       code,
       req.ip,
       req.headers["user-agent"],
-      { recoveryCode },
+      // A-288 (ADR-100): a device-reported location, for a tenant geofence.
+      { recoveryCode, location: req.body?.location },
     );
 
     login(res, result.data, result.token, result.session, { refreshToken: result.refreshToken });

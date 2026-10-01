@@ -9,7 +9,7 @@ description: >-
 type: application
 
 # Chart version — bump on any chart change.
-version: 0.1.0
+version: 0.2.0
 # The application version this chart targets.
 appVersion: "0.1.0"
 
@@ -37,8 +37,9 @@ dependencies:
     condition: frontend.enabled
 
 annotations:
-  # Honest status: these manifests are known to RENDER. They are not known to
-  # be accepted by a cluster — no cluster has been reachable to validate
-  # against. `helm lint` and `helm template` pass; `kubectl apply
-  # --dry-run=server` has not been run.
-  callibrator.io/validation-status: "renders-only"
+  # Honest status (P7-06, 2026-09-30): installed, upgraded and rolled back on
+  # ONE local kind cluster (Kubernetes 1.37, single node, kindnet, local-path,
+  # ingress-nginx), with `kubectl apply --dry-run=server` clean. NOT known to
+  # deploy on a production cluster — see MEMORY/records/ for what was and was
+  # not exercised.
+  callibrator.io/validation-status: "kind-validated"

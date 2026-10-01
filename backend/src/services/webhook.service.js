@@ -1,4 +1,4 @@
-/* global fetch, AbortController */
+/* global AbortController */
 // src/services/webhook.service.js
 //
 // Outbound webhooks. Tenants register subscriptions (url + subscribed events);
@@ -36,6 +36,7 @@ const { logger } = require("../middlewares/activityLog.middleware");
 const {
   assertSafeUrl,
   assertResolvedHostIsPublic,
+  pinnedFetch,
 } = require("../utils/ssrf.util");
 
 const { WEBHOOK_TEST_EVENT } = require("../constants/webhookEvents");
@@ -380,8 +381,14 @@ const attemptDelivery = async (webhook, delivery) => {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const res = await fetch(webhook.url, {
+    // A-307: `pinnedFetch`, not `fetch`. The check above resolves the host;
+    // `fetch` would resolve it AGAIN to connect, and a rebinding DNS server
+    // can answer public to the first and 127.0.0.1 / 169.254.169.254 to the
+    // second. pinnedFetch connects through ssrf.util's pinned lookup, so the
+    // address dialled is one that passed. Same request, same result shape.
+    const res = await pinnedFetch(webhook.url, {
       method: "POST",
+      timeoutMs: TIMEOUT_MS,
       // `redirect: "manual"` is the point of this call, not a detail. Node's
       // fetch follows redirects by default, and assertResolvedHostIsPublic
       // above validates only the REGISTERED url — so a host that passes both

@@ -74,7 +74,8 @@ const routeCalls = (source) => {
   return calls;
 };
 
-const isUpload = (arg) => /\bupload\s*\(|\.single\s*\(|\.array\s*\(|\.fields\s*\(|\.any\s*\(/.test(arg);
+// A-296: uploadMulti() and uploadToMemory() are upload helpers too (ai.route uses the latter).
+const isUpload = (arg) => /\bupload(?:Multi|ToMemory)?\s*\(|\.single\s*\(|\.array\s*\(|\.fields\s*\(|\.any\s*\(/.test(arg);
 
 /** Routes where an upload handler runs after a dynamicAccess gate. */
 const uploadsAfterGate = () => {

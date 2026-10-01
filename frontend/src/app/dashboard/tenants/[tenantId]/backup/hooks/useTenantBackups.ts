@@ -1,10 +1,20 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   tenantBackupService,
   TenantBackup,
   RestoreOutcome,
 } from "@/api/services/tenantBackup.service";
+
+/**
+ * A destructive action waiting for confirmation. Restore overwrites the
+ * tenant's data from the archive and cannot be undone; delete removes the
+ * archive for good. Neither runs on the first click (audit §4.4, severity 4).
+ */
+export interface PendingBackupAction {
+  kind: "restore" | "delete";
+  backup: TenantBackup;
+}
 
 /** The "create backup" form (BackupCreateModal). */
 export interface BackupCreateForm {
@@ -22,6 +32,12 @@ export function useTenantBackups(tenantId?: string, tenantName?: string) {
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState("");
+  // F-19: whether the LIST failed to load — the page then shows no empty state
+  // ("No backups found" beside the error said the tenant had none). The ref
+  // holds that failure's message, so the next list read clears it and only it
+  // (a mutation's refusal is not a list error and is left alone).
+  const [listFailed, setListFailed] = useState(false);
+  const listErrorRef = useRef<string | null>(null);
   const [success, setSuccess] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -40,6 +56,7 @@ export function useTenantBackups(tenantId?: string, tenantName?: string) {
 
   // Restore/download actions
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<PendingBackupAction | null>(null);
 
   // The outcome of the last restore, including the accounts it did NOT
   // re-create (A-156). Null until a restore succeeds.
@@ -50,6 +67,12 @@ export function useTenantBackups(tenantId?: string, tenantName?: string) {
   const fetchBackups = useCallback(async () => {
     if (!tenantId) return;
     setIsLoading(true);
+    const stale = listErrorRef.current;
+    if (stale !== null) {
+      setError((current) => (current === stale ? "" : current));
+      listErrorRef.current = null;
+    }
+    setListFailed(false);
     try {
       const response = await tenantBackupService.getAll(
         tenantId,
@@ -60,7 +83,10 @@ export function useTenantBackups(tenantId?: string, tenantName?: string) {
       setTotalPages(response.meta.totalPages);
       setTotalItems(response.meta.total);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to fetch backups");
+      const message = err instanceof Error ? err.message : "Failed to fetch backups";
+      listErrorRef.current = message;
+      setListFailed(true);
+      setError(message);
     } finally {
       setIsLoading(false);
     }
@@ -160,6 +186,32 @@ export function useTenantBackups(tenantId?: string, tenantName?: string) {
     }
   };
 
+  /** Ask before restoring: the page shows a confirmation naming the backup. */
+  const requestRestoreBackup = (backupId: string) => {
+    const backup = backups.find((b) => b.id === backupId);
+    if (backup) setPendingAction({ kind: "restore", backup });
+  };
+
+  /** Ask before deleting. */
+  const requestDeleteBackup = (backupId: string) => {
+    const backup = backups.find((b) => b.id === backupId);
+    if (backup) setPendingAction({ kind: "delete", backup });
+  };
+
+  const cancelPendingAction = () => setPendingAction(null);
+
+  /** Run the confirmed action. */
+  const confirmPendingAction = async () => {
+    if (!pendingAction) return;
+    const { kind, backup } = pendingAction;
+    setPendingAction(null);
+    if (kind === "restore") {
+      await handleRestoreBackup(backup.id);
+    } else {
+      await handleDeleteBackup(backup.id);
+    }
+  };
+
   return {
     tenantId,
     tenantName,
@@ -169,6 +221,8 @@ export function useTenantBackups(tenantId?: string, tenantName?: string) {
     isCreating,
     error,
     setError,
+    listFailed,
+    fetchBackups,
     success,
     setSuccess,
     currentPage,
@@ -188,6 +242,11 @@ export function useTenantBackups(tenantId?: string, tenantName?: string) {
     handleDeleteBackup,
     handleDownloadBackup,
     handleRestoreBackup,
+    pendingAction,
+    requestRestoreBackup,
+    requestDeleteBackup,
+    cancelPendingAction,
+    confirmPendingAction,
   };
 }
 

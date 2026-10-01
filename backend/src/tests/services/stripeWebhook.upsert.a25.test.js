@@ -16,8 +16,16 @@
 jest.mock("../../models", () => ({
   Subscription: { findOne: jest.fn() },
   Invoice: { findOne: jest.fn(), create: jest.fn() },
-  Tenant: { update: jest.fn() },
+  // A-276 (ADR-094): status decisions read the tenant and save it in a
+  // transaction with their audit rows. No tenant row unless a test sets one.
+  Tenant: { update: jest.fn(), findByPk: jest.fn().mockResolvedValue(null) },
+  TenantSettings: { upsert: jest.fn() },
 }));
+jest.mock("../../config", () => ({ db: { transaction: jest.fn(async (cb) => cb("tx")) } }));
+jest.mock("../../services/audit.service", () => ({ logAction: jest.fn().mockResolvedValue({}) }));
+
+/** A tenant row as the webhook reads it, whose save() records nothing. */
+const tenantRow = (values) => ({ id: "t1", status: "active", suspensionReason: null, suspendedBy: null, save: jest.fn(), ...values });
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));

@@ -19,6 +19,10 @@ export function useMenuGroups() {
   const [assignNotes, setAssignNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastData | null>(null);
+  // A-300: what the user has SELECTED for a bulk action — separate from what
+  // is ASSIGNED to the role. The bulk actions used to act on every assigned
+  // group ("Revoke Selected" revoked them all) and "Select All" did nothing.
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const showToast = (
     type: "success" | "error" | "info",
@@ -54,6 +58,28 @@ export function useMenuGroups() {
     }, 0);
     return () => clearTimeout(timer);
   }, [fetchData]);
+
+  // Only groups of the current list count (a reload may drop one).
+  const selectedGroupIds = selectedIds.filter((id) =>
+    menuGroups.some((g) => g.id === id),
+  );
+  const allGroupIds = menuGroups
+    .map((g) => g.id)
+    .filter((id): id is string => Boolean(id));
+  const allSelected =
+    allGroupIds.length > 0 && selectedGroupIds.length === allGroupIds.length;
+
+  const selectRole = (roleId: string) => {
+    setSelectedIds([]);
+    setSelectedRoleId(roleId);
+  };
+  const toggleSelected = (menuGroupId: string) =>
+    setSelectedIds((prev) =>
+      prev.includes(menuGroupId)
+        ? prev.filter((id) => id !== menuGroupId)
+        : [...prev, menuGroupId],
+    );
+  const toggleSelectAll = () => setSelectedIds(allSelected ? [] : allGroupIds);
 
   const handleAssign = async (menuGroupId: string) => {
     if (!selectedRoleId) {
@@ -115,9 +141,7 @@ export function useMenuGroups() {
       showToast("error", "Role Required", "Please select a role first.");
       return;
     }
-    const selectedGroups = menuGroups
-      .filter((g) => g.isAssigned)
-      .map((g) => g.id!);
+    const selectedGroups = selectedGroupIds;
     if (!selectedGroups.length) {
       showToast(
         "error",
@@ -139,6 +163,7 @@ export function useMenuGroups() {
         desc += ` ${result.alreadyAssigned.length} already assigned.`;
       if (result.failed.length) desc += ` ${result.failed.length} failed.`;
       showToast("success", "Bulk Assignment Complete", desc);
+      setSelectedIds([]);
       await fetchData();
       setAssignNotes("");
     } catch (err: unknown) {
@@ -154,11 +179,9 @@ export function useMenuGroups() {
 
   const handleBulkRevoke = async () => {
     if (!selectedRoleId) return;
-    const assignedGroups = menuGroups
-      .filter((g) => g.isAssigned)
-      .map((g) => g.id!);
+    const assignedGroups = selectedGroupIds;
     if (!assignedGroups.length) {
-      showToast("error", "No Selection", "No assigned menu groups to revoke.");
+      showToast("error", "No Selection", "Please select at least one menu group.");
       return;
     }
     setActionLoading(true);
@@ -173,6 +196,7 @@ export function useMenuGroups() {
         "Bulk Revocation Complete",
         `Successfully revoked ${result.revoked.length} menu group(s).`,
       );
+      setSelectedIds([]);
       await fetchData();
     } catch (err: unknown) {
       showToast(
@@ -315,7 +339,11 @@ export function useMenuGroups() {
     roles,
     menuGroups,
     selectedRoleId,
-    setSelectedRoleId,
+    setSelectedRoleId: selectRole,
+    selectedGroupIds,
+    allSelected,
+    toggleSelected,
+    toggleSelectAll,
     loading,
     actionLoading,
     assignNotes,

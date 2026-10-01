@@ -8,7 +8,7 @@
  * a dependency of this workspace; routeGuards.a28.test.js does the same).
  *
  * What is real: the router, rateLimiter.redis.service (on its in-process
- * fallback, because no Redis client is ready in a unit run), the Joi schema,
+ * fallback, because no Redis client is ready in a unit run), the request schema,
  * validation.middleware, the controller and the hand-off store (also on its
  * in-process fallback, via redis.service's real "not ready" answers).
  *
@@ -17,6 +17,8 @@
  * auth.tokenPurpose.a59.test.js.
  */
 
+// A-288 (ADR-100): the network policy has its own suites (signInPolicy.*.a288); here it permits.
+jest.mock("../../services/signInPolicy.service", () => ({ assertSignInPermitted: jest.fn(async () => undefined) }));
 const authRouter = require("../../routes/api/auth.route");
 const { clearMemoryStore } = require("../../services/rateLimiter.redis.service");
 
@@ -35,6 +37,10 @@ const exchange = (body, ip = "198.51.100.20") =>
         return this;
       },
       setHeader() {
+        return this;
+      },
+      // ADR-100: a lockout 429 now carries Retry-After (Express res.set).
+      set() {
         return this;
       },
     };

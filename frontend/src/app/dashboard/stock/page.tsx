@@ -18,9 +18,9 @@ import StockModalsContainer from "./components/StockModalsContainer";
 export default function StockPage() {
   const {
     isLoading, error, activeTab, searchTerm, selectedWarehouseId, selectedLocationId, setSelectedLocationId,
-    currentPage, setCurrentPage, pageSize, setPageSize, isStockModalOpen, setIsStockModalOpen, stockModalType,
+    setCurrentPage, setPageSize, isStockModalOpen, setIsStockModalOpen, stockModalType,
     selectedStock, isAdjustmentModalOpen, setIsAdjustmentModalOpen, isTransferModalOpen, setIsTransferModalOpen,
-    isOpnameModalOpen, setIsOpnameModalOpen, stockForm, setStockForm, adjustmentForm, setAdjustmentForm,
+    isOpnameModalOpen, setIsOpnameModalOpen, dialogError, stockForm, setStockForm, adjustmentForm, setAdjustmentForm,
     transferForm, setTransferForm, opnameForm, setOpnameForm, hasWriteAccess, handleSearchChange,
     handleWarehouseFilterChange, handleTabChange, handleExportStocks, handleExportTransfers,
     handleExportAdjustments, handleExportOpnames, openCreateStock, openEditStock, handleStockSubmit,
@@ -128,11 +128,12 @@ export default function StockPage() {
               />
             </div>
           </Card>
-        ) : (
+        ) : error ? null : (
+          // A failed load shows its error above, never "No Records Registered".
           <Card>
             <CardContent className="p-16 text-center">
               <History className="mx-auto h-16 w-16 text-muted-foreground" />
-              <h3 className="text-xl font-semibold text-foreground mt-4">No Records Registered</h3>
+              <h2 className="text-xl font-semibold text-foreground mt-4">No Records Registered</h2>
 <p className="text-muted-foreground mt-2 max-w-sm mx-auto">
                  {activeTab === "inventory" ? "Define inventory items to track them in this warehouse depot." : `There is no logged history of ${activeTab} in this system.`}
                </p>
@@ -167,6 +168,7 @@ export default function StockPage() {
           opnameForm={opnameForm}
           setOpnameForm={setOpnameForm}
           handleOpnameSubmit={handleOpnameSubmit}
+          dialogError={dialogError}
         />
       </div>
     </DashboardLayout>

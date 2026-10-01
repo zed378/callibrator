@@ -22,6 +22,8 @@ const { createLedger } = require("../fixtures/auditLedger");
 
 const mockRef = { ledger: null, seq: 0 };
 
+// A-288 (ADR-100): the network policy has its own suites (signInPolicy.*.a288); here it permits.
+jest.mock("../../services/signInPolicy.service", () => ({ assertSignInPermitted: jest.fn(async () => undefined) }));
 jest.mock("../../config", () => ({
   db: { transaction: (...args) => mockRef.ledger.transaction(...args) },
 }));

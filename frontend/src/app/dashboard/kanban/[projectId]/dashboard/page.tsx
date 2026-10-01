@@ -70,7 +70,7 @@ function BarList({
   return (
     <Card>
       <CardContent className="p-5">
-        <h3 className="text-sm font-semibold text-foreground mb-3">{title}</h3>
+        <h2 className="text-sm font-semibold text-foreground mb-3">{title}</h2>
         {!nonEmpty ? (
           <p className="text-xs text-muted-foreground">{emptyText}</p>
         ) : (
@@ -254,9 +254,9 @@ function KanbanDashboardContent() {
             <Card>
               <CardContent className="p-5">
                 <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-sm font-semibold text-foreground">
+                  <h2 className="text-sm font-semibold text-foreground">
                     Overall progress
-                  </h3>
+                  </h2>
                   <span className="text-sm font-bold text-primary">
                     {s.completionRate}%
                   </span>

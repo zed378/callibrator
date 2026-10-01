@@ -53,14 +53,8 @@ jest.mock("../../constants", () => ({
   MAX_LIMIT: 100,
 }));
 
-jest.mock("../../validators/user.validator", () => ({
-  validate: jest.fn((data) => ({ value: { ...data }, error: null })),
-  formatErrors: jest.fn((d) => d),
-  createUserSchema: "createUserSchema",
-  updateUserSchema: "updateUserSchema",
-  updateRoleSchema: "updateRoleSchema",
-  checkUsernameSchema: "checkUsernameSchema",
-}));
+// The request schemas are REAL (P9-11: Zod through validators/input), so the
+// ids are uuids: an invalid one would stop at the 400 and prove nothing here.
 
 const { db } = require("../../config");
 const { Users, Roles } = require("../../models");
@@ -71,10 +65,14 @@ const {
   deleteUser,
 } = require("../../services/user.service");
 
+// Ids the request schemas accept (they are uuids since P9-11 validates for real).
+const U_FOREIGN = "00000001-0000-4000-8000-000000000001";
+const ROLE_X = "00000002-0000-4000-8000-000000000002";
+
 const ACTOR = { actorIsSuperAdmin: false, actorTenantId: "tenant-A" };
 
 const foreignUser = (overrides = {}) => ({
-  id: "u-foreign",
+  id: U_FOREIGN,
   username: "victim",
   email: "victim@b.example",
   tenantId: "tenant-B",
@@ -82,7 +80,7 @@ const foreignUser = (overrides = {}) => ({
   role: { id: "role-user", name: "USER" },
   update: jest.fn(),
   destroy: jest.fn(),
-  get: () => ({ id: "u-foreign" }),
+  get: () => ({ id: U_FOREIGN }),
   ...overrides,
 });
 
@@ -105,8 +103,8 @@ const SITES = [
     name: "userRoleUpdate",
     run: () =>
       userRoleUpdate({
-        userId: "u-foreign",
-        roleId: "role-x",
+        userId: U_FOREIGN,
+        roleId: ROLE_X,
         updatedBy: "actor",
         ...ACTOR,
       }),
@@ -115,7 +113,7 @@ const SITES = [
     name: "editUser",
     run: () =>
       editUser({
-        userId: "u-foreign",
+        userId: U_FOREIGN,
         firstName: "Changed",
         updatedBy: "actor",
         ...ACTOR,
@@ -124,7 +122,7 @@ const SITES = [
   {
     name: "deleteUser",
     run: () =>
-      deleteUser({ userId: "u-foreign", deletedBy: "actor", ...ACTOR }),
+      deleteUser({ userId: U_FOREIGN, deletedBy: "actor", ...ACTOR }),
   },
 ];
 
@@ -162,7 +160,7 @@ describe("user.service — AZ-04 cross-tenant is indistinguishable from not-foun
         expect.objectContaining({
           reason: "cross-tenant",
           operation: name,
-          userId: "u-foreign",
+          userId: U_FOREIGN,
           userTenantId: "tenant-B",
           actorTenantId: "tenant-A",
         }),
@@ -189,7 +187,7 @@ describe("user.service — AZ-04 cross-tenant is indistinguishable from not-foun
       foreignUser({ username: "sys", email: "sys@mail.com" }),
     );
     const err = await rejectionOf(() =>
-      deleteUser({ userId: "u-foreign", deletedBy: "actor", ...ACTOR }),
+      deleteUser({ userId: U_FOREIGN, deletedBy: "actor", ...ACTOR }),
     );
 
     expect(err).toEqual({ status: 404, message: "User not found" });
@@ -201,7 +199,7 @@ describe("user.service — AZ-04 cross-tenant is indistinguishable from not-foun
     );
     const err = await rejectionOf(() =>
       deleteUser({
-        userId: "u-foreign",
+        userId: U_FOREIGN,
         deletedBy: "actor",
         actorIsSuperAdmin: true,
         actorTenantId: null,

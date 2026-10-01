@@ -28,6 +28,43 @@ const { AppError } = require("../utils/appError.util");
 const { emitToBoard } = require("../config/socket");
 const notificationService = require("../services/notification.service");
 const { logger } = require("../middlewares/activityLog.middleware");
+const auditService = require("./audit.service");
+const { auditEntryActor, actorChanges } = require("../utils/auditPrincipal.util");
+
+/**
+ * P6-11 (A-41 addendum) — every board write commits with ONE audit row in its
+ * transaction; a rolled-back write leaves none (logAction re-throws inside a
+ * transaction). A project is always in its caller's tenant (resolveAccess
+ * looks it up by `user.tenantId`), so the row is too. The actor is
+ * auditPrincipal(req); a caller without one is named by `user` — the
+ * principal the service already holds (a key as `system:api-key`, A-282).
+ * Card descriptions are never recorded: they are free text, kept on the card.
+ *
+ * @param {object} transaction
+ * @param {object|null} actor - auditPrincipal(req)
+ * @param {object} user - req.user
+ * @param {"CREATE"|"UPDATE"|"DELETE"} action
+ * @param {string} resourceType - KanbanProject, KanbanProjectMember, KanbanColumn, KanbanCard, KanbanLabel, KanbanSprint, KanbanCardRelation
+ * @param {string|null} resourceId
+ * @param {object} changes - { operation, projectId, before?, after? }
+ */
+const auditKanban = (transaction, actor, user, action, resourceType, resourceId, changes) => {
+  const who = actor || { userId: user.isApiKey ? null : user.id, apiKeyId: user.isApiKey ? user.id : null };
+  return auditService.logAction(
+    {
+      tenantId: user.tenantId,
+      ...auditEntryActor(who),
+      action,
+      resourceType,
+      resourceId,
+      changes: { ...changes, ...actorChanges(who) },
+    },
+    { transaction },
+  );
+};
+
+/** The named attributes of a row, as plain values (null when absent). */
+const pickFields = (row, keys) => Object.fromEntries(keys.map((k) => [k, row[k] ?? null]));
 
 // ------------------------------------------------------------------
 // Access control
@@ -72,10 +109,8 @@ const codePrefix = (project) => {
   return fromName || "CARD";
 };
 
-const isSuperAdmin = (user) => {
-  const name = user?.role?.name;
-  return name === "SUPER_ADMIN" || name === "SUPERADMIN";
-};
+// N-01: the one super-admin predicate (utils/role.util.ts), both spellings.
+const { isSuperAdmin } = require("../utils/role.util");
 
 const userRoleId = (user) => user?.role?.id || user?.roleId || null;
 
@@ -139,6 +174,27 @@ const assertAccess = async (user, projectId, minLevel = "viewer") => {
 };
 
 exports.assertAccess = assertAccess;
+
+/**
+ * A-277 (ADR-094) — a user named in a body must be a user of the PROJECT's
+ * tenant: a member granted access, or a card assignee. The ids were stored as
+ * given, so another tenant's user joined as `null` (the A-75/ADR-048 shape)
+ * and was notified in this tenant. Missing, soft-deleted and another
+ * tenant's are one answer, 404 (the A-129 convention), so the check is no
+ * oracle for which ids exist elsewhere. The tenant predicate is explicit: a
+ * super admin's context skips the hooks.
+ */
+const USER_NOT_IN_TENANT = "User not found in this organisation";
+exports.USER_NOT_IN_TENANT = USER_NOT_IN_TENANT;
+
+const assertTenantUsers = async (tenantId, userIds) => {
+  const ids = [...new Set((userIds || []).filter(Boolean))];
+  if (ids.length === 0) {return;}
+  const found = await User.count({ where: { id: { [Op.in]: ids }, tenantId } });
+  if (found !== ids.length) {
+    throw new AppError(404, USER_NOT_IN_TENANT);
+  }
+};
 
 // ------------------------------------------------------------------
 // Serialization
@@ -305,6 +361,7 @@ exports.listProjects = async (user) => {
   const where = { tenantId: user.tenantId, archivedAt: null };
 
   let projects;
+  let memberships = [];
   if (isSuperAdmin(user)) {
     projects = await KanbanProject.findAll({
       where,
@@ -312,11 +369,11 @@ exports.listProjects = async (user) => {
     });
   } else {
     const rid = userRoleId(user);
-    const memberships = await KanbanProjectMember.findAll({
+    memberships = await KanbanProjectMember.findAll({
       where: {
         [Op.or]: [{ userId: user.id }, ...(rid ? [{ roleId: rid }] : [])],
       },
-      attributes: ["projectId"],
+      attributes: ["projectId", "accessLevel"],
     });
     const ids = memberships.map((m) => m.projectId);
     projects = await KanbanProject.findAll({
@@ -329,29 +386,44 @@ exports.listProjects = async (user) => {
   }
 
   // Attach a lightweight card count + the caller's own access level.
-  const result = [];
-  for (const p of projects) {
-    const cardCount = await KanbanCard.count({
-      where: { projectId: p.id, archivedAt: null },
-    });
-    const { level } = await resolveAccess(user, p.id).catch(() => ({
-      level: null,
-    }));
-    result.push({
-      id: p.id,
-      name: p.name,
-      description: p.description,
-      color: p.color,
-      createdBy: p.createdBy,
-      createdAt: p.createdAt,
-      cardCount,
-      myAccess: level,
-    });
+  //
+  // P8-04 (ADR-096): ONE grouped count for every board, and the access level
+  // from the memberships already read above — the same rule as resolveAccess
+  // (super admin and creator are owners, else the best membership level).
+  // This was a count plus resolveAccess (two or three queries) PER board: 122
+  // queries for a user with 40 boards.
+  const counts = projects.length
+    ? await KanbanCard.count({
+      where: { projectId: { [Op.in]: projects.map((p) => p.id) }, archivedAt: null },
+      group: ["projectId"],
+    })
+    : [];
+  const cardCountOf = new Map(counts.map((c) => [c.projectId, Number(c.count)]));
+  const bestOf = new Map();
+  for (const m of memberships) {
+    bestOf.set(m.projectId, Math.max(bestOf.get(m.projectId) || 0, LEVELS[m.accessLevel] || 0));
   }
-  return result;
+  const levelOf = (p) => {
+    if (isSuperAdmin(user) || (p.createdBy && p.createdBy === user.id)) {
+      return "owner";
+    }
+    const best = bestOf.get(p.id) || 0;
+    return best === 0 ? null : Object.keys(LEVELS).find((k) => LEVELS[k] === best);
+  };
+
+  return projects.map((p) => ({
+    id: p.id,
+    name: p.name,
+    description: p.description,
+    color: p.color,
+    createdBy: p.createdBy,
+    createdAt: p.createdAt,
+    cardCount: cardCountOf.get(p.id) || 0,
+    myAccess: levelOf(p),
+  }));
 };
 
-exports.createProject = async (user, data) => {
+exports.createProject = async (user, data, actor = null) => {
   const { name, description, color, code, members = [] } = data;
 
   const created = await sequelize.transaction(async (transaction) => {
@@ -408,6 +480,12 @@ exports.createProject = async (user, data) => {
       { transaction },
     );
 
+    await auditKanban(transaction, actor, user, "CREATE", "KanbanProject", project.id, {
+      operation: "KANBAN_PROJECT_CREATE",
+      projectId: project.id,
+      after: pickFields(project, PROJECT_FIELDS),
+      members: members.map((m) => ({ userId: m.userId || null, roleId: m.roleId || null, accessLevel: m.accessLevel || "viewer" })),
+    });
     return project;
   });
 
@@ -508,8 +586,10 @@ const serializeSprint = (s) => ({
   position: s.position,
 });
 
-exports.updateProject = async (user, projectId, data) => {
-  await assertAccess(user, projectId, "owner");
+const PROJECT_FIELDS = ["name", "code", "description", "color", "archivedAt"];
+
+exports.updateProject = async (user, projectId, data, actor = null) => {
+  const { project } = await assertAccess(user, projectId, "owner");
   const patch = {};
   if (data.name !== undefined) {patch.name = data.name;}
   if (data.code !== undefined) {
@@ -520,7 +600,15 @@ exports.updateProject = async (user, projectId, data) => {
   if (data.archived !== undefined) {
     patch.archivedAt = data.archived ? new Date() : null;
   }
-  await KanbanProject.update(patch, { where: { id: projectId } });
+  await sequelize.transaction(async (transaction) => {
+    await KanbanProject.update(patch, { where: { id: projectId }, transaction });
+    await auditKanban(transaction, actor, user, "UPDATE", "KanbanProject", projectId, {
+      operation: "KANBAN_PROJECT_UPDATE",
+      projectId,
+      before: pickFields(project, Object.keys(patch)),
+      after: patch,
+    });
+  });
   const result = await exports.getProject(user, projectId);
   emitToBoard(projectId, "kanban:project:updated", { project: result });
   return result;
@@ -529,7 +617,7 @@ exports.updateProject = async (user, projectId, data) => {
 /** D-22 (ADR-083): cards read per page when a project's delete cascades. */
 const PROJECT_DELETE_CARD_PAGE = 500;
 
-exports.deleteProject = async (user, projectId) => {
+exports.deleteProject = async (user, projectId, actor = null) => {
   const { project } = await assertAccess(user, projectId, "owner");
   // Paranoid destroy; children cascade at the DB level only on a hard delete.
   // D-22 (ADR-083): the project's cards stay (unreachable behind the deleted
@@ -540,6 +628,11 @@ exports.deleteProject = async (user, projectId) => {
   // by keyset, a page at a time.
   await sequelize.transaction(async (transaction) => {
     await KanbanProject.destroy({ where: { id: projectId }, transaction });
+    await auditKanban(transaction, actor, user, "DELETE", "KanbanProject", projectId, {
+      operation: "KANBAN_PROJECT_DELETE",
+      projectId,
+      before: pickFields(project, PROJECT_FIELDS),
+    });
     let after = null;
     for (;;) {
       const cards = await KanbanCard.findAll({
@@ -572,35 +665,57 @@ exports.deleteProject = async (user, projectId) => {
 // Members
 // ------------------------------------------------------------------
 
-exports.addMember = async (user, projectId, data) => {
-  await assertAccess(user, projectId, "owner");
+exports.addMember = async (user, projectId, data, actor = null) => {
+  const { project } = await assertAccess(user, projectId, "owner");
   if (!data.userId && !data.roleId) {
     throw new AppError(400, "A userId or roleId is required");
   }
-  const member = await KanbanProjectMember.create({
-    projectId,
-    userId: data.userId || null,
-    roleId: data.roleId || null,
-    accessLevel: data.accessLevel || "viewer",
+  // A-277: a member is a user of the project's tenant.
+  await assertTenantUsers(project.tenantId, [data.userId]);
+  const member = await sequelize.transaction(async (transaction) => {
+    const created = await KanbanProjectMember.create(
+      {
+        projectId,
+        userId: data.userId || null,
+        roleId: data.roleId || null,
+        accessLevel: data.accessLevel || "viewer",
+      },
+      { transaction },
+    );
+    await auditKanban(transaction, actor, user, "CREATE", "KanbanProjectMember", created.id, {
+      operation: "KANBAN_MEMBER_ADD",
+      projectId,
+      after: pickFields(created, ["userId", "roleId", "accessLevel"]),
+    });
+    return created;
   });
   const result = await exports.getProject(user, projectId);
   emitToBoard(projectId, "kanban:project:updated", { project: result });
   return { memberId: member.id, members: result.members };
 };
 
-exports.updateMember = async (user, projectId, memberId, data) => {
+exports.updateMember = async (user, projectId, memberId, data, actor = null) => {
   await assertAccess(user, projectId, "owner");
   const member = await KanbanProjectMember.findOne({
     where: { id: memberId, projectId },
   });
   if (!member) {throw new AppError(404, "Member not found");}
-  await member.update({ accessLevel: data.accessLevel });
+  const before = member.accessLevel;
+  await sequelize.transaction(async (transaction) => {
+    await member.update({ accessLevel: data.accessLevel }, { transaction });
+    await auditKanban(transaction, actor, user, "UPDATE", "KanbanProjectMember", member.id, {
+      operation: "KANBAN_MEMBER_UPDATE",
+      projectId,
+      before: { accessLevel: before },
+      after: { accessLevel: member.accessLevel },
+    });
+  });
   const result = await exports.getProject(user, projectId);
   emitToBoard(projectId, "kanban:project:updated", { project: result });
   return result.members;
 };
 
-exports.removeMember = async (user, projectId, memberId) => {
+exports.removeMember = async (user, projectId, memberId, actor = null) => {
   await assertAccess(user, projectId, "owner");
   const member = await KanbanProjectMember.findOne({
     where: { id: memberId, projectId },
@@ -615,7 +730,14 @@ exports.removeMember = async (user, projectId, memberId) => {
       throw new AppError(400, "A project must keep at least one owner");
     }
   }
-  await member.destroy();
+  await sequelize.transaction(async (transaction) => {
+    await member.destroy({ transaction });
+    await auditKanban(transaction, actor, user, "DELETE", "KanbanProjectMember", member.id, {
+      operation: "KANBAN_MEMBER_REMOVE",
+      projectId,
+      before: pickFields(member, ["userId", "roleId", "accessLevel"]),
+    });
+  });
   const result = await exports.getProject(user, projectId);
   emitToBoard(projectId, "kanban:project:updated", { project: result });
   return { removed: true };
@@ -625,7 +747,7 @@ exports.removeMember = async (user, projectId, memberId) => {
 // Columns (owner manages the flow)
 // ------------------------------------------------------------------
 
-exports.createColumn = async (user, projectId, data) => {
+exports.createColumn = async (user, projectId, data, actor = null) => {
   await assertAccess(user, projectId, "owner");
   // New columns land just before the terminal Done column, which must stay last.
   const column = await sequelize.transaction(async (transaction) => {
@@ -639,7 +761,7 @@ exports.createColumn = async (user, projectId, data) => {
     if (done) {
       await done.update({ position: done.position + 1 }, { transaction });
     }
-    return KanbanColumn.create(
+    const created = await KanbanColumn.create(
       {
         projectId,
         name: data.name,
@@ -649,6 +771,12 @@ exports.createColumn = async (user, projectId, data) => {
       },
       { transaction },
     );
+    await auditKanban(transaction, actor, user, "CREATE", "KanbanColumn", created.id, {
+      operation: "KANBAN_COLUMN_CREATE",
+      projectId,
+      after: pickFields(created, ["name", "position", "wipLimit", "isDone"]),
+    });
+    return created;
   });
   const payload = {
     id: column.id,
@@ -661,7 +789,7 @@ exports.createColumn = async (user, projectId, data) => {
   return payload;
 };
 
-exports.updateColumn = async (user, projectId, columnId, data) => {
+exports.updateColumn = async (user, projectId, columnId, data, actor = null) => {
   await assertAccess(user, projectId, "owner");
   const column = await KanbanColumn.findOne({
     where: { id: columnId, projectId },
@@ -675,7 +803,16 @@ exports.updateColumn = async (user, projectId, columnId, data) => {
   if (data.position !== undefined && !column.isDone) {
     patch.position = data.position;
   }
-  await column.update(patch);
+  const before = pickFields(column, ["name", "position", "wipLimit", "isDone"]);
+  await sequelize.transaction(async (transaction) => {
+    await column.update(patch, { transaction });
+    await auditKanban(transaction, actor, user, "UPDATE", "KanbanColumn", column.id, {
+      operation: "KANBAN_COLUMN_UPDATE",
+      projectId,
+      before,
+      after: pickFields(column, ["name", "position", "wipLimit", "isDone"]),
+    });
+  });
   const payload = {
     id: column.id,
     name: column.name,
@@ -687,7 +824,7 @@ exports.updateColumn = async (user, projectId, columnId, data) => {
   return payload;
 };
 
-exports.deleteColumn = async (user, projectId, columnId) => {
+exports.deleteColumn = async (user, projectId, columnId, actor = null) => {
   await assertAccess(user, projectId, "owner");
   const column = await KanbanColumn.findOne({
     where: { id: columnId, projectId },
@@ -700,12 +837,19 @@ exports.deleteColumn = async (user, projectId, columnId) => {
   if (remaining <= 1) {
     throw new AppError(400, "A project must keep at least one column");
   }
-  await column.destroy(); // cards cascade
+  await sequelize.transaction(async (transaction) => {
+    await column.destroy({ transaction }); // cards cascade
+    await auditKanban(transaction, actor, user, "DELETE", "KanbanColumn", column.id, {
+      operation: "KANBAN_COLUMN_DELETE",
+      projectId,
+      before: pickFields(column, ["name", "position", "wipLimit", "isDone"]),
+    });
+  });
   emitToBoard(projectId, "kanban:column:deleted", { columnId });
   return { deleted: true };
 };
 
-exports.reorderColumns = async (user, projectId, order) => {
+exports.reorderColumns = async (user, projectId, order, actor = null) => {
   await assertAccess(user, projectId, "owner");
   await sequelize.transaction(async (transaction) => {
     const all = await KanbanColumn.findAll({
@@ -723,6 +867,12 @@ exports.reorderColumns = async (user, projectId, order) => {
         { where: { id: seq[i], projectId }, transaction },
       );
     }
+    await auditKanban(transaction, actor, user, "UPDATE", "KanbanProject", projectId, {
+      operation: "KANBAN_COLUMNS_REORDER",
+      projectId,
+      before: { order: [...all].sort((a, b) => a.position - b.position).map((c) => c.id) },
+      after: { order: seq },
+    });
   });
   const columns = await KanbanColumn.findAll({
     where: { projectId },
@@ -743,8 +893,10 @@ exports.reorderColumns = async (user, projectId, order) => {
 // Cards (editor)
 // ------------------------------------------------------------------
 
-exports.createCard = async (user, projectId, data) => {
+exports.createCard = async (user, projectId, data, actor = null) => {
   const { project } = await assertAccess(user, projectId, "editor");
+  // A-277: every assignee is a user of the project's tenant.
+  await assertTenantUsers(project.tenantId, data.assigneeIds);
 
   const column = await KanbanColumn.findOne({
     where: { id: data.columnId, projectId },
@@ -824,6 +976,12 @@ exports.createCard = async (user, projectId, data) => {
         { transaction, ignoreDuplicates: true },
       );
     }
+    await auditKanban(transaction, actor, user, "CREATE", "KanbanCard", created.id, {
+      operation: "KANBAN_CARD_CREATE",
+      projectId,
+      cardKey,
+      after: { ...pickFields(created, ["title", "priority", "dueDate", "columnId", "sprintId", "position"]), assigneeIds: data.assigneeIds || [], labelIds: data.labelIds || [] },
+    });
     return created;
   });
 
@@ -837,8 +995,10 @@ exports.createCard = async (user, projectId, data) => {
   return serializeCard(full);
 };
 
-exports.updateCard = async (user, projectId, cardId, data) => {
-  await assertAccess(user, projectId, "editor");
+exports.updateCard = async (user, projectId, cardId, data, actor = null) => {
+  const { project } = await assertAccess(user, projectId, "editor");
+  // A-277: every assignee is a user of the project's tenant.
+  await assertTenantUsers(project.tenantId, data.assigneeIds);
   const card = await KanbanCard.findOne({
     where: { id: cardId, projectId },
     include: cardInclude(),
@@ -846,6 +1006,11 @@ exports.updateCard = async (user, projectId, cardId, data) => {
   if (!card) {throw new AppError(404, "Card not found");}
 
   const previousAssignees = new Set((card.assignees || []).map((u) => u.id));
+  const before = {
+    ...pickFields(card, ["title", "priority", "dueDate", "columnId", "sprintId", "position"]),
+    assigneeIds: [...previousAssignees],
+    labelIds: (card.labels || []).map((l) => l.id),
+  };
 
   await sequelize.transaction(async (transaction) => {
     const patch = {};
@@ -882,6 +1047,18 @@ exports.updateCard = async (user, projectId, cardId, data) => {
         );
       }
     }
+    await auditKanban(transaction, actor, user, "UPDATE", "KanbanCard", cardId, {
+      operation: "KANBAN_CARD_UPDATE",
+      projectId,
+      cardKey: card.cardKey,
+      before,
+      after: {
+        ...pickFields(card, ["title", "priority", "dueDate", "columnId", "sprintId", "position"]),
+        assigneeIds: data.assigneeIds !== undefined ? data.assigneeIds : before.assigneeIds,
+        labelIds: data.labelIds !== undefined ? data.labelIds : before.labelIds,
+      },
+      descriptionChanged: data.description !== undefined,
+    });
   });
 
   const full = await loadCard(cardId);
@@ -902,7 +1079,7 @@ exports.updateCard = async (user, projectId, cardId, data) => {
   return serializeCard(full);
 };
 
-exports.moveCard = async (user, projectId, cardId, { columnId, position }) => {
+exports.moveCard = async (user, projectId, cardId, { columnId, position }, actor = null) => {
   await assertAccess(user, projectId, "editor");
   const card = await KanbanCard.findOne({ where: { id: cardId, projectId } });
   if (!card) {throw new AppError(404, "Card not found");}
@@ -912,6 +1089,7 @@ exports.moveCard = async (user, projectId, cardId, { columnId, position }) => {
   if (!destColumn) {throw new AppError(404, "Destination column not found");}
 
   const fromColumn = card.columnId;
+  const fromPosition = card.position;
 
   await sequelize.transaction(async (transaction) => {
     // Detach the card, then renumber destination with it inserted at `position`.
@@ -943,6 +1121,13 @@ exports.moveCard = async (user, projectId, cardId, { columnId, position }) => {
     if (fromColumn !== columnId) {
       await renumber(fromColumn);
     }
+    await auditKanban(transaction, actor, user, "UPDATE", "KanbanCard", cardId, {
+      operation: "KANBAN_CARD_MOVE",
+      projectId,
+      cardKey: card.cardKey,
+      before: { columnId: fromColumn, position: fromPosition },
+      after: { columnId, position },
+    });
   });
 
   const full = await loadCard(cardId);
@@ -961,7 +1146,7 @@ exports.moveCard = async (user, projectId, cardId, { columnId, position }) => {
   return serializeCard(full);
 };
 
-exports.deleteCard = async (user, projectId, cardId) => {
+exports.deleteCard = async (user, projectId, cardId, actor = null) => {
   await assertAccess(user, projectId, "editor");
   const card = await KanbanCard.findOne({ where: { id: cardId, projectId } });
   if (!card) {throw new AppError(404, "Card not found");}
@@ -969,6 +1154,12 @@ exports.deleteCard = async (user, projectId, cardId) => {
   // transaction, each with its audit row.
   await sequelize.transaction(async (transaction) => {
     await card.destroy({ transaction });
+    await auditKanban(transaction, actor, user, "DELETE", "KanbanCard", card.id, {
+      operation: "KANBAN_CARD_DELETE",
+      projectId,
+      cardKey: card.cardKey,
+      before: pickFields(card, ["title", "priority", "dueDate", "columnId", "sprintId", "position"]),
+    });
     await require("./attachment.service").softDeleteForResource(
       card.tenantId,
       "KanbanCard",
@@ -984,19 +1175,30 @@ exports.deleteCard = async (user, projectId, cardId) => {
 // Labels (editor manages the tag palette)
 // ------------------------------------------------------------------
 
-exports.createLabel = async (user, projectId, data) => {
+exports.createLabel = async (user, projectId, data, actor = null) => {
   await assertAccess(user, projectId, "editor");
-  const label = await KanbanLabel.create({
-    projectId,
-    name: data.name,
-    color: data.color || null,
+  const label = await sequelize.transaction(async (transaction) => {
+    const created = await KanbanLabel.create(
+      {
+        projectId,
+        name: data.name,
+        color: data.color || null,
+      },
+      { transaction },
+    );
+    await auditKanban(transaction, actor, user, "CREATE", "KanbanLabel", created.id, {
+      operation: "KANBAN_LABEL_CREATE",
+      projectId,
+      after: pickFields(created, ["name", "color"]),
+    });
+    return created;
   });
   const payload = { id: label.id, name: label.name, color: label.color };
   emitToBoard(projectId, "kanban:label:created", { label: payload });
   return payload;
 };
 
-exports.updateLabel = async (user, projectId, labelId, data) => {
+exports.updateLabel = async (user, projectId, labelId, data, actor = null) => {
   await assertAccess(user, projectId, "editor");
   const label = await KanbanLabel.findOne({
     where: { id: labelId, projectId },
@@ -1005,19 +1207,35 @@ exports.updateLabel = async (user, projectId, labelId, data) => {
   const patch = {};
   if (data.name !== undefined) {patch.name = data.name;}
   if (data.color !== undefined) {patch.color = data.color;}
-  await label.update(patch);
+  const before = pickFields(label, ["name", "color"]);
+  await sequelize.transaction(async (transaction) => {
+    await label.update(patch, { transaction });
+    await auditKanban(transaction, actor, user, "UPDATE", "KanbanLabel", label.id, {
+      operation: "KANBAN_LABEL_UPDATE",
+      projectId,
+      before,
+      after: pickFields(label, ["name", "color"]),
+    });
+  });
   const payload = { id: label.id, name: label.name, color: label.color };
   emitToBoard(projectId, "kanban:label:updated", { label: payload });
   return payload;
 };
 
-exports.deleteLabel = async (user, projectId, labelId) => {
+exports.deleteLabel = async (user, projectId, labelId, actor = null) => {
   await assertAccess(user, projectId, "editor");
   const label = await KanbanLabel.findOne({
     where: { id: labelId, projectId },
   });
   if (!label) {throw new AppError(404, "Label not found");}
-  await label.destroy(); // card_label join rows cascade
+  await sequelize.transaction(async (transaction) => {
+    await label.destroy({ transaction }); // card_label join rows cascade
+    await auditKanban(transaction, actor, user, "DELETE", "KanbanLabel", label.id, {
+      operation: "KANBAN_LABEL_DELETE",
+      projectId,
+      before: pickFields(label, ["name", "color"]),
+    });
+  });
   emitToBoard(projectId, "kanban:label:deleted", { labelId });
   return { deleted: true };
 };
@@ -1033,37 +1251,47 @@ exports.listSprints = async (user, projectId) => {
     order: [["position", "ASC"], ["createdAt", "ASC"]],
   });
   // Attach a card count per sprint (plus backlog) for the sprint picker.
-  const result = [];
-  for (const s of sprints) {
-    const cardCount = await KanbanCard.count({
-      where: { projectId, sprintId: s.id, archivedAt: null },
-    });
-    result.push({ ...serializeSprint(s), cardCount });
-  }
-  const backlogCount = await KanbanCard.count({
-    where: { projectId, sprintId: null, archivedAt: null },
+  // P8-04 (ADR-096): one count grouped by sprint (the NULL group is the
+  // backlog) instead of one count per sprint plus one for the backlog.
+  const counts = await KanbanCard.count({
+    where: { projectId, archivedAt: null },
+    group: ["sprintId"],
   });
+  const countOf = new Map(counts.map((c) => [c.sprintId, Number(c.count)]));
+  const result = sprints.map((s) => ({ ...serializeSprint(s), cardCount: countOf.get(s.id) || 0 }));
+  const backlogCount = countOf.get(null) || 0;
   return { sprints: result, backlogCount };
 };
 
-exports.createSprint = async (user, projectId, data) => {
+exports.createSprint = async (user, projectId, data, actor = null) => {
   await assertAccess(user, projectId, "owner");
   const count = await KanbanSprint.count({ where: { projectId } });
-  const sprint = await KanbanSprint.create({
-    projectId,
-    name: data.name,
-    goal: data.goal || null,
-    status: data.status || "planned",
-    startDate: data.startDate || null,
-    endDate: data.endDate || null,
-    position: data.position ?? count,
+  const sprint = await sequelize.transaction(async (transaction) => {
+    const created = await KanbanSprint.create(
+      {
+        projectId,
+        name: data.name,
+        goal: data.goal || null,
+        status: data.status || "planned",
+        startDate: data.startDate || null,
+        endDate: data.endDate || null,
+        position: data.position ?? count,
+      },
+      { transaction },
+    );
+    await auditKanban(transaction, actor, user, "CREATE", "KanbanSprint", created.id, {
+      operation: "KANBAN_SPRINT_CREATE",
+      projectId,
+      after: pickFields(created, ["name", "goal", "status", "startDate", "endDate", "position"]),
+    });
+    return created;
   });
   const payload = serializeSprint(sprint);
   emitToBoard(projectId, "kanban:sprint:created", { sprint: payload });
   return payload;
 };
 
-exports.updateSprint = async (user, projectId, sprintId, data) => {
+exports.updateSprint = async (user, projectId, sprintId, data, actor = null) => {
   await assertAccess(user, projectId, "owner");
   const sprint = await KanbanSprint.findOne({
     where: { id: sprintId, projectId },
@@ -1073,20 +1301,36 @@ exports.updateSprint = async (user, projectId, sprintId, data) => {
   for (const f of ["name", "goal", "status", "startDate", "endDate", "position"]) {
     if (data[f] !== undefined) {patch[f] = data[f];}
   }
-  await sprint.update(patch);
+  const before = pickFields(sprint, ["name", "goal", "status", "startDate", "endDate", "position"]);
+  await sequelize.transaction(async (transaction) => {
+    await sprint.update(patch, { transaction });
+    await auditKanban(transaction, actor, user, "UPDATE", "KanbanSprint", sprint.id, {
+      operation: "KANBAN_SPRINT_UPDATE",
+      projectId,
+      before,
+      after: pickFields(sprint, ["name", "goal", "status", "startDate", "endDate", "position"]),
+    });
+  });
   const payload = serializeSprint(sprint);
   emitToBoard(projectId, "kanban:sprint:updated", { sprint: payload });
   return payload;
 };
 
-exports.deleteSprint = async (user, projectId, sprintId) => {
+exports.deleteSprint = async (user, projectId, sprintId, actor = null) => {
   await assertAccess(user, projectId, "owner");
   const sprint = await KanbanSprint.findOne({
     where: { id: sprintId, projectId },
   });
   if (!sprint) {throw new AppError(404, "Sprint not found");}
   // Cards fall back to the backlog (sprint_id -> NULL via FK on delete).
-  await sprint.destroy();
+  await sequelize.transaction(async (transaction) => {
+    await sprint.destroy({ transaction });
+    await auditKanban(transaction, actor, user, "DELETE", "KanbanSprint", sprint.id, {
+      operation: "KANBAN_SPRINT_DELETE",
+      projectId,
+      before: pickFields(sprint, ["name", "goal", "status", "startDate", "endDate", "position"]),
+    });
+  });
   emitToBoard(projectId, "kanban:sprint:deleted", { sprintId });
   return { deleted: true };
 };
@@ -1096,7 +1340,7 @@ exports.deleteSprint = async (user, projectId, sprintId) => {
  * Either an explicit list of cardIds, or — when `allNotDone` is set — every
  * card in the source not sitting in a Done column.
  */
-exports.migrateCards = async (user, projectId, data) => {
+exports.migrateCards = async (user, projectId, data, actor = null) => {
   await assertAccess(user, projectId, "editor");
   const { cardIds, allNotDone, fromSprintId, targetSprintId } = data;
 
@@ -1130,10 +1374,19 @@ exports.migrateCards = async (user, projectId, data) => {
     throw new AppError(400, "Provide cardIds or set allNotDone");
   }
 
-  const [count] = await KanbanCard.update(
-    { sprintId: targetId },
-    { where },
-  );
+  const count = await sequelize.transaction(async (transaction) => {
+    const [updated] = await KanbanCard.update({ sprintId: targetId }, { where, transaction });
+    // The selection as asked (explicit ids, or "every card not Done"), not a
+    // read of every moved card: that would be an unbounded findAll (D-24).
+    await auditKanban(transaction, actor, user, "UPDATE", "KanbanProject", projectId, {
+      operation: "KANBAN_CARDS_MIGRATE",
+      projectId,
+      targetSprintId: targetId,
+      selection: where.id ? { cardIds } : { allNotDone: true, fromSprintId: fromSprintId ?? null },
+      count: updated,
+    });
+    return updated;
+  });
   emitToBoard(projectId, "kanban:cards:migrated", {
     targetSprintId: targetId,
     count,
@@ -1145,7 +1398,7 @@ exports.migrateCards = async (user, projectId, data) => {
 // Card relations (parent_of / child_of / blocks / blocked_by / relates_to ...)
 // ------------------------------------------------------------------
 
-exports.addRelation = async (user, projectId, cardId, data) => {
+exports.addRelation = async (user, projectId, cardId, data, actor = null) => {
   await assertAccess(user, projectId, "editor");
   const { targetCardId, type } = data;
   const inverse = RELATION_INVERSE[type];
@@ -1175,6 +1428,11 @@ exports.addRelation = async (user, projectId, cardId, data) => {
       ],
       { transaction, ignoreDuplicates: true },
     );
+    await auditKanban(transaction, actor, user, "CREATE", "KanbanCardRelation", null, {
+      operation: "KANBAN_RELATION_ADD",
+      projectId,
+      after: { sourceCardId: cardId, targetCardId, type },
+    });
   });
 
   const relations = await loadRelations(cardId);
@@ -1182,7 +1440,7 @@ exports.addRelation = async (user, projectId, cardId, data) => {
   return relations;
 };
 
-exports.removeRelation = async (user, projectId, cardId, relationId) => {
+exports.removeRelation = async (user, projectId, cardId, relationId, actor = null) => {
   await assertAccess(user, projectId, "editor");
   const relation = await KanbanCardRelation.findOne({
     where: { id: relationId, projectId, sourceCardId: cardId },
@@ -1200,6 +1458,11 @@ exports.removeRelation = async (user, projectId, cardId, relationId) => {
       transaction,
     });
     await relation.destroy({ transaction });
+    await auditKanban(transaction, actor, user, "DELETE", "KanbanCardRelation", relation.id, {
+      operation: "KANBAN_RELATION_REMOVE",
+      projectId,
+      before: { sourceCardId: relation.sourceCardId, targetCardId: relation.targetCardId, type: relation.type },
+    });
   });
   const relations = await loadRelations(cardId);
   emitToBoard(projectId, "kanban:card:relations", { cardId, relations });

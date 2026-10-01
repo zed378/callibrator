@@ -14,8 +14,8 @@ name: callibrator
 # HARDENING (S-19) — applied to every service below.
 #
 #   no-new-privileges  a process cannot gain privileges through setuid/setcap
-#                      binaries (the backend's Chromium runs --no-sandbox, so
-#                      it needs no setuid helper).
+#                      binaries (the backend has no browser since ADR-095;
+#                      nothing in it needs a setuid helper).
 #   cap_drop: [ALL]    every service starts with NO Linux capabilities, and
 #                      adds back only what its entrypoint needs. The official
 #                      postgres/redis/rabbitmq/clamav/nginx images start as root
@@ -26,10 +26,9 @@ name: callibrator
 #   read_only          only where the image is known to write nowhere but its
 #                      volumes and tmpfs: nginx and redis. The backend and
 #                      frontend images are NOT read-only yet — pkg extracts
-#                      native addons and Chromium writes profile/crash data at
-#                      runtime, and that has not been mapped (a read-only root
-#                      that breaks certificate PDFs on first use is worse than
-#                      a writable one).
+#                      native addons at runtime, and that has not been mapped
+#                      (Chromium, the other writer, left the backend image
+#                      with ADR-095).
 #   CPU limits         in the prod, staging and vm overlays, beside memory.
 #
 # PARTLY VERIFIED BY RUNNING (2026-09-25, ADR-066): under the dev overlay,
@@ -95,7 +94,11 @@ services:
     build:
       # Context is the REPOSITORY ROOT so the build can `npm ci` against the
       # committed root package-lock.json (ADR-044, S-13). See backend/Dockerfile.
-      context: ../..
+      # A-332: declared HERE ONLY. BUILD_CONTEXT points every image at another
+      # tree (a release checkout, a frozen snapshot) in one place; no overlay
+      # restates it, so none can silently point it back at the working tree.
+      # `docker compose config` shows the context a build will really use.
+      context: ${BUILD_CONTEXT:-../..}
       dockerfile: backend/Dockerfile
     restart: unless-stopped
     <<: *hardened
@@ -118,9 +121,6 @@ services:
       # in .env to opt out deliberately.
       DB_APP_ROLE: ${DB_APP_ROLE:-callibrator_app}
       APP_STORAGE_PATH: /app
-      # The compiled binary cannot use puppeteer's bundled Chromium; the
-      # runtime image installs a system one.
-      PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
     volumes:
       - ./volumes/uploads:/app/uploads
       - ./volumes/backup:/app/backup
@@ -163,7 +163,8 @@ services:
       # Context is the REPOSITORY ROOT so the build can `npm ci --workspace
       # frontend` against the committed root package-lock.json (ADR-044, S-29).
       # See frontend/Dockerfile and frontend/Dockerfile.dockerignore.
-      context: ../..
+      # A-332: declared here only; BUILD_CONTEXT, as for the backend.
+      context: ${BUILD_CONTEXT:-../..}
       dockerfile: frontend/Dockerfile
       args:
         # NEXT_PUBLIC_* values are INLINED AT BUILD TIME. Setting them in the
@@ -172,6 +173,9 @@ services:
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:3000}
         NEXT_PUBLIC_API_VERSION: ${NEXT_PUBLIC_API_VERSION:-v1}
         NEXT_PUBLIC_TENANT_ID: ${NEXT_PUBLIC_TENANT_ID:-}
+        # P10-03 (Q-41): empty hides the channel on the landing.
+        NEXT_PUBLIC_CONTACT_WHATSAPP: ${NEXT_PUBLIC_CONTACT_WHATSAPP:-}
+        NEXT_PUBLIC_CONTACT_EMAIL: ${NEXT_PUBLIC_CONTACT_EMAIL:-}
     restart: unless-stopped
     <<: *hardened
     cap_drop: [ALL]

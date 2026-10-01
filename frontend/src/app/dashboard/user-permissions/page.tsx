@@ -156,7 +156,8 @@ export default function UserPermissionsPage() {
                       </span>
                     </button>
                   ))}
-                  {users.length === 0 && (
+                  {/* After a failed load the alert above is the state, not "No users found". */}
+                  {users.length === 0 && !error && (
                     <p className="text-sm text-muted-foreground py-4 text-center">
                       No users found
                     </p>
@@ -268,6 +269,8 @@ export default function UserPermissionsPage() {
                                 <button
                                   key={option.label}
                                   type="button"
+                                  // The current override was shown by colour alone.
+                                  aria-pressed={isActive}
                                   disabled={isSaving || isDataLoading}
                                   onClick={() =>
                                     !isActive &&

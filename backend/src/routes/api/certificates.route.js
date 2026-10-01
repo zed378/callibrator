@@ -9,6 +9,15 @@ const certificateController = require("../../controllers/certificate.controller"
 const certificatePdfController = require("../../controllers/certificatePdf.controller");
 const { validate } = require("../../middlewares/validation.middleware");
 const { approveCertificateSchema } = require("../../validators/certificate.validator");
+const { requestBudget } = require("../../middlewares/requestBudget.middleware");
+
+// A-293 (ADR-100): the public verification routes count EVERY request per
+// client address against `certificateVerifyToken` (300 / 15 min), before the
+// lookup. The verification controller then counts every answer that is not the
+// full verdict (no token, a wrong token, an unknown number) against the tighter
+// `certificateVerify` (60 / 15 min) — a wrong token cannot be told from no
+// token before the lookup, and must not buy the looser budget.
+const verifyBudget = requestBudget("certificateVerifyToken");
 
 /* ------------------------------------------------------------------ */
 /* CERTIFICATE ROUTES                                                 */
@@ -20,9 +29,23 @@ const { approveCertificateSchema } = require("../../validators/certificate.valid
  *   get:
  *     summary: Publicly verify a certificate's authenticity (no auth)
  *     description: >-
- *       Public endpoint (the target of the certificate QR code). Returns whether
- *       the certificate is found and valid (signed, not revoked, not expired),
- *       plus its integrity hash and issuance details.
+ *       Public endpoint (the target of the certificate QR code). Always returns
+ *       whether the certificate is found and valid (signed, not revoked, not
+ *       expired, not withdrawn). A-293 (ADR-100): certificate numbers are
+ *       sequential, so the number alone unlocks only the MINIMAL verdict
+ *       (`disclosure: "minimal"` — found, valid, status, revoked, expired,
+ *       withdrawn, certificateNumber, type, issuedTo, issueDate, validUntil and
+ *       the integrity hashes). With `token` equal to the certificate's
+ *       verification token — which its QR code carries — the FULL verdict
+ *       (`disclosure: "full"`): also device, signer, the published document,
+ *       its verifyUrl and, for a PDF stored before M-11, a short-lived
+ *       `documentUrl`. A wrong token answers exactly like no token. A QR code
+ *       printed before tokens existed resolves here to the minimal verdict,
+ *       with no redirect. An unknown number answers `{ found: false, valid:
+ *       false, message }`. Per client address, every request counts against a
+ *       budget of 300 per 15 minutes, and every answer that is not the full
+ *       verdict also against 60 per 15 minutes; beyond either, 429 with
+ *       Retry-After.
  *     tags: [Certificates]
  *     parameters:
  *       - in: path
@@ -30,12 +53,20 @@ const { approveCertificateSchema } = require("../../validators/certificate.valid
  *         required: true
  *         schema:
  *           type: string
+ *       - in: query
+ *         name: token
+ *         required: false
+ *         description: The certificate's verification token (32 base64url characters), from its QR code.
+ *         schema:
+ *           type: string
  *     responses:
  *       200:
- *         description: Verification result
+ *         description: Verification result — the full verdict with a matching token, the minimal one otherwise
+ *       429:
+ *         description: Request budget exhausted for this address (Retry-After header)
  */
 // PUBLIC — registered before the parametric `/:certificateId` routes.
-router.get("/verify/:certificateNumber", certificatePdfController.verifyCertificate);
+router.get("/verify/:certificateNumber", verifyBudget, certificatePdfController.verifyCertificate);
 
 /**
  * @swagger
@@ -46,7 +77,9 @@ router.get("/verify/:certificateNumber", certificatePdfController.verifyCertific
  *       ADR-042 step 4. `token` is minted by the verification endpoint (its
  *       `documentUrl`) for a signed certificate only and expires (default one
  *       hour). The certificate's status is re-checked on every fetch. Served
- *       inline as application/pdf with ETag and Range support.
+ *       inline as application/pdf with ETag and Range support. Every request
+ *       counts against the verification budget of its client address (300 per
+ *       15 minutes, shared with the verification endpoint; A-293).
  *     tags: [Certificates]
  *     parameters:
  *       - in: path
@@ -61,9 +94,10 @@ router.get("/verify/:certificateNumber", certificatePdfController.verifyCertific
  *       200: { description: PDF }
  *       403: { description: Invalid or expired link }
  *       404: { description: No signed certificate document for this number }
+ *       429: { description: Request budget exhausted for this address (Retry-After header) }
  */
 // PUBLIC — capability-gated (the token is the gate, as for /storage/object).
-router.get("/verify/:certificateNumber/document", certificatePdfController.verifyDocument);
+router.get("/verify/:certificateNumber/document", verifyBudget, certificatePdfController.verifyDocument);
 
 /**
  * @swagger
@@ -576,11 +610,59 @@ router.post(
  */
 /**
  * @swagger
+ * /api/v1/certificates/{certificateId}/document:
+ *   get:
+ *     summary: The certificate document — the data its PDF prints
+ *     description: >-
+ *       M-11 (ADR-095). The backend renders no PDF: the application renders it
+ *       from this. Every printed field, the verification URL the QR code
+ *       carries, and `integrity` (the `certificate-content-v2` SHA-256 hash the
+ *       PDF prints and the public verification endpoint recomputes, the
+ *       pre-M-11 `legacyHash`, and the server HMAC over the v2 hash with its
+ *       key id). Requires read access to certificate; another tenant's
+ *       certificate is a 404.
+ *     tags: [Certificates]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: certificateId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: The certificate document
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/SuccessResponse'
+ *       404:
+ *         description: Certificate not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ */
+router.get(
+  "/:certificateId/document",
+  auth,
+  validateUuid("certificateId"),
+  dynamicAccess("certificate", "read"),
+  certificatePdfController.getDocument,
+);
+
+/**
+ * @swagger
  * /api/v1/certificates/{certificateId}/pdf:
  *   get:
- *     summary: Download the certificate PDF (generated on demand)
- *     description: Requires read access to certificate. Renders the PDF (with a
- *       verification QR code) if it has not been generated yet.
+ *     summary: Download the PDF the backend stored for a certificate before M-11
+ *     description: >-
+ *       Requires read access to certificate. Serves only a PDF rendered and
+ *       stored before 2026-09-29 (ADR-095); nothing is rendered here. A
+ *       certificate with no stored PDF is a 404 — its PDF is rendered by the
+ *       application from GET /certificates/{certificateId}/document.
  *     tags: [Certificates]
  *     security:
  *       - bearerAuth: []
@@ -594,22 +676,12 @@ router.post(
  *     responses:
  *       200:
  *         description: PDF file
- *   post:
- *     summary: (Re)generate the certificate PDF
- *     description: Requires generate access to certificate.
- *     tags: [Certificates]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: certificateId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *     responses:
- *       200:
- *         description: PDF generated
+ *       404:
+ *         description: Certificate not found, or it has no stored PDF
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  */
 router.get(
   "/:certificateId/pdf",
@@ -617,44 +689,6 @@ router.get(
   validateUuid("certificateId"),
   dynamicAccess("certificate", "read"),
   certificatePdfController.downloadPdf,
-);
-
-/**
- * @swagger
- * /api/v1/certificates/{certificateId}/pdf:
- *   post:
- *     summary: Generate (or regenerate) the certificate PDF document
- *     description: Requires generate access to certificate. Renders the formal PDF and stores it against the certificate.
- *     tags: [Certificates]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: certificateId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *     responses:
- *       201:
- *         description: Certificate PDF generated successfully
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/SuccessResponse'
- *       404:
- *         description: Certificate not found
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/ErrorResponse'
- */
-router.post(
-  "/:certificateId/pdf",
-  auth,
-  validateUuid("certificateId"),
-  dynamicAccess("certificate", "generate"),
-  certificatePdfController.generatePdf,
 );
 
 module.exports = router;

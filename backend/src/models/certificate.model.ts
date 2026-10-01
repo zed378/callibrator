@@ -21,6 +21,8 @@ import {
 import type { TenantId, UserId } from "../types/ids";
 import type { ModelInstance, Models } from "../types/models";
 import { initModel, type TypedModel } from "./initModel";
+import { newVerificationToken } from "../utils/certificateVerificationToken";
+import { jsonShape, type CertificateSignedSnapshot } from "../utils/jsonShape.util";
 
 // Certificate status constants
 const STATUS = {
@@ -62,6 +64,11 @@ interface Certificate extends Model<
   status: CreationOptional<(typeof STATUS)[keyof typeof STATUS] | null>;
   calibratedBy: UserId | null;
   approvedBy: UserId | null;
+  /**
+   * ADR-101: who moved the certificate draft -> pending_approval. Separation of
+   * duties: neither this user nor `createdBy` may approve it.
+   */
+  submittedBy: UserId | null;
   signedBy: UserId | null;
   digitalSignature: string | null;
   digitalSignatureKeyId: string | null;
@@ -75,6 +82,17 @@ interface Certificate extends Model<
   filePath: string | null;
   /** BIGINT: node-postgres returns it as a string. */
   fileSize: string | number | null;
+  /**
+   * A-293 (ADR-100): the secret the QR code carries; it unlocks the full
+   * public verification verdict. Generated on create, never chosen by a caller.
+   */
+  verificationToken: CreationOptional<string>;
+  /**
+   * ADR-107 (Q-50): the issuer, instrument and people exactly as printed at
+   * signing (migration 0103). Null for a certificate not signed yet, or signed
+   * before ADR-107 — nothing is back-filled; those stay v2.
+   */
+  signedSnapshot: CertificateSignedSnapshot | null;
   createdBy: UserId | null;
   updatedBy: UserId | null;
   deletedBy: UserId | null;
@@ -184,6 +202,15 @@ const defineModel: DefineCertificate = (db, DataTypes) => {
         references: { model: "users", key: "id" },
         onDelete: "RESTRICT",
       },
+      // Separation of duties (ADR-101): the submitter of a certificate may not
+      // approve it. Column added by migration 0095; ON DELETE RESTRICT, as
+      // approvedBy and signedBy.
+      submittedBy: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: { model: "users", key: "id" },
+        onDelete: "RESTRICT",
+      },
       signedBy: {
         type: DataTypes.UUID,
         allowNull: true,
@@ -240,6 +267,23 @@ const defineModel: DefineCertificate = (db, DataTypes) => {
       fileSize: {
         type: DataTypes.BIGINT,
         allowNull: true,
+      },
+      // A-293 (ADR-100): 24 CSPRNG bytes, base64url. Column added, back-filled
+      // and made NOT NULL by migration 0096, which also owns its UNIQUE index
+      // (named there) — not declared here, because
+      // db.sync() runs before the migrations (D-13). The default covers
+      // bulkCreate; the create hooks below replace any value a caller passed.
+      verificationToken: {
+        type: DataTypes.STRING(64),
+        allowNull: false,
+        defaultValue: newVerificationToken,
+      },
+      // ADR-107 (Q-50): written once, in the sign transaction, by
+      // certificateDocument.service#captureSignedSnapshot. JSONB with a D-27 shape.
+      signedSnapshot: {
+        type: DataTypes.JSONB,
+        allowNull: true,
+        validate: { shape: jsonShape("Certificate.signedSnapshot") },
       },
       // Audit
       createdBy: {
@@ -488,6 +532,19 @@ const defineModel: DefineCertificate = (db, DataTypes) => {
       onDelete: "RESTRICT",
     });
   };
+
+  // A-293 (ADR-100): the verification token is the server's, never the
+  // caller's — a value in create()/bulkCreate() is replaced, whatever path
+  // built it. (bulkCreate runs per-row hooks only with individualHooks, so it
+  // has its own hook.)
+  Certificate.addHook("beforeCreate", "verificationToken", (instance: Certificate) => {
+    instance.verificationToken = newVerificationToken();
+  });
+  Certificate.addHook("beforeBulkCreate", "verificationToken", (instances: Certificate[]) => {
+    for (const instance of instances) {
+      instance.verificationToken = newVerificationToken();
+    }
+  });
 
   // Attach constants to the model
   Certificate.STATUS = STATUS;

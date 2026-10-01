@@ -1,235 +1,181 @@
 /**
  * Finance validator tests
+ *
+ * P9-11 (ADR-093): the schemas are Zod, exercised through the shared
+ * `checkInput` helper (the file's own `validate` / `formatErrors` are gone).
  */
-const {
-  createAssetFinance,
-  updateAssetFinance,
-  validate,
-  formatErrors,
-} = require("../../validators/finance.validator");
+const { checkInput } = require("../../validators/input");
+const { createAssetFinance, updateAssetFinance } = require("../../validators/finance.validator");
+
+const DEVICE = "123e4567-e89b-12d3-a456-426614174000";
+const VENDOR = "123e4567-e89b-12d3-a456-426614174001";
+const METHOD_OPTION = 'Invalid option: expected one of "straight_line"|"declining_balance"';
+
+/** A valid create body, with `overrides` applied (an `undefined` override removes the key). */
+const body = (overrides = {}) => {
+  const data = { deviceId: DEVICE, purchasePrice: 10000, purchaseDate: "2026-01-01", usefulLifeYears: 5, ...overrides };
+  for (const [key, value] of Object.entries(overrides)) {
+    if (value === undefined) {
+      delete data[key];
+    }
+  }
+  return data;
+};
 
 describe("Finance Validators", () => {
   describe("createAssetFinance", () => {
     it("should validate correct asset finance data", () => {
-      const { error, value } = validate({
-        deviceId: "123e4567-e89b-12d3-a456-426614174000",
-        purchasePrice: 10000,
-        purchaseDate: "2026-01-01",
-        usefulLifeYears: 5,
-      }, createAssetFinance);
+      const result = checkInput(body(), createAssetFinance);
 
-      expect(error).toBeUndefined();
-      expect(value.purchasePrice).toBe(10000);
-      expect(value.usefulLifeYears).toBe(5);
+      expect(result.ok).toBe(true);
+      expect(result.value.purchasePrice).toBe(10000);
+      expect(result.value.usefulLifeYears).toBe(5);
+      expect(result.value.purchaseDate).toEqual(new Date("2026-01-01"));
     });
 
     it("should validate with default salvage value", () => {
-      const { error, value } = validate({
-        deviceId: "123e4567-e89b-12d3-a456-426614174000",
-        purchasePrice: 10000,
-        purchaseDate: "2026-01-01",
-        usefulLifeYears: 5,
-      }, createAssetFinance);
+      const result = checkInput(body(), createAssetFinance);
 
-      expect(error).toBeUndefined();
-      expect(value.salvageValue).toBe(0);
+      expect(result.ok).toBe(true);
+      expect(result.value.salvageValue).toBe(0);
     });
 
     it("should validate with default depreciation method", () => {
-      const { error, value } = validate({
-        deviceId: "123e4567-e89b-12d3-a456-426614174000",
-        purchasePrice: 10000,
-        purchaseDate: "2026-01-01",
-        usefulLifeYears: 5,
-      }, createAssetFinance);
+      const result = checkInput(body(), createAssetFinance);
 
-      expect(error).toBeUndefined();
-      expect(value.depreciationMethod).toBe("straight_line");
+      expect(result.ok).toBe(true);
+      expect(result.value.depreciationMethod).toBe("straight_line");
     });
 
     it("should validate with custom depreciation method", () => {
-      const { error, value } = validate({
-        deviceId: "123e4567-e89b-12d3-a456-426614174000",
-        purchasePrice: 10000,
-        purchaseDate: "2026-01-01",
-        usefulLifeYears: 5,
-        depreciationMethod: "declining_balance",
-      }, createAssetFinance);
+      const result = checkInput(body({ depreciationMethod: "declining_balance" }), createAssetFinance);
 
-      expect(error).toBeUndefined();
-      expect(value.depreciationMethod).toBe("declining_balance");
+      expect(result.ok).toBe(true);
+      expect(result.value.depreciationMethod).toBe("declining_balance");
     });
 
     it("should validate with all fields", () => {
-      const { error } = validate({
-        deviceId: "123e4567-e89b-12d3-a456-426614174000",
-        purchasePrice: 10000,
-        purchaseDate: "2026-01-01",
-        salvageValue: 1000,
-        usefulLifeYears: 5,
-        depreciationMethod: "straight_line",
-        vendorId: "123e4567-e89b-12d3-a456-426614174001",
-        invoiceNumber: "INV-001",
-        notes: "Asset notes",
-      }, createAssetFinance);
+      const result = checkInput(
+        body({
+          salvageValue: 1000,
+          depreciationMethod: "straight_line",
+          vendorId: VENDOR,
+          invoiceNumber: "INV-001",
+          notes: "Asset notes",
+        }),
+        createAssetFinance,
+      );
 
-      expect(error).toBeUndefined();
+      expect(result.ok).toBe(true);
+    });
+
+    it("converts numeric strings and trims the invoice number", () => {
+      const result = checkInput(
+        body({ purchasePrice: "10000", usefulLifeYears: "5", invoiceNumber: "  INV-001  " }),
+        createAssetFinance,
+      );
+
+      expect(result.value).toMatchObject({ purchasePrice: 10000, usefulLifeYears: 5, invoiceNumber: "INV-001" });
     });
 
     it("should reject missing device ID", () => {
-      const { error } = validate({
-        purchasePrice: 10000,
-        purchaseDate: "2026-01-01",
-        usefulLifeYears: 5,
-      }, createAssetFinance);
+      const result = checkInput(body({ deviceId: undefined }), createAssetFinance);
 
-      expect(error).toBeDefined();
+      expect(result.ok).toBe(false);
+      expect(result.errors).toEqual([
+        { field: "deviceId", message: "Invalid input: expected string, received undefined" },
+      ]);
     });
 
     it("should reject missing purchase price", () => {
-      const { error } = validate({
-        deviceId: "123e4567-e89b-12d3-a456-426614174000",
-        purchaseDate: "2026-01-01",
-        usefulLifeYears: 5,
-      }, createAssetFinance);
+      const result = checkInput(body({ purchasePrice: undefined }), createAssetFinance);
 
-      expect(error).toBeDefined();
+      expect(result.ok).toBe(false);
+      expect(result.errors).toEqual([
+        { field: "purchasePrice", message: "Invalid input: expected number, received undefined" },
+      ]);
     });
 
     it("should reject negative purchase price", () => {
-      const { error } = validate({
-        deviceId: "123e4567-e89b-12d3-a456-426614174000",
-        purchasePrice: -100,
-        purchaseDate: "2026-01-01",
-        usefulLifeYears: 5,
-      }, createAssetFinance);
+      const result = checkInput(body({ purchasePrice: -100 }), createAssetFinance);
 
-      expect(error).toBeDefined();
+      expect(result.ok).toBe(false);
+      expect(result.errors).toEqual([{ field: "purchasePrice", message: "Too small: expected number to be >=0" }]);
     });
 
     it("should reject missing purchase date", () => {
-      const { error } = validate({
-        deviceId: "123e4567-e89b-12d3-a456-426614174000",
-        purchasePrice: 10000,
-        usefulLifeYears: 5,
-      }, createAssetFinance);
+      const result = checkInput(body({ purchaseDate: undefined }), createAssetFinance);
 
-      expect(error).toBeDefined();
+      expect(result.ok).toBe(false);
+      expect(result.errors).toEqual([{ field: "purchaseDate", message: "Invalid input" }]);
     });
 
     it("should reject invalid purchase date", () => {
-      const { error } = validate({
-        deviceId: "123e4567-e89b-12d3-a456-426614174000",
-        purchasePrice: 10000,
-        purchaseDate: "not-a-date",
-        usefulLifeYears: 5,
-      }, createAssetFinance);
+      const result = checkInput(body({ purchaseDate: "not-a-date" }), createAssetFinance);
 
-      expect(error).toBeDefined();
+      expect(result.ok).toBe(false);
+      expect(result.errors).toEqual([{ field: "purchaseDate", message: "Invalid input" }]);
     });
 
     it("should reject useful life outside range (too low)", () => {
-      const { error } = validate({
-        deviceId: "123e4567-e89b-12d3-a456-426614174000",
-        purchasePrice: 10000,
-        purchaseDate: "2026-01-01",
-        usefulLifeYears: 0,
-      }, createAssetFinance);
+      const result = checkInput(body({ usefulLifeYears: 0 }), createAssetFinance);
 
-      expect(error).toBeDefined();
+      expect(result.ok).toBe(false);
+      expect(result.errors).toEqual([{ field: "usefulLifeYears", message: "Too small: expected number to be >=1" }]);
     });
 
     it("should reject useful life outside range (too high)", () => {
-      const { error } = validate({
-        deviceId: "123e4567-e89b-12d3-a456-426614174000",
-        purchasePrice: 10000,
-        purchaseDate: "2026-01-01",
-        usefulLifeYears: 51,
-      }, createAssetFinance);
+      const result = checkInput(body({ usefulLifeYears: 51 }), createAssetFinance);
 
-      expect(error).toBeDefined();
+      expect(result.ok).toBe(false);
+      expect(result.errors).toEqual([{ field: "usefulLifeYears", message: "Too big: expected number to be <=50" }]);
     });
 
     it("should reject invalid depreciation method", () => {
-      const { error } = validate({
-        deviceId: "123e4567-e89b-12d3-a456-426614174000",
-        purchasePrice: 10000,
-        purchaseDate: "2026-01-01",
-        usefulLifeYears: 5,
-        depreciationMethod: "invalid",
-      }, createAssetFinance);
+      const result = checkInput(body({ depreciationMethod: "invalid" }), createAssetFinance);
 
-      expect(error).toBeDefined();
+      expect(result.ok).toBe(false);
+      expect(result.errors).toEqual([{ field: "depreciationMethod", message: METHOD_OPTION }]);
     });
 
     it("should reject invalid vendor UUID", () => {
-      const { error } = validate({
-        deviceId: "123e4567-e89b-12d3-a456-426614174000",
-        purchasePrice: 10000,
-        purchaseDate: "2026-01-01",
-        usefulLifeYears: 5,
-        vendorId: "not-a-uuid",
-      }, createAssetFinance);
+      const result = checkInput(body({ vendorId: "not-a-uuid" }), createAssetFinance);
 
-      expect(error).toBeDefined();
+      expect(result.ok).toBe(false);
+      expect(result.errors).toEqual([{ field: "vendorId", message: "Invalid GUID" }]);
     });
   });
 
   describe("updateAssetFinance", () => {
     it("should validate partial update", () => {
-      const { error } = validate({ purchasePrice: 15000 }, updateAssetFinance);
-
-      expect(error).toBeUndefined();
+      expect(checkInput({ purchasePrice: 15000 }, updateAssetFinance)).toEqual({
+        ok: true,
+        value: { purchasePrice: 15000 },
+      });
     });
 
     it("should validate empty object", () => {
-      const { error } = validate({}, updateAssetFinance);
+      expect(checkInput({}, updateAssetFinance)).toEqual({ ok: true, value: {} });
+    });
 
-      expect(error).toBeUndefined();
+    it("accepts an ISO date-time purchase date as a Date", () => {
+      expect(checkInput({ purchaseDate: "2026-01-01T10:00:00Z" }, updateAssetFinance).value.purchaseDate).toEqual(
+        new Date("2026-01-01T10:00:00Z"),
+      );
     });
 
     it("should reject invalid depreciation method", () => {
-      const { error } = validate({ depreciationMethod: "invalid" }, updateAssetFinance);
+      const result = checkInput({ depreciationMethod: "invalid" }, updateAssetFinance);
 
-      expect(error).toBeDefined();
+      expect(result.ok).toBe(false);
+      expect(result.errors).toEqual([{ field: "depreciationMethod", message: METHOD_OPTION }]);
     });
 
     it("should reject invalid vendor UUID", () => {
-      const { error } = validate({ vendorId: "not-a-uuid" }, updateAssetFinance);
+      const result = checkInput({ vendorId: "not-a-uuid" }, updateAssetFinance);
 
-      expect(error).toBeDefined();
-    });
-  });
-
-  describe("formatErrors", () => {
-    it("should format error details correctly", () => {
-      const details = [
-        { path: ["deviceId"], message: "deviceId is required" },
-        { path: ["purchasePrice"], message: "purchasePrice must be a number" },
-      ];
-
-      const result = formatErrors(details);
-
-      expect(result).toEqual([
-        { field: "deviceId", message: "deviceId is required" },
-        { field: "purchasePrice", message: "purchasePrice must be a number" },
-      ]);
-    });
-
-    it("should handle nested field paths", () => {
-      const details = [{ path: ["finance", "asset", "price"], message: "Price is required" }];
-
-      const result = formatErrors(details);
-
-      expect(result).toEqual([
-        { field: "finance.asset.price", message: "Price is required" },
-      ]);
-    });
-
-    it("should return empty array for empty input", () => {
-      const result = formatErrors([]);
-
-      expect(result).toEqual([]);
+      expect(result.ok).toBe(false);
+      expect(result.errors).toEqual([{ field: "vendorId", message: "Invalid GUID" }]);
     });
   });
 });

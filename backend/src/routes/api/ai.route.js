@@ -4,12 +4,9 @@ const aiController = require("../../controllers/ai.controller");
 const { auth } = require("../../middlewares/auth.middleware");
 const { dynamicAccess } = require("../../middlewares/dynamicAccess.middleware");
 const { MENU_SLUGS } = require("../../constants/roleConstants");
-const multer = require("multer");
-
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
-});
+// A-296: the upload helper, so the multipart fields are sanitized like a JSON
+// body (multer is used only in utils/upload.util).
+const { uploadToMemory } = require("../../utils/upload.util");
 
 router.use(auth);
 
@@ -63,7 +60,7 @@ router.use(auth);
 router.post(
   "/ocr",
   dynamicAccess("certificate", "write"),
-  upload.single("file"),
+  uploadToMemory({ maxFileSize: 5 * 1024 * 1024 }), // 5MB limit
   aiController.processOcr,
 );
 /**

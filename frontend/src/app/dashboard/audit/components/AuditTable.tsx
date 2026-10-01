@@ -275,6 +275,12 @@ export const AuditTable: React.FC<AuditTableProps> = ({
           pageSize={pageSize}
           onPageChange={onPageChange}
         />
+        {/* P8-04 (ADR-096): the backend counts at most 10,000 matching rows. */}
+        {meta.totalIsCapped && (
+          <p className="mt-2 text-xs text-muted-foreground" data-testid="audit-total-capped">
+            More than {meta.total.toLocaleString()} entries match. Narrow the dates or filters for an exact count.
+          </p>
+        )}
       </CardContent>
     </Card>
   );

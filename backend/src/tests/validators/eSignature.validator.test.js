@@ -1,14 +1,29 @@
 /**
  * E-Signature validator tests
+ *
+ * P9-11 (ADR-093): the schemas are Zod, exercised through the shared
+ * `validateInput` helper (the file's own `validate`, which threw an `Error`,
+ * is gone; `validateInput` throws the plain 400 object).
  */
+const { validateInput: validate } = require("../../validators/input");
 const {
   createKeyPair,
   createWorkflow,
   signDocument,
   verifySignature,
   cancelWorkflow,
-  validate,
 } = require("../../validators/eSignature.validator");
+
+/** @returns the field errors `validate` threw (asserting the 400 shape), or undefined */
+const errorsOf = (data, schema) => {
+  try {
+    validate(data, schema);
+  } catch (error) {
+    expect(error).toMatchObject({ status: 400, message: "Validation failed" });
+    return error.errors;
+  }
+  return undefined;
+};
 
 const SIGNER_1 = "3f2504e0-4f89-41d3-9a0c-0305e82c3311";
 const SIGNER_2 = "3f2504e0-4f89-41d3-9a0c-0305e82c3312";
@@ -47,15 +62,17 @@ describe("E-Signature Validators", () => {
     });
 
     it("should reject invalid algorithm", () => {
-      expect(() =>
-        validate({ algorithm: "DSA" }, createKeyPair),
-      ).toThrow();
+      expect(errorsOf({ algorithm: "DSA" }, createKeyPair)).toEqual([
+        { field: "algorithm", message: 'Invalid option: expected one of "RSA"|"ECDSA"|"Ed25519"' },
+      ]);
     });
 
     it("should reject invalid key size", () => {
-      expect(() =>
-        validate({ keySize: 1024 }, createKeyPair),
-      ).toThrow();
+      expect(errorsOf({ keySize: 1024 }, createKeyPair)).toEqual([{ field: "keySize", message: "Invalid input" }]);
+    });
+
+    it("converts a numeric-string key size", () => {
+      expect(validate({ keySize: "4096" }, createKeyPair)).toEqual({ algorithm: "RSA", keySize: 4096 });
     });
   });
 
@@ -194,16 +211,24 @@ describe("E-Signature Validators", () => {
     });
 
     it("should reject empty signers array", () => {
-      expect(() =>
+      expect(errorsOf({ documentId: "doc-123", signers: [], subject: "Please sign" }, createWorkflow)).toEqual([
+        { field: "signers", message: "Too small: expected array to have >=1 items" },
+      ]);
+    });
+
+    it("defaults the message to empty and converts expiresAt to a Date", () => {
+      expect(
         validate(
-          {
-            documentId: "doc-123",
-            signers: [],
-            subject: "Please sign",
-          },
+          { documentId: "doc-123", signers: [{ userId: SIGNER_1 }], subject: "Please sign", expiresAt: "2026-12-31" },
           createWorkflow,
         ),
-      ).toThrow();
+      ).toEqual({
+        documentId: "doc-123",
+        signers: [{ userId: SIGNER_1 }],
+        subject: "Please sign",
+        message: "",
+        expiresAt: new Date("2026-12-31"),
+      });
     });
 
     // A-129 / F-10 — the signer's name and email come from the user record,
@@ -231,12 +256,9 @@ describe("E-Signature Validators", () => {
     });
 
     it("a signer userId must be a uuid (a non-uuid would reach Postgres as a 500)", () => {
-      expect(() =>
-        validate(
-          { documentId: "doc-123", signers: [{ userId: "user-1" }], subject: "Please sign" },
-          createWorkflow,
-        ),
-      ).toThrow();
+      expect(
+        errorsOf({ documentId: "doc-123", signers: [{ userId: "user-1" }], subject: "Please sign" }, createWorkflow),
+      ).toEqual([{ field: "signers.0.userId", message: "Invalid GUID" }]);
     });
 
     // A-86 — an email-only signer passes the schema on purpose, so the service
@@ -316,9 +338,9 @@ describe("E-Signature Validators", () => {
     it.each(["webauthn", "totp", "sms"])(
       "should reject %s — only password and MFA can be re-verified at signing (A-65)",
       (method) => {
-        expect(() =>
-          validate({ stepId: STEP_ID, authenticationMethod: method, authPayload: PW, reason: MEANING }, signDocument),
-        ).toThrow();
+        expect(
+          errorsOf({ stepId: STEP_ID, authenticationMethod: method, authPayload: PW, reason: MEANING }, signDocument),
+        ).toEqual([{ field: "authenticationMethod", message: 'Invalid option: expected one of "password"|"mfa"' }]);
       },
     );
 
@@ -402,9 +424,9 @@ describe("E-Signature Validators", () => {
     });
 
     it("should reject a signatureId that is not a uuid", () => {
-      expect(() =>
-        validate({ signatureId: "nope" }, verifySignature),
-      ).toThrow();
+      expect(errorsOf({ signatureId: "nope" }, verifySignature)).toEqual([
+        { field: "signatureId", message: "Invalid GUID" },
+      ]);
     });
   });
 
@@ -416,7 +438,9 @@ describe("E-Signature Validators", () => {
     });
 
     it("rejects a reason over 500 characters", () => {
-      expect(() => validate({ reason: "a".repeat(501) }, cancelWorkflow)).toThrow();
+      expect(errorsOf({ reason: "a".repeat(501) }, cancelWorkflow)).toEqual([
+        { field: "reason", message: "Too big: expected string to have <=500 characters" },
+      ]);
     });
 
     it("A-09: an absent body validates as {} (the reason is optional)", () => {

@@ -1,6 +1,6 @@
 # 00 — Design Direction
 
-The full immersive plan for the public surfaces is [`19-IMMERSIVE-REVAMP-PLAN.md`](./19-IMMERSIVE-REVAMP-PLAN.md). This document is the direction that governs everything, including the dashboard it does not cover.
+The public surfaces (landing, sign-in, request access, verification) are specified by [`20-LANDING-AUTH-REVAMP.md`](./20-LANDING-AUTH-REVAMP.md), which supersedes Part I of [`19-IMMERSIVE-REVAMP-PLAN.md`](./19-IMMERSIVE-REVAMP-PLAN.md) (ADR-098). This document is the direction that governs everything, including the dashboard neither covers.
 
 ---
 
@@ -74,13 +74,15 @@ See [`16-MOTION-MICROINTERACTION.md`](./16-MOTION-MICROINTERACTION.md).
 
 ## Language
 
-Interface English; seeded role display names Indonesian (Admin Faskes, Teknisi, IPSRS, Penyelia) because the primary market is Indonesian healthcare and an accreditation surveyor reads the screen.
+**Public surfaces (ADR-098):** Indonesian by default, English by a visible toggle; language names are written in their own language, never as flags. Mechanism: `20-LANDING-AUTH-REVAMP.md` §5.
+
+**Dashboard (unchanged until Phase 11 decides):** interface English; seeded role display names Indonesian (Admin Faskes, Teknisi, IPSRS, Penyelia) because the primary market is Indonesian healthcare and an accreditation surveyor reads the screen.
 
 That mix is deliberate, not an unfinished translation. Domain vocabulary follows the users: **opname** is used throughout for a physical stock count because that is what the people doing it call it.
 
 ## Theme
 
-Light and dark, both first-class. `ThemeInitScript` runs before paint to avoid a flash of the wrong theme.
+Light and dark, both first-class — in the dashboard. The public surfaces are **dark only** by the owner's choice (ADR-098 §3), with their own `--pub-*` tokens; the accessibility cost of that choice is recorded in the ADR. `ThemeInitScript` runs before paint to avoid a flash of the wrong theme.
 
 Dark is not an afterthought here: device and equipment areas of a hospital are often dim, and a screen that is the brightest object in the room is a screen people angle away from.
 

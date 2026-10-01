@@ -1,5 +1,10 @@
 import { api } from "../client";
 import { PaginatedResponse } from "@/types";
+import type {
+  CreateCalibrationDeviceInput,
+  DeviceStatus,
+  UpdateCalibrationDeviceInput,
+} from "@callibrator/contracts/calibrationDevices";
 
 export interface Device {
   id: string;
@@ -9,7 +14,7 @@ export interface Device {
   manufacturer?: string;
   model?: string;
   category?: string;
-  status: "active" | "inactive" | "maintenance" | "retired";
+  status: DeviceStatus;
   locationId?: string;
   warehouse?: {
     id: string;
@@ -24,22 +29,33 @@ export interface Device {
   updatedAt: string;
 }
 
-export interface DeviceCreateInput {
+// P9-22 (ADR-097): the request bodies are the backend validator's own
+// schemas (@callibrator/contracts), not a hand-written copy. `z.input` is what
+// the API accepts, so a field it would reject, or one it silently drops, is a
+// compile error here.
+export type DeviceCreateInput = CreateCalibrationDeviceInput;
+
+export type DeviceUpdateInput = UpdateCalibrationDeviceInput & {
+  id: string;
+};
+
+/**
+ * The device form's state (DeviceModal / useDevices). A UI shape, not the
+ * request contract: it must stay assignable to DeviceCreateInput, which the
+ * typecheck enforces where the hook submits it.
+ */
+export interface DeviceFormState {
   name: string;
   serialNumber?: string;
   manufacturer?: string;
   model?: string;
   category?: string;
-  status?: "active" | "inactive" | "maintenance" | "retired";
+  status?: DeviceStatus;
   locationId?: string;
   installationDate?: string;
   nextCalibrationDate?: string;
   calibrationIntervalDays?: number;
   remarks?: string;
-}
-
-export interface DeviceUpdateInput extends Partial<DeviceCreateInput> {
-  id: string;
 }
 
 export interface BulkImportResult {

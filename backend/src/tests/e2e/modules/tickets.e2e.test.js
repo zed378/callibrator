@@ -10,12 +10,14 @@
  * they require a tenant (non-super-admin) user.
  */
 const { httpGet, httpPost, authHeader } = require("../setup");
+// P10-16 (ADR-099): no default operator password — set E2E_OPERATOR_PASSWORD (see setup.js).
+const { OPERATOR_PASSWORD } = require("../setup");
 
 describe("E2E Tickets (HTTP)", () => {
   let token;
 
   beforeAll(async () => {
-    const { body } = await httpPost("/auth/login", { user: "sys@mail.com", password: "123123" });
+    const { body } = await httpPost("/auth/login", { user: "sys@mail.com", password: OPERATOR_PASSWORD });
     token = body.token || (body.data && body.data.token);
   });
 

@@ -22,6 +22,9 @@ import {
 interface MenuGroupItemCardProps {
   group: ExtendedMenuGroup;
   groupState: "all" | "none" | "some";
+  /** A-300: selected for a bulk action — independent of being assigned. */
+  selected: boolean;
+  onToggleSelect: (id: string) => void;
   actionLoading: boolean;
   onToggleGroup: (id: string, assigned: boolean) => void;
   onAssignGroup: (id: string) => void;
@@ -47,6 +50,8 @@ interface MenuGroupItemCardProps {
 export function MenuGroupItemCard({
   group,
   groupState,
+  selected,
+  onToggleSelect,
   actionLoading,
   onToggleGroup,
   onAssignGroup,
@@ -64,7 +69,16 @@ export function MenuGroupItemCard({
       <div
         className="flex items-center gap-3 p-3 rounded bg-muted text-foreground"
       >
+        <input
+          type="checkbox"
+          className="h-4 w-4 shrink-0 accent-primary"
+          aria-label={`Select menu group ${group.label ?? ""}`.trim()}
+          checked={selected}
+          onChange={() => onToggleSelect(group.id || "")}
+          disabled={actionLoading}
+        />
         <GroupCheckbox
+          label={`Assign menu group ${group.label ?? ""}`.trim()}
           groupState={groupState}
           onToggle={() => onToggleGroup(group.id || "", !group.isAssigned)}
           disabled={actionLoading}
@@ -134,6 +148,7 @@ export function MenuGroupItemCard({
                 className="flex items-center gap-2 py-1.5 px-2 text-sm rounded hover:bg-muted"
               >
                 <ItemCheckbox
+                  label={`Assign menu item ${item.label ?? ""}`.trim()}
                   fullyAssigned={isItemFullyAssigned(group, item)}
                   partiallyAssigned={isItemPartiallyAssigned(group, item)}
                   onToggle={() => onToggleItem(group, item, !itemAssigned)}

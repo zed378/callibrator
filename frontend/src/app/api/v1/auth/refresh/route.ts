@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { API_BASE_URL } from "@/constants";
-import { clientIpHeader } from "@/lib/clientIp";
+import { backendForwardHeaders } from "@/lib/backendHeaders";
 import {
   AUTH_REFRESH_COOKIE,
   AUTH_SESSION_COOKIE,
@@ -67,7 +67,8 @@ export async function POST(req: NextRequest) {
         "Content-Type": "application/json",
         "User-Agent": req.headers.get("user-agent") || "",
         // A-16: the one address nginx forwarded, never the header as received.
-        ...clientIpHeader(req.headers),
+        // A-310: client address AND the original scheme (FORCE_HTTPS would 301 otherwise).
+        ...backendForwardHeaders(req),
       },
       body: JSON.stringify({ refreshToken, ...(sessionId ? { sessionId } : {}) }),
       cache: "no-store",

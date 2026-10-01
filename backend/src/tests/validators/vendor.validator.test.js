@@ -4,9 +4,18 @@
 const {
   createVendor,
   updateVendor,
-  validate,
-  formatErrors,
+  qualifyVendor,
 } = require("../../validators/vendor.validator");
+const { checkInput } = require("../../validators/input");
+
+// P9-11: the schemas are Zod and the file's own validate()/formatErrors() are
+// gone. `run` checks through the shared checkInput (strip-unknown, every issue
+// listed, as the old options here were) and answers in the old
+// `{ error, value }` shape, with `error` the `{ field, message }` list.
+const run = (schema, data) => {
+  const result = checkInput(data, schema);
+  return result.ok ? { error: undefined, value: result.value } : { error: result.errors, value: undefined };
+};
 
 describe("Vendor Validators", () => {
   describe("createVendor", () => {
@@ -15,13 +24,10 @@ describe("Vendor Validators", () => {
         name: "Acme Calibration Lab",
       };
 
-      const result = createVendor.validate(data, {
-        abortEarly: false,
-        stripUnknown: true,
-      });
+      const result = run(createVendor, data);
 
       expect(result.error).toBeUndefined();
-      expect(result.value.name).toBe("Acme Calibration Lab");
+      expect(result.value).toEqual({ name: "Acme Calibration Lab", type: "Other", status: "Active" });
     });
 
     it("should validate with default type", () => {
@@ -29,10 +35,7 @@ describe("Vendor Validators", () => {
         name: "Acme Calibration Lab",
       };
 
-      const result = createVendor.validate(data, {
-        abortEarly: false,
-        stripUnknown: true,
-      });
+      const result = run(createVendor, data);
 
       expect(result.error).toBeUndefined();
       expect(result.value.type).toBe("Other");
@@ -43,10 +46,7 @@ describe("Vendor Validators", () => {
         name: "Acme Calibration Lab",
       };
 
-      const result = createVendor.validate(data, {
-        abortEarly: false,
-        stripUnknown: true,
-      });
+      const result = run(createVendor, data);
 
       expect(result.error).toBeUndefined();
       expect(result.value.status).toBe("Active");
@@ -58,10 +58,7 @@ describe("Vendor Validators", () => {
         type: "CalibrationLab",
       };
 
-      const result = createVendor.validate(data, {
-        abortEarly: false,
-        stripUnknown: true,
-      });
+      const result = run(createVendor, data);
 
       expect(result.error).toBeUndefined();
     });
@@ -72,10 +69,7 @@ describe("Vendor Validators", () => {
         type: "PartsSupplier",
       };
 
-      const result = createVendor.validate(data, {
-        abortEarly: false,
-        stripUnknown: true,
-      });
+      const result = run(createVendor, data);
 
       expect(result.error).toBeUndefined();
     });
@@ -86,10 +80,7 @@ describe("Vendor Validators", () => {
         status: "Inactive",
       };
 
-      const result = createVendor.validate(data, {
-        abortEarly: false,
-        stripUnknown: true,
-      });
+      const result = run(createVendor, data);
 
       expect(result.error).toBeUndefined();
     });
@@ -100,10 +91,7 @@ describe("Vendor Validators", () => {
         contactPerson: "John Doe",
       };
 
-      const result = createVendor.validate(data, {
-        abortEarly: false,
-        stripUnknown: true,
-      });
+      const result = run(createVendor, data);
 
       expect(result.error).toBeUndefined();
     });
@@ -114,10 +102,7 @@ describe("Vendor Validators", () => {
         email: "contact@acme.com",
       };
 
-      const result = createVendor.validate(data, {
-        abortEarly: false,
-        stripUnknown: true,
-      });
+      const result = run(createVendor, data);
 
       expect(result.error).toBeUndefined();
     });
@@ -128,10 +113,7 @@ describe("Vendor Validators", () => {
         phone: "+1-555-123-4567",
       };
 
-      const result = createVendor.validate(data, {
-        abortEarly: false,
-        stripUnknown: true,
-      });
+      const result = run(createVendor, data);
 
       expect(result.error).toBeUndefined();
     });
@@ -142,10 +124,7 @@ describe("Vendor Validators", () => {
         address: "123 Main St, City, Country",
       };
 
-      const result = createVendor.validate(data, {
-        abortEarly: false,
-        stripUnknown: true,
-      });
+      const result = run(createVendor, data);
 
       expect(result.error).toBeUndefined();
     });
@@ -156,10 +135,7 @@ describe("Vendor Validators", () => {
         notes: "Preferred vendor for calibration equipment",
       };
 
-      const result = createVendor.validate(data, {
-        abortEarly: false,
-        stripUnknown: true,
-      });
+      const result = run(createVendor, data);
 
       expect(result.error).toBeUndefined();
     });
@@ -167,12 +143,11 @@ describe("Vendor Validators", () => {
     it("should reject missing name", () => {
       const data = {};
 
-      const result = createVendor.validate(data, {
-        abortEarly: false,
-        stripUnknown: true,
-      });
+      const result = run(createVendor, data);
 
-      expect(result.error).toBeDefined();
+      expect(result.error).toEqual([
+        { field: "name", message: "Invalid input: expected string, received undefined" },
+      ]);
     });
 
     it("should reject name too short", () => {
@@ -180,10 +155,7 @@ describe("Vendor Validators", () => {
         name: "A",
       };
 
-      const result = createVendor.validate(data, {
-        abortEarly: false,
-        stripUnknown: true,
-      });
+      const result = run(createVendor, data);
 
       expect(result.error).toBeDefined();
     });
@@ -193,10 +165,7 @@ describe("Vendor Validators", () => {
         name: "a".repeat(101),
       };
 
-      const result = createVendor.validate(data, {
-        abortEarly: false,
-        stripUnknown: true,
-      });
+      const result = run(createVendor, data);
 
       expect(result.error).toBeDefined();
     });
@@ -207,12 +176,11 @@ describe("Vendor Validators", () => {
         type: "InvalidType",
       };
 
-      const result = createVendor.validate(data, {
-        abortEarly: false,
-        stripUnknown: true,
-      });
+      const result = run(createVendor, data);
 
-      expect(result.error).toBeDefined();
+      expect(result.error).toEqual([
+        { field: "type", message: 'Invalid option: expected one of "CalibrationLab"|"PartsSupplier"|"Other"' },
+      ]);
     });
 
     it("should reject invalid email", () => {
@@ -221,12 +189,9 @@ describe("Vendor Validators", () => {
         email: "not-an-email",
       };
 
-      const result = createVendor.validate(data, {
-        abortEarly: false,
-        stripUnknown: true,
-      });
+      const result = run(createVendor, data);
 
-      expect(result.error).toBeDefined();
+      expect(result.error).toEqual([{ field: "email", message: "Invalid email address" }]);
     });
 
     it("should accept null contactPerson", () => {
@@ -235,10 +200,7 @@ describe("Vendor Validators", () => {
         contactPerson: null,
       };
 
-      const result = createVendor.validate(data, {
-        abortEarly: false,
-        stripUnknown: true,
-      });
+      const result = run(createVendor, data);
 
       expect(result.error).toBeUndefined();
     });
@@ -249,12 +211,45 @@ describe("Vendor Validators", () => {
         contactPerson: "",
       };
 
-      const result = createVendor.validate(data, {
-        abortEarly: false,
-        stripUnknown: true,
+      const result = run(createVendor, data);
+
+      expect(result.error).toBeUndefined();
+    });
+
+    it("should trim the email and text fields, and accept a blank email", () => {
+      const result = run(createVendor, {
+        name: "Acme",
+        email: "  a@b.com  ",
+        contactPerson: " ",
+        phone: " 555 ",
       });
 
       expect(result.error).toBeUndefined();
+      expect(result.value).toEqual({
+        name: "Acme",
+        type: "Other",
+        contactPerson: "",
+        email: "a@b.com",
+        phone: "555",
+        status: "Active",
+      });
+      expect(run(createVendor, { name: "Acme", email: "   " }).value.email).toBe("");
+      expect(run(createVendor, { name: "Acme", email: null }).value.email).toBeNull();
+    });
+
+    it("should reject an over-long phone or contact person", () => {
+      expect(run(createVendor, { name: "Acme", phone: "x".repeat(51) }).error).toEqual([
+        { field: "phone", message: "Too big: expected string to have <=50 characters" },
+      ]);
+      expect(run(createVendor, { name: "Acme", contactPerson: "x".repeat(101) }).error).toBeDefined();
+    });
+
+    it("should reject an invalid status", () => {
+      expect(run(createVendor, { name: "Acme", status: "active" }).error).toBeDefined();
+    });
+
+    it("should strip unknown fields", () => {
+      expect(run(createVendor, { name: "Acme", tenantId: "x" }).value.tenantId).toBeUndefined();
     });
 
     it("should trim whitespace from name", () => {
@@ -262,10 +257,7 @@ describe("Vendor Validators", () => {
         name: "  Acme Calibration Lab  ",
       };
 
-      const result = createVendor.validate(data, {
-        abortEarly: false,
-        stripUnknown: true,
-      });
+      const result = run(createVendor, data);
 
       expect(result.error).toBeUndefined();
       expect(result.value.name).toBe("Acme Calibration Lab");
@@ -278,10 +270,7 @@ describe("Vendor Validators", () => {
         name: "Updated Name",
       };
 
-      const result = updateVendor.validate(data, {
-        abortEarly: false,
-        stripUnknown: true,
-      });
+      const result = run(updateVendor, data);
 
       expect(result.error).toBeUndefined();
     });
@@ -292,10 +281,7 @@ describe("Vendor Validators", () => {
         rating: 4,
       };
 
-      const result = updateVendor.validate(data, {
-        abortEarly: false,
-        stripUnknown: true,
-      });
+      const result = run(updateVendor, data);
 
       expect(result.error).toBeUndefined();
     });
@@ -305,10 +291,7 @@ describe("Vendor Validators", () => {
         rating: 1,
       };
 
-      const result = updateVendor.validate(data, {
-        abortEarly: false,
-        stripUnknown: true,
-      });
+      const result = run(updateVendor, data);
 
       expect(result.error).toBeUndefined();
     });
@@ -318,10 +301,7 @@ describe("Vendor Validators", () => {
         rating: 5,
       };
 
-      const result = updateVendor.validate(data, {
-        abortEarly: false,
-        stripUnknown: true,
-      });
+      const result = run(updateVendor, data);
 
       expect(result.error).toBeUndefined();
     });
@@ -331,12 +311,19 @@ describe("Vendor Validators", () => {
         rating: null,
       };
 
-      const result = updateVendor.validate(data, {
-        abortEarly: false,
-        stripUnknown: true,
-      });
+      const result = run(updateVendor, data);
 
       expect(result.error).toBeUndefined();
+    });
+
+    it("should convert a numeric-string rating", () => {
+      expect(run(updateVendor, { rating: "4.5" }).value).toEqual({ rating: 4.5 });
+    });
+
+    it("should reject a non-numeric rating", () => {
+      expect(run(updateVendor, { rating: "abc" }).error).toEqual([
+        { field: "rating", message: "Invalid input: expected number, received string" },
+      ]);
     });
 
     it("should reject rating below minimum", () => {
@@ -344,10 +331,7 @@ describe("Vendor Validators", () => {
         rating: 0,
       };
 
-      const result = updateVendor.validate(data, {
-        abortEarly: false,
-        stripUnknown: true,
-      });
+      const result = run(updateVendor, data);
 
       expect(result.error).toBeDefined();
     });
@@ -357,10 +341,7 @@ describe("Vendor Validators", () => {
         rating: 6,
       };
 
-      const result = updateVendor.validate(data, {
-        abortEarly: false,
-        stripUnknown: true,
-      });
+      const result = run(updateVendor, data);
 
       expect(result.error).toBeDefined();
     });
@@ -378,61 +359,69 @@ describe("Vendor Validators", () => {
         rating: 5,
       };
 
-      const result = updateVendor.validate(data, {
-        abortEarly: false,
-        stripUnknown: true,
-      });
+      const result = run(updateVendor, data);
 
       expect(result.error).toBeUndefined();
     });
   });
 
-  describe("validate", () => {
-    it("should return validated value", () => {
-      const mockSchema = {
-        validate: jest.fn().mockReturnValue({
-          value: { name: "test", type: "Other" },
-          error: null,
-        }),
-      };
-
-      const result = validate({ name: "test" }, mockSchema);
-
-      expect(result).toEqual({ error: null, value: { name: "test", type: "Other" } });
+  describe("qualifyVendor (P6-02)", () => {
+    it("should upper-case and trim the approval status to the enum's case", () => {
+      expect(run(qualifyVendor, { approvalStatus: " approved " }).value).toEqual({ approvalStatus: "APPROVED" });
+      expect(run(qualifyVendor, { approvalStatus: "rejected" }).value.approvalStatus).toBe("REJECTED");
     });
-  });
 
-  describe("formatErrors", () => {
-    it("should format error details correctly", () => {
-      const details = [
-        { path: ["name"], message: "name is required" },
-        { path: ["email"], message: "Invalid email" },
-      ];
-
-      const result = formatErrors(details);
-
-      expect(result).toEqual([
-        { field: "name", message: "name is required" },
-        { field: "email", message: "Invalid email" },
+    it("should reject an approval status outside the enum", () => {
+      expect(run(qualifyVendor, { approvalStatus: "yes" }).error).toEqual([
+        {
+          field: "approvalStatus",
+          message: 'Invalid option: expected one of "APPROVED"|"PENDING"|"REJECTED"|"CONDITIONAL"',
+        },
       ]);
+      expect(run(qualifyVendor, { approvalStatus: "" }).error).toBeDefined();
     });
 
-    it("should handle nested field paths", () => {
-      const details = [
-        { path: ["vendor", "name"], message: "Name is required" },
-      ];
+    it("should accept an empty body", () => {
+      expect(run(qualifyVendor, {}).value).toEqual({});
+    });
 
-      const result = formatErrors(details);
+    it("should convert the scorecard and parse ISO audit dates", () => {
+      const { error, value } = run(qualifyVendor, {
+        scorecard: "80",
+        lastAuditDate: "2026-01-15",
+        nextAuditDate: "2026-07-15T10:00:00+07:00",
+      });
 
-      expect(result).toEqual([
-        { field: "vendor.name", message: "Name is required" },
+      expect(error).toBeUndefined();
+      expect(value).toEqual({
+        scorecard: 80,
+        lastAuditDate: new Date("2026-01-15T00:00:00.000Z"),
+        nextAuditDate: new Date("2026-07-15T03:00:00.000Z"),
+      });
+    });
+
+    it("should accept a Date and nulls", () => {
+      const date = new Date("2026-01-15T00:00:00.000Z");
+      expect(run(qualifyVendor, { lastAuditDate: date, nextAuditDate: null, scorecard: null }).value).toEqual({
+        lastAuditDate: date,
+        nextAuditDate: null,
+        scorecard: null,
+      });
+    });
+
+    it("should reject a fractional or out-of-range scorecard", () => {
+      expect(run(qualifyVendor, { scorecard: 80.5 }).error).toEqual([
+        { field: "scorecard", message: "Invalid input: expected int, received number" },
       ]);
+      expect(run(qualifyVendor, { scorecard: 101 }).error).toBeDefined();
+      expect(run(qualifyVendor, { scorecard: -1 }).error).toBeDefined();
     });
 
-    it("should return empty array for empty input", () => {
-      const result = formatErrors([]);
-
-      expect(result).toEqual([]);
+    it("should reject a non-ISO audit date", () => {
+      expect(run(qualifyVendor, { lastAuditDate: "01/15/2026" }).error).toEqual([
+        { field: "lastAuditDate", message: "Invalid input" },
+      ]);
+      expect(run(qualifyVendor, { nextAuditDate: 1700000000000 }).error).toBeDefined();
     });
   });
 });

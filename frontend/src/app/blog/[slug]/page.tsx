@@ -1,25 +1,28 @@
+// P10-13 (ADR-098 §1): a blog article on the public surface. The body is the
+// stored HTML, sanitized again at render (ArticleBody, A-298); the metadata
+// (title, canonical, Open Graph, Twitter card) is unchanged but for the
+// product name (Q-43).
 import React, { Suspense } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, ArrowRight } from "lucide-react";
-import LandingLayout from "@/components/layouts/LandingLayout";
+import { ArrowLeft, ArrowRight } from "@/components/icons/static";
+import { getServerI18n } from "@/i18n/server";
+import type { Translate } from "@/i18n";
+import type { Locale } from "@/i18n/config";
+import { ContentShell } from "@/components/public/ContentShell";
 import PostMeta from "@/components/blog/PostMeta";
 import ArticleBody from "@/components/blog/ArticleBody";
 import ShareRow from "@/components/blog/ShareRow";
 import RelatedPosts from "@/components/blog/RelatedPosts";
 import { getPublishedPost, getPublishedPosts } from "@/lib/content.api";
 
-export async function generateMetadata({
-  params,
-}: {
-  params: Promise<{ slug: string }>;
-}): Promise<Metadata> {
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
-  const post = await getPublishedPost(slug);
-  if (!post || post.type !== "BLOG") return { title: "Article — HDC" };
+  const [{ t }, post] = await Promise.all([getServerI18n(), getPublishedPost(slug)]);
+  if (!post || post.type !== "BLOG") return { title: t("content.blog.fallbackTitle") };
   return {
-    title: `${post.title} — HDC`,
+    title: t("content.blog.articleTitle", { title: post.title }),
     description: post.excerpt || undefined,
     alternates: { canonical: `/blog/${post.slug}` },
     openGraph: {
@@ -37,91 +40,87 @@ export async function generateMetadata({
   };
 }
 
-async function Article({ params }: { params: Promise<{ slug: string }> }) {
+async function Article({ params, locale, t }: { params: Promise<{ slug: string }>; locale: Locale; t: Translate }) {
   const { slug } = await params;
   const post = await getPublishedPost(slug);
   if (!post || post.type !== "BLOG") notFound();
 
-  const related = (await getPublishedPosts("BLOG"))
-    .filter((p) => p.id !== post.id)
-    .slice(0, 3);
+  const related = (await getPublishedPosts("BLOG")).filter((p) => p.id !== post.id).slice(0, 3);
 
   return (
-    <article className="mx-auto max-w-3xl px-4 pb-24 pt-32 sm:px-6 lg:pt-36">
-      <Link
-        href="/blog"
-        className="inline-flex items-center gap-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
-      >
-        <ArrowLeft className="h-4 w-4" /> All articles
-      </Link>
-
-      {(post.categories ?? []).length > 0 && (
-        <div className="mt-6 flex flex-wrap gap-2">
-          {(post.categories ?? []).map((c) => (
-            <span
-              key={c.id}
-              className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary"
-            >
-              {c.name}
-            </span>
-          ))}
-        </div>
-      )}
-
-      <h1 className="mt-4 text-balance text-4xl font-bold leading-[1.1] tracking-tight text-foreground sm:text-5xl">
-        {post.title}
-      </h1>
-      <PostMeta post={post} className="mt-5" />
-
-      {post.coverImageUrl && (
-        <div className="mt-8 overflow-hidden rounded-2xl border border-border">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={post.coverImageUrl} alt={post.title} className="w-full object-cover" />
-        </div>
-      )}
-
-      <div className="mt-8">
-        <ArticleBody html={post.contentHtml || ""} />
-      </div>
-
-      <div className="mt-10 border-t border-border pt-6">
-        <ShareRow title={post.title} />
-      </div>
-
-      <div className="mt-16 rounded-2xl bg-linear-to-r from-primary to-accent p-8 text-center text-primary-foreground">
-        <h2 className="text-2xl font-bold tracking-tight">Make your next audit the boring one.</h2>
-        <p className="mx-auto mt-2 max-w-md text-sm text-primary-foreground/80">
-          Bring every device, schedule, and certificate into one place.
-        </p>
-        <Link
-          href="/login"
-          className="mt-5 inline-flex items-center gap-2 rounded-xl bg-white px-6 py-3 text-sm font-semibold text-slate-900 transition-transform hover:-translate-y-0.5"
-        >
-          Start free trial <ArrowRight className="h-4 w-4" />
+    <>
+      <article className="mx-auto max-w-3xl px-4 pb-16 pt-12 sm:px-6 lg:pt-16">
+        <Link href="/blog" className="pub-link-quiet inline-flex items-center gap-2 text-sm">
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" /> {t("content.blog.back")}
         </Link>
-      </div>
+
+        {(post.categories ?? []).length > 0 && (
+          <div className="mt-8 flex flex-wrap gap-2">
+            {(post.categories ?? []).map((c) => (
+              <span key={c.id} className="pub-chip">
+                {c.name}
+              </span>
+            ))}
+          </div>
+        )}
+
+        <h1 className="pub-display pub-display-l mt-4 text-pub-text">{post.title}</h1>
+        <PostMeta post={post} locale={locale} t={t} className="mt-5" />
+
+        {post.coverImageUrl && (
+          <div className="pub-frame mt-10">
+            {/* eslint-disable-next-line @next/next/no-img-element -- a host-relative /uploads/public CMS image of unknown size */}
+            <img src={post.coverImageUrl} alt={post.title} className="w-full object-cover" />
+          </div>
+        )}
+
+        <div className="mt-10">
+          <ArticleBody html={post.contentHtml || ""} />
+        </div>
+
+        <div className="mt-12 border-t border-pub-border pt-6">
+          <ShareRow
+            title={post.title}
+            labels={{ copy: t("content.share.copy"), copied: t("content.share.copied"), share: t("content.share.share") }}
+          />
+        </div>
+      </article>
+
+      <section aria-labelledby="blog-contact-title" className="border-t border-pub-border bg-pub-surface/40">
+        <div className="mx-auto max-w-3xl px-4 py-16 sm:px-6">
+          <h2 id="blog-contact-title" className="pub-display pub-display-m text-pub-text">
+            {t("landing.contact.title")}
+          </h2>
+          <p className="pub-prose mt-4 text-pub-muted">{t("landing.contact.lead")}</p>
+          <Link href="/request-access" className="pub-btn pub-btn-primary mt-7">
+            {t("landing.hero.ctaRequest")}
+            <ArrowRight className="h-4 w-4" aria-hidden="true" />
+          </Link>
+        </div>
+      </section>
 
       {related.length > 0 && (
-        <div className="mt-16">
-          <RelatedPosts posts={related} />
+        <div className="mx-auto max-w-[1200px] px-4 py-20 sm:px-6 lg:px-8">
+          <RelatedPosts posts={related} locale={locale} t={t} />
         </div>
       )}
-    </article>
+    </>
   );
 }
 
-export default function BlogDetailPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function BlogDetailPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { locale, t } = await getServerI18n();
   return (
-    <LandingLayout>
+    <ContentShell locale={locale} t={t}>
       <Suspense
         fallback={
-          <div className="mx-auto max-w-3xl px-4 pb-24 pt-32">
-            <div className="h-96 animate-pulse rounded-2xl bg-muted" />
+          <div className="mx-auto max-w-3xl px-4 pb-24 pt-12">
+            <div className="pub-card h-96" aria-hidden="true" />
           </div>
         }
       >
-        <Article params={params} />
+        <Article params={params} locale={locale} t={t} />
       </Suspense>
-    </LandingLayout>
+    </ContentShell>
   );
 }

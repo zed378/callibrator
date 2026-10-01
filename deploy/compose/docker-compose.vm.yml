@@ -24,11 +24,9 @@
 
 services:
   backend:
-    build:
-      # Context is the REPOSITORY ROOT so the build can `npm ci` against the
-      # committed root package-lock.json (ADR-044, S-13). See backend/Dockerfile.
-      context: ../..
-      dockerfile: backend/Dockerfile
+    # A-332: no `build:` here. The build context and Dockerfile are declared
+    # ONCE, in docker-compose.yml (BUILD_CONTEXT), so an overlay can never
+    # silently re-point a build at a different tree.
     environment:
       NODE_ENV: production
       # No TLS at this layer — nginx terminates plain HTTP, so forcing an
@@ -54,9 +52,15 @@ services:
     deploy:
       resources:
         # S-19: CPU as well as memory. Sized for a single shared VM.
+        # ADR-095 follow-up (2026-09-30): re-sized to measured need. The backend image has no
+        # Chromium; measured on callibrator/backend:adr095f under boot + migrations, seeding, three
+        # live E2E runs (two concurrent) and six browser-smoke runs: cgroup memory.peak 306 MiB,
+        # Node VmHWM 337 MiB, steady 215-265 MiB (MEMORY/records/2026-09-30-adr095-followups.md).
+        # Not production traffic: re-measure under a real tenant's exports/reports before tightening
+        # further. 1G is 3x the measured peak.
         limits:
           cpus: "2.0"
-          memory: 4G
+          memory: 1G
     ports:
       - "127.0.0.1:${BACKEND_PORT:-19000}:3000"
       # A-17: the 0.0.0.0:19883 -> 1883 mapping was removed on 2026-09-23. The
@@ -74,11 +78,8 @@ services:
       # Socket.IO. See frontend/src/constants/index.ts.
       BACKEND_INTERNAL_URL: ${BACKEND_INTERNAL_URL:-http://backend:3000}
     build:
-      # Context is the REPOSITORY ROOT so the build can `npm ci --workspace
-      # frontend` against the committed root package-lock.json (ADR-044, S-29).
-      # See frontend/Dockerfile and frontend/Dockerfile.dockerignore.
-      context: ../..
-      dockerfile: frontend/Dockerfile
+      # A-332: context and dockerfile come from docker-compose.yml (BUILD_CONTEXT);
+      # this overlay adds only its build args.
       args:
         # INLINED AT BUILD TIME. This one value is used BOTH server-side (the
         # Next.js proxy at /api/v1/[...path] forwards to it) and client-side
@@ -88,6 +89,9 @@ services:
         NEXT_PUBLIC_API_BASE_URL: ${PUBLIC_URL}
         NEXT_PUBLIC_SITE_URL: ${PUBLIC_URL}
         NEXT_PUBLIC_TENANT_ID: ${NEXT_PUBLIC_TENANT_ID:-}
+        # P10-03 (Q-41): empty hides the channel on the landing.
+        NEXT_PUBLIC_CONTACT_WHATSAPP: ${NEXT_PUBLIC_CONTACT_WHATSAPP:-}
+        NEXT_PUBLIC_CONTACT_EMAIL: ${NEXT_PUBLIC_CONTACT_EMAIL:-}
     restart: unless-stopped
     deploy:
       resources:

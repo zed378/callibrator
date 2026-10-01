@@ -75,6 +75,14 @@ jest.mock("../../models", () => {
   };
 });
 
+// A-278 (ADR-094): scorecard writes run in a transaction with their audit
+// row; this suite is about the read/write GATES, so both are pass-throughs.
+jest.mock("../../config", () => {
+  const actual = jest.requireActual("../../config");
+  actual.db.transaction = async (cb) => cb("TX");
+  return actual;
+});
+jest.mock("../../services/audit.service", () => ({ logAction: jest.fn(async () => ({})) }));
 jest.mock("../../services/reporting.service", () => ({
   getSummary: jest.fn(async () => ({ devices: 1 })),
   getCompliance: jest.fn(async () => ({})),
@@ -330,7 +338,8 @@ describe("AZ-01 G-06 — the sidebar menu reads answer for the caller's own role
     currentUser = seededPrincipal(fx.tenantA, R.TECHNICIAN);
     const res = await call(currentUser.roleId);
     expect(res.status).toBe(200);
-    expect(menuGroupService[service]).toHaveBeenCalledWith(currentUser.roleId);
+    // ADR-102: getRoleMenuAssignments also takes the requester (its overrides).
+    expect(menuGroupService[service].mock.calls[0][0]).toBe(currentUser.roleId);
   });
 
   it.each(cases)("%s — another role's id: 403, the service never runs", async (name, call, service) => {

@@ -8,13 +8,15 @@
  *
  * (The third point, the SSO exchange, is sso.exchangeStatus.a83.test.js.)
  *
- * What is real: auth.service (loginUser, loginMfa), audit.service and the Joi
+ * What is real: auth.service (loginUser, loginMfa), audit.service and the
  * login schema. What is faked: the models, the transaction, createSession,
  * bcrypt and the TOTP check — as in auth.loginAudit.a72.test.js.
  */
 
 const mockTx = { id: "tx-a83" };
 
+// A-288 (ADR-100): the network policy has its own suites (signInPolicy.*.a288); here it permits.
+jest.mock("../../services/signInPolicy.service", () => ({ assertSignInPermitted: jest.fn(async () => undefined) }));
 jest.mock("../../config", () => ({
   db: { transaction: jest.fn(async (fn) => fn(mockTx)) },
 }));

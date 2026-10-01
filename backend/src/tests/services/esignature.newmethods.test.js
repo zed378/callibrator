@@ -79,16 +79,41 @@ describe("eSignature.service — implemented workflow/key methods", () => {
   describe("deleteKeyPair", () => {
     it("soft-deletes an owned key", async () => {
       const destroy = jest.fn().mockResolvedValue(true);
-      const findOne = jest.fn().mockResolvedValue({ id: "tk-1", destroy });
+      const findOne = jest.fn().mockResolvedValue({ id: "tk-1", keyId: "key-1", destroy });
       const { deleteKeyPair } = load({ TenantKey: { findOne } });
 
-      const result = await deleteKeyPair("tk-1", "tenant-1");
+      const result = await deleteKeyPair("tk-1", "tenant-1", { userId: "user-1" });
+
+      // A-278 (ADR-094): the delete and one DELETE row share the transaction.
+      expect(destroy).toHaveBeenCalledWith({ transaction: "TX" });
+      expect(mockAuditCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: "tenant-1",
+          userId: "user-1",
+          action: "DELETE",
+          resourceType: "TenantKey",
+          resourceId: "tk-1",
+          changes: expect.objectContaining({ operation: "ESIGNATURE_KEY_DELETE", keyId: "key-1" }),
+        }),
+        { transaction: "TX" },
+      );
 
       expect(findOne).toHaveBeenCalledWith({
         where: { id: "tk-1", tenantId: "tenant-1" },
       });
       expect(destroy).toHaveBeenCalled();
       expect(result).toEqual({ success: true });
+    });
+
+    // A-278 (ADR-094): with no actor the audit row cannot be written, so the
+    // delete does not commit (fail closed) and the caller gets the service's 500.
+    it("without an actor the key is not deleted", async () => {
+      const destroy = jest.fn().mockResolvedValue(true);
+      const findOne = jest.fn().mockResolvedValue({ id: "tk-1", destroy });
+      const { deleteKeyPair } = load({ TenantKey: { findOne } });
+
+      await expect(deleteKeyPair("tk-1", "tenant-1")).rejects.toMatchObject({ status: 500 });
+      expect(mockAuditCreate).not.toHaveBeenCalled();
     });
 
     it("throws 404 when the key does not exist", async () => {

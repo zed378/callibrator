@@ -11,6 +11,8 @@ const scimController = require("../../controllers/scim.controller");
 const { auth } = require("../../middlewares/auth.middleware");
 const { scopeAllows } = require("../../services/apiKey.service");
 const { MENU_SLUGS } = require("../../constants/roleConstants");
+// N-01: the one super-admin predicate (both spellings).
+const { isSuperAdmin } = require("../../utils/role.util");
 
 // SCIM typically authenticates using a Bearer token (API Key).
 // Our tryApiKeyAuth handles "Authorization: ApiKey <key>".
@@ -50,9 +52,11 @@ const keyMayUseScim = (req) =>
   );
 
 const requireApiKeyOrAdmin = (req, res, next) => {
-  if ((req.user?.isApiKey && keyMayUseScim(req)) || req.user?.role?.name === "SUPER_ADMIN" || req.user?.role?.name === "SUPERADMIN") {
+  if ((req.user?.isApiKey && keyMayUseScim(req)) || isSuperAdmin(req.user)) {
     // A-03: SCIM is one of the few endpoints meant for a service account. It
-    // authorizes the key here rather than by scope, so it opts in explicitly.
+    // authorizes the key here, by its `scim` scope — V-05: one of the two
+    // writers of apiKeyAuthorized (the other is dynamicAccess), pinned by
+    // tests/guards/apiKeyAuthorizedWriters.v05.guard.test.ts.
     req.apiKeyAuthorized = true;
     return next();
   }

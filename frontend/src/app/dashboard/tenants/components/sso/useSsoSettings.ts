@@ -6,11 +6,19 @@ import { parseXmlMetadata } from "./parseXmlMetadata";
 export function useSsoSettings(tenant: Tenant | null, onClose: () => void) {
   const { fetchTenantSettings, updateTenantSettings, isLoading, error } = useTenantStore();
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  // A refused clipboard write (no permission, an insecure origin, no
+  // Clipboard API) must not read as "Copied!" — the IdP would then be
+  // configured from whatever the clipboard held before.
+  const [copyError, setCopyError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"config" | "sp" | "xml">("config");
   const [xmlContent, setXmlContent] = useState("");
   const [xmlError, setXmlError] = useState<string | null>(null);
   const [xmlSuccess, setXmlSuccess] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  // The tenant whose stored settings are in the form. Until they have loaded
+  // the form holds blank defaults, and saving it would switch SSO off and
+  // erase the IdP certificate — so save waits for a successful load.
+  const [loadedTenantId, setLoadedTenantId] = useState<string | null>(null);
 
   // Form state
   const [form, setForm] = useState({
@@ -36,6 +44,7 @@ export function useSsoSettings(tenant: Tenant | null, onClose: () => void) {
             sso_sp_entity_id: settings.sso_sp_entity_id || "",
             sso_sp_callback_url: settings.sso_sp_callback_url || "",
           });
+          setLoadedTenantId(tenant.id);
         } catch (err) {
           console.error("Failed to load tenant settings:", err);
         }
@@ -52,6 +61,7 @@ export function useSsoSettings(tenant: Tenant | null, onClose: () => void) {
   const [shownTenantId, setShownTenantId] = useState<string | null>(null);
   if ((tenant?.id ?? null) !== shownTenantId) {
     setShownTenantId(tenant?.id ?? null);
+    setLoadedTenantId(null);
     setSaveSuccess(false);
     setXmlSuccess(false);
     setXmlError(null);
@@ -71,15 +81,22 @@ export function useSsoSettings(tenant: Tenant | null, onClose: () => void) {
   const currentSpEntityId = form.sso_sp_entity_id || defaultSpEntityId;
   const currentAcsUrl = form.sso_sp_callback_url || defaultAcsUrl;
 
-  const handleCopy = (text: string, fieldName: string) => {
-    navigator.clipboard.writeText(text);
+  const handleCopy = async (text: string, fieldName: string) => {
+    setCopyError(null);
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      setCopiedField(null);
+      setCopyError("Could not copy to the clipboard. Select the value and copy it manually.");
+      return;
+    }
     setCopiedField(fieldName);
     setTimeout(() => setCopiedField(null), 2000);
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!tenant) return;
+    if (!tenant || loadedTenantId !== tenant.id) return;
     setSaveSuccess(false);
     try {
       await updateTenantSettings(tenant.id, {
@@ -131,6 +148,7 @@ export function useSsoSettings(tenant: Tenant | null, onClose: () => void) {
     isLoading,
     error,
     copiedField,
+    copyError,
     activeTab,
     setActiveTab,
     xmlContent,

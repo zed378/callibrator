@@ -77,6 +77,8 @@ jest.mock("../../services/redis.service", () => ({
 jest.mock("../../services/ai.service", () => ({
   processCertificateOcr: jest.fn(async () => ({ certificateNumber: "C-1" })),
   queryDocuments: jest.fn(async () => "an answer"),
+  // A-281: the provider is configured; this suite is about the gates.
+  getAiConfig: jest.fn(async () => ({ apiKey: "sk-test" })),
 }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },

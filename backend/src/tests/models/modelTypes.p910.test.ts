@@ -21,7 +21,12 @@ import {
   type NotificationChannels,
 } from "../../utils/jsonShape.util";
 import type { TenantId, UserId } from "../../types/ids";
-import type { DefaultScoped, ModelInstance, Models } from "../../types/models";
+import type {
+  DefaultScoped,
+  ModelInstance,
+  Models,
+  ModelsBarrel,
+} from "../../types/models";
 
 type IsDefaultScoped<S> = S extends { readonly defaultScoped: DefaultScoped }
   ? true
@@ -93,10 +98,37 @@ export const typeChecks = async (
   return [code, wrong, affected, total, asText];
 };
 
-// D-27: the hand-written JSON type refuses what its Joi shape refuses (negative check 7).
+// D-27: the hand-written JSON type refuses what its Zod shape refuses (negative check 7).
 export const channelsOk: NotificationChannels = ["email", "webhook"];
-// @ts-expect-error -- "sms" is not a notification channel (the Joi shape refuses it too)
+// @ts-expect-error -- "sms" is not a notification channel (the Zod shape refuses it too)
 export const channelsBad: NotificationChannels = ["sms"];
+
+// Session is snake_case, and typed so (P9-10 spec item 8, negative checks 1–3): the camelCase
+// `tenantId` — the bug that broke the nightly retention purge — is a compile error in a where,
+// in an update, and on an instance.
+export const sessionChecks = async (
+  models: Models,
+  tenantId: TenantId,
+): Promise<unknown> => {
+  const { Session } = models;
+  await Session.findAll({ where: { tenant_id: tenantId } });
+  // @ts-expect-error -- `tenantId` is not a Session attribute (it is tenant_id)
+  await Session.findAll({ where: { tenantId } });
+  // @ts-expect-error -- `tenantId` is not a Session attribute (it is tenant_id)
+  await Session.update({ tenantId }, { where: { tenant_id: tenantId } });
+  const s = await Session.findOne();
+  // @ts-expect-error -- TS2551: Property 'tenantId' does not exist on type 'Session'. Did you mean 'tenant_id'?
+  return s?.tenantId;
+};
+
+// The barrel is typed: `db` is not a key (CLAUDE.md, the traps), and every model key is its class.
+export const barrelChecks = (barrel: ModelsBarrel): unknown[] => {
+  // @ts-expect-error -- the barrel exports `sequelize`, never `db`
+  const wrong: unknown = barrel.db;
+  const user: Models["User"] = barrel.User;
+  const plural: Models["User"] = barrel.Users;
+  return [wrong, user, plural, barrel.sequelize, barrel.Op];
+};
 
 // The D-12 brand: default-scoped models carry it, the others do not.
 export const brandChecks: [
@@ -106,7 +138,7 @@ export const brandChecks: [
 ] = [true, true, false];
 
 describe("P9-10 — converted models: the shape the types describe", () => {
-  it("D-27: the Joi shape accepts the value the type accepts and refuses the one it refuses", () => {
+  it("D-27: the Zod shape accepts the value the type accepts and refuses the one it refuses", () => {
     const validate = jsonShape("UsageAlert.notificationChannels");
     expect(() => {
       validate(channelsOk);
@@ -178,7 +210,8 @@ describe("P9-10 — converted models: the shape the types describe", () => {
     for (const define of [defineWarehouse, defineStock]) {
       const m = define(db, DataTypes);
       expect(m.options.defaultScope).toEqual({ where: { is_deleted: false } });
-      expect(m.options.scopes).toEqual({ includeDeleted: { where: null } });
+      // A-274: the unused includeDeleted scope is gone (only ApiKey keeps one).
+      expect(m.options.scopes ?? {}).toEqual({});
     }
   });
 });

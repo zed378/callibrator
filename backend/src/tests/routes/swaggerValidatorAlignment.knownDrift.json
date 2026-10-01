@@ -27,9 +27,6 @@
   "PATCH /api/v1/tickets/:ticketId": [
     "no swagger operation documents this route"
   ],
-  "PATCH /api/v1/vendors/:vendorId": [
-    "accepted by the validator but undocumented: notes"
-  ],
   "POST /api/v1/certificates/:certificateId/approve": [
     "no documented JSON body; the validator requires authMethod, authPayload, meaning"
   ],
@@ -81,14 +78,6 @@
     "accepted by the validator but undocumented: assigneeId, scheduledDate, estimatedCost",
     "required: documented [deviceId, priority, title, type], validator [deviceId, title, type]"
   ],
-  "POST /api/v1/roles/": [
-    "documented but stripped by the validator: menus",
-    "accepted by the validator but undocumented: roleLevel"
-  ],
-  "POST /api/v1/roles/menus": [
-    "documented but stripped by the validator: name, slug, icon, parent_id, sort_order, is_active",
-    "required: documented [name], validator []"
-  ],
   "POST /api/v1/tickets/": [
     "no documented JSON body; the validator requires subject"
   ],
@@ -97,10 +86,6 @@
   ],
   "POST /api/v1/tickets/:ticketId/comments": [
     "no swagger operation documents this route"
-  ],
-  "POST /api/v1/vendors/": [
-    "documented but stripped by the validator: rating",
-    "accepted by the validator but undocumented: notes"
   ],
   "PUT /api/v1/storage/settings": [
     "accepted by the validator but undocumented: forcePathStyle, prefix, fsync",

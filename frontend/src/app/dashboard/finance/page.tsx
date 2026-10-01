@@ -26,6 +26,7 @@ import {
 } from "@/api/services/finance.service";
 import { deviceService } from "@/api/services/device.service";
 import { useToastStore } from "@/stores/toastStore";
+import { usePermissions } from "@/hooks/usePermissions";
 
 const PAGE_SIZE = 10;
 
@@ -39,6 +40,10 @@ const money = (n?: number) =>
 const fmt = (v?: string | null) => (v ? new Date(v).toLocaleDateString() : "—");
 
 export default function FinancePage() {
+  // ADR-102: asset records are written on `finance` write (finance.route.js);
+  // the seeded admins and ENGINEERING MANAGER hold only `finance` read.
+  const { canWrite } = usePermissions();
+  const mayWrite = canWrite("finance");
   const addToast = useToastStore((s) => s.addToast);
 
   const [records, setRecords] = useState<FinanceRecord[]>([]);
@@ -277,12 +282,14 @@ export default function FinancePage() {
               computed as at a valuation date.
             </p>
           </div>
-          <Button
-            onClick={() => setIsCreateOpen(true)}
-            leftIcon={<Plus className="h-4 w-4" />}
-          >
-            Record Asset
-          </Button>
+          {mayWrite && (
+            <Button
+              onClick={() => setIsCreateOpen(true)}
+              leftIcon={<Plus className="h-4 w-4" />}
+            >
+              Record Asset
+            </Button>
+          )}
         </div>
 
         {error && <Alert variant="error">{error}</Alert>}
@@ -337,21 +344,27 @@ export default function FinancePage() {
 
         <Card className="bg-card/50 backdrop-blur-sm border-border">
           <CardContent className="pt-6">
-            <FormField label="Filter by method">
-              <div className="flex gap-2">
-                <Select
-                  value={methodFilter}
-                  onChange={(v) => {
-                    setMethodFilter(v);
-                    setPage(1);
-                  }}
-                  placeholder="All methods"
-                  options={METHODS.map((m) => ({
-                    value: m,
-                    label: m.replace("_", " "),
-                  }))}
-                />
-                {methodFilter && (
+            {/* FormField labels its single child — the Select, not a
+                wrapper <div> (a label on a div left the filter unnamed). */}
+            <div className="flex gap-2 items-start">
+              <div className="flex-1">
+                <FormField label="Filter by method">
+                  <Select
+                    value={methodFilter}
+                    onChange={(v) => {
+                      setMethodFilter(v);
+                      setPage(1);
+                    }}
+                    placeholder="All methods"
+                    options={METHODS.map((m) => ({
+                      value: m,
+                      label: m.replace("_", " "),
+                    }))}
+                  />
+                </FormField>
+              </div>
+              {methodFilter && (
+                <div className="pt-7">
                   <Button
                     variant="ghost"
                     onClick={() => {
@@ -361,17 +374,17 @@ export default function FinancePage() {
                   >
                     Clear
                   </Button>
-                )}
-              </div>
-            </FormField>
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
 
         <Table
-          columns={columns}
+          columns={columns.filter((col) => mayWrite || col.key !== "actions")}
           data={records as unknown as Record<string, unknown>[]}
           isLoading={isLoading}
-          emptyMessage="No assets recorded yet."
+          emptyMessage={error ? "Asset records could not be loaded." : "No assets recorded yet."}
         />
 
         {total > 0 && (

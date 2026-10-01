@@ -11,20 +11,34 @@ data:
   # ------------------------------------------------------------------------
   NODE_ENV: {{ .Values.backend.env.NODE_ENV | quote }}
   APP_STORAGE_PATH: {{ .Values.backend.env.APP_STORAGE_PATH | quote }}
-  # The compiled binary cannot use puppeteer's bundled Chromium. Wrong or
-  # unset, PDF rendering fails at FIRST USE rather than at startup — a late
-  # failure in a compliance-critical path.
-  PUPPETEER_EXECUTABLE_PATH: {{ .Values.backend.env.PUPPETEER_EXECUTABLE_PATH | quote }}
   FORCE_HTTPS: {{ .Values.backend.env.FORCE_HTTPS | quote }}
   # Explicit, comma-separated. A wildcard is never honoured.
   CORS_ORIGIN: {{ .Values.global.corsOrigin | quote }}
   HOST_URL: {{ printf "https://%s" .Values.ingress.host | quote }}
+  # P7-06 (ADR-106): the three public-origin settings the backend reads besides
+  # HOST_URL. Unset, each fell back to a DEVELOPMENT address — found on a real
+  # cluster, where GET /oidc/.well-known/openid-configuration advertised
+  # issuer "http://localhost:5000":
+  #   FRONTEND_URL     SSO redirects and email links (fallback http://localhost:3000)
+  #   OIDC_ISSUER      the OIDC discovery issuer and every endpoint in it; the
+  #                    ingress serves /oidc at the ROOT, so the issuer is the root
+  #   PUBLIC_BASE_URL  signed attachment links and the certificate verify link
+  #                    fallback (/api/v1/... — the ingress sends /api to Next)
+  FRONTEND_URL: {{ printf "https://%s" .Values.ingress.host | quote }}
+  OIDC_ISSUER: {{ printf "https://%s" .Values.ingress.host | quote }}
+  PUBLIC_BASE_URL: {{ printf "https://%s" .Values.ingress.host | quote }}
 
   # Empty outside development. Inline mode makes a batch job synchronous with
   # whatever triggered it, reintroducing the 30s timeout it exists to avoid.
   BATCH_JOBS_INLINE: {{ .Values.backend.env.BATCH_JOBS_INLINE | quote }}
   # A demo seeder against real data is a data-integrity incident.
   SEED_DEMO: {{ .Values.backend.env.SEED_DEMO | quote }}
+  # The first-boot seeding toggle (P7-06, ADR-106; deploy/README.md § first
+  # boot). "true" lets GET /api/v1/migration/seeding run WITHOUT authentication
+  # — an empty database has no super admin to authenticate. Before P7-06 the
+  # chart could not set it, so a Helm install on an empty database could not be
+  # seeded. Set it for ONE upgrade, seed, then set it back to "".
+  ALLOW_SEEDING: {{ .Values.backend.env.ALLOW_SEEDING | default "" | quote }}
 
   # ------------------------------------------------------------------------
   # Database — provided externally. PostgreSQL must have pgvector: migration

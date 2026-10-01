@@ -38,7 +38,10 @@ interface StockTransfer extends Model<
   fromWarehouseId: string;
   toWarehouseId: string;
   status: CreationOptional<(typeof STOCK_TRANSFER_STATUSES)[number] | null>;
-  requestedBy: UserId;
+  /** Null when an API key requested (Q-51): then `apiKeyId` names it. Exactly one is set (CHECK, migration 0105). */
+  requestedBy: UserId | null;
+  /** The API key that REQUESTED the transfer (Q-51); null for a user. A key never approves (denyApiKey). */
+  apiKeyId: string | null;
   approvedBy: UserId | null;
   itemName: string;
   quantity: number;
@@ -95,10 +98,19 @@ const defineModel: DefineStockTransfer = (db, DataTypes) => {
         type: DataTypes.ENUM(...STOCK_TRANSFER_STATUSES),
         defaultValue: "pending",
       },
+      // Q-51: nullable — a key's request names the key in api_key_id instead.
+      // CHECK stock_transfers_requester_exactly_one (migration 0105).
       requestedBy: {
         type: DataTypes.UUID,
-        allowNull: false,
+        allowNull: true,
         references: { model: "users", key: "id" },
+        onDelete: "RESTRICT",
+      },
+      // Q-51: the requesting key. RESTRICT, as requested_by — SET NULL would break the CHECK.
+      apiKeyId: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: { model: "api_keys", key: "id" },
         onDelete: "RESTRICT",
       },
       approvedBy: {
@@ -133,6 +145,10 @@ const defineModel: DefineStockTransfer = (db, DataTypes) => {
         { fields: ["from_warehouse_id"] },
         { fields: ["to_warehouse_id"] },
         { fields: ["status"] },
+        // No index on api_key_id here: migration 0105 creates <table>_api_key_id.
+        // db.sync() runs BEFORE the migrator at boot, and a model index on a
+        // column a later migration adds fails CREATE INDEX on an existing
+        // database (ADR-100 Amendment 3; guard tests/guards/modelIndexColumns.am3.guard.test.ts).
       ],
       modelName: "StockTransfer",
       sequelize: db,
@@ -173,6 +189,12 @@ const defineModel: DefineStockTransfer = (db, DataTypes) => {
       foreignKey: "approvedBy",
       as: "approver",
       onDelete: "SET NULL",
+    });
+    // StockTransfer -> ApiKey (the requesting key, Q-51). ApiKey has a defaultScope: include it with required: false.
+    StockTransfer.belongsTo(models.ApiKey, {
+      foreignKey: "apiKeyId",
+      as: "apiKey",
+      onDelete: "RESTRICT",
     });
   };
 

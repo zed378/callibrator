@@ -99,7 +99,7 @@ Login responses attach two extra top-level keys alongside `data`:
     "name": "...",
     "role": "OPERATOR"
   },
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token": "<JWT>",
   "session": {
     "id": "...",
     "createdAt": "2026-09-27T23:47:12.000Z",

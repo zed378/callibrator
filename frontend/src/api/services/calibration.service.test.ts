@@ -191,6 +191,16 @@ describe("calibrationService", () => {
     });
   });
 
+  describe("getCertificateDocument (M-11, ADR-095)", () => {
+    it("GETs the document a certificate's PDF is rendered from, unwrapped from the envelope", async () => {
+      const doc = { certificateNumber: "CERT-1", integrity: { hash: "h" } };
+      mockedApi.get.mockResolvedValueOnce(envelope(doc));
+      const res = await calibrationService.getCertificateDocument("cert1");
+      expect(mockedApi.get).toHaveBeenCalledWith("/api/v1/certificates/cert1/document");
+      expect(res).toEqual(doc);
+    });
+  });
+
   describe("createCertificate", () => {
     it("POSTs input", async () => {
       mockedApi.post.mockResolvedValueOnce(envelope({ id: "cert1" }));

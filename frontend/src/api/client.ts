@@ -109,6 +109,8 @@ export const describeApiError = (err: unknown): ApiErrorDetails => {
 const CREDENTIAL_ENDPOINTS = [
   "/api/v1/auth/login",
   "/api/v1/auth/mfa/login",
+  // P10-16: a 401 here is about the password-change token just sent.
+  "/api/v1/auth/first-sign-in/password",
   "/api/v1/auth/refresh",
   "/api/v1/auth/logout",
   "/api/v1/auth/logout-all",
@@ -117,6 +119,13 @@ const CREDENTIAL_ENDPOINTS = [
   "/api/v1/auth/send-otp",
   "/api/v1/auth/reset-password",
   "/api/v1/auth/activation",
+  // P10-04/10/15: an answer about what was just sent (an identifier, a
+  // passkey assertion, an invitation token) — never an expired session.
+  "/api/v1/auth/login/discover",
+  "/api/v1/auth/sso/start",
+  "/api/v1/auth/passkey/verify",
+  "/api/v1/auth/invitation/accept",
+  "/api/v1/access-requests",
 ];
 
 const isCredentialEndpoint = (url: string | undefined): boolean => {

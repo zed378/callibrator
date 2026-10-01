@@ -48,7 +48,7 @@ const startProcess = () => {
 };
 
 live("dbC — D-22 cascade + orphan report, webhook delivery purge — live PostgreSQL, as the application role", () => {
-  const { randomUUID } = require("crypto");
+  const { randomUUID, randomBytes } = require("crypto");
   let g;
   const A = randomUUID();
   const B = randomUUID();
@@ -113,9 +113,10 @@ live("dbC — D-22 cascade + orphan report, webhook delivery purge — live Post
     const certificate = async (tenantId, deviceId) =>
       (
         await one(
-          `INSERT INTO certificates (id, tenant_id, device_id, certificate_number, status, created_at, updated_at)
-           VALUES (gen_random_uuid(), :tenantId, :deviceId, :n, 'draft', now(), now()) RETURNING id`,
-          { tenantId, deviceId, n: `DBC-${randomUUID().slice(0, 12)}` },
+          // verification_token: NOT NULL + UNIQUE since migration 0096 (A-293).
+          `INSERT INTO certificates (id, tenant_id, device_id, certificate_number, status, verification_token, created_at, updated_at)
+           VALUES (gen_random_uuid(), :tenantId, :deviceId, :n, 'draft', :v, now(), now()) RETURNING id`,
+          { tenantId, deviceId, n: `DBC-${randomUUID().slice(0, 12)}`, v: randomBytes(24).toString("base64url") },
         )
       ).id;
     ids.certA = await certificate(A, ids.deviceA);

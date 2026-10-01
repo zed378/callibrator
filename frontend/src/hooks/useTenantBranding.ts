@@ -71,7 +71,7 @@ export function useTenantBranding() {
       }
     };
 
-    // Pre-auth (e.g. login/register): if the frontend is deploy-bound to a
+    // Pre-auth (e.g. sign-in, request access): if the frontend is deploy-bound to a
     // tenant (NEXT_PUBLIC_TENANT_ID), fetch that tenant's public branding so
     // the auth pages are branded before sign-in. Failures leave the defaults.
     const fetchPublicBranding = async () => {

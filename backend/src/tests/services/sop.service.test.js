@@ -73,7 +73,7 @@ describe("sop.service", () => {
         contentUrl: "https://example.com/sop",
         requiresTraining: false,
         status: "DRAFT",
-      });
+      }, { transaction: "TX" });
       expect(result.id).toBe("sop-1");
     });
 
@@ -94,6 +94,7 @@ describe("sop.service", () => {
           requiresTraining: true,
           status: "DRAFT",
         }),
+        { transaction: "TX" },
       );
     });
 
@@ -111,6 +112,7 @@ describe("sop.service", () => {
       // `!== undefined ? x : true` must not coerce an explicit false to true.
       expect(mockSopDocument.create).toHaveBeenCalledWith(
         expect.objectContaining({ requiresTraining: false }),
+        { transaction: "TX" },
       );
     });
   });
@@ -261,7 +263,8 @@ describe("sop.service", () => {
     });
 
     // ---- A-28: separation of duties ----
-    it("refuses with 409 when the publisher is the author, and changes nothing", async () => {
+    // V-13 (ADR-109 §7): 403 — the rule is about the caller, not the state.
+    it("refuses with 403 when the publisher is the author, and changes nothing", async () => {
       const mockDoc = {
         id: "sop-2",
         documentNumber: "SOP-0002",
@@ -275,7 +278,7 @@ describe("sop.service", () => {
       await expect(
         sopService.publishDocument("tenant-1", "sop-2", AUTHOR),
       ).rejects.toMatchObject({
-        status: 409,
+        status: 403,
         message: expect.stringContaining("SOP-0002 was authored by you"),
       });
 
@@ -321,6 +324,8 @@ describe("sop.service", () => {
         save: jest.fn().mockResolvedValue(true),
       };
       mockSopTrainingAcknowledgment.findOne.mockResolvedValue(mockAck);
+      // F-19: the document is in force (an ARCHIVED one is a 409).
+      mockSopDocument.findOne.mockResolvedValue({ id: "sop-1", status: "PUBLISHED" });
 
       const result = await sopService.acknowledgeTraining("tenant-1", "user-1", "sop-1");
 
@@ -377,5 +382,48 @@ describe("sop.service", () => {
         sopService.acknowledgeTraining("tenant-1", "user-1", "sop-1"),
       ).rejects.toThrow("Training acknowledgment not found");
     });
+  });
+});
+
+// P6-11 — a controlled document's creation commits with its audit row.
+describe("sop.service — P6-11 createDocument audit row", () => {
+  const auditService = require("../../services/audit.service");
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockSopDocument.count.mockResolvedValue(2);
+    mockSopDocument.create.mockImplementation((data) => Promise.resolve({ id: "sop-9", ...data }));
+  });
+
+  it("writes one CREATE row in the document's transaction, naming the principal", async () => {
+    const spy = jest.spyOn(auditService, "logAction").mockResolvedValue({});
+    await sopService.createDocument("tenant-1", "user-1", { title: "Cleaning" }, {
+      userId: "user-1",
+      apiKeyId: null,
+      ipAddress: "10.0.0.1",
+      userAgent: "jest",
+    });
+    expect(spy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: "tenant-1",
+        userId: "user-1",
+        action: "CREATE",
+        resourceType: "SopDocument",
+        resourceId: "sop-9",
+        changes: expect.objectContaining({
+          operation: "SOP_CREATE",
+          after: expect.objectContaining({ documentNumber: "SOP-0003", status: "DRAFT", version: "1.0" }),
+        }),
+      }),
+      { transaction: "TX" },
+    );
+    spy.mockRestore();
+  });
+
+  it("without a principal the author is the actor; a failed audit write fails the create", async () => {
+    const spy = jest.spyOn(auditService, "logAction").mockRejectedValueOnce(new Error("audit insert failed"));
+    await expect(sopService.createDocument("tenant-1", "user-1", { title: "X" })).rejects.toThrow("audit insert failed");
+    expect(spy.mock.calls[0][0]).toMatchObject({ userId: "user-1" });
+    spy.mockRestore();
   });
 });

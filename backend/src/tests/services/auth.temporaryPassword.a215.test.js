@@ -16,13 +16,15 @@
  *
  * What is real: auth.service (loginUser, justUpdatePassword,
  * processResetPassword), the throttle on its in-process store, audit.service
- * with the auditLedger schema, the Joi schemas. Faked: rows, bcrypt,
+ * with the auditLedger schema, the request schemas. Faked: rows, bcrypt,
  * createSession, session revocation.
  */
 const { createLedger } = require("../fixtures/auditLedger");
 
 const mockRef = { ledger: null };
 
+// A-288 (ADR-100): the network policy has its own suites (signInPolicy.*.a288); here it permits.
+jest.mock("../../services/signInPolicy.service", () => ({ assertSignInPermitted: jest.fn(async () => undefined) }));
 jest.mock("../../config", () => ({
   db: { transaction: (...args) => mockRef.ledger.transaction(...args) },
 }));

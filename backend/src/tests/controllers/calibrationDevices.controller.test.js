@@ -8,6 +8,7 @@ jest.mock("../../services/calibrationDevices.service", () => ({
   createCalibrationDevice: jest.fn(),
   updateCalibrationDevice: jest.fn(),
   deleteCalibrationDevice: jest.fn(),
+  restoreCalibrationDevice: jest.fn(),
   bulkImportCalibrationDevices: jest.fn(),
 }));
 
@@ -25,38 +26,27 @@ jest.mock("fs", () => ({
   unlink: jest.fn((path, cb) => cb && cb(null)),
 }));
 
-jest.mock("../../validators/calibrationDevices.validator", () => {
-  const Joi = require("joi");
-  return {
-    getCalibrationDevicesQuery: Joi.object(),
-    calibrationDeviceIdSchema: Joi.object(),
-    createCalibrationDeviceSchema: Joi.object(),
-    updateCalibrationDeviceSchema: Joi.object(),
-    validate: jest.fn((data, schema) => {
-      if (data.failValidation) {
-        return {
-          error: {
-            details: [{ path: ["field"], message: "Validation error" }],
-          },
-          value: null,
-        };
-      }
-      return { error: null, value: data };
-    }),
-  };
-});
+// The validator module is NOT mocked: every call goes through the real Zod
+// schemas, so the device id below is a real uuid and parsed values are asserted.
+const DEVICE_ID = "5a0e8400-e29b-41d4-a716-446655440060";
 
 const calibrationDevicesController = require("../../controllers/calibrationDevices.controller");
 const calibrationDevicesService = require("../../services/calibrationDevices.service");
 const { success, error } = require("../../utils/response.util");
 const { logger } = require("../../middlewares/activityLog.middleware");
-const { validate: validatorValidate } = require("../../validators/calibrationDevices.validator");
+
+// A-272 (ADR-100): a thrown validateInput failure answers like validate() —
+// "Validation Error" with the field list as details (it was "[object Object]").
+const FIELD_ERRORS = expect.arrayContaining([
+  expect.objectContaining({ field: expect.any(String), message: expect.any(String) }),
+]);
 
 describe("calibrationDevicesController", () => {
   let req;
   let res;
   // A-133: the actor the service writes into the device's audit row.
-  const ACTOR = { userId: "user-1", tenantId: "tenant-1", ipAddress: null, userAgent: null };
+  // A-282 (ADR-100): auditPrincipal(req).
+  const ACTOR = { userId: "user-1", apiKeyId: null, ipAddress: null, userAgent: null };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -94,23 +84,24 @@ describe("calibrationDevicesController", () => {
       await calibrationDevicesController.getAllCalibrationDevices(req, res);
 
       expect(calibrationDevicesService.fetchCalibrationDevices).toHaveBeenCalledWith(
-        expect.objectContaining({ tenantId: "tenant-1" }),
+        expect.objectContaining({ tenantId: "tenant-1", page: 1, limit: 20 }),
       );
       expect(success).toHaveBeenCalled();
     });
 
     it("should call error response when validation fails", async () => {
-      req.query = { failValidation: true };
+      req.query = { limit: "500" };
 
       await calibrationDevicesController.getAllCalibrationDevices(req, res);
 
-      expect(error).toHaveBeenCalled();
+      expect(calibrationDevicesService.fetchCalibrationDevices).not.toHaveBeenCalled();
+      expect(error).toHaveBeenCalledWith(res, "Validation Error", 400, FIELD_ERRORS); // A-272 (ADR-100)
     });
   });
 
   describe("getSpecificCalibrationDevice", () => {
     it("should fetch device successfully", async () => {
-      req.params = { calibrationDeviceId: "dev-1" };
+      req.params = { calibrationDeviceId: DEVICE_ID };
       calibrationDevicesService.fetchSpecificCalibrationDevice.mockResolvedValueOnce({
         success: true,
         status: 200,
@@ -122,7 +113,7 @@ describe("calibrationDevicesController", () => {
 
       expect(calibrationDevicesService.fetchSpecificCalibrationDevice).toHaveBeenCalledWith(
         "tenant-1",
-        "dev-1",
+        DEVICE_ID,
       );
       expect(success).toHaveBeenCalled();
     });
@@ -142,16 +133,27 @@ describe("calibrationDevicesController", () => {
 
       expect(calibrationDevicesService.createCalibrationDevice).toHaveBeenCalledWith(
         "tenant-1",
-        { name: "New Device" },
+        { name: "New Device", status: "active" },
         ACTOR,
       );
       expect(success).toHaveBeenCalled();
     });
   });
 
+  describe("createCalibrationDevice — refusals", () => {
+    it("answers 400 and creates nothing for a one-character name", async () => {
+      req.body = { name: "X" };
+
+      await calibrationDevicesController.createCalibrationDevice(req, res);
+
+      expect(calibrationDevicesService.createCalibrationDevice).not.toHaveBeenCalled();
+      expect(error).toHaveBeenCalledWith(res, "Validation Error", 400, FIELD_ERRORS); // A-272 (ADR-100)
+    });
+  });
+
   describe("updateCalibrationDevice", () => {
     it("should update device successfully", async () => {
-      req.params = { calibrationDeviceId: "dev-1" };
+      req.params = { calibrationDeviceId: DEVICE_ID };
       req.body = { name: "Updated Device" };
       calibrationDevicesService.updateCalibrationDevice.mockResolvedValueOnce({
         success: true,
@@ -164,7 +166,7 @@ describe("calibrationDevicesController", () => {
 
       expect(calibrationDevicesService.updateCalibrationDevice).toHaveBeenCalledWith(
         "tenant-1",
-        "dev-1",
+        DEVICE_ID,
         { name: "Updated Device" },
         ACTOR,
       );
@@ -174,7 +176,7 @@ describe("calibrationDevicesController", () => {
 
   describe("deleteCalibrationDevice", () => {
     it("should delete device successfully", async () => {
-      req.params = { calibrationDeviceId: "dev-1" };
+      req.params = { calibrationDeviceId: DEVICE_ID };
       calibrationDevicesService.deleteCalibrationDevice.mockResolvedValueOnce({
         success: true,
         status: 200,
@@ -186,10 +188,52 @@ describe("calibrationDevicesController", () => {
 
       expect(calibrationDevicesService.deleteCalibrationDevice).toHaveBeenCalledWith(
         "tenant-1",
-        "dev-1",
+        DEVICE_ID,
         ACTOR,
       );
       expect(success).toHaveBeenCalled();
+    });
+  });
+
+  // A-133: restore resolves the tenant from the request context first.
+  describe("restoreCalibrationDevice", () => {
+    it("restores in the context tenant, with the actor", async () => {
+      req.tenantId = "tenant-ctx";
+      req.params = { calibrationDeviceId: DEVICE_ID };
+      calibrationDevicesService.restoreCalibrationDevice.mockResolvedValueOnce({
+        success: true,
+        status: 200,
+        message: "Restored",
+        data: { id: DEVICE_ID },
+      });
+
+      await calibrationDevicesController.restoreCalibrationDevice(req, res);
+
+      expect(calibrationDevicesService.restoreCalibrationDevice).toHaveBeenCalledWith(
+        "tenant-ctx",
+        DEVICE_ID,
+        ACTOR,
+      );
+      expect(success).toHaveBeenCalledWith(res, { id: DEVICE_ID }, null, "Restored", 200);
+    });
+
+    it("answers 409 through the error path for a device that is not deleted", async () => {
+      req.params = { calibrationDeviceId: DEVICE_ID };
+      calibrationDevicesService.restoreCalibrationDevice.mockResolvedValueOnce({
+        success: false,
+        status: 409,
+        message: "This device is not deleted",
+      });
+
+      await calibrationDevicesController.restoreCalibrationDevice(req, res);
+
+      expect(calibrationDevicesService.restoreCalibrationDevice).toHaveBeenCalledWith(
+        "tenant-1",
+        DEVICE_ID,
+        ACTOR,
+      );
+      expect(error).toHaveBeenCalled();
+      expect(error.mock.calls[0][2]).toBe(409);
     });
   });
 

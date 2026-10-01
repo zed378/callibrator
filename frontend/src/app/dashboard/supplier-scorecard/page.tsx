@@ -13,6 +13,7 @@ import {
   Dialog,
   FormField,
   Input,
+  Pagination,
   Select,
   Table,
   Textarea,
@@ -25,6 +26,7 @@ import {
 } from "@/api/services/supplierScorecard.service";
 import { vendorService, type Vendor } from "@/api/services/vendor.service";
 import { useToastStore } from "@/stores/toastStore";
+import { usePermissions } from "@/hooks/usePermissions";
 
 const STATUS_OPTIONS = [
   { value: "APPROVED", label: "Approved" },
@@ -71,6 +73,10 @@ const computeOverall = (f: SupplierScorecardCreateInput): number =>
   );
 
 export default function SupplierScorecardPage() {
+  // ADR-102: evaluations are written on `supplier-scorecard` write
+  // (supplierScorecard.route.js).
+  const { canWrite } = usePermissions();
+  const mayWrite = canWrite("supplier-scorecard");
   const addToast = useToastStore((s) => s.addToast);
 
   const [scorecards, setScorecards] = useState<SupplierScorecard[]>([]);
@@ -81,6 +87,12 @@ export default function SupplierScorecardPage() {
 
   const [vendorFilter, setVendorFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  // F-19: the backend pages at 10 by default; without a pager the 11th
+  // evaluation was silently never shown. `meta` comes from the envelope.
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -101,17 +113,21 @@ export default function SupplierScorecardPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const data = await supplierScorecardService.list({
+      const { rows, meta } = await supplierScorecardService.listPage({
         vendorId: vendorFilter || undefined,
         status: statusFilter || undefined,
+        page,
+        limit: pageSize,
       });
-      setScorecards(Array.isArray(data) ? data : []);
+      setScorecards(rows);
+      setTotal(meta.total);
+      setTotalPages(meta.totalPages);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load scorecards");
     } finally {
       setIsLoading(false);
     }
-  }, [vendorFilter, statusFilter]);
+  }, [vendorFilter, statusFilter, page, pageSize]);
 
   useEffect(() => deferEffect(load), [load]);
 
@@ -286,9 +302,11 @@ export default function SupplierScorecardPage() {
               Periodic quality, delivery, and service evaluation of vendors.
             </p>
           </div>
-          <Button onClick={openCreate} leftIcon={<Plus className="h-4 w-4" />}>
-            New Evaluation
-          </Button>
+          {mayWrite && (
+            <Button onClick={openCreate} leftIcon={<Plus className="h-4 w-4" />}>
+              New Evaluation
+            </Button>
+          )}
         </div>
 
         {error && <Alert variant="error">{error}</Alert>}
@@ -298,7 +316,10 @@ export default function SupplierScorecardPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Select
                 value={vendorFilter}
-                onChange={setVendorFilter}
+                onChange={(v) => {
+                  setVendorFilter(v);
+                  setPage(1);
+                }}
                 options={[
                   { value: "", label: "All Vendors" },
                   ...vendors.map((v) => ({ value: v.id, label: v.name })),
@@ -306,7 +327,10 @@ export default function SupplierScorecardPage() {
               />
               <Select
                 value={statusFilter}
-                onChange={setStatusFilter}
+                onChange={(v) => {
+                  setStatusFilter(v);
+                  setPage(1);
+                }}
                 options={[
                   { value: "", label: "All Statuses" },
                   ...STATUS_OPTIONS,
@@ -317,11 +341,29 @@ export default function SupplierScorecardPage() {
         </Card>
 
         <Table
-          columns={columns}
+          columns={columns.filter((col) => mayWrite || col.key !== "actions")}
           data={scorecards as unknown as Record<string, unknown>[]}
           isLoading={isLoading}
-          emptyMessage="No supplier evaluations recorded yet."
+          emptyMessage={
+            error
+              ? "Supplier evaluations could not be loaded."
+              : "No supplier evaluations recorded yet."
+          }
         />
+
+        {!error && total > 0 && (
+          <Pagination
+            currentPage={page}
+            totalPages={totalPages}
+            totalItems={total}
+            pageSize={pageSize}
+            onPageChange={setPage}
+            onPageSizeChange={(size) => {
+              setPageSize(size);
+              setPage(1);
+            }}
+          />
+        )}
 
         <Dialog
           isOpen={isFormOpen}

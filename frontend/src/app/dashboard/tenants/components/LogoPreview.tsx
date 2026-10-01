@@ -1,7 +1,7 @@
 // src/app/dashboard/tenants/components/LogoPreview.tsx
 "use client";
 
-import React from "react";
+import React, { useId } from "react";
 import { Button, Input } from "@/components/ui";
 import { X, Building2 } from "lucide-react";
 import Image from "next/image";
@@ -23,9 +23,12 @@ export const LogoPreview: React.FC<LogoPreviewProps> = ({
   keepOld = false,
   existingLogo,
 }) => {
+  // The visible "Logo" label names the file input (it was unassociated, so
+  // the picker had no accessible name — axe `label`).
+  const inputId = useId();
   return (
     <div>
-      <label className="block text-sm font-medium text-foreground mb-2">
+      <label htmlFor={inputId} className="block text-sm font-medium text-foreground mb-2">
         Logo
       </label>
       <div className="flex items-center gap-4">
@@ -54,6 +57,7 @@ export const LogoPreview: React.FC<LogoPreviewProps> = ({
           </div>
         )}
         <Input
+          id={inputId}
           type="file"
           accept="image/*"
           onChange={onFileChange}

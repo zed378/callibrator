@@ -16,13 +16,15 @@
  * resume/grace-period/offboard/status/export correctly read req.params.
  */
 const { httpGet, httpPost, authHeader } = require("../setup");
+// P10-16 (ADR-099): no default operator password — set E2E_OPERATOR_PASSWORD (see setup.js).
+const { OPERATOR_PASSWORD } = require("../setup");
 
 describe("E2E Tenant Lifecycle (HTTP)", () => {
   let token;
   let tenantId;
 
   beforeAll(async () => {
-    const { body } = await httpPost("/auth/login", { user: "sys@mail.com", password: "123123" });
+    const { body } = await httpPost("/auth/login", { user: "sys@mail.com", password: OPERATOR_PASSWORD });
     token = body.token || (body.data && body.data.token);
     // Create a DISPOSABLE tenant to exercise lifecycle actions. NEVER suspend or
     // offboard the default/first tenant: it is the super-admin's own tenant, so

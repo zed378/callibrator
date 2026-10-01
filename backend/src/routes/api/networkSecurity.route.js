@@ -8,9 +8,10 @@
 const express = require("express");
 const router = express.Router();
 const networkSecurityController = require("../../controllers/networkSecurity.controller");
-const { auth, superAdminOnly } = require("../../middlewares/auth.middleware");
+const { auth, superAdminOnly, denyApiKey } = require("../../middlewares/auth.middleware");
 const { dynamicAccess } = require("../../middlewares/dynamicAccess.middleware");
 const { MENU_SLUGS } = require("../../constants/roleConstants");
+const { validateUuid } = require("../../middlewares/validateUuid.middleware");
 
 router.use(auth);
 
@@ -40,13 +41,31 @@ const canReadNetworkSecurity = dynamicAccess(MENU_SLUGS.NETWORK_SECURITY, "read"
   checkTenant: true,
 });
 
+/**
+ * Q-38 (ADR-100): a tenant administrator sets their OWN tenant's allowlist and
+ * geofence (`network-security: write`, seeded for the tenant admin role by
+ * migration and ROLE_MENU_ASSIGNMENTS). A change that would refuse the
+ * caller's own next sign-in is 409 (signInPolicy.service
+ * #assertChangeKeepsCaller). The operator acts on any tenant through
+ * `/tenants/:tenantId/...` below, where no guard applies. An API key may not
+ * change where a tenant signs in from (`denyApiKey`): a leaked key must not be
+ * able to widen — or lock — every user's sign-in.
+ */
+const canWriteNetworkSecurity = dynamicAccess(MENU_SLUGS.NETWORK_SECURITY, "write", {
+  checkTenant: true,
+});
+
 router.get("/ip-allowlist", canReadNetworkSecurity, networkSecurityController.getIpAllowlist);
 /**
  * @swagger
  * /api/v1/network-security/ip-allowlist:
  *   put:
  *     summary: Set the IP allowlist
- *     description: Replaces the tenant's CIDR allowlist. Super admin only.
+ *     description: >-
+ *       Replaces the caller's own tenant's CIDR allowlist (network-security write;
+ *       a tenant administrator since Q-38, ADR-100). Enforced at every sign-in
+ *       (A-288). 409 SELF_LOCKOUT when the list does not contain the address the
+ *       change is made from (a platform operator is exempt).
  *     tags: [NetworkSecurity]
  *     security:
  *       - bearerAuth: []
@@ -69,7 +88,7 @@ router.get("/ip-allowlist", canReadNetworkSecurity, networkSecurityController.ge
  *       401:
  *         description: Unauthorized
  */
-router.put("/ip-allowlist", superAdminOnly, networkSecurityController.setIpAllowlist);
+router.put("/ip-allowlist", denyApiKey, canWriteNetworkSecurity, networkSecurityController.setIpAllowlist);
 /**
  * @swagger
  * /api/v1/network-security/geofence:
@@ -91,7 +110,12 @@ router.get("/geofence", canReadNetworkSecurity, networkSecurityController.getGeo
  * /api/v1/network-security/geofence:
  *   put:
  *     summary: Set the geofence configuration
- *     description: Replaces the tenant's geofence configuration. Super admin only.
+ *     description: >-
+ *       Replaces the caller's own tenant's geofence (network-security write; a
+ *       tenant administrator since Q-38, ADR-100). The body must also carry
+ *       `currentLocation: { latitude, longitude }` inside the new fence, else
+ *       409 SELF_LOCKOUT (a platform operator is exempt). Enforced at password,
+ *       MFA and passkey sign-ins from a device-reported location (A-288).
  *     tags: [NetworkSecurity]
  *     security:
  *       - bearerAuth: []
@@ -116,7 +140,7 @@ router.get("/geofence", canReadNetworkSecurity, networkSecurityController.getGeo
  *       401:
  *         description: Unauthorized
  */
-router.put("/geofence", superAdminOnly, networkSecurityController.setGeofence);
+router.put("/geofence", denyApiKey, canWriteNetworkSecurity, networkSecurityController.setGeofence);
 /**
  * @swagger
  * /api/v1/network-security/evaluate-login:
@@ -160,5 +184,113 @@ router.put("/geofence", superAdminOnly, networkSecurityController.setGeofence);
  * `network-security: read`, checkTenant.
  */
 router.post("/evaluate-login", canReadNetworkSecurity, networkSecurityController.evaluateLogin);
+
+// ---------------------------------------------------------------------------
+// A-280 (ADR-094) — the platform operator reads and sets a NAMED tenant's
+// allowlist and geofence. `PUT /ip-allowlist` and `PUT /geofence` above act on
+// the operator's own home tenant. Every change is audited under PLATFORM and
+// the tenant; a tenant that does not exist is 404.
+// ---------------------------------------------------------------------------
+
+/**
+ * @swagger
+ * /api/v1/network-security/tenants/{tenantId}/ip-allowlist:
+ *   get:
+ *     summary: Get a tenant's IP allowlist (super admin)
+ *     tags: [NetworkSecurity]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: tenantId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: The tenant's CIDR allowlist
+ *       404:
+ *         description: Tenant not found
+ *   put:
+ *     summary: Set a tenant's IP allowlist (super admin)
+ *     tags: [NetworkSecurity]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: tenantId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: IP allowlist updated
+ *       404:
+ *         description: Tenant not found
+ */
+router.get(
+  "/tenants/:tenantId/ip-allowlist",
+  superAdminOnly,
+  validateUuid("tenantId"),
+  networkSecurityController.getTenantIpAllowlistFor,
+);
+router.put(
+  "/tenants/:tenantId/ip-allowlist",
+  superAdminOnly,
+  validateUuid("tenantId"),
+  networkSecurityController.setTenantIpAllowlistFor,
+);
+/**
+ * @swagger
+ * /api/v1/network-security/tenants/{tenantId}/geofence:
+ *   get:
+ *     summary: Get a tenant's geofence (super admin)
+ *     tags: [NetworkSecurity]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: tenantId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: The tenant's geofence, or null
+ *       404:
+ *         description: Tenant not found
+ *   put:
+ *     summary: Set a tenant's geofence (super admin)
+ *     tags: [NetworkSecurity]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: tenantId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Geofence updated
+ *       404:
+ *         description: Tenant not found
+ */
+router.get(
+  "/tenants/:tenantId/geofence",
+  superAdminOnly,
+  validateUuid("tenantId"),
+  networkSecurityController.getTenantGeofenceFor,
+);
+router.put(
+  "/tenants/:tenantId/geofence",
+  superAdminOnly,
+  validateUuid("tenantId"),
+  networkSecurityController.setTenantGeofenceFor,
+);
 
 module.exports = router;

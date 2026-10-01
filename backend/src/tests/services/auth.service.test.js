@@ -1,4 +1,6 @@
 // Math and crypto are global objects used in jest.spyOn()
+// A-288 (ADR-100): the network policy has its own suites (signInPolicy.*.a288); here it permits.
+jest.mock("../../services/signInPolicy.service", () => ({ assertSignInPermitted: jest.fn(async () => undefined) }));
 jest.mock("../../config");
 jest.mock("../../models", () => ({
   Users: {
@@ -37,83 +39,8 @@ jest.mock("../../utils/appError.util", () => {
   );
   return { AppError: RealAppError };
 });
-jest.mock("../../validators/auth.validator", () => ({
-  validate: jest.fn((data, schema) => ({
-    value: { user: data.user || data.username, ...data },
-    error: null,
-  })),
-  formatErrors: jest.fn((d) => d),
-  registerSchema: {
-    safeParse: jest.fn((data) => {
-      const errors = [];
-      if (!data.email) {
-        errors.push({ path: ["email"], message: "Required" });
-      }
-      if (!data.password) {
-        errors.push({ path: ["password"], message: "Required" });
-      }
-      if (!data.firstName) {
-        errors.push({ path: ["firstName"], message: "Required" });
-      }
-      if (data.password && data.password.length < 8) {
-        errors.push({ path: ["password"], message: "Too short" });
-      }
-      return {
-        success: errors.length === 0,
-        data: { ...data },
-        error: errors.length > 0 ? { errors } : null,
-      };
-    }),
-  },
-  loginSchema: {
-    safeParse: jest.fn((data) => {
-      const errors = [];
-      if (!data.email && !data.username) {
-        errors.push({ path: ["email"], message: "Required" });
-      }
-      if (!data.password) {
-        errors.push({ path: ["password"], message: "Required" });
-      }
-      return {
-        success: errors.length === 0,
-        data: { ...data },
-        error: errors.length > 0 ? { errors } : null,
-      };
-    }),
-  },
-  forgotPasswordSchema: {
-    safeParse: jest.fn((data) => {
-      const errors = [];
-      if (!data.email) {
-        errors.push({ path: ["email"], message: "Required" });
-      }
-      return {
-        success: errors.length === 0,
-        data: { ...data },
-        error: errors.length > 0 ? { errors } : null,
-      };
-    }),
-  },
-  resetPasswordSchema: {
-    safeParse: jest.fn((data) => {
-      const errors = [];
-      if (!data.token) {
-        errors.push({ path: ["token"], message: "Required" });
-      }
-      if (!data.otp) {
-        errors.push({ path: ["otp"], message: "Required" });
-      }
-      if (!data.password) {
-        errors.push({ path: ["password"], message: "Required" });
-      }
-      return {
-        success: errors.length === 0,
-        data: { ...data },
-        error: errors.length > 0 ? { errors } : null,
-      };
-    }),
-  },
-}));
+// The auth schemas are REAL (P9-11: Zod through validators/input#checkInput),
+// so every body below is one the API accepts.
 
 const { db } = require("../../config");
 const { Users, Roles } = require("../../models");
@@ -209,7 +136,7 @@ describe("auth.service", () => {
       const result = await registerUser(
         {
           email: "test@example.com",
-          password: "password123",
+          password: "Password123",
           firstName: "Test",
           lastName: "User",
           username: "testuser",
@@ -217,8 +144,9 @@ describe("auth.service", () => {
         "http://localhost",
       );
 
-      expect(result.status).toBe(201);
-      expect(result.message).toBe("Registration successful");
+      // P10-12 (A-290): the neutral answer, the same for a taken identity.
+      expect(result.status).toBe(202);
+      expect(result.message).toBe("If the address can be registered, an activation link has been sent");
       expect(Users.create).toHaveBeenCalled();
       expect(queueActivationEmail).toHaveBeenCalled();
     });
@@ -674,12 +602,14 @@ describe("auth.service", () => {
 
       const result = await processResetPassword({
         email: "test@example.com",
-        otp: "test-otp",
-        newPassword: "newpassword123",
+        otp: "123456",
+        password: "Newpassword123",
       });
 
       expect(result.status).toBe(200);
       expect(result.message).toBe("Password reset successful");
+      // The schema's `password` is what gets hashed — never undefined.
+      expect(hashPassword).toHaveBeenCalledWith("Newpassword123");
       expect(mockUser.update).toHaveBeenCalledWith(
         expect.objectContaining({
           password: "new-hashed-password",
@@ -704,7 +634,7 @@ describe("auth.service", () => {
         processResetPassword({
           email: "nonexistent@example.com",
           otp: "123456",
-          newPassword: "newpassword123",
+          password: "Newpassword123",
         }),
       ).rejects.toThrow("Invalid OTP");
     });
@@ -720,8 +650,8 @@ describe("auth.service", () => {
       await expect(
         processResetPassword({
           email: "test@example.com",
-          otp: "wrong-otp",
-          newPassword: "newpassword123",
+          otp: "654321",
+          password: "Newpassword123",
         }),
       ).rejects.toThrow("Invalid OTP");
     });
@@ -738,7 +668,7 @@ describe("auth.service", () => {
         processResetPassword({
           email: "test@example.com",
           otp: "123456",
-          newPassword: "newpassword123",
+          password: "Newpassword123",
         }),
       ).rejects.toThrow("OTP expired");
     });

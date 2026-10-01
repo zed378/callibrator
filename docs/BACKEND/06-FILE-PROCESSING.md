@@ -128,7 +128,7 @@ ClamAV first boot downloads its signature database, taking minutes — hence the
 
 ## Certificate PDF Rendering
 
-puppeteer, from templates in `backend/src/templates`.
+**Superseded by ADR-095 (2026-09-29): the backend renders no certificate PDF.** The frontend renders it from `GET /certificates/:id/document`; see `07-CERTIFICATE-PIPELINE.md`. What follows is the pre-ADR-095 behaviour, kept for the stored PDFs it produced.
 
 **In a compiled binary the bundled Chromium is unavailable.** `PUPPETEER_EXECUTABLE_PATH` must point at a system browser.
 
@@ -136,7 +136,7 @@ The Docker runtime image installs `chromium` and `fonts-liberation` and sets it.
 
 ## Templates Ship With the Binary
 
-`src/templates` is read from disk **next to the executable** via `appPath()`, not from the embedded snapshot. The Dockerfile copies it explicitly, alongside `swagger.json` and `docs/`.
+`src/templates` is read from disk **next to the executable** via `appPath()`, not from the embedded snapshot. The Dockerfile copies it explicitly, alongside `openapi.json` (the committed API contract, P9-25 / ADR-103 — it replaced `swagger.json`), Scalar's bundle (`docs-ui/scalar.standalone.js`) and `docs/`.
 
 Omitting that copy produces an API that starts fine and then fails on the first PDF or the first email — a failure far from its cause.
 

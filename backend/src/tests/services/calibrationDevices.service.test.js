@@ -54,17 +54,11 @@ jest.mock("../../utils/appError.util", () => {
   return { AppError };
 });
 
-jest.mock("../../validators/calibrationDevices.validator", () => ({
-  createCalibrationDeviceSchema: {
-    validate: jest.fn(),
-  },
-  updateCalibrationDeviceSchema: {
-    validate: jest.fn(),
-  },
-}));
+// The create / update schemas are REAL (P9-11: Zod through validators/input,
+// and the CSV import's per-row checkInput), so every body and CSV row below is
+// judged by the rules the API applies.
 
 const { CalibrationDevice } = require("../../models");
-const validator = require("../../validators/calibrationDevices.validator");
 const {
   fetchCalibrationDevices,
   fetchSpecificCalibrationDevice,
@@ -179,27 +173,17 @@ describe("calibrationDevices.service", () => {
 
   describe("createCalibrationDevice", () => {
     it("should throw a 400 error when validation fails", async () => {
-      validator.createCalibrationDeviceSchema.validate.mockReturnValueOnce({
-        error: {
-          details: [{ path: ["name"], message: "Name is required" }],
-        },
-      });
-
       await expect(
         createCalibrationDevice("tenant-1", { serialNumber: "123" }),
-      ).rejects.toEqual(
-        expect.objectContaining({
-          status: 400,
-          message: "Validation failed",
-        }),
-      );
+      ).rejects.toEqual({
+        status: 400,
+        message: "Validation failed",
+        errors: [{ field: "name", message: "Invalid input: expected string, received undefined" }],
+      });
+      expect(CalibrationDevice.findOne).not.toHaveBeenCalled();
     });
 
     it("should return 409 if device serial number already exists", async () => {
-      validator.createCalibrationDeviceSchema.validate.mockReturnValueOnce({
-        error: null,
-        value: { name: "Device A", serialNumber: "SN123" },
-      });
       CalibrationDevice.findOne.mockResolvedValueOnce({
         id: "existing-device",
         serialNumber: "SN123",
@@ -216,10 +200,6 @@ describe("calibrationDevices.service", () => {
     });
 
     it("skips the duplicate lookup entirely when no serialNumber is supplied", async () => {
-      validator.createCalibrationDeviceSchema.validate.mockReturnValueOnce({
-        error: null,
-        value: { name: "Device A" },
-      });
       CalibrationDevice.create.mockResolvedValueOnce({ id: "dev-new", name: "Device A" });
 
       const result = await createCalibrationDevice("tenant-1", { name: "Device A" });
@@ -227,18 +207,16 @@ describe("calibrationDevices.service", () => {
       // A null serialNumber must never be used as a WHERE parameter.
       expect(CalibrationDevice.findOne).not.toHaveBeenCalled();
       expect(result.status).toBe(201);
+      // The schema defaults status to "active".
       expect(CalibrationDevice.create).toHaveBeenCalledWith({
         name: "Device A",
+        status: "active",
         tenantId: "tenant-1",
       }, { transaction: TX });
     });
 
     it("should create device successfully if all valid", async () => {
       const inputData = { name: "Device A", serialNumber: "SN123" };
-      validator.createCalibrationDeviceSchema.validate.mockReturnValueOnce({
-        error: null,
-        value: inputData,
-      });
       CalibrationDevice.findOne.mockResolvedValueOnce(null);
       CalibrationDevice.create.mockResolvedValueOnce({
         id: "new-device",
@@ -253,11 +231,6 @@ describe("calibrationDevices.service", () => {
     });
 
     it("should handle error during create", async () => {
-      validator.createCalibrationDeviceSchema.validate.mockReturnValueOnce({
-        error: null,
-        // Include a serialNumber so the duplicate-check findOne runs (and can reject).
-        value: { name: "Device A", serialNumber: "SN-A" },
-      });
       CalibrationDevice.findOne.mockRejectedValueOnce(new Error("Db error"));
 
       await expect(
@@ -271,26 +244,17 @@ describe("calibrationDevices.service", () => {
 
   describe("updateCalibrationDevice", () => {
     it("should throw a 400 error when validation fails", async () => {
-      validator.updateCalibrationDeviceSchema.validate.mockReturnValueOnce({
-        error: {
-          details: [{ path: ["name"], message: "Name must be string" }],
-        },
-      });
-
       await expect(
         updateCalibrationDevice("tenant-1", "device-1", { name: 123 }),
-      ).rejects.toEqual(
-        expect.objectContaining({
-          status: 400,
-        }),
-      );
+      ).rejects.toEqual({
+        status: 400,
+        message: "Validation failed",
+        errors: [{ field: "name", message: "Invalid input: expected string, received number" }],
+      });
+      expect(CalibrationDevice.findOne).not.toHaveBeenCalled();
     });
 
     it("should return 404 if device is not found", async () => {
-      validator.updateCalibrationDeviceSchema.validate.mockReturnValueOnce({
-        error: null,
-        value: { name: "Updated Name" },
-      });
       CalibrationDevice.findOne.mockResolvedValueOnce(null);
 
       const result = await updateCalibrationDevice("tenant-1", "device-1", {
@@ -302,10 +266,6 @@ describe("calibrationDevices.service", () => {
     });
 
     it("should update device successfully", async () => {
-      validator.updateCalibrationDeviceSchema.validate.mockReturnValueOnce({
-        error: null,
-        value: { name: "Updated Name" },
-      });
       const mockDevice = {
         id: "device-1",
         name: "Device 1",
@@ -323,10 +283,6 @@ describe("calibrationDevices.service", () => {
     });
 
     it("should handle error during update", async () => {
-      validator.updateCalibrationDeviceSchema.validate.mockReturnValueOnce({
-        error: null,
-        value: { name: "Updated Name" },
-      });
       CalibrationDevice.findOne.mockRejectedValueOnce(new Error("Db error"));
 
       await expect(
@@ -397,19 +353,6 @@ describe("calibrationDevices.service", () => {
     });
 
     it("should successfully import valid devices, skip empty rows, and handle validation/duplicate errors", async () => {
-      // Setup mock behavior for schema validation
-      validator.createCalibrationDeviceSchema.validate.mockImplementation((data) => {
-        if (!data.name) {
-          return {
-            error: {
-              details: [{ path: ["name"], message: "Name is required" }],
-            },
-            value: null,
-          };
-        }
-        return { error: null, value: data };
-      });
-
       // Existing DB devices for duplicate check
       CalibrationDevice.findAll.mockResolvedValueOnce([
         { serialNumber: "SN-DUPLICATE" },
@@ -419,7 +362,7 @@ describe("calibrationDevices.service", () => {
       // Row 2: Valid device (will succeed)
       // Row 3: Empty row (will skip)
       // Row 4: Duplicate SN (will fail with duplicate error)
-      // Row 5: Missing name (will fail with Joi validation error)
+      // Row 5: Missing name (will fail schema validation)
       const csvContent =
         "Device Name,Manufacturer,Model,Serial Number,Status\n" +
         "Valid Device,Manufacturer A,Model A,SN-100,active\n" +
@@ -469,10 +412,6 @@ describe("calibrationDevices.service", () => {
     });
 
     it("should cover all CSV parsing edge cases, CRLF, escaped quotes, last line without newline, and calibration interval conversions", async () => {
-      validator.createCalibrationDeviceSchema.validate.mockImplementation((data) => ({
-        error: null,
-        value: data,
-      }));
 
       CalibrationDevice.findAll.mockResolvedValueOnce([]);
       CalibrationDevice.bulkCreate.mockResolvedValueOnce([]);
@@ -503,10 +442,6 @@ describe("calibrationDevices.service", () => {
     });
 
     it("ignores a whitespace-only trailing fragment after the final newline", async () => {
-      validator.createCalibrationDeviceSchema.validate.mockImplementation((data) => ({
-        error: null,
-        value: data,
-      }));
       CalibrationDevice.findAll.mockResolvedValueOnce([]);
       CalibrationDevice.bulkCreate.mockResolvedValueOnce([]);
 
@@ -525,10 +460,6 @@ describe("calibrationDevices.service", () => {
     });
 
     it("skips blank lines in the middle of the file", async () => {
-      validator.createCalibrationDeviceSchema.validate.mockImplementation((data) => ({
-        error: null,
-        value: data,
-      }));
       CalibrationDevice.findAll.mockResolvedValueOnce([]);
       CalibrationDevice.bulkCreate.mockResolvedValueOnce([]);
 
@@ -546,10 +477,6 @@ describe("calibrationDevices.service", () => {
     });
 
     it("parses a final single-column row that has no trailing newline", async () => {
-      validator.createCalibrationDeviceSchema.validate.mockImplementation((data) => ({
-        error: null,
-        value: data,
-      }));
       CalibrationDevice.findAll.mockResolvedValueOnce([]);
       CalibrationDevice.bulkCreate.mockResolvedValueOnce([]);
 
@@ -559,15 +486,11 @@ describe("calibrationDevices.service", () => {
 
       expect(result.data.successCount).toBe(1);
       expect(CalibrationDevice.bulkCreate).toHaveBeenCalledWith([
-        { name: "Device A", tenantId: "tenant-1" },
+        { name: "Device A", status: "active", tenantId: "tenant-1" },
       ], { transaction: TX });
     });
 
     it("ignores unmapped headers and columns missing from a short row", async () => {
-      validator.createCalibrationDeviceSchema.validate.mockImplementation((data) => ({
-        error: null,
-        value: data,
-      }));
       CalibrationDevice.findAll.mockResolvedValueOnce([]);
       CalibrationDevice.bulkCreate.mockResolvedValueOnce([]);
 
@@ -578,34 +501,32 @@ describe("calibrationDevices.service", () => {
 
       expect(result.data.successCount).toBe(1);
       expect(CalibrationDevice.bulkCreate).toHaveBeenCalledWith([
-        { name: "Device A", tenantId: "tenant-1" },
+        { name: "Device A", status: "active", tenantId: "tenant-1" },
       ], { transaction: TX });
     });
 
     it("passes a non-numeric calibration interval through unconverted so validation can reject it", async () => {
-      validator.createCalibrationDeviceSchema.validate.mockImplementation((data) => ({
-        error: null,
-        value: data,
-      }));
       CalibrationDevice.findAll.mockResolvedValueOnce([]);
-      CalibrationDevice.bulkCreate.mockResolvedValueOnce([]);
 
       fs.writeFileSync(testCsvPath, "Device Name,Calibration Interval Days\nDevice A,not-a-number\n");
 
-      await bulkImportCalibrationDevices("tenant-1", testCsvPath);
+      const result = await bulkImportCalibrationDevices("tenant-1", testCsvPath);
 
-      expect(CalibrationDevice.bulkCreate).toHaveBeenCalledWith([
-        expect.objectContaining({ calibrationIntervalDays: "not-a-number" }),
-      ], { transaction: TX });
+      // Unconverted, the text reaches the schema, which refuses it for the row.
+      expect(CalibrationDevice.bulkCreate).not.toHaveBeenCalled();
+      expect(result.data.errors).toEqual([
+        {
+          row: 2,
+          errors: [{ field: "calibrationIntervalDays", message: "Invalid input" }],
+        },
+      ]);
     });
 
     it("does not call bulkCreate when every row fails validation", async () => {
-      validator.createCalibrationDeviceSchema.validate.mockImplementation(() => ({
-        error: { details: [{ path: ["name"], message: "Name is required" }] },
-      }));
       CalibrationDevice.findAll.mockResolvedValueOnce([]);
 
-      fs.writeFileSync(testCsvPath, "Device Name\nDevice A\n");
+      // A one-letter name is below the schema's minimum.
+      fs.writeFileSync(testCsvPath, "Device Name\nA\n");
 
       const result = await bulkImportCalibrationDevices("tenant-1", testCsvPath);
 
@@ -617,7 +538,7 @@ describe("calibrationDevices.service", () => {
       });
       expect(result.data.errors[0]).toEqual({
         row: 2,
-        errors: [{ field: "name", message: "Name is required" }],
+        errors: [{ field: "name", message: "Too small: expected string to have >=2 characters" }],
       });
     });
   });

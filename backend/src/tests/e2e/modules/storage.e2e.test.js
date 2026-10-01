@@ -2,7 +2,7 @@
  * E2E Tests: Storage Module (HTTP)
  *
  * Verifies /api/v1/storage against the running API server using a real Bearer
- * token from POST /auth/login (sys@mail.com / 123123).
+ * token from POST /auth/login (sys@mail.com / E2E_OPERATOR_PASSWORD, see setup.js).
  *
  * Covered routes (from storage.route.js):
  *   GET    /storage/object          (PUBLIC, token-gated — no auth)
@@ -23,8 +23,10 @@ const {
   extractToken,
   authHeader,
 } = require("../setup");
+// P10-16 (ADR-099): no default operator password — set E2E_OPERATOR_PASSWORD (see setup.js).
+const { OPERATOR_PASSWORD } = require("../setup");
 
-const ADMIN = { user: "sys@mail.com", password: "123123" };
+const ADMIN = { user: "sys@mail.com", password: OPERATOR_PASSWORD };
 
 describe("E2E Storage Module (HTTP)", () => {
   let token;

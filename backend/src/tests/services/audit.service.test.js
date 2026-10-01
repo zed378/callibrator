@@ -14,17 +14,28 @@ jest.mock("../../config", () => ({
 
 jest.mock("../../models", () => ({
   AuditLog: {
-    findAndCountAll: jest.fn(),
+    findAll: jest.fn(),
     create: jest.fn(),
   },
   User: {},
+  sequelize: {},
 }));
+
+// P8-04 (ADR-096): the list's count is a bounded raw count through utils/sql.util.
+jest.mock("../../utils/sql.util", () => ({ sql: jest.fn() }));
 
 jest.mock("sequelize", () => ({
   Op: { gte: Symbol("gte"), lte: Symbol("lte") },
 }));
 
 const { AuditLog } = require("../../models");
+const { sql } = require("../../utils/sql.util");
+
+/** One list page: `rows` from findAll, `count` from the bounded count. */
+const listResult = ({ count, rows }) => {
+  AuditLog.findAll.mockResolvedValueOnce(rows);
+  sql.mockResolvedValueOnce([{ n: count }]);
+};
 const auditService = require("../../services/audit.service");
 
 describe("audit.service", () => {
@@ -122,7 +133,7 @@ describe("audit.service", () => {
           toJSON: () => ({ id: "log-1", action: "create", createdAt: new Date().toISOString() }),
         },
       ];
-      AuditLog.findAndCountAll.mockResolvedValueOnce({ count: 1, rows: mockRows });
+      listResult({ count: 1, rows: mockRows });
 
       const result = await auditService.fetchAuditLogs({ tenantId: "t-1" });
 
@@ -134,11 +145,11 @@ describe("audit.service", () => {
     });
 
     it("should filter by userId", async () => {
-      AuditLog.findAndCountAll.mockResolvedValueOnce({ count: 5, rows: [] });
+      listResult({ count: 5, rows: [] });
 
       await auditService.fetchAuditLogs({ tenantId: "t-1", userId: "user-1" });
 
-      expect(AuditLog.findAndCountAll).toHaveBeenCalledWith(
+      expect(AuditLog.findAll).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({ userId: "user-1" }),
         }),
@@ -146,11 +157,11 @@ describe("audit.service", () => {
     });
 
     it("should filter by resourceType", async () => {
-      AuditLog.findAndCountAll.mockResolvedValueOnce({ count: 0, rows: [] });
+      listResult({ count: 0, rows: [] });
 
       await auditService.fetchAuditLogs({ tenantId: "t-1", resourceType: "certificate" });
 
-      expect(AuditLog.findAndCountAll).toHaveBeenCalledWith(
+      expect(AuditLog.findAll).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({ resourceType: "certificate" }),
         }),
@@ -158,11 +169,11 @@ describe("audit.service", () => {
     });
 
     it("should filter by action", async () => {
-      AuditLog.findAndCountAll.mockResolvedValueOnce({ count: 0, rows: [] });
+      listResult({ count: 0, rows: [] });
 
       await auditService.fetchAuditLogs({ tenantId: "t-1", action: "delete" });
 
-      expect(AuditLog.findAndCountAll).toHaveBeenCalledWith(
+      expect(AuditLog.findAll).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({ action: "delete" }),
         }),
@@ -170,7 +181,7 @@ describe("audit.service", () => {
     });
 
     it("should filter by date range using Op.gte/Op.lte", async () => {
-      AuditLog.findAndCountAll.mockResolvedValueOnce({ count: 0, rows: [] });
+      listResult({ count: 0, rows: [] });
 
       await auditService.fetchAuditLogs({
         tenantId: "t-1",
@@ -178,7 +189,7 @@ describe("audit.service", () => {
         endDate: "2024-12-31",
       });
 
-      expect(AuditLog.findAndCountAll).toHaveBeenCalledWith(
+      expect(AuditLog.findAll).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({
             createdAt: expect.any(Object),
@@ -188,7 +199,7 @@ describe("audit.service", () => {
     });
 
     it("should return empty results when no logs match", async () => {
-      AuditLog.findAndCountAll.mockResolvedValueOnce({ count: 0, rows: [] });
+      listResult({ count: 0, rows: [] });
 
       const result = await auditService.fetchAuditLogs({ tenantId: "t-1" });
 
@@ -199,11 +210,11 @@ describe("audit.service", () => {
 
     it("should apply MAX_LIMIT cap on limit", async () => {
       const { MAX_LIMIT } = require("../../constants");
-      AuditLog.findAndCountAll.mockResolvedValueOnce({ count: 0, rows: [] });
+      listResult({ count: 0, rows: [] });
 
       await auditService.fetchAuditLogs({ tenantId: "t-1", limit: 99999 });
 
-      expect(AuditLog.findAndCountAll).toHaveBeenCalledWith(
+      expect(AuditLog.findAll).toHaveBeenCalledWith(
         expect.objectContaining({
           limit: MAX_LIMIT,
         }),
@@ -211,7 +222,8 @@ describe("audit.service", () => {
     });
 
     it("should throw on DB error", async () => {
-      AuditLog.findAndCountAll.mockRejectedValueOnce(new Error("DB connection failed"));
+      sql.mockResolvedValueOnce([{ n: 0 }]);
+      AuditLog.findAll.mockRejectedValueOnce(new Error("DB connection failed"));
 
       await expect(auditService.fetchAuditLogs({ tenantId: "t-1" }))
         .rejects.toMatchObject({ status: 500, message: "DB connection failed" });
@@ -267,11 +279,11 @@ describe("audit.service", () => {
 
   describe("fetchAuditLogs coverage gaps", () => {
     it("filters by resourceId", async () => {
-      AuditLog.findAndCountAll.mockResolvedValueOnce({ count: 0, rows: [] });
+      listResult({ count: 0, rows: [] });
 
       await auditService.fetchAuditLogs({ tenantId: "t-1", resourceId: "res-9" });
 
-      expect(AuditLog.findAndCountAll).toHaveBeenCalledWith(
+      expect(AuditLog.findAll).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({ resourceId: "res-9" }),
         }),
@@ -280,49 +292,58 @@ describe("audit.service", () => {
 
     it("applies only Op.gte when startDate is given without endDate", async () => {
       const { Op } = require("sequelize");
-      AuditLog.findAndCountAll.mockResolvedValueOnce({ count: 0, rows: [] });
+      listResult({ count: 0, rows: [] });
 
       await auditService.fetchAuditLogs({ tenantId: "t-1", startDate: "2024-01-01" });
 
-      const where = AuditLog.findAndCountAll.mock.calls[0][0].where;
+      const where = AuditLog.findAll.mock.calls[0][0].where;
       expect(where.createdAt[Op.gte]).toEqual(new Date("2024-01-01"));
       expect(where.createdAt[Op.lte]).toBeUndefined();
     });
 
     it("applies only Op.lte when endDate is given without startDate", async () => {
       const { Op } = require("sequelize");
-      AuditLog.findAndCountAll.mockResolvedValueOnce({ count: 0, rows: [] });
+      listResult({ count: 0, rows: [] });
 
       await auditService.fetchAuditLogs({ tenantId: "t-1", endDate: "2024-12-31" });
 
-      const where = AuditLog.findAndCountAll.mock.calls[0][0].where;
+      const where = AuditLog.findAll.mock.calls[0][0].where;
       expect(where.createdAt[Op.lte]).toEqual(new Date("2024-12-31"));
       expect(where.createdAt[Op.gte]).toBeUndefined();
     });
 
-    it("omits createdAt entirely when neither date bound is given", async () => {
-      AuditLog.findAndCountAll.mockResolvedValueOnce({ count: 0, rows: [] });
+    it("applies the default window when neither date bound nor a resource is given (P8-04)", async () => {
+      const { Op } = require("sequelize");
+      listResult({ count: 0, rows: [] });
+      const before = Date.now();
 
-      await auditService.fetchAuditLogs({ tenantId: "t-1" });
+      const result = await auditService.fetchAuditLogs({ tenantId: "t-1" });
 
-      const where = AuditLog.findAndCountAll.mock.calls[0][0].where;
-      expect(where).not.toHaveProperty("createdAt");
-      expect(where).toEqual({ tenantId: "t-1" });
+      const where = AuditLog.findAll.mock.calls[0][0].where;
+      const windowMs = auditService.AUDIT_DEFAULT_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+      expect(where.createdAt[Op.gte].getTime()).toBeGreaterThanOrEqual(before - windowMs);
+      expect(where.createdAt[Op.gte].getTime()).toBeLessThanOrEqual(Date.now() - windowMs);
+      expect(where.createdAt[Op.lte]).toBeUndefined();
+      expect(result.data.meta.window).toEqual({
+        from: where.createdAt[Op.gte].toISOString(),
+        to: null,
+        defaulted: true,
+      });
     });
 
     it("falls back to DEFAULT_LIMIT when limit is not a number", async () => {
       const { DEFAULT_LIMIT } = require("../../constants");
-      AuditLog.findAndCountAll.mockResolvedValueOnce({ count: 0, rows: [] });
+      listResult({ count: 0, rows: [] });
 
       await auditService.fetchAuditLogs({ tenantId: "t-1", limit: "abc" });
 
-      expect(AuditLog.findAndCountAll).toHaveBeenCalledWith(
+      expect(AuditLog.findAll).toHaveBeenCalledWith(
         expect.objectContaining({ limit: DEFAULT_LIMIT }),
       );
     });
 
     it("tolerates an undefined rows array from the model", async () => {
-      AuditLog.findAndCountAll.mockResolvedValueOnce({ count: 0, rows: undefined });
+      listResult({ count: 0, rows: undefined });
 
       const result = await auditService.fetchAuditLogs({ tenantId: "t-1" });
 
@@ -330,7 +351,8 @@ describe("audit.service", () => {
     });
 
     it("defaults status to 500 and message when the error carries neither", async () => {
-      AuditLog.findAndCountAll.mockRejectedValueOnce({});
+      sql.mockResolvedValueOnce([{ n: 0 }]);
+      AuditLog.findAll.mockRejectedValueOnce({});
 
       await expect(auditService.fetchAuditLogs({ tenantId: "t-1" })).rejects.toEqual({
         status: 500,
@@ -339,7 +361,8 @@ describe("audit.service", () => {
     });
 
     it("preserves a non-500 status carried by the error", async () => {
-      AuditLog.findAndCountAll.mockRejectedValueOnce({ status: 403, message: "Nope" });
+      sql.mockResolvedValueOnce([{ n: 0 }]);
+      AuditLog.findAll.mockRejectedValueOnce({ status: 403, message: "Nope" });
 
       await expect(auditService.fetchAuditLogs({ tenantId: "t-1" })).rejects.toEqual({
         status: 403,

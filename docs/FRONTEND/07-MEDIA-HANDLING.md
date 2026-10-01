@@ -93,22 +93,23 @@ Rendered on the login page **before sign-in**, so it must load fast and degrade 
 
 ## Certificate PDF
 
-Two paths, and they are not equivalent.
+**Since ADR-095 (2026-09-29) there is one path: the frontend renders the certificate PDF.** The backend
+renders none.
 
-| Path | Produces |
+| Source | What it is |
 |---|---|
-| `GET /api/v1/certificates/:id/pdf` | **the authoritative artefact** — server-rendered by puppeteer, signed, QR-coded |
-| `frontend/src/lib/certificatePdf.ts` | a client-side convenience |
+| `GET /api/v1/certificates/:id/document` (signed in), or the public verification endpoint's `document` (signed certificates only) | the certificate's printed fields, the `verifyUrl` the QR encodes, and `integrity` (the `certificate-content-v3` SHA-256 hash for a certificate signed with a snapshot, ADR-107, or `certificate-content-v2`; the pre-ADR-095 `legacyHash`) |
+| `frontend/src/lib/certificatePdf.ts` | renders that document to an A4 PDF with jsPDF — every field, a watermark for anything unsigned, the QR, and the v2 hash — and hands it to the browser as a Blob download |
+| `GET /api/v1/certificates/:id/pdf` | only a PDF the backend stored **before** ADR-095 |
 
-**The server-rendered PDF is the certificate.** It is what an auditor receives, what the QR code corresponds to, and what the HMAC verifies against.
+**What makes a printout trustworthy is the verification page, not the file.** The PDF prints the
+hash the document names — `certificate-content-v3` for a certificate signed from ADR-107 on (printed from its
+signing snapshot, with a line saying so), `certificate-content-v2` otherwise. The public verification page recomputes it from the issuer's records and
+shows it, beside the v1 hash printed on older PDFs. A printout whose hash differs has been altered, or
+predates a change to the certificate. Nothing signs the PDF bytes (ADR-095, bad implications).
 
-A client-side PDF is a preview or a working copy. It must never be presented as the certificate, because it carries no signature and nothing verifies it.
-
-### Rendering can fail late
-
-Server-side rendering needs a system Chromium (`PUPPETEER_EXECUTABLE_PATH`). In a compiled binary the bundled Chromium is unavailable, and outside Docker the failure happens at **first use, not at startup**.
-
-The UI must surface that as a clear, actionable error. A silently missing download in a compliance-critical path is the worst available outcome — the user assumes it worked.
+A render failure is surfaced as a toast (dashboard) or an inline alert (verification page); it is never a
+silent missing download.
 
 ## QR Codes
 

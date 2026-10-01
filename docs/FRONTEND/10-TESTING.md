@@ -1,6 +1,6 @@
 # 10 — Frontend Testing
 
-Jest 30 · Testing Library · jsdom · axe-core. Coverage gate: **target 70%; enforced today at 41/35/34/41** (statements/branches/functions/lines) — see [§ Coverage gate](#coverage-gate). *(Amended 2026-09-24, F-03/F-04, [ADR-067](../../MEMORY/DECISIONS.md).)*
+Jest 30 · Testing Library · jsdom · axe-core. Coverage gate: **target 70%, passed; enforced at 90/81/86/91** (statements/branches/functions/lines) — see [§ Coverage gate](#coverage-gate). *(Amended 2026-09-24, F-03/F-04, and 2026-09-30, [ADR-067](../../MEMORY/DECISIONS.md) Amendment 1.)*
 
 Overall strategy: [`../TESTING/00-TEST-STRATEGY.md`](../TESTING/00-TEST-STRATEGY.md).
 
@@ -201,13 +201,24 @@ and the test helpers under `src/tests/`).
 
 | Step | Gate (stmts / branches / funcs / lines) | Where the coverage comes from |
 |---|---|---|
-| now | 41 / 35 / 34 / 41 | client, route handlers, proxy, stores, 12 screen hooks |
-| 1 | 50 / 42 / 42 / 50 | the remaining screen hooks (`useStock`, `useMenuGroups`, `useWarehouse`, `useDevices`, `useTenants`, `useBoard`, …) and `lib/certificatePdf.ts` |
-| 2 | 60 / 52 / 52 / 60 | the three-state tests for every list screen (loading / empty / **failed**) |
-| 3 | 70 / 60 / 60 / 70 | page-level tests of the screens that carry a compliance figure; branches last |
+| 2026-09-24 | 41 / 35 / 34 / 41 | client, route handlers, proxy, stores, 12 screen hooks |
+| **2026-09-30 — now** | **90 / 81 / 86 / 91** | measured 90.91 / 81.62 / 86.94 / 91.61 (264 suites, 2,758 tests): every screen hook, the stock store, and page tests with axe and the three states for devices, calibration, users, tenants, maintenance, e-signature, roles and permissions; the compliance/admin screens (GDPR, tenant lifecycle, network security, OIDC, SCIM, custom domains, WebAuthn, …); kanban, stock, warehouse, tickets, notifications, vendors; the shell, content and billing |
 
-Branch coverage trails because the pages' render branches are the least
-tested; the target for branches stays behind the others until step 3.
+The planned steps 1–3 (50 / 60 / 70) were passed in one batch; see
+[ADR-067](../../MEMORY/DECISIONS.md) Amendment 1 and
+`MEMORY/records/2026-09-30-frontend-coverage-70.md`. The lowest areas left
+are the new public forms (`request-access`, `forgot-password`, `invitation`,
+0%), `dashboard/qms` and `dashboard/workflows` (about 59%). The gate is the
+measured floor rounded down, so a new untested page can fail it.
+
+**Page tests mock `@/api/client`, not the service.** The fixture is the
+controller's real body, and the real service unwrap runs. A route check
+against the real Express router dump (the dumper in
+`backend/src/tests/e2e/liveContract.smoke.test.js`, `--dump-routes`) finds
+that every service call names a real method and path. It cannot find a
+wrong response *shape*. Six of this batch's defects were exactly that, so
+the fixture must be read from the controller, never from the service
+(F-19).
 
 ## Running
 

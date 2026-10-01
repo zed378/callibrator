@@ -1,7 +1,7 @@
 // src/routes/api/calibrationRecords.js
 const express = require("express");
 const router = express.Router();
-const { auth } = require("../../middlewares/auth.middleware");
+const { auth, denyApiKey } = require("../../middlewares/auth.middleware");
 const { dynamicAccess } = require("../../middlewares/dynamicAccess.middleware");
 const { validateUuid } = require("../../middlewares/validateUuid.middleware");
 const { denyPlatformAuthoring } = require("../../middlewares/denyPlatformAuthoring.middleware"); // A-127, ADR-051 Q-17
@@ -344,9 +344,12 @@ router.post(
  *       409:
  *         description: The record was already voided, or has been corrected
  */
+// Q-51: an API key is refused (403). voided_by names the person who voids a
+// regulated record (a users FK), and a void is final — a person answers for it.
 router.post(
   "/:calibrationRecordId/void",
   auth,
+  denyApiKey,
   validateUuid("calibrationRecordId"),
   dynamicAccess("calibration", "write"),
   denyPlatformAuthoring,

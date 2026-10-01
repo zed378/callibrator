@@ -29,6 +29,7 @@ const getStatusBadge = (device: DueDevice) =>
 export default function CalibrationSchedulerPage() {
   const {
     isSuperAdmin,
+    canRun,
     leadDays,
     handleLeadDaysChange,
     allTenants,
@@ -123,14 +124,17 @@ export default function CalibrationSchedulerPage() {
                 >
                   Refresh
                 </Button>
-                <Button
-                  onClick={handleRun}
-                  isLoading={isRunning}
-                  disabled={isRunning}
-                  leftIcon={<Play className="h-4 w-4" />}
-                >
-                  {isRunning ? "Running..." : "Run Scheduler"}
-                </Button>
+                {/* A-301: absent, not disabled, without write on `maintenance`. */}
+                {canRun && (
+                  <Button
+                    onClick={handleRun}
+                    isLoading={isRunning}
+                    disabled={isRunning}
+                    leftIcon={<Play className="h-4 w-4" />}
+                  >
+                    {isRunning ? "Running..." : "Run Scheduler"}
+                  </Button>
+                )}
               </div>
             </div>
           </CardContent>
@@ -178,7 +182,7 @@ export default function CalibrationSchedulerPage() {
               <div className="p-4">
                 <TableSkeleton cols={columns.length} rows={5} />
               </div>
-            ) : dueDevices.length === 0 ? (
+            ) : error ? null : dueDevices.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
                 <CalendarClock className="h-12 w-12 mx-auto mb-3 opacity-20" />
                 <p className="text-lg font-medium">

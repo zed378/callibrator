@@ -142,13 +142,26 @@ describe("Certificates Routes", () => {
     expect(routes.length).toBe(1);
   });
 
-  it("should have POST route for /:certificateId/pdf", () => {
+  // M-11 (ADR-095): the backend renders no PDF — no POST /:certificateId/pdf;
+  // the document is data, GET /:certificateId/document.
+  it("has no POST route for /:certificateId/pdf", () => {
     const routes = certificatesRoutes.stack.filter(
       (layer) =>
         layer.route &&
         layer.route.path === "/:certificateId/pdf" &&
         layer.route.methods &&
         layer.route.methods.post,
+    );
+    expect(routes.length).toBe(0);
+  });
+
+  it("should have GET route for /:certificateId/document", () => {
+    const routes = certificatesRoutes.stack.filter(
+      (layer) =>
+        layer.route &&
+        layer.route.path === "/:certificateId/document" &&
+        layer.route.methods &&
+        layer.route.methods.get,
     );
     expect(routes.length).toBe(1);
   });

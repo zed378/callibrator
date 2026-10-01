@@ -1,9 +1,11 @@
 /**
  * Calibration Device validator tests
+ *
+ * P9-11 (ADR-093): the schemas are Zod, exercised through the shared
+ * `checkInput` helper (the file's own `validate` / `formatErrors` are gone).
  */
+const { checkInput } = require("../../validators/input");
 const {
-  validate,
-  formatErrors,
   getCalibrationDevicesQuery,
   calibrationDeviceIdSchema,
   createCalibrationDeviceSchema,
@@ -21,10 +23,10 @@ describe("Calibration Device Validators", () => {
         category: "thermom",
       };
 
-      const { error, value } = validate(data, getCalibrationDevicesQuery);
+      const result = checkInput(data, getCalibrationDevicesQuery);
 
-      expect(error).toBeUndefined();
-      expect(value).toEqual({
+      expect(result.ok).toBe(true);
+      expect(result.value).toEqual({
         page: 2,
         limit: 15,
         find: "calib",
@@ -33,12 +35,21 @@ describe("Calibration Device Validators", () => {
       });
     });
 
+    it("defaults page and limit on an empty query", () => {
+      expect(checkInput({}, getCalibrationDevicesQuery)).toEqual({ ok: true, value: { page: 1, limit: 20 } });
+    });
+
+    it("refuses a page below 1 and a limit above 100", () => {
+      expect(checkInput({ page: "0", limit: "101" }, getCalibrationDevicesQuery).errors).toEqual([
+        { field: "page", message: "Too small: expected number to be >=1" },
+        { field: "limit", message: "Too big: expected number to be <=100" },
+      ]);
+    });
+
     it("should reject invalid status", () => {
-      const data = {
-        status: "invalid",
-      };
-      const { error } = validate(data, getCalibrationDevicesQuery);
-      expect(error).toBeDefined();
+      const result = checkInput({ status: "invalid" }, getCalibrationDevicesQuery);
+      expect(result.ok).toBe(false);
+      expect(result.errors).toEqual([{ field: "status", message: "Invalid input" }]);
     });
   });
 
@@ -47,16 +58,13 @@ describe("Calibration Device Validators", () => {
       const data = {
         calibrationDeviceId: "8c352a92-d6cf-4b71-b0db-6e69622d1b11",
       };
-      const { error } = validate(data, calibrationDeviceIdSchema);
-      expect(error).toBeUndefined();
+      expect(checkInput(data, calibrationDeviceIdSchema).ok).toBe(true);
     });
 
     it("should reject invalid uuid", () => {
-      const data = {
-        calibrationDeviceId: "not-a-uuid",
-      };
-      const { error } = validate(data, calibrationDeviceIdSchema);
-      expect(error).toBeDefined();
+      const result = checkInput({ calibrationDeviceId: "not-a-uuid" }, calibrationDeviceIdSchema);
+      expect(result.ok).toBe(false);
+      expect(result.errors).toEqual([{ field: "calibrationDeviceId", message: "Invalid GUID" }]);
     });
   });
 
@@ -75,19 +83,49 @@ describe("Calibration Device Validators", () => {
         remarks: "Main thermometer",
       };
 
-      const { error, value } = validate(data, createCalibrationDeviceSchema);
+      const result = checkInput(data, createCalibrationDeviceSchema);
 
-      expect(error).toBeUndefined();
-      expect(value.status).toBe("active");
-      expect(value.name).toBe("Thermometer A");
+      expect(result.ok).toBe(true);
+      expect(result.value.status).toBe("active");
+      expect(result.value.name).toBe("Thermometer A");
+      expect(result.value.installationDate).toEqual(new Date("2026-01-01"));
+    });
+
+    it("accepts empty strings and null for the optional fields, and a numeric-string interval", () => {
+      const result = checkInput(
+        {
+          name: "  Thermometer A  ",
+          serialNumber: "",
+          locationId: "",
+          installationDate: "",
+          nextCalibrationDate: null,
+          calibrationIntervalDays: "180",
+          remarks: null,
+        },
+        createCalibrationDeviceSchema,
+      );
+
+      expect(result).toEqual({
+        ok: true,
+        value: {
+          name: "Thermometer A",
+          serialNumber: "",
+          status: "active",
+          locationId: "",
+          installationDate: "",
+          nextCalibrationDate: null,
+          calibrationIntervalDays: 180,
+          remarks: null,
+        },
+      });
     });
 
     it("should reject missing required field name", () => {
-      const data = {
-        serialNumber: "SN123",
-      };
-      const { error } = validate(data, createCalibrationDeviceSchema);
-      expect(error).toBeDefined();
+      const result = checkInput({ serialNumber: "SN123" }, createCalibrationDeviceSchema);
+      expect(result.ok).toBe(false);
+      expect(result.errors).toEqual([
+        { field: "name", message: "Invalid input: expected string, received undefined" },
+      ]);
     });
   });
 
@@ -98,24 +136,16 @@ describe("Calibration Device Validators", () => {
         status: "MAINTENANCE",
       };
 
-      const { error, value } = validate(data, updateCalibrationDeviceSchema);
+      const result = checkInput(data, updateCalibrationDeviceSchema);
 
-      expect(error).toBeUndefined();
-      expect(value.name).toBe("Thermometer Updated");
-      expect(value.status).toBe("maintenance");
+      expect(result.ok).toBe(true);
+      expect(result.value.name).toBe("Thermometer Updated");
+      expect(result.value.status).toBe("maintenance");
     });
-  });
 
-  describe("formatErrors", () => {
-    it("should format validation errors correctly", () => {
-      const details = [
-        { path: ["name"], message: "Name is required" },
-        { path: ["status"], message: "Status is invalid" },
-      ];
-      const formatted = formatErrors(details);
-      expect(formatted).toEqual([
-        { field: "name", message: "Name is required" },
-        { field: "status", message: "Status is invalid" },
+    it("refuses an interval below one day", () => {
+      expect(checkInput({ calibrationIntervalDays: 0 }, updateCalibrationDeviceSchema).errors).toEqual([
+        { field: "calibrationIntervalDays", message: "Too small: expected number to be >=1" },
       ]);
     });
   });

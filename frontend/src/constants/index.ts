@@ -45,7 +45,7 @@ export const PROXY_UPSTREAM_TIMEOUT_MS = 32000;
 export const API_TIMEOUT = 35000;
 
 // Deploy-time tenant binding. When a single-tenant frontend is deployed with
-// NEXT_PUBLIC_TENANT_ID set, the login/register pages fetch that tenant's
+// NEXT_PUBLIC_TENANT_ID set, the sign-in and request-access pages fetch that tenant's
 // public branding (name/logo/color) BEFORE sign-in, and the proxy sends
 // `X-Tenant-ID` on every API call. Empty = default (multi-tenant) build.
 export const TENANT_ID = process.env.NEXT_PUBLIC_TENANT_ID || "";

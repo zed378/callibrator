@@ -10,17 +10,19 @@
  * On the seeded environment POST /domains returns 400 "Custom domains are
  * disabled" (customDomains.service.addDomain), so no domain can be created and
  * the per-:id routes (verify/status/dns/default/delete) cannot be exercised
- * from this smoke test. The addDomain Joi schema IS correctly wired via
+ * from this smoke test. The addDomain schema IS correctly wired via
  * validate(addDomain) — the earlier "schema.validate as middleware" 500 bug
  * is fixed here.
  */
 const { httpGet, httpPost, authHeader } = require("../setup");
+// P10-16 (ADR-099): no default operator password — set E2E_OPERATOR_PASSWORD (see setup.js).
+const { OPERATOR_PASSWORD } = require("../setup");
 
 describe("E2E Custom Domains (HTTP)", () => {
   let token;
 
   beforeAll(async () => {
-    const { body } = await httpPost("/auth/login", { user: "sys@mail.com", password: "123123" });
+    const { body } = await httpPost("/auth/login", { user: "sys@mail.com", password: OPERATOR_PASSWORD });
     token = body.token || (body.data && body.data.token);
   });
 

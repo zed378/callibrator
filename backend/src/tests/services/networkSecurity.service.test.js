@@ -5,10 +5,16 @@ jest.mock("../../models", () => ({
     upsert: jest.fn(),
     destroy: jest.fn(),
   },
+  Tenant: { findByPk: jest.fn() },
 }));
+// A-280 (ADR-094): a setting change and its audit rows share a transaction.
+jest.mock("../../config", () => ({ db: { transaction: jest.fn(async (cb) => cb("tx")) } }));
+jest.mock("../../services/audit.service", () => ({ logAction: jest.fn().mockResolvedValue({}) }));
 
 const networkSecurity = require("../../services/networkSecurity.service");
-const { TenantSettings } = require("../../models");
+const { TenantSettings, Tenant } = require("../../models");
+const auditService = require("../../services/audit.service");
+const { PLATFORM_TENANT_ID } = require("../../constants/platformTenant");
 
 describe("networkSecurity.service", () => {
   beforeEach(() => jest.clearAllMocks());
@@ -30,6 +36,36 @@ describe("networkSecurity.service", () => {
       TenantSettings.upsert.mockResolvedValue({});
       const result = await networkSecurity.setTenantIpAllowlist("t1", ["10.0.0.0/8"]);
       expect(result.allowlist).toEqual(["10.0.0.0/8"]);
+    });
+
+    // A-280 (ADR-094)
+    it("records the change, before and after, under PLATFORM and the tenant, in the upsert's transaction", async () => {
+      TenantSettings.findOne.mockResolvedValue({ value: JSON.stringify(["192.168.1.0/24"]) });
+      await networkSecurity.setTenantIpAllowlist("t1", ["10.0.0.0/8"], { userId: "op-1", ipAddress: "10.9.9.9", userAgent: "UA" });
+
+      expect(TenantSettings.upsert.mock.calls[0][1]).toEqual({ transaction: "tx" });
+      const calls = auditService.logAction.mock.calls;
+      expect(calls.map(([e]) => e.tenantId)).toEqual([PLATFORM_TENANT_ID, "t1"]);
+      for (const [entry, opts] of calls) {
+        expect(opts).toEqual({ transaction: "tx" });
+        expect(entry).toMatchObject({
+          userId: "op-1",
+          action: "UPDATE",
+          resourceType: "TenantSettings",
+          resourceId: "t1",
+          ipAddress: "10.9.9.9",
+          userAgent: "UA",
+          changes: { operation: "SET_IP_ALLOWLIST", before: ["192.168.1.0/24"], after: ["10.0.0.0/8"] },
+        });
+      }
+    });
+
+    it("assertTenantExists: 404 for no id or an unknown tenant, passes for a real one", async () => {
+      await expect(networkSecurity.assertTenantExists(undefined)).rejects.toMatchObject({ status: 404 });
+      Tenant.findByPk.mockResolvedValueOnce(null);
+      await expect(networkSecurity.assertTenantExists("t9")).rejects.toMatchObject({ status: 404, message: "Tenant not found" });
+      Tenant.findByPk.mockResolvedValueOnce({ id: "t1" });
+      await expect(networkSecurity.assertTenantExists("t1")).resolves.toBeUndefined();
     });
 
     it("allows IP when no restrictions", async () => {
@@ -64,6 +100,11 @@ describe("networkSecurity.service", () => {
       const result = await networkSecurity.setTenantGeofence("t1", { latitude: -6.2088, longitude: 106.8456 });
       expect(result.geofence.latitude).toBe(-6.2088);
       expect(result.geofence.radiusKm).toBe(50);
+      // A-280: recorded twice, with the operator (none given: null, fails closed).
+      expect(auditService.logAction.mock.calls.map(([e]) => [e.tenantId, e.changes.operation, e.userId])).toEqual([
+        [PLATFORM_TENANT_ID, "SET_GEOFENCE", null],
+        ["t1", "SET_GEOFENCE", null],
+      ]);
     });
 
     it("allows location within geofence", async () => {
@@ -149,6 +190,14 @@ describe("networkSecurity.service", () => {
       const result = await networkSecurity.checkIpAllowlist("t1", "not.an.ip");
 
       expect(result.allowed).toBe(false);
+    });
+
+    // A-288 (ADR-100): the evaluation route and the sign-in share one matcher.
+    it("matches an IPv4-mapped IPv6 address and an IPv6 range; a missing address matches nothing", async () => {
+      TenantSettings.findOne.mockResolvedValue({ value: JSON.stringify(["10.0.0.0/8", "2001:db8::/32"]) });
+      expect((await networkSecurity.checkIpAllowlist("t1", "::ffff:10.1.2.3")).allowed).toBe(true);
+      expect((await networkSecurity.checkIpAllowlist("t1", "2001:db8::5")).allowed).toBe(true);
+      expect((await networkSecurity.checkIpAllowlist("t1", undefined)).allowed).toBe(false);
     });
   });
 });

@@ -1,17 +1,19 @@
 /**
  * P9-11 contract pin — the behaviour of `validate(schema)` itself, and of the
- * one other way a validator's 400 reaches the wire today.
+ * one other way a validation 400 reaches the wire.
  *
  * The per-validator files in this folder pin each validator's messages; this
- * file pins what every one of them relies on and what P9-11's Zod `validate()`
- * must keep (or change only by a recorded decision):
+ * file pins what every one of them relies on. Kept through the move to Zod
+ * (ADR-093); only the wording inside `details` changed:
  *  - a bodyless request is validated as {} (A-09, Express 5);
  *  - unknown keys are stripped and the stripped value REPLACES req.body;
  *  - the middleware validates req.body ONLY — a path parameter is not merged
  *    in, so a schema that requires it 400s even when the path carries it (the
  *    "path parameter the validator never sees" trap, as-built);
- *  - a validator helper's thrown `{ status, message, errors }` object, sent by
- *    asyncHandler, loses `errors` on the wire and carries "[object Object]" as
+ *  - `validateInput`'s thrown `{ status, message, errors }` object (the one
+ *    shared helper, validators/input), sent by asyncHandler, is answered
+ *    byte for byte as `validate()` answers the same input (surface D). Until
+ *    A-272 (ADR-100) it lost `errors` and carried "[object Object]" as
  *    `details` outside production.
  * See ./harness.ts and MEMORY/specs/P9-11-validation-error-contract.md.
  */
@@ -19,7 +21,8 @@ import type { RequestHandler } from "express";
 import { validate } from "../../../middlewares/validation.middleware";
 import { asyncHandler } from "../../../utils/controllerWrapper.util";
 import { tenantIdSchema } from "../../../validators/tenantLifecycle.validator";
-import { createTenantSchema, validate as validateTenant } from "../../../validators/tenant.validator";
+import { createTenantSchema } from "../../../validators/tenant.validator";
+import { validateInput } from "../../../validators/input";
 import { JSON_CONTENT_TYPE, expectedValidationBody, send, withNodeEnv } from "./harness";
 
 const TENANT = "11111111-1111-4111-8111-111111111111";
@@ -30,7 +33,7 @@ describe("P9-11 contract: validate(schema) middleware", () => {
     expect(wire.status).toBe(400);
     expect(wire.contentType).toBe(JSON_CONTENT_TYPE);
     expect(wire.text).toBe(
-      expectedValidationBody("test", [{ field: "tenantId", message: '"tenantId" is required' }]),
+      expectedValidationBody("test", [{ field: "tenantId", message: "Invalid input: expected string, received undefined" }]),
     );
   });
 
@@ -48,7 +51,7 @@ describe("P9-11 contract: validate(schema) middleware", () => {
     );
     expect(wire.status).toBe(400);
     expect(wire.text).toBe(
-      expectedValidationBody("test", [{ field: "tenantId", message: '"tenantId" is required' }]),
+      expectedValidationBody("test", [{ field: "tenantId", message: "Invalid input: expected string, received undefined" }]),
     );
   });
 
@@ -62,11 +65,9 @@ describe("P9-11 contract: validate(schema) middleware", () => {
 
 describe("P9-11 contract: a validator helper's throw, sent by asyncHandler", () => {
   // tenant.controller#createTenant's first step, as the controller runs it.
-  // asyncHandler and the helper are JavaScript typed by JSDoc (`Function`,
-  // `Object`), so the test adapts to them rather than asserting a type.
   const wrapped: unknown = asyncHandler(async (req: { body: object }) => {
     await Promise.resolve();
-    validateTenant(req.body, createTenantSchema);
+    validateInput(req.body, createTenantSchema);
   });
   const createTenant: RequestHandler = (req, res, next) => {
     if (typeof wrapped !== "function") {
@@ -75,18 +76,30 @@ describe("P9-11 contract: a validator helper's throw, sent by asyncHandler", () 
     wrapped.call(undefined, req, res, next);
   };
 
-  it("outside production: the message, and `details` is the string \"[object Object]\" — `errors` is dropped", async () => {
+  // A-272 (ADR-100): the same wire as the validate() middleware, per mode.
+  it.each(["test", "production"] as const)("%s: the validate() 400, field list included outside production", async (mode) => {
+    const viaHelper = await withNodeEnv(mode, () => send({ handlers: [createTenant], body: {} }));
+    const viaMiddleware = await withNodeEnv(mode, () => send({ handlers: [validate(createTenantSchema)], body: {} }));
+    expect(viaHelper.status).toBe(400);
+    expect(viaHelper.contentType).toBe(JSON_CONTENT_TYPE);
+    expect(viaHelper.text).toBe(viaMiddleware.text);
+    expect(viaHelper.text).not.toContain("[object Object]");
+  });
+
+  it("outside production: `details` lists the fields", async () => {
     const wire = await withNodeEnv("test", () => send({ handlers: [createTenant], body: {} }));
-    expect(wire.status).toBe(400);
-    expect(wire.contentType).toBe(JSON_CONTENT_TYPE);
-    expect(wire.text).toBe(
-      '{"success":false,"status":400,"message":"Validation failed","data":null,"details":"[object Object]"}',
-    );
+    const body = JSON.parse(wire.text) as { message: string; details: { field: string; message: string }[] };
+    expect(body.message).toBe("Validation Error");
+    expect(Array.isArray(body.details)).toBe(true);
+    expect(body.details.length).toBeGreaterThan(0);
+    const [first] = body.details;
+    expect(typeof first?.field).toBe("string");
+    expect(typeof first?.message).toBe("string");
   });
 
   it("in production: the message only", async () => {
     const wire = await withNodeEnv("production", () => send({ handlers: [createTenant], body: {} }));
     expect(wire.status).toBe(400);
-    expect(wire.text).toBe('{"success":false,"status":400,"message":"Validation failed","data":null}');
+    expect(wire.text).toBe('{"success":false,"status":400,"message":"Validation Error","data":null}');
   });
 });

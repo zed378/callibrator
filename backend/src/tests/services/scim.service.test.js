@@ -18,6 +18,15 @@ jest.mock("../../models", () => ({
   },
 }));
 
+// A-278 (ADR-094): every user write runs in a transaction with its audit row.
+// The double passes a marker through so the write's options can be asserted.
+jest.mock("../../config", () => ({
+  db: { transaction: jest.fn(async (cb) => cb("tx")) },
+}));
+jest.mock("../../services/audit.service", () => ({
+  logAction: jest.fn().mockResolvedValue({}),
+}));
+
 // Mirrors the real src/utils/password.util.js surface:
 //   hashPassword(password) -> Promise<string>, comparePassword(plain, hash) -> Promise<bool>
 jest.mock("../../utils/password.util", () => ({
@@ -29,6 +38,9 @@ const scim = require("../../services/scim.service");
 const { Users, Role } = require("../../models");
 const { hashPassword } = require("../../utils/password.util");
 const { ROLE_IDS } = require("../../constants");
+const auditService = require("../../services/audit.service");
+
+const TX = { transaction: "tx" };
 
 describe("scim.service", () => {
   beforeEach(() => jest.clearAllMocks());
@@ -165,7 +177,7 @@ describe("scim.service", () => {
         expect.objectContaining({
           email: "ada.lovelace@hospital-b.org",
           username: "ada.lovelace@hospital-b.org",
-        }),
+        }), TX,
       );
     });
 
@@ -179,7 +191,7 @@ describe("scim.service", () => {
       });
 
       expect(Users.create).toHaveBeenCalledWith(
-        expect.objectContaining({ email: "from-emails@test.com", username: "from-emails@test.com" }),
+        expect.objectContaining({ email: "from-emails@test.com", username: "from-emails@test.com" }), TX,
       );
     });
 
@@ -189,7 +201,7 @@ describe("scim.service", () => {
 
       await scim.createUser("t1", { userName: "a@b.com", emails: [] });
 
-      expect(Users.create).toHaveBeenCalledWith(expect.objectContaining({ email: "a@b.com" }));
+      expect(Users.create).toHaveBeenCalledWith(expect.objectContaining({ email: "a@b.com" }), TX);
     });
 
     it("defaults the name to SCIM User and the role to ROLE_IDS.USER", async () => {
@@ -206,7 +218,7 @@ describe("scim.service", () => {
           isActive: true,
           status: "ACTIVE",
           isEmailVerified: true,
-        }),
+        }), TX,
       );
     });
 
@@ -217,7 +229,7 @@ describe("scim.service", () => {
       const result = await scim.createUser("t1", { userName: "a@b.com", active: false, roleId: "r9" });
 
       expect(Users.create).toHaveBeenCalledWith(
-        expect.objectContaining({ isActive: false, status: "SUSPENDED", roleId: "r9" }),
+        expect.objectContaining({ isActive: false, status: "SUSPENDED", roleId: "r9" }), TX,
       );
       expect(result.active).toBe(false);
     });
@@ -259,7 +271,7 @@ describe("scim.service", () => {
         roleId: 2,
         isActive: false,
         status: "SUSPENDED",
-      });
+      }, TX);
     });
 
     it("throws 404 when user to update not found", async () => {
@@ -273,7 +285,7 @@ describe("scim.service", () => {
 
       await scim.updateUser("t1", "u1", {});
 
-      expect(mockUpdate).toHaveBeenCalledWith({});
+      expect(mockUpdate).toHaveBeenCalledWith({}, TX);
     });
 
     it("ignores a name object with neither givenName nor familyName", async () => {
@@ -282,7 +294,7 @@ describe("scim.service", () => {
 
       await scim.updateUser("t1", "u1", { name: {}, roleId: null, active: "yes" });
 
-      expect(mockUpdate).toHaveBeenCalledWith({});
+      expect(mockUpdate).toHaveBeenCalledWith({}, TX);
     });
 
     it("reactivates a user when active is true", async () => {
@@ -291,7 +303,7 @@ describe("scim.service", () => {
 
       await scim.updateUser("t1", "u1", { active: true });
 
-      expect(mockUpdate).toHaveBeenCalledWith({ isActive: true, status: "ACTIVE" });
+      expect(mockUpdate).toHaveBeenCalledWith({ isActive: true, status: "ACTIVE" }, TX);
     });
 
     it("scopes the lookup to the tenant", async () => {
@@ -340,7 +352,7 @@ describe("scim.service", () => {
       expect(mockUpdate).toHaveBeenCalledWith({
         firstName: "X",
         lastName: "Y",
-      });
+      }, TX);
     });
 
     it("throws 404 when user to patch not found", async () => {
@@ -354,7 +366,7 @@ describe("scim.service", () => {
 
       await scim.patchUser("t1", "u1", [{ op: "replace", value: { active: true } }]);
 
-      expect(mockUpdate).toHaveBeenCalledWith({ isActive: true, status: "ACTIVE" });
+      expect(mockUpdate).toHaveBeenCalledWith({ isActive: true, status: "ACTIVE" }, TX);
     });
 
     it("ignores unknown keys inside the value-object form", async () => {
@@ -366,7 +378,7 @@ describe("scim.service", () => {
         { op: "add", value: { unknownKey: "x" } },
       ]);
 
-      expect(mockUpdate).toHaveBeenCalledWith({});
+      expect(mockUpdate).toHaveBeenCalledWith({}, TX);
     });
 
     it("resets roleId to the default role on remove", async () => {
@@ -375,7 +387,7 @@ describe("scim.service", () => {
 
       await scim.patchUser("t1", "u1", [{ op: "remove", path: "roleId" }]);
 
-      expect(mockUpdate).toHaveBeenCalledWith({ roleId: ROLE_IDS.USER });
+      expect(mockUpdate).toHaveBeenCalledWith({ roleId: ROLE_IDS.USER }, TX);
     });
 
     it("sets roleId via an add op", async () => {
@@ -384,7 +396,7 @@ describe("scim.service", () => {
 
       await scim.patchUser("t1", "u1", [{ op: "add", value: { roleId: "77777777-7777-4777-8777-777777777777" } }]);
 
-      expect(mockUpdate).toHaveBeenCalledWith({ roleId: "77777777-7777-4777-8777-777777777777" });
+      expect(mockUpdate).toHaveBeenCalledWith({ roleId: "77777777-7777-4777-8777-777777777777" }, TX);
     });
   });
 
@@ -499,25 +511,25 @@ describe("scim.service — RFC 7644 patch paths and filters (A-33)", () => {
     it("deactivates the user given the standard IdP deprovision operation", async () => {
       await scim.patchUser("t1", "u1", [{ op: "replace", path: "active", value: false }]);
 
-      expect(update).toHaveBeenCalledWith({ isActive: false, status: "SUSPENDED" });
+      expect(update).toHaveBeenCalledWith({ isActive: false, status: "SUSPENDED" }, TX);
     });
 
     it("reactivates the user given path active=true", async () => {
       await scim.patchUser("t1", "u1", [{ op: "replace", path: "active", value: true }]);
 
-      expect(update).toHaveBeenCalledWith({ isActive: true, status: "ACTIVE" });
+      expect(update).toHaveBeenCalledWith({ isActive: true, status: "ACTIVE" }, TX);
     });
 
     it("accepts the string booleans Entra ID sends", async () => {
       await scim.patchUser("t1", "u1", [{ op: "replace", path: "active", value: "False" }]);
 
-      expect(update).toHaveBeenCalledWith({ isActive: false, status: "SUSPENDED" });
+      expect(update).toHaveBeenCalledWith({ isActive: false, status: "SUSPENDED" }, TX);
     });
 
     it("accepts the string \"true\" as a reactivation", async () => {
       await scim.patchUser("t1", "u1", [{ op: "replace", path: "active", value: "True" }]);
 
-      expect(update).toHaveBeenCalledWith({ isActive: true, status: "ACTIVE" });
+      expect(update).toHaveBeenCalledWith({ isActive: true, status: "ACTIVE" }, TX);
     });
 
     it.each([
@@ -535,19 +547,19 @@ describe("scim.service — RFC 7644 patch paths and filters (A-33)", () => {
         { op: "replace", path: "urn:ietf:params:scim:schemas:core:2.0:User:active", value: false },
       ]);
 
-      expect(update).toHaveBeenCalledWith({ isActive: false, status: "SUSPENDED" });
+      expect(update).toHaveBeenCalledWith({ isActive: false, status: "SUSPENDED" }, TX);
     });
 
     it("matches attribute names case-insensitively, as RFC 7643 requires", async () => {
       await scim.patchUser("t1", "u1", [{ op: "replace", path: "Name.GivenName", value: "Ada" }]);
 
-      expect(update).toHaveBeenCalledWith({ firstName: "Ada" });
+      expect(update).toHaveBeenCalledWith({ firstName: "Ada" }, TX);
     });
 
     it("renames via name.familyName", async () => {
       await scim.patchUser("t1", "u1", [{ op: "replace", path: "name.familyName", value: "Lovelace" }]);
 
-      expect(update).toHaveBeenCalledWith({ lastName: "Lovelace" });
+      expect(update).toHaveBeenCalledWith({ lastName: "Lovelace" }, TX);
     });
 
     // A-37: a userName change runs the global identity check (two more
@@ -561,14 +573,14 @@ describe("scim.service — RFC 7644 patch paths and filters (A-33)", () => {
       renameable();
       await scim.patchUser("t1", "u1", [{ op: "replace", path: "userName", value: "New@B.COM" }]);
 
-      expect(update).toHaveBeenCalledWith({ email: "new@b.com", username: "new@b.com" });
+      expect(update).toHaveBeenCalledWith({ email: "new@b.com", username: "new@b.com" }, TX);
     });
 
     it("writes userName to both email and username, as createUser does", async () => {
       renameable();
       await scim.patchUser("t1", "u1", [{ op: "replace", path: "userName", value: " new@b.com " }]);
 
-      expect(update).toHaveBeenCalledWith({ email: "new@b.com", username: "new@b.com" });
+      expect(update).toHaveBeenCalledWith({ email: "new@b.com", username: "new@b.com" }, TX);
     });
 
     it("rejects an empty string value with 400", async () => {
@@ -586,7 +598,7 @@ describe("scim.service — RFC 7644 patch paths and filters (A-33)", () => {
     it("assigns a role via the path form", async () => {
       await scim.patchUser("t1", "u1", [{ op: "add", path: "roleId", value: "77777777-7777-4777-8777-777777777777" }]);
 
-      expect(update).toHaveBeenCalledWith({ roleId: "77777777-7777-4777-8777-777777777777" });
+      expect(update).toHaveBeenCalledWith({ roleId: "77777777-7777-4777-8777-777777777777" }, TX);
     });
 
     // The point of the whole exercise: the new code path must not be a second

@@ -13,7 +13,7 @@ const { asyncHandler } = require("../utils/controllerWrapper.util");
 const { sendResult } = require("../utils/response.util");
 // Who did it, from where — for the audit row the service writes inside its
 // transaction (A-41).
-const { auditActor } = require("../utils/auditActor.util");
+const { auditPrincipal } = require("../utils/auditPrincipal.util");
 const {
   getCertificatesQuery,
   certificateIdSchema,
@@ -22,8 +22,8 @@ const {
   approveCertificateSchema,
   signCertificateSchema,
   revokeCertificateSchema,
-  validate,
 } = require("../validators/certificate.validator");
+const { validateInput: validate } = require("../validators/input");
 
 /**
  * GET /api/certificates
@@ -72,13 +72,15 @@ exports.getSpecificCertificate = asyncHandler(async (req, res) => {
  */
 exports.createCertificate = asyncHandler(async (req, res) => {
   const tenantId = req.user.tenantId;
-  const userId = req.user.id;
+  // A-282 (ADR-100): an API key is no user — createdBy (an FK to users) is
+  // null for it, and the audit row names `system:api-key`.
+  const principal = auditPrincipal(req);
   const validated = validate(req.body, createCertificateSchema);
   const result = await certificateService.createCertificate(
     tenantId,
-    userId,
+    principal.userId,
     validated,
-    auditActor(req),
+    principal,
   );
 
   sendResult(res, result);
@@ -95,8 +97,8 @@ exports.updateCertificate = asyncHandler(async (req, res) => {
   const result = await certificateService.updateCertificate(
     tenantId,
     certificateId,
-    { ...validated, updatedBy: req.user.id },
-    auditActor(req),
+    { ...validated, updatedBy: auditPrincipal(req).userId },
+    auditPrincipal(req),
   );
 
   sendResult(res, result);
@@ -112,7 +114,7 @@ exports.deleteCertificate = asyncHandler(async (req, res) => {
   const result = await certificateService.deleteCertificate(
     tenantId,
     certificateId,
-    auditActor(req),
+    auditPrincipal(req),
   );
 
   sendResult(res, result);
@@ -155,7 +157,7 @@ exports.submitCertificate = asyncHandler(async (req, res) => {
   const result = await certificateService.submitCertificateForApproval(
     tenantId,
     certificateId,
-    auditActor(req),
+    auditPrincipal(req),
   );
   sendResult(res, result);
 });

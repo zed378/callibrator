@@ -2,20 +2,25 @@
  * Ticket validator tests
  */
 const v = require("../../validators/ticket.validator");
+const { checkInput } = require("../../validators/input");
+
+// P9-11: the schemas are Zod. checkInput applies them as the app does (unknown
+// keys stripped, every issue listed), as the old schemas' own options did.
+const check = (schema, body) => checkInput(body, schema);
 
 const UUID = "123e4567-e89b-12d3-a456-426614174000";
 
 describe("Ticket Validators", () => {
   describe("createTicket", () => {
     it("validates a minimal payload and applies enum defaults", () => {
-      const { error, value } = v.createTicket.validate({ subject: "Help me" });
-      expect(error).toBeUndefined();
-      expect(value.priority).toBe("medium");
-      expect(value.category).toBe("support");
+      expect(check(v.createTicket, { subject: "Help me" })).toEqual({
+        ok: true,
+        value: { subject: "Help me", priority: "medium", category: "support" },
+      });
     });
 
     it("validates a full payload", () => {
-      const { error } = v.createTicket.validate({
+      const result = check(v.createTicket, {
         subject: "Broken thing",
         description: "<p>details</p>",
         priority: "urgent",
@@ -23,98 +28,149 @@ describe("Ticket Validators", () => {
         assignedTo: UUID,
         dueDate: "2026-08-01",
       });
-      expect(error).toBeUndefined();
+      expect(result.ok).toBe(true);
+      expect(result.value.dueDate).toEqual(new Date("2026-08-01"));
     });
 
     it("accepts a null assignedTo and empty/null description", () => {
       expect(
-        v.createTicket.validate({ subject: "Subj", assignedTo: null, description: null }).error,
-      ).toBeUndefined();
+        check(v.createTicket, { subject: "Subj", assignedTo: null, description: null }).ok,
+      ).toBe(true);
       expect(
-        v.createTicket.validate({ subject: "Subj", description: "" }).error,
-      ).toBeUndefined();
+        check(v.createTicket, { subject: "Subj", description: "" }).ok,
+      ).toBe(true);
     });
 
     it("rejects a missing subject", () => {
-      expect(v.createTicket.validate({}).error).toBeDefined();
+      expect(check(v.createTicket, {})).toEqual({
+        ok: false,
+        errors: [{ field: "subject", message: "Invalid input: expected string, received undefined" }],
+      });
     });
 
-    it("rejects a too-short subject", () => {
-      expect(v.createTicket.validate({ subject: "ab" }).error).toBeDefined();
+    it("converts a millisecond-string dueDate and accepts a null one", () => {
+      expect(check(v.createTicket, { subject: "Subj", dueDate: "1700000000000" }).value.dueDate).toEqual(
+        new Date(1700000000000),
+      );
+      expect(check(v.createTicket, { subject: "Subj", dueDate: null }).value.dueDate).toBeNull();
+    });
+
+    it("rejects an unparseable or empty dueDate", () => {
+      expect(check(v.createTicket, { subject: "Subj", dueDate: "not a date" }).errors).toEqual([
+        { field: "dueDate", message: "Invalid input: expected date, received string" },
+      ]);
+      expect(check(v.createTicket, { subject: "Subj", dueDate: "" }).ok).toBe(false);
+    });
+
+    it("rejects an over-long description", () => {
+      expect(check(v.createTicket, { subject: "Subj", description: "d".repeat(50001) }).ok).toBe(false);
+    });
+
+    it("strips unknown keys (tenantId, createdBy)", () => {
+      const result = check(v.createTicket, { subject: "Subj", tenantId: "x", createdBy: "y" });
+      expect(result.ok).toBe(true);
+      expect(result.value).not.toHaveProperty("tenantId");
+      expect(result.value).not.toHaveProperty("createdBy");
+    });
+
+    it("rejects a too-short subject, counted after trimming", () => {
+      expect(check(v.createTicket, { subject: "ab" }).ok).toBe(false);
+      expect(check(v.createTicket, { subject: "  ab  " }).errors).toEqual([
+        { field: "subject", message: "Too small: expected string to have >=3 characters" },
+      ]);
     });
 
     it("rejects an invalid priority", () => {
       expect(
-        v.createTicket.validate({ subject: "Subject", priority: "critical" }).error,
-      ).toBeDefined();
+        check(v.createTicket, { subject: "Subject", priority: "critical" }).ok,
+      ).toBe(false);
     });
 
     it("rejects an invalid category", () => {
       expect(
-        v.createTicket.validate({ subject: "Subject", category: "other" }).error,
-      ).toBeDefined();
+        check(v.createTicket, { subject: "Subject", category: "other" }).ok,
+      ).toBe(false);
     });
 
     it("rejects a non-uuid assignedTo", () => {
       expect(
-        v.createTicket.validate({ subject: "Subject", assignedTo: "nope" }).error,
-      ).toBeDefined();
+        check(v.createTicket, { subject: "Subject", assignedTo: "nope" }).ok,
+      ).toBe(false);
     });
   });
 
   describe("updateTicket", () => {
     it("validates a partial update", () => {
-      expect(v.updateTicket.validate({ status: "resolved" }).error).toBeUndefined();
+      expect(check(v.updateTicket, { status: "resolved" }).ok).toBe(true);
     });
 
     it("rejects an empty object (min 1 field)", () => {
-      expect(v.updateTicket.validate({}).error).toBeDefined();
+      expect(check(v.updateTicket, {})).toEqual({
+        ok: false,
+        errors: [{ field: "", message: "Provide at least one field to update" }],
+      });
+    });
+
+    it("rejects an object whose only keys are stripped unknowns", () => {
+      expect(check(v.updateTicket, { foo: 1 }).ok).toBe(false);
     });
 
     it("rejects an invalid status", () => {
-      expect(v.updateTicket.validate({ status: "frozen" }).error).toBeDefined();
+      expect(check(v.updateTicket, { status: "frozen" }).errors).toEqual([
+        { field: "status", message: 'Invalid option: expected one of "open"|"in_progress"|"resolved"|"closed"' },
+      ]);
     });
 
     it("accepts a null assignedTo", () => {
-      expect(v.updateTicket.validate({ assignedTo: null }).error).toBeUndefined();
+      expect(check(v.updateTicket, { assignedTo: null }).ok).toBe(true);
     });
   });
 
   describe("assignTicket", () => {
     it("accepts a uuid assignee", () => {
-      expect(v.assignTicket.validate({ assignedTo: UUID }).error).toBeUndefined();
+      expect(check(v.assignTicket, { assignedTo: UUID }).ok).toBe(true);
     });
 
     it("accepts a null assignee (unassign)", () => {
-      expect(v.assignTicket.validate({ assignedTo: null }).error).toBeUndefined();
+      expect(check(v.assignTicket, { assignedTo: null }).ok).toBe(true);
     });
 
     it("requires assignedTo", () => {
-      expect(v.assignTicket.validate({}).error).toBeDefined();
+      expect(check(v.assignTicket, {}).ok).toBe(false);
     });
 
     it("rejects a non-uuid assignee", () => {
-      expect(v.assignTicket.validate({ assignedTo: "nope" }).error).toBeDefined();
+      expect(check(v.assignTicket, { assignedTo: "nope" })).toEqual({
+        ok: false,
+        errors: [{ field: "assignedTo", message: "Invalid GUID" }],
+      });
     });
   });
 
   describe("addComment", () => {
     it("validates a comment and defaults isInternal to false", () => {
-      const { error, value } = v.addComment.validate({ body: "hello" });
-      expect(error).toBeUndefined();
-      expect(value.isInternal).toBe(false);
+      expect(check(v.addComment, { body: "hello" })).toEqual({
+        ok: true,
+        value: { body: "hello", isInternal: false },
+      });
     });
 
     it("accepts an explicit isInternal flag", () => {
-      expect(v.addComment.validate({ body: "note", isInternal: true }).error).toBeUndefined();
+      expect(check(v.addComment, { body: "note", isInternal: true }).ok).toBe(true);
     });
 
-    it("rejects an empty body", () => {
-      expect(v.addComment.validate({ body: "" }).error).toBeDefined();
+    it("rejects an empty or blank body", () => {
+      expect(check(v.addComment, { body: "" }).ok).toBe(false);
+      expect(check(v.addComment, { body: "   " }).ok).toBe(false);
+    });
+
+    it("converts an isInternal string and refuses a non-boolean", () => {
+      expect(check(v.addComment, { body: "x", isInternal: "true" }).value.isInternal).toBe(true);
+      expect(check(v.addComment, { body: "x", isInternal: "yes" }).ok).toBe(false);
     });
 
     it("requires a body", () => {
-      expect(v.addComment.validate({}).error).toBeDefined();
+      expect(check(v.addComment, {}).ok).toBe(false);
     });
   });
 

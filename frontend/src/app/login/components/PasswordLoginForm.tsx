@@ -1,119 +1,101 @@
 // src/app/login/components/PasswordLoginForm.tsx
+//
+// P10-04 (doc 20 §7.2–7.3): step 2 of the identifier-first sign-in. The
+// identifier chosen in step 1 is shown (and kept in a hidden `username` field
+// so password managers pair it); `autocomplete` on every field (SC 1.3.5);
+// "Forgot password?" → /forgot-password; the show-password toggle is a real
+// button with aria-pressed. "Remember me" is gone: it had no state and sent
+// nothing (05 A9, P10-00).
 import React from "react";
-import { Mail, Lock, Eye, EyeOff } from "lucide-react";
+import Link from "next/link";
+import { Eye, EyeOff } from "@/components/icons/static";
 import Spinner from "@/components/auth/Spinner";
+import { useI18n } from "@/i18n/MessagesProvider";
 
 interface PasswordLoginFormProps {
   username: string;
-  setUsername: (val: string) => void;
   password: string;
   setPassword: (val: string) => void;
   onSubmit: (e: React.FormEvent) => void;
+  onChangeAccount: () => void;
   isLoading: boolean;
   showPassword: boolean;
   setShowPassword: (val: boolean) => void;
+  /** The error summary's id, so the field can point at it. */
+  errorId?: string;
 }
 
 export function PasswordLoginForm({
   username,
-  setUsername,
   password,
   setPassword,
   onSubmit,
+  onChangeAccount,
   isLoading,
   showPassword,
   setShowPassword,
+  errorId,
 }: PasswordLoginFormProps) {
+  const { t } = useI18n();
   return (
-    <form
-      onSubmit={onSubmit}
-      className="space-y-5 animate-fade-in-up delay-200"
-    >
-      <div>
-        <label
-          htmlFor="username"
-          className="block text-sm font-medium text-foreground mb-2"
-        >
-          Email or Username
-        </label>
-        <div className="relative group">
-          <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-            <Mail className="h-5 w-5 text-muted-foreground group-focus-within:text-primary transition-colors" />
-          </div>
-          <input
-            id="username"
-            type="text"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            required
-            className="w-full pl-11 pr-4 py-3.5 bg-muted ring-1 ring-border ring-inset rounded-xl text-foreground focus:ring-2 focus:ring-ring/50 transition-all duration-200 placeholder:text-muted-foreground"
-            placeholder="you@hospital.com"
-          />
-        </div>
+    <form onSubmit={onSubmit} className="space-y-5" noValidate>
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-pub-border bg-pub-raised px-3 py-2.5">
+        <span className="min-w-0 truncate text-[0.9375rem] text-pub-text">
+          {t("auth.login.signingInAs", { identifier: username })}
+        </span>
+        <button type="button" onClick={onChangeAccount} className="pub-link text-sm">
+          {t("auth.login.changeAccount")}
+        </button>
       </div>
+      {/* The identifier, for password managers: they pair a password with the username field beside it. */}
+      <input type="text" name="username" autoComplete="username" value={username} readOnly hidden />
 
       <div>
-        <label
-          htmlFor="password"
-          className="block text-sm font-medium text-foreground mb-2"
-        >
-          Password
-        </label>
-        <div className="relative group">
-          <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-            <Lock className="h-5 w-5 text-muted-foreground group-focus-within:text-primary transition-colors" />
-          </div>
+        <div className="flex items-baseline justify-between gap-3">
+          <label htmlFor="password" className="pub-label">
+            {t("auth.login.password")}
+          </label>
+          <Link href="/forgot-password" className="pub-link text-sm">
+            {t("auth.login.forgot")}
+          </Link>
+        </div>
+        <div className="relative">
           <input
             id="password"
+            name="password"
             type={showPassword ? "text" : "password"}
+            autoComplete="current-password"
+            autoFocus
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
-            className="w-full pl-11 pr-12 py-3.5 bg-muted ring-1 ring-border ring-inset rounded-xl text-foreground focus:ring-2 focus:ring-ring/50 transition-all duration-200 placeholder:text-muted-foreground"
-            placeholder="••••••••"
+            aria-describedby={errorId}
+            className="pub-input pr-12"
           />
           <button
             type="button"
             onClick={() => setShowPassword(!showPassword)}
-            aria-label={showPassword ? "Hide password" : "Show password"}
+            aria-label={showPassword ? t("auth.login.hidePassword") : t("auth.login.showPassword")}
             aria-pressed={showPassword}
-            className="absolute inset-y-0 right-0 pr-4 flex items-center text-muted-foreground hover:text-foreground transition-colors"
+            className="absolute inset-y-0 right-0 flex w-12 items-center justify-center rounded-r-md text-pub-muted hover:text-pub-text"
           >
-            {showPassword ? (
-              <EyeOff className="h-5 w-5" aria-hidden="true" />
-            ) : (
-              <Eye className="h-5 w-5" aria-hidden="true" />
-            )}
+            {showPassword ? <EyeOff className="h-5 w-5" aria-hidden="true" /> : <Eye className="h-5 w-5" aria-hidden="true" />}
           </button>
         </div>
       </div>
 
-      <div className="flex items-center justify-between">
-        <label className="flex items-center gap-2 cursor-pointer group text-muted-foreground hover:text-foreground">
-          <input
-            type="checkbox"
-            className="w-4 h-4 rounded ring-1 ring-border ring-inset bg-card text-primary focus:ring-ring/50 focus:ring-offset-0 cursor-pointer"
-          />
-          <span className="text-sm">Remember me</span>
-        </label>
-      </div>
-
-      <button
-        type="submit"
-        disabled={isLoading}
-        className="w-full py-3.5 px-4 bg-linear-to-r from-primary to-accent hover:from-primary hover:to-accent text-primary-foreground font-semibold rounded-xl shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-all duration-300 transform hover:-translate-y-0.5 disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2"
-      >
+      <button type="submit" disabled={isLoading} aria-busy={isLoading} className="pub-btn pub-btn-primary pub-btn-block">
         {isLoading ? (
           <>
             <Spinner />
-            <span>Signing In...</span>
+            <span>{t("auth.login.busy")}</span>
           </>
         ) : (
-          <span>Sign In</span>
+          <span>{t("auth.login.submit")}</span>
         )}
       </button>
     </form>
   );
-};
+}
 
 export default PasswordLoginForm;

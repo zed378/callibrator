@@ -40,11 +40,17 @@ const ATTACH_EXTS = [
 
 // A-28 — authorization.
 //
-// There is NO `attachments` slug in MENU_SLUGS (roleConstants.js). Naming one
-// here would produce an A-07 instance: a `dynamicAccess` resource that matches
-// no menu, which denies everyone but SUPER_ADMIN and does so silently. The
-// closest slug that actually exists is `equipment`, and it fits: attachments
-// are evidence hanging off devices, calibration records and certificates.
+// V-12 (2026-09-30): the gates use `equipment`, NOT the `attachments` slug —
+// and the reason is the role assignments, not a missing slug. `attachments`
+// IS a seeded menu group (seedMenuGroups.util.js, id …-210, parent
+// `mgmt-content`) and, since ADR-102 (migration 0097), MENU_SLUGS.ATTACHMENTS
+// in roleConstants.ts. But ROLE_MENU_ASSIGNMENTS grants it only to HEALTHCARE
+// ADMIN and CALIBRATOR ADMIN (write) and ENGINEERING MANAGER (read): no
+// technician, supervisor or user holds it. Re-pointing these gates at it would
+// lock every TECHNICIAN out of reading and attaching its own calibration
+// evidence. `equipment` fits: attachments are evidence hanging off devices,
+// calibration records and certificates, and every seeded role holds
+// `equipment:read`.
 //
 //   read  — every seeded role has `equipment:read`, so reading and ATTACHING
 //           evidence stays open to the technicians who do the work. Raising
@@ -54,9 +60,11 @@ const ATTACH_EXTS = [
 //           CALIBRATOR ADMIN) hold `equipment:write`. Destroying evidence is
 //           theirs alone.
 //
-// Recommendation recorded with A-28: add a dedicated `attachments` slug to
-// MENU_SLUGS and re-point these gates at it, so evidence retention can be
-// granted independently of equipment editing.
+// Recommendation recorded with A-28, corrected by V-12: to re-point these
+// gates at `attachments` (so evidence retention can be granted independently
+// of equipment editing), FIRST seed `attachments` read for every role that
+// holds `equipment:read` today (ROLE_MENU_ASSIGNMENTS + a data migration for
+// seeded tenants) — the constant alone is not the change.
 
 /**
  * @swagger

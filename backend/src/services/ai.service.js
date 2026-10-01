@@ -2,6 +2,12 @@ const { AppError } = require("../utils/appError.util");
 const { logger } = require("../middlewares/activityLog.middleware");
 const axios = require("axios");
 const { TenantSettings } = require("../models");
+// A-176: `ai_base_url` is tenant-chosen; the server must not be pointed at
+// its own network with it.
+const { assertOutboundUrl, ssrfSafeAxiosOptions } = require("../utils/ssrf.util");
+
+/** A-176: timeout for one AI vendor call (a completion can be slow). */
+const AI_TIMEOUT_MS = 60000;
 
 /**
  * AZ-02 (ADR-088) — the source types `POST /ai/query` may answer from.
@@ -44,8 +50,25 @@ class AiService {
     return {
       apiKey: configMap.ai_api_key || process.env.OPENAI_API_KEY,
       baseUrl: configMap.ai_base_url || process.env.OPENAI_BASE_URL || "https://api.openai.com/v1",
+      // A-176: only the operator's own URL (env / default) skips the SSRF guard.
+      tenantBaseUrl: Boolean(configMap.ai_base_url),
       vendor: configMap.ai_vendor || "openai",
     };
+  }
+
+  /**
+   * A-176 — axios options for a call to the AI vendor. A tenant-chosen base
+   * URL is validated and called through the SSRF-safe agents (pinned DNS, no
+   * redirects, capped body); the operator's own URL keeps a plain timeout.
+   * Throws AppError(400) for a disallowed tenant URL — every caller catches it
+   * and degrades exactly as for any other vendor failure.
+   */
+  vendorRequestOptions(config, url) {
+    if (config.tenantBaseUrl) {
+      assertOutboundUrl(url, "ai_base_url");
+      return ssrfSafeAxiosOptions({ timeoutMs: AI_TIMEOUT_MS });
+    }
+    return { timeout: AI_TIMEOUT_MS };
   }
 
   /**
@@ -69,8 +92,9 @@ class AiService {
       const base64Data = fileBuffer.toString("base64");
       const dataUrl = `data:${mimeType};base64,${base64Data}`;
 
+      const url = `${config.baseUrl}/chat/completions`;
       const response = await axios.post(
-        `${config.baseUrl}/chat/completions`,
+        url,
         {
           model: "gpt-4o", // Vision capable model
           messages: [
@@ -89,6 +113,7 @@ class AiService {
           response_format: { type: "json_object" },
         },
         {
+          ...this.vendorRequestOptions(config, url),
           headers: {
             "Authorization": `Bearer ${config.apiKey}`,
             "Content-Type": "application/json",
@@ -121,13 +146,15 @@ class AiService {
     }
 
     try {
+      const url = `${config.baseUrl}/embeddings`;
       const response = await axios.post(
-        `${config.baseUrl}/embeddings`,
+        url,
         {
           model: "text-embedding-3-small",
           input: text,
         },
         {
+          ...this.vendorRequestOptions(config, url),
           headers: {
             "Authorization": `Bearer ${config.apiKey}`,
             "Content-Type": "application/json",
@@ -294,8 +321,9 @@ class AiService {
 
     // 3. Answer strictly from the retrieved context.
     try {
+      const url = `${config.baseUrl}/chat/completions`;
       const response = await axios.post(
-        `${config.baseUrl}/chat/completions`,
+        url,
         {
           model: "gpt-4o-mini",
           messages: [
@@ -311,6 +339,7 @@ class AiService {
           ],
         },
         {
+          ...this.vendorRequestOptions(config, url),
           headers: {
             Authorization: `Bearer ${config.apiKey}`,
             "Content-Type": "application/json",

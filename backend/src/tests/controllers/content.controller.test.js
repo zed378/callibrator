@@ -63,17 +63,16 @@ describe("contentController", () => {
         success: true,
         status: 200,
         message: "Fetch posts successful",
-        data: {
-          rows: [{ id: "post-1", title: "Test Post" }],
-          meta: { total: 1, page: 1, limit: 10, totalPages: 1 },
-        },
+        // A-297: rows in `data`, pagination in a top-level `meta`.
+        data: [{ id: "post-1", title: "Test Post" }],
+        meta: { total: 1, page: 1, limit: 10, totalPages: 1 },
       };
       contentService.listPosts.mockResolvedValue(mockResult);
 
       await contentController.listPosts(req, res, next);
 
       expect(contentService.listPosts).toHaveBeenCalledWith(req.query);
-      expect(success).toHaveBeenCalled();
+      expect(success).toHaveBeenCalledWith(res, mockResult.data, mockResult.meta, mockResult.message, 200);
       expect(res.status).toHaveBeenCalledWith(200);
     });
   });
@@ -113,7 +112,7 @@ describe("contentController", () => {
 
       await contentController.createPost(req, res, next);
 
-      expect(contentService.createPost).toHaveBeenCalledWith(req.body, VALID_USER_ID);
+      expect(contentService.createPost).toHaveBeenCalledWith(req.body, VALID_USER_ID, expect.objectContaining({ apiKeyId: null }));
       expect(success).toHaveBeenCalled();
     });
   });
@@ -131,7 +130,7 @@ describe("contentController", () => {
 
       await contentController.updatePost(req, res, next);
 
-      expect(contentService.updatePost).toHaveBeenCalledWith("post-1", req.body);
+      expect(contentService.updatePost).toHaveBeenCalledWith("post-1", req.body, expect.objectContaining({ apiKeyId: null }));
       expect(success).toHaveBeenCalled();
     });
   });
@@ -147,7 +146,7 @@ describe("contentController", () => {
 
       await contentController.deletePost(req, res, next);
 
-      expect(contentService.deletePost).toHaveBeenCalledWith("post-1");
+      expect(contentService.deletePost).toHaveBeenCalledWith("post-1", expect.objectContaining({ apiKeyId: null }));
       expect(success).toHaveBeenCalled();
     });
   });
@@ -176,16 +175,21 @@ describe("contentController", () => {
         success: true,
         status: 200,
         message: "OK",
-        data: {
-          rows: [{ id: "post-1", title: "Published Post" }],
-          meta: { total: 1, page: 1, limit: 10, totalPages: 1 },
-        },
+        // A-297: rows in `data`, pagination in a top-level `meta`.
+        data: [{ id: "post-1", title: "Published Post" }],
+        meta: { total: 1, page: 1, limit: 10, totalPages: 1 },
       });
 
       await contentController.listPublishedPosts(req, res, next);
 
       expect(contentService.listPublishedPosts).toHaveBeenCalledWith(req.query);
-      expect(success).toHaveBeenCalled();
+      expect(success).toHaveBeenCalledWith(
+        res,
+        [{ id: "post-1", title: "Published Post" }],
+        { total: 1, page: 1, limit: 10, totalPages: 1 },
+        "OK",
+        200,
+      );
     });
   });
 
@@ -236,7 +240,7 @@ describe("contentController", () => {
 
       await contentController.createCategory(req, res, next);
 
-      expect(contentService.createCategory).toHaveBeenCalledWith(req.body);
+      expect(contentService.createCategory).toHaveBeenCalledWith(req.body, expect.objectContaining({ apiKeyId: null }));
       expect(success).toHaveBeenCalled();
     });
   });
@@ -254,7 +258,7 @@ describe("contentController", () => {
 
       await contentController.updateCategory(req, res, next);
 
-      expect(contentService.updateCategory).toHaveBeenCalledWith("cat-1", req.body);
+      expect(contentService.updateCategory).toHaveBeenCalledWith("cat-1", req.body, expect.objectContaining({ apiKeyId: null }));
       expect(success).toHaveBeenCalled();
     });
   });
@@ -270,7 +274,7 @@ describe("contentController", () => {
 
       await contentController.deleteCategory(req, res, next);
 
-      expect(contentService.deleteCategory).toHaveBeenCalledWith("cat-1");
+      expect(contentService.deleteCategory).toHaveBeenCalledWith("cat-1", expect.objectContaining({ apiKeyId: null }));
       expect(success).toHaveBeenCalled();
     });
   });
@@ -283,11 +287,13 @@ describe("contentController", () => {
 
       await contentController.uploadMedia(req, res, next);
 
+      // A-282 (ADR-100): auditPrincipal(req) plus the tenant.
       expect(contentMediaService.recordMediaUpload).toHaveBeenCalledWith(req.file, {
         userId: VALID_USER_ID,
+        apiKeyId: null,
         tenantId: VALID_TENANT_ID,
         ipAddress: "127.0.0.1",
-        userAgent: "jest-agent",
+        userAgent: req.headers?.["user-agent"] ?? null,
       });
       expect(success).toHaveBeenCalledWith(
         res,

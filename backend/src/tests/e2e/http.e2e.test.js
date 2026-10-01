@@ -52,7 +52,10 @@ describe("E2E HTTP Protocol & Error Handling (HTTP)", () => {
   // ─── 2. ERROR RESPONSE STRUCTURE CONSISTENCY ───────────────
 
   test("Validation error returns { status, message }", async () => {
-    const { status, body } = await httpPost("/auth/register", {});
+    // P10-13: /auth/register is absent in production (P10-12, Q-44), so the
+    // validation envelope is checked on a route every mode has.
+    // No request budget on this route (the reset routes have one, ADR-100).
+    const { status, body } = await httpPost("/auth/first-sign-in/password", {});
     expect(status).toBe(400);
     expect(body).toHaveProperty("status");
     expect(body).toHaveProperty("message");
@@ -78,17 +81,28 @@ describe("E2E HTTP Protocol & Error Handling (HTTP)", () => {
 
   // ─── 3. INPUT SANITIZATION (XSS) ───────────────────────────
 
-  test("XSS payload in register input handled gracefully", async () => {
-    const { status } = await httpPost("/auth/register", {
-      firstName: "<script>alert('xss')</script>",
-      lastName: "Test",
-      username: "xss_user_123",
-      email: "xss@test.com",
-      password: "TestPass123",
+  // P10-13: /auth/register is absent in production (P10-12, Q-44); the public
+  // intake that replaced it takes the payload instead.
+  test("XSS payload in the public access-request intake handled gracefully", async () => {
+    const { status } = await httpPost("/access-requests", {
+      organisationName: "<script>alert('xss')</script> RS",
+      facilityType: "hospital",
+      city: "Bandung",
+      deviceCountBand: "unknown",
+      contactName: "Xss Test",
+      workEmail: `xss-${Date.now()}@example.com`,
+      whatsapp: "081234567890",
+      consent: true,
+      consentVersion: "2026-09-29",
+      locale: "en",
+    }, {
+      // Its own client address: the production intake budget is 5 an hour per
+      // address (ADR-100), and the browser suite submits from the shared one.
+      "X-Forwarded-For": `198.19.${Math.floor(Math.random() * 250) + 1}.${Math.floor(Math.random() * 250) + 1}`,
     });
 
-    // Either rejected (400/409) or stored sanitized
-    expect([201, 400, 409]).toContain(status);
+    // Either rejected (400) or accepted with the neutral answer (stored as text, escaped where shown)
+    expect([202, 400]).toContain(status);
   });
 
   // ─── 4. OVERSIZED PAYLOAD ──────────────────────────────────

@@ -12,7 +12,7 @@
  * What is real: auth.service#loginUser, the throttle
  * (rateLimiter.redis.service on its in-process store — no Redis is ready in a
  * unit run), audit.service#recordAccountLock and logAction with the audit
- * schema enforced by the auditLedger fixture, and the Joi login schema.
+ * schema enforced by the auditLedger fixture, and the login schema.
  * What is faked: the user rows, createSession and bcrypt (comparePassword
  * answers true only for RIGHT against the stored "hash").
  */
@@ -20,6 +20,8 @@ const { createLedger } = require("../fixtures/auditLedger");
 
 const mockRef = { ledger: null };
 
+// A-288 (ADR-100): the network policy has its own suites (signInPolicy.*.a288); here it permits.
+jest.mock("../../services/signInPolicy.service", () => ({ assertSignInPermitted: jest.fn(async () => undefined) }));
 jest.mock("../../config", () => ({
   db: { transaction: (...args) => mockRef.ledger.transaction(...args) },
 }));

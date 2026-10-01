@@ -116,14 +116,9 @@ jest.mock("../../constants", () => ({
 }));
 
 // --- validators ---
-jest.mock("../../validators/user.validator", () => ({
-  validate: jest.fn((data) => ({ value: { ...data }, error: null })),
-  formatErrors: jest.fn((d) => d),
-  createUserSchema: "createUserSchema",
-  updateUserSchema: "updateUserSchema",
-  updateUserRoleSchema: "updateUserRoleSchema",
-  checkUsernameSchema: "checkUsernameSchema",
-}));
+// The request schemas are REAL (P9-11: Zod through validators/input): every
+// input below is one the API accepts, and the validated value is what the
+// service acts on.
 
 // ================================================================
 // IMPORTS (after mocks are registered)
@@ -133,7 +128,6 @@ const { Users, Roles } = require("../../models");
 const { logger } = require("../../middlewares/activityLog.middleware");
 const { hashPassword } = require("../../utils/password.util");
 const { deleteUpload } = require("../../utils/upload.util");
-const { validate: validateInput } = require("../../validators/user.validator");
 const { DEFAULT_LIMIT } = require("../../constants");
 
 const {
@@ -145,6 +139,21 @@ const {
   editUser,
   deleteUser,
 } = require("../../services/user.service");
+
+// Ids the request schemas accept (they are uuids since P9-11 validates for real).
+const U1 = "00000001-0000-4000-8000-000000000001";
+const U2 = "00000002-0000-4000-8000-000000000002";
+const NONEXISTENT = "00000003-0000-4000-8000-000000000003";
+const ROLE_UUID = "00000004-0000-4000-8000-000000000004";
+const INACTIVE_ROLE = "00000005-0000-4000-8000-000000000005";
+const SAME_ROLE = "00000006-0000-4000-8000-000000000006";
+const NEW_ROLE = "00000007-0000-4000-8000-000000000007";
+const OLD_ROLE = "00000008-0000-4000-8000-000000000008";
+const R1 = "00000009-0000-4000-8000-000000000009";
+const MISSING_ROLE = "0000000a-0000-4000-8000-00000000000a";
+const SUPER_ROLE = "0000000b-0000-4000-8000-00000000000b";
+const T1 = "0000000c-0000-4000-8000-00000000000c";
+const ROLE_USER = "0000000d-0000-4000-8000-00000000000d";
 
 // ================================================================
 // HELPERS
@@ -178,19 +187,6 @@ describe("user.service", () => {
     jest.clearAllMocks();
     hashPassword.mockResolvedValue("hashed_pw");
     deleteUpload.mockResolvedValue(undefined);
-    validateInput.mockReturnValue({
-      value: {
-        username: "test",
-        firstName: "Test",
-        lastName: "User",
-        email: "test@test.com",
-        password: "password123",
-        roleId: "role-uuid",
-        tenantId: "tenant-uuid",
-        status: "ACTIVE",
-      },
-      error: null,
-    });
   });
 
   // --------------------------------------------------------------
@@ -199,7 +195,7 @@ describe("user.service", () => {
   describe("fetchUsers", () => {
     const makeUserRow = (extra = {}) => {
       const data = {
-        id: "u1",
+        id: U1,
         username: "testuser",
         email: "test@test.com",
         avatar_url: "avatar.png",
@@ -212,7 +208,7 @@ describe("user.service", () => {
         picture: data.avatar_url,
         first_name: data.firstName,
         last_name: data.lastName,
-        role: { get: () => ({ id: "r1", name: "admin", description: "Admin" }) },
+        role: { get: () => ({ id: R1, name: "admin", description: "Admin" }) },
       };
     };
 
@@ -224,7 +220,7 @@ describe("user.service", () => {
       db.transaction.mockResolvedValueOnce(mockTransaction());
       Users.findAll.mockResolvedValueOnce([{ status: "ACTIVE", count: 5 }]);
 
-      const result = await fetchUsers({ tenantId: "t1", page: 1, limit: 10 });
+      const result = await fetchUsers({ tenantId: T1, page: 1, limit: 10 });
 
       expect(result.success).toBe(true);
       expect(result.meta.page).toBe(1);
@@ -235,7 +231,7 @@ describe("user.service", () => {
 
     it("should throw when transaction fails", async () => {
       db.transaction.mockRejectedValueOnce(new Error("DB error"));
-      await expectRejectsWithMessage(fetchUsers({ tenantId: "t1" }), "DB error");
+      await expectRejectsWithMessage(fetchUsers({ tenantId: T1 }), "DB error");
     });
   });
 
@@ -246,7 +242,7 @@ describe("user.service", () => {
     it("should return user by ID", async () => {
       const mockUser = {
         get: () => ({
-          id: "u1",
+          id: U1,
           username: "test",
           email: "test@test.com",
           avatar_url: "a.png",
@@ -254,14 +250,14 @@ describe("user.service", () => {
       };
       Users.findByPk.mockResolvedValueOnce(mockUser);
 
-      const result = await fetchSpecificUser("u1");
+      const result = await fetchSpecificUser(U1);
       expect(result.success).toBe(true);
       expect(result.data.username).toBe("test");
     });
 
     it("should throw 404 when user not found", async () => {
       Users.findByPk.mockResolvedValueOnce(null);
-      await expectRejectsWithMessage(fetchSpecificUser("nonexistent"), "User not found");
+      await expectRejectsWithMessage(fetchSpecificUser(NONEXISTENT), "User not found");
     });
   });
 
@@ -276,7 +272,7 @@ describe("user.service", () => {
     });
 
     it("should return taken when user exists", async () => {
-      Users.findOne.mockResolvedValueOnce({ id: "u1", username: "newuser" });
+      Users.findOne.mockResolvedValueOnce({ id: U1, username: "newuser" });
       const result = await checkUsernameAvailability({ username: "newuser" });
       expect(result.data.available).toBe(false);
     });
@@ -287,18 +283,18 @@ describe("user.service", () => {
   // --------------------------------------------------------------
   describe("userRoleUpdate", () => {
     const makeMockUser = (overrides = {}) => ({
-      get: () => ({ id: "u1", role_id: "old-role", ...overrides }),
+      get: () => ({ id: U1, role_id: OLD_ROLE, ...overrides }),
       update: jest.fn().mockResolvedValue({}),
     });
 
     it("should update user role successfully", async () => {
       Users.findByPk.mockResolvedValueOnce(makeMockUser());
-      Roles.findByPk.mockResolvedValueOnce({ id: "new-role", name: "editor", status: "active" });
+      Roles.findByPk.mockResolvedValueOnce({ id: NEW_ROLE, name: "editor", status: "active" });
       db.transaction.mockResolvedValueOnce(mockTransaction());
 
       const result = await userRoleUpdate({
-        userId: "u1",
-        roleId: "new-role",
+        userId: U1,
+        roleId: NEW_ROLE,
         updatedBy: "admin",
         actorIsSuperAdmin: true,
       });
@@ -310,32 +306,32 @@ describe("user.service", () => {
       Users.findByPk.mockResolvedValueOnce(null);
       db.transaction.mockResolvedValueOnce(mockTransaction());
       await expectRejectsWithMessage(
-        userRoleUpdate({ userId: "nonexistent", roleId: "role-uuid", updatedBy: "admin" }),
+        userRoleUpdate({ userId: NONEXISTENT, roleId: ROLE_UUID, updatedBy: "admin" }),
         "User not found",
       );
     });
 
     it("should throw 400 when role is inactive", async () => {
       Users.findByPk.mockResolvedValueOnce(makeMockUser());
-      Roles.findByPk.mockResolvedValueOnce({ id: "inactive-role", name: "banned", status: "inactive" });
+      Roles.findByPk.mockResolvedValueOnce({ id: INACTIVE_ROLE, name: "banned", status: "inactive" });
       db.transaction.mockResolvedValueOnce(mockTransaction());
       await expectRejectsWithMessage(
-        userRoleUpdate({ userId: "u1", roleId: "inactive-role", updatedBy: "admin", actorIsSuperAdmin: true }),
+        userRoleUpdate({ userId: U1, roleId: INACTIVE_ROLE, updatedBy: "admin", actorIsSuperAdmin: true }),
         "Cannot assign inactive role to user",
       );
     });
 
     it("should throw 400 when user already has this role", async () => {
       const mockUser = {
-        get: () => ({ id: "u1", roleId: "same-role" }),
-        roleId: "same-role", // the attribute; `role_id` is gone (A-148)
+        get: () => ({ id: U1, roleId: SAME_ROLE }),
+        roleId: SAME_ROLE, // the attribute; `role_id` is gone (A-148)
         update: jest.fn().mockResolvedValue({}),
       };
       Users.findByPk.mockResolvedValueOnce(mockUser);
-      Roles.findByPk.mockResolvedValueOnce({ id: "same-role", name: "admin", status: "active" });
+      Roles.findByPk.mockResolvedValueOnce({ id: SAME_ROLE, name: "admin", status: "active" });
       db.transaction.mockResolvedValueOnce(mockTransaction());
       await expectRejectsWithMessage(
-        userRoleUpdate({ userId: "u1", roleId: "same-role", updatedBy: "admin", actorIsSuperAdmin: true }),
+        userRoleUpdate({ userId: U1, roleId: SAME_ROLE, updatedBy: "admin", actorIsSuperAdmin: true }),
         "User already has this role",
       );
     });
@@ -347,20 +343,20 @@ describe("user.service", () => {
   describe("userCreate", () => {
     it("should create a new user", async () => {
       Users.findOne.mockResolvedValueOnce(null);
-      Roles.findByPk.mockResolvedValueOnce({ id: "r1", status: "active" });
+      Roles.findByPk.mockResolvedValueOnce({ id: R1, status: "active" });
       const createdUser = {
-        id: "u1",
-        tenantId: "t1",
+        id: U1,
+        tenantId: T1,
         username: "newuser",
         firstName: "Test",
         lastName: "User",
         email: "test@test.com",
-        role_id: "r1",
+        role_id: R1,
         status: "ACTIVE",
         is_email_verified: true,
         createdAt: new Date(),
         isEmailVerified: true,
-        roleId: "r1",
+        roleId: R1,
       };
       Users.create.mockResolvedValueOnce(createdUser);
       Users.findByPk.mockResolvedValueOnce(createdUser);
@@ -376,17 +372,17 @@ describe("user.service", () => {
         lastName: "User",
         email: "test@test.com",
         password: "password123",
-        roleId: "r1",
-        tenantId: "t1",
+        roleId: R1,
+        tenantId: T1,
         // A-125 follow-up: a non-super-admin creates in its OWN tenant.
-        actorTenantId: "t1",
+        actorTenantId: T1,
       });
       expect(result.success).toBe(true);
       expect(result.data.username).toBe("newuser");
     });
 
     it("should throw 409 when username already exists", async () => {
-      Users.findOne.mockResolvedValueOnce({ id: "u1" });
+      Users.findOne.mockResolvedValueOnce({ id: U1 });
       db.transaction.mockResolvedValueOnce({
         commit: jest.fn(),
         rollback: jest.fn(),
@@ -395,12 +391,12 @@ describe("user.service", () => {
       await expectRejectsWithMessage(
         userCreate({
           username: "taken",
-          firstName: "T",
-          lastName: "U",
+          firstName: "Te",
+          lastName: "Us",
           email: "t@t.com",
           password: "password123",
-          roleId: "r1",
-          actorTenantId: "t1",
+          roleId: R1,
+          actorTenantId: T1,
         }),
         "Username already used",
       );
@@ -408,7 +404,7 @@ describe("user.service", () => {
 
     it("should throw 409 when email already exists", async () => {
       Users.findOne.mockResolvedValueOnce(null);
-      Users.findOne.mockResolvedValueOnce({ id: "u2" });
+      Users.findOne.mockResolvedValueOnce({ id: U2 });
       db.transaction.mockResolvedValueOnce({
         commit: jest.fn(),
         rollback: jest.fn(),
@@ -417,12 +413,12 @@ describe("user.service", () => {
       await expectRejectsWithMessage(
         userCreate({
           username: "new",
-          firstName: "T",
-          lastName: "U",
+          firstName: "Te",
+          lastName: "Us",
           email: "taken@test.com",
           password: "password123",
-          roleId: "r1",
-          actorTenantId: "t1",
+          roleId: R1,
+          actorTenantId: T1,
         }),
         "Email already registered",
       );
@@ -439,11 +435,11 @@ describe("user.service", () => {
       await expectRejectsWithMessage(
         userCreate({
           username: "new",
-          firstName: "T",
-          lastName: "U",
+          firstName: "Te",
+          lastName: "Us",
           email: "n@n.com",
           password: "password123",
-          roleId: "missing-role",
+          roleId: MISSING_ROLE,
           actorIsSuperAdmin: true,
         }),
         "Role not found",
@@ -457,7 +453,7 @@ describe("user.service", () => {
   describe("editUser", () => {
     const makeEditableUser = (overrides = {}) => ({
       get: () => ({
-        id: "u1",
+        id: U1,
         username: "old",
         email: "old@test.com",
         firstName: "Old",
@@ -471,25 +467,25 @@ describe("user.service", () => {
     it("should update user successfully", async () => {
       const mockUser = {
         get: () => ({
-          id: "u1",
+          id: U1,
           username: "old",
           email: "old@test.com",
           firstName: "Old",
           lastName: "Name",
           status: "ACTIVE",
-          tenantId: "t1",
+          tenantId: T1,
           is_email_verified: true,
           is_active: true,
           updatedAt: new Date(),
         }),
-        id: "u1",
+        id: U1,
         username: "newuser",
         email: "new@test.com",
         firstName: "New",
         lastName: "Name",
         status: "ACTIVE",
-        tenantId: "t1",
-        roleId: "r1",
+        tenantId: T1,
+        roleId: R1,
         isEmailVerified: true,
         is_active: true,
         updatedAt: new Date(),
@@ -499,7 +495,7 @@ describe("user.service", () => {
       db.transaction.mockResolvedValueOnce(mockTransaction());
 
       const result = await editUser({
-        userId: "u1",
+        userId: U1,
         username: "newuser",
         firstName: "New",
         lastName: "Name",
@@ -514,7 +510,7 @@ describe("user.service", () => {
 
     it("should throw 404 when user not found", async () => {
       Users.findByPk.mockResolvedValueOnce(null);
-      await expectRejectsWithMessage(editUser({ userId: "nonexistent", updatedBy: "admin" }), "User not found");
+      await expectRejectsWithMessage(editUser({ userId: NONEXISTENT, updatedBy: "admin" }), "User not found");
     });
   });
 
@@ -525,12 +521,12 @@ describe("user.service", () => {
     it("should delete user successfully", async () => {
       const mockUser = {
         get: () => ({
-          id: "u1",
+          id: U1,
           username: "touser",
           email: "t@t.com",
           picture: "/uploads/pic.png",
         }),
-        id: "u1",
+        id: U1,
         username: "touser",
         email: "t@t.com",
         picture: "/uploads/pic.png",
@@ -542,7 +538,7 @@ describe("user.service", () => {
       db.transaction.mockResolvedValueOnce(mockTransaction());
 
       const result = await deleteUser({
-        userId: "u1",
+        userId: U1,
         deletedBy: "admin",
         actorIsSuperAdmin: true,
       });
@@ -553,19 +549,19 @@ describe("user.service", () => {
     it("should throw 400 when trying to delete self", async () => {
       const mockUser = {
         get: () => ({
-          id: "u1",
+          id: U1,
           username: "self",
           email: "s@s.com",
           picture: null,
         }),
-        id: "u1",
+        id: U1,
         username: "self",
         email: "s@s.com",
         picture: null,
       };
       Users.findByPk.mockResolvedValueOnce(mockUser);
       await expectRejectsWithMessage(
-        deleteUser({ userId: "u1", deletedBy: "u1", actorIsSuperAdmin: true }),
+        deleteUser({ userId: U1, deletedBy: U1, actorIsSuperAdmin: true }),
         "You cannot delete your own account",
       );
     });
@@ -576,16 +572,16 @@ describe("user.service", () => {
 
     it("should refuse cross-tenant delete as not-found for a non-super-admin (AZ-04)", async () => {
       const mockUser = {
-        get: () => ({ id: "u2", username: "victim" }),
-        id: "u2",
+        get: () => ({ id: U2, username: "victim" }),
+        id: U2,
         tenantId: "tenant-B",
         role: { name: "USER" },
-        roleId: "role-user",
+        roleId: ROLE_USER,
       };
       Users.findByPk.mockResolvedValueOnce(mockUser);
       await expectRejectsWithMessage(
         deleteUser({
-          userId: "u2",
+          userId: U2,
           deletedBy: "admin",
           actorIsSuperAdmin: false,
           actorTenantId: "tenant-A",
@@ -601,21 +597,21 @@ describe("user.service", () => {
   describe("access-control guards", () => {
     it("userRoleUpdate denies granting SUPER_ADMIN for a non-super-admin", async () => {
       const mockUser = {
-        get: () => ({ id: "u1", role_id: "old-role" }),
+        get: () => ({ id: U1, role_id: OLD_ROLE }),
         tenantId: "tenant-A",
         update: jest.fn().mockResolvedValue({}),
       };
       Users.findByPk.mockResolvedValueOnce(mockUser);
       Roles.findByPk.mockResolvedValueOnce({
-        id: "super-role",
+        id: SUPER_ROLE,
         name: "SUPERADMIN",
         status: "active",
       });
       db.transaction.mockResolvedValueOnce(mockTransaction());
       await expectRejectsWithMessage(
         userRoleUpdate({
-          userId: "u1",
-          roleId: "super-role",
+          userId: U1,
+          roleId: SUPER_ROLE,
           updatedBy: "admin",
           actorIsSuperAdmin: false,
           actorTenantId: "tenant-A",
@@ -626,7 +622,7 @@ describe("user.service", () => {
 
     it("userRoleUpdate refuses cross-tenant modification as not-found (AZ-04)", async () => {
       const mockUser = {
-        get: () => ({ id: "u1", role_id: "old-role" }),
+        get: () => ({ id: U1, role_id: OLD_ROLE }),
         tenantId: "tenant-B",
         update: jest.fn().mockResolvedValue({}),
       };
@@ -634,8 +630,8 @@ describe("user.service", () => {
       db.transaction.mockResolvedValueOnce(mockTransaction());
       await expectRejectsWithMessage(
         userRoleUpdate({
-          userId: "u1",
-          roleId: "new-role",
+          userId: U1,
+          roleId: NEW_ROLE,
           updatedBy: "admin",
           actorIsSuperAdmin: false,
           actorTenantId: "tenant-A",
@@ -648,7 +644,7 @@ describe("user.service", () => {
       Users.findOne.mockResolvedValueOnce(null);
       Users.findOne.mockResolvedValueOnce(null);
       Roles.findByPk.mockResolvedValueOnce({
-        id: "super-role",
+        id: SUPER_ROLE,
         name: "SUPER_ADMIN",
         status: "active",
       });
@@ -656,11 +652,11 @@ describe("user.service", () => {
       await expectRejectsWithMessage(
         userCreate({
           username: "new",
-          firstName: "T",
-          lastName: "U",
+          firstName: "Te",
+          lastName: "Us",
           email: "n@n.com",
           password: "password123",
-          roleId: "super-role",
+          roleId: SUPER_ROLE,
           actorIsSuperAdmin: false,
           actorTenantId: "tenant-A",
         }),

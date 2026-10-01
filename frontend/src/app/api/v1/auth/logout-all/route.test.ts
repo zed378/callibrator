@@ -12,7 +12,11 @@ jest.mock("next/headers", () => ({
   cookies: jest.fn(async () => cookieStore),
 }));
 
-import { POST } from "./route";
+import { NextRequest } from "next/server";
+import { POST as postRoute } from "./route";
+
+// A-310: the route now reads the incoming request for the forwarded scheme.
+const POST = () => postRoute(new NextRequest("http://localhost/api/v1/auth/logout", { method: "POST" }));
 
 const deleted = () =>
   cookieStore.delete.mock.calls.map((c) => (typeof c[0] === "string" ? c[0] : c[0].name));

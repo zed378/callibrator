@@ -6,6 +6,13 @@ import { stockService } from "@/api/services/stock.service";
 import { useWarehouseStore } from "@/stores/warehouseStore";
 import { useAuthStore } from "@/stores/authStore";
 import { Stock, StockTransfer, StockAdjustment, StockOpname } from "@/types";
+import { usePermissions } from "@/hooks/usePermissions";
+import { useSearchHandoff } from "@/stores/searchHandoffStore";
+import { actorLabel } from "@/lib/actorLabel";
+
+/** Today as `<input type="date">` wants it — YYYY-MM-DD in local time, not UTC. */
+export const localDateInputValue = (d: Date = new Date()): string =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 export function useStock() {
   const { user } = useAuthStore();
@@ -43,7 +50,9 @@ export function useStock() {
   const [activeTab, setActiveTab] = useState<"inventory" | "transfers" | "adjustments" | "opnames" | "reports">("inventory");
 
   // Filters State
-  const [searchTerm, setSearchTerm] = useState("");
+  // S6: a global-search result opens this list filtered to that item.
+  const handedTerm = useSearchHandoff("stock");
+  const [searchTerm, setSearchTerm] = useState(handedTerm ?? "");
   const [selectedWarehouseId, setSelectedWarehouseId] = useState("");
   const [selectedLocationId, setSelectedLocationId] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -57,6 +66,11 @@ export function useStock() {
   const [isAdjustmentModalOpen, setIsAdjustmentModalOpen] = useState(false);
   const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [isOpnameModalOpen, setIsOpnameModalOpen] = useState(false);
+  // F-19: a refused save belongs in the dialog that made it. The page-level
+  // alert sits behind the open modal, so the user saw the dialog do nothing.
+  // One slot serves all four dialogs — only one is open at a time — and each
+  // open clears it.
+  const [dialogError, setDialogError] = useState<string | null>(null);
 
   // Forms State
   const [stockForm, setStockForm] = useState({
@@ -91,11 +105,16 @@ export function useStock() {
     notes: "",
   });
 
-  // Check write access based on approved specs
-  const hasWriteAccess =
-    user?.role?.name === "SUPERADMIN" ||
-    user?.role?.name === "HEALTHCARE ADMIN" ||
-    user?.role?.name === "WAREHOUSE STAFF";
+  /** F-19: move a refused save's message from the page alert into the dialog. */
+  const failInDialog = (err: unknown, fallback: string) => {
+    setDialogError(err instanceof Error && err.message ? err.message : fallback);
+    setError(null);
+  };
+
+  // ADR-102: every stock write is gated on `warehouse` write (stock.route.js)
+  // — the effective permission the API checks.
+  const { canWrite } = usePermissions();
+  const hasWriteAccess = canWrite("warehouse");
 
   // Initial Fetches
   useEffect(() => {
@@ -207,7 +226,7 @@ export function useStock() {
           escape(t.fromWarehouse?.name),
           escape(t.toWarehouse?.name),
           escape(t.status),
-          escape(t.requester ? `${t.requester.firstName} ${t.requester.lastName}` : ""),
+          escape(actorLabel(t.requester, t.apiKey) ?? ""),
           escape(t.approver ? `${t.approver.firstName} ${t.approver.lastName}` : ""),
           escape(t.createdAt)
         ].join(","))
@@ -230,7 +249,7 @@ export function useStock() {
           escape(a.type),
           escape(a.quantity),
           escape(a.reason),
-          escape(a.adjuster ? `${a.adjuster.firstName} ${a.adjuster.lastName}` : ""),
+          escape(actorLabel(a.adjuster, a.apiKey) ?? ""),
           escape(a.createdAt)
         ].join(","))
       ];
@@ -275,6 +294,7 @@ export function useStock() {
     });
     setStockModalType("create");
     setSelectedStock(null);
+    setDialogError(null);
     setIsStockModalOpen(true);
   };
 
@@ -291,12 +311,14 @@ export function useStock() {
     });
     setStockModalType("edit");
     setSelectedStock(stock);
+    setDialogError(null);
     setIsStockModalOpen(true);
   };
 
   const handleStockSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setDialogError(null);
     try {
       if (stockModalType === "create") {
         await createStock({
@@ -321,7 +343,7 @@ export function useStock() {
       setIsStockModalOpen(false);
       loadTabData();
     } catch (err) {
-      // Handled by store
+      failInDialog(err, "Failed to save the stock item");
     }
   };
 
@@ -333,18 +355,20 @@ export function useStock() {
       reason: "",
     });
     setSelectedStock(stock);
+    setDialogError(null);
     setIsAdjustmentModalOpen(true);
   };
 
   const handleAdjustmentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setDialogError(null);
     try {
       await createAdjustment(adjustmentForm);
       setIsAdjustmentModalOpen(false);
       loadTabData();
     } catch (err) {
-      // Handled by store
+      failInDialog(err, "Failed to record the adjustment");
     }
   };
 
@@ -356,18 +380,20 @@ export function useStock() {
       quantity: 1,
       notes: "",
     });
+    setDialogError(null);
     setIsTransferModalOpen(true);
   };
 
   const handleTransferSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setDialogError(null);
     try {
       await createTransfer(transferForm);
       setIsTransferModalOpen(false);
       loadTabData();
     } catch (err) {
-      // Handled by store
+      failInDialog(err, "Failed to request the transfer");
     }
   };
 
@@ -384,24 +410,29 @@ export function useStock() {
   const openOpname = () => {
     setOpnameForm({
       warehouseId: selectedWarehouseId || (warehouses?.data?.[0]?.id || ""),
-      scheduledAt: new Date().toISOString().slice(0, 16),
+      // F-19: the field is <input type="date">, which shows nothing for a
+      // "YYYY-MM-DDTHH:mm" value — so it opened blank. Today, in local time.
+      scheduledAt: localDateInputValue(),
       notes: "",
     });
+    setDialogError(null);
     setIsOpnameModalOpen(true);
   };
 
   const handleOpnameSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setDialogError(null);
     try {
-      await createOpname({
-        ...opnameForm,
-        scheduledAt: new Date(opnameForm.scheduledAt).toISOString(),
-      });
+      // The date as picked, "YYYY-MM-DD": createOpnameSchema's isoDate()
+      // accepts an ISO date (packages/contracts fields.ts isoText) and stores
+      // it as that day's UTC midnight — what new Date(v).toISOString() sent
+      // before, without its RangeError on an empty value.
+      await createOpname(opnameForm);
       setIsOpnameModalOpen(false);
       loadTabData();
     } catch (err) {
-      // Handled by store
+      failInDialog(err, "Failed to schedule the count");
     }
   };
 
@@ -443,6 +474,7 @@ export function useStock() {
     setIsTransferModalOpen,
     isOpnameModalOpen,
     setIsOpnameModalOpen,
+    dialogError,
     stockForm,
     setStockForm,
     adjustmentForm,

@@ -79,4 +79,30 @@ describe("supplierScorecardService", () => {
       expect(res).toBeUndefined();
     });
   });
+
+  describe("listPage (F-19)", () => {
+    it("returns the rows with the envelope's meta", async () => {
+      mockedApi.get.mockResolvedValueOnce({
+        success: true,
+        status: 200,
+        message: "ok",
+        data: [{ id: "a" }],
+        meta: { total: 12, page: 2, limit: 10, totalPages: 2 },
+      });
+      const res = await supplierScorecardService.listPage({ page: 2, limit: 10 });
+      expect(mockedApi.get).toHaveBeenCalledWith("/api/v1/supplier-scorecard", { params: { page: 2, limit: 10 } });
+      expect(res).toEqual({ rows: [{ id: "a" }], meta: { total: 12, page: 2, limit: 10, totalPages: 2 } });
+    });
+
+    it("with no meta (or no array) falls back to what it asked for and what it got", async () => {
+      mockedApi.get.mockResolvedValueOnce({ success: true, status: 200, message: "ok", data: [{ id: "a" }, { id: "b" }] });
+      expect((await supplierScorecardService.listPage({ page: 1, limit: 25 })).meta).toEqual({ total: 2, page: 1, limit: 25, totalPages: 1 });
+
+      mockedApi.get.mockResolvedValueOnce({ success: true, status: 200, message: "ok", data: null });
+      expect(await supplierScorecardService.listPage({ page: 1, limit: 10 })).toEqual({
+        rows: [],
+        meta: { total: 0, page: 1, limit: 10, totalPages: 1 },
+      });
+    });
+  });
 });

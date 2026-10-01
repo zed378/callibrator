@@ -46,7 +46,6 @@ backend:
   env:
     NODE_ENV: production
     APP_STORAGE_PATH: /app
-    PUPPETEER_EXECUTABLE_PATH: /usr/bin/chromium
     FORCE_HTTPS: "true"
     # Empty: inline mode makes a batch job synchronous with whatever triggered
     # it, reintroducing the 30s timeout it exists to avoid.
@@ -97,10 +96,12 @@ backend:
   resources:
     requests:
       cpu: 500m
-      memory: 1Gi
+      memory: 512Mi
     limits:
       cpu: "4"
-      memory: 4Gi
+      # ADR-095 follow-up (2026-09-30): was 4Gi, sized for Chromium. Measured peak
+      # 337 MiB (Node VmHWM; see values.yaml); 1536Mi leaves ~4.5x for large exports.
+      memory: 1536Mi
 
 frontend:
   image:

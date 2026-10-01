@@ -2,6 +2,7 @@ import React from "react";
 import { StockTransfer } from "@/types";
 import { Table, Badge, Button } from "@/components/ui";
 import { Clock, XCircle, CheckCircle } from "lucide-react";
+import { actorLabel } from "@/lib/actorLabel";
 
 interface TransfersTableProps {
   data: StockTransfer[];
@@ -64,7 +65,7 @@ export const TransfersTable: React.FC<TransfersTableProps> = ({
         const t = row as unknown as StockTransfer;
         return (
           <div className="text-xs text-muted-foreground">
-            <div>Req: {t.requester ? `${t.requester.firstName} ${t.requester.lastName}` : "-"}</div>
+            <div>Req: {actorLabel(t.requester, t.apiKey) ?? "-"}</div>
             {t.approver && <div>App: {t.approver.firstName} {t.approver.lastName}</div>}
           </div>
         );

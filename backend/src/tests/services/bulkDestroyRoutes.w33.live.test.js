@@ -25,16 +25,19 @@
  * OPT-IN — needs a database built by db.sync() of the current models plus
  * every migration (migrator.up()):
  *
- *   W33_PG_LIVE_TEST=1 DB_HOST=... DB_PORT=... DB_NAME=... DB_USER=... DB_PASS=... \
+ *   W33_PG_LIVE_TEST=1 DB_HOST=... DB_PORT=... DB_USER=... DB_PASS=... \
  *     npm test -- src/tests/services/bulkDestroyRoutes.w33.live --coverage=false
  *
- * It creates two tenants with fixed ids and removes everything it wrote.
- * Run on PostgreSQL 18 (pgvector/pgvector:pg18) on 2026-09-25; at beb0c4b's
- * tenantScope.util.js the five tenant-user success tests (kanban delete,
- * notification delete by id / bulk / all, storage settings clear) fail with
- * `column "tenantId" does not exist`; the 404 tests and the super-admin
- * tests pass there too.
+ * ADR-095 O-2: the suite creates its OWN database (DB_USER needs CREATEDB;
+ * DB_NAME is not used), builds it as the backend boots (db.sync() + every
+ * migration, 0091's append-only audit_logs included) and runs as
+ * `callibrator_app` through enterApplicationRole. Its audit rows cannot be
+ * deleted, so it does not clean up: the database is dropped afterwards
+ * (fixtures/disposableDatabase.ts, fixtures/liveBoot.ts).
  */
+const { createDisposableDatabase, LIVE_BOOT_TIMEOUT_MS } = require("../fixtures/disposableDatabase");
+const { bootSchemaAsApplicationRole } = require("../fixtures/liveBoot");
+
 const live = process.env.W33_PG_LIVE_TEST === "1" ? describe : describe.skip;
 
 const A = "a33a33a3-0000-4000-8000-0000000000a1";
@@ -47,6 +50,7 @@ const PROJECT_B = "b33b33b3-0000-4000-8000-0000000000c2";
 live("W-33 — bulk destroys reached by request routes, on live PostgreSQL", () => {
   jest.setTimeout(60000);
   let db;
+  let scratch;
   let tenantStorage;
 
   const q = async (sql, replacements = {}) => (await db.query(sql, { replacements }))[0];
@@ -60,15 +64,6 @@ live("W-33 — bulk destroys reached by request routes, on live PostgreSQL", () 
     tenantStorage.run({ tenantId, isSuperAdmin: true, isSystemTask: false }, fn);
 
   const userA = { id: USER_A, tenantId: A, role: { name: "TENANT_ADMIN" } };
-
-  const cleanup = async () => {
-    const t = [A, B];
-    for (const table of ["audit_logs", "notifications", "tenant_settings", "kanban_projects"]) {
-      await q(`DELETE FROM ${table} WHERE tenant_id IN (:t)`, { t });
-    }
-    await q("DELETE FROM users WHERE id IN (:u)", { u: [USER_A, USER_B] });
-    await q("DELETE FROM tenants WHERE id IN (:t)", { t });
-  };
 
   const setting = (tenantId, key, value = "x") =>
     q(
@@ -95,11 +90,12 @@ live("W-33 — bulk destroys reached by request routes, on live PostgreSQL", () 
     n("SELECT count(*)::int AS n FROM notifications WHERE tenant_id = :tenantId AND message = 'w33'", { tenantId });
 
   beforeAll(async () => {
+    scratch = await createDisposableDatabase("w33");
     ({ db } = require("../../config"));
     db.options.logging = false;
     require("../../models");
+    await bootSchemaAsApplicationRole(db);
     ({ tenantStorage } = require("../../middlewares/tenantContext.middleware"));
-    await cleanup();
     for (const [id, sub] of [
       [A, "w33-live-a"],
       [B, "w33-live-b"],
@@ -120,7 +116,7 @@ live("W-33 — bulk destroys reached by request routes, on live PostgreSQL", () 
         { id, tenantId, name, email: `${name}@example.test` },
       );
     }
-  });
+  }, LIVE_BOOT_TIMEOUT_MS);
 
   beforeEach(async () => {
     await q("DELETE FROM notifications WHERE tenant_id IN (:t)", { t: [A, B] });
@@ -130,10 +126,12 @@ live("W-33 — bulk destroys reached by request routes, on live PostgreSQL", () 
 
   afterAll(async () => {
     if (db) {
-      await cleanup();
       await db.close();
     }
-  });
+    if (scratch) {
+      await scratch.drop();
+    }
+  }, LIVE_BOOT_TIMEOUT_MS);
 
   describe("DELETE /api/v1/kanban/projects/:projectId — kanban.deleteProject (paranoid KanbanProject)", () => {
     const seedProjects = async () => {
@@ -266,7 +264,9 @@ live("W-33 — bulk destroys reached by request routes, on live PostgreSQL", () 
         await setting(tenantId, "storage_credentials", "{}");
       }
 
-      await expect(asTenantUser(A, () => storageSettings.clearSettings(A))).resolves.toBeDefined();
+      // The controller passes auditPrincipal(req); audit.service refuses an actor-less entry.
+      const principal = { userId: USER_A, apiKeyId: null, ipAddress: "127.0.0.1", userAgent: "w33-live" };
+      await expect(asTenantUser(A, () => storageSettings.clearSettings(A, principal))).resolves.toBeDefined();
 
       expect(await settings(A, KEYS)).toBe(0);
       expect(await settings(B, KEYS)).toBe(2);
@@ -279,7 +279,7 @@ live("W-33 — bulk destroys reached by request routes, on live PostgreSQL", () 
       await setting(A, "feature_flag_w33", "true");
       await setting(B, "feature_flag_w33", "true");
 
-      const result = await asSuperAdmin(A, () => featureFlags.resetTenantFlag(A, "w33"));
+      const result = await asSuperAdmin(A, () => featureFlags.resetTenantFlag(A, "w33", { userId: USER_A }));
 
       expect(result.reset).toBe(true);
       expect(await settings(A, ["feature_flag_w33"])).toBe(0);
@@ -291,7 +291,7 @@ live("W-33 — bulk destroys reached by request routes, on live PostgreSQL", () 
       await setting(A, "oidc_rp_w33", "{}");
       await setting(B, "oidc_rp_w33", "{}");
 
-      await expect(asSuperAdmin(A, () => oidc.deleteClient(A, "w33"))).resolves.toEqual({ deleted: true });
+      await expect(asSuperAdmin(A, () => oidc.deleteClient(A, "w33", { userId: USER_A }))).resolves.toEqual({ deleted: true });
 
       expect(await settings(A, ["oidc_rp_w33"])).toBe(0);
       expect(await settings(B, ["oidc_rp_w33"])).toBe(1);

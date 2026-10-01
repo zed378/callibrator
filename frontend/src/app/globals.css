@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* P10-01 (ADR-098): the public surface's own tokens, scoped to [data-surface="public"]. */
+@import "./public-surface.css";
 
 /* Dark mode is class-based: `.dark` is toggled on <html> by ThemeContext. */
 @variant dark (&:is(.dark *));
@@ -140,6 +142,22 @@
   --info-foreground: #082f49;
 
   --ring: var(--primary);
+}
+
+/*
+ * ADR-090 amendment: a tenant's brand colour. TenantBrandingProvider sets one
+ * accessible primary per theme (lib/brandColor.ts derives it from the tenant's
+ * colour so it meets the rule above in that theme) and marks <html> with
+ * data-tenant-brand; these rules pick the pair for the current theme. Without
+ * the attribute the defaults above apply.
+ */
+:root[data-tenant-brand] {
+  --primary: var(--brand-primary-light);
+  --primary-foreground: var(--brand-primary-foreground-light);
+}
+:root.dark[data-tenant-brand] {
+  --primary: var(--brand-primary-dark);
+  --primary-foreground: var(--brand-primary-foreground-dark);
 }
 
 html {
@@ -736,4 +754,30 @@ body {
   float: left;
   height: 0;
   pointer-events: none;
+}
+
+/* ==========================================================================
+   Reduced motion, everywhere (ADR-090 amendment; automate/a11y.browser.js).
+   The blocks above stop named loops one class at a time, and the browser
+   suite found what that misses: the sign-in page's fade/scale entrances, the
+   landing page's ping and nav transitions. With `reduce`, every animation and
+   transition finishes at once in its end state (the entrance classes all use
+   `forwards`, so content lands visible). A spinner keeps turning: it is a
+   status, not decoration, and freezing it reads as a hang.
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+  .animate-spin {
+    animation-duration: 1s !important;
+    animation-iteration-count: infinite !important;
+  }
 }

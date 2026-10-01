@@ -1,93 +1,73 @@
 // src/app/login/components/SsoLoginForm.tsx
+//
+// P10-04 (doc 20 §7.2): the organisation-code fallback for tenants without an
+// email-domain claim. The user types the code only; the server picks SAML or
+// OIDC from the tenant's settings (POST /auth/sso/start) and gives one generic
+// refusal for an unknown code, SSO off, or misconfigured (A-292).
 import React from "react";
-import { Shield } from "lucide-react";
+import { ArrowLeft } from "@/components/icons/static";
 import Spinner from "@/components/auth/Spinner";
+import { useI18n } from "@/i18n/MessagesProvider";
 
 interface SsoLoginFormProps {
   tenantCode: string;
   setTenantCode: (val: string) => void;
-  ssoProtocol: "saml" | "oidc";
-  setSsoProtocol: (val: "saml" | "oidc") => void;
   onSubmit: (e: React.FormEvent) => void;
+  onBack: () => void;
   ssoLoading: boolean;
+  errorId?: string;
 }
 
-export function SsoLoginForm({
-  tenantCode,
-  setTenantCode,
-  ssoProtocol,
-  setSsoProtocol,
-  onSubmit,
-  ssoLoading,
-}: SsoLoginFormProps) {
+export function SsoLoginForm({ tenantCode, setTenantCode, onSubmit, onBack, ssoLoading, errorId }: SsoLoginFormProps) {
+  const { t } = useI18n();
+  const describedBy = [errorId, "org-code-help"].filter(Boolean).join(" ");
   return (
-    <form
-      onSubmit={onSubmit}
-      className="space-y-5 animate-fade-in-up delay-200"
-    >
+    <form onSubmit={onSubmit} className="space-y-5" noValidate>
       <div>
-        <span className="block text-sm font-medium text-foreground mb-2">
-          Protocol
-        </span>
-        <div className="flex gap-2">
-          {(["saml", "oidc"] as const).map((p) => (
-            <button
-              key={p}
-              type="button"
-              onClick={() => setSsoProtocol(p)}
-              className={`flex-1 rounded-xl px-4 py-2.5 text-sm font-semibold ring-1 ring-inset transition-colors ${
-                ssoProtocol === p
-                  ? "bg-primary/10 text-primary ring-primary/40"
-                  : "bg-muted text-muted-foreground ring-border hover:text-foreground"
-              }`}
-            >
-              {p === "saml" ? "SAML" : "OIDC"}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div>
-        <label
-          htmlFor="tenantCode"
-          className="block text-sm font-medium text-foreground mb-2"
-        >
-          Tenant Code
+        <label htmlFor="tenantCode" className="pub-label">
+          {t("auth.login.orgCode")}
         </label>
-        <div className="relative group">
-          <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-            <Shield className="h-5 w-5 text-muted-foreground group-focus-within:text-primary transition-colors" />
-          </div>
-          <input
-            id="tenantCode"
-            type="text"
-            value={tenantCode}
-            onChange={(e) => setTenantCode(e.target.value)}
-            required
-            className="w-full pl-11 pr-4 py-3.5 bg-muted ring-1 ring-border ring-inset rounded-xl text-foreground focus:ring-2 focus:ring-ring/50 transition-all duration-200 placeholder:text-muted-foreground"
-            placeholder="e.g. hca-group"
-          />
-        </div>
+        <input
+          id="tenantCode"
+          name="organization"
+          type="text"
+          autoComplete="organization"
+          autoCapitalize="none"
+          spellCheck={false}
+          autoFocus
+          value={tenantCode}
+          onChange={(e) => setTenantCode(e.target.value)}
+          required
+          aria-describedby={describedBy}
+          className="pub-input pub-mono"
+        />
+        <p id="org-code-help" className="pub-help">
+          {t("auth.login.orgCodeHelp")}
+        </p>
       </div>
 
       <button
         type="submit"
-        disabled={ssoLoading}
-        className="w-full py-3.5 px-4 bg-linear-to-r from-primary to-accent hover:from-primary hover:to-accent text-primary-foreground font-semibold rounded-xl shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-all duration-300 transform hover:-translate-y-0.5 disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2"
+        disabled={ssoLoading || !tenantCode.trim()}
+        aria-busy={ssoLoading}
+        className="pub-btn pub-btn-primary pub-btn-block"
       >
         {ssoLoading ? (
           <>
             <Spinner />
-            <span>Redirecting to IdP...</span>
+            <span>{t("auth.login.ssoRedirecting")}</span>
           </>
         ) : (
-          <span>
-            Continue with {ssoProtocol === "oidc" ? "OIDC" : "SAML"}
-          </span>
+          <span>{t("auth.login.ssoContinue")}</span>
         )}
+      </button>
+
+      <button type="button" onClick={onBack} className="pub-btn pub-btn-ghost pub-btn-block">
+        <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+        <span>{t("auth.login.ssoBack")}</span>
       </button>
     </form>
   );
-};
+}
 
 export default SsoLoginForm;

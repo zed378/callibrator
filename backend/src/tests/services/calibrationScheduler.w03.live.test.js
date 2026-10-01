@@ -12,18 +12,19 @@
  * "open work orders" read until both have made it, so the race is forced on
  * every run rather than left to timing.
  *
- * OPT-IN — needs a database whose schema is db.sync() of the current models
- * (the test applies migration 0060 itself; it is idempotent):
+ * OPT-IN — needs a PostgreSQL server where DB_USER may CREATE DATABASE; the
+ * suite creates, migrates and drops its own (fixtures/disposableDatabase.ts,
+ * ADR-095 O-2), and runs as `callibrator_app`. DB_NAME is not used:
  *
  * W-04 (ADR-069): the winner's tenant-wide notification carries its own audit
  * row, by the same system actor.
  *
- *   CALIBRATION_PG_LIVE_TEST=1 DB_HOST=... DB_PORT=... DB_NAME=... DB_USER=... DB_PASS=... \
+ *   CALIBRATION_PG_LIVE_TEST=1 DB_HOST=... DB_PORT=... DB_USER=... DB_PASS=... \
  *     npm test -- src/tests/services/calibrationScheduler.w03.live --coverage=false
- *
- * It creates one tenant and one device with fixed ids and removes everything
- * it wrote.
  */
+
+const { createDisposableDatabase, LIVE_BOOT_TIMEOUT_MS } = require("../fixtures/disposableDatabase");
+const { bootSchema, enterAppRole } = require("../fixtures/liveBoot");
 
 const live = process.env.CALIBRATION_PG_LIVE_TEST === "1" ? describe : describe.skip;
 
@@ -38,6 +39,7 @@ const startProcess = () => {
     graph = {
       db,
       models: require("../../models"),
+      migrator: require("../../config/migrator").migrator,
       scheduler: require("../../services/calibrationScheduler.service"),
       webhookService: require("../../services/webhook.service"),
     };
@@ -64,21 +66,19 @@ live("calibration scan — two concurrent scans, live PostgreSQL (W-03)", () => 
   let p1;
   let p2;
 
-  const cleanup = async (db) => {
-    await db.query("DELETE FROM audit_logs WHERE tenant_id = :t", { replacements: { t: TENANT } });
-    await db.query("DELETE FROM notifications WHERE tenant_id = :t", { replacements: { t: TENANT } });
-    await db.query("DELETE FROM maintenance_work_orders WHERE tenant_id = :t", { replacements: { t: TENANT } });
-    await db.query("DELETE FROM calibration_devices WHERE tenant_id = :t", { replacements: { t: TENANT } });
-    await db.query("DELETE FROM tenants WHERE id = :t", { replacements: { t: TENANT } });
-  };
+  let scratch;
 
   beforeAll(async () => {
+    // ADR-095 O-2: a database of its own, built as the backend boots (0060 and
+    // 0091 among the migrations), both "replicas" then running as the
+    // application role. The audit rows the scan writes cannot be deleted, so
+    // the database is dropped afterwards instead of cleaned.
+    scratch = await createDisposableDatabase("w03");
     p1 = startProcess();
     p2 = startProcess();
-    await require("../../migrations/0060-work-order-auto-scheduled-unique").up({
-      context: p1.db.getQueryInterface(),
-    });
-    await cleanup(p1.db);
+    await bootSchema(p1.db, p1.migrator);
+    await enterAppRole(p1.db);
+    await enterAppRole(p2.db);
     await p1.db.query(
       `INSERT INTO tenants (id, name, subdomain, email, created_at, updated_at)
        VALUES (:t, 'W-03 Hospital', 'w03-live', 'w03@example.test', now(), now())`,
@@ -89,17 +89,19 @@ live("calibration scan — two concurrent scans, live PostgreSQL (W-03)", () => 
        VALUES (:d, :t, 'Infusion pump', 'active', now() - interval '3 days', now(), now())`,
       { replacements: { d: DEVICE, t: TENANT } },
     );
-  });
+  }, LIVE_BOOT_TIMEOUT_MS);
 
   afterAll(async () => {
     if (p1) {
-      await cleanup(p1.db);
       await p1.db.close();
     }
     if (p2) {
       await p2.db.close();
     }
-  });
+    if (scratch) {
+      await scratch.drop();
+    }
+  }, LIVE_BOOT_TIMEOUT_MS);
 
   it("the index exists, as migration 0060 builds it", async () => {
     const [rows] = await p1.db.query(

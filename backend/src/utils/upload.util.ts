@@ -16,6 +16,7 @@ import { validateFileMagicBytes as fileValidationValidateFileMagicBytes } from "
 import type { NextFunction, Request, RequestHandler, Response } from "express";
 import type ExpressModule from "express";
 import { env } from "../config/env";
+import { sanitizeParsedBody } from "../middlewares/globalSanitizer.middleware";
 import type * as UuidModule from "uuid" with { "resolution-mode": "import" };
 
 // uuid 14 is ESM-only; the CommonJS build loads it with require(esm), as the .js
@@ -337,6 +338,10 @@ const upload = (options: UploadOptions = {}): RequestHandler => {
         return next(err);
       }
 
+      // A-296: multer has just parsed the fields; escape them as globalSanitizer
+      // escapes a JSON body (it ran before this body existed).
+      sanitizeParsedBody(req);
+
       // Validate magic bytes if file was uploaded
       if (req.file && validateMagicBytes) {
         try {
@@ -432,6 +437,9 @@ const uploadMulti = (options: UploadMultiOptions = {}): RequestHandler => {
         return next(err);
       }
 
+      // A-296: as in upload().
+      sanitizeParsedBody(req);
+
       // As built: array() leaves an array here, or nothing.
       // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing -- as built
       const files = (req.files || []) as UploadedFile[];
@@ -471,6 +479,37 @@ const uploadMulti = (options: UploadMultiOptions = {}): RequestHandler => {
       next();
     });
   };
+};
+
+/**
+ * A single file held in memory (`req.file.buffer`), for a route that reads the
+ * bytes and stores nothing — no quarantine, no destination folder, no type
+ * allow-list. It is multer's `memoryStorage().single(field)` with a size limit,
+ * exactly as ai.route built it for itself, plus the one thing every multipart
+ * parse here does (A-296): the parsed fields are sanitized like a JSON body.
+ * A multer error is handed on untouched, as before.
+ *
+ * multer is used only in this module (guards/multipartSanitizer.a296.guard).
+ */
+const uploadToMemory = (options: { field?: string; maxFileSize: number }): RequestHandler => {
+  const { field = "file", maxFileSize } = options;
+  const uploader = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: maxFileSize },
+  });
+  // Named as multer names its own handler, so a route's stack still reads as
+  // [gate, multer, controller] (routes/ai.gate.a94.test.js).
+  const multerMiddleware: RequestHandler = (req, res, next) => {
+    uploader.single(field)(req, res, (err: unknown) => {
+      if (err) {
+        next(err);
+        return;
+      }
+      sanitizeParsedBody(req);
+      next();
+    });
+  };
+  return multerMiddleware;
 };
 
 /**
@@ -537,4 +576,5 @@ export {
   PUBLIC_UPLOADS_STATIC_OPTIONS,
   publicUploadsGuard,
   mountPublicUploads,
+  uploadToMemory,
 };

@@ -7,7 +7,7 @@ import {
   Textarea,
   Button,
 } from "@/components/ui";
-import { Device, DeviceCreateInput } from "@/api/services/device.service";
+import { Device, DeviceFormState } from "@/api/services/device.service";
 import type { Warehouse } from "@/types";
 
 interface DeviceModalProps {
@@ -15,8 +15,8 @@ interface DeviceModalProps {
   onClose: () => void;
   modalType: "create" | "edit";
   isLoading: boolean;
-  form: Omit<DeviceCreateInput, "id">;
-  setForm: React.Dispatch<React.SetStateAction<Omit<DeviceCreateInput, "id">>>;
+  form: DeviceFormState;
+  setForm: React.Dispatch<React.SetStateAction<DeviceFormState>>;
   warehousesData: Warehouse[];
   onSubmit: (e: React.FormEvent) => void;
 }

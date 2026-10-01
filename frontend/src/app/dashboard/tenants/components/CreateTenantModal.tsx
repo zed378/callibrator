@@ -17,7 +17,7 @@ interface CreateTenantModalProps {
     code: string;
     description: string;
     primaryColor: string;
-    maxUsers: string;
+    limitSeats: string;
     email: string;
     phone: string;
     address: string;
@@ -33,7 +33,7 @@ interface CreateTenantModalProps {
       code: string;
       description: string;
       primaryColor: string;
-      maxUsers: string;
+      limitSeats: string;
       email: string;
       phone: string;
       address: string;
@@ -146,12 +146,15 @@ export const CreateTenantModal: React.FC<CreateTenantModalProps> = ({
                 onFileChange={handleLogoChange}
               />
               <div className="space-y-4">
+                {/* The seat limit is `limitSeats`, set by the platform (tenant
+                    create is super-admin only). Empty = the plan default. */}
                 <Input
-                  label="Max Users"
+                  label="Seat limit"
                   type="number"
-                  value={form.maxUsers}
-                  onChange={(e) => update("maxUsers", e.target.value)}
-                  placeholder="100"
+                  min={1}
+                  value={form.limitSeats}
+                  onChange={(e) => update("limitSeats", e.target.value)}
+                  placeholder="Plan default"
                 />
                 <Input
                   label="Email"

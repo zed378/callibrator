@@ -1,7 +1,6 @@
 // src/app/dashboard/billing/hooks/useBilling.ts
 import { deferEffect } from "@/lib/deferEffect";
 import { useCallback, useEffect, useState } from "react";
-import { useAuthStore } from "@/stores/authStore";
 import { useToastStore } from "@/stores/toastStore";
 import {
   billingService,
@@ -13,6 +12,7 @@ import {
   SubscriptionStatus,
   ListMeta,
 } from "@/api/services/billing.service";
+import { usePermissions } from "@/hooks/usePermissions";
 
 export interface SubscriptionForm {
   planId: string;
@@ -23,7 +23,6 @@ export interface SubscriptionForm {
 }
 
 export function useBilling() {
-  const { user } = useAuthStore();
   const { addToast } = useToastStore();
 
   // Subscription state
@@ -56,9 +55,10 @@ export function useBilling() {
   const [pageSize] = useState(10);
   const [statusFilter, setStatusFilter] = useState<InvoiceStatus | "">("");
 
-  const canEditSubscription =
-    user?.role?.name === "SUPERADMIN" ||
-    user?.role?.name === "HEALTHCARE ADMIN";
+  // ADR-102: the subscription edit is gated on `billing` write
+  // (billing.route.js `dynamicAccess("billing", "update")`).
+  const { canWrite } = usePermissions();
+  const canEditSubscription = canWrite("billing");
 
   const fetchSubscription = useCallback(async () => {
     setIsSubscriptionLoading(true);

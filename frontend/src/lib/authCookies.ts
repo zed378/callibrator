@@ -18,6 +18,18 @@ export const AUTH_SESSION_COOKIE = "auth_session";
  */
 export const AUTH_REFRESH_COOKIE = "auth_refresh";
 export const AUTH_REFRESH_PATH = "/api/v1/auth/refresh";
+/**
+ * F-05 (live run, 2026-09-29): "this session can be renewed". httpOnly, value
+ * "1", on path `/` so the route guard (proxy.ts) sees it on a PAGE request.
+ * The refresh token itself is path-scoped to the refresh route, so a browser
+ * never sends it with a navigation: a guard that looked for it saw an expired
+ * access token and no refresh cookie, and sent every page load after
+ * `JWT_ACCESS_EXPIRED` to /login — a refreshable session signed out. Written
+ * and cleared with the refresh token; grants nothing (the backend still
+ * verifies every call, and a revoked refresh token is refused at the refresh
+ * route, which then clears this too).
+ */
+export const AUTH_RENEWABLE_COOKIE = "auth_renewable";
 /** Non-httpOnly marker so client code knows a session exists. No secret. */
 export const AUTH_LOGGED_IN_COOKIE = "auth_logged_in";
 
@@ -85,6 +97,7 @@ export function writeSessionCookies(
   }
   if (session.refreshToken) {
     jar.set(AUTH_REFRESH_COOKIE, session.refreshToken, refreshCookieOptions());
+    jar.set(AUTH_RENEWABLE_COOKIE, "1", sessionCookieOptions());
   }
   jar.set(AUTH_LOGGED_IN_COOKIE, "true", loggedInCookieOptions());
 }
@@ -98,6 +111,7 @@ export function clearSessionCookies(jar: CookieJar): void {
   jar.delete(AUTH_TOKEN_COOKIE);
   jar.delete(AUTH_SESSION_COOKIE);
   jar.delete({ name: AUTH_REFRESH_COOKIE, path: AUTH_REFRESH_PATH });
+  jar.delete(AUTH_RENEWABLE_COOKIE);
   jar.delete(AUTH_LOGGED_IN_COOKIE);
   jar.delete("x_tenant_id");
   jar.delete("impersonating");

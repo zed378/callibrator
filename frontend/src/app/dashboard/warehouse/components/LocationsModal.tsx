@@ -1,6 +1,7 @@
 // src/app/dashboard/warehouse/components/LocationsModal.tsx
 import React from "react";
 import {
+  Alert,
   Dialog,
   FormField,
   Input,
@@ -31,6 +32,8 @@ interface LocationsModalProps {
   onEditLocationSelect: (loc: StorageLocation) => void;
   onDeleteLocationConfirm: (id: string) => void;
   onCancelEditLocation: () => void;
+  /** F-19: a refused save, shown inside the dialog (a page alert sits behind it). */
+  error?: string | null;
 }
 
 export const LocationsModal: React.FC<LocationsModalProps> = ({
@@ -46,6 +49,7 @@ export const LocationsModal: React.FC<LocationsModalProps> = ({
   onEditLocationSelect,
   onDeleteLocationConfirm,
   onCancelEditLocation,
+  error = null,
 }) => {
   return (
     <Dialog
@@ -62,6 +66,11 @@ export const LocationsModal: React.FC<LocationsModalProps> = ({
               {locationFormType === "create" ? "Add Sub-location" : "Edit Sub-location"}
             </h3>
             <form onSubmit={onSubmitLocation} className="space-y-4">
+              {error && (
+                <div role="alert">
+                  <Alert variant="error">{error}</Alert>
+                </div>
+              )}
               <FormField label="Location Name" required>
                 <Input
                   type="text"

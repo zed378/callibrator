@@ -30,7 +30,7 @@ describe("tenantService", () => {
             description: "Acme Medical Center",
             logo: "https://example.com/logo.png",
             status: "ACTIVE",
-            maxUsers: 100,
+            limitSeats: 100,
             createdAt: "2024-01-01T00:00:00Z",
             updatedAt: "2024-01-01T00:00:00Z",
           },
@@ -91,7 +91,7 @@ describe("tenantService", () => {
           description: "Acme Medical Center",
           logo: "https://example.com/logo.png",
           status: "ACTIVE",
-          maxUsers: 100,
+          limitSeats: 100,
           settings: { theme: "light" },
           createdAt: "2024-01-01T00:00:00Z",
           updatedAt: "2024-01-01T00:00:00Z",
@@ -123,7 +123,7 @@ describe("tenantService", () => {
           description: "New Medical Center",
           logo: "https://example.com/new-logo.png",
           status: "ACTIVE",
-          maxUsers: 50,
+          limitSeats: 50,
           createdAt: "2024-01-03T00:00:00Z",
           updatedAt: "2024-01-03T00:00:00Z",
         },
@@ -135,7 +135,7 @@ describe("tenantService", () => {
         name: "New Hospital",
         code: "NEW",
         description: "New Medical Center",
-        maxUsers: 50,
+        limitSeats: 50,
       });
 
       // Content-Type is intentionally NOT set — the browser adds the multipart
@@ -146,6 +146,10 @@ describe("tenantService", () => {
       );
       expect(result.name).toBe("New Hospital");
       expect(result.code).toBe("NEW");
+      // Seat limit: sent as limitSeats (the backend's single source), never maxUsers.
+      const form = (api.post as jest.Mock).mock.calls.at(-1)[1] as FormData;
+      expect(form.get("limitSeats")).toBe("50");
+      expect(form.has("maxUsers")).toBe(false);
     });
   });
 
@@ -162,7 +166,7 @@ describe("tenantService", () => {
           description: "Updated Medical Center",
           logo: "https://example.com/updated-logo.png",
           status: "ACTIVE",
-          maxUsers: 200,
+          limitSeats: 200,
           createdAt: "2024-01-01T00:00:00Z",
           updatedAt: "2024-01-15T00:00:00Z",
         },
@@ -175,7 +179,6 @@ describe("tenantService", () => {
         name: "Updated Hospital",
         code: "UPD",
         status: "ACTIVE",
-        maxUsers: 200,
       });
 
       // Content-Type is intentionally NOT set (browser sets the multipart boundary).
@@ -184,7 +187,21 @@ describe("tenantService", () => {
         expect.any(FormData),
       );
       expect(result.name).toBe("Updated Hospital");
-      expect(result.maxUsers).toBe(200);
+      expect(result.limitSeats).toBe(200);
+    });
+
+    it("A-303: sends a given profile field even when empty (so it clears), skips an absent one, and never sends maxUsers", async () => {
+      (api.patch as jest.Mock).mockResolvedValue({ success: true, data: {} });
+
+      await tenantService.update({ tenantId: "tenant-uuid-1", website: "", phone: "+62 21 555 0100", city: "Bandung" });
+
+      const form = (api.patch as jest.Mock).mock.calls.at(-1)[1] as FormData;
+      expect(form.get("website")).toBe("");
+      expect(form.get("phone")).toBe("+62 21 555 0100");
+      expect(form.get("city")).toBe("Bandung");
+      expect(form.has("address")).toBe(false);
+      expect(form.has("description")).toBe(false);
+      expect(form.has("maxUsers")).toBe(false);
     });
   });
 
@@ -250,7 +267,7 @@ describe("tenantService", () => {
   });
 
   describe("getUserCount", () => {
-    // The backend envelopes this as data: { tenantId, userCount, maxUsers,
+    // The backend envelopes this as data: { tenantId, userCount, limitSeats, unlimited,
     // remainingSlots }. There is no top-level `count` — reading one always
     // yielded undefined.
     it("should unwrap the seat usage for a tenant", async () => {
@@ -261,8 +278,9 @@ describe("tenantService", () => {
         data: {
           tenantId: "tenant-uuid-1",
           userCount: 42,
-          maxUsers: 50,
+          limitSeats: 50,
           remainingSlots: 8,
+          unlimited: false,
         },
       });
 
@@ -272,7 +290,7 @@ describe("tenantService", () => {
         tenantId: "tenant-uuid-1",
       });
       expect(result.userCount).toBe(42);
-      expect(result.maxUsers).toBe(50);
+      expect(result.limitSeats).toBe(50);
       expect(result.remainingSlots).toBe(8);
     });
   });

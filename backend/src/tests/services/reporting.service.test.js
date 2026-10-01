@@ -13,15 +13,16 @@ describe("reporting.service", () => {
   beforeEach(() => jest.clearAllMocks());
 
   describe("toCsv", () => {
+    // A-319: every field is quoted (RFC 4180) and records end in CRLF; see utils/csv.util.
     it("builds a CSV and escapes commas/quotes", () => {
       const csv = reporting.toCsv(
         [{ key: "a", label: "A" }, { key: "b", label: "B" }],
         [{ a: "x", b: "y,z" }, { a: 'q"q', b: 1 }],
       );
-      const lines = csv.split("\n");
-      expect(lines[0]).toBe("A,B");
-      expect(lines[1]).toBe('x,"y,z"');
-      expect(lines[2]).toBe('"q""q",1');
+      const lines = csv.split("\r\n");
+      expect(lines[0]).toBe('"A","B"');
+      expect(lines[1]).toBe('"x","y,z"');
+      expect(lines[2]).toBe('"q""q","1"');
     });
 
     // These reports export user-controlled text (device names, stock item
@@ -37,7 +38,7 @@ describe("reporting.service", () => {
       ["\tSUM(1)", "'\tSUM(1)"],
     ])("neutralises the formula-triggering value %j", (input, expected) => {
       const csv = reporting.toCsv([{ key: "a", label: "A" }], [{ a: input }]);
-      expect(csv.split("\n")[1]).toBe(expected);
+      expect(csv.split("\r\n")[1]).toBe(`"${expected}"`);
     });
 
     it("still quotes a formula value that also contains a delimiter", () => {
@@ -46,7 +47,7 @@ describe("reporting.service", () => {
         [{ key: "a", label: "A" }],
         [{ a: "@SUM(1,2)" }],
       );
-      expect(csv.split("\n")[1]).toBe("\"'@SUM(1,2)\"");
+      expect(csv.split("\r\n")[1]).toBe("\"'@SUM(1,2)\"");
     });
 
     // The guard must not corrupt real data: a negative quantity is a number,
@@ -58,15 +59,15 @@ describe("reporting.service", () => {
       ["12", "12"],
     ])("leaves the plain number %j untouched", (input, expected) => {
       const csv = reporting.toCsv([{ key: "a", label: "A" }], [{ a: input }]);
-      expect(csv.split("\n")[1]).toBe(expected);
+      expect(csv.split("\r\n")[1]).toBe(`"${expected}"`);
     });
 
-    it("leaves an ordinary value untouched (no prefix, no quotes)", () => {
+    it("leaves an ordinary value untouched (no prefix; quoted like every field)", () => {
       const csv = reporting.toCsv(
         [{ key: "a", label: "A" }],
         [{ a: "Widget" }],
       );
-      expect(csv.split("\n")[1]).toBe("Widget");
+      expect(csv.split("\r\n")[1]).toBe('"Widget"');
     });
 
     // A bare CR terminates a row in several parsers, so it must be quoted
@@ -76,7 +77,7 @@ describe("reporting.service", () => {
         [{ key: "a", label: "A" }],
         [{ a: "line1\rline2" }],
       );
-      expect(csv.split("\n")[1]).toBe('"line1\rline2"');
+      expect(csv.split("\r\n")[1]).toBe('"line1\rline2"');
     });
 
     it("renders null and undefined as empty cells", () => {
@@ -84,12 +85,12 @@ describe("reporting.service", () => {
         [{ key: "a", label: "A" }, { key: "b", label: "B" }],
         [{ a: null, b: undefined }],
       );
-      expect(csv.split("\n")[1]).toBe(",");
+      expect(csv.split("\r\n")[1]).toBe('"",""');
     });
 
     it("treats a missing rows argument as no rows", () => {
       const csv = reporting.toCsv([{ key: "a", label: "A" }], undefined);
-      expect(csv).toBe("A\n");
+      expect(csv).toBe('"A"\r\n');
     });
   });
 

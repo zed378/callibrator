@@ -41,6 +41,8 @@ export const NotificationBell: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [items, setItems] = useState<Notification[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  // A failed preview load is said, not shown as "No notifications yet".
+  const [loadFailed, setLoadFailed] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   // The panel lives in a portal, so it is NOT inside containerRef.
@@ -75,9 +77,13 @@ export const NotificationBell: React.FC = () => {
     (async () => {
       try {
         const res = await notificationService.getAll(1, PREVIEW_LIMIT);
-        if (active) setItems(res.notifications);
+        if (active) {
+          setItems(res.notifications);
+          setLoadFailed(false);
+        }
       } catch {
-        // Non-fatal — drawer just shows the empty state.
+        // Non-fatal — the drawer says the preview could not be loaded.
+        if (active) setLoadFailed(true);
       } finally {
         if (active) setIsLoading(false);
       }
@@ -178,6 +184,10 @@ export const NotificationBell: React.FC = () => {
               <div className="py-10 flex items-center justify-center text-muted-foreground">
                 <Loader2 className="w-5 h-5 animate-spin" />
               </div>
+            ) : loadFailed && items.length === 0 ? (
+              <p role="alert" className="py-10 text-center text-sm text-muted-foreground">
+                Couldn&apos;t load notifications.
+              </p>
             ) : items.length > 0 ? (
               items.map((notification) => (
                 <button

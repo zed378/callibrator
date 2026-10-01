@@ -1,8 +1,8 @@
 # 03 — Validation
 
-> **Language status — target: TypeScript, strict (ADR-038).** The backend is **JavaScript/CommonJS today**; the migration is [`TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`](../../TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md). Behaviour described here is **as-built** unless marked *target*. New backend code follows [`docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md`](../../docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md). Remove this banner only when every module this document describes is converted.
+> **Language status (as-built 2026-09-29).** Everything this document describes **as the validation layer** is TypeScript: `validators/` (all of it) and `middlewares/validation.middleware.ts` (P9-11). The **routes and controllers that mount and call it are still JavaScript** until Stage C/D (P9-12…P9-21), which is why the `.js`-route source guard below exists. Behaviour described here is **as-built** unless marked *target*. The migration is [`TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md`](../../TASKS/PHASE-9-TYPESCRIPT-MIGRATION.md); the rules for `.ts` code are [`docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md`](../../docs/ENGINEERING/04-TYPESCRIPT-STANDARDS.md). **ADR-093** (the P9-11 record, cited throughout the code) was not yet in `MEMORY/DECISIONS.md` when this banner was written (2026-09-29); the P9-11 spec is [`MEMORY/specs/P9-11-validation-error-contract.md`](../../MEMORY/specs/P9-11-validation-error-contract.md).
 
-Joi. 37 validators in `backend/src/validators/`, applied by `validate(schema)` from `validation.middleware.js`.
+**Zod** (ADR-093, P9-11 — Joi was removed on 2026-09-29). 39 validator modules in `backend/src/validators/` (`*.validator.ts`), with the shared field schemas in `fields.ts` and the one input helper in `input.ts`, applied by `validate(schema)` from `middlewares/validation.middleware.ts`. These modules are TypeScript: `z.infer<typeof schema>` is the request type.
 
 ---
 
@@ -10,19 +10,23 @@ Joi. 37 validators in `backend/src/validators/`, applied by `validate(schema)` f
 
 ```js
 router.post("/", validate(createSchema), controller.create);   // ✓
-router.post("/", createSchema.validate, controller.create);    // ✗ 500s EVERY request
+router.post("/", createSchema.parse, controller.create);       // ✗ throws on EVERY request
 ```
 
-`validate(schema)` returns middleware. Passing `schema.validate` directly means Express calls it as `(req, res, next)` while Joi expects a value to validate.
+`validate(schema)` returns middleware; it is the **only** way a schema reaches a router. Passing a schema's own method (`parse`, `safeParse`, or the old `validate`) means Express calls it as `(req, res, next)`. In a `.ts` route that is a compile error (TS2769); `.js` routes are held to it by the source guard `tests/guards/schemaAsMiddleware.p911.test.ts`.
 
-The same shape produced a real defect elsewhere: a controller spread a Joi schema into a plain object and then called `.validate` on the result — `schema.validate is not a function`, on every request to that endpoint.
+Outside a route, controllers and services check input with `validators/input.ts` — `validateInput(data, schema)` (returns the parsed value or throws `{ status: 400, message: "Validation failed", errors }`) and `checkInput(data, schema)` (`{ ok, value }` / `{ ok: false, errors }`). No validator module has a helper of its own (guard: `tests/validators/bodylessBody.a09.test.js`).
 
 ## Path Parameters Must Reach the Validator
 
 ```js
-// the identifier arrives in req.params, NOT req.body
-validate(schema)({ ...req.params, ...req.body })
+// the identifier arrives in req.params, NOT req.body — declare the sources
+router.put("/:tenantId/policy", validate(policySchema, { from: ["params", "body"] }), ctrl.setPolicy);
 ```
+
+`validate(schema)` reads `req.body` only (an absent body is checked as `{}`). With `{ from: [...] }` it checks the merge of the declared sources, and **a path parameter always wins** over a body or query key of the same name — the path is what the permission and tenant gates checked. The result is on `req.validated` (read it typed with `validated(req, schema)`); `req.body` is replaced only when the source is the body.
+
+*As-built:* the controllers listed below still merge by hand with `validateInput({ ...req.params, ...req.body }, schema)`, where **the body wins** — AUDIT A-273.
 
 Several endpoints validated `req.body` for an identifier that only ever arrives as a path parameter, and **400ed every request**.
 
@@ -58,14 +62,16 @@ A bad enum value reaching the database produces a **500, not a 400** — and tha
 
 Every ENUM column has a fixed value set. The validator enumerates them so a bad value is a 400 with a useful message rather than a 500 from the database.
 
-```js
-status: Joi.string().valid("draft", "pending_approval", "approved", "signed", "revoked")
+```ts
+status: z.enum(["draft", "pending_approval", "approved", "signed", "revoked"])
 ```
+
+The D-26 guard (`tests/models/enumMirrors.d26.test.js`) holds every enum a validator declares to the model's ENUM.
 
 ### Never accept `tenantId` from the body
 
-```js
-tenantId: Joi.forbidden()   // or simply absent from the schema
+```ts
+// simply absent from the schema: unknown keys are stripped
 ```
 
 `tenantId` is stamped from the `AsyncLocalStorage` context by the global hooks. A body-supplied tenant id is an obvious cross-tenant write attempt, and the way to make it impossible is to never read it.
@@ -103,29 +109,35 @@ Order matters: reject an unauthorised caller before spending effort validating t
 
 ## Error Shape
 
-A validation failure returns 400 with field detail:
+A `validate(schema)` failure returns 400 with field detail:
 
 ```json
 {
   "success": false,
   "status": 400,
-  "message": "Validation failed",
+  "message": "Validation Error",
   "data": null,
-  "details": [{ "field": "serialNumber", "message": "is required" }]
+  "details": [{ "field": "serialNumber", "message": "Invalid input: expected string, received undefined" }]
 }
 ```
 
-`details` is included **only outside production**.
+`details` is included **only outside production**; `field` is the path joined with dots, and `message` is Zod's wording unless the schema overrides it (the password rule, "Passwords do not match", "Domain is required", "ids is required" and a few others the UI shows). The byte-level contract is pinned by `backend/src/tests/contracts/validation/` (ADR-093 lists every string that changed from the Joi wording).
 
-The frontend maps field detail back to form fields — that is what turns "validation failed" into a message beside the field that caused it ([`../FRONTEND/04-FORM-ARCHITECTURE.md`](../FRONTEND/04-FORM-ARCHITECTURE.md)).
+*As-built:* the frontend reads `message` only (`frontend/src/api/client.ts`); no frontend code reads `details`.
+
+A controller that throws `validateInput`'s `{ status: 400, message: "Validation failed", errors }` is answered by `asyncHandler` with that message, and `details` outside production is `"[object Object]"` — the field errors do not reach the wire on that path (AUDIT A-272).
 
 ## Contract Drift
 
 **Swagger and the enforced validators disagree for the GDPR endpoints.** Documented drift, tracked in [`../../TASKS/BACKLOG.md`](../../TASKS/BACKLOG.md).
 
-The validators are the authority — they are what runs. Swagger is generated from annotations and can fall behind, which is worth knowing before writing a client from the spec.
+The validators are the authority — they are what runs.
 
-`npm run swagger:generate` runs as the first step of the backend build, so the spec is regenerated on every build. A build that skips it ships a spec describing the previous version.
+**Since P9-25 (ADR-103) the contract is generated from the validators themselves, route module by route module.** A route's `routes/api/<name>.openapi.ts` names the same Zod schema object its `validate()` mounts, and `npm run openapi:generate` renders it into the committed `backend/openapi.json` with `zod-openapi`. For those routes the published request body cannot drift from the enforced one. Routes not yet moved still publish their `@swagger` JSDoc (merged into the same document), and `swaggerValidatorAlignment.p608` keeps comparing those against the validators; its `KNOWN_DRIFT` list shrinks as modules move (vendor left it with the P9-25 pilot).
+
+The document is checked, not regenerated on build: `npm run openapi:check` fails the build, the image build and CI when the committed file is not what the source generates. *(As-built until 2026-09-30: `npm run swagger:generate` rewrote `swagger.json` from JSDoc alone at build time.)*
+
+Note on the published form: `zod-openapi` renders a request schema's **input** side. A field the validator converts (`numeric()`, `isoDate()`) is published as its canonical type (a number, an ISO date string); the validator still accepts the lenient forms. The contract is therefore stricter than the validator, never looser.
 
 ## Where Validation Cannot Reach
 
@@ -145,6 +157,9 @@ The first is the one per-field validation is structurally incapable of catching:
 1. One schema per endpoint, or one per resource with variants.
 2. Enumerate every ENUM.
 3. **Forbid** `tenantId` and every attribution field.
-4. Merge `{ ...req.params, ...req.body }` where identifiers arrive in the path.
-5. Apply with `validate(schema)`, never `schema.validate`.
-6. Test the rejection cases, not only the acceptance case. A validator test that only proves valid input passes proves nothing.
+4. Where identifiers arrive in the path, declare the sources: `validate(schema, { from: ["params", "body"] })` (the path wins).
+5. Apply with `validate(schema)`, never a schema's own method.
+6. A query string is text: convert explicitly, per field (`numeric`, `booleanish`, `dateLike` from `validators/fields.ts` — not `z.coerce`, which turns `""` into 0 and `"false"` into `true`).
+7. Test the rejection cases, not only the acceptance case. A validator test that only proves valid input passes proves nothing.
+8. No `z.any()`, `.passthrough()` or `.loose()` to make a legacy payload validate — that is validation switched off at the boundary (P9-11 abuse case; `docs/ENGINEERING/04` § Things That Look Strict). Unknown keys are stripped by `z.object`'s default; `.strict()` would be a behaviour change.
+9. A validator used by a route has a contract suite in `backend/src/tests/contracts/validation/` (`<file>.validator.contract.test.ts`, driven by `harness.ts`) that pins the exact 400 body in both modes. A change to a literal there is a **contract change** and needs a record, not an edit in passing.

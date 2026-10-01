@@ -28,20 +28,21 @@ below is read from code, and the cards say where that leaves a doubt.
 | F-02 | The dashboard's "System Health — All Systems Go" panel is **hardcoded**; it has never called `/health` | **high** | integrity | **DONE** 2026-09-24 |
 | F-03 | **`make verify` cannot pass, and never checked the frontend**: 85 lint errors, `typecheck` type-checks nothing, `test` never runs the coverage gate | **high** | gate | **PARTIAL** 2026-09-25 — `typecheck` script (turbo runs it); `npx eslint` 0 errors (60 warnings); `npm test` runs the coverage gate and CI now runs `jest --ci --coverage` (ADR-067). Open: `make verify` never run end to end (no `make` on this host) |
 | F-04 | **0% coverage above the service layer** — every page, every hook, `client.ts`'s interceptors, `proxy.ts` and `socket.ts` | **high** | tests | **DONE** 2026-09-25 — a handler test for every file under `src/app/api/v1/**`; `client.ts` 95.95% statements (`client.session.f05`); `proxy.test.ts`; the service-test statement in `docs/FRONTEND/10` § What the service tests prove; figures re-measured 2026-09-25 (ADR-067) |
-| F-05 | **Token refresh is dead end to end**, and the 401 path races a redirect against the cookie clear | **high** | auth | **PARTIAL** 2026-09-27 — the expiry run done headless against a stand-in backend: one refresh, the typed input kept, no navigation; a refused refresh clears every cookie and lands on `/login` once (ADR-074, `MEMORY/records/2026-09-27-frontend-board-fe2.md`). Open: the same run against the real backend with `JWT_ACCESS_EXPIRED=60s` |
+| F-05 | **Token refresh is dead end to end**, and the 401 path races a redirect against the cookie clear | **high** | auth | **DONE** 2026-09-29 — run against the **real** backend with `JWT_ACCESS_EXPIRED=60s`: after expiry, the next action gave one 401, one `POST /auth/refresh` 200 and the retry 200, with the typed search kept and no navigation. A page load after expiry stays signed in with one refresh. A refresh token revoked elsewhere lands on `/login` once, with no bounce and no session cookie left. The live run found two defects, both fixed: every page load after expiry went to `/login` (the guard looked for the path-scoped refresh cookie, which a browser never sends with a page), and MFA and impersonation sign-ins dropped their refresh token (ADR-074 Amendment 1, `MEMORY/records/2026-09-29-feauto-a11y-f05-brand.md`) |
 | F-06 | `x_tenant_id` **survives logout** — a super admin's next session is silently scoped to the tenant they last impersonated | medium | tenancy | **DONE** 2026-09-24 |
 | F-07 | No error boundary, no 403/404/409/429/offline handling, no `X-Request-Id`; `AccessDeniedModal` is rendered nowhere | medium | errors | **DONE** 2026-09-27 — one screen per status (403/404/408/409/429/offline), each with its `X-Request-Id`, shown headless against a stand-in backend; 504 reads as a timeout (`ErrorState.f07` › F-14) (ADR-074, `MEMORY/records/2026-09-27-frontend-board-fe2.md`) |
 | F-08 | **Two `proxy.ts` files** with different auth logic | medium | routing | **DONE** 2026-09-25 — `frontend/proxy.ts` removed, `src/proxy.ts` tested (`proxy.test.ts`); `next build` (2026-09-25) lists it as the Proxy |
 | F-09 | `POST /api/v1/auth/sso-session` writes the auth cookie from an **unverified request body** | medium | auth | **DONE** 2026-09-27 — A-60 had already made it exchange a single-use code, verified server-to-server; same-origin only now (`lib/sameOrigin.ts`). `sso-session/route.test` › *F-09 valid / forged / replayed / cross-origin / missing origin* (ADR-074) |
 | F-10 | Global search is shown to every role and 403s on **every keystroke** for roles A-04 now excludes | medium | ux / authz | **DONE** 2026-09-27 — headless: no searchable menu → no search box and 0 `/search` requests; with Devices → the box, one request (`MEMORY/records/2026-09-27-frontend-board-fe2.md`) |
 | F-11 | The public certificate-verification PDF link prefixes the backend origin onto an already same-origin path | medium | public surface | **DONE** 2026-09-27 — `toSameOriginApiPath`; `page.f11` (3 fail before); headless with an unreachable `NEXT_PUBLIC_API_BASE_URL`: the PDF loads same-origin, 0 requests to the backend origin (ADR-074) |
-| F-12 | ~142 of 156 `<label>`s are unassociated; 16 modals, zero `role="dialog"`; `axe` is not installed | medium | accessibility | **PARTIAL** 2026-09-27 — DateField, MultiSelect, SearchableDropdown and the 10 bare overlays done and axe-clean (`a11y.f12b`, `a11y.f12.overlays`; ADR-074). Open: the screen-reader walk; axe in the browser suite. 2026-09-29: a WCAG 2.1 AA axe sweep of all 70 routes in Chrome, both themes, went from 513 (light) / 304 (dark) findings to 0, and 24 dialogs pass axe and the keyboard contract (`a11y.adr090`; ADR-090) |
+| F-12 | ~142 of 156 `<label>`s are unassociated; 16 modals, zero `role="dialog"`; `axe` is not installed | medium | accessibility | **PARTIAL** 2026-09-27 — DateField, MultiSelect, SearchableDropdown and the 10 bare overlays done and axe-clean (`a11y.f12b`, `a11y.f12.overlays`; ADR-074). Open: the screen-reader walk; axe in the browser suite. 2026-09-29: a WCAG 2.1 AA axe sweep of all 70 routes in Chrome, both themes, went from 513 (light) / 304 (dark) findings to 0, and 24 dialogs pass axe and the keyboard contract (`a11y.adr090`; ADR-090). 2026-09-29, later: **axe is in the browser suite**. `automate/a11y.browser.js`, run by `make test-browser`, checks 6 public and 20 dashboard pages in both themes, 6 create dialogs' focus contract, reflow at 200% zoom and reduced motion, and the brand colour (ADR-090 Amendment 1). Open: the screen-reader walk |
 | F-13 | Two endpoints return `data.rows`/`data.meta` and the frontend is **coded to match** | medium | envelope | **DONE** 2026-09-27 — `/metered-billing/history` now in the house envelope (sessions: A-111); both pinned through their routers by `envelope.f13.test.js` (ADR-074) |
 | F-14 | The client timeout equals the server timeout, so the user never sees the backend's 408 | medium | errors | **DONE** 2026-09-27 — proxy aborts at 32 s or on disconnect, 504 in the envelope (`route.stream.f16` › F-14); the backend's 408 was never sent — a timeout answered 503 — now 408 in the envelope (`requestTimeout.f14`); headless: the timeout copy at 33 s (ADR-074) |
 | F-15 | `menuStore` falls back to the **full static menu** when `roleId` is missing | low | rbac-in-ui | **DONE** 2026-09-25 — no `roleId` → empty menu and a visible error with a retry; a failed fetch is visible (`menuStore.f15`) |
 | F-16 | The proxy buffers every request and response whole; uploads and downloads are held twice in the Next process | low | performance | **DONE** 2026-09-27 — both bodies stream; only small 2xx JSON is read (A-71); caller `Authorization` forwarded without a cookie, on purpose (`route.stream.f16`, 6 of 9 fail before); Next peaked at 186 MB over a 400 MB download (ADR-074) |
 | F-17 | Unread badge drifts; two unused dependencies | low | hygiene | **DONE** 2026-09-25 — the count is re-read, not incremented, and refetched on reconnect (`useLiveNotifications.f17`); `framer-motion` and `@lottiefiles/dotlottie-react` removed, and `next build` passes (2026-09-25) |
 | F-18 | the webhook screen cannot show a server-generated or rotated secret | **high** | 0 | **DONE** 2026-09-24 |
+| F-19 | Found by the coverage batch: screens read fields the backend never sends; failed loads render the empty state; an SSO save over a failed load wipes the tenant's configuration | **high** | contract / states | **PARTIAL** 2026-09-30 — 40+ defects fixed with the tests that prove them (card lists them); second pass fixed the 20 reported items and two follow-ups; Q-37 (decided, in progress elsewhere) and the ticket-HTML policy remain (ADR-105). Coverage 43.68 → 90.91% statements (ADR-067 Amendment 1) |
 
 ---
 
@@ -253,7 +254,7 @@ and proves nothing new.
 
 | | |
 |---|---|
-| **Status** | **PARTIAL** 2026-09-27 — see the summary row (ADR-067, ADR-074) |
+| **Status** | **DONE** 2026-09-29 — see the summary row (ADR-067, ADR-074 and its Amendment 1) |
 | **Severity** | **high** |
 | **Verified** | the dead refresh is verified from code on both sides. The redirect race is **reasoned, not reproduced** — it depends on whether a `window.location` assignment outlives an in-flight `fetch`, which I could not test without a browser |
 | **Evidence** | **(a)** `frontend/src/app/api/v1/[...path]/route.ts:95` rotates the cookie only when the parsed body has `data.token` or `data.session?.id` at the **top level**. `backend/src/controllers/auth.controller.js:243` answers refresh with `success(res, result.data, …)`, and `backend/src/services/auth.service.js:586-594` puts `token`, `refreshToken` and `session` **inside** `data`. So the condition is never true for a refresh and the rotated token is discarded. **(b)** `grep -rn "authService.refresh\|\.refresh(" frontend/src` finds only `router.refresh()` and `ScrollTrigger.refresh()` — `authService.refresh` (`frontend/src/api/services/auth.service.ts:212-231`) has **no caller**. **(c)** its signature requires a `refreshToken` argument, and the client never receives one: the login response carries only `token` and `session`. **(d)** `backend/src/utils/jwt.util.js:202` defaults the access token to `15m`; the cookie is written with `maxAge: 7 * 24 * 60 * 60` at `route.ts:101`, `login/route.ts:45` and `sso-session/route.ts:32`. **(e)** `frontend/src/api/client.ts:47-52` handles 401 with `window.location.href = "/login"` and clears nothing; `frontend/src/proxy.ts:19-21` then redirects `/login` **back** to `/dashboard` whenever the `auth_token` cookie exists |
@@ -989,3 +990,163 @@ disabling the rule.
 **Tests:** `webhooks/__tests__/page.test.tsx` › *"WebhooksPage — signing secret (F-18)"* (5 tests), and
 3 new tests in `webhook.service.test.ts`, with fixtures built from `publicWebhook()`'s real shape.
 **These are mocked-client tests** — nothing has been verified against a live backend yet.
+
+---
+
+### F-19 — The coverage batch: screens read fields the backend never sends, and failed loads look empty
+
+| | |
+|---|---|
+| **Status** | **PARTIAL** 2026-09-30. Everything under "Fixed", the second pass and its follow-ups is done, each with a named test. Left: Q-37 (decided; the UI-correctness agent is doing it), the ticket-HTML policy, and a live-backend check |
+| **Severity** | **high** — one defect wiped a tenant's SSO configuration; several compliance screens showed wrong values with no error |
+| **Verified** | from code on both sides, by page tests that mock only `@/api/client` with the controller's real body. None of it was exercised against a running backend or a browser |
+| **Evidence** | `MEMORY/records/2026-09-30-frontend-coverage-70.md` (coverage 43.68 → 90.91% statements; ADR-067 Amendment 1) |
+
+**Why it matters here.** This batch replaced the service-level mock with page tests that feed the
+controller's real response through the real service. That exposed the failure `CLAUDE.md` warns
+about: screens coded against fields the backend never sends. They rendered "—", "Withdrawn" or
+"No feature flags defined" with no error.
+
+A path check alone would have passed them. The real Express router was dumped (the dumper in
+`backend/src/tests/e2e/liveContract.smoke.test.js`, `--dump-routes`, which needed `--import tsx` since
+P9; fixed). The result:
+- all 387 `api.*` calls in `src/api/services/*.ts` name a real method and path;
+- the 5 the extractor cannot resolve (`iot` `base()`, `sso/metadata[/:tenantCode]`) were checked by
+  hand and are real too.
+
+Every defect below was a wrong **shape**, not a wrong path.
+
+**Fixed (each proven by the named test in the suite beside the file)**
+
+*Contract (what the screen read vs what the controller sends)*
+- `gdpr/page.tsx`: consent rows read `category`/`consent`; the row has `purpose`/`status`
+  ("shows each consent decision by its purpose and status…").
+- `tenant-lifecycle/page.tsx`:
+  - an offboarded tenant is `status: "deleted"`, so Cancel Offboarding was never enabled;
+  - a refused suspend or offboard still closed the dialog.
+- `oidc.service.ts`: the discovery document and JWKS are unenveloped, so the Endpoints card never
+  rendered.
+- `customDomain.service.ts` `getDnsRecords`: the answer is `{verification, cname, instructions}`, not a
+  list, so the page threw.
+- `custom-domains/page.tsx`: status colours were inverted, and the type column read `type`, not
+  `domainType`.
+- `featureFlag.service.ts`: `/definitions` is an object, and flag state is `{enabled}`, not a boolean.
+  Every flag showed Enabled, and a toggle could only send `false`.
+- `tenant-hierarchy/page.tsx`: cross-tenant roles read `roleName`/`targetTenantId`.
+- `sop.service.ts`: the list now uses the house envelope (not `data.documents`), so it was always
+  empty.
+- `metered-billing/page.tsx`: invoices carry `amountDue` and a capitalised `Paid`.
+- `batch-jobs/page.tsx`: the failure reason is `errorDetails`.
+- `users/hooks/useUsers.ts` + `stores/userStore.ts`: the Edit dialog silently dropped first and last
+  name, which `PATCH /users/edit` accepts.
+
+*Data loss*
+- `tenants/components/sso/useSsoSettings.ts` `handleSave`: when loading the settings failed, Save
+  PATCHed `sso_enabled:false` with blank IdP fields, wiping the tenant's SSO configuration. Save is
+  now refused until this tenant's settings have loaded ("useSsoSettings › settings that failed to
+  load are never saved over the stored configuration").
+
+*A failed load rendered the empty state* (10-TESTING's three-state rule). Each page's
+"a failed load … never the empty state" test proves the fix:
+- devices, calibration records, maintenance, users, tenants, roles, permissions, user-permissions;
+- kanban boards, stock, warehouse (also while loading), tickets raise/response, notifications (page
+  and bell), vendors;
+- gdpr, tenant-hierarchy, feature-flags, metered-billing, sop, batch-jobs, finance,
+  supplier-scorecard, risk, predictive-maintenance.
+
+*Silent failures*
+- kanban `useBoard.moveCard`: a refused move's message was cleared by the reload.
+- `CardModal`: no action caught an error (unhandled rejections; a 404 card said "Loading…" forever).
+- `NewSprintModal`, and the board page's sprint status/delete and quick-add.
+
+*Wrong wiring*
+- users: a photo picked in Edit appeared in the Create preview.
+- `SsoConfigTab`: Cancel was the form's default submit button (`type="button"` added).
+- `CreateProjectModal`: the Name label pointed at the colour picker.
+
+*Accessibility (axe, in each page's suite)*
+- unnamed controls: the SSO toggle, the tenant logo input, the card upload input, and the
+  scim/sop/finance filter fields;
+- skipped heading levels on several pages;
+- permission buttons that showed their state by colour only (now `aria-pressed`).
+
+*Sidebar*
+- `components/layouts/menuHelpers.tsx`: the in-flight ADR-102 seed adds `Package` (Stock) and
+  `HardDrive` (Object Storage), which were missing from the icon maps. The A-118 guard
+  (`menuHelpers.seedIcons.a118.test.ts`) failed on it, and both icons are now mapped.
+
+**Second pass, 2026-09-30: the "reported, not fixed" items** (record
+`MEMORY/records/2026-09-30-f19-fixes.md`). Each item is fixed, with the named test that fails without
+the fix, unless it is marked otherwise.
+
+*Backend or product decision*
+- **Role Display Name, Level and Active: wired, not removed (ADR-105).**
+  - Backend:
+    - `roles.validator.ts` accepts `nameToShow` and `status` on create, and `nameToShow` and `roleLevel` (1–8) on edit.
+    - `roles.controller.js` passes them and the caller's level.
+    - `roles.service.ts` stores them: level ≤ min(8, the caller's level); a system role's level is fixed (**409** with a state explanation); an audit row in the transaction.
+  - Frontend:
+    - `role.service` reads `status` (the backend never sent `isActive`: every role showed Inactive, and an edit silently re-activated an inactive role).
+    - The level is sent only when it changed.
+    - The input is bounded at 8, and read-only for a system role.
+  - `GET /roles` and `/roles/menus` now answer `meta`, not `pagination`: the last envelope exception is gone.
+  - Tests:
+    - backend `tests/services/roles.fields.f19.test.ts` (real models and router over memoryDb);
+    - `roles/__tests__/page.test.tsx` › "roles page — the fields the dialog offers (F-19, ADR-105)";
+    - `role.service.test.ts` › "F-19: a row's status is the source of isActive".
+- Vendor rating on create: **not changed.** Q-37 has a working decision (drop it from the create form), awaiting the owner.
+- **Photos are uploaded.**
+  - `useUsers` keeps the picked file. After the save it calls `POST /users/:userId/avatar`, or `DELETE` for a removed stored photo.
+  - A refused Create photo is reported on the page (the user exists, so the dialog closes). A refused Edit photo keeps the dialog open.
+  - Test: `users/__tests__/page.test.tsx` › "users page — the photo is saved with the user (F-19)" (5 tests).
+
+*Destructive actions*: each is now confirmed with `ConfirmDialog`, and Cancel sends nothing.
+- network-security: add, remove and remove-all. The copy names the lock-out; the first range turns enforcement on. Test: `network-security/__tests__/page.test.tsx` › "every allowlist change is confirmed first (F-19)".
+- oidc Rotate: "the current secret stops working immediately" (`rotateSecret` keeps no overlap). Test: `oidc/__tests__/page.test.tsx` › "F-19: Rotate asks first…".
+- tenant-hierarchy Detach. Test: `tenant-hierarchy/__tests__/page.test.tsx` › "F-19: Detach asks first…".
+
+*Silent truncation and wrong screens*
+- **supplier-scorecard and risk** page through the shared `Pagination` with `meta` from the envelope (`listPage` in both services). A filter change goes back to page 1, and the risk search box is labelled "Search this page".
+  - `risk/__tests__/page.test.tsx` › "risk register — paging (F-19)"
+  - `supplier-scorecard/__tests__/page.test.tsx` › "supplier scorecards — paging (F-19)"
+  - the `listPage (F-19)` service tests
+- **tenant-hierarchy** asks for `/cross-tenant-roles` and `/tenants/all` only as the super admin; every write there is `platformOnly`.
+  - Other roles see the tree, no platform actions, and a note saying who can act.
+  - Test: "F-19: for a tenant role the page loads the tree and never asks for the super-admin-only roles".
+- **tenant-backup** (the UI-correctness agent confirmed it had not taken this):
+  - A failed read shows "Backups could not be loaded." with Try again, never "No backups found".
+  - The next read clears only the stale *list* error.
+  - Test: `backup/__tests__/page.f19.test.tsx`.
+- **`calibrationStore`**: each list (records, certificates, stats) has its own `lists[name]` read state. Mutations keep the shared pair. The page shows each list's own failure. Test: `stores/__tests__/calibrationStore.lists.f19.test.ts` (the list cases moved there from the shared contract).
+
+*Small UX gaps* (helper agent; details in the record)
+- The SSO copy is awaited, and a refused copy is reported.
+- custom-domains Verify reports verified or not verified, with what to do.
+- SOP offers "I have read this" only on PUBLISHED documents that require training, and Publish on UNDER_REVIEW.
+- stock and warehouse show a mutation's refusal inside the open dialog.
+- The opname date defaults to today's `YYYY-MM-DD`.
+
+*Accessibility and realtime* (helper agent)
+- `CardModal` is a modal dialog through `useModalA11y` (named, focus trap, Escape, focus return).
+- kanban listens to the real `kanban:label:created|updated|deleted`, `kanban:project:updated|deleted` and `kanban:card:relations` (`backend/src/services/kanban.service.js`).
+- Tests: `CardModal.test.tsx` › "a real dialog (F-19)" and "live link updates (F-19)"; `useBoard.test.ts` › the `F-19: kanban:*` tests.
+
+**Still open (owner named)**
+- Vendor rating on create: Q-37 (owner decision).
+- Ticket descriptions (`dangerouslySetInnerHTML`, `tickets/[ticketId]/page.tsx`):
+  - Stored HTML is not unsanitised: `globalSanitizer` runs `xss()` over every body string.
+  - The `xss` whitelist's links and images in the responder's session need a policy decision.
+  - Owner: the XSS / menu-groups agent's ticket-HTML work (`lib/safeHtml.ts`).
+- Follow-ups, **fixed** 2026-09-30 (ADR-105 Amendment 1):
+  - **Custom-domain verify record.** `customDomains.service.js` `verifyDomain` now names the record its check reads: `dnsRecord.type` is `TXT` (it said `CNAME`). Test: backend `tests/services/customDomains.verifyRecord.f19.test.ts`.
+  - **Archived SOP.** Acknowledging an ARCHIVED SOP is a 409 with a state explanation, and the row stays PENDING. This matches the UI; the coordinator decided it under the owner's delegation. Test: backend `tests/services/sop.archived.f19.test.ts`. `docs/API/10-QMS-API.md` amended.
+  - A revert run proved the tests: 3 of the 4 new tests failed, and the PUBLISHED control passed.
+  - Q-37 (vendor rating) is decided: drop it from the create form. The UI-correctness agent is doing it.
+
+**Definition of Done**
+- [x] every fix above has a test that fails without it
+- [x] coverage gate raised to the measured floor (ADR-067 Amendment 1)
+- [x] each Open item has an owner or an Open Question in `TASKS/BACKLOG.md` (second pass, 2026-09-30)
+- [ ] the contract fixes (gdpr, oidc, custom-domains, feature-flags, sop, metered-billing, batch-jobs,
+      tenant-hierarchy) verified against a **running** backend. The live contract suite
+      (`LIVE_CONTRACT=1`) now dumps routes again, but it checks paths, not the fields a screen reads

@@ -12,13 +12,15 @@
  * The create test below asserts the INTENDED 201 so it stays red until fixed.
  */
 const { httpGet, httpPost, httpDelete, authHeader } = require("../setup");
+// P10-16 (ADR-099): no default operator password — set E2E_OPERATOR_PASSWORD (see setup.js).
+const { OPERATOR_PASSWORD } = require("../setup");
 
 describe("E2E Workflows (HTTP)", () => {
   let token;
   let roleId;
 
   beforeAll(async () => {
-    const { body } = await httpPost("/auth/login", { user: "sys@mail.com", password: "123123" });
+    const { body } = await httpPost("/auth/login", { user: "sys@mail.com", password: OPERATOR_PASSWORD });
     token = body.token || (body.data && body.data.token);
     const roles = await httpGet("/roles?limit=1", authHeader(token));
     const rows = roles.body && roles.body.data;

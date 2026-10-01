@@ -1,17 +1,17 @@
 /**
- * P9-11 contract pin — `validators/vendor.validator.js`.
+ * P9-11 contract pin — `validators/vendor.validator.ts` (ADR-093).
  *
- * Today's Joi 400 for `qualifyVendor` through the real `validate(schema)`
- * middleware, byte for byte, in production and outside it, and what the
- * file's own `validate(data, schema)` helper hands its controllers. The
- * expectations are literals recorded on 2026-09-28; a Zod conversion must keep
- * this file passing unchanged. See ./harness.ts and
- * MEMORY/specs/P9-11-validation-error-contract.md.
+ * The validation 400 for `qualifyVendor` through the real `validate(schema)`
+ * middleware, byte for byte, in production and outside it. The status, the
+ * envelope, the top-level `message` ("Validation Error") and `details`
+ * only outside production are the contract this suite pinned before P9-11;
+ * the wording inside `details` is Zod's since the move to Zod (the owner's
+ * decision, ADR-093, which lists every changed string). See ./harness.ts.
  */
-import { qualifyVendor, validate as validateHelper } from "../../../validators/vendor.validator";
-import { expectValidationContract, captureHelper, joiResultDetails } from "./harness";
+import { qualifyVendor } from "../../../validators/vendor.validator";
+import { expectValidationContract } from "./harness";
 
-describe("P9-11 contract: validators/vendor.validator.js", () => {
+describe("P9-11 contract: validators/vendor.validator.ts", () => {
   it("validate(qualifyVendor) answers the pinned 400; details only outside production", async () => {
     await expectValidationContract(qualifyVendor, {
       "approvalStatus": {
@@ -20,27 +20,7 @@ describe("P9-11 contract: validators/vendor.validator.js", () => {
     }, [
       {
         "field": "approvalStatus",
-        "message": "\"approvalStatus\" must be one of [APPROVED, PENDING, REJECTED, CONDITIONAL]",
-      },
-      {
-        "field": "approvalStatus",
-        "message": "\"approvalStatus\" must be a string",
-      },
-    ]);
-  });
-  it("its own validate(data, schema) returns Joi's result; the controller maps these details", () => {
-    expect(joiResultDetails(captureHelper(() => validateHelper({
-      "approvalStatus": {
-        "bogus": true,
-      },
-    }, qualifyVendor)))).toEqual([
-      {
-        "field": "approvalStatus",
-        "message": "\"approvalStatus\" must be one of [APPROVED, PENDING, REJECTED, CONDITIONAL]",
-      },
-      {
-        "field": "approvalStatus",
-        "message": "\"approvalStatus\" must be a string",
+        "message": "Invalid input: expected string, received object",
       },
     ]);
   });

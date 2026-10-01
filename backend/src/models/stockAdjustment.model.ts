@@ -42,7 +42,10 @@ interface StockAdjustment extends Model<
   stockId: string | null;
   quantityBefore: number | null;
   quantityAfter: number | null;
-  adjustedBy: UserId;
+  /** Null when an API key adjusted (Q-51): then `apiKeyId` names it. Exactly one is set (CHECK, migration 0105). */
+  adjustedBy: UserId | null;
+  /** The API key that adjusted (Q-51); null for a user. */
+  apiKeyId: string | null;
   createdAt: CreationOptional<Date>;
   updatedAt: CreationOptional<Date>;
 
@@ -51,6 +54,7 @@ interface StockAdjustment extends Model<
   location?: NonAttribute<ModelInstance<"StorageLocation">>;
   stock?: NonAttribute<ModelInstance<"Stock">>;
   adjuster?: NonAttribute<ModelInstance<"User">>;
+  apiKey?: NonAttribute<ModelInstance<"ApiKey">>;
 }
 
 interface StockAdjustmentStatics {
@@ -122,10 +126,20 @@ const defineModel: DefineStockAdjustment = (db, DataTypes) => {
         type: DataTypes.INTEGER,
         allowNull: true,
       },
+      // Q-51: nullable — an API key's adjustment names the key in api_key_id
+      // instead. CHECK stock_adjustments_actor_exactly_one (migration 0105):
+      // exactly one of adjusted_by / api_key_id is set.
       adjustedBy: {
         type: DataTypes.UUID,
-        allowNull: false,
+        allowNull: true,
         references: { model: "users", key: "id" },
+        onDelete: "RESTRICT",
+      },
+      // Q-51: RESTRICT, as adjusted_by — and SET NULL would break the CHECK.
+      apiKeyId: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        references: { model: "api_keys", key: "id" },
         onDelete: "RESTRICT",
       },
     },
@@ -137,6 +151,10 @@ const defineModel: DefineStockAdjustment = (db, DataTypes) => {
         { fields: ["tenant_id"] },
         { fields: ["warehouse_id"] },
         { fields: ["type"] },
+        // No index on api_key_id here: migration 0105 creates <table>_api_key_id.
+        // db.sync() runs BEFORE the migrator at boot, and a model index on a
+        // column a later migration adds fails CREATE INDEX on an existing
+        // database (ADR-100 Amendment 3; guard tests/guards/modelIndexColumns.am3.guard.test.ts).
       ],
       modelName: "StockAdjustment",
       sequelize: db,
@@ -176,6 +194,12 @@ const defineModel: DefineStockAdjustment = (db, DataTypes) => {
     StockAdjustment.belongsTo(models.User, {
       foreignKey: "adjustedBy",
       as: "adjuster",
+      onDelete: "RESTRICT",
+    });
+    // StockAdjustment -> ApiKey (Q-51). ApiKey has a defaultScope: include it with required: false.
+    StockAdjustment.belongsTo(models.ApiKey, {
+      foreignKey: "apiKeyId",
+      as: "apiKey",
       onDelete: "RESTRICT",
     });
   };

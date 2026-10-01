@@ -34,6 +34,10 @@ function KanbanBoardContent() {
   const [sprintToDelete, setSprintToDelete] = useState<string | null>(null);
 
   const { board } = b;
+  // A refused sprint or quick-add action is shown on the board, not dropped
+  // as an unhandled rejection.
+  const report = (fallback: string) => (e: unknown) =>
+    b.setError(e instanceof Error ? e.message : fallback);
   return (
     <DashboardLayout>
       <div className="space-y-4">
@@ -49,6 +53,10 @@ function KanbanBoardContent() {
         </div>
 
         {b.error && <Alert variant="error">{b.error}</Alert>}
+        {/* WCAG 4.1.3: a keyboard move is announced. */}
+        <p role="status" aria-live="polite" className="sr-only">
+          {b.announcement}
+        </p>
 
         {!board ? (
           <div className="text-sm text-muted-foreground">
@@ -125,11 +133,16 @@ function KanbanBoardContent() {
               onSelect={b.setViewSprint}
               onNewSprint={() => setShowNewSprint(true)}
               onMigrate={() => setShowMigrate(true)}
-              onSetStatus={(id, status) => b.updateSprint(id, { status })}
+              onSetStatus={(id, status) =>
+                b
+                  .updateSprint(id, { status })
+                  .catch(report("Failed to update the sprint"))
+              }
               onDeleteSprint={(id) => setSprintToDelete(id)}
             />
 
-            {/* Board */}
+            {/* Board. The columns are h3s; this keeps the outline h1 → h2 → h3. */}
+            <h2 className="sr-only">Columns</h2>
             <div className="flex gap-3 overflow-x-auto pb-4">
               {b.columnsSorted.map((col) => (
                 <BoardColumn
@@ -142,8 +155,12 @@ function KanbanBoardContent() {
                   onCardDragStart={b.onCardDragStart}
                   onCardDragEnd={b.onCardDragEnd}
                   onDropInColumn={b.onDropInColumn}
+                  columns={b.columnsSorted}
+                  onMoveCard={(cardId, columnId) => void b.moveCardToColumn(cardId, columnId)}
                   onQuickAdd={(columnId, title) =>
-                    b.createCard({ columnId, title })
+                    b
+                      .createCard({ columnId, title })
+                      .catch(report("Failed to add the card"))
                   }
                 />
               ))}
@@ -163,6 +180,7 @@ function KanbanBoardContent() {
             onClose={() => setOpenCardId(null)}
             onSaved={b.refetch}
             onDeleted={() => setOpenCardId(null)}
+            subscribeRelations={b.subscribeCardRelations}
           />
           <MigrateModal
             isOpen={showMigrate}
@@ -202,7 +220,10 @@ function KanbanBoardContent() {
             confirmLabel="Delete sprint"
             onCancel={() => setSprintToDelete(null)}
             onConfirm={() => {
-              if (sprintToDelete) b.deleteSprint(sprintToDelete);
+              if (sprintToDelete)
+                b.deleteSprint(sprintToDelete).catch(
+                  report("Failed to delete the sprint"),
+                );
               setSprintToDelete(null);
             }}
           />

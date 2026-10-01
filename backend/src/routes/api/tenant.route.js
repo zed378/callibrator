@@ -292,9 +292,12 @@ router.get("/public", tenantController.getPublicBranding);
  *                 type: string
  *                 format: binary
  *                 description: Optional logo file (JPEG, PNG, GIF, WebP, SVG). Use field name "file" for the upload.
- *               maxUsers:
+ *               limitSeats:
  *                 type: integer
+ *                 nullable: true
+ *                 minimum: 1
  *                 example: 50
+ *                 description: The seat limit (platform-set; null = unlimited; absent = the plan default). `maxUsers` is not accepted.
  *               email:
  *                 type: string
  *                 format: email
@@ -399,7 +402,8 @@ router.post(
  * /api/v1/tenants/edit:
  *   patch:
  *     summary: Update an existing tenant's details
- *     description: Requires Management update access. A non-super-admin may update only their own tenant (any other tenantId answers 404, as a missing one does); only a super admin may change status or maxUsers (403 otherwise). Supports multipart/form-data for file upload.
+ *     description: >-
+ *       Requires Management update access. A non-super-admin may update only their own tenant (any other tenantId answers 404, as a missing one does); an edit never changes status (ADR-112): the current status resubmitted, in any case, is no change; a different one is 409 (status moves through POST /tenants/{id}/suspend and /resume), 403 for a non-super-admin; an unknown one (INACTIVE) is 400. A null or empty email is 400 (A-327). A-303: maxUsers is not an edit field (a plan value the platform sets) and is ignored; website must be http(s); phone is digits with + ( ) . - / and an optional extension. Supports multipart/form-data for file upload.
  *     tags:
  *       - Tenants
  *     security:
@@ -434,9 +438,6 @@ router.post(
  *                 type: string
  *                 enum: [ACTIVE, INACTIVE, SUSPENDED]
  *                 example: "ACTIVE"
- *               maxUsers:
- *                 type: integer
- *                 example: 100
  *               email:
  *                 type: string
  *                 format: email

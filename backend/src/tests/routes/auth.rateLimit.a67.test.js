@@ -13,7 +13,7 @@
  * does the same). What is real: the router, authPreCheck and the limiter
  * (rateLimiter.redis.service on its in-process fallback, because no Redis
  * client is ready in a unit run), the auth controller and its error mapping,
- * auth.service and its Joi validation. What is faked: the user lookup
+ * auth.service and its validation. What is faked: the user lookup
  * (`Users.findOne` is spied — there is no database) and, since A-185, the
  * bcrypt comparison, and nothing else.
  *
@@ -23,6 +23,8 @@
  */
 
 // Quiet, observable logger; everything else in the module is real.
+// A-288 (ADR-100): the network policy has its own suites (signInPolicy.*.a288); here it permits.
+jest.mock("../../services/signInPolicy.service", () => ({ assertSignInPermitted: jest.fn(async () => undefined) }));
 jest.mock("../../middlewares/activityLog.middleware", () => ({
   ...jest.requireActual("../../middlewares/activityLog.middleware"),
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
@@ -211,6 +213,10 @@ describe("A-67: the auth rate limiter records failures through the real router",
             return this;
           },
           setHeader() {
+            return this;
+          },
+          // ADR-100: a lockout 429 carries Retry-After (Express res.set).
+          set() {
             return this;
           },
         };

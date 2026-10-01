@@ -18,6 +18,7 @@ import {
 } from "./components";
 import useDashboardMetrics from "./hooks/useDashboardMetrics";
 import { useClientValue } from "@/hooks/useClientValue";
+import { usePermissions } from "@/hooks/usePermissions";
 
 /** Time-of-day greeting for an hour 0-23. */
 const greetingForHour = (h: number): string =>
@@ -47,10 +48,18 @@ export default function DashboardPage() {
   // render is non-deterministic and not allowed during prerender in Next 16.
   const greeting = useClientValue(greetingForNow, "Welcome");
 
+  // ADR-102: the user list is read only by a caller the API lets read it
+  // (`users` read). It used to be fetched for every role and 403'd for most.
+  const { loaded: permissionsLoaded, canRead } = usePermissions();
+  const mayReadUsers = canRead("users");
+
   useEffect(() => {
     fetchUser();
-    fetchUsers();
-  }, [fetchUser, fetchUsers]);
+  }, [fetchUser]);
+
+  useEffect(() => {
+    if (mayReadUsers) fetchUsers();
+  }, [mayReadUsers, fetchUsers]);
 
   const userName =
     user?.firstName && user?.lastName
@@ -64,7 +73,11 @@ export default function DashboardPage() {
         ? `Overview for ${metrics.tenant.name}`
         : "Overview for your organization";
 
-  const recentUsers = Array.isArray(users?.data) ? users.data : [];
+  const recentUsers = !permissionsLoaded || !mayReadUsers
+    ? null
+    : Array.isArray(users?.data)
+      ? users.data
+      : [];
 
   return (
     <DashboardLayout>

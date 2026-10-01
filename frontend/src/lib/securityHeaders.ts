@@ -22,6 +22,9 @@
 /** The request header the proxy hands the nonce to Server Components in. */
 export const NONCE_HEADER = "x-nonce";
 
+/** P10-02: the request path, handed to the root layout by the proxy. */
+export const PATHNAME_HEADER = "x-pathname";
+
 /** 128 bits from the platform CSPRNG, base64 — the form a CSP nonce takes. */
 export const generateNonce = (): string => {
   const bytes = new Uint8Array(16);

@@ -60,11 +60,25 @@ export interface AuditLog {
   impersonator?: AuditLogUser | null;
 }
 
+/**
+ * P8-04 (ADR-096): the date window the backend read. With no Start Date, End
+ * Date or resource, it reads the last 90 days (`defaulted: true`).
+ */
+export interface AuditWindow {
+  from: string | null;
+  to: string | null;
+  defaulted: boolean;
+}
+
 export interface AuditMeta {
+  /** At most 10,000 — see `totalIsCapped`. */
   total: number;
   page: number;
   limit: number;
   totalPages: number;
+  /** P8-04: true when more rows match than the backend counts; `total` is then a lower bound. */
+  totalIsCapped?: boolean;
+  window?: AuditWindow;
 }
 
 export interface AuditListQuery {

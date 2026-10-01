@@ -15,7 +15,18 @@
  *   Q84_PG_LIVE_TEST=1 DB_HOST=127.0.0.1 DB_PORT=55884 DB_NAME=callibrator_scratch_q84 \
  *     DB_USER=cal_owner DB_PASS=owner \
  *     npm test -- src/tests/services/calibrationDevice.retired.q02.live --coverage=false
+ *
+ * A-283 (2026-09-30): the schema, the migrations and the trigger's owner-level
+ * checks run as the OWNER — the trigger must hold even for it. Everything the
+ * application does (the model write, the edit path, the cross-tenant
+ * reinstatement, the reinstatement itself) runs in a second process as
+ * `callibrator_app`, with the grants 0057 and 0091 give it (applied here, as
+ * this suite builds its schema with sync() alone) — as the owner those passed
+ * whether the role may UPDATE a device or INSERT an audit row or not.
  */
+
+const { enterAppRole, grantAppRoleOnSyncedSchema, APP_ROLE } = require("../fixtures/liveBoot");
+const { LIVE_BOOT_TIMEOUT_MS } = require("../fixtures/disposableDatabase");
 
 const live = process.env.Q84_PG_LIVE_TEST === "1" ? describe : describe.skip;
 
@@ -64,6 +75,8 @@ const inRolledBack = async (db, work) => {
 
 live("Q-02 — retired is terminal, on live PostgreSQL (migration 0089)", () => {
   let g;
+  /** A second process, as callibrator_app: the application's path. */
+  let app;
   const ids = {};
 
   const statusOf = async (id) => {
@@ -74,7 +87,7 @@ live("Q-02 — retired is terminal, on live PostgreSQL (migration 0089)", () => 
   };
   const asTenant = (tenantId, fn) =>
     new Promise((resolve, reject) => {
-      g.tenantStorage.run({ tenantId, isSuperAdmin: false, isSystemTask: false }, () => fn().then(resolve, reject));
+      app.tenantStorage.run({ tenantId, isSuperAdmin: false, isSystemTask: false }, () => fn().then(resolve, reject));
     });
 
   beforeAll(async () => {
@@ -126,12 +139,26 @@ live("Q-02 — retired is terminal, on live PostgreSQL (migration 0089)", () => 
     const qi = g.db.getQueryInterface();
     await g.m0089.up({ context: qi });
     await g.m0089.up({ context: qi }); // idempotent
-  }, 120000);
+
+    await grantAppRoleOnSyncedSchema(g.db);
+    app = startProcess();
+    await enterAppRole(app.db);
+  }, LIVE_BOOT_TIMEOUT_MS);
 
   afterAll(async () => {
+    if (app) {
+      await app.db.close();
+    }
     if (g) {
       await g.db.close();
     }
+  });
+
+  it("the application process runs as callibrator_app, not the owner", async () => {
+    const [[row]] = await app.db.query(
+      "SELECT current_user AS u, (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) AS s",
+    );
+    expect(row).toEqual({ u: APP_ROLE, s: false });
   });
 
   it("the trigger exists once, on calibration_devices", async () => {
@@ -163,13 +190,26 @@ live("Q-02 — retired is terminal, on live PostgreSQL (migration 0089)", () => 
     expect(await statusOf(ids.retiredA)).toBe("retired");
   });
 
+  it("refuses leaving 'retired' for callibrator_app too — which may otherwise UPDATE the device", async () => {
+    await inRolledBack(app.db, async (t) => {
+      expect(
+        await errorOf(app.db, t, "UPDATE calibration_devices SET remarks = 'app role' WHERE id = :id", { id: ids.retiredA }),
+      ).toBeNull();
+      const err = await errorOf(app.db, t, "UPDATE calibration_devices SET status = 'active' WHERE id = :id", {
+        id: ids.retiredA,
+      });
+      expect(err.original.code).toBe("23514");
+    });
+    expect(await statusOf(ids.retiredA)).toBe("retired");
+  });
+
   it("the error a model write raises is the shape the edit path maps to its 409", async () => {
-    const row = await g.models.CalibrationDevice.unscoped().findOne({
+    const row = await app.models.CalibrationDevice.unscoped().findOne({
       where: { id: ids.retiredA },
       skipTenantScope: true,
     });
     const err = await row.update({ status: "active" }).catch((e) => e);
-    expect(g.retirement.isRetirementTerminalViolation(err)).toBe(true);
+    expect(app.retirement.isRetirementTerminalViolation(err)).toBe(true);
   });
 
   it("lets through what is not a revival: re-saving 'retired', other columns of a retired device, retiring, other moves", async () => {
@@ -209,7 +249,7 @@ live("Q-02 — retired is terminal, on live PostgreSQL (migration 0089)", () => 
 
   it("the edit path answers 409 and changes nothing", async () => {
     const result = await asTenant(TENANT_A, () =>
-      g.devices.updateCalibrationDevice(TENANT_A, ids.retiredA, { status: "active" }, {}),
+      app.devices.updateCalibrationDevice(TENANT_A, ids.retiredA, { status: "active" }, {}),
     );
     expect(result.status).toBe(409);
     expect(await statusOf(ids.retiredA)).toBe("retired");
@@ -217,7 +257,7 @@ live("Q-02 — retired is terminal, on live PostgreSQL (migration 0089)", () => 
 
   it("another tenant cannot reinstate the device: 404, and it stays retired", async () => {
     const result = await asTenant(TENANT_B, () =>
-      g.retirement.reinstate(TENANT_B, ids.retiredA, { reason: "Retired in error at stock take", status: "active" }, {}),
+      app.retirement.reinstate(TENANT_B, ids.retiredA, { reason: "Retired in error at stock take", status: "active" }, {}),
     );
     expect(result.status).toBe(404);
     expect(await statusOf(ids.retiredA)).toBe("retired");
@@ -225,7 +265,7 @@ live("Q-02 — retired is terminal, on live PostgreSQL (migration 0089)", () => 
 
   it("the reinstatement commits the status with its audit row, and the setting does not outlive it", async () => {
     const result = await asTenant(TENANT_A, () =>
-      g.retirement.reinstate(
+      app.retirement.reinstate(
         TENANT_A,
         ids.retiredA,
         { reason: "Retired in error at stock take", status: "inactive" },

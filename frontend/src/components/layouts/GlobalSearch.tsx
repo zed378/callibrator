@@ -13,6 +13,7 @@ import {
 import { describeApiError } from "@/api/client";
 import { useMenuStore } from "@/stores/menuStore";
 import { menuHasAnyPath, SEARCHABLE_MENU_PATHS } from "@/lib/menuAccess";
+import { useSearchHandoffStore } from "@/stores/searchHandoffStore";
 
 const TYPE_CONFIG: Record<
   SearchResult["type"],
@@ -54,6 +55,22 @@ const getSecondaryText = (result: SearchResult): string => {
       return result.sku || result.serialNumber || "";
     case "certificate":
       return result.status || "";
+  }
+};
+
+/**
+ * S6 — the term that finds exactly this record on its list page: a device by
+ * its serial number (unique per tenant) or name, a stock item by its name, a
+ * certificate by its number.
+ */
+export const recordFilterTerm = (result: SearchResult): string => {
+  switch (result.type) {
+    case "device":
+      return result.serialNumber || result.name;
+    case "stock":
+      return result.itemName;
+    case "certificate":
+      return result.certificateNumber;
   }
 };
 
@@ -153,6 +170,8 @@ export const GlobalSearchBox: React.FC<{
   const handleSelect = useCallback(
     (result: SearchResult) => {
       handleQueryChange("");
+      // S6: open the list filtered to this record (no detail pages exist yet).
+      useSearchHandoffStore.getState().handOff(result.type, recordFilterTerm(result));
       router.push(TYPE_CONFIG[result.type].href);
     },
     [router, handleQueryChange],

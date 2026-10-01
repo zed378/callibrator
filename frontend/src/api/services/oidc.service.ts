@@ -86,19 +86,23 @@ interface BackendResponse<T> {
 
 export const oidcService = {
   /** GET /api/v1/oidc/.well-known/openid-configuration */
+  // The two well-known documents are standard OIDC bodies, sent with
+  // `res.json(...)` and no envelope (oidcProvider.controller discover/jwks) —
+  // reading `.data` off them gave undefined, so the Endpoints card never
+  // rendered. An enveloped body is still read for compatibility.
   getDiscovery: async (): Promise<OidcDiscovery> => {
-    const response = await api.get<BackendResponse<OidcDiscovery>>(
+    const response = await api.get<OidcDiscovery | BackendResponse<OidcDiscovery>>(
       "/api/v1/oidc/.well-known/openid-configuration",
     );
-    return response.data;
+    return "issuer" in response ? response : response.data;
   },
 
   /** GET /api/v1/oidc/.well-known/jwks.json */
   getJwks: async (): Promise<Jwks> => {
-    const response = await api.get<BackendResponse<Jwks>>(
+    const response = await api.get<Jwks | BackendResponse<Jwks>>(
       "/api/v1/oidc/.well-known/jwks.json",
     );
-    return response.data;
+    return "keys" in response ? response : response.data;
   },
 
   /** GET /api/v1/oidc/clients */

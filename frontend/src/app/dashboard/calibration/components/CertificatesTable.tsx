@@ -1,10 +1,11 @@
 import React, { useState } from "react";
-import { Certificate } from "@/api/services/calibration.service";
+import { Certificate, calibrationService } from "@/api/services/calibration.service";
 import { Card, CardContent, Table, TableSkeleton, Badge, Button, Pagination } from "@/components/ui";
 import { FileText, PenTool, Download } from "lucide-react";
 import { useToastStore } from "@/stores/toastStore";
-import { generateCertificatePdf } from "@/lib/certificatePdf";
+import { downloadCertificatePdf } from "@/lib/certificatePdf";
 import { PaginatedResponse } from "@/types";
+import { isCertificateAuthor } from "../certificateAuthorship";
 
 // Table rows arrive as generic records; narrow them back to Certificate.
 const asCert = (row: Record<string, unknown>): Certificate =>
@@ -15,7 +16,12 @@ interface CertificatesTableProps {
   isCalibLoading: boolean;
   pageSize: number;
   onPageChange: (page: number) => void;
+  /** ADR-102: `certificate` write, from the effective permission. */
   hasWriteAccess: boolean;
+  /** The signed-in user — ADR-101: a certificate's author may not approve it. */
+  currentUserId?: string | null;
+  /** draft → pending_approval (POST /certificates/:id/submit). No button without it. */
+  onSubmitCertificate?: (cert: Certificate) => void;
   /** Approval needs e-signature credentials, so it opens a modal. */
   openApproveModal: (cert: Certificate) => void;
   openSignModal: (cert: Certificate) => void;
@@ -28,6 +34,8 @@ export const CertificatesTable: React.FC<CertificatesTableProps> = ({
   pageSize,
   onPageChange,
   hasWriteAccess,
+  currentUserId,
+  onSubmitCertificate,
   openApproveModal,
   openSignModal,
   openRevokeModal,
@@ -35,11 +43,13 @@ export const CertificatesTable: React.FC<CertificatesTableProps> = ({
   const { addToast } = useToastStore();
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
-  // PDF is rendered entirely client-side from the certificate record.
+  // M-11 (ADR-095): the PDF is rendered in the browser from the certificate
+  // DOCUMENT the backend serves — every printed field, the verification URL the
+  // QR carries, and the integrity hash the public verification page recomputes.
   const handleDownloadPdf = async (cert: Certificate) => {
     setDownloadingId(cert.id);
     try {
-      await generateCertificatePdf(cert);
+      await downloadCertificatePdf(await calibrationService.getCertificateDocument(cert.id));
     } catch (err) {
       addToast({
         type: "error",
@@ -116,12 +126,44 @@ export const CertificatesTable: React.FC<CertificatesTableProps> = ({
       header: "Actions",
       render: (_: unknown, row: Record<string, unknown>) => {
         const cert = asCert(row);
+        // The actions follow the backend state machine (certificate.service
+        // TRANSITION_REFUSALS): draft → submit; pending_approval → approve (by
+        // someone other than its author, ADR-101); approved → sign; any state
+        // but revoked → revoke.
+        const selfAuthored = isCertificateAuthor(cert, currentUserId);
+        const sodNoteId = `cert-${cert.id}-sod`;
         return (
-          <div className="flex items-center gap-1.5">
-            {hasWriteAccess && cert.status === "draft" && (
-              <Button size="sm" variant="outline" onClick={() => openApproveModal(cert)}>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {hasWriteAccess && onSubmitCertificate && cert.status === "draft" && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => onSubmitCertificate(cert)}
+                aria-label={`Submit certificate ${cert.certificateNumber} for approval`}
+              >
+                Submit for approval
+              </Button>
+            )}
+            {hasWriteAccess && cert.status === "pending_approval" && !selfAuthored && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => openApproveModal(cert)}
+                aria-label={`Approve certificate ${cert.certificateNumber}`}
+              >
                 Approve
               </Button>
+            )}
+            {hasWriteAccess && cert.status === "pending_approval" && selfAuthored && (
+              <>
+                <Button size="sm" variant="outline" disabled aria-describedby={sodNoteId}>
+                  Approve
+                </Button>
+                <span id={sodNoteId} className="text-xs text-muted-foreground max-w-[16rem]">
+                  Another user must approve it: you drafted or submitted this certificate
+                  (separation of duties).
+                </span>
+              </>
             )}
             {hasWriteAccess && cert.status === "approved" && (
               <Button
@@ -151,6 +193,7 @@ export const CertificatesTable: React.FC<CertificatesTableProps> = ({
               className="text-muted-foreground hover:text-foreground hover:bg-muted flex items-center gap-1"
               onClick={() => handleDownloadPdf(cert)}
               title="Download certificate PDF"
+              aria-label={`Download PDF of certificate ${cert.certificateNumber}`}
             >
               <Download className="h-4 w-4" />
               PDF

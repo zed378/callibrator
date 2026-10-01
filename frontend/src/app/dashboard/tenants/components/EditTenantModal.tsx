@@ -15,7 +15,6 @@ export interface TenantFormState {
   description: string;
   primaryColor: string;
   status: string;
-  maxUsers: string;
   email: string;
   phone: string;
   address: string;
@@ -42,9 +41,10 @@ interface EditTenantModalProps {
   setLogoKeep: React.Dispatch<React.SetStateAction<boolean>>;
   onSubmit: (e: React.FormEvent) => void;
   /**
-   * Status and the seat limit (maxUsers) belong to the platform: the backend
-   * refuses a change to either from anyone but a super admin (A-63). false
-   * shows them read-only instead of letting the save fail with a 403.
+   * Status belongs to the platform: the backend refuses a change to it from
+   * anyone but a super admin (A-63). false shows it read-only instead of
+   * letting the save fail with a 403. A-303: the seat limit is not an edit
+   * field at all (a plan value the platform sets; the backend ignores it).
    */
   platformFieldsEditable?: boolean;
 }
@@ -178,14 +178,6 @@ export const EditTenantModal: React.FC<EditTenantModalProps> = ({
                   options={statusOptions}
                   placeholder="Select status"
                   className="w-full"
-                  disabled={!platformFieldsEditable}
-                />
-                <Input
-                  label="Max Users"
-                  type="number"
-                  value={form.maxUsers}
-                  onChange={(e) => update("maxUsers", e.target.value)}
-                  placeholder="100"
                   disabled={!platformFieldsEditable}
                 />
                 <Input

@@ -11,6 +11,7 @@ jest.mock("sequelize", () => ({
     or: Symbol("or"),
     and: Symbol("and"),
     like: Symbol("like"),
+    iLike: Symbol("iLike"), // A-320: the search matches with ILIKE
   },
 }));
 
@@ -36,6 +37,11 @@ jest.mock("../../models", () => {
 
 jest.mock("../../services/notification.service", () => ({
   emitNotification: jest.fn(),
+}));
+
+// P6-11: every write commits with one audit row in its transaction.
+jest.mock("../../services/audit.service", () => ({
+  logAction: jest.fn(),
 }));
 
 jest.mock("../../constants", () => ({
@@ -144,6 +150,8 @@ beforeEach(() => {
   Ticket.create.mockResolvedValue(makeTicket());
   TicketComment.create.mockResolvedValue({ id: "cm1" });
   TicketComment.findByPk.mockResolvedValue(makeComment());
+  // A-277 (ADR-094): an assignee is looked up in the ticket's tenant.
+  models.User.findOne = jest.fn().mockResolvedValue({ id: "agent" });
 });
 
 // ================================================================
@@ -445,6 +453,7 @@ describe("assignTicket", () => {
     await svc.assignTicket(superAdmin, "t1", "newAgent");
     expect(ticket.update).toHaveBeenCalledWith(
       expect.objectContaining({ assignedTo: "newAgent" }),
+      { transaction: "txn" },
     );
     expect(notificationService.emitNotification).toHaveBeenCalledTimes(1);
   });
@@ -494,6 +503,7 @@ describe("addComment", () => {
     const res = await svc.addComment(superAdmin, "t1", { body: "hi" });
     expect(TicketComment.create).toHaveBeenCalledWith(
       expect.objectContaining({ isInternal: false, body: "hi" }),
+      { transaction: "txn" },
     );
     expect(notificationService.emitNotification).toHaveBeenCalledTimes(2);
     expect(res.author.id).toBe("u1");
@@ -511,6 +521,7 @@ describe("addComment", () => {
     });
     expect(TicketComment.create).toHaveBeenCalledWith(
       expect.objectContaining({ isInternal: true }),
+      { transaction: "txn" },
     );
     expect(notificationService.emitNotification).toHaveBeenCalledTimes(1);
     expect(res.author).toBeNull();
@@ -770,5 +781,65 @@ describe("requester vs responder point of view", () => {
       { createdBy: "req1" },
       { assignedTo: "req1" },
     ]);
+  });
+});
+
+// ================================================================
+// P6-11 — the audit row of each write, in its transaction
+// ================================================================
+describe("P6-11 — audit rows", () => {
+  const auditService = require("../../services/audit.service");
+  const principal = { userId: "req1", apiKeyId: null, ipAddress: "10.0.0.1", userAgent: "jest" };
+
+  it("createTicket writes one CREATE row in the ticket's transaction, naming the principal", async () => {
+    Ticket.create.mockResolvedValueOnce(makeTicket({ createdBy: "req1" }));
+    Ticket.findOne.mockResolvedValueOnce(makeTicket({ createdBy: "req1" }));
+    await svc.createTicket(requester, { subject: "S" }, principal);
+    expect(auditService.logAction).toHaveBeenCalledTimes(1);
+    expect(auditService.logAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: TID,
+        userId: "req1",
+        ipAddress: "10.0.0.1",
+        action: "CREATE",
+        resourceType: "Ticket",
+        resourceId: "t1",
+        changes: expect.objectContaining({ operation: "TICKET_CREATE", ticketKey: "TKT-1" }),
+      }),
+      { transaction: "txn" },
+    );
+  });
+
+  it("without a principal the row names the user the service was given", async () => {
+    await svc.deleteTicket(superAdmin, "t1");
+    expect(auditService.logAction).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "sa", action: "DELETE", tenantId: TID }),
+      { transaction: "txn" },
+    );
+  });
+
+  it("an API-key user without a principal is recorded as system:api-key, never as a user", async () => {
+    const key = { ...responder, id: "key-1", isApiKey: true };
+    Ticket.findOne.mockResolvedValue(makeTicket({ createdBy: "key-1" }));
+    await svc.updateTicket(key, "t1", { priority: "high" });
+    const [entry] = auditService.logAction.mock.calls[0];
+    expect(entry).toMatchObject({ systemActor: "system:api-key", action: "UPDATE" });
+    expect(entry.userId).toBeUndefined();
+    expect(entry.changes).toMatchObject({ apiKeyId: "key-1", descriptionChanged: false });
+  });
+
+  it("a comment's row records that it was posted, never its body", async () => {
+    Ticket.findOne.mockResolvedValueOnce(makeTicket({ createdBy: "creator", assignedTo: "agent" }));
+    TicketComment.create.mockResolvedValueOnce({ id: "cm1", isInternal: false });
+    await svc.addComment(superAdmin, "t1", { body: "secret-ish text" }, principal);
+    const [entry] = auditService.logAction.mock.calls[0];
+    expect(entry).toMatchObject({ resourceType: "TicketComment", resourceId: "cm1" });
+    expect(JSON.stringify(entry.changes)).not.toContain("secret-ish text");
+  });
+
+  it("a failed audit write fails the mutation (it cannot commit unattributed)", async () => {
+    auditService.logAction.mockRejectedValueOnce(new Error("audit insert failed"));
+    await expectReject(svc.updateTicket(superAdmin, "t1", { priority: "low" }, principal), "audit insert failed");
+    expect(notificationService.emitNotification).not.toHaveBeenCalled();
   });
 });

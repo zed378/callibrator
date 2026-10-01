@@ -1,4 +1,4 @@
-import { create } from "zustand";
+import { create } from 'zustand';
 import {
   calibrationService,
   ApproveCertificateInput,
@@ -10,8 +10,8 @@ import {
   CertificateUpdateInput,
   RevokeCertificateInput,
   SignCertificateInput,
-} from "@/api/services/calibration.service";
-import { PaginatedResponse } from "@/types";
+} from '@/api/services/calibration.service';
+import { PaginatedResponse } from '@/types';
 
 export interface CertificateStats {
   totalCertificates: number;
@@ -20,14 +20,32 @@ export interface CertificateStats {
   latestCertificate?: Certificate;
 }
 
+/** One list's own read state (F-19). */
+export interface ListReadState {
+  isLoading: boolean;
+  error: string | null;
+}
+
+/** The lists the store reads, each with its own loading flag and error. */
+export type CalibrationList = 'calibrations' | 'certificates' | 'certificateStats';
+
+const idle: ListReadState = { isLoading: false, error: null };
+
 interface CalibrationState {
   calibrations: PaginatedResponse<Calibration> | null;
   certificates: PaginatedResponse<Certificate> | null;
   certificateStats: CertificateStats | null;
   currentCalibration: Calibration | null;
   currentCertificate: Certificate | null;
+  /**
+   * Mutations and single-record reads. F-19: the three lists no longer share
+   * these — one shared flag made a list flash its empty state while another
+   * loaded, and one list's fetch cleared another's error. Each list reads
+   * `lists[name]`.
+   */
   isLoading: boolean;
   error: string | null;
+  lists: Record<CalibrationList, ListReadState>;
 
   // Calibration actions
   fetchCalibrations: (
@@ -36,7 +54,7 @@ interface CalibrationState {
     deviceId?: string,
     isCompliant?: boolean | null,
     from?: string,
-    to?: string,
+    to?: string
   ) => Promise<void>;
   fetchCalibrationById: (id: string) => Promise<void>;
   createCalibration: (data: CalibrationCreateInput) => Promise<Calibration>;
@@ -52,233 +70,254 @@ interface CalibrationState {
     type?: string[],
     certificateNumber?: string,
     from?: string,
-    to?: string,
+    to?: string
   ) => Promise<void>;
   fetchCertificateById: (id: string) => Promise<void>;
   createCertificate: (data: CertificateCreateInput) => Promise<Certificate>;
   updateCertificate: (data: CertificateUpdateInput) => Promise<Certificate>;
   deleteCertificate: (id: string) => Promise<void>;
-  approveCertificate: (
-    id: string,
-    input: ApproveCertificateInput,
-  ) => Promise<Certificate>;
-  signCertificate: (
-    id: string,
-    input: SignCertificateInput,
-  ) => Promise<Certificate>;
-  revokeCertificate: (
-    id: string,
-    input: RevokeCertificateInput,
-  ) => Promise<Certificate>;
+  /** POST /certificates/:id/submit (draft → pending_approval). */
+  submitCertificate: (id: string) => Promise<Certificate>;
+  approveCertificate: (id: string, input: ApproveCertificateInput) => Promise<Certificate>;
+  signCertificate: (id: string, input: SignCertificateInput) => Promise<Certificate>;
+  revokeCertificate: (id: string, input: RevokeCertificateInput) => Promise<Certificate>;
   fetchCertificateStats: () => Promise<void>;
 
   setError: (error: string | null) => void;
 }
 
-export const useCalibrationStore = create<CalibrationState>()((set) => ({
-  calibrations: null,
-  certificates: null,
-  certificateStats: null,
-  currentCalibration: null,
-  currentCertificate: null,
-  isLoading: false,
-  error: null,
+export const useCalibrationStore = create<CalibrationState>()((set) => {
+  /** Set one list's read state, leaving the others alone. */
+  const setList = (name: CalibrationList, next: ListReadState) =>
+    set((state) => ({ lists: { ...state.lists, [name]: next } }));
 
-  fetchCalibrations: async (page = 1, limit = 10, deviceId, isCompliant, from, to) => {
-    set({ isLoading: true, error: null });
-    try {
-      const calibrations = await calibrationService.getAll(
-        page,
-        limit,
-        deviceId,
-        isCompliant,
-        from,
-        to,
-      );
-      set({ calibrations, isLoading: false });
-    } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : "Failed to fetch calibration records";
-      set({ isLoading: false, error: message });
-    }
-  },
+  return {
+    calibrations: null,
+    certificates: null,
+    certificateStats: null,
+    currentCalibration: null,
+    currentCertificate: null,
+    isLoading: false,
+    error: null,
+    lists: { calibrations: idle, certificates: idle, certificateStats: idle },
 
-  fetchCalibrationById: async (id: string) => {
-    set({ isLoading: true, error: null });
-    try {
-      const currentCalibration = await calibrationService.getById(id);
-      set({ currentCalibration, isLoading: false });
-    } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : "Failed to fetch calibration record";
-      set({ isLoading: false, error: message });
-    }
-  },
+    fetchCalibrations: async (page = 1, limit = 10, deviceId, isCompliant, from, to) => {
+      setList('calibrations', { isLoading: true, error: null });
+      try {
+        const calibrations = await calibrationService.getAll(
+          page,
+          limit,
+          deviceId,
+          isCompliant,
+          from,
+          to
+        );
+        set({ calibrations });
+        setList('calibrations', idle);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Failed to fetch calibration records';
+        setList('calibrations', { isLoading: false, error: message });
+      }
+    },
 
-  createCalibration: async (data: CalibrationCreateInput) => {
-    set({ isLoading: true, error: null });
-    try {
-      const record = await calibrationService.create(data);
-      set({ isLoading: false });
-      return record;
-    } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : "Failed to create calibration record";
-      set({ isLoading: false, error: message });
-      throw err;
-    }
-  },
+    fetchCalibrationById: async (id: string) => {
+      set({ isLoading: true, error: null });
+      try {
+        const currentCalibration = await calibrationService.getById(id);
+        set({ currentCalibration, isLoading: false });
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Failed to fetch calibration record';
+        set({ isLoading: false, error: message });
+      }
+    },
 
-  // P6-03: a correction is a new record; `currentCalibration` becomes it.
-  correctCalibration: async (data: CalibrationCorrectionInput) => {
-    set({ isLoading: true, error: null });
-    try {
-      const record = await calibrationService.correct(data);
-      set({ currentCalibration: record, isLoading: false });
-      return record;
-    } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : "Failed to correct calibration record";
-      set({ isLoading: false, error: message });
-      throw err;
-    }
-  },
+    createCalibration: async (data: CalibrationCreateInput) => {
+      set({ isLoading: true, error: null });
+      try {
+        const record = await calibrationService.create(data);
+        set({ isLoading: false });
+        return record;
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Failed to create calibration record';
+        set({ isLoading: false, error: message });
+        throw err;
+      }
+    },
 
-  voidCalibration: async (id: string, reason: string) => {
-    set({ isLoading: true, error: null });
-    try {
-      await calibrationService.void(id, reason);
-      set({ isLoading: false });
-    } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : "Failed to void calibration record";
-      set({ isLoading: false, error: message });
-      throw err;
-    }
-  },
+    // P6-03: a correction is a new record; `currentCalibration` becomes it.
+    correctCalibration: async (data: CalibrationCorrectionInput) => {
+      set({ isLoading: true, error: null });
+      try {
+        const record = await calibrationService.correct(data);
+        set({ currentCalibration: record, isLoading: false });
+        return record;
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Failed to correct calibration record';
+        set({ isLoading: false, error: message });
+        throw err;
+      }
+    },
 
-  fetchCertificates: async (page = 1, limit = 10, deviceId, status, type, certificateNumber, from, to) => {
-    set({ isLoading: true, error: null });
-    try {
-      const certificates = await calibrationService.getAllCertificates(
-        page,
-        limit,
-        deviceId,
-        status,
-        type,
-        certificateNumber,
-        from,
-        to,
-      );
-      set({ certificates, isLoading: false });
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to fetch certificates";
-      set({ isLoading: false, error: message });
-    }
-  },
+    voidCalibration: async (id: string, reason: string) => {
+      set({ isLoading: true, error: null });
+      try {
+        await calibrationService.void(id, reason);
+        set({ isLoading: false });
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Failed to void calibration record';
+        set({ isLoading: false, error: message });
+        throw err;
+      }
+    },
 
-  fetchCertificateById: async (id: string) => {
-    set({ isLoading: true, error: null });
-    try {
-      const currentCertificate = await calibrationService.getCertificateById(id);
-      set({ currentCertificate, isLoading: false });
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to fetch certificate";
-      set({ isLoading: false, error: message });
-    }
-  },
+    fetchCertificates: async (
+      page = 1,
+      limit = 10,
+      deviceId,
+      status,
+      type,
+      certificateNumber,
+      from,
+      to
+    ) => {
+      setList('certificates', { isLoading: true, error: null });
+      try {
+        const certificates = await calibrationService.getAllCertificates(
+          page,
+          limit,
+          deviceId,
+          status,
+          type,
+          certificateNumber,
+          from,
+          to
+        );
+        set({ certificates });
+        setList('certificates', idle);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Failed to fetch certificates';
+        setList('certificates', { isLoading: false, error: message });
+      }
+    },
 
-  createCertificate: async (data: CertificateCreateInput) => {
-    set({ isLoading: true, error: null });
-    try {
-      const cert = await calibrationService.createCertificate(data);
-      set({ isLoading: false });
-      return cert;
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to create certificate";
-      set({ isLoading: false, error: message });
-      throw err;
-    }
-  },
+    fetchCertificateById: async (id: string) => {
+      set({ isLoading: true, error: null });
+      try {
+        const currentCertificate = await calibrationService.getCertificateById(id);
+        set({ currentCertificate, isLoading: false });
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Failed to fetch certificate';
+        set({ isLoading: false, error: message });
+      }
+    },
 
-  updateCertificate: async (data: CertificateUpdateInput) => {
-    set({ isLoading: true, error: null });
-    try {
-      const cert = await calibrationService.updateCertificate(data);
-      set({ currentCertificate: cert, isLoading: false });
-      return cert;
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to update certificate";
-      set({ isLoading: false, error: message });
-      throw err;
-    }
-  },
+    createCertificate: async (data: CertificateCreateInput) => {
+      set({ isLoading: true, error: null });
+      try {
+        const cert = await calibrationService.createCertificate(data);
+        set({ isLoading: false });
+        return cert;
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Failed to create certificate';
+        set({ isLoading: false, error: message });
+        throw err;
+      }
+    },
 
-  deleteCertificate: async (id: string) => {
-    set({ isLoading: true, error: null });
-    try {
-      await calibrationService.deleteCertificate(id);
-      set({ isLoading: false });
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to delete certificate";
-      set({ isLoading: false, error: message });
-      throw err;
-    }
-  },
+    updateCertificate: async (data: CertificateUpdateInput) => {
+      set({ isLoading: true, error: null });
+      try {
+        const cert = await calibrationService.updateCertificate(data);
+        set({ currentCertificate: cert, isLoading: false });
+        return cert;
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Failed to update certificate';
+        set({ isLoading: false, error: message });
+        throw err;
+      }
+    },
 
-  // These three carry 21 CFR Part 11 signing credentials (authMethod,
-  // authPayload, meaning). The caller must collect them — re-authentication is
-  // the point of the signature, so they cannot be defaulted here.
-  approveCertificate: async (id: string, input: ApproveCertificateInput) => {
-    set({ isLoading: true, error: null });
-    try {
-      const cert = await calibrationService.approveCertificate(id, input);
-      set({ currentCertificate: cert, isLoading: false });
-      return cert;
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to approve certificate";
-      set({ isLoading: false, error: message });
-      throw err;
-    }
-  },
+    deleteCertificate: async (id: string) => {
+      set({ isLoading: true, error: null });
+      try {
+        await calibrationService.deleteCertificate(id);
+        set({ isLoading: false });
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Failed to delete certificate';
+        set({ isLoading: false, error: message });
+        throw err;
+      }
+    },
 
-  signCertificate: async (id: string, input: SignCertificateInput) => {
-    set({ isLoading: true, error: null });
-    try {
-      const cert = await calibrationService.signCertificate(id, input);
-      set({ currentCertificate: cert, isLoading: false });
-      return cert;
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to sign certificate";
-      set({ isLoading: false, error: message });
-      throw err;
-    }
-  },
+    // These three carry 21 CFR Part 11 signing credentials (authMethod,
+    // authPayload, meaning). The caller must collect them — re-authentication is
+    // the point of the signature, so they cannot be defaulted here.
+    submitCertificate: async (id: string) => {
+      set({ isLoading: true, error: null });
+      try {
+        const cert = await calibrationService.submitCertificate(id);
+        set({ currentCertificate: cert, isLoading: false });
+        return cert;
+      } catch (err: unknown) {
+        // A 409 carries the backend's state explanation; it is shown as is.
+        const message = err instanceof Error ? err.message : 'Failed to submit certificate';
+        set({ isLoading: false, error: message });
+        throw err;
+      }
+    },
 
-  revokeCertificate: async (id: string, input: RevokeCertificateInput) => {
-    set({ isLoading: true, error: null });
-    try {
-      const cert = await calibrationService.revokeCertificate(id, input);
-      set({ currentCertificate: cert, isLoading: false });
-      return cert;
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to revoke certificate";
-      set({ isLoading: false, error: message });
-      throw err;
-    }
-  },
+    approveCertificate: async (id: string, input: ApproveCertificateInput) => {
+      set({ isLoading: true, error: null });
+      try {
+        const cert = await calibrationService.approveCertificate(id, input);
+        set({ currentCertificate: cert, isLoading: false });
+        return cert;
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Failed to approve certificate';
+        set({ isLoading: false, error: message });
+        throw err;
+      }
+    },
 
-  fetchCertificateStats: async () => {
-    set({ isLoading: true, error: null });
-    try {
-      const stats = await calibrationService.getCertificateStats();
-      set({ certificateStats: stats, isLoading: false });
-    } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : "Failed to fetch certificate statistics";
-      set({ isLoading: false, error: message });
-    }
-  },
+    signCertificate: async (id: string, input: SignCertificateInput) => {
+      set({ isLoading: true, error: null });
+      try {
+        const cert = await calibrationService.signCertificate(id, input);
+        set({ currentCertificate: cert, isLoading: false });
+        return cert;
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Failed to sign certificate';
+        set({ isLoading: false, error: message });
+        throw err;
+      }
+    },
 
-  setError: (error) => set({ error }),
-}));
+    revokeCertificate: async (id: string, input: RevokeCertificateInput) => {
+      set({ isLoading: true, error: null });
+      try {
+        const cert = await calibrationService.revokeCertificate(id, input);
+        set({ currentCertificate: cert, isLoading: false });
+        return cert;
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Failed to revoke certificate';
+        set({ isLoading: false, error: message });
+        throw err;
+      }
+    },
+
+    fetchCertificateStats: async () => {
+      setList('certificateStats', { isLoading: true, error: null });
+      try {
+        const stats = await calibrationService.getCertificateStats();
+        set({ certificateStats: stats });
+        setList('certificateStats', idle);
+      } catch (err: unknown) {
+        const message =
+          err instanceof Error ? err.message : 'Failed to fetch certificate statistics';
+        setList('certificateStats', { isLoading: false, error: message });
+      }
+    },
+
+    setError: (error) => set({ error }),
+  };
+});

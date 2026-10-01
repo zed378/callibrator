@@ -9,6 +9,8 @@ const express = require("express");
 const router = express.Router();
 const dashboardController = require("../../controllers/dashboard.controller");
 const { auth } = require("../../middlewares/auth.middleware");
+const { dynamicAccess } = require("../../middlewares/dynamicAccess.middleware");
+const { MENU_SLUGS } = require("../../constants/roleConstants");
 
 /**
  * @swagger
@@ -44,6 +46,10 @@ const { auth } = require("../../middlewares/auth.middleware");
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
  */
-router.get("/metrics", auth, dashboardController.getDashboardMetrics);
+// A-304 (ADR-100): the metrics are the load call of the home page (the
+// `home` menu entry). Every role holds `home` read (ROLE_MENU_ASSIGNMENTS),
+// so the gate takes the page from nobody; it was `auth` alone (ADR-058's
+// ACCEPTED exemption), open to every role and every API key.
+router.get("/metrics", auth, dynamicAccess(MENU_SLUGS.HOME, "read"), dashboardController.getDashboardMetrics);
 
 module.exports = router;

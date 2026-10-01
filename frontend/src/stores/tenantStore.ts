@@ -45,7 +45,7 @@ interface TenantState {
     code: string;
     description?: string;
     primaryColor?: string;
-    maxUsers?: number;
+    limitSeats?: number;
     file?: File;
     email?: string;
     phone?: string;
@@ -63,7 +63,6 @@ interface TenantState {
     description?: string;
     primaryColor?: string;
     status?: "ACTIVE" | "INACTIVE" | "SUSPENDED";
-    maxUsers?: number;
     file?: File;
     email?: string;
     phone?: string;

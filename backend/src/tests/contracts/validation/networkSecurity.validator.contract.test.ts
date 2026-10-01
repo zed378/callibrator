@@ -1,40 +1,27 @@
 /**
- * P9-11 contract pin — `validators/networkSecurity.validator.js`.
+ * P9-11 contract pin — `validators/networkSecurity.validator.ts` (ADR-093).
  *
- * Today's Joi 400 for `geofenceSchema` through the real `validate(schema)`
- * middleware, byte for byte, in production and outside it, and what the
- * file's own `validate(data, schema)` helper hands its controllers. The
- * expectations are literals recorded on 2026-09-28; a Zod conversion must keep
- * this file passing unchanged. See ./harness.ts and
- * MEMORY/specs/P9-11-validation-error-contract.md.
+ * The validation 400 for `geofenceSchema` through the real `validate(schema)`
+ * middleware, byte for byte, in production and outside it. The status, the
+ * envelope, the top-level `message` ("Validation Error") and `details`
+ * only outside production are the contract this suite pinned before P9-11;
+ * the wording inside `details` is Zod's since the move to Zod (the owner's
+ * decision, ADR-093, which lists every changed string). See ./harness.ts.
  */
-import { geofenceSchema, validate as validateHelper } from "../../../validators/networkSecurity.validator";
-import { expectValidationContract, captureHelper } from "./harness";
+import { geofenceSchema } from "../../../validators/networkSecurity.validator";
+import { expectValidationContract } from "./harness";
 
-describe("P9-11 contract: validators/networkSecurity.validator.js", () => {
+describe("P9-11 contract: validators/networkSecurity.validator.ts", () => {
   it("validate(geofenceSchema) answers the pinned 400; details only outside production", async () => {
     await expectValidationContract(geofenceSchema, {}, [
       {
         "field": "latitude",
-        "message": "\"latitude\" is required",
+        "message": "Invalid input: expected number, received undefined",
       },
       {
         "field": "longitude",
-        "message": "\"longitude\" is required",
+        "message": "Invalid input: expected number, received undefined",
       },
     ]);
-  });
-  it("its own validate(data, schema) throws this plain object", () => {
-    expect(captureHelper(() => validateHelper({}, geofenceSchema))).toEqual({
-      kind: "thrownValue",
-      value: {
-        "status": 400,
-        "message": "Validation failed",
-        "errors": {
-          "latitude": "\"latitude\" is required",
-          "longitude": "\"longitude\" is required",
-        },
-      },
-    });
   });
 });

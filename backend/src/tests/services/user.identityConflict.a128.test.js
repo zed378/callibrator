@@ -12,7 +12,7 @@
  *  - the check was a LIKE on the raw input, so `_` and `%` were wildcards;
  *  - nothing was counted or recorded.
  *
- * What is real: user.service (userCreate, editUser), the Joi schemas, the
+ * What is real: user.service (userCreate, editUser), the Zod schemas, the
  * models barrel on an unconnected PostgreSQL-dialect Sequelize — including the
  * global tenant hooks and the User defaultScope — whose SELECTs are captured
  * as SQL, rateLimiter.redis.service on its in-process store, audit.service and

@@ -42,6 +42,11 @@ const models = require("../../models");
 const migration = require("../../migrations/0030-tenant-foreign-keys-restrict");
 
 const { TENANT_FK_CASCADE, TENANT_NULLABLE, USER_FK_RESTRICT, tenantAction } = migration;
+// Q-51 (migration 0105): these user columns became nullable — an API key's row
+// names the key in api_key_id instead, and a CHECK holds exactly one set.
+const Q51_USER_COLUMNS = new Set(
+  require("../../migrations/0105-api-key-actor-columns").TARGETS.map((t) => `${t.table}.${t.userColumn}`),
+);
 
 const sequelize = models.sequelize;
 const queryGenerator = sequelize.getQueryInterface().queryGenerator;
@@ -134,10 +139,11 @@ describe("Q-16 — user foreign keys on regulated records", () => {
       expect(attributesOn(model, column)).toHaveLength(1);
     });
 
-    it(`references users ON DELETE RESTRICT${spec.notNull ? ", NOT NULL" : ""}`, () => {
+    const notNull = spec.notNull && !Q51_USER_COLUMNS.has(`${table}.${column}`);
+    it(`references users ON DELETE RESTRICT${notNull ? ", NOT NULL" : ""}`, () => {
       const ddl = columnDdl(model)[column];
       expect(ddl).toMatch(/REFERENCES "users" \("id"\) ON DELETE RESTRICT ON UPDATE CASCADE/);
-      expect(/NOT NULL/.test(ddl)).toBe(spec.notNull);
+      expect(/NOT NULL/.test(ddl)).toBe(notNull);
     });
   });
 

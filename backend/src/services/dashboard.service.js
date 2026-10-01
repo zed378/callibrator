@@ -24,6 +24,45 @@ const {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * P8-04 (ADR-096) — how many of the dashboard's aggregate queries run at once.
+ * They ran in one `Promise.all` of 20 against a 20-connection pool, so one
+ * dashboard request could hold every connection and a list request queued
+ * behind it (P8-07: device p95 320 ms alone, 726 ms beside dashboard traffic).
+ * Each query still runs; at most this many hold a connection at a time.
+ */
+const DASHBOARD_CONCURRENCY = 4;
+
+/**
+ * Run `tasks` (functions returning promises) with at most `limit` in flight,
+ * resolving to their results in the order given. The first rejection rejects
+ * the whole, as `Promise.all` did; tasks not yet started are then not started.
+ *
+ * @template T
+ * @param {Array<() => Promise<T>>} tasks
+ * @param {number} limit
+ * @returns {Promise<T[]>}
+ */
+const runBounded = async (tasks, limit) => {
+  const results = new Array(tasks.length);
+  let next = 0;
+  let failed = false;
+  const worker = async () => {
+    while (!failed && next < tasks.length) {
+      const index = next;
+      next += 1;
+      try {
+        results[index] = await tasks[index]();
+      } catch (error) {
+        failed = true;
+        throw error;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, worker));
+  return results;
+};
+
 /** Tenant scope helper — {} means global. */
 const scoped = (tenantId, extra = {}) =>
   tenantId ? { tenantId, ...extra } : { ...extra };
@@ -123,63 +162,63 @@ exports.getDashboardMetrics = async (tenantId = null) => {
     pendingTransfers,
     openOpnames,
     openWorkOrders,
-  ] = await Promise.all([
-    User.count({ where: scoped(tenantId) }),
-    User.count({ where: scoped(tenantId, { isEmailVerified: true }) }),
+  ] = await runBounded([
+    () => User.count({ where: scoped(tenantId) }),
+    () => User.count({ where: scoped(tenantId, { isEmailVerified: true }) }),
 
-    CalibrationDevice.count({ where: scoped(tenantId) }),
-    countByStatus(CalibrationDevice, tenantId),
-    CalibrationDevice.count({
+    () => CalibrationDevice.count({ where: scoped(tenantId) }),
+    () => countByStatus(CalibrationDevice, tenantId),
+    () => CalibrationDevice.count({
       where: scoped(tenantId, {
         status: "active",
         nextCalibrationDate: { [Op.between]: [now, in30Days] },
       }),
     }),
-    CalibrationDevice.count({
+    () => CalibrationDevice.count({
       where: scoped(tenantId, {
         status: "active",
         nextCalibrationDate: { [Op.lt]: now },
       }),
     }),
 
-    CalibrationRecord.count({ where: scoped(tenantId) }),
-    CalibrationRecord.count({ where: scoped(tenantId, { isCompliant: true }) }),
-    CalibrationRecord.count({
+    () => CalibrationRecord.count({ where: scoped(tenantId) }),
+    () => CalibrationRecord.count({ where: scoped(tenantId, { isCompliant: true }) }),
+    () => CalibrationRecord.count({
       where: scoped(tenantId, { calibrationDate: { [Op.gte]: last30Days } }),
     }),
-    monthlyTrend(CalibrationRecord, "calibrationDate", tenantId),
+    () => monthlyTrend(CalibrationRecord, "calibrationDate", tenantId),
 
-    Certificate.count({ where: scoped(tenantId) }),
-    countByStatus(Certificate, tenantId),
-    monthlyTrend(Certificate, "createdAt", tenantId),
+    () => Certificate.count({ where: scoped(tenantId) }),
+    () => countByStatus(Certificate, tenantId),
+    () => monthlyTrend(Certificate, "createdAt", tenantId),
 
-    Stock.count({ where: scoped(tenantId) }),
-    Stock.sum("quantity", { where: scoped(tenantId) }),
-    Stock.count({
+    () => Stock.count({ where: scoped(tenantId) }),
+    () => Stock.sum("quantity", { where: scoped(tenantId) }),
+    () => Stock.count({
       where: scoped(tenantId, {
         // NOTE: models use `underscored: true`, so raw column refs must be
         // snake_case ("min_quantity"), not the attribute name ("minQuantity").
         quantity: { [Op.lte]: Sequelize.col("min_quantity") },
       }),
     }),
-    Warehouse.count({ where: scoped(tenantId) }),
-    StockTransfer.count({
+    () => Warehouse.count({ where: scoped(tenantId) }),
+    () => StockTransfer.count({
       where: scoped(tenantId, {
         status: { [Op.in]: ["pending", "in_transit"] },
       }),
     }),
-    StockOpname.count({
+    () => StockOpname.count({
       where: scoped(tenantId, {
         status: { [Op.in]: ["draft", "in_progress"] },
       }),
     }),
 
-    MaintenanceWorkOrder.count({
+    () => MaintenanceWorkOrder.count({
       where: scoped(tenantId, {
         status: { [Op.in]: ["Open", "InProgress"] },
       }),
     }),
-  ]);
+  ], DASHBOARD_CONCURRENCY);
 
   const metrics = {
     scope: tenantId ? "tenant" : "global",
@@ -294,3 +333,6 @@ exports.getDashboardMetrics = async (tenantId = null) => {
     data: metrics,
   };
 };
+
+exports.runBounded = runBounded;
+exports.DASHBOARD_CONCURRENCY = DASHBOARD_CONCURRENCY;

@@ -31,6 +31,7 @@ export default function RolesPage() {
     setShowCreateModal,
     showEditModal,
     setShowEditModal,
+    editingRole,
     showDeleteConfirm,
     setShowDeleteConfirm,
     createForm,
@@ -91,7 +92,7 @@ export default function RolesPage() {
               />
             </div>
           </Card>
-        ) : (
+        ) : error && !roles ? null /* a failed load: the alert above is the state */ : (
           <Card>
             <CardContent className="p-12 text-center">
               <Shield className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
@@ -131,6 +132,7 @@ export default function RolesPage() {
           isSubmitting={isSubmitting}
           onSubmit={handleUpdate}
           onChange={setEditForm}
+          levelLocked={!!editingRole?.isSystem}
         />
         <RolesDeleteConfirm
           isOpen={!!showDeleteConfirm}

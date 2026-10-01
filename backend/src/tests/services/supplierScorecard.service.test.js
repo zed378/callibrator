@@ -1,3 +1,12 @@
+// A-278 (ADR-094): the write runs in a transaction with its audit row; the
+// double passes a marker through so the write's options can be asserted.
+jest.mock("../../services/audit.service", () => ({
+  logAction: jest.fn().mockResolvedValue({}),
+}));
+jest.mock("../../config", () => ({
+  db: { transaction: jest.fn(async (cb) => cb("tx")) },
+}));
+
 jest.mock("../../models", () => ({
   SupplierScorecard: {
     create: jest.fn(),
@@ -56,7 +65,7 @@ describe("supplierScorecard.service", () => {
         status: "active",
         tenantId: "tenant123",
         evaluatedBy: "user456",
-      });
+      }, { transaction: "tx" });
       expect(result).toEqual({ id: "s1", score: 85 });
     });
 
@@ -75,7 +84,7 @@ describe("supplierScorecard.service", () => {
       const result = await createScorecard("t1", { vendorId: "v1" }, "u1");
 
       expect(SupplierScorecard.create).toHaveBeenCalledWith(
-        expect.objectContaining({ tenantId: "t1", evaluatedBy: "u1" }),
+        expect.objectContaining({ tenantId: "t1", evaluatedBy: "u1" }), { transaction: "tx" },
       );
       expect(result).toEqual({ id: "s2" });
     });
@@ -180,7 +189,7 @@ describe("supplierScorecard.service", () => {
 
       const result = await updateScorecard("t1", "s1", { score: 95 });
 
-      expect(mock.update).toHaveBeenCalledWith({ score: 95 });
+      expect(mock.update).toHaveBeenCalledWith({ score: 95 }, { transaction: "tx" });
       expect(result).toEqual(expect.objectContaining({ id: "s1", score: 95 }));
     });
 

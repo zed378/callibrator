@@ -2206,6 +2206,50 @@
         }
       }
     },
+    "/api/v1/auth/first-sign-in/password": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Replace a one-time password after its first sign-in",
+        "description": "P10-16 (ADR-099). Public endpoint - no session. A one-time password (the bootstrap super admin's, or one the recovery CLI issued) signs in once: /auth/login answers `data.passwordChangeRequired` and a `password-change` token instead of a session. This is the only endpoint that accepts that token; every other route refuses it. On success, sign in again with the new password.\n",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "token",
+                  "newPassword"
+                ],
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "description": "The password-change token returned by /auth/login."
+                  },
+                  "newPassword": {
+                    "type": "string",
+                    "description": "8-100 characters with an upper-case letter, a lower-case letter and a digit; not the one-time password."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Password changed; `data.signInRequired` is true"
+          },
+          "400": {
+            "description": "Validation failed, or the new password is the one-time password"
+          },
+          "401": {
+            "description": "Invalid or expired password-change token (also a reused one)"
+          }
+        }
+      }
+    },
     "/api/v1/jobs": {
       "get": {
         "tags": [
@@ -4152,10 +4196,57 @@
         }
       }
     },
+    "/api/v1/certificates/{certificateId}/document": {
+      "get": {
+        "summary": "The certificate document — the data its PDF prints",
+        "description": "M-11 (ADR-095). The backend renders no PDF: the application renders it from this. Every printed field, the verification URL the QR code carries, and `integrity` (the `certificate-content-v2` SHA-256 hash the PDF prints and the public verification endpoint recomputes, the pre-M-11 `legacyHash`, and the server HMAC over the v2 hash with its key id). Requires read access to certificate; another tenant's certificate is a 404.",
+        "tags": [
+          "Certificates"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "certificateId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The certificate document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Certificate not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/certificates/{certificateId}/pdf": {
       "get": {
-        "summary": "Download the certificate PDF (generated on demand)",
-        "description": "Requires read access to certificate. Renders the PDF (with a verification QR code) if it has not been generated yet.",
+        "summary": "Download the PDF the backend stored for a certificate before M-11",
+        "description": "Requires read access to certificate. Serves only a PDF rendered and stored before 2026-09-29 (ADR-095); nothing is rendered here. A certificate with no stored PDF is a 404 — its PDF is rendered by the application from GET /certificates/{certificateId}/document.",
         "tags": [
           "Certificates"
         ],
@@ -4178,47 +4269,9 @@
         "responses": {
           "200": {
             "description": "PDF file"
-          }
-        }
-      },
-      "post": {
-        "summary": "Generate (or regenerate) the certificate PDF document",
-        "description": "Requires generate access to certificate. Renders the formal PDF and stores it against the certificate.",
-        "tags": [
-          "Certificates"
-        ],
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "in": "path",
-            "name": "certificateId",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "PDF generated"
-          },
-          "201": {
-            "description": "Certificate PDF generated successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SuccessResponse"
-                }
-              }
-            }
           },
           "404": {
-            "description": "Certificate not found",
+            "description": "Certificate not found, or it has no stored PDF",
             "content": {
               "application/json": {
                 "schema": {
@@ -9786,6 +9839,130 @@
         }
       }
     },
+    "/api/v1/network-security/tenants/{tenantId}/ip-allowlist": {
+      "get": {
+        "summary": "Get a tenant's IP allowlist (super admin)",
+        "tags": [
+          "NetworkSecurity"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenantId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The tenant's CIDR allowlist"
+          },
+          "404": {
+            "description": "Tenant not found"
+          }
+        }
+      },
+      "put": {
+        "summary": "Set a tenant's IP allowlist (super admin)",
+        "tags": [
+          "NetworkSecurity"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenantId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "IP allowlist updated"
+          },
+          "404": {
+            "description": "Tenant not found"
+          }
+        }
+      }
+    },
+    "/api/v1/network-security/tenants/{tenantId}/geofence": {
+      "get": {
+        "summary": "Get a tenant's geofence (super admin)",
+        "tags": [
+          "NetworkSecurity"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenantId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The tenant's geofence, or null"
+          },
+          "404": {
+            "description": "Tenant not found"
+          }
+        }
+      },
+      "put": {
+        "summary": "Set a tenant's geofence (super admin)",
+        "tags": [
+          "NetworkSecurity"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenantId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Geofence updated"
+          },
+          "404": {
+            "description": "Tenant not found"
+          }
+        }
+      }
+    },
     "/api/v1/notifications": {
       "get": {
         "summary": "Get all user notifications",
@@ -10235,6 +10412,110 @@
           },
           "404": {
             "description": "Client not found"
+          }
+        }
+      }
+    },
+    "/api/v1/oidc/tenants/{tenantId}/clients": {
+      "get": {
+        "summary": "List a tenant's OIDC clients (super admin)",
+        "tags": [
+          "OIDC"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenantId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The tenant's OIDC clients"
+          },
+          "404": {
+            "description": "Tenant not found"
+          }
+        }
+      },
+      "post": {
+        "summary": "Register an OIDC client in a tenant (super admin)",
+        "tags": [
+          "OIDC"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tenantId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Client registered; the secret is shown once"
+          },
+          "404": {
+            "description": "Tenant not found"
+          }
+        }
+      }
+    },
+    "/api/v1/oidc/tenants/{tenantId}/clients/{clientId}/rotate-secret": {
+      "post": {
+        "summary": "Rotate a tenant's OIDC client secret (super admin)",
+        "tags": [
+          "OIDC"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Client secret rotated"
+          },
+          "404": {
+            "description": "Tenant or client not found"
+          }
+        }
+      }
+    },
+    "/api/v1/oidc/tenants/{tenantId}/clients/{clientId}": {
+      "delete": {
+        "summary": "Delete a tenant's OIDC client (super admin)",
+        "tags": [
+          "OIDC"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Client deleted"
+          },
+          "404": {
+            "description": "Tenant not found"
           }
         }
       }
@@ -19026,7 +19307,7 @@
       },
       "post": {
         "summary": "Create a new vendor",
-        "description": "Creates a new vendor. Requires create access to the Vendors resource.",
+        "description": "Creates a new vendor. Requires create access to the Vendors resource. A vendor has no rating at registration (Q-37): a rating comes from evaluation (supplier scorecards, PATCH /vendors/{vendorId}).",
         "tags": [
           "Vendors"
         ],
@@ -19067,9 +19348,6 @@
                   },
                   "address": {
                     "type": "string"
-                  },
-                  "rating": {
-                    "type": "number"
                   },
                   "status": {
                     "type": "string",
@@ -21570,7 +21848,7 @@
           },
           "password": {
             "type": "string",
-            "example": "123123"
+            "example": "Your-Password-1"
           }
         }
       },

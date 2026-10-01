@@ -1,13 +1,15 @@
 jest.mock("../../services/certificatePdf.service", () => ({
-  generateCertificatePdf: jest.fn(),
-  getOrCreatePdf: jest.fn(),
+  getStoredPdf: jest.fn(),
   verifyByCertificateNumber: jest.fn(),
 }));
-
-jest.mock("../../validators/certificate.validator", () => ({
-  certificateIdSchema: {},
-  validate: jest.fn((data) => data),
+// M-11 (ADR-095): the backend serves the certificate DOCUMENT; it renders no PDF.
+jest.mock("../../services/certificateDocument.service", () => ({
+  getCertificateDocument: jest.fn(),
 }));
+
+// The validator module is NOT mocked: the certificate id goes through the real
+// Zod schema, so it is a real uuid here.
+const CERT_ID = "5a0e8400-e29b-41d4-a716-446655440050";
 
 jest.mock("../../utils/response.util", () => ({
   success: jest.fn((res, data, meta, message, status) => {
@@ -25,6 +27,7 @@ jest.mock("../../utils/response.util", () => ({
 
 const certificatePdfController = require("../../controllers/certificatePdf.controller");
 const certificatePdfService = require("../../services/certificatePdf.service");
+const certificateDocumentService = require("../../services/certificateDocument.service");
 
 describe("certificatePdf Controller", () => {
   let req, res, next;
@@ -36,6 +39,8 @@ describe("certificatePdf Controller", () => {
       body: {},
       query: {},
       user: { tenantId: "tenant-1" },
+      // A-293: the verification controller counts a minimal verdict per address.
+      ip: "127.0.0.1",
       protocol: "https",
       get: jest.fn(() => "example.com"),
     };
@@ -49,59 +54,62 @@ describe("certificatePdf Controller", () => {
     next = jest.fn();
   });
 
-  describe("generatePdf", () => {
-    it("should generate PDF", async () => {
-      req.params = { certificateId: "cert-1" };
-      certificatePdfService.generateCertificatePdf.mockResolvedValue({ success: true, data: { path: "/pdf" }, message: "Generated", status: 200 });
-      await certificatePdfController.generatePdf(req, res, next);
-      expect(res.json).toHaveBeenCalled();
+  describe("getDocument (M-11)", () => {
+    it("answers the document in the envelope, for the caller's own tenant", async () => {
+      req.params = { certificateId: CERT_ID };
+      const doc = { certificateNumber: "CERT-001", integrity: { hash: "h" } };
+      certificateDocumentService.getCertificateDocument.mockResolvedValue({ success: true, status: 200, data: doc });
+      await certificatePdfController.getDocument(req, res, next);
+      expect(certificateDocumentService.getCertificateDocument).toHaveBeenCalledWith(
+        "tenant-1",
+        CERT_ID,
+        { baseUrl: expect.any(String) },
+      );
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith({ success: true, data: doc, message: "Certificate document" });
     });
 
-    it("should handle generation failure", async () => {
+    it("answers 400 for a certificate id that is not a uuid, and reads nothing", async () => {
       req.params = { certificateId: "cert-1" };
-      certificatePdfService.generateCertificatePdf.mockResolvedValue({ success: false, status: 404, message: "Certificate not found" });
-      await certificatePdfController.generatePdf(req, res, next);
+      await certificatePdfController.getDocument(req, res, next);
+      expect(certificateDocumentService.getCertificateDocument).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(next).toHaveBeenCalledWith({
+        status: 400,
+        message: "Validation failed",
+        errors: [{ field: "certificateId", message: "Invalid GUID" }],
+      });
+    });
+
+    it("answers the service's 404 (missing, deleted and another tenant's are the same)", async () => {
+      req.params = { certificateId: CERT_ID };
+      certificateDocumentService.getCertificateDocument.mockResolvedValue({
+        success: false,
+        status: 404,
+        message: "Certificate not found",
+      });
+      await certificatePdfController.getDocument(req, res, next);
       expect(res.status).toHaveBeenCalledWith(404);
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({ success: false, message: "Certificate not found" }),
       );
     });
-
-    it("defaults to 500 when the failed result carries no status", async () => {
-      req.params = { certificateId: "cert-1" };
-      certificatePdfService.generateCertificatePdf.mockResolvedValue({ success: false, message: "Renderer crashed" });
-      await certificatePdfController.generatePdf(req, res, next);
-      expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith(
-        expect.objectContaining({ success: false, message: "Renderer crashed" }),
-      );
-    });
   });
 
-  describe("downloadPdf", () => {
-    it("should download PDF", async () => {
-      req.params = { certificateId: "cert-1" };
-      certificatePdfService.getOrCreatePdf.mockResolvedValue({ success: true, data: { absPath: "/path/file.pdf", fileName: "file.pdf" } });
+  describe("downloadPdf (a PDF stored before M-11)", () => {
+    it("should download the stored PDF", async () => {
+      req.params = { certificateId: CERT_ID };
+      certificatePdfService.getStoredPdf.mockResolvedValue({ success: true, data: { absPath: "/path/file.pdf", fileName: "file.pdf" } });
       await certificatePdfController.downloadPdf(req, res, next);
-      expect(res.download).toHaveBeenCalled();
+      expect(certificatePdfService.getStoredPdf).toHaveBeenCalledWith("tenant-1", CERT_ID);
+      expect(res.download).toHaveBeenCalledWith("/path/file.pdf", "file.pdf");
     });
 
-    it("should handle failure", async () => {
-      req.params = { certificateId: "cert-1" };
-      certificatePdfService.getOrCreatePdf.mockResolvedValue({ success: false, status: 403, message: "Forbidden" });
+    it("answers the service's 404 when there is no stored PDF, and sends no file", async () => {
+      req.params = { certificateId: CERT_ID };
+      certificatePdfService.getStoredPdf.mockResolvedValue({ success: false, status: 404, message: "no stored PDF" });
       await certificatePdfController.downloadPdf(req, res, next);
-      expect(res.status).toHaveBeenCalledWith(403);
-      expect(res.download).not.toHaveBeenCalled();
-    });
-
-    it("defaults to 500 when the failed result carries no status", async () => {
-      req.params = { certificateId: "cert-1" };
-      certificatePdfService.getOrCreatePdf.mockResolvedValue({ success: false, message: "Disk full" });
-      await certificatePdfController.downloadPdf(req, res, next);
-      expect(res.status).toHaveBeenCalledWith(500);
-      expect(res.json).toHaveBeenCalledWith(
-        expect.objectContaining({ success: false, message: "Disk full" }),
-      );
+      expect(res.status).toHaveBeenCalledWith(404);
       expect(res.download).not.toHaveBeenCalled();
     });
   });

@@ -8,30 +8,16 @@ const { asyncHandler } = require("../utils/controllerWrapper.util");
 const { sendResult } = require("../utils/response.util");
 // Who did it, from where — for the audit row the service writes inside its
 // transaction (A-41).
-const { auditActor } = require("../utils/auditActor.util");
+// A-282 (ADR-100): an API key (calibration:write) is audited as system:api-key.
+const { auditPrincipal } = require("../utils/auditPrincipal.util");
 const {
   getCalibrationRecordsQuery,
   calibrationRecordIdSchema,
   createCalibrationRecordSchema,
   correctCalibrationRecordSchema,
   voidCalibrationRecordSchema,
-  validate: validatorValidate,
 } = require("../validators/calibrationRecords.validator");
-
-const validate = (data, schema) => {
-  const { error, value } = validatorValidate(data, schema);
-  if (error) {
-    throw {
-      status: 400,
-      message: "Validation failed",
-      errors: error.details.map((d) => ({
-        field: d.path.join("."),
-        message: d.message,
-      })),
-    };
-  }
-  return value;
-};
+const { validateInput: validate } = require("../validators/input");
 
 exports.getAllCalibrationRecords = asyncHandler(async (req, res) => {
   const tenantId = req.user.tenantId;
@@ -75,7 +61,7 @@ exports.createCalibrationRecord = asyncHandler(async (req, res) => {
     tenantId,
     userId,
     validated,
-    auditActor(req),
+    auditPrincipal(req),
   );
 
   sendResult(res, result);
@@ -96,7 +82,7 @@ exports.correctCalibrationRecord = asyncHandler(async (req, res) => {
     req.user.id,
     calibrationRecordId,
     validated,
-    auditActor(req),
+    auditPrincipal(req),
   );
 
   sendResult(res, result);
@@ -114,7 +100,7 @@ exports.voidCalibrationRecord = asyncHandler(async (req, res) => {
     req.user.id,
     calibrationRecordId,
     validated,
-    auditActor(req),
+    auditPrincipal(req),
   );
 
   sendResult(res, result);

@@ -2259,6 +2259,8 @@ to be claims the guard can verify.
 
 ## ADR-059: Sign-In Is Throttled, Never Locked; the Browser Never Holds the Access Token; OIDC Is Discovered; the Operator Must Enrol MFA
 
+> **Amended by ADR-108 §10 (2026-09-30, Q-46 working decision):** a session that signed in with a user-verifying passkey (`amr` = `passkey`) satisfies item 7 (the operator must have MFA) and every tenant MFA policy. A password session still needs TOTP.
+
 **Date:** 2026-09-25 · **Findings:** A-185, A-71, A-188, A-210, P6-07, A-160, A-191, A-162 · **Extends:** ADR-047, ADR-051
 
 **Decision**
@@ -3142,6 +3144,26 @@ ran plain `jest`, the real figure was 28%, and the CI draft ran `jest --ci` with
 
 **Status:** Accepted. Implemented 2026-09-24 (batch 6), verified 2026-09-25. The measured figures
 are in `MEMORY/records/2026-09-25-phase0-batch6.md` § Follow-up: fe.
+
+**Amendment 1 (2026-09-30): the gate is 90 / 81 / 86 / 91, and the 70% target is passed.**
+
+- **Measured.** A coverage batch took the suite from 43.68 / 38.30 / 37.13 / 43.94 (157 suites,
+  1,408 tests) to **90.91 / 81.62 / 86.94 / 91.61** (264 suites, 2,758 tests), statements / branches /
+  functions / lines. The record is `MEMORY/records/2026-09-30-frontend-coverage-70.md`.
+- **What earned it.** Behaviour tests of pages and screen hooks, each with axe. List screens have
+  loading / empty / failed tests. Page tests mock only `@/api/client`, with fixtures shaped as the
+  controllers answer, so the real service unwrap runs. No product code was excluded.
+- **The gate is each measured figure rounded down**: 90 / 81 / 86 / 91 in `jest.config.js`. Until now it sat a point under; there is now no slack beyond the rounding.
+- **`testTimeout: 30000`.** Full-page suites with several awaited steps overran Jest's 5 s default in
+  the parallel full run while passing alone. As with the 5 s `findBy*` ceiling, this changes only how
+  long a failing test takes to report.
+- **Bad implications.**
+  - The margin is under one point, and it covers new product code as well as regressions. A large
+    untested page added elsewhere (Phase 10's public forms are at 0%) can turn the gate red for a
+    change that did not cause it.
+  - The page tests still mock the network. A route check against the real router dump found every
+    one of the 387 service calls names a real method and path. That check cannot catch a wrong
+    response shape: six of this batch's defects were exactly that (F-19).
 
 ---
 
@@ -4037,6 +4059,33 @@ written — audit finding F-28. This is the record those citations point at.
   185 MB.
 
 **Status:** Accepted, implemented 2026-09-27.
+
+### Amendment 1 (2026-09-29): F-05 against the real backend — the route guard reads a path-`/` "renewable" marker; the catch-all proxy keeps a sign-in's refresh token
+
+The run above used a stand-in backend and stayed on one page. Against the real backend with
+`JWT_ACCESS_EXPIRED=60s`, the in-page refresh held: one 401, one `POST /auth/refresh` 200, the retry
+200, and the typed search text kept. Two defects appeared that the stand-in and the unit tests could not show:
+
+1. **Every page load after expiry went to `/login`.** `hasUsableSession` (`lib/sessionRouting.ts`)
+   treated an expired token as usable when an `auth_refresh` cookie was present. But that cookie is
+   scoped to `/api/v1/auth/refresh`, so **a browser never sends it with a page request**, and the
+   guard never saw it. `proxy.test.ts` had put it on a `/dashboard` request, which no browser does.
+   **Decision:** a second httpOnly cookie, `auth_renewable=1`, on path `/`, written and cleared with
+   the refresh token (`lib/authCookies.ts`). The guard reads it. It grants nothing: the backend verifies
+   every call, and a revoked refresh token is refused at the refresh route, which clears the marker too.
+2. **An MFA sign-in could not be renewed.** `POST /auth/mfa/login`, and `/auth/impersonate`, answer
+   through the catch-all proxy with a top-level `refreshToken`. The proxy removed it from the body
+   (A-71) but never stored it. That affects every MFA user, including every platform operator.
+   **Decision:** the catch-all proxy writes a sign-in with the same `writeSessionCookies` as the
+   login route. Also, the guard's own dead-session clear now deletes `auth_refresh` on its own path
+   and `auth_renewable`. Before, it left the refresh cookie behind.
+
+*Alternatives:* widening `auth_refresh` to path `/` would send the refresh token with every request,
+including every API call the proxy forwards, which is the exposure the path scoping exists to prevent.
+Using the non-httpOnly `auth_logged_in` as the signal would work, but a script can forge it, and it
+means "signed in", not "renewable". Refreshing inside the route guard is not possible, because the
+guard cannot see the refresh token either. *Bad implication:* one more cookie to keep in step. The
+`authCookies` test pins the set that is written and cleared.
 
 ---
 
@@ -5648,7 +5697,511 @@ The owner then set **TypeScript 7.0.2**, which has **no compiler API**: nothing 
 - **Ratchets:** `ts-ratchet` floor 1129 → **1119**; the ESLint ratchet is at 0.
 - **Build:** `build:dist` compiles 101 TypeScript files.
 
-**Status:** Accepted, implemented 2026-09-28; amended 2026-09-28/29 (Amendments 1–9).
+### Amendment 10 (2026-09-29) — P9-10 batches 7–8: content, tickets and GDPR; platform
+
+**1. Batch 7, content/tickets/GDPR (8):** `post`, `category`, `postCategory`, `ticket`, `ticketComment`, `ticketCounter`, `consentRecord`, `dsarRequest`. **Batch 8, platform (5):** `customDomain`, `scimGroup`, `webhook`, `webhookDelivery`, `tenantBackup`. **59 of 71 models are `.ts`.**
+- The baseline is `HEAD` `ce74932` (the working copy was clean), snapshotted and confirmed with `cmp` on removal.
+- **Brands:** `Post`, `Category` and `Webhook` carry the D-12 brand, so eight models are branded. D-12 holds the set equal to the runtime set.
+- **D-27 types, beside their Joi shapes:** `DsarDetails`, `WebhookPayload` and `TenantBackupMetadata` (`JsonObject`), and `WebhookEvents` (`string[]`; the event-name pattern is not in the type).
+- **Generator changes** (scratch `p9/gen-models.js`): a model with no statics gets `TypedModel<X>` and no empty statics interface; `Models` is imported only where it is used.
+
+**2. What these models carry, typed without changing it:**
+- `Webhook`'s custom `isHttpUrl` validator tests `String(value)`. `RegExp#test` applies ToString to its argument, so the result is the same, and the harness's validator check holds it identical.
+- `Webhook.softDelete(options = {})` keeps passing the caller's options, so the delete shares its audit row's transaction. **Live:** a rollback undoes it.
+- **`TenantBackup`'s five statics** keep their unused trailing `models` parameter, renamed `_models`: the arity is unchanged, and a reasoned directive covers `no-unused-vars`, whose TypeScript rule has no `_` exemption. Also kept:
+  - The `||` fallbacks are kept in a directive region.
+  - `createBackup` still passes `name` and `description`. They are **not** attributes, so Sequelize drops them on insert, as before. A reasoned `@ts-expect-error` marks the line.
+  - `updateStatus` accumulates the caller's keys in a `Record<string, unknown>`, as the JavaScript did.
+  - The `{ transaction }` option objects are built exactly as before: one per call, and `undefined` when absent. A `null` would switch off Sequelize's CLS transaction. Each object is typed through a variable, then asserted, because object-literal assertions are banned.
+  - `parseInt(String(limit), 10)` is the same parse, since `parseInt` applies ToString.
+- **As-built facts the live probe pinned:**
+  - The CMS (`Post`, `Category`, `PostCategory`) is platform-global by design (D-17). Tenant B reads a post created in A's context, and slugs are unique platform-wide.
+  - A **bare** include of the default-scoped `Post` from a category whose only post is soft-deleted **removes the category row** (D-12's INNER JOIN); `required: false` keeps it. This is the documented defect shape, unchanged; the probe first expected an empty list and was corrected to the as-built behaviour.
+
+**3. The checks.**
+
+| Check | Batch 7 | Batch 8 |
+|---|---|---|
+| (a) Typecheck | clean | clean |
+| (b) Full-barrel equality, with validators and methods | 71 identical | 71 identical |
+| (c) Model guards, migrations, d05, d27 and domain suites | 77 suites, 2,137 tests | 99 suites, 2,638 tests |
+| (d) Models' own figure | 96.08 / 75.32 / 95.14 / 96.03 | **96.14 / 75.32 / 95.14 / 96.09** |
+| Full gate, 100% | 700 suites, 13,065 tests | **700 suites, 13,065 tests** |
+
+- On ADR-092's below-100 list, `post`, `category`, `webhook` and `tenantBackup` all rose (80 → 85.71, 77.77 → 81.81, 84.61 → 86.66 and 87.03 → 87.93). The uncovered lines are the same code.
+- **Live on PostgreSQL 18.6 as `callibrator_app`,** after each batch: `dbD` 6/6, `dbC` 4/4, `w33` 12/12, `dbB` 10/10, `p6` 22/22, `q02` 10/10.
+- **Probes:** batch 7 **25/25** (`p9/live-b7.js`); batch 8 **26/26** (`p9/live-b8.js`).
+  - Batch 8 covers:
+    - the Webhook url validator, A-51 (no secret default) and D-27 events;
+    - P6-13's `softDelete` in the caller's transaction;
+    - every `TenantBackup` static, including a rolled-back `updateStatus`, an unknown id, and the `''` tag fallback;
+    - CustomDomain defaults, the ScimGroup → role join, and isolation, including B's `hasValidBackups` for A being `false`.
+  - The container and exactly its volume were removed.
+- **Ratchets:** `ts-ratchet` floor 1119 → **1106**. The ESLint ratchet is at 0, and its warnings fell 283 → 278 as `tenantBackup.model.js`'s five unused-arg warnings went with the file.
+- **Build:** `build:dist` compiles 114 TypeScript files.
+
+**4. Remaining:** the tenant-isolation-critical batch (12), in the **same merge** as the barrel `models/index`, as the owner directs: `session`, `user`, `tenant`, `role`, `auditLog`, `apiKey`, `tenantKey`, `tenantSettings`, `tenantHierarchy`, `userMenuPermission`, `roleMenuPermission`, `menuGroup`.
+
+### Amendment 11 (2026-09-29) — P9-10 DONE: the tenant-isolation-critical models and the barrel, in one merge
+
+**1. The last 12 models and `models/index` are TypeScript. P9-10 is complete: 71 of 71 models, plus the barrel.**
+- **The models:** `session`, `user`, `tenant`, `role`, `auditLog`, `apiKey`, `tenantKey`, `tenantSettings`, `tenantHierarchy`, `userMenuPermission`, `roleMenuPermission`, `menuGroup`.
+- **Baseline:** `HEAD` `ce74932`, the working copy being identical. Each file was snapshotted and confirmed unchanged (`cmp`) when removed.
+
+**2. How the special cases are typed, with no runtime change:**
+- **`models/index.ts`:**
+  - It calls the same 71 factories, in the same order, as `defineModel(db, DataTypes)`, through a one-line `define` helper.
+  - The registry is an object literal typed `Models`, so a model missing from the map, or a map entry without its model, is a compile error. The literal replaces the `models[model.name] = model` loop and has the same key order.
+  - The same `associate` loop; `"associate" in model` is equivalent here, because a model either has the function or lacks the key.
+  - `Object.assign(db, { sequelize, Sequelize, Op })` for the three property writes: the same `[[Set]]`, in order.
+  - `register(db)` after the associations, exactly where the `.js` called it. Hoisting the `tenantScope.util` **import** moves only a module load with no load-time effect.
+  - The export object is copied verbatim, keys and order.
+  - It is a pure `export =` module. A named `export type` beside it compiled, under **tsx/esbuild**, to a reference to an undefined binding (`models_module is not defined`). The live boot found this and Jest's Babel transform did not. `ModelsBarrel` lives in `src/types/models.ts`.
+  - **One assertion:** `tenantScope`'s parameter type names Sequelize internals (`_scope`, `_conformIncludes`) that the public typings omit, so the instance is passed as that view.
+- **`src/config/index.d.ts` (new).** The barrel is the first TypeScript importer of the still-JavaScript config, and under `allowJs: false` a `.ts` file cannot import a `.js` one without types. This declaration file declares exactly `index.js`'s exports (`db`, `Connection`, `Sequelize`). It emits nothing, and it goes when `index.js` converts (the rest of P9-06).
+- **The lazy `kms.service` requires stay lazy.** User and TenantSettings `require` the JavaScript `kms.service` inside their factories, as the `.js` did, each typed by the functions it reads, following the Amendment 5 precedent. TenantSettings' `tenantSecretSettings` (TypeScript) is required in the factory too, to keep the load timing.
+- **Tenant** keeps its four **named** hooks (`excludePlatformTenant`), typed by a parameter every Sequelize hook's options satisfy. The `includePlatformTenant` opt-in is part of that type.
+- **User:**
+  - The `getterMethods` are typed `this: User`, and declared on the row as `NonAttribute`.
+  - `process.env.HOST_URL || ""` becomes `envOr("HOST_URL", "")`, the same semantics (P9-06).
+  - The S-20 hooks read `options.attributes` / values through narrow local types (Sequelize internals).
+  - `beforeUpsert`, a run-time hook shorthand missing from Sequelize's static typings, is called through a typed view; the same applies to TenantSettings.
+- **Session** keeps its snake_case attributes. Its type makes `tenantId` a compile error in a where, in an update, and on an instance (TS2551), pinned by three used `@ts-expect-error`s in `modelTypes.p910.test.ts`. The unknown `underscoredAll` option is kept, and the options type accepts it, as the spec found.
+- **TenantSettings' hooks** read `options.instance` / `options.attributes` / `options.where` through narrow local types, with `async` kept (as built, with reasoned directives).
+- **The D-27 types** (`ApiKeyScopes`, `AuditLogChanges`, `TenantSettingsJson`) were added beside the Joi shapes. The P9-11 helper, with my clearance, converts `jsonShape.util.ts` and `iot.validator.ts` to Zod after this boundary; the types become `z.infer`.
+- **Recorded finding, not fixed (ADR-038 rule 3):** `Role.prototype.softDelete` checks `this.is_system`, but the attribute is `isSystem`. The guard never fires, and a system role **can** be soft-deleted, as the live probe shows. The TypeScript keeps it, with a reasoned `@ts-expect-error`. The harness **bites** if the guard is "fixed" (`this.isSystem`), so the fix must be its own change. It is in BACKLOG as a finding for the owner.
+- **`src/types/models.ts`** now holds all 71 entries; the `Unconverted` placeholder is gone.
+- **Lint:** Amendment 7's `no-restricted-imports` rule, which barred production `.ts` files from importing the `.js` barrel, is retired.
+- **D-12:** asserts exactly 71 converted files, and a branded set equal to the whole reviewed runtime list: 13 models (ApiKey, Attachment, CalibrationDevice, CalibrationRecord, Category, Post, Role, Session, Stock, Tenant, User, Warehouse, Webhook).
+
+**3. "No consumer's view of any model changes."** The proof is the full-barrel equality **against the whole pre-batch JavaScript model layer**: the twin holds 72 JavaScript originals (71 models plus the `.js` barrel) against the compiled TypeScript.
+- **It compares per model:**
+  - definitions (attributes, options, scopes, indexes, associations, descriptors);
+  - getter and setter behaviour (four build variants) and every validator outcome;
+  - instance methods: `toJSON` keys **and values**, `softDelete`'s whole resulting state, and the Certificate transitions;
+  - **hook behaviour:** Tenant's exclusion over five option shapes, User's S-20 paths, and TenantSettings' encrypt, refuse and decrypt paths.
+- **It compares for the barrel:**
+  - every key and **what it holds** (`model:X`, `<Sequelize ctor>`, `<Op>`), in key order;
+  - that `sequelize === db`;
+  - the **global hooks** registered on `db` (tenant isolation), by name and function;
+  - that 71 models are registered.
+- **Result:** identical, with `HOST_URL` set so that User's `picture` getter is exercised.
+- **It bites** on each plant:
+  - Tenant's exclusion ignoring `includePlatformTenant`, or comparing `=`;
+  - S-20 accepting plaintext;
+  - a secret setting stored plaintext;
+  - Session's `softDelete` not revoking;
+  - `picture` ignoring `HOST_URL`;
+  - the Role guard "fixed";
+  - a plural alias dropped, or an alias pointing at the wrong model;
+  - the tenant-isolation hooks not registered;
+  - `Op` not re-exported.
+
+**4. The checks.** The tree state is recorded in scratch `p9/b9-tree-state.txt`: `ce74932` plus this batch plus the P9-11 helper's checkpoint.
+- **What the helper's checkpoint contained:**
+  - `validation.middleware.ts`, replacing the `.js`; it accepts Zod or Joi, with the Joi path byte-identical;
+  - a new `validators/input.ts`, imported by nothing;
+  - `validated?: unknown` in `express.d.ts`;
+  - `zod ^4.6.5` in `package.json` and the lockfile.
+- **What it did not contain:** no validator was converted, and `jsonShape.util.ts` and `iot.validator.ts` were untouched. The helper paused its edits for the boundary.
+- **(a) Typecheck:** the whole tree is clean.
+- **(b) Equality:** identical, as above.
+- **(c) Suites:** 285 suites and 6,002 tests over the model, migration, guard, isolation, two-tenant and domain suites. That includes `twoTenantRoutes.guard`, the `tenantScope` suites, `tenant.platform.a125`, `user.mfaSeedAtRest.s20`, `tenantSettings.secrets.a150` / `bulkPaths.a177`, and `includeRequired.d12` (24/24).
+- **(d) Models' own figure:** **96.59 / 75.32 / 95.19 / 96.59**, every model in `.ts`, against ADR-092's 93.5 / 65.58 / 93.17 / 93.39.
+- **Full gate (08:27Z tree):** **700 suites and 13,065 tests passed**. Coverage was **99.84 / 99.7 / 99.75 / 99.84**, short of 100% in exactly the helper's two new, not-yet-tested files (`validation.middleware.ts` 52%, `validators/input.ts` 40%); every other file was at 100%.
+- **Closing full gate (08:43Z tree, recorded in `p9/b9-tree-state-final.txt`, green):** after the helper added `validation.p911.test.ts`, and after the branded deny sentinel (§6), **701 suites, 13,076 tests, 100 / 100 / 100 / 100**. Typecheck clean, `ts-ratchet` at the floor (1092), ESLint ratchet 0, `build:dist` 129 TypeScript files, and the full-barrel equality identical again.
+- **Live on PostgreSQL 18.6 as `callibrator_app`, through the TypeScript barrel:**
+  - the schema boot (63 migrations, 75 tables);
+  - **the final two-tenant probe, 54/54** (`p9/live-b9.js`). It covers:
+    - the barrel's surface (no `db`, `sequelize === db`, `Op`, 71 models, aliases);
+    - **A-125:** `findByPk`, listing, count and bulk update never reach PLATFORM, while the opt-in does;
+    - **S-20:** plaintext refused on a bulk update and on `save()`, an envelope accepted;
+    - User getters; reads, **includes** (User → role/tenant, Session → user, MenuGroup → permissions) and **bulk ops** (B's update and destroy of A's rows touch nothing);
+    - **Session snake_case** (a camelCase `tenantId` where fails at run time too); Session `softDelete` / `restoreStatic`;
+    - TenantSettings stored as an envelope and read decrypted, with a plaintext upsert refused;
+    - D-27 on ApiKey and AuditLog; TenantKey's `privateKey` never selected; TenantHierarchy isolation;
+    - RoleMenuPermission / UserMenuPermission `isIn`;
+    - **AuditLog's 0033 actor CHECK** refusing a user row without a user, a system row not named `system:`, and any new `unknown` row.
+  - the live suites: `dbD` 6/6, `dbC` 4/4, `w33` 12/12, `dbB` 10/10, `p6` 22/22, `q02` 10/10, and the isolation live suites **`backgroundJobs.w12` 8/8** and **`tenantHookless.w34` 6/6**.
+  - The container and its volume were removed.
+- **Recorded finding (for the owner):** audit rows are append-only **by the application only**. The live probe shows the application role holds **UPDATE and DELETE on `audit_logs`**, and there is no audit trigger. The docs call the table append-only; the database does not enforce it, unlike `calibration_records` (P6-03).
+- **Docker and the P9-00 E2E baseline against the converted image:**
+  - `build:dist` inside the image: 358 JavaScript files copied, **129 TypeScript files compiled**.
+  - Boot: `[schema-verify] OK: 72 tables, 867 columns and 8 control objects`; application role `callibrator_app`; 171 gates validated; `/health` 200; seeding 200 and seed-demo 200.
+  - **E2E run A (15:38:15 +07:00): 53 passed, 1 skipped; 392 tests passed, 5 skipped, 0 failed** (21.3 s).
+  - **E2E run B (15:40:00, 65 s after A for the `tenantCreate` budget): the same result** (19.9 s).
+  - The **per-spec pass counts of all 54 specs in A and in B equal the P9-00 reference set**, compared from the JSON reports. `E2E_MFA_STATE_FILE` was left unset (the P9-00 trap).
+  - **Access log over both runs:** 1,042 requests (the two seed calls included), **0 × 429**, and 5xx only **2 × `POST /api/v1/ai/query` 500** — the same environment-dependent pair as the baseline (no AI provider).
+  - **Teardown:** `down -v --rmi local`; no container, image or volume is left, and the `.env` was deleted.
+- **Ratchets:** `ts-ratchet` floor **1092** (the helper ran it: 13 model and barrel `.js` files, plus its `validation.middleware.js`). The ESLint ratchet is at 0.
+
+**6. The last P9-10 DoD line: `tenantScope`'s deny branch is a `TenantId`.** `NO_TENANT_UUID: TenantId = NO_TENANT_ID`, branded in `src/types/ids.ts`, the one place a brand assertion is allowed (a constant, never input). It is the same string. The diff is 4 insertions and 2 deletions, applied to the `HEAD` file without reformatting. The isolation suites (26 suites, 1,079 tests) and the full gate are green.
+
+**7. Findings recorded for the owner** (TASKS/BACKLOG): Q-34 (`audit_logs` append-only only by the application), Q-35 (the Role `is_system` guard never fires), and Q-36 (`keyRotation.s08.live` stale since S-20).
+
+**8. Next card in this lane.**
+- **P9-07, the typed bind-parameter SQL helper,** is next. Every Stage C card's Definition of Done requires "raw SQL uses the P9-07 helper", so it comes first.
+- **Then P9-12, identity and access (Stage C, services),** once P9-11 (the helper, validators) lands. P9-12's A-48 gate is closed (A-48 DONE).
+- **Why the typed barrel matters for Stage C:** a `.ts` service now gets real model types from `require("../models")`.
+- **Also still open in this lane:** P9-06 part 2 (the Zod environment schema and the fail-listing boot).
+
+### Amendment 12 (2026-09-29) — P9-07: the bind-only SQL helper, its lint rule, and D-05 reading it
+
+**1. `src/utils/sql.util.ts` is the one way TypeScript code runs raw SQL.**
+- **Signature:** `sql<Row extends object>(runner, text, bind = [], { transaction }) → Promise<Row[]>`.
+- **Accepted values:** `bind` takes `BindValue` only: string, number, bigint, boolean, Date, Buffer, null, or arrays of these.
+- **`replacements` cannot be passed.**
+  - The options type has no such key.
+  - At run time a JavaScript caller that passes one gets a `TypeError` before anything reaches the database.
+- **A statement naming `$n` beyond the bound values is refused** with a `TypeError`, again before the database.
+  - This is the ADR-039 shape: `$1` sent as a replacement, which read all metered usage as zero.
+  - `$n` inside a quoted string literal is not counted; `$` quoting and `::` casts are not placeholders.
+- **What reaches Sequelize:** the helper passes `{ type: "SELECT" }`, adding `bind` and `transaction` only when given. A migrated call therefore makes **the same `query()` call** as before.
+- **`Row` is the caller's claim about the row shape;** the driver checks nothing. `sql<any>` is a lint error (`no-explicit-any`), and a primitive `Row` is a compile error.
+
+**2. Deviation from the card (ADR-038 rule 3): `sql(runner, text, bind)`, not `sql(text, bind)`.**
+- **Why:** every raw-SQL module already receives or requires its Sequelize instance, and the unit tests pass a double. A helper that imported the instance itself would:
+  - load the configuration and open a pool on import, for every module and test that uses it;
+  - make the tests' injected doubles impossible without module mocking.
+- **Alternatives considered:**
+  - (a) `sql(text, bind)` importing `config/index`. Rejected for the import-time connection and the loss of injection.
+  - (b) A factory `makeSql(runner)` returning `sql(text, bind)`. Rejected: one more indirection at every call site, and no more safety.
+- **Bad implication:** a caller can pass the wrong runner (for example a bootstrap connection). The type accepts anything with the same `query`, as the raw call did.
+
+**3. Enforcement:**
+- **Lint (`backend/eslint.config.js`).**
+  - In TypeScript application source, a `.query(...)` call on `sequelize` / `db` / `database`, or on `x.sequelize`, is a `no-restricted-syntax` error: "Run raw SQL through utils/sql.util#sql".
+  - Exempt: `sql.util.ts`, TypeScript tests, and `src/migrations/**/*.ts`. Migrations run DDL through the QueryInterface outside any tenant; the helper is SELECT-only, and D-05 excludes migrations by design. The exemption was added when the first `.ts` migration (Q-34, `0091`) was announced; a plant in `src/migrations` is clean, and one in `src/utils` still errors.
+  - Bite: a planted file with `sql<any>` and a direct `db.query` gets exactly those two errors. The tree has 0 offenders.
+- **One reasoned exemption:** `dbReady.util.ts`'s `SELECT 1` connectivity ping keeps its direct call, under `eslint-disable-next-line` with the reason "a connectivity probe, not data access". Its test asserts that exact call.
+- **D-05 (`tests/utils/rawSqlTenantPredicate.d05.test.js`)** now reads every `sql(...)` / `sql<Row>(...)` call, taking the statement from the second argument.
+  - For helper calls, a statement naming a tenant-scoped table must **bind** its tenant predicate (`tenant_id = $n` or `"tenantId" = $n`). Merely mentioning it is not enough.
+  - The rule is checked by synthetic sources: an interpolated `'${tenantId}'` and a missing predicate are both flagged, while the bound one and a global table are not.
+  - The scan sees the 7 helper calls in the converted utilities.
+- **The bound value is asserted:** `tests/utils/sql.p907.test.ts` (7 tests) checks that the tenant id is in `bind[0]` and absent from the statement text.
+
+**4. Migrated call sites** (the converted utilities; each suite passes unchanged):
+- `authorizationWiring.util.ts` (roles; its `QueryTypes` import goes);
+- `dbRole.util.ts` (the application-role check);
+- `schemaVerify.util.ts` (5 catalog queries).
+
+None names a tenant-scoped table.
+
+**What remains:** 19 direct `query(` calls in 11 JavaScript files. They move to the helper as their modules convert, which is the Stage C DoD line "raw SQL uses the P9-07 helper". D-05 keeps its existing presence check on them until then.
+
+**5. Proof:**
+- **Unit:** `sql.p907` 7/7, with `sql.util.ts` at 100%; `rawSqlTenantPredicate.d05` 6/6; the three migrated suites unchanged.
+- **Live on PostgreSQL 18.6 as `callibrator_app`, with a fresh schema boot (75 tables): `p9/live-p907.js` 10/10.**
+  - A bound tenant predicate returns exactly that tenant's row, for A and for B.
+  - The control, without the predicate, returns both tenants' rows, because raw SQL bypasses the hooks.
+  - `$1` as a replacement fails in PostgreSQL (the ADR-039 defect), while `sql()` refuses it with a `TypeError` before the database; `replacements` is refused at run time.
+  - A transaction passes through: an update is visible inside it and gone after rollback.
+  - A bound predicate for the wrong tenant updates nothing.
+  - `enterApplicationRole` itself ran through the migrated `dbRole` check.
+  - The container and volume were removed.
+- **Joi→Zod (P9-11) did not change model JSON acceptance.** The full-barrel harness was run with `HEAD`'s Joi `jsonShape` / `iot.validator` overlaid into the JavaScript twin, and `P9_ACCEPT_ONLY=1`. The result was identical; only the messages differ, which is the P9-11 change. The helper independently counted 1,022 checks with 0 differences.
+
+**6. Full gate (09:17Z tree: `ce74932` + P9-10 + P9-07 + the P9-11 helper with `joi` uninstalled and its service-test rewrites still finishing):**
+- `npm run test:coverage`: **699 suites passed, 13,269 tests passed, 0 failed** (24 suites / 155 tests skipped — the env-gated live suites). Coverage 100 / 99.99 / 100 / 100.
+- The only file short of 100% is the P9-11 helper's `validators/iot.validator.ts` (one branch, line 47), in its lane and reported to it. Every file in this lane is at 100%, including `sql.util.ts`.
+- **Closed by the P9-11 helper's own run** (reported to this lane after `iot.validator.p911.test.ts` landed): `npm run test:coverage -- --ci --forceExit` exit 0, 700 of 724 suites / 13,272 tests passed, **100 / 100 / 100 / 100**.
+- Typecheck clean; `ts-ratchet` at the floor (**1050**, after the helper removed 42 `.js`); ESLint ratchet 0; `build:dist` 319 JavaScript files copied, **169 TypeScript files compiled**.
+- Also: the last Joi wording in this lane (two `appError.util.ts` comments, three `modelTypes.p910` comments/title) now says Zod or is neutral; `grep -rnwi joi` over the lane is empty.
+
+### Amendment 13 (2026-09-29) — P9-12 batch 1: `jwt.util`, and the session, webauthn, userPermission and roles services
+
+**1. Converted** (`.ts`; each `.js` removed after `cmp` against its snapshot): `utils/jwt.util`, `services/session.service`, `services/webauthn.service`, `services/userPermission.service`, `services/roles.service`.
+- **Baseline:** the working copy, which includes the P9-11 Zod changes to `auth`/`user` (not these five).
+- **Still to do in P9-12:** `user.service` and `auth.service` (batch 2), then `apiKey`, `sso`, `scim` and `oidcProvider`, released by the security-fixes agent after A-275/A-278/A-280 (ADR-094).
+
+**2. The Stage C module pattern (decided here, for every service that follows).**
+- **`export =` of one object literal,** in the original key order: `require()` returns the same shape as before, the same keys in the same order, and **no `__esModule` marker**. `roles.service` exports its class, as it did.
+- **Internal calls go through that object.** A function that called a sibling through `exports.x(...)` now calls `service.x(...)`, the object `export =` exports. A spy on the module (`jest.spyOn(sessionService, "validateSession")`) still intercepts the internal call. A named ES export would not: Babel and tsc compile the reference differently.
+- **A JavaScript `const { a, b } = require(m)` stays a load-time destructure,** from a default import (`import redis from "./redis.service"; const { get } = redis;`). A named ES import is a live lookup, which changes what a later spy on `m` affects.
+- **A still-JavaScript dependency is imported through a sibling declaration file,** following the `config/index.d.ts` precedent. Under `allowJs: false` a `.ts` file cannot import a `.js` one untyped.
+  - New: `services/redis.service.d.ts` and `services/audit.service.d.ts`, each an `export =` of exactly the module's export object, typed from its code.
+  - A lazy `require()` of a JavaScript module keeps its laziness, typed inline (the Amendment 5 precedent): `auth.service` from webauthn, `menuGroup.service` from roles.
+- **Types a consumer needs live in `src/types`** (an `export =` module cannot also export types: TS2309, and the tsx trap of Amendment 11). New: `src/types/auth.ts` (`TokenClaims`, `TokenPayload`, `DecodedToken`, `TokenPurpose`).
+  - `TokenPayload` types every claim `unknown`; jsonwebtoken's `JwtPayload` types them `any`.
+- **`src/types/sequelize.d.ts`:** `skipTenantScope` is accepted on the options of every operation the tenant hooks scope (count, update, destroy, restore, create, bulkCreate, upsert, save, instance destroy/restore), not only `find`. It is type-only.
+- **`src/types/express.d.ts`:** `Request.impersonatorId?: string | null` and `AuthenticatedPrincipal.role.roleLevel / role_level`, added for the P9-19 middlewares. Each was checked against the JavaScript that sets or reads it.
+
+**3. The one accepted surface change: function names.**
+- `exports.x = async () => {}` created an **anonymous** function (`name === ""`); `const x = async () => {}` names it `"x"`.
+- This is the same class of change as the `defineModel` factory name accepted in Amendment 8.
+- Counted, not hidden, by the surface harness: 11 exports in session, 4 in userPermission. jwt, webauthn and roles already had named functions.
+
+**4. Identity evidence.**
+- **Export surface:** `p9/compareSurface.js` loads the original `.js` beside the compiled module inside `dist/src`.
+  - It compares, per export: key order, enumerability, writability, getter or value, `typeof`, function `length` and `name` (with only the §3 difference accepted), class statics and prototype, and `__esModule`.
+  - `dist` stopped loading mid-batch (the P9-22 contracts package resolves to TypeScript source), so the final run used `p9/compareSurfaceSrc.js`. It is the same comparison: the converted module is loaded from `src/` through tsx, and the original from scratch with its relative requires made absolute into `src/`, so both share every dependency instance. Nothing is written inside `src/`.
+  - **Result: all five identical.** jwt.util (12 keys), session.service (16; 11 anonymous exports now named), webauthn.service (6), userPermission.service (4; 4 now named), roles.service (19 statics).
+- **jwt.util behaviour:** `p9/compareJwt.js` ran **1,223 checks over 8 key-ring configurations**, all identical to the JavaScript. It covers:
+  - the ring configurations: HS256; HS512 with a previous key; RS256 with the private key only; RS256 with public and previous keys; ES256; RS256 without a private key; empty and custom expiries;
+  - the tokens: access and purpose tokens are byte-identical when minted in the same second, and each side's tokens verify on the other;
+  - the refusals and their messages; a token whose `kid` names the current key but that was signed by the previous one; expiry pass-through; and the five load-time configuration refusals.
+  - **Bite-tested:** each of 4 plants in the compiled file was detected. The plants were a changed default expiry, a changed refusal message, kid selection removed, and the type check disabled.
+- **Tests: unchanged,** except the allowed re-key. `unboundedFindAll.d24` keys its allow-list by file name, so 7 entries moved from `.js::` to `.ts::` (session 1, userPermission 4, roles 2).
+  - Per module, every suite that references it passed, with the module at **100 / 100 / 100 / 100**: jwt.util 50 suites / 941 tests; session 50 / 843; webauthn 6 / 113; userPermission 40 / 1,026; roles 40 / 806.
+  - The failures seen in those runs were another agent's in-flight edits (risk and supplier-scorecard). That agent fixed them.
+- **Typecheck:** the whole tree is clean for these files. **ESLint:** 0 errors on every file of this batch.
+
+**5. Compiler-exposed defects, recorded and not fixed** (ADR-038 rule 3; TASKS/AUDIT-2026-09-REMEDIATION.md). Each is kept with a reasoned `@ts-expect-error` naming its id:
+- **A-285 (medium):** `roles.service` reads `role.is_system`, but the attribute is `isSystem` (the Q-35 class, in the service). `updateRole`'s system-role guard never fires, and `deleteRole` **destroys** a system role instead of deactivating it.
+- **A-286 (low):** `createRole` writes `is_system`, which Sequelize drops.
+- **A-287 (low):** `createMenu` / `updateMenu` write `sort_order` and `is_active`, which Sequelize drops (A-148 fixed only `parent_id`). TypeScript reports only the first excess property of a literal, so one directive covers both; the comment says so.
+- Not a defect, kept: `roles.service`'s `permissionType || permission_type` fallback. `permission_type` is not an attribute, so the fallback is dead on model rows; tests use it on doubles. It is now one helper, `permissionTypeOf`, instead of six inline copies.
+
+**6. New guard: declaration drift.** `tests/guards/declarationDrift.p912.test.ts` compares, for every `x.d.ts` beside an `x.js` under `src/`, the keys the declaration names with the keys `require()` returns.
+- **Found at once:** `audit.service.js` had gained two constants from another agent, `AUDIT_DEFAULT_WINDOW_DAYS` and `AUDIT_COUNT_CAP`, which the declaration did not name. The declaration now names them.
+- **Bite-tested:** dropping a key fails the guard, and restoring it passes.
+
+**7. Coverage config:** `collectCoverageFrom` now excludes `src/**/*.d.ts`. A declaration emits nothing, and without the exclusion the new ones counted as 0% files and failed the global gate. `coverageScope.p614` still passes.
+
+**8. Packages** (owner rule; installed from the root with `^`):
+- `@types/jsonwebtoken@^9.0.10` (new; jsonwebtoken ships no types) and `@types/qrcode@^1.5.6` (it resolved only by hoisting).
+- `npm audit` 0. Neither has install scripts, so `allowScripts` is unchanged. Their dependencies are type packages only (`@types/ms`, `@types/node`).
+
+**9. Tree state at this boundary.** Other agents are working in parallel: P9-19 middlewares, P9-22 contracts, the security-fixes agent, and the leaf-services helper.
+- **The full coverage run was not green, for reasons outside this batch.** Its failures are all in other agents' in-flight files: stripeWebhook ×3, signingKeyWrap.s08, schedulerSwitch.w02, audit.platform.a125, audit.service, and the new auditPrincipal.util.ts (75% branches).
+- **The ESLint ratchet reports 18 new errors, all in other agents' files:** two new test files for oidc/scim, and metricsAuth / denyPlatformAuthoring (P9-19).
+- `dist` builds (303 JS copied, 189 TS compiled) but does not load: `@callibrator/contracts` still resolves to TypeScript source until the P9-22 build step lands.
+- `ts-ratchet` floor 1045 → 1035.
+- **Every file of this batch is at 100% and lint 0.**
+
+### Amendment 14 (2026-09-30) — P9-12 conversions complete: user, auth, apiKey, sso, scim, oidcProvider, oidcJwks; the Stage C leaves; P9-19 round 1
+
+**1. Converted under Amendment 13's pattern** (each `.js` removed after `cmp` against its snapshot):
+- **Batch 2:** `services/user.service` and `services/auth.service`.
+  - `auth.service` was snapshotted only after three other agents had finished their edits to it and confirmed the auth suites green: bootstrap (P10-16), security-followups (A-288 signInPolicy) and Phase 10 (P10-10/P10-12).
+- **Batch 3:** `services/apiKey.service`, `services/sso.service`, `services/scim.service`, `services/oidcProvider.service` and `services/oidcJwks`.
+  - `oidcJwks` is converted with the OIDC domain.
+  - These were taken only after the security-fixes agent released them, with A-275/A-278/A-280 already in the JavaScript.
+- **P9-12 has converted every module on its card:** `utils/jwt.util` and the session, webauthn, userPermission, roles, user, auth, apiKey, sso, scim and oidcProvider services, plus oidcJwks.
+
+**2. Identity evidence** (`p9/compareSurfaceSrc.js`; the only accepted change is that anonymous `exports.x =` functions are now named after their key):
+
+| Module | Keys | Newly named | Suites | Tests | Coverage |
+|---|---|---|---|---|---|
+| user.service | 17 | 12 | 25 | 584 | 100% |
+| auth.service | 32 | 22 | 72 | 1,248 | 100% |
+| apiKey.service | 6 | 6 | 17 | 405 | 100% |
+| sso.service | 5 | 5 | 10 | 191 | 100% |
+| oidcProvider.service | 17 | 16 | 5 | 356 (plus the oidc route suites, 6 / 138) | 100% |
+| scim.service | 12 | 12 | 11 | 240 | 100% |
+| oidcJwks | 6 | 6 | 13 | 244 | 100% |
+
+- **Every suite failure in these runs was traced to another agent's in-flight file, and none is caused by a conversion:**
+  - d24 entries for other agents' new services;
+  - `bodyless.a09` attachment.upload;
+  - `readGates.p604` get-assignments;
+  - `passkeyLogin.p1010`, which timed out under load and passes 22/22 alone;
+  - `sso.oidcRoundTrip.a68`, which failed identically with the ORIGINAL `sso.service.js` swapped back in, and passes after the SSRF agent's fix.
+- The only test change is d24's allow-list, re-keyed from `.js::` to `.ts::` for user, auth, oidcProvider and scim.
+
+**3. Types added or changed, all type-only:**
+- `User.id` is now `CreationOptional<UserId>`. A user's id is a `UserId`, as `Session.user_id` already was. There was no fallout elsewhere in the tree.
+- `TokenClaims` is `object`. A named claims interface (ActivationClaims) has no index signature, and jsonwebtoken signs any object.
+- `session.service` createSession's `ipAddress` / `userAgent` / `device` are optional, because callers omit `device`.
+- **New declarations:** `services/mfa.service.d.ts` (an exported class instance; its methods are on the prototype), `services/rateLimiter.redis.service.d.ts` and `services/emailQueue.service.d.ts`.
+  - A member no converted module calls is `(...args: never[]) => unknown`. It cannot be called until someone types it, so its first TypeScript caller writes the type.
+  - Plain-function modules declare their members as PROPERTIES, not methods, so a load-time destructure is sound (`unbound-method`). mfa keeps method syntax, because its methods use `this`.
+- **`declarationDrift.p912` now counts a class instance's prototype methods.** It detects a plain object's prototype structurally (its prototype is `null`), because under Jest the module's realm is not the test's. Bite-tested.
+- **Other agents have since added members to these declarations:** `storeIncr` / `storeTtl` / `countsFailuresByIp` (requestBudget, ADR-100) and `queueNotificationEmail` (notificationChannels). The drift guard holds each declaration to its module.
+
+**4. File-level reasoned disables, first used here.**
+- In `auth.service` and `scim.service` the as-built `||` fallbacks number in the dozens, and each treats `""` and `0` as absent. So `@typescript-eslint/prefer-nullish-coalescing` is disabled for the whole file, with that reason, instead of line by line.
+- `scim.service` also disables `prefer-regexp-exec`, `no-base-to-string`, `no-unnecessary-type-conversion` and `only-throw-error`. Those cover its `match()` calls, its `String()` coercions of IdP input, and re-throwing a caught value as caught.
+- `user.service` and `auth.service` disable `only-throw-error` for the whole file. Both throw plain `{ status, message }` objects, which the controllers read (the A-272 surface).
+- **Every other directive is per line, with its reason.**
+
+**5. Compiler-exposed defect, recorded and not fixed:**
+- **A-295 (medium):** `user.service#editUser` writes `isActive: user.is_active`, and `is_active` is not an attribute. `updateUserSchema` strips the request's `is_active`, so every edit writes `isActive = undefined`, most likely NULL.
+  - It is kept with a reasoned `@ts-expect-error`.
+  - The effect on PostgreSQL is to be measured before the fix, which is its own change with a real-model test.
+
+**6. Fixed as their own changes, not in the conversion:**
+- A-285/A-286/A-287 and A-294, with the regression test `roles.attributes.a285.test.ts` (failing 7/10 before the fix, 10/10 after). The record is `2026-09-29-a285-a294-role-menu-attributes.md`.
+- **A-294 was renumbered from A-288:** two agents claimed A-288 within minutes. The other agent's A-288 is cited in ADR-094, and mine was only in my own files.
+
+**7. Stage C leaves, from the leaf-services helper** (record `2026-09-30-p9-stage-c-leaf-services.md`):
+- **Converted, all under Amendment 13's pattern:** eleven services — `storage/signing`, `storage/keys`, `storage/config.service`, `quarantineSweep`, `featureFlag`, `email`, `reporting`, `content`, `contentMedia`, `alert` and `notificationChannels`.
+- **Identity:** 11,635 checks against the working-copy `.js`. Every difference is the accepted `Function.name`.
+- **Lazy requires:** a lazy `require` stays lazy where loading the dependency has effects (`alert` → `email`).
+- **`search` waits for its own change:** its `replacements` SQL moves to `sql()` only in a change that may edit its tests.
+- **Packages:** `@types/nodemailer`, `@types/mustache` and `@types/sanitize-html`.
+- **A-297** (the content envelope) was fixed as its own change.
+
+**8. P9-19 middlewares, round 1** (helper; record `2026-09-29-p9-19-middlewares-round1.md`):
+- **Converted:** 10 middlewares — notFound, validateUuid, requestTimeout, globalSanitizer, accessLog, createFolder, errorHandlers, and, under the four gates, metricsAuth, rbac and denyPlatformAuthoring.
+- **Evidence:** 11,053 + 853 identity checks, and a live PG18 boot.
+- **New test:** `rbac.lowestBar.p919`, which is the first to catch a Math.min→Math.max plant.
+- **Findings:** multipart bodies bypass globalSanitizer, and accessLog's errorLog is never mounted. Both are with the multipart-sanitizer agent.
+
+**9. Not yet done for P9-12's DoD:** the full coverage gate on a quiet tree, and the P9-00 E2E baseline against a built image.
+- At this boundary `npm run typecheck` and `build:dist` are red only in other agents' in-flight files: `accessRequest.service.p1005.test.ts`, `roles.fields.f19.test.ts` (F-19, ADR-105, from an agent now editing `roles.service.ts`), and `utils/ssrf.util.ts:307` (the SSRF agent).
+- Both proofs run when those land.
+
+**10. Packages:** `@types/jsonwebtoken` and `@types/qrcode` (Amendment 13). No new package in this amendment.
+
+### Amendment 15 (2026-09-30) — Every module must LOAD: a load gate in `make verify` and CI, and `export =` stands alone
+
+**What happened.** On 2026-09-30 the backend failed to boot while typecheck and the 100% jest gate were green:
+- `certificate.model.ts` threw `jsonShape is not defined` at load;
+- `webauthn.service.ts` threw `webauthn_service_module is not defined`.
+
+The second came from a conversion shape nothing checked: an `export interface` beside `export =`. TypeScript accepts it, and Babel (jest) erases it, but tsx/esbuild compiles the module into a reference to an undefined `<file>_module`, which throws when the module is first required. Jest mocks a module's dependencies and typecheck executes nothing, so no gate ran a module's top level the way production does.
+
+**Decision.**
+1. **The load gate.** `backend/scripts/load-check.ts` (`npm run load:check`) requires every module in a child process with no mocks. The child gets placeholder configuration: a database and Redis on port 1, random secrets, and the P10-05 pepper. A module that throws at load fails the gate, listed with its error.
+   - It runs two passes:
+     - every module under `src/` (not `src/tests`, and not the `src/scripts` CLIs, which run on load), in one process;
+     - a **fresh** process requiring what `index.js` requires, in its order, so that a circular-import failure only the boot order triggers shows up.
+   - It has two modes:
+     - the default loads `dist/` under plain `node`, the tree the image's pkg binary runs;
+     - `-- --src` loads `src/` under `node --import tsx`, which is what `npm start` and CI's boot job run.
+   - **Both modes are needed.** The `export =` defect exists only in tsx's output, because tsc compiles it correctly for `dist/`. A top-level `ReferenceError` fails in both.
+   - It is wired into `make verify` (target `load-check`, after `build`) and into CI (job `backend-load`: `build:dist`, then both modes).
+2. **`export =` stands alone** (lint, `backend/eslint.config.js` `EXPORT_EQUALS_ALONE`). In a module that uses `export =`, any `ExportNamedDeclaration` or `ExportDefaultDeclaration` is a `no-restricted-syntax` error. This includes `export interface` and `export type`. Types go in `src/types/` or a sibling `.d.ts`.
+   - The rule is in every `.ts` block: application code, tests, migrations and `src/types`.
+   - On 2026-09-30, 0 existing modules violated it.
+
+**Evidence.**
+- **The tree:** `npm run build:dist`, then `npm run load:check`: 527 modules, plus 102 in boot order, OK (dist via node). `npm run load:check -- --src`: 527 + 102, OK (src via tsx).
+- **Src mode bites:** a planted `src/utils/zzLoadProbe.p9.ts` (`export interface` + `export =`) failed it with `zzLoadProbe_p9_module is not defined`.
+- **Dist mode bites:** a planted `dist/src/utils/zzLoadProbe.js` that references an undefined `jsonShape` failed it.
+- **The lint rule bites:** the same probe fails with the rule's message.
+- Both probes were removed.
+
+**Bad implications.**
+- The gate proves a module loads, not that the app reaches readiness. CI's `boot-and-migrate` job still does that against PostgreSQL 18, but only through tsx, never through `dist/`, and `make verify` has no boot at all.
+- A module whose load needs a live service is reported, not tolerated, because the placeholders connect nowhere. That is intended, but a module that validates configuration at load needs its placeholder added to the script, as `ACCESS_REQUEST_IP_PEPPER` did.
+- Dist mode needs a fresh `build:dist` (about 4 minutes locally).
+- Requiring every module in one process in path order can mask a failure that only another order triggers. Only the index.js boot order is checked separately.
+
+### Amendment 16 (2026-09-30) — P9-23: the migrations are TypeScript; their names are frozen
+
+(Placed by the Phase 9 lead from the P9-23 lane's text in `MEMORY/records/2026-09-30-p9-23-migrations.md`.)
+
+1. **Names are strings in the manifest, not files.** Umzug keys `schema_migrations` by the manifest's name string. All 63 historical names (0001–0090) end `.js`, and they stay that way. A migration's name is `<module path>.js` for a `.ts` file too, fixed when first applied and never changed.
+   - `migrator.js`'s requires are extensionless, so tsx and jest load the `.ts` and `dist/` loads the compiled `.js`. The manifest itself did not change.
+   - `manifestNames.p923.test.ts` freezes the 63 names. It was typed by hand from a PG18 database's rows, written before any rename, and seen to fail on a tidied name. It also refuses a module present as both `.js` and `.ts`, and an unregistered file.
+2. **Conversion is type-only, with a closed list of runtime-neutral edits:**
+   - `export =` with the same object;
+   - an in-function `require("sequelize")` becomes a top-level import;
+   - `env()` in place of `process.env`;
+   - JavaScript services stay `require`d in place, typed (Amendment 11's precedent).
+
+   `||` is never turned into `??`, and the 16 D-29 fallbacks are kept literally. Lint's behaviour-changing suggestions are refused with `-- as built` line disables.
+3. **Evidence standard for a migration:**
+   - (a) a recording seeded-fuzz QueryInterface, original `.js` against compiled `.ts`, `up` and `down`, including refusal branches (37,800 runs, 0 differences);
+   - (b) a normalised AST diff whose remaining lines are each argued neutral;
+   - (c) live PG18: identical `schema_migrations`, schema-only dump and grants on a fresh build, and nothing pending on an upgrade.
+
+   (a) alone missed an injected `||`→`??` change, so (b) is required, not optional.
+4. **`src/migrations/**/*.ts` keeps Amendment 12's exemption** from the direct-query rule. Migrations still issue DDL and raw SQL through the QueryInterface outside any tenant.
+5. **Bad implications:**
+   - 0056 now reaches `fs`/`crypto`/`path` through `__importStar` namespace wrappers. This is live delegation, but a different object from the module.
+   - Four migrations still `require` JavaScript services and get their types from local casts, not from the services. The casts can drift until Stage C converts those services.
+   - The identity fuzz covered 63–75% of the lines of 0030, 0037, 0066 and 0086; their unit suites cover the rest.
+
+### Amendment 17 (2026-09-30): the Phase 9 exit is on source; the `.js` tests move to P9-26
+
+**ADR-109 §5** amends this ADR's exit as P9-24 carried it ("ratchet at zero, tests included; `allowJs: false`"). It is a working decision under the owner's delegation, awaiting the owner's confirmation.
+- Phase 9 exits when every **non-test** source module is TypeScript and `allowJs: false` holds for source (`tsconfig.build.json`, item 3).
+- The existing `.js` test files move to **P9-26** and are converted opportunistically.
+- **Amendment 1's rule is unchanged:** the ratchet counts tests and refuses any new `.js` file.
+- The base config's `allowJs`, and the ratchet itself, go when P9-26 empties the list.
+
+### Amendment 18 (2026-09-30) — P9-15 / P9-17: warehouse and commercial services
+
+(Placed by the Phase 9 lead from the services helper's text; record `MEMORY/records/2026-09-30-p9-15-17-warehouse-commercial-services.md`.)
+
+- **Converted, all under Amendment 13's pattern:** `warehouse` and `stock` (P9-15); `billing`, `finance`, `stripeWebhook` and `meteredBilling` (P9-17). `quota` was converted earlier by the leaf helper (Amendment 19).
+- **Identity:** 70,009 checks against the working-copy `.js`. Every difference is the accepted `Function.name` of `exports.x =` functions. Each harness caught every plant that applied, 33 in all.
+- **Lazy requires stay lazy:** `stock` → `workflow.service`, `stripeWebhook` → the `stripe` SDK, `meteredBilling` → the models barrel. The harnesses prove each one.
+- **Load-time environment reads stay load-time:** `stripeWebhook`'s two secrets. `NODE_ENV` stays per call.
+- **Raw SQL moves to `sql()` in its own change, before the conversion:** `meteredBilling`'s two statements, with one test assertion changed and a fail-before of 1/56.
+- **New `.d.ts` files beside still-JavaScript modules:** `webhook.service.d.ts` and `workflow.service.d.ts` (a class instance, prototype methods included). Only the members a converted caller uses are typed; the rest are `(...args: never[]) => unknown`. `declarationDrift.p912` holds both.
+- **A swap is one step.** The `.ts` is built and proved in a scratch mirror of `src/`, then swapped in with the `.js` deleted. `build:dist` refuses an `x.js`/`x.ts` pair, and a half-done swap of `meteredBilling` blocked every lane's build once on 2026-09-30. This is now a rule for every Stage C swap.
+- **Findings recorded, not fixed:** A-319 to A-322.
+
+### Amendment 19 (2026-09-30) — Stage C leaves, rounds 2–4 (the leaf helper), including `tenantBackup` under the four isolation gates
+
+(Placed by the Phase 9 lead; record `MEMORY/records/2026-09-30-p9-stage-c-leaf-services.md` §§ Round 2–4.)
+
+- **Round 2 converted** `quota` (P9-17), `ownSessions` (P9-12 area, released by the lead), `webhookDeliveryPurge` (P9-18), `iotDevice` (P9-14), `sop` (P9-16) and `admin` (P9-13). Each was compared against the working-copy `.js`, and each harness was bitten by planted changes.
+- **Round 3 converted** `iot` and `jobMonitor`.
+  - `iot`: 103/103 identical; one `IotService` instance with `declare`d fields; `mqtt.connect` is a named import.
+  - `jobMonitor`: 26 multi-step scenarios identical; `cron` is node-cron's default export; the `redis`, `sequelize` and models requires stay lazy.
+  - The W-13 exemption is re-keyed to `jobMonitor.service.ts`.
+- **Round 4 converted `tenantBackup`** under the four isolation gates, a pattern the other isolation-critical conversions (P9-13) follow:
+  - **(a)** 9 planted defects, each caught by a watching suite, with the file restored byte for byte;
+  - **(b)** an identity harness: 189/189 identical, and the zip written is byte-identical;
+  - **(c)** 84 isolation and authz suites, 1,757 tests;
+  - **(d)** a live PostgreSQL 18.6 probe as `callibrator_app`, 24/24. A's backup cannot be restored into B, and a crafted archive creates no account and changes no role, active flag, status, password or tenant.
+  - The untrusted archive is typed `unknown` field by field, and every check in `assertRestorable`, `reconcileUsers` and `pickFields` is kept.
+- **Bad implication:** the live probe's container stalled at removal, and cleaning it up is a manual step for its owner.
+
+### Amendment 20 (2026-09-30) — P9-13 converted: networkSecurity, tenantHierarchy, customDomains, dataRetention, tenantLifecycle, tenant, tenantUpload
+
+(Placed by the Phase 9 lead from the P9-13 helper's text. Record: `MEMORY/records/2026-09-30-p9-13-tenancy.md`. With `featureFlag`, `admin` and `tenantBackup` (Amendment 19), every module on the P9-13 card is TypeScript.)
+
+1. **Converted under Amendment 13's pattern.** Each `.js` was removed after `cmp` against its working-copy snapshot. tenant.service's baseline includes A-320.
+   - Every `.ts` was typechecked in scratch against the tree (build config, absolute imports) before the swap, so the tree stayed buildable.
+   - One swap early on did leave a half-fixed `tenantHierarchy.service.ts` in `src/` for a moment, and it broke an image build. Amendment 18's one-step-swap rule is why.
+2. **Identity:** 570,332 checks against the JavaScript, all identical. Each harness was bitten by plants in the compiled module.
+   - The export surface is identical, except that 48 formerly anonymous functions are now named.
+   - Two unused load-time names were dropped: tenantLifecycle's `isEnabled` (featureFlag.service is still loaded, as a side-effect import) and tenant's `MAX_LIMIT`.
+   - Internal `exports.x` calls in dataRetention and tenantLifecycle now go through the export object.
+3. **The isolation-critical `tenantHierarchy`, `tenantLifecycle` and `tenant` passed the four gates:**
+   - (a) 29/29 planted defects caught;
+   - (b) identity;
+   - (c) 127 suites, 2,458 tests;
+   - (d) a live PostgreSQL 18.6 two-tenant probe as `callibrator_app`, 41/41, plus the live suites w20, w15w16 and w12, 14/14.
+4. **Compiler-exposed defects, kept with reasoned `@ts-expect-error`:**
+   - A-326: an upper-case status is written into the lower-case ENUM; measured on PG18 as a 500.
+   - A-327: a null or empty email is written into the NOT NULL `isEmail` column; measured as a 500.
+   - A-328: `createdBy` is dropped.
+   - The live probe also found A-329: a root's tree lists no children. The JavaScript has the same defect.
+5. **Typing notes:**
+   - `db.Sequelize.Op` / `.Transaction` and `db.sequelize` are typed through an intersection with the runtime statics that Sequelize's typings omit, never through `as unknown as`.
+   - `parseInt(process.env.X)` becomes `parseInt(String(env("X")))`. That is identical, because parseInt applies ToString.
+6. **No new package, no new declaration file, no `src/types` change.** The ts-ratchet stood at 890.
+- **Bad implication:** A-326 and A-327 mean a tenant edit can answer 500 today. They are recorded and not fixed here, by rule 3, and they need their own change soon.
+
+### Amendment 21 (2026-09-30) — The response envelope is a cross-workspace contract; its definition moves to `packages/contracts`
+
+(Placed by the Phase 9 lead from the P9-22 helper's text. Record: `MEMORY/records/2026-09-29-p9-22-contracts.md`. The shape is unchanged: rows in `data`, and `meta` as a top-level sibling of `data`. The package's `test/envelope.test.ts` parses the REAL output of `utils/response.util`'s `success()` and `error()`, and it bites on `data.rows`, a missing `meta`, and `data.meta` / `data.items`.)
+
+**Decision.** `ApiResponse<T>` and its parts were decided here (decision 7, Amendment 5) as backend-internal types in `backend/src/types/apiResponse.ts`. The envelope is the one shape the frontend parses on every call, so it is a cross-workspace contract, and decision 7 already sends those to `packages/contracts` (P9-22). The definition becomes Zod schemas in `packages/contracts/src/envelope.ts` (`apiResponse`, `apiListResponse`, `pageMeta`, `apiErrorResponse`), with the types inferred from them. `backend/src/types/apiResponse.ts` stays, and **re-exports** those types. It is still the only backend file that may declare or name an `*Envelope`/`ApiResponse*` type, so the `no-restricted-syntax` guard is unchanged. The types are the same shapes as before: `meta?: object`, `token`/`refreshToken`/`session?: unknown`, an error body with `details?` and extra top-level keys. `response.util.ts` compiles unchanged.
+
+**Alternatives considered.** (1) Keep the envelope backend-only and have the frontend declare its own: that is two definitions, and the frontend's copy is exactly the hand-written belief P9-22 removes (`device.service.ts` still declares `data.rows`). (2) Define the types in the package and a separate Zod schema in the backend: two definitions again. (3) Move `backend/src/types/apiResponse.ts` out entirely and import the package everywhere: it breaks the decision-7 rule that the backend names the envelope in one place, and changes every importer for no gain.
+
+**Implications, including the bad ones.** The backend's type-only module now depends on the workspace package. That is harmless at run time (types are erased; `response.util` emits no import of it), but the backend typecheck now also checks `envelope.ts` under backend flags. A change to the envelope schema is a two-workspace change. `pageMeta` requires `total` on every list response. A list endpoint that sends `meta` without `total` would fail a frontend parse that uses `apiListResponse`, and that is the point, but it has not yet been checked against all 53 route modules. The response step does that domain by domain.
+
+**Evidence.** Backend typecheck: no new error (the two remaining errors are other lanes' guard tests). `src/tests/utils`: 1,763 passed. The package's `test/envelope.test.ts` passes against the real `response.util`, and the package is at 100%.
+
+### Amendment 22 (2026-09-30) — P9-16 converted: workflow, qms, risk, supplierScorecard, vendor
+
+(Placed by the Phase 9 lead from the services helper's text. Record: `MEMORY/records/2026-09-30-p9-16-quality-services.md`. With `sop` (Amendment 19), every module on the P9-16 card is TypeScript.)
+
+- **Converted:** `workflow`, `qms`, `risk`, `supplierScorecard` and `vendor`, under Amendment 13's pattern. `workflow.service.d.ts` was retired.
+- **Identity:** 3,163 checks. Every difference is the accepted `Function.name`. All 20 applied plants were caught.
+- **A class instance converts as the instance.**
+  - `export =` of `new X()`, with the `.js`'s added own properties assigned in order.
+  - Internal calls stay `this.x`.
+  - A lazily required still-JavaScript dependency is typed locally by the members called, so no `.d.ts` goes into another lane's directory.
+- **`this.x` at a CommonJS module's top level is `module.exports.x`.** It converts to a call through the exported object.
+- **Raw SQL with `replacements` moves to `sql()` first, in its own change** (qms `claimNumber`): 5 test doubles were updated, and the fail-before was 21/871.
+- **`workflow` and `qms` passed the four gates.**
+  - The guards bite on the `.ts` (d12, d24, d05, p611).
+  - The live PostgreSQL 18.6 checks as `callibrator_app` passed: workflow 27/27, including ADR-101 separation of duties and the A-183 gates; qms 20/20, including the bound counter claim.
+- **`auditCoverage.p611` now reads class-instance `.ts` files and multi-line method heads.** Without that change, a converted class service would have silently dropped out of the guard.
+- **`scripts/load-check.ts` sets a random `STRIPE_SECRET_KEY` in its production child** (ADR-111), as it does the other required secrets.
+- **Finding:** A-330 (vendor search uses a case-sensitive LIKE), open.
+
+**Status:** Accepted, implemented 2026-09-28; amended 2026-09-28/30 (Amendments 1–22).
 
 ---
 
@@ -6084,10 +6637,487 @@ In the dark theme `--primary` blue-500 was 3.98:1 as text on `--card` and **3.68
 
 | Question | State |
 |---|---|
-| Contrast of a tenant-set brand `--primary` | **open** — validate on save (refuse or adjust a colour below 4.5:1 as text and on its `/10` tint), or derive the text shade from the brand colour |
-| An axe pass in the browser suite (`automate/smoke.browser.js`) | **open** — `docs/UI-UX/17-ACCESSIBILITY.md` asks for it; this pass ran axe in the browser once, from scratch scripts |
+| Contrast of a tenant-set brand `--primary` | **closed** by Amendment 1 below — derived per theme at render; the save path shows the result and does not refuse |
+| An axe pass in the browser suite (`automate/smoke.browser.js`) | **closed** by Amendment 1 below — `automate/a11y.browser.js`, run by `make test-browser` |
 
 **Status:** Accepted, implemented 2026-09-29. Evidence: the F-12 card's "Browser sweep (ADR-090)" section in `TASKS/AUDIT-2026-09-FRONTEND.md`.
+
+### Amendment 1 (2026-09-29, later): a tenant's brand colour is derived per theme, never refused; reduced motion is global; the sweep is in the browser suite
+
+**Context.** Two of the items left open above. (1) `TenantBrandingProvider` wrote a tenant's `primaryColor` straight into `--primary` for **both** themes and guessed black or white text by a luminance threshold. `#ffff00` read at 1.07:1 as text on the light card; a navy such as `#1e3a8a` at 1.6:1 on the dark card. (2) The sweep lived in scratch scripts. When it was rebuilt as a suite, it also found that reduced motion is honoured only class by class: the sign-in page's fade and scale entrances and the landing page's ping and nav transitions still ran under `prefers-reduced-motion: reduce`. It found contrast failures the original sweep never reached, because they sat below the fold on `/`: the partner marquee's `text-muted-foreground/60` at 2.45:1, and the "how it works" step numbers in `text-primary/25` at 1.48:1. Both were fixed and then **superseded**: Phase 10 (ADR-098) deleted those landing sections on 2026-09-30 while this work was in flight.
+
+**The debate (brand colour).** *(a) Validate on save.* The backend refuses a colour below 4.5:1 as text and on its `/10` tint, or picks a foreground for it. For: the administrator sees the rule, the stored colour is the rendered one, and any other renderer (e-mail, PDF) inherits a safe value. Against, and it decides the question: **no single colour can pass both themes.** As text at 4.5:1 it needs a relative luminance of at most 0.183 on the light card (`#ffffff`) and at least 0.214 on the dark card (`#1e293b`). A save-time rule could therefore only refuse every colour for one theme or the other. Storing two colours would need a migration and a second field that nobody asked for. Auto-picking a foreground fixes the fill but not the colour as text, where most of ADR-090's 79 primary failures were. *(b) Derive at render.* The frontend turns the one stored colour into one primary per theme, keeping its hue and saturation and moving only its lightness (darker in light, lighter in dark), and only as far as the ADR-090 rule needs. A colour that already passes is used exactly as chosen. For: it always yields a readable result, it keeps the brand's identity, and the administrator is never refused a legitimate brand. Against: the rendered shade can differ from the stored one (see below), and a second renderer would have to reuse the derivation.
+
+**Decision**
+
+- **(b), with the save path made honest about it.** `frontend/src/lib/brandColor.ts` (`accessibleBrandPalette`) derives the light and dark primary and foreground from the tenant's `#RRGGBB`. It checks against the same surfaces and tints as the ADR-090 table (light: `--background`, `--card`, `--muted`, and the `/10` and `/15` tints over each; dark: the same with the `/10` tint), and a test fails if those surfaces drift from `globals.css`. `TenantBrandingProvider` sets `--brand-primary-{light,dark}` and `--brand-primary-foreground-{light,dark}` on `<html>` and marks it `data-tenant-brand`. `globals.css` picks the pair under `:root[data-tenant-brand]` / `:root.dark[data-tenant-brand]`, so a theme switch needs no script. The provider never writes `--primary` itself, and removes one an earlier build left behind.
+- **The save path.** The tenant form (`TenantFormFields`) shows, under the colour field, the shade each theme will render and whether it was "adjusted for contrast". The field's `<label>` is now associated with it. The backend validator (`tenant.validator.ts`) stays **form-only** (`#RRGGBB`) **by decision**, with a comment saying why, and `tenant.brandColor.adr090.test.ts` pins that a low-contrast colour is accepted, so a well-meant "reject bad colours" rule does not come back.
+- **Reduced motion is global.** A last block in `globals.css` ends every animation and transition at once (`0.01ms`, one iteration; the entrance classes use `forwards`, so content lands visible) under `reduce`. The one exception is `animate-spin`: a spinner is a status, and a frozen one reads as a hang.
+- **The sweep is a suite.** `automate/a11y.browser.js` runs after the smoke in `make test-browser`. It uses the same `puppeteer-core` and `axe-core`, with no new dependency. It checks WCAG 2.1 AA + best-practice axe on 6 public and 20 dashboard pages in both themes, the six key create dialogs' focus contract in both themes, reflow at 200% zoom, reduced motion, and the brand colour (`#ffff00` set on the run's tenant, then restored).
+
+**Alternatives considered:** (a) above; storing a light and a dark brand colour (a migration and a second field for a problem the derivation solves); mixing toward black or white in RGB instead of moving HSL lightness (it drifts the hue more for saturated colours); keeping the per-class reduced-motion blocks and adding the missing classes (the next entrance class would be missed again, the way these were).
+
+**Implications, including the bad ones**
+
+- **What renders can differ from what the tenant typed.** `#ffff00` renders in the light theme as a dark olive-yellow. The form says so before saving, but a brand manager may still object. The only compliant alternative is a different colour, not the same one.
+- **The derivation lives in the frontend only.** Anything else that renders the brand colour (an e-mail template, a PDF, a native client) must reuse it or re-derive it. Today nothing else does (`primaryColor` is read by `tenant.service.js` and the frontend only).
+- **Global reduced motion also stops decorative loops that were fine**, and any future animation that carries meaning (a progress bar) must opt out explicitly the way `animate-spin` does.
+- The suite needs a running, seeded stack and takes about ten minutes, because every page waits for its `<h1>` and for its animations to end. It is not in `make verify`.
+
+**Status:** Accepted, implemented 2026-09-29. Evidence: `MEMORY/records/2026-09-29-feauto-a11y-f05-brand.md`. This closes the "brand `--primary`" and "axe in the browser suite" rows of the Open table above.
+
+---
+
+## ADR-093: Request Validation Is Zod and Joi Is Removed; the Validation 400 Keeps Its Status, Envelope and Message, and the Wording Inside `details` Changes; One Middleware and One Helper
+
+**Date:** 2026-09-29 · **Card:** P9-11 · **Decided by** the owner (relayed by the coordinator, 2026-09-29), overriding the orchestrator's earlier "fully byte-compatible `details`" · **Realises** ADR-038's runtime-validation row · **Answers** the P9-11 spec's open questions 1, 2 and 4 (`MEMORY/specs/P9-11-validation-error-contract.md`) · **Works with** ADR-087 (toolchain; a conversion never changes behaviour — amended here for this card by the owner's decision), ADR-092 (lint at zero) · **Record:** `MEMORY/records/2026-09-29-p9-11-validators-zod.md`
+
+**Context.**
+- The P9-11 spec found five validation-400 surfaces, not one: A, `validate(schema)`; B, metered billing's own `validateBody`/`validateQuery` (another envelope, and a generic 500-style message in production); C, each validator file's own helper, in four shapes; D, a helper's throw answered by `asyncHandler`, whose `errors` never reach the wire; E, direct `schema.validate` calls in controllers and services. 41 contract suites pinned surfaces A, B, C and D byte for byte.
+- The orchestrator first decided `details` must stay byte-compatible. The helper found that native Zod cannot do that. The wording differs for every issue kind, and so does acceptance. Joi's uuid accepted braces and no hyphens, its email checked the IANA TLD list, `Joi.date()` parsed any `Date`-parsable string, its number conversion refused `""`, `trim()` ran before `allow("")`, and its object output kept the input's key order.
+- The only byte-compatible route was a Joi re-implementation on top of Zod. It was prototyped and then withdrawn, because the owner decided otherwise before it landed.
+- **The owner's decision:** the project is in development. Replace Joi with Zod in every validator, in one change. Remove the `joi` package. Keep the HTTP contract that matters (status, envelope, the top-level message, `details` only outside production). Let the wording inside `details` change, and list every changed string.
+
+### Decision
+
+1. **Zod replaces Joi, and `joi` is gone.**
+   - `zod` `^4.6.5` is a direct backend dependency (`npm install zod@latest --workspace backend`). `joi` is uninstalled (`npm uninstall joi --workspace backend`), and its transitive `@hapi/*` packages leave the lockfile with it.
+   - Nothing else depended on joi (`npm ls joi --all` showed only the backend; the frontend never used it).
+   - `npm audit`: 0. `npm ls --all`: exit 0. No new install script, so `allowScripts` is unchanged.
+   - Package swaps under the owner's standing rule: **joi 18.2.9 → zod 4.6.5**. The reason is ADR-038: the schema is the runtime check and the request type.
+2. **The validators.** Every `backend/src/validators/*.validator.js` is a Zod `.ts` module; `iot.validator.ts` moved from Joi too.
+   - `fields.ts` holds the shared field schemas and the explicit conversions (item 6). `input.ts` holds the one input helper (item 4).
+   - `audit.validator` and `webauthn.validator` are **deleted**. They exported only the dropped helper, and nothing imported them. Their contract suites went with them.
+   - `calibrationDeviceReinstate.validator.ts` is new. The reinstate schema lived in its service (surface E). It is its own module because its statuses are a deliberate subset of the device ENUM, while `calibrationDevices.validator` is held `equal` to the ENUM by D-26.
+   - `gdpr.validator#rectifiedEmailSchema` replaces gdpr.service's inline Joi email check.
+3. **`validate(schema, { from })` is the only way to use a schema as middleware.**
+   - `middlewares/validation.middleware.ts` checks `req.body` by default. An absent body is checked as `{}` (A-09).
+   - `{ from: "query" | "params" | [...] }` checks the declared source, or the merge of several. In a merge a **path parameter always wins**, whatever order is written.
+   - On success the parsed value is on `req.validated`, declared in `src/types/express.d.ts` as `unknown` and read typed with `validated(req, schema)`, which refuses a schema the request was not validated by. `req.body` is replaced only when the source is the body, as before, so existing handlers are unchanged.
+   - Passing `schema.parse` (or `safeParse`, `parseAsync`) to a router is TS2769 in a `.ts` route. `.js` routes are held to the same rule by a new source guard, `tests/guards/schemaAsMiddleware.p911.test.ts`, which has a bite test.
+4. **Surfaces B, C and E are unified.**
+   - **B is folded.** `meteredBilling.route` mounts `validate(schema)` and `validate(schema, { from: "query" })`, and `validateBody`/`validateQuery` are deleted. A metered-billing 400 now has the common envelope, and in production it says "Validation Error" instead of the generic "An unexpected error occurred". `req.query` is still not reassigned.
+   - **C is replaced by `validators/input.ts`**:
+     - `validateInput(data, schema)` returns the value, or throws the plain `{ status: 400, message: "Validation failed", errors: [{ field, message }] }` that most callers already threw;
+     - `checkInput(data, schema)` answers `{ ok, value }` or `{ ok: false, errors }`;
+     - `fieldErrors(zodError)` gives the field errors.
+     - Both helpers check `data ?? {}`. No validator module exports a helper of its own, and the rewritten `bodylessBody.a09` guard holds that.
+   - Callers moved:
+     - controllers: calibrationDevices, calibrationRecords, certificate, certificatePdf, dataRetention, featureFlag, networkSecurity, oidcProvider, scim, stock, tenant, tenantLifecycle, warehouse (`validateInput`); user, sso, iot, menuGroup, tenantHierarchy (`checkInput`);
+     - services: stock, user, warehouse, tenant, certificate, calibrationDevices, calibrationRecords (`validateInput`); auth, calibrationDevices' CSV import, calibrationDeviceReinstate (`checkInput`).
+   - Each caller keeps its own throw or answer shape; only the source of the field list changed. The four helpers that threw a key-map (`{ tenantId: "…" }`) now throw the list. That shape never reached the wire (surface D).
+   - `auth.controller`'s three helper calls discarded their result (auth.service validates), so they are deleted.
+   - **E:** tenantHierarchy.controller, menuGroup.controller, calibrationDevices.service (×2), calibrationRecords.service, calibrationDeviceReinstate.service and gdpr.service no longer call `schema.validate`.
+5. **What stays of the HTTP contract, and what changes.** Unchanged:
+   - HTTP 400;
+   - `{ success: false, status: 400, message, data: null }`, in that key order;
+   - the top-level `message`: "Validation Error" from `validate()`, "Validation failed" from the helpers;
+   - `details: [{ field, message }]` **only outside production**, with `field` the path joined by dots.
+
+   The wording inside `details` is Zod's, except where a schema carried a message of its own: the password rule, "Passwords do not match", "Domain is required" / "Must be a valid hostname", "ids is required" / "Select at least one notification to delete", the tenant logo rule, the webhook `secret` refusal, "Provide iotEnabled and/or readingTolerance", "endDate must be after startDate", and admin's flag problems. Every contract-suite string that changed is in the table below.
+
+   **No frontend code reads `details`.** `client.ts` reads `message`. On the auth routes the service answers "Validation failed" with no `details` at all. So no user-visible text changed, and no further `.error` overrides were needed for login or registration.
+6. **Conversion is explicit, per field, and narrower than `z.coerce`.**
+   - `fields.ts` provides `numeric(schema)`, `booleanish()`, `dateLike()`, `isoDate()`, `isoDateText()`, `caseless(values, "upper" | "lower")`, `optionalText(max)`, `nullableText(max)`, `jsonObject()` and `uuid()` (`z.guid()`).
+   - A string is converted only when it spells a number, or "true"/"false". `z.coerce.number()` would turn `""`, `null`, `true` and `[]` into numbers, and `z.coerce.boolean()` turns `"false"` into `true`.
+   - `numeric` refuses a number beyond the safe-integer range, as before.
+   - Unknown keys are stripped (`z.object`'s default). Nothing is `.strict()` except the iot tolerance bounds, where a misspelt bound was already refused. The roles menu bodies stay open (`z.looseObject({})`), as they always were; declaring them is its own change.
+7. **`utils/jsonShape` is Zod** (cleared by the lead).
+   - The same 14 keys, frozen; `jsonShape(key)` still returns `validator` (arity 1, `shapeKey`).
+   - The D-27 types are now the shapes' `z.infer` (`MetricBounds` keeps its at-least-one-of union).
+   - Acceptance is unchanged: `null` and `undefined` pass, as before (Sequelize validates an unset JSON column with `undefined`; found by `tenantBackup.twoTenant`). Only the text after "has the wrong shape:" changed.
+
+### Acceptance differences, measured — not assumed
+
+A differential run (scratch `p911/differential.ts`) set every exported object schema of every Joi validator at `HEAD` against its Zod successor, under the options the application used (`abortEarly: false`, `stripUnknown: true`).
+- **Coverage of the run:** 155 schemas and **232,655 generated payloads**, of 1,501 per schema, drawn from each key's type, limits, allowed values and edge cases.
+- **Every payload-level acceptance difference falls into one of two classes** (351 payloads, 0 unexplained):
+  - **a UUID in braces, or without hyphens.** Joi accepted it; Zod refuses it ("Invalid GUID"). That is a deliberate tightening: every client sends the canonical form;
+  - **an email whose top-level domain is not on the IANA list.** Joi refused it; Zod accepts it. The new check does not consult the list, and adding it back would mean a TLD-list dependency.
+- **Four differences were found and removed before landing:**
+  - `registerSchema.lastName` trims before its length rule, so "  " is again the empty last name;
+  - `addDomain.domain` accepts an IP address, or a name whose last label starts with a letter, as Joi's `hostname()` did; Zod's own accepts "123";
+  - `fields.numeric` refuses unsafe numbers;
+  - `fields.email()` is an RFC 5322 dot-atom pattern with RFC 5321's limits (64 characters before the `@`, 254 in all). Zod's default pattern refused `%`, `!` and `#` in the local part, which Joi accepted; the services-test agent found this through A-128's `a_b%c@…` case. The length limits were found when the live E2E `http` spec's 50,000-character email answered 401, where Joi had answered 400.
+- **Output differences on accepted payloads:**
+  - the list-query `status` filter of `getAllTenantsQuery` and `getAllUsersQuery` is upper-cased, and that of `getWarehousesQuery` lower-cased. Joi returned the matched spelling. No controller reads these three filters;
+  - `createCalibrationRecordSchema.calibrationDate` defaults to a `Date`, not Joi's millisecond number. The DATE column stores the same instant.
+- **The test agents found four more, which no test pinned:**
+  - `isoDate()` refuses "2026", "2026-01", a "+0700" offset without a colon, and an impossible date such as "2026-02-30". Joi accepted them, and rolled the last over to 2026-03-02;
+  - a webhook `url` spelt "HTTPS://…" is accepted, where Joi refused it;
+  - a duplicate webhook event is reported at `events`, not `events.1`.
+- **`jsonShape` + the iot tolerance:** 14 keys × 73 samples = **1,022 checks, 0 differences** against the Joi originals (scratch `p911/compare-jsonshape.ts`). The lead's full-barrel model harness, with the Joi originals overlaid, agrees independently.
+
+### Not fixed by this change (audit items)
+
+- **A-272:** surface D. A thrown validation failure reaches the wire as "Validation failed" with `details: "[object Object]"`. It is pinned by `middleware.contract.test.ts`, and the fix belongs in `controllerWrapper.util`.
+- **A-273:** `dataRetention`, `featureFlag` and `tenantLifecycle` merge `{ ...req.params, ...req.body }` with **the body winning**. The fix is `validate(schema, { from: ["params", "body"] })`.
+- **A-274:** the unused `includeDeleted` scopes on 13 models (P9-10 spec, open question 2).
+- **Fixed by the fold, as the owner decided:** metered billing's generic production 400 (surface B).
+
+### Every contract-suite string that changed
+
+- **How the literals were re-recorded.** The 38 per-validator suites keep the same payloads and the same schemas as before. Their literal `details` were re-recorded from the Zod validators by scratch `p911/gen-contracts.ts`, which also wrote the old/new pairs to `p911/contract-diff.json`.
+- **What changed.** There are 79 `details` strings in total, and **2 are unchanged** ("Domain is required", "ids is required"). Every other string changed as the table below shows.
+- `vendor.qualifyVendor` now reports **one** entry where Joi reported two (`any.only` and `string.base` for the same key).
+- `admin`'s own message lost its quotes: `"flags" is required` → `flags is required`.
+
+| Suite (schema) | Joi `details` (before) | Zod `details` (now) |
+|---|---|---|
+| `admin` `updateTenantFlagsSchema` | `flags`: "flags" is required | `flags`: flags is required |
+| `auth` `registerSchema` | `firstName`: "firstName" is required; `username`: "username" is required; `email`: "email" is required; `password`: "password" is required | `firstName`: Invalid input: expected string, received undefined; `username`: Invalid input: expected string, received undefined; `email`: Invalid input: expected string, received undefined; `password`: Invalid input: expected string, received undefined |
+| `billing` `updateSubscription` | `(root)`: "value" must contain at least one of [planId, status, billingCycle] | `(root)`: Provide at least one of planId, status, billingCycle |
+| `calibrationDevices` `getCalibrationDevicesQuery` | `page`: "page" must be a number | `page`: Invalid input: expected number, received object |
+| `calibrationRecords` `getCalibrationRecordsQuery` | `page`: "page" must be a number | `page`: Invalid input: expected number, received object |
+| `certificate` `approveCertificateSchema` | `authMethod`: "authMethod" is required; `authPayload`: "authPayload" is required; `meaning`: "meaning" is required | `authMethod`: Invalid option: expected one of "password"|"mfa"; `authPayload`: Invalid input: expected string, received undefined; `meaning`: Invalid input: expected string, received undefined |
+| `content` `createPost` | `type`: "type" is required; `title`: "title" is required | `type`: Invalid option: expected one of "BLOG"|"NEWS"; `title`: Invalid input: expected string, received undefined |
+| `customDomains` `addDomain` | `domain`: Domain is required | `domain`: Domain is required |
+| `dataRetention` `retentionPolicySchema` | `tenantId`: "tenantId" is required; `policyKey`: "policyKey" is required; `days`: "days" is required | `tenantId`: Invalid input: expected string, received undefined; `policyKey`: Invalid input: expected string, received undefined; `days`: Invalid input: expected number, received undefined |
+| `eSignature` `createWorkflow` | `documentId`: "documentId" is required; `signers`: "signers" is required; `subject`: "subject" is required | `documentId`: Invalid input: expected string, received undefined; `signers`: Invalid input: expected array, received undefined; `subject`: Invalid input: expected string, received undefined |
+| `featureFlag` `flagValueSchema` | `tenantId`: "tenantId" is required; `flagKey`: "flagKey" is required; `enabled`: "enabled" is required | `tenantId`: Invalid input: expected string, received undefined; `flagKey`: Invalid input: expected string, received undefined; `enabled`: Invalid input: expected boolean, received undefined |
+| `finance` `createAssetFinance` | `deviceId`: "deviceId" is required; `purchasePrice`: "purchasePrice" is required; `purchaseDate`: "purchaseDate" is required; `usefulLifeYears`: "usefulLifeYears" is required | `deviceId`: Invalid input: expected string, received undefined; `purchasePrice`: Invalid input: expected number, received undefined; `purchaseDate`: Invalid input; `usefulLifeYears`: Invalid input: expected number, received undefined |
+| `gdpr` `requestErasure` | `reason`: "reason" is required; `confirm`: "confirm" is required | `reason`: Invalid input: expected string, received undefined; `confirm`: Invalid input: expected boolean, received undefined |
+| `iot` `deviceIdSchema` | `deviceId`: "deviceId" is required | `deviceId`: Invalid input: expected string, received undefined |
+| `kanban` `createCard` | `columnId`: "columnId" is required; `title`: "title" is required | `columnId`: Invalid input: expected string, received undefined; `title`: Invalid input: expected string, received undefined |
+| `maintenance` `createWorkOrder` | `deviceId`: "deviceId" is required; `title`: "title" is required; `type`: "type" is required | `deviceId`: Invalid input: expected string, received undefined; `title`: Invalid input: expected string, received undefined; `type`: Invalid option: expected one of "Preventative"|"Breakdown"|"Repair" |
+| `menuGroup` `assignMenuGroupSchema` | `roleId`: "roleId" is required; `menuGroupId`: "menuGroupId" is required | `roleId`: Invalid input: expected string, received undefined; `menuGroupId`: Invalid input: expected string, received undefined |
+| `meteredBilling` `createUsageAlert` | `metricName`: "metricName" is required; `threshold`: "threshold" is required | `metricName`: Invalid input: expected string, received undefined; `threshold`: Invalid input: expected number, received undefined |
+| `networkSecurity` `geofenceSchema` | `latitude`: "latitude" is required; `longitude`: "longitude" is required | `latitude`: Invalid input: expected number, received undefined; `longitude`: Invalid input: expected number, received undefined |
+| `notification` `deleteManySchema` | `ids`: ids is required | `ids`: ids is required |
+| `oidc` `oidcClientSchema` | `name`: "name" is required; `redirectUris`: "redirectUris" is required | `name`: Invalid input: expected string, received undefined; `redirectUris`: Invalid input: expected array, received undefined |
+| `qms` `createCapaSchema` | `ncId`: "ncId" is required; `title`: "title" is required; `actionPlan`: "actionPlan" is required | `ncId`: Invalid input: expected string, received undefined; `title`: Invalid input: expected string, received undefined; `actionPlan`: Invalid input: expected string, received undefined |
+| `roles` `assignRoleSchema` | `userId`: "userId" is required; `roleId`: "roleId" is required | `userId`: Invalid input: expected string, received undefined; `roleId`: Invalid input: expected string, received undefined |
+| `scim` `scimUserSchema` | `userName`: "userName" is required | `userName`: Invalid input: expected string, received undefined |
+| `session` `revokeSessionSchema` | `reason`: "reason" must be a string | `reason`: Invalid input: expected string, received object |
+| `sso` `ssoLoginSchema` | `tenantCode`: "tenantCode" is required | `tenantCode`: Invalid input: expected string, received undefined |
+| `stock` `createTransferSchema` | `fromWarehouseId`: "fromWarehouseId" is required; `toWarehouseId`: "toWarehouseId" is required; `itemName`: "itemName" is required; `quantity`: "quantity" is required | `fromWarehouseId`: Invalid input: expected string, received undefined; `toWarehouseId`: Invalid input: expected string, received undefined; `itemName`: Invalid input: expected string, received undefined; `quantity`: Invalid input: expected number, received undefined |
+| `storage` `updateStorageSettingsSchema` | `provider`: "provider" is required | `provider`: Invalid discriminator value. Expected 's3' | 'nfs' |
+| `tenant` `createTenantSchema` | `name`: "name" is required; `code`: "code" is required | `name`: Invalid input: expected string, received undefined; `code`: Invalid input: expected string, received undefined |
+| `tenantBackup` `createBackupSchema` | `name`: "name" is required | `name`: Invalid input: expected string, received undefined |
+| `tenantHierarchy` `createSubOrganization` | `name`: "name" is required | `name`: Invalid input: expected string, received undefined |
+| `tenantLifecycle` `suspendTenantSchema` | `tenantId`: "tenantId" is required; `reason`: "reason" is required | `tenantId`: Invalid input: expected string, received undefined; `reason`: Invalid input: expected string, received undefined |
+| `ticket` `createTicket` | `subject`: "subject" is required | `subject`: Invalid input: expected string, received undefined |
+| `user` `createUserSchema` | `username`: "username" is required; `firstName`: "firstName" is required; `lastName`: "lastName" is required; `email`: "email" is required; `password`: "password" is required; `roleId`: "roleId" is required | `username`: Invalid input: expected string, received undefined; `firstName`: Invalid input: expected string, received undefined; `lastName`: Invalid input: expected string, received undefined; `email`: Invalid input: expected string, received undefined; `password`: Invalid input: expected string, received undefined; `roleId`: Invalid input: expected string, received undefined |
+| `vendor` `qualifyVendor` | `approvalStatus`: "approvalStatus" must be one of [APPROVED, PENDING, REJECTED, CONDITIONAL]; `approvalStatus`: "approvalStatus" must be a string | `approvalStatus`: Invalid input: expected string, received object |
+| `warehouse` `createLocationSchema` | `warehouseId`: "warehouseId" is required; `name`: "name" is required; `code`: "code" is required | `warehouseId`: Invalid input: expected string, received undefined; `name`: Invalid input: expected string, received undefined; `code`: Invalid input: expected string, received undefined |
+| `webhook` `createWebhookSchema` | `url`: "url" is required; `events`: "events" is required | `url`: Invalid input: expected string, received undefined; `events`: Invalid input: expected array, received undefined |
+| `workflow` `createWorkflowSchema` | `name`: "name" is required; `resourceType`: "resourceType" is required; `steps`: "steps" is required | `name`: Invalid input: expected string, received undefined; `resourceType`: Invalid option: expected one of "Certificate"|"StockTransfer"|"MaintenanceWorkOrder"; `steps`: Invalid input: expected array, received undefined |
+
+Also changed, outside the per-validator table:
+- **`middleware.contract.test.ts`** (the bodyless and path-not-merged cases): `"tenantId" is required` → `Invalid input: expected string, received undefined`. Its surface-D case (`"[object Object]"`) is **unchanged** (A-272).
+- **`meteredBilling.validator.contract.test.ts`**: one case for the folded route replaces the two surface-B cases. It sends `?page=0` to `validate(getBillingHistory, { from: "query" })` and expects the common 400, in both modes, with `page`: `Too small: expected number to be >=1`.
+- **`audit.validator.contract.test.ts` and `webauthn.validator.contract.test.ts`** are deleted with their modules.
+
+### Alternatives considered
+
+| Alternative | Why not |
+|---|---|
+| **A Joi-compatible engine on Zod.** It was prototyped: the Joi 18 flow ported behind a Zod type, so every contract byte and every acceptance stayed | about 1,000 lines of a validation library to maintain, whose only purpose is to reproduce the one being removed. The owner's decision overtook it before it landed |
+| **Native Zod, with a formatter that restates messages in Joi's words** (the spec's first proposal) | it reproduces the text but not the acceptance (uuid braces, email TLDs, date parsing, number conversion, key order), so a "byte-compatible" 400 would still hide a behaviour change. The owner also lifted the wording requirement |
+| **Keep Joi** | its types do not reach the handler (ADR-038), and it means two libraries for one job |
+| **`z.coerce` for conversion** | it converts `""`, `null`, `true` and `[]` to numbers, and `"false"` to `true`. `fields.ts` converts only what spells a value |
+| **Fix surface D in this change** | the fix is in `controllerWrapper.util` (the lead's lane) and changes a pinned wire body. It is A-272, its own change |
+| **Make every path-parameter controller use `validate(schema, { from })` now** | the three body-wins controllers would change which `tenantId` they act on, a behaviour change that needs its own review (A-273). The option exists and is tested |
+
+### Implications, including the bad ones
+
+- **`details` text changed on every validation 400.** No frontend code reads it, but a script or an integrator that matched Joi's wording breaks.
+  - The live-contract smoke (`liveContract.smoke.test.js`) used to complete request bodies from Joi's words. It now restates Zod messages in those words (`restate()`) and reads schemas through `z.toJSONSchema`.
+- **UUIDs in braces or without hyphens are now refused** at every id field.
+- **Emails are no longer checked against the IANA TLD list.**
+- **`isoDate()` refuses four spellings Joi accepted:** `"2026"`, `"2026-01"`, an offset without a colon, and an impossible day.
+- **A status filter in a list query is case-folded:** upper case for tenants and users, lower case for warehouses. No controller reads these three filters today.
+- **A controller that throws `validateInput` still loses the field list on the wire** (A-272). This change neither made it worse nor fixed it.
+- **`z.infer` is the request type, but most controllers are still JavaScript.** No route uses the typed `validated(req, schema)` or `req.validated` yet. The three body-wins merges (A-273) are the first candidates.
+- **The JSON column shapes accept exactly what they did, but their error text changed.** A test or a log search on the text after "has the wrong shape:" breaks.
+
+### Evidence
+
+| Check | Result |
+|---|---|
+| Contract suites, `npm test -- src/tests/contracts/validation` | **39 suites, 45 tests passed** (38 per-validator suites plus `middleware.contract`) |
+| Differential, Joi at `HEAD` against Zod, under the application's options | 155 schemas, 232,655 payloads. Every payload-level acceptance difference is a braced or unhyphenated uuid, or an email TLD outside the IANA list: 351 payloads, **0 unexplained** |
+| `jsonShape` and the iot tolerance, against the Joi originals | **1,022 checks, 0 differences**. The lead's full-barrel harness, with the Joi originals overlaid, agrees |
+| Validator tests (rewritten by three agents), each validator's own figure | all 39 validator modules, `fields.ts` and `input.ts` at **100/100/100/100**. No test was left pinning a Joi acceptance that Zod lost |
+| Full backend gate, `npm run test:coverage -- --ci --forceExit` | exit 0: **700 of 724 suites passed (24 skipped), 13,272 tests passed (155 skipped), 100/100/100/100** |
+| `npm run typecheck` (TypeScript 7) | clean |
+| `npx eslint src/` | **0 errors** (237 warnings, none of a new kind) |
+| `npm run ratchet` | floor **1092 → 1050** (42 `.js` files gone), at the floor |
+| `npm uninstall joi --workspace backend`, then `npm audit` and `npm ls --all` | joi and its `@hapi/*` packages are gone from the lockfile; **0 vulnerabilities**; `npm ls` exit 0 |
+| `grep -rnwi joi backend/src backend/index.js` | **empty** |
+| Live E2E, first image, built from the tree at 09:41Z (P9-00 method, project `callib-p911`, port 25100, fresh volumes, seeded) | runs B and C: **53/53 specs, 392 tests**, per spec **equal to P9-00**. Run A failed on the oversized email (last row) |
+| Live E2E, final image, built from a snapshot of the working tree at 10:05Z | runs D (10:32Z) and E (10:34Z): **53/53 specs, 396 tests, 0 failed**. Per spec equal to P9-00 except `certificates` at 12 tests (P9-00: 8); another agent added those four to the spec in the working tree, and all four pass. Server log over D and E: **0 × 429**; the only 5xx were 2 × `POST /ai/query` 500 (no AI provider, as in P9-00). The stack, volumes, network and image were removed |
+| Why the final image used a snapshot | the shared tree was mid-P9-12, and `build:dist` refused it because `utils/jwt.util` existed as both `.js` and `.ts`. The snapshot keeps the `.js` half |
+| The E2E failure that was fixed | run A on the first image: `http` › "oversized email handled gracefully" answered **401**, where Joi had answered 400. Zod's email accepted a 50,000-character local part, and the login then failed. `fields.email()` gained RFC 5321's limits |
+| Frontend `npm test` | 157 suites, 1,408 tests passed |
+
+**Status:** Accepted, implemented 2026-09-29.
+
+---
+
+## ADR-095: Audit Rows Are Append-Only in the Database and Only Masking May Change Them; a System Role Cannot Be Soft-Deleted; the Backend Renders No Certificate PDF — the Frontend Renders It From a Data Document Whose Hash Binds Every Printed Field
+
+**Date:** 2026-09-29 · **Findings:** Q-34, Q-35, Q-36 (`TASKS/BACKLOG.md`), M-11 / ADR-078 D-1 ·
+**Authority:** the orchestrator decided Q-34 to Q-36 by best practice. For M-11 it first asked for a
+packaging fix, then relayed the **owner's decision (2026-09-29): certificate PDF rendering moves to the
+frontend**. · **Record:** [`records/2026-09-29-adr095-audit-append-only-pdf-frontend.md`](records/2026-09-29-adr095-audit-append-only-pdf-frontend.md)
+
+### 1. Q-34 — `audit_logs` is append-only as a database constraint (migration 0091)
+
+**Context.** ADR-051 Q-12 says audit rows are never purged, but only the services made it so. A live probe
+as `callibrator_app` on PostgreSQL 18.6 showed the application role holding UPDATE and DELETE on
+`audit_logs` (0057's blanket DML grant), with no trigger. `calibration_records` has had both layers since
+0057. **One legitimate UPDATE exists:** GDPR masking (A-135,
+`dataRetention.service#maskAuditTrail`). It replaces a data subject's `ip_address`, `user_agent` and
+personal/network values inside `changes` with `"[REDACTED]"`. ADR-051 chose masking over deletion, so it must
+keep working. Nothing else in `backend/src` updates or deletes an audit row. Every audit FK is RESTRICT
+(0030), so no FK action rewrites one either.
+
+**Debated for the masking path.**
+
+| Option | For | Against |
+|---|---|---|
+| (a) Forbid every UPDATE | simplest trigger; strongest "immutable" reading | breaks GDPR masking, which ADR-051 decided on; an erasure request could then only be met by deleting rows, the thing Q-12 forbids |
+| (b) A narrow SECURITY DEFINER masking function; direct UPDATE refused | a single, reviewable write path | the trigger still has to let the definer through. Whatever tells it "the caller is the definer" (a GUC, `current_user`) the owner can also produce, so the owner's direct UPDATE is not really refused. It also moves the masking rules into SQL, beside the service |
+| **(c) The trigger admits exactly the masking SHAPE, for every role (chosen)** | no bypass exists to be abused; the owner is held by the same rule; the service is unchanged | the trigger must understand the shape of `changes`, so a recursive jsonb comparison is needed |
+
+**Decision (c).** Migration `0091-audit-logs-append-only.ts`, the first TypeScript migration. Its
+manifest name, `0091-audit-logs-append-only.js`, keeps the `.js` convention (P9-23). It runs in one
+transaction:
+- `audit_logs_masks_only(old jsonb, new jsonb)` (IMMUTABLE, recursive) is true when `new` is `old` with
+  values under object keys replaced by the mask. The key sets and array lengths must stay the same, and the
+  root is never replaced.
+- The trigger `audit_logs_append_only` (BEFORE UPDATE OR DELETE, per row) and `audit_logs_no_truncate`
+  (BEFORE TRUNCATE):
+  - DELETE and TRUNCATE are refused (`42501`).
+  - An UPDATE passes only when every column but `ip_address`, `user_agent` and `changes` is unchanged
+    (compared as "everything except those three", so a column added later is covered too), `ip_address`
+    and `user_agent` change only *to* the mask, and `changes` passes `audit_logs_masks_only`. A mask is
+    final.
+- Both triggers are **ENABLE ALWAYS**, which goes beyond 0057: they fire even under
+  `session_replication_role = replica`, so only DDL on the table gets past them.
+- `REVOKE UPDATE, DELETE, TRUNCATE ON audit_logs FROM callibrator_app`, then `GRANT UPDATE (ip_address,
+  user_agent, changes)`. This is the second, independent layer.
+- The migration throws if the table or the role is absent, and is idempotent. `down` drops both triggers and
+  both functions and gives back table-wide UPDATE and DELETE. No row is touched.
+- The boot schema check (`utils/schemaVerify.util.ts` EXPECTED_OBJECTS) now names both triggers: 10 control
+  objects.
+
+**Evidence.**
+- `tests/migrations/0091-audit-logs-append-only.test.ts` passes 10/10: the statements, a refusal instead of a
+  skip, idempotence, `down`, role-name safety, and the trigger's mask equal to `dataRetention.service`'s
+  `PII_MASK`.
+- `tests/services/auditLogAppendOnly.q34.live.test.ts` on `pgvector/pgvector:pg18` (PostgreSQL 18.6), with
+  the owner a **superuser** as in compose. Two scratch databases:
+  - `Q34_MODE=upgrade`, 7/7: `sync()` + migrations up to 0090, audit rows written, then 0091 over them.
+    **Fail-before in the same run:** before 0091, `callibrator_app` DELETEs an audit row and rewrites its
+    `action`, and the owner DELETEs one.
+  - `Q34_MODE=fresh`, 7/7: `runSchemaSetup`, the boot path, 64 migrations.
+  - Each mode asserts the following:
+    - **As `callibrator_app`** (`SET ROLE`): DELETE, TRUNCATE and `UPDATE action` are refused by privilege;
+      a non-mask `ip_address` and a forged `changes` are refused by the trigger; INSERT still works.
+    - **As the owner:** DELETE, `DELETE` of all rows, TRUNCATE (plain and CASCADE) and ten forging UPDATEs
+      are refused by the trigger, still refused under `session_replication_role = replica`, and the row is
+      unchanged afterwards. The owner may mask, and cannot un-mask.
+    - **`dataRetention.maskPII` run as `callibrator_app`** through `enterApplicationRole` masks two rows
+      exactly and audits itself. A second pass masks 0.
+    - `down`, then `up` twice, restores the control.
+  - Grants read back through `information_schema` on the fresh database: INSERT and SELECT on the table,
+    UPDATE on the three columns only.
+- The backend image booted: the migrations applied, 0091 among them, then
+  `[schema-verify] OK: 72 tables, 867 columns and 10 control objects`. In that database, `callibrator_app`'s
+  DELETE is refused by privilege and the owner's by the trigger.
+
+**Implications, the bad ones included.**
+- A later migration that must rewrite audit rows (none should) has to `ALTER TABLE audit_logs DISABLE
+  TRIGGER …` in its own transaction, say why, and re-enable it. That is deliberate friction.
+- Masking accepts `"[REDACTED]"` under **any** object key, not only the service's key lists. A caller with
+  UPDATE on the three columns can therefore erase any value inside `changes`, a resource id for example. It
+  can never forge or restore one. Binding the key list into SQL was rejected: the service would drift from
+  it and fail loudly at the first new key.
+- The live suites whose cleanup does `DELETE FROM audit_logs` (`batchJob.w07`, `calibrationScheduler.w03`,
+  `tenantHardDelete.w20`) state that they run on a `db.sync()` schema without migrations. Run on a migrated
+  database, their cleanup is refused. That is correct, and noted here.
+- `enterApplicationRole`'s boot self-check still probes only `calibration_records`. Extending it to
+  `audit_logs` is left open (O-1 below).
+
+### 2. Q-35 — `Role.prototype.softDelete` refuses a system role
+
+The guard read `this.is_system`, which is always undefined (the attribute is `isSystem`). One line in
+`models/role.model.ts` fixes it; the Phase 9 lead was told first and flipped its model-equality harness.
+Nothing in `backend/src` calls `Role#softDelete` today, so no route changes. The guard now holds for the next
+caller. Test: `tests/models/roleSoftDelete.q35.test.ts` passes 2/2. **Fail-before:** 1/2, "Received promise
+resolved instead of rejected", with a SUPERADMIN role marked deleted.
+
+### 3. Q-36 — `keyRotation.s08.live` covers the S-20 seeds, and is green
+
+The rehearsal now seeds users' TOTP seeds as well: one sealed `mfa_secret` and one sealed
+`mfa_pending_secret` under key A, plus one **pre-0086 plaintext** seed. It reads them back as login does
+(`mfa.openSecret`). The expected report names every target, with both the rewrapped and the converted
+count: users `mfa_secret` 1 rewrapped and 1 converted, `mfa_pending_secret` 1. It expects 8 re-wraps and
+1 conversion in total, 9 envelopes under key B afterwards, and the interrupted-rotation step now fails
+under key A alone, as intended. Before, step 2's first assertion failed, so step 5 ran against un-rotated
+rows and "passed" for the wrong reason. **Result:** `DATA_PG_LIVE_TEST=1 … keyRotation.s08.live` on
+PostgreSQL 18.6 passes **5/5** (it was 3/5).
+
+### 4. M-11 — the backend renders no certificate PDF
+
+**Context.** ADR-078 D-1: in the shipped pkg binary, `POST /certificates/:id/pdf` answered 500. puppeteer 25
+is ES-module-only, and Node's ESM loader cannot read pkg's `/snapshot`.
+
+Two findings came out of the work:
+- Loading puppeteer from a real `node_modules` shipped beside the binary did load it in the image. Chromium
+  then died with SIGTRAP ("chrome_crashpad_handler: --database is required") because uid 997 had no home
+  directory. With a home directory, the image rendered a real PDF (`%PDF-1.4`, 77,547 bytes, QR and verify
+  URL present).
+- The rendered PDF printed the draft watermark as escaped text (`<div class="watermark">draft</div>`). The
+  generic substitution loop escaped the block before its raw pass. This was fixed (test first), then removed
+  with the renderer.
+
+**The owner then decided that PDF rendering moves to the frontend.** The options debated before that
+decision:
+- (a) Make pkg include the ESM package: tried by the P7-04 drill, and it did not work.
+- (b) Load puppeteer from disk beside the binary: it works, as proven above, but it ships ~29 MB of modules
+  plus Chromium.
+- (c) Run `node dist/index.js` on a Node image: pkg's packaged-mode path logic diverges.
+- (d) Render elsewhere.
+
+The owner chose (d), in the frontend.
+
+**Integrity: what is hashed and signed now.** Nothing in this codebase ever hashed or signed the PDF bytes:
+- The printed `integrityHash` was SHA-256 over a canonical JSON of certificate DATA.
+- The Part 11 `documentHash` (`certificate.service#logSignature`) is over certificate data.
+- The HMAC was returned but never persisted or verified (A-241).
+
+So "the stored-PDF hash" needs no successor.
+
+| Option | For | Against |
+|---|---|---|
+| Keep only v1 | no change | v1 omits summary, conditions and notes. The server-stored file used to be the authoritative copy a third party could view; without it, a printout's summary could be altered and still match |
+| Hash the frontend-rendered bytes | "the file is signed" | the bytes are produced in a browser that nobody attests; the server would sign whatever it was sent |
+| **v2 over every printed certificate column, v1 kept unchanged (chosen)** | every printed field of the certificate row is bound; issued printouts still verify; the scheme is named inside the payload | two hashes on the verification page; names of people, the device and the tenant are printed live and not bound |
+
+**Decision.**
+- **Backend.**
+  - New `services/certificateDocument.service.ts`. It holds the v1 payload, moved **byte for byte**
+    (pinned against the original function and a fixed hex, 6 fixtures), and the v2
+    `certificate-content-v2` payload (v1's fields + summary, conditions, notes, calibratedBy, approvedBy,
+    digitalSignature and its key id; the scheme name inside).
+  - `toCertificateDocument` and `getCertificateDocument`. Every include is `required: false`, names only
+    and never an email, and the server HMAC over v2 is returned to authenticated callers.
+  - New route `GET /certificates/:certificateId/document` (auth, validateUuid,
+    `dynamicAccess("certificate","read")`), enveloped. Another tenant's certificate is a 404.
+  - `POST /certificates/:certificateId/pdf` is **removed**.
+  - `GET /:certificateId/pdf` serves only a PDF **stored before this change** (`getStoredPdf`) and never
+    renders; with no stored file it answers an enveloped 404 naming `/document`.
+  - The public `GET /verify/:number` keeps `integrityHash` (v1) and adds `integrity` (v2). For a signed,
+    non-withdrawn certificate it adds `document`, the same fields its stored PDF printed, without the HMAC.
+    `documentUrl` and the stored-document capability are unchanged, so old files stay viewable.
+  - `templates/certificate.html`, the puppeteer path, Chromium, `fonts-liberation` and
+    `PUPPETEER_EXECUTABLE_PATH` (Dockerfile, compose, the three Helm values files, the configmap and
+    `.env.example`) are removed.
+  - `puppeteer` moves to backend **devDependencies**. The documentation generators and
+    `automate/smoke.browser.js` still use it; the lockfile diff only flags its closure `dev`.
+- **Frontend.**
+  - `lib/certificatePdf.ts` (jsPDF, already a dependency) renders the document: every field, a watermark
+    for anything unsigned, the QR of the server's `verifyUrl`, and "Integrity (certificate-content-v2,
+    SHA-256): <hash>".
+  - Text outside Latin-1 is folded (accents) or printed as `?`.
+  - The PDF is downloaded as a Blob.
+  - The certificates table fetches `/document` and then renders.
+  - The public verification page offers "Download certificate PDF" from `document`, shows both hashes,
+    and still frames a stored PDF.
+  - Debated before building:
+    - (a) jsPDF client-side generation was **chosen**: a real downloadable file, testable byte for byte,
+      already a dependency, no `eval`, and it injects no script.
+    - (b) A print stylesheet plus `window.print()` produces no file and cannot be tested for `%PDF`.
+    - (c) A Next server route would move Chromium into the frontend image, against the owner's intent.
+- **Existing certificates.** No column changes, so no migration. The v1 hash is recomputed from data and
+  still matches every issued printout. Stored files stay in `uploads/certificates` and are served as
+  before.
+
+**Evidence.**
+- Backend tests:
+  - `certificateDocument.service.m11.test.ts` 34/34.
+  - `certificatePdf.service.test.js` 34/34.
+  - `certificatePdf.controller.test.js` 9/9.
+  - `certificates.lifecycle.twoTenant.test.ts` with the new `@two-tenant … GET /:certificateId/document`
+    marker, cross-tenant 404, the owner's control, and `twoTenantRoutes.guard` green.
+  - `certificateFrame.p708`, `certificates.route`, `denyPlatformAuthoring.a127`,
+    `certificates.approve.a62`, `certificates.twoTenant.a145`, `email.templates` and
+    `istanbulIgnore.a32` are updated and green.
+  - Coverage of every touched backend file is 100/100/100/100.
+- Frontend tests:
+  - `lib/certificatePdf.test.ts` 14/14: a real jsPDF render read back byte for byte.
+  - `lib/certificatePdf.download.test.ts` 1/1.
+  - `verify/[certificateNumber]/__tests__/page.m11.test.tsx` 5/5.
+  - `CertificatesTable.m11.test.tsx` 2/2.
+  - `calibration.service.test.ts` passes, including the new endpoint.
+- Image and live check (details in the record):
+  - The backend image is **664 MB, down from 1.68 GB** with Chromium.
+  - The API on the image: the document 200, the stored `/pdf` enveloped 404, `POST /pdf` 404, submit →
+    approve → sign, and verify `valid` with `document` whose v2 hash equals the authenticated one.
+  - `automate/smoke.browser.js` passes **7/7**: the dashboard PDF and the public verification-page PDF, each
+    a real `%PDF` with the QR image, the number and the v2 hash, and 0 CSP violations.
+  - `pdftotext` of the saved PDF shows every field and the hash.
+  - The P9-00 E2E baseline, runs A and B: 52/53 suites (395 tests); `certificates.e2e` 12/12. The one
+    failure, `ai.e2e` (409 vs 200/500), is another lane's in-flight A-281 change.
+
+**Implications, the bad ones included.**
+- **The PDF bytes are no longer a server-produced artifact.** A holder's PDF is only as trustworthy as its
+  match against the verification page. The QR and the v2 hash make that match checkable, but nothing
+  signs the file itself. Before, the server-stored PDF was the reference copy.
+- Two renderings of the same certificate can differ in layout: the browser's fonts do not matter, but
+  jsPDF versions do. Only the data is attested.
+- Names printed for people, the device and the tenant come from live rows and are not hashed. A later
+  rename changes the printout, not the hash. Nameless accounts print "-" where the old template printed
+  their email.
+- jsPDF's standard fonts are Latin-1: a name in another script prints as `?`. Embedding a Unicode font is
+  the fix if a tenant needs it.
+- `GET /:certificateId/pdf` now 404s for every certificate issued after this change. Clients must use
+  `/document`. `POST /:id/pdf` is gone, and the `certificate:generate` permission still gates the other
+  routes it gated.
+- The Helm and compose memory limits were sized for Chromium and were **not** re-sized (marked in place).
+
+**Status:** Accepted, implemented 2026-09-29.
+
+### Amendment 1 (2026-09-30) — the open items closed: the boot self-check covers `audit_logs`, live suites drop a database instead of deleting audit rows, memory re-sized, a Unicode font in the PDF
+
+Record: [`records/2026-09-30-adr095-followups.md`](records/2026-09-30-adr095-followups.md).
+
+- **O-1.** `enterApplicationRole` (`utils/dbRole.util.ts`) now refuses the boot unless the application role
+  has no DELETE and no TRUNCATE on `audit_logs`, keeps INSERT, and may UPDATE **exactly** `changes`,
+  `ip_address` and `user_agent`. A missing masking grant is refused as well as an extra one: without it GDPR
+  masking (A-135) fails at the first erasure request. So a database where 0091's REVOKE is missing, or
+  0057's blanket grant came back, no longer boots. *Alternative considered:* check only DELETE, as for
+  `calibration_records`. Rejected: TRUNCATE and a table-wide UPDATE rewrite the trail just as well.
+  *Bad implication:* a deployment whose role deliberately lacks the masking grant, for example one that
+  never masks, must grant it or set `DB_APP_ROLE=none`.
+- **O-2.** A live suite that writes audit rows now gets a database of its own
+  (`tests/fixtures/disposableDatabase.ts`, `liveBoot.ts`). It boots the database as the backend does, runs as
+  `callibrator_app`, and drops the database afterwards. Eight suites were moved, the three named above and
+  five more that also deleted audit rows. *Alternatives considered:* (a) `ALTER TABLE … DISABLE TRIGGER` in
+  the cleanup: rejected, since a control that tests switch off is one that shared code can switch off; (b) a
+  schema per suite: rejected, since Sequelize's `search_path` would have to follow every pooled connection
+  and the migrations name `public`; (c) a test-only SQL function that bypasses the trigger: rejected, as it
+  is a bypass living in the database. *Bad implications:* each suite pays a full sync + migrate (≈10 min on
+  a loaded host; `LIVE_DB_TEMPLATE` copies a booted database to avoid it). DB_USER needs `CREATEDB`. A run
+  killed mid-way leaves its `*_scratch` database behind.
+- **O-4.** Backend memory limits were re-sized to measured need: 1Gi (Helm default and staging, compose
+  staging and vm) and 1536Mi / 1536M (production). They were 4Gi/4G (2Gi/2G staging). Measured on the image
+  under boot, seeding, E2E and browser-smoke load: cgroup peak 306 MiB, Node VmHWM 337 MiB. *Bad
+  implication:* E2E load is not a production tenant's export. The first OOM-kill, if any, will come from an
+  unmeasured path, which is why the headroom is 3× (4.5× in production) and not tighter. The charts render,
+  but they are not known to deploy.
+- **O-5.** The frontend embeds Noto Sans (OFL, self-hosted, subset to Latin/Latin Extended incl. Vietnamese,
+  Greek and Cyrillic, 135 KB per weight), fetched only when a PDF is rendered. A character outside the font
+  folds to its base letter or prints `?`. If the font cannot be fetched, the PDF falls back to Helvetica. The
+  hashes are unchanged: they are over data. *Not covered:* Arabic, Hebrew, CJK, Thai and Indic scripts. They
+  would need per-script fonts (CJK alone is megabytes) and Arabic shaping.
+- **O-6.** `automate/smoke.browser.js` ran live, 7/7, and ADR-101's separate approver works. The run needed
+  three smoke fixes that are not ADR-101's: reading text through the PDF's ToUnicode CMaps, following the
+  A-293 verification token, and reading the P10 page's English copy.
+- O-3 (A-285) and O-7 stay with their lanes.
 
 ---
 
@@ -6116,6 +7146,1505 @@ Recorded so a future reader can tell whether their idea was evaluated and reject
 | Serving the application on a custom domain (resolve the tenant from `Host`, issue and renew TLS) | **open** — ADR-065 removed the uncalled stubs; a verified domain is a claim only. Needs its own design: a spoofed `Host`, a principal whose tenant differs from the domain's, certificate storage and renewal |
 | Tenant-owned roles (`roles.tenant_id`, `UNIQUE (tenant_id, name)`) | **open** — ADR-064 keeps roles global; revisit when a tenant needs a custom role |
 | An archival process for an offboarded tenant's retained records | **open** — ADR-064: a tenant purge refuses while any regulated record remains, so offboarded tenants accumulate until this exists |
+
+## ADR-094: An OIDC Consent Belongs to the Client's Tenant; a Payment Lifts Only Dunning's Suspension; Users Named in a Body Are Checked Inside the Record's Tenant; Operator Changes to a Tenant Are Audited Twice and Name Their Target in the Path; an API Key Is a System Actor; a Missing AI Provider Is 409
+
+**Date:** 2026-09-29 · **Cards:** A-275, A-276, A-277, A-278, A-279, A-280, A-281, A-282 · **Decided by** the security-fixes agent, under the owner's standing instruction: argue each decision from two opposing viewpoints, choose best practice, and record it · **Works with** ADR-048 (tenant-scoped includes), ADR-051 Q-13/Q-17 (actors, and the operator in a tenant's trail), ADR-075 (the A-37 rule: a SCIM key is `system:scim`), A-165 (an operator change is recorded under PLATFORM and under the tenant) · **Record:** `MEMORY/records/2026-09-29-security-fixes-a275-a282.md`
+
+**Context.** Recent agent reports found seven defects that were not yet on the board. Fixing them turned up an eighth (A-282):
+
+- **A-275.** `POST /oidc/authorize/decision` minted an authorization code for any signed-in user, whatever tenant the staged request's client belonged to. `GET /authorize/request/:id` showed the request to any user too.
+- **A-276.** The Stripe webhook set `active` on every payment and `suspended` on repeated failure, unconditionally and with no audit row. A paid invoice lifted a suspension the platform operator had imposed, and re-activated an offboarded tenant.
+- **A-277.** A ticket's `assignedTo`, a kanban member's `userId` and a card's `assigneeIds` were stored as given.
+- **A-278.** Mutations committed with no audit row: SCIM user writes, API-key create and revoke, e-signature key create and delete, vendor, risk, scorecard and asset-finance writes, and four of the six tenant-lifecycle transitions.
+- **A-279.** `cancelOffboarding` answered a state conflict with 400.
+- **A-280.** The network-security PUTs and the OIDC client routes acted on `req.user.tenantId`, which for the operator is always their home tenant.
+- **A-281.** `POST /ai/query` answered 500 when no provider was configured.
+- **A-282.** `auditActor(req)` names `req.user.id` as the audit row's user. For an API key that is the key's id, and `audit_logs.user_id` references `users` (migration 0030).
+
+### Decision
+
+1. **A-275 — only a signed-in user of the client's own tenant may see or decide an authorization request.**
+   - `oidcProvider.service#loadDecidableRequest` compares the staged request's `tenantId` with `user.tenantId`, the account's **home** tenant, never the x-tenant-id override.
+   - Missing, expired and another tenant's requests all get one answer: `GET` 404, `POST` 404 "Authorization request not found". A foreign attempt neither consumes the request nor mints a code.
+   - A platform client lives in the operator's home tenant, so the operator decides it by the same rule. No special case is needed.
+   - A decision writes one row in the client's tenant (`APPROVE`, or `UPDATE` for a denial, resource `OidcClient`). The code is minted **inside** that row's transaction. `redis.set` answers `false` rather than throwing, so a code it would not store is a 503 that rolls the row back.
+   - The consent-screen read (`GET /authorize/request/:requestId`) leaves the guard's `capability` list. It is now covered by a two-tenant test.
+   - *For another rule:* "any authenticated user" is simpler, and the request id is 24 random bytes. *Against it:* the code's `sub` is the user and its `tenant_id` is the client's tenant. Anyone who learns an id (from a shared link, a log or a referrer) is then vouched for by a tenant they do not belong to. The unguessable id is a CSRF measure, not an authorisation. *Also rejected:* letting the super admin decide any tenant's request. The resulting token would name a platform account inside a hospital's relying party, which is the A-90 shape.
+2. **A-276 — a payment lifts only dunning's own suspension.**
+   - Dunning suspends only an **active** tenant. It marks the suspension as its own: `suspension_reason = "billing:dunning"` and no `suspended_by` (`constants/tenantSuspension.ts`).
+   - `invoice.paid` and a subscription update to Active lift only a suspension that carries both marks.
+   - An operator's suspension and an offboarding are **kept**, and the payment is recorded against them (`BILLING_PAYMENT_STATUS_KEPT`), so the operator sees that it arrived. Dunning never relabels an operator's suspension.
+   - Conversely, `suspendTenant` by the operator **replaces** a dunning suspension, so a later payment cannot lift what the operator decided.
+   - Every decision writes one row under PLATFORM and one under the tenant, in the same transaction as the tenant write. The actor is the new system actor `system:billing-webhook`, and the row names the Stripe event.
+   - *For letting payment lift any suspension:* the most common reason to suspend is non-payment, and auto-resume saves the operator a step. *Against it:* an operator suspends for other reasons too (fraud review, contract end, a data-protection hold). A payment event is a billing fact, not a decision about those reasons. And an offboarded tenant coming back to life is the worst outcome available.
+   - *Why not a new column:* the two marks together are unambiguous, because an operator suspension always names the operator. They need no migration, and the state stays on the columns `docs/MULTI-TENANCY/01` already documents.
+3. **A-277 — a user named in a body must be a user of the record's tenant.**
+   - That is the caller's own tenant for a new ticket, the ticket's tenant for an update (the super admin works every queue), the project's tenant for a kanban member or card assignee, and the risk's tenant for a risk's `assignedTo` (found while fixing the card, same shape).
+   - Missing, soft-deleted and another tenant's users are **one 404**, following A-129's signer rule: "Assignee not found in this organisation" / "User not found in this organisation". Nothing is written. The tenant predicate is explicit, because a super admin's context skips the hooks.
+   - *For 400:* the request is malformed. *For 404:* the codebase already answers a foreign signer with 404 (A-129). One status for "no such user here" keeps the existence oracle closed whichever way it is asked.
+   - *Considered and rejected:* allowing the super admin as a ticket assignee. After ADR-048 the assignee would read as `null` to every tenant user (A-90), so the ticket would look unassigned to the requester.
+4. **A-278 — every listed mutation writes its row inside its transaction** (`auditService.logAction(entry, { transaction })`; the P6-11 guard stays green):
+   - SCIM user create, replace, patch and delete: a key is `system:scim` with `changes.apiKeyId` (A-37); a super admin's JWT is that user. Role and status values are recorded; names and addresses are not.
+   - API-key create and revoke: the row names the key's id and display prefix, never the key or its hash.
+   - E-signature key create and delete: the key's id and `keyId`, never key material. The delete's response also stops passing its message as `meta`.
+   - Vendor create, update, delete and qualify; risk create, update and delete; scorecard create, update and delete; asset-finance create (including a revival), update and delete: `before`/`after` of the fields the body named.
+   - Tenant `suspend`, `resume`, `grace-period` and `offboard/cancel`, by the operator: one row under PLATFORM and one under the tenant (A-165). `cancelOffboarding` also returns `lifecycle_status` to `ACTIVE`.
+   - **Webhook PATCH without a URL change was already audited.** `webhook.service#updateWebhook`, tested by `webhook.service.test.js` › "updates without a secret, audited in a transaction, when the url is unchanged". That report was stale, and nothing was changed.
+5. **A-279 — the transitions answer a state conflict with 409 that explains the state.**
+   - `cancelOffboarding` of a tenant that is not offboarded: `This tenant is "<status>", not offboarded …`.
+   - `suspend` and `resume` of an **offboarded** tenant: `This tenant is offboarded: it cannot be suspended/resumed. Cancel the offboarding first …`. Resume used to leave `offboarded_at` set on an active tenant.
+6. **A-280 — the operator names the target tenant in the path.**
+   - New `superAdminOnly` routes: `GET|PUT /network-security/tenants/:tenantId/ip-allowlist` and `…/geofence`, and `GET|POST /oidc/tenants/:tenantId/clients`, `POST …/clients/:clientId/rotate-secret` and `DELETE …/clients/:clientId`. Each takes `validateUuid`, and a tenant that does not exist (or the hidden PLATFORM tenant) is 404.
+   - The home-tenant routes stay. For the OIDC clients they are the **platform** clients. Every write is audited under PLATFORM and the tenant.
+   - *For the x-tenant-id header:* it already exists. *Against it:* it is invisible in the URL and the logs, it silently falls back to the home tenant when it names a suspended tenant, and CLAUDE.md never lets a tenant id come from the body or a header for a write. The platform routes already name the tenant in the path (`/tenants/:tenantId/suspend`, `dataRetention/:tenantId/…`).
+   - *For letting a tenant administrator set their own allowlist:* it is self-service. *Against it:* a wrong CIDR locks the tenant out, and recovery then needs the operator. Who may set it is a product decision, so it stays with the operator (**Q-38**).
+7. **A-281 — a missing AI provider is 409; a provider that failed is 502.**
+   - The 409's message names the settings to configure.
+   - *For 503:* the feature is unavailable. *Against it:* 503 means "temporarily, retry". Clients and proxies retry it, and it counts as a server error on every dashboard, while this is a tenant configuration that no retry will change.
+   - *For 409:* the request conflicts with the tenant's current state, and CLAUDE.md surfaces a 409 as a state explanation.
+   - An upstream failure is a 502 (bad gateway), not a 500.
+8. **A-282 — an API key is recorded as `system:api-key`, with `changes.apiKeyId`, never as a user.**
+   - The rule is `utils/auditPrincipal.util.ts` (`auditPrincipal(req)`, `auditEntryActor`, `actorChanges`), used by the A-278 vendor, risk, scorecard and finance writes, which keys can reach.
+   - `SYSTEM_ACTORS` gains `API_KEY` and `BILLING_WEBHOOK`. The closed-list test lists both.
+
+### Alternatives considered
+The decision items above each carry their own. The rejected ones: no tenant check on consent; payment lifting every suspension; a dedicated suspension-source column; 400 for a foreign user; the x-tenant-id override as the target; 503 for a missing AI provider; changing `auditActor` itself for every caller in this change.
+
+### Consequences
+- **Good.**
+  - A consent can no longer cross tenants.
+  - A payment can no longer undo an operator's decision.
+  - Foreign user ids are refused before anything is written.
+  - Every listed mutation is attributable.
+  - The operator can act on any tenant's allowlist and OIDC clients, and the path says which.
+  - An AI misconfiguration no longer reads as an outage.
+- **Bad, or still open.**
+  - **A-282 is partial.** The other audited services a key can reach still pass `auditActor(req)`, so on PostgreSQL an API-key write to them would fail its foreign key and roll back. This was verified from code, not against the database. Each needs `auditPrincipal`, and the next step is a guard that finds `auditActor(req)` on a key-reachable route.
+  - `offboardTenant` still writes one row (the tenant's), not A-165's two.
+  - The Stripe plan change (`maybeUpdateTenantPlan`) is still unaudited.
+  - The frontend has no screen for the new `/tenants/:tenantId/…` routes. They are API only.
+  - The IP allowlist and geofence are **not enforced at sign-in**: `evaluateLoginSecurity` has no caller outside its own route (**A-288**). This ADR makes them settable per tenant; it does not make them effective.
+  - Other bodies that name a user id have not been swept for the A-277 shape. Only the four above were checked.
+- **Evidence.** Each test is named in the record, with the run that failed on the tree before the fix.
+
+---
+
+## ADR-099: The First Super Admin Gets a One-Time Password, Revealed Only in a File Inside the Container; Its First Use Yields a Password-Change Token, Not a Session
+
+**Date:** 2026-09-29 · **Task:** P10-16 · **Authority:** owner request (2026-09-29): "the first superadmin is created with a randomly generated password … used for the first login only; the password must be changed after login; the random password expires immediately once it has been used". Owner decision the same day: the value is visible **only inside the container** (file, 0600; never stdout/stderr, API, audit, database plaintext or environment). · **Spec:** [`specs/P10-16-superadmin-bootstrap-otp.md`](specs/P10-16-superadmin-bootstrap-otp.md) · **Record:** [`records/2026-09-29-superadmin-bootstrap-otp.md`](records/2026-09-29-superadmin-bootstrap-otp.md)
+
+**Context.** `migration.service.js` seeded `sys@mail.com` with the public password `123123`, and **every** call to the seed endpoint re-hashed `123123` onto the existing account, which reset the operator's password to the public default. A-123/A-215 (administrator temporary passwords) set a must-change flag and a 72 h expiry. Under them a correct temporary password still opens a normal session, gated route by route in `auth.middleware`, and it keeps working until it is changed. That is not "first login only".
+
+**Decision.**
+1. **New column `users.password_one_time`** (migration 0094, model `passwordOneTime`). It is set only by the bootstrap and by the recovery CLI. A `User` `beforeSave` hook clears it whenever `password` changes without it, so every existing password writer leaves an account non-one-time with no edit.
+2. **Bootstrap (`services/bootstrapCredential.service.ts`, called by `seedUsers`).** The system super admin is created only when none exists. Its password is 24 characters from `crypto.randomInt` over 61 unambiguous characters, with every class present (≈142 bits). The database holds only the bcrypt hash. The account is created with `password_one_time`, `must_change_password` and an expiry 72 h out. The audit row (`CREATE`, actor `system:bootstrap`, no secret) and the file write happen inside the creating transaction. An existing `sys@mail.com` is never given a new password by the seed.
+3. **Reveal: a file.** `storagePath(".bootstrap/superadmin-password")`, which is `/app/.bootstrap/superadmin-password` in the image (created in the Dockerfile as `app:app` 0700, and not a volume in compose or Helm). The file is written `wx`, mode 0600, and chmod 0600. Stdout carries a one-line pointer with the path and the hostname. The seed response carries the path only. The file is deleted when the password is consumed, and a boot sweep deletes it when no unexpired one-time password exists.
+4. **First sign-in.** A hook in `loginUser`, after every refusal check, hands a one-time account to `firstSignIn`. There, a conditional `UPDATE … WHERE password_one_time = true` sets it false and sets the expiry to **now**, in one transaction with the audit row (`ONE_TIME_PASSWORD_CONSUMED`). The loser of a concurrent sign-in gets the wrong-password 401. The answer is a `typ: "password-change"` purpose token (10 min, bound to the credential state by `pf`). It opens **no session**, and `verifyAccessToken` refuses it, so `auth` refuses it on every route. From then on the one-time password is an expired temporary password: A-215's path answers it with the same 401 as a wrong password, and the throttle counts it.
+5. **`POST /api/v1/auth/first-sign-in/password`** (public; `{ token, newPassword }` checked by the existing password rule). The new password must differ from the one-time one, checked against the kept hash. A conditional update on the old hash sets the new password and clears all three flags; the same transaction revokes all sessions and writes the audit row. The answer is "sign in again". That sign-in follows P6-07: an operator without MFA must enrol.
+6. **Retire the known default.** At boot, any live super admin whose hash matches `123123` is rotated to a fresh one-time password, with a file and an audit row. This covers the deployments seeded before this change.
+7. **Recovery CLI.** `src/scripts/rotateBootstrapPassword.ts` is run on the host through `npm run bootstrap:rotate`, or in the container as `./backend rotate-bootstrap-password`, dispatched by `index.js` before the server starts. It is for super admins only, takes `--requested-by` and `--ticket`, runs in one transaction (rotate, revoke sessions, audit, file), and prints only the pointer.
+8. **No environment override.** The owner forbids the value in an environment variable. The E2E harness completes the bootstrap itself from `E2E_BOOTSTRAP_PASSWORD`, which the operator reads with `docker exec … cat`, and it sets `E2E_OPERATOR_PASSWORD`. The specs no longer hard-code `123123`.
+
+**Alternatives considered.**
+| Option | Rejected because |
+|---|---|
+| Print the password in the startup log / seed response | `docker logs` and HTTP responses leave the container (owner decision); logs are retained and shipped |
+| Reuse A-123 as-is (normal gated session) | the password keeps signing in until changed, which breaks "first login only", and the owner asked for no session |
+| Burn the hash at first use (replace it with a random one) | loses the hash that "new ≠ one-time" needs; keeping the one-time value elsewhere is a second secret |
+| Store the one-time value's hash in the purpose token | a JWT is readable by its holder; claims carry identifiers only |
+| `SUPERADMIN_BOOTSTRAP_PASSWORD` env override for dev/E2E | the owner forbids the value in env; the harness can drive the real flow |
+| Generate at every boot when no super admin exists | seeding is an explicit operator act today (ALLOW_SEEDING); a boot-time create would make a fresh database a live account without the operator asking |
+| No TTL on an unused bootstrap password | an unused privileged credential sitting in a container file forever; 72 h matches A-215 |
+
+**Consequences.**
+- **Good.**
+  - No deployment carries a public super-admin password, including existing ones (item 6).
+  - Re-seeding no longer resets the operator.
+  - The first-use token cannot reach any route but one.
+  - A second use of the password is indistinguishable from a wrong password.
+- **Bad, or still open.**
+  - A lost file, or a password unused for 72 h, needs the CLI: `docker exec` rights are the recovery path.
+  - If the change is abandoned after first use (the token lives 10 minutes), the account is locked until the CLI runs.
+  - **Multi-replica (Helm):** the file lives in the pod that ran the seed or CLI, so run them with one replica or `kubectl exec` into the pod the pointer names. Helm is not known to deploy (see BACKLOG § Unverified Claims).
+  - The concurrent loser's 401 is not counted by the login throttle (the winner consumed the password, so there is nothing left to guess).
+  - Item 6 rotates a VM operator still on `123123` at the next deploy. The operator must read the file after that deploy (runbook updated).
+  - ~~Administrator temporary passwords (A-123) keep their gated-session behaviour.~~ Superseded by Amendment 1.
+
+### Amendment 1 (2026-09-30) — every administrator-set password is one-time (Q-49); demo seeding refused in production
+
+**Authority:** working decision by the coordinating session, under the owner's delegation to choose best practice (Q-49, `TASKS/BACKLOG.md`). It awaits the owner's confirmation.
+
+**Decision.**
+1. **Every password an administrator sets for another user is one-time.** This covers `user.service#userCreate` (the administrator chose the password) and `#resetUserPassword` (a random 16-character temporary password, shown **once** in the administrator's response to hand over, never emailed). Both saves pass `{ oneTimePassword: true }`. Hash only, must-change, 72 h expiry (A-215, unchanged). The first sign-in consumes it exactly as the bootstrap's does: a `password-change` token, **no session**. A second use is the wrong-password 401. **This changes a Part 11 credential path:** before, an admin-created or admin-reset account's first sign-in opened a normal session, gated by `auth.middleware` to change-password/logout/verify (A-123). Now no session exists until the holder has chosen a password. The A-123 gate stays for accounts flagged before this change.
+2. **How the flag is set (model).** `User` `beforeSave`: when the password changes, `passwordOneTime = options.oneTimePassword === true || (the save set the attribute to true)`, otherwise false. The attribute alone was not enough: an instance `update` drops a field whose value did not change, so re-resetting an account that is already one-time looked like an ordinary password change and cleared the flag. `oneTimePassword` is typed on `SaveOptions`/`CreateOptions`/`InstanceUpdateOptions` (`types/sequelize.d.ts`). Static `Users.update` runs no instance hook, so its writers set the attribute explicitly (bootstrapCredential.service does).
+3. **Invitation preferred.** For a NEW account in a tenant whose mail delivery works, the invitation link (P10-15) is preferred over an admin-chosen password: no administrator ever knows the credential. The one-time temporary password stays for tenants without mail and for resets. Wiring userCreate to send an invitation instead is P10-15's (access-request lane), not done here.
+4. **Demo seeding is development-only.** The demo users share the known password `Demo123!`, and "SEED_DEMO must never be true in production" was enforced only by `make preflight`. `migration.service#assertDemoSeedingPermitted` now refuses `seedDemoData` with 403 when `NODE_ENV=production`, before anything is written. That covers the route, the controller and `scripts/seedDemo.js`. No other hard-coded default password exists in a seeder: the load-test SQL `scripts/load/p807-seed.sql` copies the demo admin, so it is development-only as well.
+
+**Alternatives considered.** Making demo users one-time: rejected, because `liveContract.smoke` signs in as them and a demo stack is disposable by definition, so refusing production is the stricter and simpler rule. Leaving A-123 as-is: rejected, because the owner's rule ("a password someone else chose signs in once") applies to an administrator exactly as to the bootstrap. Detecting "one-time" from the attribute alone: rejected (point 2).
+
+**Consequences.**
+- Good: no administrator-chosen password ever opens a session.
+- Bad: an account whose holder abandons the change step (10 minutes) needs another admin reset. `liveContract.smoke` and anything using demo users need a non-production stack (`NODE_ENV=development`). Pending A-123 passwords set before this change are not converted; they expire within 72 h under A-215 (no backfill migration).
+- Evidence: `backend/src/tests/services/adminTemporaryPassword.p1016.test.ts` (8), which fails before (3 failures with the two save options removed).
+
+## ADR-100: The QR Carries a Verification Token and a Bare Number Gets a Minimal Verdict; a Tenant's Allowlist and Geofence Are Enforced at Every Sign-in but Never Bind the Operator; Tenant Administrators Set Their Own, Behind a Self-lockout Guard; Public Auth Endpoints Have Request Budgets That Count Successes; One SSO-start Refusal; Emailed Links From Configuration Only
+
+**Date:** 2026-09-29 · **Cards:** A-293, A-288 (and Q-38), A-291, A-292, A-289, A-282 (remainder), A-304, A-305, A-272 · **Decided by** the security-followups agent under the owner's standing delegation (decide by best practice, record it), and the main session's working decision for A-293 · **Works with** ADR-094 (the A-280 operator routes, the A-282 principal), ADR-095 (M-11: the frontend renders the certificate PDF and its QR from the document's `verifyUrl`), ADR-093 (the validation 400), ADR-098 (Phase 10), A-83 (a refusal after the credential), A-185 (the sign-in throttle), A-16 (req.ip is the client) · **Record:** `MEMORY/records/2026-09-29-security-followups.md`
+
+### Context
+- **A-293.** Certificate numbers are sequential (`CERT-YYYYMMDD-<code>-NNNN`), and the public verification returned the device, its serial, the signer and the document, behind only the global limiter. A script could walk a tenant's customers, inventory and signatories.
+- **A-288.** A tenant's IP allowlist and geofence could be set (A-280) but were enforced nowhere: `evaluateLoginSecurity` had no caller. **Q-38** asked who may set them.
+- **A-291.** `authLimiter` and `otpLimiter` were declared in `index.js` and never mounted. The auth throttles count failures only, so successful registrations and OTP requests (each one sends a mail) were bounded only by the global limiter. Per-IP failure counting was off unless configured.
+- **A-292.** The SSO start answered 404 for an unknown organisation code and 400 (in three wordings) for a known code without SSO. That is an oracle for the customer list and for each customer's configuration.
+- **A-289.** The activation link was built from the request's `Origin`/`Host`. A forged header put an attacker's domain into a genuine mail.
+- **A-272.** A validation failure thrown inside a controller reached the wire as `details: "[object Object]"`.
+- **A-282, A-304, A-305.** Left open by ADR-094, or found since (Decision 9).
+
+### Decision
+1. **A-293: the verification token.** Every certificate has a `verification_token`: 24 random bytes, base64url (192 bits), NOT NULL, UNIQUE.
+   - Migration 0096 back-fills every row, soft-deleted ones included, and swallows no error.
+   - The model generates the token on every create: a default, plus create hooks that overwrite any value a caller passes. It is never accepted from a request body.
+   - It is stored **in the clear, not hashed**. The frontend re-renders a certificate's PDF and QR from `GET /certificates/:id/document` at any time, so it must be able to print the same token. Anyone who can read the row already reads everything the token discloses.
+   - **The link.** The QR and verify link is `CERT_VERIFY_BASE_URL/<number>?t=<token>`. The API fallback form is `…/api/v1/certificates/verify/<number>?token=<token>`.
+   - **The right token.** `GET /certificates/verify/:number?token=` with the right token (compared in constant time) returns the **full** verdict, as before, plus `disclosure: "full"`.
+   - **A bare number or a wrong token.** Both get the same answer, the **minimal** verdict. It contains:
+     - found, valid, status, revoked, expired, withdrawn;
+     - the number and type;
+     - the issuing tenant;
+     - the issue and valid-until dates;
+     - the integrity hashes;
+     - `disclosure: "minimal"`.
+
+     It contains no device, serial, signer, document, document link or verify URL.
+   - **Already-printed QR codes** carry no token, so they resolve to the minimal verdict.
+     - **There is no redirect.** A redirect to the tokened URL would hand the token to anyone holding a number.
+     - The integrity hashes stay in the minimal verdict. They are one-way over data that includes random UUIDs, and they are how the holder of an old printout detects tampering.
+   - **Rate limits, per address.**
+     - Every request counts against `certificateVerifyToken` (300 per 15 min).
+     - Every answer that is not the full verdict (no token, a wrong token, an unknown number) also counts against `certificateVerify` (60 per 15 min). This is decided after the lookup, so appending a junk `?token=` buys an enumerator nothing.
+     - This refines the working decision ("a request with a token counts against 300"). It was the sub-agent's call, accepted here.
+   - *Rejected alternatives:*
+     - Hashing the token: it could not be reprinted.
+     - An HMAC of the id as the token: rotating the secret would break every printed QR.
+     - A rate limit alone: it slows a walk but does not stop one.
+     - Dropping the public fields for everyone: the person holding the scanned QR is who the full verdict exists for.
+2. **A-288: the allowlist and geofence are enforced at sign-in** (`services/signInPolicy.service.ts#assertSignInPermitted`). They are checked at every point that issues a session: password (`loginUser`, through the shared `assertMaySignIn`), the MFA step, the SSO exchange, passkey verify-login, and token refresh.
+   - **The allowlist is the network control.**
+     - It is checked on every path, refresh included. A session that leaves the allowed network ends at its next refresh, and its refresh token is revoked (`NETWORK_POLICY`).
+     - Matching is IPv4 and IPv6, through `net.BlockList`. An IPv4-mapped IPv6 address matches its IPv4 range; the old matcher refused every such address, and that is the form Node reports on a dual-stack socket.
+     - The evaluation route now uses the same matcher.
+   - **The geofence is an attestation, not a control.**
+     - There is no server-side geolocation, so the location is the one the **device reports** in the sign-in body (`location: { latitude, longitude }`).
+     - It keeps honest devices from signing in off-site. It does not stop an attacker, who can report any location. The allowlist is the control.
+     - With a geofence configured, a sign-in that carries no location is refused (fail closed) with `code: "LOCATION_REQUIRED"`. The sign-in page then asks the browser for a position once and retries.
+     - It is checked on password, MFA and passkey sign-ins.
+     - It is **not** checked on SSO: a federated sign-in's device and location context belongs to the identity provider's conditional access.
+     - It is not checked on refresh, which has no user present to attest a location.
+   - **What a refusal says.**
+     - A 403 with one fixed message, whichever check failed. It never names the list, the fence or a distance.
+     - A top-level `code` (`NETWORK_POLICY` or `LOCATION_REQUIRED`) in every environment (`controllerWrapper#sendCaughtError`; only an UPPER_SNAKE token is sent).
+     - It is answered only **after** the credential is proved (the A-83 rule), so it says nothing about whether an account exists.
+     - It is answered before the throttle is cleared, before the MFA token, the session and any one-time (bootstrap) sign-in. A refused network cannot redeem a one-time password.
+     - A wrong password from outside the network is still the plain 401.
+   - **Audit.**
+     - Every refusal writes one row in the tenant: action `LOGIN`, resourceType `SignInPolicy`, `changes: { outcome: "refused", reason, method }`, and the address.
+     - The row is written in its own transaction, because the refusal is itself the event.
+     - There is no new audit action value: that would need an `ALTER TYPE` migration and a D-26 change for one row type. The distinct resourceType keeps these rows out of any count of LOGIN rows on Session.
+   - **The lock-out-safe path: a tenant's policy never refuses a platform operator.**
+     - The operator's home is an ordinary hospital tenant (A-125), whose administrators may now set its allowlist. If the policy applied to the operator, a tenant could lock out the one account that recovers it.
+     - The operator stays behind mandatory MFA (P6-07).
+     - A sign-in the policy would have refused is recorded under PLATFORM (`outcome: "operator-exempt"`).
+     - An impersonation refresh is the operator's act and is not checked either.
+   - *Rejected alternatives:*
+     - Refusing with the plain 401. It would hide a correct password from an outsider, but it sends a legitimate user to reset a password that is not wrong, and the refusal already comes after the credential, as A-83's does.
+     - Step-up instead of refusal. No second factor is bound to a network.
+     - Enforcing on operators, with an environment break-glass. Recovery would then need a restart by whoever holds the host, during the very incident the policy caused.
+     - A GeoIP database. It is a new data dependency with its own licence and update cycle, and still an approximation. It is recorded as the way to make the geofence a real control.
+3. **Q-38: tenant administrators MAY set their own tenant's allowlist and geofence.**
+   - `PUT /network-security/ip-allowlist` and `/geofence` are gated by `network-security: write` and act on the caller's own tenant. The grant is seeded for HEALTHCARE ADMIN, and migration 0098 raises existing `read` grants.
+   - **The self-lockout guard** (`assertChangeKeepsCaller`) answers **409 `SELF_LOCKOUT`**, explaining what to add, in two cases:
+     - an allowlist that does not contain the address the change is made from;
+     - a geofence without the caller's `currentLocation` inside it.
+
+     An empty allowlist cannot lock anyone out.
+   - The guard does not bind the operator, who acts on any tenant through the A-280 `/tenants/:tenantId/…` routes. That is the override.
+   - Every write is still audited under PLATFORM and under the tenant (A-280).
+   - *For operator-only:* a wrong CIDR locks a tenant out. *Against:* the hospital knows its own networks and changes them, and routing every change through the operator delays hardening. The guard removes the lock-out case that the operator-only rule existed for.
+4. **A-291: request budgets** (`middlewares/requestBudget.middleware.ts`).
+   - Every request is counted, successes included, in the shared store. On a Redis fault the store falls back to memory; it never skips the count.
+   - Keys are the client address, plus an optional key derived from the request.
+   - Production figures:
+
+     | Endpoint | Budget |
+     |---|---|
+     | Sign-in | 300 per 15 min |
+     | MFA sign-in | 60 per 15 min |
+     | Register | 10 per hour |
+     | Send-OTP and reset | 20 per hour |
+     | Send-OTP, per mailed-to address | 3 per 15 min |
+     | SAML and OIDC start (shared) | 60 per 15 min |
+
+     - Sign-in is generous because a hospital signs in from one NAT address. The per-account defences remain A-185 and A-81.
+     - The mailed-to address is hashed and counted whether or not an account has it, so the 429 is not an oracle.
+   - Outside production the figures are multiplied by `RATE_LIMIT_NON_PRODUCTION_FACTOR` (default 100), just as the global limiter is raised there.
+   - **The 429** is the error envelope plus `retryAfter` and a `Retry-After` header. `authPreCheck`'s lockout 429s now send the header too.
+   - `authLimiter` and `otpLimiter` are deleted: they were per-process and never mounted.
+   - **Per-IP failure counting is ON by default in production.** With `AUTH_RATE_LIMIT_BY_IP` unset it is on in production; `"false"` turns it off. Since A-16 the edge-resolved address is req.ip, and the reference VM has run with the setting on since A-67.
+5. **A-292: one SSO-start refusal.**
+   - An unknown code, SSO disabled, no SAML entry point and no OIDC client all get the same answer: **404 "Single sign-on is not available for this organisation code"**. The real reason is logged.
+   - The refusal is exported as `ssoUnavailable`, for the Phase 10 `POST /auth/sso/start`.
+   - *Why 404, not 400:* "there is no SSO for this code" is a not-found. A 400 would suggest the request itself was malformed.
+   - Residuals, recorded and not fixed: a timing difference (one query against two), and a misconfigured OIDC authority that fails later than the check.
+6. **A-289: emailed links come from configuration only** (`utils/publicLinkOrigin.util.ts#emailLinkOrigin`).
+   - The origin is `FRONTEND_URL`, else `HOST_URL`: the order every other emailed link already uses (A-171), since `/activation` is a front-end page. It is never a request header.
+   - In production an unset origin is a **500, raised before the account is created or anything is mailed**. Outside production the fallback is the dev server.
+7. **A-272: a validation failure thrown in a controller now answers exactly as `validate()` does.** That is a 400, "Validation Error", with `details: [{ field, message }]` outside production. The contract suite compares the two layers' wires byte for byte.
+8. **Frontend.**
+   - The verify page reads `t`. For the minimal verdict it adds a line saying full details appear when the QR code is scanned.
+   - The PDF's QR prints the document's tokened `verifyUrl` unchanged.
+   - The sign-in page's `LOCATION_REQUIRED` retry was built by the Phase 10 frontend lead, in its rewrite of `useLoginForm`.
+9. **A-282, A-304, A-305.**
+   - **A-282 — every audited write an API key can reach names the key as `system:api-key`** (`changes.apiKeyId`), never as a user (the key id in `audit_logs.user_id` fails its FK and rolls the write back on PostgreSQL). The key-reachable routes are those where a middleware sets `req.apiKeyAuthorized` (a `dynamicAccess` scope, `allowApiKey`, the SCIM gate); every other key is refused by `controllerWrapper#apiKeyBlocked`. Converted: workflow, maintenance, calibration devices, records and scheduler (a manual run by a key is the key), billing, predictive maintenance, stock, tenant (actor, settings, logos), attachments (a key's upload stores `uploaded_by` NULL), CMS media, and the network-security writes. `auditPrincipal` passes a job's `{ systemActor }` through (key, then user, then system actor) and normalises the user agent to one string. **Guard:** `guards/apiKeyAuditPrincipal.a282.guard.test.ts` maps every key-reachable handler to its controller export and fails on `auditActor(` or `userId: req.user.id` there; a reviewed PENDING_OWNER list fails when an entry is fixed, so it cannot go stale (it held certificate create/update/delete/submit until ADR-101's owner converted them, 2026-09-30). The network-security PUTs also refuse a key outright (`denyApiKey`): a leaked key must not widen or lock a tenant's sign-in. *Limit:* the guard reads the controller layer; a service that audits a caller id under another name is caught by review only.
+   - **A-304 — `GET /dashboard/metrics` is gated by `dynamicAccess(home, read)`.** It is the home page's load call; every seeded role holds `home: read`, while `dashboard: read` is missing for FACILITY MAINTENANCE and WAREHOUSE STAFF (why it had been exempted). The exemption is removed from `constants/routeGateExemptions.ts`; the tenant comes from the principal, a `?tenantId` is ignored.
+   - **A-305 — `offboardTenant` writes A-165's two rows** (PLATFORM and the tenant, one transaction), for the operator and for the scheduler — the PLATFORM row is what outlives an offboarded tenant. **The Stripe plan change** runs in a transaction on the locked tenant row and writes two rows as `system:billing-webhook` (`BILLING_PLAN_CHANGE`, the Stripe event id, the plan before and after); an unchanged or unknown plan, or a missing tenant, writes nothing.
+   - *Rejected:* a central rewrite in `audit.service` of any `userId` equal to the request's key id (hides the defect at every call site instead of fixing it, and needs the request in the audit layer).
+
+### Alternatives considered
+Each decision above carries its own.
+
+### Consequences
+- **Good.**
+  - A certificate number no longer discloses equipment, serials or signatories.
+  - A tenant's network policy takes effect, including against a stolen refresh token used from elsewhere.
+  - Hospital administrators can harden their own tenant without a support ticket, and without locking themselves out.
+  - Registration and OTP mail are bounded per caller and per mailbox.
+  - The SSO start no longer lists customers.
+  - Activation mail cannot be poisoned.
+  - A controller's validation 400 has the same shape as the middleware's.
+- **Bad, or still open.**
+  - The geofence stays an attestation, not a control, until a server-side location source (GeoIP) exists. A client can report any location.
+  - Old printed QR codes show only the minimal verdict. Their holders have the printed fields on paper, the verdict and the hash, but do not see the signer on screen.
+  - No network policy binds the operator. A platform-level allowlist for operators is not built.
+  - ~~The allowlist validator accepts IPv4 only~~ — closed by Amendment 1 §3.
+  - ~~The geofence form sends no `currentLocation`~~ — closed by Amendment 1 §4.
+  - ~~Migrations 0096 and 0098 not run on PostgreSQL~~ — run and verified by Amendment 1 §2.
+  - ~~The SSO-start refusal differs in timing~~ — a latency floor, Amendment 1 §5; a slow or broken IdP discovery is still slower than the floor.
+  - ~~An API key cannot perform writes whose data columns reference users (**Q-51**)~~ — decided and closed by Amendment 1 §1 (migration 0105; person-only decisions refuse a key).
+  - The certificate create/update/delete/submit audit rows were converted by ADR-101's owner on 2026-09-30; the guard's PENDING_OWNER list is empty.
+
+
+### Amendment 1 (2026-09-30) — Closing the open items. Working decisions by the coordinator, under the owner's delegation
+
+**Record:** `MEMORY/records/2026-09-29-security-followups.md` § Amendment 1.
+
+1. **Q-51: an API key is a row's actor, not a user (migration 0105).**
+   - **The change.**
+     - `calibration_records.performed_by`, `stock_adjustments.adjusted_by` and `stock_transfers.requested_by` become nullable.
+     - Each of those tables gains a nullable `api_key_id` UUID, a foreign key to `api_keys(id)`, `ON UPDATE CASCADE ON DELETE RESTRICT`, with an index.
+     - A CHECK that exactly one actor is set: `num_nonnulls(<user column>, api_key_id) = 1`. The constraints are `calibration_records_actor_exactly_one`, `stock_adjustments_actor_exactly_one` and `stock_transfers_requester_exactly_one`.
+   - **How the migration applies it.**
+     - The CHECK is added `NOT VALID`.
+     - Before validating, the migration counts violating rows and **throws, naming the count** if there are any. It does not guess an actor.
+     - It then runs `VALIDATE CONSTRAINT` in its own transaction, which takes SHARE UPDATE EXCLUSIVE, so reads and writes continue.
+     - `down` refuses while any key-authored row exists, and otherwise reverts in one transaction.
+   - **Where the actor comes from.** `utils/auditPrincipal.util.ts#rowActor(auditPrincipal(req))`. It is never taken from the body: Zod strips the field, and the services set it after any spread. A correction keeps its original's actor. `api_key_id` on a calibration record is content: the append-only trigger and the application role's UPDATE grant leave it immutable (the app role gets 42501).
+   - *Why RESTRICT, not SET NULL.* SET NULL would leave a row with no actor, which the CHECK refuses. Keys are revoked by soft delete, so RESTRICT blocks nothing in normal use. It also keeps "which key did this" answerable for the life of the row.
+   - **Tenant safety.** A key belongs to one tenant, and auth stamps the row's tenant from the key. This is enforced by the application, not by a composite foreign key — the same as the user columns (recorded as open).
+   - **Decisions that are a person's refuse a key with `denyApiKey`** (403, nothing written):
+     - a transfer's approval, completion or cancellation (`PATCH /stock/transfer/:id` — `approved_by` stays user-only, separation of duties);
+     - a stock opname (`POST /stock/opname` — `stock_opnames.performed_by`, the same defect, outside Q-51's list);
+     - a calibration record's void (`POST /calibration-records/:id/void` — `voided_by`; a void is final);
+     - **a workflow decision** (`POST /workflows/instances/:instanceId/action`). A key scoped `warehouse:write` reached it, and approving a StockTransfer wrote the key id into `approved_by`. Found while closing Q-51.
+   - Audit rows are unchanged (`system:api-key`).
+   - *Rejected alternatives:*
+     - Refusing keys on every write that names a user: an integration that records calibrations or stock movements is the point of a key.
+     - A body-named human performer: an unauthenticated claim.
+     - Two key columns on `stock_transfers`: the approver is a person.
+2. **Migrations verified on a disposable PostgreSQL 18** (pgvector/pgvector:pg18). Migrations 0096, 0098 and 0105 were run on a **fresh** database (77 applied through 0105) and on an **upgraded** one (migrated to 0095, then seeded with five token-less certificates — one soft-deleted — and HEALTHCARE ADMIN `read`).
+   - **Results.**
+     - `verification_token` is NOT NULL, with `certificates_verification_token_unique`. There are 0 nulls, 5 distinct tokens, each 32 characters long, and the soft-deleted row is filled.
+     - HEALTHCARE ADMIN has `network-security: write`.
+     - The 0105 columns are nullable. The foreign keys have `confdeltype = 'r'`, and all three CHECKs have `convalidated = true`.
+   - **As `callibrator_app`:**
+     - it can read the new columns;
+     - it can insert a key-authored adjustment, transfer and record;
+     - an insert with neither actor, or with both, fails with 23514;
+     - before 0105, an insert with the key id in a user column failed with 23503 (the fail-before).
+   - **Down then up** cycles cleanly for all three migrations.
+   - **Consequence recorded: 0096's `down` then `up` regenerates every token, so every printed QR code stops resolving to the full verdict.** Never run 0096's down on a database whose certificates have been printed.
+3. **The allowlist validator accepts IPv6** (`validators/networkSecurity.validator.ts#normaliseAllowlistEntry`).
+   - It accepts an IPv4 or IPv6 address or CIDR, with the prefix range-checked. Entries are trimmed and IPv6 is lower-cased.
+   - An IPv4-mapped entry (`::ffff:a.b.c.d[/n≥96]`) is stored as its IPv4 form, the way the sign-in matcher and `ssrf.util` treat a mapped address.
+   - One message on refusal: "Expected an IPv4 or IPv6 address or CIDR".
+   - The old pattern also let `999.1.1.1` and `/33` through.
+4. **The network-security page.**
+   - **A geofence save sends this device's `currentLocation`.** The browser asks for consent (10-second timeout).
+     - When no position is available, the page says why it matters.
+     - It still sends the save: an operator is exempt, and a tenant administrator sees the server's 409 explanation.
+   - **The page follows ADR-102.**
+     - The allowlist add/remove/remove-all controls and the geofence form are rendered only with `usePermissions().canWrite("network-security")`. They are absent from the DOM otherwise, and before the permissions load. The super admin passes, and the F-19 confirmations are kept.
+     - A reader sees the list and the geofence as text.
+     - The page's first client-side CIDR check accepts IPv6. The server validates.
+5. **The SSO-start refusal has a latency floor** (`sso.controller.js#withSsoRefusalFloor`).
+   - Every SSO_UNAVAILABLE refusal from `/sso/login`, `/sso/oidc/login` and Phase 10's `startSsoFor` is held to at least `SSO_REFUSAL_FLOOR_MS` (default 400 ms) after the request arrived. That is longer than either refusal path's own work, so an unknown code and a known code without SSO cannot be told apart by latency.
+   - Successes and other errors are not delayed: a successful start is already distinguishable by its answer.
+   - *For comparable work instead* (a settings read for a missing tenant): it narrows the gap without closing it, and it breaks again whenever either path changes. The floor holds whatever the paths do.
+   - *Residual:* a refusal whose own work exceeds the floor — an enabled tenant whose IdP discovery document is slow or down — is still slower. That tells the caller only that a code has SSO **configured**, and it is reachable only by a code that has it.
+
+**Still open after this amendment.**
+- Row-to-key tenant equality is enforced by the application only.
+- ~~Adjustment, transfer and record lists show no actor for a key-authored row~~ — closed by Amendment 2.
+- The geofence remains an attestation until a GeoIP source exists.
+
+
+### Amendment 2 (2026-09-30) — Lists name the key that wrote a row
+
+- **Backend.** The calibration-record list and detail reads (`calibrationRecords.service.js`) and the stock adjustment and transfer lists (`stock.service.ts#fetchAdjustments`, `#fetchTransfers`) include `apiKey` as `ApiKey.scope("includeDeleted")`, `as: "apiKey"`, with `attributes: ["id", "name", "keyPrefix"]` and `required: false`.
+  - **Never `keyHash`.**
+  - It is a LEFT JOIN, because ApiKey's defaultScope carries a `where` and a bare include would drop every user-written row.
+  - It is scoped to the tenant by the hooks (ADR-048), so another tenant's key reads as `null`.
+  - `includeDeleted` makes a revoked (soft-deleted) key still name the rows it wrote.
+  - Stock adjustments and transfers have no separate detail read.
+  - The swagger schemas document `apiKey`.
+- **Frontend.** `src/lib/actorLabel.ts` returns the user's name, else "API key: <name>", else `-`. It is used where the user actor showed before: the stock adjustments table, the transfers table (requester), the calibration records table (Performed By), and the stock CSV exports. The types carry `apiKey`.
+- *Rejected:* showing the key prefix. The name is what an administrator chose to recognise the key by, and the prefix is only needed on the API-keys page.
+
+
+### Amendment 3 (2026-09-30) — A model never indexes a column that a later migration adds (a deploy blocker, fixed and guarded)
+
+**Found by** the live PG18 agent. **Evidence:** a sub-agent's run, cited in the record § Amendment 3.
+
+- **The defect.** Boot runs `db.sync()` BEFORE the migrator. On an existing database, `sync()` skips CREATE TABLE but still builds every model index the table lacks. Amendment 1's three models declared `indexes: [{ fields: ["api_key_id"] }]` on a column that only migration 0105 adds. So upgrading a database built by the previous release (ce74932) failed with `column "api_key_id" does not exist — CREATE INDEX calibration_records_api_key_id`, and 0105 never ran. Fresh databases hid the defect, because `sync()` creates the column there.
+- **The fix.** The three model index declarations are removed. The indexes belong to 0105 alone, which creates identical ones (`<table>_api_key_id`). Schema-verify compares named expected objects, not model indexes, so it needs no change. The 0105 test now asserts that no model declares an index on `api_key_id`.
+- **The rule.** A model may not declare an index, or a unique constraint, on a column that a migration adds. That index is the migration's. The only exceptions are columns that every supported upgrade base already has. Today the supported base is ce74932, last migration 0090.
+- **Guards:**
+  - **Static guard, in the unit gate:** `tests/guards/modelIndexColumns.am3.guard.test.ts`.
+    - It evaluates every migration (.js and .ts) for added columns per table, then compares every model's `indexes` and unique attributes against them.
+    - A reviewed ALLOW list, keyed `table.column` with a written reason, fails if an entry goes stale. Its only entry is `invoices.stripe_invoice_id`: a unique attribute that `sync()` emits only inside CREATE TABLE, whose column migration 0002 adds before the base.
+    - It fails on a re-added `api_key_id` index.
+  - **Live upgrade-boot test:** `tests/migrations/upgradeBoot.am3.live.test.ts`, run with `AM3_UPGRADE_LIVE_TEST=1`.
+    - It extracts the base release's backend with `git archive` (no checkout) and builds the scratch database with THAT tree's own boot schema step.
+    - It writes the rows that release would hold, then runs the CURRENT tree's schema step with no manual migrate.
+    - It asserts that the migrations after the base apply, schema-verify passes, the 0105 and 0096 objects exist, the rows survive, and a second boot applies nothing.
+    - This holds the whole class of defect, not only the index shape.
+    - Building the ce74932 base needs `AM3_BASE_NODE_MODULES` with `joi`, which that release still used.
+- **Sweep.** No other index-on-a-later-column case exists in 0091–0106.
+- *Rejected:*
+  - Moving `db.sync()` after the migrator: migrations assume the tables `sync()` creates on a fresh database (ADR-087's boot order), so that is a boot-order change with its own risks.
+  - `sync({ alter: true })`: it rewrites columns on production data.
+- **Open.** CI does not run the live upgrade test (see the record for how it could). The CLAUDE.md "Traps" row is the coordinator's, at close.
+
+
+### Amendment 4 (2026-10-01) — A-331: no response carries a credential (the route, the model, the boundary)
+
+**Found by** the P9-22 helper while converting roles. **Severity:** high.
+
+- **The defect.** `POST /roles/assign` answered the return value of `roles.service#assignRoleToUser`, which was `User.findByPk(userId)` after the update. That is the whole row serialised: the bcrypt password hash, the MFA seed envelopes, the recovery-code hashes, the OTP hash and counters, and the WebAuthn credential columns. The route is `rbac(["SUPERADMIN"])`, so only an operator saw it — but it put every credential of the target account in a response body, in logs and in any proxy that records bodies.
+- **1. The route.** The service returns a named projection (`assignedUserView`): id, username, email, firstName, lastName, tenantId, roleId, status, isActive. The P9-22 helper's converted controller (`roles.controller.ts`) sends only that, and its OpenAPI block documents those nine fields.
+- **2. The model: defence in depth.** `models/secretAttributes.ts` lists, per model, the attributes that `toJSON()` drops. It is installed once, in the models barrel, after the associations are set up:
+  - **User:** password, the MFA seed envelopes and pending state, the last used step, the recovery codes, the OTP code and its counters, and the WebAuthn credential id, public key and sign count;
+  - **ApiKey:** keyHash;
+  - **Session:** token_hash;
+  - **Webhook:** secret, previousSecret;
+  - **TenantKey:** privateKey;
+  - **AccessRequest:** invitationTokenHash, sourceIpHash;
+  - **CalibrationDevice:** iotTokenHash (it already had its own override, which is kept).
+
+  So `JSON.stringify(row)` — what Express does — can never carry these, whatever a future handler forgets. The instance still reads them (`user.password`, `row.get("keyHash")`), so sign-in and verification are unchanged. A secret a caller must see ONCE (a new webhook secret, a new API key) is returned by its service as a field it names itself, never through the row. An unknown model name in the list fails at load.
+  - *Considered:* a defaultScope `attributes.exclude`. It would break every read that needs the value (sign-in reads the hash) unless each one used `.unscoped()`, and `.unscoped()` also drops the soft-delete predicate. The toJSON layer protects the output without touching the reads.
+  - *Not done:* OIDC client secrets and storage/KMS credentials are not model rows. They live in TenantSettings (envelopes, masked by `tenant.service`) and Redis, so the boundary scan below covers them.
+- **3. S-20: the boundary.** `tests/support/secretScan.ts` finds a credential KEY (the list above, its snake_case columns, and generic names such as `passwordHash`, `clientSecretHash`, `secretAccessKey`) or a password-hash-shaped VALUE (bcrypt, argon2) anywhere in a body.
+  - It scans every response the route suites get through `fixtures/routeClient.ts#call` (a finding rejects the call), and every body a real Express `res.json` serialises in a test (`tests/setup/secretScan.setup.ts`, registered in `jest.config.js` `setupFilesAfterEnv`; the finding fails the test in `afterEach`, not inside `res.json`, where the error handler would hide it as a 500).
+  - The one reviewed exception is a webhook's one-time secret on its create, update and rotate routes.
+  - The first full run with the scanner on found **no leak** besides A-331 itself. The only finding was that allowed webhook rotation, mounted at a test base path, which widened the exception's pattern.
+- **4. Unprojected reads.** About 60 `findByPk`/`findOne`/`findAll` calls on these models have no `attributes` list. Reviewed: each one either stays inside its service (sign-in, verification, bootstrap, GDPR internals) or is returned through a projection (`apiKey.service#publicKey`, `webhook.service#publicWebhook`, the auth `signInResponse`). The ones that reach a handler (`auth.service#getAuthUserWithTenant` → `req.user`, which `/auth/verify` and the profile routes read; `webhook.service#loadOwned`; `apiKey.service#loadOwned`) are now covered by the toJSON layer and the scan in any case. The list is in the record.
+- **Open.**
+  - The scan covers the route suites that drive a router (routeClient) or a real Express app. It does not cover controller unit tests with hand-made `res` doubles, which also mock their services.
+  - A response built by hand with a credential under a name outside the list is caught only if the value is hash-shaped.
+
+---
+
+## ADR-101: A Certificate's Author May Not Approve It (Separation of Duties), Refused With a 403 Inside the Tenant
+
+**Date:** 2026-09-29 · **Task:** UI-correctness fixes (audit docs/UI-UX/research/01 §4.2, 03 F2 and §4.1 step 7) · **Authority:** owner delegated the decision to best practice (2026-09-29) · **Record:** [`records/2026-09-29-ui-correctness-fixes.md`](records/2026-09-29-ui-correctness-fixes.md)
+
+**Context.** The certificate state machine is draft → pending_approval (submit) → approved (approve, re-authenticated) → signed → revoked (`certificate.service.js` `TRANSITION_REFUSALS`). Nothing stopped the user who drafted or submitted a certificate from approving it — `approveCertificate` checked the state and the credential, never the person. ISO/IEC 17025 §7.8.1.2 (results reviewed and authorised before release) and 21 CFR Part 11 §11.10(g) (authority checks) read the approval as an independent review; a self-approval is none. The certificate stored its author (`created_by`) but not its submitter.
+
+**Decision.**
+1. **The author may not approve.** A user who drafted the certificate (`createdBy`) or submitted it (`submittedBy`) is refused approval — on `POST /certificates/:id/approve` and at **every** approving step of the certificate's approval workflow (`workflow.service#takeAction` → `certificate.service#refuseSelfApprovalInWorkflow`), not only the final one. Another user holding `certificate` write approves the same row unchanged.
+2. **403, not 409.** CLAUDE.md: 409 is an invalid state transition; 403 is a permission failure inside the caller's own tenant. The certificate's state allows approval (another user succeeds on it as it is); what is refused is this caller's authority over this record. The message names the rule ("…you drafted or submitted this certificate… separation of duties…"), so it is not read as a missing grant. The state rule still comes first: the author approving a **draft** gets the 409 "submit it first".
+3. **Checked before re-authentication and before anything is written.** The guard runs under the row lock, before `verifySignatureAuth`: a refusal consumes no one-time MFA code and writes no certificate change, signature record or APPROVE audit row (asserted).
+4. **`certificates.submitted_by`** (migration **0095**, TypeScript; uuid, nullable, FK users ON DELETE RESTRICT, index `certificates_submitted_by` for D-20). `submitCertificateForApproval` stamps it with the caller in the same save as the status; the SUBMIT_FOR_APPROVAL audit row carries it in `after`. The migration back-fills certificates past `draft` from their latest SUBMIT_FOR_APPROVAL audit row, within the certificate's own tenant; one with no such row keeps NULL and the guard falls back to `createdBy`.
+5. **UI.** The certificates table follows the state machine exactly: Submit for approval on a draft (Approve is no longer offered there — it 409'd), Approve on pending_approval, E-Sign on approved, Revoke on any state but revoked. For its author, Approve is disabled with the reason next to it (`aria-describedby`). A refusal (409 or 403) is shown inside the approval dialog as the backend states it.
+
+**Alternatives considered.**
+| Option | Rejected because |
+|---|---|
+| 409 for self-approval | 409 means the record's state forbids the transition; here the state allows it and a different user succeeds — it is the person, not the state |
+| Only the creator (no `submitted_by`) | the submitter is the one who asserts the draft is ready; a resubmission by someone else would slip through |
+| Derive the submitter from `audit_logs` at approve time | a query into an append-only log on every approval, and the rule would silently weaken if the audit row shape changed; a column is explicit and indexed |
+| A tenant setting to allow self-approval (small labs) | a compliance control that can be switched off per tenant needs an owner decision; left as an Open Question if a single-person lab asks |
+| Enforce in the UI only | the API would still accept it; the UI is not a control |
+
+**Consequences.**
+- **Good.** Approval is an independent review in every path (direct and workflow); the attribution (drafted / submitted / approved) is on the record; the UI can no longer offer an action the backend refuses.
+- **Bad, or still open.** A tenant with a single user holding `certificate` write can no longer approve its own certificates — it needs a second approver. Certificates created before 0095 with no SUBMIT_FOR_APPROVAL audit row fall back to `createdBy` only. The seeded defaults give `certificate` write only to the level-8 admins (03 F4), so a tenant needs two admins to issue a certificate.
+
+---
+
+
+## ADR-102: The Sidebar and Every Page's Write Actions Derive From the One Effective Permission the API Checks
+
+**Date:** 2026-09-29 · **Task:** UI-correctness fixes (audit docs/UI-UX/research/01 §2.2 S6/S7, §3.1, §3.3, §5.4; 03 F1, F3, F5–F9) · **Authority:** owner delegated the decisions to best practice (2026-09-29) · **Record:** [`records/2026-09-29-ui-correctness-fixes.md`](records/2026-09-29-ui-correctness-fixes.md)
+
+**Context.** Three rules decided access and they disagreed:
+- the API (`dynamicAccess` → `roles.service#getRolePermissionsMatrix`) grants a menu and its **direct children**, and a per-user override (`user_menu_permissions`, A-35) replaces the role's grant;
+- the sidebar (`menuGroup.service#getRoleMenuAssignments`) showed a node when it **or any ancestor** was granted and ignored per-user overrides — a `management` grant showed ~30 Management pages the API refused;
+- six page hooks decided their write buttons from **hard-coded role names** (`hasWriteAccess = role.name === "SUPERADMIN" || … "WAREHOUSE STAFF"`) — CALIBRATOR ADMIN (server: `equipment` write) saw none, WAREHOUSE STAFF (server: `equipment` read) saw buttons that 403'd.
+Several pages are served by a gate other than their own grant (rbac levels, another slug), and two routes (`/dashboard/stock`, `/dashboard/storage`) had no menu entry.
+
+**Decision.**
+1. **One function.** `services/effectivePermission.service.ts` (new, TypeScript): the role matrix (unchanged rule: grant + direct children), replaced per key by the user's override (`none` revokes), `write` implies `read`, any verb but `read` needs `write`, the super admin passes. `dynamicAccess#checkMenuPermission` now reads it (no behaviour change: the existing dynamicAccess, Q-20 and A-07 suites pass unchanged). The sidebar and the pages read the same function.
+2. **The sidebar shows what the API serves.** A leaf is shown when the effective permission grants `read` on its slug **and** every gate its page's load call is behind passes — `constants/menuPageAccess.ts` `MENU_PAGE_GATES` quotes each such gate from its route file (rbac SUPERADMIN / TENANT_ADMIN level, another slug, the ticket service's "not the super admin"), and `effectivePermission.adr102.test.ts` fails when a quoted gate leaves its route file. `rbacAllows` mirrors `rbac()` and is tested against it for every seeded role. A group is shown when a leaf below it is. The requester's own menu includes their overrides; a super admin previewing another role gets that role's.
+3. **`GET /api/v1/menu-groups/my-permissions`** → `{ superAdmin, permissions: { slug: "read" | "write" } }`, loaded with the menu (`menuStore.effectivePermissions`). Pages use `usePermissions().canWrite(<slug their write API is gated on>)`: devices `calibration`, calibration records `calibration`, certificates `certificate`, stock and warehouse `warehouse`, maintenance `maintenance`, vendors `vendors`, billing `billing`. Until it loads — or if it fails — nothing is writable (fewer buttons, never one that 403s). Home's quick actions and user list follow it too (Add User on `users` write; New Tenant and Roles for the super admin; the `/users/all` call only with `users` read).
+4. **Grants that keep pages reachable** (seed `ROLE_MENU_ASSIGNMENTS`; migration **0097** for seeded databases): `stock` to every role holding `warehouse`, same type; `storage` write to role level ≥ 8; `tenants`, `tenant-hierarchy`, `kanban`, `api-keys`, `webhooks`, `attachments` to the non-super-admin roles holding `management`, each only when that page's API gate already passes for the role. None of these slugs is a `dynamicAccess` gate anywhere (tested), so **no grant widens API access** — they only let the menu show pages the API already served.
+5. **New menu entries:** Stock (top level, after Warehouse, icon Package) and Object Storage (Management › Content, icon HardDrive). **Home** maps to `/dashboard`, shown once beside Dashboard. `/dashboard/warehouse` redirects to `/dashboard/warehouses` (temporary; `src/lib/redirects.ts`).
+6. **"Crossed" slugs are not renamed.** Slug `calibration` shows `/dashboard/devices` and gates the device API; `certificate` shows `/dashboard/calibration` and gates the certificate API — each slug shows the page its API guards, so grant and page agree; only labels differ (a redesign concern). The Calibration Scheduler, whose page loads from a `maintenance`-gated route, is the one real mismatch, fixed as a page gate, not by a slug migration that would move every grant and override.
+
+**Alternatives considered.**
+| Option | Rejected because |
+|---|---|
+| Make the API cascade like the sidebar did | widens access for every role at once (Q-20 found the one-level rule deliberate) |
+| Keep the cascade and hide refused items client-side per page | two sources again; the next page added drifts |
+| Put permissions in the JWT | stale until re-login; overrides and grant changes would not apply |
+| Rename `calibration`/`certificate` slugs to match labels | moves every role grant, override and API-key scope; changes nothing a user can do |
+| Keep hard-coded role lists, corrected | the same defect on the next grant change; `docs/FRONTEND/05-RBAC-IN-UI.md` forbids it |
+
+**Consequences.**
+- **Good.** No seeded role sees a sidebar entry whose page 403s (menuEffectiveAccess.adr102, per role, on the real seed and the real dynamicAccess); a per-user grant or revocation reaches the menu; write buttons match the API for every role; the Stock module and storage settings are reachable.
+- **Bad, or still open.** HEALTHCARE / CALIBRATOR ADMIN and ENGINEERING MANAGER lose menu entries that only 403'd (Roles, Menu Groups, Blog & News, …) — correct, but visible. The page-gate table is maintained by hand (the test catches a changed gate, not a new page with a new gate). Pages not in this change still hide nothing for read-only roles (audit §5.4 lists ~24); they should adopt `usePermissions` as they are touched. The permissions cache (1 h) still delays a grant change; flush `permissions:*` after migration 0097.
+
+---
+
+
+## ADR-103 — The API contract is generated code-first from Zod; Scalar behind sign-in replaces Swagger UI (reserved 2026-09-29, P9-25; full text at the end of this file)
+
+## ADR-105 — Role Display Name, Level and Active are accepted by the API, not removed from the dialog (reserved 2026-09-30, F-19 fixes; full text follows)
+
+## ADR-098: The Public Surfaces Are Rebuilt Dark and Cinematic, Indonesian First, With No Unverified Proof; Request Access Replaces Self-Registration; Sign-in Becomes Identifier-First; a Passkey Button Waits for a Pre-Authentication Ceremony
+
+**Date:** 2026-09-29 · **Status:** Accepted for Phase 10 (§1–§7, §9–§10 on the owner's brief); §8 are working decisions **awaiting the owner's confirmation** · **Phase:** 10 · **Record:** `MEMORY/records/2026-09-29-P10-00-phase-10-11-planning.md`
+
+**Context.** The owner answered a brainstorm on the landing, sign-in, register and public verification pages (`docs/UI-UX/research/00-owner-brief-landing-auth.md`, binding). Two research files read the market and the code: `research/04-competitor-landing-and-auth.md` and `research/05-landing-auth-audit.md`. They found the live landing built on fabricated proof (fictional testimonials with randomuser.me faces, invented hospitals, unsourced numbers, HIPAA/SOC 2/SNARS badge chips), a register page that promises a workspace and creates a tenant-less user (ADR-075), a sign-in that asks users for a SAML/OIDC choice, no forgot-password page, no `autocomplete` (WCAG 2.1 SC 1.3.5), and ~305 KiB gzip of animation JavaScript on the landing. Several `docs/` documents disagree with the owner's brief; this ADR is the deviation record for all of them. The design spec is `docs/UI-UX/20-LANDING-AUTH-REVAMP.md`; the board is `TASKS/PHASE-10-LANDING-AUTH-REVAMP.md`.
+
+### Decision
+
+1. **`docs/UI-UX/19-IMMERSIVE-REVAMP-PLAN.md` Part I (landing, login, register) is superseded** by doc 20: no WebGL 3D hero, no Lenis, no GSAP/SplitText, no Motion on public pages, no testimonials, no pricing, no badge chips, no marquee. Part II (blog and news) stays; blog and news take the new public header and footer.
+2. **`14-PUBLIC-SURFACES-UX.md` is amended:** the landing's sections become hero · problem · features and workflow story · compliance and security ("supports", never a badge) · certificate verification · how we work · FAQ · contact; the "Trust: the standards" and "Pricing" rows go. Auth screens become a cinematic split-screen with a light motion budget instead of "deliberately plain". The verification page's rules are unchanged, and it is **not indexed** (it was not: `robots.ts` and the page's metadata did not cover it).
+3. **A dark-only public palette, one accent, a serif display.** Public surfaces (landing, `/login`, `/request-access`, `/forgot-password`, `/invitation`, `/activation`, `/verify/*`) use a separate `--pub-*` token set under `data-surface="public"`: near-black neutrals and the brand teal `#00DAB4` as the only accent, with the contrast ratios computed in doc 20 §4.2 and re-checked by a unit test. Display **Instrument Serif**, body **Plus Jakarta Sans** (both SIL OFL 1.1, `next/font/local` from committed files), data **JetBrains Mono**. The dashboard's ADR-090 tokens and fonts do not change. The tenant colour is **not** applied on public surfaces (logo and name only).
+4. **Indonesian by default, English by a toggle, on public surfaces only.** Typed dictionary modules (`id.ts` the source, `en.ts` typed against it), a `locale` cookie read by the root layout (which sets `<html lang>`), a Server Action behind a `<form>` for the toggle — no library, no inline script, works without JavaScript. `00-DESIGN-DIRECTION.md` § Language is amended for public surfaces; the dashboard stays English until Phase 11 decides.
+5. **The passkey button appears only when a pre-authentication ceremony exists.** Every WebAuthn route sits behind `router.use(auth)` (`webauthn.route.js:13`), so passkeys are a step-up today. P10-10 adds public `POST /auth/passkey/options` and `/verify` (no `allowCredentials` before authentication, a ceremony-bound challenge, one reviewed `skipTenantScope` for the credential lookup, the same post-authentication rules as password sign-in). Spec: `MEMORY/specs/P10-10-passkey-login.md`.
+6. **Request access is a new public, unauthenticated write** (this ADR is the record the spec template requires for a public endpoint): `POST /api/v1/access-requests`, rate-limited, honeypot, no captcha, Zod through `validate()`, the same neutral 202 for new, duplicate, over-cap and honeypot submissions, an audit row in the transaction with no personal data in `changes`, no email to the requester at submit. The `access_requests` table is **platform-owned and has no `tenantId`** (its tenant link is named `provisionedTenantId` so the global hooks do not scope it). The queue is **super-admin only through `rbac(SUPER_ADMIN)` on the admin router**, not `dynamicAccess`: approving creates a tenant, which A-76 made a platform operation precisely because a menu grant reached tenant administrators. Approval reuses `tenant.service.js#createTenant` with a new optional outer transaction. Spec: `MEMORY/specs/P10-05-request-access.md`.
+7. **No separate mockup gate.** The brief's row "hi-fi HTML mockups first → owner approval → implementation" was reported superseded by the owner on 2026-09-29 (execution starts when the documents are ready); the owner reviews on the running build. Recorded here because the brief says otherwise.
+8. **Working decisions, set by the coordinating session on 2026-09-29, awaiting the owner's confirmation.** The coordinating session reported that the owner delegated these to it ("decide the best recommendation and best practice"). The delegation is not recorded first-hand in the repository, so each stands as a working decision that implementation follows and the owner may overturn (`TASKS/BACKLOG.md` Q-39 … Q-47):
+   1. **Name:** "Device Calibrator" on every public surface (it matches the logo and `APP_NAME`'s default); "Callibrator" is the codename; "HDC" is not used. (Q-43)
+   2. **Accreditation:** SNARS is never named; *mendukung persiapan akreditasi rumah sakit (standar akreditasi Kemenkes)* / *supports hospital accreditation readiness (Ministry of Health standards)*; no regulation or decree number is cited; a legal review of the exact names is a pre-release item. (Q-39, Q-40)
+   3. **`POST /auth/register`:** disabled in production behind a flag (default off in production); its 409s made neutral where it is enabled. (Q-44, A-290, P10-12)
+   4. **First administrator on approval:** an invitation link (single-use, time-limited purpose token that sets the password), created in the approval's transaction; no temporary password — the random one-time password is for the super-admin bootstrap only (ADR-099). (Q-45, P10-05, P10-15)
+   5. **Passkeys:** a user-verifying passkey counts as phishing-resistant MFA and skips the TOTP step, platform operators included; ADR-059's TOTP rule is amended when P10-10 lands. (Q-46)
+   6. **Request retention:** a pending request nobody decides expires after 90 days; rejected, spam and expired requests are kept 12 months, then purged by the existing retention job; an approved request keeps its tenant link. (Q-42)
+   7. **Certificate enumeration (A-293):** a random verification token of at least 128 bits in the QR/verify link; a lookup by number returns only a minimal verdict (valid / revoked / expired, issuing tenant, dates; no serial, no signer) under a per-IP rate limit. Reported as being implemented by a security agent (the request budgets are ADR-100); Phase 10 tracks it as P10-16 and does not re-plan it. (Q-47)
+   8. **Contact channels:** `NEXT_PUBLIC_CONTACT_WHATSAPP`, `NEXT_PUBLIC_CONTACT_EMAIL`; a channel whose value is empty is hidden, never a placeholder. (Q-41)
+   9. **No pricing, no trial.**
+9. **Identifier-first sign-in; SSO discovered by email domain, not by account.** One form (email or username → password, or a redirect to the tenant's identity provider); the protocol comes from the tenant's configuration and the user never chooses it. `POST /auth/login/discover` answers from a list of email domains that **only the super admin** can attach to a tenant, so the answer depends on the domain, never on whether an account exists. An organisation-code fallback (`POST /auth/sso/start`) gives one generic refusal for unknown, disabled and misconfigured (A-292).
+10. **`08-COLOR-SYSTEM.md` § The Verification Page lists the six verdicts the page computes** (valid, revoked, withdrawn, expired, not found, not yet valid), not four; `07-TYPOGRAPHY.md` gains the public serif display, scoped to public surfaces, with the rule that transcribable values stay in the mono face.
+
+### Rationale
+
+- **The owner's brief is binding** on mood, accent, fonts, language, CTAs, register model, sign-in methods and proof. Where the research disagreed (below), the owner's choice stands.
+- **Every public claim must be true today.** The fabricated proof carries legal risk (UU 8/1999 Pasal 9 and 17; the FTC's 16 CFR 465 by analogy) and is the opposite of what a compliance buyer needs; research 05 classified every current string against the code, and P10-11 turns the rule into a test.
+- **Dark and one accent were the owner's choice;** the brand teal `#00DAB4` already exists (08) and passes 10.90:1 on the chosen background, so no new brand colour is introduced.
+- **No i18n library now:** about 250 strings on six pages; a typed dictionary makes a missing translation a compile error and stays CSP-safe. The flat-key shape migrates to `next-intl` mechanically if Phase 11 adopts it.
+- **Identifier-first by domain** removes the protocol question and the account oracle together; the tenant-code fallback keeps tenants without a domain claim working.
+
+### Alternatives Considered
+
+| Alternative | Why not |
+|---|---|
+| **Research 04's recommendation: a light page with one dark "grand" hero band, Plus Jakarta Sans as the display face** | Rejected by the owner (brief: "dark cinematic", "serif display + sans body"). Recorded because it is the more accessible option for bright offices and projectors (see Bad Implications) |
+| Keep 19 Part I (WebGL 3D hero, GSAP, Lenis) | ~305 KiB gzip JS on `/`, LCP tied to hydration (the hero `<h1>` starts at opacity 0), three animation systems; the owner asked for "subtle and premium" |
+| Keep self-registration and fix it | It creates a tenant-less account nobody can use (ADR-075), enumerates, squats addresses and mails anyone; the owner chose Request access |
+| `dynamicAccess` on the queue | A menu grant can reach tenant roles; creating a tenant is platform-only (A-76) |
+| `next-intl` now | A dependency and a request-config layer for six pages; deferred to Phase 11 |
+| `Accept-Language` negotiation | The owner chose Indonesian as the default for everyone |
+| SSO discovery by account lookup | An account oracle |
+| A passkey button now, calling the existing endpoints | They need a session; the button would do nothing |
+| Tenant colour on the public pages | Cannot be contrast-checked against near-black in advance; breaks the one-accent rule |
+| Temporary password for the first administrator (research 05 Q-4's other option) | A credential that travels out of band; an invitation proves the mailbox and sets the password in one step (working decision §8.4) |
+
+### Implications — Including the Bad Ones
+
+- **Dark-only public pages are harder to read in bright rooms and on projectors,** where hospital committees review vendors; users who need a light theme get none on these pages. Forced-colours mode must still work (it is in P10-13's checks), but the page is not designed for light.
+- **The accent and the success green have the same luminance** (1.03:1); they differ only in hue. The rule "the accent never touches a verdict, every status carries its word and icon" is a convention, enforced only by review and the axe/visual checks.
+- **A third and fourth font family** on public pages (~90 KB woff2 budget). Instrument Serif has only Regular and Italic; nobody may use it below 32 px or bold.
+- **Two i18n mechanisms later** if Phase 11 adopts `next-intl` and the public dictionaries are not migrated at the same time.
+- **The domain-discovery answer discloses that a hospital's domain uses SSO on this platform**, i.e. that it is a customer — the same fact a tenant-branded login link discloses. If the owner rejects that, discovery is dropped and only organisation links remain.
+- **A public write endpoint** will receive spam; the honeypot and budgets bound it, they do not stop it. The table holds personal data of people who may never hold an account: retention, DSAR erasure by email and a privacy notice are required before go-live.
+- **The approval transaction spans two services** (tenant and user creation); `createTenant` gains an outer-transaction option whose misuse (committing a transaction it does not own) would be a defect class of its own. Its existing tests must pass unmodified.
+- **The page will look emptier** after P10-00 removes the fabricated proof, before the redesign lands. That is intended.
+- **§8's working decisions may be overturned** by the owner; the ones with code consequences (8.3 register flag, 8.4 invitation, 8.5 passkey-as-MFA, 8.7 verification token) would then need follow-up changes.
+
+### Documents amended
+
+`docs/UI-UX/00-DESIGN-DIRECTION.md` (§ Language, § Two Audiences), `07-TYPOGRAPHY.md` (public display face), `08-COLOR-SYSTEM.md` (public palette, tenant branding on public pages, six verdicts), `14-PUBLIC-SURFACES-UX.md` (§ Landing, § Auth Screens, § SEO), `19-IMMERSIVE-REVAMP-PLAN.md` (Part I superseded) — each with a note referencing this ADR.
+
+
+### Amendment 1 (2026-09-30) — the Phase 10 frontend as built, and where it departs from doc 20
+
+**Records:** `MEMORY/records/2026-09-30-P10-frontend-as-built.md` (index) and one record per card. Each departure below was made during implementation; none changes a decision above, and each is open for the owner to overturn.
+
+| # | Doc 20 said | As built | Why | Bad implication |
+|---|---|---|---|---|
+| 1 | §4.3: Latin + Latin Extended subsets; serif Regular and Italic | **Latin only**; Instrument Serif Regular only | Indonesian uses nothing beyond Basic Latin; no design element uses italic; four files, 57.4 KB (budget 90 KB) | a Latin-Extended letter (é, ş) on a public page falls back to the system face |
+| 2 | §4.3: preload only body 400 and display 400 | `next/font/local` preloads every file of a family: display 400 + body 400/500/600 | one family per `localFont` call; splitting weights into separate families breaks `font-weight` | ~24 KB more preloaded on public pages |
+| 3 | §11.1 `landing.verify.help`: "printed … next to the QR code" | "printed at the top of the certificate" | checked against `lib/certificatePdf.ts` (number in the top block, QR in the footer) — §11's "[confirm in P10-03]" | none |
+| 4 | §11.1 `landing.security.auditRows` ships | **withheld** from the page (key kept) | its own condition (the audit `REVOKE` and migration 0091 confirmed on the reference deployment as the application role) is not met | the security list is one item shorter until it is |
+| 5 | §6.5 lookup field | built behind `CERTIFICATE_LOOKUP_ENABLED = false` | P10-14 is not DONE (its live check is open) | none; flipping it is one reviewed line |
+| 6 | P10-06: the page does not go live before the privacy notice (Q-42), vs §6.1: the request-access link is always present | the link is present (landing, sign-in, footer); the consent text names the Privacy Notice but **does not link it** (none exists) | §6.1 needs a way forward when no contact channel is configured | **release blocker**: the privacy notice must exist before the public deployment (§14) |
+| 7 | §7.5 / P10-10: the passkey button only once P10-10 is DONE | shown where WebAuthn exists, since the backend ceremony merged (ADR-108), at the coordinator's instruction; `PASSKEY_SIGN_IN_ENABLED` hides it | the endpoints exist and are tested; DONE waits only for the virtual-authenticator E2E | a live-ceremony regression is user-visible before P10-13 catches it |
+| 8 | §5 item 2: the root layout sets `<html lang>` from the cookie | it does, **except under `/dashboard`**, which stays `en` (the proxy passes the path in `x-pathname`) | the dashboard is English until Phase 11; `lang="id"` on English content fails SC 3.1.1 | one more request header the proxy owns |
+| 9 | §5 item 4: strings to client components "as props or through one MessagesProvider" | one `MessagesProvider`; **outside a provider it falls back to English** | unit tests render client components alone; every page wraps its islands in a provider with the request's locale | a client component rendered outside `AuthShell`/the verify shell shows English |
+| 10 | A-288 (ADR-100) on the passkey path | a `LOCATION_REQUIRED` answer runs ONE new ceremony with the position | a ceremony is single-use, so the assertion cannot be resent | the user touches the authenticator twice on a geofenced tenant |
+| 11 | §6.9 removes the old landing sections | every old landing section, `data/landing.ts`, the motion helpers only they used, and the last seven Pexels photos are deleted | nothing public uses them | blog and news still use `LandingLayout` (Lenis/GSAP) and have not taken the new header and footer (§1 of this ADR) — open (**closed by Amendment 2**) |
+
+### Amendment 2 (2026-09-30) — the public pages' JavaScript, the AC-7 measurement, and blog/news on the public surface
+
+**Record:** `MEMORY/records/2026-09-30-P10-perf-blog.md` · **Card:** P10-13 (the performance part) · **Amends:** doc 20 §13 AC-7 (the measurement), doc 19 §11 (the blog/news chrome).
+
+**Context.** Lighthouse mobile Performance was 73–91 on the public pages and `/verify/*` shipped ~180 KB of first-load JavaScript against a 120 KB budget. The cause was structural: the ROOT layout rendered the signed-in app's client providers (theme, tenant branding, the session check with axios and the auth store behind it, toasts), so every public page downloaded and hydrated them; the session check even called the backend from pages that have no session.
+
+**Decisions.**
+
+| # | Decision | Alternatives considered | Bad implication |
+|---|---|---|---|
+| 1 | The providers move to `app/dashboard/layout.tsx` (`components/AppProviders.tsx`). The root layout keeps `<html>`, fonts and the nonce'd theme-init script only. The dashboard's pages are not moved or restyled. | **(a) a `(public)` route group** with its own layout: needs the public routes moved into it and, to be lean, the providers out of the root anyway — the providers moving DOWN is the part that matters, and it leaves every URL and file where it was. **(b) Render the providers conditionally on the path in the root layout:** a client reference imported by a layout is in every page's bundle whether rendered or not — no saving. | A future signed-in route OUTSIDE `/dashboard` gets no providers unless it wraps itself in `AppProviders`. A toast raised just before leaving the dashboard (e.g. at sign-out) is not shown on the public page it lands on. `AuthInitializer` now skips a session already in the store (the client-side step from sign-in), so the dashboard does not re-verify a session proved a moment earlier. |
+| 2 | Inter and Space Grotesk (the dashboard's faces) are declared in the root layout with `preload: false`. | Import them in the dashboard layout: their CSS variables must sit on `<html>` (portals, `body`), which only the root layout renders. | ~70 KB of fonts is no longer preloaded on the dashboard's first load; they load when its CSS first uses them (`display: swap`, a brief fallback-font swap on the first visit), then from cache. |
+| 3 | Client bundles carry no full dictionary: the translator lives in `i18n/translate.ts` (no dictionary imports); `MessagesProvider`'s English fallback outside a provider is **development and test only** (a `NODE_ENV` branch the production build drops); `useLoginForm` / `FirstPasswordChangeForm` no longer export English-dictionary constants (their tests build them). | Keep the fallback: ~21 KB of English in every public island for a branch no page takes. | In production a client component rendered outside a `MessagesProvider` shows **keys**, not English (Amendment 1 #9 is now "English in development and tests"). |
+| 4 | `i18n/apiErrors` checks `isAxiosError` itself (`err.isAxiosError === true`, what axios does) instead of importing axios. | — | If axios ever changed the marker, readApiFailure would treat its errors as unknown (a network message). |
+| 5 | Public pages and the root error / not-found boundaries draw icons from `components/icons/static.tsx`, generated from lucide's paths by `scripts/gen-static-icons.mjs`. lucide-react 1.x marks its `Icon` base `"use client"`, so every lucide icon — even in a server component — is client JavaScript. | Keep lucide: its runtime sat on every page through the root not-found boundary. | Two icon sources: a new icon on a public page must be added to the generator's list (the dashboard keeps lucide-react). |
+| 6 | The root not-found boundary and the verification page's home link use `<a>`, not `next/link` (a deliberate, commented `no-html-link-for-pages` exception). Turbopack put a second copy of the Link runtime in each chunk group that referenced it. | Keep `Link`: ~3 KB twice on `/verify/*`. | No prefetch or client-side navigation from a 404 page or the verification header. |
+| 7 | **AC-7 is measured in brotli, per file, by `frontend/scripts/bundle-budget.mjs`** (first load = `rootMainFiles` ∪ the route's client-reference `entryJSFiles`); CI and `make verify` run it after `next build` against `frontend/bundle-budget.json`, which also holds gzip ceilings and regression ceilings for the other public routes. | "`next build` output" (doc 20): Next 16 prints no sizes. **gzip:** react-dom + the Next and Turbopack runtimes alone are **127.4 KB gzip / 109.0 KB brotli**, so `/verify/*` ≤ 120 KB gzip is unreachable with React 19 whatever the page does. | The number depends on the encoding the edge serves; nginx here sends gzip (level 1 by default), and brotli reaches browsers only where the edge (Cloudflare) recompresses. The gzip ceilings in the budget file keep that side from regressing. |
+| 8 | Blog and news (index and `[slug]`) render in `components/public/ContentShell.tsx` (public header whose anchors lead to `/#…`, footer, `--pub-*` tokens); chrome strings are dictionary keys (`content.*`); the category filter is a server component; the gradient "Sign in" band on an article is replaced by the landing's contact heading and the request-access link; titles say "Device Calibrator" (Q-43). `LandingLayout`, `Navigation`, `Footer`, `AnimatedBackground` and `components/landing/_shared` are deleted. | Keep `LandingLayout` for blog/news: it loaded Lenis and GSAP (~86 KB brotli) on every blog and news page. | Post bodies are authored in one language and are shown as written under either locale. `.article-prose` has public-surface overrides in `public-surface.css`; a new prose element styled in `globals.css` needs one there too. |
+
+**Result** (the record has every number): first-load JS brotli `/` 150.6 → 123.4 KB, `/verify/*` 155.4 → 117.9 KB (AC-7 met), `/login` 161.2 → 150.2, blog/news 237 → 119. Lighthouse (mobile, 5 runs, median, interleaved before/after on a shared host with `benchmarkIndex` ~1075): `/` 75 → 76, `/login` 85 → 81, `/verify/*` 77 → 82, `/request-access` 80 → 80, `/blog` 70 → 89, a blog article 73 → 86 — **AC-5/AC-6 still not met on this host**; the medians of the first four moved within the run-to-run spread. The streamed blog/news pages first measured CLS 0.28–0.32 (the footer drawn above the fold, then moved); `ContentShell`'s `<main>` is now at least a viewport tall and the trace shows no shift.
+
+---
+
+## ADR-096: The Audit List Reads a 90-Day Window by Default and Counts at Most 10,000 Rows; the Dashboard Holds at Most Four Connections; Kanban Lists Count in One Grouped Query; the Lists Have Per-Tenant Order Indexes
+
+**Date:** 2026-09-29 · **Cards:** P8-04 (query-shaped fixes), D-30 · **Builds on:** ADR-086 §3 (the P8-07 measurement and the P8-04 decision), ADR-063 (0062's audit indexes), ADR-064 (0067) · **Migration:** `0093` · **Record:** `MEMORY/records/2026-09-29-p804-query-shape.md`
+
+**Context.** ADR-086 §3 measured the backend under load (P8-07). PostgreSQL was the saturated resource. The audit list's exact `count(*)` over the tenant's whole history was 39 of 72 sampled active queries: a parallel sequential scan of 500,000 rows. The dashboard ran 20 aggregates in one `Promise.all` against a 20-connection pool. The P8-04 debate decided on query-shaped fixes first — a bounded or estimated count and a default audit window — and a read replica only if p95 still fails after them.
+
+This change carries out those fixes. It also audits the other list and detail services for N+1s, missing indexes and sequential scans. The audit ran on a throwaway `pgvector/pgvector:pg18` built the way the app builds it (`runSchemaSetup`: `db.sync()` and then the migrator) and seeded with:
+- the demo seed and `scripts/load/p807-seed.sql`: 2 × 5,000 devices, 2 × 50,000 records, 2 × 500,000 audit rows and 4.32M `iot_readings`;
+- a scratch generator for two more tenants (60/40): 5,000 devices, 50,000 records, 20,000 certificates, 200,000 audit rows, 20,000 attachments, 10,000 stocks and adjustments, 5,000 transfers, 10,000 work orders, 20,000 notifications, 80 kanban boards × 100 cards × 10 sprints. Every row carries its tenant column.
+
+46 scenarios drove the REAL services inside the tenant context `tenantContext.middleware` builds. Each statement they issued was captured through Sequelize's `logging` callback and re-run under `EXPLAIN (ANALYZE, BUFFERS)` (best of 5).
+
+**Findings**
+
+| # | Finding | Evidence (before) |
+|---|---|---|
+| 1 | **Audit list: exact count over all history** on every page request | 500k-row tenant: Parallel Seq Scan, 24,513 buffers, **329 ms**. Under k6 audit-only load (5 VU) the pre-fix backend answered **408 after 30 s** and then logged `ERR_HTTP_HEADERS_SENT` (the request timeout fired while the count was still running) |
+| 2 | **Kanban `listProjects` N+1**: one card count plus `resolveAccess` (project `findOne` + members `findAll`) per board | **122 statements** for a member with 40 boards, 81 for a super admin; live PG18: 5 statements for 1 board, **92 for 30** |
+| 3 | **Kanban `listSprints` N+1**: one count per sprint plus the backlog | 14 statements for 10 sprints (16 for 12 on live PG18) |
+| 4 | Lists ordered by a column no per-tenant index serves | certificates `created_at DESC`: Seq Scan + sort of 12,000 rows, 50 ms · work orders `created_at DESC`: Seq Scan + sort, 43 ms · devices `name` at page 200: bitmap scan + top-N sort of 5,000, 40 ms · stocks `item_name`: Seq Scan + sort, 16 ms · attachments `created_at DESC`: Seq Scan · records `calibration_date DESC`: an Index Scan Backward on the global `(calibration_date)` index that discards the other tenants' rows (25,512 rows removed, 27,842 buffers) |
+| 5 | Dashboard: 20 aggregates in one `Promise.all` against a pool of 20 (ADR-086 §3) | one request can hold every connection |
+| 6 | `attachment.listOrphans` (D-22's report): hashed subplans that seq-scan each parent table across every tenant | **3.0–3.7 s**, 62–82k buffers. Left open (below) |
+| 7 | `stock.getInventoryReport` loads every stock row of the tenant to sum them in JavaScript | 1 query, 6 ms at 6,000 rows. Unbounded, but D-24's reviewed list already carries it. Left open |
+| 8 | `eSignature.getEligibleSigners` checks the permission per user | 1 statement in practice: the permission matrix is cached per role. Not an N+1 at the database |
+
+No other list or detail service issued a query per row. Devices, records, certificates, stock, maintenance, notifications, attachments and search each issue a fixed 1–3 statements.
+
+### Decision
+
+1. **Audit list: a default window and a bounded count (findings 1; API change).**
+   - A request with no `startDate`, no `endDate` and no `resourceId` reads the last **90 days** (`AUDIT_DEFAULT_WINDOW_DAYS`).
+   - `meta.window = { from, to, defaulted }` says which window was read. A caller that wants older rows passes a `startDate`.
+   - A single resource's history (`resourceId`) is not windowed. It is bounded by the resource, and 0062's `(tenant_id, resource_type, resource_id)` index serves it.
+   - `meta.total` counts at most **10,000** rows (`AUDIT_COUNT_CAP`). `meta.totalIsCapped: true` says the total is then a lower bound. `totalPages` follows the capped total. A page past it is still served if asked for.
+   - The count is **raw SQL through `utils/sql.util#sql`**, a constant statement with every filter bound (`$2::uuid IS NULL OR user_id = $2`, …). It reads `SELECT 1 … LIMIT $9` inside `count(*)`, over 0062's `(tenant_id, created_at)` index.
+   - **Its tenant is the one the hook would force.** Raw SQL bypasses the hooks, so `countTenantId` uses `tenantScope.util#resolveScope`:
+     - a tenant principal binds its context tenant;
+     - a context with no tenant binds `NO_TENANT_UUID`;
+     - the controller's `tenantId` is bound only where the hook would not filter (super admin, system task, no context).
+   - **Frontend:** the audit page shows "Showing the last 90 days (since <date>). Set a Start Date to see older entries." when `meta.window.defaulted` is true. Under the pager it shows "More than 10,000 entries match. Narrow the dates or filters for an exact count." when `meta.totalIsCapped` is true.
+2. **Kanban: one grouped count (findings 2–3).**
+   - `listProjects` runs `KanbanCard.count({ group: ["projectId"] })` once. It reads each board's access level from the memberships query it already ran, now reading `accessLevel` too.
+   - The rule is `resolveAccess`'s: a super admin and the creator are owners; anyone else gets their best membership level, or null.
+   - `listSprints` runs `count({ group: ["sprintId"] })` once; the NULL group is the backlog.
+   - Statements: 122 → 3, 81 → 2, 14 → 4.
+3. **Dashboard: at most `DASHBOARD_CONCURRENCY = 4` aggregates hold a connection at once (finding 5).**
+   - The same 20 queries run through `runBounded`, in order. The first rejection rejects the whole, as `Promise.all` did, and starts no more tasks.
+   - The query shapes are unchanged, so no dashboard figure can change.
+4. **Migration `0093`: six per-tenant ORDER BY indexes, built `CONCURRENTLY` as 0062 builds them (finding 4).**
+   - `calibration_records (tenant_id, calibration_date DESC)`, `certificates (tenant_id, created_at DESC)`, `calibration_devices (tenant_id, name)`, `maintenance_work_orders (tenant_id, created_at DESC)`, `attachments (tenant_id, created_at DESC)` and `stocks (tenant_id, item_name)`.
+   - An INVALID index left by an interrupted build is dropped and rebuilt.
+   - The indexes are declared on no model (`sync()` runs first; D-13). `0093` is TypeScript, and its manifest name keeps `.js` (P9-23).
+
+### Before / after — `EXPLAIN (ANALYZE, BUFFERS)`, PostgreSQL 18, execution time of every statement a call issued (best of 5)
+
+The host was a shared desktop Docker engine running about 20 other agents' stacks, so the times are noisy. The buffer counts are stable.
+
+| Service call | Statements | Exec ms | Buffers |
+|---|---|---|---|
+| audit list, 500k-row tenant, page 200 | 2 → 2 | **328.8 → 7.0** | 24,513 → 2,033 |
+| audit list, 120k-row tenant | 2 → 2 | 88.6 → 5.1 | 4,798 → 157 |
+| audit list, page 200 | 2 → 2 | 65.2 → 21.2 | 5,045 → 404 |
+| audit list, `action=DELETE` | 2 → 2 | 40.3 → 23.4 | 4,804 → 2,624 |
+| kanban `listProjects`, member of 40 boards | **122 → 3** | 30.1 → 2.9 | 4,567 → 382 |
+| kanban `listProjects`, super admin | **81 → 2** | 25.9 → 3.2 | 4,444 → 379 |
+| kanban `listSprints`, 10 sprints | **14 → 4** | 2.3 → 0.9 | 165 → 126 |
+| certificates list | 2 → 2 | 57.1 → 5.5 | 1,033 → 593 |
+| certificates list, `status` | 2 → 2 | 26.4 → 4.4 | 1,033 → 599 |
+| work orders list | 2 → 2 | 47.0 → 4.1 | 563 → 385 |
+| devices list, page 200 | 2 → 2 | 42.6 → 4.5 | 355 → 260 |
+| devices list, page 1 | 2 → 2 | 6.5 → 1.6 | 225 → 136 |
+| stock list | 2 → 2 | 19.2 → 3.1 | 913 → 519 |
+| attachments list | 2 → 2 | 21.6 → 17.5 | 1,202 → 631 |
+| dashboard, 500k-row tenant | 21 → 21 | 72.0 → 47.8 | 5,169 → 3,637 |
+| records list, page 200 | 2 → 2 | 87.9 → 60.6 | 29,352 → 29,352 (see below) |
+
+The plan changes behind the rows:
+- certificates, work orders, stocks and devices: `Seq Scan`/bitmap scan + `Sort` → `Index Scan using <table>_tenant_id_<order>`;
+- the audit count: `Parallel Seq Scan` over 500,000 rows → `Index Only Scan using audit_logs_tenant_id_created_at`, stopping at 10,001 rows.
+
+### Load — `scripts/load/p807-baseline.k6.js`, A/B on the same host state
+
+Before: the tree without this change's service edits, and without the 0093 indexes. After: the working tree, with them. One backend process from source (`node --import tsx`, `NODE_ENV=production`), `grafana/k6` in a container, 10 VU for 60 s mixed, then 5 VU for 30 s each on audit only and dashboard only. Round 1 is discarded: the pre-fix backend timed out the k6 login in `setup`, so every later round warms up first. Rounds 2–4 are below.
+
+| Round | Tree | Mixed req/s | Mixed p95 s (devices / find / records / audit / dashboard) | Mixed 408s | Audit-only req/s · p95 s | Dashboard-only req/s · p95 s |
+|---|---|---|---|---|---|---|
+| 2 | before | 3.6 | 0.86 / 1.30 / 2.08 / 30.24 / 0.84 | 6 | 3.6 · 4.19 | 4.8 · 2.07 |
+| 2 | after | 16.5 | 0.93 / 0.90 / 0.92 / 1.08 / 1.06 | 0 | 7.3 · 1.20 | 7.1 · 0.84 |
+| 3 | before | 10.0 | 1.84 / 1.45 / 2.41 / 2.51 / 1.28 | 0 | 2.0 · 4.33 | 7.3 · 1.16 |
+| 3 | after | 8.9 | 3.96 / 1.24 / 4.27 / 1.59 / 2.33 | 0 | 13.3 · 0.71 | 1.8 · 3.37 |
+| 4 | before | 15.8 | 0.85 / 0.82 / 1.09 / 1.47 / 0.86 | 0 | 5.5 · 1.76 | 4.3 · 2.03 |
+| 4 | after | 2.4 | 8.61 / 8.68 / 11.39 / 9.01 / 10.05 | 0 | 4.0 · 1.86 | 6.3 · 1.06 |
+
+**0 tenant leaks and 0 5xx in every run.** The only 408s were the pre-fix audit list's (6 in round 2's mixed run, 5 in round 1).
+
+**What these runs show, and what they do not.** The host was a shared desktop Docker engine running about 20 other agents' stacks and test suites (CPU per container sampled at 100–650%). Run-to-run noise was larger than most effects:
+- round 4's *after* mixed run fell to 2.4 req/s with 9–11 s p95 on every endpoint, including the untouched devices list, with no error in the backend log;
+- round 4's *before* mixed run was the best of all eight.
+
+So the end-to-end numbers are **not evidence of a p95 improvement**, and this ADR does not claim one. Two things held regardless:
+- **Only the pre-fix audit list ever timed out:** 408s after 30 s in rounds 1 and 2, with `ERR_HTTP_HEADERS_SENT` in the backend log. None of the post-fix runs had a 408.
+- Audit-only throughput was higher after the fix in rounds 2 and 3 (3.6 → 7.3, 2.0 → 13.3 req/s) and level in round 4 (5.5 → 4.0).
+
+The server-side evidence above (buffers, plans, statement counts) is what the decision rests on.
+
+**The dashboard bound is not shown to help.** Its effect is inside the noise: dashboard-only p95 went 2.07 → 0.84 s in round 2, 1.16 → 3.37 s in round 3, and 2.03 → 1.06 s in round 4. What the bound guarantees is structural: one dashboard request can no longer hold the whole pool (`queryCount.p804.live` asserts at most 4 connections). Whether 4 is the right figure is a question for a quiet host (below).
+
+### Alternatives considered
+
+| Alternative | Why not |
+|---|---|
+| **An estimated count** (`pg_class.reltuples`, or `EXPLAIN`'s row estimate) | it is per table, not per tenant and filter; the planner's estimate for a filtered tenant can be off by orders of magnitude, and a compliance screen showing an invented number is worse than one showing "10,000+" |
+| **Drop the total entirely (keyset "next page" only)** | the frontend pager and every list's envelope carry `meta.total`; a bounded total keeps the contract and removes the cost |
+| **No default window, only the cap** | the capped count still reads up to 10,001 rows on every request, and the rows query's `OFFSET` walks history; the window bounds both, and an old row is one `startDate` away |
+| **Batch the dashboard's 20 aggregates into a few `FILTER` queries** | fewer statements, but raw SQL or `literal` fragments for every figure, and every soft-delete scope (`is_deleted`, paranoid `deleted_at`) replicated by hand — a class of mistake this codebase has made before (A-75); the bound keeps every query as it was and is provably figure-identical |
+| **Raise the pool instead of bounding the fan-out** | ADR-086 §3: PostgreSQL is already the saturated resource; a bigger pool only lets more queries queue inside it |
+| **Also cap the devices and records list counts** | P8-07 names them too, but their totals are 5,000 and 50,000 per tenant — bounded by the inventory, not by time. They are not changed here, and their exact counts cost 2–36 ms. Left open |
+| **A `(tenant_id, action, created_at)` audit index** | the window already bounds the action-filtered count at 23 ms on 65k windowed rows; add it if the filter becomes common |
+
+### Implications, including the bad ones
+
+- **API change.** A client that called `GET /audit` with no dates and expected the whole history now gets 90 days. It is told so in `meta.window` and on the page. No other client of the list exists in the repository: the GDPR export and the masking read the trail through their own services.
+- **`meta.total` is a lower bound past 10,000.** The pager shows 1,000 pages of 10, and the note says there are more. A tenant with more than 10,000 rows in 90 days (about 110 a day) always sees the note until it narrows the filters.
+- **The count is raw SQL.** It is the first raw statement in `audit.service`. It binds `tenant_id = $1` (rawSqlTenantPredicate.d05 checks that), and it takes its tenant from the same `resolveScope` the hook uses. A future filter added to the rows query must be added to `AUDIT_COUNT_SQL` too, or the count and the rows disagree. The unit guard pins the bind positions.
+- **The records list does not use its new index on this data.** With three tenants each holding about a third of the table, the planner costs the global `(calibration_date)` index below the per-tenant one, and keeps it. With the old index dropped inside a rolled-back transaction, the per-tenant index read 592 buffers instead of 21,839. With many tenants, the per-tenant index is the cheaper plan by the planner's own arithmetic. That is the production shape, but it is **not demonstrated here**.
+- **The dashboard is up to about 5× more serial.** 20 queries run 4 at a time, so an idle system's dashboard latency is about 5 sequential query rounds instead of 1. That costs tens of milliseconds when each aggregate is a few milliseconds.
+- **`memoryDb` evaluates a grouped `count`** (`{ attr, count }` per key, NULL a key of its own), so `kanban.twoTenant` still runs through it. Any other grouped aggregate is still refused.
+- **Sequelize's `beforeQuery` hook fires twice per statement** in this build (observed: 4 hook calls for 2 logged statements). The live guard counts statements through `logging`, and connections through the connection manager.
+
+### Evidence
+
+- **Unit guard** `src/tests/services/queryShape.p804.test.ts`, 15 tests:
+  - audit: bounded count through `sql()` with `tenant_id = $1`, no `findAndCountAll`/`count`, cap and lower bound, default window, explicit dates, a resource not windowed, the count tenant from the context;
+  - dashboard: peak ≤ 4 with all 20 queries run, and `runBounded` ordering and stop-on-reject;
+  - kanban: 40 boards → 3 / 2 model calls with the same levels, one grouped count for sprints.
+  - **Fail-before:** 14 of 15 failed on the tree without this change's service edits (`git worktree add <scratchpad>/perf/wt HEAD`, backend `src` copied from the working tree and the three services restored to their pre-fix text; the worktree was removed afterwards, junctions removed with `rm` on the link). kanban: `Expected: 3, Received: 82`, `Expected: 2, Received: 81`, `Expected number of calls: 1, Received: 11`.
+- **Live guard** `src/tests/services/queryCount.p804.live.test.ts` (opt-in `P804_PG_LIVE_TEST=1`, a database named `*scratch*`), 4 tests. **4 of 4 passed** on PostgreSQL 18 (`pgvector/pgvector:pg18`) built by `runSchemaSetup`:
+  - listProjects: the same count for 1 and 30 boards, ≤ 3;
+  - listSprints: ≤ 4;
+  - audit: 2 statements, total capped at 10,000 of 12,000;
+  - dashboard: 21 statements, ≤ 4 connections.
+  - **Fail-before:** 4 of 4 failed on the pre-fix tree: `Expected: 5, Received: 92` (listProjects, 30 boards), `Expected: <= 4, Received: 16` (listSprints), `Received: 12000` (the audit total, exact), and `DASHBOARD_CONCURRENCY` undefined.
+- **Migration** `src/tests/migrations/0093-list-order-indexes.test.ts`, 8 tests: CONCURRENTLY, idempotent, INVALID rebuilt, failure propagates, `down` exact, registered, no model declares them. **On PG18:** `0093` applied through the migrator in 29.9 s over the loaded database, and `pg_index.indisvalid` is true for all six.
+- **Adapted, not weakened:**
+  - `audit.service.test.js`: `findAll` + `sql` doubles. "omits createdAt" became "applies the default window".
+  - `audit.platform.a125.test.js`: the double answers the bounded count; it now also asserts that the count binds the hook-forced tenant (`total` 2, not PLATFORM's 1).
+  - `kanban.service.test.js`: grouped-count doubles; "swallows resolveAccess errors" became "a membership row with no level gives no access".
+- **Frontend** `src/app/dashboard/audit/__tests__/page.window.p804.test.tsx`: 4 tests (window note shown and hidden, capped note shown and hidden). The audit folder's 4 suites pass (25 tests).
+
+### Open
+
+- The **dashboard concurrency figure** (4) and the dashboard's p95 need a load run on a quiet, dedicated host. This host could not separate the effect from noise.
+- `attachment.listOrphans` takes 3–4 s at 20,000 attachments (finding 6). It is D-22's report and admin-only. The fix is a rewrite of its polymorphic anti-join (per-type `NOT EXISTS` joined on the parent's `(tenant_id, id)`), for D-22's owner.
+- The **devices and records list counts** are still exact (P8-07 named them). They are cheap at today's inventory. Cap them the same way if a tenant's record count makes them measurable.
+- `stock.getInventoryReport` aggregates in JavaScript over every stock row (D-24's reviewed list).
+- **P8-04's replica decision.** On this host, with these fixes, the audit endpoint that dominated the P8-07 sample is no longer the ceiling. Whether p95 still fails is a question for the dedicated-host run P8-07 already asks for.
+
+**Status:** Accepted — implemented 2026-09-29.
+
+---
+
+## ADR-097: `@callibrator/contracts` — One Zod Schema for the Backend Validator and the Frontend Type; the Package Ships TypeScript Source, and Only the Backend's Release Tree Gets a Compiled Copy
+
+**Date:** 2026-09-29 · **Card:** P9-22 · **Implements:** ADR-038 (shared-contracts row), ADR-087 decision 7 (cross-workspace contracts are not `backend/src/types/`) · **Works with:** ADR-044 / ADR-046 (npm workspaces, one root lockfile, images built from the root), ADR-093 (Joi → Zod, P9-11) · **Does not settle:** Q-48 (`packages/contracts` vs ADR-089's `shared/contracts`)
+
+**Context.** The frontend's request types were hand-written copies of what its authors believed the API accepted, and ADR-030 already called them "a belief about the API, not a guarantee". P9-11 (ADR-093) made every backend request validator a Zod schema, which is both the runtime check and a type. P9-22 puts those schemas where both ends can import them. The package has five consumers, and each loads code differently:
+
+| Consumer | How it loads `@callibrator/contracts` |
+|---|---|
+| backend and frontend typechecks (TypeScript 7 by path; Node16 / bundler resolution) | the `types` condition |
+| backend jest (the Babel 8 transformer) | the resolver follows the workspace symlink to its realpath outside `node_modules`, so the `.ts` is transformed. The frontend's imports are `import type` today, erased by ts-jest before anything loads |
+| backend `npm start` / `dev` / migrations (tsx) | tsx compiles any `.ts` |
+| frontend `next build` (Turbopack) and its standalone server | the bundler compiles it (`transpilePackages`) |
+| backend `node dist/index.js` and the pkg binary | **plain Node: it cannot load `.ts`** (ADR-087 context, item 1) |
+
+### Decision
+
+1. **Layout.** `packages/contracts/src/<domain>.ts` has one module per API domain, holding request schemas and the types derived from them (`z.input` for what a client sends, `z.output` for what the handler receives). `src/fields.ts` holds the shared field schemas and `src/index.ts` is a barrel of **named** re-exports. A module imports only `zod` and its siblings: no Node API, no DOM, no environment. The package's lint enforces that (`no-restricted-globals` on `process`, `window`, `document`), and so does `types: []` in its tsconfig.
+2. **The package ships TypeScript source.** `package.json` `exports` maps `.` and `./*` to `./src/*.ts` for both `types` and `default`, so every consumer except the release tree reads the one source. The manifest declares **no `"type"`**. With `"type": "commonjs"`, Turbopack refused the first frontend *value* import (`contentHtml`, the A-298 agent's) with "Specified module format (CommonJs) is not matching the module format of the source code (EcmaScript Modules)". With no `type`, it infers ESM from the syntax, while TypeScript (Node16), tsx and Babel still treat the files as CommonJS. The compiled copy in `backend/dist` declares `"type": "commonjs"` itself. Proved on 2026-09-30 by a `next build` with that runtime import bundled. There is no `packages/contracts/dist`, so there is no build that can go stale, and the typecheck cannot disagree with what jest or Next executes.
+3. **Only the backend's release tree gets JavaScript.** `backend/scripts/build-dist.ts` gains step 4, after the backend compile. It runs TypeScript 7 on `packages/contracts/tsconfig.build.json` with `--outDir backend/dist/node_modules/@callibrator/contracts` (CommonJS), checks that every source module was emitted, and writes a compiled `package.json` (`main ./index.js`, `exports` `./*.js`). A `require` from `dist/src/**` walks up to `dist/node_modules` before it reaches the workspace symlink, in plain Node and in pkg. `zod` still resolves from the root `node_modules`, so the backend and the contracts share one instance. The step is additive: the existing "N copied, M compiled" line is unchanged, and a compile failure exits 1 through `fail()`.
+4. **The backend keeps its module names.** `backend/src/validators/vendor.validator.ts` and `calibrationDevices.validator.ts` re-export the package's schema **objects** under the same names, and `validators/fields.ts` re-exports the field helpers. `validate()`, `enumMirrors.d26`, `swaggerValidatorAlignment.p608` and the contract suites rely on object identity and schema introspection, so re-exports keep all of them unchanged. The re-exports are named, never `export *`: Babel's CommonJS interop for `export *` is a loop whose branches put `fields.ts` at 75% in the backend's 100% gate (measured).
+5. **The frontend infers.** `frontend/src/api/services/vendor.service.ts` and `device.service.ts` define `VendorCreateInput`, `VendorUpdateInput`, `VendorQualifyInput`, `DeviceCreateInput` and `DeviceUpdateInput` as the contract's `z.input` types (plus `{ id }` for updates). `VendorType`, `VendorStatus` and `DeviceStatus` come from the schemas' own value lists. Response types (`Vendor`, `Device`) stay hand-written: the package has no response schemas yet. The device form keeps its own UI shape (`DeviceFormState`), which must stay assignable to the contract where it is submitted. `next.config.ts` lists the package in `transpilePackages`, so a future value import (client-side validation) is bundled, never externalised to a standalone server that cannot load `.ts`.
+6. **One Zod.** The package declares `zod ^4.6.5`, the same range as the backend. npm hoists one copy to the root, and `packages/contracts/test/package.test.ts` asserts that the package, `backend/` and `frontend/` resolve `zod` to the **same file** (major 4). A second copy would make two `ZodType` classes. The nested `zod@3` under `chromium-bidi` (puppeteer) is not reachable from any of the three, and the test resolves from each workspace, not globally.
+7. **Types-only change in the move.** `numeric`, `booleanish` and `dateLike` declare the input they convert (`number | string`, `boolean | string`, `Date | string | number`) through `z.preprocess`'s third type parameter, instead of `unknown`. Without this, `z.input` of every numeric or date field is `unknown`, and the frontend type would accept anything. The runtime is byte-identical: the conversion functions still take `unknown`.
+8. **Workspaces, and the pnpm file (G-09).** The root `package.json` already listed `packages/*`, and `pnpm-workspace.yaml` deliberately did not ("no shared package"). npm is authoritative (ADR-044), so the npm declaration stands. `pnpm-workspace.yaml` now lists `packages/*` as well, so the two at least agree, and its comment says it does not install anything. Deleting the file is still G-09. Both workspaces depend on `"@callibrator/contracts": "^0.1.0"`, which the lockfile records as a `link` to `packages/contracts`.
+9. **Images (ADR-046).** Both Dockerfiles copy `packages/contracts/package.json` with the other manifests before `npm ci`, which refuses a lockfile that names a workspace it cannot see. They copy `packages/contracts/` with the source: the backend before `build:dist`, the frontend before `next build`. Both `Dockerfile.dockerignore` allow-lists re-include `packages/contracts` and exclude its `node_modules` and tests.
+10. **Gates.** The package has its own `lint` (`packages/contracts/eslint.config.js`, which mirrors the backend's TypeScript block: strictTypeChecked + stylisticTypeChecked, `no-explicit-any`, the enum ban, `consistent-type-imports`), its own `typecheck` (TypeScript 7 under the backend's flags, plus `test/tsconfig.json`), and its own `test`. The test runs the backend's `fields.p911`, `vendor.validator` and `calibrationDevices.validator` suites plus `test/package.test.ts`, with **100%** thresholds. The backend's jest cannot measure the package: jest instruments only files under its `rootDir`, and `backend/` does not contain `packages/` (probed: the package reads 0% there while its tests pass). So the package's jest config uses the repository root as `rootDir`, and runs from `backend/` so that Babel finds the backend's Babel 8 plugins. All three are wired into `make lint`, `make typecheck`, `make test` and CI's backend-lint job, each run directly, because turbo would skip them silently.
+11. **Location (Q-48, not settled here).** ADR-089 plans a root `shared/contracts` for Phase 999. ADR-038 and ADR-087 put Phase 9's contracts in `packages/contracts`, and CLAUDE.md forbids creating `shared/` before Phase 999. This ADR builds what Phase 9 decided and records the conflict as Q-48. Consumers import by package name only, so a later move changes the workspace glob, the Dockerfile lines and the `CONTRACTS` path in `build-dist.ts`, but no import.
+
+### The first slice
+
+Moved: `fields` (P9-11's `backend/src/validators/fields.ts`; its definitions now live in `packages/contracts/src/fields.ts`, **not** in the backend, which P9-11's record and ADR-093 name as the canonical location), `vendor` (`createVendor`, `updateVendor`, `qualifyVendor`) and `calibrationDevices` (the list query, id param, create and update schemas). The P9-11 helper cleared all three as settled before the move.
+
+**What the typed contract caught on its first compile.** The vendor page's create call sent `rating`, which `createVendor` does not declare. `validate()` stripped it, so **no create has ever stored a rating** (Q-37). The frontend no longer sends it on create; it still sends it on update, and nothing stored changes. `useVendors.test.ts` pinned the fabricated field and was updated with it. The old `VendorQualifyInput` also typed `scorecard` as an object, where the API takes an integer from 0 to 100. Nothing sent it.
+
+### Alternatives considered
+
+| Alternative | Why not |
+|---|---|
+| **The package builds its own `dist/`, and `exports` points at it** | every consumer then depends on a build step having run, and on its output being current. An edited schema would be type-checked from the source and executed from a stale build: the one disagreement this card exists to remove |
+| **Conditional exports (`"source"` for tooling, `"default"` → built JS)** | plain Node, tsx and jest all resolve with `node`/`require`/`default`. Separating them needs `--conditions` on every script, a jest `customExportConditions` and a Turbopack equivalent, which are three mechanisms kept in sync by hand |
+| **Load the `.ts` with Node 26's type stripping in the binary** | pkg snapshots `.ts` as an asset, not a script. Node 26 also refuses stripping under `node_modules`, and relative imports would need `.ts` extensions, which TypeScript accepts only with `allowImportingTsExtensions` (an emit restriction on the backend build). Not provable inside pkg |
+| **Add `../packages/contracts` to the backend's tsconfig and compile it into `dist/src`** | it breaks `rootDir: "."` (TS6059), and puts package code in the backend's tree under the backend's paths, so a `require("@callibrator/contracts")` still resolves elsewhere |
+| **Keep the frontend's hand-written interfaces and add a test comparing them** | a test generated from the code it tests verifies consistency, not correctness (CLAUDE.md § Evidence). The compiler comparison is the one that cannot drift |
+| **Measure the package inside the backend's 100% gate** | jest does not instrument outside `rootDir` (probed). Widening the backend's `rootDir` to the repository changes every path in its config, and that is the lead's decision, for no gain over a package-level gate |
+| **`shared/contracts` now (ADR-089)** | CLAUDE.md: no `shared/` before Phase 999, and ADR-038 and ADR-087 name `packages/contracts`. It is Q-48, an owner decision, not a helper's |
+
+### Implications, including the bad ones
+
+- **Every backend build compiles the package twice over:** once as part of the backend typecheck, under the backend's flags, and once in `build:dist` for the release tree. The package is small (4 modules), so the cost is under a second, and it grows with each domain moved.
+- **Source-only exports make the package unusable outside this monorepo**, for example if it were published to a registry. That is intended: it is `private`. The scope `@callibrator` is unregistered on npm. The lockfile pins the package as a `link`, so `npm ci` never looks at the registry, but a future `npm install` of a misspelled name in that scope would.
+- **The frontend typechecks the package under its own looser settings, and the backend under its strict ones.** Code in the package must satisfy both, and the package's own typecheck uses the stricter set.
+- **Changing a contract schema now changes the frontend's types.** That is the point, and it will make a backend-only schema change a two-workspace change in review.
+- **`build:dist` owns `dist/node_modules/@callibrator/contracts`.** It removes and recreates only that directory. Anything else placed in `dist/node_modules` is left alone.
+- **The Docker frontend build type-checks the package source.** The frontend allow-list must keep `packages/contracts/src`, and a test file added to `src/` is excluded by the `**/*.test.*` rule. The image has no jest types, the same trap as `frontend/src/tests` on 2026-09-27.
+- **Response schemas are not in this slice.** `Vendor` and `Device` are still hand-written beliefs. The device service's `data.rows` fallback is exactly the kind of shape a response schema would pin (CLAUDE.md § The Response Envelope).
+
+### Evidence
+
+Recorded in `MEMORY/records/2026-09-29-p9-22-contracts.md`.
+
+### Amendment 1 (2026-10-01) — nine more domains; constants canonical in the package; one envelope; the frontend's request types are ADR-103's generated contract
+
+**1. The package owns the schemas, and ADR-103 owns the frontend's form of them.** P9-25 (ADR-103, owner-decided) generates `backend/openapi.json` code-first from the same Zod schemas `validate()` enforces, and generates the frontend's types from it (`openapi-typescript` → `frontend/src/api/generated/schema.d.ts`, `openapi-fetch`). ADR-103 item 11 names those generated `paths` types as a migrated service's canonical request types. The coordinator ruled (2026-10-01) that the two are layered, not rivals:
+- `@callibrator/contracts` holds the **schemas**. The backend `validate()` and the `<route>.openapi.ts` modules reference them.
+- On the frontend, a service's request types are the generated `paths` types once its route module is code-first (P9-25 with P9-20/P9-21).
+- `z.input` from the package is the **interim** form until then. No further service is converted to `z.input`. The eight already on it (the first slice's `device`, and this round's `warehouse`, `stock`, `maintenance`, calibration records, `user`, `roles`) move to the generated types with their routes. `vendor.service.ts` already has (ADR-103's pilot).
+
+This amends decision 5 and the P9-22 plan's step 2. Decision 5's "the frontend infers" is superseded by ADR-103 item 11 for every code-first route.
+
+**2. Nine more domains moved** (`warehouse`, `stock`, `maintenance`, `calibrationRecords`, `user`, `roles`, `certificate`, `qms`, `tenant`). Each body moved byte-identical (diffed against copies saved before the move), except that three import paths now point at the package's own constants (item 3). Each backend validator became a named re-export of the same objects. No importer changed. `z.input` / `z.output` types were added per schema.
+
+**3. Constants the schemas read are canonical in the package** (the Phase 9 lead approved it). `DEFAULT_LIMIT` / `MAX_LIMIT` (`pagination.ts`), `NC_STATUSES` / `NC_SEVERITIES` / `CAPA_STATUSES` with their types (`qmsValues.ts`), and `STORED_LOGO_NAME` (`tenantLogo.ts`) are defined in the package. `backend/src/constants/appConstants.ts`, `qmsConstants.ts` and `tenantLogo.ts` re-export the **same bindings**. `QMS_NUMBERING` stays in the backend (SQL identifiers). `test/constants.test.ts` asserts `===` identity and that the arrays are frozen. `enumMirrors.d26` passes unchanged: it requires the constants modules, and those now hand out the package's arrays. The models (`capa`, `nonConformance`) now load the package, which `load:check` proves in dist mode through `dist/node_modules`.
+
+**4. The barrel stops at the first slice.** Domain modules reuse names (`calibrationDeviceIdSchema` is in two of them, `updateRoleSchema` in two), so later domains are imported by subpath only.
+
+**5. One envelope.** P9-25 wrote Zod envelope schemas for the OpenAPI document (`backend/src/docs/openapi/envelope.ts`). P9-22 had written a second set for the types. They are now **one** set, in `packages/contracts/src/envelope.ts`: P9-25's `PaginationMeta`, `envelope`, `listEnvelope`, `emptyEnvelope`, `ErrorEnvelope` and `RateLimitBody`, moved verbatim with their `.meta()` annotations. The backend `ApiSuccessResponse` / `ApiListResponse` / `ApiErrorResponse` / `ApiResponse` types are built on them.
+- `backend/src/docs/openapi/envelope.ts` re-exports the schemas and keeps only the OpenAPI error-response components.
+- `backend/src/types/apiResponse.ts` re-exports the types (the ADR-087 amendment the lead is placing).
+- **Pagination is required, the generic `meta` is not.** This follows what the code emits, not taste. A paginated list's `meta` requires `total`, `page`, `limit` and `totalPages`: exactly what `response.util#paginate` returns and every paginated service builds. A success body's own `meta` stays optional (`meta?: object`), as `success()` sets it only when given.
+- `test/envelope.test.ts` parses the real `success()` / `error()` / `paginate()` output. It refuses `data.rows`, `data.meta`/`items`, a list without `meta` and a partial `meta`.
+
+**Evidence (2026-10-01):**
+- **`openapi.json`.** `npm run openapi:generate`: "417 operations, 12 code-first", and the output is **byte-identical** (`cmp`) to the file before the envelope move. `openapi:check`: current. `openapi:lint` (Spectral): "no new error; 18 baselined legacy error(s)". `openapiRoutes.p925` 11/11. The P9-25 route suites (`--testPathPatterns "openapi|apiDocs|p925|p608|response.util|envelope"`): 147 passed, and 1 failed in p608 (below).
+- **Package.** 379 tests, 100/100/100/100 over 19 modules. Typecheck and lint clean.
+- **Backend.** Typecheck 0 errors. Contract, validator, model and guard suites: 116 suites, 2,334 tests. `--testPathPatterns "certificate|qms|tenant|capa|nonConformance|pagination|appConstants|constants"`: 149 suites passed, 1 failed (`0067-foreign-key-and-tenant-indexes`, other lanes' `api_key_id` indexes).
+- **Build and load.** `build:dist` on the live tree: "186 JavaScript files copied, 363 TypeScript files compiled", then "@callibrator/contracts, 19 TypeScript files compiled". `load:check` OK in src (tsx) and dist (node) modes. In dist, `qmsConstants.NC_STATUSES === ` the compiled `dist/node_modules/@callibrator/contracts/qmsValues.js`'s.
+- **Frontend.** Typecheck clean. The six services' suites and dashboards: 25 suites, 310 tests.
+- **Found, not mine, left to its lane:** p608 "rest of the tree" fails on `PATCH /api/v1/roles/:id`: "accepted by the validator but undocumented: nameToShow, roleLevel". `updateRoleSchema` gained those fields under F-19 / ADR-105 before this move (the copy saved before the move has them), and neither the route's JSDoc nor `swaggerValidatorAlignment.knownDrift.json` was updated.
+
+**Implications, including the bad ones.**
+- The backend's constants modules for pagination, QMS values and the logo pattern are now thin re-exports. An edit to the value belongs in `packages/contracts`, and a developer editing the backend file finds only a pointer.
+- Every model that reads QMS constants loads the package, so a broken package build now breaks model loading, not only validation. `load:check` in dist mode is the gate that catches it.
+- Two forms of frontend request type (interim `z.input`, canonical generated) coexist until every route is code-first. A reviewer must know which one a service is on; each service file says so in its header comment.
+- The package now carries OpenAPI documentation text (`.meta()` descriptions and examples). That is harmless on the frontend, where it is data only, but it makes the package the place those descriptions are edited.
+
+### Amendment 2 (2026-10-01) — every request schema but two lives in the package; the two that stay, and why
+
+**1. 40 of 42 validator modules are in `@callibrator/contracts`.**
+- **The 29 moved this round:** `auth`, `billing`, `calibrationDeviceReinstate`, `content`, `customDomains`, `dataRetention`, `eSignature`, `featureFlag`, `finance`, `gdpr`, `kanban`, `menuGroup`, `meteredBilling`, `notification`, `oidc`, `scim`, `session`, `sso`, `storage`, `tenantBackup`, `tenantHierarchy`, `tenantLifecycle`, `ticket`, `webhook`, `workflow`, `iot`, `webauthnCredential`, `publicAuth`, `accessRequest`.
+- **How they moved:** each body moved byte-identical (diffed against copies saved before the move, with the one rewritten import path allowed for). Each backend `validators/<d>.validator.ts` is a named re-export of the same objects.
+- **The import rewrites:** `publicAuth`'s import of `./auth.validator` became the package sibling `./auth`. `accessRequest`'s import of `../constants/accessRequest` became `./accessRequestValues` (item 3).
+- **One tree change the move carried:** `iot`'s tree state vs `HEAD` is P9-11's own Joi → Zod change (ADR-093), which the P9-11 helper had declared settled.
+
+**2. Two modules stay backend-only, decided with the Phase 9 lead:**
+- **`networkSecurity.validator.ts`** checks addresses with Node's `net.isIP`. The package loads in the browser and uses no Node API (decision 1). A hand-written IP parser is where parsing edge cases hide, and replacing `isIP` is a behaviour question, not a move.
+- **`admin.validator.ts`** reads `isRedactedSettingKey` from `constants/tenantSecretSettings`. That module is the backend's encryption policy: it decides which `tenant_settings` values the TenantSettings model seals as KMS envelopes (S-20, migration 0035). It must not ship in a package the frontend bundles, or be edited as a "contract".
+  - Its functions would also become re-exported bindings, which `jest.spyOn` cannot redefine.
+  - Its route (tenant flags, operator-only) has no frontend reader.
+
+**3. One more canonical constant set.** `accessRequestValues.ts` holds the four access-request ENUM vocabularies (`FACILITY_TYPES`, `DEVICE_COUNT_BANDS`, `REQUEST_LOCALES`, `ACCESS_REQUEST_STATUSES`) and their types. `backend/src/constants/accessRequest.ts` re-exports the same arrays and keeps the retention and cap numbers, and `test/constants.test.ts` asserts `===`. The model, migration 0099 and the service now read the package through that module.
+
+**4. The package's own gate follows the move.** Its jest `testMatch` runs every backend validator suite (not networkSecurity's, which loads the backend configuration) plus `test/`. `test/accessRequest.test.ts` restates the access-request schema expectations, because their only backend suite (`phase10.units.p1005`) needs the whole backend and an in-memory database.
+
+**5. p608 fixed in `roles.route.js` JSDoc, not in `roles.openapi.ts`.** `PATCH /roles/:id` now documents `nameToShow` and `roleLevel` (added to `updateRoleSchema` under F-19 / ADR-105). ADR-103 item 12 has a module's code-first docs ride with its P9-20/P9-21 conversion, and `roles.route.js` is still JavaScript. `openapi.json` differs from before only by those two properties, and `frontend/src/api/generated/schema.d.ts` was regenerated.
+
+**Evidence (2026-10-01):**
+- **Package.** 1,057 tests, 44 suites, 100/100/100/100 over 49 modules. Typecheck and lint clean.
+- **Backend.**
+  - Typecheck: 0 errors.
+  - ESLint on `src/validators/` and `constants/accessRequest.ts`: clean.
+  - Contract, validator, model and guard suites: 116 suites, 2,334 tests.
+  - Domain sweep (`--testPathPatterns` over scim, sso, session, auth, oidc, webauthn, passkey, accessRequest, p1005, iot and every other moved domain, plus p608, openapi and p925): **324 suites, 6,010 tests passed, 0 failed**. That includes the P9-12 identity suites the lead named.
+- **Build and load.** `build:dist` on the live tree: "185 JavaScript files copied, 364 TypeScript files compiled", then "@callibrator/contracts, 49 TypeScript files compiled". `load:check` OK in src (tsx) and dist (node) modes.
+- **Contract docs.** `openapi:check` current. p608, `openapiRoutes.p925` and `apiDocs.p925`: 26/26. Frontend typecheck clean, `api:types:check` current.
+
+**Implications, including the bad ones.**
+- Nearly every backend request schema is now edited in `packages/contracts`, and a backend developer opening `validators/<d>.validator.ts` finds only a re-export. This is the point of P9-22, and it moves where reviews happen.
+- Migration 0099 now reads its ENUM values through the package. The values are identical, but a frozen migration's inputs now live in a shared package. Changing a vocabulary there without a migration that alters the type is still a defect (the rule `qmsConstants` already states).
+- Two validator modules stay outside the package on purpose. A future "finish P9-22" sweep must not move them without revisiting item 2.
+
+**Status:** Accepted — first slice implemented 2026-09-29; amended 2026-10-01 (Amendments 1–2).
+
+---
+
+## ADR-104 — A tenant-chosen URL the server calls goes through a pinned, redirect-free SSRF guard; a development allow-list exists and production ignores it
+
+**Date:** 2026-09-29 · **Status:** Accepted, implemented · **Record:** `MEMORY/records/2026-09-29-a176-ssrf.md` · **Cards:** A-176 (open note closed), A-306, A-307
+
+**Context.** `oidc_authority` and `ai_base_url` are tenant-admin settings (A-176's allow-list) that the backend itself fetches: OIDC discovery, JWKS and the token POST, and the AI vendor calls. These calls used plain axios, with no host check and redirects followed. The webhook sender and the S3 driver had `utils/ssrf.util`, but only as a text/DNS check made *before* the HTTP client resolves the host again. The DAST (2026-09-29) reconfirmed the gap.
+
+### Decision
+
+1. Every call to a tenant-chosen URL goes through `ssrf.util`:
+   - `assertOutboundUrl` runs first: https only in production; no loopback, private, link-local/metadata, ULA, multicast or reserved host; IPv4-mapped/compatible/NAT64 IPv6 in dotted **and** hex form (A-306).
+   - Then axios gets `ssrfSafeAxiosOptions`:
+     - agents whose `lookup` refuses any internal answer, so the checked address is the dialled one;
+     - `maxRedirects: 0`;
+     - `proxy: false`;
+     - a timeout;
+     - a 2 MiB response cap.
+   - The S3 SDK gets the same agents for a tenant endpoint.
+2. The URL is also checked **when it is saved** (`PATCH /tenants/settings`): a 400 naming the key; an empty value clears it.
+3. The operator's own URLs (`OPENAI_BASE_URL`, a trusted S3 endpoint, alert/ClamAV/MQTT/SMTP env) are **not** guarded. They are legitimately internal and not tenant input.
+4. **`SSRF_DEV_ALLOW_HOSTS`** (comma-separated host names), read through `config/env`, lets named internal hosts through **outside production only**. `isProduction()` makes the list empty.
+5. The CORS policy moves to `middlewares/corsPolicy.middleware.ts`. A rejected origin is `AppError(403)`, not a plain Error (which was a 500).
+
+### Alternatives considered
+
+| Alternative | Why not |
+|---|---|
+| Resolve-then-request (the webhook's pattern) | leaves a DNS-rebinding window between the two resolutions |
+| Follow redirects and re-validate each hop (`beforeRedirect`) | more code and more ways to be wrong. No legitimate IdP discovery or AI endpoint needs a redirect; a 3xx becomes a clear failure (502 for discovery) |
+| An egress proxy or network policy | right as defence in depth, but it is deployment, not code, and it cannot be tested here. Also, `proxy: false` means these calls ignore `HTTP(S)_PROXY`, so an egress proxy would have to be transparent |
+| A CIDR allow-list for development | too easy to write `10.0.0.0/8` and ship it. Host names are narrower, and production ignores them anyway |
+| https-only in every environment | breaks local IdPs and model servers. Production is where it matters |
+
+### Implications (including the bad ones)
+
+- A deployment whose tenant uses an IdP or AI endpoint on a private network (an on-premises Keycloak, a self-hosted model server) **stops working in production**. The fix is a public, TLS-terminated address. There is no production override, by design; asking for one is an owner decision (it would be an Open Question).
+- `proxy: false`: a deployment that reaches the internet only through an explicit forward proxy cannot reach IdPs or AI vendors from these call sites.
+- Every AI call now has a 60 s timeout; it had none.
+- An IdP whose discovery URL redirects (for example http→https) now fails with 502 instead of following. Configure the final URL.
+- ~~The webhook sender still resolves twice (A-307, open).~~ Closed by Amendment 1.
+
+### Amendment 1 (2026-09-30): webhook delivery connects through the pinned lookup (A-307)
+
+**Context.** `webhook.service#attemptDelivery` checked the host with `assertResolvedHostIsPublic` and then sent with Node's `fetch`. `fetch` takes no agent and resolved the host again to connect.
+
+**Decision.** Add `ssrf.util#pinnedFetch(url, init)`. It is fetch-shaped: same init, `{ ok, status }` result, `AbortError` on abort or timeout. Underneath it is axios with `ssrfSafeAxiosOptions`, plus:
+- `validateStatus: () => true`;
+- `responseType: "stream"`, with the stream destroyed unread;
+- an identity `transformRequest`, so the signed body goes out byte for byte.
+
+`attemptDelivery` calls it instead of `fetch`. Everything else is unchanged: the pre-check, signing, headers, `WEBHOOK_TIMEOUT_MS`, the 3xx-as-failure rule, retries and backoff, and the delivery row.
+
+**Alternatives.**
+
+| Alternative | Why not |
+|---|---|
+| Keep `fetch`, pass an undici `Agent({ connect: { lookup } })` as `dispatcher` | Proven to work on Node 26 with undici 7.29.1. But `undici` is only a transitive dependency (`@scalar/api-reference`, `@yao-pkg/pkg`), and declaring it needed a `package.json`/`package-lock.json` change while other lanes had both in flight. It also mixes the npm undici with Node's bundled one |
+| Call axios directly in the service | Every webhook test asserts on a fetch-shaped call. A fetch-shaped helper keeps them unchanged: the doubles forward `pinnedFetch` to `global.fetch` |
+
+**Implications.**
+- The request's own headers now come from axios, not undici. It sends `User-Agent: axios/<v>` and `Accept: application/json, text/plain, */*` instead of `node` and `*/*`. Receivers verify the `X-Webhook-*` headers, which are unchanged.
+- The `HTTP(S)_PROXY` environment variables are ignored (`proxy: false`), as for the other tenant-chosen URLs.
+- A connection refused by the pinned lookup is recorded as `lastError` "SSRF guard: <host> resolves to a disallowed (internal) address". Before, such a request was delivered.
+
+
+
+## ADR-106: The Helm Charts Are Validated on a kind Cluster, Not Yet a Production One; the Chart Derives Every Public Origin, Exposes the Seeding Toggle, Rolls the Backend on Configuration Change, Publishes `/health`, and Sizes Its Probes for a Slow Boot
+
+**Date:** 2026-09-30 · **Card:** P7-06 · **Record:** [`records/2026-09-30-p7-06-helm-kind-cluster.md`](./records/2026-09-30-p7-06-helm-kind-cluster.md) · **Extends:** ADR-066 (chart secrets), ADR-081 (probe paths exempt from `FORCE_HTTPS`), ADR-086 (the schema lock)
+
+### Context
+
+The charts had only ever rendered (U-01). P7-06 asked for a real install. None had been possible because no cluster was reachable. On 2026-09-29/30 one was built locally:
+
+- **Cluster:** kind v0.33.0 (checksum-verified), Kubernetes 1.37.0, one node, kindnet, local-path, ingress-nginx v1.15.1.
+- **Datastores**, in the cluster, from the digests compose pins: PostgreSQL 18.6 + pgvector 0.8.6, Redis 8.6, RabbitMQ 3.13 and clamd 1.4.
+- **Images:** built from HEAD `ce74932`. The working tree could not build while Phase 9 conversions were in flight: first a module present as both `.js` and `.ts`, then TypeScript errors in half-converted validators.
+
+The unmodified chart passed `kubectl apply --dry-run=server` and installed. Its pods became Ready. The backend migrated 63 migrations, verified its schema and switched to `callibrator_app`. But seven things were wrong, and each was found only in the cluster:
+
+1. **`checksum/config` was always `""`.** Nothing set `configChecksum`, so an upgrade that changed only the ConfigMap left the backend on the old environment. In revision 2, `CALIBRATION_SCHEDULER` changed in the ConfigMap but was absent from the running process, and the pod was the same one.
+2. **The seeding toggle could not be set.** `ALLOW_SEEDING` was not rendered, so a Helm install on an empty database could not be seeded: `/migration/seeding` answered 401, with no super admin to authenticate.
+3. **Three public origins fell back to development addresses.** `FRONTEND_URL`, `OIDC_ISSUER` and `PUBLIC_BASE_URL` were not rendered. `/oidc/.well-known/openid-configuration` advertised `issuer: http://localhost:5000`.
+4. **`/health` was not on the ingress.** It fell through to the frontend's 404 page. Compose's nginx publishes it.
+5. **Probes used the kubelet's 1 s timeout.** The frontend had no startup probe, so `/` (server-rendered) timed out and Next was killed twice while starting.
+6. **The backend startup budget (30 × 10 s) was shorter than `MIGRATION_LOCK_TIMEOUT_MS` (600 s).** Two replicas booting on an empty database were both killed by the kubelet before the schema step finished. A waiting replica is killed before the lock's own, logged bound can apply.
+7. **NOTES.txt described the migration race and the Redis adapter as unsolved**, after ADR-086 and A-54 had solved them.
+
+A defect outside the chart was found too: with `FORCE_HTTPS=true`, sign-in through the frontend fails. See Implications.
+
+### Decision
+
+1. **The umbrella ConfigMap derives `FRONTEND_URL`, `OIDC_ISSUER` and `PUBLIC_BASE_URL` from `ingress.host`**, as it already did `HOST_URL`. The ingress serves `/oidc` at the root, so the issuer is the root.
+2. **`backend.env.ALLOW_SEEDING` is a value** (default `""`), rendered into the ConfigMap. While it is `"true"`, NOTES.txt prints a warning and the seed-then-unset procedure.
+3. **`checksum/config` defaults to the SHA-256 of the backend subchart's own values** (every `backend.*` and `global.*`), unless `configChecksum` is set. It does **not** cover `ingress.host`, `certificates.*`, `alerts.*` or the Secret, and the template comment says so.
+4. **The ingress publishes `/health` (`pathType: Exact`) to the backend.** `/live` and `/ready` stay unpublished, as in nginx.
+5. **Every probe has `timeoutSeconds`** (`probes.timeoutSeconds`, default 5). **The frontend gets a `startupProbe`** on `/` (`probes.startupFailureThreshold`, default 36 × 5 s).
+6. **The backend startup budget is `probes.startup.failureThreshold` × 10 s, default 72 (12 min).** That is above the 600 s lock timeout. Raise the two together.
+7. **The status is stated as proven, and no further.**
+   - `Chart.yaml` now carries `callibrator.io/validation-status: kind-validated`, at chart version 0.2.0.
+   - NOTES.txt, `docs/DEVOPS/09-KUBERNETES.md` and `CLAUDE.md` say "installs on one local kind cluster; not known to deploy on a production cluster".
+   - P7-06 is closed against its own Definition of Done, on kind. "Deploys to production" remains U-01, open.
+8. **`FORCE_HTTPS` stays `"true"` in the chart.** The sign-in failure is filed as an application defect, not worked around in the chart.
+
+### Alternatives considered
+
+| Option | For | Against | Verdict |
+|---|---|---|---|
+| Checksum the rendered ConfigMap (`include (print $.Template.BasePath "/configmap.yaml")`) | covers every key | the Deployment is in the subchart, which cannot render the umbrella's template with the umbrella's values | rejected |
+| Move the backend Deployment into the umbrella | exact checksum | a structural change to a chart just validated for the first time | rejected for now |
+| Only document `kubectl rollout restart` after every upgrade | no template change | the defect is silent; an operator who forgets runs the old configuration indefinitely | rejected; kept only for the uncovered keys |
+| Hard-code `ALLOW_SEEDING` in an overlay values file | no new value | there is no first-boot overlay; a value is visible in `helm get values` and warned about in NOTES | rejected |
+| Set `FORCE_HTTPS: "false"` in the chart (as the VM overlay does) | sign-in works at once | drops the application layer of HTTPS enforcement, which ADR-081 kept deliberately | rejected |
+| Fix the Next auth handlers to send `X-Forwarded-Proto` in this change | the actual fix | frontend code outside this card, under active edit by other agents; it needs its own tests | filed, not done here |
+| A startup budget of exactly 600 s | matches the lock | the probe and the lock timer start at different moments, so the waiter and the kubelet would race | 720 s chosen |
+
+### Implications, including the bad ones
+
+- **Not proven:**
+  - a managed CNI;
+  - a real StorageClass (RWX, snapshots);
+  - more than one node (pod spread, drains across nodes). Two backend replicas shared the RWO local-path volumes only because they ran on one node;
+  - cert-manager, and an external secrets operator;
+  - the prod and staging values files on a cluster. They render and pass kubeconform;
+  - an image built from the current working tree, including ADR-099's bootstrap password, which the cluster never ran.
+- **Sign-in through the ingress with the shipped `FORCE_HTTPS: "true"` fails.**
+  - `frontend/src/app/api/v1/auth/login/route.ts`, `refresh` and `sso-session` fetch `BACKEND_INTERNAL_URL` over HTTP without `X-Forwarded-Proto`.
+  - The backend redirects 301 to `https://<service>:3000`, and the fetch fails with a TLS error. The `[...path]` proxy does set the header.
+  - The compose prod overlay has the same shape (`FORCE_HTTPS=true`, `BACKEND_INTERNAL_URL=http://backend:3000`), so production compose sign-in is suspect too.
+  - The kind run signed in with `FORCE_HTTPS: "false"`, in scratch values only.
+- **A backend value change now restarts the backend on upgrade.** That is intended, but it is new: a values-only upgrade that used to leave the pods alone now rolls them.
+- **A backend that genuinely hangs at boot is now detected after 12 minutes instead of 5.**
+- **Two releases sharing one Redis share the Socket.IO adapter channel**, because Redis pub/sub is not database-scoped. This was noticed, not tested. Give each release its own Redis before sharing one.
+- **Part of the kind run's timeouts were the environment, not the chart.** The kind node ran on a Docker Desktop VM shared with other agents' stacks, and load reached 100 on 16 CPUs. That produced API-server and probe timeouts. Findings 5 and 6 stand regardless: they are budgets that a slow node exceeds.
+
+---
+
+## ADR-107: A Signed Certificate Snapshots What It Prints, and a v3 Hash Binds the Snapshot (Q-50)
+
+**Date:** 2026-09-30 · **Status:** Accepted as a **working decision** by the coordinating session, under the owner's delegation to decide by best practice. It **awaits the owner's confirmation**. · **Record:** [`records/2026-09-30-a303-tenant-profile.md`](./records/2026-09-30-a303-tenant-profile.md) § Q-50 · **Extends:** ADR-095 (M-11: the document, the v1/v2 hashes), ADR-100 (A-293: the verification token) · **Answers:** Q-50
+
+### Context
+
+A-303 printed the issuing laboratory's address and contact on certificates, from the **live** tenant row, like the tenant name. ISO/IEC 17025 7.8 (and 7.8.2 for the laboratory's name and address) treats an issued report's content as fixed.
+
+A live read breaks that in three places:
+- A tenant rename or move after signing changed an already-signed certificate.
+- So did a relabelled device or a renamed person.
+- Nothing detected it, because v2 deliberately does not hash live references. Binding a live row would make every rename look like tampering.
+
+### Decision
+
+1. **Snapshot at signing.** `certificate.service#signCertificate` records what the certificate prints, inside the sign transaction after the signer is set, on the new JSONB column `certificates.signed_snapshot` (migration **0103**). It is written by the same save as the signature. The snapshot holds:
+   - the issuing tenant's name, email, phone, address, city, state, zipCode, country and website;
+   - the instrument's name, serial number, manufacturer and model;
+   - the calibrated-by, approved-by and signed-by names.
+
+   `captureSignedSnapshot` (in `certificateDocument.service`) builds it. Its D-27 shape is `Certificate.signedSnapshot`: strict, and versioned (`version: 1`).
+2. **v3 scheme `certificate-content-v3`.** The payload is v2's certificate-row fields, in v2's order, then the snapshot in a **fixed key order** (`canonicalSnapshot`), so it binds every printed field.
+   - The fixed key order matters because PostgreSQL returns JSONB keys re-ordered: the run below got `device,issuer,version,signedBy,approvedBy,calibratedBy` back.
+   - A certificate with a snapshot prints v3, and its authenticated HMAC is over the v3 hash.
+   - v3 is never computed for a certificate without a snapshot. `buildContentPayloadV3` throws, so a deleted snapshot cannot pass as v3.
+3. **Printing.** A certificate with a snapshot is printed **from the snapshot**, and the document says `contentAsOf: "signing"`. This includes a signed certificate later revoked.
+   - Any other certificate (draft, pending, approved, or signed before ADR-107) is printed from the live rows (`contentAsOf: "live"`).
+   - A draft, pending or approved certificate carries the frontend PDF's watermark.
+   - The PDF adds "Issuer, instrument and signatories as recorded at signing." under the hash of a v3 certificate.
+4. **Verification.**
+   - The public verdict's `issuedTo` and the full verdict's `device` are what the certificate prints: the snapshot for v3.
+   - `integrity.scheme` (already reported, and shown by the verify page's label) names v2 or v3.
+   - The minimal verdict still omits device, signer and document (A-293).
+5. **No back-fill.** A certificate signed before ADR-107 keeps `signed_snapshot = NULL`: v2, plus v1 as `legacyHash`, printed live and verified exactly as before. A snapshot made now would record today's rows as if they had been the rows at signing, which is an invented fact.
+
+### Alternatives considered
+
+- **Bind the live issuer into v2.** Rejected. It changes every v2 hash already printed, and every later rename would fail verification. This is the reason v2 excluded live names in the first place.
+- **Snapshot only the issuer**, as Q-50 was first framed. Rejected. v3 must bind "every printed field", and the instrument and people are printed from live rows too. Snapshotting all printed references is what makes "a rename after signing changes nothing" true for the whole document.
+- **Separate columns instead of one JSONB.** Rejected: 16 columns for one immutable record. One strict, versioned JSONB with a D-27 shape is smaller, and `version` leaves room for a v2 snapshot shape.
+- **Also persist the v3 hash or its HMAC at signing.** Not done. The printed hash is the external anchor: the holder compares it with the hash the verification page recomputes, and a database edit changes the recomputed one. Persisting an HMAC would additionally detect a *coordinated* edit of the row and the stored hash. That is A-241's open question (the HMAC is "neither persisted nor verifiable by a third party"). It is not decided here.
+- **Back-fill snapshots for signed certificates.** Rejected; see decision 5.
+
+### Implications, including the bad ones
+
+- **The Part 11 e-signature record's `documentHash` is unchanged.** It is `certificate.service#logSignature`'s own SHA-256 over id, number, device, record, status and signature, and it does not bind the snapshot. The v3 hash does. Aligning the two is a later decision, not taken here.
+- **A `down` of 0103 on a database that has signed with v3 drops the snapshots.** Those certificates then have no v3 hash to recompute, and their printed v3 hash cannot be re-verified. The down is a data loss, as the migration header says.
+- **A certificate signed after ADR-107 prints v3.** A holder of an older printout of the same certificate, made while it was a draft, has a v2 hash that no longer matches. Such a printout was never an issued certificate: it was watermarked.
+- **The snapshot freezes the issuer data at signing.** A correction to the issuer afterwards is not shown on already-signed certificates. That is the point; reissue is the route (revoke, then a new certificate).
+- **Existing unit suites that double the whole models barrel** (`certificate.service`, `certificate.audit.a41`, `certificate.transitionLock.a167`, `webhookEmit.a11`) now stub `captureSignedSnapshot`. The real snapshot is exercised by `certificates.signSnapshot.q50` on the real models.
+
+### Evidence
+
+- `tests/services/certificateDocument.snapshot.q50.test.ts` (10 tests), with an independent, hand-written oracle for the v3 payload:
+  - a rename, move, relabel or person rename after signing changes nothing;
+  - tampering with any snapshot key changes the v3 hash;
+  - the result does not depend on JSONB key order;
+  - a v2 certificate's hash and HMAC are still computed the old way (independent oracle).
+- `tests/routes/certificates.signSnapshot.q50.test.ts` (8 tests), through the real router and service on `memoryDb`:
+  - the sign step stores the snapshot in its transaction;
+  - the document prints v3 from it, unchanged by later renames;
+  - the public verification reports v3 and the as-signed issuer and instrument;
+  - an old signed certificate stays v2 with nothing written;
+  - a refused signing stores nothing.
+- `tests/migrations/0103-certificate-signed-snapshot.test.ts` (6 tests), including "back-fills nothing".
+- **PostgreSQL 18.6** (a disposable container):
+  - up added `signed_snapshot jsonb`, nullable;
+  - a second up was a no-op;
+  - an already-signed row kept NULL;
+  - a JSONB round trip re-ordered the keys, and the v3 hash was equal;
+  - down removed the column.
+
+---
+
+## ADR-103: The API Contract Is Generated Code-First From the Zod Schemas `validate()` Enforces; Scalar, Self-Hosted and Behind Sign-In, Replaces Swagger UI; CI Fails a Stale, Invalid or Breaking Contract and a Route With No Document
+
+**Date:** 2026-09-30 · **Card:** P9-25 (WIP: foundation done; per-route migration rides with P9-20/P9-21) · **Decided by** the owner (brief: `MEMORY/specs/P9-25-owner-brief-api-contract.md`, binding) · **Spec:** `MEMORY/specs/P9-25-api-contract-code-first.md` · **Record:** `MEMORY/records/2026-09-29-P9-25-api-contract-foundation.md` · **Works with** ADR-093 (Zod validators), ADR-097 (`@callibrator/contracts`), ADR-087 (ratchet), P7-08 (CSP split), S-23/A-253 (`SWAGGER_ENABLED`)
+
+### Context
+- As built: 417 `@swagger` JSDoc YAML blocks in 55 route files → `swagger-jsdoc` → `swagger.json` → Swagger UI at `/docs`, **unauthenticated** wherever mounted (off in production unless `SWAGGER_ENABLED=true`). Every request body was written twice, as a Zod validator and as uncompiled YAML. P6-08 caught body drift after the fact and pinned 20+ divergences.
+- Swagger-jsdoc drops a block with broken YAML **silently**: the route disappears from the contract (found here on `PATCH /tenants/edit`).
+- Four JSDoc `$ref`s named components that do not exist; oasdiff cannot even load such a document.
+
+### Decision
+1. **Source of truth: the Zod schema.** A route module `routes/api/<name>.route.*` gets a sibling `<name>.openapi.ts` that default-exports `defineRouteDocs({ router, mount, tag, tenantScoped, operations })` (`src/docs/openapi/operation.ts`). Each operation names the **same schema object** its `validate()` mounts (from `validators/` or `@callibrator/contracts`). Library: **`zod-openapi` 6** (Zod 4 native `.meta()`, OpenAPI **3.1**). `DocumentedOperation.success` is `data` / `list` / `empty` (200/201; 202 empty added by the Phase 10 lane for the neutral intake).
+2. **Responses are the envelope** (`src/docs/openapi/envelope.ts`): `{ success, status, message, data }`; a list adds a top-level `meta` beside `data`. Standard error responses 400/401/403/404/409/429 as components with examples; 404 carries the cross-tenant rule, 409 the state explanation. The 429 body is documented **as it is** (not the envelope — a recorded gap, see Consequences).
+3. **Operation metadata:** `x-permission` (the gate), `x-audited`, `x-rate-limit` (the global limiter's values, pinned against `index.js` by a test), `x-source`, `x-public` for a route with no auth. A `:param` operation on a tenant-owned resource carries the "another tenant's id is 404" note.
+4. **`x-permission` cannot lie — by test, not by construction.** It is declared in `.openapi.ts` and **compared with the mounted chain** by `tests/guards/openapiRoutes.p925.test.ts`, which tags `dynamicAccess`/`rbac` before any router loads (the P6-04 technique) and fails when the declaration differs from the chain's gate, or `security` from the chain's `auth`.
+5. **The published document** = code-first ∪ remaining JSDoc (`scripts/openapi/build.ts#buildDocument`). JSDoc is normalised 3.0 → 3.1 (`nullable`, boolean exclusive bounds). An operation documented both ways, or a component defined twice differently, **fails generation**. Broken JSDoc YAML fails generation (`failOnErrors: true`).
+6. **Committed, not regenerated on build.** `npm run openapi:generate` writes `backend/openapi.json` (deterministic: sorted keys, `servers: [{url: "/"}]`). `npm run openapi:check` fails when it is stale — in `npm run build`, the Dockerfile (replacing `swagger:generate`), `make openapi` (in `verify`) and CI. `swagger.json`, `docs/swagger.js`, `utils/generateSwagger.util.js` and `swagger-ui-express`/`swagger-ui-dist` usage are removed.
+7. **Gates** (`make openapi`, CI job `api-contract`):
+   - **Spectral** (`backend/.spectral.yaml`, `@stoplight/spectral-cli`): code-first operations at ERROR (operationId, summary, tags, security declared, `x-public` when public, `x-permission` when secured, `x-audited`, `x-rate-limit`, 404 on a `{param}` path, path-parameter examples, error-component examples); legacy JSDoc at WARN. Legacy ERRORs sit in a **shrink-only** baseline (`openapi.spectral-baseline.json`, 18 on 2026-09-30): a new one fails, a fixed one must be deleted. A code-first error is never baselined.
+   - **oasdiff 1.32.1** (checksum-pinned in CI): `breaking` against `origin/main`'s `openapi.json`, `--fail-on ERR`. Without the binary locally the script prints **SKIPPED** and exits 0 — never a pass it did not run. The first commit (no base file) is reported and skipped.
+   - **Route-without-doc guard** (`openapiRoutes.p925`): every mounted route has an operation, or is in `openapiRoutes.undocumented.json` — a shrink-only list of the routes with no document when P9-25 landed (76), with its reason.
+   - **Frontend types current:** `npm run api:types:check` (openapi-typescript `--check`).
+8. **Docs UI: Scalar** (`@scalar/api-reference`, MIT), **self-hosted**: the page (no inline script), `assets/scalar.js` (the package's standalone bundle; shipped beside the binary as `docs-ui/scalar.standalone.js` by the Dockerfile) and `assets/init.js` (fonts, telemetry, persisted auth, AI agent and MCP off). CSP `API_DOCS_CSP_DIRECTIVES`: same-origin script/style/font/connect only, **tighter** than the API default (no `https:` style/font origins).
+9. **Behind sign-in.** `routes/internal/apiDocs.route.ts`: `auth → denyApiKey → rbac([TENANT_ADMIN])` on every path — the gate of the other developer surfaces (API keys, webhooks); the super admin passes by rbac's bypass; an API key never. Mounted by `src/docs/apiDocs.ts` at `/docs`, `/docs.json` and **`/api/v1/docs`** — the last is how a browser gets in: the backend authenticates by Bearer only, and the frontend's `/api/v1/[...path]` proxy turns the session cookie into it (`proxy.ts` does not set its CSP on `/api`, so the backend's policy reaches the browser).
+10. **`SWAGGER_ENABLED` keeps its name and defaults** (on outside production, off in production unless `true`; `false` off everywhere) and now means "mount the **signed-in** reference". No setting publishes the contract anonymously. `/documentation` and `/standards` (A-253) are unchanged: same switch, still unauthenticated where mounted.
+11. **Frontend client:** `openapi-typescript` (types → `frontend/src/api/generated/schema.d.ts`, `npm run api:types`) + `openapi-fetch` (`frontend/src/api/typed.ts`). Its transport is the existing `api.*` (axios) — refresh-once on 401, the password-change/MFA redirects, the access-denied store and F-07's normalised rejection are unchanged, and page tests that mock `@/api/client` keep working. `vendor.service.ts` is the pilot; its request types are the contract's (the canonical form), not `z.input`.
+12. **Migration is per module with Phase 9:** a route converted under P9-20/P9-21 moves its docs to `.openapi.ts` and deletes its JSDoc in the same change. Pilot: `vendor` (6 operations); P6-08's two vendor `KNOWN_DRIFT` entries are gone. The Phase 10 lane already wrote `accessRequests.openapi.ts` and `authPublic.openapi.ts` on this API.
+
+### Alternatives considered
+- **Design-first YAML** (hand-written `openapi.yaml`, code generated or validated against it). Rejected by the owner: a third copy of every shape, and the Zod schema already is the enforced contract; YAML drift is exactly what P6-08 kept finding.
+- **Keep swagger-jsdoc** and strengthen P6-08. Rejected: the comment stays uncompiled and every shape is still written twice; P6-08 compares keys only, never types, enums or bounds.
+- **`@asteasolutions/zod-to-openapi`**: registry-based, Zod-3-era API (`extendZodWithOpenApi` patches the prototype), OpenAPI 3.0 by default. Rejected for `zod-openapi`, which uses Zod 4's native `.meta()` and targets 3.1.
+- **Zod 4's native `z.toJSONSchema`** with a hand-built OpenAPI wrapper. Rejected: we would re-implement parameters, component reuse, input/output splitting and `$ref` handling that `zod-openapi` already does on top of the same function.
+- **Deriving `x-permission` at generation time** by monkeypatching the gate factories: works under jest (Babel CJS exports are writable) but NOT under `tsx`, whose esbuild CJS output defines exports as getters — the patch silently fails, and it would break again when P9-19 converts `dynamicAccess` to `.ts`. **Tagging the factories in production code** (a non-enumerable symbol on each middleware) was the other route; rejected for now because `dynamicAccess`/`rbac`/`validation` are being converted by other lanes, and a declared-then-verified value gives the same guarantee (a lie fails CI).
+- **Public docs**, **Swagger UI kept**, **Redoc**: public is refused by the owner; Swagger UI needed `swagger-ui-dist` and loads its assets as several files with inline styles; Redoc has no "try it". Scalar was the owner's choice.
+- **An `/api/v1/docs` page in the Next app** (rendering Scalar's React component): rejected for the foundation — it moves the reference into the frontend's nonce CSP and bundle; the proxy path achieves "behind the app's sign-in" with no frontend page.
+
+### Consequences
+- **Good.** For a code-first route the published request body cannot differ from the enforced one; a new route with no document, a wrong `x-permission`, a stale `openapi.json`, broken JSDoc YAML, a dangling `$ref`, a new Spectral error and a breaking change each fail CI. The contract is no longer readable anonymously. The frontend gets compile-time paths/bodies for migrated services.
+- **Bad, and open.**
+  - **Heavy dependency:** `@scalar/api-reference` pulls ~430 packages (Vue, the AI SDK). Its `ai`/`@ai-sdk/*`/`undici` versions carried advisories; **root `overrides` scoped to `@scalar/api-reference`** lift them (`npm audit` 0). Those overrides must be revisited on every Scalar upgrade. Only the 4.4 MB standalone bundle ships in the image.
+  - `openapi-typescript` 7.13 declares `peer typescript ^5.x`; a root override pins it to the TypeScript 6 compatibility package — it only needs the API.
+  - `x-permission` is declared-and-verified, not derived; `x-audited` is declared and **not** verified (the P6-11 audit guard covers the behaviour, not this flag).
+  - The published request body is the schema's **input** side, rendered canonical (a number, an ISO date string); the validator also accepts lenient forms. Stricter than the validator, never looser.
+  - The global limiter's 429 body is `{ status: "Error", message }`, **not the envelope** — documented as it is; fixing it is a behaviour change (BACKLOG).
+  - The vendor contract exposed two gaps: `notes` is accepted and **not stored** (no column; Q-52), and `rating` is not accepted on create (Q-37).
+  - The legacy half still has 76 undocumented routes (several are JSDoc under the **wrong path**, e.g. `/api/v1/e-signature` for the `/api/v1/esignature` mount, `/api/v1/oidc` for `/oidc`), 18 Spectral errors and ~936 warnings (382 missing operationIds). They shrink module by module.
+  - oasdiff has never run against a base on `main` (there is none until this lands) and CI has never run on GitHub (P7-01).
+  - Swagger-jsdoc's YAML is still parsed at generation; the JSDoc half goes when the last route moves.
+
+---
+
+## ADR-108: The Phase 10 Backend as Built — Access Requests, the Invitation, Identifier-First Discovery, the SSO Start, Passwordless Passkeys and the Registration Flag, With Their Deviations From the Specs
+
+**Date:** 2026-09-30 · **Status:** Accepted (as built; **Amendment 1**: several passkeys per user). It inherits the ADR-098 §8 working decisions Q-42, Q-44, Q-45 and Q-46, which **still await the owner's confirmation** · **Cards:** P10-04 (backend), P10-05, P10-07, P10-10, P10-12, P10-15 · **Amends:** ADR-059 (7: operator MFA), the A-160 rule "a passkey does not count" · **Migrations:** 0099, 0100, 0101 · **Record:** `MEMORY/records/2026-09-30-p10-backend-access-requests-passkey.md`
+
+### Context
+The specs `MEMORY/specs/P10-05-request-access.md` and `P10-10-passkey-login.md` and the doc 20 §7.2 outline were written before implementation. Building them against the code of 2026-09-30 exposed places where the spec named a mechanism that no longer fits, or left a choice open. Following the deviation protocol, each divergence is recorded here, and the spec documents point to this ADR.
+
+### Decision (what was built)
+1. **`access_requests`** (model `AccessRequest`, migration **0099**). It has no tenant column, and the link is `provisioned_tenant_id`, as the spec says. Two things differ from the spec:
+   - **The tenant link is not a model reference.** Every model foreign key to `tenants` is a Q-16 tenant column (RESTRICT, NOT NULL, `tenantId`). `tenantForeignKeys.a88` and `associationForeignKeys.a148` hold that rule, and a nullable SET NULL link from a platform table would contradict it. So 0099 adds the constraint on both paths: `access_requests_provisioned_tenant_id_fkey` → tenants, ON DELETE SET NULL. The model has no `provisionedTenant` association.
+   - **The invitation columns live on the request row:** `invitation_token_hash` (unique, partial), `invitation_expires_at`, `invitation_sent_at` and `invitation_accepted_at`.
+
+   D-20 indexes cover all three foreign keys. `status` + `decided_at` carry a CHECK (BR-P10-3). There is **no** unique `work_email`.
+2. **The invitation token is 256 random bits, not a JWT purpose token.** Only its sha256 is stored. The spec said "the pattern of `generatePurposeToken` / `activationClaims`", but the P10-15 DoD needs a token that can be spent **once** and re-issued, which invalidates the old one. A stateless JWT does neither without a store, and the request row is that store. Being no JWT, it can never be accepted as an access, activation, MFA or password-change token, nor any of those as it. That abuse case is closed by construction.
+3. **Approval runs in ONE transaction under `FOR UPDATE`.** It calls `tenant.service#createTenant`, which gains a 4th parameter `{ transaction }`: with it, createTenant never finishes the outer transaction and writes the cache in `afterCommit`. Approval also creates the first administrator: a random bcrypt hash nobody holds, `isEmailVerified: false`, and `HEALTHCARE ADMIN` (or `CALIBRATOR ADMIN` for a calibration lab). Then come the invitation, the request update, and the APPROVE, CREATE Tenant and CREATE User audit rows. The email goes out after commit, on `emailLinkOrigin()` (A-289).
+   - **An address already held by an account is a 409** with a state explanation, from `user.service#assertIdentityFree` (A-128). It is **not** held to A-128's per-administrator conflict budget: only the super admin reaches this route, and a super admin can list every account, so the 409 discloses nothing.
+   - **`maxUsers` is not accepted.** The Tenant model has no such column (A-303), and the seat limit is `limitSeats`, the multipart-sanitizer lane's change.
+4. **The public intake is guarded by an ADR-100 `requestBudget("accessRequest")`, 5 an hour per address, not by `endpointRateLimiter`.** The security lane's reason: a request budget counts every request and keys only what is asked. The same holds for `loginDiscover`, `passkeyLogin` and `invitationAccept`; the SSO start shares `ssoStart` with `/sso/login` and `/sso/oidc/login`. The passkey spec's `authPreCheck("passkeyLogin")` is replaced by the budget **plus** the account's A-185 sign-in throttle. That throttle is checked before verification and counted on every failure against a known credential, so passkey and password guessing share one ceiling.
+5. **Configuration lives in `config/publicAccess.ts`** (through `env.ts`'s helpers), not in `env.ts` itself. The variables are `SELF_REGISTRATION_ENABLED`, `ACCESS_REQUEST_NOTIFY_EMAIL` and `ACCESS_REQUEST_IP_PEPPER`. The pepper is required in production: the access-request route module refuses to load without it, so boot fails.
+6. **The queue page is `/dashboard/access-requests`, not `/dashboard/admin/access-requests`.** The dashboard has no `admin/` segment, and `menuGroup.service#mapSlugToPath` maps the slug `access-requests` there by default. The menu slug goes to SUPERADMIN only (ROLE_MENU_ASSIGNMENTS, the seed, migration **0101**, `MENU_PAGE_GATES` = super admin).
+7. **Retention (Q-42)** is `accessRequest.service#runAccessRequestRetention`, run by the nightly retention scheduler after the tenant sweep, batched at 500 rows, and audited as `system:access-request-retention`. A failure there fails the run.
+   - **DSAR erasure by address** is `POST /admin/access-requests/erasure` on the admin router, not the GDPR router: the GDPR router keys on a user, and a requester may have none. It deletes the requests that never became a tenant and masks an approved one.
+8. **P10-12:** when `SELF_REGISTRATION_ENABLED` is off (the production default), a gate first in the register chain calls `next("router")`, so the request answers the application's own `404 Route not found`, as an absent route does. It runs before the budget, any lookup, any write or any mail. Where registration is enabled, a new address, a taken email and a taken username get one answer, `202 "If the address can be registered, an activation link has been sent"`. A taken case still pays for the bcrypt hash (timing), and writes and mails nothing.
+9. **P10-10 passkey sign-in.** It uses a ceremony-bound, single-use, 120 s challenge (`GETDEL`) and no `allowCredentials`. The credential is looked up once with `skipTenantScope`, and 0100 makes the credential id unique. It requires user verification, checks the user handle, and refuses and audits a counter regression. The counter is checked by our code (library counter 0), so a regression is refused **and audited**. The audit actor is `system:auth-lockout`, with the account as the resource (the A-126 rule).
+   - **The shared post-credential path** is `auth.service#assertMaySignIn` + `completePasswordlessSignIn`, extracted from `loginUser` with no behaviour change.
+10. **Q-46 (working decision), amending ADR-059 item 7 and A-160.** A session whose `amr` is `passkey` satisfies P6-07's operator-MFA rule and every tenant MFA policy (`mfaPolicy#isMultiFactorMethod`). A user-verifying passkey is possession of a device-bound key plus the biometric or PIN that unlocks it, and the signature is bound to the origin: phishing-resistant multi-factor (NIST SP 800-63B). An account that signed in with a **password** gets nothing from an enrolled passkey; A-160's reason for that still holds. No TOTP step follows a passkey.
+11. **P10-04.** An SSO email-domain claim is a `tenant_settings` key, `sso_email_domains`, written only by the super admin (`GET`/`PUT /admin/tenants/:id/sso-domains`). It is not in `TENANT_ADMIN_SETTING_KEYS`, so no tenant can claim a domain. A domain has at most one claimant, and public mailbox domains are refused.
+    - **Discovery answers by domain only.** An SSO that cannot start falls back to the password step.
+    - **`POST /auth/sso/start`** is `sso.controller#startSsoFor`. It chooses OIDC when an OIDC client is configured, else SAML, and answers every refusal, including an unreachable IdP, with the A-292 404.
+
+### Alternatives considered
+- **A JWT invitation token** with a `jti` deny-list in Redis. Rejected: two stores for one fact, and a Redis flush would make a spent token valid again.
+- **A second tenant-creation path inside the approval.** Rejected by the spec's abuse case: the outer-transaction option keeps one path.
+- **Keeping `endpointRateLimiter` / `authPreCheck` as the specs named them.** Rejected on the security lane's advice (item 4). `authPreCheck` counts per user and token, which a pre-authentication ceremony has none of.
+- **A model association for the provisioned tenant** with the Q-16 guards widened to allow a SET NULL non-tenant link. Rejected: it widens a guard that exists to stop exactly that shape. The constraint is kept, in the migration.
+- **Counting an enrolled passkey as MFA for a password session.** Rejected, as A-160 already reasoned: only the method the session actually signed in with counts.
+
+### Consequences
+- **Good.** The public intake says nothing about who asked before. An approval is one transaction, and it is proven on PostgreSQL 18 that two concurrent approvals create one tenant (`accessRequest.p1005.live.test.ts`). An invitation cannot be replayed. A passkey is a full sign-in with the same refusals as a password sign-in.
+- **Bad, and open.**
+  - A passkey sign-in skips TOTP **for super admins**. If the owner overturns Q-46, `isMultiFactorMethod` must return false and `completePasswordlessSignIn` must hand off to the MFA step.
+  - ~~A user has one passkey.~~ Several since Amendment 1.
+  - Discovery tells anyone that a claimed domain uses SSO here (the ADR-098 residual).
+  - The live E2E (virtual authenticator; submit → approve → accept → sign in) has **not** run.
+  - The public `/request-access` and `/invitation` pages are the frontend lead's.
+  - The request budget and throttle fail over to process memory when Redis is down (the rate limiter's outage policy), so with N replicas the limits are N×.
+
+### Amendment 1 (2026-09-30): several passkeys per user
+
+**Decided by the coordinator under the owner's delegation** (best practice). A user may hold several passkeys, for example a phone, a laptop and a security key. Each can be named, renamed and removed from the Passkeys page. Removing a passkey must never lock the account out.
+
+- **Storage.** A new table, **`webauthn_credentials`** (model `WebauthnCredential`, migration **0104**), holds the credentials, not the four `users.webauthn_*` columns.
+  - Columns: `user_id` → users ON DELETE CASCADE, a unique `credential_id` (the uniqueness 0100 gave the old column; still no oracle, for the reason stated there), `public_key`, `sign_count`, `name`, `transports` (a D-27 shape: the WebAuthn transport names), and `last_used_at`.
+  - The table is a **child of its user**, not tenant-scoped by column (unscopedModels.d17, group `child`). Every query names the owning user: the signed-in caller, or the account a credential id names before sign-in.
+  - 0104 moves every one-per-user passkey into the table and clears the old credential columns. `users.webauthn_enabled` stays, as the derived "has at least one passkey" flag. Dropping the old columns is a later contract step.
+- **Flag off voids everything.** Whoever turns `webauthnEnabled` off, in an instance save, removes every passkey of that user in the same transaction, through a User model `beforeSave` hook: remove-all, an administrator's passkey reset (user.service), a GDPR erasure (gdpr.service). None of those services had to change.
+  - A registration after the flag was off purges any leftover row first, so a reset passkey never comes back.
+  - The passkey sign-in requires the flag to be on.
+- **Routes** (webauthn.route.js, all `auth`, kind `self`):
+  - `GET /webauthn/credentials` lists the passkeys, never the credential id or the key.
+  - `PATCH /webauthn/credentials/:id` renames one, audited as WEBAUTHN_RENAME.
+  - `DELETE /webauthn/credentials/:id` removes one, audited as WEBAUTHN_REVOKE.
+  - `POST /verify-registration` takes a `name` and is audited as WEBAUTHN_REGISTER, with the passkey's row id, name and count held — never the credential id or the key.
+  - A user may hold at most **10** passkeys.
+  - The options exclude the user's own passkeys, and the step-up allows any of them.
+- **Another user's passkey id is a 404**, whether it belongs to another user in the same tenant or in another tenant, and nothing is written. The `@two-tenant` test is `webauthnCredentials.twoTenant.test.ts`.
+- **The lock-out guard is the A-213 re-authentication.** Removing a passkey needs the current password, plus a current code or recovery code when MFA is on, proven inside the same transaction. The last passkey can therefore only be removed by someone who has just shown that the password sign-in works, so the account can never be left with no way in. Without that proof the answer is a 400 and nothing is removed.
+  - Rejected alternative: a separate "is another method usable?" check. Whether an account "has" a usable password is not knowable from the row (random hashes exist for invited, SSO and reset accounts). A proof in hand is.
+  - Consequence: a federated (SSO-only) user cannot remove a passkey, because they cannot re-authenticate with a password. They sign in through their IdP; an administrator can reset their passkeys.
+- **Alternatives considered.** A JSON array of credentials on the user row: rejected, because it gives no unique index across users and makes the pre-authentication lookup a scan. Several nullable column sets: rejected.
+- **Bad, and open.**
+  - The old `users.webauthn_credential_id / _public_key / _sign_count` columns remain, empty, until a later contract migration drops them. 0100's index on them stays, harmless.
+    - That migration is written and **not registered**: `migrations/pending/drop-legacy-user-webauthn-columns.ts`. It runs after the VM deploy is verified, and is tracked on the P10-10 card.
+  - **A half-enrolled legacy credential** (an id with no public key) is dropped by 0104, not moved, because it cannot sign anyone in (decided 2026-09-30 after the live PG18 check). 0104 logs the count; no identifier is logged.
+  - A bulk (static) update of `webauthnEnabled` bypasses the purge hook. No code does one; the next registration purges anyway.
+  - The step-up sign-count update is not audited separately (the P6-11 lane noted it).
+- **Evidence:** `MEMORY/records/2026-09-30-p10-backend-access-requests-passkey.md` § Amendment 1.
+
+---
+
+## ADR-105: Role Display Name, Level and Active Are Accepted by the API, Not Removed From the Dialog
+
+**Date:** 2026-09-30 · **Status:** Accepted · **Card:** F-19 · **Record:** `MEMORY/records/2026-09-30-f19-fixes.md`
+
+**Context.** The role dialog (`roles/components/RolesModal.tsx`) offers Display Name, Role Level and Active. The API took only some of them:
+- `POST /roles` read name, description and (since A-294) `roleLevel`;
+- `PATCH /roles/:id` read name, description and `status`.
+
+So a Display Name was never stored, a level edit answered 200 and changed nothing, and a role could not be created inactive. Worse, the frontend read `isActive`, which the backend never sends (the row carries `status`). Every role therefore showed Inactive, and an edit sent `status: "active"`, silently re-activating an inactive role. All three fields are real `roles` columns (`nameToShow`, `roleLevel`, `status`, `models/role.model.ts`).
+
+### Decision
+
+1. **Wire the fields; do not remove them.**
+   - `createRoleSchema` accepts `nameToShow` (≤100) and `status` (`active` | `inactive`).
+   - `updateRoleSchema` accepts `nameToShow` and `roleLevel` (integer 1–8, the same bound as create).
+   - `roles.controller` passes them through, and `roles.service` stores them. A blank display name is stored as null.
+2. **ROLE_LEVELS rules.**
+   - A level never exceeds `min(TENANT_ADMIN = 8, the caller's own level)`. The validator refuses a level above 8 (400).
+   - The service refuses an edit above the ceiling (403, a permission failure in the caller's tenant) and clamps a create, as A-294 already did.
+   - **A system role's level is fixed.** Asking to change it is a **409** with a state explanation ("`X` is a system role; its level (N) is fixed…"), and nothing is written. An unchanged level is accepted and not written.
+3. **Audit.** Every change keeps its A-41 audit row inside the transaction, with the level and display name in `before` / `after`. No cache is invalidated for a level change: `rbac()` reads the role level from the principal loaded on each request (`authService.getAuthUserWithTenant`), and the cached permission matrix is keyed by menu grants, not by level.
+4. **Frontend.**
+   - `role.service` derives `isActive` from `status` and sends every field.
+   - The edit dialog sends the level only when it changed.
+   - The level input is bounded at 8, and is read-only for a system role.
+5. **The house envelope.** `GET /roles` and `GET /roles/menus` now answer a top-level `meta` instead of `pagination`. This was the last named envelope exception; the live contract harness flags `pagination`.
+
+### Alternatives considered
+
+| Alternative | Why not |
+|---|---|
+| Remove Display Name, Level and Active from the dialog | The columns exist and are read elsewhere (`nameToShow` in the tables and the user role pickers). A role with no settable level fails every privileged gate (the CLAUDE.md trap), and a role that cannot be deactivated from the screen is a gap too |
+| Let a system role's level change | The seeded gates (`rbac()` by level) were built around the seeded levels. Changing, say, SUPERADMIN's 10 would lock the platform out |
+| 403 for a system role's level | Nothing about the caller's permission is wrong; the role's state forbids it. That is a 409 with an explanation (CLAUDE.md) |
+| Keep `pagination` on the role lists | That shape rendered empty lists elsewhere. The frontend services were the only consumers and changed in the same change |
+
+### Implications (including the bad ones)
+
+- A level change takes effect on the **next request** of every holder of the role. There is no confirmation step in the dialog beyond Save.
+- The caller-level ceiling is belt-and-braces today, because every role write route is `rbac(["SUPERADMIN"])`: the super admin's 10 is capped at 8 anyway. It starts to matter only if role writes are ever opened to tenant administrators.
+- Clients reading `pagination` from `GET /roles` or `/roles/menus` break. The repository has none left (frontend `role.service`, the kanban and permissions fixtures were updated).
+- A role created **inactive** grants nothing (`getRolePermissionsMatrix` returns `{}` for a non-active role) until it is activated.
+
+### Amendment 1 (2026-09-30): two follow-ups from the same F-19 pass
+
+1. **Acknowledging an ARCHIVED SOP is a 409.**
+   - **Who decided:** the coordinator, under the owner's delegation.
+   - **Why:** an archived SOP is no longer in force. `sop.service.ts` `acknowledgeTraining` looked only at the acknowledgement row, so a pending one left from before archiving could still be completed.
+   - **Now:** after the not-found and already-completed checks, it loads the document and answers `409 "This SOP is archived and no longer requires acknowledgement."`, writing nothing. The SOP screen already offered the action only on a PUBLISHED document that requires training.
+   - **Alternatives:**
+     - Hide the button only. Rejected: the UI and the API would disagree, and the API would record training on a withdrawn procedure.
+     - Delete or expire the pending rows at archive time. Rejected: it destroys the evidence of who never read it, and no archive transition exists in the API yet.
+   - **Bad implication:** pending rows for archived SOPs stay PENDING for ever. A training report must read them as "not applicable", not "overdue".
+   - **Doc:** `docs/API/10-QMS-API.md` (SOP section) amended.
+2. **The verify instruction names a TXT record.**
+   - **The bug:** `customDomains.service.js` `verifyDomain` answered `dnsRecord.type: "CNAME"`, while `checkDnsTxtRecord` resolves a TXT record at `_domain_verify.<domain>`. A tenant who followed the instruction could never verify.
+   - **Now:** it says `TXT`. This is a bug fix, not a decision; it is recorded here because this pass found it.
+
+---
+
+## ADR-109: What "Complete" Means for the Phases 0–10 Stop — Rotation Rehearsed on a Restored VM Copy, All 15 Unaudited Services in Scope, Phase 7 on kind With Real Alert and Log Destinations, Phase 8 Recorded Card by Card, Phase 9 Exits on Source (Tests Move to P9-26); Q-51, Q-52, Q-53 and V-13 Decided
+
+**Date:** 2026-09-30 · **Status:** **Working decisions, awaiting the owner's confirmation.** The main (coordinating) session took them under the owner's explicit delegation, *"decide the best recommendation and best practice"*. They have the same standing as Q-39…Q-47 (ADR-098 §8). If the owner overturns an item, it is amended here, not silently reversed · **Cards:** P6-10, P6-11, the P7 exit (P7-02, P7-03, P7-06, U-01), the P8 exit, P9-24, **P9-26 (new)**, Q-51, Q-52, Q-53, V-13 · **Amends:** ADR-087 (the Phase 9 exit "ratchet at zero, tests included"; Amendment 17 there points here) · **Source:** `TASKS/OPEN-WORK-2026-09-30.md` §1 and §6 · **Record:** `MEMORY/records/2026-09-30-board-hygiene-decisions.md`
+
+### Context
+
+The goal is "Phases 0–10 complete, then stop". `OPEN-WORK-2026-09-30.md` §6 lists the items no agent can close, because each needs a decision the owner had not made:
+- what counts as production data for a rotation rehearsal;
+- which mutations must be audited;
+- whether a kind cluster is enough;
+- what "complete" means for a phase with no exit;
+- whether 693 test files must be converted;
+- four contract questions.
+
+The owner delegated these calls. Each one is recorded here with its alternatives and its bad implications, so the owner can confirm or overturn it with the reasoning in front of them.
+
+### Decision
+
+1. **P6-10: the rehearsal target.** Key rotation is rehearsed against **a restored copy of the VM database, taken after the closing deploy**, on a disposable restore and never on the VM itself.
+   - For this stop, that restore is the "copy of production data" the DoD asks for.
+   - The VM is wiped at the closing deploy (`RUNBOOK-POSTGRES-18-UPGRADE.md` § Owner Decision), so its data is seeded, not hospital data.
+   - **A rehearsal on real hospital data is a post-go-live check.** It is owed once the first real tenant's data exists.
+2. **P6-11: the covered set.** **All 15** mutating services that write no audit row today are **in scope**: `apiKey`, `kanban`, `ticket`, `vendor`, `warehouse` and the rest, as listed in the addendum to `MEMORY/specs/A-41-audit-inside-transaction.md`.
+   - Each one writes its audit row inside its transaction, as the 38 files already covered do.
+   - An agent is implementing this. P6-11 closes when the addendum lists all 15 as covered and `auditInTransaction.p611.test.js` still passes.
+   - **Amendment 2026-09-30 (working decisions, under the same delegation; [record](./records/2026-09-30-p6-11-audit-coverage.md)).** Implemented. Three allow-list judgements made while implementing it are **accepted**:
+     - (a) `notification.service` is **not audited**. A notification is a derived message, and W-04 already writes it beside the caller's own audit row. Read, hide and delete are the user's own inbox state. One row per "mark as read" in the append-only `audit_logs` (0091) would be noise, not attribution.
+     - (b) `ai.service#ingestDocument` is **not audited**. It rebuilds a derived RAG index, and its only writer is the `backfillEmbeddings` CLI.
+     - (c) `featureFlag.initializeTenantFlags` **without an actor writes no row**. That caller is the development-only demo seeder, which audits none of the demo data it creates. The route passes the principal and is audited.
+     - Also decided: the 19 "known gaps" the guard found **outside** the 15 are in scope too, because an audit trail of how a data-subject request was handled is required evidence under GDPR and UU PDP. Of these: GDPR consent, restriction, preferences and DSAR (6), SCIM groups (4), `sop.createDocument`, storage configuration (2), `auth.registerUser`, `sso.provisionUser` and `billing.getSubscription` (a read that creates) are now audited, with no personal data or credentials in the row. `workflow.startWorkflow` is **reclassified**, not audited: each caller runs it inside its own transaction and records `workflowInstanceId` in its own row, and a guard test pins that. Stock (3) was audited the same day by the services helper (A-321; `stock.opnameAudit.p611.test.ts`), so the guard lists no known gap.
+     - Alternatives considered: auditing notifications and inbox state (rejected: volume without attribution value), and a second row per workflow start (rejected: it duplicates the caller's row and breaks "one row per mutation"). Bad implication: a deletion from the user's own inbox leaves no audit trace. If the owner wants one, it is one `logAction` in `notification.service#removeForUser`.
+3. **The Phase 7 exit.**
+   - **"The Helm charts are known to deploy"** is met by **P7-06 on kind** (ADR-106). **U-01** (a production cluster) becomes a **post-go-live** check. The A-310 re-run on kind with `FORCE_HTTPS: "true"` stays in the phase.
+   - **"Wakes somebody"** covers a failing job and a failed audit write. It needs a **real alert destination and a real log sink** on the deployment, and both are **owner-supplied values**:
+     - `ALERT_WEBHOOK_URL`, `ALERT_EMAIL_TO`, or both. The email route needs a working `MAIL_HOST` / `MAIL_PORT` / `MAIL_USER` / `MAIL_PASSWORD` / `MAIL_FROM`.
+     - The log sink's endpoint and credentials for the Vector shipper. `deploy/observability/vector.toml` ships `http://loki:3100`.
+   - Both exit lines stay unticked until a failing job and a failed audit write are **seen to arrive** at those destinations.
+4. **Phase 8: "complete for this stop".** Phase 8 has no exit and keeps none. For this stop, it counts as complete when every card is recorded in one of these states:
+   - **DONE:** P8-03.
+   - **Not triggered,** with the measurement: P8-05, P8-06.
+   - **Blocked, with the blocker named:** P8-01 (an S3/NFS target and an ambient credential chain) and P8-08 (a residency requirement).
+
+   **The P8-04 re-measure is still owed.** The D-30/ADR-096 query fixes are in, so the p95 is measured again, and a replica is built only if it still fails. Whether the open live checks on P8-02 and P8-07 block the stop is left to the owner.
+5. **The Phase 9 exit (amends ADR-087).** Phase 9 exits when **every non-test backend source module is TypeScript** and **`allowJs: false` holds for source**.
+   - `tsconfig.build.json` already sets `allowJs: false`, so the build refuses a `.ts` → `.js` import.
+   - The existing **`.js` test files** move to a new card, **P9-26**. OPEN-WORK §0 counts 693. On disk on 2026-09-30 there are 696 `.js` files in the test tree, 684 of them `*.test.js`.
+   - P9-26 converts them **opportunistically**: when a test is being edited anyway, or when its module's conversion needs it. A conversion never changes an assertion.
+   - **The ratchet stays.** It still refuses any **new** `.js` file, **tests included** (ADR-087 Amendment 1, unchanged).
+   - The base `tsconfig.json` keeps `allowJs` only so that `typecheck` can read the remaining `.js` tests. It drops it, and the ratchet goes, once P9-26 has emptied the list.
+6. **Three contract questions.**
+   - **Q-51: a nullable `api_key_id` actor column with an exactly-one CHECK.**
+     - The tables and their user columns are `calibration_records` (`performed_by`), `stock_adjustments` (`adjusted_by`) and `stock_transfers` (`requested_by`).
+     - On each, the user column becomes nullable and an `api_key_id` FK to `api_keys` is added (ON DELETE RESTRICT).
+     - `CHECK (num_nonnulls(<user column>, api_key_id) = 1)` makes every row name exactly one actor.
+     - This is being implemented: migration `0105-api-key-actor-columns.ts`; tests `apiKeyActor.q51.test.ts`, `apiKeyActor.q51.live.test.ts` and `rowActor.q51.test.ts`.
+   - **Q-52: add a `notes` column to vendors.**
+     - A migration adds `vendors.notes`, the model declares it, and a test proves it round-trips through create and update.
+     - The contract (`packages/contracts/src/vendor.ts`) stays as it is, which is what makes this the non-breaking choice.
+     - **Amended 2026-09-30 (main session, correctness batch — [record](./records/2026-09-30-correctness-batch.md)):** the contract does change, once: `notes` is bounded at **2,000** characters (`VENDOR_NOTES_MAX`). oasdiff reports a new request `maxLength` as breaking; it breaks no working client, because before migration 0106 every value was accepted and silently dropped, so no client can have relied on a longer note being kept.
+     - **Corrected 2026-09-30:** the "Alternatives Considered" row below said removing `notes` "throws away a field the vendor form offers". The vendor form did **not** offer it: `VendorModal.tsx` had no notes field, and only the API contract carried it. The form now has a Notes textarea (create and edit, a counter to 2,000), and the vendor list shows the note under the name.
+   - **Q-53: the global limiter's 429 answers in the envelope.** The body becomes `{ success: false, status: 429, message, data: null }`, and the response carries `Retry-After` as the other 429s do (A-260). `message` stays in the body under the same key.
+7. **V-13: 403.** When an SOP's author tries to publish it, the refusal is **403** with the explanation, not 409.
+   - The refusal is about the caller, not the document's state: another user can publish the same document as it is. This follows ADR-101 (a certificate's author may not approve it).
+   - An already-published or archived SOP stays **409**.
+   - A tenant with a single administrator can then never publish. That case is **Q-54**, an open question for the owner, and no exception is built.
+
+### Alternatives Considered
+
+| # | Alternative | Why not |
+|---|---|---|
+| 1 | Keep P6-10 open until real hospital data exists | Phase 6 would stay open indefinitely for a reason outside engineering. The procedure has been rehearsed twice, on seeded data and on drill data. A third rehearsal on the post-deploy database proves it on the schema and data shape that will actually run |
+| 1 | Rehearse on the live VM database | A failed rehearsal would damage the only deployment. The point of a copy is that it may break |
+| 2 | Put only the compliance-bearing subset of the 15 in scope (e.g. `warehouse`, `vendor`, `apiKey`) | `CLAUDE.md` states the rule without qualification: *every mutation writes an audit row*. A covered set chosen by "which ones matter" is the abuse case P6-11 names ("whichever services were easy to change"), and the next auditor would re-ask the question for every service |
+| 3 | Require a production cluster for Phase 7 | None exists or is reachable (U-01). The phase would be blocked on an environment, not on work |
+| 3 | Count "wakes somebody" as met by the boot log naming the route, or by the local receiver test (`alertRouting.p702`) | A route nobody reads wakes nobody. The local test proves the client, not that a person is reached |
+| 4 | Declare Phase 8 complete outright, or keep it open forever | The first hides blocked and untriggered cards behind a word. The second makes "Phases 0–10 complete" unreachable by design |
+| 5 | Keep "tests included" in the exit (ADR-087 as written) | Weeks of conversion that changes no production behaviour, at the tail of the phase, with the highest risk of a bulk edit changing an assertion by accident |
+| 5 | Drop tests from the ratchet as well | The floor would rise again with every new test. Refusing a new `.js` test costs nothing, and it keeps the list shrinking |
+| 5 | Remove `allowJs` from the base config now | `typecheck` could no longer read the `.js` tests that import `.ts` source, so the type gate would lose sight of every test |
+| 6 | Q-51: `denyApiKey` on those routes (403) | The integrations that need these writes (an instrument feed recording a calibration, a stock sync) would have no path at all |
+| 6 | Q-51: require the body to name a human performer | A Part 11 record would name a person who did not perform the act. That false attribution is worse than naming the key |
+| 6 | Q-52: remove `notes` from the schemas | A breaking contract change (oasdiff flags it), and it throws away a field the vendor form offers |
+| 6 | Q-53: leave the 429 as `{ status: "Error", message }` | It is the one error that breaks the envelope `CLAUDE.md` makes a rule. The frontend reads `message`, which both shapes carry |
+| 7 | V-13: keep 409 | It contradicts `CLAUDE.md` § Status Codes, and ADR-101's reasoning for a rule of the same shape |
+
+### Implications, Including the Bad Ones
+
+- **All seven items are working decisions.** Until the owner confirms them, every document that relies on one says so. If the owner overturns one, the cards that cite this ADR change with it.
+- **P6-10:**
+  - The rehearsal proves the procedure on **seeded** data.
+  - A real-data surprise, such as a value encrypted under a key id the ring does not hold or a volume far larger than the drill's, can only show up after go-live.
+  - That check must actually be scheduled. Otherwise it becomes the "written and never rehearsed" abuse case.
+- **P6-11:**
+  - Fifteen services gain audit writes inside their transactions. Their writes can now **fail because an audit insert failed**, as the 38 covered files already can.
+  - Kanban and ticket activity add audit volume. The 90-day default audit window (ADR-096) absorbs it; storage does not.
+- **Phase 7:**
+  - The phase cannot close without the owner's values.
+  - A kind cluster has no managed CNI, no real StorageClass and no cert-manager, so the first production install may still find chart defects (U-01 lists them).
+- **Phase 8:** "Complete for this stop" is a label on a snapshot. A trigger can fire the next day, so the board must still be read as a set of standing triggers.
+- **Phase 9:**
+  - After the phase closes, the tests may stay in two languages for a long time.
+  - Reviewers must know that a `.js` test is legacy and a new test must be `.ts`. `CLAUDE.md` and `AGENTS.md` must say so when P9-24 lands.
+  - Type errors in `.js` tests stay invisible to `typecheck` (`checkJs: false`), as they are today.
+- **Q-51:**
+  - Three tables' actor columns become nullable. Every reader that assumed `performed_by`, `adjusted_by` or `requested_by` is never null must now handle a key actor. For example, a report that joins users will drop or blank key-authored rows unless it also reads `api_key_id`.
+  - The CHECK is added NOT VALID, then validated. An existing row that names no actor would stop validation, so it must be resolved first.
+  - A hard delete of an API key that authored rows is refused (RESTRICT).
+- **Q-52:**
+  - A new column joins a regulated set of tables, so the DSAR export and the retention job must deliberately include or ignore it.
+  - Notes sent before the migration were dropped and cannot be recovered.
+- **Q-53:** A consumer that matched `status: "Error"` in the limiter's body breaks. None is known in the repository; an external client may exist.
+- **V-13:**
+  - A client that treated the author's 409 as a state problem now sees a 403, and may show "no permission" unless it reads the message.
+  - A tenant with a single administrator cannot publish an SOP at all until Q-54 is decided.
+
+---
+
+
+## ADR-110: A Quota Overage Suspends Only an Active Free-Plan Tenant, Judged by `Tenant.plan`, Under Its Own Reason and System Actor
+
+**Date:** 2026-09-30 · **Status:** Accepted (implemented by the services helper; the ADR is written by the Phase 9 lead) · **Finding:** A-322 · **Record:** `MEMORY/records/2026-09-30-a319-a322-commercial-fixes.md` · **Relates to:** ADR-094 (suspension marks)
+
+### Decision
+
+A quota overage (`meteredBilling#enforceQuotas`) suspends a tenant **only** if it is ACTIVE and on the free plan.
+- **The plan is judged by `Tenant.plan`.** `professional`, `business` and `enterprise` are paid. The Stripe webhooks keep the plan in step.
+- **The suspension's marks:**
+  - reason `"billing:quota"` (new `QUOTA_SUSPENSION_REASON`), with no `suspended_by`;
+  - actor `system:usage-quota`, a new system actor.
+- **One transaction** writes the lifecycle setting and the audit rows, under both PLATFORM and the tenant, and it locks the tenant row.
+- A tenant in any other status is left as it is.
+- A payment does **not** lift a quota suspension; an operator does.
+
+### Alternatives considered
+
+- **Judge the plan by the `Subscription` row's status.** Rejected: `getSubscription` auto-creates a `"basic"` row, so the row's existence says nothing about payment.
+- **Reuse `system:billing-webhook` as the actor.** Rejected: no Stripe event is involved, and the audit trail would name a cause that did not happen.
+- **Remove the auto-suspend.** Rejected: the coordinator asked for the semantics to be fixed, not removed.
+
+### Implications
+
+- A free tenant suspended for quota stays suspended until an operator acts, even if it upgrades. That is deliberate, but it is a support cost.
+- **Nothing calls `enforceQuotas` yet,** so this defines behaviour that no scheduler exercises today. Wiring it to a scheduler is a separate decision.
+- **Evidence:** a fail-before of 7 of 9 on the A-322 tests (named in the record).
+
+---
+
+## ADR-111: In Production With Billing Enabled, a Missing `STRIPE_SECRET_KEY` Stops the Boot
+
+**Date:** 2026-09-30 · **Status:** Accepted (decided by the main session under the owner's delegation, from the gitleaks triage; implemented and written by the services helper) · **Record:** `MEMORY/records/2026-09-30-p9-16-quality-services.md` § ADR-111 · **Relates to:** the CERT_SIGNING_SECRET guard (`certificateDocument.service#requireSigningSecret`), P10-05's `assertPublicAccessConfig`
+
+### Decision
+
+`stripeWebhook.service` fell back to the placeholder `sk_test_placeholder` whenever `STRIPE_SECRET_KEY` was unset, production included. A deployment wired to Stripe but missing the key booted and billed against a fake credential, and nothing said so.
+
+- **The rule.** In production (`NODE_ENV=production`) with billing enabled, a missing or blank `STRIPE_SECRET_KEY` stops the boot. The error names the variable and the way out: "STRIPE_SECRET_KEY is required in production when billing is enabled (ADR-111). Set it, or set BILLING_ENABLED=false on a deployment that does not bill through Stripe."
+- **Where it runs.** New `src/config/billing.ts` (`stripeSecretKey()`, `billingEnabled()`, `STRIPE_KEY_PLACEHOLDER`) reads the environment through `config/env.ts`. `stripeWebhook.service` calls `stripeSecretKey()` once, at its own load, which the boot reaches through the billing routes. It is a load-time refusal, as the CERT_SIGNING_SECRET guard is.
+- **"Billing enabled"** is `BILLING_ENABLED=true`. `BILLING_ENABLED=false` turns it off. Unset (or any other value), billing is enabled exactly when `STRIPE_WEBHOOK_SECRET` is set: a deployment wired to Stripe's webhooks is billing.
+- **Outside production** the placeholder stays allowed, for development and the test suites.
+- **The load gate** (`scripts/load-check.ts`, Amendment 15 of ADR-087) gives its production-mode child a random `STRIPE_SECRET_KEY`, as it does every other required secret. The gate therefore loads the module whatever the developer's `.env` says about billing. It does not set `BILLING_ENABLED=false`, which would stop the gate loading through the guarded path.
+- **The gitleaks allowlist entry** `\bsk_test_placeholder\b` is kept as it is. The literal moved from `stripeWebhook.service.ts` to `config/billing.ts`, and the entry is path-independent.
+
+### Alternatives considered
+
+- **Refuse whenever the key is missing in production, billing or not.** Rejected: a production deployment that does not sell through Stripe (an on-premises hospital install) would need a fake key to boot, which is the problem this ADR removes.
+- **A new required flag with no inference** (billing enabled only by `BILLING_ENABLED=true`). Rejected: the deployment that most needs the guard is one wired to Stripe's webhooks that never heard of the new flag. Inferring from `STRIPE_WEBHOOK_SECRET` covers it, and `BILLING_ENABLED=false` is the explicit way out.
+- **Refuse at the first Stripe call instead of at load.** Rejected: that is the silent failure moved later, a 500 on the first webhook instead of a boot that names the variable.
+
+### Implications
+
+- **A production deployment with `STRIPE_WEBHOOK_SECRET` set and no `STRIPE_SECRET_KEY` no longer starts.** That is the intent, but an operator upgrading such a deployment must set the key, or `BILLING_ENABLED=false`, before the rollout. The Helm chart passes `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` only when `secrets.stripeSecretKey` / `secrets.stripeWebhookSecret` are set (both empty by default in `values.yaml`), so a chart release that sets the webhook secret must also set the key. The compose overlays set neither.
+- **A blank key is now a missing key everywhere.** Outside production, a blank `STRIPE_SECRET_KEY` of spaces used to be passed to the Stripe client as-is; it now falls back to the placeholder. This matches the empty-means-default idiom of `envOr`.
+- **Evidence.** `tests/services/stripeSecretKey.adr111.test.ts` loads the real module in an isolated registry per case: 3 refusals and 5 cases that still start. Fail-before: 3 of 8 failed against the old module (every refusal case). After the change, 8/8, and every stripeWebhook suite passes (78 tests). `npm run load:check` passes in both modes, including with `BILLING_ENABLED=true` in the parent environment.
+
+---
+
+## ADR-112: A Tenant Edit Does Not Change the Tenant's Status — Status Moves Only Through the Tenant Lifecycle
+
+**Date:** 2026-09-30 · **Status:** Accepted (the Phase 9 lead; A-326 was assigned by the coordinator, "fix first") · **Findings:** A-326, A-327 · **Record:** `MEMORY/records/2026-09-30-a326-a329-tenant-edit-hierarchy.md` · **Relates to:** ADR-094 (suspension marks), A-63 (a tenant admin may not change status)
+
+### Context
+
+`PATCH /tenants/edit` accepted a `status`, and `tenant.service#updateTenant` wrote it directly. The validator upper-cases the status (ACTIVE / INACTIVE / SUSPENDED), but `tenants.status` is the lower-case ENUM (active / suspended / deleted). So every edit that carried a status failed on PostgreSQL with `invalid input value for enum`, answered as a 500, and the edit modal always resubmits the status. `INACTIVE` has no ENUM value at all.
+
+A direct write would also have been wrong on its own terms. A suspension is a lifecycle transition: `POST /tenants/:id/suspend` and `/resume` write the ADR-094 marks (reason, suspended_by, the audit rows). An edit that set `suspended` would leave a suspended tenant with none of them.
+
+### Decision
+
+An edit never writes `status`.
+- **The current status resubmitted, in any case,** is no change, so the modal's round trip saves.
+- **A different status is a 409 with a state explanation:** "This tenant is "active". Its status changes through the tenant lifecycle (POST /tenants/:id/suspend or /resume), not through an edit".
+- **A value the ENUM does not have** (`INACTIVE`) is a 400.
+- **A tenant admin sending a different status** is still a 403 (A-63). That check runs first.
+- **A-327:** a null or empty email in an edit is a 400 before anything is written. Previously it reached the NOT NULL, isEmail column and answered 500.
+
+### Alternatives considered
+
+- **Map the upper-case value to lower case and write it.** Rejected: it creates suspensions without their ADR-094 marks and audit rows, and `INACTIVE` still has nowhere to go.
+- **Strip `status` from the validator.** Rejected: the frontend still sends it, and a super admin's changed status would then be silently ignored, a 200 that says a change happened when it didn't (the A-303 class).
+- **Add `inactive` to the ENUM.** Rejected: nothing reads it, and no lifecycle transition defines what it means.
+
+### Implications
+
+- **The frontend's `EditTenantModal`** still offers Active / Inactive / Suspended to a super admin. Choosing another value now gets a 409 explaining where to go, instead of a 500. The select should become read-only, pointing to the lifecycle actions; that is a frontend follow-up, recorded on A-326.
+- **`updateTenant` reads the ENUM from the model** (`Tenant.getAttributes().status.values`), so hand-written model doubles need `getAttributes`. Two test doubles gained it.
+- **Evidence:**
+  - `tests/routes/tenant.statusEmail.a326a327.test.ts`: 6 of 9 failed before, 9/9 pass after.
+  - A live PostgreSQL 18 check as `callibrator_app`: 11/11. The before state is the P9-13 probe's measured 500s.
 
 ---
 

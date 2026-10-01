@@ -10,7 +10,7 @@ Almost everything here is currently **absent rather than incomplete**. Saying so
 
 | | |
 |---|---|
-| **Status** | 🟡 **PARTIAL (2026-09-28)** — workflow written; `backend-test`, `boot-and-migrate` and `dependency-audit` now run **in their CI form** (verbatim steps, Ubuntu 24.04 + Node 26.10.0, the workflow's service images) and pass after three fixes (ADR-082). **Still never run on GitHub**; no image build/push; the lint ratchet is red (1,061 vs 950). See `PROGRESS.md`, ADR-066, ADR-082 |
+| **Status** | 🟡 **PARTIAL (2026-09-28)** — workflow written; `backend-test`, `boot-and-migrate` and `dependency-audit` now run **in their CI form** (verbatim steps, Ubuntu 24.04 + Node 26.10.0, the workflow's service images) and pass after three fixes (ADR-082). **CI HAS run on GitHub, and every run failed (read 2026-09-30, `2026-09-30-p7-01-ci-gitleaks.md`):** 10 `ci` runs on push to `main` since 2026-09-24 (`244b63b` … `ce74932`), 9 `failure`, 1 `cancelled`, none green. On HEAD `ce74932` (run 36537915943) **7 of 8 jobs pass** — `backend-test` (100% gate), `boot-and-migrate` (PG 18), `frontend`, `backend-lint` (ratchet + typecheck), `dependency-audit`, `deploy-config`, `workflow-lint` — and **only `secret scan (gitleaks)` fails**, on 3 findings, all false positives (a test file name, a truncated JWT header in a sample response ×2 commits); **no real secret in history**. Fixed in the working tree (source rewording + 3 reviewed fingerprints + 2 narrow value allowlists); the scan is expected green on the next push, **not yet seen green on GitHub**. Earlier runs also failed `backend-lint`, `backend-test`, `frontend`, `boot-and-migrate` and `workflow-lint` at various points; each of those is green on `ce74932`. No image build/push. ~~the lint ratchet is red (1,061 vs 950)~~ — **stale; since 2026-09-28 the backend lint baseline is 0 errors (ADR-092)**. See `PROGRESS.md`, ADR-066, ADR-082 |
 | **Depends on** | **P6-01** · **P9-02a** (lint) · **P9-01a** (typecheck) · **P6-14** (coverage scope) — do not build a pipeline around a failing gate |
 | **Spec refs** | `docs/DEVOPS/01-CI-CD.md` · [`AUDIT-2026-09-REMEDIATION.md`](./AUDIT-2026-09-REMEDIATION.md) A-19, A-21, A-34 |
 
@@ -164,7 +164,7 @@ The two bold checks are what catch a lost-secrets restore. Without them a broken
 
 | | |
 |---|---|
-| **Status** | ⏳ TODO |
+| **Status** | ✅ **DONE on a kind cluster (2026-09-30)** — ADR-106, [record](../MEMORY/records/2026-09-30-p7-06-helm-kind-cluster.md). **Not** proven on a production cluster (U-01 stays open) |
 | **Depends on** | a reachable cluster |
 | **Spec refs** | `docs/DEVOPS/09-KUBERNETES.md` |
 
@@ -173,13 +173,15 @@ The two bold checks are what catch a lost-secrets restore. Without them a broken
 Turning "renders" into "works" is the whole task.
 
 **Definition of Done**
-- [ ] `kubectl apply --dry-run=server` clean
-- [ ] a real install into a scratch namespace
-- [ ] probes behave: liveness on `/`, readiness on `/health`, and a 503 keeps the pod **out of rotation without restarting it**
-- [ ] the ingress passes WebSocket upgrades — verified by a **live notification**, not by reading the annotation
-- [ ] `/oidc/*` reachable at the root
-- [ ] both guards confirmed to fire against the cluster path too
-- [ ] the record says what did not work — it will not all work first time
+- [x] `kubectl apply --dry-run=server` clean — 14 objects, the unmodified chart and the fixed one (the Ingress through the ingress-nginx admission webhook)
+- [x] a real install into a scratch namespace — `helm install`, upgrades to revision 5, a rollback to revision 6, and a second release on an empty database
+- [x] probes behave: backend liveness on `/live` and frontend liveness on `/`, readiness on `/health`. With Redis down, the pod went `ready=false` and the ingress answered 503; after 75 s it had **0 restarts**. Probe timeouts and the startup budgets were fixed (ADR-106)
+- [x] the ingress passes WebSocket upgrades. A **live notification** was received by a client connected through the ingress with `transports: ["websocket"]` only, and it was emitted by either of two backend replicas
+- [x] `/oidc/*` reachable at the root. It now advertises `https://<host>`, not `http://localhost:5000` (ADR-106)
+- [x] guards fire against the cluster path: `helm upgrade` with the cron/replica, KMS and clamav guards was refused at render, and the release stayed at its revision
+- [x] the record says what did not work: seven chart defects, fixed and re-proven, plus **A-310** (sign-in fails when `FORCE_HTTPS=true`, open)
+
+**Not covered by this DoD, still open (U-01):** a managed CNI, a real StorageClass, more than one node, cert-manager, external secrets, the prod and staging values files on a cluster, and an image built from the current working tree.
 
 ---
 
@@ -221,6 +223,19 @@ Turning "renders" into "works" is the whole task.
 ---
 
 ## Phase Exit
+
+> **Exit interpreted 2026-09-30 (working decision under the owner's delegation, awaiting the owner's
+> confirmation; ADR-109 §3):**
+> - **"The Helm charts are known to deploy"** is met by **P7-06 on the kind cluster** (ADR-106). A
+>   production cluster (**U-01**) is a **post-go-live** check, not a Phase 7 exit item. The A-310
+>   re-run with `FORCE_HTTPS: "true"` on kind still belongs to this phase.
+> - **"Wakes somebody"** needs a **real alert destination and a real log sink** on the deployment.
+>   Those are owner-supplied values, and the two lines stay unticked until they exist and a failing
+>   job and a failed audit write are seen to arrive there:
+>   `ALERT_WEBHOOK_URL` and/or `ALERT_EMAIL_TO` (the email route needs a working `MAIL_*` transport), and
+>   a log sink the Vector shipper (P7-03, `deploy/observability/vector.toml`) writes to — its endpoint
+>   (the file ships `http://loki:3100`) and any credentials. See
+>   `BACKLOG.md` § Owner-Supplied Values.
 
 - [ ] every task `DONE` with a record
 - [ ] a failing scheduled job **wakes somebody**

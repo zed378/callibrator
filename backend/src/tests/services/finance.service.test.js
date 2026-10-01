@@ -1,3 +1,12 @@
+// A-278 (ADR-094): the write runs in a transaction with its audit row; the
+// double passes a marker through so the write's options can be asserted.
+jest.mock("../../services/audit.service", () => ({
+  logAction: jest.fn().mockResolvedValue({}),
+}));
+jest.mock("../../config", () => ({
+  db: { transaction: jest.fn(async (cb) => cb("tx")) },
+}));
+
 jest.mock("../../models", () => ({
   AssetFinance: {
     findAndCountAll: jest.fn(),
@@ -205,7 +214,7 @@ describe("finance.service", () => {
       expect(result.status).toBe(201);
       expect(result.data.depreciation).toBeDefined();
       expect(AssetFinance.create).toHaveBeenCalledWith(
-        expect.objectContaining({ tenantId: "t1", deviceId: "dev-1" }),
+        expect.objectContaining({ tenantId: "t1", deviceId: "dev-1" }), { transaction: "tx" },
       );
     });
 
@@ -244,7 +253,7 @@ describe("finance.service", () => {
       const result = await financeService.updateAssetFinance("t1", "fin-1", {
         usefulLifeYears: 6,
       });
-      expect(record.update).toHaveBeenCalledWith({ usefulLifeYears: 6 });
+      expect(record.update).toHaveBeenCalledWith({ usefulLifeYears: 6 }, { transaction: "tx" });
       expect(result.status).toBe(200);
     });
   });

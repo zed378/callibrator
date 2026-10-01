@@ -1,5 +1,11 @@
 import { api } from "../client";
 import { Role, PaginatedResponse } from "@/types";
+import type {
+  AssignPermissionInput,
+  AssignRoleInput,
+  CreateRoleInput,
+  UpdateRoleInput,
+} from "@callibrator/contracts/roles";
 
 // Menu group entity as returned by the roles menus endpoints
 export interface RoleMenu {
@@ -14,6 +20,9 @@ export interface RoleMenu {
   updatedAt?: string;
 }
 
+// P9-22 (ADR-097): the menu bodies have no declared contract (`createMenuSchema`
+// is an open object, kept so by P9-11), so this one stays hand-written. The
+// role, assignment and permission bodies below are the contract's own types.
 export interface RoleMenuCreateInput {
   name: string;
   slug?: string;
@@ -30,23 +39,35 @@ export interface RoleMenuPermission {
   permissionType?: "read" | "write";
 }
 
-// Backend REST contract (roles.js):
-//   GET    /api/v1/roles            -> { success, data: Role[], pagination: { page, limit, total } }
+// Backend REST contract (roles.controller.js, F-19 / ADR-105):
+//   GET    /api/v1/roles            -> { success, data: Role[], meta: { total, page, limit, totalPages } }
 //   GET    /api/v1/roles/:id        -> { success, data: Role }
-//   POST   /api/v1/roles            -> { success, data: Role }   (body: { name, description })
-//   PATCH  /api/v1/roles/:id        -> { success, data: Role }   (body: { name?, description?, status? })
+//   POST   /api/v1/roles            -> { success, data: Role }   (body: { name, nameToShow?, description?, roleLevel? 1–8, status? })
+//   PATCH  /api/v1/roles/:id        -> { success, data: Role }   (body: { name?, nameToShow?, description?, roleLevel? 1–8, status? })
+// A role row carries `status` ("active" | "inactive"), never `isActive`; the
+// service derives `isActive` from it (F-19: every role showed Inactive, and an
+// edit re-activated an inactive one).
 //   DELETE /api/v1/roles/:id        -> { success, ... }
 // NOTE: paths are NOT trailing-slashed — `/api/v1/roles/` 308-redirects on the Next proxy.
+interface ListMeta {
+  total: number;
+  page: number;
+  limit: number;
+  totalPages?: number;
+}
+
 interface BackendRolesListResponse {
   success: boolean;
   message?: string;
   data: Role[];
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-  };
+  meta?: ListMeta;
 }
+
+/** The row as the backend sends it, with `isActive` read from `status`. */
+const toRole = (row: Role): Role => ({
+  ...row,
+  isActive: row.status !== undefined ? row.status === "active" : row.isActive,
+});
 
 interface BackendRoleResponse {
   success: boolean;
@@ -64,14 +85,14 @@ export const roleService = {
       params: { page, limit, search },
     });
 
-    const total = response.pagination?.total ?? response.data.length;
-    const lim = response.pagination?.limit ?? limit;
-    const pg = response.pagination?.page ?? page;
+    const total = response.meta?.total ?? response.data.length;
+    const lim = response.meta?.limit ?? limit;
+    const pg = response.meta?.page ?? page;
 
     return {
       success: response.success,
       message: response.message ?? "",
-      data: response.data,
+      data: response.data.map(toRole),
       meta: {
         total,
         page: pg,
@@ -85,7 +106,7 @@ export const roleService = {
     const response = await api.get<BackendRoleResponse>(
       `/api/v1/roles/${roleId}`,
     );
-    return response.data;
+    return toRole(response.data);
   },
 
   create: async (data: {
@@ -95,12 +116,18 @@ export const roleService = {
     isActive?: boolean;
     roleLevel?: number;
   }): Promise<Role> => {
-    // Backend createRole only reads { name, description }.
-    const response = await api.post<BackendRoleResponse>("/api/v1/roles", {
+    // F-19 (ADR-105): the API stores every field the dialog offers.
+    const body: CreateRoleInput = {
       name: data.name,
       description: data.description,
-    });
-    return response.data;
+    };
+    if (data.nameToShow !== undefined) body.nameToShow = data.nameToShow;
+    if (data.roleLevel !== undefined) body.roleLevel = data.roleLevel;
+    if (data.isActive !== undefined) {
+      body.status = data.isActive ? "active" : "inactive";
+    }
+    const response = await api.post<BackendRoleResponse>("/api/v1/roles", body);
+    return toRole(response.data);
   },
 
   update: async (data: {
@@ -110,12 +137,14 @@ export const roleService = {
     nameToShow?: string;
     isActive?: boolean;
     roleLevel?: number;
-    status?: string;
+    status?: UpdateRoleInput["status"];
   }): Promise<Role> => {
-    // Backend updateRole reads { name, description, status }.
-    const body: Record<string, unknown> = {};
+    // Backend updateRole reads { name, nameToShow, description, roleLevel, status }.
+    const body: UpdateRoleInput = {};
     if (data.name !== undefined) body.name = data.name;
+    if (data.nameToShow !== undefined) body.nameToShow = data.nameToShow;
     if (data.description !== undefined) body.description = data.description;
+    if (data.roleLevel !== undefined) body.roleLevel = data.roleLevel;
     if (data.status !== undefined) {
       body.status = data.status;
     } else if (data.isActive !== undefined) {
@@ -126,7 +155,7 @@ export const roleService = {
       `/api/v1/roles/${data.id}`,
       body,
     );
-    return response.data;
+    return toRole(response.data);
   },
 
   delete: async (id: string): Promise<void> => {
@@ -146,12 +175,12 @@ export const roleService = {
       success: boolean;
       message?: string;
       data: RoleMenu[];
-      pagination: { page: number; limit: number; total: number };
+      meta?: ListMeta;
     }>("/api/v1/roles/menus", { params: { page, limit, search } });
 
-    const total = response.pagination?.total ?? response.data.length;
-    const lim = response.pagination?.limit ?? limit;
-    const pg = response.pagination?.page ?? page;
+    const total = response.meta?.total ?? response.data.length;
+    const lim = response.meta?.limit ?? limit;
+    const pg = response.meta?.page ?? page;
 
     return {
       success: response.success,
@@ -209,7 +238,7 @@ export const roleService = {
       success: boolean;
       message?: string;
       data: RoleMenuPermission;
-    }>(`/api/v1/roles/${roleId}/permissions`, { menuGroupId, permissionType });
+    }>(`/api/v1/roles/${roleId}/permissions`, { menuGroupId, permissionType } satisfies AssignPermissionInput);
     return response.data;
   },
 
@@ -225,7 +254,7 @@ export const roleService = {
   // ------------------------------------------------------------------
 
   assignRoleToUser: async (userId: string, roleId: string): Promise<void> => {
-    await api.post("/api/v1/roles/assign", { userId, roleId });
+    await api.post("/api/v1/roles/assign", { userId, roleId } satisfies AssignRoleInput);
   },
 
   removeRoleFromUser: async (userId: string): Promise<void> => {

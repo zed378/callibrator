@@ -30,7 +30,8 @@ describe("S-32 tenant backup STATUS vs the status ENUM", () => {
   });
 
   it("no backup service names a STATUS member the ENUM does not have", () => {
-    const files = ["tenantBackup.service.js", "scheduledBackup.service.js"].map((f) =>
+    // P9-13 (ADR-087): tenantBackup.service is TypeScript now (file-name re-key only).
+    const files = ["tenantBackup.service.ts", "scheduledBackup.service.ts"].map((f) =>
       path.join(__dirname, "../../services", f),
     );
     const named = new Set();

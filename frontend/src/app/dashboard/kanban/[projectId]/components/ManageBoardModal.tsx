@@ -76,7 +76,7 @@ export default function ManageBoardModal({
 
         {/* Columns */}
         <div>
-          <h4 className="text-sm font-semibold mb-2">Columns (flow)</h4>
+          <h3 className="text-sm font-semibold mb-2">Columns (flow)</h3>
           <div className="space-y-1">
             {columns.map((c, idx) => (
               <div
@@ -191,7 +191,7 @@ export default function ManageBoardModal({
 
         {/* Labels */}
         <div className="border-t border-border pt-4">
-          <h4 className="text-sm font-semibold mb-2">Labels</h4>
+          <h3 className="text-sm font-semibold mb-2">Labels</h3>
           <div className="flex flex-wrap gap-2 mb-2">
             {board.labels.length === 0 && (
               <span className="text-xs text-muted-foreground">No labels.</span>

@@ -22,10 +22,10 @@ const {
 } = require("../../controllers/customDomains.controller");
 const { addDomain } = require("../../validators/customDomains.validator");
 const { validateUuid } = require("../../middlewares/validateUuid.middleware");
-// `addDomain` is a Joi SCHEMA. It was passed as `addDomain.validate`, i.e.
-// Joi's own (value, options) method, which express called as (req, res, next)
-// — it threw and 500'd POST /domains. `validate(schema)` is the router-facing
-// factory.
+// `addDomain` is a SCHEMA. Its own method was once passed to the router
+// (`addDomain.validate`), which express called as (req, res, next) — it threw
+// and 500'd POST /domains. `validate(schema)` is the only router-facing factory
+// (P9-11 guard: tests/guards/schemaAsMiddleware.p911).
 const { validate } = require("../../middlewares/validation.middleware");
 
 // A-02. A custom domain decides which hostname serves this tenant, and

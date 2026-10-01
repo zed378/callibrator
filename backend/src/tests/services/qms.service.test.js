@@ -52,7 +52,8 @@ const qmsService = require("../../services/qms.service");
 describe("qms.service", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockQuery.mockResolvedValue([[{ seq: 1 }]]);
+    // P9-07: sql() runs type SELECT, so the RETURNING rows are the answer.
+    mockQuery.mockResolvedValue([{ seq: 1 }]);
     // The referenced device / user belongs to the tenant unless a test says not.
     mockCalibrationDevice.findOne.mockResolvedValue({ id: "device-1" });
     mockUser.findOne.mockResolvedValue({ id: "user-2" });
@@ -64,7 +65,7 @@ describe("qms.service", () => {
   describe("Non-Conformance (NC)", () => {
     describe("createNC", () => {
       it("should create a non-conformance with the counter's number, formatted", async () => {
-        mockQuery.mockResolvedValue([[{ seq: 3 }]]);
+        mockQuery.mockResolvedValue([{ seq: 3 }]);
         mockNonConformance.create.mockImplementation((data) =>
           Promise.resolve({ id: "nc-1", ...data }),
         );
@@ -77,8 +78,10 @@ describe("qms.service", () => {
         });
 
         expect(mockNonConformance.count).not.toHaveBeenCalled();
+        // P9-07: through sql() — bind parameters, type SELECT, in the transaction.
         expect(claim()).toEqual({
-          replacements: { tenantId: "tenant-1", kind: "NC", pattern: "^NC-([0-9]{1,9})$" },
+          type: "SELECT",
+          bind: ["tenant-1", "NC", "^NC-([0-9]{1,9})$"],
           transaction: "TX",
         });
         // A-75: the device is looked up in the caller's tenant, in the transaction.
@@ -276,7 +279,7 @@ describe("qms.service", () => {
     describe("createCapa", () => {
       it("should create CAPA if associated NC exists", async () => {
         mockNonConformance.findOne.mockResolvedValue({ id: "nc-1" });
-        mockQuery.mockResolvedValue([[{ seq: 5 }]]);
+        mockQuery.mockResolvedValue([{ seq: 5 }]);
         mockCapa.create.mockImplementation((data) =>
           Promise.resolve({ id: "capa-1", ...data }),
         );
@@ -295,7 +298,8 @@ describe("qms.service", () => {
         });
         expect(mockCapa.count).not.toHaveBeenCalled();
         expect(claim()).toEqual({
-          replacements: { tenantId: "tenant-1", kind: "CAPA", pattern: "^CAPA-([0-9]{1,9})$" },
+          type: "SELECT",
+          bind: ["tenant-1", "CAPA", "^CAPA-([0-9]{1,9})$"],
           transaction: "TX",
         });
         expect(mockUser.findOne).toHaveBeenCalledWith({
