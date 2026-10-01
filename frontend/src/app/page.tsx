@@ -25,6 +25,12 @@ import { WorkflowStory, type WorkflowStep } from "@/components/public/landing/Wo
 import { CERTIFICATE_LOOKUP_ENABLED } from "@/lib/publicFeatures";
 import { PRODUCT_SHOTS } from "@/components/public/landing/productShots";
 
+// The landing page reads the `locale` cookie via getServerI18n() on every
+// request and cannot be prerendered. `instant = false` is the cacheComponents-
+// compatible way to declare a blocking route in Next.js 16 (the `dynamic`
+// segment config is rejected when nextConfig.cacheComponents is enabled).
+export const instant = false;
+
 export async function generateMetadata(): Promise<Metadata> {
   const { t } = await getServerI18n();
   return {
